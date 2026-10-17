@@ -23,7 +23,7 @@ and fails if this table and the bindings disagree.
 | `apps/docs` | Astro | front | `docs.g1t.sh`, these pages | Nothing | none |
 | `services/identity` | Rust | core | Accounts, sessions, workspaces, members, teams, repository roles, tokens, OAuth, device sign-in, 2FA | D1 `g1t`, the avatars KV | `artifacts`, `billing`, `chat`, `events`, `notify`, `projects`, `repos` |
 | `services/repos` | Rust | core | Repositories and git: smart HTTP, pre-receive checks, caches, forks, landing merges, releases, backups | D1 `g1t-repos`, the git store, the git cache KV, the packs and backups buckets | `billing`, `events`, `identity`, `security`, `work` |
-| `services/work` | Rust | core | Issues, pull requests, comments, reviews, labels, milestones, rulesets, checks, statuses, CODEOWNERS, the merge queue | D1 `g1t-work` | `actions`, `events`, `identity`, `repos` |
+| `services/work` | Rust | core | Work items, pull requests, comments, reviews, labels, milestones, rulesets, checks, statuses, CODEOWNERS, the merge queue | D1 `g1t-work` | `actions`, `events`, `identity`, `repos` |
 | `services/events` | Rust | core | The event bus and log, the audit log, the inbox | D1 `g1t-events`, the `g1t-events` queue and its subscriber queues | `billing`, `identity`, `notify`, `repos`, `work` |
 | `services/actions` | Rust | core | Workflows: reading them, triggering runs, planning jobs, secrets, self-hosted runners, logs | D1 `g1t-actions`; lists and expires the Actions cache bucket | `billing`, `deployments`, `events`, `identity`, `notify`, `projects`, `repos`, `runner`, `work` |
 | `services/runner` | TypeScript | core | Sandboxes on Cloudflare Containers, one per job, with their egress | The Container classes | `actions`, `billing`, `deployments`, `events`, `identity`, `repos`, `work` |
@@ -31,7 +31,7 @@ and fails if this table and the bindings disagree.
 | `services/pages` | TypeScript | edge | The dispatcher for `*.g1t.page` and custom domains | Nothing; reads the domains KV | none |
 | `services/packages` | Rust | core | npm, Cargo, Composer, Maven, NuGet, RubyGems, Go and container images | D1 `g1t-packages`, the packages bucket | `billing`, `events`, `identity`, `repos` |
 | `services/security` | Rust | core | Secret scanning, dependency alerts and updates, code scanning, the supply chain | D1 `g1t-security` | `actions`, `billing`, `events`, `identity`, `repos`, `runner`, `work` |
-| `services/search` | Rust | core | Site search over repositories, issues, pull requests, people and code | D1 `g1t-search`, its jobs queue | `billing`, `identity`, `repos`, `work` |
+| `services/search` | Rust | core | Site search over repositories, work items, pull requests, people and code | D1 `g1t-search`, its jobs queue | `billing`, `identity`, `repos`, `work` |
 | `services/projects` | TypeScript | core | Projects and what they depend on | D1 `g1t-projects` | `deployments`, `events`, `identity`, `og`, `packages`, `repos` |
 | `services/chat` | TypeScript | core | Channels, direct messages and threads, live | D1 `g1t-chat`, a Durable Object per channel | `identity`, `integrations`, `notify` |
 | `services/artifacts` | TypeScript | core | Docs written together, live, with their spaces, sharing and search | D1 `g1t-docs`, its files bucket, two Vectorize indexes, a Durable Object per open doc | `billing`, `events`, `identity`, `notify`, `repos`, `work` |

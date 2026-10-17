@@ -52,7 +52,7 @@ The bar along the bottom is the site's phone bar:
 | **Home** | Coming. Opens Home on the site meanwhile. |
 | **Chat** | Your starred conversations, channels and direct messages, with what is unread, moving live. See [Chat](#chat). |
 | **Notifications** | Coming. Opens your notifications on the site meanwhile; messages to you already arrive [on the phone](#notifications). |
-| **Code** | The workspace's repositories, each with its pull requests and issues. A pull request shows its description, checks, conversation and changed files, and you can approve it or ask for changes. An issue shows the pull requests made for it, and you can comment. Shown when you use Code in the workspace. |
+| **Code** | The workspace's repositories, each with its pull requests and work items. A pull request shows its description, checks, conversation and changed files, and you can approve it or ask for changes. A work item shows the pull requests made for it, and you can comment. Shown when you use Code in the workspace. |
 | **More** | Whether this phone gets notifications, your workspaces, how you signed in, and **Sign out**. |
 
 ## Chat
@@ -108,7 +108,7 @@ once.
 
 The approval page lists what the app asks for: reading your account,
 workspaces, repositories, checks and workflows, reading and writing
-issues, pull requests and notifications, and reading artifacts. Untick what you would rather it
+work items, pull requests and notifications, and reading artifacts. Untick what you would rather it
 could not do.
 
 **Use an access token** signs in with a
@@ -130,7 +130,7 @@ pages it has screens for:
 | --- | --- |
 | `g1t://<workspace>/-/chat`, `…/-/chat/<channel>`, `…/-/chat/dm/<id>` | Chat, or the conversation, in that workspace |
 | `g1t://<owner>/<repo>` | The repository |
-| `g1t://<owner>/<repo>/pull/<number>`, `…/issues/<number>` | The pull request or issue |
+| `g1t://<owner>/<repo>/pull/<number>` | The pull request |
 
 Any other page opens on the site, in the browser.
 

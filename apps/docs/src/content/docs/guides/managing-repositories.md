@@ -11,7 +11,7 @@ when you do.
 
 ## What it is, and the facts beside the files
 
-The header at the top of every page of a repository (Code, Issues, Pull
+The header at the top of every page of a repository (Code, Work, Pull
 requests, Actions, Settings and the rest) shows its project's description,
 and its website and topics as you set them under
 [Edit the details](#edit-the-details). The website is the project's
@@ -116,7 +116,7 @@ stars on a private repository are seen only by people who can read it.
 | **Details** | Its website and topics, shown on its page, in [search and Explore](/guides/search/). Its description is its project's, on **General**. |
 | **Branches** | The default branch, renaming a branch, and a link to **Branches and merging**: [branch protection](/guides/git/#protected-branches), [required status checks](/guides/pull-requests/#required-status-checks), required approvals, and the [merge queue](/guides/merge-queue/). What a sandbox may reach is under **Guardrails**; see [guardrails](/guides/guardrails/). |
 | **Artifacts** | How many days the files workflow runs upload are kept, 1 to 90 (14 unless changed). See [artifacts](/guides/actions/#artifacts). |
-| **Features** | Whether it has issues (a [fork](/concepts/forks/) starts with them off), and whether merges and commits close issues. See [issues](#issues). |
+| **Features** | Whether work items can be filed in it (a [fork](/concepts/forks/) starts with this off), and whether merges and commits land the work items they name. See [work items](#work-items). |
 | **Commits** | Sign-off on commits made on g1t, and comments on commits. See [commits](#commits). |
 | **Pushes** | How many branches and tags one push may update. See [pushes](#pushes). |
 | **Archives** | Whether downloads hold Git LFS objects. Coming soon. |
@@ -128,7 +128,7 @@ change it are turned off until it is unarchived.
 
 ## Settings
 
-How a repository handles pull requests, commits, pushes and issues. Each
+How a repository handles pull requests, commits, pushes and work items. Each
 setting is a field of
 [`PATCH /repos/{owner}/{name}/settings`](/reference/api/repositories/update-repo-settings/)
 (the `repository` tool's `update_settings` action), except
@@ -192,14 +192,15 @@ On **Settings → Repository**, under **Archives**.
 | --- | --- | --- | --- |
 | Include Git LFS objects in archives | None yet | Off | Coming soon. g1t does not store Git LFS files yet (see [limitations](/about/limitations/)), so archives hold what git stores; the setting is shown, turned off, until it does. |
 
-### Issues
+### Work items
 
-On **Settings → Repository**, under **Features**.
+On **Settings → Repository**, under **Features**. [Work items](/guides/work-items/)
+belong to the workspace; these settings say how this repository takes part.
 
 | Setting | Field | Default | What it does |
 | --- | --- | --- | --- |
-| Issues | `has_issues` | On; off for a [fork](/concepts/forks/) | Whether issues can be opened. Off keeps existing issues readable. `null` goes back to the default. `issues_enabled` says whether they can be opened now. |
-| Auto-close issues with merged linked pull requests | `auto_close_issues` | On | A pull request that merges into the default branch closes its issue and those it names after a [closing keyword](/guides/pull-requests/#closing-issues), and so does a commit pushed to the default branch whose message names them. |
+| Work items | `has_work_items` | On; off for a [fork](/concepts/forks/) | Whether work items can be filed in it, as their origin. Off keeps existing ones readable. `null` goes back to the default. `work_items_enabled` says whether they can be filed now. |
+| Land work items with merged linked pull requests | `auto_close_work_items` | On | A pull request that merges into the default branch lands this repository on its work item and on those it names after a [closing keyword](/guides/pull-requests/#closing-work-items), and so does a commit pushed to the default branch whose message names them. A work item closes once every repository it targets has landed, or at the first landing when it has no target. |
 
 ```sh
 curl -X PATCH https://api.g1t.sh/repos/acme/rocket/settings \
@@ -217,7 +218,7 @@ Owners of its workspace have Admin on it.
 | --- | --- |
 | Website, topics | Maintain |
 | How long artifacts are kept | Maintain |
-| [Merge, commit and issue settings](#settings) | Maintain |
+| [Merge, commit and work item settings](#settings) | Maintain |
 | How many branches and tags a push may update | Admin |
 | Default branch | Admin |
 | Create, delete or restore a branch | Write; the default branch is never deleted. See [branches](/guides/git/#the-branches-page) |
@@ -344,8 +345,9 @@ A name is lowercase letters, digits, dots, hyphens and underscores, up to
 repository in the workspace may have it, including one that was
 [recently deleted](#restore-a-repository).
 
-Everything stays with the repository: its git data, issues, pull requests,
-workflow runs, deployments, settings, secrets and webhooks. Its old address
+Everything stays with the repository: its git data, pull requests,
+workflow runs, deployments, settings, secrets and webhooks, and the
+[work items](/guides/work-items/) linked to it stay linked. Its old address
 keeps working, the same way as after a
 [transfer](/guides/transferring-repositories/#old-addresses):
 
@@ -400,7 +402,7 @@ are detached and keep the visibility they had.
 
 | | Making it public | Making it private |
 | --- | --- | --- |
-| Who can see it | Anyone: its code, issues and pull requests, and cloning it, without signing in. | Only people with a role on it: its workspace's owners, its members (unless the [base permission](/guides/access-and-roles/#the-base-permission) is None), and anyone given a role on it. Anyone else gets a page that says it does not exist. |
+| Who can see it | Anyone: its code, its pull requests and the work items filed in it, and cloning it, without signing in. | Only people with a role on it: its workspace's owners, its members (unless the [base permission](/guides/access-and-roles/#the-base-permission) is None), and anyone given a role on it. Anyone else gets a page that says it does not exist. |
 | Search and Explore | It is added to [search](/guides/search/) and Explore for everyone. | It leaves search and Explore for everyone outside the workspace. |
 | Link previews | Links to it show a preview card with its name and its project's description. | Links to it stop showing a preview card. |
 | Storage | It stops counting toward the workspace's private storage. | It counts toward the workspace's private storage. A free workspace has 1 GB; making it private is refused when that would go over. See [what is free](/guides/usage-and-billing/#what-is-free). |
@@ -438,7 +440,7 @@ While it is archived:
 | | |
 | --- | --- |
 | Pushes and merges | Refused, whatever your role, and for agents too. |
-| Issues and pull requests | Locked. They stay readable. |
+| Pull requests, and work items filed in it | Locked. They stay readable. |
 | Workflows | Do not run. |
 | Settings | The ones that change the repository are turned off. |
 | Deployments | Keep serving. |
@@ -447,7 +449,7 @@ While it is archived:
 Its page says it is archived, and so do its project's card on the
 workspace overview and its card on [Explore](/guides/search/#explore),
 with an **archived** label. To undo it, someone with Admin chooses **Unarchive**
-in the same place. Pushes, merges, issues, pull requests and workflows
+in the same place. Pushes, merges, work items, pull requests and workflows
 work again; nothing that was refused while it was archived runs
 by itself.
 
@@ -487,7 +489,7 @@ Deleting takes a repository away at once, but an owner can restore it for
 | Search | Drops it. | |
 | Webhooks | The workspace's webhooks are sent `repo.deleted`. | Sent `repo.purged`. |
 | Storage | Stops counting toward the workspace's storage. | |
-| Git data, issues, pull requests, settings, secrets | Kept, for restoring. | Removed, and cannot be recovered. |
+| Git data, pull requests, settings, secrets | Kept, for restoring. | Removed, and cannot be recovered. |
 
 Its entries in the [audit log](/guides/audit-log/) are kept, as for
 anything else.
@@ -521,7 +523,7 @@ it will be purged.
 2. Under **Recently deleted**, find the repository and choose **Restore**.
 
 It comes back at the address it had, as it was when it was deleted: git
-data, issues, pull requests, settings, secrets and webhooks. Its
+data, pull requests, settings, secrets and webhooks. Its
 deployments are built again, and its custom domains serve them once they
 are live. Workflows run again for new work; they do not catch up on what
 they missed.

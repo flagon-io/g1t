@@ -41,7 +41,7 @@ The agent acts as you, in one of two ways, and they carry different access:
 | | The g1t CLI | g1t's MCP tools |
 | --- | --- | --- |
 | Signed in by | `g1t auth login` | `/mcp`, **plugin:g1t:g1t** |
-| What it may do | Everything you can: the sign-in carries every scope, bounded by your roles | The [Agent preset](/guides/authentication/#presets), unless you change it: reading across g1t, creating repositories, and writing code, issues, pull requests and notifications |
+| What it may do | Everything you can: the sign-in carries every scope, bounded by your roles | The [Agent preset](/guides/authentication/#presets), unless you change it: reading across g1t, creating repositories, and writing code, work items, pull requests and notifications |
 | Creates a repository | Yes | Yes, with `repo:create` |
 
 The plugin's skills and hooks use the CLI, so Claude reaches for `g1t`
@@ -88,7 +88,7 @@ choose **Change access** on Claude Code, tick `repo:create` and choose
    whose remote is on g1t, and this folder had none when the session
    started. Start Claude Code again with `claude --continue`: the
    conversation carries on, and from then on the session is recorded, shows
-   in **Live now** on the project's **Work** page, and is tied to the
+   in **Live now** on the project's **Sessions** page, and is tied to the
    commits and pull requests it makes. To record it all, create the
    repository first yourself, `g1t repo create acme/my-app --clone`, and
    start Claude Code in the clone.
@@ -100,25 +100,25 @@ choose **Change access** on Claude Code, tick `repo:create` and choose
    through a pull request. Ask:
 
    ```text
-   Add a contact page to my-app. Open an issue for it, work on a branch,
+   Add a contact page to my-app. Open a work item for it, work on a branch,
    open a pull request on g1t, wait for its checks, and merge it when they
    pass.
    ```
 
-   The agent works as the plugin's `/g1t:work-on-issue` skill says:
+   The agent works as the plugin's `/g1t:work-on-item` skill says:
 
    | The agent | With the CLI | With MCP |
    | --- | --- | --- |
-   | Opens an issue and claims it for this session | `g1t work claim --title "Add a contact page"` | `issue` `claim` with a `title` |
-   | Makes a branch named for the issue, such as `1-contact-page`, and commits with the trailer `G1t-Session: $G1T_SESSION` | `git commit --trailer "G1t-Session: $G1T_SESSION"` | |
-   | Opens a draft pull request early | `g1t pr create --issue 1 --draft --fill` | `pull_request` `create` |
+   | Opens a work item and claims it for this session | `g1t work claim --title "Add a contact page"` | `work_item` `claim` with a `title` |
+   | Makes a branch named for the work item, such as `1-contact-page`, and commits with the trailer `G1t-Session: $G1T_SESSION` | `git commit --trailer "G1t-Session: $G1T_SESSION"` | |
+   | Opens a draft pull request early | `g1t pr create --item 1 --draft --fill` | `pull_request` `create` with `item` |
    | Watches the checks | `g1t pr checks --watch --fail-fast` | `pull_request` `get` |
    | Marks it ready, with what changed and why | `g1t pr ready --summary "…"` | `pull_request` `ready` |
    | Merges it | `g1t pr merge` | `pull_request` `merge` |
 
    `g1t work claim` prints `Opened #1 Add a contact page.` and
    `Claimed #1.`; `g1t pr merge` prints `Merged acme/my-app#2`. Merging
-   into the default branch closes the issue. The trailer ties each commit,
+   into the default branch closes the work item. The trailer ties each commit,
    and the pull request it lands in, to the session; the pull request's
    **Session** tab shows how it was made. See
    [Sessions, claims and dependencies](/guides/sessions/).
@@ -202,7 +202,7 @@ to yourself, say so in the repository's `CLAUDE.md`, and leave
 | --- | --- | --- | --- |
 | Create a repository | Yes | `g1t repo create`, or `repository` `create` | `repo:create`, which the Agent preset gives |
 | Push code | Yes | git, with the CLI's credentials (`g1t auth setup-git`) or an [access token](/guides/authentication/#access-tokens) | `code:write`; a workflow file also needs `workflow_files:write` |
-| Open and claim an issue | Yes | `g1t work claim`, or `issue` `claim` | `issues:write` |
+| Open and claim a work item | Yes | `g1t work claim`, or `work_item` `claim` | `work:write` |
 | Open a pull request and mark it ready | Yes | `g1t pr create` and `g1t pr ready`, or `pull_request` `create` and `ready` | `pull_requests:write` |
 | Watch checks and the preview | Yes | `g1t pr checks --watch`, or `pull_request` `get` | `pull_requests:read` |
 | Merge | Yes, within the repository's rules | `g1t pr merge`, or `pull_request` `merge` | `pull_requests:write`, and the Write role |
@@ -223,6 +223,6 @@ nothing itself: it cannot push, merge or deploy. Ask it to build something
 that has no repository yet, though, and it proposes a session for a new
 one. When you choose **Start session** or **Copy Claude Code command** on
 that card, your click creates the repository, turns on its deployments
-(with the g1t plan), opens the issue and starts the session, which pushes
+(with the g1t plan), opens the work item and starts the session, which pushes
 the first version and watches it go live. See
 [Building something new](/guides/ask/#building-something-new).

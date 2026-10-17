@@ -1,6 +1,6 @@
 ---
 title: Transferring a repository
-description: Move a repository to another workspace, with its issues, pull requests, deployments and history, while its old address keeps working.
+description: Move a repository to another workspace, with its pull requests, deployments and history, while its old address keeps working.
 ---
 
 Transferring moves a repository from one workspace to another. It keeps its
@@ -67,7 +67,7 @@ Everything that belongs to the repository moves with it:
 | | |
 | --- | --- |
 | Code | Every branch and tag. The git data does not move or copy; only the address changes. |
-| Issues and pull requests | With their numbers, comments, reviews, labels, sessions and merge queue. |
+| Pull requests | With their numbers, comments, reviews, sessions and merge queue. A new pull request takes the new workspace's next number, always above the numbers the repository's pull requests already have. |
 | Workflows | Workflow runs, their jobs, logs and artifacts. |
 | Deployments | The repository's project, its deployments and its custom domains. See [deployments](#deployments). |
 | Its own settings | Merge rules, branch protection and guardrails. |
@@ -78,6 +78,8 @@ These belong to the old workspace and stay with it:
 
 | | |
 | --- | --- |
+| Work items | [Work items](/guides/work-items/) belong to the workspace, so they stay in the old one, with their numbers. |
+| Labels and milestones | They are the workspace's, and stay with it. |
 | Workspace secrets and variables | The old workspace's stop reaching the repository; the new workspace's start, if they reach every repository or name this one. |
 | Workspace webhooks | The old workspace's stop hearing about the repository; the new one's start. |
 | Integrations | Sentry, Datadog, Jira and Linear connections stay with their workspace. Connect them in the new one if you need them there. |

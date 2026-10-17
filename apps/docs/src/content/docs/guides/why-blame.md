@@ -3,7 +3,7 @@ title: Sessions and why-blame
 description: How g1t records the way a change was made, and how to find out why any line is the way it is.
 ---
 
-Blame tells you who last changed a line. On g1t it also tells you why: the pull request the line arrived in, the issue that asked
+Blame tells you who last changed a line. On g1t it also tells you why: the pull request the line arrived in, the work item that asked
 for it, and, when a coding agent wrote it, the agent's own account of what it did.
 That comes from **sessions**, the record of how each pull request was made.
 
@@ -82,9 +82,9 @@ g1t then shows why the line is the way it is:
 
 - the commit that last changed it;
 - the pull request it arrived in, and who or what wrote it and merged it;
-- the issue that asked for it, with its description;
+- the work item that asked for it, with its description;
 - how it was decided: the [decision records](#decision-records) on the
-  issue and every pull request for it, oldest first, each marked
+  work item and every pull request for it, oldest first, each marked
   **Claimed**, **Tested** or **Approved**. A combination that failed in
   the merge queue is shown first, with the pull requests tested together,
   the check that failed and the fix that answered it; then the
@@ -124,7 +124,7 @@ curl "https://api.g1t.sh/repos/acme/web/why?path=src/config.rs&line=42" \
 | --- | --- |
 | `commit` | The commit that last changed the line: `hash`, `message`, `author` (`name` as git wrote it, and `username`, the g1t account the author's address belongs to, when one does; never the address), `parents`, `authored_at`. |
 | `pull` | The merged pull request it arrived in: `number`, `title`, `author`, `agent`, `merged_by`, `merged_at`. Absent when it did not arrive through one. |
-| `issue` | That pull request's issue: `number`, `title`, `state` and `body` (cut at 900 characters). |
+| `item` | That pull request's work item: `workspace`, `number`, `title`, `state` and `body` (cut at 900 characters). |
 | `decisions` | The [decision records](#decision-records) on the pull request, oldest first. |
 | `sessions` | Up to eight entries of the pull request's session behind that commit: the messages, and the tool calls that touched the file. |
 
@@ -135,7 +135,7 @@ otherwise.
 
 ## Decision records
 
-A decision record is a reason kept on an issue or pull request, with how
+A decision record is a reason kept on a work item or pull request, with how
 sure it is. Sessions say what happened; decisions say why the result is
 the way it is, in a sentence, with what it rests on.
 
@@ -173,17 +173,17 @@ curl -X POST https://api.g1t.sh/repos/acme/web/pulls/14/decisions \
 8 KB. Whoever opened the pull request can record one, and so can anyone
 who may comment on it, once their email address is confirmed. Each is
 attributed to whoever recorded it, carries
-the issue the pull request is for, and is published as `decision.recorded`.
+the work item the pull request is for, and is published as `decision.recorded`.
 
 A pull request's **Session** tab lists its decisions above what was
-recorded, with the harness sessions working on it; an issue lists its own
-and its pull requests' under them.
+recorded, with the harness sessions working on it; a work item lists its
+own and its pull requests' under them, from every repository it links.
 
 Read them with the `pull_request` tool's `list_decisions` action, with
-`GET /repos/{owner}/{name}/pulls/{number}/decisions`, or for an issue and
-all its pull requests with
-`GET /repos/{owner}/{name}/issues/{number}/decisions`. A decision is as
-visible as the repository, so do not put secrets in one.
+`GET /repos/{owner}/{name}/pulls/{number}/decisions`, or for a work item
+and all its pull requests in its `decisions`, from `g1t work view` or
+[`GET /workspaces/{workspace}/work/{number}/work`](/reference/api/work-items/get-work/).
+A decision is as visible as the repository, so do not put secrets in one.
 
 ## Commit pages
 

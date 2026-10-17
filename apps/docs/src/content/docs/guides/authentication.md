@@ -560,7 +560,7 @@ you think someone else has seen it.
 
 There is one kind of access token. Every token has:
 
-- **Permissions**: a level for each resource, such as Issues: read and
+- **Permissions**: a level for each resource, such as Work: read and
   write, or Code: read. See [permissions](#permissions).
 - **A reach**: the workspaces and repositories it works in. See
   [where a token reaches](#where-a-token-reaches).
@@ -766,8 +766,8 @@ application gets Chat only when it asks for it by name.
 ### Permissions
 
 A permission is a resource and a level. A higher level includes the lower
-ones: Issues: read and write includes reading issues. Each level is one of
-g1t's [scopes](#scopes), so Issues: read and write is `issues:write`; the
+ones: Work: read and write includes reading work items. Each level is one of
+g1t's [scopes](#scopes), so Work: read and write is `work:write`; the
 API, the MCP server and git check every token by those scopes.
 
 Repository permissions apply in every repository the token reaches:
@@ -778,7 +778,7 @@ Repository permissions apply in every repository the token reaches:
 | Code | read, read and write | `code:read`, `code:write` |
 | Security | read, read and write | `security:read`, `security:write` |
 | Packages | read, read and write, read, write and delete | `packages:read`, `packages:write`, `packages:delete` |
-| Issues | read, read and write | `issues:read`, `issues:write` |
+| Work | read, read and write | `work:read`, `work:write` |
 | Pull requests | read, read and write | `pull_requests:read`, `pull_requests:write` |
 | Workflows | read, read and write | `workflows:read`, `workflows:write` |
 | Workflow files | write | `workflow_files:write` |
@@ -822,7 +822,7 @@ what. Give them only to something you trust as much as yourself.
 | No workspace | Your account, and public repositories. |
 
 Wherever it does not reach, a token reads public repositories, read-only,
-as anyone can; it cannot comment, open issues or push there. While a token
+as anyone can; it cannot comment, open work items or push there. While a token
 made for a workspace is pending, denied or revoked, that is all it does
 there too.
 
@@ -839,7 +839,7 @@ any row.
 | Preset | Permissions |
 | --- | --- |
 | Read only | Every resource at read except Chat. Changes nothing. |
-| Agent | Every resource at read except Self-hosted runners and Chat, Repositories at read and create, and Code, Issues, Pull requests and Notifications at read and write. For a [coding agent](/guides/bring-your-own-agent/): reads everything, creates repositories, works on issues and pull requests, pushes code, and answers your inbox. It cannot change or delete a repository, its settings, branches or releases. No admin level. |
+| Agent | Every resource at read except Self-hosted runners and Chat, Repositories at read and create, and Code, Work, Pull requests and Notifications at read and write. For a [coding agent](/guides/bring-your-own-agent/): reads everything, creates repositories, works on work items and pull requests, pushes code, and answers your inbox. It cannot change or delete a repository, its settings, branches or releases. No admin level. |
 | CI | Repositories: read; Code, Packages, Workflows, Checks and statuses, and Deployments: read and write. Clones and pushes code, pushes and pulls packages, runs workflows, and reports [checks](/guides/checks/) and deployments. |
 
 **All** is not a preset that grows: it ticks every permission there is
@@ -851,7 +851,7 @@ A new personal token starts on Read only; a new workspace token on CI.
 ## Scopes
 
 A scope is a permission's level, written `resource:level`, such as
-`issues:write`. A token stores the highest scope of each resource it
+`work:write`. A token stores the highest scope of each resource it
 holds, and every check reads them. A higher level includes the lower ones
 of the same resource: `repo:admin` includes `repo:write`, which includes
 `repo:create`, which includes `repo:read`. It never includes another resource: `repo:admin` does not let
@@ -874,8 +874,8 @@ one.
 | `packages:read` | Pull container images and install private [packages](/guides/packages/). Public ones need no scope. |
 | `packages:write` | Push container images and publish packages; with the Admin role on a package, change its settings |
 | `packages:delete` | Delete and restore packages and their versions |
-| `issues:read` | Read issues and comments |
-| `issues:write` | Open, edit, close and comment on issues |
+| `work:read` | Read [work items](/guides/work-items/) and comments |
+| `work:write` | Open, edit, link, claim, close and comment on work items |
 | `pull_requests:read` | Read pull requests, their changes, sessions and merge queues |
 | `pull_requests:write` | Open, review, close and merge pull requests |
 | `workflows:read` | Read workflows, runs and logs |
@@ -979,8 +979,8 @@ The API answers `403` with the scope that was missing in `needed_scope`:
 {
   "error": {
     "code": "forbidden",
-    "message": "This access token needs the issues:write scope to use create_issue.",
-    "needed_scope": "issues:write"
+    "message": "This access token needs the work:write scope to use open_work_item.",
+    "needed_scope": "work:write"
   }
 }
 ```
@@ -1028,7 +1028,7 @@ account permissions, and cannot use artifacts, which always belong to a
 person.
 
 It has the Write role on the workspace's repositories, as a member does:
-it pushes, merges and works on issues and pull requests, within its
+it pushes, merges and works on work items and pull requests, within its
 permissions. Give it **Repositories: admin** to make it an admin of the
 workspace's repositories instead, so it can also manage webhooks, secrets,
 deploy keys and who has access, and manage teams as an owner would. Only an
@@ -1081,7 +1081,7 @@ workspace's own token does not):
 | --- | --- | --- | --- |
 | [`GET /workspaces/{workspace}/personal-access-token-policy`](/reference/api/personal-access-tokens/get-token-policy/) | `workspace` `get_token_policy` | The rules. Members may read them. | `workspace:read` |
 | [`PATCH /workspaces/{workspace}/personal-access-token-policy`](/reference/api/personal-access-tokens/set-token-policy/) | `workspace` `set_token_policy` | Change `allow_tokens_for_this_workspace`, `allow_tokens_for_all_workspaces`, `require_approval`, `max_lifetime_days` (0 for no limit) or `forbid_no_expiry` | `workspace:admin` |
-| [`GET /workspaces/{workspace}/personal-access-tokens`](/reference/api/personal-access-tokens/list-member-tokens/) | `workspace` `list_member_tokens` | The tokens that can reach it, each with its `permissions` (`{"issues": "write"}`), `scopes`, `workspace` (null when made for all of its owner's), `repository_selection`, `repositories` and `status` | `access:read` |
+| [`GET /workspaces/{workspace}/personal-access-tokens`](/reference/api/personal-access-tokens/list-member-tokens/) | `workspace` `list_member_tokens` | The tokens that can reach it, each with its `permissions` (`{"work": "write"}`), `scopes`, `workspace` (null when made for all of its owner's), `repository_selection`, `repositories` and `status` | `access:read` |
 | [`GET /workspaces/{workspace}/personal-access-token-requests`](/reference/api/personal-access-tokens/list-token-requests/) | `workspace` `list_token_requests` | The tokens waiting for approval | `access:read` |
 | [`POST /workspaces/{workspace}/personal-access-token-requests/{id}`](/reference/api/personal-access-tokens/review-token-request/) | `workspace` `review_token_request` | `decision` is `approve` or `deny`, with an optional `reason` | `access:admin` |
 | [`POST /workspaces/{workspace}/personal-access-tokens/{id}`](/reference/api/personal-access-tokens/revoke-member-token/) | `workspace` `revoke_member_token` | Revoke a token in the workspace, with an optional `reason` | `access:admin` |
@@ -1102,7 +1102,7 @@ everything you can.
 
 An application that asks for no scopes in particular gets the
 [Agent preset](#presets): every `read` scope except `runners:read` and `chat:read`, and `repo:create`,
-`code:write`, `issues:write`, `pull_requests:write` and `notifications:write`.
+`code:write`, `work:write`, `pull_requests:write` and `notifications:write`.
 The scopes are kept when you approve it: an application approved before
 `repo:create` joined the preset gets it only once you add it under
 Connected applications, or sign it in again.
@@ -1134,7 +1134,7 @@ For people building a client:
 - Registration stores nothing. The client id it returns encodes what was
   registered, so it cannot be used to fill g1t with junk.
 - Ask for scopes with `scope` on the authorization request, separated by
-  spaces, such as `scope=repo:read issues:write pull_requests:write`.
+  spaces, such as `scope=repo:read work:write pull_requests:write`.
   Names g1t does not know are left out. Leave `scope` out for the Agent
   preset. The authorization server's metadata and
   `https://mcp.g1t.sh/.well-known/oauth-protected-resource` list every
@@ -1297,7 +1297,7 @@ After 30 days it is removed for good:
 | | |
 | --- | --- |
 | Your addresses, keys and profile | Removed: your email addresses, two-factor secret and recovery codes, GitHub link, picture, profile and security log, and your notifications and their settings. |
-| What you wrote | Issues, pull requests, comments and reviews keep their place and their words, and show as written by `ghost`. You are taken off issues and pull requests you were assigned to or asked to review. Commits keep the name and address git recorded in them; those made with your [noreply address](#keeping-your-address-private) show as `ghost`. |
+| What you wrote | Work items, pull requests, comments and reviews keep their place and their words, and show as written by `ghost`. You are taken off work items and pull requests you were assigned to or asked to review. Commits keep the name and address git recorded in them; those made with your [noreply address](#keeping-your-address-private) show as `ghost`. |
 | Workspaces you made | Name `ghost` as their creator. |
 | Statements, invoices and audit logs | Kept with your username, for the workspaces they belong to. |
 | Your username | Never given to another account or workspace, so links, mentions and remotes that use it keep meaning what they meant. `ghost` is reserved for this, and nobody can register it. |

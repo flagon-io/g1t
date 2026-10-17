@@ -1,6 +1,6 @@
 ---
 title: The g1t CLI
-description: Install the g1t command line, sign in, and work with repositories, issues, pull requests, runs, workflows, deployments, secrets and logs from a terminal, a script or an agent.
+description: Install the g1t command line, sign in, and work with repositories, work items, pull requests, runs, workflows, deployments, secrets and logs from a terminal, a script or an agent.
 ---
 
 `g1t` is the command line for g1t. It does the work you would otherwise do on
@@ -12,7 +12,7 @@ print JSON, nothing waits for input unless a person is at the terminal, and
 exit codes say what happened.
 
 ```sh
-g1t issue list --label bug
+g1t work list --label bug
 g1t pr create --fill
 g1t pr checks --watch --fail-fast
 g1t run logs --failed
@@ -208,7 +208,7 @@ Anywhere else, or to choose another, pass `--repo` (`-R`), or set
 `G1T_REPO`:
 
 ```sh
-g1t issue list -R acme/web
+g1t pr list -R acme/web
 g1t pr view 14 -R git.example.com/acme/web
 ```
 
@@ -234,20 +234,29 @@ names another) and pushes its current branch. `g1t repo fork` forks into
 your own workspace, or `--workspace`; see
 [forking a repository](/guides/forking-repositories/).
 
-### Issues
+### Work items
 
 ```sh
-g1t issue list                          # open issues, newest first
-g1t issue list --label bug --assignee @me
-g1t issue view 12 --comments
-g1t issue create -t "Greeting should name the caller" -b "Take a name from the first argument."
-g1t issue comment 12 -b "Fixed in #14."
-g1t issue edit 12 --add-label p1 --add-assignee @me
-g1t issue close 12 --reason not_planned
+g1t work list                           # open work items, newest first
+g1t work list --label bug --assignee @me
+g1t work list --repo acme/web           # those linked to one repository
+g1t work view 12 --comments
+g1t work new --title "Greeting should name the caller" --body "Take a name from the first argument."
+g1t work comment 12 -b "Fixed in #14."
+g1t work edit 12 --add-label p1 --add-assignee @me
+g1t work link 12 --role target --repo acme/api
+g1t work unlink 12 --repo acme/api
+g1t work close 12 --reason not_planned
+g1t work reopen 12
 ```
 
-`@me` is you. At a terminal, `g1t issue create` without `--title` asks for
-one and opens your editor for the body.
+[Work items](/guides/work-items/) belong to the workspace, and `g1t work`
+works on the current repository's workspace, or the one in `--workspace`.
+`g1t work new` makes the current repository the new work item's origin.
+`g1t work view` shows the work item with its whole work context (see
+[Claims and context](#claims-and-context)). `@me` is you. At a terminal,
+`g1t work new` without `--title` asks for one and opens your editor for
+the body.
 
 ### Images in descriptions and comments
 
@@ -261,14 +270,14 @@ g1t pr comment 14 -b "The preview, after the fix:" --attach preview.png
 g1t pr ready --summary "Names the caller." --attach preview.png
 ```
 
-`--attach FILE` (repeat it for more) on `g1t issue create`, `g1t issue comment`,
+`--attach FILE` (repeat it for more) on `g1t work new`, `g1t work comment`,
 `g1t pr create`, `g1t pr comment` and `g1t pr ready` uploads each file and adds
 its Markdown after the text. An attachment is a PNG, JPEG, GIF or WebP image of
 at most 10 MB, judged by its bytes. It is served from g1t's usercontent address,
 never from g1t.sh, and its address is its permission: anyone given it can see
 the image, even from a private repository. Never commit an image to the
 repository just to link it. Through the API it is
-[`upload_attachment`](/reference/api/issues/upload-attachment/).
+[`upload_attachment`](/reference/api/work-items/upload-attachment/).
 
 ### Pull requests
 
@@ -277,22 +286,22 @@ From a branch with your commits on it:
 ```sh
 git switch -c greet-by-name
 # ...commit...
-g1t pr create --fill --issue 12
+g1t pr create --fill --item 12
 ```
 
 `g1t pr create` pushes the branch, then opens the pull request into the
 default branch (`--base` for another). `--fill` takes the title and body from
-the branch's commits; `--issue` says which issue it is for; `--draft` opens
-it as a draft.
+the branch's commits; `--item` says which work item it is for, by its
+number in the workspace; `--draft` opens it as a draft.
 
-To start a pull request for an issue without a branch of your own, as
-coding agents usually do, run it with `--issue` from the default branch. g1t opens a draft
+To start a pull request for a work item without a branch of your own, as
+coding agents usually do, run it with `--item` from the default branch. g1t opens a draft
 with a [working copy](/concepts/forks/#working-copies-for-pull-requests) of its own and prints the
 copy's git remote. Push your commits there, then mark it ready with a
 summary of what changed and why:
 
 ```sh
-g1t pr create --issue 12
+g1t pr create --item 12
 git push https://g1t.sh/pulls/pr_….git HEAD:main
 g1t pr ready --summary "Reads a name from the first argument."
 ```
@@ -425,7 +434,7 @@ session. Starting one remembers it for the working copy, and the commands
 after it use it:
 
 ```sh
-g1t session start --harness claude-code --issue 12
+g1t session start --harness claude-code --item 12
 g1t session log "Split the parser before touching the lexer."
 g1t session attach --pull 14 --head-commit "$(git rev-parse HEAD)"
 g1t session heartbeat
@@ -434,16 +443,16 @@ g1t session end --reason done
 
 | Command | What it does |
 | --- | --- |
-| `g1t session start` | Starts a session and prints its id. `--harness` (`claude_code`, `codex`, `cursor`, `copilot` or `other`; `claude-code` works too), `--harness-session-id`, `--issue`, `--pull`, `--branch` (the current one by default) and `--title`. Starting again with the same `--harness-session-id` returns the same session. For a subagent, `--parent` (the session that started it), `--agent-type`, `--task`, `--prompt` and `--model`; a subagent's session is not kept as the working copy's (nor is one with `--no-remember`). |
+| `g1t session start` | Starts a session and prints its id. `--harness` (`claude_code`, `codex`, `cursor`, `copilot` or `other`; `claude-code` works too), `--harness-session-id`, `--item`, `--pull`, `--branch` (the current one by default) and `--title`. Starting again with the same `--harness-session-id` returns the same session. For a subagent, `--parent` (the session that started it), `--agent-type`, `--task`, `--prompt` and `--model`; a subagent's session is not kept as the working copy's (nor is one with `--no-remember`). |
 | `g1t session heartbeat` | Says the session is still working, and renews its claims. A session with no heartbeat for 15 minutes reads as idle, and after 30 minutes as ended; a heartbeat brings it back. |
 | `g1t session log TEXT` | Records a note. `--kind` takes `note`, `prompt`, `message`, `tool_call` (or `tool-call`) or `skill` (a skill's name), `--tool` names the tool, and `--key` makes recording the same entry twice do nothing. `-` reads the text from stdin; put `--` before text that starts with a dash. |
-| `g1t session attach` | Points the session at an `--issue`, a `--pull`, a `--branch` or its latest `--head-commit`, or gives it a `--title`: what it is for, which replaces the title it had. |
-| `g1t session touch` | Says what the session touched: `--file PATH`, `--commit SHA`, `--branch NAME`, `--pull N` (one it opened), `--issue N`, each repeatable. Ties the session to the pull requests and issues they lead to; a file another active session touched too is an `overlap.detected` for both. |
+| `g1t session attach` | Points the session at an `--item`, a `--pull`, a `--branch` or its latest `--head-commit`, or gives it a `--title`: what it is for, which replaces the title it had. |
+| `g1t session touch` | Says what the session touched: `--file PATH`, `--commit SHA`, `--branch NAME`, `--pull N` (one it opened), `--item N`, each repeatable. Ties the session to the pull requests and work items they lead to; a file another active session touched too is an `overlap.detected` for both. |
 | `g1t session updates [ID]` | What other sessions did that concerns this one (claims, overlaps, dependency changes, decisions, merge queue results), oldest first, up to 100. Reading never clears them. It first says which files the working copy changed, so overlapping edits are noticed (`G1T_TOUCH=0` turns that off). |
 | `g1t session acknowledge ID... --note TEXT` | Records your decision about those updates (what changes in your plan, or why nothing does) and clears exactly the IDs given, for this session only; `--session` names another of yours. Saying the same again does nothing. |
 | `g1t session end` | Ends it, with an optional `--reason` and `--result` (what it reported; `-` reads it from stdin), and forgets it. Its subagents still going end with it. |
-| `g1t session list` | The repository's sessions; `--state active`, `--issue`, `--pull` (any session tied to it), `--path` (those that touched a file, or a folder ending in `/`), `--subagents` to list subagents under the sessions that started them. |
-| `g1t session view [ID]` | A session and what it recorded, its subagents and their results, the issues and pull requests it worked on, and the skills used; the current one without an id. |
+| `g1t session list` | The repository's sessions; `--state active`, `--item`, `--pull` (any session tied to it), `--path` (those that touched a file, or a folder ending in `/`), `--subagents` to list subagents under the sessions that started them. |
+| `g1t session view [ID]` | A session and what it recorded, its subagents and their results, the work items and pull requests it worked on, and the skills used; the current one without an id. |
 
 The id is kept in `.git/g1t/session`, in the working copy's own git
 directory, so each worktree has its own. `G1T_SESSION` overrides it, for
@@ -452,46 +461,48 @@ a harness that runs several sessions in one working copy.
 ### Claims and context
 
 ```sh
-g1t work context 12          # everything about #12's work
+g1t work view 12             # everything about #12's work
 g1t work claim 12 --note "Taking the parser" --ttl 1h
 g1t work claim --title "Preview builds time out" --body "Over 1 GB, the build stops at 10 minutes."
 g1t work release 12 --reason done
 g1t work handoff 12 --to ana --note "Parser done; lexer tests still fail."
-g1t work list                # active claims and sessions here
+g1t work status              # active claims and sessions here
 ```
 
-`g1t work context` is the one call to make before starting: the issue and
-its definition of done, who has claimed it, its sessions, its pull
+`g1t work view` is the one call to make before starting: the work item and
+its definition of done, its repositories with their roles and which have
+landed, who has claimed it, its sessions, its pull
 requests with their checks, overlaps and place in the merge queue, what it
 waits on and what waits on it, its decisions, its last integration failure
 and its recent events.
 
-`g1t work claim` says you are working on an issue. It lasts 30 minutes
+`g1t work claim` says you are working on a work item. It lasts 30 minutes
 unless `--ttl` says otherwise (at most `4h`), and a heartbeat of the session
 it was made in renews it. It is made in the current session, if there is
-one. If others have claimed the issue too, or it waits on issues that are
-not done, the answer says so. `g1t work handoff` ends your claim and asks
-`--to` someone, or anyone without it, to take the issue over, with a
+one. If others have claimed the work item too, or it waits on work items
+that are not done, the answer says so. `g1t work handoff` ends your claim and asks
+`--to` someone, or anyone without it, to take the work item over, with a
 `--note` saying where it stands. Claims, releases and hand-offs are the
 current session's, so two sessions of yours (sibling subagents) each hold
 their own.
 
-For work that has no issue yet, `g1t work claim --title "…"` (with
-`--body` for its description) opens the issue and claims it in one step,
-and attaches the current session to it; it prints the new issue's number.
-Use it once the work is a change others should know about, after looking
-for an issue that already covers it; questions, exploration and trivial
+For work that has no work item yet, `g1t work claim --title "…"` (with
+`--body` for its description) opens the work item, with the current
+repository as its origin, and claims it in one step, and attaches the
+current session to it; it prints the new work item's number. Use it once
+the work is a change others should know about, after looking for a work
+item that already covers it; questions, exploration and trivial
 fixes need none. A number and `--title` together are refused.
 
-### Starting a session on an issue
+### Starting a session on a work item
 
 ```sh
 g1t work dispatch 12                                   # on the workspace's Anthropic account
 g1t work dispatch 12 --mode plan --instruction "Keep the old flag"
-g1t work dispatch --title "Add a healthcheck" --handoff  # open the issue; print a claude command
+g1t work dispatch --title "Add a healthcheck" --handoff  # open the work item; print a claude command
 ```
 
-`g1t work dispatch` starts work on an issue in a session on your own
+`g1t work dispatch` starts work on a work item in a session on your own
 Claude: with the workspace's Anthropic [AI provider](/guides/ai/), a Claude Managed Agents
 session on that account (it prints the session's page on g1t); without
 one, or with `--handoff`, the `claude` command line to run in your working
@@ -499,8 +510,8 @@ copy with g1t's [Claude Code plugin](/guides/claude-code-plugin/).
 `--managed` fails rather than hand off. `--mode` is `plan`, `implement` or
 `review`. See [Start a session on your Anthropic account](/guides/sessions/#start-a-session-on-your-anthropic-account).
 
-`g1t issue edit 12 --add-assignee g1t` does the same as **Assign to g1t**
-on the site: g1t starts a session on the issue on the workspace's
+`g1t work edit 12 --add-assignee g1t` does the same as **Assign to g1t**
+on the site: g1t starts a session on the work item on the workspace's
 Anthropic account, as you. See
 [Assign g1t](/guides/sessions/#assign-g1t-or-ask-it-in-the-thread).
 
@@ -511,8 +522,9 @@ g1t work block 12 --by 9 --by 10    # #12 waits on #9 and #10
 g1t work unblock 12 --by 9
 ```
 
-These change the issue's `blocked_by` through `update_issue`. An issue
-cannot wait on itself, and g1t refuses a cycle.
+These change the work item's `blocked_by` through `update_work_item`. A
+work item waits only on work items of its workspace, never on itself, and
+g1t refuses a cycle.
 
 ### Following events
 
@@ -521,19 +533,19 @@ With `--follow` it keeps printing them as they happen, without a webhook or
 a public address, until you stop it with Ctrl-C:
 
 ```sh
-g1t work events --follow --issue 12
+g1t work events --follow --item 12
 g1t work events --follow --type integration.failed --type overlap.detected --json
 ```
 
 | Flag | |
 | --- | --- |
 | `--type`, `-t` | Only events of this type, such as `work.claimed`; repeat for more. |
-| `--issue`, `-i` | Only events about this issue or pull request; repeat for more. |
+| `--item`, `-i` | Only events about this work item or pull request; repeat for more. |
 | `--since`, `-s` | Only events since then: `15m`, `2h`, `1d`, or an RFC 3339 time. |
 | `--after` | Start after this event id, to resume where an earlier follow stopped. |
 | `--limit`, `-L` | How many past events to show first; 20 by default. |
 
-Each event is one line: its time, type, issue or pull request, a summary
+Each event is one line: its time, type, work item or pull request, a summary
 and its id. With `--json`, each is one compact JSON object on a line of its
 own, so a program can read them as they come. Following asks
 [`list_events`](/reference/api/repositories/list-events/) with `after` and
@@ -549,7 +561,7 @@ g1t why src/parser.rs --ref main
 ```
 
 `g1t why` follows a line to the commit that last changed it, the pull
-request that merged that commit, the issue the pull request was for, and
+request that merged that commit, the work item the pull request was for, and
 the decisions and sessions recorded on them. A path is read from where you
 are in the working copy.
 
@@ -620,7 +632,7 @@ once with exit code `2` and names the flag that supplies it.
 with your token, and fills the repository in from where you are:
 
 ```sh
-g1t api list_issues -f state=closed --jq '.[].title'
+g1t api list_work_items -f state=closed --jq '.[].title'
 g1t api create_label -f name=p1 -f color=d73a4a
 g1t api get_workflow_run -f id=run_01kpx7b3c6d9e2f5g8h1j4k7mr
 g1t api --list label          # the operations about labels
@@ -629,7 +641,7 @@ g1t api --list label          # the operations about labels
 A path works too, with `{owner}`, `{name}` and `{workspace}` filled in:
 
 ```sh
-g1t api /repos/{owner}/{name}/labels
+g1t api /workspaces/{workspace}/labels
 g1t api user --jq .username
 ```
 
@@ -660,10 +672,10 @@ than a set of tool definitions, and the agent finds what it needs with
    `AGENTS.md` are enough:
 
 ```md
-This repository is on g1t. Use the `g1t` CLI for issues, pull requests,
+This repository is on g1t. Use the `g1t` CLI for work items, pull requests,
 checks and runs; add `--json` to read results, and see `g1t <command> --help`.
 
-- Open a pull request: `g1t pr create --fill --issue <n>`
+- Open a pull request: `g1t pr create --fill --item <n>`
 - Wait for checks: `g1t pr checks --watch --fail-fast` (exit 0 passed, 1 failed)
 - See why a run failed: `g1t run logs --failed`
 - Run a workflow by hand: `g1t workflow run <file> -f key=value`
@@ -681,7 +693,7 @@ An alias is a shortcut for a command you type often. `$1`, `$2`… take the
 arguments after it, and the rest go on the end:
 
 ```sh
-g1t alias set bugs 'issue list --label bug'
+g1t alias set bugs 'work list --label bug'
 g1t alias set co 'pr checkout'
 g1t alias set mine '!g1t pr list --author @me --json number,title'
 g1t bugs --limit 5

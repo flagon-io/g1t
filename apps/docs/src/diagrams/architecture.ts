@@ -212,7 +212,7 @@ const eventFanout: Graph = {
 	],
 	nodes: [
 		{ id: 'p-repos', x: 16, y: 40, w: 152, h: 46, title: 'repos', sub: '`git.push`, `repo.*`' },
-		{ id: 'p-work', x: 16, y: 110, w: 152, h: 46, title: 'work', sub: '`pull.*`, `issue.*`' },
+		{ id: 'p-work', x: 16, y: 110, w: 152, h: 46, title: 'work', sub: '`pull.*`, `work_item.*`' },
 		{ id: 'p-actions', x: 16, y: 180, w: 152, h: 46, title: 'actions', sub: '`workflow.*`' },
 		{ id: 'p-identity', x: 16, y: 250, w: 152, h: 46, title: 'identity', sub: '`workspace.*`' },
 		{ id: 'p-more', x: 16, y: 320, w: 152, h: 46, title: 'and the rest', sub: 'any service' },
@@ -308,9 +308,9 @@ const coordination: Sequence = {
 	steps: [
 		{ from: 'a', to: 'api', label: '`session` `start`, `harness_session_id`' },
 		{ from: 'api', to: 'work', label: 'start, idempotent on that id' },
-		{ from: 'a', to: 'api', label: '`issue` `work` #12' },
-		{ from: 'api', to: 'work', label: 'issue, claims, sessions, pulls, blockers' },
-		{ from: 'a', to: 'api', label: '`issue` `claim` #12' },
+		{ from: 'a', to: 'api', label: '`work_item` `work` #12' },
+		{ from: 'api', to: 'work', label: 'item, repos, claims, sessions, pulls, blockers' },
+		{ from: 'a', to: 'api', label: '`work_item` `claim` #12' },
 		{ from: 'api', to: 'work', label: 'claim: 30 min unless renewed' },
 		{ from: 'work', to: 'events', label: '`work.claimed`', async: true },
 		{ from: 'api', to: 'b', label: 'its `list_events` long poll returns `work.claimed`', reply: true },

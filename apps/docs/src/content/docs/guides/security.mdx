@@ -329,7 +329,7 @@ Each alert shows its update's status and links the pull request:
 | Merged | The pull request merged. |
 | Closed | The pull request was closed without merging. |
 | Superseded | A newer security update for the same package replaced it, or the alerts it fixes were fixed another way or dismissed. |
-| Needs code changes | An earlier update that g1t opened an issue for. g1t closes that issue, and the update shows as failed. |
+| Needs code changes | An earlier update that g1t opened a work item for. g1t closes that work item, and the update shows as failed. |
 | Failed | The update could not be made. |
 
 ### When an update is no longer needed
@@ -392,7 +392,7 @@ fails.
 
 ### When an update cannot be made
 
-Sometimes raising the version is not enough, and g1t does not open an issue
+Sometimes raising the version is not enough, and g1t does not open a work item
 for it:
 
 - **The version cannot be raised.** A package that depends on it may hold
@@ -423,7 +423,7 @@ run found, and a **Check for updates** button per entry. See
 
 ## The g1t identity
 
-Pull requests, issues and merges that g1t makes itself, such as security
+Pull requests, work items and merges that g1t makes itself, such as security
 updates, are authored by `g1t`, shown with the pixel 1 avatar. `g1t` is not
 an account: no one can sign in to it, and the name cannot be registered.
 
