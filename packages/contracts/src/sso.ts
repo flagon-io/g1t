@@ -85,7 +85,9 @@ export type ProvisionedUser = {
 };
 
 export type SsoSummary = {
+  /** The workspace's id and name now, whatever named it; empty when there is no such workspace. */
   workspace_id: string;
+  slug: string;
   enabled: boolean;
   protocol: SsoProtocol | null;
   required: boolean;

@@ -54,10 +54,17 @@ async function start(request: Request, user: User, slug: string, next: string) {
  */
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   const user = requireUser(context, request);
-  const slug = params.owner.toLowerCase();
-  if (belongs(user, slug)) return start(request, user, slug, nextPath(request));
-  const summary = await sso.summary(slug);
+  const key = params.owner.toLowerCase();
+  const summary = await sso.summary(key);
+  // Named by its id (from a page the provider sent them back to) or an old
+  // name: to its name now, so pages and links say it.
+  if (summary.slug && summary.slug !== key) {
+    const url = new URL(request.url);
+    throw redirect(`/auth/sso/${summary.slug}${url.search}`);
+  }
+  const slug = summary.slug || key;
   if (!summary.enabled) return data({ slug, error: `${slug} has not set up single sign-on.` }, { status: 404 });
+  if (belongs(user, slug)) return start(request, user, slug, nextPath(request));
   return { slug, confirm: true as const, username: user.display_username ?? user.username, next: nextPath(request) };
 }
 

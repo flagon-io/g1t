@@ -203,8 +203,10 @@ fn merged(input: &Value, saved: Option<&SsoConnection>, protocol: SsoProtocol) -
     let same = saved.filter(|saved| saved.protocol == protocol);
     if let Some(saved) = same {
         let kept = &saved.config;
+        // Left out, or sent as null (some clients send every parameter).
+        let absent = |field: &str| input.get(field).is_none_or(Value::is_null);
         let keep = |sent: &mut Option<String>, kept: &Option<String>, field: &str| {
-            if input.get(field).is_none() {
+            if absent(field) {
                 *sent = kept.clone();
             }
         };
@@ -218,7 +220,7 @@ fn merged(input: &Value, saved: Option<&SsoConnection>, protocol: SsoProtocol) -
         keep(&mut config.email_claim, &kept.email_claim, "email_claim");
         keep(&mut config.idp_entity_id, &kept.idp_entity_id, "idp_entity_id");
         keep(&mut config.idp_sso_url, &kept.idp_sso_url, "idp_sso_url");
-        if input.get("join_domains").is_none() {
+        if absent("join_domains") {
             config.join_domains = kept.join_domains.clone();
         }
     }
@@ -379,6 +381,9 @@ mod tests {
         // Rotating the secret alone changes nothing else.
         let (config, allow_join) = merged(&json!({ "protocol": "oidc", "client_secret": "new" }), Some(&saved), SsoProtocol::Oidc);
         assert_eq!(config.issuer.as_deref(), Some("https://acme.okta.com"));
+        let (nulls, _) = merged(&json!({ "protocol": "oidc", "issuer": null, "join_domains": null }), Some(&saved), SsoProtocol::Oidc);
+        assert_eq!(nulls.issuer.as_deref(), Some("https://acme.okta.com"));
+        assert_eq!(nulls.join_domains, vec!["acme.com".to_owned()]);
         assert_eq!(config.join_domains, vec!["acme.com".to_owned()]);
         assert!(allow_join);
         // Sent empty is changed; another protocol starts afresh.

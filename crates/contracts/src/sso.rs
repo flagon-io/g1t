@@ -240,8 +240,11 @@ pub struct ScimAnswer {
 /// and the notice for someone it holds out.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SsoSummary {
+    /// The workspace's id and name now, whatever named it: empty for none.
     #[serde(default)]
     pub workspace_id: String,
+    #[serde(default)]
+    pub slug: String,
     pub enabled: bool,
     pub protocol: Option<SsoProtocol>,
     pub required: bool,

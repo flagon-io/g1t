@@ -5,6 +5,8 @@
 
 use std::collections::HashMap;
 
+use serde_json::json;
+
 use super::*;
 
 #[derive(Deserialize)]
@@ -279,7 +281,10 @@ impl Identity {
             ("POST", ["Groups"]) => answer(201, Some(scim::group_accepted(&body, &a.base))),
             ("PUT", ["Groups", id]) => answer(200, Some(scim::group_echo(id, &body, &a.base))),
             ("PATCH" | "DELETE", ["Groups", _]) => answer(204, None),
-            ("GET", ["Groups", _]) => scim_error(scim::ScimError::new(404, None, "g1t keeps users, not groups.")),
+            ("GET", ["Groups", id]) => match scim::group_named(id) {
+                Some(name) => answer(200, Some(scim::group_echo(id, &json!({ "displayName": name }), &a.base))),
+                None => scim_error(scim::ScimError::new(404, None, "g1t keeps users, not groups.")),
+            },
             _ => scim_error(scim::ScimError::new(404, None, "No such SCIM endpoint.")),
         })
     }
@@ -441,7 +446,7 @@ impl Identity {
             .db
             .prepare(
                 "UPDATE scim_users SET user_name = ?, user_name_key = ?, external_id = ?, resource = ?, active = ?, user_id = ?, updated_at = ?
-                 WHERE id = ? AND workspace_id = ? AND updated_at = ? AND resource = ? RETURNING id",
+                 WHERE id = ? AND workspace_id = ? AND updated_at = ? AND resource = ? AND user_id IS ? RETURNING id",
             )
             .bind(&[
                 user.user_name.as_str().into(),
@@ -455,6 +460,7 @@ impl Identity {
                 at.workspace_id.into(),
                 row.updated_at.as_str().into(),
                 row.resource.as_str().into(),
+                row.user_id.as_deref().map_or(JsValue::NULL, Into::into),
             ])?
             .first::<Value>(None)
             .await?;
@@ -565,7 +571,7 @@ impl Identity {
                         "UPDATE invites SET revoked_at = {SQL_NOW}, sealed_code = NULL
                          WHERE workspace_id = ?1 AND revoked_at IS NULL AND accepted_at IS NULL
                            AND declined_at IS NULL AND redeemed_at IS NULL
-                           AND (invitee_id = ?2 OR lower(email) IN (SELECT email FROM user_emails WHERE user_id = ?2))"
+                           AND (invitee_id = ?2 OR lower(email) IN (SELECT email FROM user_emails WHERE user_id = ?2 AND verified_at IS NOT NULL))"
                     ))
                     .bind(&[at.workspace_id.into(), user_id.into()])?,
             ])

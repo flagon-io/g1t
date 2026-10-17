@@ -12,9 +12,9 @@ import { sso } from "../lib/sso.server";
  */
 export async function loader({ request, params }: Route.LoaderArgs) {
   // Keyed by the workspace's id, whatever names it here.
-  const summary = await sso.summary(params.owner);
+  const summary = await sso.summary(params.owner.toLowerCase());
   if (!summary.workspace_id) throw data("No such workspace.", { status: 404 });
-  const addresses = ssoAddresses(new URL(request.url).origin, summary.workspace_id, params.owner);
+  const addresses = ssoAddresses(new URL(request.url).origin, summary.workspace_id, summary.slug);
   const xml = await sso.metadata(addresses.entityId, addresses.acsUrl);
   return new Response(xml, {
     headers: {

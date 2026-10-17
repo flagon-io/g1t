@@ -3,10 +3,11 @@ import { data, redirect } from "react-router";
 import type { Route } from "./+types/auth-sso-saml";
 import { page } from "../lib/meta";
 import { clearErrorCookie, readErrorCookie } from "../lib/sso";
+import { sso } from "../lib/sso.server";
 import { SsoProblem } from "./auth-sso";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
-  return page(args, { title: `Single sign-on · ${params.owner} · g1t` });
+  return page(args, { title: `Single sign-on · ${args.loaderData?.slug ?? params.owner} · g1t` });
 }
 
 /**
@@ -15,7 +16,8 @@ export function meta({ params, ...args }: Route.MetaArgs) {
  * why it did not work. Opened by itself, it starts again.
  */
 export async function loader({ request, params }: Route.LoaderArgs) {
-  const slug = params.owner.toLowerCase();
+  const key = params.owner.toLowerCase();
+  const slug = (await sso.summary(key).catch(() => null))?.slug || key;
   const error = readErrorCookie(request.headers.get("cookie"));
   if (!error) throw redirect(`/auth/sso/${slug}`);
   return data({ slug, error }, { headers: { "set-cookie": clearErrorCookie() } });
