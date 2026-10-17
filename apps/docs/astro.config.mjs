@@ -37,6 +37,14 @@ export default defineConfig({
 		'/guides/memory/': '/guides/bring-your-own-agent/',
 		'/guides/spend/': '/guides/usage-and-billing/',
 		'/guides/outcomes/': '/guides/milestones/',
+		// Issues became workspace work items: their operations moved with them.
+		'/reference/api/issues/list-issues/': '/reference/api/work-items/list-work-items/',
+		'/reference/api/issues/create-issue/': '/reference/api/work-items/open-work-item/',
+		'/reference/api/issues/get-issue/': '/reference/api/work-items/get-work-item/',
+		'/reference/api/issues/update-issue/': '/reference/api/work-items/update-work-item/',
+		'/reference/api/issues/close-issue/': '/reference/api/work-items/close-work-item/',
+		'/reference/api/issues/reopen-issue/': '/reference/api/work-items/reopen-work-item/',
+		'/reference/api/integrations/import-issue/': '/reference/api/work-items/import-work-items/',
 	},
 	integrations: [
 		starlight({
@@ -104,6 +112,7 @@ export default defineConfig({
 						{ label: 'How g1t works', slug: 'concepts/overview' },
 						{ label: 'The g1t CLI', slug: 'guides/cli' },
 						{ label: 'Home', slug: 'guides/home' },
+						{ label: 'Work items', slug: 'guides/work-items' },
 						{ label: 'Ask g1t', slug: 'guides/ask' },
 						{ label: 'AI providers', slug: 'guides/ai' },
 						{ label: 'Notifications', slug: 'guides/notifications' },
@@ -248,6 +257,7 @@ export default defineConfig({
 					label: 'About',
 					items: [
 						{ label: "What g1t can't do yet", slug: 'about/limitations' },
+						{ label: 'Issues became work items', slug: 'about/issues-became-work-items' },
 						{ label: 'An open letter to Cloudflare', slug: 'about/open-letter-to-cloudflare' },
 					],
 				},
