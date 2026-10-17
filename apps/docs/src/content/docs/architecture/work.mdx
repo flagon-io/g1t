@@ -1,52 +1,101 @@
 ---
 title: Work and the merge queue
-description: How the work service keeps issues, pull requests, checks and rulesets, coordinates sessions and claims, decides and lands a merge, and tests many changes at once in the merge queue.
+description: How the work service keeps work items, pull requests, checks and rulesets, coordinates sessions and claims, decides and lands a merge, and tests many changes at once in the merge queue.
 ---
 
 import Aside from '../../../components/Aside.astro';
 import Diagram from '../../../components/Diagram.astro';
 
 `work` (`services/work`, Rust) keeps everything about a change that is not
-the code itself: issues, pull requests, comments, reviews, labels,
+the code itself: work items, pull requests, comments, reviews, labels,
 milestones, rulesets, checks and commit statuses, CODEOWNERS, and the
 merge queue. Its database is `g1t-work`. The code lives in `repos`, and
 `work` asks `repos` whenever it needs it.
 
-## Issues and pull requests
+## Work items and pull requests
 
-Issues and pull requests share one sequence of numbers per repository
-(the `counters` table), so `#12` names exactly one of them. A pull request
-records where its head is: a fork of its own, `pulls--<id>` in the git
-store, or a branch in the repository ([Git](/architecture/git/#pull-request-forks)).
+A work item belongs to a workspace, not to a repository
+([Work items](/guides/work-items/)). `work_items` holds them, numbered per
+workspace, with no repository of their own. `work_item_repos` links each
+to any number of the workspace's repositories, one row per repository, in
+a role:
+
+| Role | Means |
+| --- | --- |
+| `origin` | The repository it was filed in, if any. For a work item that was an issue, the row keeps the old number as `legacy_number`. |
+| `target` | A repository the work is meant to land in. |
+| `touched` | A repository where a pull request or commit for it landed or is in progress, added by `work` itself. |
+
+Each row also keeps the repository's `owner/name`, so a deleted
+repository still reads, and when it landed.
+
+Work items and pull requests share one sequence of numbers per workspace
+(`work_counters`), so `#12` names exactly one of them in it. Pull requests
+still live in their repository and are unique there: a new one takes the
+workspace's next number, never at or below a number its repository already
+has. Labels and milestones belong to the workspace too, shared by its work
+items and pull requests.
+
+A pull request records where its head is: a fork of its own, `pulls--<id>`
+in the git store, or a branch in the repository
+([Git](/architecture/git/#pull-request-forks)). It records the work item it
+is for, the ones it closes and the ones it is only part of, by item id.
+
+`resolve_ref` is the one place that says what `#N` names, for closing,
+Markdown, chat and the CLI. In a repository, `#N` is that repository's pull
+request N, else the work item filed there as issue N (its
+`legacy_number`), else the workspace's work item N, else pull request N in
+another of the workspace's repositories. `owner/name#N` reads as it would
+in that repository, and `workspace#N` names another workspace's.
+
+Who can see and change a work item is `item_role`
+([Identity](/architecture/identity/)).
 
 `work` reads every push from its event queue. A push to a pull request's
 head updates it: the new head, the files it changes, whether it is behind
 the base, and which other open pull requests change the same files, the
 overlap shown on each.
 
-When a pull request merges, its issue closes and records which pull
-request resolved it, and the issue's other open pull requests close as
-superseded ([How g1t works](/concepts/overview/#several-pull-requests-for-one-issue)).
+When a pull request merges into the default branch, or a commit pushed
+there says `Closes #N` (or `Fixes`, `Resolves`), `work` marks that
+repository as landed on each work item it names, and records a resolution:
+the repository, and the pull request or commit. The work item closes when
+it has no target, or once every target has landed. `Part of #N` (or
+`Refs #N`) links the pull request or commit, and its repository as
+touched, without landing anything. References reach every repository of
+the same workspace; a work item in another workspace is never closed. The
+work item's other open pull requests in that repository close as
+superseded ([How g1t works](/concepts/overview/#several-pull-requests-for-one-work-item)).
+
+Work items were issues, one repository's each, until a migration moved
+them into their workspaces: numbered above every number the workspace's
+repositories had used, with their repository as origin, and labels and
+milestones merged into the workspace's. A job on `work`'s cron
+(`work_migration.rs`) assigned the numbers and announced the mapping once,
+as `work.migrated`, for the other services to rewrite what they keep. Old
+`/<owner>/<repo>/issues/<n>` links and `#N` references resolve through
+`legacy_number` ([Issues became work
+items](/about/issues-became-work-items/)).
 
 ## Coordination
 
 Many agents and people can work on one repository at once. `work` keeps
-what lets them see each other, around the issue, which is the unit of
+what lets them see each other, around the work item, which is the unit of
 work (`services/work/src/coordination/`):
 
 | Table | Holds | Module |
 | --- | --- | --- |
-| `sessions` | One run of someone's own harness (`claude_code`, `codex`, `cursor`, `copilot` or `other`), attached to an issue, a pull request and a branch | `sessions.rs` |
+| `sessions` | One run of someone's own harness (`claude_code`, `codex`, `cursor`, `copilot` or `other`), recorded in the repository it is checked out in and attached to a work item of its workspace, a pull request and a branch | `sessions.rs` |
 | `session_entries` | What a session recorded: prompts, reasoning, tool calls, notes, each with an idempotency `key` | `sessions.rs` |
 | `claims` | An advisory, expiring "I'm working on #12" | `claims.rs` |
-| Issues' `blocked_by` | The issues that have to land first, refused if it would make a cycle | `dependencies.rs` |
+| Work items' `blocked_by` | The work items that have to land first, refused if it would make a cycle | `dependencies.rs` |
 | `overlap_pairs` | Pairs of open pull requests changing the same files, announced once per pair | `overlaps.rs` |
 
 <Diagram name="coordination" />
 
 Three choices shape it:
 
-- **Nothing is a lock.** A claim is advice: anyone may claim an issue
+- **Nothing is a lock.** A claim is advice: anyone may claim a work item
   someone else holds, is told about them, and decides. Nothing is ever
   refused because of a claim (step 9 in the diagram).
 - **Nothing waits on a harness.** No cron sweeps for quiet sessions or
@@ -59,8 +108,10 @@ Three choices shape it:
   every time without checking first, and a retry after a lost answer does
   no harm.
 
-`get_work` gathers an issue's whole context in one call (`context.rs`): the
-issue, its definition of done, the required checks, claims, sessions,
+`get_work` gathers a work item's whole context in one call (`context.rs`):
+the work item, its repositories with their roles, what landed where and
+which targets are still missing, suggested targets (each with why), its
+definition of done, the required checks, claims, sessions,
 pull requests with their checks, overlaps and place in the queue, what it
 is blocked by and blocks, its decision records, and its latest
 coordination events. A session's entries on a pull request are what
@@ -147,7 +198,7 @@ entry ahead of it. `integration.rs` works out which:
   on `merge_group` like any queued state and never land. What is left is
   reported as the `suspects`.
 - **Told everywhere.** The answer goes on the pull request's and the
-  issue's timelines, into the pull request's session, as a decision record
+  work item's timelines, into the pull request's session, as a decision record
   (`integration_failure`, confidence `tested`, in `decisions`), and as the
   `integration.failed` event. A passing combination is recorded as
   `integration.passed`.
@@ -169,8 +220,8 @@ outcomes from a person's side.
 
 ## Events it publishes and reads
 
-`work` publishes what happens to issues, pull requests, comments, checks
-and the queue (`issue.*`, `pull.*`, `comment.*`, `status.created`,
+`work` publishes what happens to work items, pull requests, comments, checks
+and the queue (`work_item.*`, `pull.*`, `comment.*`, `status.created`,
 `queue.changed` and the like), and the coordination events:
 `session.started`, `session.ended`, `work.claimed`, `work.released`,
 `work.claim_expired`, `work.handoff_requested`, `dependency.changed`,

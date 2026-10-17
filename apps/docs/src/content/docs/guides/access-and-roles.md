@@ -14,8 +14,8 @@ there, or someone outside the workspace, and it can give a
 
 | Role | For |
 | --- | --- |
-| **Read** | Read and clone; open issues and pull requests, and comment. |
-| **Triage** | Read, and manage issues and pull requests: apply labels and milestones, assign, close. |
+| **Read** | Read and clone; open work items and pull requests, and comment. |
+| **Triage** | Read, and manage work items and pull requests: apply labels and milestones, assign, link repositories, close. |
 | **Write** | Triage, and push, merge, manage labels and milestones, and see security alerts. |
 | **Maintain** | Write, and manage the repository's settings and topics. |
 | **Admin** | Everything: branch protection and rulesets, webhooks, secrets, deployments, security settings, who has access, and the repository's name, visibility and archiving. |
@@ -26,9 +26,9 @@ Each role has everything the one above it has.
 
 | | Read | Triage | Write | Maintain | Admin |
 | --- | --- | --- | --- | --- | --- |
-| See code, issues and pull requests; clone and fetch | Yes | Yes | Yes | Yes | Yes |
-| Open issues and pull requests, and comment | Yes | Yes | Yes | Yes | Yes |
-| Apply labels and milestones; assign, close and reopen issues and pull requests | | Yes | Yes | Yes | Yes |
+| See code, work items and pull requests; clone and fetch | Yes | Yes | Yes | Yes | Yes |
+| Open work items and pull requests, and comment | Yes | Yes | Yes | Yes | Yes |
+| Apply labels and milestones; assign, close and reopen work items and pull requests; link repositories to work items | | Yes | Yes | Yes | Yes |
 | Push to branches that are not protected | | | Yes | Yes | Yes |
 | Merge pull requests and use the merge queue | | | Yes | Yes | Yes |
 | Create, edit and delete labels and milestones | | | Yes | Yes | Yes |
@@ -55,12 +55,12 @@ a member, an outside collaborator, can do none of the three.
 
 Some things work a little differently on g1t:
 
-- Whoever opened an issue or pull request can still edit, label and close
+- Whoever opened a work item or pull request can still edit, label and close
   their own, whatever their role.
 - A [protected branch](/guides/git/#protected-branches) takes no pushes
   from anyone, Maintain and Admin included. To let a role push, list it as
   a bypass actor of a [ruleset](/guides/rules/) instead.
-- Applying a label the repository does not have yet creates it, for
+- Applying a label the workspace does not have yet creates it, for
   someone with Write.
 
 Read and Triage cannot start anything that spends compute: workflows and
@@ -109,6 +109,22 @@ made for all your workspaces has your role wherever you have one, unless a
 workspace's
 [rules for tokens](/guides/authentication/#a-workspaces-rules-for-tokens)
 keep it out.
+
+### Work items
+
+[Work items](/guides/work-items/) belong to the workspace, not to one
+repository, and so do its labels and milestones.
+
+- The workspace's members see every work item.
+- Anyone who can read a work item's origin repository, the one it was
+  filed in, sees it. Work items filed in a public repository are public,
+  and anyone who can take part there can file one.
+- A work item with no origin is seen only by members.
+
+Your role on a work item is the higher of your role through the
+workspace (an owner has Admin, a member the base permission) and your role
+on its origin repository. Creating, editing and deleting the workspace's
+labels and milestones takes Write through the workspace.
 
 ### Private repositories
 

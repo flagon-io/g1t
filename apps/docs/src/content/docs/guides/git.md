@@ -70,9 +70,9 @@ status 404:
 | Signed out | **Nothing here**: this page doesn't exist, or it's private; sign in if it's yours. **Sign in** brings you back to the same address. |
 | Signed in | **Nothing here**: this page doesn't exist, or you don't have access to it, with which account you are signed in as and a link to switch account. If you should have access, ask someone with the Admin role on it to add you. |
 
-Issues, pull requests and workspace pages work the same way. The sidebar
+Work items, pull requests and workspace pages work the same way. The sidebar
 does not open the project or workspace the address names, so nothing on
-the page hints at whether it exists; a missing file, commit or issue in a
+the page hints at whether it exists; a missing file, commit or pull request in a
 project you can see keeps that project's sidebar. A profile that does not
 exist says **No one on g1t goes by that name**, since profiles are public.
 
@@ -143,7 +143,7 @@ Uploaded avatars are on the same host, at
 
 Public projects, Explore, Search and profiles are open to everyone, in the
 same sidebar members use. Signed out, the sidebar has Explore and Search,
-and in a project its Code, Issues, Pull requests, Workflows and
+and in a project its Code, Work, Pull requests, Workflows and
 Deployments; pages only people with a role on the repository see, such as
 Security and Settings, are left out. **Sign in** and **Sign up** sit at the bottom, and both bring you
 back to the page you were on.
@@ -315,20 +315,24 @@ To leave them out, push branches and tags alone:
 `git push origin --all && git push origin --tags`. A push with `--atomic`
 that names one is refused whole.
 
-## Pushes that merge pull requests and close issues
+## Pushes that merge pull requests and land work items
 
 A push does the same bookkeeping as merging on the site:
 
 - **It merges the pull requests it lands.** When a push to a branch brings
   in the head commit of an open pull request into that branch, by merging
   it in a clone or pushing its commits straight there, the pull request is
-  marked merged by whoever pushed. The issues it closes close, as with any
-  merge, and it leaves the merge queue. See [merging by pushing](/guides/pull-requests/#merging-by-pushing).
-- **It closes the issues its commits name.** A commit pushed to the
+  marked merged by whoever pushed. It lands its repository on the work
+  items it closes, as with any merge, and it leaves the merge queue. See [merging by pushing](/guides/pull-requests/#merging-by-pushing).
+- **It lands the work items its commits name.** A commit pushed to the
   default branch whose message says `Fixes #12`, `Closes #12` or another
-  closing keyword closes that issue as completed, and the issue says which
-  commit closed it and who pushed it. Up to 250 commits of a push are
-  read. See [closing issues](/guides/pull-requests/#closing-issues).
+  closing keyword marks this repository as landed on that
+  [work item](/guides/work-items/), and the work item records which commit
+  landed it and who pushed it. The work item closes as completed once every
+  repository it targets has landed, or at once when it has no target.
+  `Part of #12` links the commit without landing anything. Up to 250
+  commits of a push are read. See
+  [closing work items](/guides/pull-requests/#closing-work-items).
 
 ```sh
 git commit -m "Greet the caller by name
@@ -337,9 +341,10 @@ Closes #12"
 git push origin main
 ```
 
-A repository whose **Auto-close issues with merged linked pull requests**
-setting is off closes no issues either way. In a commit message on g1t,
-`#12` links to that issue or pull request.
+A repository whose **Land work items with merged linked pull requests**
+setting is off lands no work items either way. In a commit message on g1t,
+`#12` links to that work item or pull request; see
+[one number for the workspace](/guides/work-items/#one-number-for-the-workspace).
 
 ## Limits
 

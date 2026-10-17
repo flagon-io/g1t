@@ -264,7 +264,7 @@ Version update pull requests land through the branch's
 When a required check fails (or, on a branch with no required checks, a
 workflow's status fails), the pull request stays open with its failing
 checks for you to decide on: push the code changes the update needs to its
-branch, or close it. g1t opens no issue for it. Security updates are
+branch, or close it. g1t opens no work item for it. Security updates are
 handled [the same way](/guides/security/#when-an-update-cannot-be-made).
 
 If the sandbox has not pushed a branch 45 minutes after an update started,

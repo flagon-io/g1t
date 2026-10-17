@@ -4,7 +4,7 @@ description: Ask g1t about your work from the top bar of any page. It answers wi
 ---
 
 **Ask**, in the top bar, opens a conversation with g1t beside the page
-you are on. Ask about the issue you are reading, the pull request you are
+you are on. Ask about the work item you are reading, the pull request you are
 reviewing, or anything else about your work, and the answer streams in as
 it is written.
 
@@ -47,7 +47,7 @@ question, by a fixed rule and with no extra call to the provider:
 
 | The question | Auto answers with |
 | --- | --- |
-| A lookup: who has an issue, a link, how many pull requests are open | The provider's newest fast model: Haiku, a `mini` or `flash` model, an `instant` one |
+| A lookup: who has a work item, a link, how many pull requests are open | The provider's newest fast model: Haiku, a `mini` or `flash` model, an `instant` one |
 | One that needs several reads or reasoning: why or how something happened, what shipped, a day or a week summed up, a failure to diagnose, work to plan; a long question, several at once, or a long conversation | Its newest standard model: Sonnet, GPT, Gemini Pro, a `versatile` or `large` one |
 
 Auto tells models apart by the words in their names, from the list the
@@ -69,16 +69,17 @@ picked stays picked.
 
 Ask reads g1t to answer: whatever you can read, and nothing more. It uses
 the same tools the [g1t MCP server](/reference/mcp/) gives any agent, run
-as you: repositories and their files and commits, issues, pull requests
+as you: repositories and their files and commits, work items, pull requests
 and their changes, workflow runs and their logs, deployments, releases,
 production telemetry, and what happened across your workspace. Every read
 goes through the same permission checks as your own, so it never sees a
-repository, issue or log you could not open yourself.
+repository, work item or log you could not open yourself.
 
 Each question asked from the panel is sent with a short note saying that
 this is Ask in your workspace and which page you are on (a question
-written in Chat says you are in Chat): the repository, and the issue or pull
-request number, when there is one. On an issue or a pull request, g1t also
+written in Chat says you are in Chat): the repository, and the work item or
+pull request number, when there is one. On a work item or a pull request,
+g1t also
 reads its title, state and description, as you can see them, and sends
 those along, so you can ask "what is left to do here?" without pasting
 anything.
@@ -89,7 +90,7 @@ answer, a few minutes at most. Nobody sees it: not the model, not your
 browser. Anything that would change g1t is refused, whatever your role.
 
 Each question is also sent with which page you are on and today's date. On
-an issue or a pull request, g1t sends its title, state and description, so
+a work item or a pull request, g1t sends its title, state and description, so
 you can ask "what is left to do here?" without pasting anything. Some
 questions it answers well:
 
@@ -148,9 +149,10 @@ the pages on g1t it links to, and the ones it read directly.
 Ask does not do the work itself: it does not write code or change
 anything. g1t coordinates the work, and a session in your own harness does
 it. When you ask for work to be done, such as planning a change, fixing a
-bug or implementing an issue, Ask reads the issue the work belongs to,
-checks whether a session already holds it, and proposes a session: a card
-under the answer that names the issue (or a new one it would open) and
+bug or implementing a work item, Ask reads the work item the work belongs
+to, checks whether a session already holds it, and proposes a session: a
+card under the answer that names the work item (or a new one it would
+open) and
 what the session should do (plan, implement or review).
 
 Nothing starts until you choose on the card:
@@ -162,9 +164,10 @@ Nothing starts until you choose on the card:
   your computer with the [g1t plugin](/guides/claude-code-plugin/), with
   your own skills, settings and subagents.
 
-Either way the session is tied to the issue: it shows on the issue, on the
-repository's Work page and on its own session page, with its subagents, and
-Ask can tell you where it stands. If a session already holds the issue, Ask
+Either way the session is tied to the work item: it shows on the work
+item, on the repository's Sessions page and on its own session page, with
+its subagents, and Ask can tell you where it stands. If a session already
+holds the work item, Ask
 links it rather than proposing another.
 
 ### Building something new
@@ -179,19 +182,20 @@ that, and deployments are left off if you ask for that too.
 
 Choosing **Start session** or **Copy Claude Code command**:
 
-1. Creates the repository as you, with the issue's title as its project's
+1. Creates the repository as you, with the work item's title as its project's
    description.
 2. Turns on its [deployments](/guides/deployments/). This needs the
    workspace on the g1t plan and the Admin role on the repository, which
    you have as its creator. If it can't, the card says **Not deployed:**
    and why, and the session still builds the app.
-3. Opens the issue and starts the session.
+3. Opens the work item, with the new repository as its origin, and starts
+   the session.
 
 The card then shows **Created** with a link to the repository, and **Live
 once the first version is pushed at** its production address on
 g1t.page. The session pushes its first working version straight to the
 default branch, since an empty repository has nothing to open a pull
-request against, closes the issue, and watches `g1t deploy list` until
+request against, closes the work item, and watches `g1t deploy list` until
 production is live, ending its report with the address. Every change after
 that goes through pull requests as usual. Choosing the card again, or Copy
 after Start, uses the repository it already made.
@@ -224,7 +228,7 @@ sending it; send it once it can be answered.
 Ask is your **direct message with @g1t** in [Chat](/guides/chat/#talk-with-g1t).
 What you ask in the panel is posted there, and g1t's answer is written
 there as it streams, so it shows in both places at once: start a question
-on an issue page, and read the answer later in Chat, on your phone, or
+on a work item's page, and read the answer later in Chat, on your phone, or
 in the desktop app. **Open in Chat** at the top of the panel takes you to
 it. Nobody else can read it, and it stays until you delete it or
 [clear it](#clear-the-conversation).
@@ -244,8 +248,8 @@ it. Nobody else can read it, and it stays until you delete it or
   and model that wrote it, with **Auto** when Auto chose the model.
 
 Answers are Markdown: code is highlighted with its language and a Copy
-button, tables scroll within the answer, and issues, pull requests and
-commits (`acme/web#12`, a link to one, a commit hash) show as chips that
+button, tables scroll within the answer, and work items, pull requests and
+commits (`#12`, `acme/web#12`, a link to one, a commit hash) show as chips that
 open their title and state when you hover over them. Links to
 [artifacts](/guides/artifacts/) show their card. Pictures show only from
 g1t itself; any other picture is a link.
@@ -274,7 +278,7 @@ of it: the next question starts with nothing before it.
 | --- | --- |
 | Your questions, and the page each was asked from | The direct message itself, empty, so Ask and Chat open it as before |
 | g1t's answers, with their steps, sources and proposed sessions | Chat's daily count of messages and bytes for the workspace, which has no text and no names in it and is kept for billing |
-| Thread replies, reactions, "New conversation" marks, and deleted messages' empty places | Issues, pull requests and sessions you started from an answer: they are your workspace's, not the conversation's |
+| Thread replies, reactions, "New conversation" marks, and deleted messages' empty places | Work items, pull requests and sessions you started from an answer: they are your workspace's, not the conversation's |
 | Your read mark and unread count for it | What your AI provider was sent to answer: it went to the provider, under your workspace's agreement with them |
 | The notifications its answers sent you, in g1t's notifications panel | Browser and phone notifications already shown on a device |
 

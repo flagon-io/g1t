@@ -61,20 +61,20 @@ An assistant can follow <https://g1t.sh/llms.txt>.
 
 - **Sessions.** Record a coding agent as it works: its
   prompts, tool calls, subagents, branches, commits and pull requests. Work
-  that is not an issue yet is a session titled by what it is for. The
+  that is not a work item yet is a session titled by what it is for. The
   [Claude Code plugin](https://docs.g1t.sh/guides/claude-code-plugin/) does
   it automatically after installation and sign-in; other clients can record
   summaries with the CLI or MCP, including through the Codex plugin skill.
 - **Live now.** A project's page shows who is working on it right now and
-  with which harness, grouped by issue, pull request or branch.
-- **Claims.** Advisory, expiring claims on issues, so two agents don't do the
+  with which harness, grouped by work item, pull request or branch.
+- **Claims.** Advisory, expiring claims on work items, so two agents don't do the
   same work, with hand-offs between sessions and coordination events
   (`g1t work events --follow`, or over MCP) when work overlaps.
 - **Integration.** The merge queue tests changes together before they land,
   tests smaller combinations to narrow a failure without assuming a single
   culprit, and sends the evidence to the session responsible for repair.
 - **Why-blame and decisions.** `g1t why file:line` answers why code is as it
-  is: its commit, pull request, issue, the decisions recorded along the way,
+  is: its commit, pull request, work item, the decisions recorded along the way,
   and the sessions behind it.
 - **Ask g1t.** Ask about your work from any page, or by messaging @g1t. It
   answers with your workspace's own AI provider and reads g1t as you.
@@ -82,8 +82,9 @@ An assistant can follow <https://g1t.sh/llms.txt>.
 ### Code
 
 - Public and private repositories, git over HTTPS, creating a repository by
-  pushing to it, GitHub import (every branch and tag, and issues).
-- Issues, milestones, labels, pull requests, line comments and reviews.
+  pushing to it, GitHub import (every branch and tag, and issues, as work items).
+- Work items that belong to the workspace and can span its repositories,
+  with milestones and labels; pull requests, line comments and reviews.
 - Required checks, rulesets, CODEOWNERS and the merge queue.
 - Workflows from `.g1t/workflows` in GitHub Actions syntax, on g1t's Linux
   runners or self-hosted ones on Linux, macOS and Windows, with caches,
@@ -129,7 +130,7 @@ An assistant can follow <https://g1t.sh/llms.txt>.
 | `apps/sudo` | g1t's own staff console. | TypeScript |
 | `services/identity` | Accounts, workspaces, sessions, keys, tokens and invites. | Rust |
 | `services/repos` | Repository registry, contents, forks, diffs, landing, git over HTTPS. | Rust |
-| `services/work` | Issues, pull requests, reviews, check runs, agent sessions, claims and the merge queue. | Rust |
+| `services/work` | Work items, pull requests, reviews, check runs, agent sessions, claims and the merge queue. | Rust |
 | `services/events` | The event bus and its log. | Rust |
 | `services/search` | Site-wide search and Explore. | Rust |
 | `services/billing` | Usage, the price book, limits, invoices and payments. | Rust |
@@ -180,7 +181,7 @@ docker compose -f deploy/self-host/docker-compose.yml up --build
 ```
 
 Then open <http://localhost:8787> and sign up. The confirmation mail is in
-Mailpit at <http://localhost:8025>. Repositories, push and clone, issues,
+Mailpit at <http://localhost:8025>. Repositories, push and clone, work items,
 pull requests, code browsing, search, webhooks and observability work, and
 the API and MCP server answer at <http://localhost:8789>; packages and
 container images are kept in the bundled S3-compatible store, RustFS.

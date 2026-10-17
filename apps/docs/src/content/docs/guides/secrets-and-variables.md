@@ -254,13 +254,13 @@ so workflows written for GitHub work unchanged. See
 [the job's token](/guides/actions/#the-jobs-token).
 
 ```yaml
-# On the job: permissions: { issues: write }
-- name: Open an issue when the nightly build fails
+# On the job: permissions: { work: write }
+- name: Open a work item when the nightly build fails
   if: failure()
   run: |
-    curl -X POST https://api.g1t.sh/repos/${{ github.repository }}/issues \
+    curl -X POST https://api.g1t.sh/workspaces/${{ github.repository_owner }}/work \
       -H "Authorization: Bearer ${{ secrets.G1T_TOKEN }}" \
-      -d '{"title":"Nightly build failed"}'
+      -d '{"title":"Nightly build failed","repo":"${{ github.repository }}"}'
 ```
 
 `G1T_TOKEN` can neither list nor change secrets or variables, so a

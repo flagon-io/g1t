@@ -1,10 +1,10 @@
 ---
 title: Search and Explore
-description: Search all of g1t at once (repositories, code, issues, pull requests, people and workspaces) with qualifiers, and browse public projects on Explore.
+description: Search all of g1t at once (repositories, code, work items, pull requests, people and workspaces) with qualifiers, and browse public projects on Explore.
 ---
 
 **Search** looks through all of g1t at once: repositories, the code on
-their default branches, issues, pull requests, people and workspaces. It
+their default branches, work items, pull requests, people and workspaces. It
 covers everything public, and everything private in the workspaces you
 belong to. Signed out, you see public results only.
 
@@ -18,7 +18,7 @@ There are two ways in:
 
 | Where | What it does |
 | --- | --- |
-| **Search or jump to…** at the top of the sidebar, or **⌘K** (Ctrl-K on Windows and Linux) | Opens the command palette. As you type it shows matching repositories, issues, pull requests and people, the pages you can go to, and rows that search all of g1t (the full results at [g1t.sh/search](https://g1t.sh/search)) or only code for what you typed. On a phone, where the sidebar is folded away, the magnifier in the top bar opens it |
+| **Search or jump to…** at the top of the sidebar, or **⌘K** (Ctrl-K on Windows and Linux) | Opens the command palette. As you type it shows matching repositories, work items, pull requests and people, the pages you can go to, and rows that search all of g1t (the full results at [g1t.sh/search](https://g1t.sh/search)) or only code for what you typed. On a phone, where the sidebar is folded away, the magnifier in the top bar opens it |
 | A project's **Code** page | **Search this repository's code** searches the project's repository, with `repo:` filled in |
 
 The search page has a tab for each kind of result, each with its count:
@@ -27,7 +27,7 @@ The search page has a tab for each kind of result, each with its count:
 | --- | --- |
 | **Repositories** | Each repository's name, workspace, its project's description, topics and the opening of its README |
 | **Code** | The file names and contents of every repository's default branch |
-| **Issues** | Issue titles and descriptions |
+| **Work items** | Work item titles and descriptions, in each workspace |
 | **Pull requests** | Pull request titles and descriptions |
 | **People** | Usernames and names of people, and the slugs, names and descriptions of workspaces |
 
@@ -46,7 +46,7 @@ you type.
 | `merge queue` | Results with both words, anywhere |
 | `"merge queue"` | The two words together, in this order |
 | `parse -legacy` | Results with `parse` and without `legacy` |
-| `pars` | In repositories, issues, pull requests and people, any word that starts with `pars`, such as `parser` |
+| `pars` | In repositories, work items, pull requests and people, any word that starts with `pars`, such as `parser` |
 | `parse_query(` | In code, that exact run of characters, punctuation and all |
 
 Code is matched as text, the way you would find something in an editor:
@@ -61,20 +61,20 @@ Put qualifiers anywhere in the query. Most can be left out with a leading
 
 | Qualifier | Narrows to | Applies to |
 | --- | --- | --- |
-| `repo:owner/name` | One repository. Give it more than once for several | Repositories, code, issues, pull requests |
-| `org:acme` or `workspace:acme` | One workspace | Repositories, code, issues, pull requests |
+| `repo:owner/name` | One repository. Give it more than once for several. A work item matches when the repository is linked to it, in any role | Repositories, code, work items, pull requests |
+| `org:acme` or `workspace:acme` | One workspace | Repositories, code, work items, pull requests |
 | `language:rust` | Code in a language, or repositories mostly written in it. `ts`, `js`, `py` and `cpp` are understood | Repositories, code |
 | `path:src/` | Code whose path contains `src/`. With `*`, a pattern: `path:*.rs`, `path:src/*/mod.rs` | Code |
-| `is:issue`, `is:pr` | Only issues, or only pull requests | Issues, pull requests |
-| `is:open`, `is:closed` | Issues and pull requests by state | Issues, pull requests |
+| `is:item`, `is:pr` | Only work items, or only pull requests | Work items, pull requests |
+| `is:open`, `is:closed` | Work items and pull requests by state | Work items, pull requests |
 | `is:merged`, `is:draft` | Pull requests that were merged, or are still drafts | Pull requests |
-| `is:public`, `is:private` | Results from public or private repositories | Repositories, code, issues, pull requests |
-| `author:ana` | Opened by someone. What g1t opened is `author:g1t`, and shows who it was for | Issues, pull requests |
-| `label:bug` | With a label. Quote a label with spaces: `label:"good first issue"` | Issues, pull requests |
-| `type:code` | Which tab to open: `repositories`, `code`, `issues`, `pulls` or `people` | All |
+| `is:public`, `is:private` | Results from public or private repositories | Repositories, code, work items, pull requests |
+| `author:ana` | Opened by someone. What g1t opened is `author:g1t`, and shows who it was for | Work items, pull requests |
+| `label:bug` | With a label. Quote a label with spaces: `label:"good first issue"` | Work items, pull requests |
+| `type:code` | Which tab to open: `repositories`, `code`, `items`, `pulls` or `people` | All |
 
 Without a tab or `type:`, the qualifiers choose one: `path:` opens Code,
-`is:pr` opens Pull requests, `is:open`, `author:` or `label:` open Issues,
+`is:pr` opens Pull requests, `is:open`, `author:` or `label:` open Work items,
 and anything else opens Repositories. A qualifier that only one kind of
 result has rules the others out: a query with `path:` finds no people.
 
@@ -82,7 +82,7 @@ Some examples:
 
 ```text
 fetchEvents language:typescript path:app/
-"rate limit" org:acme is:issue is:open
+"rate limit" org:acme is:item is:open
 crash author:ana -label:wontfix
 router repo:acme/web repo:acme/api
 ```
@@ -96,7 +96,7 @@ Search is kept current as things change:
 | A repository's name, topics and README | When it is created or its settings change, and on every push to its default branch |
 | A repository's description, which is its project's | When the project's name or description changes |
 | Code | On every push to the default branch: only the files the push changed |
-| Issues and pull requests | When they are opened, edited, assigned, closed, reopened, marked ready or merged |
+| Work items and pull requests | When they are opened, edited, assigned, closed, reopened, marked ready or merged; a work item also when a repository is linked to it or unlinked |
 | People and workspaces | When an account or a workspace is made, or its name, description or avatar changes |
 
 Code is indexed from default branches only. Some files are left out:
@@ -121,11 +121,15 @@ topic.
 
 Search shows you exactly what you could open yourself:
 
-- Public repositories, and their code, issues and pull requests, are
-  shown to everyone, signed in or not.
-- Private repositories, and their code, issues and pull requests, are shown
-  only to people with a [role](/guides/access-and-roles/) on them, and to
-  the coding agents they connect, which search as them.
+- Public repositories, and their code and pull requests, are shown to
+  everyone, signed in or not.
+- Private repositories, and their code and pull requests, are shown only
+  to people with a [role](/guides/access-and-roles/) on them, and to the
+  coding agents they connect, which search as them.
+- A work item is shown to the members of its workspace, and to anyone who
+  can read the repository it was filed in (its origin). One filed in a
+  public repository is shown to everyone; one with no origin only to
+  members. See [who sees a work item](/guides/work-items/#who-sees-a-work-item).
 - People and workspaces are public, as their pages are. Search never shows
   which workspaces someone belongs to.
 
