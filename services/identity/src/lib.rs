@@ -149,13 +149,13 @@ impl Identity {
     /// Attaches the workspaces a user belongs to, so that any service can
     /// authorize them without asking again.
     async fn with_workspaces(&self, user: Viewer) -> Result<Viewer> {
-        self.with_workspaces_via(user, None).await
+        self.with_workspaces_via(user, sso::Via::Credential).await
     }
 
-    /// The same, for a user resolved from the session whose hash is
-    /// `session`: a workspace that requires single sign-on asks it of the
-    /// session (sso.rs), and of anything else that the person has linked.
-    async fn with_workspaces_via(&self, user: Viewer, session: Option<&str>) -> Result<Viewer> {
+    /// The same, saying how the person came in: a workspace that requires
+    /// single sign-on asks it of a session, a link of a token or key, and
+    /// never lets a password through (sso.rs).
+    async fn with_workspaces_via(&self, user: Viewer, via: sso::Via<'_>) -> Result<Viewer> {
         let Some(mut user) = user else {
             return Ok(None);
         };
@@ -176,7 +176,7 @@ impl Identity {
         user.grants = within.grants;
         user.held = within.held;
         if !sso_required.is_empty() {
-            let held = self.sso_holds(&user, sso_required, session).await?;
+            let held = self.sso_holds(&user, sso_required, via).await?;
             sso::apply_sso_holds(&mut user, &held);
         }
         Ok(Some(user))
@@ -401,7 +401,7 @@ impl Identity {
         {
             return Ok(None);
         }
-        self.with_workspaces(user).await
+        self.with_workspaces_via(user, sso::Via::Password).await
     }
 
     async fn register(&self, a: RegisterArgs) -> Result<Outcome<SignedIn>> {
@@ -563,7 +563,7 @@ impl Identity {
             &session,
         )
         .await?;
-        self.with_workspaces_via(user, Some(&session)).await
+        self.with_workspaces_via(user, sso::Via::Session(&session)).await
     }
 
     async fn user_for_git_credentials(&self, a: GitCredentialsArgs) -> Result<Viewer> {

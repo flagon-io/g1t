@@ -1,0 +1,63 @@
+{
+  "claims": {
+    "iss": "https://idp.example.test",
+    "aud": "client",
+    "exp": 1800000600,
+    "iat": 1800000000,
+    "nonce": "n",
+    "sub": "u1",
+    "email": "ada@acme.test"
+  },
+  "jwks": {
+    "keys": [
+      {
+        "kty": "RSA",
+        "kid": "rsa1",
+        "use": "sig",
+        "n": "wrtE1vPs-4sQR9amgH3_TWrrY9TKdHLgRYKbHuQlIlW5Mcs0UdVHYQeehc45xXY0-8TO-jifS8mAtqVwNF7mbtqmCzhzaKaFi3g-kTGyEkNiVHNovJvfCIrPAjkUixZc2yaP8V5wCePkxwnO2uVQgXrHpH_qUIOd_p9BEqk89w42lsT9P2AT-DayQdXo8N2eCmskTokvLNXTcvjreMJ6ut1ecXoQ_XIGQEg5jXbIxG4S507uKvMWjYm6U1X7YOxhlN407VS4g0KgbCstosUxhAkwHgkJtL287CVv4VLs1PQajK3mShlAVt3EFCe_yZPWFt2yhw-P3lRpktiizFAF4w",
+        "e": "AQAB"
+      },
+      {
+        "kty": "EC",
+        "kid": "ec1",
+        "use": "sig",
+        "crv": "P-256",
+        "x": "cE6lw8bOHDe30Hkz8GlJPTo2-xgGuGx39ITmnvcFdaI",
+        "y": "Uei4ubkFj1rtZhp4oiX6-eJrDM48_-4NHwAjAdb9ze8"
+      },
+      {
+        "kty": "RSA",
+        "kid": "rsa2",
+        "use": "sig",
+        "alg": "RS256",
+        "n": "r7V__oqhwxFHAEyYICowrmLd96uL6P0wb_VfJFx5QmdLcz6DOC3tkn_kj28z-Y8Rshqd07bETfNzEaqK4-vqeVwxOSeUEAm-_d6Z44aN2xhMeqXwUN5BeQiK85zbw0Fa27ZMJswGKh8mnb5aWXbMjy2O6nF9pkCpU9olmC-uIJNiWnWDC4W6A4O9d4rjsqhVKGhC8KnsJDocffrL8x6AgqtP8MsUO6y_8b-j0GSTAJWNjyiAIUbwuX-YMXM3IhG0yqYX_HbBej4Rhj-bJ8i56NvGZVoMezweoe1rxNLljaIEm-uaOQ_CHM32n9PfsRW8OnCShxqgG0KwYlNlSNN0CQ",
+        "e": "AQAB"
+      }
+    ]
+  },
+  "tokens": {
+    "rs256": "eyJhbGciOiAiUlMyNTYiLCAia2lkIjogInJzYTEiLCAidHlwIjogIkpXVCJ9.eyJpc3MiOiAiaHR0cHM6Ly9pZHAuZXhhbXBsZS50ZXN0IiwgImF1ZCI6ICJjbGllbnQiLCAiZXhwIjogMTgwMDAwMDYwMCwgImlhdCI6IDE4MDAwMDAwMDAsICJub25jZSI6ICJuIiwgInN1YiI6ICJ1MSIsICJlbWFpbCI6ICJhZGFAYWNtZS50ZXN0In0.Q0QVI4lc2qnjm4H3Z564-aycXcJ0DxFfNPYCAzBnD3GqawSdC0YKGeEMwim8qGcicWa1Q0-LCm_8-6awaBJkHK__Ae_amxLH86WazWNEdNl66YUybxo0k7PBsgDhASXtf3vb6vMNLsKQ-AThiE7fmcAr1e0LSwFbMRNjd5Gs_60uujlLUfDHZtRQh3NFLzpYqSIT3ucRS1AnGY2znMQz02k_dTPS6g-kQTRT08rW726p5uiv3l11ONDuWPEzbfIynvivPzNoaoN0K7A7vqWim8EZTjxZD_WfR-p-Zg-aFdteee4s3yLOKen7iQ76LhyfTUtsg6hqwtmrUKqhopsfbg",
+    "ps256": "eyJhbGciOiAiUFMyNTYiLCAia2lkIjogInJzYTEiLCAidHlwIjogIkpXVCJ9.eyJpc3MiOiAiaHR0cHM6Ly9pZHAuZXhhbXBsZS50ZXN0IiwgImF1ZCI6ICJjbGllbnQiLCAiZXhwIjogMTgwMDAwMDYwMCwgImlhdCI6IDE4MDAwMDAwMDAsICJub25jZSI6ICJuIiwgInN1YiI6ICJ1MSIsICJlbWFpbCI6ICJhZGFAYWNtZS50ZXN0In0.WJSWYVkgCKcUvwaTpDxo-YHrda5lJRO0-vlTWCRlJH6pS-l6VcQ3Ps9GBW53Z_4QfM_WJU7EoLsoZVQDuZgldf5JogN3owWVUl0RgrkTtH_jUO_8ZGEfv8rgljck4ZoAk_6csAnL9CN9sFSrZQcvSKqiWS2z7_SA2div3Btit5G1AlOXN4x6jjbnTwlU4cejQT788KNd8lIxX4kELPiUJLJYZ6GwOaP1KLRUIVuvwvl66oytrhmPgJTOw9qAc45tF5Dwzi-if-UO8xwn9ajRUwR0l9N0SVYcw_1_f85_eD5qzuw_IkPY2wHEtxn4OBfTm-UPypFIqwyjGmY09BAMEA",
+    "es256": "eyJhbGciOiAiRVMyNTYiLCAia2lkIjogImVjMSIsICJ0eXAiOiAiSldUIn0.eyJpc3MiOiAiaHR0cHM6Ly9pZHAuZXhhbXBsZS50ZXN0IiwgImF1ZCI6ICJjbGllbnQiLCAiZXhwIjogMTgwMDAwMDYwMCwgImlhdCI6IDE4MDAwMDAwMDAsICJub25jZSI6ICJuIiwgInN1YiI6ICJ1MSIsICJlbWFpbCI6ICJhZGFAYWNtZS50ZXN0In0.46rAsOYZfUoU35hVGJMTyl4cD4VKh94-MsMXTnSfAAOiSlaWH21Jb4iZ9kidzvwhajUGyQ6KQgZtzAsYv03-SA",
+    "rs256_other_key": "eyJhbGciOiAiUlMyNTYiLCAia2lkIjogInJzYTIiLCAidHlwIjogIkpXVCJ9.eyJpc3MiOiAiaHR0cHM6Ly9pZHAuZXhhbXBsZS50ZXN0IiwgImF1ZCI6ICJjbGllbnQiLCAiZXhwIjogMTgwMDAwMDYwMCwgImlhdCI6IDE4MDAwMDAwMDAsICJub25jZSI6ICJuIiwgInN1YiI6ICJ1MSIsICJlbWFpbCI6ICJhZGFAYWNtZS50ZXN0In0.UcDwQX2YtpyPLFwMSUGFfnGEV9XxI54mTXh38DC2AQ4VpQ7mqFxFR6edRDpvDMv-NPwPRya3D0skPXl8yIBWkK69xUuhj-fycAu0MpuJZGyP_90GT_PoDNPYiNX96Wlqm94iibrhGeNwtb8YGtm9JSfC3RnHeUkxwsK_25yEOtHfTxpoyKSW4bx5uaPEwg328r73d6kMUcZZCe61Z0mVTN-h4NsfMGQ3HXCv12oo-Ti5guB5xNFGVup0y0THC87_04OZOgmCv7jA4eAU07bTwQj2G8ccPMROdb9cQP5sf8OfwdA5n8vUJtWbZoUkExsJx5pE_HiezOL17vh4ColQ4g"
+  },
+  "jwks_without_rsa2": {
+    "keys": [
+      {
+        "kty": "RSA",
+        "kid": "rsa1",
+        "use": "sig",
+        "n": "wrtE1vPs-4sQR9amgH3_TWrrY9TKdHLgRYKbHuQlIlW5Mcs0UdVHYQeehc45xXY0-8TO-jifS8mAtqVwNF7mbtqmCzhzaKaFi3g-kTGyEkNiVHNovJvfCIrPAjkUixZc2yaP8V5wCePkxwnO2uVQgXrHpH_qUIOd_p9BEqk89w42lsT9P2AT-DayQdXo8N2eCmskTokvLNXTcvjreMJ6ut1ecXoQ_XIGQEg5jXbIxG4S507uKvMWjYm6U1X7YOxhlN407VS4g0KgbCstosUxhAkwHgkJtL287CVv4VLs1PQajK3mShlAVt3EFCe_yZPWFt2yhw-P3lRpktiizFAF4w",
+        "e": "AQAB"
+      },
+      {
+        "kty": "EC",
+        "kid": "ec1",
+        "use": "sig",
+        "crv": "P-256",
+        "x": "cE6lw8bOHDe30Hkz8GlJPTo2-xgGuGx39ITmnvcFdaI",
+        "y": "Uei4ubkFj1rtZhp4oiX6-eJrDM48_-4NHwAjAdb9ze8"
+      }
+    ]
+  }
+}

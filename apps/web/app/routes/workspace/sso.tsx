@@ -78,6 +78,10 @@ export async function action({ request, params, context }: Route.ActionArgs): Pr
         email_claim: text("email_claim"),
         idp_entity_id: text("idp_entity_id"),
         idp_sso_url: text("idp_sso_url"),
+        join_domains: String(form.get("join_domains") ?? "")
+          .split(/[\s,]+/)
+          .map((domain) => domain.trim())
+          .filter(Boolean),
       };
       const saved = await sso.save(user, slug, {
         protocol,
@@ -424,10 +428,16 @@ function ProviderSection({
             </>
           )}
 
-          <SwitchCard name="allow_join" title="Let people from your provider join" defaultChecked={connection?.allow_join ?? true}>
+          <SwitchCard name="allow_join" title="Let people from your provider join" defaultChecked={connection?.allow_join ?? false}>
             Anyone your provider signs in becomes a member of the workspace, with no invitation. Off: only members can sign in
-            through it.
+            through it. Leave it off for a provider anyone can sign in to, such as a personal Google or GitHub account.
           </SwitchCard>
+          <Field
+            label="Only addresses at"
+            hint="Who may join, when joining is on: people whose address your provider vouches for is at one of these domains, such as acme.com. Empty: anyone your provider signs in."
+          >
+            <Input name="join_domains" defaultValue={(connection?.config.join_domains ?? []).join(", ")} placeholder="acme.com" />
+          </Field>
         </fieldset>
         <div className="flex flex-wrap items-center gap-3">
           <SubmitButton match={{ intent: "save" }} pending="Checking…" disabled={disabled}>

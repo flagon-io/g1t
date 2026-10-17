@@ -15,6 +15,7 @@ use serde_json::{Map, Value, json};
 
 pub const USER_SCHEMA: &str = "urn:ietf:params:scim:schemas:core:2.0:User";
 pub const LIST_SCHEMA: &str = "urn:ietf:params:scim:api:messages:2.0:ListResponse";
+#[cfg(test)]
 pub const PATCH_SCHEMA: &str = "urn:ietf:params:scim:api:messages:2.0:PatchOp";
 pub const ERROR_SCHEMA: &str = "urn:ietf:params:scim:api:messages:2.0:Error";
 /// The most users one page lists.
@@ -246,16 +247,18 @@ fn set(user: &mut ScimUser, path: &str, value: &Value) -> Result<(), ScimError> 
     Ok(())
 }
 
-/// Whether someone who signed in through the provider as `subject`, with
-/// `email`, is this provisioned user.
-pub fn is_them(user: &ScimUser, subject: &str, email: Option<&str>) -> bool {
-    let subject = subject.trim().to_lowercase();
-    let same = |value: &str| value.trim().to_lowercase() == subject;
+/// Whether someone who signed in through the provider is this provisioned
+/// user: one of the stable ids it gave (`ids`) is their userName or
+/// externalId, or an address it vouches for (`trusted_email`) is their
+/// userName or primary address. A secondary address, or one the provider
+/// does not vouch for, never matches.
+pub fn is_them(user: &ScimUser, ids: &[String], trusted_email: Option<&str>) -> bool {
+    let same = |value: &str| ids.iter().any(|id| id.trim().eq_ignore_ascii_case(value.trim()));
     same(&user.user_name)
         || user.external_id.as_deref().is_some_and(same)
-        || email.is_some_and(|email| {
+        || trusted_email.is_some_and(|email| {
             let email = email.trim().to_lowercase();
-            user_name_key(&user.user_name) == email || user.emails.contains(&email)
+            user_name_key(&user.user_name) == email || user.emails.first() == Some(&email)
         })
 }
 
@@ -385,13 +388,21 @@ mod tests {
     }
 
     #[test]
-    fn a_sign_in_is_matched_by_id_name_or_address() {
+    fn a_sign_in_is_matched_by_id_name_or_vouched_address() {
         let user = from_resource(&okta_user()).unwrap();
-        assert!(is_them(&user, "00u1abcd", None));
-        assert!(is_them(&user, "ADA@acme.test", None));
-        assert!(is_them(&user, "some-oidc-sub", Some("ada@acme.test")));
-        assert!(!is_them(&user, "some-oidc-sub", Some("eve@acme.test")));
-        assert!(!is_them(&user, "00u9", None));
+        let ids = |list: &[&str]| list.iter().map(|id| id.to_string()).collect::<Vec<_>>();
+        assert!(is_them(&user, &ids(&["00u1abcd"]), None));
+        assert!(is_them(&user, &ids(&["ADA@acme.test"]), None));
+        assert!(is_them(&user, &ids(&["pairwise", "00u1abcd"]), None));
+        assert!(is_them(&user, &ids(&["some-oidc-sub"]), Some("ada@acme.test")));
+        assert!(!is_them(&user, &ids(&["some-oidc-sub"]), Some("eve@acme.test")));
+        assert!(!is_them(&user, &ids(&["00u9"]), None));
+        // A secondary address is not enough.
+        let mut two = user.clone();
+        two.user_name = "ada".into();
+        two.emails = vec!["ada@acme.test".into(), "shared@acme.test".into()];
+        assert!(!is_them(&two, &ids(&["x"]), Some("shared@acme.test")));
+        assert!(is_them(&two, &ids(&["x"]), Some("ada@acme.test")));
     }
 
     #[test]

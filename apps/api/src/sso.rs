@@ -83,7 +83,7 @@ impl SsoOp {
     pub fn description(self) -> &'static str {
         match self {
             SsoOp::GetSso => "A workspace's single sign-on through its own identity provider: connection (null when it has none: its id, protocol oidc, oauth2 or saml, config with the protocol's fields, has_client_secret, certificates by SHA-256 fingerprint for SAML, allow_join, tested_at and tested_by, when the first person signed in through it), required (whether members must sign in through it), you_linked (whether you have), identities (the people linked: username, subject and email at the provider, linked_at, last_used_at), and service_provider: the addresses to give the provider (redirect_uri for OpenID Connect and OAuth 2.0; entity_id, acs_url and metadata_url for SAML; sign_in_url, where people start). The client secret is never returned. Owners only, as people.",
-            SsoOp::ConfigureSso => "Set up the workspace's single sign-on, or change it, with every field of the protocol. oidc: issuer (read for its discovery document first), client_id, client_secret, scopes (openid email profile by default). oauth2: authorization_url, token_url, userinfo_url, client_id, client_secret, scopes, subject_claim (sub, then id, by default) and email_claim (email). saml: idp_entity_id, idp_sso_url and certificate (the provider's signing certificates, PEM; several while rotating). client_secret and certificate left out keep what is saved. allow_join (true by default) lets anyone the provider signs in join as a member. Moving to another provider (protocol, issuer or entity id) unlinks everyone and stops requiring it. Needs a paid plan. Returns what get_sso does. Recorded as sso.created or sso.updated. Owners only, as people.",
+            SsoOp::ConfigureSso => "Set up the workspace's single sign-on, or change it, with every field of the protocol. oidc: issuer (read for its discovery document first), client_id, client_secret, scopes (openid email profile by default). oauth2: authorization_url, token_url, userinfo_url, client_id, client_secret, scopes, subject_claim (sub, then id, by default) and email_claim (email). saml: idp_entity_id, idp_sso_url and certificate (the provider's signing certificates, PEM; several while rotating). client_secret and certificate left out keep what is saved. allow_join (false by default) lets anyone the provider signs in join as a member; join_domains limits that to addresses the provider vouches for at those domains. Moving to another provider (protocol, issuer or entity id) unlinks everyone and stops requiring it. Needs a paid plan. Returns what get_sso does. Recorded as sso.created or sso.updated. Owners only, as people.",
             SsoOp::SetSsoRequired => "Whether members must sign in through the provider: then a member uses the workspace only from a session that did in the last day, and with tokens and keys once linked; held out otherwise, keeping their place. Owners are never held, and outside collaborators are not asked. Requiring it needs a paid plan and you to have signed in through it yourself (you_linked); stopping never does. Recorded as sso.required or sso.not_required. Owners only, as people.",
             SsoOp::DeleteSso => "Remove the workspace's single sign-on: forgets the provider and who everyone is there, and stops requiring it. Members keep their place. Never needs a plan. Recorded as sso.deleted. Owners only, as people.",
             SsoOp::ListSsoIdentities => "The people linked to the workspace's provider: username, subject (their id at the provider), email (as the provider gave it, for showing), linked_at and last_used_at. Owners only, as people.",
@@ -119,7 +119,8 @@ impl SsoOp {
                     "idp_entity_id": { "type": "string", "description": "saml: the provider's entity id (its issuer)." },
                     "idp_sso_url": { "type": "string", "description": "saml: where the provider takes requests (HTTP-Redirect, https)." },
                     "certificate": { "type": "string", "description": "saml: the provider's signing certificates, PEM. Left out keeps the ones saved." },
-                    "allow_join": { "type": "boolean", "description": "Anyone the provider signs in joins as a member. True by default." },
+                    "allow_join": { "type": "boolean", "description": "Anyone the provider signs in joins as a member when they first sign in through it. False by default; leave it off for a provider anyone can sign in to." },
+                    "join_domains": { "type": "array", "items": { "type": "string" }, "description": "When joining is on, only people whose address the provider vouches for (OpenID's email_verified, or a signed SAML assertion) is at one of these domains, such as [\"acme.com\"]. Empty: anyone it signs in." },
                 }),
                 &["workspace", "protocol"],
             ),
@@ -169,6 +170,13 @@ fn config_of(input: &Value) -> SsoConfig {
             config[field] = json!(value);
         }
     }
+    // A list, or one comma-separated string.
+    let domains: Vec<String> = match &input["join_domains"] {
+        Value::Array(items) => items.iter().filter_map(Value::as_str).map(str::to_owned).collect(),
+        Value::String(text) => text.split(',').map(str::to_owned).collect(),
+        _ => Vec::new(),
+    };
+    config["join_domains"] = json!(domains);
     serde_json::from_value(config).unwrap_or_default()
 }
 
@@ -227,7 +235,7 @@ pub async fn run(op: SsoOp, services: &Services, viewer: &Viewer, input: &Value)
                     "config": config_of(input),
                     "client_secret": text(input, "client_secret"),
                     "certificate": text(input, "certificate"),
-                    "allow_join": flag(input, "allow_join").unwrap_or(true),
+                    "allow_join": flag(input, "allow_join").unwrap_or(false),
                     "surface": surface,
                 }),
             )

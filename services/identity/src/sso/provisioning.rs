@@ -41,9 +41,28 @@ struct Scim<'a> {
     slug: &'a str,
     connection_id: &'a str,
     base: &'a str,
+    /// Why the workspace may not let anyone in now, when its plan has
+    /// ended: assigning or reactivating anyone is refused; reading and
+    /// taking people out never are, so leavers still leave.
+    plan: Option<&'a str>,
+}
+
+impl Scim<'_> {
+    fn plan_refusal(&self) -> Option<ScimAnswer> {
+        self.plan.map(|why| scim_error(scim::ScimError::new(403, None, why)))
+    }
 }
 
 const SELECT_ROW: &str = "SELECT id, resource, user_id, created_at, updated_at FROM scim_users";
+
+/// Which provisioned user someone signing in is.
+pub(crate) enum Match {
+    None,
+    /// The one: its id, and the g1t account already linked to it.
+    One(String, Option<String>),
+    /// More than one: nobody is chosen.
+    Many,
+}
 
 impl Identity {
     pub(super) async fn scim_on(&self, workspace_id: &str) -> Result<bool> {
@@ -114,9 +133,9 @@ impl Identity {
         }))
     }
 
-    /// The active provisioned user someone signing in as `subject` is: its
-    /// id, and the g1t account already linked to it.
-    pub(super) async fn provisioned_as(&self, workspace_id: &str, subject: &str, email: Option<&str>) -> Result<Option<(String, Option<String>)>> {
+    /// The active provisioned user someone signing in is (scim::is_them):
+    /// exactly one, or nobody.
+    pub(super) async fn provisioned_as(&self, workspace_id: &str, ids: &[String], trusted_email: Option<&str>) -> Result<Match> {
         let rows = self
             .db
             .prepare(format!("{SELECT_ROW} WHERE workspace_id = ? AND active = 1"))
@@ -124,7 +143,12 @@ impl Identity {
             .all()
             .await?
             .results::<ScimRow>()?;
-        Ok(rows.into_iter().find(|row| scim::is_them(&row.user(), subject, email)).map(|row| (row.id, row.user_id)))
+        let mut found = rows.into_iter().filter(|row| scim::is_them(&row.user(), ids, trusted_email));
+        Ok(match (found.next(), found.next()) {
+            (None, _) => Match::None,
+            (Some(row), None) => Match::One(row.id, row.user_id),
+            (Some(_), Some(_)) => Match::Many,
+        })
     }
 
     /// `enable_scim`: a new token, replacing any other. Owners, on a paid
@@ -218,9 +242,10 @@ impl Identity {
         let Some(connection) = self.connection_where("workspace_id", &workspace_id).await? else {
             return Ok(scim_error(scim::ScimError::new(403, None, "Set up single sign-on for the workspace first.")));
         };
-        if let Some(Outcome::Fail(failure)) = self.plan_refusal::<()>(&slug, plan_needed(&slug)).await? {
-            return Ok(scim_error(scim::ScimError::new(403, None, failure.message)));
-        }
+        let plan = self.plan_refusal::<()>(&slug, plan_needed(&slug)).await?.and_then(|refused| match refused {
+            Outcome::Fail(failure) => Some(failure.message),
+            Outcome::Ok(()) => None,
+        });
         self.db
             .prepare("UPDATE scim_tokens SET last_used_at = ? WHERE workspace_id = ?")
             .bind(&[rfc3339(now_ms()).into(), workspace_id.as_str().into()])?
@@ -238,7 +263,7 @@ impl Identity {
         let query: HashMap<String, String> = worker::Url::parse(&format!("https://q.invalid/?{}", a.query.as_deref().unwrap_or("")))
             .map(|url| url.query_pairs().into_owned().collect())
             .unwrap_or_default();
-        let at = Scim { workspace_id: &workspace_id, slug: &slug, connection_id: &connection.id, base: &a.base };
+        let at = Scim { workspace_id: &workspace_id, slug: &slug, connection_id: &connection.id, base: &a.base, plan: plan.as_deref() };
         Ok(match (method.as_str(), segments.as_slice()) {
             ("GET", ["ServiceProviderConfig"]) => answer(200, Some(scim::service_provider_config("https://docs.g1t.sh/guides/single-sign-on/#scim"))),
             ("GET", ["ResourceTypes"]) => answer(200, Some(scim::resource_types(&a.base))),
@@ -323,6 +348,11 @@ impl Identity {
             Ok(user) => user,
             Err(error) => return Ok(scim_error(error)),
         };
+        if user.active
+            && let Some(refused) = at.plan_refusal()
+        {
+            return Ok(refused);
+        }
         let key = scim::user_name_key(&user.user_name);
         if self.user_name_taken(at.workspace_id, &key, "").await? {
             return Ok(scim_error(scim::ScimError::new(409, Some("uniqueness"), format!("{} is provisioned already.", user.user_name))));
@@ -373,6 +403,11 @@ impl Identity {
             Ok(user) => user,
             Err(error) => return Ok(scim_error(error)),
         };
+        if user.active
+            && let Some(refused) = at.plan_refusal()
+        {
+            return Ok(refused);
+        }
         let key = scim::user_name_key(&user.user_name);
         if self.user_name_taken(at.workspace_id, &key, id).await? {
             return Ok(scim_error(scim::ScimError::new(409, Some("uniqueness"), format!("{} is provisioned already.", user.user_name))));
@@ -417,7 +452,11 @@ impl Identity {
             return Ok(scim_error(scim::ScimError::new(404, None, "No such user.")));
         };
         let user = row.user();
-        if let Some(user_id) = &row.user_id {
+        let linked = match row.user_id.clone() {
+            Some(linked) => Some(linked),
+            None => self.sso_account_of(at.connection_id, &user).await?,
+        };
+        if let Some(user_id) = &linked {
             self.deprovision(at, user_id, &user.user_name).await?;
         }
         self.db
@@ -430,22 +469,27 @@ impl Identity {
         Ok(answer(204, None))
     }
 
-    /// The g1t account already linked through single sign-on as `user`.
+    /// The g1t account already linked through single sign-on as `user`, by
+    /// the subject it signed in as (the address it gave is not trusted for
+    /// this). Only when exactly one is.
     async fn sso_account_of(&self, connection_id: &str, user: &scim::ScimUser) -> Result<Option<String>> {
         #[derive(Deserialize)]
         struct Linked {
             user_id: String,
             subject: String,
-            email: Option<String>,
         }
         let linked = self
             .db
-            .prepare("SELECT user_id, subject, email FROM sso_identities WHERE connection_id = ?")
+            .prepare("SELECT user_id, subject FROM sso_identities WHERE connection_id = ?")
             .bind(&[connection_id.into()])?
             .all()
             .await?
             .results::<Linked>()?;
-        Ok(linked.into_iter().find(|l| scim::is_them(user, &l.subject, l.email.as_deref())).map(|l| l.user_id))
+        let mut found = linked.into_iter().filter(|l| scim::is_them(user, std::slice::from_ref(&l.subject), None));
+        Ok(match (found.next(), found.next()) {
+            (Some(one), None) => Some(one.user_id),
+            _ => None,
+        })
     }
 
     /// Someone the provider unassigned leaves the workspace: their
@@ -481,6 +525,14 @@ impl Identity {
                     .bind(&[at.connection_id.into(), user_id.into()])?,
                 self.db
                     .prepare("DELETE FROM sso_sessions WHERE workspace_id = ? AND session_id IN (SELECT id FROM sessions WHERE user_id = ?)")
+                    .bind(&[at.workspace_id.into(), user_id.into()])?,
+                // An invitation waiting for them would only let them back in.
+                self.db
+                    .prepare(format!(
+                        "UPDATE invites SET revoked_at = {SQL_NOW}, sealed_code = NULL
+                         WHERE workspace_id = ? AND invitee_id = ? AND revoked_at IS NULL AND accepted_at IS NULL
+                           AND declined_at IS NULL AND redeemed_at IS NULL"
+                    ))
                     .bind(&[at.workspace_id.into(), user_id.into()])?,
             ])
             .await?;

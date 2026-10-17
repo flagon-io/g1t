@@ -22,7 +22,7 @@ use crate::Identity;
 
 /// Enough for a person and their teams; stops one account claiming names in
 /// bulk.
-const MAX_WORKSPACES_PER_USER: usize = 10;
+pub(crate) const MAX_WORKSPACES_PER_USER: usize = 10;
 
 const MAX_NAME_LENGTH: usize = 80;
 const MAX_DESCRIPTION_LENGTH: usize = 160;
