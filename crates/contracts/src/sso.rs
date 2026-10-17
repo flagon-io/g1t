@@ -158,6 +158,11 @@ pub struct SsoIdentity {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SsoSettings {
     pub slug: String,
+    /// The workspace's id, which never changes: what the provider is
+    /// pointed at (`sso_addresses`), so renaming the workspace breaks
+    /// nothing.
+    #[serde(default)]
+    pub workspace_id: String,
     pub connection: Option<SsoConnection>,
     /// Whether members must sign in through it.
     pub required: bool,
@@ -201,6 +206,9 @@ pub struct ProvisionedUser {
 pub struct ScimToken {
     pub token: String,
     pub hint: String,
+    /// What the SCIM URL names the workspace by.
+    #[serde(default)]
+    pub workspace_id: String,
 }
 
 /// `scim_request`: one SCIM request, as the API received it at
@@ -232,6 +240,8 @@ pub struct ScimAnswer {
 /// and the notice for someone it holds out.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SsoSummary {
+    #[serde(default)]
+    pub workspace_id: String,
     pub enabled: bool,
     pub protocol: Option<SsoProtocol>,
     pub required: bool,
@@ -316,9 +326,13 @@ pub struct SsoStart {
     /// Where to send the browser.
     pub url: String,
     /// OpenID Connect and OAuth 2.0: the state, for a cookie that binds
-    /// the trip to this browser. Absent for SAML, whose response is posted
-    /// cross-site, without cookies; its request id binds it instead.
+    /// the trip to this browser. Absent for SAML.
     pub state: Option<String>,
+    /// SAML: a value for a SameSite=None cookie, which the provider's
+    /// cross-site POST carries back (`SsoSamlArgs::binding`), binding the
+    /// response to the browser that set off.
+    #[serde(default)]
+    pub binding: Option<String>,
 }
 
 /// `sso_finish`: the provider sent the browser back with a code.
@@ -335,6 +349,9 @@ pub struct SsoFinishArgs {
 pub struct SsoSamlArgs {
     pub slug: String,
     pub saml_response: String,
+    /// The binding cookie's value (`SsoStart::binding`).
+    #[serde(default)]
+    pub binding: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -369,14 +386,17 @@ pub struct SsoAddresses {
     pub sign_in_url: String,
 }
 
-pub fn sso_addresses(site: &str, slug: &str) -> SsoAddresses {
-    let start = format!("{}/auth/sso/{}", site.trim_end_matches('/'), slug.trim().to_lowercase());
+/// What the provider is pointed at is keyed by the workspace's id, which a
+/// rename never changes; where people start is its name.
+pub fn sso_addresses(site: &str, workspace_id: &str, slug: &str) -> SsoAddresses {
+    let site = site.trim_end_matches('/');
+    let at = format!("{site}/auth/sso/{}", workspace_id.trim());
     SsoAddresses {
-        redirect_uri: format!("{start}/callback"),
-        entity_id: format!("{start}/metadata"),
-        acs_url: format!("{start}/saml"),
-        metadata_url: format!("{start}/metadata"),
-        sign_in_url: start,
+        redirect_uri: format!("{at}/callback"),
+        entity_id: format!("{at}/metadata"),
+        acs_url: format!("{at}/saml"),
+        metadata_url: format!("{at}/metadata"),
+        sign_in_url: format!("{site}/auth/sso/{}", slug.trim().to_lowercase()),
     }
 }
 
@@ -390,10 +410,10 @@ mod tests {
 
     #[test]
     fn addresses_are_the_workspaces_own() {
-        let at = sso_addresses("https://g1t.sh/", " Acme ");
-        assert_eq!(at.redirect_uri, "https://g1t.sh/auth/sso/acme/callback");
-        assert_eq!(at.entity_id, "https://g1t.sh/auth/sso/acme/metadata");
-        assert_eq!(at.acs_url, "https://g1t.sh/auth/sso/acme/saml");
+        let at = sso_addresses("https://g1t.sh/", "wsp_1", " Acme ");
+        assert_eq!(at.redirect_uri, "https://g1t.sh/auth/sso/wsp_1/callback");
+        assert_eq!(at.entity_id, "https://g1t.sh/auth/sso/wsp_1/metadata");
+        assert_eq!(at.acs_url, "https://g1t.sh/auth/sso/wsp_1/saml");
         assert_eq!(at.sign_in_url, "https://g1t.sh/auth/sso/acme");
     }
 }

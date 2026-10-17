@@ -8,7 +8,7 @@ import { SubmitButton } from "../components/ui";
 import { cookie } from "../lib/github";
 import { page } from "../lib/meta";
 import { safeNext } from "../lib/next";
-import { SSO_STATE_COOKIE } from "../lib/sso";
+import { SSO_STATE_COOKIE, bindingCookie } from "../lib/sso";
 import { sso } from "../lib/sso.server";
 import { assertSameOrigin, nextPath, requireUser, sessionTokenOf } from "../lib/session.server";
 
@@ -31,7 +31,7 @@ async function start(request: Request, user: User, slug: string, next: string) {
   if (!token) return { slug, error: "Single sign-on is for people signed in on this site, not for access tokens." };
   const summary = await sso.summary(slug);
   if (!summary.enabled) throw data({ slug, error: `${slug} has not set up single sign-on.` }, { status: 404 });
-  const addresses = ssoAddresses(new URL(request.url).origin, slug);
+  const addresses = ssoAddresses(new URL(request.url).origin, summary.workspace_id, slug);
   const started = await sso.start({
     user,
     session_token: token,
@@ -41,7 +41,9 @@ async function start(request: Request, user: User, slug: string, next: string) {
     next,
   });
   if (!started.ok) return { slug, error: started.error.message };
-  const headers = started.value.state ? { "set-cookie": cookie(SSO_STATE_COOKIE, started.value.state, 600) } : undefined;
+  const headers = new Headers();
+  if (started.value.state) headers.append("set-cookie", cookie(SSO_STATE_COOKIE, started.value.state, 600));
+  if (started.value.binding) headers.append("set-cookie", bindingCookie(started.value.binding));
   throw redirect(started.value.url, { headers });
 }
 

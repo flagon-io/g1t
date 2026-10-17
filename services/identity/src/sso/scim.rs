@@ -262,6 +262,31 @@ pub fn is_them(user: &ScimUser, ids: &[String], trusted_email: Option<&str>) -> 
         })
 }
 
+const GROUP_SCHEMA: &str = "urn:ietf:params:scim:schemas:core:2.0:Group";
+
+/// A group a provider pushed, accepted and let go: g1t keeps users, not
+/// groups, but a provider that pushes them (Entra does by default) must
+/// not fail, or it stops sending deactivations too. Its id is made from its
+/// name, so pushing it again gives the same one.
+pub fn group_accepted(body: &Value, base: &str) -> Value {
+    use sha2::{Digest, Sha256};
+    let name = text(&body["displayName"]).unwrap_or_default();
+    let id = format!("grp_{}", hex::encode(&Sha256::digest(name.as_bytes())[..12]));
+    group_echo(&id, body, base)
+}
+
+/// A group as sent, under `id`, with no members kept.
+pub fn group_echo(id: &str, body: &Value, base: &str) -> Value {
+    json!({
+        "schemas": [GROUP_SCHEMA],
+        "id": id,
+        "displayName": text(&body["displayName"]).unwrap_or_default(),
+        "externalId": body["externalId"],
+        "members": [],
+        "meta": { "resourceType": "Group", "location": format!("{base}/Groups/{id}") },
+    })
+}
+
 /// What g1t can do, for `GET /ServiceProviderConfig`.
 pub fn service_provider_config(docs: &str) -> Value {
     json!({

@@ -207,6 +207,15 @@ fn a_comment_cannot_shorten_what_was_signed() {
 }
 
 #[test]
+fn utc_times_are_read_however_written() {
+    assert_eq!(parse_time("2026-10-17T08:01:00Z"), Some(NOW));
+    assert_eq!(parse_time("2026-10-17T08:01:00+00:00"), Some(NOW));
+    assert_eq!(parse_time("2026-10-17T08:01:00"), Some(NOW));
+    assert_eq!(parse_time("2026-10-17T08:01:00.000Z"), Some(NOW));
+    assert_eq!(parse_time("2026-10-17T08:01:00+02:00"), None);
+}
+
+#[test]
 fn text_is_read_whole() {
     let xml = "<a>one<b>two</b> three</a>";
     let doc = Document::parse(xml).unwrap();

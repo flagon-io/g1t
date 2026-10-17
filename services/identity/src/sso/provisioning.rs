@@ -191,7 +191,7 @@ impl Identity {
             if rotated { "Made a new SCIM token; the old one stopped working".to_owned() } else { "Turned on SCIM".to_owned() },
         )
         .await;
-        Ok(Outcome::Ok(ScimToken { token, hint }))
+        Ok(Outcome::Ok(ScimToken { token, hint, workspace_id }))
     }
 
     /// `disable_scim`: the token stops working and the provisioned users are
@@ -217,13 +217,12 @@ impl Identity {
 
     /// `scim_request`: one request from the workspace's provider.
     pub async fn scim_request(&self, a: ScimRequestArgs) -> Result<ScimAnswer> {
-        let slug = a.workspace.trim().to_lowercase();
         let unauthorized = || scim_error(scim::ScimError::new(401, None, "Send the workspace's SCIM token as a bearer token."));
         let token = a.token.trim();
         if token.is_empty() {
             return Ok(unauthorized());
         }
-        let Some(workspace_id) = self.workspace_id_of(&slug).await? else {
+        let Some((workspace_id, slug)) = self.sso_workspace(&a.workspace).await? else {
             return Ok(unauthorized());
         };
         #[derive(Deserialize)]
@@ -277,11 +276,10 @@ impl Identity {
             ("PUT" | "PATCH", ["Users", id]) => self.scim_change(&at, id, &body, method == "PATCH").await?,
             ("DELETE", ["Users", id]) => self.scim_delete(&at, id).await?,
             ("GET", ["Groups"]) => answer(200, Some(scim::list(Vec::new(), 0, 1))),
-            (_, ["Groups", ..]) => scim_error(scim::ScimError::new(
-                501,
-                None,
-                "g1t keeps users, not groups: assign people (or a group's members) to g1t, and turn off pushing groups.",
-            )),
+            ("POST", ["Groups"]) => answer(201, Some(scim::group_accepted(&body, &a.base))),
+            ("PUT", ["Groups", id]) => answer(200, Some(scim::group_echo(id, &body, &a.base))),
+            ("PATCH" | "DELETE", ["Groups", _]) => answer(204, None),
+            ("GET", ["Groups", _]) => scim_error(scim::ScimError::new(404, None, "g1t keeps users, not groups.")),
             _ => scim_error(scim::ScimError::new(404, None, "No such SCIM endpoint.")),
         })
     }
@@ -304,10 +302,20 @@ impl Identity {
         };
         let start = query.get("startIndex").and_then(|s| s.parse::<usize>().ok()).unwrap_or(1).max(1);
         let count = query.get("count").and_then(|s| s.parse::<usize>().ok()).unwrap_or(100).min(scim::MAX_PAGE);
+        let (narrow, value) = match &filter {
+            Some(scim::Filter::UserName(name)) => (" AND user_name_key = ?", scim::user_name_key(name)),
+            Some(scim::Filter::ExternalId(id)) => (" AND external_id = ?", id.clone()),
+            Some(scim::Filter::Id(id)) => (" AND id = ?", id.clone()),
+            _ => ("", String::new()),
+        };
+        let mut binds: Vec<JsValue> = vec![at.workspace_id.into()];
+        if !narrow.is_empty() {
+            binds.push(value.as_str().into());
+        }
         let rows = self
             .db
-            .prepare(format!("{SELECT_ROW} WHERE workspace_id = ? ORDER BY created_at, id"))
-            .bind(&[at.workspace_id.into()])?
+            .prepare(format!("{SELECT_ROW} WHERE workspace_id = ?{narrow} ORDER BY created_at, id"))
+            .bind(&binds)?
             .all()
             .await?
             .results::<ScimRow>()?;
@@ -388,9 +396,21 @@ impl Identity {
         Ok(answer(201, Some(scim::to_resource(&id, &user, &now, &now, at.base))))
     }
 
+    /// A change, written only over the version it was made from: two
+    /// requests at once never undo each other (a reactivation over a
+    /// deactivation), as the later is made again from what the earlier wrote.
     async fn scim_change(&self, at: &Scim<'_>, id: &str, body: &Value, patch: bool) -> Result<ScimAnswer> {
+        for _ in 0..5 {
+            if let Some(answer) = self.scim_change_once(at, id, body, patch).await? {
+                return Ok(answer);
+            }
+        }
+        Ok(scim_error(scim::ScimError::new(409, None, "The user changed while this change was being made. Try again.")))
+    }
+
+    async fn scim_change_once(&self, at: &Scim<'_>, id: &str, body: &Value, patch: bool) -> Result<Option<ScimAnswer>> {
         let Some(row) = self.scim_row(at.workspace_id, id).await? else {
-            return Ok(scim_error(scim::ScimError::new(404, None, "No such user.")));
+            return Ok(Some(scim_error(scim::ScimError::new(404, None, "No such user."))));
         };
         let before = row.user();
         let changed = if patch {
@@ -401,26 +421,27 @@ impl Identity {
         };
         let user = match changed {
             Ok(user) => user,
-            Err(error) => return Ok(scim_error(error)),
+            Err(error) => return Ok(Some(scim_error(error))),
         };
         if user.active
             && let Some(refused) = at.plan_refusal()
         {
-            return Ok(refused);
+            return Ok(Some(refused));
         }
         let key = scim::user_name_key(&user.user_name);
         if self.user_name_taken(at.workspace_id, &key, id).await? {
-            return Ok(scim_error(scim::ScimError::new(409, Some("uniqueness"), format!("{} is provisioned already.", user.user_name))));
+            return Ok(Some(scim_error(scim::ScimError::new(409, Some("uniqueness"), format!("{} is provisioned already.", user.user_name)))));
         }
         let linked = match row.user_id.clone() {
             Some(linked) => Some(linked),
             None => self.sso_account_of(at.connection_id, &user).await?,
         };
         let now = rfc3339(now_ms());
-        self.db
+        let written = self
+            .db
             .prepare(
                 "UPDATE scim_users SET user_name = ?, user_name_key = ?, external_id = ?, resource = ?, active = ?, user_id = ?, updated_at = ?
-                 WHERE id = ? AND workspace_id = ?",
+                 WHERE id = ? AND workspace_id = ? AND updated_at = ? AND resource = ? RETURNING id",
             )
             .bind(&[
                 user.user_name.as_str().into(),
@@ -432,9 +453,15 @@ impl Identity {
                 now.as_str().into(),
                 id.into(),
                 at.workspace_id.into(),
+                row.updated_at.as_str().into(),
+                row.resource.as_str().into(),
             ])?
-            .run()
+            .first::<Value>(None)
             .await?;
+        if written.is_none() {
+            // Someone else wrote first: make the change again from theirs.
+            return Ok(None);
+        }
         if before.active != user.active {
             let (action, word) = if user.active { ("sso.scim_user_activated", "Activated") } else { ("sso.scim_user_deactivated", "Deactivated") };
             self.audit_workspace(&scim_actor(), action, at.slug, Surface::Rest, format!("{word} {}", user.user_name)).await;
@@ -444,7 +471,7 @@ impl Identity {
         {
             self.deprovision(at, user_id, &user.user_name).await?;
         }
-        Ok(answer(200, Some(scim::to_resource(id, &user, &row.created_at, &now, at.base))))
+        Ok(Some(answer(200, Some(scim::to_resource(id, &user, &row.created_at, &now, at.base)))))
     }
 
     async fn scim_delete(&self, at: &Scim<'_>, id: &str) -> Result<ScimAnswer> {
@@ -469,23 +496,29 @@ impl Identity {
         Ok(answer(204, None))
     }
 
-    /// The g1t account already linked through single sign-on as `user`, by
-    /// the subject it signed in as (the address it gave is not trusted for
-    /// this). Only when exactly one is.
+    /// The g1t account already linked through single sign-on as `user`: by
+    /// any stable id it signed in with, or an address the provider vouched
+    /// for. Only when exactly one is.
     async fn sso_account_of(&self, connection_id: &str, user: &scim::ScimUser) -> Result<Option<String>> {
         #[derive(Deserialize)]
         struct Linked {
             user_id: String,
             subject: String,
+            ids: String,
+            trusted_email: Option<String>,
         }
         let linked = self
             .db
-            .prepare("SELECT user_id, subject FROM sso_identities WHERE connection_id = ?")
+            .prepare("SELECT user_id, subject, ids, trusted_email FROM sso_identities WHERE connection_id = ?")
             .bind(&[connection_id.into()])?
             .all()
             .await?
             .results::<Linked>()?;
-        let mut found = linked.into_iter().filter(|l| scim::is_them(user, std::slice::from_ref(&l.subject), None));
+        let mut found = linked.into_iter().filter(|l| {
+            let mut ids: Vec<String> = serde_json::from_str(&l.ids).unwrap_or_default();
+            ids.push(l.subject.clone());
+            scim::is_them(user, &ids, l.trusted_email.as_deref())
+        });
         Ok(match (found.next(), found.next()) {
             (Some(one), None) => Some(one.user_id),
             _ => None,
@@ -530,8 +563,9 @@ impl Identity {
                 self.db
                     .prepare(format!(
                         "UPDATE invites SET revoked_at = {SQL_NOW}, sealed_code = NULL
-                         WHERE workspace_id = ? AND invitee_id = ? AND revoked_at IS NULL AND accepted_at IS NULL
-                           AND declined_at IS NULL AND redeemed_at IS NULL"
+                         WHERE workspace_id = ?1 AND revoked_at IS NULL AND accepted_at IS NULL
+                           AND declined_at IS NULL AND redeemed_at IS NULL
+                           AND (invitee_id = ?2 OR lower(email) IN (SELECT email FROM user_emails WHERE user_id = ?2))"
                     ))
                     .bind(&[at.workspace_id.into(), user_id.into()])?,
             ])

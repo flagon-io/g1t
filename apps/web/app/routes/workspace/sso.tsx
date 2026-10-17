@@ -49,7 +49,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   return {
     settings: unwrap(settings),
     plan: isFailed(free) ? free : free.includes(slug) ? ("free" as const) : ("paid" as const),
-    addresses: ssoAddresses(new URL(request.url).origin, slug),
+    addresses: ssoAddresses(new URL(request.url).origin, unwrap(settings).workspace_id, slug),
   };
 }
 
@@ -176,7 +176,7 @@ export default function WorkspaceSso({ loaderData, actionData, params }: Route.C
 /** SCIM: the provider assigns and unassigns people. */
 function ScimSection({ settings, slug, disabled, answer }: { settings: SsoSettings; slug: string; disabled: boolean; answer?: Answer }) {
   const scim = settings.scim ?? null;
-  const url = scimUrl(useAddresses().api, slug);
+  const url = scimUrl(useAddresses().api, settings.workspace_id);
   return (
     <section aria-labelledby="sso-scim">
       <h2 id="sso-scim" className="font-medium">
@@ -434,7 +434,11 @@ function ProviderSection({
           </SwitchCard>
           <Field
             label="Only addresses at"
-            hint="Who may join, when joining is on: people whose address your provider vouches for is at one of these domains, such as acme.com. Empty: anyone your provider signs in."
+            hint={
+              protocol === "oauth2"
+                ? "Plain OAuth 2.0 never vouches for an address, so with domains set nobody can join; leave it empty, or use OpenID Connect."
+                : "Who may join, when joining is on: people whose address your provider vouches for is at one of these domains, such as acme.com. Microsoft Entra ID vouches for none over OpenID Connect; use SAML to limit by domain. Empty: anyone your provider signs in."
+            }
           >
             <Input name="join_domains" defaultValue={(connection?.config.join_domains ?? []).join(", ")} placeholder="acme.com" />
           </Field>

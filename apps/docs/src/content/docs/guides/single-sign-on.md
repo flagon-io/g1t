@@ -28,10 +28,14 @@ Owners only, at **Workspace → Access → Single sign-on**,
 
    | | |
    | --- | --- |
-   | Redirect URI (OpenID Connect, OAuth 2.0) | `https://g1t.sh/auth/sso/<workspace>/callback` |
-   | Entity id, audience (SAML) | `https://g1t.sh/auth/sso/<workspace>/metadata` |
-   | Assertion consumer service URL, HTTP-POST (SAML) | `https://g1t.sh/auth/sso/<workspace>/saml` |
-   | Metadata (SAML) | `https://g1t.sh/auth/sso/<workspace>/metadata` |
+   | Redirect URI (OpenID Connect, OAuth 2.0) | `https://g1t.sh/auth/sso/<workspace-id>/callback` |
+   | Entity id, audience (SAML) | `https://g1t.sh/auth/sso/<workspace-id>/metadata` |
+   | Assertion consumer service URL, HTTP-POST (SAML) | `https://g1t.sh/auth/sso/<workspace-id>/saml` |
+   | Metadata (SAML) | `https://g1t.sh/auth/sso/<workspace-id>/metadata` |
+
+   They name the workspace by its id (`wsp_…`), which never changes, so
+   renaming the workspace leaves your provider's setup as it is. The page
+   shows them with the id filled in.
 
 3. Copy what the provider gives you back into the page:
 
@@ -190,14 +194,15 @@ who is not any more:
   stays. **Owners are never removed this way**; the audit log says so, and
   you remove one by hand if they should go.
 - People, not groups. Assign a group to the app in your provider and its
-  members are provisioned one by one; turn off pushing groups.
+  members are provisioned one by one. Groups your provider pushes are
+  accepted and not kept, so pushing them never fails.
 
 To turn it on, open **Single sign-on → SCIM provisioning** and choose
 **Turn on SCIM**. Give your provider:
 
 | | |
 | --- | --- |
-| SCIM base URL (tenant URL) | `https://api.g1t.sh/scim/v2/<workspace>` |
+| SCIM base URL (tenant URL) | `https://api.g1t.sh/scim/v2/<workspace-id>` |
 | Authentication | Bearer token: the SCIM token, shown once |
 | Unique identifier | `userName` |
 | Supported | Create, update (PUT and PATCH), deactivate and delete users; filtering by `userName`, `externalId`, `id` or `emails.value` |

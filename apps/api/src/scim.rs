@@ -18,7 +18,8 @@ pub fn split(rest: &str) -> Option<(String, String)> {
         None => (rest, "/".to_owned()),
     };
     let workspace = workspace.trim().to_lowercase();
-    let valid = !workspace.is_empty() && workspace.len() <= 39 && workspace.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+    // The workspace's id (`wsp_…`), or for an older setup its name.
+    let valid = !workspace.is_empty() && workspace.len() <= 64 && workspace.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
     valid.then_some((workspace, path))
 }
 
@@ -66,5 +67,6 @@ mod tests {
         assert_eq!(split("acme"), Some(("acme".into(), "/".into())));
         assert_eq!(split("/Users"), None);
         assert_eq!(split("ac me/Users"), None);
+        assert_eq!(split("wsp_01m54abc/Users"), Some(("wsp_01m54abc".into(), "/Users".into())));
     }
 }

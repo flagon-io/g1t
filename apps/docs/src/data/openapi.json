@@ -5724,12 +5724,12 @@
                     }
                   ],
                   "service_provider": {
-                    "redirect_uri": "https://g1t.sh/auth/sso/flagon-io/callback",
-                    "entity_id": "https://g1t.sh/auth/sso/flagon-io/metadata",
-                    "acs_url": "https://g1t.sh/auth/sso/flagon-io/saml",
-                    "metadata_url": "https://g1t.sh/auth/sso/flagon-io/metadata",
+                    "redirect_uri": "https://g1t.sh/auth/sso/wsp_01m3xbtsa9d3b4c5e6f7g8h9j0/callback",
+                    "entity_id": "https://g1t.sh/auth/sso/wsp_01m3xbtsa9d3b4c5e6f7g8h9j0/metadata",
+                    "acs_url": "https://g1t.sh/auth/sso/wsp_01m3xbtsa9d3b4c5e6f7g8h9j0/saml",
+                    "metadata_url": "https://g1t.sh/auth/sso/wsp_01m3xbtsa9d3b4c5e6f7g8h9j0/metadata",
                     "sign_in_url": "https://g1t.sh/auth/sso/flagon-io",
-                    "scim_url": "https://api.g1t.sh/scim/v2/flagon-io"
+                    "scim_url": "https://api.g1t.sh/scim/v2/wsp_01m3xbtsa9d3b4c5e6f7g8h9j0"
                   }
                 }
               }
@@ -5829,7 +5829,7 @@
           "Single sign-on"
         ],
         "summary": "Set up or change a workspace's single sign-on",
-        "description": "Set up the workspace's single sign-on, or change it, with every field of the protocol. oidc: issuer (read for its discovery document first), client_id, client_secret, scopes (openid email profile by default). oauth2: authorization_url, token_url, userinfo_url, client_id, client_secret, scopes, subject_claim (sub, then id, by default) and email_claim (email). saml: idp_entity_id, idp_sso_url and certificate (the provider's signing certificates, PEM; several while rotating). client_secret and certificate left out keep what is saved. allow_join (false by default) lets anyone the provider signs in join as a member; join_domains limits that to addresses the provider vouches for at those domains. Moving to another provider (protocol, issuer or entity id) unlinks everyone and stops requiring it. Needs a paid plan. Returns what get_sso does. Recorded as sso.created or sso.updated. Owners only, as people.",
+        "description": "Set up the workspace's single sign-on, or change it; a field left out keeps what is saved for the same protocol. oidc: issuer (read for its discovery document first), client_id, client_secret, scopes (openid email profile by default). oauth2: authorization_url, token_url, userinfo_url, client_id, client_secret, scopes, subject_claim (sub, then id, by default) and email_claim (email). saml: idp_entity_id, idp_sso_url and certificate (the provider's signing certificates, PEM; several while rotating). client_secret and certificate left out keep what is saved. allow_join (false by default) lets anyone the provider signs in join as a member; join_domains limits that to addresses the provider vouches for at those domains. Moving to another provider (protocol, issuer or entity id) unlinks everyone and stops requiring it. Needs a paid plan. Returns what get_sso does. Recorded as sso.created or sso.updated. Owners only, as people.",
         "x-operation": "configure_sso",
         "x-mcp-tool": "workspace",
         "x-mcp-action": "configure_sso",
@@ -5900,12 +5900,12 @@
                     }
                   ],
                   "service_provider": {
-                    "redirect_uri": "https://g1t.sh/auth/sso/flagon-io/callback",
-                    "entity_id": "https://g1t.sh/auth/sso/flagon-io/metadata",
-                    "acs_url": "https://g1t.sh/auth/sso/flagon-io/saml",
-                    "metadata_url": "https://g1t.sh/auth/sso/flagon-io/metadata",
+                    "redirect_uri": "https://g1t.sh/auth/sso/wsp_01m3xbtsa9d3b4c5e6f7g8h9j0/callback",
+                    "entity_id": "https://g1t.sh/auth/sso/wsp_01m3xbtsa9d3b4c5e6f7g8h9j0/metadata",
+                    "acs_url": "https://g1t.sh/auth/sso/wsp_01m3xbtsa9d3b4c5e6f7g8h9j0/saml",
+                    "metadata_url": "https://g1t.sh/auth/sso/wsp_01m3xbtsa9d3b4c5e6f7g8h9j0/metadata",
                     "sign_in_url": "https://g1t.sh/auth/sso/flagon-io",
-                    "scim_url": "https://api.g1t.sh/scim/v2/flagon-io"
+                    "scim_url": "https://api.g1t.sh/scim/v2/wsp_01m3xbtsa9d3b4c5e6f7g8h9j0"
                   }
                 }
               }
@@ -6787,7 +6787,7 @@
                 "example": {
                   "token": "g1t_scim_4f1c…",
                   "hint": "9a2e",
-                  "scim_url": "https://api.g1t.sh/scim/v2/flagon-io"
+                  "scim_url": "https://api.g1t.sh/scim/v2/wsp_01m3xbtsa9d3b4c5e6f7g8h9j0"
                 }
               }
             },
