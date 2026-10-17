@@ -9,7 +9,7 @@ import { sessionTokenOf } from "../lib/session.server";
 import { SsoProblem } from "./auth-sso";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
-  return page(args, { title: `Single sign-on · ${params.owner} · g1t` });
+  return page(args, { title: `Single sign-on · ${args.loaderData?.slug ?? params.owner} · g1t` });
 }
 
 /**
@@ -19,10 +19,14 @@ export function meta({ params, ...args }: Route.MetaArgs) {
  * code, and links, admits and marks the session.
  */
 export async function loader({ request, params }: Route.LoaderArgs) {
-  const slug = params.owner.toLowerCase();
+  // The provider sends people back to the workspace's id.
+  const key = params.owner.toLowerCase();
   const url = new URL(request.url);
   const clear = cookie(SSO_STATE_COOKIE, "", 0);
-  const failed = (error: string) => data({ slug, error }, { headers: { "set-cookie": clear } });
+  const failed = async (error: string) => {
+    const named = await sso.summary(key).catch(() => null);
+    return data({ slug: named?.slug || key, error }, { headers: { "set-cookie": clear } });
+  };
   const refused = url.searchParams.get("error");
   if (refused) {
     const said = url.searchParams.get("error_description")?.slice(0, 300);
@@ -35,7 +39,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   }
   const token = sessionTokenOf(request);
   if (!token) return failed("Sign in to g1t again, then start single sign-on again.");
-  const finished = await sso.finish({ slug, session_token: token, state: state!, code });
+  const finished = await sso.finish({ slug: key, session_token: token, state: state!, code });
   if (!finished.ok) return failed(finished.error.message);
   throw redirect(afterSso(finished.value), { headers: { "set-cookie": clear } });
 }

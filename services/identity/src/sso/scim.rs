@@ -266,25 +266,41 @@ const GROUP_SCHEMA: &str = "urn:ietf:params:scim:schemas:core:2.0:Group";
 
 /// A group a provider pushed, accepted and let go: g1t keeps users, not
 /// groups, but a provider that pushes them (Entra does by default) must
-/// not fail, or it stops sending deactivations too. Its id is made from its
-/// name, so pushing it again gives the same one.
+/// not fail, or it stops sending deactivations too. Its id is its name,
+/// hex-encoded (hashed when long): pushing it again gives the same one, and
+/// reading it back gives its name.
 pub fn group_accepted(body: &Value, base: &str) -> Value {
-    use sha2::{Digest, Sha256};
     let name = text(&body["displayName"]).unwrap_or_default();
-    let id = format!("grp_{}", hex::encode(&Sha256::digest(name.as_bytes())[..12]));
+    let id = if name.len() <= 100 {
+        format!("grp_{}", hex::encode(name.as_bytes()))
+    } else {
+        use sha2::{Digest, Sha256};
+        format!("grh_{}", hex::encode(&Sha256::digest(name.as_bytes())[..12]))
+    };
     group_echo(&id, body, base)
+}
+
+/// The name in a group's id, when it holds one.
+pub fn group_named(id: &str) -> Option<String> {
+    if let Some(hexed) = id.strip_prefix("grp_") {
+        return String::from_utf8(hex::decode(hexed).ok()?).ok();
+    }
+    id.starts_with("grh_").then(String::new)
 }
 
 /// A group as sent, under `id`, with no members kept.
 pub fn group_echo(id: &str, body: &Value, base: &str) -> Value {
-    json!({
+    let mut group = json!({
         "schemas": [GROUP_SCHEMA],
         "id": id,
         "displayName": text(&body["displayName"]).unwrap_or_default(),
-        "externalId": body["externalId"],
         "members": [],
         "meta": { "resourceType": "Group", "location": format!("{base}/Groups/{id}") },
-    })
+    });
+    if let Some(external) = text(&body["externalId"]) {
+        group["externalId"] = json!(external);
+    }
+    group
 }
 
 /// What g1t can do, for `GET /ServiceProviderConfig`.
@@ -428,6 +444,17 @@ mod tests {
         two.emails = vec!["ada@acme.test".into(), "shared@acme.test".into()];
         assert!(!is_them(&two, &ids(&["x"]), Some("shared@acme.test")));
         assert!(is_them(&two, &ids(&["x"]), Some("ada@acme.test")));
+    }
+
+    #[test]
+    fn a_pushed_group_reads_back() {
+        let group = group_accepted(&json!({ "displayName": "Engineering", "externalId": null }), "https://api.test/scim/v2/wsp_1");
+        let id = group["id"].as_str().unwrap();
+        assert_eq!(group_named(id).as_deref(), Some("Engineering"));
+        assert!(group.get("externalId").is_none());
+        assert_eq!(group_accepted(&json!({ "displayName": "Engineering" }), "x")["id"], group["id"]);
+        assert_eq!(group_named("grp_zz"), None);
+        assert_eq!(group_named("scu_1"), None);
     }
 
     #[test]

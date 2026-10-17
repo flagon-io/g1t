@@ -478,14 +478,17 @@ impl Identity {
 
     /// `sso_summary`: whether a workspace has single sign-on, for anyone.
     pub async fn sso_summary(&self, a: SlugArgs) -> Result<SsoSummary> {
-        let Some((workspace_id, _)) = self.sso_workspace(&a.slug).await? else {
+        let Some((workspace_id, slug)) = self.sso_workspace(&a.slug).await? else {
             return Ok(SsoSummary::default());
         };
+        // Which workspace, even before it has a connection: an owner gives
+        // its provider g1t's metadata before saving one.
         let Some(row) = self.connection_where("workspace_id", &workspace_id).await? else {
-            return Ok(SsoSummary::default());
+            return Ok(SsoSummary { workspace_id, slug, ..SsoSummary::default() });
         };
         Ok(SsoSummary {
             workspace_id: workspace_id.clone(),
+            slug,
             enabled: true,
             protocol: Some(row.protocol()),
             required: self.require_sso_of(&workspace_id).await?,
@@ -705,7 +708,7 @@ impl Identity {
                         .prepare("DELETE FROM sso_sessions WHERE workspace_id = ? AND session_id IN (SELECT id FROM sessions WHERE user_id = ?)")
                         .bind(&[workspace_id.as_str().into(), user_id.into()])?,
                     self.db
-                        .prepare("UPDATE scim_users SET user_id = NULL WHERE workspace_id = ? AND user_id = ?")
+                        .prepare(format!("UPDATE scim_users SET user_id = NULL, updated_at = {SQL_NOW} WHERE workspace_id = ? AND user_id = ?"))
                         .bind(&[workspace_id.as_str().into(), user_id.into()])?,
                 ])
                 .await?;
@@ -1090,8 +1093,8 @@ impl Identity {
         }
         if let Some(id) = &provisioned {
             self.db
-                .prepare("UPDATE scim_users SET user_id = ? WHERE id = ? AND workspace_id = ?")
-                .bind(&[user_id.into(), id.as_str().into(), row.workspace_id.as_str().into()])?
+                .prepare("UPDATE scim_users SET user_id = ?, updated_at = ? WHERE id = ? AND workspace_id = ?")
+                .bind(&[user_id.into(), now.as_str().into(), id.as_str().into(), row.workspace_id.as_str().into()])?
                 .run()
                 .await?;
         }
@@ -1117,16 +1120,28 @@ impl Identity {
             }
         }
         // The session counts as signed in through the provider, while it lasts.
-        self.db
+        let counted = self
+            .db
             .prepare(format!(
                 "INSERT INTO sso_sessions (session_id, workspace_id, expires_at)
                  SELECT ?1, ?2, {} WHERE EXISTS (SELECT 1 FROM sessions WHERE id = ?1 AND user_id = ?3 AND expires_at > {SQL_NOW}) AND {still_assigned}
-                 ON CONFLICT (session_id, workspace_id) DO UPDATE SET expires_at = excluded.expires_at",
+                 ON CONFLICT (session_id, workspace_id) DO UPDATE SET expires_at = excluded.expires_at RETURNING session_id",
                 sql_after(SSO_SESSION_SECONDS)
             ))
             .bind(&[state.session_id.as_str().into(), row.workspace_id.as_str().into(), user_id.into(), assignment])?
-            .run()
-            .await?;
+            .first::<Value>(None)
+            .await?
+            .is_some();
+        if !counted {
+            // Unassigned while signing in, or the g1t session ended.
+            return Ok(match provisioned {
+                Some(_) => Outcome::fail(
+                    FailureCode::Forbidden,
+                    format!("Your account at {slug}'s identity provider is not assigned to g1t. Ask whoever runs it for {slug} to assign you."),
+                ),
+                None => Outcome::fail(FailureCode::Unauthenticated, "Sign in to g1t again."),
+            });
+        }
         let first = self
             .db
             .prepare("UPDATE sso_connections SET tested_at = ?, tested_by = ? WHERE id = ? AND tested_at IS NULL RETURNING id")
