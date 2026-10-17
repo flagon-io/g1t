@@ -194,3 +194,32 @@ fn metadata_names_the_assertion_consumer_service() {
     assert_eq!(doc.root_element().attribute("entityID"), Some(AUDIENCE));
     assert!(xml.contains(&format!("Location=\"{ACS}\"")));
 }
+
+#[test]
+fn a_comment_cannot_shorten_what_was_signed() {
+    let certificates = certs("cert");
+    // The CVE-2017-11427 trick: the digest skips the comment, the reader
+    // would stop at it.
+    let injected = edited("assertion_signed", |xml| xml.replacen(">ada@acme.test<", ">ada@acme.test<!---->.evil.io<", 1));
+    assert!(verify_response(&injected, &expect(&certificates)).unwrap_err().contains("comments"));
+    let pi = edited("assertion_signed", |xml| xml.replacen("<saml2:Subject>", "<?x y?><saml2:Subject>", 1));
+    assert!(verify_response(&pi, &expect(&certificates)).unwrap_err().contains("processing instructions"));
+}
+
+#[test]
+fn text_is_read_whole() {
+    let xml = "<a>one<b>two</b> three</a>";
+    let doc = Document::parse(xml).unwrap();
+    assert_eq!(text(doc.root_element()), "onetwo three");
+}
+
+#[test]
+fn deep_nesting_is_refused_before_canonicalization() {
+    let certificates = certs("cert");
+    let deep = format!(
+        "<samlp:Response xmlns:samlp=\"{PROTOCOL}\">{}{}</samlp:Response>",
+        "<x>".repeat(100),
+        "</x>".repeat(100)
+    );
+    assert!(verify_response(&STANDARD.encode(deep), &expect(&certificates)).unwrap_err().contains("nests too deeply"));
+}

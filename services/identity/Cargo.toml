@@ -25,6 +25,7 @@ sha2 = "0.10"
 roxmltree = "0.20"
 miniz_oxide = "0.9"
 rsa = { version = "0.9", default-features = false, features = ["std", "sha2"] }
+p256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
 
 # wasm-opt at -O1: about the same gzipped size as -O in a tenth of the
 # time.

@@ -1,17 +1,16 @@
 //! OpenID Connect and OAuth 2.0 for single sign-on: the authorization code
 //! flow, with PKCE (S256) and, for OpenID Connect, a nonce.
 //!
-//! OpenID Connect reads the issuer's discovery document for its endpoints,
-//! and the ID token from the token endpoint. g1t is a confidential client
-//! and receives the ID token straight from the token endpoint over TLS, so
-//! it checks its claims (issuer, audience, expiry, nonce) and, as OpenID
-//! Connect Core 3.1.3.7 allows for exactly this case, relies on TLS to the
-//! issuer's own endpoint rather than the token's signature. Plain OAuth 2.0
+//! OpenID Connect reads the issuer's discovery document for its endpoints
+//! and keys, and the ID token from the token endpoint. The token's
+//! signature is verified with the issuer's published keys (jwt.rs) before
+//! anything in it is read, and then its claims are checked: issuer,
+//! audience (and azp), expiry, issued-at and nonce. Plain OAuth 2.0
 //! has no ID token: the person's id and address are claims of the userinfo
 //! endpoint's answer, named in the connection.
 
 use base64::Engine;
-use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
+use base64::engine::general_purpose::STANDARD;
 use serde_json::Value;
 use worker::{Fetch, Headers, Method, Request, RequestInit, Url};
 
@@ -27,6 +26,8 @@ pub struct Endpoints {
     pub userinfo: Option<String>,
     /// OpenID Connect: the issuer, as its discovery document says it.
     pub issuer: Option<String>,
+    /// OpenID Connect: where the issuer publishes its signing keys.
+    pub jwks: Option<String>,
     /// Whether the client authenticates with HTTP Basic (else in the form).
     pub basic: bool,
 }
@@ -46,6 +47,9 @@ pub fn endpoints_from(document: &Value, issuer: &str) -> Result<Endpoints, Strin
     let (Some(authorize), Some(token)) = (endpoint("authorization_endpoint"), endpoint("token_endpoint")) else {
         return Err("The provider's discovery document has no https authorization and token endpoints.".to_owned());
     };
+    let Some(jwks) = endpoint("jwks_uri") else {
+        return Err("The provider's discovery document publishes no signing keys (jwks_uri), so its ID tokens cannot be verified.".to_owned());
+    };
     let methods: Vec<&str> = document["token_endpoint_auth_methods_supported"]
         .as_array()
         .map(|methods| methods.iter().filter_map(Value::as_str).collect())
@@ -55,6 +59,7 @@ pub fn endpoints_from(document: &Value, issuer: &str) -> Result<Endpoints, Strin
         token,
         userinfo: endpoint("userinfo_endpoint"),
         issuer: Some(said.to_owned()),
+        jwks: Some(jwks),
         // Basic is the default when the provider lists none.
         basic: methods.is_empty() || methods.contains(&"client_secret_basic"),
     })
@@ -71,6 +76,15 @@ pub async fn discover(issuer: &str) -> Result<Endpoints, String> {
         return Err(format!("The provider's discovery document ({url}) answered {status}. Check the issuer."));
     }
     endpoints_from(&document, issuer)
+}
+
+/// Reads the issuer's signing keys.
+pub async fn keys(url: &str) -> Result<Value, String> {
+    let (status, keys) = send(Method::Get, url, Headers::new(), None).await.map_err(|_| UNREACHABLE.to_owned())?;
+    if status != 200 || !keys["keys"].is_array() {
+        return Err(format!("The provider's signing keys ({url}) answered {status}."));
+    }
+    Ok(keys)
 }
 
 /// The scopes to ask for: as set, always with `openid` for OpenID Connect.
@@ -190,16 +204,19 @@ pub async fn userinfo(url: &str, access_token: &str) -> Result<Value, String> {
     Ok(answer)
 }
 
-/// The claims of an ID token, once they say it is for this sign-in.
-pub fn id_token_claims(id_token: &str, issuer: &str, client_id: &str, nonce: &str, now_seconds: u64) -> Result<Value, String> {
-    const UNREADABLE: &str = "The identity provider's ID token could not be read.";
-    let mut parts = id_token.split('.');
-    let (Some(_), Some(payload), Some(_), None) = (parts.next(), parts.next(), parts.next(), parts.next()) else {
-        return Err(UNREADABLE.to_owned());
-    };
-    let bytes = URL_SAFE_NO_PAD.decode(payload.trim_end_matches('=')).map_err(|_| UNREADABLE.to_owned())?;
-    let claims: Value = serde_json::from_slice(&bytes).map_err(|_| UNREADABLE.to_owned())?;
-    if claims["iss"].as_str() != Some(issuer) {
+/// The claims of an ID token: its signature verified with the issuer's
+/// keys (jwt.rs), then what it says checked against this sign-in.
+pub fn id_token_claims(id_token: &str, keys: &Value, issuer: &str, client_id: &str, nonce: &str, now_seconds: u64) -> Result<Value, String> {
+    let claims = super::jwt::verify(id_token, keys)?;
+    check_claims(claims, issuer, client_id, nonce, now_seconds)
+}
+
+/// Whether a verified ID token's claims say it is for this sign-in.
+pub fn check_claims(claims: Value, issuer: &str, client_id: &str, nonce: &str, now_seconds: u64) -> Result<Value, String> {
+    // Google issues ID tokens as either form of its issuer (its OpenID
+    // Connect docs say so); no other issuer is taken without its scheme.
+    let google = issuer == "https://accounts.google.com" && claims["iss"].as_str() == Some("accounts.google.com");
+    if claims["iss"].as_str() != Some(issuer) && !google {
         return Err(format!("The ID token was issued by {:?}, not {issuer:?}.", claims["iss"].as_str().unwrap_or_default()));
     }
     let audiences: Vec<&str> = match &claims["aud"] {
@@ -212,6 +229,9 @@ pub fn id_token_claims(id_token: &str, issuer: &str, client_id: &str, nonce: &st
     }
     if claims["exp"].as_u64().is_none_or(|exp| exp + SKEW_SECONDS <= now_seconds) {
         return Err("The ID token has expired. Start again.".to_owned());
+    }
+    if claims["iat"].as_u64().is_some_and(|iat| iat > now_seconds + SKEW_SECONDS) {
+        return Err("The ID token was issued in the future: check the identity provider's clock.".to_owned());
     }
     if claims["nonce"].as_str() != Some(nonce) {
         return Err("The ID token answers another sign-in. Start again.".to_owned());
@@ -238,10 +258,6 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn token(claims: Value) -> String {
-        format!("e30.{}.c2ln", URL_SAFE_NO_PAD.encode(claims.to_string()))
-    }
-
     #[test]
     fn discovery_must_name_the_issuer_and_https_endpoints() {
         let document = json!({
@@ -249,6 +265,7 @@ mod tests {
             "authorization_endpoint": "https://acme.okta.com/oauth2/v1/authorize",
             "token_endpoint": "https://acme.okta.com/oauth2/v1/token",
             "userinfo_endpoint": "https://acme.okta.com/oauth2/v1/userinfo",
+            "jwks_uri": "https://acme.okta.com/oauth2/v1/keys",
             "token_endpoint_auth_methods_supported": ["client_secret_post"],
         });
         let found = endpoints_from(&document, "https://acme.okta.com/").unwrap();
@@ -257,8 +274,10 @@ mod tests {
         assert!(endpoints_from(&document, "https://globex.okta.com").unwrap_err().contains("names the issuer"));
         let plain = json!({ "issuer": "https://a.test", "authorization_endpoint": "http://a.test/auth", "token_endpoint": "https://a.test/token" });
         assert!(endpoints_from(&plain, "https://a.test").is_err());
-        let defaults = json!({ "issuer": "https://a.test", "authorization_endpoint": "https://a.test/auth", "token_endpoint": "https://a.test/token" });
+        let defaults = json!({ "issuer": "https://a.test", "authorization_endpoint": "https://a.test/auth", "token_endpoint": "https://a.test/token", "jwks_uri": "https://a.test/keys" });
         assert!(endpoints_from(&defaults, "https://a.test").unwrap().basic);
+        let keyless = json!({ "issuer": "https://a.test", "authorization_endpoint": "https://a.test/auth", "token_endpoint": "https://a.test/token" });
+        assert!(endpoints_from(&keyless, "https://a.test").unwrap_err().contains("jwks_uri"));
     }
 
     #[test]
@@ -288,19 +307,35 @@ mod tests {
     fn an_id_token_must_be_for_this_sign_in() {
         let now = 1_800_000_000;
         let good = json!({ "iss": "https://idp.test", "aud": "client", "exp": now + 60, "nonce": "n", "sub": "u1", "email": "ada@acme.test" });
-        let claims = id_token_claims(&token(good.clone()), "https://idp.test", "client", "n", now).unwrap();
+        let claims = check_claims(good.clone(), "https://idp.test", "client", "n", now).unwrap();
         assert_eq!(claim(&claims, "sub").as_deref(), Some("u1"));
         let with = |field: &str, value: Value| {
             let mut claims = good.clone();
             claims[field] = value;
-            id_token_claims(&token(claims), "https://idp.test", "client", "n", now)
+            check_claims(claims, "https://idp.test", "client", "n", now)
         };
         assert!(with("iss", json!("https://evil.test")).unwrap_err().contains("issued by"));
         assert!(with("aud", json!("other")).unwrap_err().contains("client id"));
         assert!(with("aud", json!(["other", "client"])).is_ok());
         assert!(with("exp", json!(now - 600)).unwrap_err().contains("expired"));
         assert!(with("nonce", json!("m")).unwrap_err().contains("another sign-in"));
-        assert!(id_token_claims("not.a-token", "https://idp.test", "client", "n", now).is_err());
+        assert!(with("iat", json!(now + 3600)).unwrap_err().contains("future"));
+        let google = json!({ "iss": "accounts.google.com", "aud": "client", "exp": now + 60, "nonce": "n", "sub": "1" });
+        assert!(check_claims(google.clone(), "https://accounts.google.com", "client", "n", now).is_ok());
+        assert!(check_claims(google, "https://idp.test", "client", "n", now).is_err());
+        assert!(id_token_claims("not.a-token", &json!({ "keys": [] }), "https://idp.test", "client", "n", now).is_err());
+    }
+
+    #[test]
+    fn a_signed_id_token_is_verified_then_checked() {
+        let fixtures: Value = serde_json::from_str(include_str!("jwt_fixtures.json")).unwrap();
+        let token = fixtures["tokens"]["rs256"].as_str().unwrap();
+        let claims = id_token_claims(token, &fixtures["jwks"], "https://idp.example.test", "client", "n", 1_800_000_100).unwrap();
+        assert_eq!(claim(&claims, "email").as_deref(), Some("ada@acme.test"));
+        // Signed, but for another sign-in.
+        assert!(id_token_claims(token, &fixtures["jwks"], "https://idp.example.test", "client", "other", 1_800_000_100).is_err());
+        // Not signed with the issuer's keys.
+        assert!(id_token_claims(token, &json!({ "keys": [fixtures["jwks"]["keys"][1].clone()] }), "https://idp.example.test", "client", "n", 1_800_000_100).is_err());
     }
 
     #[test]

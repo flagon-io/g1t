@@ -6417,6 +6417,7 @@ pub static OPERATIONS: &[Operation] = &[
             Field { name: "idp_entity_id", kind: "string", required: false, values: &[] },
             Field { name: "idp_sso_url", kind: "string", required: false, values: &[] },
             Field { name: "issuer", kind: "string", required: false, values: &[] },
+            Field { name: "join_domains", kind: "array", required: false, values: &[] },
             Field { name: "protocol", kind: "string", required: true, values: &["oidc", "oauth2", "saml"] },
             Field { name: "scopes", kind: "string", required: false, values: &[] },
             Field { name: "subject_claim", kind: "string", required: false, values: &[] },

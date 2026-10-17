@@ -116,6 +116,7 @@ pub fn verify_response(saml_response: &str, expect: &Expect) -> Result<Asserted,
         return Err("The identity provider did not send a SAML response.".to_owned());
     }
     unique_ids(&doc)?;
+    plain(&doc)?;
     // Signed first: nothing else is read until it verifies.
     let assertion = only_child(response, ASSERTION, "Assertion")?;
     let Some(assertion) = assertion else {
@@ -124,22 +125,23 @@ pub fn verify_response(saml_response: &str, expect: &Expect) -> Result<Asserted,
         }
         return Err(status_message(response).unwrap_or_else(|| "The identity provider's response has no assertion.".to_owned()));
     };
-    let mut signed = false;
+    let mut assertion_signed = false;
+    let mut response_signed = false;
     if let Some(signature) = only_child(assertion, DSIG, "Signature")? {
         verify_signature(&xml, signature, expect.certificates)?;
-        signed = true;
+        assertion_signed = true;
     }
     if let Some(signature) = only_child(response, DSIG, "Signature")? {
         verify_signature(&xml, signature, expect.certificates)?;
-        signed = true;
+        response_signed = true;
     }
-    if !signed {
+    if !assertion_signed && !response_signed {
         return Err(NOT_SIGNED.to_owned());
     }
     if let Some(message) = status_message(response) {
         return Err(message);
     }
-    check_response(response, assertion, expect)
+    check_response(response, assertion, expect, response_signed)
 }
 
 /// Why the provider said no, when its status is not success.
@@ -156,7 +158,10 @@ fn status_message(response: Node) -> Option<String> {
     })
 }
 
-fn check_response(response: Node, assertion: Node, expect: &Expect) -> Result<Asserted, String> {
+/// `response_signed`: whether the response itself was signed. When only the
+/// assertion is, the response's own `InResponseTo` is anyone's to write,
+/// so the assertion's signed subject confirmation must name the request.
+fn check_response(response: Node, assertion: Node, expect: &Expect, response_signed: bool) -> Result<Asserted, String> {
     match response.attribute("InResponseTo") {
         Some(id) if id == expect.request_id => {}
         Some(_) => return Err("This response answers another sign-in. Start again.".to_owned()),
@@ -196,7 +201,10 @@ fn check_response(response: Node, assertion: Node, expect: &Expect) -> Result<As
         .filter_map(|c| child(c, ASSERTION, "SubjectConfirmationData"))
         .any(|data| {
             data.attribute("Recipient") == Some(expect.acs_url)
-                && data.attribute("InResponseTo").is_none_or(|id| id == expect.request_id)
+                && match data.attribute("InResponseTo") {
+                    Some(id) => id == expect.request_id,
+                    None => response_signed,
+                }
                 && data.attribute("NotBefore").is_none()
                 && data.attribute("NotOnOrAfter").and_then(parse_time).is_some_and(|at| now < at + SKEW_MS)
         });
@@ -253,8 +261,36 @@ fn within(not_before: Option<&str>, not_on_or_after: Option<&str>, now: u64) -> 
 
 // --- The document -----------------------------------------------------------
 
+/// All of an element's text, as canonicalization reads it: every text node
+/// inside it, not only the first, so what is read is what was signed.
 fn text(node: Node) -> String {
-    node.text().unwrap_or_default().trim().to_owned()
+    let all: String = node.descendants().filter(Node::is_text).filter_map(|t| t.text()).collect();
+    all.trim().to_owned()
+}
+
+/// The deepest a response may nest. Real ones are under ten.
+const MAX_DEPTH: usize = 64;
+
+/// Refuses comments and processing instructions anywhere in the response,
+/// and nesting deeper than any provider sends. Canonicalization leaves
+/// comments out, so `ada@acme.test<!---->.evil.io` signs as one address and
+/// would read as another; no provider puts them in a response. Depth is
+/// checked before canonicalization, which recurses.
+fn plain(doc: &Document) -> Result<(), String> {
+    // Document order visits a parent before its children, so each depth is
+    // its parent's plus one, found without recursion.
+    let mut depths: std::collections::HashMap<NodeId, usize> = std::collections::HashMap::new();
+    for node in doc.descendants() {
+        if node.is_comment() || node.is_pi() {
+            return Err("The identity provider's response holds comments or processing instructions, which g1t does not accept.".to_owned());
+        }
+        let depth = node.parent().and_then(|parent| depths.get(&parent.id()).copied()).unwrap_or(0) + 1;
+        if depth > MAX_DEPTH {
+            return Err("The identity provider's response nests too deeply.".to_owned());
+        }
+        depths.insert(node.id(), depth);
+    }
+    Ok(())
 }
 
 fn children<'a, 'i>(node: Node<'a, 'i>, ns: &'a str, name: &'a str) -> impl Iterator<Item = Node<'a, 'i>> + 'a {

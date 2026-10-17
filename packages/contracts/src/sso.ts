@@ -24,6 +24,8 @@ export type SsoConfig = {
   idp_entity_id?: string | null;
   idp_sso_url?: string | null;
   certificates?: string[];
+  /** Who may join through it: only addresses the provider vouches for at these domains. Empty: anyone. */
+  join_domains?: string[];
 };
 
 export type SsoConnection = {

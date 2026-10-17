@@ -61,14 +61,20 @@ everyone.
 
 ## Let people join
 
-With **Let people from your provider join** on (the default), anyone your
-provider signs in becomes a member of the workspace when they first sign
-in through it, with no invitation: send them to
-`g1t.sh/auth/sso/<workspace>`. They need a g1t account with a confirmed
-email address first, and the workspace's other rules still apply, such as
-[requiring two-factor authentication](/guides/workspaces/#require-two-factor-authentication).
-Turn it off and only people who are already members can sign in through
-it.
+Turn on **Let people from your provider join** (it starts off) and anyone
+your provider signs in becomes a member of the workspace when they first
+sign in through it, with no invitation: send them to
+`g1t.sh/auth/sso/<workspace>`. g1t asks them to confirm first, so a link
+alone never makes anyone a member. They need a g1t account with a
+confirmed email address, and the workspace's other rules still apply, such
+as [requiring two-factor authentication](/guides/workspaces/#require-two-factor-authentication).
+
+**Only addresses at** limits who may join to people whose address your
+provider vouches for (OpenID Connect's `email_verified`, or a signed SAML
+assertion) at your domains, such as `acme.com`. Set it, or leave joining
+off, whenever your provider lets anyone sign in: a personal Google or
+GitHub account would otherwise let in anyone. With joining off, only
+people who are already members can sign in through it.
 
 ## Require it
 
@@ -78,8 +84,9 @@ on a member uses the workspace only:
 - **On the site**, from a session that signed in through your provider in
   the last day. After a day they go through it again, which is usually
   instant: your provider remembers them.
-- **With an access token, SSH key or git credentials**, once they have
-  linked their account.
+- **With an access token or SSH key**, once they have linked their account
+  (and, with [SCIM](#scim), while your provider still has them assigned).
+- **Never with their g1t password** for git over HTTPS: use a token.
 
 A member who has not keeps their place but cannot use the workspace: its
 private repositories, pages and API answer as if they were not a member,
@@ -107,15 +114,19 @@ keeps everyone linked.
 
 - **OpenID Connect and OAuth 2.0** use the authorization code flow with
   PKCE. For OpenID Connect, the ID token must be issued by your issuer, for
-  your client id, unexpired, and answer this sign-in's nonce. g1t receives
-  it straight from your provider's token endpoint over TLS.
+  your client id, unexpired, and answer this sign-in's nonce, and its
+  signature must verify with a key your provider publishes (its
+  `jwks_uri`): RS256, RS384, RS512, PS256, PS384, PS512 or ES256. Tokens
+  signed with a shared secret (HS256) or not at all are refused.
 - **SAML** responses must be signed, the assertion or the whole response,
   with RSA and SHA-256, SHA-384 or SHA-512, by one of the certificates you
   saved. The response must answer the request g1t sent (sign-ins started
   at your provider are refused), be addressed to the workspace's assertion
   consumer service, name g1t's entity id as the audience, come from your
-  provider's entity id, and be in its validity window. Leave the assertion
-  unencrypted: it reaches g1t over HTTPS.
+  provider's entity id, and be in its validity window. When only the
+  assertion is signed, its own subject confirmation must name g1t's
+  request. Responses with comments or processing instructions are refused.
+  Leave the assertion unencrypted: it reaches g1t over HTTPS.
 
 ## If the plan ends
 
@@ -192,7 +203,11 @@ To turn it on, open **Single sign-on → SCIM provisioning** and choose
 | Supported | Create, update (PUT and PATCH), deactivate and delete users; filtering by `userName`, `externalId`, `id` or `emails.value` |
 
 Whoever signs in through your provider is matched to the person it
-assigned by their id there, their userName, or their address. **Make a new
+assigned by a stable id it gave (the SAML NameID, OpenID's `sub`, and for
+Microsoft Entra ID the object id and a member's user principal name) as
+their `userName` or `externalId`, or by an address your provider vouches
+for as their `userName` or primary address. If more than one assigned
+person matches, nobody is chosen and they are told so. **Make a new
 token** replaces the old one at once; **Turn off SCIM** forgets who was
 assigned and removes nobody.
 

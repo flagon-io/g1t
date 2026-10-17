@@ -108,6 +108,11 @@ pub struct SsoConfig {
     /// certificate is rotated.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub certificates: Vec<String>,
+    /// Who may join through it, when it lets people join: only those whose
+    /// address the provider vouches for is at one of these domains. Empty:
+    /// anyone it signs in.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub join_domains: Vec<String>,
 }
 
 /// A SAML signing certificate, as shown.
@@ -257,14 +262,12 @@ pub struct SaveSsoArgs {
     /// SAML: certificates as pasted (PEM).
     #[serde(default)]
     pub certificate: Option<String>,
-    #[serde(default = "yes")]
+    /// Off unless asked for: a provider anyone can sign in to (a consumer
+    /// one) would let anyone in.
+    #[serde(default)]
     pub allow_join: bool,
     #[serde(default)]
     pub surface: Option<Surface>,
-}
-
-fn yes() -> bool {
-    true
 }
 
 /// `set_sso_required`: whether members must sign in through the provider.
