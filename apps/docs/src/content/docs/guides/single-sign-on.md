@@ -136,6 +136,36 @@ Recorded in the workspace's [audit log](/guides/audit-log/):
 `sso.not_required`, `sso.identity_linked`, `sso.identity_unlinked`, and
 `member.joined_by_sso`.
 
+## API and MCP
+
+Owners can do all of it with an access token, through the REST API or the
+`workspace` tool's actions on the MCP server:
+
+| | REST | MCP action | Scope |
+| --- | --- | --- | --- |
+| Read it, with where to point the provider | `GET /workspaces/{workspace}/sso` | `get_sso` | `workspace:read` |
+| Set it up or change it | `PUT /workspaces/{workspace}/sso` | `configure_sso` | `workspace:admin` |
+| Require it, or stop | `PUT /workspaces/{workspace}/sso/required` | `set_sso_required` | `workspace:admin` |
+| Remove it | `DELETE /workspaces/{workspace}/sso` | `delete_sso` | `workspace:admin` |
+| The linked people | `GET /workspaces/{workspace}/sso/identities` | `list_sso_identities` | `access:read` |
+| Unlink someone | `DELETE /workspaces/{workspace}/sso/identities/{username}` | `unlink_sso_identity` | `access:admin` |
+
+`configure_sso` takes `protocol` (`oidc`, `oauth2` or `saml`) and the
+protocol's fields as the page names them: `issuer`, `client_id`,
+`client_secret`, `scopes`; `authorization_url`, `token_url`,
+`userinfo_url`, `subject_claim`, `email_claim`; `idp_entity_id`,
+`idp_sso_url`, `certificate` (PEM). Its answer, like `get_sso`'s, has
+`service_provider`: the `redirect_uri`, `entity_id`, `acs_url`,
+`metadata_url` and `sign_in_url` to give your provider and your people.
+The client secret is never returned.
+
+```sh
+curl -X PUT https://api.g1t.sh/workspaces/acme/sso   -H "Authorization: Bearer $G1T_TOKEN"   -d '{"protocol": "oidc", "issuer": "https://acme.okta.com", "client_id": "0oa1b2c3", "client_secret": "…"}'
+```
+
+Signing in through the provider is a trip in the browser, so it has no
+API: send people to `sign_in_url`.
+
 ## Not yet
 
 Provisioning and deprovisioning with SCIM is not available yet. Until it

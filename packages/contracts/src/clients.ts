@@ -338,6 +338,7 @@ export function identityAdminClient(service: ServiceBinding): IdentityAdminApi {
     growth: () => call("admin_growth", {}),
     workspaces: (query) => call("admin_workspaces", { query: query ?? null }),
     workspace: (slug) => call("admin_workspace", { slug }),
+    sso: (slug) => call("admin_sso", { slug }),
     invites: (query, options = {}) => call("admin_invites", { query: query ?? null, to_g1t: options.toG1t ?? false }),
     grantInvites: (username, amount, note, staff) => call("admin_grant_invites", { username, amount, note, staff }),
     revokeInvite: (id, staff) => call("admin_revoke_invite", { id, staff }),

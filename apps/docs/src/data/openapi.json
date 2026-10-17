@@ -104,6 +104,18 @@
       ]
     },
     {
+      "name": "Single sign-on",
+      "description": "A workspace's own identity provider over OpenID Connect, OAuth 2.0 or SAML 2.0, on every paid plan: setting it up, requiring it of members, the people linked to it, and unlinking one. People sign in to g1t as themselves and then through the provider to use the workspace; owners are never held out. Owners only, as people.",
+      "x-tools": [
+        "get_sso",
+        "configure_sso",
+        "set_sso_required",
+        "delete_sso",
+        "list_sso_identities",
+        "unlink_sso_identity"
+      ]
+    },
+    {
       "name": "Members",
       "description": "A workspace's members and owners: who belongs to it, their roles (owner or member, with billing manager and security manager on top), handing it to another member, and leaving it.",
       "x-tools": [
@@ -5629,6 +5641,1093 @@
         "x-example-params": {
           "workspace": "flagon-io",
           "id": "tok_01HZX3K2M9V7Q4N8B6D5C3A2E1"
+        }
+      }
+    },
+    "/workspaces/{workspace}/sso": {
+      "get": {
+        "operationId": "get_sso",
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "Get a workspace's single sign-on",
+        "description": "A workspace's single sign-on through its own identity provider: connection (null when it has none: its id, protocol oidc, oauth2 or saml, config with the protocol's fields, has_client_secret, certificates by SHA-256 fingerprint for SAML, allow_join, tested_at and tested_by, when the first person signed in through it), required (whether members must sign in through it), you_linked (whether you have), identities (the people linked: username, subject and email at the provider, linked_at, last_used_at), and service_provider: the addresses to give the provider (redirect_uri for OpenID Connect and OAuth 2.0; entity_id, acs_url and metadata_url for SAML; sign_in_url, where people start). The client secret is never returned. Owners only, as people.",
+        "x-operation": "get_sso",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "get_sso",
+        "x-scope": "workspace:read",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "workspace:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's name, e.g. \"acme\"."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "slug": "flagon-io",
+                  "connection": {
+                    "id": "sso_01m54gq2v0e8e3c5yj6k9t1r2a",
+                    "protocol": "saml",
+                    "config": {
+                      "idp_entity_id": "http://www.okta.com/exk1a2b3c4d5",
+                      "idp_sso_url": "https://flagon.okta.com/app/flagon_g1t/exk1a2b3c4d5/sso/saml",
+                      "certificates": [
+                        "MIICsDCCAZigAwIBAgICA+gwDQYJKoZIhvcNAQELBQAw"
+                      ]
+                    },
+                    "has_client_secret": false,
+                    "certificates": [
+                      {
+                        "fingerprint": "3F:A1:9C:22:7B:E0:44:D1:8A:6F:0B:93:12:C7:5E:AA:41:08:DD:6C:39:F2:B5:7E:90:1A:C3:58:24:EF:6B:0D"
+                      }
+                    ],
+                    "allow_join": true,
+                    "tested_at": "2026-10-17T09:12:44.000Z",
+                    "tested_by": "syntaqx",
+                    "created_at": "2026-10-17T09:05:10.000Z",
+                    "updated_at": "2026-10-17T09:05:10.000Z"
+                  },
+                  "required": true,
+                  "you_linked": true,
+                  "identities": [
+                    {
+                      "username": "syntaqx",
+                      "subject": "chase@flagon.io",
+                      "email": "chase@flagon.io",
+                      "linked_at": "2026-10-17T09:12:44.000Z",
+                      "last_used_at": "2026-10-17T14:02:31.000Z"
+                    }
+                  ],
+                  "service_provider": {
+                    "redirect_uri": "https://g1t.sh/auth/sso/flagon-io/callback",
+                    "entity_id": "https://g1t.sh/auth/sso/flagon-io/metadata",
+                    "acs_url": "https://g1t.sh/auth/sso/flagon-io/saml",
+                    "metadata_url": "https://g1t.sh/auth/sso/flagon-io/metadata",
+                    "sign_in_url": "https://g1t.sh/auth/sso/flagon-io"
+                  }
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      },
+      "put": {
+        "operationId": "configure_sso",
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "Set up or change a workspace's single sign-on",
+        "description": "Set up the workspace's single sign-on, or change it, with every field of the protocol. oidc: issuer (read for its discovery document first), client_id, client_secret, scopes (openid email profile by default). oauth2: authorization_url, token_url, userinfo_url, client_id, client_secret, scopes, subject_claim (sub, then id, by default) and email_claim (email). saml: idp_entity_id, idp_sso_url and certificate (the provider's signing certificates, PEM; several while rotating). client_secret and certificate left out keep what is saved. allow_join (true by default) lets anyone the provider signs in join as a member. Moving to another provider (protocol, issuer or entity id) unlinks everyone and stops requiring it. Needs a paid plan. Returns what get_sso does. Recorded as sso.created or sso.updated. Owners only, as people.",
+        "x-operation": "configure_sso",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "configure_sso",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's name, e.g. \"acme\"."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "slug": "flagon-io",
+                  "connection": {
+                    "id": "sso_01m54gq2v0e8e3c5yj6k9t1r2a",
+                    "protocol": "saml",
+                    "config": {
+                      "idp_entity_id": "http://www.okta.com/exk1a2b3c4d5",
+                      "idp_sso_url": "https://flagon.okta.com/app/flagon_g1t/exk1a2b3c4d5/sso/saml",
+                      "certificates": [
+                        "MIICsDCCAZigAwIBAgICA+gwDQYJKoZIhvcNAQELBQAw"
+                      ]
+                    },
+                    "has_client_secret": false,
+                    "certificates": [
+                      {
+                        "fingerprint": "3F:A1:9C:22:7B:E0:44:D1:8A:6F:0B:93:12:C7:5E:AA:41:08:DD:6C:39:F2:B5:7E:90:1A:C3:58:24:EF:6B:0D"
+                      }
+                    ],
+                    "allow_join": true,
+                    "tested_at": "2026-10-17T09:12:44.000Z",
+                    "tested_by": "syntaqx",
+                    "created_at": "2026-10-17T09:05:10.000Z",
+                    "updated_at": "2026-10-17T09:05:10.000Z"
+                  },
+                  "required": true,
+                  "you_linked": true,
+                  "identities": [
+                    {
+                      "username": "syntaqx",
+                      "subject": "chase@flagon.io",
+                      "email": "chase@flagon.io",
+                      "linked_at": "2026-10-17T09:12:44.000Z",
+                      "last_used_at": "2026-10-17T14:02:31.000Z"
+                    }
+                  ],
+                  "service_provider": {
+                    "redirect_uri": "https://g1t.sh/auth/sso/flagon-io/callback",
+                    "entity_id": "https://g1t.sh/auth/sso/flagon-io/metadata",
+                    "acs_url": "https://g1t.sh/auth/sso/flagon-io/saml",
+                    "metadata_url": "https://g1t.sh/auth/sso/flagon-io/metadata",
+                    "sign_in_url": "https://g1t.sh/auth/sso/flagon-io"
+                  }
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "protocol": {
+                    "type": "string",
+                    "enum": [
+                      "oidc",
+                      "oauth2",
+                      "saml"
+                    ],
+                    "description": "How g1t speaks to the provider."
+                  },
+                  "issuer": {
+                    "type": "string",
+                    "description": "oidc: the issuer, where its /.well-known/openid-configuration lives."
+                  },
+                  "client_id": {
+                    "type": "string",
+                    "description": "oidc, oauth2: the client id."
+                  },
+                  "client_secret": {
+                    "type": "string",
+                    "description": "oidc, oauth2: the client secret; kept encrypted, never returned. Left out keeps the one saved."
+                  },
+                  "scopes": {
+                    "type": "string",
+                    "description": "oidc, oauth2: space-separated scopes."
+                  },
+                  "authorization_url": {
+                    "type": "string",
+                    "description": "oauth2: the authorization endpoint (https)."
+                  },
+                  "token_url": {
+                    "type": "string",
+                    "description": "oauth2: the token endpoint (https)."
+                  },
+                  "userinfo_url": {
+                    "type": "string",
+                    "description": "oauth2: the userinfo endpoint (https)."
+                  },
+                  "subject_claim": {
+                    "type": "string",
+                    "description": "oauth2: the userinfo claim that is the person's stable id; a dotted path works."
+                  },
+                  "email_claim": {
+                    "type": "string",
+                    "description": "oauth2: the userinfo claim that is their address."
+                  },
+                  "idp_entity_id": {
+                    "type": "string",
+                    "description": "saml: the provider's entity id (its issuer)."
+                  },
+                  "idp_sso_url": {
+                    "type": "string",
+                    "description": "saml: where the provider takes requests (HTTP-Redirect, https)."
+                  },
+                  "certificate": {
+                    "type": "string",
+                    "description": "saml: the provider's signing certificates, PEM. Left out keeps the ones saved."
+                  },
+                  "allow_join": {
+                    "type": "boolean",
+                    "description": "Anyone the provider signs in joins as a member. True by default."
+                  }
+                },
+                "required": [
+                  "protocol"
+                ]
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "protocol": "saml",
+          "idp_entity_id": "http://www.okta.com/exk1a2b3c4d5",
+          "idp_sso_url": "https://flagon.okta.com/app/flagon_g1t/exk1a2b3c4d5/sso/saml",
+          "certificate": "-----BEGIN CERTIFICATE-----\nMIICsDCCAZig…\n-----END CERTIFICATE-----",
+          "allow_join": true
+        }
+      },
+      "delete": {
+        "operationId": "delete_sso",
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "Remove a workspace's single sign-on",
+        "description": "Remove the workspace's single sign-on: forgets the provider and who everyone is there, and stops requiring it. Members keep their place. Never needs a plan. Recorded as sso.deleted. Owners only, as people.",
+        "x-operation": "delete_sso",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "delete_sso",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's name, e.g. \"acme\"."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "deleted": true
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      }
+    },
+    "/workspaces/{workspace}/sso/required": {
+      "put": {
+        "operationId": "set_sso_required",
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "Require single sign-on, or stop",
+        "description": "Whether members must sign in through the provider: then a member uses the workspace only from a session that did in the last day, and with tokens and keys once linked; held out otherwise, keeping their place. Owners are never held, and outside collaborators are not asked. Requiring it needs a paid plan and you to have signed in through it yourself (you_linked); stopping never does. Recorded as sso.required or sso.not_required. Owners only, as people.",
+        "x-operation": "set_sso_required",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "set_sso_required",
+        "x-scope": "workspace:admin",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's name, e.g. \"acme\"."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "required": true
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "required": {
+                    "type": "boolean",
+                    "description": "True to require it of members; false to stop."
+                  }
+                },
+                "required": [
+                  "required"
+                ]
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "required": true
+        }
+      }
+    },
+    "/workspaces/{workspace}/sso/identities": {
+      "get": {
+        "operationId": "list_sso_identities",
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "List the people linked through single sign-on",
+        "description": "The people linked to the workspace's provider: username, subject (their id at the provider), email (as the provider gave it, for showing), linked_at and last_used_at. Owners only, as people.",
+        "x-operation": "list_sso_identities",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "list_sso_identities",
+        "x-scope": "access:read",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "access:read"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's name, e.g. \"acme\"."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "username": "syntaqx",
+                    "subject": "chase@flagon.io",
+                    "email": "chase@flagon.io",
+                    "linked_at": "2026-10-17T09:12:44.000Z",
+                    "last_used_at": "2026-10-17T14:02:31.000Z"
+                  }
+                ]
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      }
+    },
+    "/workspaces/{workspace}/sso/identities/{username}": {
+      "delete": {
+        "operationId": "unlink_sso_identity",
+        "tags": [
+          "Single sign-on"
+        ],
+        "summary": "Unlink someone from single sign-on",
+        "description": "Forget who someone is at the workspace's provider, so they (or another account there) link again on their next sign-in through it; their sessions go through it again. Recorded as sso.identity_unlinked. Owners only, as people.",
+        "x-operation": "unlink_sso_identity",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "unlink_sso_identity",
+        "x-scope": "access:admin",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "access:admin"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's name, e.g. \"acme\"."
+          },
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Whose link to forget."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "unlinked": true
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "username": "ada"
         }
       }
     },

@@ -639,6 +639,13 @@ export const OPERATION_SCOPES = [
   ["list_token_requests", "access:read"],
   ["review_token_request", "access:admin"],
   ["revoke_member_token", "access:admin"],
+  // A workspace's single sign-on: its settings, and who is linked.
+  ["get_sso", "workspace:read"],
+  ["configure_sso", "workspace:admin"],
+  ["set_sso_required", "workspace:admin"],
+  ["delete_sso", "workspace:admin"],
+  ["list_sso_identities", "access:read"],
+  ["unlink_sso_identity", "access:admin"],
   ["list_collaborators", "access:read"],
   ["get_collaborator_permission", "access:read"],
   ["list_repo_invitations", "access:read"],

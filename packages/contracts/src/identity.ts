@@ -9,6 +9,7 @@ import type { TeamCreation, TeamsClient } from "./teams";
 import type { PeopleClient } from "./people";
 import type { DeployKeysClient } from "./deploy-keys";
 import type { EmailConfirmed, EmailOwner } from "./accounts";
+import type { SsoSettings } from "./sso";
 
 export type User = {
   id: string;
@@ -395,6 +396,8 @@ export interface IdentityAdminApi {
   workspaces(query?: string): Promise<AdminWorkspace[]>;
   /** One workspace with all its members, or null. */
   workspace(slug: string): Promise<AdminWorkspaceDetail | null>;
+  /** A workspace's single sign-on as its owners see it (sso.ts), or null when it has none. */
+  sso(slug: string): Promise<SsoSettings | null>;
 
   /** Invites, newest first; `query` is a code's start, or part of an email, inviter or redeemer. */
   invites(query?: string | null, options?: { toG1t?: boolean }): Promise<Invite[]>;

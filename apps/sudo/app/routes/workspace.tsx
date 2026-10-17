@@ -42,6 +42,7 @@ import {
 } from "~/components/ui";
 import { type Subject, billingAction } from "~/lib/billing-actions.server";
 import { ComplimentarySection } from "~/components/complimentary";
+import { SsoSection } from "~/components/sso";
 import { parseSlug, text } from "~/lib/forms";
 import { usd } from "~/lib/money";
 import { type ActionData, DONE, type SectionError, doneKey } from "~/lib/review";
@@ -94,7 +95,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const figures = billedTo
     ? { charged: share?.chargedMicros ?? 0, cost: share?.costMicros ?? 0, paid: share?.paidMicros ?? 0 }
     : { charged: summary.chargedMicros, cost: summary.costMicros, paid: summary.paidMicros };
-  const [enterprises, sales, invoices, plan, overages, book, credits, complimentary] = await Promise.all([
+  const [enterprises, sales, invoices, plan, overages, book, credits, complimentary, sso] = await Promise.all([
     billedTo
       ? Promise.resolve([])
       : admin
@@ -111,6 +112,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     settle(priceBook()),
     settle(admin.credits({ workspace: slug })),
     settle(admin.complimentary(slug)),
+    settle(identity.sso(slug)),
   ]);
   const done = doneKey(request.url);
   return {
@@ -139,6 +141,8 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     creditsError: credits.ok ? null : credits.error,
     complimentary: complimentary.ok ? complimentary.value : null,
     complimentaryError: complimentary.ok ? null : complimentary.error,
+    sso: sso.ok ? sso.value : null,
+    ssoError: sso.ok ? null : sso.error,
     ledger: billedTo ? detail.ledger.filter((entry) => !entry.workspace || entry.workspace === slug) : detail.ledger,
     audit: billedTo ? detail.audit.filter((entry) => mentions(entry, slug)) : detail.audit,
     done: done && !SALES_DONE.has(done) ? DONE[done] : null,
@@ -159,6 +163,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
 const SECTIONS = [
   { id: "members", label: "Members" },
+  { id: "sso", label: "Single sign-on" },
   { id: "sales", label: "Sales" },
   { id: "plan", label: "Plan" },
   { id: "billing", label: "Billing" },
@@ -193,6 +198,8 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
     creditsError,
     complimentary,
     complimentaryError,
+    sso,
+    ssoError,
     ledger,
     audit,
     done,
@@ -310,6 +317,8 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
           </div>
         )}
       </Section>
+
+      <SsoSection sso={sso} unavailable={ssoError} />
 
       {/* Sales */}
       <div className="mt-6">

@@ -41,6 +41,7 @@ use crate::folios::FoliosOp;
 use crate::coordination::CoordinationOp;
 use crate::protection::ProtectionOp;
 use crate::token_policy::TokenOp;
+use crate::sso::SsoOp;
 use crate::onboarding::OnboardingOp;
 use crate::rules::RulesOp;
 use crate::security::SecurityOp;
@@ -345,6 +346,8 @@ pub enum Op {
     /// A workspace's rules for personal access tokens, its members'
     /// tokens and approving them: token_policy.rs.
     Tokens(TokenOp),
+    /// A workspace's single sign-on through its own identity provider: sso.rs.
+    Sso(SsoOp),
     /// A person's own Getting started in a workspace: onboarding.rs.
     Onboarding(OnboardingOp),
     /// Workflow run artifacts, and how long they are kept: run_artifacts.rs.
@@ -828,7 +831,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 409] = [
+    pub const ALL: [Op; 415] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -1190,6 +1193,12 @@ impl Op {
         Op::Tokens(TokenOp::ListTokenRequests),
         Op::Tokens(TokenOp::ReviewTokenRequest),
         Op::Tokens(TokenOp::RevokeMemberToken),
+        Op::Sso(SsoOp::GetSso),
+        Op::Sso(SsoOp::ConfigureSso),
+        Op::Sso(SsoOp::SetSsoRequired),
+        Op::Sso(SsoOp::DeleteSso),
+        Op::Sso(SsoOp::ListSsoIdentities),
+        Op::Sso(SsoOp::UnlinkSsoIdentity),
         Op::Onboarding(OnboardingOp::GetOnboarding),
         Op::Onboarding(OnboardingOp::UpdateOnboarding),
         Op::Packages(PackagesOp::ListPackages),
@@ -1464,6 +1473,7 @@ impl Op {
             Op::Telemetry(op) => op.name(),
             Op::Protection(op) => op.name(),
             Op::Tokens(op) => op.name(),
+            Op::Sso(op) => op.name(),
             Op::Onboarding(op) => op.name(),
             Op::Artifacts(op) => op.name(),
             Op::Caches(op) => op.name(),
@@ -2070,6 +2080,7 @@ impl Op {
             Op::Telemetry(op) => op.description(),
             Op::Protection(op) => op.description(),
             Op::Tokens(op) => op.description(),
+            Op::Sso(op) => op.description(),
             Op::Onboarding(op) => op.description(),
             Op::Artifacts(op) => op.description(),
             Op::Caches(op) => op.description(),
@@ -3753,6 +3764,7 @@ impl Op {
             Op::Telemetry(op) => op.input(),
             Op::Protection(op) => op.input(),
             Op::Tokens(op) => op.input(),
+            Op::Sso(op) => op.input(),
             Op::Onboarding(op) => op.input(),
             Op::Artifacts(op) => op.input(),
             Op::Caches(op) => op.input(),
@@ -3887,7 +3899,7 @@ impl Op {
             return op.needs_repo();
         }
         // A workspace's, never one repository's.
-        if let Op::Tokens(_) | Op::Onboarding(_) = self {
+        if let Op::Tokens(_) | Op::Sso(_) | Op::Onboarding(_) = self {
             return false;
         }
         !matches!(
@@ -6398,6 +6410,7 @@ impl Op {
             Op::Telemetry(op) => crate::telemetry::run(op, services, viewer, input).await,
             Op::Protection(op) => crate::protection::run(op, services, viewer, input).await,
             Op::Tokens(op) => crate::token_policy::run(op, services, viewer, input).await,
+            Op::Sso(op) => crate::sso::run(op, services, viewer, input).await,
             Op::Onboarding(op) => crate::onboarding::run(op, services, viewer, input).await,
             Op::Artifacts(op) => crate::run_artifacts::run(op, services, viewer, input).await,
             Op::Caches(op) => crate::caches::run(op, services, viewer, input).await,

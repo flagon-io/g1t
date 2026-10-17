@@ -14,6 +14,7 @@ use crate::folios::FoliosOp;
 use crate::coordination::CoordinationOp;
 use crate::protection::ProtectionOp;
 use crate::token_policy::TokenOp;
+use crate::sso::SsoOp;
 use crate::onboarding::OnboardingOp;
 use crate::operations::Op;
 use crate::checks::ChecksOp;
@@ -73,6 +74,12 @@ pub const ROUTES: &[Route] = &[
     route("POST", "/workspaces/:workspace/personal-access-tokens/:id", Op::Tokens(TokenOp::RevokeMemberToken), &[]),
     route("GET", "/workspaces/:workspace/personal-access-token-requests", Op::Tokens(TokenOp::ListTokenRequests), &[]),
     route("POST", "/workspaces/:workspace/personal-access-token-requests/:id", Op::Tokens(TokenOp::ReviewTokenRequest), &[]),
+    route("GET", "/workspaces/:workspace/sso", Op::Sso(SsoOp::GetSso), &[]),
+    route("PUT", "/workspaces/:workspace/sso", Op::Sso(SsoOp::ConfigureSso), &[]),
+    route("DELETE", "/workspaces/:workspace/sso", Op::Sso(SsoOp::DeleteSso), &[]),
+    route("PUT", "/workspaces/:workspace/sso/required", Op::Sso(SsoOp::SetSsoRequired), &[]),
+    route("GET", "/workspaces/:workspace/sso/identities", Op::Sso(SsoOp::ListSsoIdentities), &[]),
+    route("DELETE", "/workspaces/:workspace/sso/identities/:username", Op::Sso(SsoOp::UnlinkSsoIdentity), &[]),
     route("POST", "/workspaces/:workspace/invitations", Op::InviteMember, &[]),
     route("DELETE", "/workspaces/:workspace/invitations/:id", Op::RevokeWorkspaceInvite, &[]),
     // Who has access. GitHub's addresses, but for adding someone, which
