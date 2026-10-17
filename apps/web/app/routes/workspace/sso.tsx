@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Form, data } from "react-router";
 import { KeyRound, Sparkles } from "lucide-react";
 
-import { type SsoConfig, type SsoProtocol, type SsoSettings, ssoAddresses } from "@g1t/contracts";
+import { type SsoConfig, type SsoProtocol, type SsoSettings, scimUrl, ssoAddresses } from "@g1t/contracts";
 
 import type { Route } from "./+types/sso";
 import { page } from "../../lib/meta";
@@ -27,6 +27,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Unavailable } from "../../components/boundary";
 import { isFailed, part } from "../../lib/partial";
 import { billing } from "../../lib/services.server";
+import { useAddresses } from "../../lib/addresses";
 import { PROTOCOL_NAMES } from "../../lib/sso";
 import { sso } from "../../lib/sso.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
@@ -52,7 +53,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   };
 }
 
-type Answer = { saved?: string; error?: string; intent?: string };
+type Answer = { saved?: string; error?: string; intent?: string; token?: string };
 
 export async function action({ request, params, context }: Route.ActionArgs): Promise<Answer> {
   assertSameOrigin(request);
@@ -97,6 +98,12 @@ export async function action({ request, params, context }: Route.ActionArgs): Pr
     }
     case "delete":
       return answer(await sso.remove(user, slug), "Single sign-on is removed.");
+    case "scim-on": {
+      const made = await sso.enableScim(user, slug);
+      return made.ok ? { saved: "Copy the token now: it is not shown again.", intent, token: made.value.token } : { error: made.error.message, intent };
+    }
+    case "scim-off":
+      return answer(await sso.disableScim(user, slug), "SCIM is off.");
     default:
       return { error: "Unknown change.", intent };
   }
@@ -144,6 +151,10 @@ export default function WorkspaceSso({ loaderData, actionData, params }: Route.C
       {settings.connection && <PeopleSection settings={settings} answer={said("unlink")} />}
 
       {settings.connection && (
+        <ScimSection settings={settings} slug={slug} disabled={free} answer={said("scim-on") ?? said("scim-off")} />
+      )}
+
+      {settings.connection && (
         <DangerZone>
           <DangerAction
             title="Remove single sign-on"
@@ -155,6 +166,94 @@ export default function WorkspaceSso({ loaderData, actionData, params }: Route.C
         </DangerZone>
       )}
     </div>
+  );
+}
+
+/** SCIM: the provider assigns and unassigns people. */
+function ScimSection({ settings, slug, disabled, answer }: { settings: SsoSettings; slug: string; disabled: boolean; answer?: Answer }) {
+  const scim = settings.scim ?? null;
+  const url = scimUrl(useAddresses().api, slug);
+  return (
+    <section aria-labelledby="sso-scim">
+      <h2 id="sso-scim" className="font-medium">
+        SCIM provisioning
+      </h2>
+      <p className="mt-1.5 text-sm text-muted">
+        Let your provider tell g1t who is assigned to {slug}. Then only people it has assigned sign in through it, and
+        someone it unassigns or deactivates leaves {slug} at once, with their roles and sessions. Owners are never removed
+        that way. People, not groups: assign a group&apos;s members to g1t.
+      </p>
+      <div className="mt-4 space-y-3">
+        <Field label="SCIM base URL">
+          <CopyLine text={url} breakAtSlashes />
+        </Field>
+        {answer?.token && (
+          <Field label="SCIM token, shown this once" hint="Give it to your provider as the bearer token (API token or secret token).">
+            <CopyLine text={answer.token} />
+          </Field>
+        )}
+        {scim && !answer?.token && (
+          <p className="text-sm text-muted">
+            Token ending {scim.hint}, made {scim.created_by ? `by ${scim.created_by} ` : ""}
+            <TimeAgo at={scim.created_at} />
+            {scim.last_used_at ? (
+              <>
+                , last used <TimeAgo at={scim.last_used_at} />
+              </>
+            ) : (
+              ", not used yet"
+            )}
+            .
+          </p>
+        )}
+        <div className="flex flex-wrap items-center gap-3">
+          <Form method="post">
+            <input type="hidden" name="intent" value="scim-on" />
+            <SubmitButton variant={scim ? "outline" : "default"} size={scim ? "sm" : "default"} match={{ intent: "scim-on" }} pending="Making a token…" disabled={disabled}>
+              {scim ? "Make a new token" : "Turn on SCIM"}
+            </SubmitButton>
+          </Form>
+          {scim && (
+            <Form method="post">
+              <input type="hidden" name="intent" value="scim-off" />
+              <SubmitButton variant="ghost" size="sm" match={{ intent: "scim-off" }} pending="Turning off…">
+                Turn off SCIM
+              </SubmitButton>
+            </Form>
+          )}
+          <Saved answer={answer} />
+        </div>
+      </div>
+      {scim && (
+        <div className="mt-5">
+          {scim.users.length === 0 ? (
+            <p className="text-sm text-faint">Your provider has not assigned anyone yet.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Assigned</TableHead>
+                  <TableHead>On g1t</TableHead>
+                  <TableHead>State</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {scim.users.map((user) => (
+                  <TableRow key={user.id}>
+                    <TableCell className="max-w-64 truncate">
+                      <span className="font-medium">{user.display_name ?? user.user_name}</span>
+                      {user.display_name && <span className="block truncate text-xs text-faint">{user.user_name}</span>}
+                    </TableCell>
+                    <TableCell className="text-muted">{user.username ?? "Not signed in yet"}</TableCell>
+                    <TableCell>{user.active ? <Badge tone="success">Active</Badge> : <Badge tone="neutral">Deactivated</Badge>}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 

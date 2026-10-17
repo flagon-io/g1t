@@ -80,6 +80,8 @@ pub const ROUTES: &[Route] = &[
     route("PUT", "/workspaces/:workspace/sso/required", Op::Sso(SsoOp::SetSsoRequired), &[]),
     route("GET", "/workspaces/:workspace/sso/identities", Op::Sso(SsoOp::ListSsoIdentities), &[]),
     route("DELETE", "/workspaces/:workspace/sso/identities/:username", Op::Sso(SsoOp::UnlinkSsoIdentity), &[]),
+    route("POST", "/workspaces/:workspace/sso/scim", Op::Sso(SsoOp::EnableScim), &[]),
+    route("DELETE", "/workspaces/:workspace/sso/scim", Op::Sso(SsoOp::DisableScim), &[]),
     route("POST", "/workspaces/:workspace/invitations", Op::InviteMember, &[]),
     route("DELETE", "/workspaces/:workspace/invitations/:id", Op::RevokeWorkspaceInvite, &[]),
     // Who has access. GitHub's addresses, but for adding someone, which

@@ -6437,6 +6437,30 @@ pub static OPERATIONS: &[Operation] = &[
         body: &[],
     },
     Operation {
+        id: "disable_scim",
+        method: "DELETE",
+        path: "/workspaces/{workspace}/sso/scim",
+        tag: "Single sign-on",
+        summary: "Turn off SCIM",
+        scope: Some("workspace:admin"),
+        params: &[
+            Param { name: "workspace", location: In::Path, kind: "string", required: true, values: &[] },
+        ],
+        body: &[],
+    },
+    Operation {
+        id: "enable_scim",
+        method: "POST",
+        path: "/workspaces/{workspace}/sso/scim",
+        tag: "Single sign-on",
+        summary: "Turn on SCIM, or make a new SCIM token",
+        scope: Some("workspace:admin"),
+        params: &[
+            Param { name: "workspace", location: In::Path, kind: "string", required: true, values: &[] },
+        ],
+        body: &[],
+    },
+    Operation {
         id: "get_sso",
         method: "GET",
         path: "/workspaces/{workspace}/sso",

@@ -49,6 +49,7 @@ mod tools;
 mod why;
 mod token_policy;
 mod sso;
+mod scim;
 mod onboarding;
 mod toolkit;
 
@@ -526,6 +527,12 @@ async fn respond(mut request: Request, env: &Env, rate_policy: &mut Option<limit
     if !on_mcp && let Some(token) = path.strip_prefix("/actions/toolkit/blobs/") {
         let token = token.to_owned();
         return toolkit::blob(request, env, &services, method, &token).await;
+    }
+    // A workspace's identity provider assigning people (SCIM), with the
+    // workspace's SCIM token, which is not a g1t token (scim.rs).
+    if !on_mcp && let Some(rest) = path.strip_prefix("/scim/v2/") {
+        let rest = rest.to_owned();
+        return scim::handle(request, &services, method, &rest).await;
     }
     // g1t as an OIDC issuer for workflow jobs (oidc.rs).
     if !on_mcp && method == "GET" && path.starts_with("/actions/oidc/") {

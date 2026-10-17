@@ -646,6 +646,8 @@ export const OPERATION_SCOPES = [
   ["delete_sso", "workspace:admin"],
   ["list_sso_identities", "access:read"],
   ["unlink_sso_identity", "access:admin"],
+  ["enable_scim", "workspace:admin"],
+  ["disable_scim", "workspace:admin"],
   ["list_collaborators", "access:read"],
   ["get_collaborator_permission", "access:read"],
   ["list_repo_invitations", "access:read"],

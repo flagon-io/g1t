@@ -831,7 +831,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 415] = [
+    pub const ALL: [Op; 417] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -1199,6 +1199,8 @@ impl Op {
         Op::Sso(SsoOp::DeleteSso),
         Op::Sso(SsoOp::ListSsoIdentities),
         Op::Sso(SsoOp::UnlinkSsoIdentity),
+        Op::Sso(SsoOp::EnableScim),
+        Op::Sso(SsoOp::DisableScim),
         Op::Onboarding(OnboardingOp::GetOnboarding),
         Op::Onboarding(OnboardingOp::UpdateOnboarding),
         Op::Packages(PackagesOp::ListPackages),

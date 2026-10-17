@@ -5,7 +5,7 @@
 //! owners only, as people, and setting it up needs a paid plan. Signing in
 //! through it is a browser's trip to the provider, so it is not here.
 
-use g1t_contracts::sso::{SsoConfig, SsoProtocol, SsoSettings, sso_addresses};
+use g1t_contracts::sso::{ScimToken, SsoConfig, SsoProtocol, SsoSettings, sso_addresses};
 use g1t_contracts::{FailureCode, Outcome, Viewer};
 use serde_json::{Value, json};
 use worker::Result;
@@ -21,6 +21,8 @@ pub enum SsoOp {
     DeleteSso,
     ListSsoIdentities,
     UnlinkSsoIdentity,
+    EnableScim,
+    DisableScim,
 }
 
 /// The config fields an owner sends, as `SsoConfig` names them.
@@ -41,13 +43,15 @@ impl SsoOp {
     /// Every one: `Op::ALL` lists each as `Op::Sso(…)`, which a test checks
     /// against this.
     #[cfg(test)]
-    pub const ALL: [SsoOp; 6] = [
+    pub const ALL: [SsoOp; 8] = [
         SsoOp::GetSso,
         SsoOp::ConfigureSso,
         SsoOp::SetSsoRequired,
         SsoOp::DeleteSso,
         SsoOp::ListSsoIdentities,
         SsoOp::UnlinkSsoIdentity,
+        SsoOp::EnableScim,
+        SsoOp::DisableScim,
     ];
 
     pub fn name(self) -> &'static str {
@@ -58,6 +62,8 @@ impl SsoOp {
             SsoOp::DeleteSso => "delete_sso",
             SsoOp::ListSsoIdentities => "list_sso_identities",
             SsoOp::UnlinkSsoIdentity => "unlink_sso_identity",
+            SsoOp::EnableScim => "enable_scim",
+            SsoOp::DisableScim => "disable_scim",
         }
     }
 
@@ -69,6 +75,8 @@ impl SsoOp {
             SsoOp::DeleteSso => "Remove a workspace's single sign-on",
             SsoOp::ListSsoIdentities => "List the people linked through single sign-on",
             SsoOp::UnlinkSsoIdentity => "Unlink someone from single sign-on",
+            SsoOp::EnableScim => "Turn on SCIM, or make a new SCIM token",
+            SsoOp::DisableScim => "Turn off SCIM",
         }
     }
 
@@ -79,6 +87,8 @@ impl SsoOp {
             SsoOp::SetSsoRequired => "Whether members must sign in through the provider: then a member uses the workspace only from a session that did in the last day, and with tokens and keys once linked; held out otherwise, keeping their place. Owners are never held, and outside collaborators are not asked. Requiring it needs a paid plan and you to have signed in through it yourself (you_linked); stopping never does. Recorded as sso.required or sso.not_required. Owners only, as people.",
             SsoOp::DeleteSso => "Remove the workspace's single sign-on: forgets the provider and who everyone is there, and stops requiring it. Members keep their place. Never needs a plan. Recorded as sso.deleted. Owners only, as people.",
             SsoOp::ListSsoIdentities => "The people linked to the workspace's provider: username, subject (their id at the provider), email (as the provider gave it, for showing), linked_at and last_used_at. Owners only, as people.",
+            SsoOp::EnableScim => "Turn on SCIM for the workspace's single sign-on, or replace its token: returns token (shown this once; the old one stops working), hint (its last four characters) and scim_url, the SCIM 2.0 base URL to give the identity provider with the token as a bearer token. With SCIM on, only people the provider has assigned (active users) can sign in through single sign-on, and one it deactivates or deletes leaves the workspace at once: membership, roles, link and sessions. Owners are never removed that way. Users only; groups are not kept. Needs single sign-on set up and a paid plan. Recorded as sso.scim_enabled or sso.scim_token_rotated. Owners only, as people.",
+            SsoOp::DisableScim => "Turn off SCIM: the token stops working and the provisioned users are forgotten. Nobody is removed from the workspace, and single sign-on lets people in as before. Recorded as sso.scim_disabled. Owners only, as people.",
             SsoOp::UnlinkSsoIdentity => "Forget who someone is at the workspace's provider, so they (or another account there) link again on their next sign-in through it; their sessions go through it again. Recorded as sso.identity_unlinked. Owners only, as people.",
         }
     }
@@ -92,7 +102,7 @@ impl SsoOp {
     pub fn input(self) -> Value {
         let workspace = json!({ "type": "string", "description": "The workspace's name, e.g. \"acme\"." });
         let (properties, required): (Value, &[&str]) = match self {
-            SsoOp::GetSso | SsoOp::DeleteSso | SsoOp::ListSsoIdentities => (json!({ "workspace": workspace }), &["workspace"]),
+            SsoOp::GetSso | SsoOp::DeleteSso | SsoOp::ListSsoIdentities | SsoOp::EnableScim | SsoOp::DisableScim => (json!({ "workspace": workspace }), &["workspace"]),
             SsoOp::ConfigureSso => (
                 json!({
                     "workspace": workspace,
@@ -163,11 +173,17 @@ fn config_of(input: &Value) -> SsoConfig {
 }
 
 /// The settings, with where to point the provider.
-fn with_addresses(settings: SsoSettings, site: &str) -> Value {
+fn with_addresses(settings: SsoSettings, site: &str, api: &str) -> Value {
     let addresses = sso_addresses(site, &settings.slug);
     let mut out = serde_json::to_value(&settings).unwrap_or_default();
     out["service_provider"] = serde_json::to_value(addresses).unwrap_or_default();
+    out["service_provider"]["scim_url"] = json!(scim_url(api, &settings.slug));
     out
+}
+
+/// The SCIM 2.0 base URL for a workspace (scim.rs).
+fn scim_url(api: &str, slug: &str) -> String {
+    format!("{}/scim/v2/{}", api.trim_end_matches('/'), slug.to_lowercase())
 }
 
 pub async fn run(op: SsoOp, services: &Services, viewer: &Viewer, input: &Value) -> Result<Outcome<Value>> {
@@ -180,8 +196,9 @@ pub async fn run(op: SsoOp, services: &Services, viewer: &Viewer, input: &Value)
     let identity = &services.identity;
     let surface = services.audit.surface;
     let site = services.addresses.site.as_str();
+    let api = services.addresses.api.as_str();
     let settings = |outcome: Outcome<SsoSettings>| match outcome {
-        Outcome::Ok(settings) => Outcome::Ok(with_addresses(settings, site)),
+        Outcome::Ok(settings) => Outcome::Ok(with_addresses(settings, site, api)),
         Outcome::Fail(failure) => Outcome::Fail(failure),
     };
     Ok(match op {
@@ -240,6 +257,22 @@ pub async fn run(op: SsoOp, services: &Services, viewer: &Viewer, input: &Value)
                 Outcome::Fail(failure) => Outcome::Fail(failure),
             }
         }
+        SsoOp::EnableScim => {
+            let made: Outcome<ScimToken> =
+                g1t_kit::call(identity, "enable_scim", &json!({ "actor": actor, "slug": workspace, "surface": surface })).await?;
+            match made {
+                Outcome::Ok(made) => Outcome::Ok(json!({ "token": made.token, "hint": made.hint, "scim_url": scim_url(api, &workspace) })),
+                Outcome::Fail(failure) => Outcome::Fail(failure),
+            }
+        }
+        SsoOp::DisableScim => {
+            let off: Outcome<bool> =
+                g1t_kit::call(identity, "disable_scim", &json!({ "actor": actor, "slug": workspace, "surface": surface })).await?;
+            match off {
+                Outcome::Ok(off) => Outcome::Ok(json!({ "disabled": off })),
+                Outcome::Fail(failure) => Outcome::Fail(failure),
+            }
+        }
         SsoOp::UnlinkSsoIdentity => {
             let Some(username) = text(input, "username") else {
                 return Ok(Outcome::fail(FailureCode::Invalid, "Name the person to unlink."));
@@ -285,8 +318,9 @@ mod tests {
 
     #[test]
     fn the_answer_says_where_to_point_the_provider() {
-        let settings = SsoSettings { slug: "acme".into(), connection: None, required: false, you_linked: false, identities: vec![] };
-        let out = with_addresses(settings, "https://g1t.sh");
+        let settings = SsoSettings { slug: "acme".into(), connection: None, required: false, you_linked: false, identities: vec![], scim: None };
+        let out = with_addresses(settings, "https://g1t.sh", "https://api.g1t.sh");
+        assert_eq!(out["service_provider"]["scim_url"], "https://api.g1t.sh/scim/v2/acme");
         assert_eq!(out["service_provider"]["acs_url"], "https://g1t.sh/auth/sso/acme/saml");
         assert_eq!(out["service_provider"]["redirect_uri"], "https://g1t.sh/auth/sso/acme/callback");
         assert_eq!(out["connection"], Value::Null);

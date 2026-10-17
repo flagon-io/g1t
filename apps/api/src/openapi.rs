@@ -89,7 +89,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     ),
     (
         "Single sign-on",
-        "A workspace's own identity provider over OpenID Connect, OAuth 2.0 or SAML 2.0, on every paid plan: setting it up, requiring it of members, the people linked to it, and unlinking one. People sign in to g1t as themselves and then through the provider to use the workspace; owners are never held out. Owners only, as people.",
+        "A workspace's own identity provider over OpenID Connect, OAuth 2.0 or SAML 2.0, on every paid plan: setting it up, requiring it of members, the people linked to it, unlinking one, and SCIM, through which the provider assigns and unassigns people at /scim/v2/{workspace}. People sign in to g1t as themselves and then through the provider to use the workspace; owners are never held out. Owners only, as people.",
         &[
             Op::Sso(SsoOp::GetSso),
             Op::Sso(SsoOp::ConfigureSso),
@@ -97,6 +97,8 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::Sso(SsoOp::DeleteSso),
             Op::Sso(SsoOp::ListSsoIdentities),
             Op::Sso(SsoOp::UnlinkSsoIdentity),
+            Op::Sso(SsoOp::EnableScim),
+            Op::Sso(SsoOp::DisableScim),
         ],
     ),
     (
