@@ -194,6 +194,7 @@ export default defineConfig({
 						{ label: 'Workspaces and tokens', slug: 'guides/workspaces' },
 						{ label: 'Access and roles', slug: 'guides/access-and-roles' },
 						{ label: 'Permissions', slug: 'guides/permissions' },
+						{ label: 'Single sign-on', slug: 'guides/single-sign-on' },
 						{ label: 'Teams', slug: 'guides/teams' },
 						{ label: 'People and teams', slug: 'guides/people-and-teams' },
 						{ label: 'Managing a repository', slug: 'guides/managing-repositories' },

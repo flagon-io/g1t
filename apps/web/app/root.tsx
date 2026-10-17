@@ -518,8 +518,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </Link>
       </p>
     );
-  // A workspace that requires two-factor authentication of someone who
-  // has not turned it on: they keep their place, and cannot use it yet.
+  // A workspace that requires two-factor authentication or single sign-on
+  // of someone who has not met it: they keep their place, and cannot use it yet.
   const held = user?.held &&
     user.held.length > 0 &&
     pathname !== "/settings/two-factor" && <PolicyNotice held={user.held} />;

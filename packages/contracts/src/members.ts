@@ -33,5 +33,5 @@ export type MemberPrivileges = {
 export type PolicyHold = {
   slug: string;
   reason: string;
-  gap: "two_factor" | "verified_email" | "email_domain";
+  gap: "two_factor" | "verified_email" | "email_domain" | "sso";
 };

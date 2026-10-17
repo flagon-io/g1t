@@ -21,7 +21,8 @@
     "./coding-agents": "./src/coding-agents.ts",
     "./discovery": "./src/discovery.ts",
     "./telemetry": "./src/telemetry.ts",
-    "./agent-setup": "./src/agent-setup.ts"
+    "./agent-setup": "./src/agent-setup.ts",
+    "./sso": "./src/sso.ts"
   },
   "scripts": {
     "test": "node --test src/*.test.ts",

@@ -22,6 +22,9 @@ hmac = "0.12"
 sha1 = "0.10"
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 sha2 = "0.10"
+roxmltree = "0.20"
+miniz_oxide = "0.9"
+rsa = { version = "0.9", default-features = false, features = ["std", "sha2"] }
 
 # wasm-opt at -O1: about the same gzipped size as -O in a tenth of the
 # time.

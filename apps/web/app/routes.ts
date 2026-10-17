@@ -24,6 +24,14 @@ export default [
   route("auth/github", "routes/auth-github.ts"),
   route("auth/github/callback", "routes/auth-github-callback.tsx"),
   route("auth/github/username", "routes/auth-github-username.tsx"),
+  // A workspace's single sign-on: setting off to its identity provider,
+  // coming back from it (OpenID Connect and OAuth 2.0), what a SAML sign-in
+  // that did not work says (the provider's POST is answered before React
+  // Router, workers/sso-saml.ts), and g1t's SAML metadata.
+  route("auth/sso/:owner", "routes/auth-sso.tsx"),
+  route("auth/sso/:owner/callback", "routes/auth-sso-callback.tsx"),
+  route("auth/sso/:owner/saml", "routes/auth-sso-saml.tsx"),
+  route("auth/sso/:owner/metadata", "routes/auth-sso-metadata.ts"),
   route("integrations/github/install", "routes/github-install.ts"),
   route("integrations/github/setup", "routes/github-setup.tsx"),
   // Your own settings: one page each, so links can name the one they mean.
@@ -121,6 +129,8 @@ export default [
       route("-/members", "routes/workspace/members.tsx"),
       route("-/members/invitations", "routes/workspace/member-invitations.tsx"),
       route("-/permissions", "routes/workspace/permissions.tsx"),
+      // Single sign-on through the workspace's own identity provider.
+      route("-/sso", "routes/workspace/sso.tsx"),
       route("-/insights", "routes/workspace/insights.tsx"),
       // Pinning its projects, for the person signed in.
       route("-/pins", "routes/workspace/pins.ts"),
