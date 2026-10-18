@@ -672,3 +672,28 @@ export function parseBlockedBy(text: string): number[] | null {
   if (words.some((word) => !/^\d+$/.test(word) || Number(word) <= 0)) return null;
   return [...new Set(words.map(Number))];
 }
+
+/** Where a pull request a work item's decisions name is, by its number: null when it is not known. */
+export type PullHref = (number: number) => string | null;
+
+/**
+ * Where each of a work item's pull requests is, from its repositories and
+ * their pull requests: `/<owner>/<repo>/pull/<n>` in the one repository
+ * that has it. A number none of them has (or that two have, from before
+ * numbers were the workspace's) is not linked, rather than linked to the
+ * wrong repository. A deleted repository, with no path, has none.
+ */
+export function pullHrefs(repos: readonly { path: string; pulls: readonly { number: number }[] }[]): PullHref {
+  const where = new Map<number, string | null>();
+  for (const repo of repos) {
+    if (!repo.path) continue;
+    for (const pull of repo.pulls) {
+      const seen = where.get(pull.number);
+      where.set(pull.number, seen === undefined || seen === repo.path ? repo.path : null);
+    }
+  }
+  return (number) => {
+    const path = where.get(number);
+    return path ? `/${path}/pull/${number}` : null;
+  };
+}
