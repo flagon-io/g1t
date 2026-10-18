@@ -16,13 +16,17 @@
  * `useLive` is the same for a page over several repositories (Home,
  * the workspace's): one `watch_repos` asks for them all.
  *
+ * `useWorkspaceLive` is the same for a workspace's Work pages: a member's
+ * tab watches the workspace (`watch_workspace`), and what changes to its
+ * work items arrives the same way, whichever repositories they link.
+ *
  * Browser-only work happens in effects; on the server the hook does
  * nothing.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigation, useRevalidator, useRouteLoaderData } from "react-router";
 
-import { onRepoChanges, useFeedConnected } from "./notify-client";
+import { onRepoChanges, onWorkspaceChanges, useFeedConnected } from "./notify-client";
 import {
   FALLBACK_FOCUS_MS,
   LIVE_DEBOUNCE_MS,
@@ -30,6 +34,7 @@ import {
   type GateState,
   type RepoChange,
   type RepoMatch,
+  type WorkspaceMatch,
   atBottom,
   fallbackDue,
   gate,
@@ -73,6 +78,20 @@ export type LiveOptions = RepoLiveOptions & {
   signedIn: boolean;
   /** However many changes arrive, the page refreshes at most this often (LIVE_MIN_GAP_MS). */
   gap?: number;
+  /** A workspace whose work items the page hears of too (its slug), and which of those changes refresh it. */
+  workspace?: { slug: string; match: WorkspaceMatch } | null;
+};
+
+export type WorkspaceLiveOptions = {
+  /** The workspace's slug. */
+  workspace: string;
+  /** Which changes to its work items refresh the page. */
+  match: WorkspaceMatch;
+  /** Whether the viewer is a member: only a member's tab hears the workspace. */
+  member: boolean;
+  /** A reader at the bottom of the page stays there as new items arrive (a work item's timeline). */
+  followBottom?: boolean;
+  enabled?: boolean;
 };
 
 export type Live = RepoLive & {
@@ -113,6 +132,30 @@ async function watchRepos(paths: readonly string[], force: boolean): Promise<boo
   }
 }
 
+/** Asks to hear what changes to a workspace's work items; true when it is watched. */
+async function watchWorkspace(slug: string, force: boolean): Promise<boolean> {
+  const key = `workspace:${slug}`;
+  const now = Date.now();
+  const last = asked.get(key);
+  if (!force && last != null && now - last < ASK_AGAIN_MS) return true;
+  asked.set(key, now);
+  try {
+    const answer = await fetch("/-/notify", {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ intent: "watch_workspace", workspace: slug }),
+    });
+    if (!answer.ok) throw new Error(`status ${answer.status}`);
+    const body = (await answer.json().catch(() => null)) as { ok?: unknown } | null;
+    if (body?.ok !== true) throw new Error("refused");
+    return true;
+  } catch {
+    asked.delete(key);
+    return false;
+  }
+}
+
 // ── The page ─────────────────────────────────────────────────────────────
 
 /** Someone typing on the page, or a dialog (or a popover) open over it. */
@@ -141,6 +184,25 @@ export function useRepoLive(options: RepoLiveOptions): RepoLive {
 }
 
 /**
+ * A workspace's Work page that refreshes itself as its work items change:
+ * `useLive` over the workspace instead of repositories.
+ */
+export function useWorkspaceLive(options: WorkspaceLiveOptions): RepoLive {
+  const { workspace, match, member, followBottom } = options;
+  const { live, held, show } = useLive({
+    match: () => false,
+    repos: NO_REPOS,
+    workspace: { slug: workspace.toLowerCase(), match },
+    signedIn: member,
+    followBottom,
+    enabled: options.enabled,
+  });
+  return { live, held, show };
+}
+
+const NO_REPOS: readonly WatchedRepo[] = [];
+
+/**
  * A page that refreshes itself as any of `repos` changes (Home watches
  * the workspace's): `useRepoLive` for a page with no repository layout.
  */
@@ -151,6 +213,7 @@ export function useLive(options: LiveOptions): Live {
   // One string for the effects: the same repositories are the same watch.
   const paths = repos.map((repo) => repo.path).join(" ");
   const ids = repos.map((repo) => repo.id).join(" ");
+  const slug = options.workspace?.slug ?? "";
 
   const connected = useFeedConnected();
   const [watching, setWatching] = useState(false);
@@ -198,17 +261,17 @@ export function useLive(options: LiveOptions): Live {
     [check],
   );
 
-  // Watching the repositories: on opening the page, whenever the socket
-  // (re)connects, and before the watch runs out.
+  // Watching the repositories (and the workspace): on opening the page,
+  // whenever the socket (re)connects, and before the watch runs out.
   useEffect(() => {
-    if (!enabled || !signedIn || !connected || !paths) {
+    if (!enabled || !signedIn || !connected || (!paths && !slug)) {
       setWatching(false);
       return;
     }
     let cancelled = false;
     const ask = (force: boolean) =>
-      void watchRepos(paths.split(" "), force).then((ok) => {
-        if (!cancelled) setWatching(ok);
+      void Promise.all([paths ? watchRepos(paths.split(" "), force) : false, slug ? watchWorkspace(slug, force) : false]).then(([repos, workspace]) => {
+        if (!cancelled) setWatching(repos || workspace);
       });
     ask(true);
     const renew = setInterval(() => ask(true), REWATCH_MS);
@@ -216,7 +279,7 @@ export function useLive(options: LiveOptions): Live {
       cancelled = true;
       clearInterval(renew);
     };
-  }, [enabled, signedIn, connected, paths]);
+  }, [enabled, signedIn, connected, paths, slug]);
 
   // Changes as they arrive.
   useEffect(() => {
@@ -232,6 +295,16 @@ export function useLive(options: LiveOptions): Live {
       if (matched.length && !holding.length && heldCount.current === 0) queue();
     });
   }, [enabled, ids, queue]);
+
+  // What changes to the workspace's work items, as it arrives.
+  useEffect(() => {
+    if (!enabled || !slug) return;
+    return onWorkspaceChanges((changes) => {
+      const match = latest.current.options.workspace?.match;
+      const mine = changes.filter((change) => change.workspace?.toLowerCase() === slug && !!match?.(change));
+      if (mine.length && heldCount.current === 0) queue();
+    });
+  }, [enabled, slug, queue]);
 
   // Another branch or page: what was held is no longer about it.
   useEffect(() => {

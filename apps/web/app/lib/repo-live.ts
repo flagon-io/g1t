@@ -17,12 +17,15 @@
  * is down, it refreshes when the tab comes back into view and once a
  * minute while it is in view instead.
  */
-import type { RepoChange } from "@g1t/contracts";
+import type { RepoChange, WorkspaceChange } from "@g1t/contracts";
 
-export type { RepoChange };
+export type { RepoChange, WorkspaceChange };
 
 /** Which changes a page shows. */
 export type RepoMatch = (change: RepoChange) => boolean;
+
+/** Which changes to a workspace's work items a Work page shows. */
+export type WorkspaceMatch = (change: WorkspaceChange) => boolean;
 
 /** How long after the last matching change the page refreshes. */
 export const LIVE_DEBOUNCE_MS = 1000;
@@ -187,6 +190,18 @@ export const repoPages = {
   /** Security: alerts opening, closing and being dismissed, and the pull requests that fix them. */
   security(): RepoMatch {
     return (change) => ALERTS.includes(family(change)) || change.kind === "pull.merged" || change.kind === "pull.opened";
+  },
+};
+
+/** What each of a workspace's Work pages shows (`useWorkspaceLive`). */
+export const workPages = {
+  /** The Work list: any change to any of the workspace's work items. */
+  list(): WorkspaceMatch {
+    return () => true;
+  },
+  /** A work item: its own changes. */
+  item(number: number): WorkspaceMatch {
+    return (change) => change.number === number;
   },
 };
 

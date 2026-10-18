@@ -19,11 +19,13 @@
  *
  * So do repository pages: a tab on one watches its repository, and what
  * changes there arrives as `repo` events, handed to the page's
- * `useRepoLive` (lib/use-repo-live.ts) through `onRepoChanges`.
+ * `useRepoLive` (lib/use-repo-live.ts) through `onRepoChanges`. A
+ * workspace's Work pages the same way: what changes to its work items
+ * arrives as `workspace` events, through `onWorkspaceChanges`.
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import type { FeedCounts, FeedEvent, FeedNotification, NotifyPreferences, OwnPresence, PresenceChange, PresenceEntry, RepoChange } from "@g1t/contracts";
+import type { FeedCounts, FeedEvent, FeedNotification, NotifyPreferences, OwnPresence, PresenceChange, PresenceEntry, RepoChange, WorkspaceChange } from "@g1t/contracts";
 
 import type { DesktopRunnerBridge } from "./desktop-runner";
 import type { DesktopSettingsBridge } from "./desktop-settings";
@@ -464,6 +466,14 @@ export function onRepoChanges(listener: (changes: RepoChange[]) => void): () => 
   return () => repoListeners.delete(listener);
 }
 
+const workspaceListeners = new Set<(changes: WorkspaceChange[]) => void>();
+
+/** Hears what changes to the work items of the workspaces this tab watches (lib/use-repo-live.ts). Returns how to stop. */
+export function onWorkspaceChanges(listener: (changes: WorkspaceChange[]) => void): () => void {
+  workspaceListeners.add(listener);
+  return () => workspaceListeners.delete(listener);
+}
+
 function onEvent(event: FeedEvent): void {
   switch (event.type) {
     case "repo":
@@ -472,6 +482,15 @@ function onEvent(event: FeedEvent): void {
           listener(Array.isArray(event.changes) ? event.changes : []);
         } catch (error) {
           console.error("notify: a live page failed on a change", error);
+        }
+      }
+      break;
+    case "workspace":
+      for (const listener of workspaceListeners) {
+        try {
+          listener(Array.isArray(event.changes) ? event.changes : []);
+        } catch (error) {
+          console.error("notify: a live Work page failed on a change", error);
         }
       }
       break;

@@ -14,6 +14,8 @@ import { identity, work } from "../../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../../lib/session.server";
 import { filtered, newItemPath, repoFilter, shortPath, workFilters, workPath, workQuery } from "../../../lib/work-items";
 import { workspaceProjects } from "../../../lib/workspace-projects.server";
+import { workPages } from "../../../lib/repo-live";
+import { useWorkspaceLive } from "../../../lib/use-repo-live";
 
 export function meta({ params, location, ...args }: Route.MetaArgs) {
   const repo = new URLSearchParams(location.search).get("repo");
@@ -66,6 +68,7 @@ export default function WorkList({ loaderData }: Route.ComponentProps) {
   const repoName = filters.repo ? shortPath(filters.repo, workspace) : null;
   // The tabs keep the filters; each filter keeps the state and the others.
   const kept = new URLSearchParams(workQuery({ ...filters, state: "open" }));
+  useWorkspaceLive({ workspace, member, match: workPages.list() });
   return (
     <div>
       {loaderData.labelsFailed && (
