@@ -1,32 +1,29 @@
 ---
 title: Home
-description: Your workspace's front page. The past week in four figures, the daily signal (what your work says today, with the evidence), where you're needed now, what happened since you were last here in plain English, what is running, and the one item to start with. How every number is worked out.
+description: Your workspace's front page. A box that asks g1t, your move (everything waiting on you, and the one item to start with), the agents, runs and builds going now, this week's work day by day with what is worth a look, and what happened since you were last here in plain English. How every number is worked out.
 ---
 
 **Home** is the first page of your workspace, at `/<workspace>/-/home`.
-Across the top is [the past week](#the-past-week) in four figures, each
-against the week before. Under it, the main column is read top to
-bottom:
+It reads top to bottom, from what you can do now to what already happened:
 
-1. **[The daily signal](#the-daily-signal)**: what the workspace's work
-   says today. Its headline is the finding that matters most, and the
-   others follow, each a sentence with its evidence and where to see it.
-   Under them is a box that [asks g1t](#ask-from-home) about any of it.
-2. **Where you're needed**: everything waiting on you, however long ago
+1. **What are we building today?**: a box that [asks g1t](#ask-from-home)
+   anything about your work, with questions to start with.
+2. **[Your move](#your-move)**: everything waiting on you, however long ago
    it started, with the action beside each item. Its first row is
-   [Start here](#start-here), the one item to do first, and why.
-3. **Since you were last here**: one card for the span. It shows what people
+   [Start here](#start-here), the one item to do first, and why. Beside it,
+   **[Live](#live)**: the agents at work, workflow runs and builds going
+   now, each agent session with what it has cost so far.
+3. **[This week](#this-week)**: the week in a sentence and four figures,
+   the last two weeks day by day (what agents and people landed), and what
+   is [worth a look](#worth-a-look), each finding with its evidence and
+   pinned to the day it happened where it happened on one.
+4. **Since you were last here**: one card for the span. It shows what people
    did, what changed in plain English when you ask for it, and what landed,
-   each change with whether it is live yet.
+   each change with whether it is live yet. Beside it, kept in view as you
+   scroll: **[Spent](#spent)**, what the span cost and the month so far,
+   and **[Settled for you](#settled-for-you)**, what finished by itself.
 
-The side column stays in view as you scroll:
-
-- **[Running now](#running-now)**: workflow runs and builds still going.
-- **[Spent](#spent)**: what the span cost, and the month so far.
-- **[Settled for you](#settled-for-you)**: what finished by itself.
-
-On a phone it is one column: the past week, the daily signal, Where
-you're needed, Running now, the span, then Spent and Settled for you.
+On a phone it is one column, in the same order.
 
 For a workspace's owners, Home also opens
 [Getting started](/guides/workspaces/#getting-started), the setup guide,
@@ -39,19 +36,27 @@ else's: each figure is set against your own last weeks. When a part of g1t does 
 so, and the rest of the page still shows. Only what you ask g1t is written
 by a model: [What changed](#what-changed) and the answers in Ask.
 
-## The past week
+## This week
 
-Four figures for the last seven UTC days. Each shows how it moved since the
-seven days before (green when that is good news, red when it is not) and a
-line over the last ten weeks. Point at the line, or focus it and use the
-arrow keys, to read any week. Each figure opens the page behind it.
+A sentence for what landed in the last seven UTC days and how much of it
+was agents', then four figures. Each shows how it moved since the seven
+days before (green when that is good news, red when it is not); point at
+one for what it counts, and it opens the page behind it.
 
-| Figure                     | What it counts                                                                                                                                                                                                                                                                                                                               |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Agent-authored changes** | Pull requests that merged in the week and were an [agent's](#whose-work-is-an-agents), and the commits agent sessions pushed outside any pull request (to the default branch, most of all), each once. A workspace that pushes straight to main lands most of its work the second way.                                                       |
-| **Spend per agent change** | The week's agent [usage](/guides/usage-and-billing/#the-usage-page) at price, plus what the [sessions](/guides/sessions/) started in it cost (estimated at list price from their token usage), divided by the agent changes that landed in it: an average, not what any one cost. A dash when usage can't be read or no agent change landed. |
-| **Stalled changes**        | Pull requests open at the end of each week (now, for this one), opened three days or more before, with nothing in the three days before: no push, comment, review, timeline event, check or session. Drafts count.                                                                                                                           |
-| **Agent rework rate**      | Of the agent pull requests that merged in the week (direct commits get no review, so they're not counted here), the share a person asked for changes on before they merged.                                                                                                                                                                  |
+Under them are the last fourteen UTC days as columns: what agents landed
+(their merged pull requests and the commits their sessions pushed
+directly) in the accent, what people merged above it, last week's days
+faded. Point at a day, or focus it, to read it in full: what landed, by
+whom, and the sessions started. A finding that happened on one day, such
+as a milestone that closed, is pinned over it with the number it has in
+[Worth a look](#worth-a-look).
+
+| Figure                    | What it counts                                                                                                                                                                                                                                                                                                                               |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Landed by agents**      | Pull requests that merged in the week and were an [agent's](#whose-work-is-an-agents), and the commits agent sessions pushed outside any pull request (to the default branch, most of all), each once. A workspace that pushes straight to main lands most of its work the second way.                                                       |
+| **Cost per agent change** | The week's agent [usage](/guides/usage-and-billing/#the-usage-page) at price, plus what the [sessions](/guides/sessions/) started in it cost (estimated at list price from their token usage), divided by the agent changes that landed in it: an average, not what any one cost. A dash when usage can't be read or no agent change landed. |
+| **Gone quiet**            | Pull requests open at the end of each week (now, for this one), opened three days or more before, with nothing in the three days before: no push, comment, review, timeline event, check or session. Drafts count.                                                                                                                           |
+| **Sent back**             | Of the agent pull requests that merged in the week (direct commits get no review, so they're not counted here), the share a person asked for changes on before they merged.                                                                                                                                                                  |
 
 ### Whose work is an agent's
 
@@ -61,27 +66,28 @@ started for it, or pushing its branch. Its owner is the person who asked
 for it, else its author, so an agent's work counts toward the person it
 was for.
 
-## The daily signal
+### Worth a look
 
-First the day, then one sentence for the finding that matters most today,
-then the others. Each finding names its evidence in a line of figures,
-links to where you can see it, and has **Ask g1t**, which asks
-[Ask](/guides/ask/) to look into it. A finding with a trend has its line
-beside it. When nothing stands out, the headline says what the week did.
+Under the days, what the work says is worth a look, most important first.
+Each finding is a sentence with its evidence after it, a link to where you
+can see it, and **Ask g1t**, which asks [Ask](/guides/ask/) to look into
+it. A finding with a trend has its line beside it. When nothing stands
+out against the workspace's last weeks, it says so. None of it is about
+what needs you: that is [Your move](#your-move).
 
-| Finding                                         | When it shows                                                                                                                                                                                                                                |
-| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Work items waiting on one unreviewed change** | An open pull request no one has reviewed is for a work item that other open work items are blocked by. The one holding up the most leads.                                                                                                    |
-| **Agent drafts waiting for review**             | This week's first reviews waited at least four times as long as agents took to open the pull requests (from their session starting), and at least four hours. Without that gap: first reviews took half as long again as the weeks before.   |
-| **A milestone shipped**                         | A milestone closed in the last seven days, against its due date, with its weeks in build, its merged pull requests and its projects.                                                                                                         |
-| **Where agent spend is going**                  | More than a third of the quarter's agent spend by pull request went into one milestone (else one work item, else one project). Spend is g1t's usage on each pull request and its share of its sessions' cost.                                |
-| **Stalled changes rising**                      | At least three more stalled changes than last week, and a quarter more.                                                                                                                                                                      |
-| **Agent rework moving**                         | People asked for changes on agents' merged work at least 8 points more, or less, often than over the four weeks before (with five agent merges or more).                                                                                     |
-| **A practice catching on**                      | Two or more people started using a harness (Claude Code, Codex, Cursor and so on) this month, at least two weeks after the first person did.                                                                                                 |
-| **Who works where**                             | In a workspace where three people or more merged lately, someone started merging to a project one person has carried (three quarters of its last 90 days' merges); or merged to a project for the first time this week after work elsewhere. |
+| Finding                                   | When it shows                                                                                                                                                                                                                                |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **One unreviewed change holding up work** | An open pull request no one has reviewed is for a work item that other open work items are blocked by. The one holding up the most leads.                                                                                                    |
+| **Agent drafts waiting for review**       | This week's first reviews waited at least four times as long as agents took to open the pull requests (from their session starting), and at least four hours. Without that gap: first reviews took half as long again as the weeks before.   |
+| **A milestone closed**                    | A milestone closed in the last seven days, against its due date, with its weeks in build, its merged pull requests and its projects.                                                                                                         |
+| **Where agent spend is going**            | More than a third of the quarter's agent spend by pull request went into one milestone (else one work item, else one project). Spend is g1t's usage on each pull request and its share of its sessions' cost.                                |
+| **More changes gone quiet**               | At least three more stalled changes than last week, and a quarter more.                                                                                                                                                                      |
+| **Agent rework moving**                   | People asked for changes on agents' merged work at least 8 points more, or less, often than over the four weeks before (with five agent merges or more).                                                                                     |
+| **A practice catching on**                | Two or more people started using a harness (Claude Code, Codex, Cursor and so on) this month, at least two weeks after the first person did.                                                                                                 |
+| **Who works where**                       | In a workspace where three people or more merged lately, someone started merging to a project one person has carried (three quarters of its last 90 days' merges); or merged to a project for the first time this week after work elsewhere. |
 
 Findings are ordered by how much they hold up: blocked work first, then
-waits, then what shipped and where spend went. Up to five show, and the
+waits, then what closed and where spend went. Up to four show, and the
 rest are one click away. What the work says is read again at most every
 five minutes for each person, so a figure can be up to five minutes
 behind. The same reads, at more length, are on the
@@ -89,7 +95,7 @@ behind. The same reads, at more length, are on the
 
 ## Ask from Home
 
-The box under the daily signal asks g1t anything about your work. Type a question and
+The box at the top of Home asks g1t anything about your work. Type a question and
 press **Enter** (**Shift+Enter** starts a new line): the top bar's
 [Ask](/guides/ask/) panel opens and sends it, and the answer streams in
 there. Under the box are questions to start with:
@@ -109,7 +115,7 @@ Chat. It answers with your workspace's own AI provider, so an owner has to
 still answering an earlier question, the panel opens with your question
 in its box rather than sending it, so nothing you typed is lost.
 
-## Where you're needed
+## Your move
 
 This list has no time window: something that started waiting a week ago
 is here until you deal with it. Each row says what it is, what is at
@@ -145,11 +151,11 @@ waited, longest first:
 6. Mentions and direct messages.
 
 The list shows the first eight rows; **Show more** opens the rest. The
-sentence under the page's heading starts with how many things need you.
+line under its heading says how many things need you.
 
 ## Start here
 
-**Start here** is the first row of Where you're needed, set apart at the
+**Start here** is the first row of Your move, set apart at the
 top: the most pressing tier, and within it the row that has waited
 longest. g1t picks it with that rule, so the same rows always give the
 same pick. It says why, such as "Everything it needs is met; it lands when
@@ -192,10 +198,10 @@ How a visit is counted:
 - With no visit on record, Home shows the last 24 hours and says so. After
   more than 14 days away, it shows the last 14 days.
 
-The sentence under the heading sums it up, for example:
+The sentence under the card's heading sums it up, for example:
 
-> 8 things need you. Since Tuesday evening, 3 people pushed 41 commits and
-> merged 5 changes, and 12 changes landed.
+> Since Tuesday evening, 3 people pushed 41 commits and merged 5
+> changes, and 12 changes landed.
 
 It says what people did first (the commits they pushed and the changes
 they merged; if neither, the messages they sent), then everything that
@@ -327,10 +333,14 @@ trailer. The change is still yours, and stays in the same list. When one of its 
 requests, pushes and releases, deployments) didn't answer, the card says
 so under the list.
 
-## Running now
+## Live
 
-At the top of the side column, what is going right now, longest-going
-first, each with its state and how long it has gone:
+Beside Your move, what is going right now. First the agents at work: each
+live [session](/guides/sessions/) of a harness (Claude Code, Codex and so
+on) or a hosted agent, with what it is on, who runs it, how long it has
+gone, its subagents, and what it has cost so far, estimated at list price
+from its token usage. Then workflow runs and builds, longest-going first,
+each with its state and how long it has gone:
 
 | Kind         | What it is                                                                                                                                                               |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -339,7 +349,7 @@ first, each with its state and how long it has gone:
 
 ## Spent
 
-In the side column: what the workspace spent over the span, from its
+Beside the span: what the workspace spent over it, from its
 [statement](/guides/usage-and-billing/), with each line at its price: what
 was charged plus what your plan's included usage, a trial, a pool or a
 discount paid of it. The lines are the statement's kinds of charge, such
@@ -356,7 +366,7 @@ to the statement.
 
 ## Settled for you
 
-At the bottom of the side column: your notifications in this workspace
+Under Spent: your notifications in this workspace
 that [settled themselves](/guides/notifications/#threads-that-settle-themselves)
 in the span, newest first, each with why, such as **CI passed in run 330**
 or **Merged by @ana**: a later run passed, the pull request merged, the
@@ -368,8 +378,7 @@ opens the notifications that are done.
 Home keeps up with the workspace without a reload. What lands, starts
 running, finishes or comes to need you while you are on the page joins its
 list, sliding in at its place and lit for a moment; counts and the
-sentence under the heading update with it. Runs that finish leave Running
-now.
+lines update with it. Sessions that end and runs that finish leave Live.
 
 | Home updates when                                                                                                     | From                                    |
 | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
@@ -394,13 +403,12 @@ Refreshing in place keeps the same span: it is the same visit.
 A member whose membership does not include Code sees Home without anything
 from Code:
 
-- The past week and the daily signal are not shown. The page opens with
-  **What are we building today?** and the box that asks g1t.
+- This week is not shown.
 - People shows what was said and the artifacts edited; nothing from
   repositories.
-- Where you're needed has no rows from Code, and no notifications about a
+- Your move has no rows from Code, and no notifications about a
   repository.
-- Landed and Running now are not shown.
+- Landed is not shown, and Live has no sessions, runs or builds.
 - Spent is the same for every member.
 
 ## When something doesn't answer
@@ -408,18 +416,17 @@ from Code:
 Each section reads its own part of g1t and shows as soon as it has it.
 When one does not answer:
 
-- Where you're needed and Running now name the parts that didn't answer,
+- Your move and Live name the parts that didn't answer,
   so an empty list never reads as nothing waiting.
 - People counts what could be read, and names the part that is missing
   (Code or Chat). If nothing could be read, the card says so, and the
-  sentence under the heading says what people did couldn't be read.
+  sentence under the card's heading says what people did couldn't be read.
 - Landed and Spent each say their part didn't answer. When
   deployments or sessions can't be read, Landed shows its rows without
   their live labels or agent markers.
 - Settled for you says when your notifications can't be read.
-- The daily signal says when the work couldn't be read, and the past week
-  is left out. When some projects didn't answer, it says its findings
-  leave them out.
+- This week says when the work couldn't be read. When some projects
+  didn't answer, it says the week leaves them out.
 - What changed says when Ask can't be reached or isn't set up, or when
   the question could not be sent.
 - If your last visit can't be read, the span is the last 24 hours and the

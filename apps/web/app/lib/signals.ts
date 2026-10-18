@@ -315,7 +315,7 @@ export function pulse({ slug, weeks, spend }: PulseInput): PulseTile[] {
   return [
     {
       key: "merges",
-      label: "Agent-authored changes",
+      label: "Landed by agents",
       value: String(agentChanges(now)),
       delta: deltaOf(agentChanges(now), before ? agentChanges(before) : null, count, true),
       series: weeks.map(agentChanges),
@@ -325,7 +325,7 @@ export function pulse({ slug, weeks, spend }: PulseInput): PulseTile[] {
     },
     {
       key: "spend",
-      label: "Spend per agent change",
+      label: "Cost per agent change",
       value: dollars(perMerge[at] ?? null),
       delta: deltaOf(perMerge[at] ?? null, before ? (perMerge[at - 1] ?? null) : null, (abs) => dollars(abs), false),
       series: perMerge,
@@ -335,7 +335,7 @@ export function pulse({ slug, weeks, spend }: PulseInput): PulseTile[] {
     },
     {
       key: "stalled",
-      label: "Stalled changes",
+      label: "Gone quiet",
       value: String(now.stalled),
       delta: deltaOf(now.stalled, before?.stalled ?? null, count, false),
       series: weeks.map((week) => week.stalled),
@@ -345,7 +345,7 @@ export function pulse({ slug, weeks, spend }: PulseInput): PulseTile[] {
     },
     {
       key: "rework",
-      label: "Agent rework rate",
+      label: "Sent back",
       value: percent(rework[at] ?? null),
       delta: deltaOf(rework[at] ?? null, before ? (rework[at - 1] ?? null) : null, (abs) => `${(abs * 100).toFixed(1).replace(/\.0$/, "")} pts`, false),
       series: rework,
@@ -369,6 +369,8 @@ export type Signal = {
   trend?: { values: (number | null)[]; points: string[]; caption: string; range: string };
   /** How much it matters today: findings are shown highest first. */
   weight: number;
+  /** The UTC day it happened (`YYYY-MM-DD`), when it happened on one: Home pins it there on the week. */
+  day?: string;
   /** What Ask is asked, to look into it. */
   ask: string;
 };
@@ -411,7 +413,10 @@ export function blockedSignal(ctx: SignalContext): Signal | null {
   const shown = top.blocks.slice(0, 3).map((number) => `#${number}`);
   return {
     key: "blocked",
-    headline: n === 1 ? "A work item is waiting on a change no one has reviewed." : `${countWord(n)} work items are waiting on one unreviewed change.`,
+    headline:
+      n === 1
+        ? `${repo.name}#${top.number} holds up a work item, and no one has reviewed it yet.`
+        : `${repo.name}#${top.number} holds up ${countWord(n).toLowerCase()} work items, and no one has reviewed it yet.`,
     facts: [
       `${repo.name}#${top.number} ${top.title}`,
       `open ${spoken(ago(ctx.now, top.createdAt))}`,
@@ -542,10 +547,10 @@ export function spendSignal(ctx: SignalContext): Signal | null {
   if (!top) return null;
   const share = top.micros / total;
   if (share < 0.35 || groups.size < 2) return null;
-  const amount = share > 0.5 ? "More than half" : share > 1 / 3 ? "More than a third" : `${Math.round(share * 100)}%`;
+  const amount = share > 0.5 ? "more than half" : share > 1 / 3 ? "more than a third" : `${Math.round(share * 100)}%`;
   return {
     key: "spend",
-    headline: `${amount} of this quarter's agent spend is going into ${top.label}.`,
+    headline: `${top.label.charAt(0).toUpperCase()}${top.label.slice(1)} took ${amount} of the agent spend this quarter.`,
     facts: [`${dollars(top.micros)} of ${dollars(total)}`, "quarter to date"],
     link: { label: "See the spend", to: `/${ctx.slug}/-/workspace#spend` },
     weight: 25 + share * 40,
@@ -580,7 +585,8 @@ export function shippedSignal(ctx: SignalContext): Signal | null {
   }
   return {
     key: "shipped",
-    headline: `${recent.title} shipped on ${weekday}${schedule}.`,
+    headline: `${recent.title} closed ${weekday}${schedule}.`,
+    day: recent.closedAt!.slice(0, 10),
     facts: [
       `${weeksIn} ${weeksIn === 1 ? "week" : "weeks"} in build`,
       `${pulls.length} ${pulls.length === 1 ? "change" : "changes"}`,
@@ -607,7 +613,7 @@ export function stalledSignal(ctx: SignalContext): Signal | null {
     trend: {
       values: ctx.weeks.map((week) => week.stalled),
       points: ctx.weeks.map((week) => `Week of ${weekLabel(week.start)}: ${week.stalled}`),
-      caption: "Stalled changes",
+      caption: "Gone quiet",
       range: `${ctx.weeks[0]!.stalled} → ${now.stalled} over ${ctx.weeks.length} weeks`,
     },
     weight: 30 + Math.min(25, more * 2),
@@ -815,6 +821,7 @@ export function groundSignal(ctx: SignalContext): Signal | null {
     facts: [`${first.elsewhere} merges elsewhere before`, `first in ${repo.name}`],
     link: { label: "See the people", to: `/${ctx.slug}/-/workspace#quiet` },
     weight: 20 + Math.min(10, others * 3),
+    day: first.firstMergedAt.slice(0, 10),
     ask: `What did ${first.name} change in ${repo.namespace}/${repo.name}?`,
   };
 }
@@ -835,20 +842,50 @@ export function findings(ctx: SignalContext): Signal[] {
   return found.sort((a, b) => b.weight - a.weight);
 }
 
-/** The headline when nothing stands out: still a sentence about the week. */
-export function quietHeadline(week: WeekTotals | undefined): string {
+/**
+ * The week in a sentence: what landed and how much of it was agents'. It
+ * says nothing about what needs anyone; Home leads with that on its own.
+ */
+export function weekSummary(week: WeekTotals | undefined): string {
   const landed = week ? allChanges(week) : 0;
-  if (!week || landed === 0) return "A quiet week: nothing has landed yet, and nothing is stuck.";
+  if (!week || landed === 0) return "Nothing has landed this week yet.";
   const share = agentShare(week);
-  return `${countWord(landed)} ${landed === 1 ? "change" : "changes"} landed this week${share ? `, ${percent(share)} of them an agent's` : ""}, and nothing needs a closer look.`;
+  return `${countWord(landed)} ${landed === 1 ? "change" : "changes"} landed this week${share ? `, ${percent(share)} of them by agents` : ""}.`;
 }
 
-/** What Home shows: the pulse, and the findings with the one that leads. */
+/** One day on Home's week: what landed, agents' and people's, and the sessions started. */
+export type DayBar = { day: string; agent: number; people: number; sessions: number };
+
+/**
+ * The last `count` UTC days to `now`, oldest first, every repository's
+ * rows added up; a day with nothing in it is zeros. Agents' are their
+ * merged pull requests and the commits their sessions pushed directly;
+ * people's, the other merged pull requests.
+ */
+export function dayBars(days: Pick<SignalDay, "day" | "merged" | "agentMerged" | "agentCommits" | "sessions">[], now: number, count = SIGNAL_DAYS): DayBar[] {
+  const until = utcDay(now);
+  const bars = new Map<string, DayBar>();
+  for (let i = count - 1; i >= 0; i--) {
+    const day = addDays(until, -i);
+    bars.set(day, { day, agent: 0, people: 0, sessions: 0 });
+  }
+  for (const row of days) {
+    const bar = bars.get(row.day);
+    if (!bar) continue;
+    bar.agent += row.agentMerged + (row.agentCommits ?? 0);
+    bar.people += Math.max(0, row.merged - row.agentMerged);
+    bar.sessions += row.sessions;
+  }
+  return [...bars.values()];
+}
+
+/** What Home shows of the work: the week's figures, its days, and the findings, most important first. */
 export type DailySignal = {
   tiles: PulseTile[];
   findings: Signal[];
-  /** The headline when no finding stands out. */
-  quiet: string;
+  /** The week in a sentence (`weekSummary`). */
+  summary: string;
+  days: DayBar[];
   complete: boolean;
 };
 
@@ -874,7 +911,8 @@ export function dailySignal(data: {
       quarterUsage: data.quarterUsage,
       quarter: data.range.quarter,
     }),
-    quiet: quietHeadline(data.weeks[data.weeks.length - 1]),
+    summary: weekSummary(data.weeks[data.weeks.length - 1]),
+    days: dayBars(data.signals.days, data.now),
     complete: data.complete,
   };
 }
