@@ -683,8 +683,9 @@ each person sees only the projects they can read.
 2. **Spend, threaded to the work**: the quarter's work in four columns:
    each milestone, its work items, each work item's change set in each
    project, and that change set's pull requests. Each box is sized by
-   what the agents' usage on its pull requests came to, and shaded by how
-   many were an agent's (**Agent use**, less to more). Choose a box to
+   what agents cost on its pull requests (g1t's metered usage, and each
+   pull request's share of its sessions' cost estimated at list price),
+   and shaded by how many were an agent's (**Agent use**, less to more). Choose a box to
    open what is under it. Work with no milestone or work item has its own
    box. When usage can't be read, boxes are sized by pull requests.
 3. **What's moving and what's waiting**: each team's last two weeks, day
@@ -701,6 +702,9 @@ each person sees only the projects they can read.
      started there this month.
    - **New ground**: people who merged to a project for the first time in
      the last two weeks, after three or more merges elsewhere.
+   - **Spreading**: a harness two or more people in a team started using
+     this month, at least two weeks after the first person did (across
+     the workspace, when it has no teams).
    - **New habits**: people whose first agent-made change merged in the
      last two weeks, after three or more of their own.
 
