@@ -15,11 +15,11 @@ test("a card shows only its links: nothing answers the rest any more", () => {
 });
 
 test("a draft issue's chip says where it is", () => {
-  assert.deepEqual(cardChip({ kind: "draft_issue", state: "Draft" }), { tone: "accent", live: false, outline: true });
-  assert.equal(cardChip({ kind: "draft_issue", state: "Filed" })?.tone, "success");
-  assert.equal(cardChip({ kind: "draft_issue", state: "Discarded" })?.tone, "neutral");
-  assert.equal(cardChip({ kind: "draft_issue", state: "Something new" })?.tone, "neutral");
-  assert.equal(cardChip({ kind: "draft_issue", state: null }), null);
+  assert.deepEqual(cardChip({ kind: "draft_work_item", state: "Draft" }), { tone: "accent", live: false, outline: true });
+  assert.equal(cardChip({ kind: "draft_work_item", state: "Filed" })?.tone, "success");
+  assert.equal(cardChip({ kind: "draft_work_item", state: "Discarded" })?.tone, "neutral");
+  assert.equal(cardChip({ kind: "draft_work_item", state: "Something new" })?.tone, "neutral");
+  assert.equal(cardChip({ kind: "draft_work_item", state: null }), null);
   assert.equal(cardChip({ kind: "pull", state: "Merged" }), null);
 });
 

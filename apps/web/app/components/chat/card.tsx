@@ -36,8 +36,8 @@ import { codeAccessPath } from "../../lib/workspace-nav";
 
 const CARD_ICONS: Record<string, ReactNode> = {
   pull: <GitPullRequest size={16} />,
-  issue: <CircleDot size={16} />,
-  draft_issue: <CircleDotDashed size={16} />,
+  work_item: <CircleDot size={16} />,
+  draft_work_item: <CircleDotDashed size={16} />,
   task: <ListChecks size={16} />,
   deploy: <Rocket size={16} />,
   approval: <ShieldCheck size={16} />,

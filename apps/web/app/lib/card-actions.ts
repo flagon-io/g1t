@@ -18,12 +18,12 @@ const DRAFT_CHIPS: Record<string, CardChip> = {
 };
 
 /**
- * How a draft issue's state reads; null for other kinds (a session's chip
+ * How a draft work item's state reads; null for other kinds (a session's chip
  * is lib/session-card.ts's, others are guessed from their words).
  */
 export function cardChip(card: Pick<MessageCard, "kind" | "state">): CardChip | null {
   if (!card.state) return null;
-  if (card.kind === "draft_issue") return DRAFT_CHIPS[card.state.trim().toLowerCase()] ?? { tone: "neutral", live: false };
+  if (card.kind === "draft_work_item") return DRAFT_CHIPS[card.state.trim().toLowerCase()] ?? { tone: "neutral", live: false };
   return null;
 }
 
