@@ -42,9 +42,10 @@
 //! hear of it; whoever ignores its origin hears of nothing on it. Its
 //! items are kept with its workspace and its origin, if it has one, and
 //! are shown to the workspace's members and to whoever can read the
-//! origin. Those who hear of it only by watching another repository it is
-//! linked to are not pushed it live: whether they may see it is known only
-//! when their inbox is read.
+//! origin (the event's own repository, never the first of `repoIds`).
+//! Those who hear of it only by watching another repository it is linked
+//! to are told only when they may read it: members of its workspace, or
+//! anyone when its origin is public.
 //!
 //! Nobody is told of what they did themselves, though an outcome they set
 //! off (checks, a workflow, a deployment, g1t's work) is theirs to hear of.
@@ -172,18 +173,20 @@ pub fn wants(event: &Event) -> Option<Wanted> {
     let data = &event.data;
     let text = |key: &str| data[key].as_str().filter(|value| !value.is_empty()).map(str::to_owned);
     let number = |key: &str| data[key].as_u64().and_then(|n| u32::try_from(n).ok());
-    let repo_id = text("repoId").or_else(|| event.repo_id.clone());
     // A work item's events, and comments on one: it may have no origin.
+    // Its origin is the event's own repository and nothing else: never a
+    // `repoId` in its data, nor the first of `repoIds`, which may be a
+    // repository it is only linked to, whose readers may not see it.
     let on_item = event.kind == "comment.created" && data["itemId"].is_string();
     if ITEM_TOLD.contains(&event.kind.as_str()) || on_item {
         return Some(Wanted {
-            repo_id,
+            repo_id: event.repo_id.clone().filter(|id| !id.is_empty()),
             number: Some(number("number")?),
             comment_id: if on_item { Some(text("commentId")?) } else { None },
             item: Some(item_of(data)?),
         });
     }
-    let repo_id = repo_id?;
+    let repo_id = text("repoId").or_else(|| event.repo_id.clone())?;
     let on = |number: Option<u32>, comment_id: Option<String>| {
         Some(Wanted {
             repo_id: Some(repo_id.clone()),
@@ -1392,10 +1395,6 @@ struct Written {
     event_id: String,
     /// Its event leaves nothing to do (`CLOSES`): settled once written.
     closing: bool,
-    /// Pushed live: not for someone who hears of a work item only by
-    /// watching a repository it is linked to other than its origin, unless
-    /// they are a member of its workspace, who may see it.
-    live: bool,
     /// The thread it is on, which notify keeps with what it replays.
     thread: String,
 }
@@ -1507,7 +1506,7 @@ async fn deliver_events(db: &D1Database, sources: &Sources<'_>, events: &[Event]
     if let Some(notify) = sources.notify {
         let live = written
             .iter()
-            .filter(|item| !item.closing && item.live)
+            .filter(|item| !item.closing)
             .map(|item| {
                 let live = live_notification(&item.event_id, &item.notice, &item.url, &rfc3339(now_ms()), Some(&item.thread));
                 (item.notice.username.clone(), live)
@@ -1741,6 +1740,36 @@ async fn deliver_one(
         None => repo.clone().unwrap_or_default(),
     };
     let mut told = notices(event, &place, &actor, subject.as_ref(), &audience);
+    // Who hears of a work item only by watching another repository it is
+    // linked to is told only if they may read it: a member of its
+    // workspace, or anyone when its origin is public. Nothing of it (title,
+    // body, push, email, count) reaches anyone else.
+    if let Some(item) = &wanted.item {
+        let hearsay: Vec<String> = told
+            .iter()
+            .filter(|notice| only_elsewhere(notice, &elsewhere))
+            .map(|notice| notice.username.clone())
+            .collect();
+        if !hearsay.is_empty() {
+            let asked = MembersAmongArgs { workspace: item.workspace.clone(), usernames: hearsay.clone() };
+            let members: HashSet<String> = g1t_kit::call::<_, Vec<String>>(sources.identity, "members_among", &asked)
+                .await
+                .unwrap_or_else(|error| {
+                    worker::console_error!("inbox: could not tell who is a member of {}: {error}", item.workspace);
+                    Vec::new()
+                })
+                .into_iter()
+                .map(|name| name.to_lowercase())
+                .collect();
+            let public = match &wanted.repo_id {
+                Some(origin) if hearsay.iter().any(|name| !members.contains(name)) => {
+                    crate::live::public_of(sources.repos, vec![origin.clone()]).await.contains(origin)
+                }
+                _ => false,
+            };
+            told.retain(|notice| may_hear(notice, &elsewhere, &members, public));
+        }
+    }
     let mut statements =
         subscriptions::auto_subscribe(db, &thread.key, wanted.repo_id.as_deref(), &subscribes(event, subject.as_ref()), &event.time)?;
     // A scan's summary: one that opened nothing brings the thread up to date
@@ -1848,39 +1877,10 @@ async fn deliver_one(
             news.extend(rows.into_iter().map(|row| row.username));
         }
     }
-    // Who hears of a work item only by watching another of its
-    // repositories is pushed it live when they are a member of its
-    // workspace, who may see it (all one filed with no repository has).
-    let members: HashSet<String> = match &wanted.item {
-        Some(item) => {
-            let usernames: Vec<String> = told
-                .iter()
-                .filter(|notice| notice.reason == Reason::Subscribed && elsewhere.contains(&notice.username) && news.contains(&notice.username))
-                .map(|notice| notice.username.clone())
-                .collect();
-            if usernames.is_empty() {
-                HashSet::new()
-            } else {
-                let asked = MembersAmongArgs { workspace: item.workspace.clone(), usernames };
-                g1t_kit::call::<_, Vec<String>>(sources.identity, "members_among", &asked)
-                    .await
-                    .unwrap_or_else(|error| {
-                        worker::console_error!("inbox: could not tell who is a member of {}: {error}", item.workspace);
-                        Vec::new()
-                    })
-                    .into_iter()
-                    .collect()
-            }
-        }
-        None => HashSet::new(),
-    };
     Ok(told
         .into_iter()
         .filter(|notice| news.contains(&notice.username))
         .map(|notice| Written {
-            live: !(notice.reason == Reason::Subscribed
-                && elsewhere.contains(&notice.username)
-                && !members.contains(&notice.username)),
             notice,
             repo_id: wanted.repo_id.clone(),
             workspace: wanted.item.as_ref().map(|item| item.workspace.clone()),
@@ -1890,6 +1890,22 @@ async fn deliver_one(
             thread: thread.key.clone(),
         })
         .collect())
+}
+
+/// Whether a notice is someone's only by watching a repository a work item
+/// is linked to other than its origin: whether they may read it is not
+/// known from that.
+fn only_elsewhere(notice: &Notice, elsewhere: &HashSet<String>) -> bool {
+    notice.reason == Reason::Subscribed && elsewhere.contains(&notice.username)
+}
+
+/// Whether a work item's notice may be written: anyone told for a reason
+/// of their own, or who watches its origin; one who only watches another
+/// repository it is linked to (`elsewhere`) when they may read it, as a
+/// member of its workspace (`members`) or because its origin is public.
+/// An item with no origin is its workspace members' alone.
+fn may_hear(notice: &Notice, elsewhere: &HashSet<String>, members: &HashSet<String>, origin_public: bool) -> bool {
+    !only_elsewhere(notice, elsewhere) || origin_public || members.contains(&notice.username)
 }
 
 /// Brings a person's thread up with new activity, or starts it. `?1` id,
@@ -2828,6 +2844,42 @@ mod tests {
         };
         assert_eq!(handled_by(&comment, Some(&on)).map(|settle| settle.scope), Some(Scope::Thread("item:wki_1".into())));
         assert!(subscribable("item:wki_1") && subscribable("rep_1#7") && !subscribable("rep_1/run/ci@main"));
+    }
+
+    #[test]
+    fn a_work_items_origin_is_its_events_repository_alone() {
+        // Filed in the workspace and linked to rep_2: no origin, whatever
+        // its data's `repoId` or the first of its `repoIds` say.
+        let data = json!({ "itemId": "wki_1", "workspace": "acme", "number": 40, "commentId": "cmt_1", "repoId": "rep_2", "repoIds": ["rep_2"] });
+        for kind in ["work_item.opened", "comment.created"] {
+            let wanted = wants(&Event { repo_id: None, ..event(kind, None, data.clone()) }).unwrap_or_else(|| panic!("{kind}"));
+            assert_eq!(wanted.repo_id, None, "{kind}");
+        }
+        // With an origin, the event's repository, not its data's.
+        let wanted = wants(&event("comment.created", None, data)).unwrap();
+        assert_eq!(wanted.repo_id.as_deref(), Some("rep_1"));
+    }
+
+    #[test]
+    fn who_only_watches_a_linked_repository_hears_of_a_work_item_they_may_read() {
+        let notice = |username: &str, reason: Reason| Notice {
+            username: username.into(),
+            reason,
+            severity: Severity::Info,
+            title: "acme#40 Secret plans".into(),
+            body: String::new(),
+        };
+        let set = |names: &[&str]| names.iter().map(|name| (*name).to_owned()).collect::<HashSet<String>>();
+        let elsewhere = set(&["cy", "dee"]);
+        let members = set(&["dee"]);
+        // Its origin's watchers and whoever is told for a reason of their own.
+        assert!(may_hear(&notice("ana", Reason::Subscribed), &elsewhere, &members, false));
+        assert!(may_hear(&notice("cy", Reason::Mention), &elsewhere, &members, false));
+        // A member of its workspace may read it.
+        assert!(may_hear(&notice("dee", Reason::Subscribed), &elsewhere, &members, false));
+        // Anyone else only when its origin is public.
+        assert!(!may_hear(&notice("cy", Reason::Subscribed), &elsewhere, &members, false));
+        assert!(may_hear(&notice("cy", Reason::Subscribed), &elsewhere, &members, true));
     }
 
     #[test]
