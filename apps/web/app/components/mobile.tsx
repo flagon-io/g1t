@@ -123,11 +123,12 @@ type Tab = { key: ModeKey; label: string; badge?: { count: number; loud: boolean
  * The bottom bar of a phone, flat along the bottom edge under a rule, as
  * the rail stands flat beside the page on a computer: Home, Work, Chat and
  * Notifications (lib/apps.ts `PHONE_TABS`), each with what is unread, and
- * More, whose sheet starts with Code: a phone triages and talks about work
- * far more than it browses code. The tab you are in has the rail's own
+ * More, whose sheet starts with Explore, then Code: a phone triages and
+ * talks about work far more than it browses code. The tab you are in has the rail's own
  * mark: its icon on the sidebar's accent. It steps aside while the keyboard is up
  * and inside a conversation. The tab you are in, tapped again, opens its
- * mode's menu (its sidebar: Work's saved views, labels and milestones).
+ * mode's menu (its sidebar: Work's views, board, labels, milestones and
+ * sessions).
  */
 export function BottomBar({
   user,
@@ -258,10 +259,11 @@ function MoreTile({ to, icon, label, onClick, disabled, note }: { to?: string; i
 
 /**
  * More, from the bottom bar: a flat panel standing on it, with g1t's
- * mark at its top and a grid of big tiles: Code (for a member with Code
- * access), all apps, your pinned apps, Artifacts, Routines, People,
- * Workspace, Explore, and "You and
- * help", which opens your account's sheet. Browsing beyond your
+ * mark at its top and a grid of big tiles: Explore (second in the rail
+ * on a computer), Code (for a member with Code access), all apps, your
+ * pinned apps, Artifacts, Routines, People, Workspace, and "You and
+ * help", which opens your account's sheet. Sessions are Work's: its menu
+ * (the Work tab tapped again) has them. Browsing beyond your
  * workspaces, Explore opens Explore's menu (`onExplore`) rather than the
  * page.
  */
@@ -301,18 +303,7 @@ function MoreSheet({
               <span className="ml-auto truncate font-mono text-xs text-faint">{slug}</span>
             </div>
             <div className="grid grid-cols-4 gap-1.5">
-              {/* Sessions first, what is cooking, then Code for a member who has it: both left the bar for Work. */}
-              <MoreTile to={appOf("sessions").path(slug)} icon={appIcon("sessions", 20)} label="Sessions" />
-              {apps.includes("code") && <MoreTile to={appOf("code").path(slug)} icon={appIcon("code", 20)} label="Code" />}
-              <MoreTile to={`/${slug}/-/apps`} icon={<LayoutGrid size={20} />} label="All apps" />
-              {shown.map((app) => (
-                <MoreTile key={app.key} to={app.to} icon={app.icon(26)} label={app.name} />
-              ))}
-              {apps
-                .filter((key) => key !== "code" && key !== "sessions")
-                .map((key) => (
-                  <MoreTile key={key} to={appOf(key).path(slug)} icon={appIcon(key, 20)} label={appOf(key).name} />
-                ))}
+              {/* Explore first, second in the rail on a computer; then Code for a member who has it, which left the bar for Work. */}
               {onExplore ? (
                 <MoreTile
                   icon={<Compass size={20} />}
@@ -325,6 +316,16 @@ function MoreSheet({
               ) : (
                 <MoreTile to="/explore" icon={<Compass size={20} />} label="Explore" />
               )}
+              {apps.includes("code") && <MoreTile to={appOf("code").path(slug)} icon={appIcon("code", 20)} label="Code" />}
+              <MoreTile to={`/${slug}/-/apps`} icon={<LayoutGrid size={20} />} label="All apps" />
+              {shown.map((app) => (
+                <MoreTile key={app.key} to={app.to} icon={app.icon(26)} label={app.name} />
+              ))}
+              {apps
+                .filter((key) => key !== "code")
+                .map((key) => (
+                  <MoreTile key={key} to={appOf(key).path(slug)} icon={appIcon(key, 20)} label={appOf(key).name} />
+                ))}
               <MoreTile
                 icon={<Avatar name={user.username} image={user.avatar} size={24} />}
                 label="You and help"
@@ -561,9 +562,9 @@ const soonPagesOf = (): Record<string, ProjectPage> =>
 /**
  * A project's pages along the bottom of its header: the sidebar's own list
  * (lib/chrome.ts) as a row of tabs that scrolls sideways on a phone, the
- * current one underlined on the header's border and kept in view, so Work
- * and Pull requests are one tap away. Work is the workspace's Work list
- * filtered to the project (lib/work-items.ts `repoWorkPath`). From 768px a member's sidebar has
+ * current one underlined on the header's border and kept in view, so Pull
+ * requests is one tap away. A project's work items are Work filtered to it
+ * (lib/work-items.ts `repoWorkPath`), from the palette. From 768px a member's sidebar has
  * them; a visitor, who has none, always sees the row.
  */
 export function ProjectStrip({

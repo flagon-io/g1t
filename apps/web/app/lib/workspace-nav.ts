@@ -215,7 +215,7 @@ export function workspaceRedirect(pathname: string, search = ""): string | null 
 
 /**
  * The rail's modes. Home is the front page; Work is the workspace's work
- * items, for every member;
+ * items and the sessions working on them, for every member;
  * Chat, Code and Artifacts are where work happens; Notifications
  * spans them; People is who belongs; Workspace is the workspace itself,
  * its settings area: who has access, money, policies and how each part is
@@ -231,7 +231,6 @@ export function workspaceRedirect(pathname: string, search = ""): string | null 
 export type ModeKey =
   | "home"
   | "work"
-  | "sessions"
   | "chat"
   | "notifications"
   | "code"
@@ -247,8 +246,8 @@ export type ModeKey =
 /** Workspace pages under `-/`, by the mode they belong to. Anything else of the workspace's is Code's. */
 const PAGE_MODES: Record<string, ModeKey> = {
   home: "home",
+  // Work's sessions (`-/work/sessions`) are Work's too.
   work: "work",
-  sessions: "sessions",
   chat: "chat",
   artifacts: "artifacts",
   routines: "routines",
@@ -312,8 +311,6 @@ export function modeHome(mode: ModeKey, slug: string): string {
       return homePagePath(slug);
     case "work":
       return `/${slug}/-/work`;
-    case "sessions":
-      return `/${slug}/-/sessions`;
     case "notifications":
       return "/notifications";
     case "chat":

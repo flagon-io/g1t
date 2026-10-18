@@ -323,7 +323,7 @@ now.
 | Commits are pushed to a project's default branch, or a tag is pushed | The workspace's projects (the first 25) |
 | A pull request is opened, reviewed, merged or closed, a comment changes, or a work item linked to one of them changes | The same projects |
 | A workflow run or a job in it starts or finishes, a build or deployment moves, or a release or package is published | The same projects |
-| A [session](/guides/sessions/) starts or ends | The same projects |
+| A [session](/work/sessions/) starts or ends | The same projects |
 | Something comes to need you, or you deal with it elsewhere | Your notifications |
 
 A busy workspace sends changes all the time, so Home refreshes a second

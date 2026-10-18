@@ -87,6 +87,21 @@ export function boardOf(
   return board;
 }
 
+/**
+ * The repositories whose open pull requests the board reads: every one an
+ * open work item is linked to, each once, so an item's pull request moves
+ * it wherever it was opened. A repository deleted before work items, with
+ * no path kept, has none to read.
+ */
+export function pullRepos(items: readonly { state: string; repos: readonly { path: string }[] }[]): string[] {
+  const seen = new Map<string, string>();
+  for (const item of items) {
+    if (item.state !== "open") continue;
+    for (const repo of item.repos) if (repo.path && !seen.has(repo.path.toLowerCase())) seen.set(repo.path.toLowerCase(), repo.path);
+  }
+  return [...seen.values()];
+}
+
 /** Each work item's pull requests' statuses, from pull requests that name their item. */
 export function pullsByItem(pulls: { item: number | null; status: PullStatus }[]): ItemPulls {
   const by: ItemPulls = {};

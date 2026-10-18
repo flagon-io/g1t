@@ -529,69 +529,19 @@ nothing on it yet) does not merge it either. Its branch is not deleted.
 
 When a pull request merges into the default branch, it lands its
 repository on the work item it was made for, and on every work item its
-title or description names after a closing keyword: `close`, `closes`,
-`closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves` or `resolved`, in
-any case, with or without a colon:
+title or description names after a closing keyword (`Closes #12`,
+`Fixes #12`, `Resolves #12`, and their other forms). A work item closes
+once every repository it targets has landed, or at the first landing when
+it has no target. `Part of #12` (or `Refs #12`) links the pull request
+without landing anything. Commits pushed to the default branch land work
+items the same way.
 
-```text
-Fixes #12. Resolves: #14, closes acme/api#15
-```
-
-Landing marks the pull request's repository as landed on the work item and
-records a resolution: the repository and the pull request. The work item
-closes as completed when it has no target repositories, or once every
-target has landed; until then it stays open, and its page says which
-targets are missing. See [work items](/guides/work-items/#closing-a-work-item).
-
-`Part of #12` (also `Part of acme/api#12`, or `Refs #12`) links the pull
-request to the work item, and its repository as touched, without landing
-anything: use it for a pull request that does only part of a repository's
-share.
-
-`#12` and `owner/name#12` name work items of the repository's own
-workspace, whichever of its repositories they are written in. A work item
-of another workspace is never closed. The pull request's `closes` lists
-the work items it will land on, in the order named, and `parts` the ones it
-is part of. Merging into any other branch lands nothing. A repository can
-turn this off with `auto_close_items`; its pull requests then land nothing
-when they merge.
-
-Commit messages land work items the same way. When a push to the default
-branch brings in a commit whose message names a work item after a closing
-keyword, the commit's repository lands on it. This applies to commits
-pushed directly, merged in a clone, or landed by a pull request, and up to
-250 commits per push are read. The work item's timeline says who pushed
-it and **landed this in** that commit, its page shows the commit beside
-the repository, and the commit's page lists the work items it landed on.
-The resolution records the commit as `commit` and who pushed it as
-`pushed_by`, and `work_item.closed`, when it closes, carries the commit as
-`commit`; reopening a work item clears its resolutions. A push that makes
-a new branch reads none of its commits, since they were pushed before,
-except a repository's first push, which makes its default branch:
-`Closes #1` in the first version of a new repository lands on #1. Commits
-pushed to other branches land nothing until they reach the default branch,
-and `auto_close_items` turns this off as well.
-
-A commit that is already on the default branch can land a work item later,
-say one pushed before the work item was open or while `auto_close_items`
-was off: [`close_work_item`](/reference/api/work-items/close-work-item/)
-with `repo` and `commit` (its full hash), `g1t work close 12 --commit
-<hash>` in the repository, or the `work_item` tool's `close` with `repo`
-and `commit`. The commit's message must name the work item after a closing
-keyword. Its repository then lands in that commit, the way a push of it
-would have, by whoever did it. A commit that is not on the default branch,
-or whose message does not name the work item, is refused, and so is a work
-item that is already closed.
-
-A work item's timeline links whatever landed it: **landed this in** a
-commit links the commit, **landed this by merging #14** links the pull
-request, and when it was done in a [session](/guides/sessions/) the line
-ends **via session**, linking that session. That session is the one the
-closing commit names in a `G1t-Session: ses_…` trailer, or, for a work item
-closed with a token (from an agent, the CLI or the MCP server), the
-closer's own session on the work item that is still going.
-`work_item.closed` carries it as `session`. A work item closed on the site
-says only who closed it.
+The pull request's `closes` lists the work items it will land on, in the
+order named, and `parts` the ones it is part of. Merging into any other
+branch lands nothing, and a repository can turn this off with
+`auto_close_items`. [Closing work items](/work/closing/) has the whole of
+it: the keywords, landing target by target, commits, closing by hand or
+with a commit, and reopening.
 
 Wherever a commit's message shows, `#12` links to that work item or pull
 request, with its title and state when you hover over it. Old issue

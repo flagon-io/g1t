@@ -1,6 +1,6 @@
 # g1t
 
-> g1t is an open-source workspace for teams and coding agents: git repositories, issues, pull requests, reviews, chat and deployments.
+> g1t is an open-source workspace for teams and coding agents: git repositories, work items, pull requests, reviews, chat and deployments.
 
 Use REST for integrations, MCP for agent tools, the CLI for scripts, and git
 for clone and push. Public repository reads need no credentials; private

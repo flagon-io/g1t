@@ -69,8 +69,9 @@ import {
   sessionTree,
   titleHint,
   titleIsProvisional,
+  type PullHref,
 } from "../lib/coordination";
-import { sessionPath } from "../lib/work-items";
+import { sessionPath, sessionsPath } from "../lib/work-items";
 import { AgentSetup } from "./agent-setup";
 import { Input, SubmitButton, TimeAgo } from "./ui";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
@@ -119,14 +120,14 @@ function baseOf(base: SessionBase, session: WorkSession): string {
 }
 
 /** Text with each `#N` linked to what it names, read in the repository at `base` (lib/refs.ts). */
-export function NumberedText({ text, base }: { text: string; base: string }) {
+export function NumberedText({ text, base, pullHref }: { text: string; base: string; pullHref?: PullHref }) {
   return (
     <>
       {numberedParts(text).map((part, index) =>
         typeof part === "number" ? (
-          <Link key={index} to={`${base}/ref/${part}`} className="font-medium text-fg hover:text-accent">
+          <NumberLink key={index} to={pullHref ? pullHref(part) : `${base}/ref/${part}`} className="font-medium text-fg hover:text-accent">
             #{part}
-          </Link>
+          </NumberLink>
         ) : (
           <Fragment key={index}>{part}</Fragment>
         ),
@@ -571,18 +572,33 @@ const KIND_ICON: Record<Decision["kind"], ReactNode> = {
   note: <MessageSquare size={14} />,
 };
 
+/** A pull request's number, linked where it is known; plain text where it is not (`pullHref` said null). */
+function NumberLink({ to, className, children }: { to: string | null; className?: string; children: ReactNode }) {
+  if (!to) return <span className={className}>{children}</span>;
+  return (
+    <Link to={to} className={className}>
+      {children}
+    </Link>
+  );
+}
+
+/** Where pull request `number` is: `pullHref`'s answer when given (a work item's, across its repositories), else under `base`. */
+function pullAt(base: string, pullHref: PullHref | undefined, number: number): string | null {
+  return pullHref ? pullHref(number) : `${base}/pull/${number}`;
+}
+
 /** The pull requests tested together, in queue order: `#41 + #44`. */
-export function Combination({ numbers, base, culprit }: { numbers: number[]; base: string; culprit?: number | null }) {
+export function Combination({ numbers, base, culprit, pullHref }: { numbers: number[]; base: string; culprit?: number | null; pullHref?: PullHref }) {
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
       {numbers.map((number, index) => (
         <Fragment key={number}>
           {index > 0 && <span className="text-faint">+</span>}
-          <Link to={`${base}/pull/${number}`}>
+          <NumberLink to={pullAt(base, pullHref, number)}>
             <Badge shape="tag" tone={number === culprit ? "danger" : "neutral"} className="font-mono hover:border-line-strong">
               #{number}
             </Badge>
-          </Link>
+          </NumberLink>
         </Fragment>
       ))}
     </span>
@@ -610,7 +626,7 @@ function CheckLink({ check }: { check: { name: string; conclusion: string; url: 
 }
 
 /** One decision record: its kind, how sure it is, the sentence, who and when, and what it rests on. */
-export function DecisionLine({ decision, base }: { decision: Decision; base: string }) {
+export function DecisionLine({ decision, base, pullHref }: { decision: Decision; base: string; pullHref?: PullHref }) {
   const evidence = evidenceOf(decision);
   return (
     <div className="flex items-start gap-2.5">
@@ -620,13 +636,13 @@ export function DecisionLine({ decision, base }: { decision: Decision; base: str
           <span className="font-medium text-fg">{DECISION_KINDS[decision.kind]}</span>
           <ConfidenceBadge confidence={decision.confidence} />
           {decision.pull != null && (
-            <Link to={`${base}/pull/${decision.pull}`} className="text-muted hover:text-fg">
+            <NumberLink to={pullAt(base, pullHref, decision.pull)} className="text-muted hover:text-fg">
               #{decision.pull}
-            </Link>
+            </NumberLink>
           )}
         </p>
         <p className="mt-1 text-sm wrap-break-word">
-          <NumberedText text={decision.summary} base={base} />
+          <NumberedText text={decision.summary} base={base} pullHref={pullHref} />
         </p>
         <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
           <span>{decision.actor ?? "g1t"}</span>
@@ -635,7 +651,8 @@ export function DecisionLine({ decision, base }: { decision: Decision; base: str
           </span>
           {evidence.combination.length > 1 && (
             <span className="inline-flex items-center gap-1.5">
-              · tested as <Combination numbers={evidence.combination} base={base} culprit={decision.kind === "integration_failure" ? decision.pull : null} />
+              · tested as{" "}
+              <Combination numbers={evidence.combination} base={base} pullHref={pullHref} culprit={decision.kind === "integration_failure" ? decision.pull : null} />
             </span>
           )}
           {evidence.check && decision.kind === "integration_failure" && (
@@ -656,13 +673,13 @@ export function DecisionLine({ decision, base }: { decision: Decision; base: str
 }
 
 /** Decision records, as a list in a card. */
-export function DecisionList({ decisions, base }: { decisions: Decision[]; base: string }) {
+export function DecisionList({ decisions, base, pullHref }: { decisions: Decision[]; base: string; pullHref?: PullHref }) {
   return (
     <Card asChild divided>
       <ol>
         {decisions.map((decision) => (
           <li key={decision.id} className="px-4 py-3">
-            <DecisionLine decision={decision} base={base} />
+            <DecisionLine decision={decision} base={base} pullHref={pullHref} />
           </li>
         ))}
       </ol>
@@ -681,9 +698,12 @@ export function IntegrationFailure({
   fixed,
   branch = "main",
   className,
+  pullHref,
 }: {
   failure: Decision;
   base: string;
+  /** Where each pull request is, for a work item's, whose pull requests are in several repositories. */
+  pullHref?: PullHref;
   /** The branch the combination was built on. */
   branch?: string;
   /** A fix or a passing combination since, when there is one. */
@@ -697,9 +717,9 @@ export function IntegrationFailure({
         {failure.pull != null ? (
           <span>
             <TriangleAlert size={15} className={`mr-2 inline align-[-3px] ${fixed ? "text-info" : "text-danger"}`} />
-            <Link to={`${base}/pull/${failure.pull}`} className="hover:underline">
+            <NumberLink to={pullAt(base, pullHref, failure.pull)} className="hover:underline">
               #{failure.pull}
-            </Link>{" "}
+            </NumberLink>{" "}
             failed in the merge queue {evidence.combination.length > 1 ? "together with others" : "on its own"}
           </span>
         ) : (
@@ -714,7 +734,7 @@ export function IntegrationFailure({
         {evidence.combination.length > 0 && (
           <p className="flex flex-wrap items-center gap-1.5 text-xs">
             Tested as <span className="font-mono text-fg">{branch}</span> <span className="text-faint">+</span>
-            <Combination numbers={evidence.combination} base={base} culprit={failure.pull} />
+            <Combination numbers={evidence.combination} base={base} pullHref={pullHref} culprit={failure.pull} />
           </p>
         )}
         {evidence.check && (
@@ -726,7 +746,7 @@ export function IntegrationFailure({
           {evidence.suspects.length > 0 ? (
             <>
               Fails with{" "}
-              <NumberedText text={evidence.suspects.map((n) => `#${n}`).join(", ")} base={base} />
+              <NumberedText text={evidence.suspects.map((n) => `#${n}`).join(", ")} base={base} pullHref={pullHref} />
               {evidence.bisected ? ", narrowed down by building smaller combinations." : "."}
             </>
           ) : (
@@ -738,7 +758,7 @@ export function IntegrationFailure({
             <CircleCheck size={13} className="mr-1.5 inline align-[-2px] text-success" />
             {fixed.kind === "integration_passed" ? "Passed together since" : "Fixed since"}:{" "}
             <span className="text-muted">
-              <NumberedText text={fixed.summary} base={base} />
+              <NumberedText text={fixed.summary} base={base} pullHref={pullHref} />
             </span>
           </p>
         )}
@@ -917,7 +937,9 @@ export function ItemWorkPanel({
             )}
             {trees.length > sessions.length && (
               <p className="mt-2 text-xs text-muted">
-                {trees.length - sessions.length} more on its repositories' Sessions pages
+                <Link to={sessionsPath(work.item.workspace, { state: "recent", item: String(work.item.number) })} className="hover:text-fg hover:underline">
+                  {trees.length - sessions.length} more in Work's Sessions
+                </Link>
               </p>
             )}
           </PanelPart>

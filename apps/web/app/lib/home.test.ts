@@ -744,7 +744,7 @@ test("a change made in a harness session carries the agent mark, linked to the s
   const [marked, plain] = withSessions([merge(), merge({ key: "landed:acme/web#13", sha: "m13" })], [
     { repo: { namespace: "acme", name: "web" }, pulls: [{ number: 12, sessions: [{ id: "ses_1", harness: "claude_code" }, { id: "ses_2", harness: "codex" }] }] },
   ]);
-  assert.deepEqual(marked!.agent, { harness: "claude_code", to: "/acme/-/sessions/ses_1" });
+  assert.deepEqual(marked!.agent, { harness: "claude_code", to: "/acme/-/work/sessions/ses_1" });
   assert.equal(agentLabel(marked!.agent!), "Made in a Claude Code session");
   assert.equal(plain!.agent, undefined);
   assert.equal(agentLabel({ harness: null, to: null }), "Made in a session");
@@ -773,7 +773,7 @@ test("each person's push to a default branch is a row: its commit, who pushed, a
   assert.deepEqual(
     rows.map((row) => [row.title, row.detail, row.sha, row.to, row.agent?.to ?? null]),
     [
-      ["Fix the bell's count", "web · pushed to main · by ana", "c3", "/acme/web/commit/c3", "/acme/-/sessions/ses_9"],
+      ["Fix the bell's count", "web · pushed to main · by ana", "c3", "/acme/web/commit/c3", "/acme/-/work/sessions/ses_9"],
       ["2 commits pushed to main", "web · Tidy · by ana", "c2", "/acme/web/activity", null],
     ],
   );

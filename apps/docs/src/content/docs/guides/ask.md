@@ -158,14 +158,14 @@ what the session should do (plan, implement or review).
 Nothing starts until you choose on the card:
 
 - **Start session** runs it on your workspace's Anthropic account as a
-  [Claude Managed Agents session](/guides/sessions/), with g1t's tools and
+  [Claude Managed Agents session](/guides/sessions/#start-a-session-on-your-anthropic-account), with g1t's tools and
   skills beside your own. It shows when an owner has connected Anthropic.
 - **Copy Claude Code command** copies a `claude` command that runs it on
   your computer with the [g1t plugin](/guides/claude-code-plugin/), with
   your own skills, settings and subagents.
 
 Either way the session is tied to the work item: it shows on the work
-item, on the workspace's [Sessions](/guides/sessions/#the-sessions-page)
+item, on the workspace's [Sessions](/work/sessions/)
 and on its own session page, with
 its subagents, and Ask can tell you where it stands. If a session already
 holds the work item, Ask

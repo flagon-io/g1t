@@ -23,7 +23,7 @@ const NOT_OWNERS = new Set(["settings", "notifications", "oauth", "device", "log
 /** The filters a link to Work's list may carry, as the site's: `/acme/-/work?repo=web&label=bug`. */
 export const WORK_FILTERS = ["state", "label", "milestone", "assignee", "repo", "role"] as const;
 
-/** The filters a link to Sessions may carry: `/acme/-/sessions?state=live&repo=web`. */
+/** The filters a link to Work's sessions may carry: `/acme/-/work/sessions?state=live&repo=web`. */
 export const SESSION_FILTERS = ["state", "person", "repo", "item"] as const;
 
 /**
@@ -54,13 +54,14 @@ export function routeFor(sitePath: string): string | null {
       if (!fourth) return `/work?${workspace}${filtersOf(query, WORK_FILTERS)}`;
       if (fourth === "new" && !fifth) return `/work/new?${workspace}`;
       if (fourth === "board" && !fifth) return `/work?${workspace}&view=board`;
+      // Sessions are Work's: its Sessions view, and one session's screen.
+      if (fourth === "sessions") {
+        if (!fifth) return `/work?${workspace}&view=sessions${filtersOf(query, SESSION_FILTERS)}`;
+        if (parts.length === 5) return `/work/sessions/${encodeURIComponent(fifth)}?${workspace}`;
+        return null;
+      }
       if (isNumber(fourth) && !fifth) return `/work/${fourth}?${workspace}`;
       // Labels and milestones stay on the site.
-      return null;
-    }
-    if (third === "sessions") {
-      if (!fourth) return `/work/sessions?${workspace}${filtersOf(query, SESSION_FILTERS)}`;
-      if (!fifth) return `/work/sessions/${encodeURIComponent(fourth)}?${workspace}`;
       return null;
     }
     if (third === "overview" && !fourth) return `/code?${workspace}`;

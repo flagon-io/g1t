@@ -182,6 +182,11 @@ test("Work is a mode of its own, after Home", async () => {
   assert.equal(modeOf("/acme/-/work/new", "acme"), "work");
   assert.equal(modeOf("/acme/-/work/labels", "acme"), "work");
   assert.equal(modeOf("/acme/-/work/milestones/3", "acme"), "work");
+  // Sessions are Work's: its list and each session light Work.
+  assert.equal(modeOf("/acme/-/work/sessions", "acme"), "work");
+  assert.equal(modeOf("/acme/-/work/sessions/ses_1.data", "acme"), "work");
+  // Their old address is no page of its own any more, so it falls to Code's not-found page.
+  assert.equal(modeOf("/acme/-/sessions", "acme"), "code");
   assert.equal(modeHome("work", "acme"), "/acme/-/work");
   // A repository's pages, its Sessions among them, are Code's.
   assert.equal(modeOf("/acme/web/sessions", "acme"), "code");

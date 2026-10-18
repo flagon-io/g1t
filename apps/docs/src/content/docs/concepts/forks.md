@@ -39,7 +39,7 @@ defaults, and with two things off:
   your minutes, just because you copied it.
 - **Work items** filed in it. A fork usually exists to change code and
   propose it back; the conversation stays on the parent's
-  [work items](/guides/work-items/). Turn them on in the
+  [work items](/work/work-items/). Turn them on in the
   fork's settings if it becomes a project of its own.
 
 Deployments stay off until the fork's own project is set up.

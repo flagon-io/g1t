@@ -129,7 +129,7 @@ Search shows you exactly what you could open yourself:
 - A work item is shown to the members of its workspace, and to anyone who
   can read the repository it was filed in (its origin). One filed in a
   public repository is shown to everyone; one with no origin only to
-  members. See [who sees a work item](/guides/work-items/#who-sees-a-work-item).
+  members. See [who sees a work item](/work/work-items/#who-sees-a-work-item).
 - People and workspaces are public, as their pages are. Search never shows
   which workspaces someone belongs to.
 

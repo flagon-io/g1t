@@ -12,7 +12,7 @@ A webhook belongs to one of two things:
 
 | | Sent the events of | Managed by | Where |
 | --- | --- | --- | --- |
-| A repository's | That repository, and the [work items](/guides/work-items/) linked to it | People with the Admin [role](/guides/access-and-roles/) on it | The project's **Settings → Webhooks** |
+| A repository's | That repository, and the [work items](/work/work-items/) linked to it | People with the Admin [role](/guides/access-and-roles/) on it | The project's **Settings → Webhooks** |
 | A workspace's | Every repository in the workspace, all its work items, the workspace's own [packages](/guides/packages/), and its [teams](/guides/teams/) | Owners | The workspace's **Settings → Webhooks** |
 
 Seeing a repository's webhooks, and their deliveries, needs Admin too: the
@@ -91,10 +91,10 @@ With these headers:
 | `workspace.member_joined` | A person became a member of the [workspace](/guides/workspaces/#when-someone-joins). Sent to the workspace's webhooks. `data.workspace_id`, `data.workspace` (its slug), `data.user_id`, `data.username`, `data.role` (`owner` or `member`) and `data.how`: `invitation` (they accepted an invitation), `joined` (they used an invite code that names the workspace) or `created` (they made the workspace and are its first owner). |
 | `repo.archived`, `repo.unarchived` | It was made read-only, or writable again. |
 | `repo.deleted`, `repo.restored`, `repo.purged` | It was deleted, restored within its 30 days, or removed for good. |
-| `work_item.labeled`, `work_item.unlabeled`, `pull.labeled`, `pull.unlabeled` | A [label](/guides/labels/) was put on a work item or a pull request, or taken off: one event for each label. `data.number` and `data.label` (`name` and `color`). |
-| `work_item.milestoned`, `work_item.demilestoned`, `pull.milestoned`, `pull.demilestoned` | A work item or a pull request was put in a [milestone](/guides/milestones/), or taken out of one. `data.milestone` (`number` and `title`). Moving it from one to another is both. |
+| `work_item.labeled`, `work_item.unlabeled`, `pull.labeled`, `pull.unlabeled` | A [label](/work/labels/) was put on a work item or a pull request, or taken off: one event for each label. `data.number` and `data.label` (`name` and `color`). |
+| `work_item.milestoned`, `work_item.demilestoned`, `pull.milestoned`, `pull.demilestoned` | A work item or a pull request was put in a [milestone](/work/milestones/), or taken out of one. `data.milestone` (`number` and `title`). Moving it from one to another is both. |
 | `pull.base_changed` | The branch a pull request merges into changed. `data.base` names it. See [pull requests into other branches](/guides/base-branches/). |
-| `work_item.opened`, `work_item.updated`, `work_item.assigned`, `work_item.closed`, `work_item.reopened` | A [work item](/guides/work-items/) changed. `data.workspace`, `data.number`, `data.item_id`, `data.repo_ids` and `data.author` (`id` and `username`); on close, `data.reason`, `data.resolution` when a landing closed it (the `repo` and the `pull` request or default-branch `commit` that landed it), and `data.session` when it was closed in a session; on assignment, `data.assignees` and the newly assigned `data.added`. |
+| `work_item.opened`, `work_item.updated`, `work_item.assigned`, `work_item.closed`, `work_item.reopened` | A [work item](/work/work-items/) changed. `data.workspace`, `data.number`, `data.item_id`, `data.repo_ids` and `data.author` (`id` and `username`); on close, `data.reason`, `data.resolution` when a landing closed it (the `repo` and the `pull` request or default-branch `commit` that landed it), and `data.session` when it was closed in a session; on assignment, `data.assignees` and the newly assigned `data.added`. |
 | `work_item.linked`, `work_item.unlinked` | A repository was linked to a work item in a role, or unlinked. `data.workspace`, `data.number`, `data.item_id`, `data.repo_ids`, `data.repo` (`owner/name`) and `data.role`. |
 | `work_item.landed` | A pull request or a default-branch commit landed a work item in one of its repositories. `data.resolution` (the `repo`, and the `pull` or `commit`) and `data.missing`, the targets it has still to land in. When nothing is left, `work_item.closed` follows. |
 | `comment.created` | A comment or review on a work item or pull request. |
@@ -129,10 +129,10 @@ With these headers:
 | `integration.passed` | A pull request's combined state passed in the merge queue: `pull` and `combination`. |
 | `decision.recorded` | A [decision record](/guides/why-blame/#decision-records) was kept on a work item or pull request: `decision`, with `number` and `item`. |
 | `session.appended` | A pull request's [session](/guides/why-blame/#sessions) grew: a coding agent recorded entries with `record_session`, a session on it recorded some, or g1t noted a merge queue failure. Busy: choose it only if you need it. |
-| `session.started`, `session.ended` | A [session](/guides/sessions/#sessions) of someone's harness started (not on a repeated start), or ended or timed out. `data.session`, and `data.number` (its pull request, else its work item) and `data.item`. |
-| `work.claimed`, `work.released`, `work.claim_expired`, `work.handoff_requested` | A [claim](/guides/sessions/#claims) on a work item was made, released, expired or handed off. `data.number` and `data.item` (the work item), `data.claim`; on `work.claimed`, `data.others` (the other active claims) and `data.took_over`; on `work.released`, `data.reason`; on a hand-off, `data.from`, `data.to` and `data.note`. |
-| `dependency.changed` | What a work item is [blocked by](/guides/sessions/#dependencies) changed, or a blocker closed or had its pull request merged. `data.number` (the blocked work item), `data.blocked_by`, `data.added`, `data.removed`, `data.cleared`, `data.remaining` (blockers still open) and `data.merged_pull`. |
-| `overlap.detected` | A push made a pull request [change files another open one changes](/guides/sessions/#overlaps). Sent once for each of the two: `data.pull`, `data.other_pull`, `data.files`, `data.item` and `data.other_item`. |
+| `session.started`, `session.ended` | A [session](/guides/sessions/#record-a-session) of someone's harness started (not on a repeated start), or ended or timed out. `data.session`, and `data.number` (its pull request, else its work item) and `data.item`. |
+| `work.claimed`, `work.released`, `work.claim_expired`, `work.handoff_requested` | A [claim](/work/claims-and-dependencies/#claims) on a work item was made, released, expired or handed off. `data.number` and `data.item` (the work item), `data.claim`; on `work.claimed`, `data.others` (the other active claims) and `data.took_over`; on `work.released`, `data.reason`; on a hand-off, `data.from`, `data.to` and `data.note`. |
+| `dependency.changed` | What a work item is [blocked by](/work/claims-and-dependencies/#dependencies) changed, or a blocker closed or had its pull request merged. `data.number` (the blocked work item), `data.blocked_by`, `data.added`, `data.removed`, `data.cleared`, `data.remaining` (blockers still open) and `data.merged_pull`. |
+| `overlap.detected` | A push made a pull request [change files another open one changes](/work/claims-and-dependencies/#overlaps). Sent once for each of the two: `data.pull`, `data.other_pull`, `data.files`, `data.item` and `data.other_item`. |
 
 [Managing a repository](/guides/managing-repositories/) says what each of
 the `repo.` and `branch.` changes does.

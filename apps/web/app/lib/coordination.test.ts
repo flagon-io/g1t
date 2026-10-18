@@ -20,6 +20,7 @@ import {
   mergeSessions,
   numberedParts,
   parseBlockedBy,
+  pullHrefs,
   pendingLines,
   resolutionOf,
   sessionTree,
@@ -387,4 +388,20 @@ test("a session's pending updates read as the feed does, leaving out what it doe
   assert.equal(lines[0].id, "upd_1");
   assert.equal(lines[0].who, "bo");
   assert.match(lines[0].text, /claimed #4/);
+});
+
+test("a work item's pull requests are linked in the repository that has them, and not at all when none or two do", () => {
+  const href = pullHrefs([
+    { path: "acme/web", pulls: [{ number: 41 }] },
+    { path: "acme/api", pulls: [{ number: 44 }, { number: 7 }] },
+    { path: "acme/docs", pulls: [{ number: 7 }] },
+    // A repository deleted before work items kept no path.
+    { path: "", pulls: [{ number: 50 }] },
+  ]);
+  assert.equal(href(41), "/acme/web/pull/41");
+  // A target's pull request is the target's, not the origin's.
+  assert.equal(href(44), "/acme/api/pull/44");
+  assert.equal(href(7), null, "two repositories have a #7: neither is guessed");
+  assert.equal(href(99), null, "unknown");
+  assert.equal(href(50), null, "a deleted repository");
 });

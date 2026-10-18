@@ -5,24 +5,24 @@ import { Link } from "react-router";
 import { type EventType, MAX_LIST_REPOS, type RepoPull } from "@g1t/contracts";
 
 import type { Route } from "./+types/list";
-import { Unavailable } from "../../../components/boundary";
-import { CoordinationFeed } from "../../../components/coordination";
-import { QueueTrain } from "../../../components/merge-queue";
-import { SessionCard, SessionRow, SessionsFiltersBar, SessionsViews } from "../../../components/sessions";
-import { EmptyState, TimeAgo } from "../../../components/ui";
-import { Avatar } from "../../../components/ui/avatar";
-import { Card } from "../../../components/ui/card";
-import { PullIcon } from "../../../components/work-icons";
-import { COORDINATION_TYPES, feedLine } from "../../../lib/coordination";
-import { page } from "../../../lib/meta";
-import { isFailed, part } from "../../../lib/partial";
-import { useRefreshWhile } from "../../../lib/refresh";
-import { repoPages, workPages } from "../../../lib/repo-live";
-import { events, work } from "../../../lib/services.server";
-import { getViewer, unwrap } from "../../../lib/session.server";
-import { narrowed, peopleIn, repoName, sessionsFilters, splitLive } from "../../../lib/sessions";
-import { useLive } from "../../../lib/use-repo-live";
-import { itemPath, sessionsPath } from "../../../lib/work-items";
+import { Unavailable } from "../../../../components/boundary";
+import { CoordinationFeed } from "../../../../components/coordination";
+import { QueueTrain } from "../../../../components/merge-queue";
+import { SessionCard, SessionRow, SessionsFiltersBar, SessionsViews } from "../../../../components/sessions";
+import { EmptyState, TimeAgo } from "../../../../components/ui";
+import { Avatar } from "../../../../components/ui/avatar";
+import { Card } from "../../../../components/ui/card";
+import { PullIcon } from "../../../../components/work-icons";
+import { COORDINATION_TYPES, feedLine } from "../../../../lib/coordination";
+import { page } from "../../../../lib/meta";
+import { isFailed, part } from "../../../../lib/partial";
+import { useRefreshWhile } from "../../../../lib/refresh";
+import { repoPages, workPages } from "../../../../lib/repo-live";
+import { events, work } from "../../../../lib/services.server";
+import { getViewer, unwrap } from "../../../../lib/session.server";
+import { narrowed, peopleIn, repoName, sessionsFilters, splitLive } from "../../../../lib/sessions";
+import { useLive } from "../../../../lib/use-repo-live";
+import { itemPath, sessionsPath } from "../../../../lib/work-items";
 
 /** How many coordination events What happened shows. */
 const FEED = 30;
@@ -38,7 +38,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const workspace = params.owner.toLowerCase();
   const filters = sessionsFilters(new URL(request.url).searchParams);
-  const narrow = { repo: filters.repo ?? undefined, person: filters.person ?? undefined, harness: filters.harness ?? undefined, kind: filters.kind ?? undefined };
+  const narrow = {
+    repo: filters.repo ?? undefined,
+    person: filters.person ?? undefined,
+    harness: filters.harness ?? undefined,
+    kind: filters.kind ?? undefined,
+    item: filters.item ?? undefined,
+  };
   const every = filters.state === "recent";
   // What is going now is what the page is about; what ended, a part of its own.
   const [now, ended] = await Promise.all([
@@ -265,7 +271,7 @@ export default function SessionsPage({ loaderData }: Route.ComponentProps) {
           icon={<History size={15} className="text-faint" />}
           title="Recent"
           aside={
-            <Link to={sessionsPath(workspace, { state: "recent", repo: filters.repo, person: filters.person, harness: filters.harness, kind: filters.kind })} className="hover:text-fg">
+            <Link to={sessionsPath(workspace, { state: "recent", repo: filters.repo, person: filters.person, harness: filters.harness, kind: filters.kind, item: filters.item ? String(filters.item) : null })} className="hover:text-fg">
               Every session
             </Link>
           }

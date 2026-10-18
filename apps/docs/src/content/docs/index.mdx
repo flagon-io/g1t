@@ -75,7 +75,7 @@ stands:
 | Feature | What it does | Status |
 | --- | --- | --- |
 | [Repositories](/guides/managing-repositories/) and [git](/guides/git/) | Public and private repositories over HTTPS. Pushing to a repository that does not exist creates it, private. | <Status is="live" /> |
-| [Work items](/guides/work-items/) and [pull requests](/guides/pull-requests/) | Work items for the whole workspace, linked to the repositories they land in; pull requests, line comments, reviews, merge methods and auto-merge. | <Status is="live" /> |
+| [Work items](/work/work-items/) and [pull requests](/guides/pull-requests/) | Work items for the whole workspace, linked to the repositories they land in; pull requests, line comments, reviews, merge methods and auto-merge. | <Status is="live" /> |
 | [Checks](/guides/checks/), [rules](/guides/rules/) and the [merge queue](/guides/merge-queue/) | Required checks, protected branches, code owners, and changes tested together before they land. | <Status is="live" /> |
 | [Workflows](/guides/actions/) | Workflows from `.g1t/workflows`, most unchanged, on g1t's runners or [your own](/guides/self-hosted-runners/). | <Status is="live" /> |
 | [Forks](/guides/forking-repositories/) | Fork a repository into your workspace, keep it in sync, and propose changes back. | <Status is="live" /> |
@@ -96,15 +96,16 @@ stands:
 | [Connect an AI client](/guides/bring-your-own-agent/) | Coding agents and MCP chat apps sign in and work on g1t as you, with the access you give them. | <Status is="live" /> |
 | [The Claude Code plugin](/guides/claude-code-plugin/) | Records every Claude Code session in a g1t repository, gives Claude the work item's context, and adds g1t's MCP server, skills and commands. | <Status is="live" /> |
 | [The g1t CLI](/guides/cli/) | Work items, pull requests, checks, runs, workflows, secrets and logs from a terminal, a script or an agent's shell. | <Status is="live" /> |
-| [Sessions and claims](/guides/sessions/) | Who is working on what, right now: each agent's session, the work item it claimed, and the files it shares with others. | <Status is="live" /> |
+| [Sessions and claims](/work/sessions/) | Who is working on what, right now: each agent's session, the work item it claimed, and the files it shares with others. | <Status is="live" /> |
 | [Assign g1t](/guides/sessions/#assign-g1t-or-ask-it-in-the-thread) | Assign a work item to `g1t`, or mention `@g1t` in a thread, to start a session on the workspace's own Anthropic account. | <Status is="live" /> |
 | [Why-blame](/guides/why-blame/) | Any line traced to its commit, pull request, work item, and the agent's own account of why it changed. | <Status is="live" /> |
 
 ## The workspace
 
 Everything happens in a workspace: your company, or one team in it. The
-rail down the left holds Home, Chat, Notifications, Code and Artifacts,
-the apps you pin, and People, Workspace and your account at its foot. On
+rail down the left holds Home, Explore, Work (with its sessions), Chat,
+Code, Artifacts and Routines, the apps you pin, and Apps, People,
+Workspace and your account at its foot. On
 a phone it is a bar along the bottom.
 
 | Feature | What it does | Status |
@@ -180,7 +181,7 @@ a phone it is a bar along the bottom.
 	<LinkCard
 		title="Labels and milestones"
 		description="Say what work items and pull requests are with the workspace's colored labels, and gather them under milestones with due dates."
-		href="/guides/labels/"
+		href="/work/labels/"
 	/>
 	<LinkCard
 		title="Pull requests into other branches"

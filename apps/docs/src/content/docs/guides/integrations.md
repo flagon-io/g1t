@@ -92,7 +92,7 @@ what is built next.
 
 ## Alerts
 
-An alert source opens [work items](/guides/work-items/) filed in one
+An alert source opens [work items](/work/work-items/) filed in one
 repository, their origin. Each problem it reports is one work item:
 
 - **The first alert** opens a work item labelled `bug` (or the label you set)

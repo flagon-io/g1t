@@ -43,14 +43,17 @@ test("Work's board opens Work on its board", () => {
   assert.equal(routeFor("/acme/-/work/board/x"), null);
 });
 
-test("Sessions and a session open the app's Sessions", () => {
-  assert.equal(routeFor(linkPathOf("g1t://acme/-/sessions")!), "/work/sessions?workspace=acme");
-  assert.equal(routeFor(linkPathOf("https://g1t.sh/acme/-/sessions")!), "/work/sessions?workspace=acme");
-  assert.equal(routeFor(linkPathOf("g1t://acme/-/sessions/ses_01abc")!), "/work/sessions/ses_01abc?workspace=acme");
-  assert.equal(routeFor(linkPathOf("https://g1t.sh/acme/-/sessions/ses_01abc")!), "/work/sessions/ses_01abc?workspace=acme");
+test("Work's sessions open Work on its Sessions, and a session its screen", () => {
+  assert.equal(routeFor(linkPathOf("g1t://acme/-/work/sessions")!), "/work?workspace=acme&view=sessions");
+  assert.equal(routeFor(linkPathOf("https://g1t.sh/acme/-/work/sessions")!), "/work?workspace=acme&view=sessions");
+  assert.equal(routeFor(linkPathOf("g1t://acme/-/work/sessions/ses_01abc")!), "/work/sessions/ses_01abc?workspace=acme");
+  assert.equal(routeFor(linkPathOf("https://g1t.sh/acme/-/work/sessions/ses_01abc")!), "/work/sessions/ses_01abc?workspace=acme");
   // The list keeps the filters the site's does, and drops anything else.
-  assert.equal(routeFor("/acme/-/sessions?state=live&repo=web&page=2"), "/work/sessions?workspace=acme&state=live&repo=web");
-  assert.equal(routeFor("/acme/-/sessions/ses_1/entries"), null);
+  assert.equal(routeFor("/acme/-/work/sessions?state=live&repo=web&page=2"), "/work?workspace=acme&view=sessions&state=live&repo=web");
+  assert.equal(routeFor("/acme/-/work/sessions/ses_1/entries"), null);
+  // Sessions were once a page of their own; that address is gone, so the app has no screen for it.
+  assert.equal(routeFor("/acme/-/sessions"), null);
+  assert.equal(routeFor("/acme/-/sessions/ses_1"), null);
 });
 
 test("a session opens its page, or its pull request's for g1t's agent and a recorded one", () => {

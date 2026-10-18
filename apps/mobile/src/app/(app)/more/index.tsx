@@ -3,7 +3,7 @@ import Constants from "expo-constants";
 import { hasCodeAccess } from "@g1t/contracts";
 import { Stack, router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { Activity, Bell, BellRing, Check, Code2, ExternalLink, LogOut } from "lucide-react-native";
+import { Bell, BellRing, Check, Code2, Compass, ExternalLink, LogOut } from "lucide-react-native";
 import { Linking, View } from "react-native";
 
 import { Avatar, Badge, Button, Row, Screen, SectionHeader, Text } from "@/components/ui";
@@ -12,7 +12,11 @@ import { isHosted, siteUrl } from "@/lib/server";
 import { useSignedIn } from "@/lib/session";
 import { space, useColors } from "@/theme";
 
-/** More: Sessions, Code, notifications on this phone, your workspaces, how you signed in, and signing out. */
+/**
+ * More: Explore (second in the site's rail, so first here; it opens on
+ * the site), Code, notifications on this phone, your workspaces, how you
+ * signed in, and signing out. Sessions are Work's, a view of its own there.
+ */
 export default function More() {
   const { me, workspace, server, client, selectWorkspace, signOut } = useSignedIn();
   const code = !workspace || hasCodeAccess(workspace);
@@ -46,10 +50,12 @@ export default function More() {
 
       <View>
         <Row
-          leading={<Activity size={22} color={colors.accent} />}
-          title="Sessions"
-          subtitle="What is cooking: the agents at work across the workspace"
-          onPress={() => router.push({ pathname: "/work/sessions", params: workspace ? { workspace: workspace.slug } : {} })}
+          leading={<Compass size={22} color={colors.accent} />}
+          title="Explore"
+          subtitle="g1t beyond your workspaces: public projects, people and topics"
+          trailing={<ExternalLink size={16} color={colors.faint} />}
+          chevron={false}
+          onPress={() => WebBrowser.openBrowserAsync(siteUrl(server, "/explore"))}
         />
         {code ? (
           <Row

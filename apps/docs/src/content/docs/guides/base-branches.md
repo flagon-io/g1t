@@ -44,7 +44,7 @@ pull requests into `release/1.x` just as one that targets
 | Required checks, approvals, being up to date | As the rules covering it ask | As the rules covering it ask; nothing when none cover it |
 | [Merge queue](/guides/merge-queue/) | Joins it, when a rule requires it | Never; it merges directly |
 | Catching up | Merges the default branch in | Merges its base in |
-| Its [work item](/guides/work-items/) | Records the repository as landed when it merges, and closes once every target has | Nothing lands; it stays open |
+| Its [work item](/work/work-items/) | Records the repository as landed when it merges, and closes once every target has | Nothing lands; it stays open |
 
 Merging still needs the Write role. Under **Settings → Rules**, **What holds
 for a branch** shows every rule that covers a branch.
