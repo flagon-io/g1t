@@ -4,8 +4,8 @@
 //! here first (see `g1t_contracts::billing::ReserveArgs`):
 //!
 //! - **`entitlements`**: the workspace's plan, whether it may start compute
-//!   at all, its caps (agents at once, a run's time and spend, an issue's
-//!   spend), its ceiling and exposure, and whether compute is paused.
+//!   at all, its caps (agents at once, a run's time and spend), its
+//!   ceiling and exposure, and whether compute is paused.
 //! - **`reserve`**: holds the work's estimated cost against what may pay
 //!   for it (the plan's included usage, the trial, the open-source pool,
 //!   then on-demand room under the ceiling and the spend limit), so starts
@@ -919,8 +919,6 @@ impl Billing {
     }
 }
 
-/// Whether owners' caps are in bounds: a run $0.10 to $100 (the
-/// guardrails' most), an issue $1 to $1,000.
 pub(crate) fn paid_by_text(paid_by: PaidBy) -> &'static str {
     match paid_by {
         PaidBy::Credit => "credit",

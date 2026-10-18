@@ -193,8 +193,8 @@ const MAX_HOLD = 200;
  * (for the audit log, the plan's). A hold is a line saying why new compute
  * is held; blank is no hold. A run's cap is not staff's to set here: it is
  * always sent cleared, so the plan's applies. The overrides retired with
- * g1t's own agents (agents at once, an issue's cap) control nothing and are
- * not sent; billing keeps them empty.
+ * g1t's own agents (agents at once) control nothing and are not sent;
+ * billing keeps them empty.
  */
 export function parseAllowances(form: FormData): Parsed<Allowances> {
   const amount = (name: string, what: string, max: number, maxText: string, min = 0): Parsed<number | null> => {
