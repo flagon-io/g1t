@@ -164,8 +164,8 @@ roadmap.
   leads to `flagon-io`, Flagon, Inc. (seeded by identity's migration
   `0029_workspace_aliases.sql`), so nobody mistakes the trading name for
   the organization. Every address under an alias leads to the workspace:
-  pages answer with a 301 to the same page (`/g1t/g1t/issues` to
-  `/flagon-io/g1t/issues`), git over HTTPS is answered in place as the
+  pages answer with a 301 to the same page (`/g1t/g1t/pulls` to
+  `/flagon-io/g1t/pulls`), git over HTTPS is answered in place as the
   workspace's repository (pushes do not follow redirects), the API and MCP
   run the call again under the workspace's slug, and the package
   registries answer a 301 (308 for a publish). An alias points at the

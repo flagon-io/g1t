@@ -149,7 +149,7 @@ export type ChannelMember = {
 
 /** A card g1t or an agent posts: an event, a task, an approval. */
 export type MessageCard = {
-  /** What it is about, e.g. `pull`, `issue`, `task`, `deploy`, `approval`, `session`, `draft_issue`. */
+  /** What it is about, e.g. `pull`, `work_item`, `task`, `deploy`, `approval`, `session`, `draft_work_item`. */
   kind: string;
   title: string;
   /** A short line under the title: "3/3 checks · +214 −87". */
@@ -158,7 +158,7 @@ export type MessageCard = {
   state: string | null;
   /** Where clicking the card goes, relative to the site. */
   href: string | null;
-  /** A preview in Markdown under the title: a draft issue's body, a report's first lines. */
+  /** A preview in Markdown under the title: a draft work item's body, a report's first lines. */
   body?: string | null;
   /** Labelled facts shown in two columns: "Repository · acme/web", "Cap · $2.00". */
   fields?: CardField[];
