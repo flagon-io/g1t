@@ -3038,6 +3038,14 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
             let next = (repos.len() == limit as usize).then(|| repos.last().map(|repo| repo.id.clone())).flatten();
             reply(&CreatorPage { repos, next })
         }
+        // Work, once: where deleted repositories' work items came from.
+        "deleted_repos" => {
+            let a: AllIdsArgs = args(body)?;
+            let limit = a.limit.clamp(1, 500);
+            let repos = repos.registry.deleted_after(a.after.as_deref(), limit).await?;
+            let next = (repos.len() == limit as usize).then(|| repos.last().map(|repo| repo.id.clone())).flatten();
+            reply(&g1t_contracts::repos::DeletedRepoPage { repos, next })
+        }
         "all_ids" => {
             let a: AllIdsArgs = args(body)?;
             let limit = a.limit.clamp(1, 500);

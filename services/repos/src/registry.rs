@@ -554,7 +554,36 @@ impl Registry {
             .collect())
     }
 
-    /// Repositories that are not forks, by id, a page at a time.
+    /// Repositories that are not forks and are deleted but not purged yet,
+    /// by id after `after`, with whether each is private.
+    pub async fn deleted_after(&self, after: Option<&str>, limit: u32) -> Result<Vec<g1t_contracts::repos::RestorableRepo>> {
+        #[derive(Deserialize)]
+        struct Row {
+            id: String,
+            namespace: String,
+            name: String,
+            is_private: u8,
+        }
+        Ok(self
+            .db
+            .prepare(
+                "SELECT id, namespace, name, is_private FROM repos
+                 WHERE fork_of IS NULL AND deleted_at IS NOT NULL AND id > ? ORDER BY id LIMIT ?",
+            )
+            .bind(&[after.unwrap_or("").into(), limit.into()])?
+            .all()
+            .await?
+            .results::<Row>()?
+            .into_iter()
+            .map(|row| g1t_contracts::repos::RestorableRepo {
+                id: row.id,
+                namespace: row.namespace,
+                name: row.name,
+                is_private: row.is_private != 0,
+            })
+            .collect())
+    }
+
     /// Repositories that are not forks, with who created each, by id after
     /// `after`.
     pub async fn creators_after(&self, after: Option<&str>, limit: u32) -> Result<Vec<g1t_contracts::repos::RepoCreator>> {
