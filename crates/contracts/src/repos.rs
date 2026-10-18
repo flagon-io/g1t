@@ -27,7 +27,7 @@ pub struct Repo {
     #[serde(default)]
     pub parent_id: Option<String>,
     /// The repository this one was made a fork of, kept when it is
-    /// detached: what forks start with (Actions and issues off) holds for
+    /// detached: what forks start with (Actions and work items off) holds for
     /// it until someone chooses, and pull requests opened while it was a
     /// fork still merge.
     #[serde(default)]
@@ -68,7 +68,7 @@ impl Repo {
         self.archived_at.is_some()
     }
 
-    /// Why it takes no pushes, merges, issues or agents now: it is
+    /// Why it takes no pushes, merges, work items or agents now: it is
     /// archived. `None` when it takes them.
     pub fn read_only_reason(&self) -> Option<String> {
         self.archived().then(|| archived_message(&self.namespace, &self.name))
@@ -1643,7 +1643,7 @@ pub struct RenameArgs {
 
 /// `archive`: makes a repository read-only (`archived: true`), or writable
 /// again. Owners only. While archived, pushes and merges are refused,
-/// issues and pull requests are locked, and agents and workflows do not
+/// work items and pull requests are locked, and agents and workflows do not
 /// run; deployments keep serving. Publishes `repo.archived` or
 /// `repo.unarchived`. Returns `Outcome<Repo>`.
 #[derive(Debug, Serialize, Deserialize)]

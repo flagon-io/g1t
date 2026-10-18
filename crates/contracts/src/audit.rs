@@ -156,7 +156,7 @@ pub struct AuditTarget {
     pub workspace: String,
     /// `owner/name`, when the action was about one repository.
     pub repo: Option<String>,
-    /// The issue or pull request.
+    /// The work item or pull request.
     pub number: Option<u32>,
     /// A full git ref, such as `refs/heads/main`.
     pub git_ref: Option<String>,
@@ -170,7 +170,7 @@ pub struct AuditTarget {
 pub struct NewAuditEntry {
     #[serde(flatten)]
     pub actor: AuditActor,
-    /// An API or MCP operation, such as `create_issue`, or `git.push` and
+    /// An API or MCP operation, such as `open_work_item`, or `git.push` and
     /// `git.fetch`.
     pub action: String,
     pub surface: Surface,

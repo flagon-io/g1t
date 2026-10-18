@@ -33,7 +33,7 @@ use crate::accounts::Reauth;
 /// it is purged.
 pub const ACCOUNT_RESTORE_DAYS: u64 = 30;
 
-/// Who wrote what a purged account wrote: issues, pull requests, comments,
+/// Who wrote what a purged account wrote: work items, pull requests, comments,
 /// reviews, and commits made with its noreply address. Reserved: nobody may
 /// register it.
 pub const GHOST_USERNAME: &str = "ghost";

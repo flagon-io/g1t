@@ -192,7 +192,7 @@ export type EventPayloads = {
   "repo.purged": { repoId: string; namespace: string; name: string };
   /**
    * A repository was archived (read-only: pushes, merges, agents and
-   * workflows refused; issues and pull requests locked; deployments keep
+   * workflows refused; work items and pull requests locked; deployments keep
    * serving), or unarchived.
    */
   "repo.archived": { repoId: string; namespace: string; name: string; archived: true };

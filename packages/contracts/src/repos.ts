@@ -24,7 +24,7 @@ export type Repo = {
   parentId?: string | null;
   /**
    * What it was made a fork of, kept when it is detached: Actions and
-   * issues stay off by default, and its pull requests into the parent
+   * work items stay off by default, and its pull requests into the parent
    * still merge.
    */
   forkedFrom?: string | null;
@@ -50,7 +50,7 @@ export type Repo = {
   website?: string | null;
   /**
    * RFC 3339: when it was archived. While archived it is read-only:
-   * pushes, merges, agents and workflows are refused, and issues and pull
+   * pushes, merges, agents and workflows are refused, and work items and pull
    * requests are locked. Null when it is not archived.
    */
   archivedAt?: string | null;

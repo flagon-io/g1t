@@ -256,7 +256,7 @@ struct Owned {
 
 /// What a workspace's own token reaches: that workspace only, all of its
 /// repositories or the ones chosen. Never none: without a reach a token
-/// is not held to a workspace, and could open issues or comment on any
+/// is not held to a workspace, and could open work items or comment on any
 /// public repository as the workspace.
 fn workspace_token_reach(slug: String, selection: RepositorySelection, repo_ids: Vec<String>) -> TokenReach {
     let selection = if selection == RepositorySelection::Selected { selection } else { RepositorySelection::All };
