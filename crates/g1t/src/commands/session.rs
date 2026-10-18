@@ -10,7 +10,7 @@ use std::io::Read;
 use std::path::PathBuf;
 
 use crate::cli::{
-    SessionAcknowledgeArgs, SessionAttachArgs, SessionCommand, SessionEndArgs, SessionListArgs, SessionLogArgs,
+    SessionAcknowledgeArgs, SessionAttachArgs, SessionCommand, SessionEndArgs, SessionHeartbeatArgs, SessionListArgs, SessionLogArgs,
     SessionStartArgs, SessionState, SessionTouchArgs, SessionViewArgs,
 };
 use crate::client::Client;
@@ -22,7 +22,7 @@ use crate::repo::Repo;
 pub fn run(ctx: &Ctx, command: SessionCommand) -> Result<()> {
     match command {
         SessionCommand::Start(args) => start(ctx, args),
-        SessionCommand::Heartbeat => heartbeat(ctx),
+        SessionCommand::Heartbeat(args) => heartbeat(ctx, args),
         SessionCommand::Log(args) => log(ctx, args),
         SessionCommand::Attach(args) => attach(ctx, args),
         SessionCommand::End(args) => end(ctx, args),
@@ -181,10 +181,37 @@ fn say_changes(client: &crate::client::Client, repo: &crate::repo::Repo, id: &st
         .send();
 }
 
-fn heartbeat(ctx: &Ctx) -> Result<()> {
+/// Usage as `--usage-json` gives it: a JSON list of objects, each naming
+/// its model. The server checks the counts.
+fn usage_of(text: &str) -> Result<Value> {
+    let value: Value = serde_json::from_str(text.trim())
+        .map_err(|error| Error::usage(format!("--usage-json is not JSON: {error}.")))?;
+    let named = |row: &Value| row["model"].as_str().is_some_and(|model| !model.trim().is_empty());
+    match &value {
+        Value::Array(rows) if rows.iter().all(named) => Ok(value),
+        _ => Err(Error::usage(
+            "--usage-json is a list of {model, tier, input_tokens, output_tokens, cache_write_5m_tokens, cache_write_1h_tokens, cache_read_tokens}.",
+        )),
+    }
+}
+
+fn heartbeat(ctx: &Ctx, args: SessionHeartbeatArgs) -> Result<()> {
     let id = required()?;
+    let usage = match args.usage_json.as_deref() {
+        Some("-") => {
+            let mut text = String::new();
+            std::io::stdin().read_to_string(&mut text)?;
+            Some(usage_of(&text)?)
+        }
+        Some(text) => Some(usage_of(text)?),
+        None => None,
+    };
     let (repo, client) = super::coordination_client(ctx, super::QUICK)?;
-    let found = client.op("update_session").repo(&repo).arg("id", &id).send()?;
+    let mut request = client.op("update_session").repo(&repo).arg("id", &id);
+    if let Some(usage) = usage {
+        request = request.field("usage", usage);
+    }
+    let found = request.send()?;
     say_changes(&client, &repo, &id);
     if ctx.out.structured() {
         return ctx.out.emit(&session_of(found));
@@ -619,6 +646,16 @@ fn view(ctx: &Ctx, args: SessionViewArgs) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn usage_is_a_list_of_models_and_their_counts() {
+        let usage = usage_of(r#" [{"model":"claude-opus-5-5","input_tokens":3}] "#).unwrap();
+        assert_eq!(usage[0]["input_tokens"], 3);
+        assert!(usage_of("[]").is_ok());
+        assert!(usage_of("{}").is_err());
+        assert!(usage_of(r#"[{"input_tokens":3}]"#).is_err());
+        assert!(usage_of("not json").is_err());
+    }
 
     #[test]
     fn the_environment_overrides_the_kept_session() {

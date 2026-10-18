@@ -223,8 +223,8 @@ is looking, on the site, the API, MCP and the CLI alike.
 | Who | Sees |
 | --- | --- |
 | Whoever ran it | All of it: its prompts, tool calls, what it touched and reported, its pending updates. |
-| A member of the repository's workspace | What it did: its title, tool calls, messages, notes, skills, what it touched, its subagents' tasks, prompts and reports, its pending updates. Not the prompts someone else typed, nor a tool's output (`tool_result`): those entries show as kept back. A title shows without swearing. |
-| Anyone else who may read the repository | That it runs: who runs it, in which harness, since when, its state and the work items and pull requests it is tied to. Nothing it recorded, touched, was asked or reported, nor its title, branch or model. On a pull request's session, only g1t's own notes. |
+| A member of the repository's workspace | What it did: its title, tool calls, messages, notes, skills, what it touched, its subagents' tasks, prompts and reports, what it cost ([estimated at list price](/guides/sessions/#what-a-session-cost)), its pending updates. Not the prompts someone else typed, nor a tool's output (`tool_result`): those entries show as kept back. A title shows without swearing. |
+| Anyone else who may read the repository | That it runs: who runs it, in which harness, since when, its state and the work items and pull requests it is tied to. Nothing it recorded, touched, was asked or reported, nor its title, branch, model or cost. On a pull request's session, only g1t's own notes. |
 
 g1t's own agent's sessions are listed only for members.
 

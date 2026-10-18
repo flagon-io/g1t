@@ -7,7 +7,7 @@ use super::links::{
     BRANCH_SESSIONS, FAMILY, FIRST_PROMPTS, INSERT_LINK, INSERT_OVERLAP, INSERT_TOUCH, PULL_SESSIONS, PullSessionRow, TOUCHED_BY_OTHERS, end_tree_sql,
     pull_sessions_of, tree_sql,
 };
-use super::sessions::{INSERT_ENTRY, MOVE_ENTRIES, RENEW_CLAIM, harness_session_sql, insert_session_sql, refresh_sql, renewal, resume_sql};
+use super::sessions::{INSERT_ENTRY, MOVE_ENTRIES, RENEW_CLAIM, SET_USAGE, harness_session_sql, insert_session_sql, refresh_sql, renewal, resume_sql};
 use super::{after_minutes, expire_claims_sql, time_out_sessions_sql};
 use super::updates::deliver_sql;
 use g1t_contracts::time::rfc3339;
@@ -186,6 +186,46 @@ fn a_quiet_session_times_out_and_a_heartbeat_brings_it_back() {
         )
         .unwrap();
     assert_eq!(state, "active");
+}
+
+/// Reports usage the way `update_session` does, then heartbeats: the cost and usage the session reads with.
+fn report_usage(db: &Connection, id: &str, usage: serde_json::Value) -> (Option<f64>, Option<String>) {
+    let usage = g1t_contracts::model_prices::parse_usage(&usage).unwrap();
+    let cost = g1t_contracts::model_prices::estimate(&usage).cost_usd;
+    db.execute(SET_USAGE, params![serde_json::to_string(&usage).unwrap(), cost, id]).unwrap();
+    db.query_row(
+        &resume_sql(),
+        params![
+            None::<String>, None::<u32>, None::<String>, None::<String>, None::<String>, None::<String>, None::<String>, None::<String>,
+            None::<String>, None::<String>, rfc3339(NOW), id, None::<String>
+        ],
+        |row| Ok((row.get("cost_usd")?, row.get("usage")?)),
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_sessions_usage_replaces_the_last_and_is_priced_at_list_price() {
+    let db = database();
+    start(&db, "ses_1", Some("a"));
+    let (cost, usage) = report_usage(&db, "ses_1", serde_json::json!([{ "model": "claude-opus-5-5", "input_tokens": 1_000_000 }]));
+    assert_eq!(cost, Some(4.0));
+    assert!(!super::cost_partial(usage.as_deref()));
+    // Cumulative: the next report replaces it, it is not added.
+    let (cost, usage) = report_usage(
+        &db,
+        "ses_1",
+        serde_json::json!([{ "model": "claude-opus-5-5", "input_tokens": 2_000_000 }, { "model": "gpt-5", "output_tokens": 10 }]),
+    );
+    assert_eq!(cost, Some(8.0));
+    assert!(super::cost_partial(usage.as_deref()));
+    // Only models priced as unknown: no cost, and partial.
+    let (cost, usage) = report_usage(&db, "ses_1", serde_json::json!([{ "model": "gpt-5", "output_tokens": 10 }]));
+    assert_eq!(cost, None);
+    assert!(super::cost_partial(usage.as_deref()));
+    let read: Option<f64> = db.query_row("SELECT sessions.cost_usd FROM sessions WHERE id = 'ses_1'", [], |row| row.get(0)).unwrap();
+    assert_eq!(read, None);
+    assert!(!super::cost_partial(None));
 }
 
 #[test]

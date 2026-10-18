@@ -1449,6 +1449,14 @@ export type WorkSession = {
   titleSource?: TitleSource | null;
   /** When its title was last settled. */
   titleSettledAt?: string | null;
+  /**
+   * What it cost, estimated at Anthropic's list price from the token usage
+   * its harness reported, in US dollars; none until it reports usage for a
+   * model with a known price. Only the workspace's members see it.
+   */
+  costUsd?: number | null;
+  /** Some of its usage was for models priced as unknown, which `costUsd` leaves out. */
+  costPartial?: boolean;
 };
 
 /**

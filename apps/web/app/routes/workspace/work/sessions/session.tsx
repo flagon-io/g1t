@@ -35,6 +35,7 @@ import {
   viaLabel,
 } from "../../../../lib/coordination";
 import { notFound } from "../../../../lib/not-found.server";
+import { sessionCost } from "../../../../lib/sessions";
 import { repoPages } from "../../../../lib/repo-live";
 import { agentSessions, work } from "../../../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser } from "../../../../lib/session.server";
@@ -341,6 +342,7 @@ function SubagentNode({ node, base, touched, now }: { node: SessionNode; base: s
             <SessionStateBadge state={session.state} />
             <TimeAgo at={session.startedAt} />
             <span suppressHydrationWarning>· {duration(session, now)}</span>
+            {sessionCost(session) && <span className="tabular-nums">· {sessionCost(session)}</span>}
           </span>
         </div>
         <CollapsibleContent className="mt-3 space-y-4 pl-6">
@@ -390,6 +392,7 @@ export default function WorkSessionPage({ loaderData, actionData }: Route.Compon
   // Its own subagents: those whose parent is in this tree (children lists every descendant).
   const tree = sessionTree([session, ...children]).find((node) => node.session.id === session.id)?.children ?? [];
   const managed = session.harness === MANAGED || root?.harness === MANAGED;
+  const cost = sessionCost(session);
 
   // The skills, summed by name across the tree.
   const skillUses = new Map<string, number>();
@@ -479,6 +482,11 @@ export default function WorkSessionPage({ loaderData, actionData }: Route.Compon
           · {session.state === "ended" ? "ended" : "last heard from"} <TimeAgo at={session.endedAt ?? session.lastSeenAt} />
           {session.endReason && ` (${endReasonText(session.endReason)})`}
         </span>
+        {cost && (
+          <Hint label="Estimated from the tokens its transcript recorded, at Anthropic's list price. Its subagents count on their own sessions.">
+            <span className="tabular-nums">· {cost}</span>
+          </Hint>
+        )}
         {session.branch && (
           <Link to={`${base}/tree/${session.branch}`} className="inline-flex items-center gap-1 font-mono text-xs hover:text-fg">
             · <GitBranch size={12} />
