@@ -127,8 +127,9 @@ pub(crate) fn from_session(mut session: Session, path: &str, now: u64) -> Worksp
     }
 }
 
-/// A run of g1t's agent, as one of the workspace's sessions.
-pub(crate) fn from_run(run: AgentRun, repo_id: &str) -> WorkspaceSession {
+/// A run of g1t's agent, as one of the workspace's sessions: `item`, the
+/// work item one started on an issue worked on.
+pub(crate) fn from_run(run: AgentRun, repo_id: &str, item: Option<u32>) -> WorkspaceSession {
     let state = if run.status.is_active() { SessionState::Active } else { SessionState::Ended };
     WorkspaceSession {
         kind: SessionKind::Agent,
@@ -140,7 +141,7 @@ pub(crate) fn from_run(run: AgentRun, repo_id: &str) -> WorkspaceSession {
         harness: None,
         agent: Some(run.agent),
         branch: None,
-        item: None,
+        item,
         item_title: None,
         pull: run.number,
         pull_title: None,
@@ -333,7 +334,7 @@ impl Work {
             self.agent_runs_in(&workspace, &ids, a.shown == SessionsShown::Live, member, limit)
                 .await?
                 .into_iter()
-                .map(|(repo_id, run)| from_run(run, &repo_id))
+                .map(|(repo_id, run, item)| from_run(run, &repo_id, item))
                 .collect()
         } else {
             Vec::new()
@@ -667,7 +668,7 @@ mod tests {
             })
             .collect();
         let wanted = Wanted { shown: SessionsShown::Recent, kind: None, harness: None, person: None, item: None };
-        let all = merged(Vec::new(), vec![from_run(run(8, "running"), "rep_api")], recorded, &wanted, 10);
+        let all = merged(Vec::new(), vec![from_run(run(8, "running"), "rep_api", None)], recorded, &wanted, 10);
         let kinds: Vec<(SessionKind, &str)> = all.iter().map(|session| (session.kind, session.id.as_str())).collect();
         assert_eq!(kinds, [(SessionKind::Agent, "run_1"), (SessionKind::Recorded, "pr_api_7")]);
         assert_eq!(all[0].actor.as_deref(), Some("g1t"));
@@ -679,7 +680,7 @@ mod tests {
         assert!(merged(Vec::new(), Vec::new(), vec![(all[1].clone(), false)], &by_harness, 10).is_empty());
         // A finished run is not live.
         let live = Wanted { shown: SessionsShown::Live, kind: None, harness: None, person: None, item: None };
-        assert!(merged(Vec::new(), vec![from_run(run(8, "succeeded"), "rep_api")], Vec::new(), &live, 10).is_empty());
+        assert!(merged(Vec::new(), vec![from_run(run(8, "succeeded"), "rep_api", None)], Vec::new(), &live, 10).is_empty());
     }
 
     #[test]

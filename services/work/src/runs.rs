@@ -66,10 +66,20 @@ const MAX_LIST: u32 = 200;
 const SESSION_ENTRIES: u32 = 2000;
 
 /// Every column but the steps, which only a run's own page needs.
+///
+/// A run g1t's agent started on an issue (no pull request; only these
+/// kinds) kept the issue's number in its repository, which the move to
+/// work items (g1t #57) never rewrote: `on_item` says the number is not a
+/// pull request's, and `item` is the work item's number in its workspace,
+/// found through the issue's old number.
 const COLUMNS: &str = "id, workspace, repo_id, repo, number, pull_id, kind, agent, model, status,
   step, step_count, cost_usd, turns, sandbox, token_hash, started_by, error, created_at,
   started_at, finished_at, updated_at, budget_usd, time_cap_minutes, halted,
-  COALESCE((SELECT title FROM pulls WHERE pulls.id = agent_runs.pull_id), agent_runs.title) AS title";
+  COALESCE((SELECT title FROM pulls WHERE pulls.id = agent_runs.pull_id), agent_runs.title) AS title,
+  (agent_runs.pull_id IS NULL AND agent_runs.kind IN ('implement', 'answer')) AS on_item,
+  (SELECT i.number FROM work_item_repos r JOIN work_items i ON i.id = r.item_id
+   WHERE agent_runs.pull_id IS NULL AND agent_runs.kind IN ('implement', 'answer')
+     AND r.repo_id = agent_runs.repo_id AND r.legacy_number = agent_runs.number) AS item";
 
 /// The pull requests of the repositories in `?1` (a JSON array of ids)
 /// with entries recorded on them directly (not by a session moved onto
@@ -133,9 +143,24 @@ pub(crate) struct RunRow {
     time_cap_minutes: Option<u32>,
     #[serde(default)]
     halted: Option<String>,
+    /// 1 when `number` is an issue's, not a pull request's (see [`COLUMNS`]).
+    #[serde(default)]
+    on_item: Option<u32>,
+    /// The work item that issue became, by number in its workspace.
+    #[serde(default)]
+    item: Option<u32>,
 }
 
 impl RunRow {
+    fn on_item(&self) -> bool {
+        self.on_item.is_some_and(|flag| flag != 0)
+    }
+
+    /// The work item it worked on, for a run started on an issue.
+    pub(crate) fn item(&self) -> Option<u32> {
+        self.item.filter(|_| self.on_item())
+    }
+
     fn status(&self) -> RunStatus {
         RunStatus::parse(&self.status).unwrap_or(RunStatus::Failed)
     }
@@ -143,6 +168,7 @@ impl RunRow {
     /// The run as `member` (or not) may see it: model and cost are the
     /// workspace's business.
     fn into_run(self, member: bool) -> AgentRun {
+        let on_item = self.on_item();
         let (namespace, name) = self.repo.split_once('/').unwrap_or((&self.repo, ""));
         AgentRun {
             repo: RepoPath {
@@ -157,7 +183,8 @@ impl RunRow {
                 .and_then(|steps| serde_json::from_str(steps).ok())
                 .unwrap_or_default(),
             id: self.id,
-            number: self.number.filter(|number| *number > 0),
+            // An issue's old number is no pull request's.
+            number: self.number.filter(|number| *number > 0 && !on_item),
             title: self.title,
             agent: self.agent,
             model: self.model.filter(|_| member),
@@ -484,7 +511,16 @@ impl Work {
     /// (sandboxes for checks, the queue and merge checks are not agents),
     /// newest first, with each one's repository id. Only `live` ones: those
     /// queued or running.
-    pub(crate) async fn agent_runs_in(&self, workspace: &str, repo_ids: &[String], live: bool, member: bool, limit: u32) -> Result<Vec<(String, AgentRun)>> {
+    /// Each with its repository's id, and the work item it worked on, by
+    /// number, for one started on an issue.
+    pub(crate) async fn agent_runs_in(
+        &self,
+        workspace: &str,
+        repo_ids: &[String],
+        live: bool,
+        member: bool,
+        limit: u32,
+    ) -> Result<Vec<(String, AgentRun, Option<u32>)>> {
         if repo_ids.is_empty() {
             return Ok(Vec::new());
         }
@@ -501,7 +537,13 @@ impl Work {
             .all()
             .await?
             .results::<RunRow>()?;
-        Ok(rows.into_iter().map(|row| (row.repo_id.clone(), row.into_run(member))).collect())
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                let item = row.item();
+                (row.repo_id.clone(), row.into_run(member), item)
+            })
+            .collect())
     }
 
     /// The pull requests of some repositories with a recorded session,
@@ -704,6 +746,32 @@ mod tests {
         assert_eq!(current_step(&steps(&["Blocked: a.com (not an allowed domain)"])), None);
         assert_eq!(current_step(&steps(&["Blocked: a.com (not an allowed domain)", "Typecheck"])).as_deref(), Some("Typecheck"));
         assert_eq!(current_step(&[]), None);
+    }
+
+    #[test]
+    fn a_run_on_an_issue_names_its_work_item_not_a_pull_request() {
+        let db = crate::migrated::database();
+        db.execute_batch(
+            "INSERT INTO work_items (id, workspace, number, title, body, author_id, author_name, created_at, updated_at)
+             VALUES ('iss_7', 'acme', 57, 'Passkeys', '', 'usr_1', 'ana', '', '');
+             INSERT INTO work_item_repos (item_id, repo_id, role, legacy_number, added_at) VALUES ('iss_7', 'rep_web', 'origin', 7, '');
+             INSERT INTO agent_runs (id, workspace, repo_id, repo, number, pull_id, kind, agent, status, sandbox, token_hash, created_at, updated_at)
+             VALUES ('arn_issue', 'acme', 'rep_web', 'acme/web', 7, NULL, 'implement', 'g1t', 'succeeded', 's', 't', '', ''),
+                    ('arn_pull', 'acme', 'rep_web', 'acme/web', 7, 'pul_7', 'review', 'g1t', 'succeeded', 's', 't', '', ''),
+                    ('arn_queue', 'acme', 'rep_web', 'acme/web', 7, NULL, 'queue', 'g1t', 'succeeded', 's', 't', '', '');",
+        )
+        .unwrap();
+        let run = |id: &str| {
+            db.query_row(&format!("SELECT on_item, item FROM (SELECT {COLUMNS} FROM agent_runs WHERE id = ?1)"), [id], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, Option<i64>>(1)?))
+            })
+            .unwrap()
+        };
+        // Issue #7 of web is work item #57 of acme; pull request #7 is not it.
+        assert_eq!(run("arn_issue"), (1, Some(57)));
+        assert_eq!(run("arn_pull"), (0, None));
+        // The merge queue names a pull request by number alone.
+        assert_eq!(run("arn_queue"), (0, None));
     }
 
     #[test]
