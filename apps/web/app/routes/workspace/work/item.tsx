@@ -47,6 +47,8 @@ import { refPath } from "../../../lib/refs.server";
 import { itemAbilities } from "../../../lib/work-access";
 import { LINK_ROLES, ROLE_LABELS, itemPath, originOf, repoFilter, shortPath, workPath } from "../../../lib/work-items";
 import { workspaceProjects } from "../../../lib/workspace-projects.server";
+import { workPages } from "../../../lib/repo-live";
+import { useWorkspaceLive } from "../../../lib/use-repo-live";
 
 export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   const item = loaderData?.item;
@@ -479,6 +481,8 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
   // Its Work, when it could be read; a failure says so in its places.
   const coordination = isFailed(loaderData.coordination) ? null : loaderData.coordination;
   const sessionTrees = isFailed(loaderData.sessionTrees) ? null : loaderData.sessionTrees;
+  // What changes to it (comments, labels, links, its pull requests) shows as it happens.
+  useWorkspaceLive({ workspace, member: loaderData.member, match: workPages.item(item.number), followBottom: true });
   // Follow pull requests at work without a manual reload.
   useRefreshWhile(pulls.some((pull) => pull.status === "draft" || pull.checkStatus === "queued" || pull.checkStatus === "running"));
   // Claims lapse and sessions go idle with no event to say so: looked at again now and then.

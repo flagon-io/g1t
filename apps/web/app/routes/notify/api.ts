@@ -7,7 +7,7 @@ import type { SoundSettingsChange } from "@g1t/contracts/sounds";
 import type { Route } from "./+types/api";
 import { repoFor } from "../../lib/access.server";
 import { identity } from "../../lib/services.server";
-import { assertSameOrigin, requireUser } from "../../lib/session.server";
+import { assertSameOrigin, requireUser, roleIn } from "../../lib/session.server";
 
 function client() {
   if (!env.NOTIFY) throw data({ error: "Notifications are not set up here." }, { status: 503 });
@@ -25,7 +25,9 @@ function client() {
  * updates live: its tabs then hear what changes there (`repo`, its
  * `owner/name`), once the person is found to be able to read it
  * (lib/repo-live.ts); `watch_repos` the same for several at once (`repos`,
- * at most WATCH_REPOS_MAX: Home watches its workspace's).
+ * at most WATCH_REPOS_MAX: Home watches its workspace's); `watch_workspace`
+ * for a workspace's Work pages (`workspace`, its slug): its members' tabs
+ * then hear what changes to its work items.
  *
  * The phone app calls this with its access token and no `Origin`, which
  * the same-origin check lets through (lib/same-origin.ts).
@@ -47,6 +49,7 @@ type Sent = {
   change?: PresenceChange | SoundSettingsChange;
   repo?: string;
   repos?: unknown;
+  workspace?: string;
 };
 
 /** The most repositories one `watch_repos` asks for (notify keeps 50 per person). */
@@ -114,6 +117,13 @@ export async function action({ context, request }: Route.ActionArgs) {
       if (paths.length === 0 || paths.length > WATCH_REPOS_MAX) return Response.json({ ok: false }, { status: 400 });
       const watched = (await Promise.all(paths.map((path) => watchOne(context, notify, user, path).catch(() => null)))).filter((one) => one?.ok);
       return Response.json({ ok: watched.length > 0, repo_ids: watched.map((one) => one!.repo_id) });
+    }
+    case "watch_workspace": {
+      const slug = String(sent.workspace ?? "").toLowerCase();
+      if (!slug) return Response.json({ ok: false }, { status: 400 });
+      // Only a workspace they belong to: what changes to its work items is its members'.
+      if (roleIn(user, slug) == null) return Response.json({ ok: false }, { status: 404 });
+      return Response.json(await notify.watchWorkspace(user, slug));
     }
     default:
       return Response.json({ ok: false }, { status: 400 });

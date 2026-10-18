@@ -17,6 +17,7 @@ import {
   newCommits,
   repoPages,
   tagOf,
+  workPages,
 } from "./repo-live.ts";
 
 const AT = "2026-10-11T10:00:00Z";
@@ -262,4 +263,13 @@ test("typing is in text boxes, text areas and editors", () => {
 test("the bottom of the page, with some slack", () => {
   assert.equal(atBottom({ top: 880, height: 2000, viewport: 1000 }), true);
   assert.equal(atBottom({ top: 500, height: 2000, viewport: 1000 }), false);
+});
+
+test("a workspace's Work pages: the list hears every work item, an item page its own", () => {
+  const change = (number: number | null) => ({ workspace: "acme", kind: "work_item.updated", number, at: "2026-10-17T00:00:00Z" });
+  assert.equal(workPages.list()(change(7)), true);
+  assert.equal(workPages.list()(change(null)), true);
+  assert.equal(workPages.item(7)(change(7)), true);
+  assert.equal(workPages.item(7)(change(8)), false);
+  assert.equal(workPages.item(7)(change(null)), false);
 });
