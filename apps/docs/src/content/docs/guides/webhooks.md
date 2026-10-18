@@ -54,8 +54,10 @@ long text, such as a comment's or release's body, shortened, and
 
 A work item belongs to the workspace, not to one repository, so a
 `work_item.` event's `data` has `workspace`, `number`, `item_id` and
-`repo_ids`, every repository linked to it. Each of those repositories'
-webhooks gets it, and so do the workspace's.
+`repo_ids`, every repository linked to it, its origin first. Each of
+those repositories' webhooks gets it, with `repository` naming that
+repository, and so do the workspace's, with `repository` naming the
+origin, or null for a work item filed in the workspace alone.
 
 With these headers:
 
@@ -92,8 +94,9 @@ With these headers:
 | `work_item.labeled`, `work_item.unlabeled`, `pull.labeled`, `pull.unlabeled` | A [label](/guides/labels/) was put on a work item or a pull request, or taken off: one event for each label. `data.number` and `data.label` (`name` and `color`). |
 | `work_item.milestoned`, `work_item.demilestoned`, `pull.milestoned`, `pull.demilestoned` | A work item or a pull request was put in a [milestone](/guides/milestones/), or taken out of one. `data.milestone` (`number` and `title`). Moving it from one to another is both. |
 | `pull.base_changed` | The branch a pull request merges into changed. `data.base` names it. See [pull requests into other branches](/guides/base-branches/). |
-| `work_item.opened`, `work_item.updated`, `work_item.assigned`, `work_item.closed`, `work_item.reopened` | A [work item](/guides/work-items/) changed. `data.workspace`, `data.number`, `data.item_id`, `data.repo_ids` and `data.author` (`id` and `username`); on close, `data.reason` and `data.resolutions` (each the `repo` and the `pull` request or default-branch `commit` that landed it), and `data.session` when it was closed in a session; on assignment, `data.assignees` and the newly assigned `data.added`. |
-| `work_item.linked`, `work_item.unlinked` | A repository was linked to a work item in a role, or unlinked. `data.workspace`, `data.number`, `data.item_id`, `data.repo_ids`, and the repository and its role. |
+| `work_item.opened`, `work_item.updated`, `work_item.assigned`, `work_item.closed`, `work_item.reopened` | A [work item](/guides/work-items/) changed. `data.workspace`, `data.number`, `data.item_id`, `data.repo_ids` and `data.author` (`id` and `username`); on close, `data.reason`, `data.resolution` when a landing closed it (the `repo` and the `pull` request or default-branch `commit` that landed it), and `data.session` when it was closed in a session; on assignment, `data.assignees` and the newly assigned `data.added`. |
+| `work_item.linked`, `work_item.unlinked` | A repository was linked to a work item in a role, or unlinked. `data.workspace`, `data.number`, `data.item_id`, `data.repo_ids`, `data.repo` (`owner/name`) and `data.role`. |
+| `work_item.landed` | A pull request or a default-branch commit landed a work item in one of its repositories. `data.resolution` (the `repo`, and the `pull` or `commit`) and `data.missing`, the targets it has still to land in. When nothing is left, `work_item.closed` follows. |
 | `comment.created` | A comment or review on a work item or pull request. |
 | `comment.edited` | A comment's text was [edited](/guides/pull-requests/#editing-and-deleting-comments). `data.comment_id`, `data.number`, `data.pull_id` on a pull request, and `data.changes.body.from`, what it said before. |
 | `comment.deleted` | A comment was [deleted](/guides/pull-requests/#editing-and-deleting-comments). `data.comment_id`, `data.number`, `data.pull_id` on a pull request, and `data.comment` as it was: `id`, `body`, `author` (`id` and `username`), `created_at`, `path` and `line`. |

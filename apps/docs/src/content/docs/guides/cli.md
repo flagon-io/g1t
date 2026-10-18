@@ -239,20 +239,26 @@ your own workspace, or `--workspace`; see
 ```sh
 g1t work list                           # open work items, newest first
 g1t work list --label bug --assignee @me
-g1t work list --repo acme/web           # those linked to one repository
+g1t work list -R acme/web               # those linked to one repository
+g1t work list -R acme/web --role target # those it is a target of
 g1t work view 12 --comments
 g1t work new --title "Greeting should name the caller" --body "Take a name from the first argument."
+g1t work new --title "Rename the flag" --target acme/api --target acme/docs
 g1t work comment 12 -b "Fixed in #14."
 g1t work edit 12 --add-label p1 --add-assignee @me
-g1t work link 12 --role target --repo acme/api
-g1t work unlink 12 --repo acme/api
+g1t work link 12 --role target -R acme/api
+g1t work unlink 12 -R acme/api
 g1t work close 12 --reason not_planned
 g1t work reopen 12
 ```
 
 [Work items](/guides/work-items/) belong to the workspace, and `g1t work`
-works on the current repository's workspace, or the one in `--workspace`.
-`g1t work new` makes the current repository the new work item's origin.
+works on the current repository's workspace, or the one in `--workspace`
+(or `G1T_WORKSPACE`). `-R` filters `g1t work list` to the work items
+linked to that repository, and names the repository `g1t work link` and
+`g1t work unlink` act on.
+`g1t work new` makes the current repository the new work item's origin,
+and `--target` names each repository it should land in.
 `g1t work view` shows the work item with its whole work context (see
 [Claims and context](#claims-and-context)). `@me` is you. At a terminal,
 `g1t work new` without `--title` asks for one and opens your editor for
@@ -272,12 +278,20 @@ g1t pr ready --summary "Names the caller." --attach preview.png
 
 `--attach FILE` (repeat it for more) on `g1t work new`, `g1t work comment`,
 `g1t pr create`, `g1t pr comment` and `g1t pr ready` uploads each file and adds
-its Markdown after the text. An attachment is a PNG, JPEG, GIF or WebP image of
+its Markdown after the text. `g1t attach` and the `g1t pr` commands upload to
+the repository. `g1t work comment --attach` uploads to the work item, which
+keeps the files. `g1t work new --attach` uploads to the repository the work
+item is filed from; filed in the workspace alone (with `--workspace` and no
+repository of it here), it opens the work item first, then uploads to it and
+adds the Markdown to its description. An attachment is a PNG, JPEG, GIF or WebP image of
 at most 10 MB, judged by its bytes. It is served from g1t's usercontent address,
 never from g1t.sh, and its address is its permission: anyone given it can see
 the image, even from a private repository. Never commit an image to the
 repository just to link it. Through the API it is
-[`upload_attachment`](/reference/api/work-items/upload-attachment/).
+[`upload_attachment`](/reference/api/work-items/upload-attachment/)
+(`POST /repos/{owner}/{name}/attachments`) for a repository, and
+[`upload_work_item_attachment`](/reference/api/work-items/upload-work-item-attachment/)
+(`POST /workspaces/{workspace}/work/{number}/attachments`) for a work item.
 
 ### Pull requests
 
@@ -723,6 +737,7 @@ in `config.json`, in `~/.config/g1t` (`%APPDATA%\g1t` on Windows;
 | `G1T_TOKEN` | A token to use instead of the stored one. |
 | `G1T_HOST` | The host to use when no repository names one. |
 | `G1T_REPO` | The repository, as `[HOST/]OWNER/NAME`. |
+| `G1T_WORKSPACE` | The workspace `g1t work` works on, as `--workspace` says. |
 | `G1T_CONFIG_DIR` | Where to keep `config.json`. |
 | `G1T_KEYRING` | `off` keeps tokens out of the system's credential store. |
 | `G1T_PROMPT_DISABLED` | Never ask anything. |

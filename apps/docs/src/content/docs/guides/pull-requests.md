@@ -354,10 +354,15 @@ you get back. From a shell, `g1t attach preview.png` prints
 preview.png` on `g1t pr create`, `g1t pr ready`, `g1t pr comment`,
 `g1t work new` and `g1t work comment` adds it for you (see the
 [CLI guide](/guides/cli/#images-in-descriptions-and-comments)). Through the API it is
-`POST /repos/{owner}/{name}/attachments` with `name`, the file
-base64-encoded in `data`, and optionally `content_type`; it answers with
-`id`, `url`, `content_type`, `size` and `markdown`. On the MCP server it is
-the `work_item` tool's `attach` action.
+[`POST /repos/{owner}/{name}/attachments`](/reference/api/work-items/upload-attachment/)
+with `name`, the file base64-encoded in `data`, and optionally
+`content_type`; it answers with `id`, `url`, `content_type`, `size` and
+`markdown`. A work item keeps its own:
+[`POST /workspaces/{workspace}/work/{number}/attachments`](/reference/api/work-items/upload-work-item-attachment/)
+takes the same and answers the same, so a work item filed with no
+repository takes images too; anyone who may comment on the work item may.
+On the MCP server they are the `pull_request` tool's `attach` action and
+the `work_item` tool's.
 
 An attachment is a PNG, JPEG, GIF or WebP image of at most 10 MB, judged by
 its bytes: a larger file is refused with `413` (`too_large`), anything else

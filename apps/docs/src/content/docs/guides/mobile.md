@@ -4,7 +4,8 @@ description: g1t on Android and iOS, built with Expo. Highly experimental and ba
 ---
 
 The phone app is meant to be g1t on Android and iOS, with its own
-screens for what you do away from a desk: talking with your team in
+screens for what you do away from a desk: triaging and discussing
+[work items](/guides/work-items/) in Work, talking with your team in
 Chat, with notifications on your phone, and reviewing pull requests in
 Code. Everything else opens on the site, in your phone's browser.
 
@@ -50,10 +51,41 @@ The bar along the bottom is the site's phone bar:
 | Tab | What is on it |
 | --- | --- |
 | **Home** | Coming. Opens Home on the site meanwhile. |
+| **Work** | The workspace's work items, for every member, Code access or not. See [Work](#work). |
 | **Chat** | Your starred conversations, channels and direct messages, with what is unread, moving live. See [Chat](#chat). |
 | **Notifications** | Coming. Opens your notifications on the site meanwhile; messages to you already arrive [on the phone](#notifications). |
-| **Code** | The workspace's repositories, each with its pull requests and work items. A pull request shows its description, checks, conversation and changed files, and you can approve it or ask for changes. A work item shows the pull requests made for it, and you can comment. Shown when you use Code in the workspace. |
-| **More** | Whether this phone gets notifications, your workspaces, how you signed in, and **Sign out**. |
+| **More** | **Code**, for members with Code access; whether this phone gets notifications, your workspaces, how you signed in, and **Sign out**. |
+
+**Code**, under **More**, is the workspace's repositories, each with its
+pull requests and its **Work**: the work items linked to it. A pull
+request shows its description, checks, conversation and changed files,
+and you can approve it or ask for changes.
+
+## Work
+
+Work on the phone is the site's [Work](/guides/work-items/), laid out for
+one hand.
+
+- **The list** shows the workspace's open work items, newest first: each
+  with its number, title, state, labels and the repositories it is linked
+  to, which fold into "+2" past the first few. Pull down to read it
+  again; it loads more as you near its end.
+- **Filters** are in a sheet: tap the filter button in the header, a
+  filter's chip above the list, or **Work** in the bar again. Choose the
+  state, **Assigned to me**, a label, a milestone, a repository and its role.
+- **A work item** shows its description and comments (in Markdown, with
+  `#123` references opening what they name), its labels, milestone and
+  assignees, and under them its repositories: each with its role, its pull
+  requests for the item and whether the work **landed** there, and which
+  targets are still missing. **Suggested** repositories can be added as
+  targets with a tap.
+- **The bar at its foot** comments. Its **⋯** closes the work item (as
+  done, or as not planned), reopens it, links a repository as a target,
+  copies its link, or opens it on the site. Tap a repository to open it or
+  unlink it.
+- **New work item** (the **+** on Work) takes a title, a description,
+  labels and the repositories it should land in; none is fine. Opened from
+  a repository's Work, that repository is its origin.
 
 ## Chat
 
@@ -128,9 +160,19 @@ pages it has screens for:
 
 | Link | Opens |
 | --- | --- |
+| `g1t://<workspace>/-/work`, with the list's filters (`?repo=web&label=bug`) | Work, filtered as the link says |
+| `g1t://<workspace>/-/work/<number>` | The work item |
+| `g1t://<workspace>/-/work/new` | A new work item |
 | `g1t://<workspace>/-/chat`, `…/-/chat/<channel>`, `…/-/chat/dm/<id>` | Chat, or the conversation, in that workspace |
 | `g1t://<owner>/<repo>` | The repository |
 | `g1t://<owner>/<repo>/pull/<number>` | The pull request |
+| `g1t://<owner>/<repo>/issues/<number>` | What that old issue number names in the repository: the work item the issue became, or a pull request. The app asks g1t, as the site does. `…/issues` and `…/issues/new` open Work filtered to the repository, and a new work item from it. |
+
+The same paths as `https://g1t.sh/…` links, such as
+`https://g1t.sh/<workspace>/-/work/<number>`, open these screens once
+g1t.sh publishes the files Android and iOS check first (see
+[below](#whats-not-there-yet)). The workspace's labels and milestones open
+on the site.
 
 Any other page opens on the site, in the browser.
 
@@ -171,8 +213,9 @@ on.
   page; iOS waits for the App Store.
 - **Home, Notifications and Artifacts** as tabs of their own.
   Their pages open on the site meanwhile.
-- **Formatting in Code.** Descriptions and comments show their Markdown
-  as written; messages in Chat are formatted.
+- **More of Work.** Changing an existing work item's labels, assignees
+  or milestone, reacting, and the workspace's **Labels** and
+  **Milestones** pages are on the site for now.
 - **Attachments and custom emoji.** Files in messages, and a
   workspace's own `:emoji:`, show as their names.
 - **Replying from a notification**, without opening the app.

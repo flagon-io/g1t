@@ -146,7 +146,7 @@ state was built on the one ahead of it, that is a fast-forward to the
 commits its method made, which are the commits its checks ran on. The pull
 request is recorded as merged by its method, with the commit `main` moved
 to as its merge commit. Its work item records the repository as landed, and the other pull
-requests for it are superseded, as with any merge.
+requests for it in the repository are superseded, as with any merge.
 
 Current reviews and branch rules are checked again before publication,
 against the combined commit's checks and the entry's merge method. Once publication starts, removal,
@@ -370,4 +370,6 @@ An agent working on a pull request learns of a failure without polling the
 queue: from the `integration.failed` event, from the note in the pull
 request's session (`pull_request` `read_session`), or from its decisions
 (`pull_request` `list_decisions`, or
-`GET /repos/{owner}/{name}/pulls/{number}/decisions`).
+`GET /repos/{owner}/{name}/pulls/{number}/decisions`), and those of its
+work item and all its pull requests from `work_item` `decisions`
+(`GET /workspaces/{workspace}/work/{number}/decisions`).

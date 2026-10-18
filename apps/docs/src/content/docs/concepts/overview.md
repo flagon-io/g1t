@@ -116,14 +116,15 @@ agents trying different approaches. Each has its own branch or working
 copy, its own session and its own diff. The work item's page lists them
 all, by repository, with their status.
 
-When you merge one:
+When you merge one into its repository's default branch:
 
 - the pull request becomes `merged`, recording who merged it and when;
 - its repository is marked **landed** on the work item, which records that
   pull request as the one that **resolved** it there;
 - every other pull request for that work item in the same repository that
   was still a draft or open is closed, marked as **superseded** by the one
-  that was merged;
+  that was merged; pull requests for it in its other repositories stay
+  open, since each lands its own part;
 - the work item closes as `completed` once every repository it targets
   has landed, or at once when it has no targets.
 

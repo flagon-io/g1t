@@ -78,6 +78,11 @@ and trace. An error
 marked **Resolve** opens again if it happens again; **Ignore** keeps it
 quiet.
 
+An error group names its work item as `item`, its number in the
+workspace; `update_error` with `item_number` links one, and `null` unlinks
+it. A group linked to an issue before work items, whose work item is not
+known yet, has that issue's number as `legacy_issue`.
+
 ## Apps on g1t.page
 
 Nothing to set up. Every request reaches an app through g1t.page's

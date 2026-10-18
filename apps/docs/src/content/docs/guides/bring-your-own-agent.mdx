@@ -14,7 +14,7 @@ with the access you give them:
 | Read and change anything on g1t from inside the agent | The MCP server at `https://mcp.g1t.sh`: [MCP tools](/reference/mcp/) |
 | Work from the agent's shell | The [g1t CLI](/guides/cli/): `g1t pr create`, `g1t pr checks --watch`, `g1t run logs --failed` |
 | Push code | git over HTTPS, signed in with `g1t auth setup-git` or an [access token](/guides/authentication/#access-tokens) |
-| Start the agent when something happens | [Webhooks](/guides/webhooks/), or a [workflow](/guides/actions/) on `issues` or `issue_comment` |
+| Start the agent when something happens | [Webhooks](/guides/webhooks/), or a [workflow](/guides/actions/) on `work_item` or `work_item_comment` |
 | Show people how a change was made | The pull request's [session](/guides/why-blame/#sessions) |
 | See who is working on what, and not collide | [Sessions, claims and dependencies](/guides/sessions/) |
 | Script anything else | The [REST API](/reference/api/), which has the same operations as the tools |
@@ -168,7 +168,8 @@ When the merge queue takes an agent's pull request out because it fails
 combined with the pull requests ahead of it, g1t
 [says which ones and which check failed](/guides/merge-queue/#who-is-told):
 in the pull request's session, as an `integration_failure` decision
-(`pull_request` `list_decisions`), and as the `integration.failed` event.
+(`pull_request` `list_decisions`, and `work_item` `decisions` for its
+work item), and as the `integration.failed` event.
 The agent reads the other pull request's changes, fixes its own, and
 pushes; once the checks pass, the pull request rejoins the queue by
 itself. It can say what it changed with `pull_request` `record_decision`
@@ -286,8 +287,8 @@ events:
   as `work_item.labeled`, `work_item.assigned`, `comment.created`,
   `checks.completed` or `workflow.completed`. Each delivery is signed. See
   [webhooks](/guides/webhooks/).
-- **Workflows.** A workflow in `.g1t/workflows/` can start on `issues` or
-  `issue_comment` and run your agent's command line on a g1t runner, with
+- **Workflows.** A workflow in `.g1t/workflows/` can start on `work_item` or
+  `work_item_comment` and run your agent's command line on a g1t runner, with
   its key in a [secret](/guides/secrets-and-variables/). See
   [GitHub Actions](/guides/actions/).
 - **Notifications.** An agent that works as you can read your inbox with

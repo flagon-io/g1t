@@ -63,9 +63,10 @@ the repository, and the pull request or commit. The work item closes when
 it has no target, or once every target has landed. `Part of #N` (or
 `Refs #N`) links the pull request or commit, and its repository as
 touched, without landing anything. References reach every repository of
-the same workspace; a work item in another workspace is never closed. The
-work item's other open pull requests in that repository close as
-superseded ([How g1t works](/concepts/overview/#several-pull-requests-for-one-work-item)).
+the same workspace; a work item in another workspace is never closed. When a merged
+pull request lands its own work item, that work item's other open pull
+requests in the same repository close as superseded; those in its other
+repositories stay open ([How g1t works](/concepts/overview/#several-pull-requests-for-one-work-item)).
 
 Work items were issues, one repository's each, until a migration moved
 them into their workspaces: numbered above every number the workspace's

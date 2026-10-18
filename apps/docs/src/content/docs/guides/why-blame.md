@@ -179,9 +179,13 @@ A pull request's **Session** tab lists its decisions above what was
 recorded, with the harness sessions working on it; a work item lists its
 own and its pull requests' under them, from every repository it links.
 
-Read them with the `pull_request` tool's `list_decisions` action, with
-`GET /repos/{owner}/{name}/pulls/{number}/decisions`, or for a work item
-and all its pull requests in its `decisions`, from `g1t work view` or
+Read a pull request's with the `pull_request` tool's `list_decisions`
+action or
+[`GET /repos/{owner}/{name}/pulls/{number}/decisions`](/reference/api/decisions-and-why/list-decisions/).
+Read a work item's, with those of all its pull requests, with the
+`work_item` tool's `decisions` action or
+[`GET /workspaces/{workspace}/work/{number}/decisions`](/reference/api/work-items/list-work-item-decisions/);
+they are also in the `decisions` of `g1t work view` and
 [`GET /workspaces/{workspace}/work/{number}/work`](/reference/api/work-items/get-work/).
 A decision is as visible as the repository, so do not put secrets in one.
 

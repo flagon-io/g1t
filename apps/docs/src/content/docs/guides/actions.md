@@ -29,7 +29,7 @@ gives their values out, so they cannot be copied across.
 
 | On GitHub | On g1t |
 | --- | --- |
-| `on:` `push` (branches, tags, paths), `pull_request`, `pull_request_target`, `issues`, `issue_comment`, `pull_request_review`, `schedule`, `workflow_dispatch`, `workflow_run`, `merge_group`, `create`, `delete`, `repository_dispatch`, `release`, `deployment`, `deployment_status` | The same, from g1t's own pushes, pull requests, [work items](/guides/work-items/) linked to the repository, comments, [releases](#releases), [deployments](#deployments) and [merge queue](/guides/merge-queue/). `issues` is `work_item` on g1t, since issues became work items. `create` starts on each new branch or tag, at its commit; `delete` on each branch or tag a push deletes, on the default branch's latest commit, with `github.event.ref` and `github.event.ref_type` naming what went. As on GitHub, neither takes `branches` or `tags` filters: a workflow on them runs for every branch and tag. `repository_dispatch` starts on [a dispatch event](#repository-dispatch). |
+| `on:` `push` (branches, tags, paths), `pull_request`, `pull_request_target`, `work_item`, `work_item_comment`, `pull_request_review`, `schedule`, `workflow_dispatch`, `workflow_run`, `merge_group`, `create`, `delete`, `repository_dispatch`, `release`, `deployment`, `deployment_status` | The same, from g1t's own pushes, pull requests, [work items](/guides/work-items/) linked to the repository, comments, [releases](#releases), [deployments](#deployments) and [merge queue](/guides/merge-queue/). `work_item` and `work_item_comment` are g1t's own, in place of GitHub's `issues` and `issue_comment`, with `github.event.work_item` in place of `github.event.issue`; `work_item_comment` runs for comments on pull requests too, with `github.event.work_item.pull_request` set. A workflow on `issues` or `issue_comment` still reads, but starts nothing, and its page says to write `work_item` or `work_item_comment`. `create` starts on each new branch or tag, at its commit; `delete` on each branch or tag a push deletes, on the default branch's latest commit, with `github.event.ref` and `github.event.ref_type` naming what went. As on GitHub, neither takes `branches` or `tags` filters: a workflow on them runs for every branch and tag. `repository_dispatch` starts on [a dispatch event](#repository-dispatch). |
 | `jobs`, `needs`, `if`, `outputs`, `env`, `defaults`, `timeout-minutes`, `continue-on-error` | The same. |
 | `timeout-minutes` and `continue-on-error` on a step | The same, for `run:` and `uses:` steps alike. A `uses:` step's action is stopped at its limit, with every process it started; a step inside a composite action stops at its own limit or the `uses:` step's, whichever comes first. A step stopped this way fails, unless `continue-on-error` lets the job go on. |
 | `strategy.matrix` with `include` and `exclude`, `fail-fast`, `max-parallel`, a matrix from `fromJSON(needs.…)` | The same. |
@@ -1579,9 +1579,9 @@ They also start on the activity types `reopened` (also run by
 default, as `opened` and `synchronize` are), `converted_to_draft`,
 `ready_for_review`, `labeled`, `unlabeled`, `milestoned`, `demilestoned`,
 `assigned`, `review_requested` and `closed`, and `edited` when the branch
-a pull request merges into changes; `issue_comment` workflows on
-`created`, `edited` (with `github.event.changes.body.from`) and `deleted`; `work_item` workflows on `assigned`, `labeled`, `unlabeled`, `milestoned` and
-`demilestoned` too. List them under `types:` to run on them. For
+a pull request merges into changes; `work_item_comment` workflows on
+`created`, `edited` (with `github.event.changes.body.from`) and `deleted`; `work_item` workflows on `assigned`, `labeled`, `unlabeled`, `milestoned`,
+`demilestoned`, `linked`, `unlinked` and `landed` (a repository it targets landed it) too. List them under `types:` to run on them. For
 `labeled` and `unlabeled`, `github.event.label` names the label; for
 `assigned`, `github.event.assignee` names who was assigned. Assigning
 several people at once starts one run, which names the first of them. A pull
@@ -1677,6 +1677,21 @@ payload GitHub would send for the event, with the same keys and types.
   push changed when it pushed one commit and a workflow on `push` has a
   `paths` or `paths-ignore` filter, which makes g1t compare the push.
   Otherwise, and for a push of several commits, they are empty lists.
+- **On `work_item` and `work_item_comment`,** `work_item` is GitHub's
+  `issue`, with g1t's own fields beside it: `workspace` and
+  `workspace_url`; `repos`, each linked repository with its `full_name`,
+  `role` (`origin`, `target` or `touched`), `legacy_number` (its issue
+  number there before work items) and whether the work `landed` there;
+  `resolutions`, each with the `repository` and the `pull` or `commit` that
+  landed it; `blocked_by` and `pull_count`. On `linked` and `unlinked`,
+  `link` names the `repository` and its `role`; on `landed`, and on a
+  close a landing caused, `resolution` is what landed and `missing` the
+  targets still to land in. A comment's `item_url` is its work item in the
+  API. For a comment on a pull request, `work_item` is the pull request,
+  with `pull_request` set, as GitHub sends it.
+- **On pull request events,** `pull_request.item` is the number of its
+  work item in the workspace, `item_url` that work item in the API, and
+  `closes` and `parts` the work items it closes and is part of.
 - **On pull request events,** `pull_request.base.sha` is the tip of the
   branch it merges into when the event happened, and
   `pull_request.merge_commit_sha` is set only once it is merged, to the
@@ -1815,7 +1830,7 @@ jobs:
 | --- | --- | --- |
 | `contents` | Clone and fetch with git, read the repository | Push, publish releases |
 | `pull-requests` | Read pull requests | Open, review, close and merge them |
-| `issues` | Read the work items linked to the repository | Open, edit, comment on and close them |
+| `work` | Read the work items linked to the repository | Open, edit, comment on and close them |
 | `actions` | Read workflows, runs and logs | Run, cancel and re-run them |
 | `checks`, `statuses` | Read statuses and check runs | Report them |
 | `deployments`, `pages` | Read deployments | Report them |
@@ -1824,6 +1839,9 @@ jobs:
 | `metadata` | Always `read` | |
 | `id-token` | Nothing | Ask for an [OIDC token](#oidc-tokens) |
 | `discussions`, `attestations`, `models`, `repository-projects` | Nothing on g1t | Nothing on g1t |
+
+GitHub's `issues` permission grants nothing on g1t, which has work items
+in place of issues; the workflow's page says to write `work` instead.
 
 `read-all` and `write-all` set every permission; `permissions: {}` sets
 none, so the token cannot even clone a private repository. A reusable
