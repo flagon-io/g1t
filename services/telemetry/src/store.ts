@@ -573,7 +573,7 @@ export class Store {
     this.sql.exec("DELETE FROM spans WHERE start_us < ?", keep);
     this.sql.exec("DELETE FROM metric_points WHERE time_us < ?", keep);
     this.sql.exec("DELETE FROM rollups WHERE minute < ?", Math.floor((now - ROLLUP_DAYS * DAY_US) / MINUTE_US));
-    this.sql.exec("DELETE FROM error_groups WHERE last_us < ? AND issue_number IS NULL", now - ROLLUP_DAYS * DAY_US);
+    this.sql.exec("DELETE FROM error_groups WHERE last_us < ? AND item IS NULL AND legacy_issue IS NULL", now - ROLLUP_DAYS * DAY_US);
     this.sql.exec("DELETE FROM usage_days WHERE day < ?", day(now - 40 * DAY_US));
     // Over its size, the store sheds a day at a time from the oldest.
     for (let i = 0; i < 30 && this.state.storage.sql.databaseSize > MAX_BYTES; i++) {
@@ -876,10 +876,10 @@ export class Store {
     return this.rows(`SELECT * FROM error_groups ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""} ORDER BY last_us DESC LIMIT 200`, ...args).map(errorOf);
   }
 
-  setError(fp: string, change: { state?: ErrorGroup["state"]; issue_number?: number | null }): ErrorGroup | null {
+  setError(fp: string, change: { state?: ErrorGroup["state"]; item?: number | null }): ErrorGroup | null {
     if (change.state && !["open", "resolved", "ignored"].includes(change.state)) throw new Error("State is open, resolved or ignored.");
     if (change.state) this.sql.exec("UPDATE error_groups SET state = ? WHERE fingerprint = ?", change.state, fp);
-    if (change.issue_number !== undefined) this.sql.exec("UPDATE error_groups SET issue_number = ? WHERE fingerprint = ?", change.issue_number, fp);
+    if (change.item !== undefined) this.sql.exec("UPDATE error_groups SET item = ?, legacy_issue = NULL WHERE fingerprint = ?", change.item, fp);
     const row = this.rows("SELECT * FROM error_groups WHERE fingerprint = ?", fp)[0];
     return row ? errorOf(row) : null;
   }
@@ -1128,7 +1128,8 @@ function errorOf(r: Row): ErrorGroup {
     last_request_id: strOrNull(r.last_request_id),
     last_trace_id: strOrNull(r.last_trace_id),
     state: String(r.state) as ErrorGroup["state"],
-    issue_number: numOrNull(r.issue_number),
+    item: numOrNull(r.item),
+    legacy_issue: numOrNull(r.legacy_issue),
   };
 }
 

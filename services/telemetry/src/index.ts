@@ -331,7 +331,7 @@ async function rpc(env: Env, method: string, args: Record<string, any>): Promise
     case "errors":
       return s.errors(args);
     case "set_error":
-      return s.setError(String(args.fingerprint), { state: args.state as ErrorGroup["state"] | undefined, issue_number: args.issue_number });
+      return s.setError(String(args.fingerprint), { state: args.state as ErrorGroup["state"] | undefined, item: args.item });
     case "metrics":
       return s.metrics();
     case "metric":

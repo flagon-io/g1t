@@ -220,8 +220,14 @@ export type ErrorGroup = {
   last_trace_id: string | null;
   /** resolved, ignored or open. A resolved group that happens again opens again. */
   state: "open" | "resolved" | "ignored";
-  /** The issue made for it, so an agent can take it. */
-  issue_number: number | null;
+  /** The work item made for it, by number in the workspace, so an agent can take it. */
+  item: number | null;
+  /**
+   * One linked before issues became work items: its old number in the
+   * project's repository, whose address (`/<owner>/<repo>/issues/<n>`)
+   * still leads to the work item. Null once `item` is set.
+   */
+  legacy_issue: number | null;
 };
 
 /** What every list query can narrow by. */
@@ -334,7 +340,7 @@ export interface TelemetryApi {
   traces(args: ProjectRef & TraceQuery): Promise<Page<TraceSummary>>;
   trace(args: ProjectRef & { trace_id: string }): Promise<TraceDetail | null>;
   errors(args: ProjectRef & TelemetryFilter & { state?: ErrorGroup["state"] | null }): Promise<ErrorGroup[]>;
-  setError(args: ProjectRef & { fingerprint: string; state?: ErrorGroup["state"]; issue_number?: number | null }): Promise<ErrorGroup | null>;
+  setError(args: ProjectRef & { fingerprint: string; state?: ErrorGroup["state"]; item?: number | null }): Promise<ErrorGroup | null>;
   metrics(args: ProjectRef): Promise<MetricInfo[]>;
   metric(args: ProjectRef & TelemetryFilter & { name: string; aggregate?: "avg" | "sum" | "min" | "max" | "p50" | "p95" | "p99" | null; group_by?: string | null; step_s?: number | null }): Promise<MetricSeries>;
   /** What is in the store: services, environments and attribute keys seen, for filters. */
