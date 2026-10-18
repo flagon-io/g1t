@@ -49,7 +49,7 @@ test("a token made for one workspace reads its reach, repositories and permissio
       repository_selection: "selected",
       repo: ["web", "acme/api", "web"],
       "perm.code": "write",
-      "perm.issues": "none",
+      "perm.work": "none",
       "perm.workflow_files": "write",
       "perm.packages": "delete",
     }),
@@ -88,7 +88,7 @@ test("a workspace's own token holds nothing about a person, and reaches all or s
 });
 
 test("editing reads neither the expiry nor needs a name", () => {
-  const parsed = tokenFromForm(form({ expires: "9999", "perm.issues": "read" }), { editing: true });
+  const parsed = tokenFromForm(form({ expires: "9999", "perm.work": "read" }), { editing: true });
   assert.ok(parsed.ok);
   assert.equal(parsed.value.name, "");
 });
@@ -99,16 +99,16 @@ test("mistakes are named", () => {
   assert.match(error({ name: "x", expires: "400", "perm.repo": "read" }), /366/);
   assert.match(error({ name: "x", workspace: "acme", repository_selection: "selected", "perm.repo": "read" }), /repository/);
   assert.match(error({ name: "x", "perm.workflow_files": "read" }), /Workflow files/);
-  assert.match(error({ name: "x", "perm.issues": "admin" }), /Issues/);
+  assert.match(error({ name: "x", "perm.work": "admin" }), /Work/);
   assert.match(error({ name: "x" }), /at least one permission/);
 });
 
 test("permissions are scopes read per resource", () => {
-  assert.deepEqual(permissionsOf(["repo:read", "repo:admin", "issues:write", "bogus"]), { repo: "admin", issues: "write" });
-  assert.deepEqual(scopesOfPermissions({ issues: "write", repo: "read" }), ["repo:read", "issues:write"]);
+  assert.deepEqual(permissionsOf(["repo:read", "repo:admin", "work:write", "bogus"]), { repo: "admin", work: "write" });
+  assert.deepEqual(scopesOfPermissions({ work: "write", repo: "read" }), ["repo:read", "work:write"]);
   assert.equal(Object.keys(permissionsOf(null)).length, SCOPE_RESOURCES.length, "full access is every resource");
   assert.equal(levelLabel("workflow_files", "write"), "Write");
-  assert.equal(levelLabel("issues", "write"), "Read and write");
+  assert.equal(levelLabel("work", "write"), "Read and write");
   assert.equal(levelLabel("packages", "delete"), "Read, write and delete");
 });
 
@@ -124,7 +124,7 @@ test("lifetimes follow the rules of every workspace a token reaches", () => {
 
 test("lists read a token in a line", () => {
   const token = {
-    scopes: ["repo:read", "code:write", "issues:read"],
+    scopes: ["repo:read", "code:write", "work:read"],
     workspace: "acme",
     repositorySelection: "selected" as const,
     repositories: ["acme/web", "acme/api"],
@@ -135,7 +135,7 @@ test("lists read a token in a line", () => {
   assert.equal(reachSummary({ workspaceOwned: true, repositorySelection: "all" }), "All repositories");
   assert.deepEqual(
     permissionChips(token).map((chip) => chip.label),
-    ["Repositories: read", "Code: write", "Issues: read"],
+    ["Repositories: read", "Code: write", "Work: read"],
   );
   assert.ok(permissionChips({ scopes: ["repo:admin"] })[0]!.dangerous);
   assert.deepEqual(statusBadge("pending"), { label: "Pending approval", tone: "warn" });

@@ -6,7 +6,7 @@
  * read per resource.
  *
  * The checklist posts one `scope` field per ticked box. A higher level of
- * a resource includes the lower ones (`issues:write` gives `issues:read`),
+ * a resource includes the lower ones (`work:write` gives `work:read`),
  * so only the highest ticked level of each resource is stored.
  */
 
