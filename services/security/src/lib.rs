@@ -643,6 +643,13 @@ impl Security {
                     self.store.rename_namespace(&renamed.stale_slugs(&renamed.to), &renamed.to).await?;
                 }
             }
+            // Issues became work items: what was kept by their old numbers
+            // names the work items now.
+            "work.migrated" => {
+                if let Ok(moved) = serde_json::from_value::<g1t_contracts::events::WorkMigrated>(event.data.clone()) {
+                    self.store.work_migrated(&moved.items).await?;
+                }
+            }
             _ => {}
         }
         Ok(())

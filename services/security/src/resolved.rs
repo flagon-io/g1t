@@ -282,11 +282,11 @@ impl Security {
             if still_needed(&fixes) {
                 continue;
             }
-            self.store.set_update(&row, UpdateState::Superseded, row.pull(), row.issue(), None).await?;
+            self.store.set_update(&row, UpdateState::Superseded, row.pull(), row.item(), None).await?;
             let Some(number) = row.pull() else { continue };
             let packages = [row.package.clone()];
             match self.retire(repo, number, |base| resolved_text(base, &packages, &fixes)).await? {
-                Retired::Merged => self.store.set_update(&row, UpdateState::Merged, Some(number), row.issue(), None).await?,
+                Retired::Merged => self.store.set_update(&row, UpdateState::Merged, Some(number), row.item(), None).await?,
                 Retired::Closed => {
                     let activity: Vec<Activity> =
                         fixes.iter().map(|alert| Activity { alert_id: &alert.id, action: "update_superseded", actor: Some(system), reason: None, comment: None, number: Some(number) }).collect();
@@ -343,7 +343,7 @@ impl Security {
                     if let Some(update) = self.store.update(&repo.repo_id, osv, &dependency.name).await?
                         && (update.state().in_progress() && (update.pull() == row.pull() || update.branch.as_deref() == Some(row.branch.as_str())))
                     {
-                        self.store.set_update(&update, state, update.pull(), update.issue(), None).await?;
+                        self.store.set_update(&update, state, update.pull(), update.item(), None).await?;
                     }
                 }
             }
@@ -426,7 +426,7 @@ mod tests {
             status: status.into(),
             found_at: "2026-10-04T00:00:00Z".into(),
             fixed_at: None,
-            number: None,
+            item: None,
             dismiss_reason: None,
             dismiss_comment: None,
             dismissed_by: None,

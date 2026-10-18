@@ -492,7 +492,8 @@ impl Security {
                 "add_comment",
                 &AddCommentArgs {
                     actor: system.clone(),
-                    repo: path.clone(),
+                    repo: Some(path.clone()),
+                    workspace: String::new(),
                     number,
                     body: comment_text(&result.tool, result, &page),
                     path: result.path.clone(),

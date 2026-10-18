@@ -246,7 +246,7 @@ pub fn body(entry: &Entry, plan: &PullPlan, file: &str) -> String {
         body.push('\n');
     }
     body.push_str(&format!(
-        "\nThis pull request lands through this branch's required checks like any other. If an update breaks them, g1t closes it and puts g1t on an issue to make the code changes it needs.\n\n{COMMANDS}\n\n---\n_Opened by g1t's version updates, as `{file}` asks{}._",
+        "\nThis pull request lands through this branch's required checks like any other. If an update breaks them, g1t closes it and puts g1t on a work item to make the code changes it needs.\n\n{COMMANDS}\n\n---\n_Opened by g1t's version updates, as `{file}` asks{}._",
         entry.name.as_deref().map(|name| format!(" for {name}")).unwrap_or_default()
     ));
     body
