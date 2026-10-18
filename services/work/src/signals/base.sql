@@ -27,7 +27,7 @@ first_session(pull_id, started) AS (
 -- session started before it opened, the seconds in between.
 pr AS (
   SELECT p.id, p.repo_id, p.number, p.title, p.status, p.item_id, p.milestone,
-    p.created_at, p.updated_at, p.merged_at,
+    p.created_at, p.updated_at, p.merged_at, p.head_commit, p.head_pushed_at,
     COALESCE(p.requested_by_id, p.author_id) AS owner_id,
     CASE WHEN p.requested_by_id IS NULL THEN p.author_name ELSE p.requested_by_name END AS owner_name,
     (p.agent = 'agent' OR p.author_id = 'usr_g1t_agent' OR f.pull_id IS NOT NULL) AS agent,

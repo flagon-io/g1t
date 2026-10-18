@@ -20,24 +20,43 @@
 //! - **Draft time**: for an agent's pull request whose first tied session
 //!   started before it opened, the seconds from that start to its opening,
 //!   counted in the week it opened.
-//! - **Stalled** in a week: opened more than seven days before the week
-//!   ended (now, when that is earlier) and not finished by then: not
-//!   merged, and not closed (a closed one's `updated_at` stands in for when
-//!   it closed). Drafts count.
+//! - **Stalled** in a week: at its cut (when the week ended, or now when
+//!   that is earlier), open (not merged, and not closed, before it: a
+//!   closed one's `updated_at` stands in for when it closed), opened at
+//!   least three days before, and with no activity in the three days
+//!   before it. Drafts count. Activity is a comment of any kind on it
+//!   (timeline events among them: labels, assignees, review requests,
+//!   milestones, ready, draft, closed, reopened, base changes, the merge
+//!   queue, auto-merge, branches; a push is no timeline event), its
+//!   latest push (the only one `head_pushed_at` keeps), its acceptance
+//!   checks (`check_runs`, from created to finished), statuses and check
+//!   runs on its head commit (the only commit a pull keeps, so a past
+//!   week reads the current head's), entries recorded on it, and a
+//!   session tied to it or a subagent of one running then (from its start
+//!   to its last heartbeat: an approximation, busy or not).
+//! - A week's **session cost**: what the sessions started in it cost,
+//!   subagents and all (each reports only its own transcript's).
+//! - A pull request's **session cost**: each session's own cost (unknown
+//!   as 0), split evenly among the pull requests it counts with: the ones
+//!   it is tied to, as above, or, for a subagent tied to none, the ones its
+//!   root session is tied to. Only the repositories read count.
 //! - A day's **reviews** are comments of any kind on a pull request by a
 //!   person other than its owner (not g1t's agent, a workspace agent or g1t
 //!   itself); **reworked**, the ones of them asking for changes.
 //! - **Waiting**: open (not draft) pull requests with no first review.
 //! - **Authors** are owners who are people: not g1t's agent, a workspace
 //!   agent (`agt_…`), a workspace (`wsp_…`) or g1t.
+//! - **Harnesses**: people's root sessions (`parent_id` unset) by
+//!   repository and harness over all history, under the name on their
+//!   latest; robots are left out as for authors.
 use std::collections::BTreeSet;
 
 use g1t_contracts::identity::AGENT_ID;
 use g1t_contracts::repos::{ReadableArgs, Repo};
 use g1t_contracts::time::{parse_rfc3339, rfc3339};
 use g1t_contracts::work::{
-    SignalAuthor, SignalDay, SignalItem, SignalMilestone, SignalPull, SignalWeek, State, WaitingPull, WorkspaceSignals,
-    WorkspaceSignalsArgs,
+    SignalAuthor, SignalDay, SignalHarness, SignalItem, SignalMilestone, SignalPull, SignalWeek, State, WaitingPull,
+    WorkspaceSignals, WorkspaceSignalsArgs,
 };
 use serde::{Deserialize, Serialize};
 use worker::Result;
@@ -60,6 +79,7 @@ pub(crate) const DAYS: &str = concat!(include_str!("signals/base.sql"), include_
 pub(crate) const WAITING: &str = concat!(include_str!("signals/base.sql"), include_str!("signals/waiting.sql"));
 pub(crate) const PULLS: &str = concat!(include_str!("signals/base.sql"), include_str!("signals/pulls.sql"));
 pub(crate) const AUTHORS: &str = include_str!("signals/authors.sql");
+pub(crate) const HARNESSES: &str = include_str!("signals/harnesses.sql");
 /// ?1 the workspace.
 pub(crate) const MILESTONES: &str = "SELECT number, title, state, due_on, created_at, closed_at
    FROM milestones WHERE workspace = ?1 ORDER BY number";
@@ -191,6 +211,7 @@ struct PullRow {
     merged_at: Option<String>,
     item: Option<u32>,
     milestone: Option<u32>,
+    session_cost_usd: f64,
 }
 
 impl From<PullRow> for SignalPull {
@@ -207,6 +228,7 @@ impl From<PullRow> for SignalPull {
             merged_at: row.merged_at,
             item: row.item,
             milestone: row.milestone,
+            session_cost_usd: row.session_cost_usd,
         }
     }
 }
@@ -251,7 +273,7 @@ impl Work {
         let results = self
             .timing
             .db(
-                6,
+                7,
                 self.db.batch(vec![
                     self.db.prepare(WEEKS).bind(&[ids.clone(), window.weeks.into()])?,
                     self.db.prepare(DAYS).bind(&[
@@ -265,12 +287,13 @@ impl Work {
                         .bind(&[ids.clone(), workspace.clone(), window.since.into()])?,
                     self.db
                         .prepare(AUTHORS)
-                        .bind(&[ids, window.recent_from.into(), window.end.into()])?,
+                        .bind(&[ids.clone(), window.recent_from.into(), window.end.into()])?,
+                    self.db.prepare(HARNESSES).bind(&[ids])?,
                     self.db.prepare(MILESTONES).bind(&[workspace])?,
                 ]),
             )
             .await?;
-        let [weeks, days, waiting, pulls, authors, milestones] = results.as_slice() else {
+        let [weeks, days, waiting, pulls, authors, harnesses, milestones] = results.as_slice() else {
             return Err(worker::Error::RustError("workspace_signals: missing results".into()));
         };
         let mut waiting: Vec<WaitingPull> = waiting
@@ -285,6 +308,11 @@ impl Work {
             .results::<SignalAuthor>()?
             .into_iter()
             .filter(|author| is_person(&author.owner_id))
+            .collect();
+        let harnesses: Vec<SignalHarness> = harnesses
+            .results::<SignalHarness>()?
+            .into_iter()
+            .filter(|harness| is_person(&harness.owner_id))
             .collect();
         let (items, milestones) = if in_workspace {
             let numbers = named_items(&pulls, &waiting);
@@ -319,6 +347,7 @@ impl Work {
             pulls,
             pulls_capped,
             authors,
+            harnesses,
             items,
             milestones,
         })

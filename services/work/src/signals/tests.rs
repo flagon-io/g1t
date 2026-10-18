@@ -1,9 +1,11 @@
-use g1t_contracts::work::{SignalAuthor, SignalDay, SignalPull, SignalWeek, WaitingPull, WorkspaceSignalsArgs};
+use g1t_contracts::work::{
+    SignalAuthor, SignalDay, SignalHarness, SignalPull, SignalWeek, WaitingPull, WorkspaceSignalsArgs,
+};
 use rusqlite::types::ValueRef;
 use rusqlite::{Connection, ToSql, params};
 use serde::de::DeserializeOwned;
 
-use super::{AUTHORS, DAYS, PULLS, PullRow, WAITING, WEEKS, WaitingRow, Window, is_person};
+use super::{AUTHORS, DAYS, HARNESSES, PULLS, PullRow, WAITING, WEEKS, WaitingRow, Window, is_person};
 
 const IDS: &str = r#"["a"]"#;
 
@@ -13,10 +15,17 @@ fn schema() -> Connection {
         "CREATE TABLE pulls (id TEXT, repo_id TEXT, number INTEGER, title TEXT DEFAULT 'A change', status TEXT,
            item_id TEXT, milestone INTEGER, agent TEXT DEFAULT 'person', author_id TEXT DEFAULT 'usr_ana',
            author_name TEXT DEFAULT 'ana', requested_by_id TEXT, requested_by_name TEXT,
-           source_branch TEXT, fork_repo_id TEXT, head_repo_id TEXT,
+           source_branch TEXT, fork_repo_id TEXT, head_repo_id TEXT, head_commit TEXT, head_pushed_at TEXT,
            created_at TEXT, updated_at TEXT, merged_at TEXT);
-         CREATE TABLE comments (repo_id TEXT, number INTEGER, author_id TEXT, agent_id TEXT, verdict TEXT, created_at TEXT);
-         CREATE TABLE sessions (id TEXT, repo_id TEXT, pull INTEGER, started_at TEXT);
+         CREATE TABLE comments (repo_id TEXT, number INTEGER, author_id TEXT, agent_id TEXT, verdict TEXT, created_at TEXT,
+           kind TEXT NOT NULL DEFAULT 'comment');
+         CREATE TABLE sessions (id TEXT, repo_id TEXT, pull INTEGER, started_at TEXT, parent_id TEXT,
+           actor_id TEXT DEFAULT 'usr_ana', actor_name TEXT DEFAULT 'ana', harness TEXT DEFAULT 'claude_code',
+           last_seen_at TEXT, cost_usd REAL);
+         CREATE TABLE session_entries (pull_id TEXT, seq INTEGER, at TEXT);
+         CREATE TABLE check_runs (id TEXT, pull_id TEXT, head_commit TEXT, created_at TEXT, finished_at TEXT);
+         CREATE TABLE commit_statuses (repo_id TEXT, sha TEXT, context TEXT, updated_at TEXT);
+         CREATE TABLE commit_check_runs (id TEXT, repo_id TEXT, head_sha TEXT, created_at TEXT, updated_at TEXT);
          CREATE TABLE session_links (session_id TEXT, repo_id TEXT, kind TEXT, number INTEGER);
          CREATE TABLE session_touches (session_id TEXT, repo_id TEXT, kind TEXT, value TEXT);
          CREATE TABLE work_items (id TEXT, workspace TEXT, number INTEGER, title TEXT, state TEXT,
@@ -48,7 +57,7 @@ fn pull(db: &Connection, number: u32, status: &str, created: &str, merged: Optio
 
 fn comment(db: &Connection, number: u32, author: &str, agent: Option<&str>, verdict: Option<&str>, at: &str) {
     db.execute(
-        "INSERT INTO comments VALUES ('a', ?1, ?2, ?3, ?4, ?5)",
+        "INSERT INTO comments (repo_id, number, author_id, agent_id, verdict, created_at) VALUES ('a', ?1, ?2, ?3, ?4, ?5)",
         params![number, author, agent, verdict, at],
     )
     .unwrap();
@@ -181,19 +190,19 @@ fn an_agents_pull_request_is_one_a_session_is_tied_to() {
         "UPDATE pulls SET agent = 'agent' WHERE number = 1;
          UPDATE pulls SET author_id = 'usr_g1t_agent', requested_by_id = 'usr_ana', requested_by_name = 'ana' WHERE number = 2;
          -- 3 by a link, 4 by the session saying so, 5 by a push to its branch.
-         INSERT INTO sessions VALUES ('ses_3', 'a', NULL, '2026-10-06T11:00:00Z');
+         INSERT INTO sessions (id, repo_id, pull, started_at) VALUES ('ses_3', 'a', NULL, '2026-10-06T11:00:00Z');
          INSERT INTO session_links VALUES ('ses_3', 'a', 'pull', 3);
-         INSERT INTO sessions VALUES ('ses_4', 'a', 4, '2026-10-06T13:00:00Z');
-         INSERT INTO sessions VALUES ('ses_5', 'a', NULL, '2026-10-06T11:30:00Z');
-         INSERT INTO sessions VALUES ('ses_5b', 'a', NULL, '2026-10-06T10:00:00.500Z');
+         INSERT INTO sessions (id, repo_id, pull, started_at) VALUES ('ses_4', 'a', 4, '2026-10-06T13:00:00Z');
+         INSERT INTO sessions (id, repo_id, pull, started_at) VALUES ('ses_5', 'a', NULL, '2026-10-06T11:30:00Z');
+         INSERT INTO sessions (id, repo_id, pull, started_at) VALUES ('ses_5b', 'a', NULL, '2026-10-06T10:00:00.500Z');
          INSERT INTO session_touches VALUES ('ses_5', 'a', 'branch', 'branch-5');
          INSERT INTO session_touches VALUES ('ses_5b', 'a', 'branch', 'branch-5');
          -- 6's branch is on a fork: a push to the same name is not its.
          UPDATE pulls SET fork_repo_id = 'fork' WHERE number = 6;
-         INSERT INTO sessions VALUES ('ses_6', 'a', NULL, '2026-10-06T11:00:00Z');
+         INSERT INTO sessions (id, repo_id, pull, started_at) VALUES ('ses_6', 'a', NULL, '2026-10-06T11:00:00Z');
          INSERT INTO session_touches VALUES ('ses_6', 'a', 'branch', 'branch-6');
          -- A session of another repository with the same number is not its.
-         INSERT INTO sessions VALUES ('ses_x', 'b', 6, '2026-10-06T11:00:00Z');",
+         INSERT INTO sessions (id, repo_id, pull, started_at) VALUES ('ses_x', 'b', 6, '2026-10-06T11:00:00Z');",
     )
     .unwrap();
     pull(&db, 7, "open", "2026-10-06T12:00:00Z", None, "2026-10-06T12:00:00Z");
@@ -284,58 +293,6 @@ fn rework_is_a_persons_request_for_changes_before_it_merged() {
         .unwrap();
     let week = in_week(&weeks(&db, "2026-10-18T00:00:00Z"), "2026-10-05");
     assert_eq!((week.merged, week.agent_merged, week.agent_reworked), (2, 1, 0));
-}
-
-#[test]
-fn stalled_is_open_over_a_week_when_the_week_ended() {
-    let db = schema();
-    // The second week ends at 2026-10-12T00:00:00Z: over seven days open
-    // by then is opened before 10-05.
-    pull(&db, 1, "open", "2026-10-05T00:00:00Z", None, "2026-10-05T00:00:00Z");
-    pull(&db, 2, "open", "2026-10-04T23:59:59Z", None, "2026-10-04T23:59:59Z");
-    // Merged after the week ended: still open when it did.
-    pull(
-        &db,
-        3,
-        "merged",
-        "2026-09-01T00:00:00Z",
-        Some("2026-10-12T00:00:00Z"),
-        "2026-10-12T00:00:00Z",
-    );
-    // Merged and closed before it ended.
-    pull(
-        &db,
-        4,
-        "merged",
-        "2026-09-01T00:00:00Z",
-        Some("2026-10-11T23:00:00Z"),
-        "2026-10-11T23:00:00Z",
-    );
-    pull(&db, 5, "closed", "2026-09-01T00:00:00Z", None, "2026-10-11T23:00:00Z");
-    // Closed after it ended.
-    pull(&db, 6, "closed", "2026-09-01T00:00:00Z", None, "2026-10-13T00:00:00Z");
-    pull(&db, 7, "draft", "2026-09-27T00:00:00Z", None, "2026-09-27T00:00:00Z");
-    let found = weeks(&db, "2026-10-18T00:00:00Z");
-    let stalled: Vec<(&str, u32)> = found.iter().map(|w| (w.start.as_str(), w.stalled)).collect();
-    // The first week ends on 10-05: 3 to 6 open since 09-01, and 7 opened
-    // a second over seven days before. The second: 2, 3, 6 and 7.
-    assert_eq!(stalled, [("2026-09-28", 5), ("2026-10-05", 4)]);
-
-    // Read mid-week, the current week ends now, 10-08T12:00: 3, 4, 5 and
-    // 6 were not finished by then, 7 is old enough, 2 is not, and 1 at
-    // exactly seven days is not either.
-    db.execute(
-        "UPDATE pulls SET created_at = '2026-10-01T12:00:00Z' WHERE number = 1",
-        [],
-    )
-    .unwrap();
-    assert_eq!(in_week(&weeks(&db, "2026-10-08T12:00:00Z"), "2026-10-05").stalled, 5);
-    db.execute(
-        "UPDATE pulls SET created_at = '2026-10-01T11:59:59Z' WHERE number = 1",
-        [],
-    )
-    .unwrap();
-    assert_eq!(in_week(&weeks(&db, "2026-10-08T12:00:00Z"), "2026-10-05").stalled, 6);
 }
 
 #[test]
@@ -516,8 +473,8 @@ fn days_count_what_happened_on_each() {
     pull(&db, 2, "open", "2026-10-08T10:00:00Z", None, "2026-10-08T10:00:00Z");
     db.execute_batch(
         "UPDATE pulls SET agent = 'agent' WHERE number = 1;
-         INSERT INTO sessions VALUES ('ses_1', 'a', NULL, '2026-10-10T09:00:00Z');
-         INSERT INTO sessions VALUES ('ses_2', 'b', NULL, '2026-10-10T09:00:00Z');",
+         INSERT INTO sessions (id, repo_id, pull, started_at) VALUES ('ses_1', 'a', NULL, '2026-10-10T09:00:00Z');
+         INSERT INTO sessions (id, repo_id, pull, started_at) VALUES ('ses_2', 'b', NULL, '2026-10-10T09:00:00Z');",
     )
     .unwrap();
     comment(&db, 1, "usr_bo", None, Some("request_changes"), "2026-10-10T01:00:00Z");
@@ -561,4 +518,278 @@ fn days_leave_out_g1t_as_its_system_ids_say() {
         assert!(!is_person(id));
     }
     assert!(is_person("usr_ana"));
+}
+
+/// Whether pull request 1 (open since 09-01, head `abc`) is stalled in the
+/// week of 10-05, read on `now`, after `setup`.
+fn stalled_after(now: &str, setup: &str) -> u32 {
+    let db = schema();
+    pull(&db, 1, "open", "2026-09-01T00:00:00Z", None, "2026-09-01T00:00:00Z");
+    db.execute_batch("UPDATE pulls SET head_commit = 'abc'").unwrap();
+    db.execute_batch(setup).unwrap();
+    // A week with nothing in it is left out.
+    weeks(&db, now)
+        .iter()
+        .find(|week| week.start == "2026-10-05")
+        .map_or(0, |week| week.stalled)
+}
+
+#[test]
+fn stalled_is_open_with_nothing_in_the_three_days_before_the_cut() {
+    // The week of 10-05 is over on 10-18: its cut is 10-12T00:00, and the
+    // three days before it start 10-09T00:00.
+    let at = |setup: &str| stalled_after("2026-10-18T00:00:00Z", setup);
+    assert_eq!(at(""), 1, "nothing at all");
+    let comment = |kind: &str, when: &str| {
+        format!(
+            "INSERT INTO comments (repo_id, number, author_id, kind, created_at) VALUES ('a', 1, 'usr_bo', '{kind}', '{when}')"
+        )
+    };
+    assert_eq!(at(&comment("comment", "2026-10-10T00:00:00Z")), 0, "a comment");
+    assert_eq!(
+        at(&comment("event", "2026-10-09T00:00:00Z")),
+        0,
+        "an event exactly three days before"
+    );
+    assert_eq!(
+        at(&comment("comment", "2026-10-08T23:59:59Z")),
+        1,
+        "only before the three days"
+    );
+    assert_eq!(at(&comment("comment", "2026-10-12T00:00:00Z")), 1, "only at the cut");
+    assert_eq!(
+        at(
+            "INSERT INTO comments (repo_id, number, author_id, created_at) VALUES ('a', 2, 'usr_bo', '2026-10-10T00:00:00Z')"
+        ),
+        1,
+        "another pull request's comment"
+    );
+    assert_eq!(
+        at("UPDATE pulls SET head_pushed_at = '2026-10-11T00:00:00Z'"),
+        0,
+        "a push"
+    );
+    assert_eq!(
+        at("UPDATE pulls SET head_pushed_at = '2026-10-01T00:00:00Z'"),
+        1,
+        "an old push"
+    );
+    assert_eq!(
+        at("INSERT INTO session_entries VALUES ('pr_1', 1, '2026-10-10T00:00:00Z')"),
+        0,
+        "a session entry"
+    );
+    assert_eq!(
+        at("INSERT INTO check_runs VALUES ('chk', 'pr_1', 'abc', '2026-10-05T00:00:00Z', '2026-10-10T00:00:00Z')"),
+        0,
+        "acceptance checks running then"
+    );
+    assert_eq!(
+        at("INSERT INTO commit_statuses VALUES ('a', 'abc', 'CI', '2026-10-10T00:00:00Z')"),
+        0,
+        "a status on its head"
+    );
+    assert_eq!(
+        at("INSERT INTO commit_statuses VALUES ('a', 'old', 'CI', '2026-10-10T00:00:00Z')"),
+        1,
+        "a status on another commit"
+    );
+    assert_eq!(
+        at("INSERT INTO commit_check_runs VALUES ('ck', 'a', 'abc', '2026-10-08T00:00:00Z', '2026-10-09T06:00:00Z')"),
+        0,
+        "a check run on its head"
+    );
+    let session = "INSERT INTO sessions (id, repo_id, pull, started_at, last_seen_at)
+                   VALUES ('ses_1', 'a', 1, '2026-10-01T00:00:00Z',";
+    assert_eq!(
+        at(&format!("{session} '2026-10-09T12:00:00Z')")),
+        0,
+        "a session running then"
+    );
+    assert_eq!(
+        at(&format!("{session} '2026-10-08T00:00:00Z')")),
+        1,
+        "a session over before"
+    );
+    assert_eq!(
+        at(&format!(
+            "{session} '2026-10-01T00:00:00Z');
+             INSERT INTO sessions (id, repo_id, parent_id, started_at, last_seen_at)
+               VALUES ('ses_2', 'a', 'ses_1', '2026-10-09T00:00:00Z', '2026-10-10T00:00:00Z');"
+        )),
+        0,
+        "its session's subagent running then"
+    );
+
+    // Opened at least three days before the cut.
+    assert_eq!(
+        at("UPDATE pulls SET created_at = '2026-10-09T00:00:00Z'"),
+        1,
+        "exactly three days"
+    );
+    assert_eq!(
+        at("UPDATE pulls SET created_at = '2026-10-09T00:00:01Z'"),
+        0,
+        "a second less"
+    );
+    // Open at the cut; drafts count.
+    assert_eq!(at("UPDATE pulls SET status = 'draft'"), 1, "a draft");
+    assert_eq!(
+        at("UPDATE pulls SET status = 'merged', merged_at = '2026-10-11T00:00:00Z'"),
+        0,
+        "merged before the cut"
+    );
+    assert_eq!(
+        at("UPDATE pulls SET status = 'merged', merged_at = '2026-10-12T00:00:00Z'"),
+        1,
+        "merged at the cut"
+    );
+    assert_eq!(
+        at("UPDATE pulls SET status = 'closed', updated_at = '2026-10-11T00:00:00Z'"),
+        0,
+        "closed before"
+    );
+    assert_eq!(
+        at("UPDATE pulls SET status = 'closed', updated_at = '2026-10-13T00:00:00Z'"),
+        1,
+        "closed after"
+    );
+
+    // Read mid-week, the cut is now, 10-08T12:00: the three days before it
+    // start 10-05T12:00.
+    let mid = |setup: &str| stalled_after("2026-10-08T12:00:00Z", setup);
+    assert_eq!(mid(&comment("comment", "2026-10-05T12:00:00Z")), 0);
+    assert_eq!(mid(&comment("comment", "2026-10-05T11:59:59Z")), 1);
+    assert_eq!(mid("UPDATE pulls SET created_at = '2026-10-05T12:00:00Z'"), 1);
+    assert_eq!(mid("UPDATE pulls SET created_at = '2026-10-05T12:00:01Z'"), 0);
+}
+
+#[test]
+fn stalled_counts_each_week_at_its_own_cut() {
+    let db = schema();
+    pull(&db, 1, "open", "2026-09-01T00:00:00Z", None, "2026-09-01T00:00:00Z");
+    pull(&db, 2, "open", "2026-09-01T00:00:00Z", None, "2026-09-01T00:00:00Z");
+    // 1 was busy before the first week's cut (10-05), 2 before the second's.
+    comment(&db, 1, "usr_bo", None, None, "2026-10-04T00:00:00Z");
+    comment(&db, 2, "usr_bo", None, None, "2026-10-11T00:00:00Z");
+    let found = weeks(&db, "2026-10-18T00:00:00Z");
+    let stalled: Vec<(&str, u32)> = found.iter().map(|w| (w.start.as_str(), w.stalled)).collect();
+    assert_eq!(stalled, [("2026-09-28", 1), ("2026-10-05", 1)]);
+}
+
+#[test]
+fn a_weeks_session_cost_is_what_its_sessions_cost() {
+    let db = schema();
+    db.execute_batch(
+        "INSERT INTO sessions (id, repo_id, started_at, cost_usd) VALUES ('ses_1', 'a', '2026-10-06T00:00:00.000Z', 1.5);
+         INSERT INTO sessions (id, repo_id, parent_id, started_at, cost_usd)
+           VALUES ('ses_2', 'a', 'ses_1', '2026-10-07T00:00:00.000Z', 0.25);
+         INSERT INTO sessions (id, repo_id, started_at, cost_usd) VALUES ('ses_3', 'a', '2026-10-08T00:00:00.000Z', NULL);
+         INSERT INTO sessions (id, repo_id, started_at, cost_usd) VALUES ('ses_4', 'a', '2026-10-04T23:59:59.999Z', 2);
+         INSERT INTO sessions (id, repo_id, started_at, cost_usd) VALUES ('ses_5', 'a', '2026-10-05T00:00:00.000Z', 0.5);
+         INSERT INTO sessions (id, repo_id, started_at, cost_usd) VALUES ('ses_6', 'a', '2026-10-12T00:00:00.000Z', 7);
+         INSERT INTO sessions (id, repo_id, started_at, cost_usd) VALUES ('ses_7', 'b', '2026-10-06T00:00:00.000Z', 100);",
+    )
+    .unwrap();
+    let found = weeks(&db, "2026-10-18T00:00:00Z");
+    let costs: Vec<(&str, f64, u32)> = found
+        .iter()
+        .map(|w| (w.start.as_str(), w.session_cost_usd, w.merged))
+        .collect();
+    // No pull requests at all: the weeks show for their cost alone. A
+    // subagent's counts; one of no known cost counts as nothing.
+    assert_eq!(costs, [("2026-09-28", 2.0, 0), ("2026-10-05", 2.25, 0)]);
+
+    // A week whose sessions cost nothing known is left out.
+    db.execute_batch("UPDATE sessions SET cost_usd = NULL WHERE id = 'ses_4'")
+        .unwrap();
+    let found = weeks(&db, "2026-10-18T00:00:00Z");
+    assert_eq!(
+        found.iter().map(|w| w.start.as_str()).collect::<Vec<_>>(),
+        ["2026-10-05"]
+    );
+}
+
+#[test]
+fn a_pull_requests_session_cost_is_its_share() {
+    let db = schema();
+    for number in 1..=4 {
+        pull(
+            &db,
+            number,
+            "open",
+            "2026-10-06T00:00:00Z",
+            None,
+            "2026-10-06T00:00:00Z",
+        );
+    }
+    db.execute_batch(
+        "-- A root session tied to 1 by saying so and to 2 by a link.
+         INSERT INTO sessions (id, repo_id, pull, started_at, cost_usd) VALUES ('ses_r', 'a', 1, '2026-10-06T00:00:00Z', 4);
+         INSERT INTO session_links VALUES ('ses_r', 'a', 'pull', 2);
+         -- Its subagent tied to nothing counts with it; so does that one's.
+         INSERT INTO sessions (id, repo_id, parent_id, started_at, cost_usd)
+           VALUES ('ses_a', 'a', 'ses_r', '2026-10-06T00:00:00Z', 1);
+         INSERT INTO sessions (id, repo_id, parent_id, started_at, cost_usd)
+           VALUES ('ses_c', 'a', 'ses_a', '2026-10-06T00:00:00Z', 2);
+         -- A subagent tied itself, by a push to 3's branch, counts with that.
+         INSERT INTO sessions (id, repo_id, parent_id, started_at, cost_usd)
+           VALUES ('ses_b', 'a', 'ses_r', '2026-10-06T00:00:00Z', 3);
+         INSERT INTO session_touches VALUES ('ses_b', 'a', 'branch', 'branch-3');
+         -- A session whose cost is not known.
+         INSERT INTO sessions (id, repo_id, pull, started_at, cost_usd) VALUES ('ses_n', 'a', 3, '2026-10-06T00:00:00Z', NULL);
+         -- A session tied to nothing counts with nothing.
+         INSERT INTO sessions (id, repo_id, started_at, cost_usd) VALUES ('ses_x', 'a', '2026-10-06T00:00:00Z', 9);",
+    )
+    .unwrap();
+    let mut costs: Vec<(u32, f64)> = pulls(&db).iter().map(|p| (p.number, p.session_cost_usd)).collect();
+    costs.sort_by_key(|(number, _)| *number);
+    assert_eq!(costs, [(1, 3.5), (2, 3.5), (3, 3.0), (4, 0.0)]);
+}
+
+#[test]
+fn harnesses_are_peoples_root_sessions() {
+    let db = schema();
+    db.execute_batch(
+        "INSERT INTO sessions (id, repo_id, started_at, harness, actor_name)
+           VALUES ('s1', 'a', '2026-01-01T00:00:00Z', 'claude_code', 'ana');
+         INSERT INTO sessions (id, repo_id, started_at, harness, actor_name)
+           VALUES ('s2', 'a', '2026-05-01T00:00:00Z', 'claude_code', 'ana-new');
+         INSERT INTO sessions (id, repo_id, started_at, harness, actor_name)
+           VALUES ('s3', 'a', '2026-03-01T00:00:00Z', 'codex', 'ana');
+         -- A subagent is its parent's: not counted, and not when they first used it.
+         INSERT INTO sessions (id, repo_id, parent_id, started_at, harness)
+           VALUES ('s4', 'a', 's1', '2025-12-01T00:00:00Z', 'claude_code');
+         INSERT INTO sessions (id, repo_id, parent_id, started_at, harness)
+           VALUES ('s5', 'a', 's1', '2025-12-01T00:00:00Z', 'cursor');
+         -- Robots, and another repository.
+         INSERT INTO sessions (id, repo_id, started_at, actor_id) VALUES ('s6', 'a', '2026-01-01T00:00:00Z', 'usr_g1t_agent');
+         INSERT INTO sessions (id, repo_id, started_at, actor_id) VALUES ('s7', 'a', '2026-01-01T00:00:00Z', 'agt_margo');
+         INSERT INTO sessions (id, repo_id, started_at) VALUES ('s8', 'b', '2025-01-01T00:00:00Z');",
+    )
+    .unwrap();
+    let found: Vec<SignalHarness> = rows::<SignalHarness>(&db, HARNESSES, &[&IDS])
+        .into_iter()
+        .filter(|harness| is_person(&harness.owner_id))
+        .collect();
+    let shown: Vec<(&str, &str, &str, &str, &str, u32)> = found
+        .iter()
+        .map(|h| {
+            (
+                h.repo_id.as_str(),
+                h.owner_id.as_str(),
+                h.owner_name.as_str(),
+                h.harness.as_str(),
+                h.first_at.as_str(),
+                h.sessions,
+            )
+        })
+        .collect();
+    assert_eq!(
+        shown,
+        [
+            ("a", "usr_ana", "ana-new", "claude_code", "2026-01-01T00:00:00Z", 2),
+            ("a", "usr_ana", "ana-new", "codex", "2026-03-01T00:00:00Z", 1)
+        ]
+    );
 }
