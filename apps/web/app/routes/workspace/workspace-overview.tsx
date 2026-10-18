@@ -2,12 +2,12 @@ import { ArrowRight, Bot, Box, ShieldCheck, Users } from "lucide-react";
 import { type ReactNode, Suspense } from "react";
 import { Await, Link, data } from "react-router";
 
-import { type User, hasCodeAccess } from "@g1t/contracts";
+import { COST_PROVIDERS, type CostProvider, type User, hasCodeAccess, isCostProvider } from "@g1t/contracts";
 
 import type { Route } from "./+types/workspace-overview";
 
 import { UsageCard } from "../../components/usage-card";
-import { identity } from "../../lib/services.server";
+import { billing, identity } from "../../lib/services.server";
 import { loadOnboarding } from "../../lib/onboarding.server";
 import { OnboardingOnPage } from "../../components/onboarding";
 import { getViewer, roleIn } from "../../lib/session.server";
@@ -24,7 +24,7 @@ import { PulseSkeleton, PulseStrip } from "../../components/signals";
 import { SpendFlow } from "../../components/spend-flow";
 import { isFailed, part } from "../../lib/partial";
 import { loadRepos } from "../../lib/home.server";
-import { dailySignal, dayList, dollars, harnessWords, namesWords, newGround, newHabits, quarterSpend, rhythm, silos, spendFlow, spoken, spreading, waitingRows } from "../../lib/signals";
+import { dailySignal, dayList, dollars, harnessWords, namesWords, newGround, newHabits, providerQuarter, quarterSpend, signalsRange, rhythm, silos, spendFlow, spoken, spreading, waitingRows } from "../../lib/signals";
 import { type SignalData, loadGroups, loadSignalData } from "../../lib/signals.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -76,8 +76,16 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 async function loadGround(viewer: User, slug: string, now: number) {
   const owned = await loadRepos(viewer, slug).catch(() => null);
   if (!owned) return null;
-  const [found, groups] = await Promise.all([loadSignalData(viewer, slug, now, owned).catch(() => null), loadGroups(viewer, slug, owned).catch(() => null)]);
-  return found ? shapeGround(found, groups, now) : null;
+  const [found, groups, providers] = await Promise.all([
+    loadSignalData(viewer, slug, now, owned).catch(() => null),
+    loadGroups(viewer, slug, owned).catch(() => null),
+    // What the connected providers say was spent: beside the rest, never in the way of it.
+    billing
+      .providerCosts(slug, viewer, signalsRange(now).quarter)
+      .then((result) => (result.ok ? result.value : null))
+      .catch(() => null),
+  ]);
+  return found ? { ...shapeGround(found, groups, now), providers: providerQuarter(providers, found.range.quarter) } : null;
 }
 
 function shapeGround(found: SignalData, groups: Awaited<ReturnType<typeof loadGroups>>, now: number) {
@@ -122,7 +130,7 @@ function shapeGround(found: SignalData, groups: Awaited<ReturnType<typeof loadGr
   };
 }
 
-type Ground = ReturnType<typeof shapeGround>;
+type Ground = ReturnType<typeof shapeGround> & { providers: ReturnType<typeof providerQuarter> };
 
 function Tile({ icon, label, value, to, action }: { icon: ReactNode; label: string; value: string; to: string; action: string }) {
   return (
@@ -302,6 +310,7 @@ function GroundTruth({ slug, ground }: { slug: string; ground: Ground }) {
             : "Usage isn't known for this quarter, so each box is sized by its pull requests and shaded by how many were an agent's. Choose a box to open what is under it."
         }
       >
+        <ProvidersLine slug={slug} providers={ground.providers} threaded={ground.quarterSpend} />
         <Boundary what="Spend, threaded to the work">
           <SpendFlow flow={ground.flow} sized={ground.sized} />
         </Boundary>
@@ -358,6 +367,41 @@ function GroundTruth({ slug, ground }: { slug: string; ground: Ground }) {
           <QuietList title="New habits" hint="People whose first agent-made change merged in the last two weeks" rows={ground.habits} empty="No one new started merging agents' work in the last two weeks." />
         </div>
       </Section>
+    </div>
+  );
+}
+
+const providerName = (provider: string) => (isCostProvider(provider) ? COST_PROVIDERS[provider as CostProvider].label : provider);
+
+/**
+ * What the connected providers reported for the quarter, beside what g1t
+ * threads to the work: their bill holds everything the organization ran,
+ * so it is the larger figure, never added to the other.
+ */
+function ProvidersLine({ slug, providers, threaded }: { slug: string; providers: Ground["providers"]; threaded: number | null }) {
+  if (!providers) {
+    return (
+      <p className="-mt-2 mb-5 text-sm text-muted">
+        <Link to={`/${slug}/-/provider-costs`} className="text-accent hover:underline">
+          Connect a provider&apos;s cost report
+        </Link>{" "}
+        to see everything your organization spent with Anthropic or OpenAI, not only what g1t can tie to the work.
+      </p>
+    );
+  }
+  return (
+    <div className="-mt-2 mb-5 flex flex-wrap items-baseline gap-x-5 gap-y-1 rounded-xl border border-line bg-bg px-4 py-3 text-sm">
+      <span className="text-fg">
+        <span className="font-semibold">{dollars(providers.total)}</span> reported by your providers this quarter
+      </span>
+      <span className="font-mono text-xs text-muted">{providers.providers.map((row) => `${providerName(row.provider)} ${dollars(row.micros)}`).join(" · ")}</span>
+      {threaded != null && threaded > 0 && providers.total > 0 && (
+        <span className="text-xs text-muted">{Math.min(100, Math.round((threaded / providers.total) * 100))}% of it is threaded to the work below</span>
+      )}
+      {!providers.complete && <span className="text-xs text-faint">Some of the quarter isn&apos;t read yet</span>}
+      <Link to={`/${slug}/-/provider-costs`} className="ml-auto text-xs text-muted hover:text-fg">
+        Provider costs
+      </Link>
     </div>
   );
 }
