@@ -327,8 +327,10 @@ const ITEM_COLUMNS: &str = "i.kind, i.workspace, i.number, i.title, i.state, i.s
 
 /// What every query of work items starts with: the visibility check (a
 /// member of the workspace, or a reader of the origin), then `repo:`
-/// (any repository it is linked to), `org:` (its workspace) and
-/// `is:public`/`is:private` (whether its origin is public).
+/// (any repository it is linked to that the reader may see: one they may
+/// not is answered as one that does not exist, so neither `repo:` nor
+/// `-repo:` says a private repository is there), `org:` (its workspace)
+/// and `is:public`/`is:private` (whether its origin is public).
 fn item_scope(query: &Query, reader: &Reader) -> Where {
     let mut out = Where::default();
     out.add(
@@ -336,11 +338,13 @@ fn item_scope(query: &Query, reader: &Reader) -> Where {
         vec![Param::Text(reader.members_json()), Param::Text(reader.namespaces_json()), Param::Text(reader.granted_json())],
     );
     let linked = "SELECT 1 FROM repos lr WHERE (lr.namespace || '/' || lr.name) IN (SELECT value FROM json_each(?))                   AND instr(i.repos, '|' || lr.repo_id || '|') > 0";
+    let linked = format!("{linked} AND {}", clause("lr"));
+    let named = |names: &[String]| vec![json(names), Param::Text(reader.namespaces_json()), Param::Text(reader.granted_json())];
     if !query.repos.include.is_empty() {
-        out.add(format!("EXISTS ({linked})"), vec![json(&query.repos.include)]);
+        out.add(format!("EXISTS ({linked})"), named(&query.repos.include));
     }
     if !query.repos.exclude.is_empty() {
-        out.add(format!("NOT EXISTS ({linked})"), vec![json(&query.repos.exclude)]);
+        out.add(format!("NOT EXISTS ({linked})"), named(&query.repos.exclude));
     }
     in_list(&query.owners, "i.workspace", &mut out);
     match query.visibility {
