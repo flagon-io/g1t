@@ -68,6 +68,8 @@ export default [
   route("-/hovercard/user/:username", "routes/hovercard-user.ts"),
   // A person's picture by username, for avatars drawn from a name alone.
   route("-/avatar/user/:username", "routes/avatar-user.ts"),
+  // An image pasted, dropped or chosen in a comment box, kept for its Markdown.
+  route("-/attachments", "routes/attachments.ts"),
   // Live notifications: each tab's feed socket, and the person's
   // notification settings as JSON (services/notify).
   route("-/live", "routes/notify/live.ts"),

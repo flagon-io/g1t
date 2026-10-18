@@ -348,8 +348,23 @@ the description's, are in `GET /workspaces/{workspace}/work/{number}` and
 ## Images
 
 To show an image in a pull request's or a work item's description, or in a
-comment (a screenshot of a preview, say), upload it and paste the Markdown
-you get back. From a shell, `g1t attach preview.png` prints
+comment (a screenshot of a preview, say), put it in the box you are writing
+in. On the site, paste it, drop the file onto the box, or select **Attach an
+image** under it (on a phone, that button is the way in). This works in every
+comment box: comments and reviews, a comment on a line of the change, editing
+a comment, a pull request's description, and a new pull request or work item.
+While it uploads, the box shows `![Uploading screenshot.png…]()` where it
+will go, and you can keep writing; once it is kept, that becomes
+`![screenshot.png](https://g1tusercontent.com/attachments/…)`. A pasted image
+with no name of its own is `image.png`. Comment and the other buttons wait
+until every image has uploaded. If one can't be attached, the box says why
+under it and takes its placeholder out; nothing you wrote is lost. Pasting
+text works as before: something copied with its text and a picture of it,
+such as cells from a spreadsheet, pastes as text. A new work item filed with
+no repository has nowhere to keep images yet, so they go with it when you
+open it, and the work item keeps them.
+
+Otherwise, upload it and paste the Markdown you get back. From a shell, `g1t attach preview.png` prints
 `![preview.png](https://g1tusercontent.com/attachments/…)`, and `--attach
 preview.png` on `g1t pr create`, `g1t pr ready`, `g1t pr comment`,
 `g1t work new` and `g1t work comment` adds it for you (see the

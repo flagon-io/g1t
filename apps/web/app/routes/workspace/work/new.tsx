@@ -1,11 +1,13 @@
 import { Download, Info } from "lucide-react";
 import { Form, data, redirect } from "react-router";
 
-import { PROVIDERS } from "@g1t/contracts";
+import { PROVIDERS, type User, type WorkItem } from "@g1t/contracts";
 
 import type { Route } from "./+types/new";
 import { page } from "../../../lib/meta";
-import { ErrorText, Field, Input, SubmitButton, Textarea } from "../../../components/ui";
+import { ErrorText, Field, Input, SubmitButton } from "../../../components/ui";
+import { AttachImages } from "../../../components/attach-images";
+import { MentionTextarea } from "../../../components/mention-textarea";
 import { Card } from "../../../components/ui/card";
 import { CheckboxOption } from "../../../components/ui/checkbox";
 import { SelectField } from "../../../components/ui/select";
@@ -17,6 +19,9 @@ import { canItem } from "../../../lib/work-access";
 import { isFailed, part } from "../../../lib/partial";
 import { itemPath } from "../../../lib/work-items";
 import { workspaceProjects } from "../../../lib/workspace-projects.server";
+import { addresses } from "../../../lib/addresses.server";
+import { DEFERRED_FILE_FIELD, DEFERRED_REF_FIELD, deferredRefs, resolveDeferred } from "../../../lib/attachments";
+import { toBase64 } from "../../../lib/avatar-upload";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `New work item · ${params.owner} · g1t` });
@@ -92,7 +97,37 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     milestone: Number(form.get("milestone")) || undefined,
   });
   if (!result.ok) return { error: result.error.message };
+  await attachHeld(user, result.value, form);
   throw redirect(itemPath(result.value.workspace, result.value.number));
+}
+
+/**
+ * Images put in the description of a work item filed with no repository
+ * (components/attach-images.tsx, `later`): with nothing to keep them until
+ * it was open, they came with the form as `![name](attachment:<ref>)`.
+ * Now the work item keeps them, and its description gets their addresses,
+ * as `g1t work new --attach` does. One that fails to upload is taken out
+ * of the description; the box checked its type and size before it was sent.
+ */
+async function attachHeld(user: User, item: WorkItem, form: FormData) {
+  const files = form.getAll(DEFERRED_FILE_FIELD);
+  const refs = form.getAll(DEFERRED_REF_FIELD).map(String);
+  const body = item.body ?? "";
+  const wanted = deferredRefs(body);
+  if (wanted.size === 0) return;
+  const urls = new Map<string, string | null>();
+  for (const [index, ref] of refs.entries()) {
+    const file = files[index];
+    if (!wanted.has(ref) || !file || typeof file === "string") continue;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const kept = await work
+      .uploadAttachment(user, { workspace: item.workspace, number: item.number }, { name: file.name || "image.png", data: toBase64(bytes) })
+      .catch(() => null);
+    urls.set(ref, kept?.ok ? `${addresses().usercontent}${kept.value.path}` : null);
+  }
+  // Any still not uploaded (its file did not arrive) goes too.
+  for (const ref of wanted) if (!urls.has(ref)) urls.set(ref, null);
+  await work.updateWorkItem(user, item.workspace, item.number, { body: resolveDeferred(body, urls) }).catch(() => null);
 }
 
 export default function NewWorkItem({ loaderData, actionData }: Route.ComponentProps) {
@@ -138,7 +173,7 @@ export default function NewWorkItem({ loaderData, actionData }: Route.ComponentP
           </Form>
         </Card>
       )}
-      <Form method="post" className="space-y-5">
+      <Form method="post" encType="multipart/form-data" className="space-y-5">
         <input type="hidden" name="origin" value={origin ?? ""} />
         <Field label="Title">
           <Input
@@ -153,9 +188,13 @@ export default function NewWorkItem({ loaderData, actionData }: Route.ComponentP
         </Field>
         <Field
           label="Description"
+          htmlFor="item-body"
           hint="What is wrong or wanted, and anything needed to act on it. Whoever works on it, person or agent, works from this text. To say what done looks like, add a list under a “## Definition of done” heading."
         >
-          <Textarea name="body" rows={8} autoCapitalize="sentences" />
+          {/* Filed from a repository, it keeps the images; with none, the work item does, once it is open. */}
+          <AttachImages to={origin ? { repo: `${workspace}/${origin}` } : "later"}>
+            <MentionTextarea id="item-body" name="body" rows={8} autoCapitalize="sentences" />
+          </AttachImages>
         </Field>
         {isFailed(loaderData.repos) ? (
           <Field label="Where it lands">
