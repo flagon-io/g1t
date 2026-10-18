@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Constants from "expo-constants";
-import { Stack } from "expo-router";
+import { hasCodeAccess } from "@g1t/contracts";
+import { Stack, router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { Bell, BellRing, Check, ExternalLink, LogOut } from "lucide-react-native";
+import { Bell, BellRing, Check, Code2, ExternalLink, LogOut } from "lucide-react-native";
 import { Linking, View } from "react-native";
 
 import { Avatar, Badge, Button, Row, Screen, SectionHeader, Text } from "@/components/ui";
@@ -11,9 +12,10 @@ import { isHosted, siteUrl } from "@/lib/server";
 import { useSignedIn } from "@/lib/session";
 import { space, useColors } from "@/theme";
 
-/** More: your workspaces, notifications on this phone, how you signed in, and signing out. */
+/** More: Code, notifications on this phone, your workspaces, how you signed in, and signing out. */
 export default function More() {
   const { me, workspace, server, client, selectWorkspace, signOut } = useSignedIn();
+  const code = !workspace || hasCodeAccess(workspace);
   const colors = useColors();
   const queries = useQueryClient();
   const name = me.display_username ?? me.username;
@@ -41,6 +43,17 @@ export default function More() {
           </Text>
         </View>
       </View>
+
+      {code ? (
+        <View>
+          <Row
+            leading={<Code2 size={22} color={colors.accent} />}
+            title="Code"
+            subtitle="Repositories, their pull requests and changes"
+            onPress={() => router.push("/code")}
+          />
+        </View>
+      ) : null}
 
       <View>
         <Row

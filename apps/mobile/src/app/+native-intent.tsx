@@ -1,4 +1,4 @@
-import { routeFor, sitePathOf } from "@/lib/links";
+import { linkPathOf, routeFor } from "@/lib/links";
 
 /**
  * Where a link that opens the app goes. `g1t://` links name a site path,
@@ -9,16 +9,10 @@ import { routeFor, sitePathOf } from "@/lib/links";
  */
 export function redirectSystemPath({ path }: { path: string; initial: boolean }): string {
   try {
-    const sitePath = sitePathOf(path) ?? sitePathOfWeb(path) ?? path;
+    const sitePath = linkPathOf(path) ?? path;
     const route = routeFor(sitePath);
     return route ?? `/open?path=${encodeURIComponent(sitePath)}`;
   } catch {
     return "/";
   }
-}
-
-function sitePathOfWeb(link: string): string | null {
-  if (!/^https?:\/\//i.test(link)) return null;
-  const url = new URL(link);
-  return url.pathname + url.search;
 }

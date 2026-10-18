@@ -1,27 +1,32 @@
 import { Stack, router, useLocalSearchParams } from "expo-router";
-import { CircleDot, GitPullRequest } from "lucide-react-native";
+import { GitPullRequest, ListTodo } from "lucide-react-native";
 import { useState } from "react";
-import { FlatList, RefreshControl, View } from "react-native";
+import { ActivityIndicator, FlatList, RefreshControl, View } from "react-native";
 
-import { Checks, IssueIcon, PullIcon } from "@/components/code";
+import { Checks, PullIcon } from "@/components/code";
 import { Segments } from "@/components/segments";
 import { Empty, ErrorView, Loading, Row, Screen, Text } from "@/components/ui";
-import { type ApiIssue, type ApiPull, useDescriptions, useIssues, usePulls } from "@/lib/code";
+import { ItemRow } from "@/components/work";
+import { type ApiPull, useDescriptions, usePulls } from "@/lib/code";
 import { ago } from "@/lib/time";
+import { useWorkItems } from "@/lib/work";
 import { space, useColors } from "@/theme";
 
-type Tab = "pulls" | "issues";
+type Tab = "pulls" | "work";
 type State = "open" | "closed";
 
-/** A repository: its pull requests and issues. */
+/**
+ * A repository: its pull requests, and its Work: the workspace's work
+ * items linked to it, in any role.
+ */
 export default function Repository() {
   const { owner, repo } = useLocalSearchParams<{ owner: string; repo: string }>();
   const [tab, setTab] = useState<Tab>("pulls");
   const [state, setState] = useState<State>("open");
   const description = useDescriptions(owner).data?.[`${owner}/${repo}`.toLowerCase()];
   const pulls = usePulls(owner, repo, state);
-  const issues = useIssues(owner, repo, state);
-  const list = tab === "pulls" ? pulls : issues;
+  const work = useWorkItems(owner, { state, repo });
+  const list = tab === "pulls" ? pulls : work;
   const colors = useColors();
 
   return (
@@ -37,7 +42,7 @@ export default function Repository() {
           onChange={setTab}
           options={[
             { value: "pulls", label: "Pull requests" },
-            { value: "issues", label: "Issues" },
+            { value: "work", label: "Work" },
           ]}
         />
         <Segments
@@ -63,11 +68,16 @@ export default function Repository() {
         />
       ) : (
         <FlatList
-          data={issues.data}
-          keyExtractor={(issue) => issue.id}
-          refreshControl={<RefreshControl refreshing={issues.isRefetching} onRefresh={() => issues.refetch()} tintColor={colors.accent} />}
-          ListEmptyComponent={<Empty icon={CircleDot} title={`No ${state} issues`} />}
-          renderItem={({ item }) => <IssueRow issue={item} owner={owner} repo={repo} />}
+          data={work.items}
+          keyExtractor={(item) => item.id}
+          refreshControl={<RefreshControl refreshing={work.isRefetching && !work.isFetchingNextPage} onRefresh={() => work.refetch()} tintColor={colors.accent} />}
+          onEndReached={() => work.hasNextPage && !work.isFetchingNextPage && work.fetchNextPage()}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={work.isFetchingNextPage ? <ActivityIndicator color={colors.accent} style={{ padding: space.lg }} /> : null}
+          ListEmptyComponent={<Empty icon={ListTodo} title={`No ${state} work items`} body={`Work items linked to ${repo} show here.`} />}
+          renderItem={({ item }) => (
+            <ItemRow item={item} onPress={() => router.push({ pathname: "/work/[number]", params: { number: String(item.number), workspace: item.workspace } })} />
+          )}
         />
       )}
     </Screen>
@@ -80,21 +90,9 @@ function PullRow({ pull, owner, repo }: { pull: ApiPull; owner: string; repo: st
     <Row
       leading={<PullIcon pull={pull} />}
       title={pull.title}
-      subtitle={`#${pull.number} · ${by}${pull.agent ? ` with ${pull.agent}` : ""} · ${ago(pull.updated_at)}`}
+      subtitle={`#${pull.number} · ${by}${pull.agent ? ` with ${pull.agent}` : ""}${pull.item ? ` · for #${pull.item}` : ""} · ${ago(pull.updated_at)}`}
       trailing={<Checks status={pull.check_status} />}
       onPress={() => router.push({ pathname: "/code/[owner]/[repo]/pull/[number]", params: { owner, repo, number: String(pull.number) } })}
-    />
-  );
-}
-
-function IssueRow({ issue, owner, repo }: { issue: ApiIssue; owner: string; repo: string }) {
-  const by = issue.author.display_username ?? issue.author.username;
-  return (
-    <Row
-      leading={<IssueIcon issue={issue} />}
-      title={issue.title}
-      subtitle={`#${issue.number} · ${by} · ${ago(issue.updated_at)}${issue.comment_count ? ` · ${issue.comment_count} comments` : ""}`}
-      onPress={() => router.push({ pathname: "/code/[owner]/[repo]/issues/[number]", params: { owner, repo, number: String(issue.number) } })}
     />
   );
 }

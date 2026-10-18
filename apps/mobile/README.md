@@ -1,7 +1,7 @@
 # g1t for Android and iOS
 
 The phone app: [Expo](https://expo.dev) (SDK 57, React Native 0.86) with
-Expo Router, in TypeScript. Chat and Code, signed in with g1t's
+Expo Router, in TypeScript. Work, Chat and Code, signed in with g1t's
 own OAuth. Android is the first target. What it does for people is in the
 guide, [The phone app](../docs/src/content/docs/guides/mobile.md).
 
@@ -17,19 +17,21 @@ src/
     sign-in.tsx        Sign in with g1t, an access token, or another server
     oauth/callback.tsx where the site sends sign-in back (g1t://oauth/callback)
     (app)/             signed in: the tabs
+      work/            the workspace's work items: the list, an item, new
       chat/            the list, a conversation, a thread, new, browse
-      code/            repositories, pull requests, issues, diffs
-      more/            notifications, workspaces, sign out
+      code/            repositories, pull requests, diffs (opened from More)
+      more/            Code, notifications, workspaces, sign out
       home/, notifications/  coming: they open the site
-    +native-intent.tsx g1t:// links to screens (lib/links.ts)
-  components/        the building blocks, themed (ui.tsx); chat/ and Code's
+    ref.tsx            what #N names (a work item or a pull request), opened
+    +native-intent.tsx g1t:// and https links to screens (lib/links.ts)
+  components/        the building blocks, themed (ui.tsx); chat/, Code's and Work's
   lib/
     server.ts          which g1t: site and API addresses
     oauth.ts           OAuth 2.1 with PKCE against the server's metadata
     credentials.ts     the server and credentials, in the phone's keystore
     client.ts          every request: refresh, errors, the site or the API
     session.tsx        who is signed in, to which workspace
-    chat.ts, code.ts   the data for Chat and Code (TanStack Query)
+    chat.ts, code.ts, work.ts  the data for Chat, Code and Work (TanStack Query)
     live.ts            the site's live sockets, with tickets, kept open
     feed.tsx           counts, banners and presence while the app is open
     push.ts            notifications on the phone
@@ -44,6 +46,7 @@ Shared types and catalogs come from `@g1t/contracts` (by subpath, such as
 | What | Where | How it is signed in |
 | --- | --- | --- |
 | Who you are, your workspaces | `GET {api}/user` | `Authorization: Bearer g1t_…` |
+| Work | `{api}/workspaces/<workspace>/work…`, `…/labels`, `…/milestones` REST | the same |
 | Code | `{api}/repos…` REST | the same |
 | Chat | `{site}/<workspace>/-/chat/api` and its live socket, as the site's own pages use them | the same header, with `chat:*` ([below](#chat-with-the-apps-sign-in)); a socket gets a ticket from `{site}/-/live/ticket` first |
 | Notifications | `{site}/-/notify` and the feed socket `{site}/-/live` | the same, with `notifications:*` |

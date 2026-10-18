@@ -27,7 +27,7 @@ import type { Server } from "./server";
 WebBrowser.maybeCompleteAuthSession();
 
 /**
- * What the app asks for: what Chat and Code show and do. The
+ * What the app asks for: what Work, Chat and Code show and do. The
  * person can untick any of these on the approval page. `chat:*` opens
  * Chat's routes and live sockets on the site, and `notifications:*` the
  * phone's registration for pushes (`/-/notify`), and nothing else there.
@@ -39,8 +39,8 @@ export const SCOPES = [
   "workspace:read",
   "repo:read",
   "code:read",
-  "issues:read",
-  "issues:write",
+  "work:read",
+  "work:write",
   "pull_requests:read",
   "pull_requests:write",
   "checks:read",

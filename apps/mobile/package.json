@@ -2,7 +2,7 @@
   "name": "@g1t/mobile",
   "private": true,
   "version": "0.1.0",
-  "description": "The g1t phone app (Expo): Chat and Code first, signed in with OAuth, for Android and iOS.",
+  "description": "The g1t phone app (Expo): Work, Chat and Code first, signed in with OAuth, for Android and iOS.",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
