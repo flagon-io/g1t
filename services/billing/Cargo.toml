@@ -11,6 +11,7 @@ crate-type = ["cdylib"]
 [dependencies]
 g1t-contracts.workspace = true
 g1t-kit.workspace = true
+g1t-secrets.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 worker.workspace = true
@@ -19,6 +20,9 @@ getrandom = { version = "0.2", features = ["js"] }
 hex = "0.4"
 sha2 = "0.10"
 hmac = "0.12"
+
+[dev-dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 # wasm-opt at -O1: about the same gzipped size as -O in a tenth of the
 # time.
