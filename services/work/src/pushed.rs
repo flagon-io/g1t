@@ -7,22 +7,21 @@
 //! records that one, and the merge queue's entry being landed is left to
 //! the queue.
 //!
-//! A commit pushed to the default branch whose message names an issue
-//! after a closing keyword (`Fixes #12`, closing.rs) closes it, where the
-//! repository closes issues that way, and the issue says which commit and
-//! who pushed it.
+//! A commit pushed to the default branch whose message names a work item
+//! after a closing keyword (`Fixes #12`, closing.rs) lands it there, where
+//! the repository closes work items that way, and the work item says which
+//! commit and who pushed it; `Part of #12` links it.
 
-use g1t_contracts::events::{Event, IssueEvent};
+use g1t_contracts::events::Event;
 use g1t_contracts::repos::{BranchDriftArgs, BranchDrifts, Commit, GetByIdArgs, Landed, LogArgs, Pushed, PushedArgs, Repo, RepoPath};
 use g1t_contracts::rules::MergeMethod;
-use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
 use g1t_contracts::{FailureCode, Outcome, User, Viewer};
-use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
+use crate::items::Held;
 use crate::{Work, closing};
 
 /// How many open pull requests into a branch are looked at after a push.
@@ -45,25 +44,19 @@ const CANDIDATES: &str = "SELECT id, head_commit FROM pulls
          WHERE q.pull_id = pulls.id AND q.state = 'passed' AND q.landing_commit IS NOT NULL)
      ORDER BY updated_at DESC LIMIT ?4";
 
-/// Closes an open issue as done by a commit (`?1`), pushed by `?2`.
-const CLOSE_BY_COMMIT: &str = "UPDATE issues
-     SET state = 'closed', reason = 'completed', resolved_by = NULL, resolved_commit = ?1,
-         resolved_pushed_by = ?2, closed_at = ?3, updated_at = ?4
-     WHERE id = ?5 AND state = 'open' RETURNING id AS value";
-
 /// A session (`?1`) of a repository (`?2`).
 const SESSION_IN_REPO: &str = "SELECT id AS value FROM sessions WHERE id = ?1 AND repo_id = ?2";
 
-/// The session, still going, of the caller (`?3`, or the person it acts
-/// for, `?4`) that works on issue `?2` of a repository (`?1`): attached to
-/// it or tied to it since; the one seen last.
+/// The session, still going, of the caller (`?2`, or the person it acts
+/// for, `?3`) that works on work item `?1`: attached to it or tied to it
+/// since, in any repository; the one seen last.
 const CALLER_SESSION: &str = "SELECT id AS value FROM sessions
-     WHERE repo_id = ?1 AND state = 'active' AND actor_id IN (?3, ?4)
-       AND (issue = ?2 OR EXISTS (SELECT 1 FROM session_links l
-         WHERE l.session_id = sessions.id AND l.kind = 'issue' AND l.number = ?2))
+     WHERE state = 'active' AND actor_id IN (?2, ?3)
+       AND (item_id = ?1 OR EXISTS (SELECT 1 FROM session_links l
+         WHERE l.session_id = sessions.id AND l.kind = 'item' AND l.item_id = ?1))
      ORDER BY last_seen_at DESC LIMIT 1";
 
-/// A note of what closed an issue, and the session it was closed in.
+/// A note of what closed a work item, and the session it was closed in.
 pub(crate) fn closed_note(note: &str, session: Option<&str>) -> String {
     match session {
         Some(session) => format!("{note} via session {session}"),
@@ -71,30 +64,54 @@ pub(crate) fn closed_note(note: &str, session: Option<&str>) -> String {
     }
 }
 
-/// The issues of a repository a commit closed.
-const CLOSED_BY_COMMIT: &str = "SELECT number, title FROM issues WHERE repo_id = ?1 AND resolved_commit = ?2
-     ORDER BY number LIMIT 50";
+/// The work items a commit (`?2`) pushed to repository `?1` resolved.
+const CLOSED_BY_COMMIT: &str = "SELECT i.workspace, i.number, i.title, i.state = 'closed' AS closed
+     FROM work_item_repos r JOIN work_items i ON i.id = r.item_id
+     WHERE r.repo_id = ?1 AND i.number IS NOT NULL
+       AND EXISTS (SELECT 1 FROM json_each(i.resolutions) j
+         WHERE json_extract(j.value, '$.repo_id') = ?1 AND json_extract(j.value, '$.commit') = ?2)
+     ORDER BY i.number LIMIT 50";
 
-/// The issues a push's commits close, each with the first commit, oldest
-/// first, that names it: in the order named, each once, no more than one
-/// pull request may close.
-pub(crate) fn commit_closes(commits: &[g1t_contracts::repos::PushedCommit], repo: &RepoPath) -> Vec<(u32, String)> {
-    let mut closes: Vec<(u32, String)> = Vec::new();
+#[derive(Deserialize)]
+struct ClosedRow {
+    workspace: String,
+    number: u32,
+    title: String,
+    closed: u8,
+}
+
+/// References, each with the commit that named it.
+pub(crate) type CommitRefs = Vec<(refs::Ref, String)>;
+
+/// The references a push's commits name after a closing keyword, and after
+/// `Part of`, each with the first commit, oldest first, that names it: in
+/// the order named, each once, no more than one pull request may close.
+pub(crate) fn commit_refs(commits: &[g1t_contracts::repos::PushedCommit]) -> (CommitRefs, CommitRefs) {
+    let mut closes: CommitRefs = Vec::new();
+    let mut parts: CommitRefs = Vec::new();
     for commit in commits {
-        for number in closing::references(&commit.message, repo) {
-            if !closes.iter().any(|(named, _)| *named == number) {
-                closes.push((number, commit.hash.clone()));
+        let named = refs::named(&commit.message);
+        for reference in named.closes {
+            if !closes.iter().any(|(known, _)| *known == reference) {
+                closes.push((reference, commit.hash.clone()));
+            }
+        }
+        for reference in named.parts {
+            if !parts.iter().any(|(known, _)| *known == reference) {
+                parts.push((reference, commit.hash.clone()));
             }
         }
     }
+    parts.retain(|(part, _)| !closes.iter().any(|(closed, _)| closed == part));
     closes.truncate(closing::MAX_CLOSES);
-    closes
+    parts.truncate(closing::MAX_CLOSES);
+    (closes, parts)
 }
 
 impl Work {
     /// After a push moved `branch` of a repository: records the pull
     /// requests into it that the push merged, and, on the default branch,
-    /// closes the issues its commits name. Returns the pull requests it
+    /// lands the work items its commits name. Returns the pull requests it
     /// recorded as merged. Never fails the push's handling: a problem is
     /// logged.
     pub(crate) async fn after_branch_push(&self, event: &Event, repo_id: &str, branch: &str, after: &str) -> Vec<String> {
@@ -120,8 +137,8 @@ impl Work {
             .all()
             .await?
             .results::<CandidateRow>()?;
-        let closes_issues = default && self.settings(repo_id).await?.auto_close_issues;
-        if candidates.is_empty() && !closes_issues {
+        let closes_items = default && self.settings(repo_id).await?.auto_close_items;
+        if candidates.is_empty() && !closes_items {
             return Ok(Vec::new());
         }
         let pushed: Pushed = g1t_kit::call(
@@ -132,7 +149,7 @@ impl Work {
                 before: event.data["before"].as_str().map(str::to_owned),
                 after: after.to_owned(),
                 heads: candidates.iter().map(|row| row.head_commit.clone()).collect(),
-                messages: closes_issues,
+                messages: closes_items,
                 // No `before` on the default branch: the repository's first push.
                 first: default && event.data["before"].as_str().is_none(),
             },
@@ -176,86 +193,34 @@ impl Work {
 
         // A session g1t started pushed it: what it closes is g1t's, for the pusher.
         let agent = event.data["agent"].as_str().is_some();
-        if closes_issues {
-            let path = RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() };
-            for (number, commit) in commit_closes(&pushed.commits, &path) {
-                let message = pushed.commits.iter().find(|pushed| pushed.hash == commit).map(|pushed| pushed.message.as_str());
+        if closes_items {
+            let (closes, parts) = commit_refs(&pushed.commits);
+            for (reference, commit) in closes.iter().map(|(r, c)| (r, c)).chain(parts.iter().map(|(r, c)| (r, c))) {
+                let Some(id) = self.ref_item(&repo, reference).await? else { continue };
+                let closing = closes.iter().any(|(known, _)| known == reference);
+                let message = pushed.commits.iter().find(|pushed| pushed.hash == *commit).map(|pushed| pushed.message.as_str());
                 let session = self.trailer_session(&repo.id, message.unwrap_or_default()).await?;
-                self.close_by_commit(&repo, number, &commit, &actor, session.as_deref(), agent).await?;
+                let landing =
+                    closing::Landing { pull: None, commit: Some(commit.clone()), pushed_by: Some(actor.username.clone()) };
+                let (closes, parts) = if closing { (vec![id], Vec::new()) } else { (Vec::new(), vec![id]) };
+                self.land(&repo, &landing, &actor, &closes, &parts, session.as_deref(), agent).await?;
             }
         }
         Ok(merged)
     }
 
-    /// Closes an open issue as completed by a commit pushed to the default
-    /// branch: says so on the issue, with the session it was closed in when
-    /// one is known, and lets go of what waited on it. `agent` when an agent
-    /// pushed it for `actor` (GitPush::agent): the note is then g1t's, for
-    /// them. Whether it closed it: not when it was closed already.
-    pub(crate) async fn close_by_commit(
-        &self,
-        repo: &Repo,
-        number: u32,
-        commit: &str,
-        actor: &User,
-        session: Option<&str>,
-        agent: bool,
-    ) -> Result<bool> {
-        let Some(issue) = self.issue(&repo.id, number).await?.filter(|issue| issue.state == State::Open) else {
-            return Ok(false);
-        };
-        let now = rfc3339(now_ms());
-        let closed = self
-            .db
-            .prepare(CLOSE_BY_COMMIT)
-            .bind(&[
-                commit.into(),
-                actor.username.as_str().into(),
-                now.as_str().into(),
-                now.as_str().into(),
-                issue.id.as_str().into(),
-            ])?
-            .first::<crate::rows::ValueRow>(None)
-            .await?;
-        if closed.is_none() {
-            return Ok(false);
-        }
-        self.publish(
-            "issue.closed",
-            &repo.id,
-            actor,
-            IssueEvent {
-                reason: Some(IssueReason::Completed.as_str()),
-                commit: Some(commit.to_owned()),
-                session: session.map(str::to_owned),
-                ..Self::issue_event(&issue)
-            },
-        )
-        .await?;
-        let by = match crate::rows::By::from(actor) {
-            by if agent && by.acting_for.is_none() && by.id == actor.id => crate::rows::By {
-                id: g1t_contracts::identity::AGENT_ID,
-                name: g1t_contracts::identity::AGENT_NAME,
-                acting_for: Some((&actor.id, &actor.username)),
-            },
-            by => by,
-        };
-        self.note(&repo.id, number, by, &closed_note(&format!("closed this in {commit}"), session)).await?;
-        self.issue_resolved(&repo.id, number, actor, true, None).await;
-        Ok(true)
-    }
-
-    /// `close_issue` with a commit: the commit, on the default branch of
-    /// `repo`, whose message names issue `number` after a closing keyword,
-    /// with the session it names, if it names one of this repository's.
-    /// Anything else is refused, saying why.
+    /// `close_work_item` with a commit: the commit, on the default branch
+    /// of `repo`, whose message names work item `held` after a closing
+    /// keyword, with the session it names, if it names one of this
+    /// repository's. Anything else is refused, saying why.
     pub(crate) async fn closing_commit(
         &self,
         repo: &Repo,
-        number: u32,
+        held: &Held,
         commit: &str,
         actor: &User,
     ) -> Result<Outcome<(String, Option<String>)>> {
+        let number = held.item.number;
         let commit = commit.trim().to_lowercase();
         if !(4..=64).contains(&commit.len()) || !commit.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Ok(Outcome::fail(FailureCode::Invalid, "commit is a commit's hash."));
@@ -279,7 +244,14 @@ impl Work {
             ));
         };
         let short = &found.hash[..7.min(found.hash.len())];
-        if !closing::references(&found.message, &path).contains(&number) {
+        let mut names = false;
+        for reference in refs::named(&found.message).closes {
+            if self.ref_item(repo, &reference).await?.as_deref() == Some(held.item.id.as_str()) {
+                names = true;
+                break;
+            }
+        }
+        if !names {
             return Ok(Outcome::fail(
                 FailureCode::Invalid,
                 format!("Commit {short} does not close #{number}: its message names it after no closing keyword (Fixes #{number})."),
@@ -308,7 +280,7 @@ impl Work {
                 Some(_) => {
                     return Ok(Outcome::fail(
                         FailureCode::Invalid,
-                        format!("Commit {short} is not on {}, the default branch: only a commit there closes an issue.", repo.default_branch),
+                        format!("Commit {short} is not on {}, the default branch: only a commit there closes a work item.", repo.default_branch),
                     ));
                 }
                 None => {
@@ -336,10 +308,10 @@ impl Work {
             .map(|row| row.value))
     }
 
-    /// The session closing an issue with a token: the caller's own session
-    /// on the issue that is still going, the one seen last. A person
+    /// The session closing a work item with a token: the caller's own
+    /// session on it that is still going, the one seen last. A person
     /// signed in on the site closes it in none.
-    pub(crate) async fn caller_session(&self, repo_id: &str, number: u32, actor: &User) -> Result<Option<String>> {
+    pub(crate) async fn caller_session(&self, held: &Held, actor: &User) -> Result<Option<String>> {
         if actor.token.is_none() && actor.acting.is_none() {
             return Ok(None);
         }
@@ -347,15 +319,15 @@ impl Work {
         Ok(self
             .db
             .prepare(CALLER_SESSION)
-            .bind(&[repo_id.into(), number.into(), actor.id.as_str().into(), person.into()])?
+            .bind(&[held.item.id.as_str().into(), actor.id.as_str().into(), person.into()])?
             .first::<crate::rows::ValueRow>(None)
             .await?
             .map(|row| row.value))
     }
 
-    /// `closed_by_commit`: the issues a commit closed (`close_by_commit`),
-    /// for anyone who may read the repository.
-    pub(crate) async fn closed_by_commit(&self, a: ClosedByCommitArgs) -> Result<Outcome<Vec<ClosedIssue>>> {
+    /// `closed_by_commit`: the work items a commit pushed to a repository
+    /// resolved, for anyone who may read the repository.
+    pub(crate) async fn closed_by_commit(&self, a: ClosedByCommitArgs) -> Result<Outcome<Vec<ClosedItem>>> {
         let Some(commit) = crate::commit_comments::valid_commit(&a.commit).filter(|commit| commit.len() >= 40) else {
             return Ok(Outcome::Ok(Vec::new()));
         };
@@ -369,7 +341,10 @@ impl Work {
                 .bind(&[repo.id.as_str().into(), commit.into()])?
                 .all()
                 .await?
-                .results::<ClosedIssue>()?,
+                .results::<ClosedRow>()?
+                .into_iter()
+                .map(|row| ClosedItem { workspace: row.workspace, number: row.number, title: row.title, closed: row.closed != 0 })
+                .collect(),
         ))
     }
 }
@@ -383,18 +358,7 @@ mod tests {
 
     /// The work database as the migrations make it.
     fn database() -> Connection {
-        let db = Connection::open_in_memory().unwrap();
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
-        let mut paths: Vec<_> = std::fs::read_dir(dir)
-            .unwrap()
-            .map(|entry| entry.unwrap().path())
-            .filter(|path| path.extension().is_some_and(|ext| ext == "sql"))
-            .collect();
-        paths.sort();
-        for path in paths {
-            db.execute_batch(&std::fs::read_to_string(path).unwrap()).unwrap();
-        }
-        db
+        crate::migrated::database()
     }
 
     fn pull(db: &Connection, id: &str, number: u32, status: &str, base: Option<&str>, head: Option<&str>) {
@@ -449,58 +413,62 @@ mod tests {
     }
 
     #[test]
-    fn a_commit_closes_an_open_issue_once_and_says_which() {
+    fn a_commit_names_what_it_resolved_in_its_repository() {
         let db = database();
+        let resolved = |repo: &str| format!(r#"[{{"repo_id":"{repo}","pull":null,"commit":"c1","pushed_by":"ana"}}]"#);
+        let item = |id: &str, number: u32, title: &str, state: &str, repo: &str| {
+            db.execute(
+                "INSERT INTO work_items (id, workspace, number, title, body, state, resolutions, author_id, author_name, created_at, updated_at)
+                 VALUES (?1, 'acme', ?2, ?3, '', ?4, ?5, 'user', 'user', 'now', 'now')",
+                params![id, number, title, state, resolved(repo)],
+            )
+            .unwrap();
+        };
+        item("wki_1", 7, "Broken header", "closed", "repo");
+        item("wki_2", 8, "Footer", "open", "repo");
+        item("wki_3", 9, "Elsewhere", "closed", "other");
         db.execute_batch(
-            "INSERT INTO issues (id, repo_id, number, title, body, labels, state, author_id, author_name, created_at, updated_at)
-               VALUES ('iss', 'repo', 7, 'Broken header', '', '[]', 'open', 'user', 'user', 'now', 'now');",
+            "INSERT INTO work_item_repos (item_id, repo_id, role, added_at) VALUES
+               ('wki_1', 'repo', 'origin', 'now'), ('wki_2', 'repo', 'touched', 'now'), ('wki_3', 'other', 'origin', 'now');",
         )
         .unwrap();
-        let close = |commit: &str| {
-            db.query_row(CLOSE_BY_COMMIT, params![commit, "ana", "later", "later", "iss"], |row| row.get::<_, String>(0))
-                .optional()
-                .unwrap()
-        };
-        assert_eq!(close("c1").as_deref(), Some("iss"));
-        // Already closed: a later commit naming it changes nothing.
-        assert_eq!(close("c2"), None);
-        let (state, commit, by, resolved_by): (String, String, String, Option<u32>) = db
-            .query_row("SELECT state, resolved_commit, resolved_pushed_by, resolved_by FROM issues WHERE id = 'iss'", [], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
-            })
-            .unwrap();
-        assert_eq!((state.as_str(), commit.as_str(), by.as_str(), resolved_by), ("closed", "c1", "ana", None));
-        let closed: Vec<(u32, String)> = db
+        let closed: Vec<(String, u32, String, u8)> = db
             .prepare(CLOSED_BY_COMMIT)
             .unwrap()
-            .query_map(params!["repo", "c1"], |row| Ok((row.get(0)?, row.get(1)?)))
+            .query_map(params!["repo", "c1"], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))
             .unwrap()
             .map(Result::unwrap)
             .collect();
-        assert_eq!(closed, vec![(7, "Broken header".to_owned())]);
+        assert_eq!(closed, vec![("acme".to_owned(), 7, "Broken header".to_owned(), 1), ("acme".to_owned(), 8, "Footer".to_owned(), 0)]);
     }
 
     fn commit(hash: &str, message: &str) -> PushedCommit {
         PushedCommit { hash: hash.into(), message: message.into() }
     }
 
+    fn here(number: u32) -> refs::Ref {
+        refs::Ref { scope: refs::RefScope::Here, number }
+    }
+
     #[test]
-    fn each_issue_is_closed_by_the_first_commit_that_names_it() {
-        let repo = RepoPath { namespace: "acme".into(), name: "web".into() };
+    fn each_reference_is_landed_by_the_first_commit_that_names_it() {
         let commits = [
             commit("a", "Fix the header\n\nFixes #12, closes #3"),
-            commit("b", "Tidy up (#12)\n\nResolves #12 and resolves acme/web#7"),
+            commit("b", "Tidy up (#12)\n\nResolves #12 and resolves acme/web#7. Part of #20"),
             commit("c", "Mention #9 without a keyword; see `fixes #10` in code"),
-            commit("d", "Closes other/repo#4"),
+            commit("d", "Refs #3, part of #21"),
         ];
-        assert_eq!(commit_closes(&commits, &repo), vec![(12, "a".into()), (3, "a".into()), (7, "b".into())]);
+        let (closes, parts) = commit_refs(&commits);
+        let web = refs::Ref { scope: refs::RefScope::Repo(RepoPath { namespace: "acme".into(), name: "web".into() }), number: 7 };
+        assert_eq!(closes, vec![(here(12), "a".into()), (here(3), "a".into()), (web, "b".into())]);
+        // What a commit closes is not also only part of it.
+        assert_eq!(parts, vec![(here(20), "b".into()), (here(21), "d".into())]);
     }
 
     #[test]
     fn no_more_than_a_pull_request_closes() {
-        let repo = RepoPath { namespace: "acme".into(), name: "web".into() };
         let message: String = (1..=80).map(|n| format!("Fixes #{n}\n")).collect();
-        assert_eq!(commit_closes(&[commit("a", &message)], &repo).len(), closing::MAX_CLOSES);
+        assert_eq!(commit_refs(&[commit("a", &message)]).0.len(), closing::MAX_CLOSES);
     }
 
     #[test]
@@ -510,36 +478,44 @@ mod tests {
     }
 
     #[test]
-    fn the_callers_session_on_the_issue_is_the_one_still_going_seen_last() {
+    fn the_callers_session_on_the_work_item_is_the_one_still_going_seen_last() {
         let db = database();
-        let session = |id: &str, actor: &str, issue: Option<u32>, state: &str, seen: &str| {
+        db.execute_batch(
+            "INSERT INTO work_items (id, workspace, number, title, body, author_id, author_name, created_at, updated_at)
+               VALUES ('wki_7', 'acme', 7, 't', '', 'u', 'u', '', ''), ('wki_8', 'acme', 8, 't', '', 'u', 'u', '', ''),
+                      ('wki_9', 'acme', 9, 't', '', 'u', 'u', '', '');",
+        )
+        .unwrap();
+        let session = |id: &str, repo: &str, actor: &str, item: Option<&str>, state: &str, seen: &str| {
             db.execute(
-                "INSERT INTO sessions (id, repo_id, issue, actor_id, actor_name, harness, state, started_at, last_seen_at)
-                 VALUES (?1, 'repo', ?2, ?3, ?3, 'claude_code', ?4, 'then', ?5)",
-                params![id, issue, actor, state, seen],
+                "INSERT INTO sessions (id, repo_id, item_id, actor_id, actor_name, harness, state, started_at, last_seen_at)
+                 VALUES (?1, ?2, ?3, ?4, ?4, 'claude_code', ?5, 'then', ?6)",
+                params![id, repo, item, actor, state, seen],
             )
             .unwrap();
         };
-        session("ses_old", "ana", Some(7), "active", "1");
-        session("ses_new", "ana", Some(7), "active", "2");
-        session("ses_ended", "ana", Some(7), "ended", "3");
-        session("ses_other", "bo", Some(7), "active", "4");
-        session("ses_elsewhere", "ana", Some(8), "active", "5");
-        // Tied to issue 9 since it started, by a claim.
-        session("ses_claimed", "ana", None, "active", "6");
+        session("ses_old", "repo", "ana", Some("wki_7"), "active", "1");
+        // In another repository of the workspace, on the same work item.
+        session("ses_new", "other", "ana", Some("wki_7"), "active", "2");
+        session("ses_ended", "repo", "ana", Some("wki_7"), "ended", "3");
+        session("ses_other", "repo", "bo", Some("wki_7"), "active", "4");
+        session("ses_elsewhere", "repo", "ana", Some("wki_8"), "active", "5");
+        // Tied to work item 9 since it started, by a claim.
+        session("ses_claimed", "repo", "ana", None, "active", "6");
         db.execute(
-            "INSERT INTO session_links (session_id, repo_id, kind, number, via, at) VALUES ('ses_claimed', 'repo', 'issue', 9, 'claim', 'now')",
+            "INSERT INTO session_links (session_id, repo_id, kind, number, item_id, via, at)
+             VALUES ('ses_claimed', 'repo', 'item', 0, 'wki_9', 'claim', 'now')",
             [],
         )
         .unwrap();
-        let caller = |number: u32, actor: &str, person: &str| -> Option<String> {
-            db.query_row(CALLER_SESSION, params!["repo", number, actor, person], |row| row.get(0)).optional().unwrap()
+        let caller = |item: &str, actor: &str, person: &str| -> Option<String> {
+            db.query_row(CALLER_SESSION, params![item, actor, person], |row| row.get(0)).optional().unwrap()
         };
-        assert_eq!(caller(7, "ana", "ana").as_deref(), Some("ses_new"));
+        assert_eq!(caller("wki_7", "ana", "ana").as_deref(), Some("ses_new"));
         // g1t acting for ana: ana's session.
-        assert_eq!(caller(7, "g1t", "ana").as_deref(), Some("ses_new"));
-        assert_eq!(caller(9, "ana", "ana").as_deref(), Some("ses_claimed"));
-        assert_eq!(caller(7, "cy", "cy"), None);
+        assert_eq!(caller("wki_7", "g1t", "ana").as_deref(), Some("ses_new"));
+        assert_eq!(caller("wki_9", "ana", "ana").as_deref(), Some("ses_claimed"));
+        assert_eq!(caller("wki_7", "cy", "cy"), None);
         let in_repo = |id: &str| -> Option<String> {
             db.query_row(SESSION_IN_REPO, params![id, "repo"], |row| row.get(0)).optional().unwrap()
         };

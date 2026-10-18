@@ -1,9 +1,9 @@
-//! Coordinating work between agents and people on one repository
+//! Coordinating work between agents and people
 //! (`g1t_contracts::work::coordination`): sessions of their own harnesses
-//! (sessions.rs), advisory claims on issues (claims.rs), what an issue is
-//! blocked by (dependencies.rs), pull requests that start changing the same
-//! files (overlaps.rs), and the one call that gathers it all for an issue
-//! (context.rs).
+//! on a repository (sessions.rs), advisory claims on work items
+//! (claims.rs), what a work item is blocked by (dependencies.rs), pull
+//! requests that start changing the same files (overlaps.rs), and the one
+//! call that gathers it all for a work item (context.rs).
 //!
 //! Nothing here is a lock and nothing waits on a harness: sessions and
 //! claims that went quiet are found when the repository's coordination is
@@ -42,18 +42,28 @@ macro_rules! unwrap_or_fail {
 }
 pub(crate) use unwrap_or_fail;
 
-const SESSION_COLUMNS: &str = "id, repo_id, issue, pull, branch, actor_id, actor_name, harness, harness_session_id,
+/// A session's columns, with its work item's number beside its id.
+const SESSION_COLUMNS: &str = "id, repo_id, item_id,
+  (SELECT number FROM work_items WHERE work_items.id = sessions.item_id) AS item,
+  pull, branch, actor_id, actor_name, harness, harness_session_id,
   title, state, head_commit, started_at, last_seen_at, ended_at, end_reason,
   parent_id, agent_type, task, prompt, result, model";
 
-const CLAIM_COLUMNS: &str = "id, repo_id, issue, session_id, actor_id, actor_name, harness, note, state,
+/// A claim's columns, with its work item's workspace and number.
+const CLAIM_COLUMNS: &str = "id, item_id, repo_id,
+  (SELECT workspace FROM work_items WHERE work_items.id = claims.item_id) AS workspace,
+  (SELECT number FROM work_items WHERE work_items.id = claims.item_id) AS item,
+  session_id, actor_id, actor_name, harness, note, state,
   ttl_minutes, created_at, expires_at, ended_at, end_reason, handoff_to";
 
 #[derive(Clone, Deserialize)]
 pub(crate) struct SessionRow {
     id: String,
     repo_id: String,
-    issue: Option<u32>,
+    #[serde(default)]
+    item_id: Option<String>,
+    #[serde(default)]
+    item: Option<u32>,
     pull: Option<u32>,
     branch: Option<String>,
     actor_id: String,
@@ -89,7 +99,7 @@ impl SessionRow {
             state: SessionState::at(self.state == "ended", last_seen, now),
             id: self.id,
             repo_id: self.repo_id,
-            issue: self.issue,
+            item: self.item,
             pull: self.pull,
             branch: self.branch,
             actor: Principal { id: self.actor_id, username: self.actor_name },
@@ -116,8 +126,13 @@ impl SessionRow {
 #[derive(Deserialize)]
 pub(crate) struct ClaimRow {
     id: String,
-    repo_id: String,
-    issue: u32,
+    pub(crate) item_id: String,
+    #[serde(default)]
+    repo_id: Option<String>,
+    #[serde(default)]
+    workspace: Option<String>,
+    #[serde(default)]
+    item: Option<u32>,
     session_id: Option<String>,
     actor_id: String,
     actor_name: String,
@@ -138,7 +153,8 @@ impl From<ClaimRow> for Claim {
         Claim {
             id: row.id,
             repo_id: row.repo_id,
-            issue: row.issue,
+            workspace: row.workspace.unwrap_or_default(),
+            item: row.item.unwrap_or_default(),
             session_id: row.session_id,
             actor: Principal { id: row.actor_id, username: row.actor_name },
             harness: row.harness.as_deref().and_then(Harness::parse),
@@ -172,11 +188,12 @@ pub(crate) fn time_out_sessions_sql() -> String {
     )
 }
 
-/// Expires a repository's (`?1`) active claim `?3` if due at or before `?2`.
+/// Expires active claim `?3` if due at or before `?2` (`?1` unused, so
+/// the binds are the sessions').
 pub(crate) fn expire_claims_sql() -> String {
     format!(
         "UPDATE claims SET state = 'expired', ended_at = expires_at, end_reason = 'expired'
-         WHERE repo_id = ?1 AND state = 'active' AND expires_at <= ?2 AND id = ?3
+         WHERE ?1 IS NOT NULL AND state = 'active' AND expires_at <= ?2 AND id = ?3
          RETURNING {CLAIM_COLUMNS}"
     )
 }
@@ -196,7 +213,7 @@ impl Work {
 
     /// The repository, if `actor` may take part in it: a confirmed email
     /// address, a repository that is not archived, and a role that may
-    /// open issues and pull requests.
+    /// open work items and pull requests.
     pub(crate) async fn participating_repo(&self, path: &RepoPath, actor: &User) -> Result<Outcome<Repo>> {
         if !actor.verified {
             return Ok(Outcome::fail(FailureCode::Forbidden, crate::UNVERIFIED));
@@ -209,9 +226,10 @@ impl Work {
     }
 
     /// Ends the repository's sessions that have gone 30 minutes without a
-    /// heartbeat (`timed_out`) and expires its claims past their time, and
-    /// announces each. Run before the repository's coordination is read or
-    /// changed, so that nobody sees a stale one as live.
+    /// heartbeat (`timed_out`) and expires the claims made from it or on
+    /// work items linked to it past their time, and announces each. Run
+    /// before the repository's coordination is read or changed, so that
+    /// nobody sees a stale one as live.
     pub(crate) async fn sweep(&self, repo_id: &str) -> Result<()> {
         let now = now_ms();
         let quiet_since = rfc3339(now.saturating_sub(SESSION_TIMEOUT_MS));
@@ -229,7 +247,9 @@ impl Work {
                 self.db
                     .prepare(format!(
                         "SELECT {CLAIM_COLUMNS} FROM claims
-                         WHERE repo_id = ?1 AND state = 'active' AND expires_at <= ?2 LIMIT ?3"
+                         WHERE state = 'active' AND expires_at <= ?2
+                           AND (repo_id = ?1 OR item_id IN (SELECT item_id FROM work_item_repos WHERE repo_id = ?1))
+                         LIMIT ?3"
                     ))
                     .bind(&[repo_id.into(), at.as_str().into(), SWEEP_LIMIT.into()])?,
             ])
@@ -291,7 +311,7 @@ impl Work {
             let delivery = self.delivery(
                 "work.claim_expired",
                 repo_id,
-                serde_json::to_value(ClaimEvent::of(&expected))?,
+                serde_json::to_value(ClaimEvent::of(&expected, &[repo_id.to_owned()]))?,
                 &format!("{}:{}", expected.id, ClaimState::Expired.as_str()),
                 "EXISTS (SELECT 1 FROM claims WHERE id = ?7 AND state = 'expired')",
                 vec![expected.id.as_str().into()],
@@ -314,7 +334,8 @@ impl Work {
                 continue;
             };
             let claim = Claim::from(row);
-            self.delivered(sent, "work.claim_expired", repo_id, None, serde_json::to_value(ClaimEvent::of(&claim))?).await?;
+            let data = serde_json::to_value(ClaimEvent::of(&claim, &[repo_id.to_owned()]))?;
+            self.delivered(sent, "work.claim_expired", repo_id, None, data).await?;
         }
         Ok(())
     }
@@ -327,15 +348,15 @@ impl Work {
             .await
     }
 
-    /// Active claims on an issue, oldest first.
-    pub(crate) async fn active_claims(&self, repo_id: &str, issue: u32) -> Result<Vec<Claim>> {
+    /// Active claims on a work item, oldest first.
+    pub(crate) async fn active_claims(&self, item_id: &str) -> Result<Vec<Claim>> {
         Ok(self
             .db
             .prepare(format!(
                 "SELECT {CLAIM_COLUMNS} FROM claims
-                 WHERE repo_id = ? AND issue = ? AND state = 'active' ORDER BY created_at, id"
+                 WHERE item_id = ? AND state = 'active' ORDER BY created_at, id"
             ))
-            .bind(&[repo_id.into(), issue.into()])?
+            .bind(&[item_id.into()])?
             .all()
             .await?
             .results::<ClaimRow>()?

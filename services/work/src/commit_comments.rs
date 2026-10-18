@@ -4,7 +4,7 @@
 //! Anyone who can read the repository reads them, and comments unless the
 //! repository turned commit comments off (`allow_commit_comments`); those
 //! already written stay readable either way. Only its author edits one;
-//! its author or a maintainer (`ManageSettings`, as for issue comments)
+//! its author or a maintainer (`ManageSettings`, as for work item comments)
 //! deletes it. Each change is published as `commit_comment.created`,
 //! `.edited` or `.deleted` with the comment, and the inbox tells the
 //! commit's author (when their address is a g1t account's) and whoever it
@@ -284,7 +284,7 @@ impl Work {
         data.excerpt = Some(excerpt(&comment.body));
         data.mentions = people_mentioned(&comment.body);
         let teams = teams_mentioned(&comment.body);
-        match self.team_mentions(&repo.id, &teams, &a.actor.id, &a.actor.username).await {
+        match self.team_mentions(Some(&repo.id), &teams, &a.actor.id, &a.actor.username).await {
             Ok(told) => data.team_mentions = told,
             Err(error) => worker::console_error!("commit comment team mentions not resolved: {error}"),
         }
@@ -505,17 +505,7 @@ mod tests {
     /// module and a purge run against it.
     #[test]
     fn the_table_holds_comments_by_commit_and_goes_with_its_repository() {
-        let db = rusqlite::Connection::open_in_memory().unwrap();
-        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/migrations");
-        let mut names: Vec<String> = std::fs::read_dir(dir)
-            .unwrap()
-            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
-            .filter(|name| name.ends_with(".sql"))
-            .collect();
-        names.sort();
-        for name in names {
-            db.execute_batch(&std::fs::read_to_string(format!("{dir}/{name}")).unwrap()).unwrap();
-        }
+        let db = crate::migrated::database();
         let insert = "INSERT INTO commit_comments
                         (id, repo_id, commit_hash, path, line, author_id, author_name, body, created_at)
                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";

@@ -155,17 +155,7 @@ mod tests {
     }
 
     fn database() -> rusqlite::Connection {
-        let db = rusqlite::Connection::open_in_memory().unwrap();
-        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/migrations");
-        let mut names: Vec<String> = std::fs::read_dir(dir)
-            .unwrap()
-            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
-            .filter(|name| name.ends_with(".sql"))
-            .collect();
-        names.sort();
-        for name in names {
-            db.execute_batch(&std::fs::read_to_string(format!("{dir}/{name}")).unwrap()).unwrap();
-        }
+        let db = crate::migrated::database();
         // In flagon/g1t (rep_1): #1 from its own branch fix, #2 from ana's
         // fork's (rep_2) branch fix, #3 from a working copy.
         db.execute_batch(

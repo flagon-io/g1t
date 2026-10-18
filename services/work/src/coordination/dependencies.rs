@@ -1,10 +1,12 @@
-//! What an issue is blocked by: the issues of the same repository that have
-//! to land first (`issues.blocked_by`, a JSON array of numbers).
+//! What a work item is blocked by: the work items of the same workspace
+//! that have to land first (`work_items.blocked_by`, a JSON array of ids;
+//! numbers in and out).
 //!
-//! `update_issue` replaces the set, refusing an issue that is not one of
-//! the repository's, the issue itself, or a set that would make a cycle.
-//! Each change, and each blocker that closes or has its pull request
-//! merged, is a `dependency.changed` event on the issue it blocks.
+//! `update_work_item` replaces the set, refusing a number that is not one
+//! of the workspace's work items, the item itself, or a set that would
+//! make a cycle. Each change, and each blocker that closes or has a pull
+//! request merged for it, is a `dependency.changed` event on the work item
+//! it blocks.
 
 use std::collections::{HashMap, HashSet};
 
@@ -16,15 +18,18 @@ use worker::wasm_bindgen::JsValue;
 
 use super::{CLAIM_COLUMNS, ClaimRow};
 use crate::Work;
+use crate::items::{Held, ITEM_COLUMNS, ItemRow};
 
 #[derive(Deserialize)]
 struct EdgeRow {
     number: u32,
-    blocked_by: String,
+    /// JSON array of the numbers it is blocked by.
+    blocked_by: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct BriefRow {
+    id: String,
     number: u32,
     title: String,
     state: State,
@@ -35,29 +40,35 @@ struct PullBriefRow {
     number: u32,
     title: String,
     status: PullStatus,
-    issue_number: u32,
+    item_id: String,
 }
 
-fn numbers(json: &str) -> Vec<u32> {
-    serde_json::from_str(json).unwrap_or_default()
+fn numbers(json: Option<&str>) -> Vec<u32> {
+    json.and_then(|json| serde_json::from_str(json).ok()).unwrap_or_default()
 }
+
+/// A workspace's (`?1`) work items that are blocked by something, each
+/// with what it is blocked by, by number.
+const EDGES: &str = "SELECT number,
+     (SELECT json_group_array(b.number) FROM json_each(work_items.blocked_by) j JOIN work_items b ON b.id = j.value
+      WHERE b.number IS NOT NULL) AS blocked_by
+   FROM work_items WHERE workspace = ?1 AND blocked_by <> '[]' AND number IS NOT NULL";
 
 impl Work {
-    /// `asked` as `number`'s new `blocked_by`, or why it cannot be.
-    pub(crate) async fn checked_blocked_by(&self, repo_id: &str, number: u32, asked: &[u32]) -> Result<Outcome<Vec<u32>>> {
+    /// `asked` as `number`'s new `blocked_by` in `workspace`, or why it
+    /// cannot be.
+    pub(crate) async fn checked_blocked_by(&self, workspace: &str, number: u32, asked: &[u32]) -> Result<Outcome<Vec<u32>>> {
         let wanted = serde_json::to_string(asked)?;
         let results = self
             .db
             .batch(vec![
                 self.db
                     .prepare(
-                        "SELECT number, title, state FROM issues
-                         WHERE repo_id = ? AND number IN (SELECT value FROM json_each(?))",
+                        "SELECT id, number, title, state FROM work_items
+                         WHERE workspace = ? AND number IN (SELECT value FROM json_each(?))",
                     )
-                    .bind(&[repo_id.into(), wanted.into()])?,
-                self.db
-                    .prepare("SELECT number, blocked_by FROM issues WHERE repo_id = ? AND blocked_by <> '[]'")
-                    .bind(&[repo_id.into()])?,
+                    .bind(&[workspace.into(), wanted.into()])?,
+                self.db.prepare(EDGES).bind(&[workspace.into()])?,
             ])
             .await?;
         let mut results = results.into_iter();
@@ -69,29 +80,30 @@ impl Work {
             Some(result) => result.results()?,
             None => Vec::new(),
         };
-        let issues: HashSet<u32> = found.iter().map(|row| row.number).collect();
-        let graph: HashMap<u32, Vec<u32>> = edges.into_iter().map(|row| (row.number, numbers(&row.blocked_by))).collect();
-        Ok(match check_blocked_by(number, asked, &issues, &graph) {
+        let items: HashSet<u32> = found.iter().map(|row| row.number).collect();
+        let graph: HashMap<u32, Vec<u32>> = edges.into_iter().map(|row| (row.number, numbers(row.blocked_by.as_deref()))).collect();
+        Ok(match check_blocked_by(number, asked, &items, &graph) {
             Ok(set) => Outcome::Ok(set),
             Err(message) => Outcome::fail(FailureCode::Invalid, message),
         })
     }
 
-    /// The `dependency.changed` that setting `issue`'s `blocked_by` to
+    /// The `dependency.changed` that setting `held`'s `blocked_by` to
     /// `after` makes, worked out before the change so that its updates are
     /// written with it; none when nothing changes.
-    pub(crate) async fn dependency_change(&self, issue: &Issue, after: &[u32], actor: &User) -> Result<Option<serde_json::Value>> {
-        let before = &issue.blocked_by;
+    pub(crate) async fn dependency_change(&self, held: &Held, after: &[u32], actor: &User) -> Result<Option<serde_json::Value>> {
+        let before = &held.item.blocked_by;
         let added: Vec<u32> = after.iter().filter(|n| !before.contains(n)).copied().collect();
         let removed: Vec<u32> = before.iter().filter(|n| !after.contains(n)).copied().collect();
         if added.is_empty() && removed.is_empty() {
             return Ok(None);
         }
-        let remaining = self.still_open(&issue.repo_id, after, None).await?;
+        let remaining = self.still_open(&held.item.workspace, after, None).await?;
         let change = DependencyChanged {
-            repo_id: issue.repo_id.clone(),
-            number: issue.number,
-            issue: issue.number,
+            workspace: held.item.workspace.clone(),
+            number: held.item.number,
+            item: held.item.number,
+            repo_ids: held.repo_ids(),
             blocked_by: after.to_vec(),
             added,
             removed,
@@ -102,39 +114,37 @@ impl Work {
         Ok(Some(g1t_contracts::events::marked(change, Some(actor))))
     }
 
-    /// Notes a change to `issue`'s `blocked_by` (from `before`) in the
-    /// issue's conversation.
-    pub(crate) async fn blocked_by_changed(&self, issue: &Issue, before: &[u32], actor: &User) -> Result<()> {
-        let added: Vec<u32> = issue.blocked_by.iter().filter(|n| !before.contains(n)).copied().collect();
-        let removed: Vec<u32> = before.iter().filter(|n| !issue.blocked_by.contains(n)).copied().collect();
+    /// Notes a change to `held`'s `blocked_by` (from `before`) in its
+    /// conversation.
+    pub(crate) async fn blocked_by_changed(&self, held: &Held, before: &[u32], actor: &User) -> Result<()> {
+        let added: Vec<u32> = held.item.blocked_by.iter().filter(|n| !before.contains(n)).copied().collect();
+        let removed: Vec<u32> = before.iter().filter(|n| !held.item.blocked_by.contains(n)).copied().collect();
         if added.is_empty() && removed.is_empty() {
             return Ok(());
         }
         let list = |numbers: &[u32]| numbers.iter().map(|n| format!("#{n}")).collect::<Vec<_>>().join(", ");
-        let who = actor;
         if !added.is_empty() {
-            self.note(&issue.repo_id, issue.number, who, &format!("marked this as blocked by {}", list(&added))).await?;
+            self.note_item(&held.item.id, actor, &format!("marked this as blocked by {}", list(&added))).await?;
         }
         if !removed.is_empty() {
-            self.note(&issue.repo_id, issue.number, who, &format!("marked this as no longer blocked by {}", list(&removed)))
-                .await?;
+            self.note_item(&held.item.id, actor, &format!("marked this as no longer blocked by {}", list(&removed))).await?;
         }
         Ok(())
     }
 
-    /// Those of `numbers` whose issue is still open, leaving out `cleared`
-    /// (a blocker whose pull request just merged).
-    async fn still_open(&self, repo_id: &str, numbers: &[u32], cleared: Option<u32>) -> Result<Vec<u32>> {
+    /// Those of `numbers` whose work item is still open, leaving out
+    /// `cleared` (a blocker that just landed).
+    async fn still_open(&self, workspace: &str, numbers: &[u32], cleared: Option<u32>) -> Result<Vec<u32>> {
         if numbers.is_empty() {
             return Ok(Vec::new());
         }
         let open: Vec<BriefRow> = self
             .db
             .prepare(
-                "SELECT number, title, state FROM issues
-                 WHERE repo_id = ? AND state = 'open' AND number IN (SELECT value FROM json_each(?))",
+                "SELECT id, number, title, state FROM work_items
+                 WHERE workspace = ? AND state = 'open' AND number IN (SELECT value FROM json_each(?))",
             )
-            .bind(&[repo_id.into(), serde_json::to_string(numbers)?.into()])?
+            .bind(&[workspace.into(), serde_json::to_string(numbers)?.into()])?
             .all()
             .await?
             .results()?;
@@ -145,33 +155,38 @@ impl Work {
             .collect())
     }
 
-    /// An issue closed (`closed`) or had a pull request merged for it
-    /// (`merged_pull`): its claims end if it closed, and each open issue it
-    /// blocks hears that it cleared. Never fails what caused it: a problem
-    /// is logged.
-    pub(crate) async fn issue_resolved(&self, repo_id: &str, number: u32, actor: &User, closed: bool, merged_pull: Option<u32>) {
+    /// A work item closed (`closed`) or had a pull request merged for it
+    /// (`merged_pull`): its claims end if it closed, and each open work
+    /// item it blocks hears that it cleared. Never fails what caused it: a
+    /// problem is logged.
+    pub(crate) async fn item_resolved(&self, held: &Held, actor: &User, closed: bool, merged_pull: Option<u32>) {
+        let number = held.item.number;
         let resolved = async {
             if closed {
-                self.release_claims_on_close(repo_id, number, Some(actor)).await?;
+                self.release_claims_on_close(held, Some(actor)).await?;
             }
-            let dependents: Vec<EdgeRow> = self
+            let dependents: Vec<Held> = self
                 .db
-                .prepare(
-                    "SELECT number, blocked_by FROM issues
-                     WHERE repo_id = ? AND state = 'open'
-                       AND EXISTS (SELECT 1 FROM json_each(issues.blocked_by) WHERE json_each.value = ?)",
-                )
-                .bind(&[repo_id.into(), number.into()])?
+                .prepare(format!(
+                    "SELECT {ITEM_COLUMNS} FROM work_items
+                     WHERE workspace = ? AND state = 'open'
+                       AND EXISTS (SELECT 1 FROM json_each(work_items.blocked_by) WHERE json_each.value = ?)"
+                ))
+                .bind(&[held.item.workspace.as_str().into(), held.item.id.as_str().into()])?
                 .all()
                 .await?
-                .results()?;
+                .results::<ItemRow>()?
+                .into_iter()
+                .filter_map(ItemRow::held)
+                .collect();
             for dependent in dependents {
-                let blocked_by = numbers(&dependent.blocked_by);
-                let remaining = self.still_open(repo_id, &blocked_by, Some(number)).await?;
+                let blocked_by = dependent.item.blocked_by.clone();
+                let remaining = self.still_open(&dependent.item.workspace, &blocked_by, Some(number)).await?;
                 let change = DependencyChanged {
-                    repo_id: repo_id.to_owned(),
-                    number: dependent.number,
-                    issue: dependent.number,
+                    workspace: dependent.item.workspace.clone(),
+                    number: dependent.item.number,
+                    item: dependent.item.number,
+                    repo_ids: dependent.repo_ids(),
                     blocked_by,
                     cleared: vec![number],
                     remaining,
@@ -181,9 +196,9 @@ impl Work {
                 // Follows from a close or merge already made: named by it, so
                 // a repeat of the same close or merge tells each session once.
                 let how = merged_pull.map_or_else(|| "closed".to_owned(), |pull| format!("merged:{pull}"));
-                let key = format!("{}:cleared:{number}:{how}", dependent.number);
+                let key = format!("{}:cleared:{}:{how}", dependent.item.id, held.item.id);
                 let data = g1t_contracts::events::marked(change, Some(actor));
-                self.publish_keyed("dependency.changed", repo_id, Some(actor.id.clone()), data, &key).await?;
+                self.publish_keyed_to("dependency.changed", &dependent.repo_ids(), Some(actor.id.clone()), data, &key).await?;
             }
             Ok::<(), worker::Error>(())
         };
@@ -192,41 +207,43 @@ impl Work {
         }
     }
 
-    /// The issues `numbers` names, each with its active claims and its pull
-    /// requests, in the order given.
-    pub(crate) async fn blockers(&self, repo_id: &str, numbers: &[u32]) -> Result<Vec<Blocker>> {
+    /// The work items of `workspace` that `numbers` names, each with its
+    /// active claims and its pull requests, in the order given.
+    pub(crate) async fn blockers(&self, workspace: &str, numbers: &[u32]) -> Result<Vec<Blocker>> {
         if numbers.is_empty() {
             return Ok(Vec::new());
         }
         let list = serde_json::to_string(numbers)?;
         let bind = |sql: String| -> Result<worker::D1PreparedStatement> {
-            self.db.prepare(sql).bind(&[repo_id.into(), JsValue::from(list.as_str())])
+            self.db.prepare(sql).bind(&[workspace.into(), JsValue::from(list.as_str())])
         };
+        let named = "SELECT id FROM work_items WHERE workspace = ?1 AND number IN (SELECT value FROM json_each(?2))";
         let results = self
             .db
             .batch(vec![
-                bind("SELECT number, title, state FROM issues
-                      WHERE repo_id = ? AND number IN (SELECT value FROM json_each(?))"
+                bind("SELECT id, number, title, state FROM work_items
+                      WHERE workspace = ?1 AND number IN (SELECT value FROM json_each(?2))"
                     .to_owned())?,
                 bind(format!(
                     "SELECT {CLAIM_COLUMNS} FROM claims
-                     WHERE repo_id = ? AND state = 'active' AND issue IN (SELECT value FROM json_each(?))
+                     WHERE state = 'active' AND item_id IN ({named})
                      ORDER BY created_at, id"
                 ))?,
-                bind("SELECT number, title, status, issue_number FROM pulls
-                      WHERE repo_id = ? AND issue_number IN (SELECT value FROM json_each(?))
-                      ORDER BY number"
-                    .to_owned())?,
+                bind(format!(
+                    "SELECT number, title, status, item_id FROM pulls
+                     WHERE item_id IN ({named})
+                     ORDER BY created_at"
+                ))?,
             ])
             .await?;
         let mut results = results.into_iter();
         let mut next = || results.next();
-        let issues: Vec<BriefRow> = match next() {
+        let items: Vec<BriefRow> = match next() {
             Some(result) => result.results()?,
             None => Vec::new(),
         };
-        let claims: Vec<Claim> = match next() {
-            Some(result) => result.results::<ClaimRow>()?.into_iter().map(Claim::from).collect(),
+        let claims: Vec<(String, Claim)> = match next() {
+            Some(result) => result.results::<ClaimRow>()?.into_iter().map(|row| (row.item_id.clone(), Claim::from(row))).collect(),
             None => Vec::new(),
         };
         let pulls: Vec<PullBriefRow> = match next() {
@@ -236,15 +253,15 @@ impl Work {
         Ok(numbers
             .iter()
             .filter_map(|number| {
-                let issue = issues.iter().find(|issue| issue.number == *number)?;
+                let item = items.iter().find(|item| item.number == *number)?;
                 Some(Blocker {
-                    number: issue.number,
-                    title: issue.title.clone(),
-                    state: issue.state,
-                    claims: claims.iter().filter(|claim| claim.issue == *number).cloned().collect(),
+                    number: item.number,
+                    title: item.title.clone(),
+                    state: item.state,
+                    claims: claims.iter().filter(|(id, _)| *id == item.id).map(|(_, claim)| claim.clone()).collect(),
                     pulls: pulls
                         .iter()
-                        .filter(|pull| pull.issue_number == *number)
+                        .filter(|pull| pull.item_id == item.id)
                         .map(|pull| PullBrief { number: pull.number, title: pull.title.clone(), status: pull.status })
                         .collect(),
                 })
@@ -252,21 +269,22 @@ impl Work {
             .collect())
     }
 
-    /// The issues that name `number` in their `blocked_by`, by number.
-    pub(crate) async fn blocked_issues(&self, repo_id: &str, number: u32) -> Result<Vec<IssueBrief>> {
+    /// The work items that name `held` in their `blocked_by`, by number.
+    pub(crate) async fn blocked_items(&self, held: &Held) -> Result<Vec<ItemBrief>> {
         Ok(self
             .db
             .prepare(
-                "SELECT number, title, state FROM issues
-                 WHERE repo_id = ? AND EXISTS (SELECT 1 FROM json_each(issues.blocked_by) WHERE json_each.value = ?)
+                "SELECT id, number, title, state FROM work_items
+                 WHERE workspace = ? AND number IS NOT NULL
+                   AND EXISTS (SELECT 1 FROM json_each(work_items.blocked_by) WHERE json_each.value = ?)
                  ORDER BY number LIMIT 100",
             )
-            .bind(&[repo_id.into(), number.into()])?
+            .bind(&[held.item.workspace.as_str().into(), held.item.id.as_str().into()])?
             .all()
             .await?
             .results::<BriefRow>()?
             .into_iter()
-            .map(|row| IssueBrief { number: row.number, title: row.title, state: row.state })
+            .map(|row| ItemBrief { number: row.number, title: row.title, state: row.state })
             .collect())
     }
 }

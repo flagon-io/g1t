@@ -9,19 +9,7 @@ use super::{
 use crate::integration::{FINISH_PROBE, REPORT_PROBE, RESOLVE_HELD};
 
 fn database() -> Connection {
-    let db = Connection::open_in_memory().unwrap();
-    db.execute_batch("PRAGMA foreign_keys = ON").unwrap();
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
-    let mut paths: Vec<_> = std::fs::read_dir(dir)
-        .unwrap()
-        .map(|entry| entry.unwrap().path())
-        .filter(|path| path.extension().is_some_and(|ext| ext == "sql"))
-        .collect();
-    paths.sort();
-    for path in paths {
-        db.execute_batch(&std::fs::read_to_string(path).unwrap())
-            .unwrap();
-    }
+    let db = crate::migrated::database();
     db.execute_batch("INSERT INTO pulls (id, repo_id, number, title, agent, runtime, author_id, author_name, status, created_at, updated_at)
         VALUES ('pull', 'repo', 1, 'Change', 'codex', 'external', 'user', 'user', 'open', 'now', 'now');
         INSERT INTO queue_entries (id, state, repo_id, pull_id, number, enqueued_by, created_at)
@@ -612,7 +600,7 @@ fn an_entry_keeps_how_it_lands_and_one_queued_before_methods_merges() {
     let row = |method: serde_json::Value| -> super::EntryRow {
         serde_json::from_value(serde_json::json!({
             "id": "e", "repo_id": "r", "pull_id": "p", "number": 1, "state": "waiting", "enqueued_by": "{}",
-            "keep_issue_open": 0, "head_commit": null, "base_commit": null, "ahead": null, "combined_commit": null,
+            "keep_item_open": 0, "head_commit": null, "base_commit": null, "ahead": null, "combined_commit": null,
             "results": null, "error": null, "tested_at": null, "created_at": "now", "finished_at": null,
             "merge_method": method,
         }))

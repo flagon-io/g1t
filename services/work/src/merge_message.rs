@@ -45,8 +45,8 @@ pub(crate) struct MessageFacts<'a> {
     pub author: &'a str,
     /// Its commits, oldest first, merge commits left out.
     pub commits: &'a [CommitText],
-    /// The issues it closes.
-    pub issues: &'a [u32],
+    /// The work items it closes, by number.
+    pub items: &'a [u32],
 }
 
 /// Whether making the default message for `method` needs the pull
@@ -135,7 +135,7 @@ fn co_authors(commits: &[CommitText]) -> String {
 /// The repository's template filled in: its first line is the title, the
 /// rest the body. `None` when there is no template or it says nothing.
 fn custom(template: Option<&str>, facts: &MessageFacts<'_>) -> Option<(String, String)> {
-    let issues = facts.issues.iter().map(|number| format!("#{number}")).collect::<Vec<_>>().join(", ");
+    let items = facts.items.iter().map(|number| format!("#{number}")).collect::<Vec<_>>().join(", ");
     let filled = fill(
         template?,
         &[
@@ -147,7 +147,7 @@ fn custom(template: Option<&str>, facts: &MessageFacts<'_>) -> Option<(String, S
             ("base", facts.base),
             ("author", facts.author),
             ("commits", &bullets(facts.commits)),
-            ("issues", &issues),
+            ("items", &items),
             ("co_authors", &co_authors(facts.commits)),
         ],
     );
@@ -229,7 +229,7 @@ mod tests {
         CommitText { message: message.into(), author_email: Some(email.into()) }
     }
 
-    fn facts<'a>(commits: &'a [CommitText], issues: &'a [u32]) -> MessageFacts<'a> {
+    fn facts<'a>(commits: &'a [CommitText], items: &'a [u32]) -> MessageFacts<'a> {
         MessageFacts {
             number: 12,
             title: "Add forks ",
@@ -240,7 +240,7 @@ mod tests {
             base: "main",
             author: "ana",
             commits,
-            issues,
+            items,
         }
     }
 
@@ -302,7 +302,7 @@ mod tests {
         let settings = RepoSettings {
             squash_commit_message: CommitMessageDefault::Custom,
             squash_commit_template: Some(
-                "{title} (#{number}) into {base}\n\n{body}\nFrom {head_repo}:{branch} by {author}\n{commits}\nCloses {issues}\n{co_authors}\n{unknown} {title"
+                "{title} (#{number}) into {base}\n\n{body}\nFrom {head_repo}:{branch} by {author}\n{commits}\nCloses {items}\n{co_authors}\n{unknown} {title"
                     .into(),
             ),
             ..RepoSettings::default()

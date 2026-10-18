@@ -1,5 +1,5 @@
 //! Check runs: the record of the merge queue taking a pull request out,
-//! and of commands written on issues, which g1t ran before a pull
+//! and of commands written on work items, which g1t ran before a pull
 //! request's checks were the workflows run on it. Those runs are kept so
 //! their history still reads; a sandbox still finishing one reports
 //! through the API with the job's one-time token.

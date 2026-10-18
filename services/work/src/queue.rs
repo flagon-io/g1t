@@ -50,7 +50,7 @@ const CLAIM_BUILD: &str = "UPDATE queue_entries
     WHERE id = ?6 AND state = 'waiting' RETURNING id AS value";
 
 const ENQUEUE: &str = "INSERT INTO queue_entries
-    (id, repo_id, pull_id, number, state, enqueued_by, keep_issue_open, created_at, bypass_rules,
+    (id, repo_id, pull_id, number, state, enqueued_by, keep_item_open, created_at, bypass_rules,
      merge_method, commit_title, commit_message)
     SELECT ?1, ?2, ?3, ?4, 'waiting', ?5, ?6, ?7, ?8, ?9, ?10, ?11
     WHERE NOT EXISTS (SELECT 1 FROM queue_entries WHERE pull_id = ?3 AND state IN ('waiting', 'testing', 'passed'))
@@ -126,7 +126,7 @@ pub(crate) struct EntryRow {
     pub(crate) number: u32,
     state: String,
     enqueued_by: String,
-    pub(crate) keep_issue_open: u32,
+    pub(crate) keep_item_open: u32,
     pub(crate) head_commit: Option<String>,
     pub(crate) base_commit: Option<String>,
     ahead: Option<String>,
@@ -321,7 +321,7 @@ impl Work {
         repo: &Repo,
         pull: &Pull,
         actor: &User,
-        keep_issue_open: bool,
+        keep_item_open: bool,
         bypass_rules: bool,
         method: MergeMethod,
         message: (Option<&str>, Option<&str>),
@@ -339,7 +339,7 @@ impl Work {
                 pull.id.as_str().into(),
                 pull.number.into(),
                 serde_json::to_string(actor)?.into(),
-                u32::from(keep_issue_open).into(),
+                u32::from(keep_item_open).into(),
                 rfc3339(now).into(),
                 u32::from(bypass_rules).into(),
                 method.as_str().into(),
@@ -1478,7 +1478,7 @@ impl Work {
             };
             // Record the merge before removing its recoverable queue intent.
             let head = row.head_commit.clone();
-            let merged = self.record_merge(&repo, pull, &actor, row.keep_issue_open != 0, landed, None)
+            let merged = self.record_merge(&repo, pull, &actor, row.keep_item_open != 0, landed, None)
                 .await?;
             self.finish_landing(&row).await?;
             // Its branch, where the repository deletes branches on merge,

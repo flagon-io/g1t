@@ -18,26 +18,33 @@ use worker::D1PreparedStatement;
 /// How long an acknowledged update is kept as a receipt, in days.
 pub(crate) const RECEIPT_DAYS: u64 = 30;
 
-/// Puts a `?2` event (data `?3`, at `?4`) of repository `?5` in the inbox
-/// of each active session it concerns. `?6` is a JSON list of the issue and
-/// pull request numbers it is about (one sequence of numbers): a session
-/// attached or tied to one of them hears of it, and so does a session not
-/// on anything yet, which is still finding its way; an event about nothing
-/// in particular reaches every session. An overlap between two sessions
-/// names its sole recipient. A session is not told what it did itself (its
-/// own start or end, or the claims it made, released or handed off), only
-/// what others did and what happened to it. `guard`, numbered from `?7`,
-/// holds only once the change announced is made.
+/// Puts a `?2` event (data `?3`, at `?4`) of the repositories `?5` (a JSON
+/// list) in the inbox of each active session there it concerns. `?6` is a
+/// JSON list of the work item and pull request numbers it is about (one
+/// sequence of numbers in a workspace): a session attached or tied to one
+/// of them hears of it, and so does a session not on anything yet, which
+/// is still finding its way; an event about nothing in particular reaches
+/// every session. An overlap between two sessions names its sole
+/// recipient. A session is not told what it did itself (its own start or
+/// end, or the claims it made, released or handed off), only what others
+/// did and what happened to it. `guard`, numbered from `?7`, holds only
+/// once the change announced is made.
 pub(crate) fn deliver_sql(guard: &str) -> String {
     format!(
         "INSERT OR IGNORE INTO session_updates (id, session_id, kind, data, at)
- SELECT ?1, s.id, ?2, ?3, ?4 FROM sessions s WHERE s.repo_id = ?5 AND s.state = 'active'
+ SELECT ?1, s.id, ?2, ?3, ?4 FROM sessions s WHERE s.repo_id IN (SELECT value FROM json_each(?5)) AND s.state = 'active'
  AND (CASE WHEN ?2 = 'overlap.detected' AND json_extract(?3, '$.sessionId') IS NOT NULL
         THEN s.id = json_extract(?3, '$.sessionId')
       ELSE json_array_length(?6) = 0
-        OR (s.issue IS NULL AND s.pull IS NULL AND NOT EXISTS (SELECT 1 FROM session_links l WHERE l.session_id = s.id))
-        OR s.issue IN (SELECT value FROM json_each(?6)) OR s.pull IN (SELECT value FROM json_each(?6))
-        OR EXISTS (SELECT 1 FROM session_links l WHERE l.session_id = s.id AND l.number IN (SELECT value FROM json_each(?6)))
+        OR (s.item_id IS NULL AND s.pull IS NULL AND NOT EXISTS (SELECT 1 FROM session_links l WHERE l.session_id = s.id))
+        OR s.pull IN (SELECT value FROM json_each(?6))
+        OR s.item_id IN (SELECT w.id FROM work_items w
+             WHERE w.workspace = (SELECT rw.workspace FROM repo_workspaces rw WHERE rw.repo_id = s.repo_id)
+               AND w.number IN (SELECT value FROM json_each(?6)))
+        OR EXISTS (SELECT 1 FROM session_links l
+             WHERE l.session_id = s.id AND l.kind = 'pull' AND l.number IN (SELECT value FROM json_each(?6)))
+        OR EXISTS (SELECT 1 FROM session_links l JOIN work_items w ON w.id = l.item_id
+             WHERE l.session_id = s.id AND l.kind = 'item' AND w.number IN (SELECT value FROM json_each(?6)))
       END)
  AND (?2 NOT IN ('session.started', 'session.ended') OR s.id != COALESCE(json_extract(?3, '$.session.id'), ''))
  AND (?2 NOT IN ('work.claimed', 'work.released', 'work.handoff_requested') OR s.id != COALESCE(json_extract(?3, '$.claim.sessionId'), ''))
@@ -64,12 +71,12 @@ pub(crate) fn update_id(kind: &str, key: &str) -> String {
     format!("upd_{}", &hex::encode(digest)[..26])
 }
 
-/// The issue and pull request numbers an event's `data` is about: its
-/// `number` and `issue`, the issues a dependency change newly waits on,
+/// The work item and pull request numbers an event's `data` is about: its
+/// `number` and `item`, the work items a dependency change newly waits on,
 /// and the pull requests an integration failure names as suspects.
 pub(crate) fn subjects(data: &serde_json::Value) -> Vec<u32> {
     let mut numbers: Vec<u32> = Vec::new();
-    for key in ["number", "issue", "pull"] {
+    for key in ["number", "item", "pull"] {
         if let Some(n) = data.get(key).and_then(serde_json::Value::as_u64) {
             numbers.push(n as u32);
         }
@@ -109,6 +116,20 @@ impl Work {
         guard: &str,
         binds: Vec<JsValue>,
     ) -> Result<Option<(D1PreparedStatement, Sent)>> {
+        self.delivery_to(kind, &[repo.to_owned()], data, key, guard, binds)
+    }
+
+    /// [`delivery`](Work::delivery), to the sessions of every one of
+    /// `repos`: a work item's are all those it is linked to.
+    pub(crate) fn delivery_to(
+        &self,
+        kind: &'static str,
+        repos: &[String],
+        data: serde_json::Value,
+        key: &str,
+        guard: &str,
+        binds: Vec<JsValue>,
+    ) -> Result<Option<(D1PreparedStatement, Sent)>> {
         if !COORDINATION_EVENTS.contains(&kind) {
             return Ok(None);
         }
@@ -118,7 +139,7 @@ impl Work {
             kind.into(),
             serde_json::to_string(&data)?.into(),
             rfc3339(now_ms()).into(),
-            repo.into(),
+            serde_json::to_string(repos)?.into(),
             serde_json::to_string(&subjects(&data))?.into(),
         ];
         all.extend(binds);
@@ -169,6 +190,22 @@ impl Work {
             statement.run().await?;
         }
         self.publish_value(kind, repo, actor, data).await
+    }
+
+    /// [`publish_keyed`](Work::publish_keyed) for the sessions of every one
+    /// of `repos`, the event filed under the first.
+    pub(crate) async fn publish_keyed_to(
+        &self,
+        kind: &'static str,
+        repos: &[String],
+        actor: Option<String>,
+        data: serde_json::Value,
+        key: &str,
+    ) -> Result<()> {
+        if let Some((statement, _)) = self.delivery_to(kind, repos, data.clone(), key, "1", Vec::new())? {
+            statement.run().await?;
+        }
+        self.publish_on(kind, repos.first().map(String::as_str), actor, data).await
     }
 
     /// An update for a change already made, written on its own: for the

@@ -1,22 +1,23 @@
-//! A repository's labels, and putting them on issues and pull requests.
+//! A workspace's labels, and putting them on work items and pull requests.
 //!
-//! Labels live in the `labels` table, one row per name; an issue or a pull
-//! request carries them by name in its `labels` JSON array. Renaming or
-//! deleting a label rewrites those arrays, so a name on an item is always
-//! one the repository has.
+//! Labels live in the `labels` table, one row per name in a workspace; a
+//! work item or a pull request carries them by name in its `labels` JSON
+//! array. Renaming or deleting a label rewrites those arrays, so a name on
+//! one is always one its workspace has.
 
-use g1t_contracts::access::Capability;
-use g1t_contracts::events::{EventLabel, IssueEvent, PullEvent};
-use g1t_contracts::repos::{Repo, RepoPath};
+use g1t_contracts::access::{self, Capability, RepoRef};
+use g1t_contracts::events::{EventLabel, PullEvent, WorkItemEvent};
+use g1t_contracts::repos::Repo;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
-use g1t_contracts::{FailureCode, Outcome, User};
+use g1t_contracts::{FailureCode, Outcome, User, Viewer};
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
 
+use crate::items::{Held, workspace_of};
 use crate::retired::writable;
-use crate::{Work, allowed};
+use crate::{On, Work};
 
 /// Unwraps an `Outcome`, returning its failure from the enclosing method.
 macro_rules! check {
@@ -28,96 +29,115 @@ macro_rules! check {
     };
 }
 
-/// A label as stored, with how many issues and pull requests carry it.
+/// A label as stored, with how many work items and pull requests carry it.
 #[derive(Deserialize)]
 struct LabelRow {
     name: String,
     color: String,
     description: String,
     #[serde(default)]
-    issues: u32,
+    items: u32,
     #[serde(default)]
     pulls: u32,
 }
 
 impl From<LabelRow> for Label {
     fn from(row: LabelRow) -> Self {
-        Label { name: row.name, color: row.color, description: row.description, issues: row.issues, pulls: row.pulls }
+        Label { name: row.name, color: row.color, description: row.description, items: row.items, pulls: row.pulls }
     }
 }
 
-/// A repository's labels with their counts, by name. `?1` is its id.
+/// A workspace's labels with their counts, by name. `?1` is its slug.
 const LABELS: &str = "SELECT name, color, description,
-   (SELECT count(*) FROM issues, json_each(issues.labels)
-    WHERE issues.repo_id = labels.repo_id AND json_each.value = labels.name) AS issues,
+   (SELECT count(*) FROM work_items, json_each(work_items.labels)
+    WHERE work_items.workspace = labels.workspace AND json_each.value = labels.name) AS items,
    (SELECT count(*) FROM pulls, json_each(pulls.labels)
-    WHERE pulls.repo_id = labels.repo_id AND json_each.value = labels.name) AS pulls
- FROM labels WHERE repo_id = ?1";
+    WHERE pulls.repo_id IN (SELECT repo_id FROM repo_workspaces WHERE workspace = labels.workspace)
+      AND json_each.value = labels.name) AS pulls
+ FROM labels WHERE workspace = ?1";
 
-/// The most labels a repository can have.
-const MAX_REPO_LABELS: u32 = 500;
+/// The most labels a workspace can have.
+const MAX_WORKSPACE_LABELS: u32 = 500;
 
-/// An issue or a pull request, as labels and milestones change on it.
-pub(crate) enum Item {
-    Issue(Issue),
-    Pull(Pull),
+/// A work item or a pull request, as labels and milestones change on it.
+#[derive(Clone, Debug)]
+#[allow(clippy::large_enum_variant)]
+pub(crate) enum Labeled {
+    Item(Held),
+    Pull(Repo, Pull),
 }
 
-impl Item {
-    pub(crate) fn number(&self) -> u32 {
+impl Labeled {
+    /// The workspace whose labels and milestones it takes.
+    pub(crate) fn workspace(&self) -> String {
         match self {
-            Item::Issue(issue) => issue.number,
-            Item::Pull(pull) => pull.number,
+            Labeled::Item(held) => held.item.workspace.clone(),
+            Labeled::Pull(repo, _) => repo.namespace.to_lowercase(),
         }
     }
 
-    pub(crate) fn repo_id(&self) -> &str {
+    /// The repository whose role counts besides a membership of the
+    /// workspace: a work item's origin, or the pull request's own.
+    pub(crate) fn repo(&self) -> Option<RepoRef<'_>> {
         match self {
-            Item::Issue(issue) => &issue.repo_id,
-            Item::Pull(pull) => &pull.repo_id,
+            Labeled::Item(held) => held.origin(),
+            Labeled::Pull(repo, _) => Some(RepoRef::from(repo)),
+        }
+    }
+
+    pub(crate) fn on(&self) -> On<'_> {
+        match self {
+            Labeled::Item(held) => On::Item(&held.item.id),
+            Labeled::Pull(_, pull) => On::Pull(&pull.repo_id, pull.number),
         }
     }
 
     pub(crate) fn labels(&self) -> &[String] {
         match self {
-            Item::Issue(issue) => &issue.labels,
-            Item::Pull(pull) => &pull.labels,
+            Labeled::Item(held) => &held.item.labels,
+            Labeled::Pull(_, pull) => &pull.labels,
         }
     }
 
     pub(crate) fn milestone(&self) -> Option<&MilestoneRef> {
         match self {
-            Item::Issue(issue) => issue.milestone.as_ref(),
-            Item::Pull(pull) => pull.milestone.as_ref(),
+            Labeled::Item(held) => held.item.milestone.as_ref(),
+            Labeled::Pull(_, pull) => pull.milestone.as_ref(),
         }
     }
 
     /// Who may manage it without the Triage role.
     pub(crate) fn owned_by(&self, id: &str) -> bool {
         match self {
-            Item::Issue(issue) => issue.owner().id == id,
-            Item::Pull(pull) => pull.is_owned_by(id),
+            Labeled::Item(held) => held.item.owner().id == id,
+            Labeled::Pull(_, pull) => pull.is_owned_by(id),
         }
     }
 
-    pub(crate) fn table(&self) -> &'static str {
+    /// Whether `actor` may do `capability` on it.
+    pub(crate) fn may(&self, actor: &User, capability: Capability) -> bool {
+        access::can_item(Some(actor), &self.workspace(), self.repo(), capability)
+    }
+
+    /// Its row: the table and its id.
+    pub(crate) fn row(&self) -> (&'static str, &str) {
         match self {
-            Item::Issue(_) => "issues",
-            Item::Pull(_) => "pulls",
+            Labeled::Item(held) => ("work_items", &held.item.id),
+            Labeled::Pull(_, pull) => ("pulls", &pull.id),
         }
     }
 
-    /// The event `what` happened to it: `issue.labeled` or `pull.labeled`.
+    /// The event `what` happened to it: `work_item.labeled` or `pull.labeled`.
     pub(crate) fn kind(&self, what: &str) -> &'static str {
         match (self, what) {
-            (Item::Issue(_), "labeled") => "issue.labeled",
-            (Item::Issue(_), "unlabeled") => "issue.unlabeled",
-            (Item::Issue(_), "milestoned") => "issue.milestoned",
-            (Item::Issue(_), _) => "issue.demilestoned",
-            (Item::Pull(_), "labeled") => "pull.labeled",
-            (Item::Pull(_), "unlabeled") => "pull.unlabeled",
-            (Item::Pull(_), "milestoned") => "pull.milestoned",
-            (Item::Pull(_), _) => "pull.demilestoned",
+            (Labeled::Item(_), "labeled") => "work_item.labeled",
+            (Labeled::Item(_), "unlabeled") => "work_item.unlabeled",
+            (Labeled::Item(_), "milestoned") => "work_item.milestoned",
+            (Labeled::Item(_), _) => "work_item.demilestoned",
+            (Labeled::Pull(..), "labeled") => "pull.labeled",
+            (Labeled::Pull(..), "unlabeled") => "pull.unlabeled",
+            (Labeled::Pull(..), "milestoned") => "pull.milestoned",
+            (Labeled::Pull(..), _) => "pull.demilestoned",
         }
     }
 }
@@ -168,29 +188,58 @@ fn tidy_description(description: &str) -> Result<String, &'static str> {
     Ok(description.to_owned())
 }
 
+/// Refused while issues are still being moved into work items: what is
+/// numbered or kept by workspace is not all there yet.
+pub(crate) fn still_moving<T>() -> Outcome<T> {
+    Outcome::fail(
+        FailureCode::Conflict,
+        "Issues are moving into work items, with their labels and milestones, and new numbers wait for them; try again in a few minutes.",
+    )
+}
+
 impl Work {
-    /// The repository, if `actor` may create, edit and delete its labels
-    /// and milestones: Write, as on GitHub. Applying them is Triage.
-    pub(crate) async fn triaged_repo(&self, actor: &User, path: &RepoPath) -> Result<Outcome<Repo>> {
-        let repo = check!(self.repo(path, &Some(actor.clone())).await?);
-        check!(writable(&repo));
-        check!(allowed(Some(actor), &repo, Capability::ManageLabels));
-        Ok(Outcome::Ok(repo))
+    /// The workspace, if `actor` may create, edit and delete its labels
+    /// and milestones: Write in it, as on GitHub. Applying them is Triage.
+    pub(crate) async fn labelled_workspace(&self, actor: &User, workspace: &str) -> Result<Outcome<String>> {
+        let workspace = workspace_of(workspace, None);
+        if !access::can_item(Some(actor), &workspace, None, Capability::ManageLabels) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, access::needs_on_item(Capability::ManageLabels, &workspace)));
+        }
+        if !self.items_moved().await? {
+            return Ok(still_moving());
+        }
+        Ok(Outcome::Ok(workspace))
     }
 
-    async fn labels_in(&self, repo_id: &str, only: Option<&str>) -> Result<Vec<Label>> {
+    /// Whether `viewer` may see what a workspace keeps: a member, someone
+    /// given a role on one of its repositories, or anyone where one of its
+    /// repositories is public.
+    pub(crate) async fn workspace_visible(&self, viewer: &Viewer, workspace: &str) -> Result<bool> {
+        if viewer.as_ref().is_some_and(|user| access::has_access_in(user, workspace)) {
+            return Ok(true);
+        }
+        Ok(self
+            .db
+            .prepare("SELECT repo_id AS value FROM repo_workspaces WHERE workspace = ? AND private = 0 LIMIT 1")
+            .bind(&[workspace.into()])?
+            .first::<crate::rows::ValueRow>(None)
+            .await?
+            .is_some())
+    }
+
+    async fn labels_in(&self, workspace: &str, only: Option<&str>) -> Result<Vec<Label>> {
         let rows = match only {
             Some(name) => {
                 self.db
                     .prepare(format!("{LABELS} AND name = ?2"))
-                    .bind(&[repo_id.into(), name.into()])?
+                    .bind(&[workspace.into(), name.into()])?
                     .all()
                     .await?
             }
             None => {
                 self.db
-                    .prepare(format!("{LABELS} ORDER BY name LIMIT {MAX_REPO_LABELS}"))
-                    .bind(&[repo_id.into()])?
+                    .prepare(format!("{LABELS} ORDER BY name LIMIT {MAX_WORKSPACE_LABELS}"))
+                    .bind(&[workspace.into()])?
                     .all()
                     .await?
             }
@@ -198,48 +247,44 @@ impl Work {
         Ok(rows.results::<LabelRow>()?.into_iter().map(Label::from).collect())
     }
 
-    /// A repository's labels, by name, with how many issues and pull
+    /// A workspace's labels, by name, with how many work items and pull
     /// requests carry each.
-    pub(crate) async fn list_labels(&self, a: ViewArgs) -> Result<Outcome<Vec<Label>>> {
-        let read = |repo_id: String| async move {
-            let query = self
-                .db
-                .prepare(format!("{LABELS} ORDER BY name LIMIT {MAX_REPO_LABELS}"))
-                .bind(&[repo_id.into()])?;
-            self.timing.db(1, query.all()).await?.results::<LabelRow>()
-        };
-        let (_, rows) = check!(self.repo_then(&a.repo, &a.viewer, read).await?);
-        Ok(Outcome::Ok(rows.into_iter().map(Label::from).collect()))
+    pub(crate) async fn list_labels(&self, a: WorkspaceViewArgs) -> Result<Outcome<Vec<Label>>> {
+        let workspace = workspace_of(&a.workspace, None);
+        if !self.workspace_visible(&a.viewer, &workspace).await? {
+            return Ok(Outcome::fail(FailureCode::NotFound, "Workspace not found."));
+        }
+        Ok(Outcome::Ok(self.labels_in(&workspace, None).await?))
     }
 
-    /// Gives a repository the default labels it does not have yet.
-    pub(crate) async fn seed_labels(&self, repo_id: &str) -> Result<()> {
+    /// Gives a workspace the default labels it does not have yet.
+    pub(crate) async fn seed_labels(&self, workspace: &str) -> Result<()> {
         let now = rfc3339(now_ms());
         let statements = DEFAULT_LABELS
             .iter()
             .map(|(name, color, description)| {
                 self.db
                     .prepare(
-                        "INSERT OR IGNORE INTO labels (repo_id, name, color, description, created_at)
+                        "INSERT OR IGNORE INTO labels (workspace, name, color, description, created_at)
                          VALUES (?, ?, ?, ?, ?)",
                     )
-                    .bind(&[repo_id.into(), (*name).into(), (*color).into(), (*description).into(), now.as_str().into()])
+                    .bind(&[workspace.into(), (*name).into(), (*color).into(), (*description).into(), now.as_str().into()])
             })
             .collect::<Result<Vec<_>>>()?;
         self.db.batch(statements).await?;
         Ok(())
     }
 
-    pub(crate) async fn add_default_labels(&self, a: RepoActorArgs) -> Result<Outcome<Vec<Label>>> {
-        let repo = check!(self.triaged_repo(&a.actor, &a.repo).await?);
-        self.seed_labels(&repo.id).await?;
-        Ok(Outcome::Ok(self.labels_in(&repo.id, None).await?))
+    pub(crate) async fn add_default_labels(&self, a: WorkspaceActorArgs) -> Result<Outcome<Vec<Label>>> {
+        let workspace = check!(self.labelled_workspace(&a.actor, &a.workspace).await?);
+        self.seed_labels(&workspace).await?;
+        Ok(Outcome::Ok(self.labels_in(&workspace, None).await?))
     }
 
-    /// Creates a label, or changes one: its name (on every issue and pull
-    /// request that carries it), color or description.
+    /// Creates a label, or changes one: its name (on every work item and
+    /// pull request that carries it), color or description.
     pub(crate) async fn save_label(&self, a: SaveLabelArgs) -> Result<Outcome<Label>> {
-        let repo = check!(self.triaged_repo(&a.actor, &a.repo).await?);
+        let workspace = check!(self.labelled_workspace(&a.actor, &a.workspace).await?);
         let invalid = |message: &str| Ok(Outcome::fail(FailureCode::Invalid, message));
         let new_name = match a.new_name.as_deref().map(one_name) {
             Some(Err(message)) => return invalid(message),
@@ -256,7 +301,7 @@ impl Work {
             Some(Ok(description)) => Some(description),
             None => None,
         };
-        let taken = async |name: &str| -> Result<bool> { Ok(!self.labels_in(&repo.id, Some(name)).await?.is_empty()) };
+        let taken = async |name: &str| -> Result<bool> { Ok(!self.labels_in(&workspace, Some(name)).await?.is_empty()) };
 
         let Some(name) = a.name.as_deref().map(|name| name.trim().to_lowercase()).filter(|name| !name.is_empty()) else {
             // A new label.
@@ -268,20 +313,18 @@ impl Work {
             }
             let count = self
                 .db
-                .prepare("SELECT count(*) AS n FROM labels WHERE repo_id = ?")
-                .bind(&[repo.id.as_str().into()])?
+                .prepare("SELECT count(*) AS n FROM labels WHERE workspace = ?")
+                .bind(&[workspace.as_str().into()])?
                 .first::<crate::rows::NumberRow>(None)
                 .await?
                 .map_or(0, |row| row.n);
-            if count >= MAX_REPO_LABELS {
-                return invalid("A repository can have at most 500 labels.");
+            if count >= MAX_WORKSPACE_LABELS {
+                return invalid("A workspace can have at most 500 labels.");
             }
             self.db
-                .prepare(
-                    "INSERT INTO labels (repo_id, name, color, description, created_at) VALUES (?, ?, ?, ?, ?)",
-                )
+                .prepare("INSERT INTO labels (workspace, name, color, description, created_at) VALUES (?, ?, ?, ?, ?)")
                 .bind(&[
-                    repo.id.as_str().into(),
+                    workspace.as_str().into(),
                     name.as_str().into(),
                     color.unwrap_or_else(|| label_color_for(&name)).into(),
                     description.unwrap_or_default().into(),
@@ -289,7 +332,7 @@ impl Work {
                 ])?
                 .run()
                 .await?;
-            return self.label_now(&repo.id, &name).await;
+            return self.label_now(&workspace, &name).await;
         };
         if !taken(&name).await? {
             return Ok(Outcome::fail(FailureCode::NotFound, format!("There is no label named {name}.")));
@@ -301,97 +344,97 @@ impl Work {
             return Ok(Outcome::fail(FailureCode::Conflict, format!("A label named {new_name} already exists.")));
         }
         let to = renamed.clone().unwrap_or_else(|| name.clone());
-        let mut statements = vec![
-            self.db
-                .prepare(
-                    "UPDATE labels SET name = ?3, color = COALESCE(?4, color), description = COALESCE(?5, description)
-                     WHERE repo_id = ?1 AND name = ?2",
-                )
-                .bind(&[
-                    repo.id.as_str().into(),
-                    name.as_str().into(),
-                    to.as_str().into(),
-                    crate::optional(&color),
-                    crate::optional(&description),
-                ])?,
-        ];
+        let mut statements = vec![self
+            .db
+            .prepare(
+                "UPDATE labels SET name = ?3, color = COALESCE(?4, color), description = COALESCE(?5, description)
+                 WHERE workspace = ?1 AND name = ?2",
+            )
+            .bind(&[
+                workspace.as_str().into(),
+                name.as_str().into(),
+                to.as_str().into(),
+                crate::optional(&color),
+                crate::optional(&description),
+            ])?];
         if renamed.is_some() {
-            for table in ["issues", "pulls"] {
+            for (table, scope) in WHERE_IN_WORKSPACE {
                 statements.push(
                     self.db
                         .prepare(format!(
                             "UPDATE {table}
                              SET labels = (SELECT json_group_array(CASE WHEN value = ?2 THEN ?3 ELSE value END)
                                            FROM json_each({table}.labels))
-                             WHERE repo_id = ?1
+                             WHERE {scope}
                                AND EXISTS (SELECT 1 FROM json_each({table}.labels) WHERE value = ?2)"
                         ))
-                        .bind(&[repo.id.as_str().into(), name.as_str().into(), to.as_str().into()])?,
+                        .bind(&[workspace.as_str().into(), name.as_str().into(), to.as_str().into()])?,
                 );
             }
         }
         self.db.batch(statements).await?;
-        self.label_now(&repo.id, &to).await
+        self.label_now(&workspace, &to).await
     }
 
-    async fn label_now(&self, repo_id: &str, name: &str) -> Result<Outcome<Label>> {
-        Ok(match self.labels_in(repo_id, Some(name)).await?.pop() {
+    async fn label_now(&self, workspace: &str, name: &str) -> Result<Outcome<Label>> {
+        Ok(match self.labels_in(workspace, Some(name)).await?.pop() {
             Some(label) => Outcome::Ok(label),
             None => Outcome::fail(FailureCode::NotFound, format!("There is no label named {name}.")),
         })
     }
 
-    /// Removes a label from the repository and from everything carrying it.
+    /// Removes a label from the workspace and from everything carrying it.
     pub(crate) async fn delete_label(&self, a: DeleteLabelArgs) -> Result<Outcome<bool>> {
-        let repo = check!(self.triaged_repo(&a.actor, &a.repo).await?);
+        let workspace = check!(self.labelled_workspace(&a.actor, &a.workspace).await?);
         let name = a.name.trim().to_lowercase();
-        if self.labels_in(&repo.id, Some(&name)).await?.is_empty() {
+        if self.labels_in(&workspace, Some(&name)).await?.is_empty() {
             return Ok(Outcome::fail(FailureCode::NotFound, format!("There is no label named {name}.")));
         }
-        let mut statements = vec![
-            self.db
-                .prepare("DELETE FROM labels WHERE repo_id = ?1 AND name = ?2")
-                .bind(&[repo.id.as_str().into(), name.as_str().into()])?,
-        ];
-        for table in ["issues", "pulls"] {
+        let mut statements = vec![self
+            .db
+            .prepare("DELETE FROM labels WHERE workspace = ?1 AND name = ?2")
+            .bind(&[workspace.as_str().into(), name.as_str().into()])?];
+        for (table, scope) in WHERE_IN_WORKSPACE {
             statements.push(
                 self.db
                     .prepare(format!(
                         "UPDATE {table}
                          SET labels = (SELECT json_group_array(value) FROM json_each({table}.labels) WHERE value != ?2)
-                         WHERE repo_id = ?1 AND EXISTS (SELECT 1 FROM json_each({table}.labels) WHERE value = ?2)"
+                         WHERE {scope} AND EXISTS (SELECT 1 FROM json_each({table}.labels) WHERE value = ?2)"
                     ))
-                    .bind(&[repo.id.as_str().into(), name.as_str().into()])?,
+                    .bind(&[workspace.as_str().into(), name.as_str().into()])?,
             );
         }
         self.db.batch(statements).await?;
         Ok(Outcome::Ok(true))
     }
 
-    /// Makes sure every label in `names` exists on the repository: those
-    /// missing are created when `actor` may triage it, and refused
-    /// otherwise. Returns their colors, by name.
+    /// Makes sure every label in `names` exists in the workspace: those
+    /// missing are created when `actor` may manage labels (through the
+    /// workspace, or their role on `repo`), and refused otherwise. Returns
+    /// their colors, by name.
     pub(crate) async fn ensure_labels(
         &self,
         actor: &User,
-        repo: &Repo,
+        workspace: &str,
+        repo: Option<RepoRef<'_>>,
         names: &[String],
     ) -> Result<Outcome<Vec<(String, String)>>> {
         if names.is_empty() {
             return Ok(Outcome::Ok(Vec::new()));
         }
-        let existing: Vec<Label> = self.labels_in(&repo.id, None).await?;
+        let existing: Vec<Label> = self.labels_in(workspace, None).await?;
         let missing: Vec<&String> = names.iter().filter(|name| !existing.iter().any(|label| label.name == **name)).collect();
         if !missing.is_empty() {
-            if !g1t_contracts::access::check(Some(actor), repo, Capability::ManageLabels).is_ok() {
+            if !access::can_item(Some(actor), workspace, repo, Capability::ManageLabels) {
                 let list = missing.iter().map(|name| name.as_str()).collect::<Vec<_>>().join(", ");
                 return Ok(Outcome::fail(
                     FailureCode::Invalid,
-                    format!(
-                        "{} has no label named {list}. Someone with the Write role can create it on the labels page.",
-                        repo.name
-                    ),
+                    format!("{workspace} has no label named {list}. Someone with the Write role can create it on the labels page."),
                 ));
+            }
+            if !self.items_moved().await? {
+                return Ok(still_moving());
             }
             let now = rfc3339(now_ms());
             let statements = missing
@@ -399,15 +442,10 @@ impl Work {
                 .map(|name| {
                     self.db
                         .prepare(
-                            "INSERT OR IGNORE INTO labels (repo_id, name, color, description, created_at)
+                            "INSERT OR IGNORE INTO labels (workspace, name, color, description, created_at)
                              VALUES (?, ?, ?, '', ?)",
                         )
-                        .bind(&[
-                            repo.id.as_str().into(),
-                            name.as_str().into(),
-                            label_color_for(name).into(),
-                            now.as_str().into(),
-                        ])
+                        .bind(&[workspace.into(), name.as_str().into(), label_color_for(name).into(), now.as_str().into()])
                 })
                 .collect::<Result<Vec<_>>>()?;
             self.db.batch(statements).await?;
@@ -426,58 +464,48 @@ impl Work {
         ))
     }
 
-    /// Gives an issue or a pull request the labels `wanted`, creating the
-    /// missing ones as [`ensure_labels`](Work::ensure_labels) does, and says
-    /// what changed: in its conversation, and as one `labeled` or
+    /// Gives a work item or a pull request the labels `wanted`, creating
+    /// the missing ones as [`ensure_labels`](Work::ensure_labels) does, and
+    /// says what changed: in its conversation, and as one `labeled` or
     /// `unlabeled` event for each label. Returns its labels now.
-    pub(crate) async fn relabel(
-        &self,
-        actor: &User,
-        repo: &Repo,
-        item: &Item,
-        wanted: &[String],
-    ) -> Result<Outcome<Vec<String>>> {
+    pub(crate) async fn relabel(&self, actor: &User, labeled: &Labeled, wanted: &[String]) -> Result<Outcome<Vec<String>>> {
         let Some(after) = normalize_labels(wanted) else {
             return Ok(Outcome::fail(
                 FailureCode::Invalid,
-                format!("An issue or pull request can have up to {MAX_LABELS} labels of up to {MAX_LABEL_CHARS} characters each."),
+                format!("A work item or pull request can have up to {MAX_LABELS} labels of up to {MAX_LABEL_CHARS} characters each."),
             ));
         };
-        let colors = check!(self.ensure_labels(actor, repo, &after).await?);
-        let before = item.labels().to_vec();
+        let colors = check!(self.ensure_labels(actor, &labeled.workspace(), labeled.repo(), &after).await?);
+        let before = labeled.labels().to_vec();
         let (added, removed) = label_changes(&before, &after);
         if added.is_empty() && removed.is_empty() {
             return Ok(Outcome::Ok(after));
         }
+        let (table, id) = labeled.row();
         self.db
-            .prepare(format!("UPDATE {} SET labels = ?, updated_at = ? WHERE repo_id = ? AND number = ?", item.table()))
-            .bind(&[
-                serde_json::to_string(&after)?.into(),
-                rfc3339(now_ms()).into(),
-                repo.id.as_str().into(),
-                item.number().into(),
-            ])?
+            .prepare(format!("UPDATE {table} SET labels = ?, updated_at = ? WHERE id = ?"))
+            .bind(&[serde_json::to_string(&after)?.into(), rfc3339(now_ms()).into(), id.into()])?
             .run()
             .await?;
-        self.announce_labels(actor, item, &added, &removed, &colors).await?;
+        self.announce_labels(actor, labeled, &added, &removed, &colors).await?;
         Ok(Outcome::Ok(after))
     }
 
-    /// Notes and events for labels put on and taken off an item.
+    /// Notes and events for labels put on and taken off a work item or
+    /// pull request.
     pub(crate) async fn announce_labels(
         &self,
         actor: &User,
-        item: &Item,
+        labeled: &Labeled,
         added: &[String],
         removed: &[String],
         colors: &[(String, String)],
     ) -> Result<()> {
-        let who = actor;
         if !added.is_empty() {
-            self.note(item.repo_id(), item.number(), who, &label_note("added", added)).await?;
+            self.note_on(labeled.on(), actor.into(), &label_note("added", added)).await?;
         }
         if !removed.is_empty() {
-            self.note(item.repo_id(), item.number(), who, &label_note("removed", removed)).await?;
+            self.note_on(labeled.on(), actor.into(), &label_note("removed", removed)).await?;
         }
         let color_of = |name: &String| {
             colors.iter().find(|(known, _)| known == name).map_or_else(|| label_color_for(name), |(_, color)| color.clone())
@@ -485,13 +513,13 @@ impl Work {
         for (what, names) in [("labeled", added), ("unlabeled", removed)] {
             for name in names {
                 let label = Some(EventLabel { name: name.clone(), color: color_of(name) });
-                match item {
-                    Item::Issue(issue) => {
-                        self.publish(item.kind(what), &issue.repo_id, actor, IssueEvent { label, ..Self::issue_event(issue) })
+                match labeled {
+                    Labeled::Item(held) => {
+                        self.publish_item(labeled.kind(what), held, Some(actor), WorkItemEvent { label, ..Self::item_event(held) })
                             .await?;
                     }
-                    Item::Pull(pull) => {
-                        self.publish(item.kind(what), &pull.repo_id, actor, PullEvent { label, ..Self::pull_event(pull) })
+                    Labeled::Pull(_, pull) => {
+                        self.publish(labeled.kind(what), &pull.repo_id, actor, PullEvent { label, ..Self::pull_event(pull) })
                             .await?;
                     }
                 }
@@ -500,34 +528,44 @@ impl Work {
         Ok(())
     }
 
-    /// `set_labels`: the labels of an issue or a pull request, replaced,
-    /// added to or taken from. Its owner may use the repository's labels
-    /// on it; anyone else needs the Triage role.
+    /// `set_labels`: the labels of a work item or a pull request, replaced,
+    /// added to or taken from. Its owner may use the workspace's labels on
+    /// it; anyone else needs the Triage role.
     pub(crate) async fn set_labels(&self, a: SetLabelsArgs) -> Result<Outcome<Vec<String>>> {
-        let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
-        check!(writable(&repo));
-        let item = match self.issue(&repo.id, a.number).await? {
-            Some(issue) => Item::Issue(issue),
-            None => match self.pull(&repo.id, a.number).await? {
-                Some(pull) => Item::Pull(pull),
-                None => {
-                    return Ok(Outcome::fail(FailureCode::NotFound, "No issue or pull request has that number."));
-                }
-            },
-        };
-        if !item.owned_by(&a.actor.id) {
-            check!(allowed(Some(&a.actor), &repo, Capability::Triage));
-        }
+        let labeled = check!(self.labeled(&a.actor, a.repo.as_ref(), &a.workspace, a.number).await?);
         let given = match a.change {
             // Taking off works on names as given, tidied the same way.
             LabelChange::Remove => normalize_labels(&a.labels).unwrap_or_default(),
             _ => a.labels.clone(),
         };
-        let wanted = changed_labels(item.labels(), &given, a.change);
-        let labels = check!(self.relabel(&a.actor, &repo, &item, &wanted).await?);
+        let wanted = changed_labels(labeled.labels(), &given, a.change);
+        let labels = check!(self.relabel(&a.actor, &labeled, &wanted).await?);
         Ok(Outcome::Ok(labels))
     }
+
+    /// The thread `actor` changes the labels or milestone of: theirs, or
+    /// one they may triage.
+    pub(crate) async fn labeled(&self, actor: &User, repo: Option<&g1t_contracts::repos::RepoPath>, workspace: &str, number: u32) -> Result<Outcome<Labeled>> {
+        let labeled = match check!(self.thread(&Some(actor.clone()), repo, workspace, number).await?) {
+            crate::Thread::Pull(repo, pull) => {
+                check!(writable(&repo));
+                Labeled::Pull(repo, pull)
+            }
+            crate::Thread::Item(held) => Labeled::Item(held),
+        };
+        if !labeled.owned_by(&actor.id) && !labeled.may(actor, Capability::Triage) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, access::needs_on_item(Capability::Triage, &labeled.workspace())));
+        }
+        Ok(Outcome::Ok(labeled))
+    }
 }
+
+/// The rows of a workspace (`?1`) that carry labels: its work items, and
+/// its repositories' pull requests.
+const WHERE_IN_WORKSPACE: [(&str, &str); 2] = [
+    ("work_items", "workspace = ?1"),
+    ("pulls", "repo_id IN (SELECT repo_id FROM repo_workspaces WHERE workspace = ?1)"),
+];
 
 #[cfg(test)]
 mod tests {

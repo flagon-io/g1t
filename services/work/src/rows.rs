@@ -3,8 +3,8 @@
 use g1t_contracts::User;
 use g1t_contracts::repos::RepoPath;
 use g1t_contracts::work::{
-    AgentRef, AgentVerdict, CheckStatus, Comment, CommentKind, Issue, IssueReason, MilestoneRef, Pull, PullStatus, Runtime, SessionEntry,
-    SessionEntryKind, State, Verdict,
+    AgentRef, AgentVerdict, CheckStatus, Comment, CommentKind, MilestoneRef, Pull, PullStatus, Runtime, SessionEntry, SessionEntryKind,
+    Verdict,
 };
 use serde::Deserialize;
 
@@ -71,78 +71,10 @@ impl<'a> From<&'a User> for By<'a> {
     }
 }
 
-#[derive(Deserialize)]
-pub struct IssueRow {
-    pub id: String,
-    pub repo_id: String,
-    pub number: u32,
-    pub title: String,
-    pub body: String,
-    /// JSON array of label names.
-    pub labels: String,
-    pub state: State,
-    pub reason: Option<IssueReason>,
-    pub resolved_by: Option<u32>,
-    #[serde(default)]
-    pub resolved_commit: Option<String>,
-    #[serde(default)]
-    pub resolved_pushed_by: Option<String>,
-    pub author_id: String,
-    pub author_name: String,
-    #[serde(default)]
-    pub requested_by_id: Option<String>,
-    #[serde(default)]
-    pub requested_by_name: Option<String>,
-    pub created_at: String,
-    pub updated_at: String,
-    pub closed_at: Option<String>,
-    pub pull_count: u32,
-    pub comment_count: u32,
-    /// JSON array of usernames.
-    pub assignees: String,
-    /// JSON array of issue numbers.
-    pub blocked_by: String,
-    pub agent: Option<String>,
-    /// The number of its milestone, and that milestone's title.
-    #[serde(default)]
-    pub milestone: Option<u32>,
-    #[serde(default)]
-    pub milestone_title: Option<String>,
-}
-
-/// A milestone as an issue or pull request names it, from its number and
-/// title as read beside it.
+/// A milestone as a work item or pull request names it, from its number
+/// and title as read beside it.
 pub(crate) fn milestone_ref(number: Option<u32>, title: Option<String>) -> Option<MilestoneRef> {
     Some(MilestoneRef { number: number?, title: title? })
-}
-
-impl From<IssueRow> for Issue {
-    fn from(row: IssueRow) -> Self {
-        Issue {
-            id: row.id,
-            repo_id: row.repo_id,
-            number: row.number,
-            title: row.title,
-            body: row.body,
-            labels: serde_json::from_str(&row.labels).unwrap_or_default(),
-            state: row.state,
-            reason: row.reason,
-            resolved_by: row.resolved_by,
-            resolved_commit: row.resolved_commit,
-            resolved_pushed_by: row.resolved_pushed_by,
-            author: user(row.author_id, row.author_name),
-            requested_by: requester(row.requested_by_id, row.requested_by_name),
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-            closed_at: row.closed_at,
-            pull_count: row.pull_count,
-            comment_count: row.comment_count,
-            assignees: serde_json::from_str(&row.assignees).unwrap_or_default(),
-            blocked_by: serde_json::from_str(&row.blocked_by).unwrap_or_default(),
-            agent: row.agent,
-            milestone: milestone_ref(row.milestone, row.milestone_title),
-        }
-    }
 }
 
 /// The remembered assessment of a pull request, read beside its row.
@@ -157,18 +89,29 @@ pub struct Snapshot {
     pub managed: u32,
 }
 
-/// A pull request's columns, with its milestone's title beside them: what
-/// every read of a [`PullRow`] selects.
+/// A pull request's columns, with what it is read with: its workspace
+/// milestone's title, and its work item and those it closes and is part of
+/// by number. What every read of a [`PullRow`] selects.
 pub const PULL_COLUMNS: &str = "pulls.*,
   (SELECT title FROM milestones
-   WHERE milestones.repo_id = pulls.repo_id AND milestones.number = pulls.milestone) AS milestone_title";
+   WHERE milestones.workspace = (SELECT workspace FROM repo_workspaces WHERE repo_workspaces.repo_id = pulls.repo_id)
+     AND milestones.number = pulls.milestone) AS milestone_title,
+  (SELECT number FROM work_items WHERE work_items.id = pulls.item_id) AS item_number,
+  (SELECT json_group_array(number) FROM
+     (SELECT w.number AS number FROM json_each(pulls.closes_items) j JOIN work_items w ON w.id = j.value
+      WHERE w.number IS NOT NULL ORDER BY j.key)) AS closes_numbers,
+  (SELECT json_group_array(number) FROM
+     (SELECT w.number AS number FROM json_each(pulls.parts) j JOIN work_items w ON w.id = j.value
+      WHERE w.number IS NOT NULL ORDER BY j.key)) AS parts_numbers";
 
 #[derive(Deserialize)]
 pub struct PullRow {
     pub id: String,
     pub repo_id: String,
     pub number: u32,
-    pub issue_number: Option<u32>,
+    /// Its work item's number in the workspace.
+    #[serde(default)]
+    pub item_number: Option<u32>,
     pub title: String,
     pub body: Option<String>,
     pub agent: String,
@@ -223,8 +166,9 @@ pub struct PullRow {
     #[serde(default)]
     pub head_pushed_at: Option<String>,
     /// How it merged and what its merge left the base at; its auto-merge
-    /// (JSON), the issues it closes (JSON array) and whether its branch was
-    /// deleted (migrations/0042_merge_settings.sql).
+    /// (JSON), the work items it closes and is part of (JSON arrays of
+    /// numbers, as read) and whether its branch was deleted
+    /// (migrations/0042_merge_settings.sql, 0049_work_items.sql).
     #[serde(default)]
     pub merge_method: Option<String>,
     #[serde(default)]
@@ -232,7 +176,9 @@ pub struct PullRow {
     #[serde(default)]
     pub auto_merge: Option<String>,
     #[serde(default)]
-    pub closes: Option<String>,
+    pub closes_numbers: Option<String>,
+    #[serde(default)]
+    pub parts_numbers: Option<String>,
     #[serde(default)]
     pub head_branch_deleted: Option<u8>,
 }
@@ -243,7 +189,7 @@ impl From<PullRow> for Pull {
             id: row.id,
             repo_id: row.repo_id,
             number: row.number,
-            issue: row.issue_number,
+            item: row.item_number,
             title: row.title,
             body: row.body,
             agent: row.agent,
@@ -296,7 +242,8 @@ impl From<PullRow> for Pull {
                 .and_then(|name| serde_json::from_value(serde_json::Value::String(name)).ok()),
             merge_commit: row.merge_commit,
             auto_merge: row.auto_merge.as_deref().and_then(|json| serde_json::from_str(json).ok()),
-            closes: row.closes.as_deref().and_then(|json| serde_json::from_str(json).ok()).unwrap_or_default(),
+            closes: row.closes_numbers.as_deref().and_then(|json| serde_json::from_str(json).ok()).unwrap_or_default(),
+            parts: row.parts_numbers.as_deref().and_then(|json| serde_json::from_str(json).ok()).unwrap_or_default(),
             head_branch_deleted: row.head_branch_deleted.is_some_and(|deleted| deleted != 0),
         }
     }
@@ -315,9 +262,12 @@ pub struct CommentRow {
     pub created_at: String,
     #[serde(default)]
     pub edited_at: Option<String>,
-    /// The issue or pull request it is on, where the query reads it.
+    /// The pull request it is on, where the query reads it.
     #[serde(default)]
-    pub number: u32,
+    pub number: Option<u32>,
+    /// The work item it is on.
+    #[serde(default)]
+    pub item_id: Option<String>,
     /// One of the workspace's agents that wrote it, as itself, and whom it
     /// acted for (migrations/0033_agent_comments.sql).
     #[serde(default)]
@@ -421,7 +371,6 @@ pub struct MovedRow {
     pub id: String,
     pub repo_id: String,
     pub number: u32,
-    pub issue_number: Option<u32>,
     pub status: PullStatus,
     pub author_id: String,
     pub author_name: String,
@@ -452,7 +401,7 @@ pub(crate) mod stored {
     /// author, and `requested_by` the person who asked, if anyone did.
     pub(crate) fn pull(author: (&str, &str), requested_by: Option<(&str, &str)>) -> Pull {
         let row: PullRow = serde_json::from_value(serde_json::json!({
-            "id": "pr_1", "repo_id": "rep_1", "number": 14, "issue_number": 12, "title": "Fix it",
+            "id": "pr_1", "repo_id": "rep_1", "number": 14, "item_number": 12, "title": "Fix it",
             "body": null, "agent": "g1t", "runtime": "hosted", "status": "open",
             "fork_repo_id": "rep_f", "fork_namespace": "pulls", "fork_name": "pr_1",
             "source_branch": null, "head_commit": null, "merge_base": null, "merged_by": null,

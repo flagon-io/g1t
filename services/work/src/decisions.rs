@@ -28,7 +28,8 @@ const LIST_LIMIT: u32 = 200;
 
 /// A decision about to be kept.
 pub(crate) struct NewDecision<'a> {
-    pub(crate) issue: Option<u32>,
+    /// The work item it is about, by id.
+    pub(crate) item: Option<String>,
     pub(crate) pull: Option<u32>,
     pub(crate) session_id: Option<String>,
     /// Who recorded it; `None` for g1t itself.
@@ -39,10 +40,16 @@ pub(crate) struct NewDecision<'a> {
     pub(crate) evidence: Value,
 }
 
+/// A decision's columns, with its work item's number.
+const DECISION_COLUMNS: &str = "decisions.*, (SELECT number FROM work_items WHERE work_items.id = decisions.item_id) AS item";
+
 #[derive(Deserialize)]
 struct DecisionRow {
     id: String,
-    issue: Option<u32>,
+    #[serde(default)]
+    repo_id: String,
+    #[serde(default)]
+    item: Option<u32>,
     pull: Option<u32>,
     session_id: Option<String>,
     actor_name: Option<String>,
@@ -60,7 +67,7 @@ impl DecisionRow {
             confidence: serde_json::from_value(Value::String(self.confidence)).ok()?,
             evidence: serde_json::from_str(&self.evidence).unwrap_or_else(|_| json!({})),
             id: self.id,
-            issue: self.issue,
+            item: self.item,
             pull: self.pull,
             session_id: self.session_id,
             actor: self.actor_name,
@@ -137,9 +144,19 @@ impl Work {
     /// Keeps a decision and publishes `decision.recorded`.
     pub(crate) async fn keep_decision(&self, repo_id: &str, new: NewDecision<'_>) -> Result<Decision> {
         let now = now_ms();
+        let item = match &new.item {
+            Some(id) => self
+                .db
+                .prepare("SELECT number AS n FROM work_items WHERE id = ? AND number IS NOT NULL")
+                .bind(&[id.as_str().into()])?
+                .first::<crate::rows::NumberRow>(None)
+                .await?
+                .map(|row| row.n),
+            None => None,
+        };
         let decision = Decision {
             id: new_id("dec", now),
-            issue: new.issue,
+            item,
             pull: new.pull,
             session_id: new.session_id,
             actor: new.actor.map(|actor| actor.username.clone()),
@@ -152,22 +169,22 @@ impl Work {
         let number = |value: Option<u32>| value.map_or(JsValue::NULL, JsValue::from);
         let event = serde_json::to_value(DecisionRecorded {
             repo_id: repo_id.to_owned(),
-            number: decision.pull.or(decision.issue).unwrap_or_default(),
-            issue: decision.issue,
+            number: decision.pull.or(decision.item).unwrap_or_default(),
+            item: decision.item,
             decision: decision.clone(),
         })?;
         let mut statements = vec![self
             .db
             .prepare(
                 "INSERT INTO decisions
-                   (id, repo_id, issue, pull, session_id, actor, actor_name, kind, confidence,
+                   (id, repo_id, item_id, pull, session_id, actor, actor_name, kind, confidence,
                     summary, evidence, created_at)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 decision.id.as_str().into(),
                 repo_id.into(),
-                number(decision.issue),
+                crate::optional(&new.item),
                 number(decision.pull),
                 decision.session_id.as_deref().map_or(JsValue::NULL, JsValue::from),
                 new.actor.map_or(JsValue::NULL, |actor| actor.id.as_str().into()),
@@ -224,7 +241,7 @@ impl Work {
             .keep_decision(
                 &repo.id,
                 NewDecision {
-                    issue: pull.issue,
+                    item: self.pull_item_id(&pull.id).await?,
                     pull: Some(pull.number),
                     session_id: a.session_id,
                     actor: Some(&a.actor),
@@ -238,36 +255,56 @@ impl Work {
         Ok(Outcome::Ok(decision))
     }
 
-    /// `list_decisions`: an issue's, with those on its pull requests, or a
-    /// pull request's, oldest first.
+    /// `list_decisions`: a work item's, with those on its pull requests in
+    /// the repositories the viewer may read, or a pull request's, oldest
+    /// first.
     pub(crate) async fn list_decisions(&self, a: ListDecisionsArgs) -> Result<Outcome<Vec<Decision>>> {
-        let repo = match self.repo(&a.repo, &a.viewer).await? {
-            Outcome::Ok(repo) => repo,
-            Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
-        };
-        let statement = if self.issue(&repo.id, a.number).await?.is_some() {
-            self.db
-                .prepare(
-                    "SELECT * FROM decisions
-                     WHERE repo_id = ?1 AND (issue = ?2 OR pull IN (
-                       SELECT number FROM pulls WHERE repo_id = ?1 AND issue_number = ?2))
-                     ORDER BY created_at, id LIMIT ?3",
+        let rows = match &a.repo {
+            Some(path) => {
+                let (repo, pull) = match self.pull_at(path, a.number, &a.viewer).await? {
+                    Outcome::Ok(found) => found,
+                    Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+                };
+                self.db
+                    .prepare(format!(
+                        "SELECT {DECISION_COLUMNS} FROM decisions WHERE repo_id = ?1 AND pull = ?2
+                         ORDER BY created_at, id LIMIT ?3"
+                    ))
+                    .bind(&[repo.id.as_str().into(), pull.number.into(), LIST_LIMIT.into()])?
+                    .all()
+                    .await?
+                    .results::<DecisionRow>()?
+            }
+            None => {
+                let held = match self.item_for(&a.viewer, &a.workspace, a.number, Capability::Read).await? {
+                    Outcome::Ok(held) => held,
+                    Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+                };
+                let rows = self
+                    .db
+                    .prepare(format!(
+                        "SELECT {DECISION_COLUMNS} FROM decisions
+                         WHERE item_id = ?1 OR EXISTS (SELECT 1 FROM pulls p
+                           WHERE p.item_id = ?1 AND p.repo_id = decisions.repo_id AND p.number = decisions.pull)
+                         ORDER BY created_at, id LIMIT ?2"
+                    ))
+                    .bind(&[held.item.id.as_str().into(), LIST_LIMIT.into()])?
+                    .all()
+                    .await?
+                    .results::<DecisionRow>()?;
+                // Those kept in a repository the viewer cannot read stay there.
+                let mut ids: Vec<String> = rows.iter().map(|row| row.repo_id.clone()).collect();
+                ids.sort();
+                ids.dedup();
+                let readable: Vec<g1t_contracts::repos::Repo> = g1t_kit::call(
+                    &self.repos,
+                    "readable",
+                    &g1t_contracts::repos::ReadableArgs { ids, viewer: a.viewer.clone() },
                 )
-                .bind(&[repo.id.as_str().into(), a.number.into(), LIST_LIMIT.into()])?
-        } else if self.pull(&repo.id, a.number).await?.is_some() {
-            self.db
-                .prepare(
-                    "SELECT * FROM decisions WHERE repo_id = ?1 AND pull = ?2
-                     ORDER BY created_at, id LIMIT ?3",
-                )
-                .bind(&[repo.id.as_str().into(), a.number.into(), LIST_LIMIT.into()])?
-        } else {
-            return Ok(Outcome::fail(
-                FailureCode::NotFound,
-                "No issue or pull request has that number.",
-            ));
+                .await?;
+                rows.into_iter().filter(|row| readable.iter().any(|repo| repo.id == row.repo_id)).collect()
+            }
         };
-        let rows = statement.all().await?.results::<DecisionRow>()?;
         Ok(Outcome::Ok(rows.into_iter().filter_map(DecisionRow::decision).collect()))
     }
 

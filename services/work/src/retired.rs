@@ -1,10 +1,12 @@
 //! Repositories that are archived, deleted or purged, and branches
-//! renamed: what issues, pull requests and runs do about each.
+//! renamed: what pull requests, work items and runs do about each.
 //!
-//! An archived repository is read-only: its issues and pull requests are
-//! locked and nothing new starts on it. A deleted one looks missing (repos
-//! hides it) and keeps its rows for a restore. A purged one is gone, and
-//! every row kept for it goes with it.
+//! An archived repository is read-only: its pull requests are locked, no
+//! work item is filed from it, and nothing new starts on it. A deleted one
+//! looks missing (repos hides it) and keeps its rows for a restore. A
+//! purged one is gone, and every row kept for it goes with it, except the
+//! work items linked to it: they belong to the workspace, and keep the
+//! link with the path it last had.
 
 use g1t_contracts::events::{BranchRenamed, Event, RepoArchived, RepoDeleted};
 use g1t_contracts::repos::{Repo, RepoStatus, StatusByIdArgs};
@@ -39,7 +41,9 @@ pub(crate) fn unless_archived(repo: Outcome<Repo>) -> Outcome<Repo> {
 
 /// `repo.purged`: every row kept for the repository, `?1` its id. Rows
 /// kept by pull request go first, while the pull requests still name them.
+/// Its work items stay, their links keeping the path it had.
 pub(crate) const PURGED: &[&str] = &[
+    "UPDATE work_item_repos SET path = COALESCE((SELECT path FROM repo_workspaces WHERE repo_id = ?1), path) WHERE repo_id = ?1",
     "DELETE FROM session_entries WHERE pull_id IN (SELECT id FROM pulls WHERE repo_id = ?1)",
     "DELETE FROM session_entries WHERE session_id IN (SELECT id FROM sessions WHERE repo_id = ?1)",
     "DELETE FROM sessions WHERE repo_id = ?1",
@@ -68,10 +72,10 @@ pub(crate) const PURGED: &[&str] = &[
     crate::attachments::PURGED,
     "DELETE FROM comments WHERE repo_id = ?1",
     "DELETE FROM pulls WHERE repo_id = ?1",
-    "DELETE FROM issues WHERE repo_id = ?1",
-    "DELETE FROM labels WHERE repo_id = ?1",
-    "DELETE FROM milestones WHERE repo_id = ?1",
     "DELETE FROM counters WHERE repo_id = ?1",
+    "DELETE FROM repo_labels WHERE repo_id = ?1",
+    "DELETE FROM repo_milestones WHERE repo_id = ?1",
+    "DELETE FROM repo_workspaces WHERE repo_id = ?1",
     "DELETE FROM repo_settings WHERE repo_id = ?1",
     // Notes kept when g1t had project memory, no longer read or written.
     "DELETE FROM memories WHERE scope = 'project' AND scope_key = ?1",

@@ -1,18 +1,20 @@
-//! Emoji reactions to an issue's or a pull request's description and to
-//! the comments on it (`react`). Anyone who can read the repository may
-//! react; g1t reacts 👀 to what it was asked to take on (integrations'
-//! `summon.rs`). A conversation's reactions are read with its comments, in
-//! the same batch ([`THREAD_SQL`]), and grouped onto them ([`attach`]).
+//! Emoji reactions to a work item's or a pull request's description and
+//! to the comments on it (`react`). Anyone who can read it may react; g1t
+//! reacts 👀 to what it was asked to take on (integrations' `summon.rs`).
+//! A conversation's reactions are read with its comments, in the same
+//! batch ([`THREAD_SQL`], [`ITEM_THREAD_SQL`]), and grouped onto them
+//! ([`attach`]).
 
 use g1t_contracts::work::{Comment, ReactArgs, ReactionContent, ReactionGroup, group_reactions};
 use g1t_contracts::{FailureCode, Outcome};
 use g1t_kit::now_ms;
 use g1t_contracts::time::rfc3339;
+use worker::wasm_bindgen::JsValue;
 use serde::Deserialize;
 use worker::Result;
 
-use crate::Work;
 use crate::retired::writable;
+use crate::{On, Thread, Work};
 
 /// Unwraps an `Outcome`, returning its failure from the enclosing method.
 macro_rules! check {
@@ -24,10 +26,14 @@ macro_rules! check {
     };
 }
 
-/// A conversation's reactions, oldest first: `?1` the repository, `?2` the
-/// issue's or pull request's number.
+/// A pull request's reactions, oldest first: `?1` the repository, `?2` its
+/// number.
 pub(crate) const THREAD_SQL: &str = "SELECT subject, content, user_name FROM reactions
      WHERE repo_id = ?1 AND number = ?2 ORDER BY created_at, rowid LIMIT 2000";
+
+/// A work item's reactions, oldest first: `?1` its id.
+pub(crate) const ITEM_THREAD_SQL: &str = "SELECT subject, content, user_name FROM reactions
+     WHERE item_id = ?1 ORDER BY created_at, rowid LIMIT 2000";
 
 /// `repo.purged`: `?1` the repository.
 pub(crate) const PURGED: &str = "DELETE FROM reactions WHERE repo_id = ?1";
@@ -52,7 +58,7 @@ fn groups_of(rows: &[ReactionRow], subject: &str) -> Vec<ReactionGroup> {
 }
 
 /// Puts each comment's reactions on it, and returns those to the
-/// description, whose subject is the issue's or pull request's id.
+/// description, whose subject is the work item's or pull request's id.
 pub(crate) fn attach(rows: &[ReactionRow], description: &str, comments: &mut [Comment]) -> Vec<ReactionGroup> {
     if rows.is_empty() {
         return Vec::new();
@@ -69,29 +75,39 @@ impl Work {
         if !a.actor.verified {
             return Ok(Outcome::fail(FailureCode::Forbidden, crate::UNVERIFIED));
         }
-        let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
-        check!(writable(&repo));
+        let thread = check!(self.thread(&Some(a.actor.clone()), a.repo.as_ref(), &a.workspace, a.number).await?);
+        if let Thread::Pull(repo, _) = &thread {
+            check!(writable(repo));
+        }
         // What is reacted to: a comment in this conversation, or its description.
         let subject = match a.comment_id.as_deref().map(str::trim).filter(|id| !id.is_empty()) {
             Some(id) => {
-                let found = self
-                    .db
-                    .prepare("SELECT id FROM comments WHERE id = ? AND repo_id = ? AND number = ? AND kind = 'comment'")
-                    .bind(&[id.into(), repo.id.as_str().into(), a.number.into()])?
-                    .first::<IdOnly>(None)
-                    .await?;
+                let found = match thread.on() {
+                    On::Pull(repo_id, number) => {
+                        self.db
+                            .prepare("SELECT id FROM comments WHERE id = ? AND repo_id = ? AND number = ? AND kind = 'comment'")
+                            .bind(&[id.into(), repo_id.into(), number.into()])?
+                            .first::<IdOnly>(None)
+                            .await?
+                    }
+                    On::Item(item_id) => {
+                        self.db
+                            .prepare("SELECT id FROM comments WHERE id = ? AND item_id = ? AND kind = 'comment'")
+                            .bind(&[id.into(), item_id.into()])?
+                            .first::<IdOnly>(None)
+                            .await?
+                    }
+                };
                 match found {
                     Some(row) => row.id,
                     None => return Ok(Outcome::fail(FailureCode::NotFound, "Comment not found.")),
                 }
             }
-            None => match self.issue(&repo.id, a.number).await? {
-                Some(issue) => issue.id,
-                None => match self.pull(&repo.id, a.number).await? {
-                    Some(pull) => pull.id,
-                    None => return Ok(Outcome::fail(FailureCode::NotFound, "No issue or pull request has that number.")),
-                },
-            },
+            None => thread.subject().to_owned(),
+        };
+        let (repo_id, number, item_id) = match thread.on() {
+            On::Pull(repo_id, number) => (JsValue::from(repo_id), JsValue::from(number), JsValue::NULL),
+            On::Item(item_id) => (JsValue::NULL, JsValue::NULL, JsValue::from(item_id)),
         };
         let statement = if a.remove {
             self.db
@@ -100,13 +116,14 @@ impl Work {
         } else {
             self.db
                 .prepare(
-                    "INSERT INTO reactions (subject, repo_id, number, user_id, user_name, content, created_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                    "INSERT INTO reactions (subject, repo_id, number, item_id, user_id, user_name, content, created_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
                 )
                 .bind(&[
                     subject.as_str().into(),
-                    repo.id.as_str().into(),
-                    a.number.into(),
+                    repo_id,
+                    number,
+                    item_id,
                     a.actor.id.as_str().into(),
                     a.actor.username.as_str().into(),
                     a.content.as_str().into(),

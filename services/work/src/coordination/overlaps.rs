@@ -95,15 +95,15 @@ impl Work {
                 pull: pull.number,
                 other_pull: overlap.number,
                 files: overlap.paths.clone(),
-                issue: pull.issue,
-                other_issue: overlap.issue,
+                item: pull.item,
+                other_item: overlap.item,
             };
             let theirs = OverlapDetected {
                 number: overlap.number,
                 pull: overlap.number,
                 other_pull: pull.number,
-                issue: overlap.issue,
-                other_issue: pull.issue,
+                item: overlap.item,
+                other_item: pull.item,
                 ..ours.clone()
             };
             let mut sent = Vec::new();

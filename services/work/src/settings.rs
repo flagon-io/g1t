@@ -33,7 +33,7 @@ struct SettingsRow {
     require_code_owner_review: u8,
     /// NULL for the default (migrations/0041_pull_head_repo.sql).
     #[serde(default)]
-    has_issues: Option<u8>,
+    has_work_items: Option<u8>,
     // How pull requests merge (migrations/0042_merge_settings.sql): NULL
     // for the default.
     #[serde(default)]
@@ -65,7 +65,7 @@ struct SettingsRow {
     #[serde(default)]
     allow_commit_comments: Option<u8>,
     #[serde(default)]
-    auto_close_issues: Option<u8>,
+    auto_close_items: Option<u8>,
     updated_by: String,
     updated_at: String,
 }
@@ -108,7 +108,7 @@ impl From<SettingsRow> for RepoSettings {
             delete_branch_on_merge: flag(row.delete_branch_on_merge, defaults.delete_branch_on_merge),
             require_web_commit_sign_off: flag(row.require_web_commit_sign_off, defaults.require_web_commit_sign_off),
             allow_commit_comments: flag(row.allow_commit_comments, defaults.allow_commit_comments),
-            auto_close_issues: flag(row.auto_close_issues, defaults.auto_close_issues),
+            auto_close_items: flag(row.auto_close_items, defaults.auto_close_items),
             auto_merge: row.auto_merge != 0,
             required_checks: row
                 .required_checks
@@ -121,10 +121,10 @@ impl From<SettingsRow> for RepoSettings {
             allow_ignoring_checks: row.allow_ignoring_checks != 0,
             merge_queue: row.merge_queue != 0,
             require_code_owner_review: row.require_code_owner_review != 0,
-            has_issues: row.has_issues.map(|on| on != 0),
+            has_work_items: row.has_work_items.map(|on| on != 0),
             // Whether the repository is a fork is not known here: see
-            // `issues_enabled`.
-            issues_enabled: row.has_issues.is_none_or(|on| on != 0),
+            // `work_items_enabled`.
+            work_items_enabled: row.has_work_items.is_none_or(|on| on != 0),
             updated_by: Some(row.updated_by),
             updated_at: Some(row.updated_at),
         }
@@ -206,12 +206,12 @@ impl Work {
                 "INSERT INTO repo_settings
                    (repo_id, auto_merge, require_up_to_date, required_approvals,
                     count_agent_approvals, allow_ignoring_checks,
-                    merge_queue, required_checks, require_code_owner_review, has_issues,
+                    merge_queue, required_checks, require_code_owner_review, has_work_items,
                     allow_merge_commit, allow_squash_merge, allow_rebase_merge, allow_fast_forward,
                     default_merge_method, merge_commit_message, squash_commit_message,
                     merge_commit_template, squash_commit_template, suggest_updating_branches,
                     allow_auto_merge, delete_branch_on_merge, require_web_commit_sign_off,
-                    allow_commit_comments, auto_close_issues,
+                    allow_commit_comments, auto_close_items,
                     updated_by, updated_at)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT (repo_id) DO UPDATE SET
@@ -223,7 +223,7 @@ impl Work {
                    merge_queue = excluded.merge_queue,
                    required_checks = excluded.required_checks,
                    require_code_owner_review = excluded.require_code_owner_review,
-                   has_issues = excluded.has_issues,
+                   has_work_items = excluded.has_work_items,
                    allow_merge_commit = excluded.allow_merge_commit,
                    allow_squash_merge = excluded.allow_squash_merge,
                    allow_rebase_merge = excluded.allow_rebase_merge,
@@ -238,7 +238,7 @@ impl Work {
                    delete_branch_on_merge = excluded.delete_branch_on_merge,
                    require_web_commit_sign_off = excluded.require_web_commit_sign_off,
                    allow_commit_comments = excluded.allow_commit_comments,
-                   auto_close_issues = excluded.auto_close_issues,
+                   auto_close_items = excluded.auto_close_items,
                    updated_by = excluded.updated_by,
                    updated_at = excluded.updated_at",
             )
@@ -252,7 +252,7 @@ impl Work {
                 u32::from(settings.merge_queue).into(),
                 serde_json::to_string(&settings.required_checks)?.into(),
                 u32::from(settings.require_code_owner_review).into(),
-                settings.has_issues.map_or(worker::wasm_bindgen::JsValue::NULL, |on| u32::from(on).into()),
+                settings.has_work_items.map_or(worker::wasm_bindgen::JsValue::NULL, |on| u32::from(on).into()),
                 bit(settings.allow_merge_commit),
                 bit(settings.allow_squash_merge),
                 bit(settings.allow_rebase_merge),
@@ -267,7 +267,7 @@ impl Work {
                 bit(settings.delete_branch_on_merge),
                 bit(settings.require_web_commit_sign_off),
                 bit(settings.allow_commit_comments),
-                bit(settings.auto_close_issues),
+                bit(settings.auto_close_items),
                 settings.updated_by.as_deref().unwrap_or_default().into(),
                 settings.updated_at.as_deref().unwrap_or_default().into(),
             ])?
@@ -286,17 +286,17 @@ impl Work {
         Ok(Outcome::Ok(self.default_branch_settings(&repo).await?))
     }
 
-    /// Whether issues can be opened in `repo`: its setting, or on unless it
-    /// is a fork of another repository.
-    pub(crate) async fn issues_enabled(&self, repo: &g1t_contracts::repos::Repo) -> Result<bool> {
-        Ok(self.settings(&repo.id).await?.issues_on(repo.forked_from.is_some()))
+    /// Whether work items can be filed from `repo`: its setting, or on
+    /// unless it is a fork of another repository.
+    pub(crate) async fn work_items_enabled(&self, repo: &g1t_contracts::repos::Repo) -> Result<bool> {
+        Ok(self.settings(&repo.id).await?.work_items_on(repo.forked_from.is_some()))
     }
 }
 
-/// Why an issue cannot be opened in `repo`: its issues are off.
-pub(crate) fn issues_off(repo: &g1t_contracts::repos::Repo) -> String {
+/// Why no work item can be filed from `repo`: they are off there.
+pub(crate) fn work_items_off(repo: &g1t_contracts::repos::Repo) -> String {
     format!(
-        "Issues are turned off for {}/{}. Its admins can turn them on in Settings.",
+        "Work items are turned off for {}/{}: none can be filed from it. Its admins can turn them on in Settings.",
         repo.namespace, repo.name
     )
 }
@@ -367,8 +367,8 @@ mod tests {
         assert!(!protection_changed(&checks, &same), "names compare without case");
         let approvals = RepoSettings { required_approvals: 1, ..RepoSettings::default() };
         assert!(protection_changed(&before, &approvals));
-        let issues = RepoSettings { has_issues: Some(false), ..RepoSettings::default() };
-        assert!(!protection_changed(&before, &issues), "issues are not protection");
+        let items = RepoSettings { has_work_items: Some(false), ..RepoSettings::default() };
+        assert!(!protection_changed(&before, &items), "work items are not protection");
     }
 
     #[test]
@@ -425,7 +425,7 @@ mod tests {
         let defaults = RepoSettings::default();
         assert_eq!(read.allowed_methods(), defaults.allowed_methods());
         assert_eq!(read.default_merge_method, defaults.default_merge_method);
-        assert!(read.allow_auto_merge && read.auto_close_issues && read.allow_commit_comments && read.suggest_updating_branches);
+        assert!(read.allow_auto_merge && read.auto_close_items && read.allow_commit_comments && read.suggest_updating_branches);
         assert!(!read.delete_branch_on_merge && !read.require_web_commit_sign_off);
         let stored: RepoSettings = serde_json::from_value::<SettingsRow>(serde_json::json!({
             "auto_merge": 0, "require_up_to_date": 0, "required_approvals": 0,
@@ -443,29 +443,29 @@ mod tests {
     }
 
     #[test]
-    fn issues_are_on_by_default_except_in_a_fork() {
+    fn work_items_are_on_by_default_except_in_a_fork() {
         let unset = RepoSettings::default();
-        assert!(unset.issues_on(false));
-        assert!(!unset.issues_on(true));
-        let on = RepoSettings { has_issues: Some(true), ..RepoSettings::default() };
-        assert!(on.issues_on(true), "a fork can turn them on");
-        let off = RepoSettings { has_issues: Some(false), ..RepoSettings::default() };
-        assert!(!off.issues_on(false));
+        assert!(unset.work_items_on(false));
+        assert!(!unset.work_items_on(true));
+        let on = RepoSettings { has_work_items: Some(true), ..RepoSettings::default() };
+        assert!(on.work_items_on(true), "a fork can turn them on");
+        let off = RepoSettings { has_work_items: Some(false), ..RepoSettings::default() };
+        assert!(!off.work_items_on(false));
     }
 
     #[test]
-    fn a_stored_row_keeps_the_issues_setting_or_its_absence() {
-        let row = |has_issues: serde_json::Value| -> RepoSettings {
+    fn a_stored_row_keeps_the_work_items_setting_or_its_absence() {
+        let row = |has_work_items: serde_json::Value| -> RepoSettings {
             serde_json::from_value::<SettingsRow>(serde_json::json!({
                 "auto_merge": 0, "require_up_to_date": 0, "required_approvals": 0,
                 "count_agent_approvals": 1, "allow_ignoring_checks": 1,
-                "has_issues": has_issues, "updated_by": "ana", "updated_at": ""
+                "has_work_items": has_work_items, "updated_by": "ana", "updated_at": ""
             }))
             .unwrap()
             .into()
         };
-        assert_eq!(row(serde_json::Value::Null).has_issues, None);
-        assert_eq!(row(serde_json::json!(0)).has_issues, Some(false));
-        assert_eq!(row(serde_json::json!(1)).has_issues, Some(true));
+        assert_eq!(row(serde_json::Value::Null).has_work_items, None);
+        assert_eq!(row(serde_json::json!(0)).has_work_items, Some(false));
+        assert_eq!(row(serde_json::json!(1)).has_work_items, Some(true));
     }
 }
