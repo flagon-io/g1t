@@ -38,6 +38,7 @@ mod rows;
 mod rulesets;
 mod runs;
 mod settings;
+mod signals;
 mod statuses;
 mod team_reviews;
 
@@ -2666,6 +2667,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "open_pull" => reply(&work.open_pull(args(body)?).await?),
         "list_pulls" => reply(&work.list_pulls(args(body)?).await?),
         "delivery_insights" => reply(&work.delivery_insights(args(body)?).await?),
+        "workspace_signals" => reply(&work.workspace_signals(args(body)?).await?),
         "pulls_for_repos" => reply(&work.pulls_for_repos(args(body)?).await?),
         "get_pull" => reply(&work.get_pull(args(body)?).await?),
         "update_pull" => reply(&work.update_pull(args(body)?).await?),
