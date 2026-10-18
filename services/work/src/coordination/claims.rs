@@ -213,6 +213,7 @@ impl Work {
                         prompt: None,
                         model: None,
                         result: None,
+                        usage: None,
                     })
                     .await?;
                 if let Outcome::Fail(failure) = attached {
