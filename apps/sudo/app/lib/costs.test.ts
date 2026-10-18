@@ -111,19 +111,35 @@ test("the guardrails form is checked", () => {
   assert.ok(good.ok);
   assert.equal(good.ok && good.value.minDailyCostMicros, 100_000);
   assert.equal(good.ok && good.value.autoApply, true);
-  const off = parseCostSettings(form({ autoApplyPercent: "25", noticeDays: "14", marginFloorPercent: "10", alertDays: "3", anomalyFactor: "1", minDailyCost: "0", anomalyFloor: "1" }));
+  const off = parseCostSettings(
+    form({ autoApplyPercent: "25", noticeDays: "14", marginFloorPercent: "10", alertDays: "3", anomalyFactor: "1", minDailyCost: "0", anomalyFloor: "1" }),
+  );
   assert.ok(off.ok && !off.value.autoApply);
   assert.equal(parseCostSettings(form({ autoApplyPercent: "250" })).ok, false);
   assert.equal(parseCostSettings(form({ autoApplyPercent: "25", noticeDays: "1.5" })).ok, false);
 });
 
 test("a mapping names Cloudflare's product and meter and one of g1t's products", () => {
-  const mapped = parseMapping(form({ product: "Artifacts", meter: "", bucket: "git", priceMeter: "git_operations", ownMeter: "git_operations", scaleToOwn: "on", driftPercent: "15" }));
+  const mapped = parseMapping(
+    form({ product: "Artifacts", meter: "", bucket: "git", priceMeter: "git_operations", ownMeter: "git_operations", scaleToOwn: "on", driftPercent: "15" }),
+  );
   assert.deepEqual(mapped, {
     ok: true,
-    value: { product: "artifacts", meter: "*", bucket: "git", priceMeter: "git_operations", ownMeter: "git_operations", scaleToOwn: true, driftPercent: 15, note: "" },
+    value: {
+      product: "artifacts",
+      meter: "*",
+      bucket: "git",
+      priceMeter: "git_operations",
+      ownMeter: "git_operations",
+      scaleToOwn: true,
+      driftPercent: 15,
+      note: "",
+    },
   });
-  assert.deepEqual(parseMapping(form({ product: "r2", meter: "class_a", remove: "1" })), { ok: true, value: { product: "r2", meter: "class_a", remove: true } });
+  assert.deepEqual(parseMapping(form({ product: "r2", meter: "class_a", remove: "1" })), {
+    ok: true,
+    value: { product: "r2", meter: "class_a", remove: true },
+  });
   assert.equal(parseMapping(form({ product: "r2", meter: "x y", bucket: "git" })).ok, false);
   assert.equal(parseMapping(form({ product: "r2", meter: "*", bucket: "" })).ok, false);
   assert.equal(parseMapping(form({ product: "r2", meter: "*", bucket: "git", driftPercent: "-1" })).ok, false);
@@ -153,7 +169,9 @@ const caps = (over: Partial<SpendCaps> = {}): SpendCaps => ({
 test("the spend bar shows only when a cap stops work", () => {
   assert.equal(spendBanner(caps()), null);
   assert.ok((spendBanner(caps({ tripped: true, todayMicros: 80_000_000 })) ?? "").startsWith("The daily breaker is open ($80.00 of $75.00 today)"));
-  const usedUp = caps({ comped: [{ account: "ws_flagon-io", name: "flagon-io", usedMicros: 150_000_000, ceilingMicros: 150_000_000, defaultCeiling: true, level: 100 }] });
+  const usedUp = caps({
+    comped: [{ account: "ws_flagon-io", name: "flagon-io", usedMicros: 150_000_000, ceilingMicros: 150_000_000, defaultCeiling: true, level: 100 }],
+  });
   assert.ok((spendBanner(usedUp) ?? "").startsWith("Flagon-io used its $150.00 monthly budget"));
   // No budget set to zero is ever "used up".
   assert.equal(spendBanner(caps({ comped: [{ account: "a", name: "a", usedMicros: 9, ceilingMicros: 0, defaultCeiling: false, level: 0 }] })), null);
@@ -161,7 +179,10 @@ test("the spend bar shows only when a cap stops work", () => {
 
 test("what g1t paid this month adds every bucket, the free tier and subscriptions", () => {
   const { rows, totalMicros } = spendRows(caps());
-  assert.deepEqual(rows.map((r) => r.key), ["comped", "trial", "free", "fixed"]);
+  assert.deepEqual(
+    rows.map((r) => r.key),
+    ["comped", "trial", "free", "fixed"],
+  );
   assert.equal(totalMicros, 76_000_000);
 });
 
@@ -256,7 +277,15 @@ test("subscriptions over the range are billing's, day by day by the billing cycl
 });
 
 test("test-mode charges are given away, never money in", () => {
-  const parts = givenParts({ usageMicros: 0, plansMicros: 0, costMicros: 0, marginMicros: 0, marginPercent: null, givenUnpaidMicros: 7_610_000, givenCompedMicros: 2_370_000 });
+  const parts = givenParts({
+    usageMicros: 0,
+    plansMicros: 0,
+    costMicros: 0,
+    marginMicros: 0,
+    marginPercent: null,
+    givenUnpaidMicros: 7_610_000,
+    givenCompedMicros: 2_370_000,
+  });
   assert.deepEqual(parts, [
     ["100% discounts", 2_370_000],
     ["charged without real money", 7_610_000],
@@ -273,9 +302,39 @@ const cycle = (over: Partial<CloudflareCycle> = {}): CloudflareCycle => ({
   averageDailyMicros: 24_347,
   subscriptionsMicros: 30_000_000,
   meters: [
-    { product: "workers", meter: "workers_cpu_ms", rawName: "Workers / Workers CPU ms", unit: "ms", quantity: 39_160_000, included: 30_000_000, billableQuantity: 9_160_000, costMicros: 200_000, basis: "list" },
-    { product: "email", meter: "email_service_emails_sent", rawName: "Email / Emails sent", unit: "Count", quantity: 7, included: null, billableQuantity: 0, costMicros: 0, basis: "none" },
-    { product: "kv", meter: "kv_list_operations", rawName: "KV list", unit: "Count", quantity: 0, included: null, billableQuantity: 0, costMicros: 0, basis: "none" },
+    {
+      product: "workers",
+      meter: "workers_cpu_ms",
+      rawName: "Workers / Workers CPU ms",
+      unit: "ms",
+      quantity: 39_160_000,
+      included: 30_000_000,
+      billableQuantity: 9_160_000,
+      costMicros: 200_000,
+      basis: "list",
+    },
+    {
+      product: "email",
+      meter: "email_service_emails_sent",
+      rawName: "Email / Emails sent",
+      unit: "Count",
+      quantity: 7,
+      included: null,
+      billableQuantity: 0,
+      costMicros: 0,
+      basis: "none",
+    },
+    {
+      product: "kv",
+      meter: "kv_list_operations",
+      rawName: "KV list",
+      unit: "Count",
+      quantity: 0,
+      included: null,
+      billableQuantity: 0,
+      costMicros: 0,
+      basis: "none",
+    },
   ],
   ...over,
 });
@@ -285,14 +344,26 @@ test("the billing cycle reads as Cloudflare's Billable usage page does", () => {
   assert.equal(headline.title, "2026-09-28 to 2026-10-27, day 12 of 30");
   assert.equal(headline.detail, "$0.29 so far, $0.02 a day; projected $0.73 for the cycle, and $30.00 of subscriptions");
   // Used with no list price: said, not hidden. Unused ones are no news.
-  assert.deepEqual(unpricedMeters(cycle().meters).map((m) => m.meter), ["email_service_emails_sent"]);
+  assert.deepEqual(
+    unpricedMeters(cycle().meters).map((m) => m.meter),
+    ["email_service_emails_sent"],
+  );
   assert.equal(basisLabel("list"), "List price past the included amount");
   assert.equal(basisLabel("cloudflare"), "Cloudflare's cost");
   assert.equal(basisLabel("none"), "No list price: counted at $0");
 });
 
 test("the last read of the bill says when it may be incomplete", () => {
-  const read = { readAt: "2026-10-09T04:17:00Z", since: "2026-09-28", until: "2026-10-09", rows: 412, pages: 3, consumedRows: 412, pricingOnlyRows: 0, costedRows: 0 };
+  const read = {
+    readAt: "2026-10-09T04:17:00Z",
+    since: "2026-09-28",
+    until: "2026-10-09",
+    rows: 412,
+    pages: 3,
+    consumedRows: 412,
+    pricingOnlyRows: 0,
+    costedRows: 0,
+  };
   assert.deepEqual(billReadNote(read), {
     text: "412 rows in 3 pages for 2026-09-28 to 2026-10-09; none with a cost of Cloudflare's, so the list prices apply.",
     warn: false,

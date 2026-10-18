@@ -32,8 +32,8 @@ export default function TokenSettings({ loaderData }: Route.ComponentProps) {
     <section className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="max-w-lg text-sm text-muted">
-          Each token has permissions, a level for each resource, and reaches all your workspaces, one of them, or only your
-          account. It never does more than you can.
+          Each token has permissions, a level for each resource, and reaches all your workspaces, one of them, or only your account. It never does more than you
+          can.
         </p>
         <ButtonLink to="/settings/tokens/new">
           <Plus size={15} />
@@ -41,9 +41,7 @@ export default function TokenSettings({ loaderData }: Route.ComponentProps) {
         </ButtonLink>
       </div>
       {tokens.length === 0 ? (
-        <EmptyState title="No access tokens yet">
-          Make one for git over HTTPS, the API, the MCP server or an agent.
-        </EmptyState>
+        <EmptyState title="No access tokens yet">Make one for git over HTTPS, the API, the MCP server or an agent.</EmptyState>
       ) : (
         <TokenList tokens={tokens} href={(token) => `/settings/tokens/${token.id}`} />
       )}

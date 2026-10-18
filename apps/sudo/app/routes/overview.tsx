@@ -1,5 +1,19 @@
 import type { GrowthCount } from "@g1t/contracts";
-import { Activity, AlertOctagon, ArrowRight, Building2, CalendarClock, CreditCard, FileText, Gauge, HandHelping, Minus, TrendingDown, TrendingUp, UserPlus } from "lucide-react";
+import {
+  Activity,
+  AlertOctagon,
+  ArrowRight,
+  Building2,
+  CalendarClock,
+  CreditCard,
+  FileText,
+  Gauge,
+  HandHelping,
+  Minus,
+  TrendingDown,
+  TrendingUp,
+  UserPlus,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, redirect } from "react-router";
 
@@ -43,7 +57,7 @@ export default function Overview({ loaderData }: Route.ComponentProps) {
   const { me, now, growth: people, growthError, overview, overviewError, signals, signalCount, signalsError } = loaderData;
   const months = overview?.months ?? [];
   const current = months.find((month) => month.month === overview?.month) ?? months.at(-1) ?? null;
-  const previous = current ? months[months.indexOf(current) - 1] ?? null : null;
+  const previous = current ? (months[months.indexOf(current) - 1] ?? null) : null;
   const charged = current?.chargedMicros ?? overview?.byKind.reduce((sum, row) => sum + row.chargedMicros, 0) ?? 0;
   const cost = current?.costMicros ?? overview?.byKind.reduce((sum, row) => sum + row.costMicros, 0) ?? 0;
   const plans = current?.plansMicros ?? 0;
@@ -91,14 +105,7 @@ export default function Overview({ loaderData }: Route.ComponentProps) {
               count={people.people}
               now={now}
             />
-            <GrowthCard
-              to="/workspaces"
-              icon={<Building2 size={16} />}
-              label="Workspaces"
-              noun="new workspace"
-              count={people.workspaces}
-              now={now}
-            />
+            <GrowthCard to="/workspaces" icon={<Building2 size={16} />} label="Workspaces" noun="new workspace" count={people.workspaces} now={now} />
           </div>
         )
       )}
@@ -126,11 +133,7 @@ export default function Overview({ loaderData }: Route.ComponentProps) {
             <Stat
               label="Margin on what was sold"
               value={money.revenueMicros > 0 ? usd(money.marginMicros) : "—"}
-              hint={
-                money.marginPercent == null
-                  ? "Nothing sold yet"
-                  : `${money.marginPercent}% of revenue, after ${usd(money.soldCostMicros)} of cost`
-              }
+              hint={money.marginPercent == null ? "Nothing sold yet" : `${money.marginPercent}% of revenue, after ${usd(money.soldCostMicros)} of cost`}
               tone={money.revenueMicros > 0 && money.marginMicros < 0 ? "danger" : undefined}
             />
             {mm ? (
@@ -140,11 +143,7 @@ export default function Overview({ loaderData }: Route.ComponentProps) {
                 hint={`What it cost g1t, ${givenRows.length === 0 ? "nothing yet" : "by why below"}. Not a loss on sales.`}
               />
             ) : (
-              <Stat
-                label="Given by g1t"
-                value={usd(givenSum.micros)}
-                hint={`At price; it cost g1t ${usd(givenSum.costMicros)}. Not a loss on sales.`}
-              />
+              <Stat label="Given by g1t" value={usd(givenSum.micros)} hint={`At price; it cost g1t ${usd(givenSum.costMicros)}. Not a loss on sales.`} />
             )}
             <Stat
               label="Plans"

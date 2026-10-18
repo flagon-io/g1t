@@ -18,7 +18,16 @@
  */
 import { useEffect, useState } from "react";
 
-import type { DesktopBackend, DesktopCapability, DesktopCapabilityState, DesktopDiagnosis, DesktopJob, DesktopReport, DesktopUpdate, Runner } from "@g1t/contracts";
+import type {
+  DesktopBackend,
+  DesktopCapability,
+  DesktopCapabilityState,
+  DesktopDiagnosis,
+  DesktopJob,
+  DesktopReport,
+  DesktopUpdate,
+  Runner,
+} from "@g1t/contracts";
 
 import { sandboxRunHref, workflowRunHref } from "./runners.ts";
 
@@ -62,7 +71,11 @@ export type DesktopRunnerUpdate = DesktopUpdate & {
 
 /** What the app says of its runner (`runner::View` in the app). */
 export type DesktopRunnerView = {
-  diagnosis: Omit<DesktopDiagnosis, "capabilities" | "update"> & { actions: DesktopRunnerAction[]; capabilities?: DesktopRunnerCapability[]; update?: DesktopRunnerUpdate | null };
+  diagnosis: Omit<DesktopDiagnosis, "capabilities" | "update"> & {
+    actions: DesktopRunnerAction[];
+    capabilities?: DesktopRunnerCapability[];
+    update?: DesktopRunnerUpdate | null;
+  };
   closed: DesktopDiagnosis & { actions: DesktopRunnerAction[] };
   running: boolean;
   version: string | null;
@@ -87,7 +100,18 @@ export type DesktopRunnerView = {
 export function runnerStatusKey(view: DesktopRunnerView): string {
   const { diagnosis } = view;
   const update = diagnosis.update;
-  return JSON.stringify([diagnosis.code, diagnosis.tone, diagnosis.title, diagnosis.cause, view.chip?.label, view.enabled, view.paused, update?.checking, update?.checked_at, update?.ready]);
+  return JSON.stringify([
+    diagnosis.code,
+    diagnosis.tone,
+    diagnosis.title,
+    diagnosis.cause,
+    view.chip?.label,
+    view.enabled,
+    view.paused,
+    update?.checking,
+    update?.checked_at,
+    update?.ready,
+  ]);
 }
 
 /** One kind of job's status, with the whole runner's, for its own buttons. */
@@ -175,7 +199,14 @@ export function reportOf(view: DesktopRunnerView): DesktopReport | null {
     if (updates) said.update = updates;
     return said;
   };
-  return { workspace: view.workspace, machine: view.machine, backend: view.backend, version: view.version, diagnosis: plain(view.diagnosis), closed: plain(view.closed) };
+  return {
+    workspace: view.workspace,
+    machine: view.machine,
+    backend: view.backend,
+    version: view.version,
+    diagnosis: plain(view.diagnosis),
+    closed: plain(view.closed),
+  };
 }
 
 /** Whether a report is due: something the Runners page shows changed, or the heartbeat. */
@@ -186,9 +217,23 @@ export function reportDue(last: { key: string; at: number } | null, report: Desk
 
 export function reportKey(report: DesktopReport): string {
   const { diagnosis } = report;
-  const capabilities = (diagnosis.capabilities ?? []).map((c) => [c.id, c.tone, c.title, c.cause, c.fix, c.state, c.enabled, c.headline, c.job?.name, c.job?.repo, c.version, c.update].join("\u0001"));
+  const capabilities = (diagnosis.capabilities ?? []).map((c) =>
+    [c.id, c.tone, c.title, c.cause, c.fix, c.state, c.enabled, c.headline, c.job?.name, c.job?.repo, c.version, c.update].join("\u0001"),
+  );
   const update = diagnosis.update ? [diagnosis.update.checked_at, diagnosis.update.ready, diagnosis.update.note].join("\u0001") : "";
-  return [report.workspace, report.machine, report.backend, report.version, diagnosis.code, diagnosis.title, diagnosis.cause, diagnosis.fix, diagnosis.in_capabilities, update, ...capabilities].join("\u0000");
+  return [
+    report.workspace,
+    report.machine,
+    report.backend,
+    report.version,
+    diagnosis.code,
+    diagnosis.title,
+    diagnosis.cause,
+    diagnosis.fix,
+    diagnosis.in_capabilities,
+    update,
+    ...capabilities,
+  ].join("\u0000");
 }
 
 /** A string with something in it, or null. */
@@ -212,7 +257,10 @@ export function diagnosisOf(value: unknown): DesktopDiagnosis | null {
   if (!code || !title || !tone) return null;
   const said: DesktopDiagnosis = { code, tone, title, cause: text(given.cause), fix: text(given.fix) };
   const capabilities = Array.isArray(given.capabilities)
-    ? given.capabilities.map(capabilityOf).filter((c): c is DesktopCapability => c !== null).slice(0, MAX_CAPABILITIES)
+    ? given.capabilities
+        .map(capabilityOf)
+        .filter((c): c is DesktopCapability => c !== null)
+        .slice(0, MAX_CAPABILITIES)
     : [];
   if (capabilities.length > 0) {
     said.capabilities = capabilities;

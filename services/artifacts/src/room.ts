@@ -111,14 +111,25 @@ export class PageRoom extends DurableObject<Env> {
     this.setMeta(`erased:${key}`, true);
     await this.setRole(key, null);
     await Promise.allSettled([...this.saves]);
-    for (const field of ["editors", "pending_authors"]) this.setMeta(field, this.meta<string[]>(field, []).filter(value => value !== key));
-    this.setMeta("editor_names", this.meta<string[]>("editor_names", []).filter(value => value.toLowerCase() !== username.toLowerCase()));
+    for (const field of ["editors", "pending_authors"])
+      this.setMeta(
+        field,
+        this.meta<string[]>(field, []).filter((value) => value !== key),
+      );
+    this.setMeta(
+      "editor_names",
+      this.meta<string[]>("editor_names", []).filter((value) => value.toLowerCase() !== username.toLowerCase()),
+    );
   }
 
   async destroy(): Promise<void> {
     // Synchronous tombstone comes first; no reentrant save can recreate state.
     this.setMeta("erased", true);
-    for (const socket of this.ctx.getWebSockets()) { try { socket.close(4403, "Document erased"); } catch {} }
+    for (const socket of this.ctx.getWebSockets()) {
+      try {
+        socket.close(4403, "Document erased");
+      } catch {}
+    }
     await Promise.allSettled([...this.saves]);
     this.doc?.destroy();
     this.doc = null;
@@ -181,7 +192,10 @@ export class PageRoom extends DurableObject<Env> {
   private compact(): void {
     const doc = this.load();
     this.ctx.storage.transactionSync(() => {
-      this.ctx.storage.sql.exec("INSERT INTO snapshot (id, data) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET data = excluded.data", Y.encodeStateAsUpdate(doc));
+      this.ctx.storage.sql.exec(
+        "INSERT INTO snapshot (id, data) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET data = excluded.data",
+        Y.encodeStateAsUpdate(doc),
+      );
       this.ctx.storage.sql.exec("DELETE FROM updates");
     });
   }
@@ -214,7 +228,11 @@ export class PageRoom extends DurableObject<Env> {
     if (this.meta("erased", false)) return null;
     const saving = this.save(version);
     this.saves.add(saving);
-    try { return await saving; } finally { this.saves.delete(saving); }
+    try {
+      return await saving;
+    } finally {
+      this.saves.delete(saving);
+    }
   }
 
   private async save(version: Origin | null = null): Promise<string | null> {
@@ -263,7 +281,11 @@ export class PageRoom extends DurableObject<Env> {
     if (pageId) {
       const indexing = indexPage(this.env, pageId);
       this.saves.add(indexing);
-      try { await indexing; } finally { this.saves.delete(indexing); }
+      try {
+        await indexing;
+      } finally {
+        this.saves.delete(indexing);
+      }
     }
   }
 
@@ -534,4 +556,3 @@ export function awarenessEntries(update: Uint8Array): { id: number; clock: numbe
   }
   return out;
 }
-

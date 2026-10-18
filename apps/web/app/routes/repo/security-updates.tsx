@@ -48,9 +48,8 @@ export default function SecurityDependencyUpdates({ loaderData, params }: Route.
         title="Dependency updates"
         about={
           <>
-            Pull requests that keep dependencies current on a schedule, from a <code className="text-fg-soft">dependabot.yml</code>{" "}
-            file (version 2) in <code className="text-fg-soft">.g1t/</code> or <code className="text-fg-soft">.github/</code>.
-            Security updates follow the same file.
+            Pull requests that keep dependencies current on a schedule, from a <code className="text-fg-soft">dependabot.yml</code> file (version 2) in{" "}
+            <code className="text-fg-soft">.g1t/</code> or <code className="text-fg-soft">.github/</code>. Security updates follow the same file.
           </>
         }
         actions={

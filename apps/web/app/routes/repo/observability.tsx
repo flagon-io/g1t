@@ -79,14 +79,27 @@ function Loaded({
   const enough = overview.previous.requests >= Math.max(30, totals.requests * 0.05);
   const previous = enough
     ? overview.previous
-    : { requests: null, errors: null, error_rate: null, latency: { p50: null, p75: null, p95: null, p99: null }, cpu: { p50: null, p75: null, p95: null, p99: null } };
+    : {
+        requests: null,
+        errors: null,
+        error_rate: null,
+        latency: { p50: null, p75: null, p95: null, p99: null },
+        cpu: { p50: null, p75: null, p95: null, p99: null },
+      };
   const times = points.map((p) => p.time_us);
   const anyCpu = totals.cpu.p50 !== null;
   return (
     <>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
         <StatTile label="Requests" value={count(totals.requests)} now={totals.requests} before={previous.requests} />
-        <StatTile label="Error rate" value={percent(totals.error_rate)} now={totals.error_rate} before={previous.error_rate} lowerIsBetter detail={`${count(totals.errors)} failed`} />
+        <StatTile
+          label="Error rate"
+          value={percent(totals.error_rate)}
+          now={totals.error_rate}
+          before={previous.error_rate}
+          lowerIsBetter
+          detail={`${count(totals.errors)} failed`}
+        />
         <StatTile label="Latency p50" value={duration(totals.latency.p50)} now={totals.latency.p50} before={previous.latency.p50} lowerIsBetter />
         <StatTile label="Latency p95" value={duration(totals.latency.p95)} now={totals.latency.p95} before={previous.latency.p95} lowerIsBetter />
         <StatTile
@@ -107,7 +120,12 @@ function Loaded({
           format={count}
           series={[
             // Whatever did not fail as a 4xx or a 5xx (requests with no status, such as a cron, count here too).
-            { key: "ok", label: "2xx and 3xx", color: SERIES.ok, values: points.map((p) => Math.max(0, p.requests - p.status_4xx - Math.max(p.status_5xx, p.errors))) },
+            {
+              key: "ok",
+              label: "2xx and 3xx",
+              color: SERIES.ok,
+              values: points.map((p) => Math.max(0, p.requests - p.status_4xx - Math.max(p.status_5xx, p.errors))),
+            },
             { key: "4xx", label: "4xx", color: SERIES.client, values: points.map((p) => p.status_4xx) },
             { key: "5xx", label: "5xx and failures", color: SERIES.server, values: points.map((p) => Math.max(p.status_5xx, p.errors)) },
           ]}
@@ -252,7 +270,9 @@ function Loaded({
                       </Link>
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{count(r.requests)}</TableCell>
-                    <TableCell className={cn("text-right tabular-nums", r.errors > 0 && "text-danger")}>{percent(r.requests ? r.errors / r.requests : 0)}</TableCell>
+                    <TableCell className={cn("text-right tabular-nums", r.errors > 0 && "text-danger")}>
+                      {percent(r.requests ? r.errors / r.requests : 0)}
+                    </TableCell>
                     <TableCell className="hidden text-right whitespace-nowrap tabular-nums sm:table-cell">{duration(r.latency.p50)}</TableCell>
                     <TableCell className="text-right whitespace-nowrap tabular-nums">{duration(r.latency.p95)}</TableCell>
                     <TableCell className="hidden text-right whitespace-nowrap tabular-nums sm:table-cell">{duration(r.latency.p99)}</TableCell>
@@ -297,7 +317,12 @@ function Loaded({
                 </h2>
                 <ul className="space-y-1.5 px-4 py-3">
                   {overview.regions.slice(0, 8).map((r) => {
-                    const share = r.requests / Math.max(1, overview.regions.reduce((n, x) => n + x.requests, 0));
+                    const share =
+                      r.requests /
+                      Math.max(
+                        1,
+                        overview.regions.reduce((n, x) => n + x.requests, 0),
+                      );
                     return (
                       <li key={r.region} className="grid grid-cols-[3rem_1fr_4rem] items-center gap-3 text-xs">
                         <span className="font-mono">{r.region}</span>
@@ -315,8 +340,15 @@ function Loaded({
         </div>
       )}
       <p className="mt-4 text-xs text-faint">
-        Numbers are counted each minute; the newest minute fills in as its requests finish. <Link to={`${base}/observability/logs`} className="underline hover:text-fg">Logs</Link> and{" "}
-        <Link to={`${base}/observability/requests`} className="underline hover:text-fg">requests</Link> arrive within seconds.
+        Numbers are counted each minute; the newest minute fills in as its requests finish.{" "}
+        <Link to={`${base}/observability/logs`} className="underline hover:text-fg">
+          Logs
+        </Link>{" "}
+        and{" "}
+        <Link to={`${base}/observability/requests`} className="underline hover:text-fg">
+          requests
+        </Link>{" "}
+        arrive within seconds.
       </p>
     </>
   );
@@ -330,8 +362,7 @@ function NothingYet({ base, canManage }: { base: string; canManage: boolean }) {
         <div className="border-b border-line px-6 py-5">
           <h2 className="font-medium">Nothing has arrived yet</h2>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Requests, logs, traces and metrics show here as the project's software sends them, kept for its retention and counted for
-            its charts.
+            Requests, logs, traces and metrics show here as the project's software sends them, kept for its retention and counted for its charts.
           </p>
         </div>
         <div className="grid divide-y divide-line md:grid-cols-2 md:divide-x md:divide-y-0">
@@ -341,8 +372,8 @@ function NothingYet({ base, canManage }: { base: string; canManage: boolean }) {
               Deployed on g1t.page
             </h3>
             <p className="mt-1.5 text-sm text-muted">
-              Nothing to set up. Every request an app on g1t.page answers arrives here with its logs, exceptions, status and CPU time, and
-              an OpenTelemetry SDK in the app sends its spans here without configuration.
+              Nothing to set up. Every request an app on g1t.page answers arrives here with its logs, exceptions, status and CPU time, and an OpenTelemetry SDK
+              in the app sends its spans here without configuration.
             </p>
             <ButtonLink to={`${base}/deployments`} variant="outline" size="sm" className="mt-4">
               Deployments

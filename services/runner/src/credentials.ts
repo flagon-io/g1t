@@ -38,9 +38,7 @@ export async function sha256Hex(text: string): Promise<string> {
 
 /** The hashes of the g1t tokens among a sandbox's variables. */
 export async function credentialHashes(envVars: Record<string, string>): Promise<string[]> {
-  const tokens = CREDENTIAL_VARS.map((name) => envVars[name]).filter(
-    (value): value is string => typeof value === "string" && value.startsWith("g1t_"),
-  );
+  const tokens = CREDENTIAL_VARS.map((name) => envVars[name]).filter((value): value is string => typeof value === "string" && value.startsWith("g1t_"));
   return Promise.all(tokens.map(sha256Hex));
 }
 
@@ -55,17 +53,14 @@ type Storage = {
  * it stops, and ties them to the run it recorded. Never stops the sandbox
  * from starting.
  */
-export async function holdCredentials(
-  identity: ServiceBinding,
-  storage: Storage,
-  envVars: Record<string, string>,
-  runId: string | null,
-): Promise<void> {
+export async function holdCredentials(identity: ServiceBinding, storage: Storage, envVars: Record<string, string>, runId: string | null): Promise<void> {
   const hashes = await credentialHashes(envVars);
   if (hashes.length === 0) return;
   await storage.put(STORAGE_KEY, hashes);
   if (!runId) return;
-  await call(identity, "bind_run_credentials", { tokenHashes: hashes, runId }).catch((error: unknown) => console.log("run credentials not bound", runId, String(error)));
+  await call(identity, "bind_run_credentials", { tokenHashes: hashes, runId }).catch((error: unknown) =>
+    console.log("run credentials not bound", runId, String(error)),
+  );
 }
 
 /** Ends a sandbox's g1t credentials, once. */

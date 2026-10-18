@@ -83,7 +83,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       for (const blob of await repos.rawBlobs(source.repoId, batch, MAX_BYTES)) {
         total += blob.size;
         if (total > MAX_BYTES || (blob.data == null && blob.size > 0)) tooLarge = true;
-        else bytes.set(blob.hash, Uint8Array.from(atob(blob.data ?? ""), (c) => c.charCodeAt(0)));
+        else
+          bytes.set(
+            blob.hash,
+            Uint8Array.from(atob(blob.data ?? ""), (c) => c.charCodeAt(0)),
+          );
       }
     }
   };

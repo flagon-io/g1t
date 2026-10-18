@@ -80,13 +80,7 @@ export type CardSources = {
  * null when there is nobody by that name (or for ghost, a deleted
  * account, which has no card).
  */
-export async function buildCard(
-  username: string,
-  viewer: Viewer,
-  repo: RepoPath | null,
-  sources: CardSources,
-  now: number,
-): Promise<Card | null> {
+export async function buildCard(username: string, viewer: Viewer, repo: RepoPath | null, sources: CardSources, now: number): Promise<Card | null> {
   const name = username.trim().toLowerCase();
   if (name === "g1t") return { kind: "g1t", username: "g1t" };
   if (!/^[a-z0-9-]{1,39}$/.test(name) || name === "ghost") return null;

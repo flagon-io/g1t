@@ -43,7 +43,6 @@ export function languageBar(languages: LanguageShare[], least = 0.1, most = 8): 
   return [...shown, { name: "Other", color: null, bytes, percent }];
 }
 
-
 /** The tallest week, for a chart's scale: never zero. */
 export function peak(weeks: WeekCommits[]): number {
   return Math.max(1, ...weeks.map((week) => week.commits));

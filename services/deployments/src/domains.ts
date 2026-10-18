@@ -183,10 +183,7 @@ export class Domains {
     const elsewhere = taken.results.find((t) => t.project_id !== input.project.id);
     if (elsewhere) return { ok: false, code: "conflict", message: `${elsewhere.hostname} is already in use on g1t.` };
     if (!fresh.includes(hostname) && !twin) return { ok: false, code: "conflict", message: `${hostname} is already added to this project.` };
-    const count = await this.db
-      .prepare("SELECT COUNT(*) AS n FROM domains WHERE project_id = ?")
-      .bind(input.project.id)
-      .first<{ n: number }>();
+    const count = await this.db.prepare("SELECT COUNT(*) AS n FROM domains WHERE project_id = ?").bind(input.project.id).first<{ n: number }>();
     if ((count?.n ?? 0) + fresh.length > PER_PROJECT) {
       return { ok: false, code: "conflict", message: `A project can have up to ${PER_PROJECT} domains.` };
     }
@@ -230,10 +227,7 @@ export class Domains {
     }
     // Pairing with a domain the project already had: it now redirects too.
     if (twin && !fresh.includes(twin)) {
-      await this.db
-        .prepare("UPDATE domains SET redirect_to = ? WHERE hostname = ? AND project_id = ?")
-        .bind(hostname, twin, input.project.id)
-        .run();
+      await this.db.prepare("UPDATE domains SET redirect_to = ? WHERE hostname = ? AND project_id = ?").bind(hostname, twin, input.project.id).run();
       const row = await this.byHostname(twin);
       if (row) await this.point(row, input.script);
     }
@@ -266,9 +260,7 @@ export class Domains {
     }
     let found: CustomHostname;
     try {
-      found =
-        (await this.hostnames.find(row.hostname)) ??
-        (await this.hostnames.create(row.hostname, { script, project: row.project_id, domain: row.id }));
+      found = (await this.hostnames.find(row.hostname)) ?? (await this.hostnames.create(row.hostname, { script, project: row.project_id, domain: row.id }));
     } catch (error) {
       if (error instanceof NotEnabled) {
         availability = { at: Date.now(), available: false };
@@ -292,9 +284,7 @@ export class Domains {
   private async save(row: DomainRow, changes: Partial<DomainRow>): Promise<DomainRow> {
     const next = { ...row, ...changes, checked_at: now() };
     await this.db
-      .prepare(
-        `UPDATE domains SET status = ?, ssl_status = ?, records = ?, error = ?, verified_at = ?, checked_at = ? WHERE id = ?`,
-      )
+      .prepare(`UPDATE domains SET status = ?, ssl_status = ?, records = ?, error = ?, verified_at = ?, checked_at = ? WHERE id = ?`)
       .bind(next.status, next.ssl_status, next.records, next.error, next.verified_at, next.checked_at, row.id)
       .run();
     return next;
@@ -320,10 +310,7 @@ export class Domains {
     if (!row.cf_hostname_id) return this.register(row, script);
     if (!this.hostnames) return row;
     try {
-      const found =
-        recheck && row.status !== "active"
-          ? await this.hostnames.recheck(row.cf_hostname_id)
-          : await this.hostnames.get(row.cf_hostname_id);
+      const found = recheck && row.status !== "active" ? await this.hostnames.recheck(row.cf_hostname_id) : await this.hostnames.get(row.cf_hostname_id);
       return this.apply(row, found);
     } catch (error) {
       if (error instanceof Refused && error.status === 404) {

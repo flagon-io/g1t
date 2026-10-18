@@ -128,15 +128,10 @@ export default function CommandPaletteDialog({
                     </span>
                   </CommandItem>
                   {repo && (
-                    <CommandItem
-                      value="search:repo"
-                      onSelect={() => go(searchHref(`${trimmed} repo:${repo}`, "code"))}
-                      className={itemClass}
-                    >
+                    <CommandItem value="search:repo" onSelect={() => go(searchHref(`${trimmed} repo:${repo}`, "code"))} className={itemClass}>
                       <Code2 />
                       <span className="min-w-0 grow truncate">
-                        Search <span className="font-mono">{repo}</span> for{" "}
-                        <span className="font-medium text-fg">“{trimmed}”</span>
+                        Search <span className="font-mono">{repo}</span> for <span className="font-medium text-fg">“{trimmed}”</span>
                       </span>
                     </CommandItem>
                   )}
@@ -145,16 +140,9 @@ export default function CommandPaletteDialog({
               {hits.length > 0 && (
                 <CommandGroup heading="Results">
                   {hits.map((hit) => (
-                    <CommandItem
-                      key={`${hit.kind}:${hit.url}`}
-                      value={`hit:${hit.kind}:${hit.url}`}
-                      onSelect={() => go(hit.url)}
-                      className={itemClass}
-                    >
+                    <CommandItem key={`${hit.kind}:${hit.url}`} value={`hit:${hit.kind}:${hit.url}`} onSelect={() => go(hit.url)} className={itemClass}>
                       {hitIcon(hit)}
-                      <span className="min-w-0 grow truncate">
-                        {hit.kind === "repository" ? <span className="font-mono">{hit.title}</span> : hit.title}
-                      </span>
+                      <span className="min-w-0 grow truncate">{hit.kind === "repository" ? <span className="font-mono">{hit.title}</span> : hit.title}</span>
                       <span className="shrink-0 truncate text-xs text-faint">{hitHint(hit)}</span>
                     </CommandItem>
                   ))}

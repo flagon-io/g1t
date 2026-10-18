@@ -44,10 +44,7 @@ test("the manifest and SHA256SUMS name each binary that was built", () => {
       },
     });
     // The install scripts read `<sha256>  <name>` lines.
-    assert.equal(
-      readFileSync(join(dir, "SHA256SUMS"), "utf8"),
-      `${sha256("linux")}  g1t-linux-x64\n${sha256("windows")}  g1t-windows-x64.exe\n`,
-    );
+    assert.equal(readFileSync(join(dir, "SHA256SUMS"), "utf8"), `${sha256("linux")}  g1t-linux-x64\n${sha256("windows")}  g1t-windows-x64.exe\n`);
     assert.equal(readFileSync(join(dir, "latest.json"), "utf8"), readFileSync(join(dir, "manifest.json"), "utf8"));
     const keys = keygen();
     const key = createPrivateKey({ key: Buffer.from(keys.private, "base64"), format: "der", type: "pkcs8" });

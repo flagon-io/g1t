@@ -82,13 +82,7 @@ export function WaitingCards({ onNavigate }: { onNavigate?: () => void }) {
                   {notification.body && <span className="mt-0.5 line-clamp-2 block text-xs text-muted">{notification.body}</span>}
                 </button>
                 <Hint label="Put away">
-                  <Button
-                    type="button"
-                    aria-label="Put away"
-                    onClick={() => settle(notification.id)}
-                    variant="ghost" size="icon"
-                    className="size-6 text-faint"
-                  >
+                  <Button type="button" aria-label="Put away" onClick={() => settle(notification.id)} variant="ghost" size="icon" className="size-6 text-faint">
                     <X size={14} />
                   </Button>
                 </Hint>

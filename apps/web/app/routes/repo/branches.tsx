@@ -4,14 +4,7 @@ import { Form, Link, redirect, useNavigate } from "react-router";
 
 import type { Route } from "./+types/branches";
 import type { ActiveBranch } from "../../components/branches";
-import {
-  type BranchActionData,
-  type BranchListContext,
-  type BranchRowData,
-  BranchTable,
-  NewBranchDialog,
-  ProtectCallout,
-} from "../../components/branch-list";
+import { type BranchActionData, type BranchListContext, type BranchRowData, BranchTable, NewBranchDialog, ProtectCallout } from "../../components/branch-list";
 import { EmptyState } from "../../components/ui";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
@@ -61,7 +54,9 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // Previews are for people with a role here; everyone else sees none.
     part(deployments.list({ workspace: params.owner, slug: params.repo }, viewer), "Previews"),
     // Only a hint for admins: without the rules, it is not given.
-    canProtect && !repo.protected ? part(work.effectiveRules(path, repo.defaultBranch, viewer), "Rules").then((found) => orElse(found, null)) : Promise.resolve(null),
+    canProtect && !repo.protected
+      ? part(work.effectiveRules(path, repo.defaultBranch, viewer), "Rules").then((found) => orElse(found, null))
+      : Promise.resolve(null),
   ]);
   // The merge queue's own branches (g1t-queue/<entry>) are its working
   // copies, not anyone's branch to look at.
@@ -160,7 +155,9 @@ export default function Branches({ loaderData, params }: Route.ComponentProps) {
   // A restored branch is back in the list: no longer kept as deleted.
   useEffect(() => {
     const here = new Set(branches.map((branch) => branch.name));
-    setDeleted((kept) => (Object.keys(kept).some((name) => here.has(name)) ? Object.fromEntries(Object.entries(kept).filter(([name]) => !here.has(name))) : kept));
+    setDeleted((kept) =>
+      Object.keys(kept).some((name) => here.has(name)) ? Object.fromEntries(Object.entries(kept).filter(([name]) => !here.has(name))) : kept,
+    );
   }, [branches]);
   const sections = branchSections(rows, tab, { username, now });
 
@@ -196,7 +193,9 @@ export default function Branches({ loaderData, params }: Route.ComponentProps) {
         {can.push && <NewBranchDialog branches={names} main={main.name} onMade={(name) => setNotice({ tone: "success", text: `Created ${name}.` })} />}
       </div>
 
-      {unprotected && <ProtectCallout base={base} main={main.name} dismissKey={`g1t:protect-hint-dismissed:${username ?? ""}:${base.slice(1).toLowerCase()}`} />}
+      {unprotected && (
+        <ProtectCallout base={base} main={main.name} dismissKey={`g1t:protect-hint-dismissed:${username ?? ""}:${base.slice(1).toLowerCase()}`} />
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="max-w-full overflow-x-auto">

@@ -14,7 +14,14 @@ export const CONFIRM_ALL = "detach";
 
 /** "syntaqx, flagon-io" or "syntaqx flagon-io" as slugs; blank is none. */
 export function parseExclude(raw: string): string[] {
-  return [...new Set(raw.split(/[\s,]+/).map((slug) => slug.trim().toLowerCase()).filter(Boolean))];
+  return [
+    ...new Set(
+      raw
+        .split(/[\s,]+/)
+        .map((slug) => slug.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 function count(n: number, one: string, many: string): string {
@@ -39,10 +46,14 @@ export function detachChanges(row: WorkspaceDetach): string[] {
   if (row.plan_payments_reversed_micros > 0) out.push(`${usd(row.plan_payments_reversed_micros, { cents: true })} of test plan payments reversed`);
   if (row.written_off_micros > 0) out.push(`${usd(row.written_off_micros, { cents: true })} owed written off as goodwill`);
   if (row.pending_months_marked > 0) {
-    out.push(`${count(row.pending_months_marked, "metered figure", "metered figures")} of past months never charged (${usd(row.pending_marked_micros, { cents: true })})`);
+    out.push(
+      `${count(row.pending_months_marked, "metered figure", "metered figures")} of past months never charged (${usd(row.pending_marked_micros, { cents: true })})`,
+    );
   }
   if (row.pending_baselined > 0) {
-    out.push(`This month's ${count(row.pending_baselined, "metered figure", "metered figures")} so far never charged (${usd(row.pending_baselined_micros, { cents: true })})`);
+    out.push(
+      `This month's ${count(row.pending_baselined, "metered figure", "metered figures")} so far never charged (${usd(row.pending_baselined_micros, { cents: true })})`,
+    );
   }
   if (row.plan_credit_cleared_micros > 0) out.push(`${usd(row.plan_credit_cleared_micros, { cents: true })} of this month's included usage restored`);
   if (row.dispute_owed_cleared_micros > 0) out.push(`${usd(row.dispute_owed_cleared_micros, { cents: true })} owed for lost test disputes cleared`);

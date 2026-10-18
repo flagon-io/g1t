@@ -120,7 +120,13 @@ export function CreateChannelButton({ slug, variant = "icon" }: { slug: string; 
   const may = useChannelCreation();
   // A kind they may not make falls back to one they may.
   const visibility: ChannelVisibility =
-    chosen === "private" && !may.private ? "workspace" : chosen !== "private" && !may.public ? "private" : chosen === "public" && !may.open ? "workspace" : chosen;
+    chosen === "private" && !may.private
+      ? "workspace"
+      : chosen !== "private" && !may.public
+        ? "private"
+        : chosen === "public" && !may.open
+          ? "workspace"
+          : chosen;
   const isPrivate = visibility === "private";
   const clean = channelName(name);
   const submit = async () => {
@@ -182,7 +188,13 @@ export function CreateChannelButton({ slug, variant = "icon" }: { slug: string; 
             <label className="grid gap-1.5">
               <span className="text-sm font-medium text-muted">Name</span>
               <span className="flex h-10 items-center gap-1.5 rounded-md border border-line bg-bg px-3 focus-within:border-accent-dim">
-                {isPrivate ? <Lock size={14} className="text-faint" /> : visibility === "public" ? <Globe size={14} className="text-faint" /> : <Hash size={14} className="text-faint" />}
+                {isPrivate ? (
+                  <Lock size={14} className="text-faint" />
+                ) : visibility === "public" ? (
+                  <Globe size={14} className="text-faint" />
+                ) : (
+                  <Hash size={14} className="text-faint" />
+                )}
                 <input
                   autoFocus
                   value={name}
@@ -224,7 +236,9 @@ export function CreateChannelButton({ slug, variant = "icon" }: { slug: string; 
                   value="private"
                   icon={<Lock />}
                   label="Private"
-                  description={may.private ? "Only the people you invite can find and read it. Others can ask to join." : "Only workspace owners can create these here."}
+                  description={
+                    may.private ? "Only the people you invite can find and read it. Others can ask to join." : "Only workspace owners can create these here."
+                  }
                   disabled={!may.private}
                 />
                 <RadioOption
@@ -245,11 +259,7 @@ export function CreateChannelButton({ slug, variant = "icon" }: { slug: string; 
               <Button type="button" onClick={() => setOpen(false)} variant="outline">
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                disabled={busy || !clean}
-                variant="accent"
-              >
+              <Button type="submit" disabled={busy || !clean} variant="accent">
                 {busy ? "Creating…" : "Create channel"}
               </Button>
             </DialogFooter>
@@ -277,7 +287,8 @@ export function NewMessageButton({ slug, variant = "icon", children }: { slug: s
           type="button"
           aria-label="New message"
           onClick={() => setOpen(true)}
-          variant="accent" size="icon"
+          variant="accent"
+          size="icon"
           className="size-14 rounded-2xl shadow-lg shadow-black/50 transition-transform active:scale-95"
         >
           <SquarePen size={22} />
@@ -321,9 +332,7 @@ function NewMessage({ slug, onDone }: { slug: string; onDone: () => void }) {
   }, [data]);
   const q = query.trim().toLowerCase().replace(/^@/, "");
   const picked = new Set(chosen.map((p) => p.key));
-  const options = everyone.filter(
-    (p) => !picked.has(p.key) && (!q || p.name.toLowerCase().includes(q) || p.display.toLowerCase().includes(q)),
-  );
+  const options = everyone.filter((p) => !picked.has(p.key) && (!q || p.name.toLowerCase().includes(q) || p.display.toLowerCase().includes(q)));
   const take = (person: Pickable) => {
     setChosen((now) => [...now, person]);
     setQuery("");
@@ -426,12 +435,7 @@ function NewMessage({ slug, onDone }: { slug: string; onDone: () => void }) {
           <Button type="button" onClick={onDone} variant="outline">
             Cancel
           </Button>
-          <Button
-            type="button"
-            disabled={busy || chosen.length === 0}
-            onClick={() => void go()}
-            variant="accent"
-          >
+          <Button type="button" disabled={busy || chosen.length === 0} onClick={() => void go()} variant="accent">
             {busy ? "Opening…" : "Open conversation"}
           </Button>
         </div>

@@ -40,9 +40,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const body = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
-    ...entries.map(
-      (entry) => `  <url><loc>${escape(entry.loc)}</loc>${entry.lastmod ? `<lastmod>${entry.lastmod}</lastmod>` : ""}</url>`,
-    ),
+    ...entries.map((entry) => `  <url><loc>${escape(entry.loc)}</loc>${entry.lastmod ? `<lastmod>${entry.lastmod}</lastmod>` : ""}</url>`),
     "</urlset>",
     "",
   ].join("\n");

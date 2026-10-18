@@ -28,17 +28,17 @@ which changes the same one).
 The **Code** page shows its files with its facts beside them. On a phone
 they come after the files.
 
-| Part | What it shows |
-| --- | --- |
-| **Readme** | A link to the README shown under the files. |
-| **License** | The license its `LICENSE` file holds, such as **MIT license**, linked to the file. **View license** when the text is not one g1t recognizes. `LICENCE`, `COPYING` and `UNLICENSE` are read too, with or without an extension, and an `SPDX-License-Identifier` line says it outright. |
-| **Security policy** | A link to `SECURITY.md` at the root, or in `.g1t`, `.github` or `docs`. |
-| **Activity** | The repository's [activity](#activity): pushes, merges, new branches and tags. |
-| **Stars**, **watching** | How many people [starred](#stars) it, and how many watch all or some of its activity from the [Watch menu](/guides/notifications/). |
-| **Releases** | How many [releases](/guides/releases/) it has and the latest. With none published, how many tags it has, linked to its tags, and **Create a new release** for people who can push. |
-| **Packages** | [Packages](/guides/packages/) linked to it, or how to publish the first. |
-| **Contributors** | How many people and agents made it. Up to five are listed by name with how many commits each made; more show as the most active's avatars. Each opens their card. See [contributors](#contributors). |
-| **Languages** | The languages it is written in, by bytes. See [languages](#languages). |
+| Part                    | What it shows                                                                                                                                                                                                                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Readme**              | A link to the README shown under the files.                                                                                                                                                                                                                                           |
+| **License**             | The license its `LICENSE` file holds, such as **MIT license**, linked to the file. **View license** when the text is not one g1t recognizes. `LICENCE`, `COPYING` and `UNLICENSE` are read too, with or without an extension, and an `SPDX-License-Identifier` line says it outright. |
+| **Security policy**     | A link to `SECURITY.md` at the root, or in `.g1t`, `.github` or `docs`.                                                                                                                                                                                                               |
+| **Activity**            | The repository's [activity](#activity): pushes, merges, new branches and tags.                                                                                                                                                                                                        |
+| **Stars**, **watching** | How many people [starred](#stars) it, and how many watch all or some of its activity from the [Watch menu](/guides/notifications/).                                                                                                                                                   |
+| **Releases**            | How many [releases](/guides/releases/) it has and the latest. With none published, how many tags it has, linked to its tags, and **Create a new release** for people who can push.                                                                                                    |
+| **Packages**            | [Packages](/guides/packages/) linked to it, or how to publish the first.                                                                                                                                                                                                              |
+| **Contributors**        | How many people and agents made it. Up to five are listed by name with how many commits each made; more show as the most active's avatars. Each opens their card. See [contributors](#contributors).                                                                                  |
+| **Languages**           | The languages it is written in, by bytes. See [languages](#languages).                                                                                                                                                                                                                |
 
 The license, security policy, languages and contributors are read from the
 default branch in the background each time it moves, and kept by commit, so
@@ -56,11 +56,11 @@ prose such as Markdown, do not. TSX counts as TypeScript and JSX as
 JavaScript. The sidebar lists every language down to a tenth of a percent,
 the largest eight, and gathers the rest as **Other**. Neither do these count:
 
-| Files | Such as |
-| --- | --- |
-| Vendored | `node_modules/`, `vendor/`, `third_party/`, minified jQuery, and anything under a dot-directory such as `.github/` |
-| Generated | `dist/`, `*.min.js`, `*.pb.go`, lockfiles |
-| Documentation | `docs/`, `doc/`, `examples/` |
+| Files         | Such as                                                                                                            |
+| ------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Vendored      | `node_modules/`, `vendor/`, `third_party/`, minified jQuery, and anything under a dot-directory such as `.github/` |
+| Generated     | `dist/`, `*.min.js`, `*.pb.go`, lockfiles                                                                          |
+| Documentation | `docs/`, `doc/`, `examples/`                                                                                       |
 
 Change what counts with `linguist-*` attributes in the repository's
 `.gitattributes` file at the root. A later line wins over an earlier one.
@@ -82,12 +82,12 @@ files read.
 branch, most commits first, with their commits by week, and the
 repository's commits per week over the last year.
 
-| Who | How they are matched |
-| --- | --- |
-| A person | By an address they confirmed on their account, or their noreply address. Several addresses of one account count as one. |
-| g1t | Its own commits, by its address. |
+| Who                   | How they are matched                                                                                                                                                                                                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A person              | By an address they confirmed on their account, or their noreply address. Several addresses of one account count as one.                                                                                                                                                               |
+| g1t                   | Its own commits, by its address.                                                                                                                                                                                                                                                      |
 | A coding agent or bot | Claude, Codex, Copilot, Gemini, Jules, Cursor, Devin, Aider, Dependabot, Renovate and GitHub Actions, by the address they write on their commits (as author or `Co-authored-by`), never by name. Each shows its maker's mark and a card saying what it is; none is an account on g1t. |
-| Anyone else | By the name on their commits, with a card that says they aren't on g1t and how to add the address to your account if the commits are yours. |
+| Anyone else           | By the name on their commits, with a card that says they aren't on g1t and how to add the address to your account if the commits are yours.                                                                                                                                           |
 
 The newest 3,000 commits are counted.
 
@@ -110,18 +110,18 @@ stars on a private repository are seen only by people who can read it.
 
 ## The settings page
 
-| Section | What it holds |
-| --- | --- |
-| **Name** | The repository's name, the second part of its address. |
-| **Details** | Its website and topics, shown on its page, in [search and Explore](/guides/search/). Its description is its project's, on **General**. |
-| **Branches** | The default branch, renaming a branch, and a link to **Branches and merging**: [branch protection](/guides/git/#protected-branches), [required status checks](/guides/pull-requests/#required-status-checks), required approvals, and the [merge queue](/guides/merge-queue/). What a sandbox may reach is under **Guardrails**; see [guardrails](/guides/guardrails/). |
-| **Artifacts** | How many days the files workflow runs upload are kept, 1 to 90 (14 unless changed). See [artifacts](/guides/actions/#artifacts). |
-| **Features** | Whether work items can be filed in it (a [fork](/concepts/forks/) starts with this off), and whether merges and commits land the work items they name. See [work items](#work-items). |
-| **Commits** | Sign-off on commits made on g1t, and comments on commits. See [commits](#commits). |
-| **Pushes** | How many branches and tags one push may update. See [pushes](#pushes). |
-| **Archives** | Whether downloads hold Git LFS objects. Coming soon. |
-| **Forking** | For a private repository, whether people who can read it may [fork it](/guides/forking-repositories/#allow-forking-a-private-repository). Public repositories can always be forked. |
-| **Danger zone** | Change visibility and [detach a fork](/guides/forking-repositories/#detach-a-fork). Shown to people with the Admin role. Archiving, [transferring](/guides/transferring-repositories/) and deleting are the project's, in the danger zone of **Settings → General**. |
+| Section         | What it holds                                                                                                                                                                                                                                                                                                                                                           |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Name**        | The repository's name, the second part of its address.                                                                                                                                                                                                                                                                                                                  |
+| **Details**     | Its website and topics, shown on its page, in [search and Explore](/guides/search/). Its description is its project's, on **General**.                                                                                                                                                                                                                                  |
+| **Branches**    | The default branch, renaming a branch, and a link to **Branches and merging**: [branch protection](/guides/git/#protected-branches), [required status checks](/guides/pull-requests/#required-status-checks), required approvals, and the [merge queue](/guides/merge-queue/). What a sandbox may reach is under **Guardrails**; see [guardrails](/guides/guardrails/). |
+| **Artifacts**   | How many days the files workflow runs upload are kept, 1 to 90 (14 unless changed). See [artifacts](/guides/actions/#artifacts).                                                                                                                                                                                                                                        |
+| **Features**    | Whether work items can be filed in it (a [fork](/concepts/forks/) starts with this off), and whether merges and commits land the work items they name. See [work items](#work-items).                                                                                                                                                                                   |
+| **Commits**     | Sign-off on commits made on g1t, and comments on commits. See [commits](#commits).                                                                                                                                                                                                                                                                                      |
+| **Pushes**      | How many branches and tags one push may update. See [pushes](#pushes).                                                                                                                                                                                                                                                                                                  |
+| **Archives**    | Whether downloads hold Git LFS objects. Coming soon.                                                                                                                                                                                                                                                                                                                    |
+| **Forking**     | For a private repository, whether people who can read it may [fork it](/guides/forking-repositories/#allow-forking-a-private-repository). Public repositories can always be forked.                                                                                                                                                                                     |
+| **Danger zone** | Change visibility and [detach a fork](/guides/forking-repositories/#detach-a-fork). Shown to people with the Admin role. Archiving, [transferring](/guides/transferring-repositories/) and deleting are the project's, in the danger zone of **Settings → General**.                                                                                                    |
 
 While a repository is [archived](#archive-a-repository), the settings that
 change it are turned off until it is unarchived.
@@ -148,19 +148,19 @@ and squash merging, the two methods that write a commit message, each have
 a **Default commit message** and, with **Custom template**, a **Template**,
 with a preview of the message it makes.
 
-| Setting | Field | Default | What it does |
-| --- | --- | --- | --- |
-| Allow merge commits | `allow_merge_commit` | On | Pull requests may merge with a merge commit (`merge`). |
-| Allow squash merging | `allow_squash_merge` | On | They may merge as one squashed commit (`squash`). |
-| Allow rebase merging | `allow_rebase_merge` | On | They may merge by making each commit again on the base (`rebase`). |
-| Allow fast-forward merging | `allow_fast_forward` | Off | They may merge by moving the base to their head, with no new commit (`fast_forward`). |
-| Default merge method | `default_merge_method` | `merge` | The method the merge button offers first, and the one a merge that names none uses. It must be allowed. |
-| Default commit message, under Allow merge commits | `merge_commit_message` | `default` | What a merge commit says unless its merger writes it: **Default message** (`default`), **Pull request title** (`pull_title`), **Pull request title and description** (`pull_title_and_description`) or **Custom template** (`custom`). |
-| Default commit message, under Allow squash merging | `squash_commit_message` | `default` | What a squash commit says: the same, and **Pull request title and commit details** (`pull_title_and_commits`). |
-| Template | `merge_commit_template`, `squash_commit_template` | None | The message used with `custom`, with [placeholders](/guides/pull-requests/#commit-messages). An empty string clears it. |
-| Always suggest updating pull request branches | `suggest_updating_branches` | On | Offer to update a pull request's branch whenever its base has new commits, not only when it must be up to date. |
-| Allow auto-merge | `allow_auto_merge` | On | People may turn on [auto-merge](/guides/pull-requests/#auto-merge) for a pull request. |
-| Automatically delete head branches | `delete_branch_on_merge` | Off | A pull request's branch is deleted once it merges. It can be [restored](/guides/pull-requests/#deleting-the-branch) from the pull request. |
+| Setting                                            | Field                                             | Default   | What it does                                                                                                                                                                                                                           |
+| -------------------------------------------------- | ------------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Allow merge commits                                | `allow_merge_commit`                              | On        | Pull requests may merge with a merge commit (`merge`).                                                                                                                                                                                 |
+| Allow squash merging                               | `allow_squash_merge`                              | On        | They may merge as one squashed commit (`squash`).                                                                                                                                                                                      |
+| Allow rebase merging                               | `allow_rebase_merge`                              | On        | They may merge by making each commit again on the base (`rebase`).                                                                                                                                                                     |
+| Allow fast-forward merging                         | `allow_fast_forward`                              | Off       | They may merge by moving the base to their head, with no new commit (`fast_forward`).                                                                                                                                                  |
+| Default merge method                               | `default_merge_method`                            | `merge`   | The method the merge button offers first, and the one a merge that names none uses. It must be allowed.                                                                                                                                |
+| Default commit message, under Allow merge commits  | `merge_commit_message`                            | `default` | What a merge commit says unless its merger writes it: **Default message** (`default`), **Pull request title** (`pull_title`), **Pull request title and description** (`pull_title_and_description`) or **Custom template** (`custom`). |
+| Default commit message, under Allow squash merging | `squash_commit_message`                           | `default` | What a squash commit says: the same, and **Pull request title and commit details** (`pull_title_and_commits`).                                                                                                                         |
+| Template                                           | `merge_commit_template`, `squash_commit_template` | None      | The message used with `custom`, with [placeholders](/guides/pull-requests/#commit-messages). An empty string clears it.                                                                                                                |
+| Always suggest updating pull request branches      | `suggest_updating_branches`                       | On        | Offer to update a pull request's branch whenever its base has new commits, not only when it must be up to date.                                                                                                                        |
+| Allow auto-merge                                   | `allow_auto_merge`                                | On        | People may turn on [auto-merge](/guides/pull-requests/#auto-merge) for a pull request.                                                                                                                                                 |
+| Automatically delete head branches                 | `delete_branch_on_merge`                          | Off       | A pull request's branch is deleted once it merges. It can be [restored](/guides/pull-requests/#deleting-the-branch) from the pull request.                                                                                             |
 
 At least one method stays allowed. [Rules](/guides/rules/#pull-requests-and-checks)
 can narrow the methods for a branch, with `allowed_merge_methods` and
@@ -170,37 +170,37 @@ can narrow the methods for a branch, with `allowed_merge_methods` and
 
 On **Settings → Repository**, under **Commits**.
 
-| Setting | Field | Default | What it does |
-| --- | --- | --- | --- |
-| Require contributors to sign off on web-based commits | `require_web_commit_sign_off` | Off | Commits made on g1t (web edits, merge and squash commits) end with a `Signed-off-by:` trailer for whoever made them, agreeing to the repository's terms, commonly the Developer Certificate of Origin. |
-| Allow comments on individual commits | `allow_commit_comments` | On | Anyone who can read the repository may [comment on its commits](/guides/pull-requests/#commit-comments). Off keeps existing comments readable and refuses new ones. |
+| Setting                                               | Field                         | Default | What it does                                                                                                                                                                                           |
+| ----------------------------------------------------- | ----------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Require contributors to sign off on web-based commits | `require_web_commit_sign_off` | Off     | Commits made on g1t (web edits, merge and squash commits) end with a `Signed-off-by:` trailer for whoever made them, agreeing to the repository's terms, commonly the Developer Certificate of Origin. |
+| Allow comments on individual commits                  | `allow_commit_comments`       | On      | Anyone who can read the repository may [comment on its commits](/guides/pull-requests/#commit-comments). Off keeps existing comments readable and refuses new ones.                                    |
 
 ### Pushes
 
 On **Settings → Repository**, under **Pushes**. Turned on, it asks for
 **Most branches and tags per push**.
 
-| Setting | Field | Default | What it does |
-| --- | --- | --- | --- |
+| Setting                                                          | Field             | Default  | What it does                                                                                                                                                                                                                                                                   |
+| ---------------------------------------------------------------- | ----------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Limit how many branches and tags can be updated in a single push | `max_ref_updates` | No limit | The most branches and tags one push may create, move or delete, 1 to 1,000. A push that would change more is declined whole, so nothing of it lands: "This push changes N branches and tags; owner/name takes at most M at a time. Push fewer at once." `0` removes the limit. |
 
 ### Archives
 
 On **Settings → Repository**, under **Archives**.
 
-| Setting | Field | Default | What it does |
-| --- | --- | --- | --- |
-| Include Git LFS objects in archives | None yet | Off | Coming soon. g1t does not store Git LFS files yet (see [limitations](/about/limitations/)), so archives hold what git stores; the setting is shown, turned off, until it does. |
+| Setting                             | Field    | Default | What it does                                                                                                                                                                   |
+| ----------------------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Include Git LFS objects in archives | None yet | Off     | Coming soon. g1t does not store Git LFS files yet (see [limitations](/about/limitations/)), so archives hold what git stores; the setting is shown, turned off, until it does. |
 
 ### Work items
 
 On **Settings → Repository**, under **Features**. [Work items](/work/work-items/)
 belong to the workspace; these settings say how this repository takes part.
 
-| Setting | Field | Default | What it does |
-| --- | --- | --- | --- |
-| Work items | `has_work_items` | On; off for a [fork](/concepts/forks/) | Whether work items can be filed in it, as their origin. Off keeps existing ones readable. `null` goes back to the default. `work_items_enabled` says whether they can be filed now. |
-| Land work items with merged linked pull requests | `auto_close_items` | On | A pull request that merges into the default branch lands this repository on its work item and on those it names after a [closing keyword](/guides/pull-requests/#closing-work-items), and so does a commit pushed to the default branch whose message names them. A work item closes once every repository it targets has landed, or at the first landing when it has no target. |
+| Setting                                          | Field              | Default                                | What it does                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------ | ------------------ | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Work items                                       | `has_work_items`   | On; off for a [fork](/concepts/forks/) | Whether work items can be filed in it, as their origin. Off keeps existing ones readable. `null` goes back to the default. `work_items_enabled` says whether they can be filed now.                                                                                                                                                                                              |
+| Land work items with merged linked pull requests | `auto_close_items` | On                                     | A pull request that merges into the default branch lands this repository on its work item and on those it names after a [closing keyword](/guides/pull-requests/#closing-work-items), and so does a commit pushed to the default branch whose message names them. A work item closes once every repository it targets has landed, or at the first landing when it has no target. |
 
 ```sh
 curl -X PATCH https://api.g1t.sh/repos/acme/rocket/settings \
@@ -214,22 +214,22 @@ curl -X PATCH https://api.g1t.sh/repos/acme/rocket/settings \
 Each change needs a [role](/guides/access-and-roles/) on the repository.
 Owners of its workspace have Admin on it.
 
-| Change | Needs |
-| --- | --- |
-| Website, topics | Maintain |
-| How long artifacts are kept | Maintain |
-| [Merge, commit and work item settings](#settings) | Maintain |
-| How many branches and tags a push may update | Admin |
-| Default branch | Admin |
-| Create, delete or restore a branch | Write; the default branch is never deleted. See [branches](/guides/git/#the-branches-page) |
-| Rename a branch | Write; Admin for the default branch |
-| Rename the repository | Admin |
-| Make it public or private | Admin, and the [member privileges](/guides/workspaces/#member-privileges) to allow it, or an owner |
-| Archive or unarchive | Admin |
-| [Transfer](/guides/transferring-repositories/) | An owner of its workspace, or a member with Admin when the member privileges allow it; and in the other workspace, being able to create a repository |
-| Delete | An owner of its workspace, or a member with Admin when the member privileges allow it |
-| Restore and purge | An owner of its workspace |
-| See the Recently deleted list | An owner of its workspace |
+| Change                                            | Needs                                                                                                                                                |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Website, topics                                   | Maintain                                                                                                                                             |
+| How long artifacts are kept                       | Maintain                                                                                                                                             |
+| [Merge, commit and work item settings](#settings) | Maintain                                                                                                                                             |
+| How many branches and tags a push may update      | Admin                                                                                                                                                |
+| Default branch                                    | Admin                                                                                                                                                |
+| Create, delete or restore a branch                | Write; the default branch is never deleted. See [branches](/guides/git/#the-branches-page)                                                           |
+| Rename a branch                                   | Write; Admin for the default branch                                                                                                                  |
+| Rename the repository                             | Admin                                                                                                                                                |
+| Make it public or private                         | Admin, and the [member privileges](/guides/workspaces/#member-privileges) to allow it, or an owner                                                   |
+| Archive or unarchive                              | Admin                                                                                                                                                |
+| [Transfer](/guides/transferring-repositories/)    | An owner of its workspace, or a member with Admin when the member privileges allow it; and in the other workspace, being able to create a repository |
+| Delete                                            | An owner of its workspace, or a member with Admin when the member privileges allow it                                                                |
+| Restore and purge                                 | An owner of its workspace                                                                                                                            |
+| See the Recently deleted list                     | An owner of its workspace                                                                                                                            |
 
 Renaming the repository or its default branch, changing its visibility
 and archiving it are done by a person, not a workspace token.
@@ -241,10 +241,10 @@ and archiving it are done by a person, not a workspace token.
    is the project's: change it on **Settings → General**.
 3. Choose **Save**.
 
-| Field | Rules |
-| --- | --- |
-| Website | An http or https address. `https://` is added when you leave the scheme out. Empty clears it. |
-| Topics | Lowercase letters, digits and hyphens, at most 20, each up to 35 characters. Separate them with commas or spaces. |
+| Field   | Rules                                                                                                             |
+| ------- | ----------------------------------------------------------------------------------------------------------------- |
+| Website | An http or https address. `https://` is added when you leave the scheme out. Empty clears it.                     |
+| Topics  | Lowercase letters, digits and hyphens, at most 20, each up to 35 characters. Separate them with commas or spaces. |
 
 From the API, call
 [`PATCH /repos/{owner}/{name}`](/reference/api/repositories/update-repo/)
@@ -351,11 +351,11 @@ workflow runs, deployments, settings, secrets and webhooks, and the
 keeps working, the same way as after a
 [transfer](/guides/transferring-repositories/#old-addresses):
 
-| | Behaviour |
-| --- | --- |
-| Web pages | A permanent redirect (`301`) to the same page at the new address. |
-| `git clone`, `fetch`, `pull` and `push` | Redirected to the new remote. Git follows it and prints a warning each time. |
-| API and MCP | A call that names the repository by its old name runs against it under its new name. |
+|                                         | Behaviour                                                                            |
+| --------------------------------------- | ------------------------------------------------------------------------------------ |
+| Web pages                               | A permanent redirect (`301`) to the same page at the new address.                    |
+| `git clone`, `fetch`, `pull` and `push` | Redirected to the new remote. Git follows it and prints a warning each time.         |
+| API and MCP                             | A call that names the repository by its old name runs against it under its new name. |
 
 Its project follows: a project that had the repository's name takes the
 new one, unless another project in the workspace already has it, and its
@@ -400,12 +400,12 @@ cannot change on its own: [detach it](/guides/forking-repositories/#detach-a-for
 first. When a repository with forks is made public or private, its forks
 are detached and keep the visibility they had.
 
-| | Making it public | Making it private |
-| --- | --- | --- |
-| Who can see it | Anyone: its code, its pull requests and the work items filed in it, and cloning it, without signing in. | Only people with a role on it: its workspace's owners, its members (unless the [base permission](/guides/access-and-roles/#the-base-permission) is None), and anyone given a role on it. Anyone else gets a page that says it does not exist. |
-| Search and Explore | It is added to [search](/guides/search/) and Explore for everyone. | It leaves search and Explore for everyone outside the workspace. |
-| Link previews | Links to it show a preview card with its name and its project's description. | Links to it stop showing a preview card. |
-| Storage | It stops counting toward the workspace's private storage. | It counts toward the workspace's private storage. A free workspace has 1 GB; making it private is refused when that would go over. See [what is free](/guides/usage-and-billing/#what-is-free). |
+|                    | Making it public                                                                                        | Making it private                                                                                                                                                                                                                             |
+| ------------------ | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Who can see it     | Anyone: its code, its pull requests and the work items filed in it, and cloning it, without signing in. | Only people with a role on it: its workspace's owners, its members (unless the [base permission](/guides/access-and-roles/#the-base-permission) is None), and anyone given a role on it. Anyone else gets a page that says it does not exist. |
+| Search and Explore | It is added to [search](/guides/search/) and Explore for everyone.                                      | It leaves search and Explore for everyone outside the workspace.                                                                                                                                                                              |
+| Link previews      | Links to it show a preview card with its name and its project's description.                            | Links to it stop showing a preview card.                                                                                                                                                                                                      |
+| Storage            | It stops counting toward the workspace's private storage.                                               | It counts toward the workspace's private storage. A free workspace has 1 GB; making it private is refused when that would go over. See [what is free](/guides/usage-and-billing/#what-is-free).                                               |
 
 Nothing else changes: its address, members, settings, secrets, webhooks
 and deployments stay as they are.
@@ -437,14 +437,14 @@ but should stay readable.
 
 While it is archived:
 
-| | |
-| --- | --- |
-| Pushes and merges | Refused, whatever your role, and for agents too. |
-| Pull requests, and work items filed in it | Locked. They stay readable. |
-| Workflows | Do not run. |
-| Settings | The ones that change the repository are turned off. |
-| Deployments | Keep serving. |
-| Who can see it | Unchanged. Anyone who could see it still can, and clone it. |
+|                                           |                                                             |
+| ----------------------------------------- | ----------------------------------------------------------- |
+| Pushes and merges                         | Refused, whatever your role, and for agents too.            |
+| Pull requests, and work items filed in it | Locked. They stay readable.                                 |
+| Workflows                                 | Do not run.                                                 |
+| Settings                                  | The ones that change the repository are turned off.         |
+| Deployments                               | Keep serving.                                               |
+| Who can see it                            | Unchanged. Anyone who could see it still can, and clone it. |
 
 Its page says it is archived, and so do its project's card on the
 workspace overview and its card on [Explore](/guides/search/#explore),
@@ -479,17 +479,17 @@ Deleting takes a repository away at once, but an owner can restore it for
 3. Read what happens, type the full name (`<workspace>/<repo>`) to
    confirm, and choose **Delete project**.
 
-| | While it is deleted | When it is purged |
-| --- | --- | --- |
-| Its pages, git remote and API | Answer as if it did not exist, for everyone. | The same. |
-| Its name | Stays taken: no repository can be made at its address. | Free to use again. |
-| Workflows | Stop, and do not start. | |
-| Deployments | Taken down. Its `g1t.page` addresses stop serving. | Removed. |
-| Custom domains | Kept, and serve nothing. | Removed. |
-| Search | Drops it. | |
-| Webhooks | The workspace's webhooks are sent `repo.deleted`. | Sent `repo.purged`. |
-| Storage | Stops counting toward the workspace's storage. | |
-| Git data, pull requests, settings, secrets | Kept, for restoring. | Removed, and cannot be recovered. |
+|                                            | While it is deleted                                    | When it is purged                 |
+| ------------------------------------------ | ------------------------------------------------------ | --------------------------------- |
+| Its pages, git remote and API              | Answer as if it did not exist, for everyone.           | The same.                         |
+| Its name                                   | Stays taken: no repository can be made at its address. | Free to use again.                |
+| Workflows                                  | Stop, and do not start.                                |                                   |
+| Deployments                                | Taken down. Its `g1t.page` addresses stop serving.     | Removed.                          |
+| Custom domains                             | Kept, and serve nothing.                               | Removed.                          |
+| Search                                     | Drops it.                                              |                                   |
+| Webhooks                                   | The workspace's webhooks are sent `repo.deleted`.      | Sent `repo.purged`.               |
+| Storage                                    | Stops counting toward the workspace's storage.         |                                   |
+| Git data, pull requests, settings, secrets | Kept, for restoring.                                   | Removed, and cannot be recovered. |
 
 Its entries in the [audit log](/guides/audit-log/) are kept, as for
 anything else.
@@ -572,27 +572,27 @@ it.
 
 ## When a change is refused
 
-| Response | Why | What to do |
-| --- | --- | --- |
-| `401 unauthenticated` | No token, or one that is not valid. | Send a personal access token. |
-| `403 forbidden` | You are not an owner, for a change that needs one; or g1t's token was used. | Ask an owner of the workspace. |
-| `404 not_found` | No such repository or branch, or you cannot see it. For restore and purge: no deleted repository had that path, or it was purged. | Check the path. A deleted repository is named by the path it had. |
-| `409 conflict` | The new name is taken in the workspace, by a repository or a recently deleted one; or a branch with the new name exists. | Pick another name, or purge the deleted repository first. |
-| `422 invalid` | `confirm` is not the repository's full name; the name, branch name or website is not valid; or the new default branch does not exist. | Type `<workspace>/<repo>` exactly; push the branch first. |
-| `402 payment_required` | Making it private would take a free workspace's private storage over 1 GB. | Start [the g1t plan](/guides/usage-and-billing/#the-g1t-plan), or make room first. |
+| Response               | Why                                                                                                                                   | What to do                                                                         |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `401 unauthenticated`  | No token, or one that is not valid.                                                                                                   | Send a personal access token.                                                      |
+| `403 forbidden`        | You are not an owner, for a change that needs one; or g1t's token was used.                                                           | Ask an owner of the workspace.                                                     |
+| `404 not_found`        | No such repository or branch, or you cannot see it. For restore and purge: no deleted repository had that path, or it was purged.     | Check the path. A deleted repository is named by the path it had.                  |
+| `409 conflict`         | The new name is taken in the workspace, by a repository or a recently deleted one; or a branch with the new name exists.              | Pick another name, or purge the deleted repository first.                          |
+| `422 invalid`          | `confirm` is not the repository's full name; the name, branch name or website is not valid; or the new default branch does not exist. | Type `<workspace>/<repo>` exactly; push the branch first.                          |
+| `402 payment_required` | Making it private would take a free workspace's private storage over 1 GB.                                                            | Start [the g1t plan](/guides/usage-and-billing/#the-g1t-plan), or make room first. |
 
 Each refusal comes with a message that says what to do.
 
 ## From the API and MCP
 
-| Route | MCP | What it does |
-| --- | --- | --- |
-| [`GET /repos/{owner}/{name}/languages`](/reference/api/repository-insights/get-languages/) | `repository` `languages` | Its languages by bytes, with `color` and `percent`. |
-| [`GET /repos/{owner}/{name}/contributors`](/reference/api/repository-insights/list-contributors/) | `repository` `contributors` | Its contributors with `kind`, `commits` and `weeks`. |
-| [`GET /repos/{owner}/{name}/license`](/reference/api/repository-insights/get-license/) | `repository` `license` | Its license's `spdx_id`, `name` and `path`. |
-| [`GET /repos/{owner}/{name}/stargazers`](/reference/api/stars/list-stargazers/) | `repository` `stargazers` | Who starred it, newest first. |
-| [`PUT /user/starred/{owner}/{name}`](/reference/api/stars/star-repo/) | `repository` `star` | Star it. `DELETE` takes the star back; `GET` says whether you did. |
-| [`GET /user/starred`](/reference/api/stars/list-starred/) | `repository` `list_starred` | What you starred. |
+| Route                                                                                             | MCP                         | What it does                                                       |
+| ------------------------------------------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------------ |
+| [`GET /repos/{owner}/{name}/languages`](/reference/api/repository-insights/get-languages/)        | `repository` `languages`    | Its languages by bytes, with `color` and `percent`.                |
+| [`GET /repos/{owner}/{name}/contributors`](/reference/api/repository-insights/list-contributors/) | `repository` `contributors` | Its contributors with `kind`, `commits` and `weeks`.               |
+| [`GET /repos/{owner}/{name}/license`](/reference/api/repository-insights/get-license/)            | `repository` `license`      | Its license's `spdx_id`, `name` and `path`.                        |
+| [`GET /repos/{owner}/{name}/stargazers`](/reference/api/stars/list-stargazers/)                   | `repository` `stargazers`   | Who starred it, newest first.                                      |
+| [`PUT /user/starred/{owner}/{name}`](/reference/api/stars/star-repo/)                             | `repository` `star`         | Star it. `DELETE` takes the star back; `GET` says whether you did. |
+| [`GET /user/starred`](/reference/api/stars/list-starred/)                                         | `repository` `list_starred` | What you starred.                                                  |
 
 Answers read from the default branch say which `commit` they are for and
 the `head` now; `pending` is true until the first is read. Stars take the
@@ -603,14 +603,14 @@ the `head` now; `pending` is true until the first is read. Stars take the
 Each change is sent to [webhooks](/guides/webhooks/#events) and recorded
 in the [audit log](/guides/audit-log/):
 
-| Change | Event |
-| --- | --- |
-| Website, topics, protection | `repo.updated` |
-| Visibility | `repo.visibility_changed` |
-| Rename | `repo.renamed` |
-| Default branch | `repo.default_branch_changed` |
-| Branch rename | `branch.renamed` |
-| Branch made or deleted | `git.push`, `git.deleted`; in the audit log, `branch.created`, `branch.deleted` |
-| Archive, unarchive | `repo.archived`, `repo.unarchived` |
-| Transfer | `repo.transferred` |
-| Delete, restore, purge | `repo.deleted`, `repo.restored`, `repo.purged` |
+| Change                      | Event                                                                           |
+| --------------------------- | ------------------------------------------------------------------------------- |
+| Website, topics, protection | `repo.updated`                                                                  |
+| Visibility                  | `repo.visibility_changed`                                                       |
+| Rename                      | `repo.renamed`                                                                  |
+| Default branch              | `repo.default_branch_changed`                                                   |
+| Branch rename               | `branch.renamed`                                                                |
+| Branch made or deleted      | `git.push`, `git.deleted`; in the audit log, `branch.created`, `branch.deleted` |
+| Archive, unarchive          | `repo.archived`, `repo.unarchived`                                              |
+| Transfer                    | `repo.transferred`                                                              |
+| Delete, restore, purge      | `repo.deleted`, `repo.restored`, `repo.purged`                                  |

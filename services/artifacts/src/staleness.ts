@@ -70,7 +70,11 @@ export function systemReader(namespace: string): User {
 const ZERO = /^0+$/;
 
 async function pathById(repos: ServiceBinding, id: string): Promise<{ namespace: string; name: string } | null> {
-  const response = await repos.fetch("https://service/rpc/path_by_id", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id }) });
+  const response = await repos.fetch("https://service/rpc/path_by_id", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
   if (!response.ok) return null;
   return (await response.json()) as { namespace: string; name: string } | null;
 }
@@ -86,7 +90,13 @@ async function interested(db: D1Database, repo: string, repoId: string): Promise
 }
 
 /** What a push to the default branch changed: the files between where it was and where it is. */
-async function pushChange(env: StaleEnv, path: { namespace: string; name: string }, repoId: string, before: string | undefined, after: string): Promise<string[] | null> {
+async function pushChange(
+  env: StaleEnv,
+  path: { namespace: string; name: string },
+  repoId: string,
+  before: string | undefined,
+  after: string,
+): Promise<string[] | null> {
   if (!env.REPOS || !before || ZERO.test(before)) return null;
   const compared = await reposClient(env.REPOS).compare(repoId, systemReader(path.namespace), before, after);
   if (!compared.ok) return null;
@@ -94,7 +104,12 @@ async function pushChange(env: StaleEnv, path: { namespace: string; name: string
 }
 
 /** What a merged pull request changed, and its title; null when it didn't merge into the default branch. */
-async function pullChange(env: StaleEnv, path: { namespace: string; name: string }, repoId: string, number: number): Promise<{ title: string; changed: string[] } | null> {
+async function pullChange(
+  env: StaleEnv,
+  path: { namespace: string; name: string },
+  repoId: string,
+  number: number,
+): Promise<{ title: string; changed: string[] } | null> {
   if (!env.WORK || !env.REPOS) return null;
   const reader = systemReader(path.namespace);
   const [found, repo] = await Promise.all([workClient(env.WORK).getPull(path, number, reader), reposClient(env.REPOS).getById(repoId, reader)]);
@@ -159,10 +174,15 @@ async function tellOf(env: StaleEnv, change: Change, pageIds: string[], hits: Ma
   const marks = pageIds.map(() => "?").join(",");
   const [pages, owners] = await Promise.all([
     db
-      .prepare(`SELECT p.id, p.workspace_id, p.space_id, p.title, s.slug AS space_slug FROM pages p JOIN spaces s ON s.id = p.space_id WHERE p.id IN (${marks})`)
+      .prepare(
+        `SELECT p.id, p.workspace_id, p.space_id, p.title, s.slug AS space_slug FROM pages p JOIN spaces s ON s.id = p.space_id WHERE p.id IN (${marks})`,
+      )
       .bind(...pageIds)
       .all<PageRow>(),
-    db.prepare(`SELECT page_id, principal FROM page_owners WHERE page_id IN (${marks})`).bind(...pageIds).all<{ page_id: string; principal: string }>(),
+    db
+      .prepare(`SELECT page_id, principal FROM page_owners WHERE page_id IN (${marks})`)
+      .bind(...pageIds)
+      .all<{ page_id: string; principal: string }>(),
   ]);
   const workspaceIds = [...new Set(pages.results.map((p) => p.workspace_id))];
   const slugs = await identityClient(env.IDENTITY)
@@ -170,7 +190,11 @@ async function tellOf(env: StaleEnv, change: Change, pageIds: string[], hits: Ma
     .catch(() => ({}) as Record<string, string>);
   // Which owners can read the repository: they are told which change it was.
   const ownerIds = [...new Set(owners.results.filter((o) => o.principal.startsWith("user:")).map((o) => o.principal.slice(5)))];
-  const people = ownerIds.length ? await identityClient(env.IDENTITY).usersForAudience(ownerIds).catch(() => [] as User[]) : [];
+  const people = ownerIds.length
+    ? await identityClient(env.IDENTITY)
+        .usersForAudience(ownerIds)
+        .catch(() => [] as User[])
+    : [];
   const [namespace, name] = change.repo.split("/") as [string, string];
   const canRead = new Set<string>();
   if (env.REPOS) {
@@ -205,7 +229,9 @@ async function tellOf(env: StaleEnv, change: Change, pageIds: string[], hits: Ma
                 kind: "inbox",
                 workspace: slug,
                 title: `${page.title || "Untitled"} may be out of date`,
-                body: known ? `${what} changed ${paths.slice(0, 3).join(", ")}${paths.length > 3 ? ` and ${paths.length - 3} more` : ""}` : "A change to code this page cites was merged.",
+                body: known
+                  ? `${what} changed ${paths.slice(0, 3).join(", ")}${paths.length > 3 ? ` and ${paths.length - 3} more` : ""}`
+                  : "A change to code this page cites was merged.",
                 href,
                 actor: { kind: "system", id: "g1t", name: "g1t", avatar: null, avatar_seed: null },
                 created_at: new Date().toISOString(),
@@ -300,7 +326,14 @@ export async function onEvent(env: StaleEnv, event: G1tEvent, reindex: (repoId: 
   if (!wants.cited) return;
   const pulled = await pullChange(env, path, repoId, event.data.number);
   if (!pulled?.changed.length) return;
-  const change: Change = { repo, repo_id: repoId, commit: event.data.commit, pull: { number: event.data.number, title: pulled.title }, changed: pulled.changed, actor: event.actor };
+  const change: Change = {
+    repo,
+    repo_id: repoId,
+    commit: event.data.commit,
+    pull: { number: event.data.number, title: pulled.title },
+    changed: pulled.changed,
+    actor: event.actor,
+  };
   await record(env, change);
   await recordFolioChanges(env, change);
 }

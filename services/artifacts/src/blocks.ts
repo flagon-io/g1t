@@ -161,7 +161,9 @@ function isBlockStart(text: string): boolean {
 
 /** Markdown as block specs. */
 export function parseMarkdown(markdown: string): BlockSpec[] {
-  const lines = String(markdown ?? "").replace(/\r\n?/g, "\n").split("\n");
+  const lines = String(markdown ?? "")
+    .replace(/\r\n?/g, "\n")
+    .split("\n");
   return parseLines(lines.map(lineOf), 0, lines.length);
 }
 
@@ -262,7 +264,10 @@ function parseLines(lines: Line[], from: number, to: number): BlockSpec[] {
       }
       const alert = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(.*)$/i.exec(body[0] ?? "");
       if (alert) {
-        const rest = [alert[2]!, ...body.slice(1)].filter((l, n) => n > 0 || l.trim()).join("\n").trim();
+        const rest = [alert[2]!, ...body.slice(1)]
+          .filter((l, n) => n > 0 || l.trim())
+          .join("\n")
+          .trim();
         out.push({ type: "callout", props: { kind: ALERT_KINDS[alert[1]!.toUpperCase()] ?? "info" }, content: parseInline(joinParagraph(rest)) });
       } else {
         out.push({ type: "quote", content: parseInline(joinParagraph(body.join("\n").trim())) });
@@ -340,7 +345,12 @@ function parseLines(lines: Line[], from: number, to: number): BlockSpec[] {
     // A paragraph: lines up to a blank line or another block.
     const para = [text];
     i++;
-    while (i < to && lines[i]!.text.trim() && !isBlockStart(lines[i]!.text) && !(lines[i]!.text.includes("|") && i + 1 < to && TABLE_RULE.test(lines[i + 1]!.text))) {
+    while (
+      i < to &&
+      lines[i]!.text.trim() &&
+      !isBlockStart(lines[i]!.text) &&
+      !(lines[i]!.text.includes("|") && i + 1 < to && TABLE_RULE.test(lines[i + 1]!.text))
+    ) {
       para.push(lines[i]!.text);
       i++;
     }
@@ -433,7 +443,8 @@ function tableNode(rows: Run[][][]): Y.XmlElement {
         0,
         Array.from({ length: width }, (_, n) => {
           const cell = new Y.XmlElement("tableCell");
-          for (const [k, v] of Object.entries({ textColor: "default", backgroundColor: "default", textAlignment: "left", colspan: 1, rowspan: 1 })) cell.setAttribute(k, v as unknown as string);
+          for (const [k, v] of Object.entries({ textColor: "default", backgroundColor: "default", textAlignment: "left", colspan: 1, rowspan: 1 }))
+            cell.setAttribute(k, v as unknown as string);
           const p = new Y.XmlElement("tableParagraph");
           p.insert(0, textOf(row[n] ?? []));
           cell.insert(0, [p]);

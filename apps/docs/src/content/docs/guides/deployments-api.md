@@ -12,10 +12,10 @@ and its latest status is its state.
 Deployments reach that list three ways. Each deployment says which in its
 `source`:
 
-| `source` | Made by | Ids |
-| --- | --- | --- |
-| `api` | Any CI or script, through the routes on this page, with an access token. | `dep_…` |
-| `actions` | A [g1t Actions](/guides/actions/) job with an `environment:`, by itself. | `dep_…` |
+| `source`   | Made by                                                                                              | Ids     |
+| ---------- | ---------------------------------------------------------------------------------------------------- | ------- |
+| `api`      | Any CI or script, through the routes on this page, with an access token.                             | `dep_…` |
+| `actions`  | A [g1t Actions](/guides/actions/) job with an `environment:`, by itself.                             | `dep_…` |
 | `g1t_page` | A [g1t.page](/guides/deployments/) build of a project, to the `production` or `preview` environment. | `dpl_…` |
 
 A status's id starts `dst_`. Every deployment, whatever its source, shows
@@ -64,19 +64,19 @@ curl -X POST https://api.g1t.sh/repos/acme/web/deployments \
 The answer is the deployment, with its first status in `statuses`. Keep
 its `id` for the next call.
 
-| Field | Default | |
-| --- | --- | --- |
-| `ref` | Required | The branch, tag or commit deployed, such as `main` or `v1.4.0`. |
-| `sha` | Resolved from `ref` | The commit deployed. Give the whole commit id to skip resolving `ref`. |
-| `environment` | `production` | Any name up to 255 characters, such as `staging` or `review/feature-x`. Names are matched without regard to case, and the first spelling is kept. |
-| `task` | `deploy` | What kind of deployment, such as `deploy:migrations`. Up to 100 characters. |
-| `description` | None | A short note, up to 1,000 characters. |
-| `payload` | `{}` | Anything else to keep with it: a JSON object, or a JSON string of one, up to 64 KB. Returned as given. |
-| `production_environment` | `true` for `production`, else `false` | Whether people use this environment directly. |
-| `transient_environment` | `false` | Whether the environment goes away, such as a review app. |
-| `state` | `queued` | Its first status. See [statuses](#statuses). |
-| `environment_url` | None | Where it is served, an `http` or `https` address. |
-| `log_url` | None | Where its output can be read, an `http` or `https` address. |
+| Field                    | Default                               |                                                                                                                                                   |
+| ------------------------ | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ref`                    | Required                              | The branch, tag or commit deployed, such as `main` or `v1.4.0`.                                                                                   |
+| `sha`                    | Resolved from `ref`                   | The commit deployed. Give the whole commit id to skip resolving `ref`.                                                                            |
+| `environment`            | `production`                          | Any name up to 255 characters, such as `staging` or `review/feature-x`. Names are matched without regard to case, and the first spelling is kept. |
+| `task`                   | `deploy`                              | What kind of deployment, such as `deploy:migrations`. Up to 100 characters.                                                                       |
+| `description`            | None                                  | A short note, up to 1,000 characters.                                                                                                             |
+| `payload`                | `{}`                                  | Anything else to keep with it: a JSON object, or a JSON string of one, up to 64 KB. Returned as given.                                            |
+| `production_environment` | `true` for `production`, else `false` | Whether people use this environment directly.                                                                                                     |
+| `transient_environment`  | `false`                               | Whether the environment goes away, such as a review app.                                                                                          |
+| `state`                  | `queued`                              | Its first status. See [statuses](#statuses).                                                                                                      |
+| `environment_url`        | None                                  | Where it is served, an `http` or `https` address.                                                                                                 |
+| `log_url`                | None                                  | Where its output can be read, an `http` or `https` address.                                                                                       |
 
 ### Report how it went
 
@@ -107,13 +107,13 @@ curl -X POST https://api.g1t.sh/repos/acme/web/deployments/dep_01kq7z9a1c3e5g7j9
   }'
 ```
 
-| Field | Default | |
-| --- | --- | --- |
-| `state` | Required | `queued`, `in_progress`, `success`, `failure`, `error` or `inactive`. |
-| `description` | None | A short note, up to 1,000 characters. |
-| `environment_url` | None | Where it is served, an `http` or `https` address. |
-| `log_url` | None | Where its output can be read, an `http` or `https` address. |
-| `auto_inactive` | `true` | On a `success`, give the environment's older successful deployments an `inactive` status. See [auto_inactive](#auto_inactive). |
+| Field             | Default  |                                                                                                                                |
+| ----------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `state`           | Required | `queued`, `in_progress`, `success`, `failure`, `error` or `inactive`.                                                          |
+| `description`     | None     | A short note, up to 1,000 characters.                                                                                          |
+| `environment_url` | None     | Where it is served, an `http` or `https` address.                                                                              |
+| `log_url`         | None     | Where its output can be read, an `http` or `https` address.                                                                    |
+| `auto_inactive`   | `true`   | On a `success`, give the environment's older successful deployments an `inactive` status. See [auto_inactive](#auto_inactive). |
 
 The deployment takes the status's state, and any address the status gives.
 
@@ -160,14 +160,14 @@ the job.
 
 ## Statuses
 
-| State | Means | The commit's check |
-| --- | --- | --- |
-| `queued` | It is waiting to start. | Pending |
-| `in_progress` | It is deploying. | Pending |
-| `success` | It is live. | Success |
-| `failure` | It did not go live. | Failure |
-| `error` | Something went wrong around it, such as a cancelled run. | Error |
-| `inactive` | It is no longer what the environment serves. | Left as it was |
+| State         | Means                                                    | The commit's check |
+| ------------- | -------------------------------------------------------- | ------------------ |
+| `queued`      | It is waiting to start.                                  | Pending            |
+| `in_progress` | It is deploying.                                         | Pending            |
+| `success`     | It is live.                                              | Success            |
+| `failure`     | It did not go live.                                      | Failure            |
+| `error`       | Something went wrong around it, such as a cancelled run. | Error              |
+| `inactive`    | It is no longer what the environment serves.             | Left as it was     |
 
 A g1t.page build's statuses are read from the build itself: `queued`, then
 `in_progress` while it builds, then how it ended, and `inactive` once a
@@ -198,15 +198,15 @@ environments first.
 then other production environments, then the rest, most recently deployed
 first. Each has:
 
-| Field | |
-| --- | --- |
-| `name` | The environment's name, as first spelled. |
-| `url` | Where it is served: `current`'s `environment_url`. |
-| `production_environment`, `transient_environment` | As its deployments said. |
-| `deployments_count` | How many deployments went to it. |
-| `latest` | Its newest deployment, whatever its state. |
-| `current` | Its newest successful deployment that is still active. Null when none is. |
-| `updated_at` | When it last changed. |
+| Field                                             |                                                                           |
+| ------------------------------------------------- | ------------------------------------------------------------------------- |
+| `name`                                            | The environment's name, as first spelled.                                 |
+| `url`                                             | Where it is served: `current`'s `environment_url`.                        |
+| `production_environment`, `transient_environment` | As its deployments said.                                                  |
+| `deployments_count`                               | How many deployments went to it.                                          |
+| `latest`                                          | Its newest deployment, whatever its state.                                |
+| `current`                                         | Its newest successful deployment that is still active. Null when none is. |
+| `updated_at`                                      | When it last changed.                                                     |
 
 `total_count` counts deployments across every environment.
 `GET /repos/{owner}/{name}/environments/{environment}` returns one, matched
@@ -222,25 +222,25 @@ them.
 
 ## Read deployments
 
-| Route | What it returns |
-| --- | --- |
-| `GET /repos/{owner}/{name}/deployments` | Deployments, newest first, as `{ deployments, total_count, page, per_page }`. |
-| `GET /repos/{owner}/{name}/deployments/{id}` | One deployment, with every status in `statuses`, oldest first. |
-| `GET /repos/{owner}/{name}/deployments/{id}/statuses` | Its statuses, newest first. |
-| `GET /repos/{owner}/{name}/environments` | The environments, as above. |
-| `GET /repos/{owner}/{name}/environments/{environment}` | One environment. |
+| Route                                                  | What it returns                                                               |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| `GET /repos/{owner}/{name}/deployments`                | Deployments, newest first, as `{ deployments, total_count, page, per_page }`. |
+| `GET /repos/{owner}/{name}/deployments/{id}`           | One deployment, with every status in `statuses`, oldest first.                |
+| `GET /repos/{owner}/{name}/deployments/{id}/statuses`  | Its statuses, newest first.                                                   |
+| `GET /repos/{owner}/{name}/environments`               | The environments, as above.                                                   |
+| `GET /repos/{owner}/{name}/environments/{environment}` | One environment.                                                              |
 
 The list takes these filters:
 
-| Query | |
-| --- | --- |
-| `environment` | Only this environment's, matched without regard to case. |
-| `ref` | Only deployments of this branch, tag or commit, as it was given. |
-| `sha` | Only deployments of this commit, or of commits starting with it. |
-| `task` | Only this task's. |
-| `state` | Only deployments whose latest status has this state. |
-| `source` | `api`, `actions` or `g1t_page`. |
-| `creator` | Only those this username made, or `g1t`. |
+| Query              |                                                                         |
+| ------------------ | ----------------------------------------------------------------------- |
+| `environment`      | Only this environment's, matched without regard to case.                |
+| `ref`              | Only deployments of this branch, tag or commit, as it was given.        |
+| `sha`              | Only deployments of this commit, or of commits starting with it.        |
+| `task`             | Only this task's.                                                       |
+| `state`            | Only deployments whose latest status has this state.                    |
+| `source`           | `api`, `actions` or `g1t_page`.                                         |
+| `creator`          | Only those this username made, or `g1t`.                                |
 | `page`, `per_page` | Which page, from 1, and how many on it: 30 unless you say, at most 100. |
 
 ```sh
@@ -250,18 +250,18 @@ curl "https://api.g1t.sh/repos/acme/web/deployments?environment=production&state
 
 A deployment has these fields:
 
-| Field | |
-| --- | --- |
-| `id` | `dep_…`, or `dpl_…` for a g1t.page build. |
-| `environment`, `ref`, `sha`, `task`, `description`, `payload` | As reported. |
-| `production_environment`, `transient_environment` | As reported. |
-| `state` | Its latest status's state. |
-| `environment_url`, `log_url` | The latest addresses it was given. |
-| `creator` | The username of whoever reported it or started its run, or `g1t`. |
-| `source` | `api`, `actions` or `g1t_page`. |
-| `run_id`, `run_url` | The g1t Actions run that made it. Null for other sources. |
-| `project`, `number` | For a g1t.page build: the project, and for a preview its pull request's number. Null for other sources. |
-| `created_at`, `updated_at` | When it was made, and when it last changed. |
+| Field                                                         |                                                                                                         |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `id`                                                          | `dep_…`, or `dpl_…` for a g1t.page build.                                                               |
+| `environment`, `ref`, `sha`, `task`, `description`, `payload` | As reported.                                                                                            |
+| `production_environment`, `transient_environment`             | As reported.                                                                                            |
+| `state`                                                       | Its latest status's state.                                                                              |
+| `environment_url`, `log_url`                                  | The latest addresses it was given.                                                                      |
+| `creator`                                                     | The username of whoever reported it or started its run, or `g1t`.                                       |
+| `source`                                                      | `api`, `actions` or `g1t_page`.                                                                         |
+| `run_id`, `run_url`                                           | The g1t Actions run that made it. Null for other sources.                                               |
+| `project`, `number`                                           | For a g1t.page build: the project, and for a preview its pull request's number. Null for other sources. |
+| `created_at`, `updated_at`                                    | When it was made, and when it last changed.                                                             |
 
 Reading needs the `deployments:read` scope and the Read role. A public
 repository's deployments can be read by anyone. Reporting needs
@@ -399,9 +399,9 @@ starts, and its deployment is made only once it does.
 [Webhooks](/guides/webhooks/) send two events for deployments of every
 source, g1t.page builds included:
 
-| Event | When | `data` |
-| --- | --- | --- |
-| `deployment.created` | A deployment was made. | `repo_id`, `deployment` (without `payload`) |
+| Event                       | When                       | `data`                                                           |
+| --------------------------- | -------------------------- | ---------------------------------------------------------------- |
+| `deployment.created`        | A deployment was made.     | `repo_id`, `deployment` (without `payload`)                      |
 | `deployment_status.created` | A deployment got a status. | `repo_id`, `deployment` (without `payload`), `deployment_status` |
 
 `deployment.succeeded` and `deployment.failed` are sent for g1t.page builds
@@ -411,18 +411,18 @@ only.
 
 The [`workflow` tool](/reference/mcp/#workflow) has an action for each route:
 
-| Action | Route |
-| --- | --- |
-| `list_deployments` | `GET /repos/{owner}/{name}/deployments` |
-| `get_deployment` | `GET /repos/{owner}/{name}/deployments/{id}` |
-| `create_deployment` | `POST /repos/{owner}/{name}/deployments` |
-| `deployment_statuses` | `GET /repos/{owner}/{name}/deployments/{id}/statuses` |
-| `create_deployment_status` | `POST /repos/{owner}/{name}/deployments/{id}/statuses` |
-| `list_environments` | `GET /repos/{owner}/{name}/environments` |
-| `get_environment` | `GET /repos/{owner}/{name}/environments/{environment}` |
-| `update_environment` | `PUT /repos/{owner}/{name}/environments/{environment}` |
-| `delete_environment` | `DELETE /repos/{owner}/{name}/environments/{environment}` |
-| `get_deployment_settings` | `GET /workspaces/{workspace}/projects/{project}/deployments/settings` |
+| Action                       | Route                                                                   |
+| ---------------------------- | ----------------------------------------------------------------------- |
+| `list_deployments`           | `GET /repos/{owner}/{name}/deployments`                                 |
+| `get_deployment`             | `GET /repos/{owner}/{name}/deployments/{id}`                            |
+| `create_deployment`          | `POST /repos/{owner}/{name}/deployments`                                |
+| `deployment_statuses`        | `GET /repos/{owner}/{name}/deployments/{id}/statuses`                   |
+| `create_deployment_status`   | `POST /repos/{owner}/{name}/deployments/{id}/statuses`                  |
+| `list_environments`          | `GET /repos/{owner}/{name}/environments`                                |
+| `get_environment`            | `GET /repos/{owner}/{name}/environments/{environment}`                  |
+| `update_environment`         | `PUT /repos/{owner}/{name}/environments/{environment}`                  |
+| `delete_environment`         | `DELETE /repos/{owner}/{name}/environments/{environment}`               |
+| `get_deployment_settings`    | `GET /workspaces/{workspace}/projects/{project}/deployments/settings`   |
 | `update_deployment_settings` | `PATCH /workspaces/{workspace}/projects/{project}/deployments/settings` |
 
 They take the repository as `repo`, written `owner/name`, and the same

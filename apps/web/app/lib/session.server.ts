@@ -1,10 +1,4 @@
-import {
-  type MiddlewareFunction,
-  type RouterContextProvider,
-  createContext,
-  data,
-  redirect,
-} from "react-router";
+import { type MiddlewareFunction, type RouterContextProvider, createContext, data, redirect } from "react-router";
 
 import { type Result, type Role, type User, type Viewer, hasCodeAccess, httpStatus } from "@g1t/contracts";
 
@@ -103,9 +97,7 @@ export function getViewer(context: Context): Viewer {
 /** The viewer's role in a workspace, or null if they are not a member. */
 export function roleIn(viewer: Viewer, slug: string): Role | null {
   const wanted = slug.toLowerCase();
-  return (
-    viewer?.workspaces?.find((membership) => membership.slug === wanted)?.role ?? null
-  );
+  return viewer?.workspaces?.find((membership) => membership.slug === wanted)?.role ?? null;
 }
 
 /** Whether the viewer may manage a workspace's billing: an owner or a billing manager. */

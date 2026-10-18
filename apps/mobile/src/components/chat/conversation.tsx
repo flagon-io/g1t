@@ -121,14 +121,7 @@ export function Conversation({ channelId, thread, title }: { channelId: string; 
                   <View style={[styles.dayLine, { backgroundColor: colors.line }]} />
                 </View>
               ) : (
-                <Message
-                  message={item.message}
-                  head={item.head}
-                  inThread={!!thread}
-                  onLongPress={setPicked}
-                  onReact={onReact}
-                  onRetry={onRetry}
-                />
+                <Message message={item.message} head={item.head} inThread={!!thread} onLongPress={setPicked} onReact={onReact} onRetry={onRetry} />
               )
             }
             onEndReached={() => messages.hasNextPage && !messages.isFetchingNextPage && messages.fetchNextPage()}
@@ -266,7 +259,12 @@ function dayLabel(date: Date): string {
   const yesterday = new Date(today.getTime() - 86_400_000);
   if (date.toDateString() === today.toDateString()) return "Today";
   if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
-  return date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", ...(date.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}) });
+  return date.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    ...(date.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}),
+  });
 }
 
 function typingText(names: string[]): string {
@@ -279,7 +277,17 @@ function typingText(names: string[]): string {
 const styles = StyleSheet.create({
   day: { flexDirection: "row", alignItems: "center", gap: space.sm, paddingHorizontal: space.lg, paddingVertical: space.md },
   dayLine: { flex: 1, height: StyleSheet.hairlineWidth },
-  jump: { position: "absolute", right: space.lg, bottom: space.md, width: 40, height: 40, borderRadius: 20, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  jump: {
+    position: "absolute",
+    right: space.lg,
+    bottom: space.md,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   typing: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: space.lg, minHeight: 18 },
   quick: { flexDirection: "row", justifyContent: "space-around", paddingHorizontal: space.md, paddingBottom: space.sm },
   quickOne: { width: 48, height: 48, borderRadius: radius.full, alignItems: "center", justifyContent: "center" },

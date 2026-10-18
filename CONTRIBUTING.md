@@ -10,15 +10,15 @@ Documentation is part of the product, held to the same bar as the code.
 A pull request that changes what someone can do, see or call changes the
 docs in the same pull request:
 
-| If you change | Update |
-| --- | --- |
-| Something a person does on g1t.sh | The guide for it in `apps/docs/src/content/docs/guides/` |
-| An API route, a field, or an MCP tool | `apps/api/src/operations.rs` descriptions (they feed the OpenAPI document and the API reference), the example and notes for it in `apps/api/src/reference.json`, `reference/mcp.md`, and any guide that shows the call. Then refresh the docs' copy of the OpenAPI document with `G1T_WRITE_OPENAPI=1 cargo test -p g1t-api openapi`; `cargo test` fails until you do. |
-| What coding agents are told about g1t | `guides/bring-your-own-agent.mdx`, `guides/claude-code-plugin.md`, the plugin's skills in `plugins/claude-code/`, and `apps/web/public/llms.txt` |
-| The Claude Code plugin's files (`plugins/claude-code/`, except `test/`) | Its version, the same in `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`: Claude Code updates an installed plugin only when it changes. On main, `plugins-release.yml` publishes it to `flagon-io/g1t-plugins`, and refuses a changed plugin with a version already published. Never commit to g1t-plugins itself. |
-| Settings, limits or prices | The page that names them, and the table it is in |
-| A new feature | A section in the guide that owns it, linked from the docs home if it is a new task |
-| How g1t is put together: a service, a binding, a store, an event route, the path of a request | Its page in the docs' Architecture section (`apps/docs/src/content/docs/architecture/`), and its diagram in `apps/docs/src/diagrams/architecture.ts`. [How g1t ships](https://docs.g1t.sh/architecture/shipping/#keeping-this-section-true) says which page covers what. |
+| If you change                                                                                 | Update                                                                                                                                                                                                                                                                                                                                                                 |
+| --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Something a person does on g1t.sh                                                             | The guide for it in `apps/docs/src/content/docs/guides/`                                                                                                                                                                                                                                                                                                               |
+| An API route, a field, or an MCP tool                                                         | `apps/api/src/operations.rs` descriptions (they feed the OpenAPI document and the API reference), the example and notes for it in `apps/api/src/reference.json`, `reference/mcp.md`, and any guide that shows the call. Then refresh the docs' copy of the OpenAPI document with `G1T_WRITE_OPENAPI=1 cargo test -p g1t-api openapi`; `cargo test` fails until you do. |
+| What coding agents are told about g1t                                                         | `guides/bring-your-own-agent.mdx`, `guides/claude-code-plugin.md`, the plugin's skills in `plugins/claude-code/`, and `apps/web/public/llms.txt`                                                                                                                                                                                                                       |
+| The Claude Code plugin's files (`plugins/claude-code/`, except `test/`)                       | Its version, the same in `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`: Claude Code updates an installed plugin only when it changes. On main, `plugins-release.yml` publishes it to `flagon-io/g1t-plugins`, and refuses a changed plugin with a version already published. Never commit to g1t-plugins itself.                                  |
+| Settings, limits or prices                                                                    | The page that names them, and the table it is in                                                                                                                                                                                                                                                                                                                       |
+| A new feature                                                                                 | A section in the guide that owns it, linked from the docs home if it is a new task                                                                                                                                                                                                                                                                                     |
+| How g1t is put together: a service, a binding, a store, an event route, the path of a request | Its page in the docs' Architecture section (`apps/docs/src/content/docs/architecture/`), and its diagram in `apps/docs/src/diagrams/architecture.ts`. [How g1t ships](https://docs.g1t.sh/architecture/shipping/#keeping-this-section-true) says which page covers what.                                                                                               |
 
 The style, in short: plain sentences, second person, no marketing words,
 sentence-case headings, a numbered list for steps, a table for options, and
@@ -200,20 +200,20 @@ another tag's entries; a key is written once; and a repository holds
   its cache is keyed by that digest (`zigbuild` from `ci-cache.mjs keys`)
   rather than by this machine's `rustc`.
 
-| Entry | Key | Saved by | Restored by |
-| --- | --- | --- | --- |
-| npm's downloads | `npm-full-<os>-<package-lock.json>` | Caches (`npm`) | every npm install |
-| Crates and their index | `cargo-crates-<os>-<deps>` | CI Rust (`cargo fetch` of the whole lockfile) | Deploy, the runner release |
-| The test build | `cargo-test-<os>-<rust>-<deps>` | CI Rust | CI Rust on pull requests |
-| Workers' builds | `cargo-workers-<os>-<rust>-<group>-<deps>` | Deploy | Deploy |
-| The runner's image build | `runner-musl-<os>-<rust>-<deps>` | Deploy | Deploy |
-| worker-build and its tools | `worker-build-…`, `worker-build-tools-…` | Deploy | Deploy |
-| Compiled crates | sccache's, one per crate | every Rust job | every Rust job |
-| The desktop app's check | `desktop-check-<os>-<rust>-<desktop deps>` | CI desktop | CI desktop on pull requests |
-| apt for Tauri | `apt-tauri-<os>-<scripts/apt-install.sh>` | CI desktop | the desktop release |
-| The runner release | `runner-release-<os>-<target>-<rust>-<deps>`, zig | Caches (`runner`) | the runner release |
-| The desktop release | `desktop-release-linux-…`, `desktop-release-windows-…`, `xwin-…`, `apt-tauri-windows-…` | Caches (`desktop-linux`, `desktop-windows`) | the desktop release |
-| The CLI release | `cli-release-<os>-<zigbuild>-<deps>` (`target/zig`, every platform) | Caches (`cli`), built whole | the CLI release |
+| Entry                      | Key                                                                                     | Saved by                                      | Restored by                 |
+| -------------------------- | --------------------------------------------------------------------------------------- | --------------------------------------------- | --------------------------- |
+| npm's downloads            | `npm-full-<os>-<package-lock.json>`                                                     | Caches (`npm`)                                | every npm install           |
+| Crates and their index     | `cargo-crates-<os>-<deps>`                                                              | CI Rust (`cargo fetch` of the whole lockfile) | Deploy, the runner release  |
+| The test build             | `cargo-test-<os>-<rust>-<deps>`                                                         | CI Rust                                       | CI Rust on pull requests    |
+| Workers' builds            | `cargo-workers-<os>-<rust>-<group>-<deps>`                                              | Deploy                                        | Deploy                      |
+| The runner's image build   | `runner-musl-<os>-<rust>-<deps>`                                                        | Deploy                                        | Deploy                      |
+| worker-build and its tools | `worker-build-…`, `worker-build-tools-…`                                                | Deploy                                        | Deploy                      |
+| Compiled crates            | sccache's, one per crate                                                                | every Rust job                                | every Rust job              |
+| The desktop app's check    | `desktop-check-<os>-<rust>-<desktop deps>`                                              | CI desktop                                    | CI desktop on pull requests |
+| apt for Tauri              | `apt-tauri-<os>-<scripts/apt-install.sh>`                                               | CI desktop                                    | the desktop release         |
+| The runner release         | `runner-release-<os>-<target>-<rust>-<deps>`, zig                                       | Caches (`runner`)                             | the runner release          |
+| The desktop release        | `desktop-release-linux-…`, `desktop-release-windows-…`, `xwin-…`, `apt-tauri-windows-…` | Caches (`desktop-linux`, `desktop-windows`)   | the desktop release         |
+| The CLI release            | `cli-release-<os>-<zigbuild>-<deps>` (`target/zig`, every platform)                     | Caches (`cli`), built whole                   | the CLI release             |
 
 To see whether a change helped, read a run's cache steps: `Cache restored
 from key` names the entry (the key itself is a hit; another is a start),

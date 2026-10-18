@@ -25,10 +25,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);
   const role = roleIn(viewer, params.owner);
   if (!role) throw data(null, { status: 404 });
-  const [teams, workspace] = await Promise.all([
-    identity.listTeams(viewer, params.owner).then(unwrap),
-    identity.getWorkspace(params.owner).catch(() => null),
-  ]);
+  const [teams, workspace] = await Promise.all([identity.listTeams(viewer, params.owner).then(unwrap), identity.getWorkspace(params.owner).catch(() => null)]);
   // Owners only, when the workspace says so: the Teams page says why.
   if (!mayCreateTeams(workspace?.teamCreation, role)) throw redirect(`/${params.owner}/-/teams`);
   // A new team goes under a team its creator may manage.
@@ -61,9 +58,7 @@ export default function NewTeam({ loaderData, actionData, params }: Route.Compon
         Teams
       </Link>
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">New team</h1>
-      <p className="mt-1.5 text-sm text-muted">
-        A group of {params.owner}'s members, given roles on repositories together. You become its maintainer.
-      </p>
+      <p className="mt-1.5 text-sm text-muted">A group of {params.owner}'s members, given roles on repositories together. You become its maintainer.</p>
 
       <Form method="post" className="mt-8 space-y-6">
         <Field label="Name">
@@ -107,9 +102,7 @@ export default function NewTeam({ loaderData, actionData, params }: Route.Compon
                 ))}
               </SelectContent>
             </Select>
-            <span className="mt-1.5 block text-xs text-faint">
-              A child team has its parent's roles on repositories, and hears what is asked of its parent.
-            </span>
+            <span className="mt-1.5 block text-xs text-faint">A child team has its parent's roles on repositories, and hears what is asked of its parent.</span>
           </div>
         )}
 

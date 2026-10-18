@@ -57,13 +57,16 @@ export function SpikeBanner({
         <p className={compact ? "text-xs text-muted" : "mt-3 text-sm text-muted"}>An owner chooses Keep going or Stop on Billing.</p>
       ) : (
         <p className={compact ? "text-xs text-muted" : "mt-3 text-sm text-muted"}>
-          Write to <a href="mailto:support@g1t.sh" className="underline underline-offset-2">support@g1t.sh</a> to have it looked at.
+          Write to{" "}
+          <a href="mailto:support@g1t.sh" className="underline underline-offset-2">
+            support@g1t.sh
+          </a>{" "}
+          to have it looked at.
         </p>
       )}
       {!compact && spike && (
         <p className="mt-3 text-xs text-faint">
-          Keep going lets work start again for 24 hours, unless spending doubles again first. Stop keeps new compute paused until you
-          choose Keep going.
+          Keep going lets work start again for 24 hours, unless spending doubles again first. Stop keeps new compute paused until you choose Keep going.
         </p>
       )}
     </div>

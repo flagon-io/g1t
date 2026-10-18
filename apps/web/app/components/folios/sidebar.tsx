@@ -8,8 +8,34 @@ import { useSidebarLocation } from "../../lib/use-sidebar-location";
  * projects' docs folders (read-only) and the trash. Rows are dragged to
  * reorder them or to put one inside a doc.
  */
-import { FOLIO_KINDS, folioIdFrom, folioSlug, type DocRepoSpace, type FolioKind, type FolioRef, type FolioTreeNode, type FoliosSidebarSpace } from "@g1t/contracts";
-import { AlertTriangle, ChevronDown, ChevronRight, Compass, FileText, Folder, FolderGit2, Home, LayoutTemplate, Lock, Plus, Search, Settings, Star, Trash2, X } from "lucide-react";
+import {
+  FOLIO_KINDS,
+  folioIdFrom,
+  folioSlug,
+  type DocRepoSpace,
+  type FolioKind,
+  type FolioRef,
+  type FolioTreeNode,
+  type FoliosSidebarSpace,
+} from "@g1t/contracts";
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronRight,
+  Compass,
+  FileText,
+  Folder,
+  FolderGit2,
+  Home,
+  LayoutTemplate,
+  Lock,
+  Plus,
+  Search,
+  Settings,
+  Star,
+  Trash2,
+  X,
+} from "lucide-react";
 import { type DragEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { NavLink, useNavigate, useParams, useRevalidator } from "react-router";
 
@@ -25,11 +51,17 @@ import { warmOnIntent } from "./list";
 import { SpaceIcon } from "./parts";
 
 const ROW = "group flex h-9 items-center gap-1.5 rounded-md pr-1 text-[0.8125rem] transition-colors";
-const ROW_BUTTON = "flex size-6 shrink-0 items-center justify-center rounded text-faint opacity-0 group-hover:opacity-100 hover:bg-line hover:text-fg focus-visible:opacity-100 pointer-coarse:size-9 pointer-coarse:opacity-100";
+const ROW_BUTTON =
+  "flex size-6 shrink-0 items-center justify-center rounded text-faint opacity-0 group-hover:opacity-100 hover:bg-line hover:text-fg focus-visible:opacity-100 pointer-coarse:size-9 pointer-coarse:opacity-100";
 
 function SideLink({ to, end, icon, children, trailing }: { to: string; end?: boolean; icon: ReactNode; children: ReactNode; trailing?: ReactNode }) {
   return (
-    <NavLink to={to} end={end} prefetch="intent" className={({ isActive }) => `${ROW} pl-2 ${isActive ? "bg-sidebar-accent font-medium text-fg" : "text-muted hover:bg-sidebar-accent/60 hover:text-fg"}`}>
+    <NavLink
+      to={to}
+      end={end}
+      prefetch="intent"
+      className={({ isActive }) => `${ROW} pl-2 ${isActive ? "bg-sidebar-accent font-medium text-fg" : "text-muted hover:bg-sidebar-accent/60 hover:text-fg"}`}
+    >
       <span className="flex w-5 shrink-0 justify-center text-faint">{icon}</span>
       <span className="min-w-0 grow truncate">{children}</span>
       {trailing}
@@ -42,7 +74,12 @@ function Section({ title, children, action, open: initially = true }: { title: s
   return (
     <section className="mt-4">
       <div className="mb-0.5 flex items-center gap-1 pr-1">
-        <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="flex grow items-center gap-1 rounded px-1 text-[0.6875rem] font-medium tracking-wide text-faint uppercase transition-colors hover:text-muted">
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          aria-expanded={open}
+          className="flex grow items-center gap-1 rounded px-1 text-[0.6875rem] font-medium tracking-wide text-faint uppercase transition-colors hover:text-muted"
+        >
           <ChevronRight size={12} className={`transition-transform ${open ? "rotate-90" : ""}`} />
           {title}
         </button>
@@ -79,7 +116,29 @@ type Drag = { id: string; place: string } | null;
 /** Where a tree lives: a space (by id) or the viewer's Private (null). */
 type Place = { space_id: string | null; key: string; editable: boolean };
 
-function TreeRow({ slug, place, item, current, open, toggle, drag, setDrag, onDrop, onAdd }: { slug: string; place: Place; item: TreeItem; current: string | null; open: Set<string>; toggle: (id: string) => void; drag: Drag; setDrag: (d: Drag) => void; onDrop: (target: TreeItem, where: "before" | "inside") => void; onAdd: (parent: string) => void }) {
+function TreeRow({
+  slug,
+  place,
+  item,
+  current,
+  open,
+  toggle,
+  drag,
+  setDrag,
+  onDrop,
+  onAdd,
+}: {
+  slug: string;
+  place: Place;
+  item: TreeItem;
+  current: string | null;
+  open: Set<string>;
+  toggle: (id: string) => void;
+  drag: Drag;
+  setDrag: (d: Drag) => void;
+  onDrop: (target: TreeItem, where: "before" | "inside") => void;
+  onAdd: (parent: string) => void;
+}) {
   const [over, setOver] = useState<"before" | "inside" | null>(null);
   const expanded = open.has(item.id);
   const active = current === item.id;
@@ -124,7 +183,12 @@ function TreeRow({ slug, place, item, current, open, toggle, drag, setDrag, onDr
         >
           <ChevronRight size={13} className={`transition-transform ${expanded ? "rotate-90" : ""}`} />
         </button>
-        <NavLink to={`/${slug}/-/artifacts/${folioSlug(item.title, item.id)}`} prefetch="intent" {...warmOnIntent(item)} className="flex min-w-0 grow items-center gap-1.5">
+        <NavLink
+          to={`/${slug}/-/artifacts/${folioSlug(item.title, item.id)}`}
+          prefetch="intent"
+          {...warmOnIntent(item)}
+          className="flex min-w-0 grow items-center gap-1.5"
+        >
           <span className="flex w-4 shrink-0 justify-center">
             <FolioGlyph folio={item} size={14} />
           </span>
@@ -151,7 +215,19 @@ function TreeRow({ slug, place, item, current, open, toggle, drag, setDrag, onDr
       {expanded && item.children.length > 0 && (
         <ul>
           {item.children.map((child) => (
-            <TreeRow key={child.id} slug={slug} place={place} item={child} current={current} open={open} toggle={toggle} drag={drag} setDrag={setDrag} onDrop={onDrop} onAdd={onAdd} />
+            <TreeRow
+              key={child.id}
+              slug={slug}
+              place={place}
+              item={child}
+              current={current}
+              open={open}
+              toggle={toggle}
+              drag={drag}
+              setDrag={setDrag}
+              onDrop={onDrop}
+              onAdd={onAdd}
+            />
           ))}
         </ul>
       )}
@@ -160,7 +236,23 @@ function TreeRow({ slug, place, item, current, open, toggle, drag, setDrag, onDr
 }
 
 /** A tree of folios in one place, opened to the one being read; drag to reorder or nest. */
-function Tree({ slug, place, nodes, current, drag, setDrag, empty }: { slug: string; place: Place; nodes: FolioTreeNode[]; current: string | null; drag: Drag; setDrag: (d: Drag) => void; empty: string }) {
+function Tree({
+  slug,
+  place,
+  nodes,
+  current,
+  drag,
+  setDrag,
+  empty,
+}: {
+  slug: string;
+  place: Place;
+  nodes: FolioTreeNode[];
+  current: string | null;
+  drag: Drag;
+  setDrag: (d: Drag) => void;
+  empty: string;
+}) {
   const navigate = useNavigate();
   const { send } = useFoliosAction(slug);
   const tree = useMemo(() => buildTree(nodes), [nodes]);
@@ -187,7 +279,10 @@ function Tree({ slug, place, nodes, current, drag, setDrag, empty }: { slug: str
   };
   const drop = async (target: TreeItem, where: "before" | "inside") => {
     if (!drag) return;
-    const move = where === "inside" ? { space_id: place.space_id, parent_id: target.id, before_id: null } : { space_id: place.space_id, parent_id: target.parent_id, before_id: target.id };
+    const move =
+      where === "inside"
+        ? { space_id: place.space_id, parent_id: target.id, before_id: null }
+        : { space_id: place.space_id, parent_id: target.parent_id, before_id: target.id };
     setDrag(null);
     await send("move", { folio_id: drag.id, move });
     if (where === "inside") setOpen((was) => new Set([...was, target.id]));
@@ -195,14 +290,38 @@ function Tree({ slug, place, nodes, current, drag, setDrag, empty }: { slug: str
   return (
     <ul>
       {tree.map((item) => (
-        <TreeRow key={item.id} slug={slug} place={place} item={item} current={current} open={open} toggle={toggle} drag={drag} setDrag={setDrag} onDrop={drop} onAdd={add} />
+        <TreeRow
+          key={item.id}
+          slug={slug}
+          place={place}
+          item={item}
+          current={current}
+          open={open}
+          toggle={toggle}
+          drag={drag}
+          setDrag={setDrag}
+          onDrop={drop}
+          onAdd={add}
+        />
       ))}
       {tree.length === 0 && <li className="py-1 pr-2 pl-9 text-xs text-faint">{empty}</li>}
     </ul>
   );
 }
 
-function SpaceTree({ slug, space, current, drag, setDrag }: { slug: string; space: FoliosSidebarSpace; current: string | null; drag: Drag; setDrag: (d: Drag) => void }) {
+function SpaceTree({
+  slug,
+  space,
+  current,
+  drag,
+  setDrag,
+}: {
+  slug: string;
+  space: FoliosSidebarSpace;
+  current: string | null;
+  drag: Drag;
+  setDrag: (d: Drag) => void;
+}) {
   const navigate = useNavigate();
   const { send } = useFoliosAction(slug);
   const [collapsed, setCollapsed] = useState(false);
@@ -224,10 +343,23 @@ function SpaceTree({ slug, space, current, drag, setDrag }: { slug: string; spac
           await send("move", { folio_id: id, move: { space_id: space.id, parent_id: null, before_id: null } });
         }}
       >
-        <Button type="button" onClick={() => setCollapsed(!collapsed)} aria-expanded={!collapsed} aria-label={collapsed ? `Show ${space.name}` : `Hide ${space.name}`} variant="ghost" size="icon" className="size-5 rounded text-faint hover:bg-line">
+        <Button
+          type="button"
+          onClick={() => setCollapsed(!collapsed)}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? `Show ${space.name}` : `Hide ${space.name}`}
+          variant="ghost"
+          size="icon"
+          className="size-5 rounded text-faint hover:bg-line"
+        >
           <ChevronRight size={13} className={`transition-transform ${collapsed ? "" : "rotate-90"}`} />
         </Button>
-        <NavLink to={spacePath(slug, space.slug)} end prefetch="intent" className={({ isActive }) => `flex min-w-0 grow items-center gap-1.5 font-medium ${isActive ? "text-fg" : ""}`}>
+        <NavLink
+          to={spacePath(slug, space.slug)}
+          end
+          prefetch="intent"
+          className={({ isActive }) => `flex min-w-0 grow items-center gap-1.5 font-medium ${isActive ? "text-fg" : ""}`}
+        >
           <span className="flex w-4 shrink-0 justify-center">
             <SpaceIcon space={space} size={14} />
           </span>
@@ -267,7 +399,12 @@ function RepoFolderRows({ slug, repo, folder, depth, current }: { slug: string; 
     <>
       {folder.files.map((f) => (
         <li key={f.path}>
-          <NavLink to={repoFilePath(slug, repo, f.path)} prefetch="intent" className={({ isActive }) => `${ROW} ${isActive ? "bg-sidebar-accent font-medium text-fg" : "text-muted hover:bg-sidebar-accent/60 hover:text-fg"}`} style={{ paddingLeft: 26 + depth * 14 }}>
+          <NavLink
+            to={repoFilePath(slug, repo, f.path)}
+            prefetch="intent"
+            className={({ isActive }) => `${ROW} ${isActive ? "bg-sidebar-accent font-medium text-fg" : "text-muted hover:bg-sidebar-accent/60 hover:text-fg"}`}
+            style={{ paddingLeft: 26 + depth * 14 }}
+          >
             <FileText size={14} className="shrink-0 text-faint" aria-hidden="true" />
             <span className="min-w-0 truncate">{f.title}</span>
           </NavLink>
@@ -317,7 +454,15 @@ function RepoTree({ slug, space }: { slug: string; space: DocRepoSpace }) {
   return (
     <li className="mt-1">
       <div className={`${ROW} text-fg-soft`}>
-        <Button type="button" onClick={() => setCollapsed(!collapsed)} aria-expanded={!collapsed} aria-label={collapsed ? `Show ${space.repo}'s docs` : `Hide ${space.repo}'s docs`} variant="ghost" size="icon" className="size-5 rounded text-faint hover:bg-line">
+        <Button
+          type="button"
+          onClick={() => setCollapsed(!collapsed)}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? `Show ${space.repo}'s docs` : `Hide ${space.repo}'s docs`}
+          variant="ghost"
+          size="icon"
+          className="size-5 rounded text-faint hover:bg-line"
+        >
           <ChevronRight size={13} className={`transition-transform ${collapsed ? "" : "rotate-90"}`} />
         </Button>
         <span className="flex w-4 shrink-0 justify-center">
@@ -328,7 +473,9 @@ function RepoTree({ slug, space }: { slug: string; space: DocRepoSpace }) {
       {!collapsed && (
         <ul>
           <RepoFolderRows slug={slug} repo={space.repo} folder={root} depth={0} current={decodeURIComponent(pathname)} />
-          {space.files.length === 0 && <li className="py-1 pr-2 pl-9 text-xs text-faint">{space.indexed_at ? "No docs folder or README." : "Reading its docs…"}</li>}
+          {space.files.length === 0 && (
+            <li className="py-1 pr-2 pl-9 text-xs text-faint">{space.indexed_at ? "No docs folder or README." : "Reading its docs…"}</li>
+          )}
         </ul>
       )}
     </li>
@@ -392,7 +539,12 @@ export function FoliosSidebar({ slug, onClose }: { slug: string; onClose?: () =>
           <label className="flex h-8 items-center gap-2 rounded-md border border-line bg-bg px-2 text-[0.8125rem] text-faint focus-within:border-accent/60">
             <Search size={14} aria-hidden="true" />
             <span className="sr-only">Search artifacts</span>
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search artifacts" className="min-w-0 grow bg-transparent text-fg outline-none placeholder:text-faint" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search artifacts"
+              className="min-w-0 grow bg-transparent text-fg outline-none placeholder:text-faint"
+            />
           </label>
         </form>
         {error && <p className="mb-2 px-2 text-xs text-danger">{error}</p>}
@@ -459,7 +611,14 @@ export function FoliosSidebar({ slug, onClose }: { slug: string; onClose?: () =>
               title="Private"
               action={
                 <Hint label="New private doc">
-                  <Button type="button" onClick={() => make("doc")} aria-label="New private doc" variant="ghost" size="icon" className="size-6 rounded text-faint">
+                  <Button
+                    type="button"
+                    onClick={() => make("doc")}
+                    aria-label="New private doc"
+                    variant="ghost"
+                    size="icon"
+                    className="size-6 rounded text-faint"
+                  >
                     <Plus size={13} />
                   </Button>
                 </Hint>
@@ -480,7 +639,15 @@ export function FoliosSidebar({ slug, onClose }: { slug: string; onClose?: () =>
                   else setError(moved.error.message);
                 }}
               >
-                <Tree slug={slug} place={{ space_id: null, key: "private", editable: true }} nodes={sidebar.private_tree} current={current} drag={drag} setDrag={setDrag} empty="Only you can see what's here." />
+                <Tree
+                  slug={slug}
+                  place={{ space_id: null, key: "private", editable: true }}
+                  nodes={sidebar.private_tree}
+                  current={current}
+                  drag={drag}
+                  setDrag={setDrag}
+                  empty="Only you can see what's here."
+                />
               </div>
             </Section>
             {sidebar.shared.length > 0 && (
@@ -494,7 +661,11 @@ export function FoliosSidebar({ slug, onClose }: { slug: string; onClose?: () =>
             )}
             <div className="mt-4 space-y-px">
               {!!sidebar.stale_count && (
-                <SideLink to={`/${slug}/-/artifacts/stale`} icon={<AlertTriangle size={15} className="text-warn" />} trailing={<span className="text-[0.6875rem] text-warn tabular-nums">{sidebar.stale_count}</span>}>
+                <SideLink
+                  to={`/${slug}/-/artifacts/stale`}
+                  icon={<AlertTriangle size={15} className="text-warn" />}
+                  trailing={<span className="text-[0.6875rem] text-warn tabular-nums">{sidebar.stale_count}</span>}
+                >
                   Possibly out of date
                 </SideLink>
               )}
@@ -504,7 +675,14 @@ export function FoliosSidebar({ slug, onClose }: { slug: string; onClose?: () =>
               open={(sidebar.repos ?? []).length > 0}
               action={
                 <Hint label="Show a project's docs">
-                  <Button type="button" onClick={() => setAddingRepo(true)} aria-label="Show a project's docs" variant="ghost" size="icon" className="size-6 rounded text-faint">
+                  <Button
+                    type="button"
+                    onClick={() => setAddingRepo(true)}
+                    aria-label="Show a project's docs"
+                    variant="ghost"
+                    size="icon"
+                    className="size-6 rounded text-faint"
+                  >
                     <Plus size={13} />
                   </Button>
                 </Hint>
@@ -524,11 +702,21 @@ export function FoliosSidebar({ slug, onClose }: { slug: string; onClose?: () =>
               </ul>
             </Section>
             <div className="mt-4 space-y-px">
-              <SideLink to={`/${slug}/-/artifacts/trash`} icon={<Trash2 size={15} />} trailing={sidebar.trash_count ? <span className="text-[0.6875rem] text-faint tabular-nums">{sidebar.trash_count}</span> : undefined}>
+              <SideLink
+                to={`/${slug}/-/artifacts/trash`}
+                icon={<Trash2 size={15} />}
+                trailing={sidebar.trash_count ? <span className="text-[0.6875rem] text-faint tabular-nums">{sidebar.trash_count}</span> : undefined}
+              >
                 Trash
               </SideLink>
             </div>
-            <RepoDocsDialog slug={slug} open={addingRepo} onOpenChange={setAddingRepo} shown={(sidebar.repos ?? []).map((r) => r.repo.toLowerCase())} onAdded={() => void revalidate()} />
+            <RepoDocsDialog
+              slug={slug}
+              open={addingRepo}
+              onOpenChange={setAddingRepo}
+              shown={(sidebar.repos ?? []).map((r) => r.repo.toLowerCase())}
+              onAdded={() => void revalidate()}
+            />
           </>
         )}
       </nav>

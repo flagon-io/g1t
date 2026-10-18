@@ -1,45 +1,45 @@
 {
-	"$schema": "../../node_modules/wrangler/config-schema.json",
-	"name": "g1t-work",
-	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
-	"compatibility_date": "2026-09-26",
-	// Runs next to its database: a request makes several queries in turn,
-	// and each would otherwise cross the distance to it.
-	"placement": { "mode": "off" },
-	"main": "build/index.js",
-	// Moves repositories' issues into their workspaces' work items, a page
-	// at a time, until done (src/items/migration.rs); `migrate_work_items`
-	// runs the same step at once.
-	"triggers": { "crons": ["*/5 * * * *"] },
-	"build": { "command": "node ../../scripts/build-rust-worker.mjs" },
-	"workers_dev": false,
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "g1t-work",
-			"database_id": "f35a9022-e36b-4547-b596-9ab9d5f1c47a",
-			"migrations_dir": "migrations"
-		}
-	],
-	// Attachments' bytes (src/attachments.rs), in the namespace the
-	// usercontent origin serves from (apps/web/workers/usercontent.ts),
-	// under attachments/<id>.
-	"kv_namespaces": [{ "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" }],
-	"services": [
-		{ "binding": "IDENTITY", "service": "g1t-identity" },
-		{ "binding": "REPOS", "service": "g1t-repos" },
-		{ "binding": "EVENTS", "service": "g1t-events" },
-		{ "binding": "ACTIONS", "service": "g1t-actions" },
-		// The workspace's AI provider, which names sessions from what they
-		// did (src/coordination/titles.rs, integrations' `ai_brief`).
-		{ "binding": "INTEGRATIONS", "service": "g1t-integrations" }
-	],
-	"queues": {
-		"consumers": [{ "queue": "g1t-events-work", "max_batch_size": 100, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
-	},
-	// Logs of a quarter of requests: every work item and pull request page asks
-	// it, so keeping every one costs more than it tells, and a quarter
-	// still catches a rare error within hours. Repos, which it asks most,
-	// logs its slow answers as fields (`answered_ms`, services/repos/src/lib.rs).
-	"observability": { "enabled": true, "head_sampling_rate": 0.25 }
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "g1t-work",
+  "account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+  "compatibility_date": "2026-09-26",
+  // Runs next to its database: a request makes several queries in turn,
+  // and each would otherwise cross the distance to it.
+  "placement": { "mode": "off" },
+  "main": "build/index.js",
+  // Moves repositories' issues into their workspaces' work items, a page
+  // at a time, until done (src/items/migration.rs); `migrate_work_items`
+  // runs the same step at once.
+  "triggers": { "crons": ["*/5 * * * *"] },
+  "build": { "command": "node ../../scripts/build-rust-worker.mjs" },
+  "workers_dev": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "g1t-work",
+      "database_id": "f35a9022-e36b-4547-b596-9ab9d5f1c47a",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Attachments' bytes (src/attachments.rs), in the namespace the
+  // usercontent origin serves from (apps/web/workers/usercontent.ts),
+  // under attachments/<id>.
+  "kv_namespaces": [{ "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" }],
+  "services": [
+    { "binding": "IDENTITY", "service": "g1t-identity" },
+    { "binding": "REPOS", "service": "g1t-repos" },
+    { "binding": "EVENTS", "service": "g1t-events" },
+    { "binding": "ACTIONS", "service": "g1t-actions" },
+    // The workspace's AI provider, which names sessions from what they
+    // did (src/coordination/titles.rs, integrations' `ai_brief`).
+    { "binding": "INTEGRATIONS", "service": "g1t-integrations" }
+  ],
+  "queues": {
+    "consumers": [{ "queue": "g1t-events-work", "max_batch_size": 100, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
+  },
+  // Logs of a quarter of requests: every work item and pull request page asks
+  // it, so keeping every one costs more than it tells, and a quarter
+  // still catches a rare error within hours. Repos, which it asks most,
+  // logs its slow answers as fields (`answered_ms`, services/repos/src/lib.rs).
+  "observability": { "enabled": true, "head_sampling_rate": 0.25 }
 }

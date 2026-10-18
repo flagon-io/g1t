@@ -12,17 +12,7 @@ import { TabStrip } from "../components/ui/tab-strip";
 import { Combobox } from "../components/ui/combobox";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { page } from "../lib/meta";
-import {
-  LANGUAGES,
-  QUALIFIERS,
-  TYPE_LABELS,
-  isValue,
-  qualifier,
-  searchHref,
-  shortCount,
-  withIs,
-  withQualifier,
-} from "../lib/search";
+import { LANGUAGES, QUALIFIERS, TYPE_LABELS, isValue, qualifier, searchHref, shortCount, withIs, withQualifier } from "../lib/search";
 import { search } from "../lib/services.server";
 import { getViewer } from "../lib/session.server";
 
@@ -50,9 +40,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   if (!q) return { q, type, results: null, error: null };
   try {
     const found = await search.search(getViewer(context), q, { type, page: pageNumber });
-    return found.ok
-      ? { q, type, results: found.value, error: null }
-      : { q, type, results: null, error: found.error.message };
+    return found.ok ? { q, type, results: found.value, error: null } : { q, type, results: null, error: found.error.message };
   } catch {
     return { q, type, results: null, error: "Search cannot be reached right now. Try again in a moment." };
   }
@@ -82,8 +70,7 @@ function SyntaxHelp() {
       </PopoverTrigger>
       <PopoverContent align="end" className="w-96 p-0">
         <p className="border-b border-line px-4 py-3 text-xs text-muted">
-          Words match anywhere; the last word also matches longer words it starts. Put qualifiers anywhere in the
-          query.
+          Words match anywhere; the last word also matches longer words it starts. Put qualifiers anywhere in the query.
         </p>
         <dl className="divide-y divide-line">
           {QUALIFIERS.map((item) => (
@@ -93,10 +80,7 @@ function SyntaxHelp() {
             </div>
           ))}
         </dl>
-        <a
-          href="https://docs.g1t.sh/guides/search/"
-          className="block border-t border-line px-4 py-2.5 text-xs text-accent hover:underline"
-        >
+        <a href="https://docs.g1t.sh/guides/search/" className="block border-t border-line px-4 py-2.5 text-xs text-accent hover:underline">
           Everything search understands
         </a>
       </PopoverContent>
@@ -109,9 +93,7 @@ function Pill({ to, current, children }: { to: string; current: boolean; childre
     <Link
       to={to}
       aria-current={current ? "true" : undefined}
-      className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-        current ? "bg-raised text-fg ring-1 ring-line" : "text-muted hover:text-fg"
-      }`}
+      className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${current ? "bg-raised text-fg ring-1 ring-line" : "text-muted hover:text-fg"}`}
     >
       {children}
     </Link>
@@ -130,15 +112,11 @@ export default function Search({ loaderData }: Route.ComponentProps) {
     <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
       <h1 className="text-2xl font-semibold tracking-tight">Search</h1>
       <p className="mt-1 text-sm text-muted">
-        Repositories, code, work items, pull requests and people: everything public on g1t, and what is private to the
-        workspaces you belong to.
+        Repositories, code, work items, pull requests and people: everything public on g1t, and what is private to the workspaces you belong to.
       </p>
       <div className="mt-6 flex gap-2">
         <Form action="/search" role="search" className="relative grow">
-          <SearchIcon
-            size={16}
-            className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-faint"
-          />
+          <SearchIcon size={16} className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-faint" />
           <input
             key={q}
             name="q"
@@ -179,11 +157,7 @@ export default function Search({ loaderData }: Route.ComponentProps) {
               }`}
             >
               {TYPE_LABELS[each]}
-              {results && (
-                <span className="rounded-full bg-raised px-1.5 py-px text-xs tabular-nums text-muted">
-                  {shortCount(results.counts[each])}
-                </span>
-              )}
+              {results && <span className="rounded-full bg-raised px-1.5 py-px text-xs tabular-nums text-muted">{shortCount(results.counts[each])}</span>}
             </Link>
           ))}
         </TabStrip>
@@ -198,10 +172,7 @@ export default function Search({ loaderData }: Route.ComponentProps) {
                 value={language ?? "any"}
                 placeholder="Any language"
                 searchPlaceholder="Find a language…"
-                options={[
-                  { value: "any", label: "Any language" },
-                  ...languages.map((name) => ({ value: name, label: name })),
-                ]}
+                options={[{ value: "any", label: "Any language" }, ...languages.map((name) => ({ value: name, label: name }))]}
                 onValueChange={(value) => go(withQualifier(q, "language", value === "any" ? null : value, ["lang"]))}
               />
             </div>
@@ -209,11 +180,7 @@ export default function Search({ loaderData }: Route.ComponentProps) {
           {(type === "items" || type === "pulls") && (
             <Card tone="bg" radius="lg" className="flex items-center gap-1 p-1">
               {STATES[type].map((state) => (
-                <Pill
-                  key={state.label}
-                  to={searchHref(withIs(q, STATE_FAMILY, state.value), type)}
-                  current={isValue(q, STATE_FAMILY) === state.value}
-                >
+                <Pill key={state.label} to={searchHref(withIs(q, STATE_FAMILY, state.value), type)} current={isValue(q, STATE_FAMILY) === state.value}>
                   {state.label}
                 </Pill>
               ))}
@@ -221,14 +188,12 @@ export default function Search({ loaderData }: Route.ComponentProps) {
           )}
           {type === "code" && (
             <p className="text-xs text-faint">
-              Narrow with <span className="font-mono text-muted">path:src/</span> or{" "}
-              <span className="font-mono text-muted">path:*.rs</span>.
+              Narrow with <span className="font-mono text-muted">path:src/</span> or <span className="font-mono text-muted">path:*.rs</span>.
             </p>
           )}
           {(type === "items" || type === "pulls") && (
             <p className="text-xs text-faint">
-              Narrow with <span className="font-mono text-muted">author:</span> and{" "}
-              <span className="font-mono text-muted">label:</span>.
+              Narrow with <span className="font-mono text-muted">author:</span> and <span className="font-mono text-muted">label:</span>.
             </p>
           )}
         </div>
@@ -236,9 +201,7 @@ export default function Search({ loaderData }: Route.ComponentProps) {
 
       {results?.notes.map((note) => (
         <Card asChild key={note} radius="lg" className="mt-4 px-4 py-3 text-sm text-muted">
-          <p>
-            {note}
-          </p>
+          <p>{note}</p>
         </Card>
       ))}
       {error && <p className="mt-4 rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm">{error}</p>}

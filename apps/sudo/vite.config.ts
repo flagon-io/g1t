@@ -5,11 +5,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  plugins: [
-    cloudflare({ viteEnvironment: { name: "ssr" } }),
-    tailwindcss(),
-    reactRouter(),
-  ],
+  plugins: [cloudflare({ viteEnvironment: { name: "ssr" } }), tailwindcss(), reactRouter()],
   resolve: {
     // `~/` is app/, set here rather than read from tsconfig's paths: those
     // apply only to files tsconfig includes, and a build beside the other

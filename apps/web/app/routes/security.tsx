@@ -19,8 +19,7 @@ export default function Security() {
       title="How g1t keeps your code and accounts safe"
       lede={
         <p>
-          What we actually do to protect what you build on g1t, and what we haven't built yet. Found a problem? Write
-          to{" "}
+          What we actually do to protect what you build on g1t, and what we haven't built yet. Found a problem? Write to{" "}
           <a className="text-accent hover:underline" href={`mailto:${CONTACT.security}`}>
             {CONTACT.security}
           </a>

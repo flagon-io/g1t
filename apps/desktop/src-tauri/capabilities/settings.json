@@ -1,20 +1,20 @@
 {
-	"$schema": "../gen/schemas/desktop-schema.json",
-	"identifier": "settings",
-	"description": "The settings window, a page bundled with the app (launcher/settings.html). Its commands answer only this window (src/bridge.rs).",
-	"windows": ["settings"],
-	"permissions": [
-		"core:default",
-		"allow-get-settings",
-		"allow-save-settings",
-		"allow-set-open-at-login",
-		"allow-change-server",
-		"allow-check-for-updates",
-		"allow-restart-to-update",
-		"allow-restart",
-		"allow-open-url",
-		"allow-window-control",
-		"allow-runner-status",
-		"allow-runner-control"
-	]
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "settings",
+  "description": "The settings window, a page bundled with the app (launcher/settings.html). Its commands answer only this window (src/bridge.rs).",
+  "windows": ["settings"],
+  "permissions": [
+    "core:default",
+    "allow-get-settings",
+    "allow-save-settings",
+    "allow-set-open-at-login",
+    "allow-change-server",
+    "allow-check-for-updates",
+    "allow-restart-to-update",
+    "allow-restart",
+    "allow-open-url",
+    "allow-window-control",
+    "allow-runner-status",
+    "allow-runner-control"
+  ]
 }

@@ -78,15 +78,10 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     cached = false;
     // At once: a commit is compared with its first parent, so the diff
     // does not wait for the commit.
-    const [log, compared] = await Promise.all([
-      repos.log(path, viewer, hash, 1),
-      repos.compare(found.id, viewer, null, hash),
-    ]);
+    const [log, compared] = await Promise.all([repos.log(path, viewer, hash, 1), repos.compare(found.id, viewer, null, hash)]);
     const commit = log.ok ? log.value[0] : undefined;
     if (!commit) return null;
-    const comparison: Comparison = compared.ok
-      ? compared.value
-      : { base: null, head: commit.hash, files: [], truncated: false };
+    const comparison: Comparison = compared.ok ? compared.value : { base: null, head: commit.hash, files: [], truncated: false };
     return { commit, comparison };
   });
   if (!loaded) throw new Response("Commit not found.", { status: 404 });
@@ -126,8 +121,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const body = String(form.get("body") ?? "");
   if (action === "edit-comment" || action === "delete-comment") {
     const id = String(form.get("comment") ?? "");
-    const changed =
-      action === "edit-comment" ? await work.editCommitComment(user, path, id, body) : await work.deleteCommitComment(user, path, id);
+    const changed = action === "edit-comment" ? await work.editCommitComment(user, path, id, body) : await work.deleteCommitComment(user, path, id);
     return changed.ok ? null : { action, comment: id, error: changed.error.message };
   }
   if (action !== "comment") return { action, error: "Unknown action." };
@@ -135,13 +129,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   // On one line of a file it changed, from the diff, or on the whole commit.
   const file = String(form.get("path") ?? "");
   const line = Number(form.get("line"));
-  const added = await work.addCommitComment(
-    user,
-    path,
-    params.hash.toLowerCase(),
-    body,
-    file && line > 0 ? { path: file, line } : undefined,
-  );
+  const added = await work.addCommitComment(user, path, params.hash.toLowerCase(), body, file && line > 0 ? { path: file, line } : undefined);
   return added.ok ? null : { action, error: added.error.message };
 }
 
@@ -155,7 +143,12 @@ function CopyHash({ hash }: { hash: string }) {
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
         });
-      }} variant="outline" size="inline" className="bg-bg px-2 py-1 font-mono text-xs text-muted" aria-label="Copy the full hash">
+      }}
+      variant="outline"
+      size="inline"
+      className="bg-bg px-2 py-1 font-mono text-xs text-muted"
+      aria-label="Copy the full hash"
+    >
       {hash.slice(0, 12)}
       {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
     </Button>
@@ -167,27 +160,27 @@ function MergedIn({ base, pull }: { base: string; pull: Pull }) {
   const byAgent = pull.runtime === "hosted";
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line px-5 py-3 text-sm">
-            <span className="flex items-center gap-2">
-              <GitPullRequest size={15} className="text-merged" />
-              <span className="text-muted">Merged in</span>
-              <Link to={`${base}/pull/${pull.number}`} className="font-medium hover:underline">
-                {pull.title} <span className="font-normal text-faint">#{pull.number}</span>
-              </Link>
-            </span>
-            {byAgent && (
-              <Badge tone="accent" size="md" className="gap-1.5">
-                <Sparkles size={12} />
-                written by {pull.agent}
-              </Badge>
-            )}
-            <Link
-              to={`${base}/pull/${pull.number}/session`}
-              className="ml-auto flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1 text-xs text-muted transition-colors hover:border-line-strong hover:text-fg"
-            >
-              <MessagesSquare size={13} />
-              Why it was written
-            </Link>
-          </div>
+      <span className="flex items-center gap-2">
+        <GitPullRequest size={15} className="text-merged" />
+        <span className="text-muted">Merged in</span>
+        <Link to={`${base}/pull/${pull.number}`} className="font-medium hover:underline">
+          {pull.title} <span className="font-normal text-faint">#{pull.number}</span>
+        </Link>
+      </span>
+      {byAgent && (
+        <Badge tone="accent" size="md" className="gap-1.5">
+          <Sparkles size={12} />
+          written by {pull.agent}
+        </Badge>
+      )}
+      <Link
+        to={`${base}/pull/${pull.number}/session`}
+        className="ml-auto flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1 text-xs text-muted transition-colors hover:border-line-strong hover:text-fg"
+      >
+        <MessagesSquare size={13} />
+        Why it was written
+      </Link>
+    </div>
   );
 }
 
@@ -261,12 +254,7 @@ export default function CommitPage({ loaderData, actionData, params }: Route.Com
                   <>
                     {commit.parents.length === 1 ? "Parent" : "Parents"}
                     {commit.parents.map((parent) => (
-                      <Link
-                        key={parent}
-                        to={`${base}/commit/${parent}`}
-                        prefetch="intent"
-                        className="font-mono text-fg/80 hover:text-accent hover:underline"
-                      >
+                      <Link key={parent} to={`${base}/commit/${parent}`} prefetch="intent" className="font-mono text-fg/80 hover:text-accent hover:underline">
                         {parent.slice(0, 7)}
                       </Link>
                     ))}
@@ -275,10 +263,7 @@ export default function CommitPage({ loaderData, actionData, params }: Route.Com
               </span>
               <span className="ml-auto flex items-center gap-2">
                 <CommitChecksBadge checks={checks} sha={commit.hash} />
-                <Link
-                  to={`${base}/tree/${commit.hash}/`}
-                  className="rounded-md px-2 py-1 text-xs text-muted hover:bg-raised hover:text-fg"
-                >
+                <Link to={`${base}/tree/${commit.hash}/`} className="rounded-md px-2 py-1 text-xs text-muted hover:bg-raised hover:text-fg">
                   Browse files
                 </Link>
                 <CopyHash hash={commit.hash} />
@@ -326,11 +311,7 @@ export default function CommitPage({ loaderData, actionData, params }: Route.Com
           <h3 id="commit-comments" className="flex items-center gap-2 text-sm font-medium">
             <MessagesSquare size={15} className="text-faint" />
             {general.length === 0 ? "Comments" : `${general.length} ${general.length === 1 ? "comment" : "comments"}`}
-            {said.length > general.length && (
-              <span className="font-normal text-faint">
-                · {said.length - general.length} on lines above
-              </span>
-            )}
+            {said.length > general.length && <span className="font-normal text-faint">· {said.length - general.length} on lines above</span>}
           </h3>
           {isFailed(comments) && <Unavailable what={comments.what} />}
           <CommentList

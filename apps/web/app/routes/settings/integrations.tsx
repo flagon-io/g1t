@@ -61,14 +61,7 @@ export default function PersonalIntegrations({ loaderData }: Route.ComponentProp
           ))}
         </div>
       )}
-      <ConnectorDirectory
-        scope="personal"
-        views={connectorsFor("personal")}
-        connected={connected}
-        workspace={null}
-        canManage
-        nav="chips"
-      />
+      <ConnectorDirectory scope="personal" views={connectorsFor("personal")} connected={connected} workspace={null} canManage nav="chips" />
       {workspaces.length > 0 && (
         <p className="mt-10 border-t border-line pt-5 text-sm text-muted">
           Tools the whole team shares are connected for each workspace:{" "}

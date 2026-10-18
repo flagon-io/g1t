@@ -139,14 +139,14 @@ test("every reason has words, a filter and an email choice", () => {
   // Every reason has words, an old item's `agent` too; it is no longer sent, so it is neither a filter nor an email choice.
   assert.equal(Object.keys(REASON_LABEL).length, 12);
   const reasons = Object.keys(REASON_LABEL).filter((reason) => reason !== "agent");
-  assert.deepEqual(REASON_FILTERS.slice(1).map((entry) => entry.reason), reasons);
+  assert.deepEqual(
+    REASON_FILTERS.slice(1).map((entry) => entry.reason),
+    reasons,
+  );
   assert.equal(REASON_FILTERS[0].label, "Any reason");
   assert.equal(REASON_FILTERS.find((entry) => entry.reason === "review_requested")?.label, "Review requested");
   // Every reason someone can be told for can be emailed.
-  assert.deepEqual(
-    EMAIL_REASONS.map((entry) => entry.reason).sort(),
-    reasons.sort(),
-  );
+  assert.deepEqual(EMAIL_REASONS.map((entry) => entry.reason).sort(), reasons.sort());
   assert.equal(inboxReason("mention"), "mention");
   assert.equal(inboxReason("gossip"), null);
   assert.equal(inboxReason(null), null);
@@ -174,10 +174,20 @@ test("watching is read from the menu, and a custom watch of nothing is the defau
     return data;
   };
   assert.deepEqual(watchFromForm(form([["level", "all"]])), { level: "all", events: [] });
-  assert.deepEqual(watchFromForm(form([["level", "custom"], ["event", "deployments"], ["event", "pulls"], ["event", "releases"]])), {
-    level: "custom",
-    events: ["pulls", "deployments"],
-  });
+  assert.deepEqual(
+    watchFromForm(
+      form([
+        ["level", "custom"],
+        ["event", "deployments"],
+        ["event", "pulls"],
+        ["event", "releases"],
+      ]),
+    ),
+    {
+      level: "custom",
+      events: ["pulls", "deployments"],
+    },
+  );
   assert.deepEqual(watchFromForm(form([["level", "custom"]])), { level: "participating", events: [] });
   assert.equal(watchFromForm(form([["level", "loud"]])), null);
   assert.equal(watchLabel("all"), "Watching");

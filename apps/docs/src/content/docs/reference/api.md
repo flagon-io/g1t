@@ -122,11 +122,11 @@ browser: [start signing in](/reference/api/accounts/device-code/), then
 Applications that can open a browser use OAuth instead. See
 [signing in with OAuth](/guides/authentication/#signing-in-with-oauth).
 
-| Method | Path | |
-| --- | --- | --- |
-| `GET` | `/.well-known/oauth-authorization-server` | Where the endpoints are. |
-| `POST` | `/oauth/register` | Register a client. Body: `client_name`, `redirect_uris`. |
-| `POST` | `/oauth/token` | Exchange a code, or refresh. Form-encoded or JSON. |
+| Method | Path                                      |                                                          |
+| ------ | ----------------------------------------- | -------------------------------------------------------- |
+| `GET`  | `/.well-known/oauth-authorization-server` | Where the endpoints are.                                 |
+| `POST` | `/oauth/register`                         | Register a client. Body: `client_name`, `redirect_uris`. |
+| `POST` | `/oauth/token`                            | Exchange a code, or refresh. Form-encoded or JSON.       |
 
 Accounts are created in a browser only. There is no registration endpoint
 for accounts.
@@ -186,15 +186,15 @@ Errors are JSON with a stable `code` and a human-readable `message`.
 { "error": { "code": "not_found", "message": "Repository not found." } }
 ```
 
-| Status | Code | Meaning |
-| --- | --- | --- |
-| 401 | `unauthenticated` | A token is required, or the one sent is not valid. |
-| 402 | `payment_required` | The workspace's plan or limits do not allow this: for example, a free workspace inviting someone, or making a repository private, or moving a private one in, without room in its free private storage. See [usage and billing](/guides/usage-and-billing/#when-work-is-stopped). |
-| 403 | `forbidden` | You are signed in but not allowed to do this: your role is not enough, or the token lacks a scope, which `needed_scope` names. |
-| 404 | `not_found` | It does not exist, or you cannot see it. A path that is not an endpoint answers this too. |
-| 409 | `conflict` | The request conflicts with the current state. |
-| 422 | `invalid` | The input is not valid. |
-| 429 | `rate_limited` | Too many requests in the last minute. Wait the seconds `Retry-After` says. See [rate limits](#rate-limits). |
+| Status | Code               | Meaning                                                                                                                                                                                                                                                                           |
+| ------ | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 401    | `unauthenticated`  | A token is required, or the one sent is not valid.                                                                                                                                                                                                                                |
+| 402    | `payment_required` | The workspace's plan or limits do not allow this: for example, a free workspace inviting someone, or making a repository private, or moving a private one in, without room in its free private storage. See [usage and billing](/guides/usage-and-billing/#when-work-is-stopped). |
+| 403    | `forbidden`        | You are signed in but not allowed to do this: your role is not enough, or the token lacks a scope, which `needed_scope` names.                                                                                                                                                    |
+| 404    | `not_found`        | It does not exist, or you cannot see it. A path that is not an endpoint answers this too.                                                                                                                                                                                         |
+| 409    | `conflict`         | The request conflicts with the current state.                                                                                                                                                                                                                                     |
+| 422    | `invalid`          | The input is not valid.                                                                                                                                                                                                                                                           |
+| 429    | `rate_limited`     | Too many requests in the last minute. Wait the seconds `Retry-After` says. See [rate limits](#rate-limits).                                                                                                                                                                       |
 
 Branch on `code`, not on `message`: messages are written for people and
 may change.
@@ -234,17 +234,17 @@ Every limit, and how to stay under them, is on [rate limits](/reference/rate-lim
 Lists come newest first, unless an endpoint says otherwise. Most return
 everything up to a limit; the few that grow without bound take a cursor:
 
-| Endpoint | Limit | Next page |
-| --- | --- | --- |
-| [List repositories](/reference/api/repositories/list-repos/) | 50 | None |
-| [List work items](/reference/api/work-items/list-work-items/) | 100 | None |
-| [List pull requests](/reference/api/pull-requests/list-pull-requests/) | 100 | None |
-| [List repository events](/reference/api/repositories/list-events/) | 50 | `before`: the id of the last event you have |
-| [List workflow runs](/reference/api/actions/list-workflow-runs/) | `per_page`, at most 100 and 50 if not given | None |
-| [List webhook deliveries](/reference/api/webhooks/list-webhook-deliveries/) | 50 | None |
-| [List notifications](/reference/api/notifications/list-notifications/) | `per_page`, at most 100 and 30 if not given | `cursor`: the `next` of the page before |
-| [Read a session](/reference/api/sessions/read-session/) | None | `after`: the last `seq` you have |
-| [Get a job's log](/reference/api/actions/get-job-logs/) | 500 chunks | `after`: the last `seq` you have |
+| Endpoint                                                                    | Limit                                       | Next page                                   |
+| --------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------- |
+| [List repositories](/reference/api/repositories/list-repos/)                | 50                                          | None                                        |
+| [List work items](/reference/api/work-items/list-work-items/)               | 100                                         | None                                        |
+| [List pull requests](/reference/api/pull-requests/list-pull-requests/)      | 100                                         | None                                        |
+| [List repository events](/reference/api/repositories/list-events/)          | 50                                          | `before`: the id of the last event you have |
+| [List workflow runs](/reference/api/actions/list-workflow-runs/)            | `per_page`, at most 100 and 50 if not given | None                                        |
+| [List webhook deliveries](/reference/api/webhooks/list-webhook-deliveries/) | 50                                          | None                                        |
+| [List notifications](/reference/api/notifications/list-notifications/)      | `per_page`, at most 100 and 30 if not given | `cursor`: the `next` of the page before     |
+| [Read a session](/reference/api/sessions/read-session/)                     | None                                        | `after`: the last `seq` you have            |
+| [Get a job's log](/reference/api/actions/get-job-logs/)                     | 500 chunks                                  | `after`: the last `seq` you have            |
 
 ## Identifiers and times
 
@@ -259,25 +259,25 @@ Times are RFC 3339 in UTC, with milliseconds, such as
 
 ## Resources
 
-| Resource | |
-| --- | --- |
-| [Accounts](/reference/api/accounts/whoami/) | Signing in from a tool, and who a token acts as. Accounts are made and [deleted](/guides/authentication/#deleting-your-account) only in a browser: there is no route for either. |
-| [Workspaces](/reference/api/workspaces/create-workspace/) | Creating a workspace. |
-| [Notifications](/reference/api/notifications/list-notifications/) | Your notifications: their threads, why you were told of each, marking them read, done, saved or snoozed, and what you subscribe to and watch. See [notifications](/guides/notifications/). |
-| [Billing](/reference/api/billing/get-usage/) | A workspace's usage by product, project and day, its budget and its invoices. See [usage and billing](/guides/usage-and-billing/). |
-| [Invites](/reference/api/invites/list-invites/) | Inviting a friend to g1t by email, inviting people into a workspace by username or email, and answering the invitations sent to you. Anyone can sign up without an invite. See [invite a friend](/guides/authentication/#invite-a-friend). |
-| [Repositories](/reference/api/repositories/list-repos/) | A repository, how it handles pull requests, and its timeline. |
-| [Access](/reference/api/access/list-collaborators/) | Who has which role on a repository, invitations, outside collaborators, and a workspace's base permission. |
-| [Secret scanning](/reference/api/secret-scanning/list-secret-scanning-alerts/) | Secrets found in pushes and history, where each one is, bypassing push protection and reviewing bypass requests, validity checks, and custom patterns. See [secret protection](/guides/security/secret-protection/). |
-| [Code scanning](/reference/api/code-scanning/list-code-scanning-alerts/) | SARIF uploads, and the alerts and analyses they make. See [code scanning](/guides/security/code-scanning/). |
-| [Supply chain](/reference/api/supply-chain/list-vulnerability-alerts/) | Vulnerability alerts, the dependency graph, its SPDX SBOM, and comparing dependencies. See [supply chain](/guides/security/supply-chain/). |
-| [Security settings](/reference/api/security-settings/get-security-settings/) | When pull request checks fail, dependency review's policy, delegated bypass, validity checks and a workspace's overview. |
-| [Work items](/reference/api/work-items/list-work-items/) | What should change, in a workspace: the repositories each links, labels and comments, claims and hand-offs. See [work items](/work/work-items/). |
-| [Labels and milestones](/reference/api/labels-and-milestones/list-labels/) | A workspace's labels and milestones, shared by its work items and pull requests. See [labels](/work/labels/) and [milestones](/work/milestones/). |
-| [Pull requests](/reference/api/pull-requests/list-pull-requests/) | Proposed changes: reviews, merging and the merge queue. |
-| [Sessions](/reference/api/sessions/read-session/) | The record of how a pull request was made, written by the coding agent that made it. See [sessions and why-blame](/guides/why-blame/). |
-| [Actions](/reference/api/actions/list-workflows/) | Workflows, their runs and their logs. |
-| [Run protection](/reference/api/run-protection/update-environment/) | Environments' protection rules and the reviews of the jobs they hold, approving a pull request's run from outside, a job token's default permissions, and repository dispatch. See [GitHub Actions](/guides/actions/#environments). |
-| [Secrets and variables](/reference/api/secrets-and-variables/list-actions-secrets/) | Values workflows and deployments read. |
-| [Webhooks](/reference/api/webhooks/list-webhooks/) | Events sent to your own address. |
-| [Integrations](/reference/api/integrations/list-integrations/) | Alert sources and trackers. |
+| Resource                                                                            |                                                                                                                                                                                                                                            |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [Accounts](/reference/api/accounts/whoami/)                                         | Signing in from a tool, and who a token acts as. Accounts are made and [deleted](/guides/authentication/#deleting-your-account) only in a browser: there is no route for either.                                                           |
+| [Workspaces](/reference/api/workspaces/create-workspace/)                           | Creating a workspace.                                                                                                                                                                                                                      |
+| [Notifications](/reference/api/notifications/list-notifications/)                   | Your notifications: their threads, why you were told of each, marking them read, done, saved or snoozed, and what you subscribe to and watch. See [notifications](/guides/notifications/).                                                 |
+| [Billing](/reference/api/billing/get-usage/)                                        | A workspace's usage by product, project and day, its budget and its invoices. See [usage and billing](/guides/usage-and-billing/).                                                                                                         |
+| [Invites](/reference/api/invites/list-invites/)                                     | Inviting a friend to g1t by email, inviting people into a workspace by username or email, and answering the invitations sent to you. Anyone can sign up without an invite. See [invite a friend](/guides/authentication/#invite-a-friend). |
+| [Repositories](/reference/api/repositories/list-repos/)                             | A repository, how it handles pull requests, and its timeline.                                                                                                                                                                              |
+| [Access](/reference/api/access/list-collaborators/)                                 | Who has which role on a repository, invitations, outside collaborators, and a workspace's base permission.                                                                                                                                 |
+| [Secret scanning](/reference/api/secret-scanning/list-secret-scanning-alerts/)      | Secrets found in pushes and history, where each one is, bypassing push protection and reviewing bypass requests, validity checks, and custom patterns. See [secret protection](/guides/security/secret-protection/).                       |
+| [Code scanning](/reference/api/code-scanning/list-code-scanning-alerts/)            | SARIF uploads, and the alerts and analyses they make. See [code scanning](/guides/security/code-scanning/).                                                                                                                                |
+| [Supply chain](/reference/api/supply-chain/list-vulnerability-alerts/)              | Vulnerability alerts, the dependency graph, its SPDX SBOM, and comparing dependencies. See [supply chain](/guides/security/supply-chain/).                                                                                                 |
+| [Security settings](/reference/api/security-settings/get-security-settings/)        | When pull request checks fail, dependency review's policy, delegated bypass, validity checks and a workspace's overview.                                                                                                                   |
+| [Work items](/reference/api/work-items/list-work-items/)                            | What should change, in a workspace: the repositories each links, labels and comments, claims and hand-offs. See [work items](/work/work-items/).                                                                                           |
+| [Labels and milestones](/reference/api/labels-and-milestones/list-labels/)          | A workspace's labels and milestones, shared by its work items and pull requests. See [labels](/work/labels/) and [milestones](/work/milestones/).                                                                                          |
+| [Pull requests](/reference/api/pull-requests/list-pull-requests/)                   | Proposed changes: reviews, merging and the merge queue.                                                                                                                                                                                    |
+| [Sessions](/reference/api/sessions/read-session/)                                   | The record of how a pull request was made, written by the coding agent that made it. See [sessions and why-blame](/guides/why-blame/).                                                                                                     |
+| [Actions](/reference/api/actions/list-workflows/)                                   | Workflows, their runs and their logs.                                                                                                                                                                                                      |
+| [Run protection](/reference/api/run-protection/update-environment/)                 | Environments' protection rules and the reviews of the jobs they hold, approving a pull request's run from outside, a job token's default permissions, and repository dispatch. See [GitHub Actions](/guides/actions/#environments).        |
+| [Secrets and variables](/reference/api/secrets-and-variables/list-actions-secrets/) | Values workflows and deployments read.                                                                                                                                                                                                     |
+| [Webhooks](/reference/api/webhooks/list-webhooks/)                                  | Events sent to your own address.                                                                                                                                                                                                           |
+| [Integrations](/reference/api/integrations/list-integrations/)                      | Alert sources and trackers.                                                                                                                                                                                                                |

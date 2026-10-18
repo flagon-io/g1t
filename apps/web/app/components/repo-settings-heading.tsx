@@ -10,8 +10,14 @@ const PAGES: Record<string, { title: string; about: string }> = {
   access: { title: "Access", about: "Who can see and change the repository, with which role, and invitations to it." },
   keys: { title: "Deploy keys", about: "SSH keys that let a machine clone this repository, or push to it, and reach nothing else." },
   branches: { title: "Branches and merging", about: "How pull requests merge, and who owns which files." },
-  rules: { title: "Rules", about: "Rulesets: what may happen to branches and tags, what a pull request needs before it merges, and how the rules judged each push and merge." },
-  secrets: { title: "Environment variables", about: "Secrets and configuration for workflows, builds and running apps. Scope values to production, previews or all environments." },
+  rules: {
+    title: "Rules",
+    about: "Rulesets: what may happen to branches and tags, what a pull request needs before it merges, and how the rules judged each push and merge.",
+  },
+  secrets: {
+    title: "Environment variables",
+    about: "Secrets and configuration for workflows, builds and running apps. Scope values to production, previews or all environments.",
+  },
   actions: { title: "Actions", about: "What workflows' tokens may do, and whose pull requests' runs wait for approval." },
   environments: { title: "Environments", about: "Protection rules for the environments jobs deploy to: reviews, wait timers and branches." },
   runners: { title: "Runners", about: "Machines of your own for this project's workflow jobs and sandbox runs." },

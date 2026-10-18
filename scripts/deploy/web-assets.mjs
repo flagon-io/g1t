@@ -7,20 +7,45 @@ import { pathToFileURL } from "node:url";
 import { archivedAssetKey } from "../../apps/web/app/lib/asset-archive.ts";
 import { cloudflareAuth, jsonFrom, wrangler, wranglerEnv } from "./cloudflare.mjs";
 
-const TYPES = { js: "text/javascript", css: "text/css", woff: "font/woff", woff2: "font/woff2", ttf: "font/ttf", otf: "font/otf", svg: "image/svg+xml", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", ico: "image/x-icon", wasm: "application/wasm" };
+const TYPES = {
+  js: "text/javascript",
+  css: "text/css",
+  woff: "font/woff",
+  woff2: "font/woff2",
+  ttf: "font/ttf",
+  otf: "font/otf",
+  svg: "image/svg+xml",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  ico: "image/x-icon",
+  wasm: "application/wasm",
+};
 
 export function assetReferences(text) {
-  return [...new Set([...text.matchAll(/(?:\/?assets\/|["'(]\.\/)([a-zA-Z0-9_.~-]+\.(?:js|css|woff2?|ttf|otf|png|jpe?g|gif|svg|webp|ico|wasm))\b/g)].map((match) => match[1]))]
-    // Vite's emitted filenames have an eight-character content hash.
-    // Libraries can also contain unused relative defaults like elk-worker.min.js.
-    .filter((name) => /-[a-zA-Z0-9_-]{8}\.[a-z0-9]+$/.test(name));
+  return (
+    [
+      ...new Set(
+        [...text.matchAll(/(?:\/?assets\/|["'(]\.\/)([a-zA-Z0-9_.~-]+\.(?:js|css|woff2?|ttf|otf|png|jpe?g|gif|svg|webp|ico|wasm))\b/g)].map(
+          (match) => match[1],
+        ),
+      ),
+    ]
+      // Vite's emitted filenames have an eight-character content hash.
+      // Libraries can also contain unused relative defaults like elk-worker.min.js.
+      .filter((name) => /-[a-zA-Z0-9_-]{8}\.[a-z0-9]+$/.test(name))
+  );
 }
 
 async function together(items, run) {
   let index = 0;
-  const results = await Promise.allSettled(Array.from({ length: Math.min(6, items.length) }, async () => {
-    for (let i = index++; i < items.length; i = index++) await run(items[i]);
-  }));
+  const results = await Promise.allSettled(
+    Array.from({ length: Math.min(6, items.length) }, async () => {
+      for (let i = index++; i < items.length; i = index++) await run(items[i]);
+    }),
+  );
   const failed = results.find((result) => result.status === "rejected");
   if (failed) throw failed.reason;
 }
@@ -43,19 +68,43 @@ const objectUrl = (account, bucket, key) => `https://api.cloudflare.com/client/v
 const manifestName = (names) => names.find((name) => /^manifest-[a-zA-Z0-9_-]{8}\.js$/.test(name));
 
 async function confirmUpload(response, bytes, label) {
-  if (!response.ok) { await response.body?.cancel(); throw new Error(`Asset archive upload failed (${response.status}): ${label}`); }
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new Error(`Asset archive upload failed (${response.status}): ${label}`);
+  }
   let receipt;
-  try { receipt = await response.json(); } catch { throw new Error(`Invalid asset upload receipt: ${label}`); }
-  if (receipt.success !== true || `"${receipt.result?.etag?.replaceAll('"', "")}"` !== checksum(bytes)) throw new Error(`Asset upload checksum mismatch: ${label}`);
+  try {
+    receipt = await response.json();
+  } catch {
+    throw new Error(`Invalid asset upload receipt: ${label}`);
+  }
+  if (receipt.success !== true || `"${receipt.result?.etag?.replaceAll('"', "")}"` !== checksum(bytes))
+    throw new Error(`Asset upload checksum mismatch: ${label}`);
 }
 
 /** One manifest per release: work never grows with the number of old releases. */
 export async function readArchiveManifest(url, headers, fetchImpl = fetch) {
   const response = await fetchImpl(url, { headers });
-  if (response.status === 404) { await response.body?.cancel(); return null; }
+  if (response.status === 404) {
+    await response.body?.cancel();
+    return null;
+  }
   if (!response.ok) throw new Error(`Cannot read archived build (${response.status})`);
   const data = await response.json();
-  if (data.version !== 1 || !Array.isArray(data.assets) || !data.assets.length || data.assets.some((row) => !Array.isArray(row) || row.length !== 2 || typeof row[0] !== "string" || archivedAssetKey(row[0].replace(/^web-assets/, "")) !== row[0] || !/^"[a-f0-9]{32}"$/.test(row[1]))) throw new Error("Invalid archived build manifest");
+  if (
+    data.version !== 1 ||
+    !Array.isArray(data.assets) ||
+    !data.assets.length ||
+    data.assets.some(
+      (row) =>
+        !Array.isArray(row) ||
+        row.length !== 2 ||
+        typeof row[0] !== "string" ||
+        archivedAssetKey(row[0].replace(/^web-assets/, "")) !== row[0] ||
+        !/^"[a-f0-9]{32}"$/.test(row[1]),
+    )
+  )
+    throw new Error("Invalid archived build manifest");
   return new Map(data.assets);
 }
 
@@ -80,8 +129,10 @@ export async function archiveAsset({ name, bytes, account, bucket, headers, inde
   await existing.body?.cancel();
   if (existing.status !== 404) throw new Error(`Asset archive lookup failed (${existing.status}): ${name}`);
   const uploaded = await fetchImpl(url, {
-    method: "PUT", headers: { ...headers, "content-type": TYPES[name.split(".").at(-1)], "cache-control": "public, max-age=31536000, immutable" },
-    body: bytes, signal: AbortSignal.timeout(60_000),
+    method: "PUT",
+    headers: { ...headers, "content-type": TYPES[name.split(".").at(-1)], "cache-control": "public, max-age=31536000, immutable" },
+    body: bytes,
+    signal: AbortSignal.timeout(60_000),
   });
   await confirmUpload(uploaded, bytes, name);
   index?.set(key, expected);
@@ -95,12 +146,13 @@ async function liveReferences(origin, fetchImpl) {
   const page = await fetchImpl(pageUrl, { signal: AbortSignal.timeout(30_000) });
   if (!page.ok) throw new Error(`Cannot read the current site before cutover (${page.status})`);
   const pending = assetReferences(await page.text());
-  if (!pending.some((name) => name.endsWith(".js")) || !pending.some((name) => name.endsWith(".css"))) throw new Error("Current site did not expose its JS and CSS assets; refusing an unprotected cutover");
+  if (!pending.some((name) => name.endsWith(".js")) || !pending.some((name) => name.endsWith(".css")))
+    throw new Error("Current site did not expose its JS and CSS assets; refusing an unprotected cutover");
   return pending;
 }
 
 export async function archiveLiveAssets(origin, save, fetchImpl = fetch, references) {
-  let pending = references ?? await liveReferences(origin, fetchImpl);
+  let pending = references ?? (await liveReferences(origin, fetchImpl));
   const seen = new Set();
   while (pending.length) {
     const batch = [...new Set(pending)].filter((name) => !seen.has(name));
@@ -128,8 +180,13 @@ export async function publishWebAssets(cwd, { onLine = console.log, fetchImpl = 
     const auth = await wrangler(["auth", "token", "--json"], { cwd });
     if (auth.code !== 0) throw new Error("Cannot authenticate the asset archive; run wrangler login");
     let credentials;
-    try { credentials = jsonFrom(auth.out); } catch { throw new Error("Cannot read Wrangler credentials for asset archive"); }
-    headers = credentials.type === "api_key" ? { "x-auth-key": credentials.key, "x-auth-email": credentials.email } : { authorization: `Bearer ${credentials.token}` };
+    try {
+      credentials = jsonFrom(auth.out);
+    } catch {
+      throw new Error("Cannot read Wrangler credentials for asset archive");
+    }
+    headers =
+      credentials.type === "api_key" ? { "x-auth-key": credentials.key, "x-auth-email": credentials.email } : { authorization: `Bearer ${credentials.token}` };
   }
   const providerFetch = retryingFetch(fetchImpl);
   const manifestUrl = (name) => objectUrl(config.account_id, bucket, `web-assets/manifests/${name}.json`);
@@ -182,19 +239,21 @@ export async function publishWebAssets(cwd, { onLine = console.log, fetchImpl = 
 async function verifyWebAssetsOnce(release, fetchImpl) {
   if (!release.origin) return;
   const references = await liveReferences(release.origin, fetchImpl);
-  if (!references.includes(release.manifest)) throw new Error(`Web cutover is not serving the expected build (expected ${release.manifest}, observed ${manifestName(references) ?? "no manifest"})`);
+  if (!references.includes(release.manifest))
+    throw new Error(`Web cutover is not serving the expected build (expected ${release.manifest}, observed ${manifestName(references) ?? "no manifest"})`);
   await together(release.samples, async ([key, etag]) => {
     const response = await fetchImpl(new URL(key.replace(/^web-assets/, ""), release.origin), { signal: AbortSignal.timeout(30_000) });
-    if (!response.ok || /text\/html/i.test(response.headers.get("content-type") ?? "") || checksum(Buffer.from(await response.arrayBuffer())) !== etag) throw new Error(`Web cutover asset check failed: ${key}`);
+    if (!response.ok || /text\/html/i.test(response.headers.get("content-type") ?? "") || checksum(Buffer.from(await response.arrayBuffer())) !== etag)
+      throw new Error(`Web cutover asset check failed: ${key}`);
   });
 }
 
 /** Wrangler finishing does not mean every edge is already serving the new version. */
-export async function verifyWebAssets(release, fetchImpl = fetch, {
-  retryWaits = [1000, 2000, 4000, 8000, 15000, 30000],
-  wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-  onLine = () => {},
-} = {}) {
+export async function verifyWebAssets(
+  release,
+  fetchImpl = fetch,
+  { retryWaits = [1000, 2000, 4000, 8000, 15000, 30000], wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), onLine = () => {} } = {},
+) {
   const deadline = AbortSignal.timeout(120_000);
   const boundedFetch = (url, options = {}) => fetchImpl(url, { ...options, signal: options.signal ? AbortSignal.any([deadline, options.signal]) : deadline });
   for (let attempt = 0; ; attempt++) {

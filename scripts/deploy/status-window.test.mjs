@@ -57,7 +57,10 @@ test("the stages run inside the window: started before, finished after, even whe
   assert.deepEqual(order, [1], "the work ran after started, before finished");
 
   said.length = 0;
-  await assert.rejects(withDeployWindow(async () => Promise.reject(new Error("wrangler failed")), { id: "def", announce }), /wrangler failed/);
+  await assert.rejects(
+    withDeployWindow(async () => Promise.reject(new Error("wrangler failed")), { id: "def", announce }),
+    /wrangler failed/,
+  );
   assert.deepEqual(said, ["started def", "finished def"]);
 
   said.length = 0;

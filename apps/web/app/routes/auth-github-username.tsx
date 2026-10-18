@@ -60,10 +60,7 @@ export default function GithubUsername({ loaderData, actionData }: Route.Compone
         Signed in to GitHub as <span className="font-mono text-fg">@{loaderData.login}</span>
       </p>
       <Form method="post" className="space-y-4">
-        <Field
-          label="Username"
-          hint="Letters, digits and single hyphens. It is how others see you on g1t, in the case you type it."
-        >
+        <Field label="Username" hint="Letters, digits and single hyphens. It is how others see you on g1t, in the case you type it.">
           <Input
             name="username"
             autoComplete="username"
@@ -76,9 +73,7 @@ export default function GithubUsername({ loaderData, actionData }: Route.Compone
         </Field>
         <ErrorText>{actionData?.error}</ErrorText>
         <div className="pt-2 *:w-full">
-          <SubmitButton pending="Creating account…">
-            Create account
-          </SubmitButton>
+          <SubmitButton pending="Creating account…">Create account</SubmitButton>
         </div>
       </Form>
     </AuthCard>

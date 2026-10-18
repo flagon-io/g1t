@@ -33,7 +33,13 @@ const REPOS: Record<string, Repo> = {
 // Work item 41 of acme, filed in acme/web as its issue #7.
 const ITEM = { workspace: "acme", number: 41, title: "Fix the thing", state: "closed", reason: "not_planned", author, requestedBy: null } as WorkItem;
 // A change g1t made for ada.
-const PULL = { number: 8, title: "Make the thing", status: "merged", author: { id: "usr_g1t_agent", username: "g1t", kind: "agent" }, requestedBy: author } as Pull;
+const PULL = {
+  number: 8,
+  title: "Make the thing",
+  status: "merged",
+  author: { id: "usr_g1t_agent", username: "g1t", kind: "agent" },
+  requestedBy: author,
+} as Pull;
 
 /** Services that see what an anonymous visitor sees, and record that they were asked as one. */
 function sources(overrides: Partial<Sources> = {}) {
@@ -52,13 +58,24 @@ function sources(overrides: Partial<Sources> = {}) {
         slug === "acme" ? ({ slug: "acme", name: "Acme", description: "Rockets", id: "w", createdAt: "", memberCount: 3, avatar: null } as Workspace) : null,
       profile: async (username) =>
         username === "ada"
-          ? { username: "ada", name: "Ada Lovelace", bio: "Engines.", location: null, website: null, pronouns: null, timezone: null, avatar: null, createdAt: "" }
+          ? {
+              username: "ada",
+              name: "Ada Lovelace",
+              bio: "Engines.",
+              location: null,
+              website: null,
+              pronouns: null,
+              timezone: null,
+              avatar: null,
+              createdAt: "",
+            }
           : null,
     },
     repos: {
       // Like the service: a private repository can come back to a member,
       // so the resolver must check `isPrivate` itself as well.
-      get: async (path, viewer) => seen(viewer, REPOS[`${path.namespace}/${path.name}`.toLowerCase()] ? ok(REPOS[`${path.namespace}/${path.name}`.toLowerCase()]) : notFound),
+      get: async (path, viewer) =>
+        seen(viewer, REPOS[`${path.namespace}/${path.name}`.toLowerCase()] ? ok(REPOS[`${path.namespace}/${path.name}`.toLowerCase()]) : notFound),
     },
     work: {
       counts: async (path, viewer) => seen(viewer, hidden(path) ? notFound : ok({ items: 3, pulls: 2 })),
@@ -72,16 +89,14 @@ function sources(overrides: Partial<Sources> = {}) {
             ? { kind: "work_item" as const, workspace: "acme", number: 41, itemId: "iss_7" }
             : { kind: "none" as const },
         ),
-      getPull: async (path, number, viewer) =>
-        seen(viewer, !hidden(path) && number === 8 ? ok({ pull: PULL, item: null, comments: [] } as never) : notFound),
+      getPull: async (path, number, viewer) => seen(viewer, !hidden(path) && number === 8 ? ok({ pull: PULL, item: null, comments: [] } as never) : notFound),
       byAuthor: async (_username, viewer) =>
         seen(viewer, ok({ items: [], next: null, repos: [], counts: { pullsMerged: 4, pullsOpen: 1, pulls: 6, items: 2, itemsOpen: 1 } })),
     },
     projects: {
       get: async (workspace, slug, viewer) =>
         seen(viewer, workspace === "acme" && slug === "web" ? ok({ name: "Web app", description: "The storefront", private: false } as Project) : notFound),
-      list: async (workspace, viewer) =>
-        seen(viewer, ok([{ private: false }, { private: false }, { private: true }] as Project[])),
+      list: async (workspace, viewer) => seen(viewer, ok([{ private: false }, { private: false }, { private: true }] as Project[])),
     },
   };
   return { sources: { ...base, ...overrides }, viewers };

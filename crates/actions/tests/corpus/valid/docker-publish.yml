@@ -1,12 +1,12 @@
 name: Docker
 on:
   schedule:
-    - cron: '27 4 * * *'
+    - cron: "27 4 * * *"
   push:
-    branches: [ "main" ]
-    tags: [ 'v*.*.*' ]
+    branches: ["main"]
+    tags: ["v*.*.*"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}

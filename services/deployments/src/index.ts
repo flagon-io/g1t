@@ -406,7 +406,11 @@ class Deployments {
 
   /** What each production deployment shipped, and whether a change is live (shipped.ts). */
   get shipped(): Shipped {
-    return new Shipped(this.env, (slug) => this.workspaceActor(slug), (repo, actor, ref, limit) => reposClient(this.env.REPOS).log(repo, actor, ref, limit));
+    return new Shipped(
+      this.env,
+      (slug) => this.workspaceActor(slug),
+      (repo, actor, ref, limit) => reposClient(this.env.REPOS).log(repo, actor, ref, limit),
+    );
   }
 
   /**
@@ -539,9 +543,7 @@ class Deployments {
   /** What the project's last finished build found it to be, and built with; null before one has. */
   private async lastDetected(projectId: string): Promise<{ detected: DetectedKind | null; framework: string | null }> {
     const row = await this.db
-      .prepare(
-        "SELECT detected, framework FROM deployments WHERE project_id = ? AND detected IS NOT NULL ORDER BY finished_at DESC LIMIT 1",
-      )
+      .prepare("SELECT detected, framework FROM deployments WHERE project_id = ? AND detected IS NOT NULL ORDER BY finished_at DESC LIMIT 1")
       .bind(projectId)
       .first<{ detected: string; framework: string | null }>()
       .catch(() => null);
@@ -582,11 +584,7 @@ class Deployments {
     return ok(await this.toSettings(project.value, await this.settingsRow(project.value.id)));
   }
 
-  async updateSettings(a: {
-    actor: User;
-    project: ProjectRef;
-    changes: Partial<DeploySettings>;
-  }): Promise<Result<DeploySettings>> {
+  async updateSettings(a: { actor: User; project: ProjectRef; changes: Partial<DeploySettings> }): Promise<Result<DeploySettings>> {
     const found = await this.projectFor(a.project, a.actor, "updateSettings");
     if (!found.ok) return found;
     const project = found.value;
@@ -700,14 +698,8 @@ class Deployments {
     const project = await this.projectFor(a.project, a.viewer, "list");
     if (!project.ok) return project;
     const [deployments, apps] = await Promise.all([
-      this.db
-        .prepare("SELECT * FROM deployments WHERE project_id = ? ORDER BY id DESC LIMIT ?")
-        .bind(project.value.id, LIST_LIMIT)
-        .all<DeploymentRow>(),
-      this.db
-        .prepare("SELECT * FROM apps WHERE project_id = ? ORDER BY kind DESC, deployed_at DESC")
-        .bind(project.value.id)
-        .all<AppRow>(),
+      this.db.prepare("SELECT * FROM deployments WHERE project_id = ? ORDER BY id DESC LIMIT ?").bind(project.value.id, LIST_LIMIT).all<DeploymentRow>(),
+      this.db.prepare("SELECT * FROM apps WHERE project_id = ? ORDER BY kind DESC, deployed_at DESC").bind(project.value.id).all<AppRow>(),
     ]);
     return ok({ deployments: deployments.results.map(toDeployment), live: apps.results.map(toLive) });
   }
@@ -715,10 +707,7 @@ class Deployments {
   async get(a: { project: ProjectRef; id: string; viewer: Viewer }): Promise<Result<Deployment & { log: string | null }>> {
     const project = await this.projectFor(a.project, a.viewer, "get");
     if (!project.ok) return project;
-    const row = await this.db
-      .prepare("SELECT * FROM deployments WHERE id = ? AND project_id = ?")
-      .bind(a.id, project.value.id)
-      .first<DeploymentRow>();
+    const row = await this.db.prepare("SELECT * FROM deployments WHERE id = ? AND project_id = ?").bind(a.id, project.value.id).first<DeploymentRow>();
     if (!row) return fail("not_found", "No such deployment.");
     return ok({ ...toDeployment(row), log: row.log });
   }
@@ -758,28 +747,31 @@ class Deployments {
     const readable = new Set(listed.value.map((project) => project.slug));
     const [settings, apps, latest] = await Promise.all([
       // A deleted repository's projects are hidden until it is restored.
-      this.db.prepare("SELECT slug, enabled FROM settings WHERE workspace = ? AND repo_deleted_at IS NULL").bind(workspace).all<{ slug: string; enabled: number }>(),
+      this.db
+        .prepare("SELECT slug, enabled FROM settings WHERE workspace = ? AND repo_deleted_at IS NULL")
+        .bind(workspace)
+        .all<{ slug: string; enabled: number }>(),
       this.db.prepare("SELECT * FROM apps WHERE workspace = ?").bind(workspace).all<AppRow>(),
       this.db
-        .prepare(
-          `SELECT * FROM deployments WHERE id IN (SELECT MAX(id) FROM deployments WHERE workspace = ? GROUP BY project_id)`,
-        )
+        .prepare(`SELECT * FROM deployments WHERE id IN (SELECT MAX(id) FROM deployments WHERE workspace = ? GROUP BY project_id)`)
         .bind(workspace)
         .all<DeploymentRow>(),
     ]);
     return ok(
-      settings.results.filter((row) => readable.has(row.slug)).map((row) => {
-        const own = apps.results.filter((app) => app.slug === row.slug);
-        const production = own.find((app) => app.kind === "production");
-        const newest = latest.results.find((d) => d.slug === row.slug);
-        return {
-          slug: row.slug,
-          enabled: !!row.enabled,
-          production: production ? toLive(production) : null,
-          previews: own.filter((app) => app.kind === "preview").length,
-          latest: newest ? toDeployment(newest) : null,
-        };
-      }),
+      settings.results
+        .filter((row) => readable.has(row.slug))
+        .map((row) => {
+          const own = apps.results.filter((app) => app.slug === row.slug);
+          const production = own.find((app) => app.kind === "production");
+          const newest = latest.results.find((d) => d.slug === row.slug);
+          return {
+            slug: row.slug,
+            enabled: !!row.enabled,
+            production: production ? toLive(production) : null,
+            previews: own.filter((app) => app.kind === "preview").length,
+            latest: newest ? toDeployment(newest) : null,
+          };
+        }),
     );
   }
 
@@ -787,17 +779,14 @@ class Deployments {
     const slug = a.workspace.toLowerCase();
     if (!isMember(a.viewer, slug)) return fail("forbidden", "Only members can see a workspace's usage.");
     const [meter, apps] = await Promise.all([
-      this.db
-        .prepare("SELECT * FROM meters WHERE namespace = ? AND month = ?")
-        .bind(slug, month())
-        .first<{
-          requests: number;
-          cpu_ms: number;
-          peak_apps: number;
-          build_seconds: number;
-          build_micros: number;
-          counted_at: string | null;
-        }>(),
+      this.db.prepare("SELECT * FROM meters WHERE namespace = ? AND month = ?").bind(slug, month()).first<{
+        requests: number;
+        cpu_ms: number;
+        peak_apps: number;
+        build_seconds: number;
+        build_micros: number;
+        counted_at: string | null;
+      }>(),
       this.db.prepare("SELECT COUNT(*) AS n FROM apps WHERE workspace = ?").bind(slug).first<{ n: number }>(),
     ]);
     const container = (await this.containerMonth(month())).get(slug);
@@ -878,10 +867,7 @@ class Deployments {
 
   /** The script production is up under, or the name it will have. */
   private async productionScript(project: Project): Promise<string> {
-    const app = await this.db
-      .prepare("SELECT script FROM apps WHERE project_id = ? AND kind = 'production'")
-      .bind(project.id)
-      .first<{ script: string }>();
+    const app = await this.db.prepare("SELECT script FROM apps WHERE project_id = ? AND kind = 'production'").bind(project.id).first<{ script: string }>();
     return app?.script ?? (await this.scriptFor(project, null));
   }
 
@@ -891,12 +877,14 @@ class Deployments {
    * Opens a deployment and starts its build in a sandbox. Skipped, with the
    * reason recorded, when the workspace's plan is off.
    */
-  private async start(input: OpenInput & {
-    /** Where the build reads the commit from: the project, or a pull request's fork. */
-    source: RepoPath;
-    /** Who reads it: the workspace, or whoever the pull request is for. */
-    reader: User;
-  }): Promise<Result<Deployment>> {
+  private async start(
+    input: OpenInput & {
+      /** Where the build reads the commit from: the project, or a pull request's fork. */
+      source: RepoPath;
+      /** Who reads it: the workspace, or whoever the pull request is for. */
+      reader: User;
+    },
+  ): Promise<Result<Deployment>> {
     const { project } = input;
     const repo = repoOf(project);
     const opened = await this.open(input, { reserve: true });
@@ -960,9 +948,9 @@ class Deployments {
       ? plan.error.message
       : stopped
         ? (limit.value.message ?? "The workspace reached its usage limit.")
-      : !cloudflare
-        ? "Deployments are not set up on this g1t: it has no Cloudflare token."
-        : null;
+        : !cloudflare
+          ? "Deployments are not set up on this g1t: it has no Cloudflare token."
+          : null;
     let code: Refusal = plan.ok && !stopped ? "conflict" : "payment_required";
     // A sandbox's build is compute: reserved with billing before it starts,
     // and settled by its sandbox when it stops. A workflow job's build runs
@@ -1034,11 +1022,7 @@ class Deployments {
     await this.status(repo.id, input.commit, project, "pending", "Building", `${this.env.SITE}/${project.workspace}/${project.slug}/deployments/${id}`);
     await this.buildChanged(id, true);
     // What the project's secrets and variables give builds of this kind.
-    const build = await this.resolve(
-      { id: project.id, slug: project.slug, repoId: repo.id, repo: repo.path },
-      input.kind,
-      input.trusted,
-    );
+    const build = await this.resolve({ id: project.id, slug: project.slug, repoId: repo.id, repo: repo.path }, input.kind, input.trusted);
     return { refused: null, id, token, script, build, compute };
   }
 
@@ -1065,8 +1049,7 @@ class Deployments {
     if (!found.ok) return fail("not_found", "There is no such repository.");
     const projects = await this.projects.byRepo(found.value.id);
     const rows = new Map(await Promise.all(projects.map(async (p) => [p.id, await this.settingsRow(p.id)] as const)));
-    const live = (row: SettingsRow | null | undefined): row is SettingsRow =>
-      !!row?.enabled && !row.repo_deleted_at && !row.workspace_deleted_at;
+    const live = (row: SettingsRow | null | undefined): row is SettingsRow => !!row?.enabled && !row.repo_deleted_at && !row.workspace_deleted_at;
     const chosen = projectNamed(projects, (p) => live(rows.get(p.id)), a.project);
     if ("error" in chosen) return fail(chosen.code, chosen.error);
     const project = chosen;
@@ -1154,10 +1137,7 @@ class Deployments {
    */
   async workflowJobEnded(a: { jobId?: unknown; conclusion?: unknown }): Promise<Result<number>> {
     if (typeof a.jobId !== "string" || !a.jobId) return fail("invalid", "No job.");
-    const open = await this.db
-      .prepare("SELECT id FROM deployments WHERE job_id = ? AND status IN ('queued', 'building')")
-      .bind(a.jobId)
-      .all<{ id: string }>();
+    const open = await this.db.prepare("SELECT id FROM deployments WHERE job_id = ? AND status IN ('queued', 'building')").bind(a.jobId).all<{ id: string }>();
     const message = jobEndedMessage(typeof a.conclusion === "string" ? a.conclusion : "");
     for (const { id } of open.results) await this.finishFailed(id, message, null, null);
     return ok(open.results.length);
@@ -1253,10 +1233,7 @@ class Deployments {
     if (!cloudflare) return Response.json(fail("conflict", "Deployments are not set up."), { status: 409 });
     switch (step) {
       case "started":
-        await this.db
-          .prepare("UPDATE deployments SET status = 'building', started_at = ? WHERE id = ?")
-          .bind(now(), id)
-          .run();
+        await this.db.prepare("UPDATE deployments SET status = 'building', started_at = ? WHERE id = ?").bind(now(), id).run();
         await this.buildChanged(id);
         return Response.json(ok(true));
       case "registry": {
@@ -1313,11 +1290,7 @@ class Deployments {
           // OpenTelemetry's variables point the app's own SDK at the
           // project (src/telemetry.ts); an untrusted build's app gets no token.
           const runtime = withOtel(
-            await this.resolve(
-              { id: row.project_id, slug: row.slug, repoId: row.repo_id, repo: { namespace, name } },
-              row.kind,
-              !!row.trusted,
-            ),
+            await this.resolve({ id: row.project_id, slug: row.slug, repoId: row.repo_id, repo: { namespace, name } }, row.kind, !!row.trusted),
             app,
             row.trusted ? await this.telemetryToken(row.project_id, row.workspace) : null,
           );
@@ -1358,9 +1331,7 @@ class Deployments {
               id,
             ),
           // The build it replaces is no longer what the app serves.
-          this.db
-            .prepare(`UPDATE deployments SET status = 'replaced' WHERE script = ? AND id != ? AND status = 'ready'`)
-            .bind(row.script, id),
+          this.db.prepare(`UPDATE deployments SET status = 'replaced' WHERE script = ? AND id != ? AND status = 'ready'`).bind(row.script, id),
           this.db
             .prepare(
               `INSERT INTO apps (script, project_id, workspace, slug, kind, branch, number, commit_sha, deployed_at, created_at,
@@ -1391,8 +1362,9 @@ class Deployments {
         // Under its own hostname, what the dispatcher files each request
         // under (src/telemetry.ts); this also replaces a redirect the name
         // held while it was not an app.
-        await this.env.DOMAINS?.put(appHost(row.script), JSON.stringify({ script: row.script, redirect: null, telemetry: app }))
-          .catch((error) => console.error(wasRedirect ? "could not drop redirect" : "could not note the app's project", row.script, error));
+        await this.env.DOMAINS?.put(appHost(row.script), JSON.stringify({ script: row.script, redirect: null, telemetry: app })).catch((error) =>
+          console.error(wasRedirect ? "could not drop redirect" : "could not note the app's project", row.script, error),
+        );
         // The same app at an older name (its project moved) now redirects
         // here; it stays up as it was if the redirect cannot be put.
         await this.supersede(cloudflare, row, row.script);
@@ -1493,7 +1465,10 @@ class Deployments {
       meterToken,
     };
     await cloudflare.putContainerWorker(script, appWorkerMetadata(settings, { secrets: {}, variables: {} }, [mode, "container"]));
-    await this.db.prepare("UPDATE apps SET meter_hash = ? WHERE script = ?").bind(await sha256(meterToken), script).run();
+    await this.db
+      .prepare("UPDATE apps SET meter_hash = ? WHERE script = ?")
+      .bind(await sha256(meterToken), script)
+      .run();
   }
 
   /** Whether `script` is a container app. */
@@ -1687,10 +1662,7 @@ class Deployments {
     const costs = await this.costs();
     const cost = Math.ceil(Math.ceil(seconds) * costs.buildSecond);
     if (cost > 0) {
-      const what =
-        row.kind === "preview"
-          ? `the ${row.branch} preview of ${row.workspace}/${row.slug}`
-          : `${row.workspace}/${row.slug} to production`;
+      const what = row.kind === "preview" ? `the ${row.branch} preview of ${row.workspace}/${row.slug}` : `${row.workspace}/${row.slug} to production`;
       const charged = await billingClient(this.env.BILLING).chargeFeature({
         workspace: row.workspace,
         feature: "deployments",
@@ -1775,8 +1747,7 @@ class Deployments {
       millionRequests: cost("app_requests", a.microsPerMillionRequests),
       millionCpuMs: cost("app_cpu", a.microsPerMillionCpuMs),
       domainMonth: cost("custom_domain_month", a.microsPerDomainMonth),
-      domainMonthPrice:
-        book?.prices.find((p) => p.meter === "custom_domain_month")?.priceMicros ?? Math.ceil(a.microsPerDomainMonth * 1.2),
+      domainMonthPrice: book?.prices.find((p) => p.meter === "custom_domain_month")?.priceMicros ?? Math.ceil(a.microsPerDomainMonth * 1.2),
       container: {
         vcpuSecond: cost("app_container_vcpu_second", a.container.vcpuSecond),
         memoryGibSecond: cost("app_container_memory_gib_second", a.container.memoryGibSecond),
@@ -1784,8 +1755,7 @@ class Deployments {
         instanceSecond: cost("app_container_second", a.container.instanceSecond),
         egressGb: cost("app_container_egress_gb", a.container.egressGb),
       },
-      marginPercent:
-        vcpu?.priceMicros && vcpu.costMicros ? Math.round((vcpu.priceMicros / vcpu.costMicros - 1) * 100) : 20,
+      marginPercent: vcpu?.priceMicros && vcpu.costMicros ? Math.round((vcpu.priceMicros / vcpu.costMicros - 1) * 100) : 20,
     };
   }
 
@@ -1859,9 +1829,7 @@ class Deployments {
 
   private async takeDownWhere(projectId: string, kind: DeployKind | null, branch?: string): Promise<void> {
     const apps = await this.db
-      .prepare(
-        `SELECT script FROM apps WHERE project_id = ?1 AND (?2 IS NULL OR kind = ?2) AND (?3 IS NULL OR branch = ?3)`,
-      )
+      .prepare(`SELECT script FROM apps WHERE project_id = ?1 AND (?2 IS NULL OR kind = ?2) AND (?3 IS NULL OR branch = ?3)`)
       .bind(projectId, kind, branch ?? null)
       .all<{ script: string }>();
     for (const app of apps.results) await this.removeApp(app.script);
@@ -1990,9 +1958,7 @@ class Deployments {
     for (const slug of stale) {
       statements.push(
         this.db
-          .prepare(
-            `UPDATE deployments SET status = 'skipped', error = ?, finished_at = ? WHERE workspace = ? AND status IN ('queued', 'building')`,
-          )
+          .prepare(`UPDATE deployments SET status = 'skipped', error = ?, finished_at = ? WHERE workspace = ? AND status IN ('queued', 'building')`)
           .bind(RENAMED_ERROR, at, slug),
         this.db.prepare("UPDATE settings SET workspace = ?1 WHERE workspace = ?2").bind(current, slug),
         this.db.prepare("UPDATE apps SET workspace = ?1 WHERE workspace = ?2").bind(current, slug),
@@ -2080,9 +2046,7 @@ class Deployments {
     if (behind && attempts < RENAME_WAITS) throw new Error(`projects has not seen ${current} moved yet`);
 
     // Its history goes with it, as its pull requests do.
-    const statements: D1PreparedStatement[] = [
-      this.db.prepare("UPDATE deployments SET repo = ? WHERE repo_id = ?").bind(current, move.repoId),
-    ];
+    const statements: D1PreparedStatement[] = [this.db.prepare("UPDATE deployments SET repo = ? WHERE repo_id = ?").bind(current, move.repoId)];
     // The projects whose apps' names change, and have not been moved yet.
     const moving = settings.results
       .filter((row) => row.workspace !== workspace || (projects.get(row.project_id)?.slug ?? row.slug) !== row.slug)
@@ -2101,21 +2065,13 @@ class Deployments {
     for (const projectId of moving) {
       const slug = projects.get(projectId)?.slug ?? null;
       statements.push(
-        this.db
-          .prepare("UPDATE settings SET workspace = ?1, slug = COALESCE(?2, slug) WHERE project_id = ?3")
-          .bind(workspace, slug, projectId),
-        this.db
-          .prepare("UPDATE domains SET workspace = ?1, slug = COALESCE(?2, slug) WHERE project_id = ?3")
-          .bind(workspace, slug, projectId),
-        this.db
-          .prepare("UPDATE deployments SET workspace = ?1, slug = COALESCE(?2, slug) WHERE project_id = ?3")
-          .bind(workspace, slug, projectId),
+        this.db.prepare("UPDATE settings SET workspace = ?1, slug = COALESCE(?2, slug) WHERE project_id = ?3").bind(workspace, slug, projectId),
+        this.db.prepare("UPDATE domains SET workspace = ?1, slug = COALESCE(?2, slug) WHERE project_id = ?3").bind(workspace, slug, projectId),
+        this.db.prepare("UPDATE deployments SET workspace = ?1, slug = COALESCE(?2, slug) WHERE project_id = ?3").bind(workspace, slug, projectId),
         // Within the workspace its apps are listed under the project's name
         // now. One left behind in another workspace stays as it is until the
         // new name is live and redirects it.
-        this.db
-          .prepare("UPDATE apps SET slug = COALESCE(?2, slug) WHERE project_id = ?3 AND workspace = ?1")
-          .bind(workspace, slug, projectId),
+        this.db.prepare("UPDATE apps SET slug = COALESCE(?2, slug) WHERE project_id = ?3 AND workspace = ?1").bind(workspace, slug, projectId),
       );
     }
     await this.db.batch(statements);
@@ -2158,11 +2114,7 @@ class Deployments {
   }
 
   /** Whether `script` is the name an app of the project has where the project is now. */
-  private async namedNow(
-    script: string,
-    settings: { project_id: string; workspace: string; slug: string },
-    branch: string | null,
-  ): Promise<boolean> {
+  private async namedNow(script: string, settings: { project_id: string; workspace: string; slug: string }, branch: string | null): Promise<boolean> {
     const base = await label(settings.workspace, settings.slug, branch);
     return script === base || script === (await uniqueLabel(base, `${settings.project_id}/${branch ?? ""}`));
   }
@@ -2217,7 +2169,10 @@ class Deployments {
       const chunk = ids.slice(i, i + 50);
       const marks = chunk.map(() => "?").join(", ");
       const [appRows, droppedRows] = await Promise.all([
-        this.db.prepare(`SELECT * FROM apps WHERE project_id IN (${marks})`).bind(...chunk).all<AppRow>(),
+        this.db
+          .prepare(`SELECT * FROM apps WHERE project_id IN (${marks})`)
+          .bind(...chunk)
+          .all<AppRow>(),
         // Builds a move dropped, that nothing has been built in place of since.
         this.db
           .prepare(
@@ -2279,10 +2234,7 @@ class Deployments {
         // A workspace without Deployments, or over its limit, waits for it
         // rather than gathering refused deployments.
         if (!open.has(project.workspace)) {
-          const [plan, limit] = await Promise.all([
-            billing.hasFeature(project.workspace, "deployments"),
-            billing.checkLimit(project.workspace),
-          ]);
+          const [plan, limit] = await Promise.all([billing.hasFeature(project.workspace, "deployments"), billing.checkLimit(project.workspace)]);
           open.set(project.workspace, plan.ok && !(limit.ok && limit.value.state === "stopped"));
         }
         if (!open.get(project.workspace)) {
@@ -2321,10 +2273,7 @@ class Deployments {
 
   /** The projects built from a repository, as this service has them (projects hides a deleted one's). */
   private async projectIdsFor(repoId: string): Promise<string[]> {
-    const rows = await this.db
-      .prepare("SELECT project_id FROM settings WHERE repo_id = ?")
-      .bind(repoId)
-      .all<{ project_id: string }>();
+    const rows = await this.db.prepare("SELECT project_id FROM settings WHERE repo_id = ?").bind(repoId).all<{ project_id: string }>();
     return rows.results.map((row) => row.project_id);
   }
 
@@ -2394,9 +2343,7 @@ class Deployments {
     }
     const at = now();
     await this.db.batch([
-      this.db
-        .prepare("UPDATE settings SET workspace_deleted_at = COALESCE(workspace_deleted_at, ?) WHERE workspace = ?")
-        .bind(at, workspace),
+      this.db.prepare("UPDATE settings SET workspace_deleted_at = COALESCE(workspace_deleted_at, ?) WHERE workspace = ?").bind(at, workspace),
       this.db
         .prepare(
           `UPDATE deployments SET status = 'skipped', error = 'The workspace was deleted.', finished_at = ?
@@ -2473,10 +2420,7 @@ class Deployments {
       await domains.removeWhere("project_id", projectId);
     }
     // The redirects left at names its apps had before.
-    const scripts = await this.db
-      .prepare("SELECT DISTINCT script FROM deployments WHERE repo_id = ?")
-      .bind(repoId)
-      .all<{ script: string }>();
+    const scripts = await this.db.prepare("SELECT DISTINCT script FROM deployments WHERE repo_id = ?").bind(repoId).all<{ script: string }>();
     const hosts = scripts.results.map(({ script }) => appHost(script));
     for (let i = 0; i < hosts.length; i += 50) {
       const chunk = hosts.slice(i, i + 50);
@@ -2533,12 +2477,8 @@ class Deployments {
     if (projectIds.length === 0) return;
     const ids = projectIds.map(() => "?").join(", ");
     await this.db.batch([
-      this.db
-        .prepare(`UPDATE apps SET branch = ? WHERE kind = 'preview' AND branch = ? AND project_id IN (${ids})`)
-        .bind(to, from, ...projectIds),
-      this.db
-        .prepare(`UPDATE deployments SET branch = ? WHERE kind = 'preview' AND branch = ? AND project_id IN (${ids})`)
-        .bind(to, from, ...projectIds),
+      this.db.prepare(`UPDATE apps SET branch = ? WHERE kind = 'preview' AND branch = ? AND project_id IN (${ids})`).bind(to, from, ...projectIds),
+      this.db.prepare(`UPDATE deployments SET branch = ? WHERE kind = 'preview' AND branch = ? AND project_id IN (${ids})`).bind(to, from, ...projectIds),
     ]);
   }
 
@@ -2583,9 +2523,7 @@ class Deployments {
     // Each app is its project's workspace's, as deployments has it now: an
     // app still under the name it had before its project moved is the new
     // workspace's, and plans and limits are checked there.
-    const settings = new Map(
-      (await this.db.prepare("SELECT * FROM settings").all<SettingsRow>()).results.map((row) => [row.project_id, row]),
-    );
+    const settings = new Map((await this.db.prepare("SELECT * FROM settings").all<SettingsRow>()).results.map((row) => [row.project_id, row]));
     const owners = new Map([...settings].map(([id, row]) => [id, row.workspace]));
     // A deleted workspace's apps stay paused as they are, for a restore:
     // its plan ended with the deletion, and that must not take them down.
@@ -2614,10 +2552,7 @@ class Deployments {
 
     await this.domains
       .sweep(async (projectId) => {
-        const app = await this.db
-          .prepare("SELECT script FROM apps WHERE project_id = ? AND kind = 'production'")
-          .bind(projectId)
-          .first<{ script: string }>();
+        const app = await this.db.prepare("SELECT script FROM apps WHERE project_id = ? AND kind = 'production'").bind(projectId).first<{ script: string }>();
         return app?.script ?? null;
       })
       .catch((error) => console.error("could not check domains", error));
@@ -2692,9 +2627,7 @@ class Deployments {
     await this.db.prepare("DELETE FROM redirects WHERE expires_at < ?").bind(now()).run();
     const redirects = await this.db.prepare("SELECT script FROM redirects").all<{ script: string }>();
     const held = new Set([...apps.map((app) => app.script), ...redirects.results.map((r) => r.script)]);
-    const building = await this.db
-      .prepare("SELECT script FROM deployments WHERE status IN ('queued', 'building')")
-      .all<{ script: string }>();
+    const building = await this.db.prepare("SELECT script FROM deployments WHERE status IN ('queued', 'building')").all<{ script: string }>();
     for (const row of building.results) held.add(row.script);
     const cutoff = Date.now() - ORPHAN_AFTER_MS;
     for (const script of await cloudflare.listScripts()) {
@@ -2713,7 +2646,11 @@ class Deployments {
     const cloudflare = this.cloudflare;
     if (!cloudflare || apps.length === 0) return;
     const start = `${month()}-01T00:00:00Z`;
-    const totals = await cloudflare.usage(apps.map((app) => app.script), start, now());
+    const totals = await cloudflare.usage(
+      apps.map((app) => app.script),
+      start,
+      now(),
+    );
     // Analytics only counts apps that are up; the meter keeps what earlier
     // apps used by never going down.
     const perWorkspace = new Map<string, { requests: number; cpuMs: number }>();
@@ -2875,10 +2812,7 @@ class Deployments {
         });
         if (!charged.ok) continue;
       }
-      await this.db
-        .prepare("UPDATE meters SET charged_at = ? WHERE namespace = ? AND month = ?")
-        .bind(now(), meter.namespace, meter.month)
-        .run();
+      await this.db.prepare("UPDATE meters SET charged_at = ? WHERE namespace = ? AND month = ?").bind(now(), meter.namespace, meter.month).run();
     }
   }
 }
@@ -2920,7 +2854,7 @@ async function rpc(service: Deployments, method: string, args: any, ctx: Executi
       return service.refreshDomain(args);
     // A repository's deployments wherever they run (repo-deployments.ts).
     case "list_deployments":
-      return service.repoDeployments.list({ ...args, source: args.source == null ? null : sourceOf(args.source) ?? "none" });
+      return service.repoDeployments.list({ ...args, source: args.source == null ? null : (sourceOf(args.source) ?? "none") });
     case "get_deployment":
       return service.repoDeployments.get(args);
     case "list_deployment_statuses":

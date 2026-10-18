@@ -152,12 +152,12 @@ jobs:
 It looks at which languages the repository has, and scans each one with a
 scanner made for it:
 
-| Language | Scanner | Category |
-| --- | --- | --- |
-| Python | [Bandit](https://bandit.readthedocs.io) | `python` |
-| Go | [gosec](https://securego.io), each module on its own | `go`, or `go:<directory>` for a module below the top |
-| JavaScript and TypeScript | [ESLint](https://eslint.org) with [eslint-plugin-security](https://www.npmjs.com/package/eslint-plugin-security), written as SARIF by `@microsoft/eslint-formatter-sarif` | `javascript` |
-| Rust | [Clippy](https://doc.rust-lang.org/clippy/), written as SARIF by `clippy-sarif` | `rust`, or `rust:<directory>` for a crate below the top |
+| Language                  | Scanner                                                                                                                                                                   | Category                                                |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Python                    | [Bandit](https://bandit.readthedocs.io)                                                                                                                                   | `python`                                                |
+| Go                        | [gosec](https://securego.io), each module on its own                                                                                                                      | `go`, or `go:<directory>` for a module below the top    |
+| JavaScript and TypeScript | [ESLint](https://eslint.org) with [eslint-plugin-security](https://www.npmjs.com/package/eslint-plugin-security), written as SARIF by `@microsoft/eslint-formatter-sarif` | `javascript`                                            |
+| Rust                      | [Clippy](https://doc.rust-lang.org/clippy/), written as SARIF by `clippy-sarif`                                                                                           | `rust`, or `rust:<directory>` for a crate below the top |
 
 A language the repository does not have is skipped. Each scanner installs
 from its language's own registry (PyPI, the Go module proxy, npm or
@@ -183,14 +183,14 @@ upload step.
 in its [`permissions:`](/guides/actions/#the-jobs-token), as the workflow
 g1t writes has):
 
-| Field | |
-| --- | --- |
-| `commit_sha` | The full hash of the commit analysed. |
-| `ref` | `refs/heads/<branch>`, or `refs/pull/<number>/head` (or `/merge`) for a pull request. |
-| `sarif` | The SARIF file gzipped, then base64-encoded: `gzip -c results.sarif \| base64 -w0`. At most 10 MB encoded and 40 MB unzipped. |
-| `tool_name` | Optional: another name for the tool, when the file has one run. |
-| `category` | Optional: which analysis this is. Default: the run's `automationDetails.id` up to its last `/`, or the tool's name. |
-| `checkout_uri` | Optional: where the files were checked out (`file:///home/runner/work/repo`), so absolute paths become repository paths. |
+| Field          |                                                                                                                               |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `commit_sha`   | The full hash of the commit analysed.                                                                                         |
+| `ref`          | `refs/heads/<branch>`, or `refs/pull/<number>/head` (or `/merge`) for a pull request.                                         |
+| `sarif`        | The SARIF file gzipped, then base64-encoded: `gzip -c results.sarif \| base64 -w0`. At most 10 MB encoded and 40 MB unzipped. |
+| `tool_name`    | Optional: another name for the tool, when the file has one run.                                                               |
+| `category`     | Optional: which analysis this is. Default: the run's `automationDetails.id` up to its last `/`, or the tool's name.           |
+| `checkout_uri` | Optional: where the files were checked out (`file:///home/runner/work/repo`), so absolute paths become repository paths.      |
 
 The upload is read at once. The answer's `processing_status` is
 `complete` or `failed`, with `errors` saying why; `GET
@@ -213,13 +213,13 @@ analysis is the same alert:
 
 For each tool and category, an analysis of the default branch:
 
-| The result | The alert |
-| --- | --- |
-| Not seen before | Opens, numbered in the repository |
-| Seen before | Refreshed: its message, severity and location |
-| Fixed before, found again | Opens again |
-| Dismissed, found again | Stays dismissed |
-| Not reported any more | Fixed |
+| The result                | The alert                                     |
+| ------------------------- | --------------------------------------------- |
+| Not seen before           | Opens, numbered in the repository             |
+| Seen before               | Refreshed: its message, severity and location |
+| Fixed before, found again | Opens again                                   |
+| Dismissed, found again    | Stays dismissed                               |
+| Not reported any more     | Fixed                                         |
 
 Suppressed results (a tool's in-source suppressions) are not alerts.
 
@@ -243,14 +243,14 @@ branch:
   it fails when a new result on a changed line reaches the threshold in the
   repository's **Security settings**:
 
-| Code scanning results | Fails on |
-| --- | --- |
-| Never | Nothing |
-| Errors only | Results the tool calls errors |
-| Critical, and errors | Errors, and security results of critical severity |
+| Code scanning results                    | Fails on                                                  |
+| ---------------------------------------- | --------------------------------------------------------- |
+| Never                                    | Nothing                                                   |
+| Errors only                              | Results the tool calls errors                             |
+| Critical, and errors                     | Errors, and security results of critical severity         |
 | High or higher, and errors (the default) | Errors, and security results of high or critical severity |
-| Medium or higher, and errors | Errors, and security results of medium severity or worse |
-| Any security result, and errors | Errors, and any security result |
+| Medium or higher, and errors             | Errors, and security results of medium severity or worse  |
+| Any security result, and errors          | Errors, and any security result                           |
 
 The check links to `g1t.sh/<owner>/<project>/security/pulls/<number>`,
 which lists what it found. To block merges on it, require **Code
@@ -265,22 +265,22 @@ first and worst first, with recent analyses below. Filter by state,
 severity and tool. Each alert's page has its rule's help, its location,
 the analyses that reported it and its actions:
 
-| Action | Needs | What happens |
-| --- | --- | --- |
+| Action      | Needs | What happens                                                                                                                                      |
+| ----------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Dismiss** | Write | With a reason: **False positive** (`false_positive`), **Won't fix** (`wont_fix`) or **Used in tests** (`used_in_tests`), and an optional comment. |
-| **Reopen** | Write | A dismissed alert opens again. |
+| **Reopen**  | Write | A dismissed alert opens again.                                                                                                                    |
 
 ## API and MCP
 
-| Route | What it does | Scope |
-| --- | --- | --- |
-| `GET /repos/{owner}/{name}/code-scanning/alerts` | Lists alerts; filter with `state`, `severity`, `tool`, `rule_id`. | `security:read` |
-| `GET /workspaces/{workspace}/code-scanning/alerts` | The same across a workspace. | `security:read` |
-| `GET /repos/{owner}/{name}/code-scanning/alerts/{number}` | One alert, with its activity and analyses. | `security:read` |
+| Route                                                       | What it does                                                                    | Scope            |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------- | ---------------- |
+| `GET /repos/{owner}/{name}/code-scanning/alerts`            | Lists alerts; filter with `state`, `severity`, `tool`, `rule_id`.               | `security:read`  |
+| `GET /workspaces/{workspace}/code-scanning/alerts`          | The same across a workspace.                                                    | `security:read`  |
+| `GET /repos/{owner}/{name}/code-scanning/alerts/{number}`   | One alert, with its activity and analyses.                                      | `security:read`  |
 | `PATCH /repos/{owner}/{name}/code-scanning/alerts/{number}` | `state` `dismissed` with `dismissed_reason` and `dismissed_comment`, or `open`. | `security:write` |
-| `GET /repos/{owner}/{name}/code-scanning/analyses` | Analyses, newest first. | `security:read` |
-| `POST /repos/{owner}/{name}/code-scanning/sarifs` | Uploads SARIF. | `security:write` |
-| `GET /repos/{owner}/{name}/code-scanning/sarifs/{id}` | One upload. | `security:read` |
+| `GET /repos/{owner}/{name}/code-scanning/analyses`          | Analyses, newest first.                                                         | `security:read`  |
+| `POST /repos/{owner}/{name}/code-scanning/sarifs`           | Uploads SARIF.                                                                  | `security:write` |
+| `GET /repos/{owner}/{name}/code-scanning/sarifs/{id}`       | One upload.                                                                     | `security:read`  |
 
 Over MCP, the [`security` tool](/reference/mcp/#security) has
 `code_alerts`, `code_alert`, `update_code_alert`, `analyses`,

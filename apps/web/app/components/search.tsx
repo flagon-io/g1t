@@ -1,4 +1,17 @@
-import { BookMarked, Building2, CircleDot, CircleCheck, CircleSlash, FileCode2, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, Lock, User } from "lucide-react";
+import {
+  BookMarked,
+  Building2,
+  CircleDot,
+  CircleCheck,
+  CircleSlash,
+  FileCode2,
+  GitMerge,
+  GitPullRequest,
+  GitPullRequestClosed,
+  GitPullRequestDraft,
+  Lock,
+  User,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
@@ -166,8 +179,7 @@ function Item({ hit }: { hit: SiteHit }) {
               {hit.requestedBy && (
                 <>
                   {" "}
-                  for{" "}
-                  <PersonLink name={hit.requestedBy} className="hover:text-fg" />
+                  for <PersonLink name={hit.requestedBy} className="hover:text-fg" />
                 </>
               )}
             </span>

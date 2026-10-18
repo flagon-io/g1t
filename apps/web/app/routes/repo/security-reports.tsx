@@ -37,7 +37,10 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // The reports are what the page is about. Whether reporting is on only
   // changes a line: unknown (null) when it cannot be read, so the page
   // does not say it is off.
-  const [reports, settings] = await Promise.all([advisories.reports(path, viewer), part(advisories.reportSettings(path, viewer), "Private vulnerability reporting")]);
+  const [reports, settings] = await Promise.all([
+    advisories.reports(path, viewer),
+    part(advisories.reportSettings(path, viewer), "Private vulnerability reporting"),
+  ]);
   return {
     reports: unwrap(reports),
     reporting: isFailed(settings) ? null : settings.ok && settings.value.privateVulnerabilityReporting,
@@ -53,7 +56,13 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   const form = await request.formData();
   const decision = String(form.get("decision") ?? "");
   if (decision !== "accept" && decision !== "decline") return { ok: false, error: "Nothing to do." };
-  const reviewed = await advisories.review(user, { namespace: params.owner, name: params.repo }, String(form.get("id") ?? ""), decision, String(form.get("note") ?? "").slice(0, 1000));
+  const reviewed = await advisories.review(
+    user,
+    { namespace: params.owner, name: params.repo },
+    String(form.get("id") ?? ""),
+    decision,
+    String(form.get("note") ?? "").slice(0, 1000),
+  );
   if (!reviewed.ok) return { ok: false, error: reviewed.error.message };
   return { ok: true, advisory: reviewed.value.advisory?.g1tsaId ?? null };
 }

@@ -164,7 +164,6 @@ export function uptimeOver(key: string, rows: DayRow[]): number | null {
   return uptimeOf(answered, checks);
 }
 
-
 const RANK: Record<StatusOverallState, number> = { unknown: 0, up: 1, maintenance: 1.5, degraded: 2, down: 3 };
 
 function worse(a: StatusOverallState, b: StatusOverallState): StatusOverallState {
@@ -235,10 +234,7 @@ export function maintenanceState(m: Pick<StatusMaintenance, "state" | "starts_at
 }
 
 /** The parts under maintenance at `now`. */
-export function underMaintenance(
-  list: Pick<StatusMaintenance, "state" | "starts_at" | "ends_at" | "components">[],
-  now: Date,
-): Set<string> {
+export function underMaintenance(list: Pick<StatusMaintenance, "state" | "starts_at" | "ends_at" | "components">[], now: Date): Set<string> {
   const keys = new Set<string>();
   for (const m of list) if (maintenanceState(m, now) === "in_progress") for (const k of m.components) keys.add(k);
   return keys;
@@ -302,11 +298,7 @@ export function summarize(
 }
 
 /** Open incidents, and those resolved within `days` of `now`, newest first. */
-export function recentIncidents<T extends Pick<StatusIncident, "started_at" | "resolved_at">>(
-  incidents: T[],
-  now: Date,
-  days = HISTORY_DAYS,
-): T[] {
+export function recentIncidents<T extends Pick<StatusIncident, "started_at" | "resolved_at">>(incidents: T[], now: Date, days = HISTORY_DAYS): T[] {
   const since = now.getTime() - days * DAY_MS;
   return incidents
     .filter((i) => i.resolved_at == null || Date.parse(i.resolved_at) >= since)

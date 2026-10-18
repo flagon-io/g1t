@@ -51,7 +51,15 @@ export function Coming({ children = "Coming" }: { children?: string }) {
 }
 
 /** A person's name, linked to their profile. */
-export function PersonLink({ workspace, person, className }: { workspace: string; person: Pick<DirectoryPerson, "username" | "name" | "display_username">; className?: string }) {
+export function PersonLink({
+  workspace,
+  person,
+  className,
+}: {
+  workspace: string;
+  person: Pick<DirectoryPerson, "username" | "name" | "display_username">;
+  className?: string;
+}) {
   return (
     <Link to={personPath(workspace, person.username)} prefetch="intent" className={cn("hover:text-accent", className)}>
       {personName(person)}

@@ -351,15 +351,15 @@ includes, and fails for any other version.
 
 ### Machine sizes, time and storage
 
-| Limit | Value |
-| --- | --- |
-| Largest machine | 4 vCPUs, 12 GiB of memory, 20 GB of disk (`g1t-4core`). No GPUs. |
-| Standard machine | 2 vCPUs, 8 GiB of memory, 16 GB of disk (`ubuntu-latest`, every other hosted label, and `g1t-2core`). |
-| One job on g1t's machines | 60 minutes. On a self-hosted runner, 24 hours. |
-| One cache entry | 2 GiB, compressed. A larger one is not saved. |
-| A repository's caches | 10 GiB together. Past it, the entries restored longest ago are removed. |
-| One artifact | 5 GiB, zipped. Kept 14 days unless the repository says otherwise, at most 90. |
-| A run's artifacts | 10 GiB together. |
+| Limit                     | Value                                                                                                 |
+| ------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Largest machine           | 4 vCPUs, 12 GiB of memory, 20 GB of disk (`g1t-4core`). No GPUs.                                      |
+| Standard machine          | 2 vCPUs, 8 GiB of memory, 16 GB of disk (`ubuntu-latest`, every other hosted label, and `g1t-2core`). |
+| One job on g1t's machines | 60 minutes. On a self-hosted runner, 24 hours.                                                        |
+| One cache entry           | 2 GiB, compressed. A larger one is not saved.                                                         |
+| A repository's caches     | 10 GiB together. Past it, the entries restored longest ago are removed.                               |
+| One artifact              | 5 GiB, zipped. Kept 14 days unless the repository says otherwise, at most 90.                         |
+| A run's artifacts         | 10 GiB together.                                                                                      |
 
 The machine sizes are Cloudflare Containers' instance sizes. For more, use a
 [self-hosted runner](/guides/self-hosted-runners/). See

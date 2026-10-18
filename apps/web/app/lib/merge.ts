@@ -4,10 +4,7 @@ import type { CommitMessageDefault, MergeChoices, MergeMethod, RepoSettings } fr
 export const MERGE_METHODS: readonly MergeMethod[] = ["merge", "squash", "rebase", "fast_forward"];
 
 /** How each method is named and explained: in settings, on the merge button, and once merged. */
-export const METHOD_INFO: Record<
-  MergeMethod,
-  { label: string; short: string; action: string; past: string; about: string; setting: keyof RepoSettings }
-> = {
+export const METHOD_INFO: Record<MergeMethod, { label: string; short: string; action: string; past: string; about: string; setting: keyof RepoSettings }> = {
   merge: {
     label: "Merge commits",
     short: "Merge",
@@ -221,12 +218,7 @@ function custom(template: string | null, pull: TemplatePull): CommitText | null 
  * What a merge or squash commit says by default, as the repository chose:
  * exactly what the work service's `default_message` makes.
  */
-export function defaultMessage(
-  method: "merge" | "squash",
-  choice: CommitMessageDefault,
-  template: string | null,
-  pull: TemplatePull,
-): CommitText {
+export function defaultMessage(method: "merge" | "squash", choice: CommitMessageDefault, template: string | null, pull: TemplatePull): CommitText {
   const numbered = `${pull.title.trim()} (#${pull.number})`;
   const description = pull.body.trim();
   if (method === "merge") {
@@ -347,11 +339,7 @@ export function choicesFromService(choices: MergeChoices): MergeChoicesView {
  * pull request's commits, so what it made would differ from what the work
  * service writes; the merge box leaves the message to the service instead.
  */
-export function choicesFromSettings(
-  settings: RepoSettings,
-  behind: boolean,
-  ruleMethods: readonly MergeMethod[] = [],
-): MergeChoicesView {
+export function choicesFromSettings(settings: RepoSettings, behind: boolean, ruleMethods: readonly MergeMethod[] = []): MergeChoicesView {
   const allowed = allowedMethods(settings).filter((method) => ruleMethods.length === 0 || ruleMethods.includes(method));
   const methods = allowed.length > 0 ? allowed : allowedMethods(settings);
   return {

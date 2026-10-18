@@ -32,13 +32,64 @@ test("a pin form says what to change", () => {
     for (const [key, value] of entries) data.append(key, value);
     return data;
   };
-  assert.deepEqual(pinFromForm(form([["intent", "pin"], ["slug", " Web "]])), { intent: "pin", slug: "web", position: null });
-  assert.deepEqual(pinFromForm(form([["intent", "pin"], ["slug", "web"], ["position", "2"]])), { intent: "pin", slug: "web", position: 2 });
-  assert.deepEqual(pinFromForm(form([["intent", "unpin"], ["slug", "web"]])), { intent: "unpin", slug: "web" });
-  assert.deepEqual(pinFromForm(form([["intent", "reorder"], ["slug", "b"], ["slug", "a"]])), { intent: "reorder", slugs: ["b", "a"] });
-  assert.equal(pinFromForm(form([["intent", "reorder"], ["slug", "a"], ["slug", "a"]])), null);
+  assert.deepEqual(
+    pinFromForm(
+      form([
+        ["intent", "pin"],
+        ["slug", " Web "],
+      ]),
+    ),
+    { intent: "pin", slug: "web", position: null },
+  );
+  assert.deepEqual(
+    pinFromForm(
+      form([
+        ["intent", "pin"],
+        ["slug", "web"],
+        ["position", "2"],
+      ]),
+    ),
+    { intent: "pin", slug: "web", position: 2 },
+  );
+  assert.deepEqual(
+    pinFromForm(
+      form([
+        ["intent", "unpin"],
+        ["slug", "web"],
+      ]),
+    ),
+    { intent: "unpin", slug: "web" },
+  );
+  assert.deepEqual(
+    pinFromForm(
+      form([
+        ["intent", "reorder"],
+        ["slug", "b"],
+        ["slug", "a"],
+      ]),
+    ),
+    { intent: "reorder", slugs: ["b", "a"] },
+  );
+  assert.equal(
+    pinFromForm(
+      form([
+        ["intent", "reorder"],
+        ["slug", "a"],
+        ["slug", "a"],
+      ]),
+    ),
+    null,
+  );
   assert.equal(pinFromForm(form([["intent", "pin"]])), null);
-  assert.equal(pinFromForm(form([["intent", "star"], ["slug", "web"]])), null);
+  assert.equal(
+    pinFromForm(
+      form([
+        ["intent", "star"],
+        ["slug", "web"],
+      ]),
+    ),
+    null,
+  );
 });
 
 test("a pin moves up or down within the list", () => {

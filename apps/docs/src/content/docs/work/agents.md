@@ -45,20 +45,20 @@ curl https://api.g1t.sh/workspaces/acme/work/12/work \
   -H "Authorization: Bearer $G1T_TOKEN"
 ```
 
-| Field | What it holds |
-| --- | --- |
-| `item` | The work item, with its description. |
-| `definition_of_done` | The items under its **Definition of done** heading. |
-| `repos` | Its repositories, each with its `role`, whether it has `landed`, its old issue number (`legacy_number`), the `required_checks` its default branch requires, and its `pulls` for the work item. Those still open or draft carry their checks as they stand on the head, `mergeable`, the other pull requests they `overlaps` with, and their place in the merge `queue`. |
-| `missing` | Its targets that have not landed yet. |
-| `suggested_targets` | Up to five repositories of the workspace it may also need, each with `path` and `why`. See [suggested targets](/work/work-items/#suggested-targets). |
-| `claims` | Who says they are working on it now. |
-| `sessions` | Sessions on it or its pull requests, or tied to it any other way, subagents included, those still going first; up to 50. Each says how many `subagents` it started. |
-| `blocked_by` | Each work item it waits on, with that work item's claims and pull requests. |
-| `blocks` | The work items waiting on it. |
-| `decisions` | [Decision records](/guides/why-blame/#decision-records) on it and its pull requests, newest first; up to 20. |
-| `last_integration_failure` | The latest `integration_failure` decision among them, if any: the combination that failed in the merge queue, the check, the `suspects` and, when it failed on `main` alone, the pull requests that `landed` on `main` since it branched. |
-| `recent` | Its latest 20 coordination events, newest first. |
+| Field                      | What it holds                                                                                                                                                                                                                                                                                                                                                           |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `item`                     | The work item, with its description.                                                                                                                                                                                                                                                                                                                                    |
+| `definition_of_done`       | The items under its **Definition of done** heading.                                                                                                                                                                                                                                                                                                                     |
+| `repos`                    | Its repositories, each with its `role`, whether it has `landed`, its old issue number (`legacy_number`), the `required_checks` its default branch requires, and its `pulls` for the work item. Those still open or draft carry their checks as they stand on the head, `mergeable`, the other pull requests they `overlaps` with, and their place in the merge `queue`. |
+| `missing`                  | Its targets that have not landed yet.                                                                                                                                                                                                                                                                                                                                   |
+| `suggested_targets`        | Up to five repositories of the workspace it may also need, each with `path` and `why`. See [suggested targets](/work/work-items/#suggested-targets).                                                                                                                                                                                                                    |
+| `claims`                   | Who says they are working on it now.                                                                                                                                                                                                                                                                                                                                    |
+| `sessions`                 | Sessions on it or its pull requests, or tied to it any other way, subagents included, those still going first; up to 50. Each says how many `subagents` it started.                                                                                                                                                                                                     |
+| `blocked_by`               | Each work item it waits on, with that work item's claims and pull requests.                                                                                                                                                                                                                                                                                             |
+| `blocks`                   | The work items waiting on it.                                                                                                                                                                                                                                                                                                                                           |
+| `decisions`                | [Decision records](/guides/why-blame/#decision-records) on it and its pull requests, newest first; up to 20.                                                                                                                                                                                                                                                            |
+| `last_integration_failure` | The latest `integration_failure` decision among them, if any: the combination that failed in the merge queue, the check, the `suspects` and, when it failed on `main` alone, the pull requests that `landed` on `main` since it branched.                                                                                                                               |
+| `recent`                   | Its latest 20 coordination events, newest first.                                                                                                                                                                                                                                                                                                                        |
 
 `g1t work view 12` prints the same: its description and definition of
 done, its repositories with their pull requests, checks and overlaps,
@@ -117,24 +117,24 @@ See [work with no work item yet](/guides/sessions/#work-with-no-work-item-yet).
 filters `g1t work list`, and is the repository `g1t work link` and
 `g1t work unlink` act on. Every command takes `--json`.
 
-| Command | Does |
-| --- | --- |
-| `g1t work list` | Lists open work items. `-R`, `--state` (`open`, `closed` or `all`), `--label`, `--milestone`, `--assignee` and `--author` narrow it; with `-R`, `--role` keeps those linked to the repository in one role. |
-| `g1t work view N` | Shows its [work context](#pick-up-a-work-item). `--comments` adds its comments, `--web` opens it in the browser. |
-| `g1t work new` | Files a work item; `--target` for each repository it should land in, `--label`, `--assignee`, `--milestone`. `--attach FILE` adds an image to its description: uploaded to the repository it is filed from, or, filed in the workspace alone, to the work item once it is open. |
-| `g1t work comment N` | Comments on it. `--attach FILE` uploads an image to the work item and adds it to the comment. |
-| `g1t work edit N` | Changes its title, description, labels, assignees or milestone. |
-| `g1t work close N` | Closes it, as completed, or `--reason not_planned`; `--comment` says why. `--commit SHA` names a commit on the default branch that did it, which lands it there. See [closing work items](/work/closing/). |
-| `g1t work reopen N` | Opens it again. |
-| `g1t work link N` | Links a repository in a role: `--role target` (the default) or `touched`, the current repository or `-R owner/name`. |
-| `g1t work unlink N` | Unlinks a repository, never its origin. |
-| `g1t work claim N` | Says you are working on it, with `--note` and `--ttl`. With `--title` instead of a number, files a work item and claims it. |
-| `g1t work release N` | Lets go of your claim. |
-| `g1t work handoff N` | Hands it to someone else (`--to`), or to anyone, with a `--note`. |
-| `g1t work status` | The repository's active claims and sessions. |
-| `g1t work block N --by M` | Says it waits on work item M; `g1t work unblock N --by M` takes that back. |
-| `g1t work events` | The repository's events; `--follow` keeps printing them, `--item N` for one work item. |
-| `g1t work dispatch N` | Starts work on it in a session on your own Claude, or prints the Claude Code command for it. See [start a session on your Anthropic account](/guides/sessions/#start-a-session-on-your-anthropic-account). |
+| Command                   | Does                                                                                                                                                                                                                                                                            |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `g1t work list`           | Lists open work items. `-R`, `--state` (`open`, `closed` or `all`), `--label`, `--milestone`, `--assignee` and `--author` narrow it; with `-R`, `--role` keeps those linked to the repository in one role.                                                                      |
+| `g1t work view N`         | Shows its [work context](#pick-up-a-work-item). `--comments` adds its comments, `--web` opens it in the browser.                                                                                                                                                                |
+| `g1t work new`            | Files a work item; `--target` for each repository it should land in, `--label`, `--assignee`, `--milestone`. `--attach FILE` adds an image to its description: uploaded to the repository it is filed from, or, filed in the workspace alone, to the work item once it is open. |
+| `g1t work comment N`      | Comments on it. `--attach FILE` uploads an image to the work item and adds it to the comment.                                                                                                                                                                                   |
+| `g1t work edit N`         | Changes its title, description, labels, assignees or milestone.                                                                                                                                                                                                                 |
+| `g1t work close N`        | Closes it, as completed, or `--reason not_planned`; `--comment` says why. `--commit SHA` names a commit on the default branch that did it, which lands it there. See [closing work items](/work/closing/).                                                                      |
+| `g1t work reopen N`       | Opens it again.                                                                                                                                                                                                                                                                 |
+| `g1t work link N`         | Links a repository in a role: `--role target` (the default) or `touched`, the current repository or `-R owner/name`.                                                                                                                                                            |
+| `g1t work unlink N`       | Unlinks a repository, never its origin.                                                                                                                                                                                                                                         |
+| `g1t work claim N`        | Says you are working on it, with `--note` and `--ttl`. With `--title` instead of a number, files a work item and claims it.                                                                                                                                                     |
+| `g1t work release N`      | Lets go of your claim.                                                                                                                                                                                                                                                          |
+| `g1t work handoff N`      | Hands it to someone else (`--to`), or to anyone, with a `--note`.                                                                                                                                                                                                               |
+| `g1t work status`         | The repository's active claims and sessions.                                                                                                                                                                                                                                    |
+| `g1t work block N --by M` | Says it waits on work item M; `g1t work unblock N --by M` takes that back.                                                                                                                                                                                                      |
+| `g1t work events`         | The repository's events; `--follow` keeps printing them, `--item N` for one work item.                                                                                                                                                                                          |
+| `g1t work dispatch N`     | Starts work on it in a session on your own Claude, or prints the Claude Code command for it. See [start a session on your Anthropic account](/guides/sessions/#start-a-session-on-your-anthropic-account).                                                                      |
 
 [CLI commands](/reference/cli/#g1t-work) lists every flag.
 
@@ -153,27 +153,27 @@ See [MCP tools](/reference/mcp/#work_item).
 
 The REST API has the same under `/workspaces/{workspace}/work`:
 
-| To | REST |
-| --- | --- |
-| List work items | `GET /workspaces/{workspace}/work` |
-| File one | `POST /workspaces/{workspace}/work` |
-| Get one | `GET /workspaces/{workspace}/work/{number}` |
-| Change one | `PATCH /workspaces/{workspace}/work/{number}` |
-| Close or reopen it | `POST /workspaces/{workspace}/work/{number}/close` (with `reason`, or `repo` and `commit`), `…/reopen` |
-| Its repositories | `GET /workspaces/{workspace}/work/{number}/links` |
-| Link or unlink a repository | `POST` or `DELETE /workspaces/{workspace}/work/{number}/links` |
-| Its labels | `GET`, `POST`, `PUT` or `DELETE /workspaces/{workspace}/work/{number}/labels`, `DELETE …/labels/{label}` |
-| Comment | `POST /workspaces/{workspace}/work/{number}/comments`; `PATCH` or `DELETE /workspaces/{workspace}/work/comments/{id}` |
-| React | `POST /workspaces/{workspace}/work/{number}/reactions` |
-| Upload an image for it | [`POST /workspaces/{workspace}/work/{number}/attachments`](/reference/api/work-items/upload-work-item-attachment/), with `work:write`; anyone who may comment on it may |
-| Its decisions, with its pull requests' | `GET /workspaces/{workspace}/work/{number}/decisions` |
-| Watch it | `GET`, `PUT` or `DELETE /workspaces/{workspace}/work/{number}/subscription` |
-| Its work context | `GET /workspaces/{workspace}/work/{number}/work` |
-| Claim, release, hand off | `POST /workspaces/{workspace}/work/{number}/claim`, `…/release`, `…/handoff` |
-| Bring work items in from a tracker | `POST /workspaces/{workspace}/work/import` |
-| A repository's work items | `GET /repos/{owner}/{name}/work` |
-| What `#N` names | `GET /repos/{owner}/{name}/refs/{number}`, or `GET /workspaces/{workspace}/refs/{number}` |
-| The workspace's labels and milestones | `/workspaces/{workspace}/labels`, `/workspaces/{workspace}/milestones` |
+| To                                     | REST                                                                                                                                                                    |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| List work items                        | `GET /workspaces/{workspace}/work`                                                                                                                                      |
+| File one                               | `POST /workspaces/{workspace}/work`                                                                                                                                     |
+| Get one                                | `GET /workspaces/{workspace}/work/{number}`                                                                                                                             |
+| Change one                             | `PATCH /workspaces/{workspace}/work/{number}`                                                                                                                           |
+| Close or reopen it                     | `POST /workspaces/{workspace}/work/{number}/close` (with `reason`, or `repo` and `commit`), `…/reopen`                                                                  |
+| Its repositories                       | `GET /workspaces/{workspace}/work/{number}/links`                                                                                                                       |
+| Link or unlink a repository            | `POST` or `DELETE /workspaces/{workspace}/work/{number}/links`                                                                                                          |
+| Its labels                             | `GET`, `POST`, `PUT` or `DELETE /workspaces/{workspace}/work/{number}/labels`, `DELETE …/labels/{label}`                                                                |
+| Comment                                | `POST /workspaces/{workspace}/work/{number}/comments`; `PATCH` or `DELETE /workspaces/{workspace}/work/comments/{id}`                                                   |
+| React                                  | `POST /workspaces/{workspace}/work/{number}/reactions`                                                                                                                  |
+| Upload an image for it                 | [`POST /workspaces/{workspace}/work/{number}/attachments`](/reference/api/work-items/upload-work-item-attachment/), with `work:write`; anyone who may comment on it may |
+| Its decisions, with its pull requests' | `GET /workspaces/{workspace}/work/{number}/decisions`                                                                                                                   |
+| Watch it                               | `GET`, `PUT` or `DELETE /workspaces/{workspace}/work/{number}/subscription`                                                                                             |
+| Its work context                       | `GET /workspaces/{workspace}/work/{number}/work`                                                                                                                        |
+| Claim, release, hand off               | `POST /workspaces/{workspace}/work/{number}/claim`, `…/release`, `…/handoff`                                                                                            |
+| Bring work items in from a tracker     | `POST /workspaces/{workspace}/work/import`                                                                                                                              |
+| A repository's work items              | `GET /repos/{owner}/{name}/work`                                                                                                                                        |
+| What `#N` names                        | `GET /repos/{owner}/{name}/refs/{number}`, or `GET /workspaces/{workspace}/refs/{number}`                                                                               |
+| The workspace's labels and milestones  | `/workspaces/{workspace}/labels`, `/workspaces/{workspace}/milestones`                                                                                                  |
 
 ```sh
 curl -X POST https://api.g1t.sh/workspaces/acme/work \

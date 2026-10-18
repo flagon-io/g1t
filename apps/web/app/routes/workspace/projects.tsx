@@ -149,10 +149,7 @@ function ProjectRow({ project, slug, pinned, member }: { project: Item; slug: st
         </p>
       </div>
       {project.production && (
-        <a
-          href={project.production}
-          className="relative z-10 hidden shrink-0 items-center gap-1 font-mono text-xs text-muted hover:text-accent md:flex"
-        >
+        <a href={project.production} className="relative z-10 hidden shrink-0 items-center gap-1 font-mono text-xs text-muted hover:text-accent md:flex">
           {host(project.production)}
           <ArrowUpRight size={11} />
         </a>
@@ -454,7 +451,10 @@ export default function WorkspaceProjects({ loaderData }: Route.ComponentProps) 
           )}
         </p>
         {filtered && (
-          <Link to={projectQueryString({ ...query, q: "", visibility: "all", kind: "all", language: null, deployments: false, archived: "hide" })} className="text-xs text-muted hover:text-fg">
+          <Link
+            to={projectQueryString({ ...query, q: "", visibility: "all", kind: "all", language: null, deployments: false, archived: "hide" })}
+            className="text-xs text-muted hover:text-fg"
+          >
             Clear filters
           </Link>
         )}
@@ -523,7 +523,10 @@ export default function WorkspaceProjects({ loaderData }: Route.ComponentProps) 
         ) : items.length === 0 ? (
           <EmptyState title="No projects match">
             Try other words or filters, or{" "}
-            <Link to={projectQueryString({ ...query, q: "", visibility: "all", kind: "all", language: null, deployments: false, archived: "hide" })} className="text-accent hover:underline">
+            <Link
+              to={projectQueryString({ ...query, q: "", visibility: "all", kind: "all", language: null, deployments: false, archived: "hide" })}
+              className="text-accent hover:underline"
+            >
               clear them
             </Link>
             .
@@ -547,13 +550,9 @@ export default function WorkspaceProjects({ loaderData }: Route.ComponentProps) 
       <Pages query={query} page={page.page} pages={page.pages} />
       {items.length > 0 && (
         <p className="mt-4 hidden text-center text-xs text-faint sm:block">
-          <Kbd>/</Kbd> to find,{" "}
-          <Kbd>↑</Kbd>{" "}
-          <Kbd>↓</Kbd> to move,{" "}
-          <Kbd>Enter</Kbd> to open
+          <Kbd>/</Kbd> to find, <Kbd>↑</Kbd> <Kbd>↓</Kbd> to move, <Kbd>Enter</Kbd> to open
         </p>
       )}
     </div>
   );
 }
-

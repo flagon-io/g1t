@@ -27,7 +27,13 @@ test("a server span is a request, filed under its service and environment", () =
                     { key: "url.path", value: { stringValue: "/invoices/12345" } },
                     { key: "http.response.status_code", value: { intValue: "502" } },
                   ],
-                  events: [{ name: "exception", timeUnixNano: "1760000000100000000", attributes: [{ key: "exception.type", value: { stringValue: "UpstreamError" } }] }],
+                  events: [
+                    {
+                      name: "exception",
+                      timeUnixNano: "1760000000100000000",
+                      attributes: [{ key: "exception.type", value: { stringValue: "UpstreamError" } }],
+                    },
+                  ],
                   status: { code: 2, message: "upstream refused" },
                 },
                 // Ids of zeros are no ids: the span is dropped.
@@ -62,7 +68,18 @@ test("an app on g1t.page has its requests counted from its tail events, not its 
       resourceSpans: [
         {
           resource: resource({ "service.name": "web", "g1t.deployment.id": "dep_1" }),
-          scopeSpans: [{ spans: [{ traceId: "4bf92f3577b34da6a3ce929d0e0e4736", spanId: "00f067aa0ba902b7", kind: "SPAN_KIND_SERVER" as never, startTimeUnixNano: "1760000000000000000" }] }],
+          scopeSpans: [
+            {
+              spans: [
+                {
+                  traceId: "4bf92f3577b34da6a3ce929d0e0e4736",
+                  spanId: "00f067aa0ba902b7",
+                  kind: "SPAN_KIND_SERVER" as never,
+                  startTimeUnixNano: "1760000000000000000",
+                },
+              ],
+            },
+          ],
         },
       ],
     },
@@ -84,7 +101,12 @@ test("log records keep their severity, body and trace", () => {
             {
               logRecords: [
                 { timeUnixNano: "1760000000000000000", severityText: "warning", body: { stringValue: "slow" } },
-                { observedTimeUnixNano: "1760000000000000000", severityNumber: 17, body: { kvlistValue: { values: [{ key: "a", value: { intValue: "1" } }] } }, attributes: [{ key: "exception.type", value: { stringValue: "Boom" } }] },
+                {
+                  observedTimeUnixNano: "1760000000000000000",
+                  severityNumber: 17,
+                  body: { kvlistValue: { values: [{ key: "a", value: { intValue: "1" } }] } },
+                  attributes: [{ key: "exception.type", value: { stringValue: "Boom" } }],
+                },
               ],
             },
           ],
@@ -112,7 +134,11 @@ test("metrics of each kind become points", () => {
               metrics: [
                 { name: "queue.depth", gauge: { dataPoints: [{ timeUnixNano: "1760000000000000000", asInt: "7" }] } },
                 { name: "jobs", sum: { aggregationTemporality: 2, isMonotonic: true, dataPoints: [{ timeUnixNano: "1760000000000000000", asDouble: 3 }] } },
-                { name: "latency", unit: "ms", histogram: { dataPoints: [{ timeUnixNano: "1760000000000000000", count: "4", sum: 40, explicitBounds: [10], bucketCounts: ["2", "2"] }] } },
+                {
+                  name: "latency",
+                  unit: "ms",
+                  histogram: { dataPoints: [{ timeUnixNano: "1760000000000000000", count: "4", sum: 40, explicitBounds: [10], bucketCounts: ["2", "2"] }] },
+                },
               ],
             },
           ],
@@ -122,7 +148,14 @@ test("metrics of each kind become points", () => {
     OTLP_DOOR,
     0,
   );
-  assert.deepEqual(batch.metrics.map((m) => [m.name, m.kind, m.value]), [["queue.depth", "gauge", 7], ["jobs", "sum", 3], ["latency", "histogram", 10]]);
+  assert.deepEqual(
+    batch.metrics.map((m) => [m.name, m.kind, m.value]),
+    [
+      ["queue.depth", "gauge", 7],
+      ["jobs", "sum", 3],
+      ["latency", "histogram", 10],
+    ],
+  );
   assert.equal(batch.metrics[1].monotonic, true);
   assert.deepEqual(batch.metrics[2].counts, [2, 2]);
 });

@@ -145,10 +145,10 @@ workspace's own gems) can delete a version there for good.
 A gem linked to a repository has the repository's visibility; one of the
 workspace's own is private until an owner makes it public on its page.
 
-| The workspace's gems | Without credentials | With credentials |
-| --- | --- | --- |
-| All public | Bundler and `gem` read the index and download them. | The same; the key is sent to push and yank. |
-| Some private | The registry answers `401`: Bundler asks for credentials for the source, and `gem` needs them in the source's address. | Each gem the credentials' owner may see. |
+| The workspace's gems | Without credentials                                                                                                    | With credentials                            |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| All public           | Bundler and `gem` read the index and download them.                                                                    | The same; the key is sent to push and yank. |
+| Some private         | The registry answers `401`: Bundler asks for credentials for the source, and `gem` needs them in the source's address. | Each gem the credentials' owner may see.    |
 
 A private gem you cannot see looks exactly like one that does not exist.
 
@@ -184,11 +184,11 @@ for [container images](/guides/containers/#storage-and-pull-limits). A
 
 ## Errors
 
-| Error | Means |
-| --- | --- |
+| Error | Means                                                                                                                                                                                                                 |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `401` | No credentials or key, or a wrong or expired token. For Bundler, set the source's credentials with `bundle config set`; for `gem install`, put them in the source's address; for `gem push`, give `GEM_HOST_API_KEY`. |
-| `403` | Signed in, but your role or your token's scopes do not allow it, or the workspace is out of free package storage. The response says which. |
-| `404` | No such gem or version, or a private one you cannot see. |
-| `409` | That version is already pushed, or its name is taken by a gem named in another case. |
-| `422` | The push was refused: not a `.gem`, or a name or version RubyGems would not take. The response says which. |
-| `413` | The `.gem` is over 100 MB. |
+| `403` | Signed in, but your role or your token's scopes do not allow it, or the workspace is out of free package storage. The response says which.                                                                            |
+| `404` | No such gem or version, or a private one you cannot see.                                                                                                                                                              |
+| `409` | That version is already pushed, or its name is taken by a gem named in another case.                                                                                                                                  |
+| `422` | The push was refused: not a `.gem`, or a name or version RubyGems would not take. The response says which.                                                                                                            |
+| `413` | The `.gem` is over 100 MB.                                                                                                                                                                                            |

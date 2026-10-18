@@ -104,7 +104,12 @@ export function SessionCard({ session, workspace }: { session: ApiWorkspaceSessi
             {session.pull ? (
               <Chip
                 label={`#${session.pull}${session.pull_status ? ` · ${session.pull_status}` : ""}`}
-                leading={<GitPullRequest size={12} color={session.pull_status === "merged" ? colors.merged : session.pull_status === "open" ? colors.success : colors.muted} />}
+                leading={
+                  <GitPullRequest
+                    size={12}
+                    color={session.pull_status === "merged" ? colors.merged : session.pull_status === "open" ? colors.success : colors.muted}
+                  />
+                }
                 onPress={() => openPull(session.repo, session.pull!, code)}
               />
             ) : null}

@@ -101,7 +101,9 @@ export default function WorkList() {
   const active = [
     filter.assignee ? { key: "assignee", label: filter.assignee === me.username ? "Assigned to me" : `@${filter.assignee}` } : null,
     filter.label ? { key: "label", label: filter.label } : null,
-    filter.milestone ? { key: "milestone", label: milestones.data?.find((one) => one.number === filter.milestone)?.title ?? `Milestone ${filter.milestone}` } : null,
+    filter.milestone
+      ? { key: "milestone", label: milestones.data?.find((one) => one.number === filter.milestone)?.title ?? `Milestone ${filter.milestone}` }
+      : null,
     filter.repo ? { key: "repo", label: filter.role ? `${filter.repo} · ${roleLabel(filter.role)}` : filter.repo } : null,
   ].filter((one): one is { key: keyof WorkFilter; label: string } => one !== null);
 
@@ -208,7 +210,9 @@ export default function WorkList() {
         <FlatList
           data={items.items}
           keyExtractor={(item) => item.id}
-          refreshControl={<RefreshControl refreshing={items.isRefetching && !items.isFetchingNextPage} onRefresh={() => items.refetch()} tintColor={colors.accent} />}
+          refreshControl={
+            <RefreshControl refreshing={items.isRefetching && !items.isFetchingNextPage} onRefresh={() => items.refetch()} tintColor={colors.accent} />
+          }
           onEndReached={() => items.hasNextPage && !items.isFetchingNextPage && items.fetchNextPage()}
           onEndReachedThreshold={0.5}
           contentContainerStyle={{ paddingBottom: 96, flexGrow: 1 }}
@@ -221,7 +225,10 @@ export default function WorkList() {
             />
           }
           renderItem={({ item }) => (
-            <ItemRow item={item} onPress={() => router.push({ pathname: "/work/[number]", params: { number: String(item.number), workspace: item.workspace } })} />
+            <ItemRow
+              item={item}
+              onPress={() => router.push({ pathname: "/work/[number]", params: { number: String(item.number), workspace: item.workspace } })}
+            />
           )}
         />
       )}
@@ -280,12 +287,7 @@ function Filters({
           ]}
         />
         <View style={{ marginHorizontal: -space.lg }}>
-          <Row
-            title="Assigned to me"
-            chevron={false}
-            trailing={<Check on={filter.assignee === me} />}
-            onPress={() => toggle("assignee", me)}
-          />
+          <Row title="Assigned to me" chevron={false} trailing={<Check on={filter.assignee === me} />} onPress={() => toggle("assignee", me)} />
         </View>
         <Group title="Label" empty={labels.isPending ? "…" : "No labels yet"}>
           {(labels.data ?? []).map((label) => (

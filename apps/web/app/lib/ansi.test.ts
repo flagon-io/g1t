@@ -90,5 +90,8 @@ test("a search marks its matches across spans, colours kept", () => {
       ["Test", true],
     ],
   );
-  assert.deepEqual(markSpans(spans, "  "), spans.map((span) => ({ ...span, match: false })));
+  assert.deepEqual(
+    markSpans(spans, "  "),
+    spans.map((span) => ({ ...span, match: false })),
+  );
 });

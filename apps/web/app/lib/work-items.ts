@@ -24,7 +24,10 @@ export { itemPath } from "./refs.ts";
  *   number leads to the list).
  */
 export function movedWorkPath(pathname: string, search = ""): string | { resolve: number } | null {
-  const parts = pathname.replace(/\.data$/, "").split("/").filter(Boolean);
+  const parts = pathname
+    .replace(/\.data$/, "")
+    .split("/")
+    .filter(Boolean);
   const [owner, repo, section, rest, more] = parts;
   if (!owner || !repo || owner === "-" || repo === "-" || parts.length > 5) return null;
   const workspace = owner.toLowerCase();

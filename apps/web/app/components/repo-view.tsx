@@ -1,4 +1,20 @@
-import { BookOpen, Check, ChevronDown, Code2, CornerLeftUp, File, FileArchive, Folder, FolderGit2, GitBranch, History, LoaderCircle, Search, SquareTerminal, Tag as TagIcon } from "lucide-react";
+import {
+  BookOpen,
+  Check,
+  ChevronDown,
+  Code2,
+  CornerLeftUp,
+  File,
+  FileArchive,
+  Folder,
+  FolderGit2,
+  GitBranch,
+  History,
+  LoaderCircle,
+  Search,
+  SquareTerminal,
+  Tag as TagIcon,
+} from "lucide-react";
 import { type ReactNode, Suspense } from "react";
 import { Await, Form, Link } from "react-router";
 
@@ -34,17 +50,7 @@ function encodePath(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
 }
 
-function Breadcrumbs({
-  base,
-  repo,
-  gitRef,
-  path,
-}: {
-  base: string;
-  repo: string;
-  gitRef: string;
-  path: string;
-}) {
+function Breadcrumbs({ base, repo, gitRef, path }: { base: string; repo: string; gitRef: string; path: string }) {
   const segments = path.split("/").filter(Boolean);
   if (segments.length === 0) return null;
   // On a phone, one line: the folders between the repository and the last
@@ -52,7 +58,10 @@ function Breadcrumbs({
   const folded = segments.length - 2;
   const slash = <span className="mx-1.5 shrink-0 text-faint">/</span>;
   return (
-    <nav aria-label="Path" className="flex min-w-0 basis-full items-center font-mono text-sm whitespace-nowrap text-muted sm:basis-auto sm:flex-wrap sm:whitespace-normal">
+    <nav
+      aria-label="Path"
+      className="flex min-w-0 basis-full items-center font-mono text-sm whitespace-nowrap text-muted sm:basis-auto sm:flex-wrap sm:whitespace-normal"
+    >
       <Link to={`${base}/tree/${gitRef}`} className="shrink-0 py-2 text-accent hover:underline sm:py-0">
         {repo}
       </Link>
@@ -80,10 +89,7 @@ function Breadcrumbs({
             {last ? (
               <span className="truncate font-medium text-fg">{segment}</span>
             ) : (
-              <Link
-                to={`${base}/tree/${gitRef}/${to}`}
-                className="truncate py-2 text-accent hover:underline sm:py-0"
-              >
+              <Link to={`${base}/tree/${gitRef}/${to}`} className="truncate py-2 text-accent hover:underline sm:py-0">
                 {segment}
               </Link>
             )}
@@ -311,7 +317,10 @@ function FileRows({
         const Icon = isTree ? Folder : entry.kind === "gitlink" ? FolderGit2 : File;
         const commit = byName.get(entry.name);
         return (
-          <li key={entry.name} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 px-4 transition-colors hover:bg-surface sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_auto] lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)_auto]">
+          <li
+            key={entry.name}
+            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 px-4 transition-colors hover:bg-surface sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_auto] lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)_auto]"
+          >
             {/* The whole row's height is the link's: a 44px target on a phone. */}
             <Link
               to={`${base}/${isTree ? "tree" : "blob"}/${gitRef}/${prefix}${encodeURIComponent(entry.name)}`}
@@ -324,7 +333,12 @@ function FileRows({
               {commit ? (
                 <Hint label={commitHint(commit.message)}>
                   <span className="block animate-fade-in truncate text-muted">
-                    <CommitText text={commit.message.split("\n")[0] ?? ""} base={base} to={`${base}/commit/${commit.hash}`} linkClassName="hover:text-fg hover:underline" />
+                    <CommitText
+                      text={commit.message.split("\n")[0] ?? ""}
+                      base={base}
+                      to={`${base}/commit/${commit.hash}`}
+                      linkClassName="hover:text-fg hover:underline"
+                    />
                   </span>
                 </Hint>
               ) : last === undefined ? (
@@ -332,7 +346,13 @@ function FileRows({
               ) : null}
             </span>
             <span className="text-right text-xs whitespace-nowrap text-faint">
-              {commit ? <span className="animate-fade-in"><TimeAgo at={commit.authoredAt} /></span> : last === undefined ? <SkeletonLine className="justify-end" barClassName="w-12" /> : null}
+              {commit ? (
+                <span className="animate-fade-in">
+                  <TimeAgo at={commit.authoredAt} />
+                </span>
+              ) : last === undefined ? (
+                <SkeletonLine className="justify-end" barClassName="w-12" />
+              ) : null}
             </span>
           </li>
         );
@@ -375,12 +395,8 @@ export function TreeView({
   if (!head) {
     return (
       <Card className="mx-auto max-w-2xl p-8">
-        <h2 className="text-lg font-semibold tracking-tight">
-          This repository is empty
-        </h2>
-        <p className="mt-1 text-sm text-muted">
-          Push an existing project to it. Use an access token as the password.
-        </p>
+        <h2 className="text-lg font-semibold tracking-tight">This repository is empty</h2>
+        <p className="mt-1 text-sm text-muted">Push an existing project to it. Use an access token as the password.</p>
         <div className="mt-5 space-y-2">
           <CopyLine prompt text={`git remote add g1t ${cloneUrl}`} />
           <CopyLine prompt text={`git push -u g1t ${ref}`} />
@@ -427,7 +443,9 @@ export function TreeView({
                       rawBase={`/${repo.namespace}/${repo.name}/raw/${head.hash}${path ? `/${encodePath(path)}` : ""}`}
                     />
                   ) : (
-                    <pre className="whitespace-pre-wrap text-sm"><code>{readme.text}</code></pre>
+                    <pre className="whitespace-pre-wrap text-sm">
+                      <code>{readme.text}</code>
+                    </pre>
                   )}
                 </div>
               </section>

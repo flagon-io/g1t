@@ -28,7 +28,10 @@ export function ReleaseCard({ release, repo, linkTitle = true }: { release: Rele
         <span className="text-faint">
           <TimeAgo at={when} />
         </span>
-        <Link to={`${base}/tree/${encodeTag(release.tagName)}`} className="inline-flex min-w-0 items-center gap-1.5 font-mono text-[0.8125rem] hover:text-accent">
+        <Link
+          to={`${base}/tree/${encodeTag(release.tagName)}`}
+          className="inline-flex min-w-0 items-center gap-1.5 font-mono text-[0.8125rem] hover:text-accent"
+        >
           <TagIcon size={14} className="shrink-0 text-faint" />
           <span className="truncate">{release.tagName}</span>
         </Link>

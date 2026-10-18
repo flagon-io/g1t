@@ -1,57 +1,57 @@
 {
-	"$schema": "../../node_modules/wrangler/config-schema.json",
-	"name": "g1t-integrations",
-	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
-	"compatibility_date": "2026-09-26",
-	// Runs next to its database: a request makes several queries in turn,
-	// and each would otherwise cross the distance to it.
-	"placement": { "mode": "off" },
-	"main": "build/index.js",
-	"build": { "command": "node ../../scripts/build-rust-worker.mjs" },
-	// Reached only through service bindings. Outside systems reach it
-	// through the API, at https://api.g1t.sh/hooks/<connection>.
-	"workers_dev": false,
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "g1t-integrations",
-			"database_id": "86c6c1a9-4192-42d8-8c59-8da8d4f99c5e",
-			"migrations_dir": "migrations"
-		}
-	],
-	"services": [
-		{ "binding": "IDENTITY", "service": "g1t-identity" },
-		{ "binding": "WORK", "service": "g1t-work" },
-		// Where a transferred repository is now, for moving its links.
-		{ "binding": "REPOS", "service": "g1t-repos" },
-		// An imported repository's project takes GitHub's description.
-		{ "binding": "PROJECTS", "service": "g1t-projects" }
-	],
-	// Work starting on, and finishing, what an outside system is waiting on.
-	// Every minute: sessions started on workspaces' Anthropic accounts are
-	// followed until they end (src/agent_sessions.rs).
-	"triggers": { "crons": ["* * * * *"] },
-	"queues": {
-		"consumers": [{ "queue": "g1t-events-integrations", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
-	},
-	"vars": {
-		"API_URL": "https://api.g1t.sh",
-		"SITE_URL": "https://g1t.sh",
-		// Ask g1t reads g1t through its own MCP server, as the person asking,
-		// with a read-only credential identity makes for each answer. Over
-		// its address, not a service binding: the API ships after this
-		// service (deploy/stack.jsonc's stages).
-		"MCP_URL": "https://mcp.g1t.sh",
-		// g1t's GitHub App (src/github.rs), for installations, imports and
-		// its webhook at API_URL/hooks/github. Secrets:
-		// GITHUB_APP_PRIVATE_KEY (the downloaded .pem, PKCS#1 or PKCS#8) and
-		// GITHUB_APP_WEBHOOK_SECRET. Leave the slug empty to turn it off.
-		"GITHUB_APP_ID": "5203641",
-		"GITHUB_APP_SLUG": "g1t-sh",
-		"GITHUB_APP_CLIENT_ID": "Iv23liZS94alfjIUn1eW"
-	},
-	// Secret: INTEGRATIONS_KEY, 64 hex characters. Connections' secrets are
-	// sealed with it; without it nothing can be connected.
-	// Logs of a tenth of requests: every page and event asks it.
-	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "g1t-integrations",
+  "account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+  "compatibility_date": "2026-09-26",
+  // Runs next to its database: a request makes several queries in turn,
+  // and each would otherwise cross the distance to it.
+  "placement": { "mode": "off" },
+  "main": "build/index.js",
+  "build": { "command": "node ../../scripts/build-rust-worker.mjs" },
+  // Reached only through service bindings. Outside systems reach it
+  // through the API, at https://api.g1t.sh/hooks/<connection>.
+  "workers_dev": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "g1t-integrations",
+      "database_id": "86c6c1a9-4192-42d8-8c59-8da8d4f99c5e",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "services": [
+    { "binding": "IDENTITY", "service": "g1t-identity" },
+    { "binding": "WORK", "service": "g1t-work" },
+    // Where a transferred repository is now, for moving its links.
+    { "binding": "REPOS", "service": "g1t-repos" },
+    // An imported repository's project takes GitHub's description.
+    { "binding": "PROJECTS", "service": "g1t-projects" }
+  ],
+  // Work starting on, and finishing, what an outside system is waiting on.
+  // Every minute: sessions started on workspaces' Anthropic accounts are
+  // followed until they end (src/agent_sessions.rs).
+  "triggers": { "crons": ["* * * * *"] },
+  "queues": {
+    "consumers": [{ "queue": "g1t-events-integrations", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
+  },
+  "vars": {
+    "API_URL": "https://api.g1t.sh",
+    "SITE_URL": "https://g1t.sh",
+    // Ask g1t reads g1t through its own MCP server, as the person asking,
+    // with a read-only credential identity makes for each answer. Over
+    // its address, not a service binding: the API ships after this
+    // service (deploy/stack.jsonc's stages).
+    "MCP_URL": "https://mcp.g1t.sh",
+    // g1t's GitHub App (src/github.rs), for installations, imports and
+    // its webhook at API_URL/hooks/github. Secrets:
+    // GITHUB_APP_PRIVATE_KEY (the downloaded .pem, PKCS#1 or PKCS#8) and
+    // GITHUB_APP_WEBHOOK_SECRET. Leave the slug empty to turn it off.
+    "GITHUB_APP_ID": "5203641",
+    "GITHUB_APP_SLUG": "g1t-sh",
+    "GITHUB_APP_CLIENT_ID": "Iv23liZS94alfjIUn1eW"
+  },
+  // Secret: INTEGRATIONS_KEY, 64 hex characters. Connections' secrets are
+  // sealed with it; without it nothing can be connected.
+  // Logs of a tenth of requests: every page and event asks it.
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

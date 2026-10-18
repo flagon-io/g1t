@@ -278,16 +278,16 @@ export function ChannelView({ data }: { data: Loaded }) {
       return !now;
     });
 
-  const people = useMemo<Mentionable[]>(
-    () => (chatData?.people ?? []).filter((p) => p.name !== me?.username),
-    [chatData, me?.username],
-  );
+  const people = useMemo<Mentionable[]>(() => (chatData?.people ?? []).filter((p) => p.name !== me?.username), [chatData, me?.username]);
   const context = useMemo<TextContext>(
     () => ({
       slug,
       me: me?.username ?? null,
       // `@ana` reads as the name people know: everyone in the workspace, the viewer too.
-      names: mentionNames([...people, ...(me ? [{ kind: "user" as const, name: me.username, display_username: me.display_username, display_name: me.display_name, avatar: me.avatar }] : [])]),
+      names: mentionNames([
+        ...people,
+        ...(me ? [{ kind: "user" as const, name: me.username, display_username: me.display_username, display_name: me.display_name, avatar: me.avatar }] : []),
+      ]),
       channels: new Set((sidebar?.entries ?? []).filter((e) => e.channel.kind === "channel").map((e) => e.channel.name ?? "")),
       project,
       codeLink: code ? undefined : (href: string) => (/^\/[^/]+\/(?!-\/)[^/]+/.test(href) ? codeAccessPath(slug, href) : href),
@@ -335,7 +335,14 @@ export function ChannelView({ data }: { data: Loaded }) {
       const response = await fetch(`/${slug}/-/chat/api?channel=${encodeURIComponent(data.channel.id)}&thread=${encodeURIComponent(threadId)}`);
       const result = (await response.json()) as Result<{ messages: ChatMessage[]; root?: ChatMessage | null }>;
       // The page reaches back to the message the thread is under: shown above it, not among the replies.
-      setThread(result.ok ? mergeMessages([], result.value.messages.filter((m) => m.id !== threadId && !m.deleted_at)) : []);
+      setThread(
+        result.ok
+          ? mergeMessages(
+              [],
+              result.value.messages.filter((m) => m.id !== threadId && !m.deleted_at),
+            )
+          : [],
+      );
       const root = result.ok ? (result.value.root ?? result.value.messages.find((m) => m.id === threadId) ?? null) : null;
       setThreadRoot(root);
     } catch {
@@ -432,7 +439,12 @@ export function ChannelView({ data }: { data: Loaded }) {
         if (!result.ok) break;
         const gone = new Set(result.value.messages.filter((m) => m.deleted_at).map((m) => m.id));
         const kept = result.value.messages.filter((m) => !m.deleted_at && !m.thread_root);
-        setMessages((now) => mergeMessages(now.filter((m) => !gone.has(m.id)), kept));
+        setMessages((now) =>
+          mergeMessages(
+            now.filter((m) => !gone.has(m.id)),
+            kept,
+          ),
+        );
         after = result.value.newer ?? null;
       }
       // Edits and deletions to what was already on screen: the latest page again.
@@ -440,7 +452,12 @@ export function ChannelView({ data }: { data: Loaded }) {
       const result = (await response.json()) as Result<{ messages: ChatMessage[] }>;
       if (result.ok) {
         const gone = new Set(result.value.messages.filter((m) => m.deleted_at).map((m) => m.id));
-        setMessages((now) => mergeMessages(now.filter((m) => !gone.has(m.id)), result.value.messages.filter((m) => !m.deleted_at)));
+        setMessages((now) =>
+          mergeMessages(
+            now.filter((m) => !gone.has(m.id)),
+            result.value.messages.filter((m) => !m.deleted_at),
+          ),
+        );
       }
     } catch {
       // The next event, or the next return, catches up.
@@ -476,7 +493,15 @@ export function ChannelView({ data }: { data: Loaded }) {
     async (body: string, root: string | null) => {
       if (!me) return;
       const clientId = newClientId();
-      const author: MemberProfile = { kind: "user", id: me.id, name: me.username, display_username: me.display_username, display_name: me.display_name, avatar: me.avatar, role: null };
+      const author: MemberProfile = {
+        kind: "user",
+        id: me.id,
+        name: me.username,
+        display_username: me.display_username,
+        display_name: me.display_name,
+        avatar: me.avatar,
+        role: null,
+      };
       const pending: ShownMessage = {
         id: clientId,
         client_id: clientId,
@@ -517,7 +542,10 @@ export function ChannelView({ data }: { data: Loaded }) {
   const customs = useCustomEmoji(slug);
   const { usercontent } = useAddresses();
   const meProfile = useMemo<MemberProfile | null>(
-    () => (me ? { kind: "user", id: me.id, name: me.username, display_username: me.display_username, display_name: me.display_name, avatar: me.avatar, role: null } : null),
+    () =>
+      me
+        ? { kind: "user", id: me.id, name: me.username, display_username: me.display_username, display_name: me.display_name, avatar: me.avatar, role: null }
+        : null,
     [me],
   );
   const react = useCallback(
@@ -547,7 +575,13 @@ export function ChannelView({ data }: { data: Loaded }) {
     [meProfile, slug, data.channel.id],
   );
   const emojiContext = useMemo(
-    () => ({ customs, usercontent, me: meProfile, react: (id: string, emoji: string, on: boolean) => void react(id, emoji, on), manageHref: `/${slug}/-/emoji` }),
+    () => ({
+      customs,
+      usercontent,
+      me: meProfile,
+      react: (id: string, emoji: string, on: boolean) => void react(id, emoji, on),
+      manageHref: `/${slug}/-/emoji`,
+    }),
     [customs, usercontent, meProfile, react, slug],
   );
 
@@ -619,7 +653,15 @@ export function ChannelView({ data }: { data: Loaded }) {
           ...now,
           {
             channel_id: data.channel.id,
-            member: { kind: "user", id: me.id, name: me.username, display_username: me.display_username, display_name: me.display_name, avatar: me.avatar, role: null },
+            member: {
+              kind: "user",
+              id: me.id,
+              name: me.username,
+              display_username: me.display_username,
+              display_name: me.display_name,
+              avatar: me.avatar,
+              role: null,
+            },
             role: "member",
             starred: false,
             muted: false,
@@ -675,230 +717,227 @@ export function ChannelView({ data }: { data: Loaded }) {
     // On a phone the conversation is the whole screen, as tall as what the
     // keyboard leaves (components/mobile.tsx), so the composer sits on it.
     <EmojiProvider value={emojiContext}>
-    <CardContext.Provider value={cardContext}>
-    <div
-      {...swipe}
-      className="flex h-(--page-h) min-h-0 max-md:fixed max-md:inset-x-0 max-md:top-(--vv-top,0px) max-md:z-30 max-md:h-(--vv-height,100dvh) max-md:bg-bg"
-    >
-      {/* What pressing a card's action did (components/chat/card.tsx). */}
-      <CardToasts />
-      <section aria-label={data.title} className="flex min-w-0 grow flex-col">
-        <ChannelHeader
-          onBack={back}
-          data={view}
-          others={others}
-          starred={starred}
-          muted={muted}
-          memberCount={members.length}
-          live={live.state}
-          info={info}
-          onStar={() => void toggleStar()}
-          onInfo={toggleInfo}
-          onNewConversation={withG1t ? () => void g1tSend("g1t_reset") : undefined}
-          onClear={withG1t ? () => setClearing(true) : undefined}
-        />
+      <CardContext.Provider value={cardContext}>
         <div
-          ref={scroller}
-          onScroll={(event) => {
-            const element = event.currentTarget;
-            stick.current = atBottom(element);
-          }}
-          className="min-h-0 grow overflow-y-auto overscroll-contain scrollbar-gutter-stable scrollbar-thin"
+          {...swipe}
+          className="flex h-(--page-h) min-h-0 max-md:fixed max-md:inset-x-0 max-md:top-(--vv-top,0px) max-md:z-30 max-md:h-(--vv-height,100dvh) max-md:bg-bg"
         >
-          <div className="mx-auto flex min-h-full max-w-4xl flex-col justify-end px-2 pt-6 pb-3 sm:px-4">
-            {older ? (
-              <div className="flex justify-center pb-4">
-                <Button
-                  type="button"
-                  onClick={() => void loadOlder()}
-                  variant="outline"
-                  size="inline"
-                  className="rounded-full px-3 py-1 text-xs text-muted font-normal"
-                >
-                  {loadingOlder ? "Loading…" : "Load earlier messages"}
-                </Button>
-              </div>
-            ) : (
-              <ConversationStart data={view} others={others} onAsk={withG1t ? (text) => void post(text, null) : undefined} />
-            )}
-            {rows.map((row) =>
-              row.kind === "day" ? (
-                <DayRule key={row.key} label={row.label} />
-              ) : row.message.reset && fromG1t(row.message) ? (
-                <ConversationMark key={row.key} />
-              ) : (
-                <MessageRow
-                  key={row.key}
-                  message={row.message}
-                  head={row.head}
-                  zone={zone}
-                  context={context}
-                  code={code}
-                  slug={slug}
-                  onThread={() => openThread(row.message.id)}
-                  onRetry={() => retry(row.message)}
-                  onLongPress={() => setActions(row.message)}
-                  onCopyLink={() => copyThreadLink(row.message.id)}
-                  onEdit={mine(row.message) ? () => setEditing({ id: row.message.id, body: row.message.body, inline: true }) : undefined}
-                  editor={editing?.inline && editing.id === row.message.id ? editor(editing) : undefined}
-                  threadOpen={row.message.id === threadId}
-                  answer={
-                    row.message.answer
-                      ? { context: answerContext, onRetry: !g1tBusy && lastAnswer?.id === row.message.id ? () => void g1tSend("g1t_retry") : undefined }
-                      : undefined
-                  }
-                />
-              ),
-            )}
-          </div>
-        </div>
-        <div className="shrink-0 px-2 pb-3 sm:px-4 sm:pb-4 max-md:pb-[max(0.75rem,env(safe-area-inset-bottom))] in-data-[keyboard=open]:pb-2">
-          <div className="mx-auto max-w-4xl">
-            <TypingLine typers={typers} />
-            {g1tBusy && (
-              <div className="mb-2 flex justify-center">
-                <Button type="button" variant="outline" size="xs" onClick={() => void g1tSend("g1t_stop")} className="rounded-full bg-surface">
-                  <Square size={10} className="fill-current" />
-                  Stop answering
-                </Button>
-              </div>
-            )}
-            {archived ? (
-              <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                <p className="flex items-center gap-2 text-sm text-muted">
-                  <Archive size={15} className="shrink-0 text-faint" />
-                  <span>
-                    <span className="font-medium text-fg">#{name}</span> is archived. Its history stays here to read; nobody can post in it.
-                  </span>
-                </p>
-                {canManage && (
-                  <Button
-                    type="button"
-                    onClick={() => void updateChannel({ archived: false })}
-                    variant="outline"
-                    className="px-3 text-fg/90 hover:bg-raised"
-                  >
-                    <ArchiveRestore size={15} />
-                    Unarchive
-                  </Button>
-                )}
-              </Card>
-            ) : formerAgent ? (
-              <Card className="flex items-start gap-2 px-4 py-3 text-sm text-muted">
-                <Archive size={15} className="mt-0.5 shrink-0 text-faint" />
-                <span>{formerAgentLine(formerAgent)}</span>
-              </Card>
-            ) : joined ? (
-              <>
-              {data.guest && (
-                <p className="mb-1.5 px-1 text-xs text-faint">
-                  You&apos;re a guest in {data.workspace?.name ?? "this workspace"}: everyone here sees you marked Guest, and @g1t answers its members only.
-                </p>
-              )}
-              <Composer
-                draftKey={data.channel.id}
-                placeholder={withG1t ? "Ask g1t about your work" : placeholder}
-                people={people}
-                // To @g1t, `/clear` asks to clear the conversation; it is never sent.
-                onSend={(body) => (withG1t && isClearCommand(body) ? setClearing(true) : void post(body, null))}
-                onTyping={onTyping}
-                autoFocus
-              />
-              </>
-            ) : (
-              <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                <p className="text-sm text-muted">
-                  {data.guest ? (
-                    <>
-                      You're reading <span className="font-medium text-fg">#{name}</span> as a guest: it's open to anyone on g1t. Join to talk in it;
-                      you'll be marked Guest, since you're not in {data.workspace?.name ?? "the workspace"}.
-                    </>
-                  ) : (
-                    <>
-                      You're reading <span className="font-medium text-fg">#{name}</span>. Join to post and get its notifications.
-                    </>
-                  )}
-                </p>
-                <Button
-                  type="button"
-                  onClick={() => void join()}
-                  variant="accent"
-                >
-                  Join channel
-                </Button>
-              </Card>
-            )}
-          </div>
-        </div>
-      </section>
-      {threadId ? (
-        <SidePanel
-          title="Thread"
-          subtitle={isDm ? undefined : `#${name}`}
-          onClose={() => openThread(null)}
-          menu={<ThreadMenu onCopyLink={() => copyThreadLink(threadId)} />}
-        >
-          <ThreadPanel
-            root={rootMessage}
-            replies={thread}
-            zone={zone}
-            context={context}
-            code={code}
-            slug={slug}
-            people={people}
-            joined={joined && !archived}
-            onSend={(body) => void post(body, threadId)}
-            onRetry={retry}
-            onTyping={onTyping}
-            draftKey={`${data.channel.id}:${threadId}`}
-          />
-        </SidePanel>
-      ) : profile ? (
-        <SidePanel title="Profile" onClose={() => setProfile(null)}>
-          <ProfilePanel slug={slug} username={profile} messages={messages} zone={zone} context={context} />
-        </SidePanel>
-      ) : (
-        info && (
-          <SidePanel title={isDm ? "Details" : "About this channel"} onClose={toggleInfo}>
-            <InfoPanel
+          {/* What pressing a card's action did (components/chat/card.tsx). */}
+          <CardToasts />
+          <section aria-label={data.title} className="flex min-w-0 grow flex-col">
+            <ChannelHeader
+              onBack={back}
               data={view}
-              members={members}
-              slug={slug}
-              people={people}
-              onAdded={(m) => setMembers((now) => [...now, m])}
-              onRemoved={(id) => setMembers((now) => now.filter((m) => !(m.member.kind === "user" && m.member.id === id)))}
-              joined={joined}
-              canManage={canManage}
-              onUpdate={updateChannel}
+              others={others}
+              starred={starred}
+              muted={muted}
+              memberCount={members.length}
+              live={live.state}
+              info={info}
+              onStar={() => void toggleStar()}
+              onInfo={toggleInfo}
+              onNewConversation={withG1t ? () => void g1tSend("g1t_reset") : undefined}
+              onClear={withG1t ? () => setClearing(true) : undefined}
             />
-          </SidePanel>
-        )
-      )}
-      <MessageActions
-        message={actions}
-        mine={actions != null && actions.author.kind === "user" && actions.author.id === me?.id}
-        onClose={() => setActions(null)}
-        onThread={(id) => openThread(id)}
-        onCopyLink={(message) => copyThreadLink(message.thread_root ?? message.id)}
-        onEdit={(message) => setEditing({ id: message.id, body: message.body })}
-        onDelete={async (message) => {
-          // Gone at once; back if the service refuses.
-          setMessages((now) => now.map((m) => (m.id === message.id ? { ...m, deleted_at: new Date().toISOString() } : m)));
-          const done = await send({ intent: "remove", channel_id: data.channel.id, id: message.id });
-          if (!done.ok) setMessages((now) => now.map((m) => (m.id === message.id ? { ...m, deleted_at: null } : m)));
-        }}
-      />
-      {withG1t && <ClearG1tDialog open={clearing} onOpenChange={setClearing} onClear={clearG1t} />}
-      <BottomSheet open={editing != null && !editing.inline} onOpenChange={(open) => !open && setEditing(null)} title="Edit message">
-        {editing && !editing.inline && (
-          <div className="space-y-3 px-1 pt-1">
-            <h2 className="px-2 text-base font-semibold">Edit message</h2>
-            {editor(editing)}
-          </div>
-        )}
-      </BottomSheet>
-    </div>
-    </CardContext.Provider>
+            <div
+              ref={scroller}
+              onScroll={(event) => {
+                const element = event.currentTarget;
+                stick.current = atBottom(element);
+              }}
+              className="min-h-0 grow overflow-y-auto overscroll-contain scrollbar-gutter-stable scrollbar-thin"
+            >
+              <div className="mx-auto flex min-h-full max-w-4xl flex-col justify-end px-2 pt-6 pb-3 sm:px-4">
+                {older ? (
+                  <div className="flex justify-center pb-4">
+                    <Button
+                      type="button"
+                      onClick={() => void loadOlder()}
+                      variant="outline"
+                      size="inline"
+                      className="rounded-full px-3 py-1 text-xs text-muted font-normal"
+                    >
+                      {loadingOlder ? "Loading…" : "Load earlier messages"}
+                    </Button>
+                  </div>
+                ) : (
+                  <ConversationStart data={view} others={others} onAsk={withG1t ? (text) => void post(text, null) : undefined} />
+                )}
+                {rows.map((row) =>
+                  row.kind === "day" ? (
+                    <DayRule key={row.key} label={row.label} />
+                  ) : row.message.reset && fromG1t(row.message) ? (
+                    <ConversationMark key={row.key} />
+                  ) : (
+                    <MessageRow
+                      key={row.key}
+                      message={row.message}
+                      head={row.head}
+                      zone={zone}
+                      context={context}
+                      code={code}
+                      slug={slug}
+                      onThread={() => openThread(row.message.id)}
+                      onRetry={() => retry(row.message)}
+                      onLongPress={() => setActions(row.message)}
+                      onCopyLink={() => copyThreadLink(row.message.id)}
+                      onEdit={mine(row.message) ? () => setEditing({ id: row.message.id, body: row.message.body, inline: true }) : undefined}
+                      editor={editing?.inline && editing.id === row.message.id ? editor(editing) : undefined}
+                      threadOpen={row.message.id === threadId}
+                      answer={
+                        row.message.answer
+                          ? { context: answerContext, onRetry: !g1tBusy && lastAnswer?.id === row.message.id ? () => void g1tSend("g1t_retry") : undefined }
+                          : undefined
+                      }
+                    />
+                  ),
+                )}
+              </div>
+            </div>
+            <div className="shrink-0 px-2 pb-3 sm:px-4 sm:pb-4 max-md:pb-[max(0.75rem,env(safe-area-inset-bottom))] in-data-[keyboard=open]:pb-2">
+              <div className="mx-auto max-w-4xl">
+                <TypingLine typers={typers} />
+                {g1tBusy && (
+                  <div className="mb-2 flex justify-center">
+                    <Button type="button" variant="outline" size="xs" onClick={() => void g1tSend("g1t_stop")} className="rounded-full bg-surface">
+                      <Square size={10} className="fill-current" />
+                      Stop answering
+                    </Button>
+                  </div>
+                )}
+                {archived ? (
+                  <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                    <p className="flex items-center gap-2 text-sm text-muted">
+                      <Archive size={15} className="shrink-0 text-faint" />
+                      <span>
+                        <span className="font-medium text-fg">#{name}</span> is archived. Its history stays here to read; nobody can post in it.
+                      </span>
+                    </p>
+                    {canManage && (
+                      <Button
+                        type="button"
+                        onClick={() => void updateChannel({ archived: false })}
+                        variant="outline"
+                        className="px-3 text-fg/90 hover:bg-raised"
+                      >
+                        <ArchiveRestore size={15} />
+                        Unarchive
+                      </Button>
+                    )}
+                  </Card>
+                ) : formerAgent ? (
+                  <Card className="flex items-start gap-2 px-4 py-3 text-sm text-muted">
+                    <Archive size={15} className="mt-0.5 shrink-0 text-faint" />
+                    <span>{formerAgentLine(formerAgent)}</span>
+                  </Card>
+                ) : joined ? (
+                  <>
+                    {data.guest && (
+                      <p className="mb-1.5 px-1 text-xs text-faint">
+                        You&apos;re a guest in {data.workspace?.name ?? "this workspace"}: everyone here sees you marked Guest, and @g1t answers its members
+                        only.
+                      </p>
+                    )}
+                    <Composer
+                      draftKey={data.channel.id}
+                      placeholder={withG1t ? "Ask g1t about your work" : placeholder}
+                      people={people}
+                      // To @g1t, `/clear` asks to clear the conversation; it is never sent.
+                      onSend={(body) => (withG1t && isClearCommand(body) ? setClearing(true) : void post(body, null))}
+                      onTyping={onTyping}
+                      autoFocus
+                    />
+                  </>
+                ) : (
+                  <Card className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                    <p className="text-sm text-muted">
+                      {data.guest ? (
+                        <>
+                          You're reading <span className="font-medium text-fg">#{name}</span> as a guest: it's open to anyone on g1t. Join to talk in it; you'll
+                          be marked Guest, since you're not in {data.workspace?.name ?? "the workspace"}.
+                        </>
+                      ) : (
+                        <>
+                          You're reading <span className="font-medium text-fg">#{name}</span>. Join to post and get its notifications.
+                        </>
+                      )}
+                    </p>
+                    <Button type="button" onClick={() => void join()} variant="accent">
+                      Join channel
+                    </Button>
+                  </Card>
+                )}
+              </div>
+            </div>
+          </section>
+          {threadId ? (
+            <SidePanel
+              title="Thread"
+              subtitle={isDm ? undefined : `#${name}`}
+              onClose={() => openThread(null)}
+              menu={<ThreadMenu onCopyLink={() => copyThreadLink(threadId)} />}
+            >
+              <ThreadPanel
+                root={rootMessage}
+                replies={thread}
+                zone={zone}
+                context={context}
+                code={code}
+                slug={slug}
+                people={people}
+                joined={joined && !archived}
+                onSend={(body) => void post(body, threadId)}
+                onRetry={retry}
+                onTyping={onTyping}
+                draftKey={`${data.channel.id}:${threadId}`}
+              />
+            </SidePanel>
+          ) : profile ? (
+            <SidePanel title="Profile" onClose={() => setProfile(null)}>
+              <ProfilePanel slug={slug} username={profile} messages={messages} zone={zone} context={context} />
+            </SidePanel>
+          ) : (
+            info && (
+              <SidePanel title={isDm ? "Details" : "About this channel"} onClose={toggleInfo}>
+                <InfoPanel
+                  data={view}
+                  members={members}
+                  slug={slug}
+                  people={people}
+                  onAdded={(m) => setMembers((now) => [...now, m])}
+                  onRemoved={(id) => setMembers((now) => now.filter((m) => !(m.member.kind === "user" && m.member.id === id)))}
+                  joined={joined}
+                  canManage={canManage}
+                  onUpdate={updateChannel}
+                />
+              </SidePanel>
+            )
+          )}
+          <MessageActions
+            message={actions}
+            mine={actions != null && actions.author.kind === "user" && actions.author.id === me?.id}
+            onClose={() => setActions(null)}
+            onThread={(id) => openThread(id)}
+            onCopyLink={(message) => copyThreadLink(message.thread_root ?? message.id)}
+            onEdit={(message) => setEditing({ id: message.id, body: message.body })}
+            onDelete={async (message) => {
+              // Gone at once; back if the service refuses.
+              setMessages((now) => now.map((m) => (m.id === message.id ? { ...m, deleted_at: new Date().toISOString() } : m)));
+              const done = await send({ intent: "remove", channel_id: data.channel.id, id: message.id });
+              if (!done.ok) setMessages((now) => now.map((m) => (m.id === message.id ? { ...m, deleted_at: null } : m)));
+            }}
+          />
+          {withG1t && <ClearG1tDialog open={clearing} onOpenChange={setClearing} onClear={clearG1t} />}
+          <BottomSheet open={editing != null && !editing.inline} onOpenChange={(open) => !open && setEditing(null)} title="Edit message">
+            {editing && !editing.inline && (
+              <div className="space-y-3 px-1 pt-1">
+                <h2 className="px-2 text-base font-semibold">Edit message</h2>
+                {editor(editing)}
+              </div>
+            )}
+          </BottomSheet>
+        </div>
+      </CardContext.Provider>
     </EmojiProvider>
   );
 }
@@ -937,7 +976,10 @@ function ChannelHeader({
   const channel = data.channel;
   const agentDm = channel.kind === "dm" && others.length === 1 && others[0]!.kind === "agent" ? others[0]! : null;
   return (
-    <header data-page-head className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-4 sm:px-5 max-md:h-[calc(3.5rem+env(safe-area-inset-top))] max-md:gap-2 max-md:pt-[env(safe-area-inset-top)] max-md:pl-1.5">
+    <header
+      data-page-head
+      className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-4 sm:px-5 max-md:h-[calc(3.5rem+env(safe-area-inset-top))] max-md:gap-2 max-md:pt-[env(safe-area-inset-top)] max-md:pl-1.5"
+    >
       <Button variant="ghost" size="icon-bar" onClick={onBack} aria-label="Back to conversations" className="rounded-full md:hidden">
         <ChevronLeft size={22} />
       </Button>
@@ -1000,7 +1042,9 @@ function ChannelHeader({
                 {agentDm && <AgentPill deleted={agentDm.deleted === true} />}
               </h1>
               {/* One person: their status under their name, as their card has it. */}
-              {!agentDm && others.length === 1 && others[0]!.kind === "user" && <PersonStatusLine person={{ id: others[0]!.id, username: others[0]!.name }} className="truncate text-xs leading-tight text-muted" />}
+              {!agentDm && others.length === 1 && others[0]!.kind === "user" && (
+                <PersonStatusLine person={{ id: others[0]!.id, username: others[0]!.name }} className="truncate text-xs leading-tight text-muted" />
+              )}
             </div>
             <StarButton starred={starred} onClick={onStar} />
           </>
@@ -1014,10 +1058,20 @@ function ChannelHeader({
       )}
       {channel.kind === "channel" && (
         <Hint label={info ? "Hide details" : "Members and details"}>
-          <Button variant="outline" size="sm" onClick={onInfo} aria-pressed={info} aria-label="Members and details" className="px-2 text-xs text-muted tabular-nums aria-pressed:border-line-strong aria-pressed:bg-raised aria-pressed:text-fg max-md:h-11">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onInfo}
+            aria-pressed={info}
+            aria-label="Members and details"
+            className="px-2 text-xs text-muted tabular-nums aria-pressed:border-line-strong aria-pressed:bg-raised aria-pressed:text-fg max-md:h-11"
+          >
             <UsersStack count={memberCount} />
             {(data.requests?.length ?? 0) > 0 && (
-              <span className="ml-1 rounded-full bg-accent px-1.5 text-[0.6875rem] leading-4 font-semibold text-bg" aria-label={`${data.requests!.length} asking to join`}>
+              <span
+                className="ml-1 rounded-full bg-accent px-1.5 text-[0.6875rem] leading-4 font-semibold text-bg"
+                aria-label={`${data.requests!.length} asking to join`}
+              >
                 {data.requests!.length}
               </span>
             )}
@@ -1247,7 +1301,6 @@ function ProfilePanel({
   );
 }
 
-
 /** A long press (half a second, without moving) on a touch screen. */
 function useLongPress(onLongPress?: () => void) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1432,9 +1485,7 @@ function MessageRow({
           )}
           {!editor && !answer && message.page && <AskedFrom page={message.page} />}
           {!editor && !answer && message.body && !message.pending && <FolioUnfurls slug={slug} body={message.body} />}
-          {message.card && (
-            <CardBox card={message.card} slug={slug} code={code} />
-          )}
+          {message.card && <CardBox card={message.card} slug={slug} code={code} />}
           {message.edited_at && <span className="text-[0.6875rem] text-faint"> (edited)</span>}
         </div>
         {!message.pending && !message.deleted_at && <ReactionBar messageId={message.id} reactions={message.reactions} />}
@@ -1447,13 +1498,7 @@ function MessageRow({
           </p>
         )}
         {!inThread && message.reply_count > 0 && onThread && (
-          <Button
-            type="button"
-            onClick={onThread}
-            variant="ghost"
-            size="inline"
-            className="mt-1 -ml-1 flex gap-2 px-1 py-0.5 text-[0.8125rem] text-accent"
-          >
+          <Button type="button" onClick={onThread} variant="ghost" size="inline" className="mt-1 -ml-1 flex gap-2 px-1 py-0.5 text-[0.8125rem] text-accent">
             <MessageSquareText size={14} />
             {message.reply_count} {message.reply_count === 1 ? "reply" : "replies"}
             {message.last_reply_at && (
@@ -1465,16 +1510,13 @@ function MessageRow({
         )}
       </div>
       {!inThread && onThread && !message.pending && (
-        <Card radius="lg" className="absolute -top-3 right-3 hidden p-0.5 shadow-lg shadow-black/30 group-hover/message:flex group-focus-within/message:flex has-data-[state=open]:flex">
+        <Card
+          radius="lg"
+          className="absolute -top-3 right-3 hidden p-0.5 shadow-lg shadow-black/30 group-hover/message:flex group-focus-within/message:flex has-data-[state=open]:flex"
+        >
           <AddReaction messageId={message.id} />
           <Hint label="Reply in thread">
-            <Button
-              type="button"
-              aria-label="Reply in thread"
-              onClick={onThread}
-              variant="ghost"
-              size="icon-xs"
-            >
+            <Button type="button" aria-label="Reply in thread" onClick={onThread} variant="ghost" size="icon-xs">
               <MessageSquareText size={15} />
             </Button>
           </Hint>
@@ -1563,7 +1605,19 @@ function TypingLine({ typers }: { typers: Typer[] }) {
  * is a screen of its own, pushed over the conversation, as tall as what
  * the keyboard leaves.
  */
-function SidePanel({ title, subtitle, onClose, menu, children }: { title: string; subtitle?: string; onClose: () => void; menu?: ReactNode; children: ReactNode }) {
+function SidePanel({
+  title,
+  subtitle,
+  onClose,
+  menu,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  menu?: ReactNode;
+  children: ReactNode;
+}) {
   const swipe = useSwipeBack(onClose);
   return (
     <aside
@@ -1633,30 +1687,30 @@ function ThreadPanel({
       >
         {/* One box for what scrolls, so its growing is seen (./stick.ts). */}
         <div>
-        {root ? (
-          <MessageRow message={root} head zone={zone} context={context} code={code} slug={slug} onRetry={() => onRetry(root)} inThread />
-        ) : (
-          replies != null && <p className="px-4 py-2 text-sm text-faint">The message this thread is under is further back.</p>
-        )}
-        <div className="my-2 flex items-center gap-3 px-4 text-xs text-faint">
-          {replies == null ? "Loading replies…" : `${replies.filter((r) => !r.deleted_at).length} ${replies.length === 1 ? "reply" : "replies"}`}
-          <span className="h-px grow bg-line" />
-        </div>
-        {rows.map((row) =>
-          row.kind === "message" ? (
-            <MessageRow
-              key={row.key}
-              message={row.message}
-              head={row.head}
-              zone={zone}
-              context={context}
-              code={code}
-              slug={slug}
-              onRetry={() => onRetry(row.message)}
-              inThread
-            />
-          ) : null,
-        )}
+          {root ? (
+            <MessageRow message={root} head zone={zone} context={context} code={code} slug={slug} onRetry={() => onRetry(root)} inThread />
+          ) : (
+            replies != null && <p className="px-4 py-2 text-sm text-faint">The message this thread is under is further back.</p>
+          )}
+          <div className="my-2 flex items-center gap-3 px-4 text-xs text-faint">
+            {replies == null ? "Loading replies…" : `${replies.filter((r) => !r.deleted_at).length} ${replies.length === 1 ? "reply" : "replies"}`}
+            <span className="h-px grow bg-line" />
+          </div>
+          {rows.map((row) =>
+            row.kind === "message" ? (
+              <MessageRow
+                key={row.key}
+                message={row.message}
+                head={row.head}
+                zone={zone}
+                context={context}
+                code={code}
+                slug={slug}
+                onRetry={() => onRetry(row.message)}
+                inThread
+              />
+            ) : null,
+          )}
         </div>
       </div>
       {joined && (
@@ -1829,8 +1883,7 @@ function ChannelAbout({
           <AlertDialogHeader>
             <AlertDialogTitle>Archive #{channel.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              It leaves everyone&apos;s sidebar and nobody can post in it. Its history stays readable, and it can be unarchived from Browse
-              channels, Archived.
+              It leaves everyone&apos;s sidebar and nobody can post in it. Its history stays readable, and it can be unarchived from Browse channels, Archived.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1889,7 +1942,15 @@ function InfoPanel({
     if (!done.ok) return setError(done.error.message);
     setRequests((now) => now.filter((r) => r.id !== request.id));
     if (approve) {
-      onAdded({ channel_id: channel.id, member: request.requester, role: "member", starred: false, muted: false, last_read_id: null, joined_at: new Date().toISOString() });
+      onAdded({
+        channel_id: channel.id,
+        member: request.requester,
+        role: "member",
+        starred: false,
+        muted: false,
+        last_read_id: null,
+        joined_at: new Date().toISOString(),
+      });
     }
   };
   const takeOut = async (member: MemberProfile) => {
@@ -1923,7 +1984,9 @@ function InfoPanel({
                   {request.requester.guest && <GuestPill workspace={workspaceName} />}
                 </div>
                 {request.note && <p className="mt-1.5 text-xs leading-relaxed text-muted">{request.note}</p>}
-                {request.requester.guest && <p className="mt-1.5 text-xs text-faint">Letting them in makes them a guest here: they see this channel and nothing else of the workspace.</p>}
+                {request.requester.guest && (
+                  <p className="mt-1.5 text-xs text-faint">Letting them in makes them a guest here: they see this channel and nothing else of the workspace.</p>
+                )}
                 <div className="mt-2 flex gap-1.5">
                   <Button type="button" size="xs" variant="accent" onClick={() => void answer(request, true)}>
                     Let in
@@ -1941,7 +2004,11 @@ function InfoPanel({
         <div className="mb-1 flex items-center justify-between px-1">
           <h3 className="text-xs font-medium text-faint">
             People · {humans.length}
-            {guests > 0 && <span className="ml-1">({guests} {guests === 1 ? "guest" : "guests"})</span>}
+            {guests > 0 && (
+              <span className="ml-1">
+                ({guests} {guests === 1 ? "guest" : "guests"})
+              </span>
+            )}
           </h3>
           {joined && !data.guest && channel.kind === "channel" && (
             <AddMember
@@ -1971,7 +2038,10 @@ function InfoPanel({
         <ul className="space-y-px">
           {humans.map(({ member, role }) => (
             <li key={member.id} className="group/person relative">
-              <MemberCard member={member} className="flex w-full items-center gap-2.5 rounded-md px-1 py-1.5 transition-colors hover:bg-raised/60 max-md:min-h-11">
+              <MemberCard
+                member={member}
+                className="flex w-full items-center gap-2.5 rounded-md px-1 py-1.5 transition-colors hover:bg-raised/60 max-md:min-h-11"
+              >
                 <MemberAvatar member={member} size={26} presence />
                 <span className="min-w-0 grow truncate text-sm">
                   {shownName(member)}
@@ -2078,7 +2148,15 @@ function AddMember({
     if (!done.ok) return setError(done.error.message);
     onAdded({
       channel_id: channelId,
-      member: { kind: "user", id: person.name, name: person.name, display_username: person.display_username ?? null, display_name: person.display_name, avatar: person.avatar, role: null },
+      member: {
+        kind: "user",
+        id: person.name,
+        name: person.name,
+        display_username: person.display_username ?? null,
+        display_name: person.display_name,
+        avatar: person.avatar,
+        role: null,
+      },
       role: "member",
       starred: false,
       muted: false,

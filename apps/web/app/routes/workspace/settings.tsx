@@ -95,7 +95,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     viewer ? part(identity.listMembers(params.owner, viewer), "Two-factor authentication") : null,
     viewer ? part(accounts.twoFactorStatus(viewer), "Two-factor authentication") : null,
   ]);
-  const without = isFailed(members) ? members : members?.ok ? members.value.filter((member) => member.two_factor === false).map((member) => member.username) : [];
+  const without = isFailed(members)
+    ? members
+    : members?.ok
+      ? members.value.filter((member) => member.two_factor === false).map((member) => member.username)
+      : [];
   return {
     workspace,
     check,
@@ -150,7 +154,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     return { saved: "two-factor-requirement" as const };
   }
   if (intent === "rename") {
-    const newSlug = String(form.get("newSlug") ?? "").trim().toLowerCase();
+    const newSlug = String(form.get("newSlug") ?? "")
+      .trim()
+      .toLowerCase();
     const result = await identity.renameWorkspace(user, params.owner, newSlug);
     if (!result.ok) return { renameError: result.error.message };
     throw redirect(`/${result.value.slug}/-/settings`);
@@ -170,8 +176,8 @@ export default function WorkspaceSettings({ loaderData, actionData }: Route.Comp
       <section>
         <h2 className="font-medium">Getting started</h2>
         <p className="mt-1.5 text-sm text-muted">
-          The setup guide that opened on Home: an AI provider, Ask&apos;s model, your code, your coding agent, your team and a
-          runner, each ticked off as the workspace has it. Open it again any time.
+          The setup guide that opened on Home: an AI provider, Ask&apos;s model, your code, your coding agent, your team and a runner, each ticked off as the
+          workspace has it. Open it again any time.
         </p>
         <div className="mt-3">
           <GettingStartedButton slug={workspace.slug} />
@@ -240,8 +246,7 @@ export default function WorkspaceSettings({ loaderData, actionData }: Route.Comp
       <section>
         <h2 className="font-medium">Permissions</h2>
         <p className="mt-1.5 text-xs text-faint">
-          Who may do what in {workspace.slug}: the base permission on its repositories, creating repositories and teams, channels and more are
-          under{" "}
+          Who may do what in {workspace.slug}: the base permission on its repositories, creating repositories and teams, channels and more are under{" "}
           <Link to={`/${workspace.slug}/-/permissions`} className="text-muted underline underline-offset-4 hover:text-fg">
             Permissions
           </Link>
@@ -256,15 +261,17 @@ export default function WorkspaceSettings({ loaderData, actionData }: Route.Comp
             <Unavailable what={loaderData.residency.what} />
           </div>
         </section>
-      ) : (loaderData.euAvailable || loaderData.residency === "eu") && (
-        <ResidencySection
-          // Starts from the saved choice whenever it changes.
-          key={loaderData.residency}
-          residency={loaderData.residency}
-          euAvailable={loaderData.euAvailable}
-          saved={Boolean(actionData && "saved" in actionData && actionData.saved === "residency")}
-          error={actionData && "residencyError" in actionData ? actionData.residencyError : undefined}
-        />
+      ) : (
+        (loaderData.euAvailable || loaderData.residency === "eu") && (
+          <ResidencySection
+            // Starts from the saved choice whenever it changes.
+            key={loaderData.residency}
+            residency={loaderData.residency}
+            euAvailable={loaderData.euAvailable}
+            saved={Boolean(actionData && "saved" in actionData && actionData.saved === "residency")}
+            error={actionData && "residencyError" in actionData ? actionData.residencyError : undefined}
+          />
+        )
       )}
 
       <DangerZone>
@@ -308,8 +315,8 @@ function TwoFactorRequirementSection({
     <section id="two-factor" className="scroll-mt-20">
       <h2 className="font-medium">Authentication security</h2>
       <p className="mt-1.5 text-xs text-faint">
-        With two-factor authentication required, members and outside collaborators without it keep their place but
-        cannot use {slug} until they turn it on. They see a notice saying so.
+        With two-factor authentication required, members and outside collaborators without it keep their place but cannot use {slug} until they turn it on. They
+        see a notice saying so.
       </p>
       <Form method="post" className="mt-5 space-y-3">
         <input type="hidden" name="intent" value="two-factor-requirement" />
@@ -353,17 +360,7 @@ function TwoFactorRequirementSection({
  * once g1t has EU storage (or to a workspace that already chose it), so
  * nobody is offered a choice that does nothing.
  */
-function ResidencySection({
-  residency,
-  euAvailable,
-  saved,
-  error,
-}: {
-  residency: DataResidency;
-  euAvailable: boolean;
-  saved: boolean;
-  error?: string;
-}) {
+function ResidencySection({ residency, euAvailable, saved, error }: { residency: DataResidency; euAvailable: boolean; saved: boolean; error?: string }) {
   const [choice, setChoice] = useState<DataResidency>(residency);
   const navigation = useNavigation();
   const saving = navigation.state !== "idle" && navigation.formData?.get("intent") === "residency";
@@ -371,17 +368,12 @@ function ResidencySection({
     <section>
       <h2 className="font-medium">Data residency</h2>
       <p className="mt-1.5 text-xs text-faint">
-        Where the git data of repositories made from now on is stored. Repositories the workspace already has stay
-        where they are; ask support to move them. Work items, pull requests and settings are not affected.
+        Where the git data of repositories made from now on is stored. Repositories the workspace already has stay where they are; ask support to move them.
+        Work items, pull requests and settings are not affected.
       </p>
       <Form method="post" className="mt-5 space-y-4">
         <input type="hidden" name="intent" value="residency" />
-        <RadioGroup
-          name="residency"
-          value={choice}
-          onValueChange={(value) => setChoice(value as DataResidency)}
-          aria-label="Where new repositories are stored"
-        >
+        <RadioGroup name="residency" value={choice} onValueChange={(value) => setChoice(value as DataResidency)} aria-label="Where new repositories are stored">
           <RadioOption value="anywhere" label="Anywhere" description="Wherever g1t stores repositories. The default." />
           <RadioOption
             value="eu"
@@ -414,17 +406,7 @@ function ResidencySection({
  * `WORKSPACE_RESTORE_DAYS`, when support can restore it. A protected
  * workspace says so instead of offering the button.
  */
-function DeleteAction({
-  workspace,
-  deletion,
-  apps,
-  error,
-}: {
-  workspace: Workspace;
-  deletion: WorkspaceDeletion | null;
-  apps: number | null;
-  error?: string;
-}) {
+function DeleteAction({ workspace, deletion, apps, error }: { workspace: Workspace; deletion: WorkspaceDeletion | null; apps: number | null; error?: string }) {
   const [open, setOpen] = useState(Boolean(error));
   const [confirm, setConfirm] = useState("");
   const navigation = useNavigation();
@@ -451,8 +433,8 @@ function DeleteAction({
         <span role="status">{refusal}</span>
       ) : (
         <>
-          Everything in it goes with it: repositories, projects, apps, members' access and tokens. It is kept for{" "}
-          {WORKSPACE_RESTORE_DAYS} days, and support can restore it until then.
+          Everything in it goes with it: repositories, projects, apps, members' access and tokens. It is kept for {WORKSPACE_RESTORE_DAYS} days, and support can
+          restore it until then.
         </>
       )}
       <AlertDialog
@@ -468,8 +450,7 @@ function DeleteAction({
             <AlertDialogHeader>
               <AlertDialogTitle>Delete {workspace.slug}?</AlertDialogTitle>
               <AlertDialogDescription>
-                Everything in it goes now. For {WORKSPACE_RESTORE_DAYS} days, support can restore all of it; after
-                that it is gone for good.
+                Everything in it goes now. For {WORKSPACE_RESTORE_DAYS} days, support can restore all of it; after that it is gone for good.
               </AlertDialogDescription>
             </AlertDialogHeader>
             {goes.length > 0 ? (
@@ -485,17 +466,14 @@ function DeleteAction({
             <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted">
               <li>Everyone loses access to it at once, and its access tokens stop working.</li>
               <li>Its pages, repositories and apps are no longer found, and nothing builds or runs for it.</li>
+              <li>Anything it owes is charged to its card now, and its plan ends today. Its statements, invoices and audit log are kept.</li>
               <li>
-                Anything it owes is charged to its card now, and its plan ends today. Its statements, invoices and
-                audit log are kept.
+                To get it back within {WORKSPACE_RESTORE_DAYS} days, an owner writes to support. After that its repositories, projects, apps, webhooks,
+                integrations and secrets are removed for good.
               </li>
               <li>
-                To get it back within {WORKSPACE_RESTORE_DAYS} days, an owner writes to support. After that its
-                repositories, projects, apps, webhooks, integrations and secrets are removed for good.
-              </li>
-              <li>
-                The name <span className="font-mono text-fg">{workspace.slug}</span> is never given to another
-                workspace. Repositories that were transferred out keep redirecting from it.
+                The name <span className="font-mono text-fg">{workspace.slug}</span> is never given to another workspace. Repositories that were transferred out
+                keep redirecting from it.
               </li>
               <li>Members keep their own accounts.</li>
             </ul>
@@ -569,8 +547,8 @@ function AddressSection({ workspace, error }: { workspace: Workspace; error?: st
     <section>
       <h2 className="font-medium">Address</h2>
       <p className="mt-1.5 text-xs text-faint">
-        The workspace's slug: the first part of every page, clone URL and API path under it. Changing it does
-        not change the display name. The old address redirects for {SLUG_HOLD_DAYS} days.
+        The workspace's slug: the first part of every page, clone URL and API path under it. Changing it does not change the display name. The old address
+        redirects for {SLUG_HOLD_DAYS} days.
       </p>
       <div className="mt-5 space-y-4">
         <FormField>
@@ -593,12 +571,7 @@ function AddressSection({ workspace, error }: { workspace: Workspace; error?: st
               g1t.sh/<span className={unchanged ? undefined : "text-fg"}>{wanted || workspace.slug}</span>
             </span>
             {status && (
-              <span
-                role="status"
-                className={`mt-1 block ${
-                  status.tone === "ok" ? "text-success" : status.tone === "bad" ? "text-danger" : ""
-                }`}
-              >
+              <span role="status" className={`mt-1 block ${status.tone === "ok" ? "text-success" : status.tone === "bad" ? "text-danger" : ""}`}>
                 {status.text}
               </span>
             )}
@@ -630,8 +603,8 @@ function AddressSection({ workspace, error }: { workspace: Workspace; error?: st
               <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted">
                 <li>Old links and git remotes redirect to the new address for {SLUG_HOLD_DAYS} days.</li>
                 <li>
-                  Deployed apps move to <span className="font-mono">*.g1t.page</span> addresses with the new
-                  name. The old addresses redirect for {SLUG_HOLD_DAYS} days.
+                  Deployed apps move to <span className="font-mono">*.g1t.page</span> addresses with the new name. The old addresses redirect for{" "}
+                  {SLUG_HOLD_DAYS} days.
                 </li>
                 <li>
                   Update your git remotes, for example{" "}
@@ -640,16 +613,12 @@ function AddressSection({ workspace, error }: { workspace: Workspace; error?: st
                   </code>
                   , and any URLs written into code, API clients and MCP clients.
                 </li>
-                <li>After {SLUG_HOLD_DAYS} days, anyone can take the name {workspace.slug}.</li>
+                <li>
+                  After {SLUG_HOLD_DAYS} days, anyone can take the name {workspace.slug}.
+                </li>
                 <li>You can change the address again after {RENAME_COOLDOWN_HOURS} hours.</li>
               </ul>
-              <ConfirmName
-                confirm={wanted}
-                id="confirm-slug"
-                name={undefined}
-                value={confirm}
-                onChange={(event) => setConfirm(event.target.value)}
-              />
+              <ConfirmName confirm={wanted} id="confirm-slug" name={undefined} value={confirm} onChange={(event) => setConfirm(event.target.value)} />
               <ErrorText>{error}</ErrorText>
               <AlertDialogFooter>
                 <AlertDialogCancel type="button">Cancel</AlertDialogCancel>

@@ -81,12 +81,7 @@ export default function Tree({ loaderData }: Route.ComponentProps) {
             <Unavailable compact what={fork.what} />
           </div>
         ) : fork && project && branches?.some((branch) => branch.name === tree.ref) ? (
-          <ForkBar
-            base={`/${tree.repo.namespace}/${tree.repo.name}`}
-            branch={tree.ref}
-            parent={fork}
-            canPush={Boolean(project.access.can.push)}
-          />
+          <ForkBar base={`/${tree.repo.namespace}/${tree.repo.name}`} branch={tree.ref} parent={fork} canPush={Boolean(project.access.can.push)} />
         ) : null
       }
     />

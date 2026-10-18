@@ -4,20 +4,37 @@ import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
 const bundle = await build({
-  entryPoints: [fileURLToPath(new URL("./service.ts", import.meta.url))], bundle: true, write: false, format: "esm", platform: "node",
-  plugins: [{ name: "worker-host", setup(build) {
-    build.onResolve({ filter: /^cloudflare:workers$/ }, () => ({ path: "host", namespace: "host" }));
-    build.onLoad({ filter: /.*/, namespace: "host" }, () => ({ contents: "export class DurableObject {}" }));
-  } }],
+  entryPoints: [fileURLToPath(new URL("./service.ts", import.meta.url))],
+  bundle: true,
+  write: false,
+  format: "esm",
+  platform: "node",
+  plugins: [
+    {
+      name: "worker-host",
+      setup(build) {
+        build.onResolve({ filter: /^cloudflare:workers$/ }, () => ({ path: "host", namespace: "host" }));
+        build.onLoad({ filter: /.*/, namespace: "host" }, () => ({ contents: "export class DurableObject {}" }));
+      },
+    },
+  ],
 });
 const { Folios } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString("base64")}`);
 
 test("a cold room never holds up page state; its snapshot is saved in the background", async () => {
   let resolve!: (value: Uint8Array) => void;
-  const pending = new Promise<Uint8Array>((done) => { resolve = done; });
+  const pending = new Promise<Uint8Array>((done) => {
+    resolve = done;
+  });
   const deferred: Promise<unknown>[] = [];
   const writes: unknown[][] = [];
-  const statement = { bind: (...values: unknown[]) => { writes.push(values); return statement; }, run: async () => ({ success: true }) };
+  const statement = {
+    bind: (...values: unknown[]) => {
+      writes.push(values);
+      return statement;
+    },
+    run: async () => ({ success: true }),
+  };
   const service = new Folios({ DB: { prepare: () => statement } }, (work: Promise<unknown>) => deferred.push(work));
   service.ready = async () => ({ state: () => pending });
   assert.equal(service.stateFor({ slug: "cold" }, { id: "folio_cold", state: null }), null);

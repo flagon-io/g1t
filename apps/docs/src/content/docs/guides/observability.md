@@ -28,15 +28,15 @@ the API it called elsewhere are one trace.
 
 ## The pages
 
-| Page | What it shows |
-| --- | --- |
+| Page         | What it shows                                                                                                                                                                                                                                                         |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Overview** | Requests, error rate, and latency at the 50th, 95th and 99th percentiles, against the period before; requests and latency over time; each deployment's numbers, newest first; the busiest routes; open errors; the services reporting; and where requests were served |
-| **Requests** | Every request, newest first: status, method and address, duration, CPU time, region and deployment. Narrow by status, failed only, a route, or search |
-| **Logs** | Every line, newest first. Search words, a level or an attribute; follow it live |
-| **Traces** | Each trace, with the services it touched, its spans and errors. A trace opens as a waterfall, with each span's attributes and events, and the logs written under it |
-| **Errors** | Exceptions grouped by what they are and where they were thrown, with how often and since which deployment. Each can become a work item |
-| **Metrics** | Every metric sent over OpenTelemetry, over time, averaged, summed or as a percentile, and grouped by service or any attribute |
-| **Settings** | Ingest tokens, exports, retention, and what the project used this month |
+| **Requests** | Every request, newest first: status, method and address, duration, CPU time, region and deployment. Narrow by status, failed only, a route, or search                                                                                                                 |
+| **Logs**     | Every line, newest first. Search words, a level or an attribute; follow it live                                                                                                                                                                                       |
+| **Traces**   | Each trace, with the services it touched, its spans and errors. A trace opens as a waterfall, with each span's attributes and events, and the logs written under it                                                                                                   |
+| **Errors**   | Exceptions grouped by what they are and where they were thrown, with how often and since which deployment. Each can become a work item                                                                                                                                |
+| **Metrics**  | Every metric sent over OpenTelemetry, over time, averaged, summed or as a percentile, and grouped by service or any attribute                                                                                                                                         |
+| **Settings** | Ingest tokens, exports, retention, and what the project used this month                                                                                                                                                                                               |
 
 Every page narrows by period (the last 15 minutes to the last 30 days),
 environment, service and deployment, and the address says what it shows,
@@ -46,15 +46,15 @@ so a view can be shared by its link.
 
 The Logs, Requests and Traces pages take the same search:
 
-| You write | It finds |
-| --- | --- |
-| `timeout` | lines with the word, or a word starting with it at the end |
-| `payment captured` | lines with both words |
-| `"payment captured"` | the phrase |
-| `level:error` | errors (and `level:warn`, `level:info`, `level:debug`) |
-| `user.id=42` | records whose attribute `user.id` is `42` |
-| `status:502`, `region:AMS`, `method:POST` | requests by a field of their own |
-| `service:api`, `trace_id:…`, `deployment_id:…` | records from one service, trace or deployment |
+| You write                                      | It finds                                                   |
+| ---------------------------------------------- | ---------------------------------------------------------- |
+| `timeout`                                      | lines with the word, or a word starting with it at the end |
+| `payment captured`                             | lines with both words                                      |
+| `"payment captured"`                           | the phrase                                                 |
+| `level:error`                                  | errors (and `level:warn`, `level:info`, `level:debug`)     |
+| `user.id=42`                                   | records whose attribute `user.id` is `42`                  |
+| `status:502`, `region:AMS`, `method:POST`      | requests by a field of their own                           |
+| `service:api`, `trace_id:…`, `deployment_id:…` | records from one service, trace or deployment              |
 
 ### A regression points at its deployment
 
@@ -93,23 +93,23 @@ halves are filed under the project and the deployment that served it.
 
 Each request the app receives carries two headers it can use:
 
-| Header | What it is |
-| --- | --- |
-| `x-g1t-request-id` | The request's id on its page under **Requests**. Log it, or show it on an error page, to find the request again |
-| `traceparent` | The request's trace ([W3C Trace Context](https://www.w3.org/TR/trace-context/)). An incoming `traceparent` is continued, so a caller's trace runs through |
+| Header             | What it is                                                                                                                                                |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `x-g1t-request-id` | The request's id on its page under **Requests**. Log it, or show it on an error page, to find the request again                                           |
+| `traceparent`      | The request's trace ([W3C Trace Context](https://www.w3.org/TR/trace-context/)). An incoming `traceparent` is continued, so a caller's trace runs through |
 
 ### Spans from the app
 
 Each app on g1t.page is deployed with OpenTelemetry's standard variables
 set:
 
-| Variable | Value |
-| --- | --- |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `https://otel.g1t.sh` |
-| `OTEL_EXPORTER_OTLP_HEADERS` | `authorization=Bearer <the project's deployments token>`, a secret |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/json` |
-| `OTEL_SERVICE_NAME` | the project's name |
-| `OTEL_RESOURCE_ATTRIBUTES` | `deployment.environment.name`, `g1t.deployment.id`, `g1t.project.id` and `vcs.ref.head.revision` |
+| Variable                      | Value                                                                                            |
+| ----------------------------- | ------------------------------------------------------------------------------------------------ |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `https://otel.g1t.sh`                                                                            |
+| `OTEL_EXPORTER_OTLP_HEADERS`  | `authorization=Bearer <the project's deployments token>`, a secret                               |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/json`                                                                                      |
+| `OTEL_SERVICE_NAME`           | the project's name                                                                               |
+| `OTEL_RESOURCE_ATTRIBUTES`    | `deployment.environment.name`, `g1t.deployment.id`, `g1t.project.id` and `vcs.ref.head.revision` |
 
 An OpenTelemetry SDK that reads them sends its spans, logs and metrics
 here as they are, and its server span continues the request's
@@ -129,7 +129,14 @@ const config: ResolveConfigFn = (env: Env) => ({
   service: { name: env.OTEL_SERVICE_NAME },
 });
 
-export default instrument({ async fetch(request, env) { /* … */ } }, config);
+export default instrument(
+  {
+    async fetch(request, env) {
+      /* … */
+    },
+  },
+  config,
+);
 ```
 
 ### Cloudflare's own spans
@@ -260,12 +267,12 @@ address; see [rate limits](/reference/rate-limits/).
 
 ## Who can do what
 
-| | Who |
-| --- | --- |
-| See the pages | People with a role on the project's repository, even when its code is public: logs and addresses can hold what only the people running it should read |
-| Resolve, ignore or reopen errors | Triage and up |
-| Make a work item of an error | Anyone who can open work items in the project's repository |
-| Tokens, exports, retention and the g1t.page switch | Admin |
+|                                                    | Who                                                                                                                                                   |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| See the pages                                      | People with a role on the project's repository, even when its code is public: logs and addresses can hold what only the people running it should read |
+| Resolve, ignore or reopen errors                   | Triage and up                                                                                                                                         |
+| Make a work item of an error                       | Anyone who can open work items in the project's repository                                                                                            |
+| Tokens, exports, retention and the g1t.page switch | Admin                                                                                                                                                 |
 
 ## The API and MCP
 

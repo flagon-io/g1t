@@ -84,10 +84,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 }
 
-const LEVEL_LABEL: Record<WatchLevel, string> = Object.fromEntries(WATCH_CHOICES.map((choice) => [choice.level, choice.label])) as Record<
-  WatchLevel,
-  string
->;
+const LEVEL_LABEL: Record<WatchLevel, string> = Object.fromEntries(WATCH_CHOICES.map((choice) => [choice.level, choice.label])) as Record<WatchLevel, string>;
 
 export default function NotificationSettings({ loaderData, actionData }: Route.ComponentProps) {
   const { watched, sounds, workspaces } = loaderData;
@@ -103,7 +100,11 @@ export default function NotificationSettings({ loaderData, actionData }: Route.C
           Email
         </h2>
         <p className="mt-1 text-sm text-muted">
-          Besides your <Link to="/notifications" className="text-fg underline underline-offset-4">notifications</Link>, email me at my primary address when:
+          Besides your{" "}
+          <Link to="/notifications" className="text-fg underline underline-offset-4">
+            notifications
+          </Link>
+          , email me at my primary address when:
         </p>
         {settings ? (
           <Form method="post" className="mt-4 space-y-3">
@@ -139,9 +140,9 @@ export default function NotificationSettings({ loaderData, actionData }: Route.C
           Security
         </h2>
         <p className="mt-1 text-sm text-muted">
-          Each scan of a repository is one item, brought up to date by the next scan. Critical and high alerts, a push of yours that push protection refused
-          and a vulnerability report reach you at once; the rest, as you choose here. The workspaces you own, or manage security for, tell you of their
-          urgent alerts whatever you choose.
+          Each scan of a repository is one item, brought up to date by the next scan. Critical and high alerts, a push of yours that push protection refused and
+          a vulnerability report reach you at once; the rest, as you choose here. The workspaces you own, or manage security for, tell you of their urgent
+          alerts whatever you choose.
         </p>
         {settings ? (
           <Form method="post" className="mt-4 space-y-4">
@@ -212,9 +213,7 @@ export default function NotificationSettings({ loaderData, actionData }: Route.C
           </div>
         ) : watched.length === 0 ? (
           <Card asChild tone="plain" radius="lg" className="mt-4 border-dashed px-4 py-6 text-center text-sm text-muted">
-            <p>
-              You watch every repository the default way.
-            </p>
+            <p>You watch every repository the default way.</p>
           </Card>
         ) : (
           <ul className="mt-4 divide-y divide-line rounded-md border border-line">

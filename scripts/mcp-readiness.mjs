@@ -5,8 +5,16 @@ export async function verifyMcp(token, fetcher = fetch) {
   const endpoint = "https://mcp.g1t.sh";
   const headers = { authorization: `Bearer ${token}`, "content-type": "application/json", accept: "application/json, text/event-stream" };
   async function post(method, params, id) {
-    const response = await fetcher(endpoint, { method: "POST", headers: { ...headers }, body: JSON.stringify({ jsonrpc: "2.0", ...(id === undefined ? {} : { id }), method, params }), signal: AbortSignal.timeout(20_000) });
-    if (id === undefined) { assert.equal(response.status, 202); return; }
+    const response = await fetcher(endpoint, {
+      method: "POST",
+      headers: { ...headers },
+      body: JSON.stringify({ jsonrpc: "2.0", ...(id === undefined ? {} : { id }), method, params }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (id === undefined) {
+      assert.equal(response.status, 202);
+      return;
+    }
     assert.equal(response.status, 200);
     const value = await response.json();
     assert.equal(value.id, id);
@@ -14,7 +22,11 @@ export async function verifyMcp(token, fetcher = fetch) {
     if (response.headers.get("mcp-session-id")) headers["Mcp-Session-Id"] = response.headers.get("mcp-session-id");
     return value.result;
   }
-  const initialized = await post("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "g1t-readiness-check", version: "1" } }, 1);
+  const initialized = await post(
+    "initialize",
+    { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "g1t-readiness-check", version: "1" } },
+    1,
+  );
   assert.equal(initialized.protocolVersion, "2025-03-26");
   headers["MCP-Protocol-Version"] = initialized.protocolVersion;
   await post("notifications/initialized", {});

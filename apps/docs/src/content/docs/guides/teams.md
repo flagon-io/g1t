@@ -35,16 +35,16 @@ team, and becomes its first maintainer, unless an owner has set
 The team's page is `g1t.sh/<workspace>/-/teams/<team>`, and it is
 mentioned as `@<workspace>/<team>`.
 
-| Field | Limits |
-| --- | --- |
-| Name | Up to 80 characters. |
-| Slug | 1 to 60 lowercase letters, digits and single hyphens, not starting or ending with a hyphen. Unique in the workspace. `Web & Mobile` becomes `web-mobile`. |
-| Description | Up to 280 characters. |
-| Teams in one workspace | Up to 500. |
+| Field                  | Limits                                                                                                                                                    |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Name                   | Up to 80 characters.                                                                                                                                      |
+| Slug                   | 1 to 60 lowercase letters, digits and single hyphens, not starting or ending with a hyphen. Unique in the workspace. `Web & Mobile` becomes `web-mobile`. |
+| Description            | Up to 280 characters.                                                                                                                                     |
+| Teams in one workspace | Up to 500.                                                                                                                                                |
 
 The **Teams** page lists the teams you can see, yours first, then by
 name, with a search box that matches names and slugs. Each team shows
-counts such as *2 members · 1 repository*. A person's teams also show on
+counts such as _2 members · 1 repository_. A person's teams also show on
 their card in the [People directory](/guides/people-and-teams/#the-directory)
 and on their profile.
 
@@ -54,10 +54,10 @@ An owner chooses who can create the workspace's teams, under **Workspace →
 Access → [Permissions](/guides/permissions/#people-and-teams)**, in the
 **People and teams** card:
 
-| Who can create teams | |
-| --- | --- |
-| **Any member** | Every member with a confirmed email address. The default. |
-| **Owners only** | Only the workspace's owners. Members see **Only owners can create teams in this workspace.** on the Teams page instead of **New team**, and **New team** in the **+** menu is greyed out. |
+| Who can create teams |                                                                                                                                                                                           |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Any member**       | Every member with a confirmed email address. The default.                                                                                                                                 |
+| **Owners only**      | Only the workspace's owners. Members see **Only owners can create teams in this workspace.** on the Teams page instead of **New team**, and **New team** in the **+** menu is greyed out. |
 
 Teams that already exist stay as they are, and their maintainers still
 manage them. The change is recorded in the [audit log](/guides/audit-log/)
@@ -71,10 +71,10 @@ include it. Creating a team when you may not is refused with `403`.
 
 ## Visibility
 
-| Visibility | Who can see it, mention it and ask it to review |
-| --- | --- |
-| **Visible** | Every member of the workspace. The default. |
-| **Secret** | Its own people and the workspace's owners. To anyone else it does not exist. |
+| Visibility  | Who can see it, mention it and ask it to review                              |
+| ----------- | ---------------------------------------------------------------------------- |
+| **Visible** | Every member of the workspace. The default.                                  |
+| **Secret**  | Its own people and the workspace's owners. To anyone else it does not exist. |
 
 Secret teams cannot be nested: a secret team has no parent and no child
 teams. To make a nested team secret, first take it out from under its
@@ -86,19 +86,19 @@ Each person in a team is a **maintainer** or a **member**. Maintainers
 look after the team; owners of the workspace can do everything a
 maintainer can on every team, whether or not they are in it.
 
-| | Who |
-| --- | --- |
-| See a visible team | Every member of the workspace |
-| See a secret team | Its own people and the workspace's owners |
-| Create a team | Any member. Under a parent: an owner, or a maintainer of the parent |
-| Add and remove people, make someone a maintainer | Owners, and the team's maintainers |
-| Set its lead and channel | Owners, and the team's maintainers |
-| Change its name, slug, description, visibility, notifications and review assignment | Owners, and the team's maintainers |
-| Move it under another team | Owners, or someone who maintains both teams |
-| Delete it | Owners, and the team's maintainers |
-| Give it a role on a repository | Anyone with the Admin [role](/guides/access-and-roles/) on that repository |
-| Take its role on a repository away | Admin on that repository, owners, and the team's maintainers |
-| Leave it | Anyone in it |
+|                                                                                     | Who                                                                        |
+| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| See a visible team                                                                  | Every member of the workspace                                              |
+| See a secret team                                                                   | Its own people and the workspace's owners                                  |
+| Create a team                                                                       | Any member. Under a parent: an owner, or a maintainer of the parent        |
+| Add and remove people, make someone a maintainer                                    | Owners, and the team's maintainers                                         |
+| Set its lead and channel                                                            | Owners, and the team's maintainers                                         |
+| Change its name, slug, description, visibility, notifications and review assignment | Owners, and the team's maintainers                                         |
+| Move it under another team                                                          | Owners, or someone who maintains both teams                                |
+| Delete it                                                                           | Owners, and the team's maintainers                                         |
+| Give it a role on a repository                                                      | Anyone with the Admin [role](/guides/access-and-roles/) on that repository |
+| Take its role on a repository away                                                  | Admin on that repository, owners, and the team's maintainers               |
+| Leave it                                                                            | Anyone in it                                                               |
 
 Changing a team is for people, signed in or with a personal access token,
 with a confirmed email address. A workspace's token cannot change one.
@@ -123,11 +123,11 @@ repositories** (its roles on repositories) and **Storage** (coming).
 A maintainer or an owner sets them under the team's **Settings**, **Lead
 and channel**:
 
-| Setting | What it is |
-| --- | --- |
-| **Lead** | A person on the team. |
-| **Channel** | The team's channel in [Chat](/guides/chat/), by name. Leave it empty for none. |
-| **Storage level** | Coming. |
+| Setting           | What it is                                                                     |
+| ----------------- | ------------------------------------------------------------------------------ |
+| **Lead**          | A person on the team.                                                          |
+| **Channel**       | The team's channel in [Chat](/guides/chat/), by name. Leave it empty for none. |
+| **Storage level** | Coming.                                                                        |
 
 Taking the lead off the team, or out of the workspace, leaves the team
 with no lead.
@@ -147,11 +147,11 @@ team's **Settings**. A child team:
 It never works the other way: a team's own people get nothing from its
 child teams.
 
-| Rule | |
-| --- | --- |
-| How deep | At most 8 levels: a team, its child, that child's child, and so on. |
-| Secret teams | Cannot have a parent or child teams. |
-| Cycles | A team cannot go under itself or one of its own child teams. |
+| Rule              |                                                                          |
+| ----------------- | ------------------------------------------------------------------------ |
+| How deep          | At most 8 levels: a team, its child, that child's child, and so on.      |
+| Secret teams      | Cannot have a parent or child teams.                                     |
+| Cycles            | A team cannot go under itself or one of its own child teams.             |
 | Deleting a parent | Its child teams move up to its own parent, or to the top if it had none. |
 
 The **Child teams** tab, `g1t.sh/<workspace>/-/teams/<team>/teams`, lists
@@ -190,13 +190,13 @@ of every team you are in and of their parents. See
 
 For example, in a workspace whose base permission is **Read**:
 
-| Where it comes from | Role on `acme/api` |
-| --- | --- |
-| Base permission | Read |
-| `@acme/engineering`, a parent of `@acme/backend` | Write |
-| `@acme/backend`, which Ana is in | Maintain |
-| Given to Ana directly | Triage |
-| **Ana's role** | **Maintain**, from `@acme/backend` |
+| Where it comes from                              | Role on `acme/api`                 |
+| ------------------------------------------------ | ---------------------------------- |
+| Base permission                                  | Read                               |
+| `@acme/engineering`, a parent of `@acme/backend` | Write                              |
+| `@acme/backend`, which Ana is in                 | Maintain                           |
+| Given to Ana directly                            | Triage                             |
+| **Ana's role**                                   | **Maintain**, from `@acme/backend` |
 
 The repository's **Settings → Access** lists **Teams with access**, each
 with its role and how many people are in it, and shows for each person
@@ -221,12 +221,12 @@ ana mentioned @acme/backend on acme/api#42
 
 Comment boxes suggest teams as you type `@acme/`.
 
-| | |
-| --- | --- |
-| Who is told | Everyone in the team and its child teams, but not whoever wrote it. |
-| When | The team's **Notify the team when it is mentioned** setting is on (the default), and the writer can see the team: a member of its workspace, and for a secret team, in it or an owner. Otherwise nobody is told. |
-| Not a mention | `@acme/backend` in code, in a quoted line (`>`), inside an address or a path such as `ops@acme/backend` or `@acme/backend/src`, or in a package name such as `@acme/backend@1`. |
-| Subscribes them | Yes. Each person told is subscribed to the work item or pull request, as with a mention by name. |
+|                 |                                                                                                                                                                                                                  |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Who is told     | Everyone in the team and its child teams, but not whoever wrote it.                                                                                                                                              |
+| When            | The team's **Notify the team when it is mentioned** setting is on (the default), and the writer can see the team: a member of its workspace, and for a secret team, in it or an owner. Otherwise nobody is told. |
+| Not a mention   | `@acme/backend` in code, in a quoted line (`>`), inside an address or a path such as `ops@acme/backend` or `@acme/backend/src`, or in a package name such as `@acme/backend@1`.                                  |
+| Subscribes them | Yes. Each person told is subscribed to the work item or pull request, as with a mention by name.                                                                                                                 |
 
 Someone mentioned by name and through a team is told once, as `mention`.
 People only see what is about repositories they can read.
@@ -250,10 +250,10 @@ author.
 The team stays listed under **Reviewers** as requested. What happens next
 depends on its **review assignment**:
 
-| Review assignment | Who is asked |
-| --- | --- |
+| Review assignment     | Who is asked                                                                                                                                    |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Off** (the default) | Everyone in the team and its child teams is told, with the reason `review_requested`, never the pull request's author. Anyone in it can review. |
-| **On** | g1t picks people from the team. Each one picked becomes a reviewer in their own right, listed under **Reviewers** beside the team, and is told. |
+| **On**                | g1t picks people from the team. Each one picked becomes a reviewer in their own right, listed under **Reviewers** beside the team, and is told. |
 
 Removing a team from **Reviewers** takes the request away; people it
 picked stay reviewers until you remove them too.
@@ -263,15 +263,15 @@ picked stay reviewers until you remove them too.
 A maintainer sets it in the team's **Settings**, under **Code review
 assignment**:
 
-| Setting | Default | What it does |
-| --- | --- | --- |
-| **Assign reviewers from the team** | Off | On: pick people instead of asking the whole team. |
-| **How many people** | 1 | People to pick, 1 to 10. People from the team who are already reviewers count towards it. |
-| **Who goes first** | Round robin | **Round robin** or **Load balance**. See below. |
-| **Skip people who are busy** | Off | Leave out anyone with too many pull requests waiting on their review. Beside it, how many waiting pull requests makes someone busy, 1 to 100 (5 by default). |
-| **Pick from child teams too** | Off | Also pick from the people of its child teams. |
-| **Also tell the rest of the team** | Off | Also tell everyone else in the team when people are picked. |
-| **Never pick** | None | Usernames never picked, up to 100. |
+| Setting                            | Default     | What it does                                                                                                                                                 |
+| ---------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Assign reviewers from the team** | Off         | On: pick people instead of asking the whole team.                                                                                                            |
+| **How many people**                | 1           | People to pick, 1 to 10. People from the team who are already reviewers count towards it.                                                                    |
+| **Who goes first**                 | Round robin | **Round robin** or **Load balance**. See below.                                                                                                              |
+| **Skip people who are busy**       | Off         | Leave out anyone with too many pull requests waiting on their review. Beside it, how many waiting pull requests makes someone busy, 1 to 100 (5 by default). |
+| **Pick from child teams too**      | Off         | Also pick from the people of its child teams.                                                                                                                |
+| **Also tell the rest of the team** | Off         | Also tell everyone else in the team when people are picked.                                                                                                  |
+| **Never pick**                     | None        | Usernames never picked, up to 100.                                                                                                                           |
 
 A pull request is **waiting on** someone when it is open or a draft, they
 are one of its reviewers, and they have not yet approved it or asked for
@@ -281,31 +281,31 @@ g1t never picks the pull request's author, anyone under **Never pick**,
 or anyone already asked. The same facts always pick the same people: ties go
 by username.
 
-| Algorithm | Who goes first |
-| --- | --- |
-| **Round robin** | Whoever this team has had asked least recently. People it has never asked come first of all. Everyone is asked once before anyone is asked twice. |
-| **Load balance** | Whoever has the fewest pull requests waiting on their review. Among equals, whoever this team asked least recently. |
+| Algorithm        | Who goes first                                                                                                                                    |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Round robin**  | Whoever this team has had asked least recently. People it has never asked come first of all. Everyone is asked once before anyone is asked twice. |
+| **Load balance** | Whoever has the fewest pull requests waiting on their review. Among equals, whoever this team asked least recently.                               |
 
 For example, `@acme/backend` has five people:
 
 | Person | Last asked by the team | Waiting on them |
-| --- | --- | --- |
-| ana | 5 October | 1 |
-| bo | never | 4 |
-| cy | 1 October | 0 |
-| dee | 6 October | 0 |
-| eve | never | 2 |
+| ------ | ---------------------- | --------------- |
+| ana    | 5 October              | 1               |
+| bo     | never                  | 4               |
+| cy     | 1 October              | 0               |
+| dee    | 6 October              | 0               |
+| eve    | never                  | 2               |
 
 zed opens a pull request and asks `@acme/backend` to review it:
 
-| Settings | Picked |
-| --- | --- |
-| Round robin, how many 1 | bo (never asked; first by name) |
-| Round robin, how many 3 | bo, eve, cy |
-| Load balance, how many 2 | cy, dee (nothing waiting; cy asked longer ago) |
-| Round robin, how many 3, skip busy at 2 | cy, ana, dee (bo and eve are busy) |
-| Round robin, how many 2, bo already a reviewer | eve (bo counts towards the 2) |
-| Round robin, how many 3, opened by bo | eve, cy, ana (never the author) |
+| Settings                                       | Picked                                         |
+| ---------------------------------------------- | ---------------------------------------------- |
+| Round robin, how many 1                        | bo (never asked; first by name)                |
+| Round robin, how many 3                        | bo, eve, cy                                    |
+| Load balance, how many 2                       | cy, dee (nothing waiting; cy asked longer ago) |
+| Round robin, how many 3, skip busy at 2        | cy, ana, dee (bo and eve are busy)             |
+| Round robin, how many 2, bo already a reviewer | eve (bo counts towards the 2)                  |
+| Round robin, how many 3, opened by bo          | eve, cy, ana (never the author)                |
 
 ### On the pull request
 
@@ -337,22 +337,22 @@ action of the `team` [MCP tool](/reference/mcp/). Reading teams needs the
 `workspace:read` scope; changing them `workspace:admin`; giving or taking
 a team's role on a repository `access:admin`.
 
-| Route | MCP action | What it does |
-| --- | --- | --- |
-| `GET /workspaces/{workspace}/teams` | `list` | The teams you can see, yours first. `q` narrows by name or slug. |
-| `POST /workspaces/{workspace}/teams` | `create` | Create a team. Body: `name`, and optionally `slug`, `description`, `visibility` (`visible` or `secret`), `parent` (a slug), `notify` and `members` (usernames). |
-| `GET /workspaces/{workspace}/teams/{team}` | `get` | One team. |
-| `PATCH /workspaces/{workspace}/teams/{team}` | `update` | Change what you give: `name`, `slug`, `description`, `visibility`, `parent` (`""` takes it out from under its parent), `notify`, `review_assignment`. |
-| `DELETE /workspaces/{workspace}/teams/{team}` | `delete` | Delete a team. |
-| `GET /workspaces/{workspace}/teams/{team}/members` | `list_members` | Its people. `include_child_teams=true` adds its child teams' people, each with `via`. |
-| `PUT /workspaces/{workspace}/teams/{team}/members/{username}` | `set_member` | Add someone, or change their place. Body: `role`, `member` or `maintainer`. |
-| `DELETE /workspaces/{workspace}/teams/{team}/members/{username}` | `remove_member` | Take someone out, or leave. |
-| `GET /workspaces/{workspace}/teams/{team}/teams` | `list_child_teams` | Its child teams. |
-| `GET /workspaces/{workspace}/teams/{team}/repos` | `list_repos` | The repositories it has a role on, its own and inherited (`inherited_from`). |
-| `PUT /workspaces/{workspace}/teams/{team}/repos/{repo}` | `set_repo` | Give it a role on a repository, or change it. Body: `role`. |
-| `DELETE /workspaces/{workspace}/teams/{team}/repos/{repo}` | `remove_repo` | Take its role away. |
-| `PUT /workspaces/{workspace}/teams/{team}/review_assignment` | `set_review_assignment` | Set review assignment: `enabled`, `algorithm` (`round_robin` or `load_balance`), `count`, `skip_busy`, `busy_at`, `include_child_teams`, `excluded`, `notify_team`. |
-| `GET /workspaces/{workspace}/members/{username}/teams` | `list_user_teams` | The teams someone is in, as you can see them. |
+| Route                                                            | MCP action              | What it does                                                                                                                                                        |
+| ---------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /workspaces/{workspace}/teams`                              | `list`                  | The teams you can see, yours first. `q` narrows by name or slug.                                                                                                    |
+| `POST /workspaces/{workspace}/teams`                             | `create`                | Create a team. Body: `name`, and optionally `slug`, `description`, `visibility` (`visible` or `secret`), `parent` (a slug), `notify` and `members` (usernames).     |
+| `GET /workspaces/{workspace}/teams/{team}`                       | `get`                   | One team.                                                                                                                                                           |
+| `PATCH /workspaces/{workspace}/teams/{team}`                     | `update`                | Change what you give: `name`, `slug`, `description`, `visibility`, `parent` (`""` takes it out from under its parent), `notify`, `review_assignment`.               |
+| `DELETE /workspaces/{workspace}/teams/{team}`                    | `delete`                | Delete a team.                                                                                                                                                      |
+| `GET /workspaces/{workspace}/teams/{team}/members`               | `list_members`          | Its people. `include_child_teams=true` adds its child teams' people, each with `via`.                                                                               |
+| `PUT /workspaces/{workspace}/teams/{team}/members/{username}`    | `set_member`            | Add someone, or change their place. Body: `role`, `member` or `maintainer`.                                                                                         |
+| `DELETE /workspaces/{workspace}/teams/{team}/members/{username}` | `remove_member`         | Take someone out, or leave.                                                                                                                                         |
+| `GET /workspaces/{workspace}/teams/{team}/teams`                 | `list_child_teams`      | Its child teams.                                                                                                                                                    |
+| `GET /workspaces/{workspace}/teams/{team}/repos`                 | `list_repos`            | The repositories it has a role on, its own and inherited (`inherited_from`).                                                                                        |
+| `PUT /workspaces/{workspace}/teams/{team}/repos/{repo}`          | `set_repo`              | Give it a role on a repository, or change it. Body: `role`.                                                                                                         |
+| `DELETE /workspaces/{workspace}/teams/{team}/repos/{repo}`       | `remove_repo`           | Take its role away.                                                                                                                                                 |
+| `PUT /workspaces/{workspace}/teams/{team}/review_assignment`     | `set_review_assignment` | Set review assignment: `enabled`, `algorithm` (`round_robin` or `load_balance`), `count`, `skip_busy`, `busy_at`, `include_child_teams`, `excluded`, `notify_team`. |
+| `GET /workspaces/{workspace}/members/{username}/teams`           | `list_user_teams`       | The teams someone is in, as you can see them.                                                                                                                       |
 
 Asking a team to review is on the pull request: `POST
 /repos/{owner}/{name}/pulls/{number}/requested_reviewers` with
@@ -411,11 +411,11 @@ Changes to a team are sent to the workspace's [webhooks](/guides/webhooks/).
 The `team.repo_*` events are about a repository, so that repository's
 webhooks get them too.
 
-| Event | When |
-| --- | --- |
-| `team.created`, `team.edited`, `team.deleted` | A team was created, changed or deleted. On `team.edited`, `data.changes` names what changed, such as `name` or `parent`. |
-| `team.member_added`, `team.member_role_changed`, `team.member_removed` | Someone joined or left a team, or became a maintainer or a member. `data.username`, `data.role`, `data.previous_role`. |
-| `team.repo_added`, `team.repo_role_changed`, `team.repo_removed` | A team was given a role on a repository, had it changed, or lost it. `data.repo`, `data.repo_id`, `data.repo_role`, `data.previous_repo_role`. |
+| Event                                                                  | When                                                                                                                                           |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `team.created`, `team.edited`, `team.deleted`                          | A team was created, changed or deleted. On `team.edited`, `data.changes` names what changed, such as `name` or `parent`.                       |
+| `team.member_added`, `team.member_role_changed`, `team.member_removed` | Someone joined or left a team, or became a maintainer or a member. `data.username`, `data.role`, `data.previous_role`.                         |
+| `team.repo_added`, `team.repo_role_changed`, `team.repo_removed`       | A team was given a role on a repository, had it changed, or lost it. `data.repo`, `data.repo_id`, `data.repo_role`, `data.previous_repo_role`. |
 
 Each has `data.workspace`, `data.team_id`, `data.team` (its slug),
 `data.name`, `data.visibility` and, for a child team, `data.parent`.

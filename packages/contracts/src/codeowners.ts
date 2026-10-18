@@ -5,13 +5,7 @@
  */
 
 /** Where the file is looked for, first found wins. */
-export const CODEOWNERS_LOCATIONS = [
-  ".g1t/CODEOWNERS",
-  ".github/CODEOWNERS",
-  "CODEOWNERS",
-  "docs/CODEOWNERS",
-  ".gitlab/CODEOWNERS",
-] as const;
+export const CODEOWNERS_LOCATIONS = [".g1t/CODEOWNERS", ".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS", ".gitlab/CODEOWNERS"] as const;
 
 /** Whether `path` is one of the places a CODEOWNERS file is read from. */
 export function isCodeownersPath(path: string): boolean {

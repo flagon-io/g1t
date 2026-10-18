@@ -209,7 +209,9 @@ export const CONNECTORS: Connector[] = [
     description: "Sets your status to On a call while you are in a Zoom meeting.",
     capabilities: ["Sets your status"],
   }),
-  soon("google-meet", "Google Meet", "chat", P, "Sets your status to On a call while you are in a meeting, and starts a call from any channel.", ["Sets your status"]),
+  soon("google-meet", "Google Meet", "chat", P, "Sets your status to On a call while you are in a meeting, and starts a call from any channel.", [
+    "Sets your status",
+  ]),
 
   // Calendar & email ------------------------------------------------------
   soon("google-calendar", "Google Calendar", "calendar", P, "Sets your status to In a meeting while you are in one.", ["Sets your status"]),
@@ -267,9 +269,18 @@ export const CONNECTORS: Connector[] = [
   }),
   soon("opsgenie", "Opsgenie", "monitoring", W, "Alerts open work items, and close when the fix lands.", ["Opens work items", "Writes back"]),
   soon("incident-io", "incident.io", "monitoring", W, "Incidents get a channel in g1t, with what changed alongside.", ["Opens work items", "Alerts into chat"]),
-  soon("grafana", "Grafana", "monitoring", W, "Alert rules open work items, and agents read the dashboards they link to.", ["Opens work items", "Agents can read"]),
-  soon("new-relic", "New Relic", "monitoring", W, "Alerts open work items, with the traces agents need to find the cause.", ["Opens work items", "Agents can read"]),
-  soon("honeycomb", "Honeycomb", "monitoring", W, "Triggers open work items, and agents query traces while they work.", ["Opens work items", "Agents can read"]),
+  soon("grafana", "Grafana", "monitoring", W, "Alert rules open work items, and agents read the dashboards they link to.", [
+    "Opens work items",
+    "Agents can read",
+  ]),
+  soon("new-relic", "New Relic", "monitoring", W, "Alerts open work items, with the traces agents need to find the cause.", [
+    "Opens work items",
+    "Agents can read",
+  ]),
+  soon("honeycomb", "Honeycomb", "monitoring", W, "Triggers open work items, and agents query traces while they work.", [
+    "Opens work items",
+    "Agents can read",
+  ]),
   soon("better-stack", "Better Stack", "monitoring", W, "Uptime incidents and log alerts open work items.", ["Opens work items"]),
 
   // Cloud & deploy --------------------------------------------------------
@@ -312,10 +323,18 @@ export const CONNECTORS: Connector[] = [
   // Security & identity ---------------------------------------------------
   soon("okta", "Okta", "security", W, "Single sign-on, and people added and removed with your directory.", ["Signs you in", "Syncs people"]),
   soon("entra-id", "Microsoft Entra ID", "security", W, "Single sign-on, and people added and removed with your directory.", ["Signs you in", "Syncs people"]),
-  soon("google-workspace", "Google Workspace", "security", BOTH, "Single sign-on, and people added and removed with your directory.", ["Signs you in", "Syncs people"], {
-    description: "Sign in to g1t with your Google account.",
-    capabilities: ["Signs you in"],
-  }),
+  soon(
+    "google-workspace",
+    "Google Workspace",
+    "security",
+    BOTH,
+    "Single sign-on, and people added and removed with your directory.",
+    ["Signs you in", "Syncs people"],
+    {
+      description: "Sign in to g1t with your Google account.",
+      capabilities: ["Signs you in"],
+    },
+  ),
   soon("1password", "1Password", "security", W, "Secrets from a vault, read by workflows and deployments when they run.", ["Deploys"]),
   soon("snyk", "Snyk", "security", W, "Findings open work items, and an agent opens the fix.", ["Opens work items"]),
 

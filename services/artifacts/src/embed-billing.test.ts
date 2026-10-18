@@ -129,12 +129,24 @@ test("a free workspace past its month's budget embeds nothing more; its passages
     },
   };
   const store: VectorStore = { upsert: async () => {}, get: async () => [], delete: async () => {}, query: async () => [] };
-  const result = await indexDoc(d1, embedder, store, { kind: "page", doc_id: "pag_1", workspace_id: "w1", space_id: "s1", title: "Ops", markdown: "## Deploy\n\nShip it carefully." }, NOW);
+  const result = await indexDoc(
+    d1,
+    embedder,
+    store,
+    { kind: "page", doc_id: "pag_1", workspace_id: "w1", space_id: "s1", title: "Ops", markdown: "## Deploy\n\nShip it carefully." },
+    NOW,
+  );
   assert.equal(embedded, 0);
   assert.equal(result.capped, true);
   assert.ok(result.chunks > 0);
   // A new month starts over.
-  await indexDoc(d1, embedder, store, { kind: "page", doc_id: "pag_1", workspace_id: "w1", space_id: "s1", title: "Ops", markdown: "## Deploy\n\nShip it carefully." }, new Date("2026-11-01T00:00:00Z"));
+  await indexDoc(
+    d1,
+    embedder,
+    store,
+    { kind: "page", doc_id: "pag_1", workspace_id: "w1", space_id: "s1", title: "Ops", markdown: "## Deploy\n\nShip it carefully." },
+    new Date("2026-11-01T00:00:00Z"),
+  );
   assert.ok(embedded > 0);
 });
 

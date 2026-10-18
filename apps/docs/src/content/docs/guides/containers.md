@@ -54,12 +54,12 @@ When the address is a repository of the image's own workspace
 (`https://g1t.sh/<workspace>/<repo>`, with or without `.git`) and whoever
 pushes has the Write role on that repository, the image is linked to it:
 
-| When | What happens |
-| --- | --- |
-| The image's first push | It is linked to the repository the label names, in place of the one its name starts with. |
-| A later push of an image that is not linked | It is linked to the repository the label names. |
-| A later push of a linked image | Nothing changes. Link it elsewhere from its [settings](/guides/packages/#package-settings). |
-| The label names another workspace's repository, another host, or a repository you cannot write to | It is ignored, and the image is linked by its name, as above. |
+| When                                                                                              | What happens                                                                                |
+| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| The image's first push                                                                            | It is linked to the repository the label names, in place of the one its name starts with.   |
+| A later push of an image that is not linked                                                       | It is linked to the repository the label names.                                             |
+| A later push of a linked image                                                                    | Nothing changes. Link it elsewhere from its [settings](/guides/packages/#package-settings). |
+| The label names another workspace's repository, another host, or a repository you cannot write to | It is ignored, and the image is linked by its name, as above.                               |
 
 Linking gives the image the repository's visibility and, unless its
 admins turn inheriting off, its roles. The link is recorded in the
@@ -183,12 +183,12 @@ It signs in with the first of:
 4. what `docker login g1t.sh` stored, in `~/.docker/config.json` or the
    credential store it names.
 
-| Option | |
-| --- | --- |
-| `--as <address>` | Where to push, `g1t.sh/<workspace>/<name>:<tag>`. Without it, the image's own name must be such an address. The tag defaults to `latest`. |
-| `--chunk-size <size>` | How much each request carries: `5MB` to `95MB`, `90MB` unless set. `MB` and `MiB` both mean 1,048,576 bytes. |
-| `--token-stdin` | Read the token from stdin. |
-| `--archive <file>` | Push a tarball written by `docker save`, instead of asking docker. Needs `--as`. |
+| Option                |                                                                                                                                           |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `--as <address>`      | Where to push, `g1t.sh/<workspace>/<name>:<tag>`. Without it, the image's own name must be such an address. The tag defaults to `latest`. |
+| `--chunk-size <size>` | How much each request carries: `5MB` to `95MB`, `90MB` unless set. `MB` and `MiB` both mean 1,048,576 bytes.                              |
+| `--token-stdin`       | Read the token from stdin.                                                                                                                |
+| `--archive <file>`    | Push a tarball written by `docker save`, instead of asking docker. Needs `--as`.                                                          |
 
 `g1t --version` prints its version, and `g1t help` its options.
 
@@ -243,13 +243,13 @@ uses any more are deleted from storage a day later.
 
 ## Errors
 
-| Error | Means |
-| --- | --- |
-| `UNAUTHORIZED` | Not signed in, or the token is wrong or expired. `docker login g1t.sh` again. |
-| `DENIED` | Signed in, but your role or your token's scopes do not allow it. The message says which. |
-| `NAME_UNKNOWN` | No such image, or one you cannot see. |
-| `MANIFEST_UNKNOWN`, `BLOB_UNKNOWN` | No such tag, digest or layer in that image. |
-| `NAME_INVALID` | Names are lowercase letters and digits, separated by `.`, `_`, `__`, `-` or `/`, and start with a workspace. |
-| `SIZE_INVALID`, or a bare `413` | A request over [the 100 MB limit](#the-100-mb-limit). Push the image with [`g1t push`](#push-large-layers-with-g1t-push). |
-| `TOOMANYREQUESTS` | Too many requests in a minute; see [the limits](#storage-and-pull-limits). |
-| `DIGEST_INVALID` | What was uploaded does not have the digest the client said. Push again. |
+| Error                              | Means                                                                                                                     |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `UNAUTHORIZED`                     | Not signed in, or the token is wrong or expired. `docker login g1t.sh` again.                                             |
+| `DENIED`                           | Signed in, but your role or your token's scopes do not allow it. The message says which.                                  |
+| `NAME_UNKNOWN`                     | No such image, or one you cannot see.                                                                                     |
+| `MANIFEST_UNKNOWN`, `BLOB_UNKNOWN` | No such tag, digest or layer in that image.                                                                               |
+| `NAME_INVALID`                     | Names are lowercase letters and digits, separated by `.`, `_`, `__`, `-` or `/`, and start with a workspace.              |
+| `SIZE_INVALID`, or a bare `413`    | A request over [the 100 MB limit](#the-100-mb-limit). Push the image with [`g1t push`](#push-large-layers-with-g1t-push). |
+| `TOOMANYREQUESTS`                  | Too many requests in a minute; see [the limits](#storage-and-pull-limits).                                                |
+| `DIGEST_INVALID`                   | What was uploaded does not have the digest the client said. Push again.                                                   |

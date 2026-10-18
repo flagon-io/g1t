@@ -103,7 +103,8 @@ export default function SecurityAdvisory({ loaderData, params }: Route.Component
       {fetcher.data?.error && <p className="text-sm text-danger">{fetcher.data.error}</p>}
       {canManage && advisory.state === "draft" && (
         <p className="text-sm text-muted">
-          A draft is seen by this repository's maintainers only. {advisory.description.trim() ? "Publish it when it is ready." : "Describe the vulnerability before publishing it."}
+          A draft is seen by this repository's maintainers only.{" "}
+          {advisory.description.trim() ? "Publish it when it is ready." : "Describe the vulnerability before publishing it."}
         </p>
       )}
       <Card asChild divided>

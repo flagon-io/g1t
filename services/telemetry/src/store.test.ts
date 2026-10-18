@@ -21,7 +21,13 @@ function state() {
   let alarm: number | null = null;
   const sql = {
     exec(query: string, ...args: unknown[]) {
-      if (!args.length && query.trim().split(";").filter((q) => q.trim()).length > 1) {
+      if (
+        !args.length &&
+        query
+          .trim()
+          .split(";")
+          .filter((q) => q.trim()).length > 1
+      ) {
         db.exec(query);
         return { toArray: () => [], rowsWritten: 0 };
       }
@@ -71,10 +77,16 @@ function edgeEvent(id: string, status: number, wallMs: number, at = NOW_MS): Tra
       {
         timestamp: at,
         level: "log",
-        message: [REQUEST_MARK, { id, script: "web-acme", trace_id: TRACE, app: { project: "prj_1", deployment: "dep_1", environment: "production", service: "web", commit: "abc" } }],
+        message: [
+          REQUEST_MARK,
+          { id, script: "web-acme", trace_id: TRACE, app: { project: "prj_1", deployment: "dep_1", environment: "production", service: "web", commit: "abc" } },
+        ],
       },
     ],
-    event: { request: { url: `https://web-acme.g1t.page/users/${id.length}?q=1`, method: "GET", headers: {}, cf: { colo: "AMS", country: "NL" } }, response: { status } },
+    event: {
+      request: { url: `https://web-acme.g1t.page/users/${id.length}?q=1`, method: "GET", headers: {}, cf: { colo: "AMS", country: "NL" } },
+      response: { status },
+    },
   } as unknown as TraceItem;
 }
 
@@ -90,7 +102,9 @@ function appEvent(id: string, opts: { outcome?: string; exception?: string; logs
     truncated: false,
     diagnosticsChannelEvents: [],
     executionModel: "stateless",
-    exceptions: opts.exception ? [{ timestamp: at + 1, name: "TypeError", message: opts.exception, stack: "TypeError\n    at handler (src/index.ts:3:1)" }] : [],
+    exceptions: opts.exception
+      ? [{ timestamp: at + 1, name: "TypeError", message: opts.exception, stack: "TypeError\n    at handler (src/index.ts:3:1)" }]
+      : [],
     logs: (opts.logs ?? []).map((m, i) => ({ timestamp: at + i, level: i === 0 ? "log" : "warn", message: [m] })),
     event: {
       request: {
@@ -128,7 +142,13 @@ test("the dispatcher's half and the app's meet as one request, in either order",
   assert.equal(one.request.deployment_id, "dep_1");
   assert.equal(one.request.trace_id, TRACE);
   assert.equal(one.request.route, "/users/:id");
-  assert.deepEqual(one.logs.map((l) => [l.severity, l.body]), [["info", "hello"], ["warn", "careful"]]);
+  assert.deepEqual(
+    one.logs.map((l) => [l.severity, l.body]),
+    [
+      ["info", "hello"],
+      ["warn", "careful"],
+    ],
+  );
   const site = store.request("aaaaaaaaaaaaaaa2")!;
   assert.equal(site.request.status, 304);
   assert.equal(site.request.service, "web");
@@ -136,7 +156,10 @@ test("the dispatcher's half and the app's meet as one request, in either order",
 
 test("errors are grouped, counted, and open again when they come back", async () => {
   const store = new Store(state());
-  await ingestTail(store, [appEvent("bbbbbbbbbbbbbbb1", { outcome: "exception", exception: "Cannot read 'x' of user 1" }), edgeEvent("bbbbbbbbbbbbbbb1", 502, 30)]);
+  await ingestTail(store, [
+    appEvent("bbbbbbbbbbbbbbb1", { outcome: "exception", exception: "Cannot read 'x' of user 1" }),
+    edgeEvent("bbbbbbbbbbbbbbb1", 502, 30),
+  ]);
   await ingestTail(store, [appEvent("bbbbbbbbbbbbbbb2", { outcome: "exception", exception: "Cannot read 'y' of user 2" })]);
   let groups = store.errors({});
   assert.equal(groups.length, 1);
@@ -173,7 +196,10 @@ test("the overview counts requests, by minute and route, whether rolled up yet o
   assert.equal(after.routes[0].route, "/users/:id");
   assert.equal(after.deployments[0].deployment_id, "dep_1");
   assert.equal(after.regions[0].region, "AMS");
-  assert.equal(after.points.reduce((n, p) => n + p.requests, 0), 20);
+  assert.equal(
+    after.points.reduce((n, p) => n + p.requests, 0),
+    20,
+  );
   // Rolling again counts nothing twice.
   store.roll((NOW_MS + 600_000) * 1000);
   assert.equal(store.overview(range).totals.requests, 20);
@@ -186,11 +212,24 @@ test("a trace joins the request on g1t.page with the app's own spans and logs", 
     {
       resourceSpans: [
         {
-          resource: { attributes: [{ key: "service.name", value: { stringValue: "web" } }, { key: "g1t.deployment.id", value: { stringValue: "dep_1" } }] },
+          resource: {
+            attributes: [
+              { key: "service.name", value: { stringValue: "web" } },
+              { key: "g1t.deployment.id", value: { stringValue: "dep_1" } },
+            ],
+          },
           scopeSpans: [
             {
               spans: [
-                { traceId: TRACE, spanId: "eeeeeeeeeeeeeee1", parentSpanId: "ddddddddddddddd1", name: "db.query", kind: 3, startTimeUnixNano: `${NOW_MS}010000000`.slice(0, 19), endTimeUnixNano: `${NOW_MS}050000000`.slice(0, 19) },
+                {
+                  traceId: TRACE,
+                  spanId: "eeeeeeeeeeeeeee1",
+                  parentSpanId: "ddddddddddddddd1",
+                  name: "db.query",
+                  kind: 3,
+                  startTimeUnixNano: `${NOW_MS}010000000`.slice(0, 19),
+                  endTimeUnixNano: `${NOW_MS}050000000`.slice(0, 19),
+                },
               ],
             },
           ],
@@ -206,12 +245,42 @@ test("a trace joins the request on g1t.page with the app's own spans and logs", 
   assert.equal((await store.ingest(spans, [], secret)).accepted, true);
 
   const trace = store.trace(TRACE)!;
-  assert.deepEqual(trace.spans.map((s) => [s.name, s.parent_span_id]), [["GET /users/:id", null], ["db.query", "ddddddddddddddd1"]]);
+  assert.deepEqual(
+    trace.spans.map((s) => [s.name, s.parent_span_id]),
+    [
+      ["GET /users/:id", null],
+      ["db.query", "ddddddddddddddd1"],
+    ],
+  );
   assert.equal(trace.logs[0].body, "in handler");
   // Found by its route too: an OTLP server span often has no address.
   const { secret: other } = await store.createToken("prj_1", "api", null);
   await store.ingest(
-    readTraces({ resourceSpans: [{ resource: { attributes: [{ key: "service.name", value: { stringValue: "billing" } }] }, scopeSpans: [{ spans: [{ traceId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", spanId: "bbbbbbbbbbbbbbbb", name: "POST", kind: 2, startTimeUnixNano: `${NOW_MS}000000`, attributes: [{ key: "http.route", value: { stringValue: "/invoices" } }] }] }] }] }, OTLP_DOOR, 10),
+    readTraces(
+      {
+        resourceSpans: [
+          {
+            resource: { attributes: [{ key: "service.name", value: { stringValue: "billing" } }] },
+            scopeSpans: [
+              {
+                spans: [
+                  {
+                    traceId: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    spanId: "bbbbbbbbbbbbbbbb",
+                    name: "POST",
+                    kind: 2,
+                    startTimeUnixNano: `${NOW_MS}000000`,
+                    attributes: [{ key: "http.route", value: { stringValue: "/invoices" } }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      OTLP_DOOR,
+      10,
+    ),
     [],
     other,
   );
@@ -267,7 +336,11 @@ test("tokens: the deployments' one is kept and the same each time; others can be
   assert.match(a.secret, /^g1to_prj_1_[0-9a-f]{48}$/);
   const made = await store.createToken("prj_1", "laptop", "u1");
   const listed = store.tokens();
-  assert.deepEqual(listed.map((t) => t.name), ["laptop"], "the deployments' token is g1t's, not listed");
+  assert.deepEqual(
+    listed.map((t) => t.name),
+    ["laptop"],
+    "the deployments' token is g1t's, not listed",
+  );
   assert.ok(!JSON.stringify(listed).includes(made.secret), "a token's secret is never listed");
   const managedId = String((store.sql.exec("SELECT id FROM tokens WHERE managed = 1").toArray()[0] as { id: string }).id);
   assert.equal(store.revokeToken(managedId), false);
@@ -294,7 +367,13 @@ test("exports refuse addresses that loop or stay inside a network", () => {
   assert.throws(() => store.putExport({ name: "x", endpoint: "https://otel.g1t.sh", signals: ["traces"], enabled: true }));
   assert.throws(() => store.putExport({ name: "x", endpoint: "http://collector.example.com", signals: ["traces"], enabled: true }));
   assert.throws(() => store.putExport({ name: "x", endpoint: "https://10.0.0.4", signals: ["traces"], enabled: true }));
-  const made = store.putExport({ name: "Honeycomb", endpoint: "https://api.honeycomb.io", signals: ["traces", "logs"], headers: { "x-honeycomb-team": "secret" }, enabled: true });
+  const made = store.putExport({
+    name: "Honeycomb",
+    endpoint: "https://api.honeycomb.io",
+    signals: ["traces", "logs"],
+    headers: { "x-honeycomb-team": "secret" },
+    enabled: true,
+  });
   assert.deepEqual(made.header_names, ["x-honeycomb-team"]);
   assert.ok(!JSON.stringify(store.exports()).includes("secret"));
   // Changing it without giving the header again keeps it.
@@ -305,7 +384,10 @@ test("exports refuse addresses that loop or stay inside a network", () => {
 test("search text, FTS queries and chart steps", () => {
   assert.deepEqual(parseSearch('status:500 "two words" user.id=7 timeout https://x.y'), {
     words: ["two words", "timeout", "https://x.y"],
-    pairs: [["status", "500"], ["user.id", "7"]],
+    pairs: [
+      ["status", "500"],
+      ["user.id", "7"],
+    ],
   });
   assert.equal(ftsQuery(["a", 'b"c']), '"a" AND "b""c"*');
   assert.equal(stepFor(3_600_000_000), 60);
@@ -326,7 +408,22 @@ test("a project of a workspace past its day's share is refused, and tail events 
   assert.equal((await store.ingest(batch(5000), [], secret)).accepted, true);
   // Tail events past the share keep their requests, not their logs, and count only what they kept.
   const tail = { ...emptyBatch(), bytes: 10_000 };
-  tail.logs.push({ id: "l1", time_us: 1, severity: "info", severity_number: 9, body: "x".repeat(9000), trace_id: null, span_id: null, request_id: null, attributes: {}, service: "web", environment: null, deployment_id: null, commit_sha: null, source: "cloudflare" });
+  tail.logs.push({
+    id: "l1",
+    time_us: 1,
+    severity: "info",
+    severity_number: 9,
+    body: "x".repeat(9000),
+    trace_id: null,
+    span_id: null,
+    request_id: null,
+    attributes: {},
+    service: "web",
+    environment: null,
+    deployment_id: null,
+    commit_sha: null,
+    source: "cloudflare",
+  });
   const kept = await store.ingest(tail, [], undefined, true);
   assert.equal(kept.accepted, true);
   assert.ok((kept.bytes ?? 0) < 100);

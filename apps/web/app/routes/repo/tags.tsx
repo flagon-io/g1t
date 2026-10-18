@@ -26,7 +26,11 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const found = unwrap(await repos.tags(path, viewer));
   // Each tagged commit's checks, in one call, streamed in beside it.
-  const checks = commitChecksFor(path, viewer, found.map((tag) => tag.commit?.hash));
+  const checks = commitChecksFor(
+    path,
+    viewer,
+    found.map((tag) => tag.commit?.hash),
+  );
   // Every tagged commit's people, in one identity call.
   const shown = await showCommits(found.flatMap((tag) => (tag.commit ? [tag.commit] : [])));
   const byHash = new Map(shown.map((commit) => [commit.hash, commit]));
@@ -47,8 +51,8 @@ export default function Tags({ loaderData, params }: Route.ComponentProps) {
       </h2>
       {tags.length === 0 ? (
         <EmptyState title="No tags yet">
-          A tag marks a version of the code: <code className="font-mono text-xs">git tag v1.0.0 && git push --tags</code>. Each
-          one shows here with its commit and a download.
+          A tag marks a version of the code: <code className="font-mono text-xs">git tag v1.0.0 && git push --tags</code>. Each one shows here with its commit
+          and a download.
         </EmptyState>
       ) : (
         <Card asChild divided className="overflow-hidden">
@@ -69,7 +73,12 @@ export default function Tags({ loaderData, params }: Route.ComponentProps) {
                       <span className="text-faint">·</span>
                       <Hint label={commitHint(tag.commit.message)}>
                         <span className="min-w-0 truncate">
-                          <CommitText text={tag.commit.message.split("\n")[0] ?? ""} base={base} to={`${base}/commit/${tag.commit.hash}`} linkClassName="hover:text-fg" />
+                          <CommitText
+                            text={tag.commit.message.split("\n")[0] ?? ""}
+                            base={base}
+                            to={`${base}/commit/${tag.commit.hash}`}
+                            linkClassName="hover:text-fg"
+                          />
                         </span>
                       </Hint>
                       <CommitChecksBadge checks={checks} sha={tag.commit.hash} className="size-5" />

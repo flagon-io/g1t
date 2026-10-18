@@ -55,11 +55,7 @@ test("a click inside the app goes without its text, link, attributes or title", 
 });
 
 test("on the front door a click keeps its text", () => {
-  const event = scrubEvent(
-    { event: "$autocapture", properties: { $el_text: "Start for free", $title: "g1t · Your team", $pathname: "/" } },
-    "/",
-    ORIGIN,
-  );
+  const event = scrubEvent({ event: "$autocapture", properties: { $el_text: "Start for free", $title: "g1t · Your team", $pathname: "/" } }, "/", ORIGIN);
   assert.deepEqual(event?.properties, { $el_text: "Start for free", $title: "g1t · Your team", $pathname: "/" });
 });
 

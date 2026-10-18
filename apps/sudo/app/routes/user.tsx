@@ -24,10 +24,7 @@ import { settle } from "~/lib/settle";
 import { requireStaff } from "~/lib/staff";
 import { SUSPEND_ACCOUNT_ABOUT, parseReason } from "~/lib/suspension";
 
-export const meta: Route.MetaFunction = ({ params }) => [
-  { title: `${params.username} · sudo` },
-  { name: "robots", content: "noindex, nofollow" },
-];
+export const meta: Route.MetaFunction = ({ params }) => [{ title: `${params.username} · sudo` }, { name: "robots", content: "noindex, nofollow" }];
 
 export async function loader({ params, request, context }: Route.LoaderArgs) {
   requireStaff(context);
@@ -161,11 +158,7 @@ export default function User({ loaderData, actionData }: Route.ComponentProps) {
         description={
           <>
             Account <span className="font-mono">{user.id}</span>, made <When at={user.createdAt} />.{" "}
-            {user.joinedThrough && (
-              <>
-                {joinedThrough(user.joinedThrough.label)}.{" "}
-              </>
-            )}
+            {user.joinedThrough && <>{joinedThrough(user.joinedThrough.label)}. </>}
             {user.privateEmail ? "Keeps its address private on commits." : "Shows its primary address on commits."}
           </>
         }
@@ -203,12 +196,7 @@ export default function User({ loaderData, actionData }: Route.ComponentProps) {
                 <input type="hidden" name="email" value={email.email} />
                 <div className="grow">
                   <Field label="Reason (the person sees it)">
-                    <Input
-                      name="reason"
-                      required
-                      maxLength={200}
-                      placeholder="Another account needs this address"
-                    />
+                    <Input name="reason" required maxLength={200} placeholder="Another account needs this address" />
                   </Field>
                 </div>
                 <Button variant="danger" type="submit">
@@ -273,14 +261,7 @@ export default function User({ loaderData, actionData }: Route.ComponentProps) {
         )}
       </Section>
 
-      <AccountSection
-        user={user}
-        error={accountError}
-        workspaces={workspaces}
-        workspacesError={workspacesError}
-        workspaceError={workspaceError}
-        now={now}
-      />
+      <AccountSection user={user} error={accountError} workspaces={workspaces} workspacesError={workspacesError} workspaceError={workspaceError} now={now} />
     </main>
   );
 }
@@ -330,9 +311,7 @@ function AccountSection({
           </p>
           {deleted.went.reason && <p className="text-muted">Reason: {deleted.went.reason}</p>}
           <p className="text-muted">Left: {accountWentSummary(deleted.went)}</p>
-          {workspaces.length > 0 && (
-            <DeletedWorkspaces workspaces={workspaces} error={workspacesError} workspaceError={workspaceError} now={now} />
-          )}
+          {workspaces.length > 0 && <DeletedWorkspaces workspaces={workspaces} error={workspacesError} workspaceError={workspaceError} now={now} />}
           {error && <Notice tone="error">{error}</Notice>}
           <div className="flex flex-col gap-3 border-t border-line pt-4 sm:flex-row sm:items-end sm:justify-between">
             <form method="post">
@@ -430,9 +409,8 @@ function AccountSection({
                 <input type="hidden" name="intent" value="delete-account" />
                 <input type="hidden" name="with-workspaces" value="1" />
                 <p className="text-muted">
-                  Deletes {sole.map((workspace) => workspace.slug).join(", ")} first, each as its owner would (billing closes it, its
-                  repositories go with it, kept {WORKSPACE_RESTORE_DAYS} days for a restore), then the account. If a workspace cannot go,
-                  the account is not deleted.
+                  Deletes {sole.map((workspace) => workspace.slug).join(", ")} first, each as its owner would (billing closes it, its repositories go with it,
+                  kept {WORKSPACE_RESTORE_DAYS} days for a restore), then the account. If a workspace cannot go, the account is not deleted.
                 </p>
                 <Field label="Reason (kept in sudo's audit log)">
                   <Input name="reason" required maxLength={200} placeholder="Retired test account" />
@@ -449,8 +427,8 @@ function AccountSection({
                       </>
                     ) : (
                       <>
-                        The {sole.length} workspaces <span className="font-mono">{sole.map((workspace) => workspace.slug).join(", ")}</span> are
-                        deleted too, with everything in them.
+                        The {sole.length} workspaces <span className="font-mono">{sole.map((workspace) => workspace.slug).join(", ")}</span> are deleted too,
+                        with everything in them.
                       </>
                     )}
                   </span>

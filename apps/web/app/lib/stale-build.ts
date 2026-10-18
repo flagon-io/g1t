@@ -44,8 +44,7 @@ export function reloadFixes({ error, status, clientNavigation, caughtByCatchAll 
  * tell a document load from a client navigation. Read when this module first
  * runs, which is before the app hydrates; undefined on the server.
  */
-const DOCUMENT_KEY: string | undefined =
-  typeof window === "undefined" ? undefined : ((window.history.state as { key?: string } | null)?.key ?? "default");
+const DOCUMENT_KEY: string | undefined = typeof window === "undefined" ? undefined : ((window.history.state as { key?: string } | null)?.key ?? "default");
 
 /**
  * Whether the page at this location key got there by a client navigation.

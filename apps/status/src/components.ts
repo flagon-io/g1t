@@ -99,9 +99,7 @@ export function components(vars: Partial<Targets>, billing = true, storage = fal
           key: "site",
           name: "Website and sign-in",
           address: shown,
-          checks: api
-            ? "The sign-in page loading, and the account service answering an access token through the API."
-            : "The sign-in page loading.",
+          checks: api ? "The sign-in page loading, and the account service answering an access token through the API." : "The sign-in page loading.",
           core: true,
           check: {
             kind: "http",
@@ -150,7 +148,13 @@ export function components(vars: Partial<Targets>, billing = true, storage = fal
           address: `${shown}/${repo}`,
           checks: `A public project page and Explore each answering within ${SPEED_BUDGET_MS} ms. Slower counts as degraded.`,
           core: false,
-          check: { kind: "http", steps: [{ url: `${site}/${repo}`, browser: true }, { url: `${site}/explore`, browser: true }] },
+          check: {
+            kind: "http",
+            steps: [
+              { url: `${site}/${repo}`, browser: true },
+              { url: `${site}/explore`, browser: true },
+            ],
+          },
           slowMs: SPEED_BUDGET_MS,
         }
       : null,

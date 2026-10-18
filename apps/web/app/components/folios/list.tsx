@@ -51,7 +51,12 @@ export function FolioRow({ slug, folio, onError }: { slug: string; folio: Folio;
     <li className="group relative flex items-center gap-3 px-3 py-2 transition-colors hover:bg-raised/60 sm:px-4">
       <KindIcon kind={folio.kind} />
       <span className="flex min-w-0 grow items-center gap-2">
-        <Link to={folio.path} prefetch="intent" {...warmOnIntent(folio)} className="min-w-0 truncate text-sm text-fg after:absolute after:inset-0 hover:text-accent">
+        <Link
+          to={folio.path}
+          prefetch="intent"
+          {...warmOnIntent(folio)}
+          className="min-w-0 truncate text-sm text-fg after:absolute after:inset-0 hover:text-accent"
+        >
           {folio.icon && <span className="mr-1.5">{folio.icon}</span>}
           {folio.title || "Untitled"}
         </Link>
@@ -106,7 +111,12 @@ export function FolioCard({ slug, folio, onError }: { slug: string; folio: Folio
       <div className="flex items-start gap-2.5 px-3.5 pt-3 pb-3">
         <KindIcon kind={folio.kind} size={14} box={24} />
         <span className="min-w-0 grow">
-          <Link to={folio.path} prefetch="intent" {...warmOnIntent(folio)} className="line-clamp-1 text-sm font-medium text-fg after:absolute after:inset-0 group-hover:text-accent">
+          <Link
+            to={folio.path}
+            prefetch="intent"
+            {...warmOnIntent(folio)}
+            className="line-clamp-1 text-sm font-medium text-fg after:absolute after:inset-0 group-hover:text-accent"
+          >
             {folio.icon && <span className="mr-1">{folio.icon}</span>}
             {folio.title || "Untitled"}
           </Link>

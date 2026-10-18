@@ -75,7 +75,27 @@ async function graphql(query, variables = {}) {
 
 /** The account's analytics datasets about Artifacts, and their numeric fields. */
 async function datasets() {
-  const data = await graphql(`{ __type(name: "account") { fields { name type { name ofType { name ofType { name ofType { name } } } } } } }`);
+  const data = await graphql(`
+    {
+      __type(name: "account") {
+        fields {
+          name
+          type {
+            name
+            ofType {
+              name
+              ofType {
+                name
+                ofType {
+                  name
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  `);
   const fields = data.__type?.fields ?? [];
   const found = [];
   for (const field of fields.filter((f) => /artifact/i.test(f.name))) {
@@ -115,7 +135,9 @@ async function storageFigures() {
             } } } }`,
           { account: ACCOUNT_ID, start, end },
         );
-        const rows = data.viewer.accounts[0][set.dataset].filter((row) => !row.dimensions?.repositoryNamespace || row.dimensions.repositoryNamespace === NAMESPACE);
+        const rows = data.viewer.accounts[0][set.dataset].filter(
+          (row) => !row.dimensions?.repositoryNamespace || row.dimensions.repositoryNamespace === NAMESPACE,
+        );
         out[`${set.dataset}.${aggregate}`] = rows;
       } catch (error) {
         out[`${set.dataset}.${aggregate}`] = `not readable: ${String(error.message).slice(0, 200)}`;
@@ -124,10 +146,25 @@ async function storageFigures() {
   }
   // The events themselves: errors such as storageLimitReached, and pushes.
   const events = await graphql(
-    `query Q($account: String!, $start: Time!, $end: Time!, $ns: String!) { viewer { accounts(filter: { accountTag: $account }) {
-      artifactsEventsAdaptiveGroups(limit: 1000, filter: { datetime_geq: $start, datetime_leq: $end, repositoryNamespace: $ns }) {
-        count sum { durationMs } dimensions { repositoryName eventKind eventType }
-      } } } }`,
+    `
+      query Q($account: String!, $start: Time!, $end: Time!, $ns: String!) {
+        viewer {
+          accounts(filter: { accountTag: $account }) {
+            artifactsEventsAdaptiveGroups(limit: 1000, filter: { datetime_geq: $start, datetime_leq: $end, repositoryNamespace: $ns }) {
+              count
+              sum {
+                durationMs
+              }
+              dimensions {
+                repositoryName
+                eventKind
+                eventType
+              }
+            }
+          }
+        }
+      }
+    `,
     { account: ACCOUNT_ID, start, end, ns: NAMESPACE },
   );
   out.events = events.viewer.accounts[0].artifactsEventsAdaptiveGroups;

@@ -36,11 +36,7 @@ function ent(change: Partial<ComputeEntitlements> = {}): ComputeEntitlements {
 }
 
 /** A billing service that answers as told, and records what it was asked. */
-function billing(answers: {
-  entitlements?: unknown;
-  reserve?: unknown;
-  fail?: Set<string>;
-}) {
+function billing(answers: { entitlements?: unknown; reserve?: unknown; fail?: Set<string> }) {
   const asked: { method: string; body: Record<string, unknown> }[] = [];
   const binding = {
     async fetch(url: string, init?: RequestInit): Promise<Response> {
@@ -108,7 +104,10 @@ test("a refusal without words gets g1t's, with what to do and where", async () =
   });
   const admitted = await new ComputeGate(binding, memory(), quiet).admit(request("deploy"));
   assert.equal(!admitted.ok && admitted.message, refusalMessage("not_paid", "acme", "deploy"));
-  assert.match(refusalMessage("not_paid", "acme", "deploy"), /^Deployments need a paid workspace\. Start the \$21 plan or try it with \$5 of free usage after a card check: \/acme\/-\/billing$/);
+  assert.match(
+    refusalMessage("not_paid", "acme", "deploy"),
+    /^Deployments need a paid workspace\. Start the \$21 plan or try it with \$5 of free usage after a card check: \/acme\/-\/billing$/,
+  );
 });
 
 test("a paused workspace starts nothing, and billing is not asked to reserve", async () => {
@@ -116,7 +115,10 @@ test("a paused workspace starts nothing, and billing is not asked to reserve", a
   const admitted = await new ComputeGate(binding, memory(), quiet).admit(request("workflow"));
   assert.equal(!admitted.ok && admitted.code, "paused");
   assert.match(!admitted.ok ? admitted.message : "", /A spend spike is waiting for an owner/);
-  assert.equal(asked.some((call) => call.method === "reserve"), false);
+  assert.equal(
+    asked.some((call) => call.method === "reserve"),
+    false,
+  );
 });
 
 test("an answer that holds compute back is kept seconds, one that lets it through half a minute", () => {
@@ -165,7 +167,11 @@ test("billing down: free workspaces fail closed, paying ones go on", async () =>
   admitted = await gate.admit(request("deploy"));
   assert.deepEqual(admitted, { ok: true, reservation: null, entitlements: null });
   // Entitlements answer, reserve errors: the plan decides.
-  gate = new ComputeGate(billing({ entitlements: wire(ent({ plan: "free", compute: false, trialMicrosLeft: 5_000_000 })), fail: new Set(["reserve"]) }).binding, memory(), quiet);
+  gate = new ComputeGate(
+    billing({ entitlements: wire(ent({ plan: "free", compute: false, trialMicrosLeft: 5_000_000 })), fail: new Set(["reserve"]) }).binding,
+    memory(),
+    quiet,
+  );
   admitted = await gate.admit(request("deploy"));
   assert.equal(admitted.ok, false);
   gate = new ComputeGate(billing({ entitlements: wire(ent()), fail: new Set(["reserve"]) }).binding, memory(), quiet);

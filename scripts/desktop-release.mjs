@@ -240,7 +240,8 @@ function publish(dryRun) {
     if (dryRun) console.log(`would put ${key}`);
     else run("npx", args, { cwd: join(ROOT, "apps/web") });
   };
-  const type = (name) => (name.endsWith(".json") ? "application/json" : name.endsWith(".sig") || name === "SHA256SUMS" ? "text/plain" : "application/octet-stream");
+  const type = (name) =>
+    name.endsWith(".json") ? "application/json" : name.endsWith(".sig") || name === "SHA256SUMS" ? "text/plain" : "application/octet-stream";
   // The version's files first; latest.json last, so no app is pointed at
   // files that are not there yet.
   for (const name of readdirSync(dir)) {

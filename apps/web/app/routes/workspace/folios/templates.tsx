@@ -36,7 +36,8 @@ export default function FolioTemplates({ loaderData, params }: Route.ComponentPr
   const [space, setSpace] = useState("private");
   const navigation = useNavigation();
   // The template an artifact is being started from, while it is.
-  const starting = navigation.state !== "idle" && navigation.formAction?.includes("/-/artifacts/new/") ? String(navigation.formData?.get("template") ?? "") : null;
+  const starting =
+    navigation.state !== "idle" && navigation.formAction?.includes("/-/artifacts/new/") ? String(navigation.formData?.get("template") ?? "") : null;
   const all = (loaderData.templates ?? []).filter((t) => !kind || t.kind === kind);
   const builtin = all.filter((t) => t.builtin);
   const own = all.filter((t) => !t.builtin);
@@ -45,7 +46,14 @@ export default function FolioTemplates({ loaderData, params }: Route.ComponentPr
       <Form method="post" action={`/${slug}/-/artifacts/new/${t.kind}`}>
         <input type="hidden" name="template" value={t.id} />
         {space !== "private" && <input type="hidden" name="space" value={space} />}
-        <Button type="submit" disabled={starting != null} aria-busy={starting === t.id} variant="link" size="inline" className="text-xs disabled:text-faint disabled:no-underline">
+        <Button
+          type="submit"
+          disabled={starting != null}
+          aria-busy={starting === t.id}
+          variant="link"
+          size="inline"
+          className="text-xs disabled:text-faint disabled:no-underline"
+        >
           {starting === t.id ? "Starting…" : "Use template"}
         </Button>
       </Form>
@@ -69,7 +77,13 @@ export default function FolioTemplates({ loaderData, params }: Route.ComponentPr
           />
           <label className="flex items-center gap-2 text-sm text-muted">
             Goes in
-            <SelectField aria-label="Where it goes" value={space} onValueChange={setSpace} options={[{ value: "private", label: "Private" }, ...writable.map((s) => ({ value: s.id, label: s.name }))]} className="h-9 min-w-36" />
+            <SelectField
+              aria-label="Where it goes"
+              value={space}
+              onValueChange={setSpace}
+              options={[{ value: "private", label: "Private" }, ...writable.map((s) => ({ value: s.id, label: s.name }))]}
+              className="h-9 min-w-36"
+            />
           </label>
         </div>
       </div>
@@ -88,7 +102,10 @@ export default function FolioTemplates({ loaderData, params }: Route.ComponentPr
             <SectionTitle>From g1t</SectionTitle>
             {builtin.length === 0 ? (
               <p className="text-sm text-muted">
-                None for {kind ? FOLIO_KIND_UI[kind].label.toLowerCase() : "this kind"} yet. <Link to="?" className="text-accent hover:underline">See every kind</Link>
+                None for {kind ? FOLIO_KIND_UI[kind].label.toLowerCase() : "this kind"} yet.{" "}
+                <Link to="?" className="text-accent hover:underline">
+                  See every kind
+                </Link>
               </p>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -111,7 +128,13 @@ export default function FolioTemplates({ loaderData, params }: Route.ComponentPr
                     action={
                       <>
                         {startButton(t)}
-                        <Button type="button" onClick={() => send("delete_template", { template_id: t.id })} variant="link" size="inline" className="ml-auto text-xs text-faint hover:text-danger font-normal">
+                        <Button
+                          type="button"
+                          onClick={() => send("delete_template", { template_id: t.id })}
+                          variant="link"
+                          size="inline"
+                          className="ml-auto text-xs text-faint hover:text-danger font-normal"
+                        >
                           Delete
                         </Button>
                       </>

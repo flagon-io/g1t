@@ -126,9 +126,8 @@ export default function WorkspaceSso({ loaderData, actionData, params }: Route.C
           Single sign-on
         </h2>
         <p className="mt-1.5 text-sm text-muted">
-          Connect {slug} to your identity provider over OpenID Connect, OAuth 2.0 or SAML. People sign in to g1t as
-          themselves, then through your provider to use {slug}: the first time, g1t links who they are there to their g1t
-          account. Require it, and members use {slug} only after signing in through it.
+          Connect {slug} to your identity provider over OpenID Connect, OAuth 2.0 or SAML. People sign in to g1t as themselves, then through your provider to
+          use {slug}: the first time, g1t links who they are there to their g1t account. Require it, and members use {slug} only after signing in through it.
         </p>
         {isFailed(plan) ? (
           <div className="mt-4">
@@ -148,22 +147,15 @@ export default function WorkspaceSso({ loaderData, actionData, params }: Route.C
         answer={said("save")}
       />
 
-      {settings.connection && (
-        <RequireSection settings={settings} slug={slug} disabled={free} answer={said("required")} />
-      )}
+      {settings.connection && <RequireSection settings={settings} slug={slug} disabled={free} answer={said("required")} />}
 
       {settings.connection && <PeopleSection settings={settings} answer={said("unlink")} />}
 
-      {settings.connection && (
-        <ScimSection settings={settings} slug={slug} disabled={free} answer={said("scim-on") ?? said("scim-off")} />
-      )}
+      {settings.connection && <ScimSection settings={settings} slug={slug} disabled={free} answer={said("scim-on") ?? said("scim-off")} />}
 
       {settings.connection && (
         <DangerZone>
-          <DangerAction
-            title="Remove single sign-on"
-            action={<RemoveDialog slug={slug} />}
-          >
+          <DangerAction title="Remove single sign-on" action={<RemoveDialog slug={slug} />}>
             Forgets the provider and who everyone is there, and stops requiring it. Members keep their place in {slug}.
             {said("delete")?.error && <ErrorText>{said("delete")?.error}</ErrorText>}
           </DangerAction>
@@ -183,9 +175,8 @@ function ScimSection({ settings, slug, disabled, answer }: { settings: SsoSettin
         SCIM provisioning
       </h2>
       <p className="mt-1.5 text-sm text-muted">
-        Let your provider tell g1t who is assigned to {slug}. Then only people it has assigned sign in through it, and
-        someone it unassigns or deactivates leaves {slug} at once, with their roles and sessions. Owners are never removed
-        that way. People, not groups: assign a group&apos;s members to g1t.
+        Let your provider tell g1t who is assigned to {slug}. Then only people it has assigned sign in through it, and someone it unassigns or deactivates
+        leaves {slug} at once, with their roles and sessions. Owners are never removed that way. People, not groups: assign a group&apos;s members to g1t.
       </p>
       <div className="mt-4 space-y-3">
         <Field label="SCIM base URL">
@@ -213,7 +204,13 @@ function ScimSection({ settings, slug, disabled, answer }: { settings: SsoSettin
         <div className="flex flex-wrap items-center gap-3">
           <Form method="post">
             <input type="hidden" name="intent" value="scim-on" />
-            <SubmitButton variant={scim ? "outline" : "default"} size={scim ? "sm" : "default"} match={{ intent: "scim-on" }} pending="Making a token…" disabled={disabled}>
+            <SubmitButton
+              variant={scim ? "outline" : "default"}
+              size={scim ? "sm" : "default"}
+              match={{ intent: "scim-on" }}
+              pending="Making a token…"
+              disabled={disabled}
+            >
               {scim ? "Make a new token" : "Turn on SCIM"}
             </SubmitButton>
           </Form>
@@ -272,8 +269,7 @@ function RemoveDialog({ slug }: { slug: string }) {
         <AlertDialogHeader>
           <AlertDialogTitle>Remove single sign-on from {slug}?</AlertDialogTitle>
           <AlertDialogDescription>
-            g1t forgets your provider and who everyone is there, and stops requiring it. Setting it up again links everyone
-            afresh.
+            g1t forgets your provider and who everyone is there, and stops requiring it. Setting it up again links everyone afresh.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <Form method="post">
@@ -299,8 +295,7 @@ function PlanNeeded({ slug }: { slug: string }) {
         <div className="min-w-0 grow">
           <p className="text-sm font-medium">Single sign-on comes with every paid plan</p>
           <p className="mt-1 text-sm text-muted">
-            {slug} is a free workspace. Start the plan to connect your identity provider: there is nothing extra to pay
-            for it.
+            {slug} is a free workspace. Start the plan to connect your identity provider: there is nothing extra to pay for it.
           </p>
         </div>
         <span className="shrink-0">
@@ -429,8 +424,8 @@ function ProviderSection({
           )}
 
           <SwitchCard name="allow_join" title="Let people from your provider join" defaultChecked={connection?.allow_join ?? false}>
-            Anyone your provider signs in becomes a member of the workspace, with no invitation. Off: only members can sign in
-            through it. Leave it off for a provider anyone can sign in to, such as a personal Google or GitHub account.
+            Anyone your provider signs in becomes a member of the workspace, with no invitation. Off: only members can sign in through it. Leave it off for a
+            provider anyone can sign in to, such as a personal Google or GitHub account.
           </SwitchCard>
           <Field
             label="Only addresses at"
@@ -465,7 +460,10 @@ function ClientFields({ value, keepsSecret, defaultScopes }: { value: (name: key
           <Input name="client_secret" type="password" autoComplete="new-password" required={!keepsSecret} placeholder={keepsSecret ? "••••••••" : undefined} />
         </Field>
       </div>
-      <Field label="Scopes" hint={defaultScopes ? `Space-separated. ${defaultScopes} when empty.` : "Space-separated, as the provider needs to answer userinfo."}>
+      <Field
+        label="Scopes"
+        hint={defaultScopes ? `Space-separated. ${defaultScopes} when empty.` : "Space-separated, as the provider needs to answer userinfo."}
+      >
         <Input name="scopes" defaultValue={value("scopes")} placeholder={defaultScopes} />
       </Field>
     </>
@@ -520,8 +518,8 @@ function PeopleSection({ settings, answer }: { settings: SsoSettings; answer?: A
         Linked people
       </h2>
       <p className="mt-1.5 text-sm text-muted">
-        Who has signed in through your provider, and who they are there. Unlink someone to let them link another account
-        there; their sessions sign in through it again.
+        Who has signed in through your provider, and who they are there. Unlink someone to let them link another account there; their sessions sign in through
+        it again.
       </p>
       <div className="mt-4">
         {settings.identities.length === 0 ? (

@@ -105,12 +105,7 @@ export function cardUrl(pathname: string, version?: unknown, og: string = OG): s
 export function page(args: PageArgs, meta: PageMeta): MetaDescriptor[] {
   const project = loaded<ProjectData>(args, "routes/repo/layout");
   const workspace = loaded<WorkspaceData>(args, "routes/workspace/layout");
-  const description = summary(
-    meta.description ||
-      project?.project?.description ||
-      workspace?.workspace?.description ||
-      DESCRIPTION,
-  );
+  const description = summary(meta.description || project?.project?.description || workspace?.workspace?.description || DESCRIPTION);
   const version =
     meta.version ??
     (project

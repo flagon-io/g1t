@@ -191,7 +191,11 @@ export default function WorkspacePermissions({ loaderData, actionData, params }:
   const { slug, base, privileges, teamCreation, channels } = loaderData;
   return (
     <div className="max-w-3xl space-y-6">
-      <Part icon={<Code2 />} title="Code" about="What members may do with the workspace's repositories, beyond the role each repository gives them. Owners always can do all of it.">
+      <Part
+        icon={<Code2 />}
+        title="Code"
+        about="What members may do with the workspace's repositories, beyond the role each repository gives them. Owners always can do all of it."
+      >
         <BasePermissionSetting key={base} base={base} slug={params.owner} answer={actionData} />
         <PrivilegesSetting key={JSON.stringify(privileges)} privileges={privileges} answer={actionData} />
       </Part>
@@ -200,7 +204,11 @@ export default function WorkspacePermissions({ loaderData, actionData, params }:
         <TeamCreationSetting key={teamCreation} setting={teamCreation} answer={actionData} />
       </Part>
 
-      <Part icon={<MessagesSquare />} title="Chat" about="Who may open channels. What a channel's own members may do, its default channels and emoji are on Chat settings.">
+      <Part
+        icon={<MessagesSquare />}
+        title="Chat"
+        about="Who may open channels. What a channel's own members may do, its default channels and emoji are on Chat settings."
+      >
         {channels ? (
           <ChannelsSetting key={`${channels.public}:${channels.private}`} channels={channels} slug={slug} answer={actionData} />
         ) : (
@@ -278,7 +286,13 @@ function TeamCreationSetting({ setting, answer }: { setting: TeamCreation; answe
     <Setting title="Who can create teams" about="Whoever creates a team becomes its first maintainer. Teams that already exist stay as they are.">
       <Form method="post" className="space-y-3">
         <input type="hidden" name="intent" value="team-creation" />
-        <RadioGroup name="team_creation" value={choice} onValueChange={(value) => setChoice(value as TeamCreation)} aria-label="Who can create teams" className="grid gap-2 sm:grid-cols-2">
+        <RadioGroup
+          name="team_creation"
+          value={choice}
+          onValueChange={(value) => setChoice(value as TeamCreation)}
+          aria-label="Who can create teams"
+          className="grid gap-2 sm:grid-cols-2"
+        >
           <RadioOption value="members" label="Any member" description="Every member with a confirmed email address. The default." />
           <RadioOption value="owners" label="Owners only" description="Members ask an owner to create a team; maintainers still manage their own." />
         </RadioGroup>
@@ -310,14 +324,28 @@ function ChannelsSetting({ channels, slug, answer }: { channels: { public: ChatA
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <h4 className="mb-2 text-xs font-medium text-fg-soft">Workspace channels</h4>
-            <RadioGroup name="public_channels" value={chosen.public} onValueChange={(value) => setChosen((now) => ({ ...now, public: value as ChatAllowed }))} aria-label="Who can create workspace channels">
+            <RadioGroup
+              name="public_channels"
+              value={chosen.public}
+              onValueChange={(value) => setChosen((now) => ({ ...now, public: value as ChatAllowed }))}
+              aria-label="Who can create workspace channels"
+            >
               <RadioOption value="members" label="Any member" description="The default." />
-              <RadioOption value="owners" label="Owners only" description="Members join and read workspace channels, but ask an owner for a new one. Public channels, open to anyone on g1t, are always for owners to make." />
+              <RadioOption
+                value="owners"
+                label="Owners only"
+                description="Members join and read workspace channels, but ask an owner for a new one. Public channels, open to anyone on g1t, are always for owners to make."
+              />
             </RadioGroup>
           </div>
           <div>
             <h4 className="mb-2 text-xs font-medium text-fg-soft">Private channels</h4>
-            <RadioGroup name="private_channels" value={chosen.private} onValueChange={(value) => setChosen((now) => ({ ...now, private: value as ChatAllowed }))} aria-label="Who can create private channels">
+            <RadioGroup
+              name="private_channels"
+              value={chosen.private}
+              onValueChange={(value) => setChosen((now) => ({ ...now, private: value as ChatAllowed }))}
+              aria-label="Who can create private channels"
+            >
               <RadioOption value="members" label="Any member" description="The default." />
               <RadioOption value="owners" label="Owners only" description="Only owners can make a channel that is kept to the people invited." />
             </RadioGroup>

@@ -18,10 +18,23 @@ const OUTCOME = { up: "OK", degraded: "Slow", down: "Not answering" } as const;
 function Chart({ history, name }: { history: CheckHistory; name: string }) {
   const p = latencyPlot(history);
   return (
-    <svg viewBox={`0 0 ${p.width} ${p.height}`} className="block h-auto w-full" role="img" aria-label={`${name}: how long each check took, ${summaryWords(latencySummary(history.samples))}`}>
+    <svg
+      viewBox={`0 0 ${p.width} ${p.height}`}
+      className="block h-auto w-full"
+      role="img"
+      aria-label={`${name}: how long each check took, ${summaryWords(latencySummary(history.samples))}`}
+    >
       {p.ticks.map((t) => (
         <g key={t.label}>
-          <line x1={p.plot.x} x2={p.plot.x + p.plot.width} y1={t.y} y2={t.y} stroke="var(--color-line)" strokeWidth="1" strokeDasharray={t.label === "0" ? undefined : "2 4"} />
+          <line
+            x1={p.plot.x}
+            x2={p.plot.x + p.plot.width}
+            y1={t.y}
+            y2={t.y}
+            stroke="var(--color-line)"
+            strokeWidth="1"
+            strokeDasharray={t.label === "0" ? undefined : "2 4"}
+          />
           <text x={p.plot.x - 6} y={t.y + 3.5} textAnchor="end" fontSize="10" className="fill-faint tabular">
             {t.label}
           </text>
@@ -88,7 +101,9 @@ function Part({ history, name }: { history: CheckHistory; name: string }) {
                         <When at={s.at} time />
                       </td>
                       <td className="py-1 pr-3">{s.ms != null ? msWords(s.ms) : "—"}</td>
-                      <td className={`py-1 pr-3 ${s.outcome === "down" ? "text-danger" : s.outcome === "degraded" ? "text-warn" : "text-muted"}`}>{OUTCOME[s.outcome]}</td>
+                      <td className={`py-1 pr-3 ${s.outcome === "down" ? "text-danger" : s.outcome === "degraded" ? "text-warn" : "text-muted"}`}>
+                        {OUTCOME[s.outcome]}
+                      </td>
                       <td className="py-1 pr-3 font-mono">{s.colo ?? "—"}</td>
                       <td className="py-1 text-faint">{s.first_ms != null ? `${msWords(s.first_ms)}, asked again` : ""}</td>
                     </tr>

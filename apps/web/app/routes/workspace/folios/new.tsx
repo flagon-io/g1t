@@ -39,7 +39,12 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   const form = await request.formData().catch(() => new FormData());
   const search = new URL(request.url).searchParams;
   const field = (name: string) => String(form.get(name) ?? search.get(name) ?? "").trim() || null;
-  const made = await folios.create(params.owner.toLowerCase(), viewer, { kind, space_id: field("space"), parent_id: field("parent"), template_id: field("template") });
+  const made = await folios.create(params.owner.toLowerCase(), viewer, {
+    kind,
+    space_id: field("space"),
+    parent_id: field("parent"),
+    template_id: field("template"),
+  });
   if (!made.ok) return { error: made.error.message };
   throw redirect(made.value.path);
 }

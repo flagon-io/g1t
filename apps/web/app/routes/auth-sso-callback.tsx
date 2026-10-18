@@ -30,7 +30,11 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   const refused = url.searchParams.get("error");
   if (refused) {
     const said = url.searchParams.get("error_description")?.slice(0, 300);
-    return failed(refused === "access_denied" ? "The sign-in was cancelled at the identity provider." : `The identity provider refused the sign-in${said ? `: ${said}` : ` (${refused.slice(0, 60)})`}.`);
+    return failed(
+      refused === "access_denied"
+        ? "The sign-in was cancelled at the identity provider."
+        : `The identity provider refused the sign-in${said ? `: ${said}` : ` (${refused.slice(0, 60)})`}.`,
+    );
   }
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");

@@ -21,10 +21,7 @@ test("the invite form names an address or a username", () => {
 
 test("an invitation says the role it joins with and how long it works", () => {
   const now = Date.parse("2026-10-08T12:00:00Z");
-  assert.equal(
-    invitationLine({ role: "member", expiresAt: "2026-11-07T12:00:00Z" }, now),
-    "invited you to join as a member. It works for 30 more days.",
-  );
+  assert.equal(invitationLine({ role: "member", expiresAt: "2026-11-07T12:00:00Z" }, now), "invited you to join as a member. It works for 30 more days.");
   assert.equal(invitationLine({ role: "owner", expiresAt: "2026-10-09T00:00:00Z" }, now), "invited you to join as an owner. It expires within a day.");
   assert.match(declinedLine("Flagon, Inc."), /declined the invitation to Flagon, Inc\..*told/);
 });

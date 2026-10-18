@@ -106,7 +106,8 @@ export function manifests(root = ROOT) {
   if (marketplace.name !== "g1t") problems.push(`the marketplace is named ${JSON.stringify(marketplace.name)}, not "g1t": installs are g1t@g1t`);
   if (!Array.isArray(marketplace.plugins) || marketplace.plugins.length !== 1) problems.push("the marketplace lists one plugin, g1t");
   const entry = marketplace.plugins?.[0] ?? {};
-  if (entry.name !== "g1t" || plugin.name !== "g1t") problems.push(`the plugin is named ${JSON.stringify(entry.name)} in marketplace.json and ${JSON.stringify(plugin.name)} in plugin.json, not "g1t"`);
+  if (entry.name !== "g1t" || plugin.name !== "g1t")
+    problems.push(`the plugin is named ${JSON.stringify(entry.name)} in marketplace.json and ${JSON.stringify(plugin.name)} in plugin.json, not "g1t"`);
   if (entry.source !== `./${SOURCE}`) problems.push(`marketplace.json's source is ${JSON.stringify(entry.source)}, not "./${SOURCE}"`);
   if (!/^\d+\.\d+\.\d+$/.test(plugin.version ?? "")) problems.push(`plugin.json's version ${JSON.stringify(plugin.version)} is not x.y.z`);
   if (entry.version !== plugin.version) problems.push(`marketplace.json says version ${entry.version} and plugin.json ${plugin.version}: make them the same`);
@@ -159,16 +160,24 @@ This repository is published automatically from
 
 /** Codex's catalog uses paths relative to the marketplace root. */
 export function codexMarketplace() {
-  return { name: "g1t", interface: { displayName: "g1t" }, plugins: [{
-    name: "g1t", source: { source: "local", path: `./${CODEX_PUBLISHED}` },
-    policy: { installation: "AVAILABLE", authentication: "ON_INSTALL" }, category: "Developer Tools",
-  }] };
+  return {
+    name: "g1t",
+    interface: { displayName: "g1t" },
+    plugins: [
+      {
+        name: "g1t",
+        source: { source: "local", path: `./${CODEX_PUBLISHED}` },
+        policy: { installation: "AVAILABLE", authentication: "ON_INSTALL" },
+        category: "Developer Tools",
+      },
+    ],
+  };
 }
 
 function codexManifest(root) {
   const plugin = readJson(root, `${CODEX_SOURCE}/plugin.json`);
   if (plugin.name !== "g1t" || !/^\d+\.\d+\.\d+$/.test(plugin.version ?? "")) throw new Error("Invalid Codex plugin identity or version");
-  const extra = readdirSync(join(root, CODEX_SOURCE)).filter(name => !CODEX_FILES.includes(name));
+  const extra = readdirSync(join(root, CODEX_SOURCE)).filter((name) => !CODEX_FILES.includes(name));
   if (extra.length) throw new Error(`Unlisted Codex plugin files: ${extra.join(", ")}`);
   return plugin;
 }
@@ -198,7 +207,7 @@ export function expectedFiles(root = ROOT) {
     const path = join(root, SOURCE, name);
     return statSync(path).isDirectory() ? walk(path).map((f) => `${PUBLISHED}/${name}/${f}`) : [`${PUBLISHED}/${name}`];
   });
-  const codex = walk(join(root, CODEX_SOURCE)).map(f => `${CODEX_PUBLISHED}/${f}`);
+  const codex = walk(join(root, CODEX_SOURCE)).map((f) => `${CODEX_PUBLISHED}/${f}`);
   return [".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json", "LICENSE", "README.md", ...plugin, ...codex].sort();
 }
 
@@ -207,7 +216,10 @@ export function build(out = join(ROOT, "target", "g1t-plugins"), root = ROOT) {
   const { marketplace, version } = manifests(root);
   codexManifest(root);
   const extra = unlisted(root);
-  if (extra.length) throw new Error(`${SOURCE}/ has ${extra.join(", ")}, which scripts/plugins-release.mjs neither publishes nor keeps back: add each to PLUGIN_FILES or DEV_FILES.`);
+  if (extra.length)
+    throw new Error(
+      `${SOURCE}/ has ${extra.join(", ")}, which scripts/plugins-release.mjs neither publishes nor keeps back: add each to PLUGIN_FILES or DEV_FILES.`,
+    );
   for (const name of PLUGIN_FILES) if (!existsSync(join(root, SOURCE, name))) throw new Error(`${SOURCE}/${name} is missing`);
 
   rmSync(out, { recursive: true, force: true });
@@ -217,7 +229,10 @@ export function build(out = join(ROOT, "target", "g1t-plugins"), root = ROOT) {
   mkdirSync(join(out, ".agents/plugins"), { recursive: true });
   writeFileSync(join(out, ".agents/plugins/marketplace.json"), JSON.stringify(codexMarketplace(), null, 2) + "\n");
   for (const name of CODEX_FILES) cpSync(join(root, CODEX_SOURCE, name), join(out, CODEX_PUBLISHED, name), { recursive: true });
-  writeFileSync(join(out, "README.md"), readme(version, minimumCli(root)) + `
+  writeFileSync(
+    join(out, "README.md"),
+    readme(version, minimumCli(root)) +
+      `
 ## Codex
 
 Add this marketplace with:
@@ -233,7 +248,8 @@ The Codex plugin (${codexManifest(root).version}) bundles the remote MCP server 
 a work item/session workflow skill. It records sessions through MCP calls, not
 Claude Code hooks. Disable a duplicate standalone g1t MCP connection if installed.
 Direct MCP setup and ChatGPT instructions: https://docs.g1t.sh/guides/bring-your-own-agent/
-`);
+`,
+  );
   cpSync(join(root, "LICENSE"), join(out, "LICENSE"));
   verify(out, root);
   return { out, version };
@@ -254,11 +270,13 @@ export function verify(dir, root = ROOT) {
   if (entry.source !== `./${PUBLISHED}`) problems.push(`the published source is ${JSON.stringify(entry.source)}`);
   const plugin = readJson(dir, `${PUBLISHED}/.claude-plugin/plugin.json`);
   if (marketplace.name !== "g1t" || entry.name !== "g1t" || plugin.name !== "g1t") problems.push("the names are not g1t@g1t");
-  if (entry.version !== version || plugin.version !== version) problems.push(`versions: marketplace ${entry.version}, plugin ${plugin.version}, source ${version}`);
+  if (entry.version !== version || plugin.version !== version)
+    problems.push(`versions: marketplace ${entry.version}, plugin ${plugin.version}, source ${version}`);
   for (const file of [`${PUBLISHED}/.mcp.json`, `${PUBLISHED}/hooks/hooks.json`]) readJson(dir, file);
   const codex = readJson(dir, `${CODEX_PUBLISHED}/plugin.json`);
   if (codex.name !== "g1t" || codex.version !== codexManifest(root).version) problems.push("Codex plugin identity or version differs from source");
-  if (JSON.stringify(readJson(dir, ".agents/plugins/marketplace.json")) !== JSON.stringify(codexMarketplace())) problems.push("Codex marketplace differs from expected catalog");
+  if (JSON.stringify(readJson(dir, ".agents/plugins/marketplace.json")) !== JSON.stringify(codexMarketplace()))
+    problems.push("Codex marketplace differs from expected catalog");
   const mcp = readJson(dir, `${CODEX_PUBLISHED}/mcp.json`);
   if (mcp.mcpServers?.g1t?.url !== "https://mcp.g1t.sh" || mcp.mcpServers?.g1t?.type !== "streamable-http") problems.push("Invalid Codex MCP server");
   problems.push(...scan(dir));
@@ -285,7 +303,14 @@ export function authEnv(token) {
  * Publishes the build to `remote`'s main and tags v<version>. Returns
  * { changed, commit, tagged }. An empty repository gets its first commit.
  */
-export function publish({ remote = process.env.G1T_PLUGINS_REMOTE || REMOTE, token = process.env.PLUGINS_PUBLISH_TOKEN, source, dryRun = false, root = ROOT, work } = {}) {
+export function publish({
+  remote = process.env.G1T_PLUGINS_REMOTE || REMOTE,
+  token = process.env.PLUGINS_PUBLISH_TOKEN,
+  source,
+  dryRun = false,
+  root = ROOT,
+  work,
+} = {}) {
   source ??= process.env.G1T_SOURCE_COMMIT || git(root, ["rev-parse", "HEAD"]).stdout.trim();
   const env = authEnv(token);
   work ??= mkdtempSync(join(tmpdir(), "g1t-plugins-"));
@@ -299,7 +324,8 @@ export function publish({ remote = process.env.G1T_PLUGINS_REMOTE || REMOTE, tok
   else git(clone, ["checkout", "--quiet", "--orphan", "main"]);
 
   const codexBefore = hasMain && existsSync(join(clone, CODEX_PUBLISHED, "plugin.json")) ? readJson(clone, `${CODEX_PUBLISHED}/plugin.json`).version : null;
-  const before = hasMain && existsSync(join(clone, PUBLISHED, ".claude-plugin", "plugin.json")) ? readJson(clone, `${PUBLISHED}/.claude-plugin/plugin.json`).version : null;
+  const before =
+    hasMain && existsSync(join(clone, PUBLISHED, ".claude-plugin", "plugin.json")) ? readJson(clone, `${PUBLISHED}/.claude-plugin/plugin.json`).version : null;
   for (const name of readdirSync(clone)) if (name !== ".git") rmSync(join(clone, name), { recursive: true, force: true });
   cpSync(built, clone, { recursive: true });
   verify(clone, root);
@@ -308,17 +334,26 @@ export function publish({ remote = process.env.G1T_PLUGINS_REMOTE || REMOTE, tok
   const changed = git(clone, ["status", "--porcelain"]).stdout.trim() !== "";
   const pluginChanged = hasMain ? git(clone, ["diff", "--cached", "--quiet", "--", PUBLISHED], { allowFail: true }).status !== 0 : true;
   if (pluginChanged && before === version) {
-    throw new Error(`The plugin's files changed, but ${version} is already published, and Claude Code updates installed plugins only when the version changes. Bump "version" in ${SOURCE}/.claude-plugin/plugin.json and .claude-plugin/marketplace.json.`);
+    throw new Error(
+      `The plugin's files changed, but ${version} is already published, and Claude Code updates installed plugins only when the version changes. Bump "version" in ${SOURCE}/.claude-plugin/plugin.json and .claude-plugin/marketplace.json.`,
+    );
   }
 
   const codexChanged = hasMain ? git(clone, ["diff", "--cached", "--quiet", "--", CODEX_PUBLISHED], { allowFail: true }).status !== 0 : true;
-  if (codexChanged && codexBefore === codexManifest(root).version) throw new Error("Codex plugin files changed without a version bump in plugins/codex/plugin.json");
+  if (codexChanged && codexBefore === codexManifest(root).version)
+    throw new Error("Codex plugin files changed without a version bump in plugins/codex/plugin.json");
   const tag = tagName(version);
   const remoteTag = git(clone, ["ls-remote", "--tags", "origin", `refs/tags/${tag}`], { env }).stdout.trim();
   let commit = hasMain ? git(clone, ["rev-parse", "HEAD"]).stdout.trim() : null;
   if (changed) {
     const ident = ["-c", "user.name=g1t", "-c", "user.email=g1t@users.noreply.g1t.sh"];
-    git(clone, [...ident, "commit", "--quiet", "-m", `g1t ${version}, from flagon-io/g1t@${source.slice(0, 12)}\n\nPublished by scripts/plugins-release.mjs from https://g1t.sh/flagon-io/g1t/commit/${source}.\nChange the plugin there; this repository is overwritten.`]);
+    git(clone, [
+      ...ident,
+      "commit",
+      "--quiet",
+      "-m",
+      `g1t ${version}, from flagon-io/g1t@${source.slice(0, 12)}\n\nPublished by scripts/plugins-release.mjs from https://g1t.sh/flagon-io/g1t/commit/${source}.\nChange the plugin there; this repository is overwritten.`,
+    ]);
     commit = git(clone, ["rev-parse", "HEAD"]).stdout.trim();
   }
   const tagged = !remoteTag && commit != null;
@@ -339,14 +374,27 @@ if (process.argv[1]?.replaceAll("\\", "/").endsWith("scripts/plugins-release.mjs
       console.log(`g1t@g1t ${version}: the manifests agree and the published tree is only the plugin`);
     } else if (command === "build") {
       const { out, version } = build(rest[0] ? join(process.cwd(), rest[0]) : undefined);
-      console.log(`Built g1t@g1t ${version} in ${out}:\n${walk(out).map((f) => `  ${f}`).join("\n")}`);
+      console.log(
+        `Built g1t@g1t ${version} in ${out}:\n${walk(out)
+          .map((f) => `  ${f}`)
+          .join("\n")}`,
+      );
     } else if (command === "publish") {
       const dryRun = rest.includes("--dry-run");
       const r = publish({ dryRun });
       const where = process.env.G1T_PLUGINS_REMOTE || REMOTE;
-      console.log(r.changed ? `${dryRun ? "Would publish" : "Published"} g1t ${r.version} to ${where} as ${r.commit}` : `${where} already has g1t ${r.version}; nothing to publish`);
+      console.log(
+        r.changed
+          ? `${dryRun ? "Would publish" : "Published"} g1t ${r.version} to ${where} as ${r.commit}`
+          : `${where} already has g1t ${r.version}; nothing to publish`,
+      );
       if (r.tagged) console.log(`${dryRun ? "Would tag" : "Tagged"} ${tagName(r.version)}`);
-      if (process.env.GITHUB_STEP_SUMMARY) writeFileSync(process.env.GITHUB_STEP_SUMMARY, `- g1t@g1t ${r.version}: ${r.changed ? `published as \`${r.commit}\`` : "unchanged"}${r.tagged ? `, tagged \`${tagName(r.version)}\`` : ""}\n`, { flag: "a" });
+      if (process.env.GITHUB_STEP_SUMMARY)
+        writeFileSync(
+          process.env.GITHUB_STEP_SUMMARY,
+          `- g1t@g1t ${r.version}: ${r.changed ? `published as \`${r.commit}\`` : "unchanged"}${r.tagged ? `, tagged \`${tagName(r.version)}\`` : ""}\n`,
+          { flag: "a" },
+        );
     } else {
       console.error("usage: node scripts/plugins-release.mjs check | build [DIR] | publish [--dry-run]");
       process.exit(2);

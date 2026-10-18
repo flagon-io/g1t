@@ -20,7 +20,18 @@ describe("homeShows", () => {
   });
 
   it("takes what Home lists and leaves a commit's checks", () => {
-    for (const kind of ["pull.merged", "review.submitted", "work_item.opened", "comment.created", "workflow.completed", "run.updated", "deployment_status.created", "release.published", "session.started", "session.ended"]) {
+    for (const kind of [
+      "pull.merged",
+      "review.submitted",
+      "work_item.opened",
+      "comment.created",
+      "workflow.completed",
+      "run.updated",
+      "deployment_status.created",
+      "release.published",
+      "session.started",
+      "session.ended",
+    ]) {
       assert.equal(homeShows(change(kind), repos), true, kind);
     }
     for (const kind of ["status.created", "check_run.completed", "check_suite.completed", "checks.completed", "session.progressed", "git.deleted"]) {

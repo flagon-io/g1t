@@ -226,7 +226,13 @@ export async function baseVersions(ref) {
   ].join("; ");
   const found = await exec("docker", ["run", "--rm", "--platform", "linux/amd64", "--entrypoint", "bash", ref, "-c", script]);
   if (found.code !== 0) return {};
-  return Object.fromEntries(found.out.trim().split(/\r?\n/).map((line) => line.split("=")).filter((pair) => pair.length === 2));
+  return Object.fromEntries(
+    found.out
+      .trim()
+      .split(/\r?\n/)
+      .map((line) => line.split("="))
+      .filter((pair) => pair.length === 2),
+  );
 }
 
 /** Pushes `ref`; returns its digest in the registry. */
@@ -299,7 +305,21 @@ export async function diskReport(onLine, when, { run = exec } = {}) {
 export async function buildRunnerImage(unit, { ref, base, binaryDir, onLine }) {
   const built = await exec(
     "docker",
-    ["buildx", "build", ...PLAIN_IMAGE, "--progress", "plain", "--load", "--build-arg", `BASE=${base}`, "-f", join(ROOT, unit.image.dockerfile), "-t", ref, binaryDir],
+    [
+      "buildx",
+      "build",
+      ...PLAIN_IMAGE,
+      "--progress",
+      "plain",
+      "--load",
+      "--build-arg",
+      `BASE=${base}`,
+      "-f",
+      join(ROOT, unit.image.dockerfile),
+      "-t",
+      ref,
+      binaryDir,
+    ],
     { onLine },
   );
   if (built.code !== 0) throw new Error(`docker build of the runner's image failed:\n${lastLines(built.out, 30)}`);

@@ -60,7 +60,11 @@ export type Shipment = {
  * only when this page was full and held nothing shipped before, so the
  * walk stops at the last deployment's history.
  */
-export function walkPage(page: Pick<Commit, "hash" | "parents">[], known: ReadonlySet<string>, full: boolean): { ship: string[]; more: boolean; next: string | null } {
+export function walkPage(
+  page: Pick<Commit, "hash" | "parents">[],
+  known: ReadonlySet<string>,
+  full: boolean,
+): { ship: string[]; more: boolean; next: string | null } {
   const ship = [...new Set(page.map((commit) => commit.hash).filter((hash) => !known.has(hash)))];
   const reachedKnown = page.some((commit) => known.has(commit.hash));
   const last = page.at(-1);
@@ -131,7 +135,11 @@ export function sitePath(url: string | null | undefined, site: string): string |
  * repository's deployments.
  */
 export function shipmentOf(
-  data: { repoId: string; deployment: Pick<RepoDeployment, "id" | "sha" | "environment" | "production_environment" | "source" | "project" | "run_url" | "updated_at">; deploymentStatus: Pick<DeploymentStatus, "state" | "created_at"> },
+  data: {
+    repoId: string;
+    deployment: Pick<RepoDeployment, "id" | "sha" | "environment" | "production_environment" | "source" | "project" | "run_url" | "updated_at">;
+    deploymentStatus: Pick<DeploymentStatus, "state" | "created_at">;
+  },
   repo: RepoPath,
   site: string,
 ): Shipment | null {
@@ -242,9 +250,7 @@ export class Shipped {
     const [shipped, start, builds, reported] = await Promise.all([
       commits.length
         ? this.db
-            .prepare(
-              "SELECT sha, deployed_at, url, environment FROM shipped_commits WHERE repo_id = ? AND sha IN (SELECT value FROM json_each(?))",
-            )
+            .prepare("SELECT sha, deployed_at, url, environment FROM shipped_commits WHERE repo_id = ? AND sha IN (SELECT value FROM json_each(?))")
             .bind(repoId, JSON.stringify(commits.map((ask) => ask.sha)))
             .all<{ sha: string; deployed_at: string; url: string | null; environment: string }>()
         : null,
@@ -264,14 +270,19 @@ export class Shipped {
         .bind(repoId, oldest ?? "9999")
         .all<{ id: string; environment: string; state: string; run_url: string | null; created_at: string; updated_at: string }>(),
     ]);
-    const deploys =
-      (builds.results.length > 0 || reported.results.length > 0 || (start?.at ?? null) != null) ||
-      (await this.deploysAtAll(repoId, workspace));
+    const deploys = builds.results.length > 0 || reported.results.length > 0 || (start?.at ?? null) != null || (await this.deploysAtAll(repoId, workspace));
     const attempts: Attempt[] = [
       ...builds.results.flatMap((row) => {
         const outcome = buildOutcome(row.status);
         return outcome
-          ? [{ at: outcome === "running" ? row.created_at : (row.finished_at ?? row.created_at), outcome, url: `/${workspace}/${row.slug}/deployments/${row.id}`, environment: "production" }]
+          ? [
+              {
+                at: outcome === "running" ? row.created_at : (row.finished_at ?? row.created_at),
+                outcome,
+                url: `/${workspace}/${row.slug}/deployments/${row.id}`,
+                environment: "production",
+              },
+            ]
           : [];
       }),
       ...reported.results.flatMap((row) => {

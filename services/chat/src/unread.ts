@@ -23,12 +23,7 @@ export function isUnread(row: { id: string; author: string }, member: string, la
  * Each channel's counts for `member` (`user:<id>`), whose username is
  * `username`, from the rows after their last read in each channel.
  */
-export function tally(
-  rows: UnreadRow[],
-  member: string,
-  username: string,
-  lastRead: Map<string, string | null>,
-): Map<string, Counts> {
+export function tally(rows: UnreadRow[], member: string, username: string, lastRead: Map<string, string | null>): Map<string, Counts> {
   const counts = new Map<string, Counts>();
   for (const row of rows) {
     if (!isUnread(row, member, lastRead.get(row.channel_id) ?? null)) continue;

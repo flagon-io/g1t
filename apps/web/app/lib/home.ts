@@ -405,7 +405,12 @@ export function digestColumn(input: DigestInput): DigestColumn {
       }
     }
     if (pushes > 0) {
-      lines.push({ key: "pushes", text: `${plural(commits, "commit")} to ${plural(pushed.size, "project")}`, count: pushes, to: placeFor(slug, repos, pushed, "activity") });
+      lines.push({
+        key: "pushes",
+        text: `${plural(commits, "commit")} to ${plural(pushed.size, "project")}`,
+        count: pushes,
+        to: placeFor(slug, repos, pushed, "activity"),
+      });
     }
 
     // The other kinds, summed over projects: how many, and where.
@@ -433,7 +438,12 @@ export function digestColumn(input: DigestInput): DigestColumn {
         [closed.count, "# closed without merging"],
         [reviews.count, "# reviewed"],
       ]);
-      lines.push({ key: "pulls", text, count: pulls, to: placeFor(slug, repos, [...opened.repoIds, ...merged.repoIds, ...closed.repoIds, ...reviews.repoIds], "pulls") });
+      lines.push({
+        key: "pulls",
+        text,
+        count: pulls,
+        to: placeFor(slug, repos, [...opened.repoIds, ...merged.repoIds, ...closed.repoIds, ...reviews.repoIds], "pulls"),
+      });
     }
 
     const itemsOpened = sum("items", (repo) => repo.items.opened);
@@ -466,7 +476,11 @@ export function digestColumn(input: DigestInput): DigestColumn {
       ]);
       const deployed = [...succeeded.repoIds, ...failed.repoIds];
       const to =
-        deployed.length > 0 ? placeFor(slug, repos, deployed, "deployments") : releases.count > 0 ? placeFor(slug, repos, releases.repoIds, "releases") : `/${slug}/-/packages`;
+        deployed.length > 0
+          ? placeFor(slug, repos, deployed, "deployments")
+          : releases.count > 0
+            ? placeFor(slug, repos, releases.repoIds, "releases")
+            : `/${slug}/-/packages`;
       lines.push({ key: "shipped", text, count: shipped, to });
     }
 
@@ -623,7 +637,13 @@ function namesOf(keys: string[], names: Record<string, string>, agentKeys?: Read
  * published, one row each. Pushes within the span only: the digest was
  * asked for the span.
  */
-export function landedFromActivity(activity: ActivityDigest | null, repos: Record<string, RepoRef>, names: Record<string, string>, slug: string, agentKeys?: ReadonlySet<string>): LandedChange[] {
+export function landedFromActivity(
+  activity: ActivityDigest | null,
+  repos: Record<string, RepoRef>,
+  names: Record<string, string>,
+  slug: string,
+  agentKeys?: ReadonlySet<string>,
+): LandedChange[] {
   const rows: LandedChange[] = [];
   for (const repo of activity?.repos ?? []) {
     const path = repos[repo.repo_id];
@@ -847,7 +867,8 @@ export function landedByDay(rows: LandedChange[], now: number, timeZone: string 
     const key = dayIn(row.at, timeZone);
     let day = days.find((d) => d.key === key);
     if (!day) {
-      const label = key === today ? "Today" : key === yesterday ? "Yesterday" : formatIn(row.at, timeZone, { weekday: "short", month: "short", day: "numeric" });
+      const label =
+        key === today ? "Today" : key === yesterday ? "Yesterday" : formatIn(row.at, timeZone, { weekday: "short", month: "short", day: "numeric" });
       day = { key, label, rows: [] };
       days.push(day);
     }
@@ -897,7 +918,14 @@ export function settledIn(items: InboxItem[] | null, slug: string, code: boolean
 
 export function awayOf(input: { settled: SettledRow[]; landed: LandedChange[] | null; needs: number }): Away {
   const count = (state: ShipState) => (input.landed ?? []).filter((row) => row.shipped?.state === state).length;
-  return { settled: input.settled, shipped: count("live"), waiting: count("waiting"), deploying: count("deploying"), failed: count("failed"), needs: input.needs };
+  return {
+    settled: input.settled,
+    shipped: count("live"),
+    waiting: count("waiting"),
+    deploying: count("deploying"),
+    failed: count("failed"),
+    needs: input.needs,
+  };
 }
 
 /** A deployment's maker as a member key: an id becomes `user:<id>`, a key stays as it is. */
@@ -927,7 +955,13 @@ export type DeployRow = {
  * and previews too. A build that went live and was replaced since still
  * went live. Skipped builds are left out.
  */
-export function deploysIn(projects: { slug: string; deployments: Deployment[] }[], workspace: string, span: Pick<Span, "from" | "now">, names: Record<string, string> = {}, agentKeys?: ReadonlySet<string>): DeployRow[] {
+export function deploysIn(
+  projects: { slug: string; deployments: Deployment[] }[],
+  workspace: string,
+  span: Pick<Span, "from" | "now">,
+  names: Record<string, string> = {},
+  agentKeys?: ReadonlySet<string>,
+): DeployRow[] {
   const rows: DeployRow[] = [];
   for (const project of projects) {
     for (const deploy of project.deployments) {
@@ -935,7 +969,8 @@ export function deploysIn(projects: { slug: string; deployments: Deployment[] }[
       const key = deployActorKey(deploy.createdBy);
       const ended = deploy.finishedAt ?? null;
       if (!within(ended, span)) continue;
-      const outcome = deploy.status === "failed" ? "failed" : deploy.status === "ready" || deploy.status === "replaced" || deploy.status === "down" ? "live" : null;
+      const outcome =
+        deploy.status === "failed" ? "failed" : deploy.status === "ready" || deploy.status === "replaced" || deploy.status === "down" ? "live" : null;
       if (!outcome) continue;
       rows.push({
         key: `deploy:${project.slug}:${deploy.id}`,
@@ -1155,7 +1190,12 @@ export function codeRow(need: CodeNeed): AttentionRow {
       return { ...base, kind: "review", stake: { text: lines ?? "Your review", tone: null }, action: { label: "Review", to: need.to } };
     }
     case "runner":
-      return { ...base, kind: "runner", stake: { text: `Waiting ${fact(need, "Waiting") ?? ""}`.trim(), tone: "warn" }, action: { label: "Look", to: need.to } };
+      return {
+        ...base,
+        kind: "runner",
+        stake: { text: `Waiting ${fact(need, "Waiting") ?? ""}`.trim(), tone: "warn" },
+        action: { label: "Look", to: need.to },
+      };
     // Your pull request, which meets everything its branch asks for.
     case "ready":
       return { ...base, kind: "ready", stake: { text: "Ready to merge", tone: null }, action: { label: "Merge", to: need.to } };

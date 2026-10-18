@@ -27,13 +27,13 @@ requires it, holds the merge until they have approved.
 Put the file in one of these places on the repository's default branch.
 g1t reads the first one that exists, in this order, and ignores the rest:
 
-| Order | Path |
-| --- | --- |
-| 1 | `.g1t/CODEOWNERS` |
-| 2 | `.github/CODEOWNERS` |
-| 3 | `CODEOWNERS` |
-| 4 | `docs/CODEOWNERS` |
-| 5 | `.gitlab/CODEOWNERS` |
+| Order | Path                 |
+| ----- | -------------------- |
+| 1     | `.g1t/CODEOWNERS`    |
+| 2     | `.github/CODEOWNERS` |
+| 3     | `CODEOWNERS`         |
+| 4     | `docs/CODEOWNERS`    |
+| 5     | `.gitlab/CODEOWNERS` |
 
 So a repository you bring to g1t with its file already at
 `.github/CODEOWNERS` or `.gitlab/CODEOWNERS` works as it is. The name is
@@ -62,13 +62,13 @@ first and narrower ones after them:
 /src/*.rs  @dee
 ```
 
-| File | Owners | Because |
-| --- | --- | --- |
-| `README.md` | `@acme/engineering` | Only `*` matches. |
-| `lib/x.rs` | `@acme/rust` | `*.rs` is the last match. |
-| `src/x.txt` | `@cy` | `/src/` is the last match. |
-| `src/x.rs` | `@dee` | `/src/*.rs` is the last match. |
-| `src/a/x.rs` | `@cy` | `/src/*.rs` matches files directly in `src/` only, so `/src/` is the last match. |
+| File         | Owners              | Because                                                                          |
+| ------------ | ------------------- | -------------------------------------------------------------------------------- |
+| `README.md`  | `@acme/engineering` | Only `*` matches.                                                                |
+| `lib/x.rs`   | `@acme/rust`        | `*.rs` is the last match.                                                        |
+| `src/x.txt`  | `@cy`               | `/src/` is the last match.                                                       |
+| `src/x.rs`   | `@dee`              | `/src/*.rs` is the last match.                                                   |
+| `src/a/x.rs` | `@cy`               | `/src/*.rs` matches files directly in `src/` only, so `/src/` is the last match. |
 
 The order matters: written the other way round, with `*` last, `@acme/engineering`
 would own everything.
@@ -86,13 +86,13 @@ package-lock.json
 
 ### Comments and escapes
 
-| Write | For |
-| --- | --- |
-| `# ...` at the start of a line | A comment line. |
-| ` # ...` after a space | A comment for the rest of the line. |
+| Write                          | For                                                     |
+| ------------------------------ | ------------------------------------------------------- |
+| `# ...` at the start of a line | A comment line.                                         |
+| ` # ...` after a space         | A comment for the rest of the line.                     |
 | `\#` at the start of a pattern | A literal `#`: `\#notes` matches a file named `#notes`. |
-| `\ ` | A space inside a pattern: `My\ Notes.md`. |
-| `\*`, `\?` | A literal `*` or `?`. |
+| `\ `                           | A space inside a pattern: `My\ Notes.md`.               |
+| `\*`, `\?`                     | A literal `*` or `?`.                                   |
 
 Blank lines, a byte order mark and Windows line ends (`\r\n`) are all
 fine.
@@ -101,22 +101,22 @@ fine.
 
 Paths are from the root of the repository, and case-sensitive.
 
-| Pattern | Matches | Does not match |
-| --- | --- | --- |
-| `*` | Every file | |
-| `*.js` | `a.js`, `web/src/a.js` | `a.jsx` |
-| `/*.md` | `README.md` | `docs/README.md` |
-| `?.txt` | `a.txt` | `ab.txt` |
-| `docs` | `docs/a.md`, `x/docs/y/z.md`, a file named `docs` | `mydocs/a.md` |
-| `/docs` | `docs/a.md` | `x/docs/a.md` |
-| `docs/` | `docs/a.md`, `x/docs/a.md` | a file named `docs` |
-| `docs/*` | `docs/a.md` | `docs/sub/a.md`, `x/docs/a.md` |
-| `/build/logs/` | `build/logs/a.txt` | `x/build/logs/a.txt` |
-| `**/foo` | `foo`, `x/foo`, `x/y/foo/bar` | `x/foobar` |
-| `foo/**` | `foo/a`, `foo/a/b` | `x/foo/a` |
-| `a/**/b` | `a/b`, `a/x/b`, `a/x/y/b` | `x/a/b` |
-| `src/**/*.rs` | `src/main.rs`, `src/a/b/main.rs` | `lib/main.rs` |
-| `crates/*/migrations/` | `crates/a/migrations/1.sql` | `crates/a/b/migrations/1.sql` |
+| Pattern                | Matches                                           | Does not match                 |
+| ---------------------- | ------------------------------------------------- | ------------------------------ |
+| `*`                    | Every file                                        |                                |
+| `*.js`                 | `a.js`, `web/src/a.js`                            | `a.jsx`                        |
+| `/*.md`                | `README.md`                                       | `docs/README.md`               |
+| `?.txt`                | `a.txt`                                           | `ab.txt`                       |
+| `docs`                 | `docs/a.md`, `x/docs/y/z.md`, a file named `docs` | `mydocs/a.md`                  |
+| `/docs`                | `docs/a.md`                                       | `x/docs/a.md`                  |
+| `docs/`                | `docs/a.md`, `x/docs/a.md`                        | a file named `docs`            |
+| `docs/*`               | `docs/a.md`                                       | `docs/sub/a.md`, `x/docs/a.md` |
+| `/build/logs/`         | `build/logs/a.txt`                                | `x/build/logs/a.txt`           |
+| `**/foo`               | `foo`, `x/foo`, `x/y/foo/bar`                     | `x/foobar`                     |
+| `foo/**`               | `foo/a`, `foo/a/b`                                | `x/foo/a`                      |
+| `a/**/b`               | `a/b`, `a/x/b`, `a/x/y/b`                         | `x/a/b`                        |
+| `src/**/*.rs`          | `src/main.rs`, `src/a/b/main.rs`                  | `lib/main.rs`                  |
+| `crates/*/migrations/` | `crates/a/migrations/1.sql`                       | `crates/a/b/migrations/1.sql`  |
 
 In full:
 
@@ -138,11 +138,11 @@ part of a directory no owner, add a later rule with no owners instead.
 
 ## Owners
 
-| Write | Means | Must |
-| --- | --- | --- |
-| `@ana` | The person with that username. | Have the Write [role](/guides/access-and-roles/) or higher on the repository. |
-| `@acme/backend` | Everyone in the [team](/guides/teams/), and in its child teams. | Be a team of the repository's workspace, with the Write role or higher on the repository. |
-| `ana@example.com` | The g1t account that has confirmed that address. | Have the Write role or higher on the repository. |
+| Write             | Means                                                           | Must                                                                                      |
+| ----------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `@ana`            | The person with that username.                                  | Have the Write [role](/guides/access-and-roles/) or higher on the repository.             |
+| `@acme/backend`   | Everyone in the [team](/guides/teams/), and in its child teams. | Be a team of the repository's workspace, with the Write role or higher on the repository. |
+| `ana@example.com` | The g1t account that has confirmed that address.                | Have the Write role or higher on the repository.                                          |
 
 A file written for another host may name teams under an organization that
 is not a g1t workspace, such as `@acme-corp/backend`. g1t reads those as
@@ -177,20 +177,20 @@ db/seeds.rb             @seed-keeper @cy
 *.css
 ```
 
-| File | Needs |
-| --- | --- |
-| `app/user.rb` | 1 approval from `@ruby` |
-| `db/migrate/001.rb` | 1 from `@ruby`, and 2 from `@acme/data` (the section's default owners) |
-| `db/seeds.rb` | 1 from `@ruby`, and 2 from `@seed-keeper` and `@cy` |
-| `config/secrets/prod.yml` | 1 from `@acme/security` |
-| `web/site.css` | Nothing: `@acme/design` is asked, but Style is optional |
+| File                      | Needs                                                                  |
+| ------------------------- | ---------------------------------------------------------------------- |
+| `app/user.rb`             | 1 approval from `@ruby`                                                |
+| `db/migrate/001.rb`       | 1 from `@ruby`, and 2 from `@acme/data` (the section's default owners) |
+| `db/seeds.rb`             | 1 from `@ruby`, and 2 from `@seed-keeper` and `@cy`                    |
+| `config/secrets/prod.yml` | 1 from `@acme/security`                                                |
+| `web/site.css`            | Nothing: `@acme/design` is asked, but Style is optional                |
 
-| Header | What it does |
-| --- | --- |
-| `[Name]` | Starts a section that needs 1 approval from the owners of each of its rules that match. |
-| `[Name][2]` | Needs that many approvals, from 1 to 10. |
-| `^[Name]` | Optional: its owners are asked to review, but their approval is not required. |
-| `[Name] @owner ...` | Default owners, for the section's rules that name none. |
+| Header              | What it does                                                                            |
+| ------------------- | --------------------------------------------------------------------------------------- |
+| `[Name]`            | Starts a section that needs 1 approval from the owners of each of its rules that match. |
+| `[Name][2]`         | Needs that many approvals, from 1 to 10.                                                |
+| `^[Name]`           | Optional: its owners are asked to review, but their approval is not required.           |
+| `[Name] @owner ...` | Default owners, for the section's rules that name none.                                 |
 
 Section names are compared without regard to case. Two headers with the
 same name are one section: the first spelling is kept, and a later
@@ -254,12 +254,12 @@ merge, from the file on the target branch as it is then.
 
 What counts:
 
-| | Counts |
-| --- | --- |
-| An approval from someone the rule names, or from anyone in a team it names or that team's child teams | Yes |
-| An approval from the pull request's author | Never |
-| A code owner who asked for changes | Holds the merge until that person approves. Only each reviewer's latest verdict counts. |
-| An owner that did not resolve | Owns nothing, so nothing is waited for. |
+|                                                                                                       | Counts                                                                                  |
+| ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| An approval from someone the rule names, or from anyone in a team it names or that team's child teams | Yes                                                                                     |
+| An approval from the pull request's author                                                            | Never                                                                                   |
+| A code owner who asked for changes                                                                    | Holds the merge until that person approves. Only each reviewer's latest verdict counts. |
+| An owner that did not resolve                                                                         | Owns nothing, so nothing is waited for.                                                 |
 
 It holds wherever a pull request merges: the merge button,
 [`merge_pull_request`](/reference/api/pull-requests/merge-pull-request/),
@@ -287,19 +287,19 @@ g1t checks the file like a linter, and shows what is wrong with each line:
   view;
 - through the API, for any branch.
 
-| Kind | Example message |
-| --- | --- |
-| `too_large` | The CODEOWNERS file is larger than 3 MB, so none of it applies; make it smaller. |
-| `negation` | !docs/ starts with !, and negation is not supported; this line is skipped. Give the path a later rule with no owners instead. |
-| `character_range` | docs/[a-z]*.md uses [ or ], and character ranges are not supported; this line is skipped. Write one rule per name, or use * or ?. |
-| `bad_pattern` | / names no path; this line is skipped. Write a file or directory pattern, such as * or /docs/. |
-| `bad_owner` | nobody is not an owner; write @username, @workspace/team or an email address. |
-| `bad_section` | The approval count [0] must be a whole number from 1 to 10. |
-| `unknown_user` | @ana is not a g1t account. |
-| `unknown_team` | @acme/backend is not a team of acme. |
-| `unknown_email` | No g1t account has confirmed ana@example.com. |
-| `no_write_access` | @bo cannot write to this repository; code owners need the Write role or higher. |
-| `team_no_access` | @acme/docs has no access to this repository; give the team the Write role or higher. |
+| Kind              | Example message                                                                                                                   |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `too_large`       | The CODEOWNERS file is larger than 3 MB, so none of it applies; make it smaller.                                                  |
+| `negation`        | !docs/ starts with !, and negation is not supported; this line is skipped. Give the path a later rule with no owners instead.     |
+| `character_range` | docs/[a-z]_.md uses [ or ], and character ranges are not supported; this line is skipped. Write one rule per name, or use _ or ?. |
+| `bad_pattern`     | / names no path; this line is skipped. Write a file or directory pattern, such as \* or /docs/.                                   |
+| `bad_owner`       | nobody is not an owner; write @username, @workspace/team or an email address.                                                     |
+| `bad_section`     | The approval count [0] must be a whole number from 1 to 10.                                                                       |
+| `unknown_user`    | @ana is not a g1t account.                                                                                                        |
+| `unknown_team`    | @acme/backend is not a team of acme.                                                                                              |
+| `unknown_email`   | No g1t account has confirmed ana@example.com.                                                                                     |
+| `no_write_access` | @bo cannot write to this repository; code owners need the Write role or higher.                                                   |
+| `team_no_access`  | @acme/docs has no access to this repository; give the team the Write role or higher.                                              |
 
 A section header can also be refused with: "The section header has no
 closing ]; write it as [Name].", "The section header has no name; write it
@@ -322,18 +322,18 @@ stop a broken file from merging.
 
 ## Limits
 
-| | |
-| --- | --- |
-| File size | 3 MB. A larger file is ignored as a whole, with one error. |
-| Approvals per section | 1 to 10. |
+|                       |                                                            |
+| --------------------- | ---------------------------------------------------------- |
+| File size             | 3 MB. A larger file is ignored as a whole, with one error. |
+| Approvals per section | 1 to 10.                                                   |
 
 ## Through the API
 
-| Route | MCP | What it does |
-| --- | --- | --- |
-| `GET /repos/{owner}/{name}/codeowners/errors` | `repository` `codeowners` | The file at `ref` (the default branch when left out): where it is, its size, its rules and sections, and every error. Needs `repo:read`. |
-| `GET /repos/{owner}/{name}/pulls/{number}` | `pull_request` `get` | `code_owners`: the file's path, `required`, a review per rule with `section`, `pattern`, `owners`, `files`, `required`, `approved_by`, `changes_requested_by` and `satisfied`, what is `missing`, and how many `errors` the file has. Absent when the target has no file. |
-| `PATCH /repos/{owner}/{name}/settings` | `repository` `update_settings` | `require_code_owner_review`: `true` or `false`. Needs Admin. |
+| Route                                         | MCP                            | What it does                                                                                                                                                                                                                                                              |
+| --------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /repos/{owner}/{name}/codeowners/errors` | `repository` `codeowners`      | The file at `ref` (the default branch when left out): where it is, its size, its rules and sections, and every error. Needs `repo:read`.                                                                                                                                  |
+| `GET /repos/{owner}/{name}/pulls/{number}`    | `pull_request` `get`           | `code_owners`: the file's path, `required`, a review per rule with `section`, `pattern`, `owners`, `files`, `required`, `approved_by`, `changes_requested_by` and `satisfied`, what is `missing`, and how many `errors` the file has. Absent when the target has no file. |
+| `PATCH /repos/{owner}/{name}/settings`        | `repository` `update_settings` | `require_code_owner_review`: `true` or `false`. Needs Admin.                                                                                                                                                                                                              |
 
 ```sh
 curl "https://api.g1t.sh/repos/acme/api/codeowners/errors?ref=main" \

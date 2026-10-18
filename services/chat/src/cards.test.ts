@@ -19,11 +19,28 @@ test("an old card keeps its links and drops actions nobody answers any more", ()
   });
   assert.equal(card.owner, undefined);
   assert.equal(card.ref, undefined);
-  assert.deepEqual(card.actions?.map((a) => a.id), ["open"]);
+  assert.deepEqual(
+    card.actions?.map((a) => a.id),
+    ["open"],
+  );
 });
 
 test("a card with nothing left to press has no actions", () => {
-  const card = shownCard({ kind: "x", title: "x", detail: null, state: null, href: null, owner: "agents", actions: [{ id: "stop", label: "Stop", style: "danger", confirm: null, input: null, href: null }] });
+  const card = shownCard({
+    kind: "x",
+    title: "x",
+    detail: null,
+    state: null,
+    href: null,
+    owner: "agents",
+    actions: [{ id: "stop", label: "Stop", style: "danger", confirm: null, input: null, href: null }],
+  });
   assert.equal("actions" in card, false);
-  assert.deepEqual(shownCard({ kind: "x", title: "x", detail: null, state: null, href: null }), { kind: "x", title: "x", detail: null, state: null, href: null });
+  assert.deepEqual(shownCard({ kind: "x", title: "x", detail: null, state: null, href: null }), {
+    kind: "x",
+    title: "x",
+    detail: null,
+    state: null,
+    href: null,
+  });
 });

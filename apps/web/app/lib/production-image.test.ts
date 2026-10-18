@@ -69,10 +69,7 @@ test("no screenshot when it is not elsewhere, has no address, or shows an upload
 
 test("a version changes with the deploy or the day", () => {
   assert.equal(externalVersion({ url: "https://g1t.sh", commit: "2026-10-11", since: null }), "2026-10-11-0");
-  assert.equal(
-    externalVersion({ url: "https://g1t.sh", commit: "abc1234", since: "2026-10-11T10:00:00Z" }),
-    `abc1234-${Date.parse("2026-10-11T10:00:00Z")}`,
-  );
+  assert.equal(externalVersion({ url: "https://g1t.sh", commit: "abc1234", since: "2026-10-11T10:00:00Z" }), `abc1234-${Date.parse("2026-10-11T10:00:00Z")}`);
 });
 
 test("the card tries the screenshot, then the upload; a preferred upload alone", () => {

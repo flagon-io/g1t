@@ -32,7 +32,9 @@ export function DesktopRunnerLink({ offer }: { offer: DesktopRunnerOffer }) {
         });
         const answer = (await response.json().catch(() => ({}))) as { token?: string; error?: string; allowed?: boolean };
         await runner.register(
-          answer.token ? { workspace, token: answer.token } : { workspace, allowed: answer.allowed !== false, error: answer.error ?? `g1t answered ${response.status}.` },
+          answer.token
+            ? { workspace, token: answer.token }
+            : { workspace, allowed: answer.allowed !== false, error: answer.error ?? `g1t answered ${response.status}.` },
         );
       } catch {
         // Offline, or the page is leaving: the app asks again in a minute.

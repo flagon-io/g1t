@@ -135,8 +135,7 @@ export function usePull(owner: string, name: string, number: number) {
   const { client } = useSignedIn();
   return useQuery({
     queryKey: ["code", "pull", owner, name, number],
-    queryFn: () =>
-      client.api<{ pull: ApiPull; item: ApiWorkItem | null; comments: ApiComment[] }>(`${repoPath(owner, name)}/pulls/${number}`),
+    queryFn: () => client.api<{ pull: ApiPull; item: ApiWorkItem | null; comments: ApiComment[] }>(`${repoPath(owner, name)}/pulls/${number}`),
   });
 }
 

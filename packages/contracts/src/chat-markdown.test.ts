@@ -149,7 +149,10 @@ test("lists: numbered from where they start, nested by indenting, items with mor
   assert.equal(nested.t, "list");
   if (nested.t === "list") assert.deepEqual(nested.items[0], [{ t: "p", lines: [[{ t: "text", v: "deeper" }], [{ t: "text", v: "more" }]] }]);
   // A year at the start of a line is not a list.
-  assert.deepEqual(blocks("We grew in\n2019. Then again.").map((b) => b.t), ["p"]);
+  assert.deepEqual(
+    blocks("We grew in\n2019. Then again.").map((b) => b.t),
+    ["p"],
+  );
   // Blank lines between items keep one list.
   assert.equal(blocks("- a\n\n- b").length, 1);
   // A quote holds blocks of its own.
@@ -176,24 +179,42 @@ test("plain text: the words without the marks, for previews", () => {
 });
 
 test("tables: a header, a --- row with its alignment, then rows", () => {
-  const [table, after] = blocks("| Session | Length | Notes |\n| --- | ---: | :-: |\n| 1. Welcome | 45 min | `web` \\| `api` |\n| 2. Queue | 30 min |\n\nAfter.");
+  const [table, after] = blocks(
+    "| Session | Length | Notes |\n| --- | ---: | :-: |\n| 1. Welcome | 45 min | `web` \\| `api` |\n| 2. Queue | 30 min |\n\nAfter.",
+  );
   assert.ok(table!.t === "table");
   assert.deepEqual(table.align, [null, "right", "center"]);
   assert.deepEqual(table.head, [[{ t: "text", v: "Session" }], [{ t: "text", v: "Length" }], [{ t: "text", v: "Notes" }]]);
   assert.equal(table.rows.length, 2);
   // An escaped pipe stays in its cell; a short row is filled to the header's width.
-  assert.deepEqual(table.rows[0]![2], [{ t: "code", v: "web" }, { t: "text", v: " | " }, { t: "code", v: "api" }]);
+  assert.deepEqual(table.rows[0]![2], [
+    { t: "code", v: "web" },
+    { t: "text", v: " | " },
+    { t: "code", v: "api" },
+  ]);
   assert.deepEqual(table.rows[1]![2], []);
   assert.equal(after!.t, "p");
   // Without outer pipes, and right after a paragraph.
-  assert.deepEqual(blocks("Plan:\na | b\n--|--\n1 | 2").map((b) => b.t), ["p", "table"]);
+  assert.deepEqual(
+    blocks("Plan:\na | b\n--|--\n1 | 2").map((b) => b.t),
+    ["p", "table"],
+  );
   // A pipe inside backticks is not a column.
   const [code] = blocks("| a |\n| - |\n| `x | y` |");
   assert.ok(code!.t === "table" && code.rows[0]!.length === 1);
   // Not tables: a rule under text, columns that don't match, a line with a pipe alone.
-  assert.deepEqual(blocks("a | b\n---").map((b) => b.t), ["p", "hr"]);
-  assert.deepEqual(blocks("| a | b |\n| --- |\n| 1 | 2 |").map((b) => b.t), ["p"]);
-  assert.deepEqual(blocks("either | or").map((b) => b.t), ["p"]);
+  assert.deepEqual(
+    blocks("a | b\n---").map((b) => b.t),
+    ["p", "hr"],
+  );
+  assert.deepEqual(
+    blocks("| a | b |\n| --- |\n| 1 | 2 |").map((b) => b.t),
+    ["p"],
+  );
+  assert.deepEqual(
+    blocks("either | or").map((b) => b.t),
+    ["p"],
+  );
   // Links in cells are checked like any other.
   assert.deepEqual(links(blocks("| x |\n| - |\n| [ok](https://x.example) [no](javascript:alert(1)) |")), ["https://x.example"]);
   assert.equal(plainText("| a | b |\n|---|---|\n| 1 | 2 |"), "a · b 1 · 2");

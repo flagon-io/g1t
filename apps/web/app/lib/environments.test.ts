@@ -74,7 +74,14 @@ test("a form's rules: reviewers in order without blanks or repeats, patterns onl
     },
   });
 
-  const all = environmentFromForm(form([["branchPolicy", "all"], ["patternName", "main"], ["adminsBypass", "on"]]), limits);
+  const all = environmentFromForm(
+    form([
+      ["branchPolicy", "all"],
+      ["patternName", "main"],
+      ["adminsBypass", "on"],
+    ]),
+    limits,
+  );
   assert.ok("change" in all);
   assert.deepEqual(all.change.branchPatterns, []);
   assert.equal(all.change.adminsBypass, true);
@@ -82,7 +89,16 @@ test("a form's rules: reviewers in order without blanks or repeats, patterns onl
 });
 
 test("a form past the limits says what is wrong", () => {
-  const many = form(Array.from({ length: 7 }, (_, i) => [["reviewerType", "user"], ["reviewerName", `u${i}`]] as [string, string][]).flat());
+  const many = form(
+    Array.from(
+      { length: 7 },
+      (_, i) =>
+        [
+          ["reviewerType", "user"],
+          ["reviewerName", `u${i}`],
+        ] as [string, string][],
+    ).flat(),
+  );
   assert.deepEqual(environmentFromForm(many, limits), { error: "An environment can have up to 6 reviewers." });
   assert.ok("error" in environmentFromForm(form([["waitMinutes", "43201"]]), limits));
   assert.ok("error" in environmentFromForm(form([["waitMinutes", "-1"]]), limits));

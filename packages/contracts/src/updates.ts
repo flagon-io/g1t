@@ -5,12 +5,7 @@
  */
 
 /** Where the dependency update file may be, in the order it is looked for. */
-export const DEPENDABOT_PATHS = [
-  ".g1t/dependabot.yml",
-  ".g1t/dependabot.yaml",
-  ".github/dependabot.yml",
-  ".github/dependabot.yaml",
-] as const;
+export const DEPENDABOT_PATHS = [".g1t/dependabot.yml", ".g1t/dependabot.yaml", ".github/dependabot.yml", ".github/dependabot.yaml"] as const;
 
 /** The status a pull request that changes the file gets on its head. */
 export const DEPENDABOT_CHECK = "g1t / dependabot.yml";

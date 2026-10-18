@@ -1,9 +1,34 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildTree, canDo, citationHref, coverStyle, cursorColour, dayGroups, dayKey, flatten, linkedArtifacts, pathTo, readingTime, repoFilePath, repoFolders, snippetParts, spacePath } from "./folios.ts";
+import {
+  buildTree,
+  canDo,
+  citationHref,
+  coverStyle,
+  cursorColour,
+  dayGroups,
+  dayKey,
+  flatten,
+  linkedArtifacts,
+  pathTo,
+  readingTime,
+  repoFilePath,
+  repoFolders,
+  snippetParts,
+  spacePath,
+} from "./folios.ts";
 
-const node = (id: string, parent_id: string | null, position: number) => ({ id, kind: "doc" as const, parent_id, position, title: id.toUpperCase(), icon: null, slug: id, restricted: false });
+const node = (id: string, parent_id: string | null, position: number) => ({
+  id,
+  kind: "doc" as const,
+  parent_id,
+  position,
+  title: id.toUpperCase(),
+  icon: null,
+  slug: id,
+  restricted: false,
+});
 
 const nodes = [node("b", null, 2), node("a", null, 1), node("c", "a", 1), node("orphan", "gone", 3)];
 
@@ -52,7 +77,10 @@ test("the home list groups by the viewer's day: Today, Yesterday, then dates", (
 test("chat messages name the artifacts they link to, in this workspace only", () => {
   const id = "fol_01jb2k7x9hfq0b3zj0f5s2m8ra";
   const other = "fol_01jb2k7x9hfq0b3zj0f5s2m8rb";
-  assert.deepEqual(linkedArtifacts(`See https://g1t.sh/acme/-/artifacts/q4-plan-${id} and /acme/-/artifacts/${other}, and again /Acme/-/artifacts/${id}`, "acme"), [id, other]);
+  assert.deepEqual(
+    linkedArtifacts(`See https://g1t.sh/acme/-/artifacts/q4-plan-${id} and /acme/-/artifacts/${other}, and again /Acme/-/artifacts/${id}`, "acme"),
+    [id, other],
+  );
   assert.deepEqual(linkedArtifacts(`/other/-/artifacts/x-${id}`, "acme"), []);
   assert.deepEqual(linkedArtifacts(`/acme/-/artifacts/spaces/general`, "acme"), []);
 });
@@ -92,7 +120,10 @@ test("a project's docs become folders, and spaces and files have addresses under
     ["README.md", "docs/setup.md"],
   );
   assert.equal(root.folders[0]!.name, "guides");
-  assert.deepEqual(root.folders[0]!.files.map((f) => f.title), ["Deploy"]);
+  assert.deepEqual(
+    root.folders[0]!.files.map((f) => f.title),
+    ["Deploy"],
+  );
   assert.equal(repoFilePath("acme", "acme/web", "docs/a b.md"), "/acme/-/artifacts/repo/acme/web/docs/a%20b.md");
   assert.equal(spacePath("acme", "general"), "/acme/-/artifacts/spaces/general");
 });

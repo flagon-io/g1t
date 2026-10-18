@@ -16,7 +16,20 @@ import { Skeleton } from "./ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { cn } from "../lib/cn";
 import { isPending } from "../lib/pending";
-import { INBOX_TABS, type InboxTab, REASON_LABEL, SEVERITY_LABEL, SNOOZES, bellCount, emptyFor, isUnread, settledLine, tabCount, updatesLabel, whenShort } from "../lib/inbox";
+import {
+  INBOX_TABS,
+  type InboxTab,
+  REASON_LABEL,
+  SEVERITY_LABEL,
+  SNOOZES,
+  bellCount,
+  emptyFor,
+  isUnread,
+  settledLine,
+  tabCount,
+  updatesLabel,
+  whenShort,
+} from "../lib/inbox";
 import { useOwnPresence } from "../lib/notify-client";
 import { dndOn } from "../lib/presence";
 import type { InboxPanelData } from "../routes/inbox-json";
@@ -87,8 +100,7 @@ export function InboxCard({ item, onOpen }: { item: InboxItem; onOpen?: () => vo
   useEffect(() => setNow(Date.now()), [item.updatedAt]);
   if (leaving || left === item.updatedAt) return null;
 
-  const submit = (intent: string, extra?: Record<string, string>) =>
-    fetcher.submit({ intent, id: item.id, ...extra }, { method: "post", action: ACTION });
+  const submit = (intent: string, extra?: Record<string, string>) => fetcher.submit({ intent, id: item.id, ...extra }, { method: "post", action: ACTION });
   const open = () => {
     if (unread) submit("read");
     onOpen?.();
@@ -122,7 +134,9 @@ export function InboxCard({ item, onOpen }: { item: InboxItem; onOpen?: () => vo
           <time dateTime={item.updatedAt} suppressHydrationWarning className="shrink-0 whitespace-nowrap">
             {whenShort(item.updatedAt, now)}
           </time>
-          <Badge tone={TONE[item.severity]} className="shrink-0">{SEVERITY_LABEL[item.severity]}</Badge>
+          <Badge tone={TONE[item.severity]} className="shrink-0">
+            {SEVERITY_LABEL[item.severity]}
+          </Badge>
           {/* Why they were told, and how much has happened, said quietly. */}
           <span className="truncate">{REASON_LABEL[item.reason] ?? item.reason}</span>
           {updatesLabel(item.count) && (
@@ -140,7 +154,12 @@ export function InboxCard({ item, onOpen }: { item: InboxItem; onOpen?: () => vo
         </div>
         {fetcher.data?.error && <p className="mt-1 text-xs text-danger">{fetcher.data.error}</p>}
       </div>
-      {unread && <span aria-label="Unread" className="absolute top-3.5 right-3 size-2 rounded-full bg-accent group-focus-within:hidden group-hover:hidden [@media(hover:none)]:hidden" />}
+      {unread && (
+        <span
+          aria-label="Unread"
+          className="absolute top-3.5 right-3 size-2 rounded-full bg-accent group-focus-within:hidden group-hover:hidden [@media(hover:none)]:hidden"
+        />
+      )}
       {/* Above the card's link, so they act instead of opening it. On hover or focus, and always on a touch screen. */}
       <div className="absolute top-2 right-2 z-10 hidden items-center gap-0.5 group-focus-within:flex group-hover:flex [@media(hover:none)]:flex">
         {item.doneAt ? (
@@ -223,10 +242,7 @@ export function InboxTabs({ tab, counts, onChange }: { tab: InboxTab; counts: In
               {entry.label}
               {count > 0 && (
                 <span
-                  className={cn(
-                    "rounded-full px-1.5 text-[0.6875rem] tabular-nums",
-                    entry.tab === "needs" ? "bg-warn/15 text-warn" : "bg-line text-muted",
-                  )}
+                  className={cn("rounded-full px-1.5 text-[0.6875rem] tabular-nums", entry.tab === "needs" ? "bg-warn/15 text-warn" : "bg-line text-muted")}
                 >
                   {count}
                 </span>
@@ -246,14 +262,7 @@ export function MarkAllRead({ tab, disabled }: { tab: InboxTab; disabled: boolea
     <fetcher.Form method="post" action={ACTION}>
       <input type="hidden" name="intent" value="read_all" />
       <input type="hidden" name="tab" value={tab} />
-      <SubmitButton
-        fetcher={fetcher}
-        disabled={disabled}
-        pending="Marking…"
-        variant="ghost"
-        size="inline"
-        className="px-2 py-1 text-xs"
-      >
+      <SubmitButton fetcher={fetcher} disabled={disabled} pending="Marking…" variant="ghost" size="inline" className="px-2 py-1 text-xs">
         <CheckCheck size={14} />
         Mark all read
       </SubmitButton>
@@ -306,19 +315,19 @@ export function NotificationsBell({ counts: loaded }: { counts: InboxCounts | nu
           aria-label={`${unread ? `Notifications, ${unread} unread` : "Notifications"}${dnd ? ", do not disturb is on" : ""}`}
           className="relative"
         >
-        <Bell size={17} />
-        {dnd && <span aria-hidden="true" className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-warn ring-2 ring-bg" />}
-        {shown && (
-          // Amber while something waits on them, red for a failure, else the accent.
-          <span
-            className={cn(
-              "absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[0.625rem] font-semibold tabular-nums text-bg ring-2 ring-bg",
-              (counts?.warning ?? 0) > 0 ? "bg-warn" : (counts?.error ?? 0) > 0 ? "bg-danger" : "bg-accent",
-            )}
-          >
-            {shown}
-          </span>
-        )}
+          <Bell size={17} />
+          {dnd && <span aria-hidden="true" className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-warn ring-2 ring-bg" />}
+          {shown && (
+            // Amber while something waits on them, red for a failure, else the accent.
+            <span
+              className={cn(
+                "absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[0.625rem] font-semibold tabular-nums text-bg ring-2 ring-bg",
+                (counts?.warning ?? 0) > 0 ? "bg-warn" : (counts?.error ?? 0) > 0 ? "bg-danger" : "bg-accent",
+              )}
+            >
+              {shown}
+            </span>
+          )}
         </Button>
       </SheetTrigger>
       <SheetContent

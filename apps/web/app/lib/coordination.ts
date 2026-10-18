@@ -95,11 +95,7 @@ export const ENDED_BY_HAND = "ended by hand by @";
  * One g1t runs on the workspace's Anthropic account is stopped from its
  * page instead, which stops the run too.
  */
-export function mayEndSession(
-  session: Pick<WorkSession, "state" | "actor" | "harness">,
-  viewerId: string | null | undefined,
-  canPush: boolean,
-): boolean {
+export function mayEndSession(session: Pick<WorkSession, "state" | "actor" | "harness">, viewerId: string | null | undefined, canPush: boolean): boolean {
   if (!viewerId || session.state === "ended" || session.harness === "claude_managed_agents") return false;
   return session.actor.id === viewerId || canPush;
 }
@@ -137,9 +133,7 @@ export function intentTitle(prompt: string | null | undefined): string | null {
   // What the harness pasted in or attached is not what the prompt is for:
   // pasted text (Claude Code's <pasted_content id="…">…</pasted_content>)
   // and image placeholders ([Image #1], [Image: source: …]) go first.
-  text = text
-    .replace(/<pasted_content\b[^>]*>[\s\S]*?(?:<\/pasted_content[^>]*>|$)/gi, "\n")
-    .replace(/\[Image(?: #\d+)?(?::[^\]\n]*)?\]/g, " ");
+  text = text.replace(/<pasted_content\b[^>]*>[\s\S]*?(?:<\/pasted_content[^>]*>|$)/gi, "\n").replace(/\[Image(?: #\d+)?(?::[^\]\n]*)?\]/g, " ");
   // Context an editor puts before what was typed (VS Code's
   // <ide_opened_file>, <ide_selection>) is not a turn the harness started.
   while (IDE_CONTEXT.test(text)) text = text.replace(IDE_CONTEXT, "");
@@ -152,10 +146,18 @@ export function intentTitle(prompt: string | null | undefined): string | null {
     .replace(/`([^`]*)`/g, "$1");
   const line = text
     .split(/\r?\n/)
-    .map((l) => l.replace(/^\s*(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)+/, "").replace(/(\*\*|__|~~)(.+?)\1/g, "$2").trim())
+    .map((l) =>
+      l
+        .replace(/^\s*(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)+/, "")
+        .replace(/(\*\*|__|~~)(.+?)\1/g, "$2")
+        .trim(),
+    )
     .find((l) => /[\p{L}\p{N}]/u.test(l));
   if (!line) return null;
-  let intent = line.replace(/\s+/g, " ").split(/(?<=[.!?])\s+(?=\S)/)[0].trim();
+  let intent = line
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+(?=\S)/)[0]
+    .trim();
   if (intent.length > TITLE_LIMIT) {
     const cut = intent.slice(0, TITLE_LIMIT - 1);
     const space = cut.lastIndexOf(" ");
@@ -455,7 +457,15 @@ export function feedLine(event: G1tEvent): FeedLine | null {
     }
     case "work.claim_expired": {
       const { claim } = event.data;
-      return { ...base, type: event.type, who: claim.actor.username, harness: claim.harness, text: `let the claim on #${claim.item} expire`, number: claim.item, tone: "neutral" };
+      return {
+        ...base,
+        type: event.type,
+        who: claim.actor.username,
+        harness: claim.harness,
+        text: `let the claim on #${claim.item} expire`,
+        number: claim.item,
+        tone: "neutral",
+      };
     }
     case "work.handoff_requested": {
       const { claim, to, note } = event.data;
@@ -544,7 +554,14 @@ export function feedLine(event: G1tEvent): FeedLine | null {
       const { pull, combination, check, suspects } = event.data;
       const together = combination.length > 1 ? ` combined as ${list(combination)}` : " on its own";
       const with_ = suspects.length > 0 ? `; fails with ${list(suspects)}` : "";
-      return { ...base, type: event.type, who: null, text: `#${pull} failed in the merge queue${together}: ${check.name}${with_}`, number: pull, tone: "danger" };
+      return {
+        ...base,
+        type: event.type,
+        who: null,
+        text: `#${pull} failed in the merge queue${together}: ${check.name}${with_}`,
+        number: pull,
+        tone: "danger",
+      };
     }
     case "integration.passed": {
       const { pull, combination } = event.data;
@@ -668,7 +685,10 @@ export function numberedParts(text: string): (string | number)[] {
 
 /** `blocked_by` as typed: numbers, with or without `#`, by commas or spaces; null when any is not one. */
 export function parseBlockedBy(text: string): number[] | null {
-  const words = text.split(/[\s,]+/).map((word) => word.trim().replace(/^#/, "")).filter(Boolean);
+  const words = text
+    .split(/[\s,]+/)
+    .map((word) => word.trim().replace(/^#/, ""))
+    .filter(Boolean);
   if (words.some((word) => !/^\d+$/.test(word) || Number(word) <= 0)) return null;
   return [...new Set(words.map(Number))];
 }

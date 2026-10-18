@@ -25,7 +25,15 @@ const answer = (rows) => ({ data: { viewer: { accounts: [{ rows }] } } });
 const byNamespace = DO_QUERIES.find((query) => query.key === "by_namespace").variants[1];
 
 test("the command line has defaults and bounds", () => {
-  assert.deepEqual(parseArgs([], {}), { help: false, json: false, keys: false, days: 7, samples: 10, script: "g1t-runner", account: "1e6f2cffa3f445920836e8ebe446bb58" });
+  assert.deepEqual(parseArgs([], {}), {
+    help: false,
+    json: false,
+    keys: false,
+    days: 7,
+    samples: 10,
+    script: "g1t-runner",
+    account: "1e6f2cffa3f445920836e8ebe446bb58",
+  });
   const options = parseArgs(["--days", "90", "--samples", "3", "--script", "other", "--json", "--keys"], { CLOUDFLARE_ACCOUNT_ID: "acct" });
   assert.equal(options.days, 31);
   assert.equal(options.samples, 3);
@@ -41,7 +49,10 @@ test("the window is the last N days", () => {
 
 test("the query is for one script, with the variant's sums and dimensions", () => {
   const query = doQuery(byNamespace);
-  assert.match(query, /durableObjectsInvocationsAdaptiveGroups\(limit: 10000, filter: \{ datetime_geq: \$start, datetime_leq: \$end, scriptName: \$script \}\)/);
+  assert.match(
+    query,
+    /durableObjectsInvocationsAdaptiveGroups\(limit: 10000, filter: \{ datetime_geq: \$start, datetime_leq: \$end, scriptName: \$script \}\)/,
+  );
   assert.match(query, /sum \{ requests errors \}/);
   assert.match(query, /dimensions \{ namespaceId status \}/);
   assert.match(query, /\$script: String!/);
@@ -73,7 +84,10 @@ test("Cloudflare's refusal becomes the error, so the next variant is tried", () 
 
 test("the telemetry questions filter on the script and on failures", () => {
   const questions = telemetryQuestions({ script: "g1t-runner", from: 1, to: 2, samples: 5 });
-  assert.deepEqual(questions.map((q) => q.key), ["failed_invocations", "exceptions", "error_logs", "samples"]);
+  assert.deepEqual(
+    questions.map((q) => q.key),
+    ["failed_invocations", "exceptions", "error_logs", "samples"],
+  );
   const failed = questions[0].body;
   assert.equal(failed.view, "calculations");
   assert.deepEqual(failed.timeframe, { from: 1, to: 2 });
@@ -81,7 +95,10 @@ test("the telemetry questions filter on the script and on failures", () => {
     { key: SERVICE_KEYS[0], operation: "eq", type: "string", value: "g1t-runner" },
     { key: KEYS.outcome, operation: "neq", type: "string", value: "ok" },
   ]);
-  assert.deepEqual(failed.parameters.groupBys.map((g) => g.value), [KEYS.entrypoint, KEYS.eventType, KEYS.outcome]);
+  assert.deepEqual(
+    failed.parameters.groupBys.map((g) => g.value),
+    [KEYS.entrypoint, KEYS.eventType, KEYS.outcome],
+  );
   assert.equal(questions[3].body.view, "events");
   assert.equal(questions[3].body.limit, 5);
   const other = telemetryQuestions({ script: "g1t-runner", from: 1, to: 2, samples: 5, serviceKey: "$metadata.service" });
@@ -95,9 +112,27 @@ test("a calculations answer becomes rows with counts, largest first", () => {
       calculations: [
         {
           aggregates: [
-            { groups: [{ key: KEYS.entrypoint, value: "AttemptSandbox" }, { key: KEYS.eventType, value: "rpc" }], value: 12 },
-            { groups: [{ key: KEYS.entrypoint, value: "AttemptSandbox" }, { key: KEYS.eventType, value: "alarm" }], value: 540 },
-            { groups: [{ key: KEYS.entrypoint, value: "" }, { key: KEYS.eventType, value: "alarm" }], count: 3 },
+            {
+              groups: [
+                { key: KEYS.entrypoint, value: "AttemptSandbox" },
+                { key: KEYS.eventType, value: "rpc" },
+              ],
+              value: 12,
+            },
+            {
+              groups: [
+                { key: KEYS.entrypoint, value: "AttemptSandbox" },
+                { key: KEYS.eventType, value: "alarm" },
+              ],
+              value: 540,
+            },
+            {
+              groups: [
+                { key: KEYS.entrypoint, value: "" },
+                { key: KEYS.eventType, value: "alarm" },
+              ],
+              count: 3,
+            },
           ],
         },
       ],
@@ -129,7 +164,15 @@ test("an events answer becomes plain records, the object id cut short", () => {
     },
   };
   assert.deepEqual(parseEvents(body), [
-    { at: "2026-10-07T03:04:05.000Z", entrypoint: "AttemptSandbox", event_type: "alarm", outcome: "exception", object: "0123456789ab", error: "Durable Object reset because its code was updated.", message: null },
+    {
+      at: "2026-10-07T03:04:05.000Z",
+      entrypoint: "AttemptSandbox",
+      event_type: "alarm",
+      outcome: "exception",
+      object: "0123456789ab",
+      error: "Durable Object reset because its code was updated.",
+      message: null,
+    },
     { at: null, entrypoint: null, event_type: "rpc", outcome: "canceled", object: null, error: null, message: "sandbox not started" },
   ]);
 });
@@ -184,7 +227,21 @@ test("the text report shows rates, statuses, buckets and what could not be read"
     ],
     telemetry: [
       { key: "exceptions", label: "Exceptions", rows, buckets: bucketsOf(rows, KEYS.error) },
-      { key: "samples", label: "Samples", rows: [{ at: "2026-10-07T00:00:00.000Z", entrypoint: "AttemptSandbox", event_type: "alarm", outcome: "exception", object: "abc", error: "boom", message: null }] },
+      {
+        key: "samples",
+        label: "Samples",
+        rows: [
+          {
+            at: "2026-10-07T00:00:00.000Z",
+            entrypoint: "AttemptSandbox",
+            event_type: "alarm",
+            outcome: "exception",
+            object: "abc",
+            error: "boom",
+            message: null,
+          },
+        ],
+      },
     ],
     keys: null,
     notes: ["Telemetry is filtered on $workers.scriptName."],

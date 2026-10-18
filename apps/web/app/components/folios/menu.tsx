@@ -143,7 +143,13 @@ export function FolioMenu({
         onOpenChange={setMoving}
         onMove={(spaceId, parentId) => send("move", { move: { space_id: spaceId, parent_id: parentId, before_id: null } })}
       />
-      <TemplateDialog open={templating} onOpenChange={setTemplating} title={folio.title || "Untitled"} widens={folio.general_access !== "workspace" && !(folio.space?.kind === "workspace" && folio.inherit)} onSave={(name, description) => send("save_template", { name, description })} />
+      <TemplateDialog
+        open={templating}
+        onOpenChange={setTemplating}
+        title={folio.title || "Untitled"}
+        widens={folio.general_access !== "workspace" && !(folio.space?.kind === "workspace" && folio.inherit)}
+        onSave={(name, description) => send("save_template", { name, description })}
+      />
     </>
   );
 }

@@ -57,14 +57,18 @@ const PAGES: Record<string, { title: string; about: string }> = {
     title: "Workspace",
     about: "Who is in it, what it is on, and what it has spent this month. Everything about the workspace itself is in this sidebar.",
   },
-  settings: { title: "General", about: "The workspace's name, icon, address and description, two-factor authentication, where its data lives, and deleting it." },
+  settings: {
+    title: "General",
+    about: "The workspace's name, icon, address and description, two-factor authentication, where its data lives, and deleting it.",
+  },
   people: {
     title: "People",
     about: "Everyone in the workspace, in one directory: who they are, what they own, the teams they're on and who's around.",
   },
   members: {
     title: "Members",
-    about: "Who is in the workspace and their roles. Owners invite people, manage members and owners, and see the outside collaborators; what members may do is under Permissions.",
+    about:
+      "Who is in the workspace and their roles. Owners invite people, manage members and owners, and see the outside collaborators; what members may do is under Permissions.",
   },
   "members/invitations": {
     title: "Invitations",
@@ -88,15 +92,18 @@ const PAGES: Record<string, { title: string; about: string }> = {
   },
   tokens: {
     title: "Access tokens",
-    about: "Tokens that belong to the workspace, not a person: for CI, integrations and coding agents that work for the whole team. Each has the permissions an owner gives it, in all of the workspace's repositories or the ones chosen.",
+    about:
+      "Tokens that belong to the workspace, not a person: for CI, integrations and coding agents that work for the whole team. Each has the permissions an owner gives it, in all of the workspace's repositories or the ones chosen.",
   },
   "personal-access-tokens": {
     title: "Personal access tokens",
-    about: "Which of your members' own tokens may reach the workspace and for how long, the tokens made for it that wait for an owner's approval, and every token that can reach it.",
+    about:
+      "Which of your members' own tokens may reach the workspace and for how long, the tokens made for it that wait for an owner's approval, and every token that can reach it.",
   },
   packages: {
     title: "Packages",
-    about: "What the workspace publishes and installs, beside its code: container images, npm, Composer, Go, Cargo, Maven, NuGet and RubyGems, with the same members, roles and tokens.",
+    about:
+      "What the workspace publishes and installs, beside its code: container images, npm, Composer, Go, Cargo, Maven, NuGet and RubyGems, with the same members, roles and tokens.",
   },
   work: {
     title: "Work",
@@ -135,12 +142,12 @@ const PAGES: Record<string, { title: string; about: string }> = {
   },
   security: {
     title: "Security",
-    about: "Open alerts in every project: secrets found in pushes and history, and vulnerable dependencies. Each project's Security page has the details and the security update g1t opened for each.",
+    about:
+      "Open alerts in every project: secrets found in pushes and history, and vulnerable dependencies. Each project's Security page has the details and the security update g1t opened for each.",
   },
   integrations: {
     title: "Integrations",
-    about:
-      "The tools your team works with, connected once for everyone in the workspace. Secrets are sealed when saved, and never shown again.",
+    about: "The tools your team works with, connected once for everyone in the workspace. Secrets are sealed when saved, and never shown again.",
   },
 };
 
@@ -200,9 +207,7 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
     const titled = heading && (shown != null || parts.length === 1 || key === whole);
     return (
       <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
-        {titled && (
-          <PageHeader title={heading.title} about={heading.about} />
-        )}
+        {titled && <PageHeader title={heading.title} about={heading.about} />}
         {next ? <WorkspacePageSkeleton page={next} /> : <Outlet />}
       </div>
     );
@@ -214,18 +219,14 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
         <div className="mx-auto max-w-6xl px-4 py-8">
           {welcome && (
             <div className="mb-6">
-              <WelcomeBanner title={`You're in ${workspace.name}`}>
-                You joined as a {role}. Its projects, work and people are all here.
-              </WelcomeBanner>
+              <WelcomeBanner title={`You're in ${workspace.name}`}>You joined as a {role}. Its projects, work and people are all here.</WelcomeBanner>
             </div>
           )}
           <div className="flex flex-wrap items-center gap-4">
             <Avatar name={workspace.slug} image={workspace.avatar} size={52} square />
             <div className="min-w-0 grow">
               <div className="flex flex-wrap items-center gap-2.5">
-                <h1 className="truncate text-2xl font-semibold tracking-tight">
-                  {workspace.name}
-                </h1>
+                <h1 className="truncate text-2xl font-semibold tracking-tight">{workspace.name}</h1>
                 <Badge size="md">Workspace</Badge>
                 {role && <Badge size="md">{role}</Badge>}
               </div>
@@ -243,14 +244,10 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
               </ButtonLink>
             )}
           </div>
-          {workspace.description && (
-            <p className="mt-4 max-w-2xl text-sm text-muted">{workspace.description}</p>
-          )}
+          {workspace.description && <p className="mt-4 max-w-2xl text-sm text-muted">{workspace.description}</p>}
         </div>
       </div>
-      <div className="mx-auto max-w-6xl px-4 py-8">
-        {next ? <WorkspacePageSkeleton page="overview" /> : <Outlet />}
-      </div>
+      <div className="mx-auto max-w-6xl px-4 py-8">{next ? <WorkspacePageSkeleton page="overview" /> : <Outlet />}</div>
     </>
   );
 }

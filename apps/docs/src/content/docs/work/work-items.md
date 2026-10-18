@@ -96,12 +96,12 @@ the numbers they had.
 Wherever Markdown shows, in a description, a comment, a commit message or
 chat, a reference links to what it names:
 
-| You write | It names |
-| --- | --- |
-| `#12`, in a repository | That repository's pull request #12, else the work item that was its issue #12, else the workspace's work item #12, else pull request #12 in another of the workspace's repositories, if it was opened after work items came |
-| `#12`, outside a repository | The workspace's work item #12, else its pull request #12 opened after work items came |
-| `owner/name#12` | `#12` as it reads in repository `owner/name` |
-| `workspace#12` | Work item or pull request #12 of another workspace |
+| You write                   | It names                                                                                                                                                                                                                    |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `#12`, in a repository      | That repository's pull request #12, else the work item that was its issue #12, else the workspace's work item #12, else pull request #12 in another of the workspace's repositories, if it was opened after work items came |
+| `#12`, outside a repository | The workspace's work item #12, else its pull request #12 opened after work items came                                                                                                                                       |
+| `owner/name#12`             | `#12` as it reads in repository `owner/name`                                                                                                                                                                                |
+| `workspace#12`              | Work item or pull request #12 of another workspace                                                                                                                                                                          |
 
 A pull request opened before work items is numbered in its repository
 alone, so several may share a number: only a repository's own, or
@@ -127,13 +127,13 @@ Your role on a work item is the higher of your
 [role](/guides/access-and-roles/) in the workspace and your role in its
 origin repository.
 
-| To | You need |
-| --- | --- |
-| Comment and react | To be signed in and see it |
+| To                                                                                                          | You need                                                                                                      |
+| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Comment and react                                                                                           | To be signed in and see it                                                                                    |
 | Edit its title and description, change its labels, assignees and what it is blocked by, close and reopen it | To be its owner, or the Triage role. Its owner is its author, or, for one g1t filed for someone, that person. |
-| Put it in a milestone | The Triage role |
-| Link and unlink repositories | The Triage role |
-| Make a new label as you label it | The Write role |
+| Put it in a milestone                                                                                       | The Triage role                                                                                               |
+| Link and unlink repositories                                                                                | The Triage role                                                                                               |
+| Make a new label as you label it                                                                            | The Write role                                                                                                |
 
 A work item carries at most 20 labels and 10 assignees.
 
@@ -142,11 +142,11 @@ A work item carries at most 20 labels and 10 assignees.
 A work item links any number of the workspace's repositories, each in one
 role:
 
-| Role | Means |
-| --- | --- |
-| `origin` | The repository it was filed in. A work item filed from a repository has one; one filed on **Work** itself has none. It never changes. |
-| `target` | A repository the work is meant to land in. It closes once every target has landed. |
-| `touched` | A repository where a pull request or commit for it landed or is in progress. |
+| Role      | Means                                                                                                                                 |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `origin`  | The repository it was filed in. A work item filed from a repository has one; one filed on **Work** itself has none. It never changes. |
+| `target`  | A repository the work is meant to land in. It closes once every target has landed.                                                    |
+| `touched` | A repository where a pull request or commit for it landed or is in progress.                                                          |
 
 g1t links `touched` repositories itself: when a pull request is opened
 for the work item, when a pull request or commit lands it, and when one

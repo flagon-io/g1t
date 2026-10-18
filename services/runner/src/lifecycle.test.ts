@@ -141,7 +141,10 @@ test("sandbox time billing confirms is forgotten; the rest is kept and tried aga
     now,
   );
   assert.deepEqual(sent, ["sandbox/a/1", "sandbox/b/2"]);
-  assert.deepEqual(result.recorded.map((entry) => entry.usage.reference), ["sandbox/a/1"]);
+  assert.deepEqual(
+    result.recorded.map((entry) => entry.usage.reference),
+    ["sandbox/a/1"],
+  );
   // The same usage, under the same reference: billing records it once.
   assert.deepEqual(result.kept, [{ usage: { reference: "sandbox/b/2" }, attempts: 3, since: now - 1000 }]);
   assert.deepEqual(result.lost, []);

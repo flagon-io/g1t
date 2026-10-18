@@ -89,7 +89,8 @@ export default function PullSecurity({ loaderData, actionData, params }: Route.C
         )}
         {others.length > 0 && (
           <p className="text-xs text-faint">
-            {others.length} other {others.length === 1 ? "result" : "results"}: already open on the default branch, or on lines this pull request does not change.
+            {others.length} other {others.length === 1 ? "result" : "results"}: already open on the default branch, or on lines this pull request does not
+            change.
           </p>
         )}
       </section>

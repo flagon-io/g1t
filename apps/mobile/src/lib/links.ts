@@ -175,7 +175,8 @@ export function linkPathOf(link: string): string | null {
 
 function filtersOf(query: string, names: readonly string[]): string {
   const params = new URLSearchParams(query);
-  return names.filter((name) => params.get(name))
+  return names
+    .filter((name) => params.get(name))
     .map((name) => `&${name}=${encodeURIComponent(params.get(name)!)}`)
     .join("");
 }

@@ -89,7 +89,11 @@ function blockNodes(list: Block[]): DocNode[] {
         break;
       case "table": {
         // The composer has no tables: each row comes back as the line it was written as.
-        const row = (cells: Span[][]): Span[] => [{ t: "text", v: "| " }, ...cells.flatMap((cell, at) => [...(at ? [{ t: "text" as const, v: " | " }] : []), ...cell]), { t: "text", v: " |" }];
+        const row = (cells: Span[][]): Span[] => [
+          { t: "text", v: "| " },
+          ...cells.flatMap((cell, at) => [...(at ? [{ t: "text" as const, v: " | " }] : []), ...cell]),
+          { t: "text", v: " |" },
+        ];
         const rule = block.align.map((align) => (align === "center" ? ":-:" : align === "right" ? "--:" : align === "left" ? ":--" : "---"));
         out.push(paragraph(row(block.head)), paragraph([{ t: "text", v: `| ${rule.join(" | ")} |` }]), ...block.rows.map((cells) => paragraph(row(cells))));
         break;
@@ -205,9 +209,7 @@ function inlineMarkdown(nodes: DocNode[]): string {
       continue;
     }
     if (node.type !== "text" || !node.text) continue;
-    const marks = [...(node.marks ?? [])]
-      .filter((mark) => ORDER.includes(mark.type))
-      .sort((a, b) => ORDER.indexOf(a.type) - ORDER.indexOf(b.type));
+    const marks = [...(node.marks ?? [])].filter((mark) => ORDER.includes(mark.type)).sort((a, b) => ORDER.indexOf(a.type) - ORDER.indexOf(b.type));
     // Close what this text no longer has, and everything opened after it.
     let keep = 0;
     while (keep < open.length && keep < marks.length && sameMark(open[keep]!.mark, marks[keep]!)) keep++;

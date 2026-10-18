@@ -3,8 +3,8 @@ title: Work and the merge queue
 description: How the work service keeps work items, pull requests, checks and rulesets, coordinates sessions and claims, decides and lands a merge, and tests many changes at once in the merge queue.
 ---
 
-import Aside from '../../../components/Aside.astro';
-import Diagram from '../../../components/Diagram.astro';
+import Aside from "../../../components/Aside.astro";
+import Diagram from "../../../components/Diagram.astro";
 
 `work` (`services/work`, Rust) keeps everything about a change that is not
 the code itself: work items, pull requests, comments, reviews, labels,
@@ -20,11 +20,11 @@ workspace, with no repository of their own. `work_item_repos` links each
 to any number of the workspace's repositories, one row per repository, in
 a role:
 
-| Role | Means |
-| --- | --- |
-| `origin` | The repository it was filed in, if any. For a work item that was an issue, the row keeps the old number as `legacy_number`. |
-| `target` | A repository the work is meant to land in. |
-| `touched` | A repository where a pull request or commit for it landed or is in progress, added by `work` itself. |
+| Role      | Means                                                                                                                       |
+| --------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `origin`  | The repository it was filed in, if any. For a work item that was an issue, the row keeps the old number as `legacy_number`. |
+| `target`  | A repository the work is meant to land in.                                                                                  |
+| `touched` | A repository where a pull request or commit for it landed or is in progress, added by `work` itself.                        |
 
 Each row also keeps the repository's `owner/name`, so a deleted
 repository still reads, and when it landed.
@@ -84,13 +84,13 @@ Many agents and people can work on one repository at once. `work` keeps
 what lets them see each other, around the work item, which is the unit of
 work (`services/work/src/coordination/`):
 
-| Table | Holds | Module |
-| --- | --- | --- |
-| `sessions` | One run of someone's own harness (`claude_code`, `codex`, `cursor`, `copilot` or `other`), recorded in the repository it is checked out in and attached to a work item of its workspace, a pull request and a branch | `sessions.rs` |
-| `session_entries` | What a session recorded: prompts, reasoning, tool calls, notes, each with an idempotency `key` | `sessions.rs` |
-| `claims` | An advisory, expiring "I'm working on #12" | `claims.rs` |
-| Work items' `blocked_by` | The work items that have to land first, refused if it would make a cycle | `dependencies.rs` |
-| `overlap_pairs` | Pairs of open pull requests changing the same files, announced once per pair | `overlaps.rs` |
+| Table                    | Holds                                                                                                                                                                                                                | Module            |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| `sessions`               | One run of someone's own harness (`claude_code`, `codex`, `cursor`, `copilot` or `other`), recorded in the repository it is checked out in and attached to a work item of its workspace, a pull request and a branch | `sessions.rs`     |
+| `session_entries`        | What a session recorded: prompts, reasoning, tool calls, notes, each with an idempotency `key`                                                                                                                       | `sessions.rs`     |
+| `claims`                 | An advisory, expiring "I'm working on #12"                                                                                                                                                                           | `claims.rs`       |
+| Work items' `blocked_by` | The work items that have to land first, refused if it would make a cycle                                                                                                                                             | `dependencies.rs` |
+| `overlap_pairs`          | Pairs of open pull requests changing the same files, announced once per pair                                                                                                                                         | `overlaps.rs`     |
 
 <Diagram name="coordination" />
 
@@ -130,17 +130,17 @@ Actions reports one status per run, named `<workflow> / <event>`, such as
 `CI / pull_request` (`services/actions/src/plan.rs`). A required check
 named `CI` is met by a status of that name for any event:
 `check_name` in `crates/contracts/src/work.rs` reads the name before the
-last ` / `. One that failed fails the check, even if another passed.
+last `/`. One that failed fails the check, even if another passed.
 
 ## Deciding a merge
 
 Rulesets are stored in `work`, and judged by `crates/rules`, which does no
 I/O and so can be tested in full. The same rules run in two places:
 
-| When | Who asks | What is judged |
-| --- | --- | --- |
-| A push | `repos`, before anything is stored | Which refs may move, and how: deletion, force-push, signed commits, file paths |
-| A merge | `work` | Required reviews, required checks, CODEOWNERS, up to date, the merge queue |
+| When    | Who asks                           | What is judged                                                                 |
+| ------- | ---------------------------------- | ------------------------------------------------------------------------------ |
+| A push  | `repos`, before anything is stored | Which refs may move, and how: deletion, force-push, signed commits, file paths |
+| A merge | `work`                             | Required reviews, required checks, CODEOWNERS, up to date, the merge queue     |
 
 `requirements` gathers every rule that applies to the target branch, and
 `judge` returns, for each, whether it passes, fails or is still waiting,
@@ -173,14 +173,14 @@ required checks passed (`services/work/src/queue.rs`).
    check run on its pull request, and the entries behind it are tested
    again without it.
 
-| State | Means |
-| --- | --- |
-| `waiting` | In the queue, not yet being built |
-| `testing` | Built, its checks running |
-| `passed` | Its checks passed; it lands when those ahead have |
-| `failed` | Its checks failed; it leaves the queue |
-| `landed` | On the default branch |
-| `removed` | Taken out by hand |
+| State     | Means                                             |
+| --------- | ------------------------------------------------- |
+| `waiting` | In the queue, not yet being built                 |
+| `testing` | Built, its checks running                         |
+| `passed`  | Its checks passed; it lands when those ahead have |
+| `failed`  | Its checks failed; it leaves the queue            |
+| `landed`  | On the default branch                             |
+| `removed` | Taken out by hand                                 |
 
 ### Who answers for a failure
 
@@ -193,7 +193,7 @@ entry ahead of it. `integration.rs` works out which:
   passed does the held entry answer for the failure, so a broken change is
   blamed on itself, never on what was queued behind it.
 - **Narrowed down.** An entry whose own checks pass but whose combination
-  fails breaks *with* some of the entries ahead. `work` builds the default
+  fails breaks _with_ some of the entries ahead. `work` builds the default
   branch with half of them and the entry, and halves again, within three
   extra builds (`PROBE_BUDGET`), recorded in `queue_probes`. The builds run
   on `merge_group` like any queued state and never land. What is left is
@@ -211,12 +211,9 @@ entry ahead of it. `integration.rs` works out which:
 outcomes from a person's side.
 
 <Aside title="How states are built">
-	`work` builds each candidate in the repository itself, through repos'
-	`build_queue_step`: the entry landed by its own merge method on the
-	state ahead of it, with the commits `land` would make there, pushed to
-	the attempt's `g1t-queue/` branch. Landing is then a fast-forward to
-	exactly that commit, and no sandbox is involved.
-	[The merge queue](/guides/merge-queue/) has the settings.
+  `work` builds each candidate in the repository itself, through repos' `build_queue_step`: the entry landed by its own merge method on the state ahead of it,
+  with the commits `land` would make there, pushed to the attempt's `g1t-queue/` branch. Landing is then a fast-forward to exactly that commit, and no sandbox
+  is involved. [The merge queue](/guides/merge-queue/) has the settings.
 </Aside>
 
 ## Events it publishes and reads

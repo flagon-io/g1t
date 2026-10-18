@@ -39,15 +39,15 @@ open work items for questions, exploration or trivial fixes.
    JSON object per line.
 2. **React to what arrives:**
 
-   | Event | What to do |
-   | --- | --- |
-   | `work.claimed` by someone else | Compare scopes. Proceed on complementary work; agree ownership or order for overlapping files and interfaces. |
-   | `work.handoff_requested` to you | `g1t work view N`, read the note, then claim it. |
-   | `overlap.detected` | Another open pull request changes the same files. `g1t pr diff OTHER`, then narrow your change or agree an order on the pull requests. |
-   | `dependency.changed` | Something this work item waits on changed. If `cleared`, the blockers are gone: pull the default branch and go on. If one was added, stop and say so. |
-   | `integration.failed` naming your pull request | Use the `fix-integration` skill. |
-   | `integration.passed` | Nothing to do; the change is landing. |
-   | `session.ended`, `work.claim_expired` | A collaborator stopped. If their work blocks yours, look at what they left with `g1t work view N`. |
+   | Event                                         | What to do                                                                                                                                            |
+   | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | `work.claimed` by someone else                | Compare scopes. Proceed on complementary work; agree ownership or order for overlapping files and interfaces.                                         |
+   | `work.handoff_requested` to you               | `g1t work view N`, read the note, then claim it.                                                                                                      |
+   | `overlap.detected`                            | Another open pull request changes the same files. `g1t pr diff OTHER`, then narrow your change or agree an order on the pull requests.                |
+   | `dependency.changed`                          | Something this work item waits on changed. If `cleared`, the blockers are gone: pull the default branch and go on. If one was added, stop and say so. |
+   | `integration.failed` naming your pull request | Use the `fix-integration` skill.                                                                                                                      |
+   | `integration.passed`                          | Nothing to do; the change is landing.                                                                                                                 |
+   | `session.ended`, `work.claim_expired`         | A collaborator stopped. If their work blocks yours, look at what they left with `g1t work view N`.                                                    |
 
 3. **Keep your own state true.** The session's heartbeat renews your
    claim while you work. If you change course, log why with

@@ -34,10 +34,5 @@ export function InputGroup({ className, ...props }: ComponentProps<"div">) {
 }
 
 export function InputAddon({ className, ...props }: ComponentProps<"span">) {
-  return (
-    <span
-      className={cn("flex shrink-0 items-center px-2.5 text-faint select-none", className)}
-      {...props}
-    />
-  );
+  return <span className={cn("flex shrink-0 items-center px-2.5 text-faint select-none", className)} {...props} />;
 }

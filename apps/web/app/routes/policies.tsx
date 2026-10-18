@@ -11,8 +11,7 @@ import { Card } from "../components/ui/card";
 export function meta(args: Route.MetaArgs) {
   return page(args, {
     title: "Policies · g1t",
-    description:
-      "g1t's Terms of Service, Privacy Policy, Acceptable Use Policy, refunds and subprocessors, in plain language, with every change listed.",
+    description: "g1t's Terms of Service, Privacy Policy, Acceptable Use Policy, refunds and subprocessors, in plain language, with every change listed.",
   });
 }
 
@@ -21,12 +20,7 @@ export default function Policies() {
     <TrustPage
       eyebrow="Policies"
       title="The rules we both play by"
-      lede={
-        <p>
-          What you agree to when you use g1t, and what we promise in return, written to be read. Last
-          updated {longDate(POLICIES_UPDATED)}.
-        </p>
-      }
+      lede={<p>What you agree to when you use g1t, and what we promise in return, written to be read. Last updated {longDate(POLICIES_UPDATED)}.</p>}
     >
       <PoliciesDraft />
       <ul className="grid gap-3 sm:grid-cols-2">
@@ -61,8 +55,8 @@ export default function Policies() {
       <section className="mt-14 max-w-3xl">
         <h2 className="text-xl font-semibold tracking-tight">Changes</h2>
         <p className="mt-2 text-sm text-muted">
-          g1t is young and these policies change as it does. Changes take effect when they're posted here, so check back
-          from time to time. Every change is listed below.
+          g1t is young and these policies change as it does. Changes take effect when they're posted here, so check back from time to time. Every change is
+          listed below.
         </p>
         <Card asChild tone="plain" divided className="mt-5">
           <ol>
@@ -77,8 +71,15 @@ export default function Policies() {
           </ol>
         </Card>
         <p className="mt-6 text-sm text-muted">
-          Questions about a policy: <a className="text-accent hover:underline" href={`mailto:${CONTACT.legal}`}>{CONTACT.legal}</a>.
-          About your information: <a className="text-accent hover:underline" href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a>.
+          Questions about a policy:{" "}
+          <a className="text-accent hover:underline" href={`mailto:${CONTACT.legal}`}>
+            {CONTACT.legal}
+          </a>
+          . About your information:{" "}
+          <a className="text-accent hover:underline" href={`mailto:${CONTACT.privacy}`}>
+            {CONTACT.privacy}
+          </a>
+          .
         </p>
       </section>
     </TrustPage>

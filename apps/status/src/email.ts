@@ -23,7 +23,9 @@ export const DEFAULT_FROM = "g1t status <noreply@g1t.sh>";
 /** A sender over the binding, or null when there is none. */
 export function bindingSender(binding: EmailBinding | undefined, from = DEFAULT_FROM): Sender | null {
   if (!binding || typeof binding.send !== "function") return null;
-  return { send: async ({ to, subject, text, html, headers }) => void (await binding.send({ to, from, subject, text, html, ...(headers ? { headers } : {}) })) };
+  return {
+    send: async ({ to, subject, text, html, headers }) => void (await binding.send({ to, from, subject, text, html, ...(headers ? { headers } : {}) })),
+  };
 }
 
 /** Collects mail instead of sending it: for tests and previews. */

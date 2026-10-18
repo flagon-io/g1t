@@ -168,12 +168,26 @@ export async function loadChatActivity(viewer: User, slug: string, span: Pick<Sp
 }
 
 /** Every member key the digest and chat name. */
-export function actorKeys(activity: ActivityDigest | null, chatActivity: ChatActivity | null, deploys?: { projects: { deployments: { createdBy: string }[] }[] } | null): string[] {
+export function actorKeys(
+  activity: ActivityDigest | null,
+  chatActivity: ChatActivity | null,
+  deploys?: { projects: { deployments: { createdBy: string }[] }[] } | null,
+): string[] {
   const keys = new Set<string>();
   for (const project of deploys?.projects ?? []) for (const deploy of project.deployments) keys.add(deployActorKey(deploy.createdBy) ?? "");
   for (const repo of activity?.repos ?? []) {
     for (const by of [...repo.pushes.by, ...repo.pushes.default_branch.by]) keys.add(by.actor);
-    for (const list of [repo.pulls.opened, repo.pulls.merged, repo.pulls.closed, repo.items.opened, repo.items.closed, repo.reviews, repo.comments, repo.deployments.succeeded, repo.deployments.failed]) {
+    for (const list of [
+      repo.pulls.opened,
+      repo.pulls.merged,
+      repo.pulls.closed,
+      repo.items.opened,
+      repo.items.closed,
+      repo.reviews,
+      repo.comments,
+      repo.deployments.succeeded,
+      repo.deployments.failed,
+    ]) {
       for (const entry of list) keys.add(entry.actor);
     }
     for (const release of repo.releases) keys.add(release.actor);
@@ -315,7 +329,10 @@ export async function loadDirectPushes(
       if (!log) return null;
       const pushes = log.filter(
         (event): event is G1tEvent<"git.push"> =>
-          event.type === "git.push" && (event as G1tEvent<"git.push">).data.defaultBranch && Date.parse(event.time) >= span.from && Date.parse(event.time) <= span.now,
+          event.type === "git.push" &&
+          (event as G1tEvent<"git.push">).data.defaultBranch &&
+          Date.parse(event.time) >= span.from &&
+          Date.parse(event.time) <= span.now,
       );
       if (pushes.length === 0) return { repo, pushes, history: [] as Commit[] };
       const path = { namespace: repo.namespace, name: repo.name };
@@ -334,7 +351,7 @@ export async function loadDirectPushes(
         repoId: entry.repo.id,
         repo: ref,
         push: { id: event.id, time: event.time, actor: event.actor ?? null, data: event.data },
-        actorKey: event.actor ? deployActorKey(event.actor) ?? "" : "",
+        actorKey: event.actor ? (deployActorKey(event.actor) ?? "") : "",
       });
     }
   }

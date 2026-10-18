@@ -34,7 +34,13 @@ export function pageState(state: ArrayBuffer | ArrayLike<number> | null | undefi
 }
 
 export function cleanTitle(title: unknown, max = MAX_TITLE): string {
-  return [...String(title ?? "").replace(/\s+/g, " ").trim()].slice(0, max).join("");
+  return [
+    ...String(title ?? "")
+      .replace(/\s+/g, " ")
+      .trim(),
+  ]
+    .slice(0, max)
+    .join("");
 }
 
 /** One emoji (or a few characters), or null. */
@@ -91,7 +97,10 @@ export function listLimit(limit: unknown): number {
 export type Cursor = { k: string; id: string };
 
 export function encodeCursor(cursor: Cursor): string {
-  return btoa(JSON.stringify([cursor.k, cursor.id])).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return btoa(JSON.stringify([cursor.k, cursor.id]))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
 }
 
 export function decodeCursor(value: unknown): Cursor | null {
@@ -110,7 +119,15 @@ export function slugOf(title: string, id: string): string {
   return pageSlug(title, id);
 }
 
-type TreeRow = { id: string; kind: FolioTreeNode["kind"]; parent_id: string | null; position: number; title: string; icon: string | null; inherit: number | boolean };
+type TreeRow = {
+  id: string;
+  kind: FolioTreeNode["kind"];
+  parent_id: string | null;
+  position: number;
+  title: string;
+  icon: string | null;
+  inherit: number | boolean;
+};
 
 /**
  * A sidebar tree: the rows a reader may see, each under its parent when

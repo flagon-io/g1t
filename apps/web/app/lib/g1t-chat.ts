@@ -85,10 +85,18 @@ function itemAt(path: string | null | undefined): number | null {
 }
 
 export function suggestions(page: AskPage): string[] {
-  if (page.pull) return [`Summarize pull request #${page.pull}`, `What's left before #${page.pull} can merge?`, "What changed in this pull request, file by file?", "What should I check when reviewing this?"];
+  if (page.pull)
+    return [
+      `Summarize pull request #${page.pull}`,
+      `What's left before #${page.pull} can merge?`,
+      "What changed in this pull request, file by file?",
+      "What should I check when reviewing this?",
+    ];
   const item = page.item ?? itemAt(page.path);
-  if (item) return [`Summarize work item #${item}`, `What's blocking #${item}?`, "How would you approach this work item?", "Which code does this work item touch?"];
-  if (page.repo) return [`What is ${page.repo.name} for?`, "What shipped here this week?", "What's open and needs attention?", "Where do I start reading the code?"];
+  if (item)
+    return [`Summarize work item #${item}`, `What's blocking #${item}?`, "How would you approach this work item?", "Which code does this work item touch?"];
+  if (page.repo)
+    return [`What is ${page.repo.name} for?`, "What shipped here this week?", "What's open and needs attention?", "Where do I start reading the code?"];
   return ["What shipped today?", "What needs my attention?", "Summarize what my team is working on", "How do I set up a deployment?"];
 }
 

@@ -39,14 +39,14 @@ Admins of the repository, and the workspace's
 [security managers](/guides/access-and-roles/), write advisories: **New
 advisory** under Advisories. An advisory has:
 
-| Field | What it is |
-| --- | --- |
-| Title and description | One line, and Markdown: what the vulnerability is, how it is exploited, what to do. The description is needed before publishing. |
-| Severity | Critical, high, medium or low. |
-| Affected package | How it is distributed (`npm`, `crates.io`, `Go`, `PyPI`, or how the project ships), the package, the versions affected and the versions that fix it, as ranges people write (`>= 1.2.0, < 1.4.1`). |
-| CVSS | A vector string and its score, when the maintainers scored it. |
-| CVE id | `CVE-2026-12345`, when one was issued elsewhere. |
-| Credits | Who found or fixed it: usernames or names, up to twenty. |
+| Field                 | What it is                                                                                                                                                                                         |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Title and description | One line, and Markdown: what the vulnerability is, how it is exploited, what to do. The description is needed before publishing.                                                                   |
+| Severity              | Critical, high, medium or low.                                                                                                                                                                     |
+| Affected package      | How it is distributed (`npm`, `crates.io`, `Go`, `PyPI`, or how the project ships), the package, the versions affected and the versions that fix it, as ranges people write (`>= 1.2.0, < 1.4.1`). |
+| CVSS                  | A vector string and its score, when the maintainers scored it.                                                                                                                                     |
+| CVE id                | `CVE-2026-12345`, when one was issued elsewhere.                                                                                                                                                   |
+| Credits               | Who found or fixed it: usernames or names, up to twenty.                                                                                                                                           |
 
 Every advisory has an id of the form `G1TSA-2026-h7kd-3mqw`, given when it is
 drafted; pages and the API take it, or the `adv_…` id behind it.
@@ -105,16 +105,16 @@ advisories drafted, changed, published and withdrawn are.
 
 ## API and MCP
 
-| Route | What it does | Scope |
-| --- | --- | --- |
-| `GET /repos/{owner}/{name}/security/advisories` | Lists advisories; filter with `state`. Published ones to anyone who can see the repository; every state to those who see findings. | `security:read` |
-| `POST /repos/{owner}/{name}/security/advisories` | Drafts an advisory: `title`, `severity`, and the fields above in `snake_case`. Admin, or a security manager. | `security:write` |
-| `GET /repos/{owner}/{name}/security/advisories/{id}` | One advisory, by `adv_…` or `G1TSA-…` id. | `security:read` |
-| `PATCH /repos/{owner}/{name}/security/advisories/{id}` | Changes its fields; what is left out stays. | `security:write` |
-| `POST /repos/{owner}/{name}/security/advisories/{id}/state` | `state` `published` or `withdrawn`. | `security:write` |
-| `GET /repos/{owner}/{name}/security/reports` | The reports, new ones first; filter with `state`. Those who see findings. | `security:read` |
-| `POST /repos/{owner}/{name}/security/reports` | Reports a vulnerability: `title`, `description`, optional `severity`, and `email` without a token on a public repository. | `security:write`, or none |
-| `PATCH /repos/{owner}/{name}/security/reports/{id}` | `decision` `accept` or `decline`, with an optional `note`. | `security:write` |
+| Route                                                       | What it does                                                                                                                       | Scope                     |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| `GET /repos/{owner}/{name}/security/advisories`             | Lists advisories; filter with `state`. Published ones to anyone who can see the repository; every state to those who see findings. | `security:read`           |
+| `POST /repos/{owner}/{name}/security/advisories`            | Drafts an advisory: `title`, `severity`, and the fields above in `snake_case`. Admin, or a security manager.                       | `security:write`          |
+| `GET /repos/{owner}/{name}/security/advisories/{id}`        | One advisory, by `adv_…` or `G1TSA-…` id.                                                                                          | `security:read`           |
+| `PATCH /repos/{owner}/{name}/security/advisories/{id}`      | Changes its fields; what is left out stays.                                                                                        | `security:write`          |
+| `POST /repos/{owner}/{name}/security/advisories/{id}/state` | `state` `published` or `withdrawn`.                                                                                                | `security:write`          |
+| `GET /repos/{owner}/{name}/security/reports`                | The reports, new ones first; filter with `state`. Those who see findings.                                                          | `security:read`           |
+| `POST /repos/{owner}/{name}/security/reports`               | Reports a vulnerability: `title`, `description`, optional `severity`, and `email` without a token on a public repository.          | `security:write`, or none |
+| `PATCH /repos/{owner}/{name}/security/reports/{id}`         | `decision` `accept` or `decline`, with an optional `note`.                                                                         | `security:write`          |
 
 The MCP server's `security` tool has the same as actions: `advisories`,
 `advisory`, `create_advisory`, `update_advisory`, `set_advisory_state`,

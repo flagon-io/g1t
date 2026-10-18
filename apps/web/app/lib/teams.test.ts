@@ -3,16 +3,7 @@ import { test } from "node:test";
 
 import type { ReviewAssignment } from "@g1t/contracts";
 
-import {
-  filterTeams,
-  newTeamFromForm,
-  parentChoices,
-  reviewAssignmentFromForm,
-  splitTeams,
-  teamChangesFromForm,
-  teamCounts,
-  teamPath,
-} from "./teams.ts";
+import { filterTeams, newTeamFromForm, parentChoices, reviewAssignmentFromForm, splitTeams, teamChangesFromForm, teamCounts, teamPath } from "./teams.ts";
 
 const team = (slug: string, extra: Record<string, unknown> = {}) => ({
   slug,
@@ -50,16 +41,31 @@ test("team pages live under the workspace's teams", () => {
 
 test("teams are found by every word of the search", () => {
   const teams = [team("backend", { description: "APIs and data" }), team("web"), team("platform", { description: "Shared backend tools" })];
-  assert.deepEqual(filterTeams(teams, "").map((t) => t.slug), ["backend", "web", "platform"]);
-  assert.deepEqual(filterTeams(teams, "BACKEND").map((t) => t.slug), ["backend", "platform"]);
-  assert.deepEqual(filterTeams(teams, "backend tools").map((t) => t.slug), ["platform"]);
+  assert.deepEqual(
+    filterTeams(teams, "").map((t) => t.slug),
+    ["backend", "web", "platform"],
+  );
+  assert.deepEqual(
+    filterTeams(teams, "BACKEND").map((t) => t.slug),
+    ["backend", "platform"],
+  );
+  assert.deepEqual(
+    filterTeams(teams, "backend tools").map((t) => t.slug),
+    ["platform"],
+  );
   assert.deepEqual(filterTeams(teams, "nothing"), []);
 });
 
 test("your teams come first", () => {
   const { mine, others } = splitTeams([team("a"), team("b", { viewer_role: "member" }), team("c", { viewer_role: "maintainer" })]);
-  assert.deepEqual(mine.map((t) => t.slug), ["b", "c"]);
-  assert.deepEqual(others.map((t) => t.slug), ["a"]);
+  assert.deepEqual(
+    mine.map((t) => t.slug),
+    ["b", "c"],
+  );
+  assert.deepEqual(
+    others.map((t) => t.slug),
+    ["a"],
+  );
 });
 
 test("a team can go under any visible team but itself and those below it", () => {
@@ -70,9 +76,18 @@ test("a team can go under any visible team but itself and those below it", () =>
     team("web", { parent: { slug: "eng", name: "Eng" } }),
     team("secret", { visibility: "secret" }),
   ];
-  assert.deepEqual(parentChoices(teams, "backend").map((t) => t.slug), ["eng", "web"]);
-  assert.deepEqual(parentChoices(teams, "eng").map((t) => t.slug), []);
-  assert.deepEqual(parentChoices(teams, null).map((t) => t.slug), ["eng", "backend", "api", "web"]);
+  assert.deepEqual(
+    parentChoices(teams, "backend").map((t) => t.slug),
+    ["eng", "web"],
+  );
+  assert.deepEqual(
+    parentChoices(teams, "eng").map((t) => t.slug),
+    [],
+  );
+  assert.deepEqual(
+    parentChoices(teams, null).map((t) => t.slug),
+    ["eng", "backend", "api", "web"],
+  );
 });
 
 test("a new team reads its form", () => {

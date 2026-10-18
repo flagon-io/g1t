@@ -131,9 +131,9 @@ for [container images](/guides/containers/#storage-and-pull-limits).
 
 ## Errors
 
-| Error | Means |
-| --- | --- |
-| `E401` | No token, or a wrong or expired one. Check `.npmrc` and `npm whoami`. |
+| Error  | Means                                                                                                                         |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `E401` | No token, or a wrong or expired one. Check `.npmrc` and `npm whoami`.                                                         |
 | `E403` | Signed in, but your role or your token's scopes do not allow it, or the version is already published. The message says which. |
-| `E404` | No such package, or one you cannot see. A private package needs a token in `.npmrc`. |
-| `E413` | The publish is over 100 MB. Leave build output and fixtures out with `files` in `package.json` or `.npmignore`. |
+| `E404` | No such package, or one you cannot see. A private package needs a token in `.npmrc`.                                          |
+| `E413` | The publish is over 100 MB. Leave build output and fixtures out with `files` in `package.json` or `.npmignore`.               |

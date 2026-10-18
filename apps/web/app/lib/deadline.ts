@@ -69,12 +69,7 @@ export class DeadlineExceeded extends Error {
  * too; `outer`, when given, aborts it sooner. Whatever `run` reads must be
  * read inside it: the deadline ends when it returns.
  */
-export async function withDeadline<T>(
-  what: string,
-  ms: number,
-  run: (signal: AbortSignal) => Promise<T>,
-  outer?: AbortSignal | null,
-): Promise<T> {
+export async function withDeadline<T>(what: string, ms: number, run: (signal: AbortSignal) => Promise<T>, outer?: AbortSignal | null): Promise<T> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const expired = new Promise<never>((_, reject) => {

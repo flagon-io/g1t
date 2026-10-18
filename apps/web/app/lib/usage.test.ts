@@ -2,7 +2,20 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { money } from "./money.ts";
-import { byProject, columns, defaultGrain, isStaff, monthSpan, pendingSentence, productStyle, quantity, receipt, resolveRange, ticks, usageCsv } from "./usage.ts";
+import {
+  byProject,
+  columns,
+  defaultGrain,
+  isStaff,
+  monthSpan,
+  pendingSentence,
+  productStyle,
+  quantity,
+  receipt,
+  resolveRange,
+  ticks,
+  usageCsv,
+} from "./usage.ts";
 
 const axisMoney = (micros: number) => money(micros, { compact: true });
 
@@ -28,14 +41,23 @@ test("columns cover every day, stack products, and add up when cumulative", () =
     { day: "2026-10-03", product: "deployments", micros: 1_000_000 },
   ];
   const daily = columns(days, "2026-10-01", "2026-10-03");
-  assert.deepEqual(daily.map((c) => c.total), [2_500_000, 0, 1_000_000]);
+  assert.deepEqual(
+    daily.map((c) => c.total),
+    [2_500_000, 0, 1_000_000],
+  );
   assert.equal(daily[0]!.parts.sandboxes, 500_000);
   const running = columns(days, "2026-10-01", "2026-10-03", "day", true);
-  assert.deepEqual(running.map((c) => c.total), [2_500_000, 2_500_000, 3_500_000]);
+  assert.deepEqual(
+    running.map((c) => c.total),
+    [2_500_000, 2_500_000, 3_500_000],
+  );
   assert.equal(running[2]!.parts.deployments, 3_000_000);
   // Weeks start on Monday: Oct 1 2026 is a Thursday.
   const weekly = columns(days, "2026-10-01", "2026-10-08", "week");
-  assert.deepEqual(weekly.map((c) => c.key), ["2026-09-28", "2026-10-05"]);
+  assert.deepEqual(
+    weekly.map((c) => c.key),
+    ["2026-09-28", "2026-10-05"],
+  );
   assert.equal(weekly[0]!.total, 3_500_000);
   assert.equal(columns(days, "2026-09-15", "2026-10-03", "month").length, 2);
   assert.equal(defaultGrain("2026-10-01", "2026-10-31"), "day");
@@ -69,25 +91,62 @@ test("the receipt shows usage at price, then what paid, then what is charged", (
     { priceMicros: 3_320_000, discountMicros: 3_320_000, includedMicros: 0, creditsMicros: 0, chargedMicros: 0, pendingMicros: 0, costMicros: 0 },
     100,
   );
-  assert.deepEqual(lines.map((l) => l.label), ["Usage at price", "Discount (100%)", "Charged"]);
+  assert.deepEqual(
+    lines.map((l) => l.label),
+    ["Usage at price", "Discount (100%)", "Charged"],
+  );
 });
 
 test("grouping by project adds a project's meters together", () => {
   const meter = (label: string, parts: [string, number][]) => ({
-    key: label, label, product: "deployments", unit: "entries", quantity: 0, micros: 0, daily: [],
+    key: label,
+    label,
+    product: "deployments",
+    unit: "entries",
+    quantity: 0,
+    micros: 0,
+    daily: [],
     byProject: parts.map(([project, micros]) => ({ project, micros, quantity: 0 })),
   });
   const rows = byProject({
-    products: [{ key: "deployments", label: "Deployments", micros: 0, meters: [meter("Requests", [["acme/web", 300], ["acme/api", 500]]), meter("Domains", [["acme/web", 400]])] }],
+    products: [
+      {
+        key: "deployments",
+        label: "Deployments",
+        micros: 0,
+        meters: [
+          meter("Requests", [
+            ["acme/web", 300],
+            ["acme/api", 500],
+          ]),
+          meter("Domains", [["acme/web", 400]]),
+        ],
+      },
+    ],
   });
-  assert.deepEqual(rows.map((r) => [r.project, r.micros]), [["acme/web", 700], ["acme/api", 500]]);
+  assert.deepEqual(
+    rows.map((r) => [r.project, r.micros]),
+    [
+      ["acme/web", 700],
+      ["acme/api", 500],
+    ],
+  );
 });
 
 test("the CSV has a row per day and meter with anything on it", () => {
   const csv = usageCsv({
     from: "2026-10-01",
     until: "2026-10-02",
-    products: [{ key: "sandboxes", label: "Sandboxes", micros: 0, meters: [{ key: "sandbox_time", label: "Sandbox time", product: "sandboxes", unit: "seconds", quantity: 0, micros: 0, daily: [0, 1_500_000], byProject: [] }] }],
+    products: [
+      {
+        key: "sandboxes",
+        label: "Sandboxes",
+        micros: 0,
+        meters: [
+          { key: "sandbox_time", label: "Sandbox time", product: "sandboxes", unit: "seconds", quantity: 0, micros: 0, daily: [0, 1_500_000], byProject: [] },
+        ],
+      },
+    ],
   });
   assert.equal(csv, "day,product,meter,usd\n2026-10-02,Sandboxes,Sandbox time,1.500000\n");
 });

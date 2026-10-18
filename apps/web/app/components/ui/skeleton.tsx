@@ -13,13 +13,7 @@ import { cn } from "../../lib/cn";
 
 /** One block. Size it with classes: `h-3 w-24`, `size-8 rounded-full`. */
 export function Skeleton({ className, ...props }: ComponentProps<"span">) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn("block rounded bg-raised motion-safe:animate-pulse", className)}
-      {...props}
-    />
-  );
+  return <span aria-hidden="true" className={cn("block rounded bg-raised motion-safe:animate-pulse", className)} {...props} />;
 }
 
 /**
@@ -38,12 +32,7 @@ export function SkeletonLine({ className, barClassName, width }: { className?: s
  * A region whose content is on its way: busy for assistive technology,
  * with "Loading…" said once. The skeleton inside is hidden from them.
  */
-export function Loading({
-  label = "Loading…",
-  className,
-  children,
-  ...props
-}: { label?: string; children: ReactNode } & ComponentProps<"div">) {
+export function Loading({ label = "Loading…", className, children, ...props }: { label?: string; children: ReactNode } & ComponentProps<"div">) {
   return (
     <div aria-busy="true" className={className} {...props}>
       <span role="status" className="sr-only">

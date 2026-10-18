@@ -23,11 +23,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const form = await request.formData();
   switch (form.get("intent")) {
     case "add-key": {
-      const result = await identity.addSshKey(
-        user,
-        String(form.get("title") ?? ""),
-        String(form.get("key") ?? ""),
-      );
+      const result = await identity.addSshKey(user, String(form.get("title") ?? ""), String(form.get("key") ?? ""));
       return result.ok ? null : { keyError: result.error.message };
     }
     case "delete-key":
@@ -43,8 +39,8 @@ export default function SshKeySettings({ loaderData, actionData }: Route.Compone
     <section id="ssh-keys" className="scroll-mt-20">
       <Card asChild tone="plain" radius="lg" className="mb-4 border-dashed p-3 text-xs text-muted">
         <p>
-          Git over SSH is not on yet: it is waiting on inbound TCP on Cloudflare, which g1t has applied for. Keys you
-          add now will work as soon as it is. Until then, clone and push over HTTPS with an{" "}
+          Git over SSH is not on yet: it is waiting on inbound TCP on Cloudflare, which g1t has applied for. Keys you add now will work as soon as it is. Until
+          then, clone and push over HTTPS with an{" "}
           <Link to="/settings/tokens" className="text-fg underline underline-offset-4">
             access token
           </Link>

@@ -4,15 +4,7 @@
  * where old Security links go now, and trends scaled for drawing. Pure, so
  * it is tested on its own (security-suite.test.ts).
  */
-import type {
-  AlertState,
-  CodeAlert,
-  SecretFinding,
-  Severity,
-  SeverityCounts,
-  TrendPoint,
-  Vulnerability,
-} from "@g1t/contracts";
+import type { AlertState, CodeAlert, SecretFinding, Severity, SeverityCounts, TrendPoint, Vulnerability } from "@g1t/contracts";
 
 const STATES: AlertState[] = ["open", "dismissed", "fixed"];
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "unknown"];
@@ -70,11 +62,7 @@ export function codeFilters(search: URLSearchParams): CodeFilters {
 }
 
 export function keepCode(alert: CodeAlert, filters: CodeFilters): boolean {
-  return (
-    alert.state === filters.state &&
-    (!filters.severity || alert.severity === filters.severity) &&
-    (!filters.tool || alert.tool === filters.tool)
-  );
+  return alert.state === filters.state && (!filters.severity || alert.severity === filters.severity) && (!filters.tool || alert.tool === filters.tool);
 }
 
 /** How many alerts of each state, for the filter's counts. */

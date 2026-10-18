@@ -54,16 +54,16 @@ export function DesktopSettingsDialog({
 }) {
   const [view, setView] = useState<DesktopSettingsView | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const fail = useCallback((reason: unknown) => setError(reason instanceof Error ? reason.message : typeof reason === "string" ? reason : "That could not be changed."), []);
+  const fail = useCallback(
+    (reason: unknown) => setError(reason instanceof Error ? reason.message : typeof reason === "string" ? reason : "That could not be changed."),
+    [],
+  );
 
   // The settings as the app has them, each time it opens.
   useEffect(() => {
     if (!open) return;
     setError(null);
-    desktopSettings()
-      ?.get()
-      .then(setView)
-      .catch(fail);
+    desktopSettings()?.get().then(setView).catch(fail);
   }, [open, fail]);
 
   /** One change, shown at once and kept over the app's settings as they are now. */
@@ -111,7 +111,9 @@ export function DesktopSettingsDialog({
           ))}
         </nav>
         <div className="@container min-w-0 grow overflow-y-auto overscroll-contain p-6 pr-12">
-          <DialogDescription className="sr-only">For the desktop app on this computer. Your account&apos;s settings, notifications included, are on g1t itself.</DialogDescription>
+          <DialogDescription className="sr-only">
+            For the desktop app on this computer. Your account&apos;s settings, notifications included, are on g1t itself.
+          </DialogDescription>
           <h3 className="mb-4 text-base font-semibold tracking-tight">{SECTIONS.find((item) => item.id === section)?.label}</h3>
           {view ? (
             <div className="space-y-2">
@@ -257,7 +259,11 @@ function RunnerSection({ view, runner, change, fail }: { view: DesktopSettingsVi
         }
       >
         <span className={note.warn ? "text-warn" : undefined}>{note.text}</span>
-        {outside && <span className="mt-1 block text-fg-soft">Jobs outside the sandbox can reach your files, so that is chosen in the Runner window, which has opened.</span>}
+        {outside && (
+          <span className="mt-1 block text-fg-soft">
+            Jobs outside the sandbox can reach your files, so that is chosen in the Runner window, which has opened.
+          </span>
+        )}
       </SettingCard>
       <SettingCard
         id={workspaceId}
@@ -374,7 +380,11 @@ type Checking = { checking: boolean; said: string | null; look: () => void };
  * so a check carries on while another section is shown. `check` changes
  * each time the app asks for one ("Check for updates…" in a menu).
  */
-function useChecking(view: DesktopSettingsView | null, setView: (update: (view: DesktopSettingsView | null) => DesktopSettingsView | null) => void, check: number): Checking {
+function useChecking(
+  view: DesktopSettingsView | null,
+  setView: (update: (view: DesktopSettingsView | null) => DesktopSettingsView | null) => void,
+  check: number,
+): Checking {
   const [checking, setChecking] = useState(false);
   const [said, setSaid] = useState<string | null>(null);
   const handled = useRef(0);

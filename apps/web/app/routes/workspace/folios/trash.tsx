@@ -7,7 +7,16 @@ import type { Route } from "./+types/trash";
 import { useFoliosAction } from "../../../components/folios/actions";
 import { KindIcon } from "../../../components/folios/kinds";
 import { EmptyState, ErrorText, TimeAgo } from "../../../components/ui";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../../../components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../../components/ui/alert-dialog";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
 import { canDo } from "../../../lib/folios";
@@ -77,7 +86,14 @@ export default function FoliosTrash({ loaderData, params }: Route.ComponentProps
                       {f.space?.name ?? "Private"} · trashed {f.trashed_at ? <TimeAgo at={f.trashed_at} /> : null}
                     </span>
                   </span>
-                  <Button type="button" disabled={busy} onClick={() => send("restore", { folio_id: f.id })} variant="outline" size="sm" className="text-xs text-fg hover:bg-raised font-normal">
+                  <Button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => send("restore", { folio_id: f.id })}
+                    variant="outline"
+                    size="sm"
+                    className="text-xs text-fg hover:bg-raised font-normal"
+                  >
                     <RotateCcw size={13} /> Restore
                   </Button>
                   {canDo(f.viewer_role, "manage") && (
@@ -115,7 +131,8 @@ export default function FoliosTrash({ loaderData, params }: Route.ComponentProps
           <AlertDialogHeader>
             <AlertDialogTitle>Empty the trash?</AlertDialogTitle>
             <AlertDialogDescription>
-              {count(deletable.length)} you have full access to {deletable.length === 1 ? "goes" : "go"} for good, with {deletable.length === 1 ? "its" : "their"} history, comments and everything inside.
+              {count(deletable.length)} you have full access to {deletable.length === 1 ? "goes" : "go"} for good, with{" "}
+              {deletable.length === 1 ? "its" : "their"} history, comments and everything inside.
               {kept > 0 ? ` The ${count(kept)} you can only edit ${kept === 1 ? "stays" : "stay"}.` : ""} This can&apos;t be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>

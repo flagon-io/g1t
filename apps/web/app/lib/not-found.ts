@@ -12,8 +12,24 @@ const KINDS: readonly MissingKind[] = ["project", "item", "pull", "workspace", "
 
 /** Names that are pages of g1t itself, never a workspace. */
 const RESERVED = new Set([
-  "settings", "explore", "search", "new", "u", "pricing", "avatars", "workspaces", "login", "logout",
-  "register", "verify", "confirm-email", "forgot", "reset", "device", "oauth", "invite",
+  "settings",
+  "explore",
+  "search",
+  "new",
+  "u",
+  "pricing",
+  "avatars",
+  "workspaces",
+  "login",
+  "logout",
+  "register",
+  "verify",
+  "confirm-email",
+  "forgot",
+  "reset",
+  "device",
+  "oauth",
+  "invite",
 ]);
 
 /**

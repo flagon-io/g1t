@@ -72,7 +72,12 @@ test("the records Cloudflare asks for are listed", () => {
     hostname: "a.com",
     status: "pending",
     ownership_verification: { type: "txt", name: "_cf-custom-hostname.a.com", value: "abc" },
-    ssl: { validation_records: [{ txt_name: "_acme-challenge.a.com", txt_value: "xyz" }, { http_url: "http://a.com/.well-known/x", http_body: "b" }] },
+    ssl: {
+      validation_records: [
+        { txt_name: "_acme-challenge.a.com", txt_value: "xyz" },
+        { http_url: "http://a.com/.well-known/x", http_body: "b" },
+      ],
+    },
   });
   assert.deepEqual(
     records.map((r) => `${r.type} ${r.name} ${r.value}`),

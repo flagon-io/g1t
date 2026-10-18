@@ -106,9 +106,7 @@ export function CodeownersReportPanel({ report, base, branch }: { report: Codeow
   if (!report) {
     return (
       <Card asChild className="p-4 text-sm text-muted">
-        <p>
-          The CODEOWNERS file could not be read just now. Reload the page to try again.
-        </p>
+        <p>The CODEOWNERS file could not be read just now. Reload the page to try again.</p>
       </Card>
     );
   }
@@ -116,9 +114,7 @@ export function CodeownersReportPanel({ report, base, branch }: { report: Codeow
     return (
       <Card tone="plain" className="border-dashed p-4 text-sm">
         <p className="font-medium">No CODEOWNERS file</p>
-        <p className="mt-1 text-muted">
-          g1t looks on {branch} for the first of these, and asks the owners it names to review changes to their files:
-        </p>
+        <p className="mt-1 text-muted">g1t looks on {branch} for the first of these, and asks the owners it names to review changes to their files:</p>
         <ul className="mt-2 flex flex-wrap gap-1.5">
           {CODEOWNERS_LOCATIONS.map((location) => (
             <li key={location}>
@@ -139,18 +135,13 @@ export function CodeownersReportPanel({ report, base, branch }: { report: Codeow
   return (
     <Card tone="plain" className="overflow-hidden">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-surface px-4 py-3 text-sm">
-        {errors > 0 ? (
-          <FileWarning size={16} className="shrink-0 text-danger" />
-        ) : (
-          <ShieldCheck size={16} className="shrink-0 text-success" />
-        )}
+        {errors > 0 ? <FileWarning size={16} className="shrink-0 text-danger" /> : <ShieldCheck size={16} className="shrink-0 text-success" />}
         <Link to={blobHref(base, branch, path)} className="font-mono text-sm hover:text-accent hover:underline">
           {path}
         </Link>
         <span className="text-xs text-muted">
           {report.rules === 1 ? "1 rule" : `${report.rules} rules`}
-          {report.sections.length > 0 &&
-            ` · ${report.sections.length === 1 ? "1 section" : `${report.sections.length} sections`}`}
+          {report.sections.length > 0 && ` · ${report.sections.length === 1 ? "1 section" : `${report.sections.length} sections`}`}
         </span>
         <span className={`ml-auto text-xs ${errors > 0 ? "text-danger" : "text-muted"}`}>
           {errors === 0 ? "No errors" : errors === 1 ? "1 error" : `${errors} errors`}
@@ -251,11 +242,7 @@ function ReviewStatus({ review, required }: { review: OwnerReview; required: boo
     );
   }
   if (!required) {
-    return (
-      <span className="text-xs text-faint">
-        {review.approved_by.length > 0 ? `Approved by ${names(review.approved_by)}` : "No approval yet"}
-      </span>
-    );
+    return <span className="text-xs text-faint">{review.approved_by.length > 0 ? `Approved by ${names(review.approved_by)}` : "No approval yet"}</span>;
   }
   const more = Math.max(review.required - review.approved_by.length, 1);
   return (
@@ -302,11 +289,7 @@ function OwnerReviewRow({
       </div>
       <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted">
         <span>Owners</span>
-        {review.owners.length === 0 ? (
-          <span className="text-faint">none</span>
-        ) : (
-          review.owners.map((owner) => <OwnerLink key={owner} owner={owner} />)
-        )}
+        {review.owners.length === 0 ? <span className="text-faint">none</span> : review.owners.map((owner) => <OwnerLink key={owner} owner={owner} />)}
       </p>
       {many ? (
         <details className="mt-1">

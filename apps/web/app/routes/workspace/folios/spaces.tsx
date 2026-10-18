@@ -7,7 +7,16 @@ import type { Route } from "./+types/spaces";
 import { useFoliosAction, useFoliosData } from "../../../components/folios/actions";
 import { SpaceIcon, spaceKindLabel } from "../../../components/folios/parts";
 import { EmptyState, ErrorText, TimeAgo } from "../../../components/ui";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../../../components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../../components/ui/alert-dialog";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
 import { canDo, spacePath } from "../../../lib/folios";
@@ -86,7 +95,14 @@ export default function BrowseSpaces({ loaderData, params }: Route.ComponentProp
                       </span>
                     </span>
                     {joinable ? (
-                      <Button type="button" size="sm" variant={joined ? "outline" : "accent"} disabled={busy} onClick={() => send(joined ? "leave_space" : "join_space", { space_id: s.id })} className="shrink-0">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={joined ? "outline" : "accent"}
+                        disabled={busy}
+                        onClick={() => send(joined ? "leave_space" : "join_space", { space_id: s.id })}
+                        className="shrink-0"
+                      >
                         {joined ? "Leave" : "Join"}
                       </Button>
                     ) : (
@@ -106,7 +122,9 @@ export default function BrowseSpaces({ loaderData, params }: Route.ComponentProp
           <h2 className="flex items-center gap-2 text-sm font-semibold">
             <Archive size={14} className="text-faint" /> Archived
           </h2>
-          <p className="mt-1 mb-4 text-xs leading-relaxed text-faint">Out of the sidebar and search, with everything in them kept. Bring one back, or delete it: its artifacts go to the trash.</p>
+          <p className="mt-1 mb-4 text-xs leading-relaxed text-faint">
+            Out of the sidebar and search, with everything in them kept. Bring one back, or delete it: its artifacts go to the trash.
+          </p>
           <Card asChild divided className="overflow-hidden">
             <ul>
               {archived.map((s) => {
@@ -124,10 +142,24 @@ export default function BrowseSpaces({ loaderData, params }: Route.ComponentProp
                     </span>
                     {manages && (
                       <>
-                        <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => send("update_space", { space_id: s.id, space_change: { archived: false } })} className="shrink-0 text-xs font-normal">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => send("update_space", { space_id: s.id, space_change: { archived: false } })}
+                          className="shrink-0 text-xs font-normal"
+                        >
                           <RotateCcw size={13} /> Restore
                         </Button>
-                        <Button type="button" size="sm" variant="destructive" disabled={busy} onClick={() => setDeleting(s)} className="shrink-0 text-xs font-normal">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="destructive"
+                          disabled={busy}
+                          onClick={() => setDeleting(s)}
+                          className="shrink-0 text-xs font-normal"
+                        >
                           <Trash2 size={13} /> <span className="max-sm:hidden">Delete</span>
                         </Button>
                       </>
@@ -144,7 +176,8 @@ export default function BrowseSpaces({ loaderData, params }: Route.ComponentProp
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {deleting?.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              Everything in it goes to the trash, where anyone who could edit it can restore it for 30 days. The space itself, its members and settings are gone for good.
+              Everything in it goes to the trash, where anyone who could edit it can restore it for 30 days. The space itself, its members and settings are gone
+              for good.
               {deleting?.is_default ? " The workspace will have no General space; none takes its place." : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>

@@ -277,7 +277,15 @@ function points(m: MetricJson, origin: TelemetryOrigin): MetricPoint[] {
   const empty = { count: null, sum: null, min: null, max: null, bounds: null, counts: null, quantiles: null };
   const number = (p: NumberPointJson) => (p.asDouble !== undefined ? Number(p.asDouble) : p.asInt !== undefined ? Number(p.asInt) : null);
   if (m.gauge) {
-    return (m.gauge.dataPoints ?? []).map((p) => ({ ...base, ...empty, kind: "gauge", time_us: at(p), value: number(p), monotonic: false, attributes: attributes(p.attributes) }));
+    return (m.gauge.dataPoints ?? []).map((p) => ({
+      ...base,
+      ...empty,
+      kind: "gauge",
+      time_us: at(p),
+      value: number(p),
+      monotonic: false,
+      attributes: attributes(p.attributes),
+    }));
   }
   if (m.sum) {
     // A delta sum is the amount in its interval; a cumulative one, the

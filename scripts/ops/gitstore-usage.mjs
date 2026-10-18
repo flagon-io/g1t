@@ -44,10 +44,7 @@ if (hoursOf && !/^\d{4}-\d{2}-\d{2}$/.test(hoursOf)) {
 
 const auth = cloudflareAuth();
 if (!auth) {
-  console.error(
-    "Set CLOUDFLARE_API_TOKEN to a token with Account Analytics: Read on account " + ACCOUNT_ID +
-      ", or CLOUDFLARE_API_KEY and CLOUDFLARE_EMAIL.",
-  );
+  console.error("Set CLOUDFLARE_API_TOKEN to a token with Account Analytics: Read on account " + ACCOUNT_ID + ", or CLOUDFLARE_API_KEY and CLOUDFLARE_EMAIL.");
   process.exit(2);
 }
 
@@ -118,7 +115,14 @@ async function hourly(dayText) {
     cfTotal += cfOps;
     ourTotal += mine;
     console.log(
-      [h + "  ", ...types.map((t) => pad(cf[t] ?? 0, 9)), pad(cfOps, 8), pad(mine, 8), pad(mine ? (cfOps / mine).toFixed(2) : "n/a", 6), pad(cf.errors ?? 0, 10)].join(" "),
+      [
+        h + "  ",
+        ...types.map((t) => pad(cf[t] ?? 0, 9)),
+        pad(cfOps, 8),
+        pad(mine, 8),
+        pad(mine ? (cfOps / mine).toFixed(2) : "n/a", 6),
+        pad(cf.errors ?? 0, 10),
+      ].join(" "),
     );
   }
   console.log(`\nday   cf.ops ${cfTotal}, g1t.ops ${ourTotal}${ourTotal ? `, ratio ${(cfTotal / ourTotal).toFixed(2)}` : ""}`);
@@ -133,7 +137,10 @@ async function hourly(dayText) {
   console.log("\nErrors by message:");
   for (const [message, count] of Object.entries(messages).sort((a, b) => b[1] - a[1])) console.log(`  ${pad(count, 6)}  ${message}`);
   console.log("Errors by repository (top 8):");
-  for (const [name, count] of Object.entries(repositories).sort((a, b) => b[1] - a[1]).slice(0, 8)) console.log(`  ${pad(count, 6)}  ${name}`);
+  for (const [name, count] of Object.entries(repositories)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8))
+    console.log(`  ${pad(count, 6)}  ${name}`);
   console.log(
     "\ng1t.ops is what workspaces are counted for (billable meters only; nightly backups are g1t's own and not in it). An hour can straddle the two sides of a write by a few seconds.",
   );
@@ -249,17 +256,27 @@ async function main() {
   const opsByDay = Object.fromEntries(mine.operations.map((row) => [row.day, Number(row.operations)]));
   const lined = candidates(cfTotals, meterTotals);
   if (asJson) {
-    console.log(JSON.stringify({ from: day(start), to: day(end), cloudflare: events, meters: mine.meters, git_operations: mine.operations, mapping: mine.mapping, candidates: lined }, null, 2));
+    console.log(
+      JSON.stringify(
+        { from: day(start), to: day(end), cloudflare: events, meters: mine.meters, git_operations: mine.operations, mapping: mine.mapping, candidates: lined },
+        null,
+        2,
+      ),
+    );
     return;
   }
   console.log(`Artifacts usage ${day(start)} to ${day(end)}${NAMESPACE ? ` (namespace ${NAMESPACE})` : ""}\n`);
   const types = ["pull", "push", "create", "fork", "delete"];
-  console.log(["day       ", ...types.map((t) => pad(`cf.${t}`, 10)), pad("cf.errors", 10), pad("g1t.fetch", 10), pad("g1t.push", 10), pad("g1t.ops", 10)].join(" "));
+  console.log(
+    ["day       ", ...types.map((t) => pad(`cf.${t}`, 10)), pad("cf.errors", 10), pad("g1t.fetch", 10), pad("g1t.push", 10), pad("g1t.ops", 10)].join(" "),
+  );
   const allDays = [...new Set([...Object.keys(cfByDay), ...Object.keys(meterByDay), ...Object.keys(opsByDay)])].sort();
   for (const d of allDays) {
     const cf = cfByDay[d] ?? {};
     const m = meterByDay[d] ?? {};
-    const errors = Object.entries(cf).filter(([key]) => key.startsWith("error:")).reduce((total, [, n]) => total + n, 0);
+    const errors = Object.entries(cf)
+      .filter(([key]) => key.startsWith("error:"))
+      .reduce((total, [, n]) => total + n, 0);
     console.log(
       [
         d,
@@ -275,7 +292,9 @@ async function main() {
   console.log("g1t meter totals: ", JSON.stringify(meterTotals));
   console.log("\nWhich g1t meters line up with each Cloudflare event (ratio = Cloudflare / g1t; 1.00 is a match):");
   for (const row of lined) {
-    console.log(`  ${row.type.padEnd(7)} ${pad(row.cloudflare, 8)}  vs ${pad(row.g1t, 8)}  ${row.ratio == null ? "  n/a" : row.ratio.toFixed(2).padStart(5)}  ${row.meters}`);
+    console.log(
+      `  ${row.type.padEnd(7)} ${pad(row.cloudflare, 8)}  vs ${pad(row.g1t, 8)}  ${row.ratio == null ? "  n/a" : row.ratio.toFixed(2).padStart(5)}  ${row.meters}`,
+    );
   }
   console.log("\nNow counting as operations (operation_mapping):");
   for (const row of mine.mapping) console.log(`  ${row.meter.padEnd(28)} cost ${row.cost_operations}  billable ${row.billable_operations}`);

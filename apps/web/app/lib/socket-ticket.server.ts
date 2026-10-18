@@ -32,7 +32,11 @@ export function ticketSecret(): string {
  * for a path that is not one of the site's sockets, or not the viewer's
  * workspace's.
  */
-export async function socketTicketFor(context: Parameters<typeof getViewer>[0], request: Request, path: string): Promise<{ ticket: string; expires_at: string } | null> {
+export async function socketTicketFor(
+  context: Parameters<typeof getViewer>[0],
+  request: Request,
+  path: string,
+): Promise<{ ticket: string; expires_at: string } | null> {
   const viewer = getViewer(context);
   const token = bearerToken(request);
   if (!viewer || !token || !viewer.token) return null;

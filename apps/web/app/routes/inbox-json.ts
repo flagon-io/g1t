@@ -29,9 +29,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const tab = inboxTab(url.searchParams.get("tab"));
   const [page, counts] = await Promise.all([
-    url.searchParams.get("only") === "counts"
-      ? null
-      : inbox.list(user, { severity: severityOf(tab), limit: PANEL_ITEMS }).catch(() => null),
+    url.searchParams.get("only") === "counts" ? null : inbox.list(user, { severity: severityOf(tab), limit: PANEL_ITEMS }).catch(() => null),
     inbox.counts(user.username).catch(() => null),
   ]);
   const data: InboxPanelData = { tab, items: page?.items ?? null, counts };

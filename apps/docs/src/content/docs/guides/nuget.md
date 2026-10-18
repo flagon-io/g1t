@@ -178,10 +178,10 @@ packages) can delete a version there for good.
 A package linked to a repository has the repository's visibility; one of
 the workspace's own is private until an owner makes it public on its page.
 
-| The workspace's packages | Without credentials | With credentials |
-| --- | --- | --- |
-| All public | `dotnet` reads the feed and restores them. | The same; the API key is sent to push. |
-| Some private | The feed answers `401`, which makes `dotnet` send the source's credentials. | Each package the credentials' owner may see. |
+| The workspace's packages | Without credentials                                                         | With credentials                             |
+| ------------------------ | --------------------------------------------------------------------------- | -------------------------------------------- |
+| All public               | `dotnet` reads the feed and restores them.                                  | The same; the API key is sent to push.       |
+| Some private             | The feed answers `401`, which makes `dotnet` send the source's credentials. | Each package the credentials' owner may see. |
 
 A private package you cannot see looks exactly like one that does not
 exist.
@@ -218,11 +218,11 @@ for [container images](/guides/containers/#storage-and-pull-limits). A
 
 ## Errors
 
-| Error | Means |
-| --- | --- |
-| `401` | No credentials or API key, or a wrong or expired token. Check the source's username and password, or the `--api-key`. |
-| `403` | Signed in, but your role or your token's scopes do not allow it, or the workspace is out of free package storage. The response says which. |
-| `404` | No such package or version, or a private one you cannot see. For a symbol package: its version is not pushed yet. |
-| `409` | That version is already pushed, or already has symbols. Bump `Version`. |
+| Error | Means                                                                                                                                                                                              |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `401` | No credentials or API key, or a wrong or expired token. Check the source's username and password, or the `--api-key`.                                                                              |
+| `403` | Signed in, but your role or your token's scopes do not allow it, or the workspace is out of free package storage. The response says which.                                                         |
+| `404` | No such package or version, or a private one you cannot see. For a symbol package: its version is not pushed yet.                                                                                  |
+| `409` | That version is already pushed, or already has symbols. Bump `Version`.                                                                                                                            |
 | `400` | The push was refused: not a `.nupkg`, no `.nuspec` in it, an id or version NuGet would not take, or a symbol package that is not one or holds a PDB that is not portable. The response says which. |
-| `413` | The `.nupkg` is over 100 MB. |
+| `413` | The `.nupkg` is over 100 MB.                                                                                                                                                                       |

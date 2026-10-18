@@ -2,10 +2,10 @@ name: Not on release branches
 on:
   push:
     branches-ignore:
-      - 'release/**'
+      - "release/**"
     paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
+      - "**/*.md"
+      - "docs/**"
   pull_request:
     branches-ignore: [gh-pages]
 jobs:

@@ -5,358 +5,362 @@
  * are mapped onto the g1t tokens once, here, for both themes.
  */
 :root {
-	--sl-font: var(--g1t-font-sans);
-	--sl-font-mono: var(--g1t-font-mono);
+  --sl-font: var(--g1t-font-sans);
+  --sl-font-mono: var(--g1t-font-mono);
 
-	/* Lavender is the docs' accent: links, the current page, highlights. */
-	--sl-color-accent-low: color-mix(in srgb, var(--g1t-accent) 14%, var(--g1t-bg));
-	--sl-color-accent: var(--g1t-accent);
-	--sl-color-accent-high: var(--g1t-docs-accent-high);
+  /* Lavender is the docs' accent: links, the current page, highlights. */
+  --sl-color-accent-low: color-mix(in srgb, var(--g1t-accent) 14%, var(--g1t-bg));
+  --sl-color-accent: var(--g1t-accent);
+  --sl-color-accent-high: var(--g1t-docs-accent-high);
 
-	--sl-color-white: var(--g1t-fg);
-	--sl-color-gray-1: var(--g1t-fg-soft);
-	--sl-color-gray-2: var(--g1t-fg-soft);
-	--sl-color-gray-3: var(--g1t-muted);
-	--sl-color-gray-4: var(--g1t-faint);
-	--sl-color-gray-5: var(--g1t-line);
-	--sl-color-gray-6: var(--g1t-surface);
-	--sl-color-gray-7: var(--g1t-surface);
-	--sl-color-black: var(--g1t-bg);
+  --sl-color-white: var(--g1t-fg);
+  --sl-color-gray-1: var(--g1t-fg-soft);
+  --sl-color-gray-2: var(--g1t-fg-soft);
+  --sl-color-gray-3: var(--g1t-muted);
+  --sl-color-gray-4: var(--g1t-faint);
+  --sl-color-gray-5: var(--g1t-line);
+  --sl-color-gray-6: var(--g1t-surface);
+  --sl-color-gray-7: var(--g1t-surface);
+  --sl-color-black: var(--g1t-bg);
 
-	--sl-color-bg: var(--g1t-bg);
-	--sl-color-bg-nav: color-mix(in srgb, var(--g1t-bg) 88%, transparent);
-	--sl-color-bg-sidebar: var(--g1t-bg);
-	--sl-color-hairline: var(--g1t-line);
-	--sl-color-hairline-light: var(--g1t-line);
-	--sl-color-hairline-shade: var(--g1t-line);
-	--sl-color-text: var(--g1t-fg-soft);
-	--sl-color-text-accent: var(--g1t-docs-link);
-	--sl-color-text-invert: var(--g1t-bg);
-	--sl-color-bg-inline-code: var(--g1t-raised);
+  --sl-color-bg: var(--g1t-bg);
+  --sl-color-bg-nav: color-mix(in srgb, var(--g1t-bg) 88%, transparent);
+  --sl-color-bg-sidebar: var(--g1t-bg);
+  --sl-color-hairline: var(--g1t-line);
+  --sl-color-hairline-light: var(--g1t-line);
+  --sl-color-hairline-shade: var(--g1t-line);
+  --sl-color-text: var(--g1t-fg-soft);
+  --sl-color-text-accent: var(--g1t-docs-link);
+  --sl-color-text-invert: var(--g1t-bg);
+  --sl-color-bg-inline-code: var(--g1t-raised);
 
-	--sl-text-body: 0.9375rem;
-	--sl-line-height: 1.75;
-	--sl-content-width: 46rem;
-	/* The header's row, as tall as the app's top bar (3.5rem), and the tabs
+  --sl-text-body: 0.9375rem;
+  --sl-line-height: 1.75;
+  --sl-content-width: 46rem;
+  /* The header's row, as tall as the app's top bar (3.5rem), and the tabs
 	   beneath it. */
-	--sl-nav-height: 6.25rem;
-	--sl-sidebar-width: 17rem;
-	/* Big enough to tap. */
-	--sl-menu-button-size: 2.5rem;
+  --sl-nav-height: 6.25rem;
+  --sl-sidebar-width: 17rem;
+  /* Big enough to tap. */
+  --sl-menu-button-size: 2.5rem;
 }
 
 /* Starlight's theme select (Auto, Light, Dark), at the foot of the phone
    menu; the header has its own button (components/ThemeToggle.astro). */
 starlight-theme-select label {
-	color: var(--g1t-muted);
-	font-size: 0.85rem;
+  color: var(--g1t-muted);
+  font-size: 0.85rem;
 }
 starlight-theme-select label:hover {
-	color: var(--g1t-fg);
+  color: var(--g1t-fg);
 }
 starlight-theme-select select {
-	border-radius: 0.4rem;
+  border-radius: 0.4rem;
 }
 starlight-theme-select option {
-	background: var(--g1t-surface);
-	color: var(--g1t-fg);
+  background: var(--g1t-surface);
+  color: var(--g1t-fg);
 }
 
 /* --- Header --------------------------------------------------------------- */
 
 header.header {
-	padding: 0 !important;
-	backdrop-filter: blur(10px);
-	border-bottom: 1px solid var(--g1t-line);
+  padding: 0 !important;
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--g1t-line);
 }
 /* The search box fills the header's middle column; Header.astro centres
    that column in the header, the same on every page. */
 site-search {
-	display: flex;
-	justify-content: center;
-	width: 100%;
+  display: flex;
+  justify-content: center;
+  width: 100%;
 }
 site-search button[data-open-modal] {
-	border-radius: 0.5rem;
-	background: var(--g1t-surface);
-	border-color: var(--g1t-line);
-	color: var(--g1t-faint);
+  border-radius: 0.5rem;
+  background: var(--g1t-surface);
+  border-color: var(--g1t-line);
+  color: var(--g1t-faint);
 }
 site-search button[data-open-modal]:hover {
-	border-color: var(--g1t-line-strong);
-	color: var(--g1t-muted);
+  border-color: var(--g1t-line-strong);
+  color: var(--g1t-muted);
 }
 @media (min-width: 50rem) {
-	site-search button[data-open-modal] {
-		max-width: none;
-	}
+  site-search button[data-open-modal] {
+    max-width: none;
+  }
 }
 /* Tablets: the full search box, as on desktop, since there is room. */
 @media (min-width: 45rem) and (max-width: 49.99rem) {
-	site-search button[data-open-modal] {
-		width: 100%;
-		border: 1px solid var(--g1t-line);
-		padding-inline: 0.75rem 0.5rem;
-		font-size: var(--sl-text-sm);
-	}
-	site-search button[data-open-modal] > span.sl-hidden {
-		display: block;
-	}
-	site-search button[data-open-modal] > kbd.sl-hidden {
-		display: flex;
-		margin-inline-start: auto;
-	}
+  site-search button[data-open-modal] {
+    width: 100%;
+    border: 1px solid var(--g1t-line);
+    padding-inline: 0.75rem 0.5rem;
+    font-size: var(--sl-text-sm);
+  }
+  site-search button[data-open-modal] > span.sl-hidden {
+    display: block;
+  }
+  site-search button[data-open-modal] > kbd.sl-hidden {
+    display: flex;
+    margin-inline-start: auto;
+  }
 }
 /* Phones: a search icon, as big as a fingertip. */
 @media (max-width: 44.99rem) {
-	site-search button[data-open-modal] {
-		justify-content: center;
-		width: 2.5rem;
-		height: 2.5rem;
-		padding: 0;
-		border: 0;
-		background: transparent;
-		color: var(--g1t-muted);
-		font-size: 1.125rem;
-	}
+  site-search button[data-open-modal] {
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--g1t-muted);
+    font-size: 1.125rem;
+  }
 }
 /* The menu button sits in the header's top row, at the end, drawn like
    the header's other icon buttons rather than as a floating disc. */
 .sl-menu-button {
-	top: calc((3.5rem - var(--sl-menu-button-size)) / 2) !important;
-	align-items: center;
-	justify-content: center;
-	border-radius: 0.5rem;
-	padding: 0;
-	background: transparent;
-	box-shadow: none;
-	color: var(--g1t-fg-soft);
-	font-size: 1.25rem;
+  top: calc((3.5rem - var(--sl-menu-button-size)) / 2) !important;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--g1t-fg-soft);
+  font-size: 1.25rem;
 }
 .sl-menu-button:hover,
 .sl-menu-button:has(~ :popover-open) {
-	background: var(--g1t-raised);
-	color: var(--g1t-fg);
+  background: var(--g1t-raised);
+  color: var(--g1t-fg);
 }
 
 /* Search, in light: the dialog is a white panel, so its results sit on a
    step darker rather than on a white just off the panel's. */
-:root[data-theme='light'] #starlight__search {
-	--pagefind-ui-background: var(--g1t-surface);
+:root[data-theme="light"] #starlight__search {
+  --pagefind-ui-background: var(--g1t-surface);
 }
-:root[data-theme='light']
-	#starlight__search
-	:is(.pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *)), .pagefind-ui__result-nested):not(:hover) {
-	background-color: var(--g1t-raised);
+:root[data-theme="light"]
+  #starlight__search
+  :is(.pagefind-ui__result-title:not(:where(.pagefind-ui__result-nested *)), .pagefind-ui__result-nested):not(:hover) {
+  background-color: var(--g1t-raised);
 }
 
 /* --- Sidebar -------------------------------------------------------------- */
 
 .sidebar-content {
-	padding-top: 1.5rem;
+  padding-top: 1.5rem;
 }
 /* Groups always show their pages: no caret, no folding. */
 .sidebar-content details > summary {
-	pointer-events: none;
-	padding-top: 0.25rem;
+  pointer-events: none;
+  padding-top: 0.25rem;
 }
 .sidebar-content details > summary .caret {
-	display: none;
+  display: none;
 }
 .sidebar-content .top-level > li + li {
-	margin-top: 1.75rem;
+  margin-top: 1.75rem;
 }
 /* Group labels: headings over their pages, in the page's own ink. */
 .sidebar-content details > summary .group-label .large,
 .sidebar-content .top-level > li > details > summary {
-	font-size: 0.875rem;
-	font-weight: 600;
-	color: var(--g1t-fg);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--g1t-fg);
 }
 .sidebar-content .top-level > li > details > summary {
-	padding-inline: 0.75rem;
-	margin-bottom: 0.35rem;
+  padding-inline: 0.75rem;
+  margin-bottom: 0.35rem;
 }
 .sidebar-content ul ul,
 .sidebar-content ul ul li {
-	border-inline-start: 0;
-	margin-inline-start: 0;
-	padding-inline-start: 0;
+  border-inline-start: 0;
+  margin-inline-start: 0;
+  padding-inline-start: 0;
 }
 .sidebar-content a {
-	border-radius: 0.5rem;
-	padding: 0.4rem 0.75rem;
-	font-size: 0.875rem;
-	color: var(--g1t-muted);
-	transition: background 0.15s, color 0.15s;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--g1t-muted);
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 .sidebar-content a:hover {
-	background: var(--g1t-surface);
-	color: var(--g1t-fg);
+  background: var(--g1t-surface);
+  color: var(--g1t-fg);
 }
 /* The current page: a lavender pill. */
-.sidebar-content a[aria-current='page'],
-.sidebar-content a[aria-current='page']:hover {
-	background: var(--g1t-accent-low);
-	color: var(--g1t-docs-accent-high);
-	font-weight: 600;
+.sidebar-content a[aria-current="page"],
+.sidebar-content a[aria-current="page"]:hover {
+  background: var(--g1t-accent-low);
+  color: var(--g1t-docs-accent-high);
+  font-weight: 600;
 }
 
 /* --- Content -------------------------------------------------------------- */
 
 .content-panel {
-	padding-top: 2.75rem;
+  padding-top: 2.75rem;
 }
 /* The title and the page read as one, without a rule between them. */
 .content-panel + .content-panel {
-	border-top: 0;
-	padding-top: 0.5rem;
+  border-top: 0;
+  padding-top: 0.5rem;
 }
 /* Headlines in Bricolage Grotesque, its optical size following the size. */
 .sl-markdown-content :is(h1, h2) {
-	font-family: var(--g1t-font-display);
-	font-optical-sizing: auto;
+  font-family: var(--g1t-font-display);
+  font-optical-sizing: auto;
 }
 .sl-markdown-content h1 {
-	font-size: 2.25rem;
-	font-weight: 650;
-	letter-spacing: -0.02em;
-	line-height: 1.15;
-	color: var(--g1t-fg);
+  font-size: 2.25rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: var(--g1t-fg);
 }
 /* Sections open with space, not rules. */
 .sl-markdown-content .sl-heading-wrapper.level-h2 {
-	margin-top: 3.5rem;
+  margin-top: 3.5rem;
 }
 .sl-markdown-content h2 {
-	font-size: 1.75rem;
-	font-weight: 600;
-	letter-spacing: -0.02em;
-	line-height: 1.2;
-	color: var(--g1t-fg);
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--g1t-fg);
 }
 .sl-markdown-content h3 {
-	margin-top: 2rem;
-	font-size: 1.1rem;
-	font-weight: 600;
-	letter-spacing: -0.005em;
-	color: var(--g1t-fg);
+  margin-top: 2rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: var(--g1t-fg);
 }
 .sl-markdown-content p,
 .sl-markdown-content li {
-	color: var(--g1t-fg-soft);
+  color: var(--g1t-fg-soft);
 }
 /* Links: the text's own ink, a little heavier, on a lavender underline. */
 .sl-markdown-content a:not(.card, .sl-link-button, .sl-link-card) {
-	color: var(--g1t-fg);
-	font-weight: 500;
-	text-decoration-color: color-mix(in srgb, var(--g1t-accent) 55%, transparent);
-	text-decoration-thickness: 1.5px;
-	text-underline-offset: 0.25em;
-	transition: text-decoration-color 0.15s, color 0.15s;
+  color: var(--g1t-fg);
+  font-weight: 500;
+  text-decoration-color: color-mix(in srgb, var(--g1t-accent) 55%, transparent);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.25em;
+  transition:
+    text-decoration-color 0.15s,
+    color 0.15s;
 }
 .sl-markdown-content a:not(.card, .sl-link-button, .sl-link-card):hover {
-	color: var(--g1t-docs-link);
-	text-decoration-color: var(--g1t-accent);
+  color: var(--g1t-docs-link);
+  text-decoration-color: var(--g1t-accent);
 }
 .sl-markdown-content :not(pre) > code {
-	border-radius: 0.3rem;
-	padding: 0.1rem 0.3rem;
-	font-size: 0.85em;
-	color: var(--g1t-fg);
-	background: var(--g1t-raised);
+  border-radius: 0.3rem;
+  padding: 0.1rem 0.3rem;
+  font-size: 0.85em;
+  color: var(--g1t-fg);
+  background: var(--g1t-raised);
 }
 
 /* Tables: ruled, not boxed. */
 .sl-markdown-content table {
-	display: table;
-	width: 100%;
-	border-collapse: collapse;
-	font-size: 0.875rem;
+  display: table;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
 }
 /* On a phone a wide table scrolls inside itself, not the page. */
 @media (max-width: 50rem) {
-	.sl-markdown-content table {
-		display: block;
-		overflow-x: auto;
-	}
-	/* A shadow at an edge with more columns past it, so a cut-off column
+  .sl-markdown-content table {
+    display: block;
+    overflow-x: auto;
+  }
+  /* A shadow at an edge with more columns past it, so a cut-off column
 	   reads as "scroll for more". The covers scroll with the table and hide
 	   the shadows at its ends. */
-	.sl-markdown-content table:not(:has(.status)) {
-		--cover: var(--g1t-bg);
-		/* On the dark page a shadow is a faint light, as a dark one would not show. */
-		--shade: rgb(255 255 255 / 0.12);
-		background:
-			linear-gradient(to right, var(--cover) 30%, transparent) left / 2.5rem 100% no-repeat local,
-			linear-gradient(to left, var(--cover) 30%, transparent) right / 2.5rem 100% no-repeat local,
-			radial-gradient(farthest-side at 0 50%, var(--shade), transparent) left / 0.875rem 100% no-repeat scroll,
-			radial-gradient(farthest-side at 100% 50%, var(--shade), transparent) right / 0.875rem 100% no-repeat scroll;
-	}
-	:root[data-theme='light'] .sl-markdown-content table:not(:has(.status)) {
-		--shade: rgb(24 24 27 / 0.16);
-	}
+  .sl-markdown-content table:not(:has(.status)) {
+    --cover: var(--g1t-bg);
+    /* On the dark page a shadow is a faint light, as a dark one would not show. */
+    --shade: rgb(255 255 255 / 0.12);
+    background:
+      linear-gradient(to right, var(--cover) 30%, transparent) left / 2.5rem 100% no-repeat local,
+      linear-gradient(to left, var(--cover) 30%, transparent) right / 2.5rem 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, var(--shade), transparent) left / 0.875rem 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, var(--shade), transparent) right / 0.875rem 100% no-repeat scroll;
+  }
+  :root[data-theme="light"] .sl-markdown-content table:not(:has(.status)) {
+    --shade: rgb(24 24 27 / 0.16);
+  }
 }
 /*
  * There, a name, route or value in a table is never broken, not even at a
  * hyphen or a slash: a long one widens the table, which then scrolls.
  */
 @media (max-width: 50rem) {
-	.sl-markdown-content td code,
-	.sl-markdown-content th code {
-		white-space: nowrap;
-		overflow-wrap: normal;
-		word-break: normal;
-	}
-	/* The last column usually holds the sentences. Kept readable, it
+  .sl-markdown-content td code,
+  .sl-markdown-content th code {
+    white-space: nowrap;
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+  /* The last column usually holds the sentences. Kept readable, it
 	   scrolls the table sideways instead of folding to a word a line. */
-	.sl-markdown-content :is(td, th):last-child:not(:first-child) {
-		min-width: 12rem;
-	}
+  .sl-markdown-content :is(td, th):last-child:not(:first-child) {
+    min-width: 12rem;
+  }
 }
 .sl-markdown-content th {
-	border-bottom: 1px solid var(--g1t-line-strong);
-	background: transparent;
-	font-weight: 600;
-	color: var(--g1t-muted);
-	text-align: start;
+  border-bottom: 1px solid var(--g1t-line-strong);
+  background: transparent;
+  font-weight: 600;
+  color: var(--g1t-muted);
+  text-align: start;
 }
 .sl-markdown-content td,
 .sl-markdown-content th {
-	padding: 0.6rem 0.75rem;
-	border-inline: 0;
-	border-top: 0;
+  padding: 0.6rem 0.75rem;
+  border-inline: 0;
+  border-top: 0;
 }
 .sl-markdown-content td {
-	border-bottom: 1px solid var(--g1t-line);
-	vertical-align: top;
+  border-bottom: 1px solid var(--g1t-line);
+  vertical-align: top;
 }
 .sl-markdown-content tr:nth-child(2n) {
-	background: transparent;
+  background: transparent;
 }
 
 /* Callouts: a tinted panel with a coloured edge. */
 .starlight-aside {
-	border: 0;
-	border-inline-start: 2px solid;
-	border-radius: 0 0.6rem 0.6rem 0;
-	padding: 0.85rem 1.1rem;
+  border: 0;
+  border-inline-start: 2px solid;
+  border-radius: 0 0.6rem 0.6rem 0;
+  padding: 0.85rem 1.1rem;
 }
 .starlight-aside--note {
-	border-color: var(--g1t-info);
-	background: color-mix(in srgb, var(--g1t-info) 7%, var(--g1t-bg));
+  border-color: var(--g1t-info);
+  background: color-mix(in srgb, var(--g1t-info) 7%, var(--g1t-bg));
 }
 .starlight-aside--tip {
-	border-color: var(--g1t-success);
-	background: color-mix(in srgb, var(--g1t-success) 6%, var(--g1t-bg));
+  border-color: var(--g1t-success);
+  background: color-mix(in srgb, var(--g1t-success) 6%, var(--g1t-bg));
 }
 .starlight-aside--caution {
-	border-color: var(--g1t-warn);
-	background: color-mix(in srgb, var(--g1t-warn) 7%, var(--g1t-bg));
+  border-color: var(--g1t-warn);
+  background: color-mix(in srgb, var(--g1t-warn) 7%, var(--g1t-bg));
 }
 .starlight-aside--danger {
-	border-color: var(--g1t-danger);
-	background: color-mix(in srgb, var(--g1t-danger) 7%, var(--g1t-bg));
+  border-color: var(--g1t-danger);
+  background: color-mix(in srgb, var(--g1t-danger) 7%, var(--g1t-bg));
 }
 
 /* --- On this page --------------------------------------------------------- */
@@ -364,298 +368,305 @@ site-search button[data-open-modal]:hover {
 /* On a phone the list drops over the page: give it an edge and a shadow, so
    where it stops is clear rather than its last row running into the text. */
 mobile-starlight-toc .dropdown {
-	border-color: var(--g1t-line);
-	border-bottom-color: var(--g1t-line-strong);
-	box-shadow: var(--g1t-docs-menu-shadow);
+  border-color: var(--g1t-line);
+  border-bottom-color: var(--g1t-line-strong);
+  box-shadow: var(--g1t-docs-menu-shadow);
 }
 
 .right-sidebar-panel {
-	padding-top: 2.75rem;
+  padding-top: 2.75rem;
 }
 .right-sidebar-panel h2 {
-	font-size: 0.875rem;
-	font-weight: 600;
-	color: var(--g1t-fg);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--g1t-fg);
 }
 /* The headings on a rail; the one being read is marked on it. */
 .right-sidebar-panel starlight-toc > nav > ul {
-	border-inline-start: 1px solid var(--g1t-line);
+  border-inline-start: 1px solid var(--g1t-line);
 }
 .right-sidebar-panel a {
-	margin-inline-start: -1px;
-	border-inline-start: 1px solid transparent;
-	border-radius: 0;
-	padding-inline-start: calc(0.75rem + var(--depth) * 0.75rem);
-	font-size: 0.8125rem;
-	color: var(--g1t-muted);
-	transition: color 0.15s, border-color 0.15s;
+  margin-inline-start: -1px;
+  border-inline-start: 1px solid transparent;
+  border-radius: 0;
+  padding-inline-start: calc(0.75rem + var(--depth) * 0.75rem);
+  font-size: 0.8125rem;
+  color: var(--g1t-muted);
+  transition:
+    color 0.15s,
+    border-color 0.15s;
 }
 .right-sidebar-panel a:hover {
-	color: var(--g1t-fg);
+  color: var(--g1t-fg);
 }
-.right-sidebar-panel a[aria-current='true'] {
-	border-color: var(--g1t-accent);
-	color: var(--g1t-docs-link);
-	font-weight: 500;
+.right-sidebar-panel a[aria-current="true"] {
+  border-color: var(--g1t-accent);
+  color: var(--g1t-docs-link);
+  font-weight: 500;
 }
 
 /* --- Cards and buttons ---------------------------------------------------- */
 
 .card,
 .sl-link-card {
-	border-radius: 1rem;
-	background: var(--g1t-surface);
-	border: 1px solid var(--g1t-line);
-	transition: border-color 0.15s, background 0.15s, transform 0.15s;
+  border-radius: 1rem;
+  background: var(--g1t-surface);
+  border: 1px solid var(--g1t-line);
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    transform 0.15s;
 }
 /* A link card lifts toward the accent under the pointer. */
 .sl-link-card:hover {
-	border-color: color-mix(in srgb, var(--g1t-accent) 45%, var(--g1t-line));
-	background: color-mix(in srgb, var(--g1t-accent) 4%, var(--g1t-surface));
+  border-color: color-mix(in srgb, var(--g1t-accent) 45%, var(--g1t-line));
+  background: color-mix(in srgb, var(--g1t-accent) 4%, var(--g1t-surface));
 }
 .sl-link-card:hover .icon {
-	color: var(--g1t-accent);
+  color: var(--g1t-accent);
 }
 .sl-link-button {
-	border-radius: 0.5rem;
-	font-size: 0.9rem;
-	font-weight: 500;
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 500;
 }
 .sl-link-button.primary {
-	background: var(--g1t-fg);
-	border-color: var(--g1t-fg);
-	color: var(--g1t-bg);
+  background: var(--g1t-fg);
+  border-color: var(--g1t-fg);
+  color: var(--g1t-bg);
 }
 .sl-link-button.primary:hover {
-	background: var(--g1t-docs-fg-hover);
+  background: var(--g1t-docs-fg-hover);
 }
 .sl-link-button.minimal {
-	color: var(--g1t-fg-soft);
+  color: var(--g1t-fg-soft);
 }
 
 /* --- Pagination and footer ----------------------------------------------- */
 
 .pagination-links a {
-	border-radius: 0.75rem;
-	border-color: var(--g1t-line);
-	box-shadow: none;
+  border-radius: 0.75rem;
+  border-color: var(--g1t-line);
+  box-shadow: none;
 }
 .pagination-links a:hover {
-	border-color: var(--g1t-line-strong);
+  border-color: var(--g1t-line-strong);
 }
 .pagination-links a .link-title {
-	color: var(--g1t-fg);
+  color: var(--g1t-fg);
 }
 .meta,
 .meta a {
-	font-size: 0.8125rem;
-	color: var(--g1t-faint);
+  font-size: 0.8125rem;
+  color: var(--g1t-faint);
 }
 
 /* --- Cards ---------------------------------------------------------------- */
 
 .sl-markdown-content .card-grid {
-	gap: 0.75rem;
+  gap: 0.75rem;
 }
 .sl-markdown-content .card {
-	padding: 1.1rem 1.2rem;
+  padding: 1.1rem 1.2rem;
 }
 .sl-markdown-content .card .title {
-	font-size: 1rem;
-	font-weight: 600;
-	color: var(--g1t-fg);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--g1t-fg);
 }
 .sl-markdown-content .card .icon {
-	color: var(--g1t-accent);
-	background: color-mix(in srgb, var(--g1t-accent) 12%, transparent);
-	border: 0;
-	border-radius: 0.5rem;
-	padding: 0.3rem;
+  color: var(--g1t-accent);
+  background: color-mix(in srgb, var(--g1t-accent) 12%, transparent);
+  border: 0;
+  border-radius: 0.5rem;
+  padding: 0.3rem;
 }
 .sl-link-card {
-	padding: 1rem 1.2rem;
+  padding: 1rem 1.2rem;
 }
 .sl-link-card .title {
-	font-size: 0.95rem;
-	font-weight: 600;
-	color: var(--g1t-fg);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--g1t-fg);
 }
 .sl-link-card .description {
-	font-size: 0.85rem;
-	color: var(--g1t-muted);
+  font-size: 0.85rem;
+  color: var(--g1t-muted);
 }
 
 /* Steps: numbered, on a quiet rail. */
 .sl-steps > li::before {
-	background: var(--g1t-raised) !important;
-	color: var(--g1t-fg) !important;
-	box-shadow: inset 0 0 0 1px var(--g1t-line-strong);
-	font-family: var(--g1t-font-mono);
-	font-size: 0.8rem;
+  background: var(--g1t-raised) !important;
+  color: var(--g1t-fg) !important;
+  box-shadow: inset 0 0 0 1px var(--g1t-line-strong);
+  font-family: var(--g1t-font-mono);
+  font-size: 0.8rem;
 }
 .sl-steps > li::after {
-	background: var(--g1t-line) !important;
+  background: var(--g1t-line) !important;
 }
 
 /* --- API reference -------------------------------------------------------- */
 
 /* An operation's method and path, at the top of its page. */
 .sl-markdown-content .g1t-endpoint {
-	display: flex;
-	align-items: center;
-	gap: 0.75rem;
-	overflow-x: auto;
-	border: 1px solid var(--g1t-line);
-	border-radius: 0.75rem;
-	padding: 0.7rem 0.9rem;
-	background: var(--g1t-surface);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  overflow-x: auto;
+  border: 1px solid var(--g1t-line);
+  border-radius: 0.75rem;
+  padding: 0.7rem 0.9rem;
+  background: var(--g1t-surface);
 }
 .sl-markdown-content .g1t-endpoint code {
-	padding: 0;
-	background: transparent;
-	font-size: 0.875rem;
-	white-space: nowrap;
-	color: var(--g1t-fg);
+  padding: 0;
+  background: transparent;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  color: var(--g1t-fg);
 }
 /* On a phone a long path wraps onto a second line rather than hiding its end. */
 @media (max-width: 40rem) {
-	.sl-markdown-content .g1t-endpoint {
-		align-items: flex-start;
-	}
-	.sl-markdown-content .g1t-endpoint code {
-		white-space: normal;
-		overflow-wrap: anywhere;
-	}
+  .sl-markdown-content .g1t-endpoint {
+    align-items: flex-start;
+  }
+  .sl-markdown-content .g1t-endpoint code {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
 }
 /* Methods: the same small mono tag in the sidebar and on the page. */
 .g1t-method {
-	--method: var(--g1t-muted);
-	flex-shrink: 0;
-	border: 0 !important;
-	border-radius: 0.3rem;
-	padding: 0.05rem 0.4rem;
-	background: color-mix(in srgb, var(--method) var(--g1t-docs-tag-tint), transparent) !important;
-	color: var(--method) !important;
-	font-family: var(--g1t-font-mono);
-	font-size: 0.7rem;
-	font-weight: 600;
-	letter-spacing: 0.02em;
+  --method: var(--g1t-muted);
+  flex-shrink: 0;
+  border: 0 !important;
+  border-radius: 0.3rem;
+  padding: 0.05rem 0.4rem;
+  background: color-mix(in srgb, var(--method) var(--g1t-docs-tag-tint), transparent) !important;
+  color: var(--method) !important;
+  font-family: var(--g1t-font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 .g1t-method-get,
-.g1t-method[data-method='get'] {
-	--method: var(--g1t-success);
+.g1t-method[data-method="get"] {
+  --method: var(--g1t-success);
 }
 .g1t-method-post,
-.g1t-method[data-method='post'] {
-	--method: var(--g1t-info);
+.g1t-method[data-method="post"] {
+  --method: var(--g1t-info);
 }
 .g1t-method-put,
 .g1t-method-patch,
-.g1t-method[data-method='put'],
-.g1t-method[data-method='patch'] {
-	--method: var(--g1t-warn);
+.g1t-method[data-method="put"],
+.g1t-method[data-method="patch"] {
+  --method: var(--g1t-warn);
 }
 .g1t-method-delete,
-.g1t-method[data-method='delete'] {
-	--method: var(--g1t-danger);
+.g1t-method[data-method="delete"] {
+  --method: var(--g1t-danger);
 }
 /* In the sidebar the method sits at the end of the row, in a fixed column. */
 .sidebar-content a:has(.g1t-method) {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	gap: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
 }
 .sidebar-content .g1t-method {
-	min-width: 3.1rem;
-	text-align: center;
-	font-size: 0.625rem;
-	line-height: 1.6;
+  min-width: 3.1rem;
+  text-align: center;
+  font-size: 0.625rem;
+  line-height: 1.6;
 }
 
 /* "Soon" beside a sidebar entry for a feature not built yet: quiet, like
    the site's Coming soon tag, not a call to action. */
 .sidebar-content .sl-badge {
-	background: var(--g1t-raised);
-	border: 1px solid var(--g1t-line-strong);
-	color: var(--g1t-muted);
-	font-family: var(--g1t-font-mono);
-	font-size: 0.625rem;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
+  background: var(--g1t-raised);
+  border: 1px solid var(--g1t-line-strong);
+  color: var(--g1t-muted);
+  font-family: var(--g1t-font-mono);
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 /* Feature tables with a Live, Preview or Coming badge (components/Status.astro):
    on a phone each row stacks, the name and its badge on one line and what it
    does under them, rather than three narrow columns. */
 @media (max-width: 50rem) {
-	.sl-markdown-content table:has(.status),
-	.sl-markdown-content table:has(.status) tbody {
-		display: block;
-		width: 100%;
-	}
-	.sl-markdown-content table:has(.status) thead {
-		display: none;
-	}
-	.sl-markdown-content table:has(.status) tr {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) max-content;
-		width: 100%;
-		column-gap: 0.75rem;
-		padding-block: 0.5rem;
-		border-bottom: 1px solid var(--sl-color-hairline);
-	}
-	.sl-markdown-content table:has(.status) td {
-		border: 0;
-		padding: 0.15rem 0;
-		width: auto;
-	}
-	.sl-markdown-content table:has(.status) td:first-child {
-		font-weight: 600;
-	}
-	.sl-markdown-content table:has(.status) td:nth-child(2) {
-		grid-column: 1 / -1;
-		grid-row: 2;
-		color: var(--sl-color-gray-2);
-	}
-	.sl-markdown-content table:has(.status) td:nth-child(3) {
-		grid-column: 2;
-		grid-row: 1;
-		justify-self: end;
-		align-self: center;
-		width: max-content;
-		min-width: 0;
-	}
-	.sl-markdown-content table:has(.status) td + td {
-		margin-top: 0;
-	}
+  .sl-markdown-content table:has(.status),
+  .sl-markdown-content table:has(.status) tbody {
+    display: block;
+    width: 100%;
+  }
+  .sl-markdown-content table:has(.status) thead {
+    display: none;
+  }
+  .sl-markdown-content table:has(.status) tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    width: 100%;
+    column-gap: 0.75rem;
+    padding-block: 0.5rem;
+    border-bottom: 1px solid var(--sl-color-hairline);
+  }
+  .sl-markdown-content table:has(.status) td {
+    border: 0;
+    padding: 0.15rem 0;
+    width: auto;
+  }
+  .sl-markdown-content table:has(.status) td:first-child {
+    font-weight: 600;
+  }
+  .sl-markdown-content table:has(.status) td:nth-child(2) {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    color: var(--sl-color-gray-2);
+  }
+  .sl-markdown-content table:has(.status) td:nth-child(3) {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    align-self: center;
+    width: max-content;
+    min-width: 0;
+  }
+  .sl-markdown-content table:has(.status) td + td {
+    margin-top: 0;
+  }
 }
 
 /* Tabs in a page, such as one per OS: quiet labels on a hairline, the
    chosen one in ink over a lavender line. */
 starlight-tabs .tablist-wrapper {
-	margin-bottom: 0.75rem;
+  margin-bottom: 0.75rem;
 }
-starlight-tabs [role='tablist'] {
-	gap: 0.25rem;
-	border-bottom: 1px solid var(--g1t-line);
+starlight-tabs [role="tablist"] {
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--g1t-line);
 }
-starlight-tabs [role='tab'] {
-	margin-bottom: -1px;
-	border-bottom: 2px solid transparent;
-	padding: 0.4rem 0.75rem;
-	font-size: 0.875rem;
-	font-weight: 500;
-	color: var(--g1t-muted);
-	transition: color 0.15s, border-color 0.15s;
+starlight-tabs [role="tab"] {
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--g1t-muted);
+  transition:
+    color 0.15s,
+    border-color 0.15s;
 }
-starlight-tabs [role='tab']:hover {
-	color: var(--g1t-fg);
+starlight-tabs [role="tab"]:hover {
+  color: var(--g1t-fg);
 }
-starlight-tabs [role='tab'][aria-selected='true'] {
-	border-color: var(--g1t-accent);
-	color: var(--g1t-fg);
-	font-weight: 600;
+starlight-tabs [role="tab"][aria-selected="true"] {
+  border-color: var(--g1t-accent);
+  color: var(--g1t-fg);
+  font-weight: 600;
 }
 
 /* --- Diagrams --------------------------------------------------------------
@@ -665,288 +676,288 @@ starlight-tabs [role='tab'][aria-selected='true'] {
    its size and scrolls sideways, rather than shrinking its text away. */
 
 .g1t-diagram {
-	/* A grid or flex item grows to fit its content unless told not to: without
+  /* A grid or flex item grows to fit its content unless told not to: without
 	   this, the SVG's minimum width widens the whole page on a phone. */
-	min-width: 0;
-	max-width: 100%;
-	margin: 1.75rem 0;
-	border: 1px solid var(--g1t-line);
-	border-radius: 0.875rem;
-	background:
-		radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--g1t-line-strong) 45%, transparent) 1px, transparent 0) 0 0 / 20px 20px,
-		var(--g1t-surface);
+  min-width: 0;
+  max-width: 100%;
+  margin: 1.75rem 0;
+  border: 1px solid var(--g1t-line);
+  border-radius: 0.875rem;
+  background:
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--g1t-line-strong) 45%, transparent) 1px, transparent 0) 0 0 / 20px 20px,
+    var(--g1t-surface);
 }
 .g1t-diagram__scroll {
-	overflow-x: auto;
-	padding: 1.25rem;
+  overflow-x: auto;
+  padding: 1.25rem;
 }
 .g1t-diagram__scroll:focus-visible {
-	outline: 2px solid var(--g1t-accent);
-	outline-offset: -2px;
-	border-radius: 0.875rem;
+  outline: 2px solid var(--g1t-accent);
+  outline-offset: -2px;
+  border-radius: 0.875rem;
 }
 .g1t-diagram svg.d-svg {
-	display: block;
-	margin: 0 auto;
-	max-width: 100%;
-	height: auto;
-	/* Below this the labels get too small to read: scroll instead. */
-	min-width: 600px;
-	font-family: var(--g1t-font-sans);
-	overflow: visible;
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+  height: auto;
+  /* Below this the labels get too small to read: scroll instead. */
+  min-width: 600px;
+  font-family: var(--g1t-font-sans);
+  overflow: visible;
 }
 .g1t-diagram figcaption {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	justify-content: space-between;
-	gap: 0.5rem 1rem;
-	border-top: 1px solid var(--g1t-line);
-	padding: 0.625rem 1rem;
-	color: var(--g1t-muted);
-	font-size: 0.8125rem;
-	line-height: 1.5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  border-top: 1px solid var(--g1t-line);
+  padding: 0.625rem 1rem;
+  color: var(--g1t-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
 }
 .g1t-diagram__tools {
-	display: inline-flex;
-	align-items: center;
-	gap: 1rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 1rem;
 }
 .g1t-diagram__expand {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.375rem;
-	border: 1px solid var(--g1t-line);
-	border-radius: 0.5rem;
-	background: var(--g1t-raised);
-	padding: 0.25rem 0.625rem;
-	color: var(--g1t-fg-soft);
-	font: inherit;
-	font-size: 0.75rem;
-	font-weight: 500;
-	cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border: 1px solid var(--g1t-line);
+  border-radius: 0.5rem;
+  background: var(--g1t-raised);
+  padding: 0.25rem 0.625rem;
+  color: var(--g1t-fg-soft);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
 }
 .g1t-diagram__expand:hover {
-	border-color: var(--g1t-line-strong);
-	color: var(--g1t-fg);
+  border-color: var(--g1t-line-strong);
+  color: var(--g1t-fg);
 }
 .g1t-diagram__expand:focus-visible {
-	outline: 2px solid var(--g1t-accent);
-	outline-offset: 2px;
+  outline: 2px solid var(--g1t-accent);
+  outline-offset: 2px;
 }
 
 /* The diagram at full size. On a wide screen it is drawn larger than in
    the page, so its smallest labels read easily. */
 .g1t-diagram__dialog {
-	/* Starlight's reset takes a dialog's margins away; put the centring back. */
-	margin: auto;
-	width: min(96vw, 1400px);
-	max-width: none;
-	max-height: 92vh;
-	border: 1px solid var(--g1t-line-strong);
-	border-radius: 1rem;
-	background: var(--g1t-surface);
-	padding: 0;
-	color: var(--g1t-fg);
-	box-shadow: var(--g1t-docs-menu-shadow);
-	/* Scrolling past either end of the diagram stops here. */
-	overscroll-behavior: contain;
+  /* Starlight's reset takes a dialog's margins away; put the centring back. */
+  margin: auto;
+  width: min(96vw, 1400px);
+  max-width: none;
+  max-height: 92vh;
+  border: 1px solid var(--g1t-line-strong);
+  border-radius: 1rem;
+  background: var(--g1t-surface);
+  padding: 0;
+  color: var(--g1t-fg);
+  box-shadow: var(--g1t-docs-menu-shadow);
+  /* Scrolling past either end of the diagram stops here. */
+  overscroll-behavior: contain;
 }
 /* The page behind an open diagram stays where it is. */
 html:has(.g1t-diagram__dialog[open]) {
-	overflow: hidden;
+  overflow: hidden;
 }
 .g1t-diagram__dialog::backdrop {
-	background: rgb(0 0 0 / 0.6);
-	backdrop-filter: blur(2px);
+  background: rgb(0 0 0 / 0.6);
+  backdrop-filter: blur(2px);
 }
 .g1t-diagram__dialog-bar {
-	position: sticky;
-	top: 0;
-	z-index: 1;
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 1rem;
-	border-bottom: 1px solid var(--g1t-line);
-	background: var(--g1t-surface);
-	padding: 0.75rem 1rem;
-	color: var(--g1t-muted);
-	font-size: 0.875rem;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--g1t-line);
+  background: var(--g1t-surface);
+  padding: 0.75rem 1rem;
+  color: var(--g1t-muted);
+  font-size: 0.875rem;
 }
 .g1t-diagram.g1t-diagram__dialog-body {
-	margin: 0;
-	border: 0;
-	border-radius: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
 }
 .g1t-diagram__dialog-body svg.d-svg {
-	width: 100%;
-	max-width: none;
-	min-width: 900px;
+  width: 100%;
+  max-width: none;
+  min-width: 900px;
 }
 .g1t-diagram__key {
-	display: inline-flex;
-	gap: 1rem;
-	color: var(--g1t-faint);
-	font-size: 0.75rem;
+  display: inline-flex;
+  gap: 1rem;
+  color: var(--g1t-faint);
+  font-size: 0.75rem;
 }
 .g1t-diagram__key > span {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.375rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
 }
 .g1t-diagram .d-key {
-	stroke: var(--g1t-faint);
-	stroke-width: 1.5;
+  stroke: var(--g1t-faint);
+  stroke-width: 1.5;
 }
 
 /* Boxes. */
 .g1t-diagram .d-node {
-	fill: var(--g1t-raised);
-	stroke: var(--g1t-line-strong);
-	stroke-width: 1;
+  fill: var(--g1t-raised);
+  stroke: var(--g1t-line-strong);
+  stroke-width: 1;
 }
 .g1t-diagram .d-node.d-tone-accent {
-	fill: var(--g1t-accent-low);
-	stroke: color-mix(in srgb, var(--g1t-accent) 65%, transparent);
+  fill: var(--g1t-accent-low);
+  stroke: color-mix(in srgb, var(--g1t-accent) 65%, transparent);
 }
 .g1t-diagram .d-node.d-tone-success {
-	fill: var(--g1t-success-low);
-	stroke: color-mix(in srgb, var(--g1t-success-dim) 80%, transparent);
+  fill: var(--g1t-success-low);
+  stroke: color-mix(in srgb, var(--g1t-success-dim) 80%, transparent);
 }
 .g1t-diagram .d-node.d-tone-warn {
-	fill: color-mix(in srgb, var(--g1t-warn) 12%, var(--g1t-surface));
-	stroke: color-mix(in srgb, var(--g1t-warn) 60%, transparent);
+  fill: color-mix(in srgb, var(--g1t-warn) 12%, var(--g1t-surface));
+  stroke: color-mix(in srgb, var(--g1t-warn) 60%, transparent);
 }
 .g1t-diagram .d-node.d-tone-store {
-	fill: var(--g1t-surface);
-	stroke: var(--g1t-line-strong);
+  fill: var(--g1t-surface);
+  stroke: var(--g1t-line-strong);
 }
 .g1t-diagram .d-node.d-tone-external {
-	fill: var(--g1t-bg);
-	stroke: var(--g1t-line-strong);
-	stroke-dasharray: 4 3;
+  fill: var(--g1t-bg);
+  stroke: var(--g1t-line-strong);
+  stroke-dasharray: 4 3;
 }
 .g1t-diagram .d-rim {
-	fill: none;
-	stroke: var(--g1t-line-strong);
+  fill: none;
+  stroke: var(--g1t-line-strong);
 }
 .g1t-diagram .d-title {
-	fill: var(--g1t-fg);
-	font-size: 12.5px;
-	font-weight: 600;
+  fill: var(--g1t-fg);
+  font-size: 12.5px;
+  font-weight: 600;
 }
 .g1t-diagram .d-sub {
-	fill: var(--g1t-muted);
-	font-family: var(--g1t-font-mono);
-	font-size: 10px;
+  fill: var(--g1t-muted);
+  font-family: var(--g1t-font-mono);
+  font-size: 10px;
 }
 .g1t-diagram .d-mono {
-	font-family: var(--g1t-font-mono);
-	font-size: 0.92em;
+  font-family: var(--g1t-font-mono);
+  font-size: 0.92em;
 }
 
 /* Frames around a group of boxes. */
 .g1t-diagram .d-group {
-	fill: color-mix(in srgb, var(--g1t-bg) 55%, transparent);
-	stroke: var(--g1t-line-strong);
-	stroke-dasharray: 2 4;
-	stroke-linecap: round;
+  fill: color-mix(in srgb, var(--g1t-bg) 55%, transparent);
+  stroke: var(--g1t-line-strong);
+  stroke-dasharray: 2 4;
+  stroke-linecap: round;
 }
 .g1t-diagram .d-group.d-tone-accent {
-	fill: color-mix(in srgb, var(--g1t-accent-low) 45%, transparent);
-	stroke: color-mix(in srgb, var(--g1t-accent) 45%, transparent);
+  fill: color-mix(in srgb, var(--g1t-accent-low) 45%, transparent);
+  stroke: color-mix(in srgb, var(--g1t-accent) 45%, transparent);
 }
 .g1t-diagram .d-group.d-tone-success {
-	fill: color-mix(in srgb, var(--g1t-success-low) 45%, transparent);
-	stroke: color-mix(in srgb, var(--g1t-success-dim) 55%, transparent);
+  fill: color-mix(in srgb, var(--g1t-success-low) 45%, transparent);
+  stroke: color-mix(in srgb, var(--g1t-success-dim) 55%, transparent);
 }
 .g1t-diagram .d-group-label {
-	fill: var(--g1t-faint);
-	font-size: 11px;
-	font-weight: 600;
-	letter-spacing: 0.01em;
+  fill: var(--g1t-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 .g1t-diagram .d-group-label.d-tone-accent {
-	fill: var(--g1t-accent);
+  fill: var(--g1t-accent);
 }
 .g1t-diagram .d-group-label.d-tone-success {
-	fill: var(--g1t-success-dim);
+  fill: var(--g1t-success-dim);
 }
 
 /* Arrows. */
 .g1t-diagram .d-edge,
 .g1t-diagram .d-msg {
-	fill: none;
-	stroke: var(--g1t-faint);
-	stroke-width: 1.4;
-	stroke-linejoin: round;
+  fill: none;
+  stroke: var(--g1t-faint);
+  stroke-width: 1.4;
+  stroke-linejoin: round;
 }
 .g1t-diagram .d-edge.d-tone-accent,
 .g1t-diagram .d-msg:not(.d-reply) {
-	stroke: var(--g1t-accent);
+  stroke: var(--g1t-accent);
 }
 .g1t-diagram .d-edge.d-tone-success {
-	stroke: var(--g1t-success-dim);
+  stroke: var(--g1t-success-dim);
 }
 .g1t-diagram .d-edge.d-tone-warn {
-	stroke: var(--g1t-warn);
+  stroke: var(--g1t-warn);
 }
 .g1t-diagram .d-async {
-	stroke-dasharray: 5 4;
+  stroke-dasharray: 5 4;
 }
 .g1t-diagram .d-head {
-	fill: var(--g1t-faint);
+  fill: var(--g1t-faint);
 }
 .g1t-diagram .d-head.d-tone-accent {
-	fill: var(--g1t-accent);
+  fill: var(--g1t-accent);
 }
 .g1t-diagram .d-head.d-tone-success {
-	fill: var(--g1t-success-dim);
+  fill: var(--g1t-success-dim);
 }
 .g1t-diagram .d-head.d-tone-warn {
-	fill: var(--g1t-warn);
+  fill: var(--g1t-warn);
 }
 .g1t-diagram .d-label,
 .g1t-diagram .d-phase-label {
-	fill: var(--g1t-fg-soft);
-	font-weight: 500;
+  fill: var(--g1t-fg-soft);
+  font-weight: 500;
 }
 .g1t-diagram .d-label-bg,
 .g1t-diagram .d-phase-label-bg {
-	fill: var(--g1t-surface);
-	stroke: var(--g1t-line);
+  fill: var(--g1t-surface);
+  stroke: var(--g1t-line);
 }
 
 /* Sequences. */
 .g1t-diagram .d-lifeline {
-	stroke: var(--g1t-line-strong);
-	stroke-width: 1.25;
+  stroke: var(--g1t-line-strong);
+  stroke-width: 1.25;
 }
 .g1t-diagram .d-msg-label {
-	fill: var(--g1t-fg-soft);
-	font-size: 11.5px;
+  fill: var(--g1t-fg-soft);
+  font-size: 11.5px;
 }
 .g1t-diagram .d-badge {
-	fill: var(--g1t-accent);
+  fill: var(--g1t-accent);
 }
 .g1t-diagram .d-badge-text {
-	fill: var(--g1t-bg);
-	font-size: 9.5px;
-	font-weight: 700;
+  fill: var(--g1t-bg);
+  font-size: 9.5px;
+  font-weight: 700;
 }
 .g1t-diagram .d-note {
-	fill: color-mix(in srgb, var(--g1t-warn) 9%, var(--g1t-surface));
-	stroke: color-mix(in srgb, var(--g1t-warn) 35%, transparent);
+  fill: color-mix(in srgb, var(--g1t-warn) 9%, var(--g1t-surface));
+  stroke: color-mix(in srgb, var(--g1t-warn) 35%, transparent);
 }
 .g1t-diagram .d-note-text {
-	fill: var(--g1t-fg-soft);
-	font-size: 11px;
+  fill: var(--g1t-fg-soft);
+  font-size: 11px;
 }
 .g1t-diagram .d-phase {
-	stroke: var(--g1t-line-strong);
+  stroke: var(--g1t-line-strong);
 }
 .g1t-diagram .d-phase-label {
-	fill: var(--g1t-muted);
-	font-weight: 600;
+  fill: var(--g1t-muted);
+  font-weight: 600;
 }

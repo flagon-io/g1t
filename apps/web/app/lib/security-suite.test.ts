@@ -88,8 +88,18 @@ test("secret filters are read from the address and narrow the list", () => {
 });
 
 test("secret types are listed once each, custom patterns by name", () => {
-  const types = secretTypes([secret(), secret({ id: "sec_2" }), secret({ kind: "custom_pattern", patternName: "Acme key", label: "a match for the custom pattern \"Acme key\"" })]);
-  assert.deepEqual(types, [["github_token", "GitHub token"], ["custom_pattern", "Custom: Acme key"]].sort((a, b) => a[1].localeCompare(b[1])));
+  const types = secretTypes([
+    secret(),
+    secret({ id: "sec_2" }),
+    secret({ kind: "custom_pattern", patternName: "Acme key", label: 'a match for the custom pattern "Acme key"' }),
+  ]);
+  assert.deepEqual(
+    types,
+    [
+      ["github_token", "GitHub token"],
+      ["custom_pattern", "Custom: Acme key"],
+    ].sort((a, b) => a[1].localeCompare(b[1])),
+  );
 });
 
 test("code filters and counts", () => {

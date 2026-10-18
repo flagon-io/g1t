@@ -17,18 +17,18 @@ dot beside **Status**, and so does the footer of g1t.sh's public pages.
 Every minute, each part gets one quick request, the same one a visitor
 would make, over the public internet:
 
-| Part | What the check does |
-| --- | --- |
-| Website and sign-in | Loads `g1t.sh/login`, and asks the API about an access token no one holds, which the account service must refuse with `401` |
-| API | Loads `api.g1t.sh/` |
-| Git and repositories | Lists the branches of a public repository over HTTPS (`info/refs`), the first step of every clone |
-| Git storage | How the store that keeps every repository (Cloudflare Artifacts) answered g1t over the last five minutes. Down when a quarter or more of its calls failed, or g1t stopped asking after repeated failures; degraded when it rate limited g1t, its calls took over 1.5 seconds on average, or g1t is serving repositories from its backup store (reads work, pushes and merges wait) |
-| Page speed | Loads a public project page (`g1t.sh/flagon-io/g1t`) and `g1t.sh/explore`, timed to the first byte of each answer |
-| MCP server | Loads `mcp.g1t.sh/` |
-| Documentation | Loads `docs.g1t.sh/` |
-| Deployments | Loads `g1t.page/`. Each deployed app is not checked one by one. |
-| Sandboxes | Not checked yet: starting a sandbox costs money and takes seconds. The page says so rather than showing green. |
-| Billing | Reads billing's price book. Stripe itself is not checked. |
+| Part                 | What the check does                                                                                                                                                                                                                                                                                                                                                                |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Website and sign-in  | Loads `g1t.sh/login`, and asks the API about an access token no one holds, which the account service must refuse with `401`                                                                                                                                                                                                                                                        |
+| API                  | Loads `api.g1t.sh/`                                                                                                                                                                                                                                                                                                                                                                |
+| Git and repositories | Lists the branches of a public repository over HTTPS (`info/refs`), the first step of every clone                                                                                                                                                                                                                                                                                  |
+| Git storage          | How the store that keeps every repository (Cloudflare Artifacts) answered g1t over the last five minutes. Down when a quarter or more of its calls failed, or g1t stopped asking after repeated failures; degraded when it rate limited g1t, its calls took over 1.5 seconds on average, or g1t is serving repositories from its backup store (reads work, pushes and merges wait) |
+| Page speed           | Loads a public project page (`g1t.sh/flagon-io/g1t`) and `g1t.sh/explore`, timed to the first byte of each answer                                                                                                                                                                                                                                                                  |
+| MCP server           | Loads `mcp.g1t.sh/`                                                                                                                                                                                                                                                                                                                                                                |
+| Documentation        | Loads `docs.g1t.sh/`                                                                                                                                                                                                                                                                                                                                                               |
+| Deployments          | Loads `g1t.page/`. Each deployed app is not checked one by one.                                                                                                                                                                                                                                                                                                                    |
+| Sandboxes            | Not checked yet: starting a sandbox costs money and takes seconds. The page says so rather than showing green.                                                                                                                                                                                                                                                                     |
+| Billing              | Reads billing's price book. Stripe itself is not checked.                                                                                                                                                                                                                                                                                                                          |
 
 A part that answers in over 1.5 seconds counts as slow, and one that
 fails or takes over 5 seconds counts as down. **Page speed** is held to
@@ -40,24 +40,24 @@ A part shows the worse of its last check and what an open incident says
 about it. During planned maintenance it shows **Under maintenance**
 instead, unless an incident says something worse.
 
-| State | Meaning |
-| --- | --- |
-| Operational | Its check answered quickly, and no incident says otherwise |
-| Degraded | Slow to answer, or an incident reports degraded performance |
-| Partial outage | An incident reports that it is partly down |
-| Outage | Its check failed, or an incident reports a major outage |
-| Under maintenance | Planned work on it is under way |
-| Not monitored | It has no check, and no incident is open on it |
+| State             | Meaning                                                     |
+| ----------------- | ----------------------------------------------------------- |
+| Operational       | Its check answered quickly, and no incident says otherwise  |
+| Degraded          | Slow to answer, or an incident reports degraded performance |
+| Partial outage    | An incident reports that it is partly down                  |
+| Outage            | Its check failed, or an incident reports a major outage     |
+| Under maintenance | Planned work on it is under way                             |
+| Not monitored     | It has no check, and no incident is open on it              |
 
 The banner at the top sums them up:
 
-| Banner | When |
-| --- | --- |
-| All systems normal | Every checked part answered quickly, and no incident is open |
-| Under maintenance | Planned work is under way, and nothing else is wrong |
-| Degraded performance | Some parts are slow, and none is down |
-| Partial outage | A part other than the website, API or git is down, a part is partly down, or an incident is open |
-| Major outage | The website, the API or git is down, or an open incident reports a major outage |
+| Banner               | When                                                                                             |
+| -------------------- | ------------------------------------------------------------------------------------------------ |
+| All systems normal   | Every checked part answered quickly, and no incident is open                                     |
+| Under maintenance    | Planned work is under way, and nothing else is wrong                                             |
+| Degraded performance | Some parts are slow, and none is down                                                            |
+| Partial outage       | A part other than the website, API or git is down, a part is partly down, or an incident is open |
+| Major outage         | The website, the API or git is down, or an open incident reports a major outage                  |
 
 ## Uptime bars
 
@@ -67,12 +67,12 @@ keys to see that day's share of answered checks, failed and slow checks,
 the average response time, and any incident. On a phone the bar shows
 the last 30 days.
 
-| Square | The day |
-| --- | --- |
-| Green | At least 99.9% of checks answered, so one failed check in a day stays green |
-| Peach | At least 95% answered, over a quarter of answers were slow, or an incident with degraded performance or a partial outage on the part was open |
-| Red | Less than 95% answered, or an incident with a major outage on the part was open |
-| Gray | No checks yet |
+| Square | The day                                                                                                                                       |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Green  | At least 99.9% of checks answered, so one failed check in a day stays green                                                                   |
+| Peach  | At least 95% answered, over a quarter of answers were slow, or an incident with degraded performance or a partial outage on the part was open |
+| Red    | Less than 95% answered, or an incident with a major outage on the part was open                                                               |
+| Gray   | No checks yet                                                                                                                                 |
 
 The percentage under each bar is the share of checks that answered over
 90 days, rounded down, so a single failure never shows as 100%. Checks
@@ -106,12 +106,12 @@ Staff give every incident a severity. It decides how fast the team
 responds and how often it posts updates; it is not shown on the status
 page, which shows each part's impact instead.
 
-| Severity | Meaning | Public updates |
-| --- | --- | --- |
-| SEV1 | Critical: g1t is down or unusable for most people, or data is at risk | At least every 30 minutes; subscribers are emailed |
-| SEV2 | Major: a core part (sign-in, git, the API) is broken or badly degraded for many people | At least hourly; subscribers are emailed |
-| SEV3 | Minor: one part is degraded or broken for some people, and there is a way around it | As things change |
-| SEV4 | Low: little or no customer impact | As things change |
+| Severity | Meaning                                                                                | Public updates                                     |
+| -------- | -------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| SEV1     | Critical: g1t is down or unusable for most people, or data is at risk                  | At least every 30 minutes; subscribers are emailed |
+| SEV2     | Major: a core part (sign-in, git, the API) is broken or badly degraded for many people | At least hourly; subscribers are emailed           |
+| SEV3     | Minor: one part is degraded or broken for some people, and there is a way around it    | As things change                                   |
+| SEV4     | Low: little or no customer impact                                                      | As things change                                   |
 
 ### Noticed before anyone reports it
 
@@ -176,10 +176,10 @@ not be. The feeds carry every update.
 Every public incident update and maintenance notice, newest first, the
 last 50:
 
-| Feed | Address |
-| --- | --- |
-| Atom (feed readers, Slack's RSS app, and most chat tools) | `https://status.g1t.sh/feed.xml` |
-| JSON Feed 1.1 | `https://status.g1t.sh/feed.json` |
+| Feed                                                      | Address                           |
+| --------------------------------------------------------- | --------------------------------- |
+| Atom (feed readers, Slack's RSS app, and most chat tools) | `https://status.g1t.sh/feed.xml`  |
+| JSON Feed 1.1                                             | `https://status.g1t.sh/feed.json` |
 
 Each item links to the update on its incident's or maintenance's page.
 
@@ -218,20 +218,20 @@ curl -s https://status.g1t.sh/status.json
 }
 ```
 
-| Field | What it is |
-| --- | --- |
-| `overall.state` | `up`, `degraded`, `down`, `maintenance`, or `unknown` before the first check |
-| `components[].state` | What the page shows: `up`, `degraded`, `partial`, `down`, `maintenance`, or `unmonitored` |
-| `components[].check_state` | What the last check alone said: `up`, `degraded`, `down` or `unmonitored` |
-| `components[].uptime_90d` | Share of checks answered over 90 days, 0 to 100, or `null` |
-| `incidents[]` | Open incidents, and those resolved in the last 90 days, newest first |
-| `incidents[].status` | `investigating`, `identified`, `monitoring` or `resolved` |
-| `incidents[].impact` | `down` when any part has a major outage, otherwise `degraded` |
-| `incidents[].component_impacts` | Each affected part's `key` and `impact`: `degraded`, `partial_outage` or `major_outage` |
-| `incidents[].url` | The incident's page |
-| `incidents[].postmortem_published_at` | When its postmortem was published, or `null` |
-| `incidents[].updates` | Newest first, each with `id`, `at`, `status` and `text` |
-| `maintenance[]` | Maintenance scheduled or under way, soonest first, each with `title`, `message`, `components`, `starts_at`, `ends_at`, `state` (`scheduled` or `in_progress`), `url` and `updates` |
+| Field                                 | What it is                                                                                                                                                                         |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `overall.state`                       | `up`, `degraded`, `down`, `maintenance`, or `unknown` before the first check                                                                                                       |
+| `components[].state`                  | What the page shows: `up`, `degraded`, `partial`, `down`, `maintenance`, or `unmonitored`                                                                                          |
+| `components[].check_state`            | What the last check alone said: `up`, `degraded`, `down` or `unmonitored`                                                                                                          |
+| `components[].uptime_90d`             | Share of checks answered over 90 days, 0 to 100, or `null`                                                                                                                         |
+| `incidents[]`                         | Open incidents, and those resolved in the last 90 days, newest first                                                                                                               |
+| `incidents[].status`                  | `investigating`, `identified`, `monitoring` or `resolved`                                                                                                                          |
+| `incidents[].impact`                  | `down` when any part has a major outage, otherwise `degraded`                                                                                                                      |
+| `incidents[].component_impacts`       | Each affected part's `key` and `impact`: `degraded`, `partial_outage` or `major_outage`                                                                                            |
+| `incidents[].url`                     | The incident's page                                                                                                                                                                |
+| `incidents[].postmortem_published_at` | When its postmortem was published, or `null`                                                                                                                                       |
+| `incidents[].updates`                 | Newest first, each with `id`, `at`, `status` and `text`                                                                                                                            |
+| `maintenance[]`                       | Maintenance scheduled or under way, soonest first, each with `title`, `message`, `components`, `starts_at`, `ends_at`, `state` (`scheduled` or `in_progress`), `url` and `updates` |
 
 `https://status.g1t.sh/badge.svg` is a small badge with the banner's
 words, for a README or a dashboard.

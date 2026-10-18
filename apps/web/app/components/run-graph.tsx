@@ -4,7 +4,18 @@ import { Link } from "react-router";
 
 import { Duration, StatusIcon } from "./actions";
 import { DeployLink } from "./deploy";
-import { GRAPH, type GraphJob, type EdgeState, type PlacedGroup, type PlacedNode, type Standing, layoutRun, sharedUrl, standingOf, unitStanding } from "../lib/run-graph";
+import {
+  GRAPH,
+  type GraphJob,
+  type EdgeState,
+  type PlacedGroup,
+  type PlacedNode,
+  type Standing,
+  layoutRun,
+  sharedUrl,
+  standingOf,
+  unitStanding,
+} from "../lib/run-graph";
 import { Card } from "./ui/card";
 
 /** A job calling a workflow shows as running while its jobs do. */
@@ -213,13 +224,7 @@ export function RunGraph({
               node.unit.kind === "job" ? (
                 <JobNode key={node.unit.key} node={node as PlacedNode & { unit: { kind: "job" } }} href={href} selected={selected} />
               ) : (
-                <MatrixNode
-                  key={node.unit.key}
-                  node={node as PlacedNode & { unit: { kind: "matrix" } }}
-                  href={href}
-                  selected={selected}
-                  toggle={toggle}
-                />
+                <MatrixNode key={node.unit.key} node={node as PlacedNode & { unit: { kind: "matrix" } }} href={href} selected={selected} toggle={toggle} />
               ),
             )}
           </div>

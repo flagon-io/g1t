@@ -66,7 +66,7 @@ const PULL_SEGMENTS: Record<PullTab, string> = { conversation: "", session: "/se
 
 /** `<repo>/pull/<n>`, or one of its tabs: `<repo>/pull/<n>/files`. `repo` is `/<owner>/<repo>`. */
 export function pullPath(repo: string, number: number | string, tab: PullTab | string = "conversation"): string {
-  const known: PullTab = tab === "files" ? "changes" : ((PULL_TABS as readonly string[]).includes(tab) ? (tab as PullTab) : "conversation");
+  const known: PullTab = tab === "files" ? "changes" : (PULL_TABS as readonly string[]).includes(tab) ? (tab as PullTab) : "conversation";
   return `${repo}/pull/${number}${PULL_SEGMENTS[known]}`;
 }
 

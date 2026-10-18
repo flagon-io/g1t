@@ -101,12 +101,12 @@ they run. The fork's own settings do not change any of that.
 
 ### When the parent changes
 
-| The parent | Its forks |
-| --- | --- |
-| Is made public or private | Are detached: they become ordinary repositories, and keep the visibility they had. |
-| Is deleted | Stay forks while it can be restored. When it is purged, they become forks of the repository it was forked from, or ordinary repositories if it was not a fork. |
-| Is renamed or transferred | Follow it: they are forks of it at its new address. |
-| Is archived | Stay forks; syncing from it still works. |
+| The parent                | Its forks                                                                                                                                                      |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Is made public or private | Are detached: they become ordinary repositories, and keep the visibility they had.                                                                             |
+| Is deleted                | Stay forks while it can be restored. When it is purged, they become forks of the repository it was forked from, or ordinary repositories if it was not a fork. |
+| Is renamed or transferred | Follow it: they are forks of it at its new address.                                                                                                            |
+| Is archived               | Stay forks; syncing from it still works.                                                                                                                       |
 
 A detached fork keeps its code, settings and pull requests, and its
 workflows and work items stay off unless someone had turned them on. It can no longer be
@@ -121,13 +121,13 @@ part explains why, what it costs, and when to use which.
 
 ### The short version
 
-| | Working copy per pull request | Branch in the repository |
-| --- | --- | --- |
-| Built for | Coding agents, in any number | A person, or a few |
-| What the worker can write to | Its own working copy, nothing else | The repository |
-| Effect on the repository | None until something merges | A new ref for every piece of work |
-| Sees `main` move | Only when it pulls | On the next fetch |
-| Merging | Objects are copied in, then `main` moves | `main` moves |
+|                              | Working copy per pull request            | Branch in the repository          |
+| ---------------------------- | ---------------------------------------- | --------------------------------- |
+| Built for                    | Coding agents, in any number             | A person, or a few                |
+| What the worker can write to | Its own working copy, nothing else       | The repository                    |
+| Effect on the repository     | None until something merges              | A new ref for every piece of work |
+| Sees `main` move             | Only when it pulls                       | On the next fetch                 |
+| Merging                      | Objects are copied in, then `main` moves | `main` moves                      |
 
 ### Why working copies, for agents
 

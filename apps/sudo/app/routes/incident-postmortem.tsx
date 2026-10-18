@@ -25,7 +25,14 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   return {
     incident: incident.ok ? incident.value : null,
     error: incident.ok ? null : incident.error,
-    done: done === "saved" ? "Draft saved. The preview shows it." : done === "published" ? "Published on the incident's page." : done === "unpublished" ? "Taken down from the status page." : null,
+    done:
+      done === "saved"
+        ? "Draft saved. The preview shows it."
+        : done === "published"
+          ? "Published on the incident's page."
+          : done === "unpublished"
+            ? "Taken down from the status page."
+            : null,
   };
 }
 
@@ -122,7 +129,8 @@ export default function PostmortemEditor({ loaderData, actionData }: Route.Compo
         {!resolved && <Notice tone="info">The incident is still open. Draft away; it can be published once it is resolved.</Notice>}
         {!saved && (
           <Notice tone="info">
-            Started for you: the impact from its parts and times, the timeline from the incident's own, and the follow-ups as action items. The timeline includes internal notes: edit out anything that should stay inside.
+            Started for you: the impact from its parts and times, the timeline from the incident's own, and the follow-ups as action items. The timeline
+            includes internal notes: edit out anything that should stay inside.
           </Notice>
         )}
       </div>

@@ -12,7 +12,12 @@ import { actorOf } from "../events.ts";
 
 export type FolioEventType = "folio.created" | "folio.updated" | "folio.trashed" | "folio.restored" | "folio.deleted" | "folio.shared" | "folio.stale";
 
-export async function publishFolioEvent<T extends FolioEventType>(events: ServiceBinding | undefined, type: T, data: EventPayloads[T] & FolioEventData, actor: string | null): Promise<void> {
+export async function publishFolioEvent<T extends FolioEventType>(
+  events: ServiceBinding | undefined,
+  type: T,
+  data: EventPayloads[T] & FolioEventData,
+  actor: string | null,
+): Promise<void> {
   if (!events) return;
   try {
     await eventsClient(events).publish([{ type, source: "docs", repoId: null, actor: actorOf(actor), data } as never]);

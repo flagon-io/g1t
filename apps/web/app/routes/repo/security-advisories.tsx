@@ -128,7 +128,9 @@ export default function SecurityAdvisories({ loaderData, params }: Route.Compone
       )}
       {shown.length === 0 ? (
         <EmptyState title={state ? `No ${STATE_LABEL[state].toLowerCase()} advisories` : "No advisories"}>
-          {canManage ? "Draft one when this repository has a vulnerability to tell people about." : "The maintainers have not published any security advisories."}
+          {canManage
+            ? "Draft one when this repository has a vulnerability to tell people about."
+            : "The maintainers have not published any security advisories."}
         </EmptyState>
       ) : (
         <Card asChild divided>

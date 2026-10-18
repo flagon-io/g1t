@@ -5,7 +5,7 @@ import { test } from "node:test";
 
 // Execute production SQL against the complete migrated schema. These verify
 // transaction/retry contracts; Stripe HTTP and Worker execution need staging.
-const source = name => readFileSync(new URL(`../services/billing/src/${name}.rs`, import.meta.url), "utf8");
+const source = (name) => readFileSync(new URL(`../services/billing/src/${name}.rs`, import.meta.url), "utf8");
 const constant = (file, name) => {
   const match = source(file).match(new RegExp(`const ${name}: &str = "([\\s\\S]*?)";`));
   assert.ok(match, `${file}::${name}`);
@@ -13,100 +13,142 @@ const constant = (file, name) => {
 };
 const prepares = (file, from, to) => {
   const text = source(file).split(from)[1].split(to)[0];
-  return [...text.matchAll(/\.prepare\(\s*"([\s\S]*?)"\s*,?\s*\)/g)].map(m => m[1]);
+  return [...text.matchAll(/\.prepare\(\s*"([\s\S]*?)"\s*,?\s*\)/g)].map((m) => m[1]);
 };
 function database() {
   const db = new DatabaseSync(":memory:");
   const dir = new URL("../services/billing/migrations/", import.meta.url);
-  for (const name of readdirSync(dir).filter(n => n.endsWith(".sql")).sort()) db.exec(readFileSync(new URL(name, dir), "utf8"));
+  for (const name of readdirSync(dir)
+    .filter((n) => n.endsWith(".sql"))
+    .sort())
+    db.exec(readFileSync(new URL(name, dir), "utf8"));
   return db;
 }
 const at = "2026-10-14T12:00:00Z";
-test('late enterprise overdue writes cannot reopen terminal invoices or pause paid workspaces', () => {
+test("late enterprise overdue writes cannot reopen terminal invoices or pause paid workspaces", () => {
   const db = database();
   db.prepare("INSERT INTO accounts(workspace,balance_micros,created_at) VALUES ('fixture',0,?)").run(at);
-  db.prepare("INSERT INTO enterprise_invoices(invoice_id,account_id,period,amount_micros,status,created_by,created_at) VALUES ('in_fixture','ent_fixture','now',10000000,'open','staff',?)").run(at);
-  const update = db.prepare(constant('webhooks','ENTERPRISE_STATUS'));
-  const stop = db.prepare(constant('webhooks','ENTERPRISE_OVERDUE_STOP'));
-  update.get('overdue','in_fixture');
-  stop.run('fixture',at,'overdue','in_fixture');
-  assert.equal(db.prepare("SELECT autopay_error FROM limits WHERE workspace='fixture'").get().autopay_error,'overdue');
-  batch(db, [["UPDATE enterprise_invoices SET status='paid' WHERE invoice_id='in_fixture'", []], [constant('lib','CLEAR_STOP'), ['fixture']]]);
-  assert.equal(update.get('overdue','in_fixture'), undefined);
-  stop.run('fixture',at,'late overdue','in_fixture');
-  assert.equal(db.prepare("SELECT autopay_error FROM limits WHERE workspace='fixture'").get().autopay_error,null);
+  db.prepare(
+    "INSERT INTO enterprise_invoices(invoice_id,account_id,period,amount_micros,status,created_by,created_at) VALUES ('in_fixture','ent_fixture','now',10000000,'open','staff',?)",
+  ).run(at);
+  const update = db.prepare(constant("webhooks", "ENTERPRISE_STATUS"));
+  const stop = db.prepare(constant("webhooks", "ENTERPRISE_OVERDUE_STOP"));
+  update.get("overdue", "in_fixture");
+  stop.run("fixture", at, "overdue", "in_fixture");
+  assert.equal(db.prepare("SELECT autopay_error FROM limits WHERE workspace='fixture'").get().autopay_error, "overdue");
+  batch(db, [
+    ["UPDATE enterprise_invoices SET status='paid' WHERE invoice_id='in_fixture'", []],
+    [constant("lib", "CLEAR_STOP"), ["fixture"]],
+  ]);
+  assert.equal(update.get("overdue", "in_fixture"), undefined);
+  stop.run("fixture", at, "late overdue", "in_fixture");
+  assert.equal(db.prepare("SELECT autopay_error FROM limits WHERE workspace='fixture'").get().autopay_error, null);
   db.exec("UPDATE enterprise_invoices SET status='void'");
-  assert.equal(update.get('overdue','in_fixture'), undefined);
-  stop.run('fixture',at,'late overdue','in_fixture');
-  assert.equal(db.prepare("SELECT autopay_error FROM limits WHERE workspace='fixture'").get().autopay_error,null);
+  assert.equal(update.get("overdue", "in_fixture"), undefined);
+  stop.run("fixture", at, "late overdue", "in_fixture");
+  assert.equal(db.prepare("SELECT autopay_error FROM limits WHERE workspace='fixture'").get().autopay_error, null);
 });
 test("enterprise invoice acquisition freezes one payload and rejects stale balances after completion", () => {
   const db = database();
   db.prepare("INSERT INTO accounts(workspace,balance_micros,created_at) VALUES ('fixture',-10000000,?)").run(at);
   db.prepare("INSERT INTO account_members(workspace,account_id,added_by,added_at) VALUES ('fixture','ent_fixture','staff',?)").run(at);
-  const snapshots = JSON.stringify([{workspace:'fixture',balance:-10000000,invoiced:0}]);
-  const acquire = db.prepare(constant('enterprise_attempt', 'INSERT'));
-  const payload = JSON.stringify({lines:[{workspace:'fixture',amountMicros:10000000}]});
-  acquire.run('ent_fixture','first',payload,1,snapshots);
-  acquire.run('ent_fixture','second','{"amount":20000000}',2,snapshots);
-  assert.deepEqual({...db.prepare('SELECT id,payload FROM enterprise_invoice_attempts').get()}, {id:'first',payload});
+  const snapshots = JSON.stringify([{ workspace: "fixture", balance: -10000000, invoiced: 0 }]);
+  const acquire = db.prepare(constant("enterprise_attempt", "INSERT"));
+  const payload = JSON.stringify({ lines: [{ workspace: "fixture", amountMicros: 10000000 }] });
+  acquire.run("ent_fixture", "first", payload, 1, snapshots);
+  acquire.run("ent_fixture", "second", '{"amount":20000000}', 2, snapshots);
+  assert.deepEqual({ ...db.prepare("SELECT id,payload FROM enterprise_invoice_attempts").get() }, { id: "first", payload });
   assert.throws(() => db.exec("UPDATE account_members SET account_id='ent_other' WHERE workspace='fixture'"), /pending enterprise invoice/);
   assert.throws(() => db.exec("DELETE FROM account_members WHERE workspace='fixture'"), /pending enterprise invoice/);
-  db.prepare("INSERT INTO enterprise_invoices(invoice_id,account_id,period,amount_micros,status,created_by,created_at) VALUES ('in_first','ent_fixture','now',10000000,'open','staff',?)").run(at);
+  db.prepare(
+    "INSERT INTO enterprise_invoices(invoice_id,account_id,period,amount_micros,status,created_by,created_at) VALUES ('in_first','ent_fixture','now',10000000,'open','staff',?)",
+  ).run(at);
   db.exec("INSERT INTO enterprise_invoice_lines VALUES ('in_first','fixture',10000000); UPDATE enterprise_invoice_attempts SET completed=1");
-  db.prepare(constant('enterprise_attempt','RETIRE')).run('ent_fixture');
-  acquire.run('ent_fixture','stale','{}',3,snapshots);
-  assert.equal(db.prepare('SELECT COUNT(*) n FROM enterprise_invoice_attempts').get().n,0);
+  db.prepare(constant("enterprise_attempt", "RETIRE")).run("ent_fixture");
+  acquire.run("ent_fixture", "stale", "{}", 3, snapshots);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM enterprise_invoice_attempts").get().n, 0);
   db.exec("UPDATE accounts SET balance_micros=-15000000 WHERE workspace='fixture'");
-  const fresh = JSON.stringify([{workspace:'fixture',balance:-15000000,invoiced:10000000}]);
-  acquire.run('ent_fixture','additional','{"amount":5000000}',4,fresh);
-  assert.equal(db.prepare('SELECT id FROM enterprise_invoice_attempts').get().id,'additional');
+  const fresh = JSON.stringify([{ workspace: "fixture", balance: -15000000, invoiced: 10000000 }]);
+  acquire.run("ent_fixture", "additional", '{"amount":5000000}', 4, fresh);
+  assert.equal(db.prepare("SELECT id FROM enterprise_invoice_attempts").get().id, "additional");
 });
 test("a late enterprise invoice writer cannot recreate old lines after completion and rename", () => {
   const db = database();
-  const writes = prepares('webhooks', 'async fn finish_enterprise_attempt(', '/// An enterprise invoice paid:')
-    .filter(sql => sql.startsWith('INSERT INTO enterprise_invoice'));
-  assert.equal(writes.length,2);
+  const writes = prepares("webhooks", "async fn finish_enterprise_attempt(", "/// An enterprise invoice paid:").filter((sql) =>
+    sql.startsWith("INSERT INTO enterprise_invoice"),
+  );
+  assert.equal(writes.length, 2);
   db.prepare("INSERT INTO enterprise_invoice_attempts(account_id,id,payload,created_ms) VALUES ('ent_fixture','attempt','{}',1)").run();
-  const invoice = ['in_fixture','ent_fixture','now',10000000,null,'staff',at,'attempt'];
-  const line = ['in_fixture','old',10000000,'attempt'];
-  batch(db,[[writes[0],invoice],[writes[1],line]]);
+  const invoice = ["in_fixture", "ent_fixture", "now", 10000000, null, "staff", at, "attempt"];
+  const line = ["in_fixture", "old", 10000000, "attempt"];
+  batch(db, [
+    [writes[0], invoice],
+    [writes[1], line],
+  ]);
   db.exec("UPDATE enterprise_invoice_attempts SET completed=1; UPDATE enterprise_invoice_lines SET workspace='renamed'");
-  batch(db,[[writes[0],invoice],[writes[1],line]]);
-  assert.deepEqual(db.prepare('SELECT workspace FROM enterprise_invoice_lines').all().map(r=>r.workspace),['renamed']);
-  db.prepare(constant('enterprise_attempt','RETIRE')).run('ent_fixture');
-  batch(db,[[writes[0],invoice],[writes[1],line]]);
-  assert.equal(db.prepare('SELECT SUM(amount_micros) n FROM enterprise_invoice_lines').get().n,10000000);
+  batch(db, [
+    [writes[0], invoice],
+    [writes[1], line],
+  ]);
+  assert.deepEqual(
+    db
+      .prepare("SELECT workspace FROM enterprise_invoice_lines")
+      .all()
+      .map((r) => r.workspace),
+    ["renamed"],
+  );
+  db.prepare(constant("enterprise_attempt", "RETIRE")).run("ent_fixture");
+  batch(db, [
+    [writes[0], invoice],
+    [writes[1], line],
+  ]);
+  assert.equal(db.prepare("SELECT SUM(amount_micros) n FROM enterprise_invoice_lines").get().n, 10000000);
 });
 test("fee waivers refuse subscriptions that may still charge, including delinquent plans", () => {
   const db = database();
-  const insert = db.prepare("INSERT INTO subscriptions (workspace, feature, subscription_id, status, started_by, started_at, updated_at) VALUES (?, 'plan', ?, ?, 'staff', ?, ?)");
-  for (const status of ['active', 'past_due', 'incomplete', 'unpaid', 'canceled']) {
+  const insert = db.prepare(
+    "INSERT INTO subscriptions (workspace, feature, subscription_id, status, started_by, started_at, updated_at) VALUES (?, 'plan', ?, ?, 'staff', ?, ?)",
+  );
+  for (const status of ["active", "past_due", "incomplete", "unpaid", "canceled"]) {
     insert.run(status, `sub_${status}`, status, at, at);
-    const found = db.prepare(constant('accounts', 'FEE_WAIVER_SUBSCRIPTIONS')).get(status);
-    assert.equal(Boolean(found), status !== 'canceled', status);
+    const found = db.prepare(constant("accounts", "FEE_WAIVER_SUBSCRIPTIONS")).get(status);
+    assert.equal(Boolean(found), status !== "canceled", status);
   }
-  assert.equal(db.prepare(constant('accounts', 'FEE_WAIVER_SUBSCRIPTIONS')).get('new-workspace'), undefined);
+  assert.equal(db.prepare(constant("accounts", "FEE_WAIVER_SUBSCRIPTIONS")).get("new-workspace"), undefined);
 });
 test("demo detach finds all sources through bounded compound selects", () => {
   const db = database();
   db.prepare("INSERT INTO accounts (workspace,balance_micros,created_at) VALUES ('demo',8000000,?)").run(at);
   db.prepare("INSERT INTO allowance_use (kind,scope,month,used) VALUES ('plan_credit','allowance-only','2026-10',500)").run();
-  const sql = constant('detach', 'FOUND').replace('{internal}', constant('sales', 'INTERNAL_SQL'));
-  const rows = db.prepare(sql).all(null, '2026-10');
-  assert.deepEqual(rows.map(r => r.workspace), ['allowance-only', 'demo']);
+  const sql = constant("detach", "FOUND").replace("{internal}", constant("sales", "INTERNAL_SQL"));
+  const rows = db.prepare(sql).all(null, "2026-10");
+  assert.deepEqual(
+    rows.map((r) => r.workspace),
+    ["allowance-only", "demo"],
+  );
   assert.equal(rows[0].plan_credit, 500);
   assert.equal(rows[1].balance, 8000000);
-  assert.deepEqual(db.prepare(sql).all('demo', '2026-10').map(r => r.workspace), ['demo']);
+  assert.deepEqual(
+    db
+      .prepare(sql)
+      .all("demo", "2026-10")
+      .map((r) => r.workspace),
+    ["demo"],
+  );
   // D1 rejects the former long UNION. Each candidate CTE stays small.
-  for (const cte of sql.split('AS MATERIALIZED (').slice(1)) {
-    assert.ok((cte.split(')')[0].match(/UNION/g) ?? []).length <= 3);
+  for (const cte of sql.split("AS MATERIALIZED (").slice(1)) {
+    assert.ok((cte.split(")")[0].match(/UNION/g) ?? []).length <= 3);
   }
 });
 function batch(db, writes) {
   db.exec("BEGIN");
-  try { for (const [sql, args] of writes) db.prepare(sql).run(...args); db.exec("COMMIT"); }
-  catch (e) { db.exec("ROLLBACK"); throw e; }
+  try {
+    for (const [sql, args] of writes) db.prepare(sql).run(...args);
+    db.exec("COMMIT");
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  }
 }
 const entries = prepares("lib", "pub(crate) fn entry_statements(", "/// What follows an entry");
 const stops = prepares("lib", "fn after_entry_statements(", "async fn account(");
@@ -179,10 +221,10 @@ test("a stale invoice calculation cannot create an attempt after payment changes
 test("the migration registry covers every billing migration", () => {
   const dir = new URL("../services/billing/migrations/", import.meta.url);
   const lib = source("lib");
-  for (const name of readdirSync(dir).filter(n => n.endsWith(".sql"))) assert.ok(lib.includes(`include_str!("../migrations/${name}")`), name);
+  for (const name of readdirSync(dir).filter((n) => n.endsWith(".sql"))) assert.ok(lib.includes(`include_str!("../migrations/${name}")`), name);
 });
 
-const sqlFile = name => readFileSync(new URL(`../services/billing/src/${name}.sql`, import.meta.url), "utf8");
+const sqlFile = (name) => readFileSync(new URL(`../services/billing/src/${name}.sql`, import.meta.url), "utf8");
 function refund(db, cents, tax, plan = false) {
   const reference = `refund/ch_fixture/${cents + tax}`;
   const writes = [[sqlFile(plan ? "refund_plan" : "refund_ledger"), [reference, "fixture", cents * 10_000, reference, at, "refund/ch_fixture/%"]]];
@@ -191,7 +233,10 @@ function refund(db, cents, tax, plan = false) {
   batch(db, writes);
 }
 test("partial refunds, duplicate deliveries and reversed ordering debit only the cumulative total", () => {
-  for (const order of [[1000, 2500, 2500], [2500, 1000, 2500]]) {
+  for (const order of [
+    [1000, 2500, 2500],
+    [2500, 1000, 2500],
+  ]) {
     const db = database();
     batch(db, payment("cs_fixture"));
     for (const cents of order) refund(db, cents, cents * 0.08);
@@ -226,7 +271,9 @@ test("plan refunds reduce revenue without debiting prepaid usage credit", () => 
 test("one card cannot fund concurrent trials or another trial after being replaced", () => {
   const db = database();
   const grantSql = prepares("credits", "pub(crate) async fn ensure_grant(", "/// Takes up to")[0];
-  const card = db.prepare("INSERT INTO card_checks (workspace, setup_intent, payment_method, fingerprint, funding, checked_by, checked_at) VALUES (?, ?, ?, ?, 'credit', 'fixture', ?)");
+  const card = db.prepare(
+    "INSERT INTO card_checks (workspace, setup_intent, payment_method, fingerprint, funding, checked_by, checked_at) VALUES (?, ?, ?, ?, 'credit', 'fixture', ?)",
+  );
   card.run("trial_a", "seti_a", "pm_a", "same_card", at);
   card.run("trial_b", "seti_b", "pm_b", "same_card", at);
   const grant = db.prepare(grantSql);
@@ -282,6 +329,9 @@ test("different workspaces share one bounded OSS pool and free overruns remain e
   batch(db, usage("a", "run/a", "a", 800_000, { plan: 0, trial: 0 }));
   batch(db, usage("b", "run/b", "b", 800_000, { plan: 0, trial: 0, given: 1 }));
   assert.equal(db.prepare("SELECT used FROM allowance_use WHERE kind='oss_pool'").get().used, 1_000_000);
-  assert.deepEqual({ ...db.prepare("SELECT amount_micros, oss_micros, given_micros FROM ledger WHERE id='b'").get() }, { amount_micros: 0, oss_micros: 200_000, given_micros: 600_000 });
+  assert.deepEqual(
+    { ...db.prepare("SELECT amount_micros, oss_micros, given_micros FROM ledger WHERE id='b'").get() },
+    { amount_micros: 0, oss_micros: 200_000, given_micros: 600_000 },
+  );
   db.close();
 });

@@ -83,10 +83,6 @@ export function productionImageOf(row: {
  * Whether the project's production should be visited for a screenshot: it
  * runs elsewhere, at an address, and no uploaded image is shown instead.
  */
-export function wantsScreenshot(project: {
-  runs: string | null;
-  productionUrl: string | null;
-  productionImage: { preferred: boolean } | null;
-}): boolean {
+export function wantsScreenshot(project: { runs: string | null; productionUrl: string | null; productionImage: { preferred: boolean } | null }): boolean {
   return project.runs === "elsewhere" && !!project.productionUrl && !project.productionImage?.preferred;
 }

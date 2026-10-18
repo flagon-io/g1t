@@ -51,7 +51,13 @@ export type SoundSettingsChange = Partial<Omit<SoundSettings, "sound_cues">> & {
 /** Which cues play before anyone changed them: all but the tick as you send. */
 export const DEFAULT_SOUND_CUES: Record<Exclude<SoundCue, "call">, boolean> = { message: true, direct: true, mention: true, sent: false };
 
-export const DEFAULT_SOUND_SETTINGS: SoundSettings = { sounds_enabled: true, sound_set: "soft", sound_volume: 60, sound_cues: { ...DEFAULT_SOUND_CUES }, desktop_toasts: false };
+export const DEFAULT_SOUND_SETTINGS: SoundSettings = {
+  sounds_enabled: true,
+  sound_set: "soft",
+  sound_volume: 60,
+  sound_cues: { ...DEFAULT_SOUND_CUES },
+  desktop_toasts: false,
+};
 
 /** Whether a cue plays under these settings: its own switch, else its default. */
 export function cueOn(settings: Pick<SoundSettings, "sound_cues">, cue: SoundCue): boolean {

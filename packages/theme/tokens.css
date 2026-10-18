@@ -4,51 +4,53 @@
  * Each site maps these onto whatever its own framework calls them.
  */
 :root {
-	/* The faces themselves are in fonts.css. */
-	--g1t-font-sans: 'Hanken Grotesk', 'Hanken Grotesk Fallback', ui-sans-serif, system-ui, sans-serif,
-		'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
-	--g1t-font-display: 'Bricolage Grotesque', 'Bricolage Grotesque Fallback', ui-sans-serif, system-ui,
-		sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
-	--g1t-font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* The faces themselves are in fonts.css. */
+  --g1t-font-sans:
+    "Hanken Grotesk", "Hanken Grotesk Fallback", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
+    "Noto Color Emoji";
+  --g1t-font-display:
+    "Bricolage Grotesque", "Bricolage Grotesque Fallback", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
+    "Noto Color Emoji";
+  --g1t-font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-	/* Very dark gray, nearly neutral, three elevations. */
-	--g1t-bg: #0f0f11;
-	--g1t-surface: #161618;
-	--g1t-raised: #1e1e21;
-	--g1t-line: #28282c;
-	--g1t-line-strong: #38383e;
+  /* Very dark gray, nearly neutral, three elevations. */
+  --g1t-bg: #0f0f11;
+  --g1t-surface: #161618;
+  --g1t-raised: #1e1e21;
+  --g1t-line: #28282c;
+  --g1t-line-strong: #38383e;
 
-	--g1t-fg: #ededef;
-	--g1t-fg-soft: #dcdce0;
-	--g1t-muted: #a0a0a8;
-	--g1t-faint: #86868e;
+  --g1t-fg: #ededef;
+  --g1t-fg-soft: #dcdce0;
+  --g1t-muted: #a0a0a8;
+  --g1t-faint: #86868e;
 
-	/*
+  /*
 	 * Lavender, the colour of the logo's 1: the brand accent. Primary
 	 * actions, links, focus rings, the current tab, selection, and g1t's
 	 * own work. Text on it is --g1t-bg (9.2:1); as text on --g1t-bg it is
 	 * 9.2:1, on --g1t-raised 8.0:1.
 	 */
-	--g1t-accent: #b6a8ff;
-	--g1t-accent-hover: #c9bfff;
-	--g1t-accent-dim: #8577e0;
-	--g1t-accent-low: #221e38;
+  --g1t-accent: #b6a8ff;
+  --g1t-accent-hover: #c9bfff;
+  --g1t-accent-dim: #8577e0;
+  --g1t-accent-low: #221e38;
 
-	/* Mint: what is live, what passed, what is ready, what was added (13.8:1). */
-	--g1t-success: #86efc4;
-	--g1t-success-dim: #4fb38e;
-	--g1t-success-low: #10302a;
+  /* Mint: what is live, what passed, what is ready, what was added (13.8:1). */
+  --g1t-success: #86efc4;
+  --g1t-success-dim: #4fb38e;
+  --g1t-success-low: #10302a;
 
-	/*
+  /*
 	 * Status. Merged is a deeper, more saturated violet than the accent
 	 * (6.0:1 on --g1t-bg), and always comes with the merge icon.
 	 */
-	--g1t-info: #8ab4ff;
-	--g1t-merged: #a678f5;
-	--g1t-warn: #ffbd8c;
-	--g1t-danger: #ff8394;
+  --g1t-info: #8ab4ff;
+  --g1t-merged: #a678f5;
+  --g1t-warn: #ffbd8c;
+  --g1t-danger: #ff8394;
 
-	/*
+  /*
 	 * The light palette, for a site that offers one (the app's Appearance
 	 * setting; apps/web/app/app.css picks between the two with
 	 * light-dark()). The same names with `light-` in front. A near-white
@@ -56,28 +58,28 @@
 	 * as text: every text colour here is at least 4.5:1 on bg, surface
 	 * and raised (apps/web/app/lib/tokens.test.ts).
 	 */
-	--g1t-light-bg: #fbfbfa;
-	--g1t-light-surface: #ffffff;
-	--g1t-light-raised: #f1f1ef;
-	--g1t-light-line: #e4e4e1;
-	--g1t-light-line-strong: #d2d2ce;
+  --g1t-light-bg: #fbfbfa;
+  --g1t-light-surface: #ffffff;
+  --g1t-light-raised: #f1f1ef;
+  --g1t-light-line: #e4e4e1;
+  --g1t-light-line-strong: #d2d2ce;
 
-	--g1t-light-fg: #18181b;
-	--g1t-light-fg-soft: #2e2e33;
-	--g1t-light-muted: #5c5c66;
-	--g1t-light-faint: #686871;
+  --g1t-light-fg: #18181b;
+  --g1t-light-fg-soft: #2e2e33;
+  --g1t-light-muted: #5c5c66;
+  --g1t-light-faint: #686871;
 
-	--g1t-light-accent: #6b52c8;
-	--g1t-light-accent-hover: #5b42b8;
-	--g1t-light-accent-dim: #9584dc;
-	--g1t-light-accent-low: #ece8fb;
+  --g1t-light-accent: #6b52c8;
+  --g1t-light-accent-hover: #5b42b8;
+  --g1t-light-accent-dim: #9584dc;
+  --g1t-light-accent-low: #ece8fb;
 
-	--g1t-light-success: #0d7a52;
-	--g1t-light-success-dim: #3a9d77;
-	--g1t-light-success-low: #e2f4ec;
+  --g1t-light-success: #0d7a52;
+  --g1t-light-success-dim: #3a9d77;
+  --g1t-light-success-low: #e2f4ec;
 
-	--g1t-light-info: #2160cc;
-	--g1t-light-merged: #7c3fd1;
-	--g1t-light-warn: #a84f00;
-	--g1t-light-danger: #c42a43;
+  --g1t-light-info: #2160cc;
+  --g1t-light-merged: #7c3fd1;
+  --g1t-light-warn: #a84f00;
+  --g1t-light-danger: #c42a43;
 }

@@ -39,9 +39,7 @@ const THE_ONE = pixels(ONE, 0, true);
 
 /** Pixels on cells of 10 units, each a square of 8, centred. */
 function pixelShapes(of: Pixel[], ink: string, accent: string): string {
-  return of
-    .map((p) => `<rect x="${p.x * 10 + 1}" y="${p.y * 10 + 1}" width="8" height="8" fill="${p.one ? accent : ink}"/>`)
-    .join("");
+  return of.map((p) => `<rect x="${p.x * 10 + 1}" y="${p.y * 10 + 1}" width="8" height="8" fill="${p.one ? accent : ink}"/>`).join("");
 }
 
 /**
@@ -51,11 +49,7 @@ function pixelShapes(of: Pixel[], ink: string, accent: string): string {
 export const LOCKUP_BOX = { width: 148, height: 68, baseline: 68 } as const;
 
 export function lockupSvg(ink: string = COLOR.fg, accent: string = COLOR.lavender): string {
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="1 1 ${LOCKUP_BOX.width} ${LOCKUP_BOX.height}">` +
-    pixelShapes(WORD, ink, accent) +
-    `</svg>`
-  );
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="1 1 ${LOCKUP_BOX.width} ${LOCKUP_BOX.height}">` + pixelShapes(WORD, ink, accent) + `</svg>`;
 }
 
 /** The icon alone, the pixel 1, cropped to its ink: 48 by 68. */

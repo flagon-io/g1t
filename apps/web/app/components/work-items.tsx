@@ -20,17 +20,7 @@ import { AssigneeStack } from "./work";
 import { ItemIcon } from "./work-icons";
 import { cn } from "../lib/cn";
 import type { LabelColors } from "../lib/labels";
-import {
-  LINK_ROLES,
-  ROLE_LABELS,
-  type WorkFilters,
-  filterCount,
-  filtered,
-  itemPath,
-  repoChips,
-  shortPath,
-  workListPath,
-} from "../lib/work-items";
+import { LINK_ROLES, ROLE_LABELS, type WorkFilters, filterCount, filtered, itemPath, repoChips, shortPath, workListPath } from "../lib/work-items";
 
 /** How a repository is linked, as a quiet word beside its name. */
 export function RoleBadge({ role }: { role: LinkRole }) {
@@ -45,7 +35,10 @@ export function RoleBadge({ role }: { role: LinkRole }) {
 export function RepoChips({ repos, workspace, max = 2, className }: { repos: ItemRepo[]; workspace: string; max?: number; className?: string }) {
   if (repos.length === 0) return null;
   const { shown, more } = repoChips(repos, max);
-  const rest = repos.slice(shown.length).map((repo) => shortPath(repo.path, workspace)).join(", ");
+  const rest = repos
+    .slice(shown.length)
+    .map((repo) => shortPath(repo.path, workspace))
+    .join(", ");
   return (
     <span className={cn("inline-flex min-w-0 items-center gap-1", className)}>
       {shown.map((repo) => (

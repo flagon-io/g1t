@@ -38,7 +38,7 @@ test("a crate is added after .cargo/config.toml names its workspace's registry, 
   const pkg = { ecosystem: "cargo" as const, address: "g1t.sh/-/cargo/acme/http-client", name: "http-client", workspace: "acme" };
   assert.deepEqual(installCommands(pkg, "0.3.1", "ada"), {
     registry:
-      "mkdir -p .cargo && printf '[registries.acme]\\nindex = \"sparse+https://g1t.sh/-/cargo/acme/index/\"\\ncredential-provider = \"cargo:token\"\\n' >> .cargo/config.toml",
+      'mkdir -p .cargo && printf \'[registries.acme]\\nindex = "sparse+https://g1t.sh/-/cargo/acme/index/"\\ncredential-provider = "cargo:token"\\n\' >> .cargo/config.toml',
     login: "cargo login --registry acme",
     install: "cargo add http-client@0.3.1 --registry acme",
   });
@@ -89,11 +89,26 @@ test("packages are listed by the visibility and order asked for", () => {
     { name: "api", visibility: "public" as const, updated_at: "2026-10-03T00:00:00Z", downloads: 9 },
     { name: "cli", visibility: "public" as const, updated_at: "2026-10-02T00:00:00Z", downloads: 9 },
   ];
-  assert.deepEqual(arrange(list, "all", "updated").map((p) => p.name), ["api", "cli", "web"]);
-  assert.deepEqual(arrange(list, "all", "downloads").map((p) => p.name), ["api", "cli", "web"]);
-  assert.deepEqual(arrange(list, "all", "name").map((p) => p.name), ["api", "cli", "web"]);
-  assert.deepEqual(arrange(list, "private", "updated").map((p) => p.name), ["web"]);
-  assert.deepEqual(arrange(list, "public", "name").map((p) => p.name), ["api", "cli"]);
+  assert.deepEqual(
+    arrange(list, "all", "updated").map((p) => p.name),
+    ["api", "cli", "web"],
+  );
+  assert.deepEqual(
+    arrange(list, "all", "downloads").map((p) => p.name),
+    ["api", "cli", "web"],
+  );
+  assert.deepEqual(
+    arrange(list, "all", "name").map((p) => p.name),
+    ["api", "cli", "web"],
+  );
+  assert.deepEqual(
+    arrange(list, "private", "updated").map((p) => p.name),
+    ["web"],
+  );
+  assert.deepEqual(
+    arrange(list, "public", "name").map((p) => p.name),
+    ["api", "cli"],
+  );
 });
 
 test("download counts read short", () => {

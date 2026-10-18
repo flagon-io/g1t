@@ -101,16 +101,10 @@ export default function Workspaces({ loaderData }: Route.ComponentProps) {
           <p className="mt-1 text-sm text-muted">Every workspace, who owns it, and how it pays this month.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link
-            to="/workspaces/deleted"
-            className="rounded-md border border-line px-3 py-1.5 text-sm text-muted hover:border-line-strong hover:text-fg"
-          >
+          <Link to="/workspaces/deleted" className="rounded-md border border-line px-3 py-1.5 text-sm text-muted hover:border-line-strong hover:text-fg">
             Deleted workspaces
           </Link>
-          <Link
-            to="/users/deleted"
-            className="rounded-md border border-line px-3 py-1.5 text-sm text-muted hover:border-line-strong hover:text-fg"
-          >
+          <Link to="/users/deleted" className="rounded-md border border-line px-3 py-1.5 text-sm text-muted hover:border-line-strong hover:text-fg">
             Deleted accounts
           </Link>
         </div>
@@ -122,7 +116,12 @@ export default function Workspaces({ loaderData }: Route.ComponentProps) {
           value={`${total}${capped ? "+" : ""}`}
           hint={`${totals.onEnterprise} on ${scope ?? "the list"} billed to an enterprise`}
         />
-        <Stat label={scope ? "Charged this month, this page" : "Charged this month"} value={usd(totals.charged)} hint={`Margin ${usd(margin)}`} tone={margin < 0 ? "danger" : undefined} />
+        <Stat
+          label={scope ? "Charged this month, this page" : "Charged this month"}
+          value={usd(totals.charged)}
+          hint={`Margin ${usd(margin)}`}
+          tone={margin < 0 ? "danger" : undefined}
+        />
         <Stat label={scope ? "Cost to g1t, this page" : "Cost to g1t"} value={usd(totals.cost)} hint="What their usage cost g1t" />
         <Stat
           label={scope ? "Needs attention, this page" : "Needs attention"}
@@ -259,7 +258,10 @@ export default function Workspaces({ loaderData }: Route.ComponentProps) {
       {pages > 1 && (
         <nav aria-label="Pages" className="mt-4 flex items-center justify-between gap-3 text-sm">
           {page > 1 ? (
-            <Link to={pageHref(q, show, page - 1)} className="inline-flex items-center gap-1 rounded-md border border-line px-3 py-1.5 text-muted hover:border-line-strong hover:text-fg">
+            <Link
+              to={pageHref(q, show, page - 1)}
+              className="inline-flex items-center gap-1 rounded-md border border-line px-3 py-1.5 text-muted hover:border-line-strong hover:text-fg"
+            >
               <ChevronLeft size={14} />
               Previous
             </Link>
@@ -270,7 +272,10 @@ export default function Workspaces({ loaderData }: Route.ComponentProps) {
             Page {page} of {pages}
           </span>
           {page < pages ? (
-            <Link to={pageHref(q, show, page + 1)} className="inline-flex items-center gap-1 rounded-md border border-line px-3 py-1.5 text-muted hover:border-line-strong hover:text-fg">
+            <Link
+              to={pageHref(q, show, page + 1)}
+              className="inline-flex items-center gap-1 rounded-md border border-line px-3 py-1.5 text-muted hover:border-line-strong hover:text-fg"
+            >
               Next
               <ChevronRight size={14} />
             </Link>

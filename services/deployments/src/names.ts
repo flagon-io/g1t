@@ -31,8 +31,36 @@ export function clean(text: string): string {
  * visit acme.com, that the page "looks fake".
  */
 const DOMAIN_ENDINGS = new Set([
-  "com", "net", "org", "io", "co", "dev", "app", "ai", "sh", "xyz", "tech", "cloud", "so", "gg", "me",
-  "us", "uk", "de", "ca", "eu", "fr", "nl", "au", "in", "jp", "site", "page", "tools", "studio", "inc",
+  "com",
+  "net",
+  "org",
+  "io",
+  "co",
+  "dev",
+  "app",
+  "ai",
+  "sh",
+  "xyz",
+  "tech",
+  "cloud",
+  "so",
+  "gg",
+  "me",
+  "us",
+  "uk",
+  "de",
+  "ca",
+  "eu",
+  "fr",
+  "nl",
+  "au",
+  "in",
+  "jp",
+  "site",
+  "page",
+  "tools",
+  "studio",
+  "inc",
 ]);
 
 /** The workspace as a hostname writes it: `flagon-io` as `flagonio`, `acme-co-uk` as `acmecouk`. */
@@ -41,7 +69,10 @@ export function hostWorkspace(workspace: string): string {
   let at = parts.length;
   while (at > 1 && DOMAIN_ENDINGS.has(parts[at - 1])) at--;
   if (at === parts.length) return parts.join("-");
-  return `${parts.slice(0, at - 1).concat(parts.slice(at - 1).join("")).join("-")}`;
+  return `${parts
+    .slice(0, at - 1)
+    .concat(parts.slice(at - 1).join(""))
+    .join("-")}`;
 }
 
 /** A short, stable fingerprint of `text`. */

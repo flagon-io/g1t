@@ -65,8 +65,14 @@ test("the address round-trips, and a change goes back to page one", () => {
 
 test("archived projects are left out unless asked for", () => {
   const list = [project("live"), project("old", { archived: true })];
-  assert.deepEqual(filterProjects(list, DEFAULT_QUERY).map((p) => p.slug), ["live"]);
-  assert.deepEqual(filterProjects(list, { ...DEFAULT_QUERY, archived: "only" }).map((p) => p.slug), ["old"]);
+  assert.deepEqual(
+    filterProjects(list, DEFAULT_QUERY).map((p) => p.slug),
+    ["live"],
+  );
+  assert.deepEqual(
+    filterProjects(list, { ...DEFAULT_QUERY, archived: "only" }).map((p) => p.slug),
+    ["old"],
+  );
   assert.equal(filterProjects(list, { ...DEFAULT_QUERY, archived: "include" }).length, 2);
 });
 
@@ -76,7 +82,10 @@ test("filters narrow by visibility, kind, language and deployments", () => {
     project("lib", { kind: "library", ecosystem: "cargo", private: true }),
     project("tool", { ecosystem: "go" }),
   ];
-  const slugs = (change: object) => filterProjects(list, { ...DEFAULT_QUERY, ...change }).map((p) => p.slug).sort();
+  const slugs = (change: object) =>
+    filterProjects(list, { ...DEFAULT_QUERY, ...change })
+      .map((p) => p.slug)
+      .sort();
   assert.deepEqual(slugs({ visibility: "private" }), ["lib"]);
   assert.deepEqual(slugs({ visibility: "public" }), ["site", "tool"]);
   assert.deepEqual(slugs({ kind: "library" }), ["lib"]);
@@ -91,9 +100,18 @@ test("search matches every word, in the name, slug or description, names that st
     project("api", { name: "API" }),
     project("billing", { description: "charges cards" }),
   ];
-  assert.deepEqual(filterProjects(list, { ...DEFAULT_QUERY, q: "api" }).map((p) => p.slug), ["api", "docs-site"]);
-  assert.deepEqual(filterProjects(list, { ...DEFAULT_QUERY, q: "api reference" }).map((p) => p.slug), ["docs-site"]);
-  assert.deepEqual(filterProjects(list, { ...DEFAULT_QUERY, q: "CARDS" }).map((p) => p.slug), ["billing"]);
+  assert.deepEqual(
+    filterProjects(list, { ...DEFAULT_QUERY, q: "api" }).map((p) => p.slug),
+    ["api", "docs-site"],
+  );
+  assert.deepEqual(
+    filterProjects(list, { ...DEFAULT_QUERY, q: "api reference" }).map((p) => p.slug),
+    ["docs-site"],
+  );
+  assert.deepEqual(
+    filterProjects(list, { ...DEFAULT_QUERY, q: "CARDS" }).map((p) => p.slug),
+    ["billing"],
+  );
 });
 
 test("each sort orders as it says, ties by name", () => {
@@ -131,7 +149,10 @@ test("facets count the whole workspace", () => {
   ]);
   assert.deepEqual(facets.visibility, { public: 3, private: 1 });
   assert.deepEqual(facets.kind, { app: 2, library: 1, tool: 1, docs: 0, other: 0 });
-  assert.deepEqual(facets.languages, [{ name: "JavaScript", count: 2 }, { name: "Go", count: 1 }]);
+  assert.deepEqual(facets.languages, [
+    { name: "JavaScript", count: 2 },
+    { name: "Go", count: 1 },
+  ]);
   assert.equal(facets.deploying, 1);
   assert.equal(facets.archived, 1);
 });

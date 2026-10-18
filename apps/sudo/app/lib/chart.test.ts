@@ -38,7 +38,14 @@ test("margin and change", () => {
 });
 
 test("monthBars scales both series to one axis from zero", () => {
-  const chart = monthBars([month("2026-09", 400 * M, 300 * M), month("2026-10", 100 * M, 0)], { width: 300, height: 120, left: 40, right: 0, top: 0, bottom: 20 });
+  const chart = monthBars([month("2026-09", 400 * M, 300 * M), month("2026-10", 100 * M, 0)], {
+    width: 300,
+    height: 120,
+    left: 40,
+    right: 0,
+    top: 0,
+    bottom: 20,
+  });
   assert.equal(chart.top, 500 * M);
   assert.deepEqual(chart.plot, { x: 40, y: 0, width: 260, height: 100 });
   const [sep, oct] = chart.bars;

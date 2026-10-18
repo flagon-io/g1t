@@ -101,7 +101,14 @@ function BoardCard({ card }: { card: Card<ApiWorkItem> }) {
 }
 
 const styles = StyleSheet.create({
-  stages: { flexDirection: "row", flexWrap: "wrap", gap: 6, paddingHorizontal: space.lg, paddingVertical: space.md, borderBottomWidth: StyleSheet.hairlineWidth },
+  stages: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
   row: { flexDirection: "row", gap: space.md, paddingHorizontal: space.lg, paddingVertical: space.md, borderBottomWidth: StyleSheet.hairlineWidth },
   meta: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 },
 });

@@ -9,9 +9,7 @@ type Node = { type: string; value?: string; tagName?: string; properties?: Recor
 function links(text: string): [string, string][] {
   const tree: Node = { type: "root", children: [{ type: "element", tagName: "p", properties: {}, children: [{ type: "text", value: text }] }] };
   rehypeReferences({ repo: { namespace: "acme", name: "web" } })(tree as never);
-  return (tree.children![0]!.children ?? [])
-    .filter((node) => node.tagName === "a")
-    .map((node) => [String(node.properties!.href), node.children![0]!.value!]);
+  return (tree.children![0]!.children ?? []).filter((node) => node.tagName === "a").map((node) => [String(node.properties!.href), node.children![0]!.value!]);
 }
 
 test("@name links to the person or workspace", () => {
@@ -41,9 +39,7 @@ test("@workspace/team links to the team", () => {
 function linksIn(text: string, options: { repo?: { namespace: string; name: string }; workspace?: string }): [string, string][] {
   const tree: Node = { type: "root", children: [{ type: "element", tagName: "p", properties: {}, children: [{ type: "text", value: text }] }] };
   rehypeReferences(options)(tree as never);
-  return (tree.children![0]!.children ?? [])
-    .filter((node) => node.tagName === "a")
-    .map((node) => [String(node.properties!.href), node.children![0]!.value!]);
+  return (tree.children![0]!.children ?? []).filter((node) => node.tagName === "a").map((node) => [String(node.properties!.href), node.children![0]!.value!]);
 }
 
 test("#12 in a repository is read there, by the page that asks the work service", () => {

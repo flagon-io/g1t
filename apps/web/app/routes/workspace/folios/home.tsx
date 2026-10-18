@@ -157,7 +157,12 @@ export default function FoliosHome({ loaderData, params }: Route.ComponentProps)
         aria-label="Owner"
         value={search.get("owner") ?? "any"}
         onValueChange={(v) => set({ owner: v === "any" ? null : v })}
-        options={[{ value: "any", label: "Anyone" }, ...(layout?.mentionables ?? []).filter((m) => m.kind === "user").map((m) => ({ value: m.name, label: m.name === layout?.me.name ? "You" : m.display_name }))]}
+        options={[
+          { value: "any", label: "Anyone" },
+          ...(layout?.mentionables ?? [])
+            .filter((m) => m.kind === "user")
+            .map((m) => ({ value: m.name, label: m.name === layout?.me.name ? "You" : m.display_name })),
+        ]}
         className="h-9 w-36 max-md:w-full"
       />
       {projects.length > 0 && (
@@ -176,7 +181,11 @@ export default function FoliosHome({ loaderData, params }: Route.ComponentProps)
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="grow text-2xl font-semibold tracking-tight">Artifacts</h1>
         <Hint label="Templates">
-          <Link to={`/${slug}/-/artifacts/templates`} aria-label="Templates" className="flex size-9 items-center justify-center rounded-md border border-line text-muted transition-colors hover:border-line-strong hover:bg-surface hover:text-fg">
+          <Link
+            to={`/${slug}/-/artifacts/templates`}
+            aria-label="Templates"
+            className="flex size-9 items-center justify-center rounded-md border border-line text-muted transition-colors hover:border-line-strong hover:bg-surface hover:text-fg"
+          >
             <LayoutTemplate size={16} />
           </Link>
         </Hint>
@@ -185,13 +194,29 @@ export default function FoliosHome({ loaderData, params }: Route.ComponentProps)
       <MakeTiles slug={slug} spaces={spaces.filter((s) => canDo(s.viewer_role, "edit")).map((s) => ({ id: s.id, name: s.name }))} />
 
       <div className="mt-8 flex flex-wrap items-center gap-2">
-        <Form method="get" className="flex h-9 min-w-0 grow items-center gap-2 rounded-md border border-line bg-surface px-3 focus-within:border-accent/60 sm:max-w-sm" onSubmit={(e) => (e.preventDefault(), set({ q: (new FormData(e.currentTarget).get("q") as string).trim() || null }))}>
+        <Form
+          method="get"
+          className="flex h-9 min-w-0 grow items-center gap-2 rounded-md border border-line bg-surface px-3 focus-within:border-accent/60 sm:max-w-sm"
+          onSubmit={(e) => (e.preventDefault(), set({ q: (new FormData(e.currentTarget).get("q") as string).trim() || null }))}
+        >
           <Search size={15} className="text-faint" aria-hidden="true" />
-          <input ref={searchBox} key={q} name="q" defaultValue={q} placeholder="Search artifacts" aria-label="Search artifacts" className="min-w-0 grow bg-transparent text-sm outline-none placeholder:text-faint" />
+          <input
+            ref={searchBox}
+            key={q}
+            name="q"
+            defaultValue={q}
+            placeholder="Search artifacts"
+            aria-label="Search artifacts"
+            className="min-w-0 grow bg-transparent text-sm outline-none placeholder:text-faint"
+          />
           <kbd className="hidden rounded border border-line px-1.5 font-mono text-[0.625rem] text-faint sm:inline">/</kbd>
         </Form>
         <div className="hidden flex-wrap items-center gap-2 md:flex">{filters}</div>
-        <button type="button" onClick={() => setFiltersOpen(true)} className={`inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-sm md:hidden ${filtered ? "border-accent/50 text-accent" : "border-line text-muted"}`}>
+        <button
+          type="button"
+          onClick={() => setFiltersOpen(true)}
+          className={`inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-sm md:hidden ${filtered ? "border-accent/50 text-accent" : "border-line text-muted"}`}
+        >
           <SlidersHorizontal size={14} /> Filters
         </button>
         <div className="ml-auto hidden items-center rounded-md border border-line p-0.5 md:flex" role="group" aria-label="Show as">
@@ -276,7 +301,13 @@ export default function FoliosHome({ loaderData, params }: Route.ComponentProps)
 function ViewButton({ active, label, to, children }: { active: boolean; label: string; to: string; children: ReactNode }) {
   return (
     <Hint label={label}>
-      <Link to={to} preventScrollReset aria-label={label} aria-pressed={active} className={`flex size-7 items-center justify-center rounded ${active ? "bg-raised text-fg" : "text-faint hover:text-fg"}`}>
+      <Link
+        to={to}
+        preventScrollReset
+        aria-label={label}
+        aria-pressed={active}
+        className={`flex size-7 items-center justify-center rounded ${active ? "bg-raised text-fg" : "text-faint hover:text-fg"}`}
+      >
         {children}
       </Link>
     </Hint>
@@ -301,7 +332,9 @@ function MakeTiles({ slug, spaces }: { slug: string; spaces: { id: string; name:
             <KindIcon kind={kind} size={18} box={36} />
             <span className="mt-3 flex items-center gap-1.5 text-sm font-medium text-fg">
               {ui.label}
-              {ui.beta && <span className="rounded-full px-1.5 py-px text-[0.625rem] font-medium tracking-wide text-muted uppercase ring-1 ring-line">Beta</span>}
+              {ui.beta && (
+                <span className="rounded-full px-1.5 py-px text-[0.625rem] font-medium tracking-wide text-muted uppercase ring-1 ring-line">Beta</span>
+              )}
             </span>
             <span className="mt-0.5 text-xs text-faint">{ui.ready ? (starting ? "Starting…" : tileLine(kind)) : "Coming soon"}</span>
           </>
@@ -309,7 +342,12 @@ function MakeTiles({ slug, spaces }: { slug: string; spaces: { id: string; name:
         if (!ui.ready) {
           return (
             <Hint key={kind} label={`${COMING[kind]} are coming soon.`}>
-              <Card tabIndex={0} aria-disabled="true" tone="plain" className="flex w-40 shrink-0 snap-start flex-col border-dashed bg-surface/40 p-4 opacity-60 sm:w-auto">
+              <Card
+                tabIndex={0}
+                aria-disabled="true"
+                tone="plain"
+                className="flex w-40 shrink-0 snap-start flex-col border-dashed bg-surface/40 p-4 opacity-60 sm:w-auto"
+              >
                 {body}
               </Card>
             </Hint>
@@ -318,13 +356,24 @@ function MakeTiles({ slug, spaces }: { slug: string; spaces: { id: string; name:
         return (
           <div key={kind} className="relative flex w-40 shrink-0 snap-start sm:w-auto">
             <Form method="post" action={`/${slug}/-/artifacts/new/${kind}`} className="flex grow">
-              <button type="submit" disabled={starting} aria-busy={starting} className="flex grow flex-col rounded-xl border border-line bg-surface p-4 text-left transition-colors hover:border-accent/50 hover:bg-raised/40 disabled:opacity-70">
+              <button
+                type="submit"
+                disabled={starting}
+                aria-busy={starting}
+                className="flex grow flex-col rounded-xl border border-line bg-surface p-4 text-left transition-colors hover:border-accent/50 hover:bg-raised/40 disabled:opacity-70"
+              >
                 {body}
               </button>
             </Form>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button type="button" aria-label={`More ways to make ${ui.label.toLowerCase()}`} variant="ghost" size="icon-xs" className="absolute top-2 right-2 text-faint">
+                <Button
+                  type="button"
+                  aria-label={`More ways to make ${ui.label.toLowerCase()}`}
+                  variant="ghost"
+                  size="icon-xs"
+                  className="absolute top-2 right-2 text-faint"
+                >
                   <ChevronDown size={14} />
                 </Button>
               </DropdownMenuTrigger>
@@ -346,7 +395,12 @@ function MakeTiles({ slug, spaces }: { slug: string; spaces: { id: string; name:
 }
 
 /** What each kind is for, under its tile. */
-const TILE_LINES: Record<FolioKind, string> = { doc: "Notes, specs, decisions", slides: "Decks to present", design: "Screens and layouts", dashboard: "Numbers to track" };
+const TILE_LINES: Record<FolioKind, string> = {
+  doc: "Notes, specs, decisions",
+  slides: "Decks to present",
+  design: "Screens and layouts",
+  dashboard: "Numbers to track",
+};
 
 /** The kinds still to come, as the Hint names them. */
 const COMING: Record<FolioKind, string> = { doc: "Docs", slides: "Slides", design: "Designs", dashboard: "Dashboards" };
@@ -355,7 +409,19 @@ function tileLine(kind: FolioKind): string {
   return TILE_LINES[kind];
 }
 
-function SpaceChooser({ slug, kind, spaces, open, onOpenChange }: { slug: string; kind: FolioKind; spaces: { id: string; name: string }[]; open: boolean; onOpenChange: (o: boolean) => void }) {
+function SpaceChooser({
+  slug,
+  kind,
+  spaces,
+  open,
+  onOpenChange,
+}: {
+  slug: string;
+  kind: FolioKind;
+  spaces: { id: string; name: string }[];
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
   const [space, setSpace] = useState(spaces[0]?.id ?? "");
   const navigation = useNavigation();
   const busy = navigation.state !== "idle";
@@ -368,7 +434,14 @@ function SpaceChooser({ slug, kind, spaces, open, onOpenChange }: { slug: string
           <DialogDescription>It follows the space&apos;s access: everyone in the space can open it.</DialogDescription>
         </DialogHeader>
         <Form method="post" action={`/${slug}/-/artifacts/new/${kind}`} className="space-y-4">
-          <SelectField name="space" aria-label="Space" value={space} onValueChange={setSpace} options={spaces.map((s) => ({ value: s.id, label: s.name }))} className="h-9 w-full" />
+          <SelectField
+            name="space"
+            aria-label="Space"
+            value={space}
+            onValueChange={setSpace}
+            options={spaces.map((s) => ({ value: s.id, label: s.name }))}
+            className="h-9 w-full"
+          />
           <div className="flex justify-end">
             <Button type="submit" disabled={busy || !space} variant="accent" className="disabled:opacity-60">
               {busy ? "Starting…" : "Make it"}

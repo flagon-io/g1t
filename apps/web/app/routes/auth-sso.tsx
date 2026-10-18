@@ -90,9 +90,8 @@ export default function SsoStart({ loaderData, actionData }: Route.ComponentProp
       }
     >
       <p className="text-sm text-muted">
-        You are signed in as <span className="font-medium text-fg">{loaderData.username}</span>. Signing in through{" "}
-        {loaderData.slug}&apos;s identity provider links your account there to this one and, if {loaderData.slug} lets its
-        provider&apos;s people join, makes you a member.
+        You are signed in as <span className="font-medium text-fg">{loaderData.username}</span>. Signing in through {loaderData.slug}&apos;s identity provider
+        links your account there to this one and, if {loaderData.slug} lets its provider&apos;s people join, makes you a member.
       </p>
       <Form method="post" className="mt-6">
         <input type="hidden" name="next" value={loaderData.next} />

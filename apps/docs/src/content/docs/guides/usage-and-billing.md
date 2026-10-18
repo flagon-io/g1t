@@ -144,22 +144,22 @@ Pricing has two rules:
 There are no seats. The live figures are on
 [g1t.sh/pricing](https://g1t.sh/pricing).
 
-| What | Unit | Costs g1t | You pay |
-| --- | --- | --- | --- |
-| [Runner minutes](#runner-minutes) on the standard machine (2 vCPU, 8 GiB, 16 GB): workflow jobs, checks, the merge queue | Minute, each job rounded up | From $0.0014 a minute idle to $0.0038 with both vCPUs busy | $0.004 a minute |
-| [Runner minutes](#runner-minutes) on `g1t-4core` (4 vCPU, 12 GiB, 20 GB) | Minute, each job rounded up | From $0.0020 a minute idle to $0.0068 with all four vCPUs busy | $0.007 a minute |
-| Deploy builds | Second | About $0.0017 a minute | About $0.002 a minute |
-| App requests | Million | $0.30 | $0.36 |
-| App CPU time | Million CPU milliseconds | $0.02 | $0.024 |
-| Custom domains | Domain-month | $0.10 | $0.12 |
-| [Container apps](/guides/deployments/#docker-deployments), while awake | Second, by the minute: vCPU, memory, disk and the Durable Object, by the size | From $0.0129 an hour (`lite`) | Cost + 20%: from $0.0155 an hour |
-| Data container apps send | GB | $0.05 | $0.06 |
-| Private storage, past the free 1 GB | GB-month | $0.50 | $0.60 |
-| [Actions cache](#actions-cache) storage | GB-month | $0.015 | $0.018 |
-| Git operations, past the free 50,000 a month | 1,000 | $0.15 | $0.18 |
-| Search embeddings | Million tokens | $0.067 | $0.0804 |
-| Security scans | Million CPU ms / million rows | $0.02 / $1.00 | $0.024 / $1.20 |
-| Projects, previews, apps and repositories | | Next to nothing | Not charged |
+| What                                                                                                                     | Unit                                                                          | Costs g1t                                                      | You pay                          |
+| ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------- |
+| [Runner minutes](#runner-minutes) on the standard machine (2 vCPU, 8 GiB, 16 GB): workflow jobs, checks, the merge queue | Minute, each job rounded up                                                   | From $0.0014 a minute idle to $0.0038 with both vCPUs busy     | $0.004 a minute                  |
+| [Runner minutes](#runner-minutes) on `g1t-4core` (4 vCPU, 12 GiB, 20 GB)                                                 | Minute, each job rounded up                                                   | From $0.0020 a minute idle to $0.0068 with all four vCPUs busy | $0.007 a minute                  |
+| Deploy builds                                                                                                            | Second                                                                        | About $0.0017 a minute                                         | About $0.002 a minute            |
+| App requests                                                                                                             | Million                                                                       | $0.30                                                          | $0.36                            |
+| App CPU time                                                                                                             | Million CPU milliseconds                                                      | $0.02                                                          | $0.024                           |
+| Custom domains                                                                                                           | Domain-month                                                                  | $0.10                                                          | $0.12                            |
+| [Container apps](/guides/deployments/#docker-deployments), while awake                                                   | Second, by the minute: vCPU, memory, disk and the Durable Object, by the size | From $0.0129 an hour (`lite`)                                  | Cost + 20%: from $0.0155 an hour |
+| Data container apps send                                                                                                 | GB                                                                            | $0.05                                                          | $0.06                            |
+| Private storage, past the free 1 GB                                                                                      | GB-month                                                                      | $0.50                                                          | $0.60                            |
+| [Actions cache](#actions-cache) storage                                                                                  | GB-month                                                                      | $0.015                                                         | $0.018                           |
+| Git operations, past the free 50,000 a month                                                                             | 1,000                                                                         | $0.15                                                          | $0.18                            |
+| Search embeddings                                                                                                        | Million tokens                                                                | $0.067                                                         | $0.0804                          |
+| Security scans                                                                                                           | Million CPU ms / million rows                                                 | $0.02 / $1.00                                                  | $0.024 / $1.20                   |
+| Projects, previews, apps and repositories                                                                                |                                                                               | Next to nothing                                                | Not charged                      |
 
 Build seconds follow what Cloudflare bills g1t, so that figure moves a
 little; the pricing page always has today's. Runner minutes are fixed
@@ -273,17 +273,17 @@ pool**.
 
 ## What is charged
 
-| | Charged |
-| --- | --- |
-| Checks and the [merge queue](/guides/merge-queue/) | [Runner minutes](#runner-minutes) |
-| [Workflow](/guides/actions/) jobs | [Runner minutes](#runner-minutes), at the rate of the machine each ran on |
-| [Actions cache](#actions-cache) | What it holds, on the plan only |
-| [Deployments](/guides/deployments/) | Builds, requests, CPU time, custom domains and container time, from the first. Projects and previews are not charged. |
-| [Private repository storage](#storage-search-embeddings-and-scans) | Past the free 1 GB, on the plan only |
-| [Git operations](#git-operations) | Past the free 50,000 a month, on the plan only |
-| [Search embeddings](#storage-search-embeddings-and-scans) | For private text, on the plan only |
-| [Security scans](#storage-search-embeddings-and-scans) | On the plan only |
-| Repositories, work items, pull requests, review, search, the API and MCP | No |
+|                                                                          | Charged                                                                                                               |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| Checks and the [merge queue](/guides/merge-queue/)                       | [Runner minutes](#runner-minutes)                                                                                     |
+| [Workflow](/guides/actions/) jobs                                        | [Runner minutes](#runner-minutes), at the rate of the machine each ran on                                             |
+| [Actions cache](#actions-cache)                                          | What it holds, on the plan only                                                                                       |
+| [Deployments](/guides/deployments/)                                      | Builds, requests, CPU time, custom domains and container time, from the first. Projects and previews are not charged. |
+| [Private repository storage](#storage-search-embeddings-and-scans)       | Past the free 1 GB, on the plan only                                                                                  |
+| [Git operations](#git-operations)                                        | Past the free 50,000 a month, on the plan only                                                                        |
+| [Search embeddings](#storage-search-embeddings-and-scans)                | For private text, on the plan only                                                                                    |
+| [Security scans](#storage-search-embeddings-and-scans)                   | On the plan only                                                                                                      |
+| Repositories, work items, pull requests, review, search, the API and MCP | No                                                                                                                    |
 
 The charge goes to the workspace that owns the repository, whoever
 started the work.
@@ -293,10 +293,10 @@ started the work.
 **Billing → Add-ons** lists what comes with the plan beside its usage, and
 whether it is on:
 
-| Add-on | Price | What it adds |
-| --- | --- | --- |
-| Security and quality | With the plan, no price of its own | Custom secret patterns, validity checks, delegated bypass, code scanning, dependency review and the security overview on **private** repositories. Its scans are charged at cost plus 20%. Public repositories get all of it free. |
-| Production deployments | With the plan | Previews per pull request and production on g1t.page, metered at cost plus 20%. |
+| Add-on                 | Price                              | What it adds                                                                                                                                                                                                                       |
+| ---------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Security and quality   | With the plan, no price of its own | Custom secret patterns, validity checks, delegated bypass, code scanning, dependency review and the security overview on **private** repositories. Its scans are charged at cost plus 20%. Public repositories get all of it free. |
+| Production deployments | With the plan                      | Previews per pull request and production on g1t.page, metered at cost plus 20%.                                                                                                                                                    |
 
 Secret scanning, push protection, vulnerability alerts, security updates,
 the dependency graph and SBOMs are free everywhere, on every plan. See [What's free and what's paid](/guides/security/pricing/).
@@ -309,18 +309,18 @@ the same way from what a minute of it costs. The live prices are on
 [g1t.sh/pricing](https://g1t.sh/pricing), straight from the price book
 billing charges from.
 
-| Meter | Unit |
-| --- | --- |
-| Runner minutes | Per minute, each job rounded up, at a fixed rate for each machine |
-| Deploy builds | Per second |
-| App requests and CPU | Per million requests, per million CPU milliseconds |
-| Custom domains | Per domain-month |
-| Container apps | Per vCPU-second, GiB-second of memory and GB-second of disk while awake, a second of the Durable Object in front of each, and per GB sent |
-| Private storage past the free 1 GB | Per GB-month |
-| Actions cache storage | Per GB-month |
-| Git operations past the free 50,000 a month | Per 1,000 |
-| Search embeddings | Per million tokens |
-| Security scans | Per million CPU milliseconds and per million rows written |
+| Meter                                       | Unit                                                                                                                                      |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Runner minutes                              | Per minute, each job rounded up, at a fixed rate for each machine                                                                         |
+| Deploy builds                               | Per second                                                                                                                                |
+| App requests and CPU                        | Per million requests, per million CPU milliseconds                                                                                        |
+| Custom domains                              | Per domain-month                                                                                                                          |
+| Container apps                              | Per vCPU-second, GiB-second of memory and GB-second of disk while awake, a second of the Durable Object in front of each, and per GB sent |
+| Private storage past the free 1 GB          | Per GB-month                                                                                                                              |
+| Actions cache storage                       | Per GB-month                                                                                                                              |
+| Git operations past the free 50,000 a month | Per 1,000                                                                                                                                 |
+| Search embeddings                           | Per million tokens                                                                                                                        |
+| Security scans                              | Per million CPU milliseconds and per million rows written                                                                                 |
 
 Prices keep themselves current as those costs move. Every day, g1t
 checks what Cloudflare billed its account against what was used:
@@ -362,10 +362,10 @@ Every job g1t runs on its own machines (a workflow job, a check, a merge
 queue run) is charged by the minute, at a fixed rate for the machine it
 ran on:
 
-| `runs-on` | Machine | vCPUs | Memory | Disk | A minute |
-| --- | --- | --- | --- | --- | --- |
-| `ubuntu-latest`, any other Linux label, or `g1t-2core` | Standard (`2-core`) | 2 | 8 GiB | 16 GB | $0.004 |
-| `g1t-4core` | `4-core` | 4 | 12 GiB | 20 GB | $0.007 |
+| `runs-on`                                              | Machine             | vCPUs | Memory | Disk  | A minute |
+| ------------------------------------------------------ | ------------------- | ----- | ------ | ----- | -------- |
+| `ubuntu-latest`, any other Linux label, or `g1t-2core` | Standard (`2-core`) | 2     | 8 GiB  | 16 GB | $0.004   |
+| `g1t-4core`                                            | `4-core`            | 4     | 12 GiB | 20 GB | $0.007   |
 
 Checks and the merge queue run on the standard machine. `g1t-2core` is
 kept as a name of the standard machine, so workflows that ask for it keep
@@ -386,18 +386,18 @@ and for its CPU as it is used. Each rate is what a minute of the machine
 costs g1t with half its vCPUs busy, plus 20%, rounded up to a tenth of a
 cent, and never under what it costs with every vCPU busy:
 
-| Machine | Costs g1t a minute, idle | With half its vCPUs busy | With every vCPU busy | A minute |
-| --- | --- | --- | --- | --- |
-| Standard (`2-core`) | $0.0014 | $0.0026 | $0.0038 | $0.004 |
-| `4-core` | $0.0020 | $0.0044 | $0.0068 | $0.007 |
+| Machine             | Costs g1t a minute, idle | With half its vCPUs busy | With every vCPU busy | A minute |
+| ------------------- | ------------------------ | ------------------------ | -------------------- | -------- |
+| Standard (`2-core`) | $0.0014                  | $0.0026                  | $0.0038              | $0.004   |
+| `4-core`            | $0.0020                  | $0.0044                  | $0.0068              | $0.007   |
 
 Should a job ever cost g1t more than its minutes at the rate, it is
 charged that cost instead. A build that compiles often finishes several
 times sooner on `g1t-4core`, so it can cost about the same.
 
 Each job is one line on the [statement](#the-statement), naming its
-machine and minutes, such as *A workflow job in acme/api on g1t-4core:
-6m 40s, 7 minutes on the 4-core machine*. Usage, the statement and the API
+machine and minutes, such as _A workflow job in acme/api on g1t-4core:
+6m 40s, 7 minutes on the 4-core machine_. Usage, the statement and the API
 total them as **Runner minutes, 2-core** and **Runner minutes, 4-core**;
 months before runner minutes show **Sandbox time**, by the second.
 Deploy builds are not counted here: [Deployments](/guides/deployments/)
@@ -424,11 +424,11 @@ A pull request's working copy counts for the workspace of the repository
 the pull request is in. g1t's own nightly
 backups are never counted for your workspace.
 
-| | Each month (UTC) |
-| --- | --- |
-| Free, on every workspace | 50,000 |
-| On the plan, past 50,000 | $0.18 per 1,000 (cost plus 20%). Never slowed or refused. |
-| Free workspace, past 50,000 | Not charged. Slowed to 60 an hour until the month turns. |
+|                             | Each month (UTC)                                          |
+| --------------------------- | --------------------------------------------------------- |
+| Free, on every workspace    | 50,000                                                    |
+| On the plan, past 50,000    | $0.18 per 1,000 (cost plus 20%). Never slowed or refused. |
+| Free workspace, past 50,000 | Not charged. Slowed to 60 an hour until the month turns.  |
 
 50,000 is far more than an active workspace uses. A workspace on the plan pushes and clones on past it and pays for
 what it uses, up to its spend limit. A free workspace is never charged for
@@ -450,14 +450,14 @@ line dated the month's last day, so the limit counts them as they happen.
 The plan's included usage and the trial pay for them first.
 
 Security scans and search embeddings run on every workspace, with or
-without the plan. On a free workspace g1t pays for them itself. They appear on the statement at $0, *covered by g1t*, never count
+without the plan. On a free workspace g1t pays for them itself. They appear on the statement at $0, _covered by g1t_, never count
 toward the limit and never use the trial.
 
-| | What it costs g1t | What is counted |
-| --- | --- | --- |
-| Private repository storage | $0.50 a GB-month (Cloudflare Artifacts) | On the plan, each day, what the workspace's private repositories hold past the free 1 GB. A month's GB-months are those days added up, divided by the days in the month. |
-| Search embeddings | $0.067 per million tokens (Workers AI) | The text of private repositories, work items and pull requests put in the search index. Public text and searches are not charged. |
-| Security scans | $0.02 per million CPU milliseconds and $1.00 per million rows written (Workers and D1) | The CPU each history scan and dependency check takes and the rows it writes. |
+|                            | What it costs g1t                                                                      | What is counted                                                                                                                                                          |
+| -------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Private repository storage | $0.50 a GB-month (Cloudflare Artifacts)                                                | On the plan, each day, what the workspace's private repositories hold past the free 1 GB. A month's GB-months are those days added up, divided by the days in the month. |
+| Search embeddings          | $0.067 per million tokens (Workers AI)                                                 | The text of private repositories, work items and pull requests put in the search index. Public text and searches are not charged.                                        |
+| Security scans             | $0.02 per million CPU milliseconds and $1.00 per million rows written (Workers and D1) | The CPU each history scan and dependency check takes and the rows it writes.                                                                                             |
 
 ### Actions cache
 
@@ -491,10 +491,10 @@ Everything a workspace uses is entered on one ledger, as it happens, and
 every figure on every page is read back from it. There is no second count
 to disagree with it.
 
-| Figure | What it is | Where it shows |
-| --- | --- | --- |
-| **Spent**, or usage **at price** | Every entry at its price: what was charged, plus what the plan's included usage, the trial, a pool or g1t paid of it, plus what a discount took off. The one measure of usage. | The [Usage page](#the-usage-page), the [statement](#the-statement) |
-| **Charged** | What is left for the workspace to pay this month: usage at price, less your discount, less what included usage, the trial, a pool or g1t paid, less what [credit](#credits-from-g1t) paid. Never below zero: a workspace with a 100% discount is charged exactly nothing. Usage metered through the month and charged when it closes (storage, git operations, scans, embeddings, domains, app traffic) counts now on the same terms. | Billing's plan card, and the figure your [spend limit](#your-spend-limit) is measured against |
+| Figure                           | What it is                                                                                                                                                                                                                                                                                                                                                                                                                            | Where it shows                                                                                |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| **Spent**, or usage **at price** | Every entry at its price: what was charged, plus what the plan's included usage, the trial, a pool or g1t paid of it, plus what a discount took off. The one measure of usage.                                                                                                                                                                                                                                                        | The [Usage page](#the-usage-page), the [statement](#the-statement)                            |
+| **Charged**                      | What is left for the workspace to pay this month: usage at price, less your discount, less what included usage, the trial, a pool or g1t paid, less what [credit](#credits-from-g1t) paid. Never below zero: a workspace with a 100% discount is charged exactly nothing. Usage metered through the month and charged when it closes (storage, git operations, scans, embeddings, domains, app traffic) counts now on the same terms. | Billing's plan card, and the figure your [spend limit](#your-spend-limit) is measured against |
 
 **This month** is the calendar month in UTC, from its first day to today,
 on every page: Billing's plan card and Usage's current billing cycle ask
@@ -530,13 +530,13 @@ Billing and plans**, on the plan.
 Usage is charged after it runs, so at any moment some of it is not yet
 paid. g1t lets that reach a ceiling that grows with your history:
 
-| | Ceiling on what is unpaid |
-| --- | --- |
-| **Free** | None to reach: a free workspace is never charged. The trial and g1t's pools pay for its compute. |
-| **First month on the plan** | $100 |
-| **Paid** | Twice what you have paid, never below $100, up to $1,000 |
-| **Established**: three steady months | Three times your monthly spend, up to $10,000 |
-| **Reviewed** | What g1t set with you |
+|                                      | Ceiling on what is unpaid                                                                        |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| **Free**                             | None to reach: a free workspace is never charged. The trial and g1t's pools pay for its compute. |
+| **First month on the plan**          | $100                                                                                             |
+| **Paid**                             | Twice what you have paid, never below $100, up to $1,000                                         |
+| **Established**: three steady months | Three times your monthly spend, up to $10,000                                                    |
+| **Reviewed**                         | What g1t set with you                                                                            |
 
 - A payment counts once it has **cleared for 7 days**, the time in which
   most bad cards are caught. Credits g1t gives and payments in test mode
@@ -572,11 +572,11 @@ at** an amount, **Everything available**, or, once, **Use my one-time
 raise**, then **Save limit**. The section says how far you can go yourself,
 and whether the one-time raise is still yours:
 
-| | Up to |
-| --- | --- |
-| Any amount | The highest ceiling the workspace has had, plus what is prepaid |
-| **The one-time raise**, once per workspace | Twice the highest ceiling |
-| Past that | **Raise my limit**: a request to g1t |
+|                                            | Up to                                                           |
+| ------------------------------------------ | --------------------------------------------------------------- |
+| Any amount                                 | The highest ceiling the workspace has had, plus what is prepaid |
+| **The one-time raise**, once per workspace | Twice the highest ceiling                                       |
+| Past that                                  | **Raise my limit**: a request to g1t                            |
 
 To ask for more, use the **Raise my limit** section: give the limit you
 need, what you expect to spend a month, and what it is for, then **Send the
@@ -589,11 +589,11 @@ floor under your ceiling, and your spend limit can go up to it.
 The spend limit is the workspace's monthly **budget** on usage past what the
 plan includes. Under **Budget alerts**, owners choose:
 
-| Setting | Means |
-| --- | --- |
-| **Alert at** | Any of 50, 75, 90 and 100% of the spend limit. Each is emailed to the owners once a month. |
+| Setting                 | Means                                                                                                                                                                                                                                                                              |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Alert at**            | Any of 50, 75, 90 and 100% of the spend limit. Each is emailed to the owners once a month.                                                                                                                                                                                         |
 | **Pause usage at 100%** | On (the default), new work stops at the limit: workflows, checks, the merge queue, builds and deploys, until the month turns or an owner raises it. Work already running finishes, so spend can go slightly past it. Off, the budget only alerts; g1t's own ceiling still applies. |
-| **Webhook** | An `https://` address of your own, sent a JSON `POST` at each alert: `event` (`budget.alert`), `workspace`, `level_percent`, `spent_micros`, `budget_micros`, `sent_at`. |
+| **Webhook**             | An `https://` address of your own, sent a JSON `POST` at each alert: `event` (`budget.alert`), `workspace`, `level_percent`, `spent_micros`, `budget_micros`, `sent_at`.                                                                                                           |
 
 Choose **Save alerts**. Through the API: `PUT /workspaces/:workspace/budget`,
 or the MCP `billing` tool's `set_budget` action.
@@ -651,21 +651,21 @@ g1t**. Once in 12 months per workspace, g1t can credit the overage above
 your usual month: always the 20% g1t added to it, and what it cost g1t up
 to $50. Larger credits, or a second one within 12 months, are reviewed by a
 person. The credit appears on the statement with the day it happened,
-such as *Credit from g1t: accidental usage on 2026-11-12*.
+such as _Credit from g1t: accidental usage on 2026-11-12_.
 
 ## Credits from g1t
 
 g1t sometimes adds credit to a workspace: a welcome or referral credit, an
 apology, or a refund for something that went wrong. The workspace's owners
 get an email when it does, and **Billing** shows a **Credits from g1t**
-card with each credit in a line, such as *$25.00 credit, $12.40 left,
-expires Jan 5*.
+card with each credit in a line, such as _$25.00 credit, $12.40 left,
+expires Jan 5_.
 
-| Kind | What it is | Expires |
-| --- | --- | --- |
-| Promotional | A welcome, a referral or an event. | Sometimes: the date is on the card and in the email. |
-| Goodwill | An apology, or usage past what you meant forgiven. | Sometimes, as above. |
-| Refund | Money back for something that went wrong, with what it is for. | Never. |
+| Kind        | What it is                                                     | Expires                                              |
+| ----------- | -------------------------------------------------------------- | ---------------------------------------------------- |
+| Promotional | A welcome, a referral or an event.                             | Sometimes: the date is on the card and in the email. |
+| Goodwill    | An apology, or usage past what you meant forgiven.             | Sometimes, as above.                                 |
+| Refund      | Money back for something that went wrong, with what it is for. | Never.                                               |
 
 How credit is used:
 
@@ -688,7 +688,7 @@ with its PDF and emailed as a receipt:
 
 - **When each month closes**, an invoice for what the workspace owes,
   itemised: the plan, usage past what it includes, and anything left
-  unpaid from before. Prepaid money is taken off as *Paid in advance*.
+  unpaid from before. Prepaid money is taken off as _Paid in advance_.
 - **When the workspace nears its ceiling** mid-month, the same, sooner.
 - **When the workspace is deleted**, a final invoice for what it owes,
   charged at once with no minimum. See
@@ -696,7 +696,7 @@ with its PDF and emailed as a receipt:
 
 Each is charged to the card on file, with [tax](#tax) as a line of its
 own and no card fee. On Stripe's payment page and on receipts, the plan is
-named **g1t plan for *workspace***, such as **g1t plan for acme**. Every invoice and receipt, with its PDF, is on
+named **g1t plan for _workspace_**, such as **g1t plan for acme**. Every invoice and receipt, with its PDF, is on
 Stripe's billing page: choose **Manage billing** under **Billing on
 Stripe**.
 
@@ -739,7 +739,7 @@ fees** on the statement; those stay as they were.
 Only the month's close has a minimum: a card is not charged less than
 **$5** then, so a payment's processing cost is never most of what is paid. When a month
 closes owing less, the amount carries over to the next invoice that reaches
-$5, as *Unpaid from earlier*. A charge made because a workspace is at or
+$5, as _Unpaid from earlier_. A charge made because a workspace is at or
 near a limit always goes through, whatever the amount, so work can carry
 on.
 
@@ -798,12 +798,12 @@ If usage across all of g1t climbs far past normal, g1t can pause some
 kinds of work for every workspace while it looks into it. Each pause is
 separate, and runs already under way finish:
 
-| Paused | What you see |
-| --- | --- |
-| Compute | New checks, workflow jobs and deploy builds are refused with `paused` and a message that g1t has paused them across the platform. Try again later. |
-| Schedules | Workflows on `schedule:` skip the minutes while it lasts; they are not run late. |
-| Indexing | New semantic search embeddings wait. Text search still answers, and search keeps up with new pushes. |
-| Renders | A link to g1t shows g1t's logo instead of the page's own card. |
+| Paused    | What you see                                                                                                                                       |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Compute   | New checks, workflow jobs and deploy builds are refused with `paused` and a message that g1t has paused them across the platform. Try again later. |
+| Schedules | Workflows on `schedule:` skip the minutes while it lasts; they are not run late.                                                                   |
+| Indexing  | New semantic search embeddings wait. Text search still answers, and search keeps up with new pushes.                                               |
+| Renders   | A link to g1t shows g1t's logo instead of the page's own card.                                                                                     |
 
 Nothing in your workspace changes, and nothing is charged while work
 waits.
@@ -924,19 +924,19 @@ Billing both show, so they agree.
 
 The filters, in one row:
 
-| Filter | Choices |
-| --- | --- |
-| Period | **Current billing cycle** (the calendar month, UTC), **Last billing cycle**, the last 7, 30 or 90 days, or a **Custom range** of up to 400 days. The days it covers are shown beside it. |
-| Products | Any of Sandboxes, Deployments, Git & storage, Packages, Security & quality and Search. |
-| Projects | Any of the projects with usage in the period. |
-| Group by | Product, project or day, for the breakdown. |
-| **⋯** | **Export CSV** (a row per day, product and meter) and the usage API. |
+| Filter   | Choices                                                                                                                                                                                  |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Period   | **Current billing cycle** (the calendar month, UTC), **Last billing cycle**, the last 7, 30 or 90 days, or a **Custom range** of up to 400 days. The days it covers are shown beside it. |
+| Products | Any of Sandboxes, Deployments, Git & storage, Packages, Security & quality and Search.                                                                                                   |
+| Projects | Any of the projects with usage in the period.                                                                                                                                            |
+| Group by | Product, project or day, for the breakdown.                                                                                                                                              |
+| **⋯**    | **Export CSV** (a row per day, product and meter) and the usage API.                                                                                                                     |
 
 Then:
 
 - **Included usage, credit and this range**: the plan's included usage this
   month, credit from g1t left, and what the range came to:
-  usage at price, then the discount (shown as *Discount (100%)* for a
+  usage at price, then the discount (shown as _Discount (100%)_ for a
   workspace g1t covers in full), included usage and pools, credits applied,
   and what is charged.
 - **Consumption**: a column per day, week or month (**Daily**, **Weekly**,
@@ -965,22 +965,22 @@ time. Every member can see it.
   per kind of charge, with how many entries it holds and what they come
   to:
 
-  | Line | What it holds |
-  | --- | --- |
-  | Runner minutes, 2-core and Runner minutes, 4-core | Each job on g1t's machines, with the minutes charged on that machine. |
-  | Sandbox time | Each sandbox's time, in months before runner minutes. |
-  | Self-hosted runner time | Each job on your own runners, at $0. |
-  | Deployments | Builds as they finish; each month's requests, CPU time, custom domains and container time when it closes. |
-  | Private storage | Storage past the free 1 GB, once a month. |
-  | Actions cache storage | What `actions/cache` and artifacts held, on the plan, once a month. |
-  | Git operations | Operations past the free 50,000, once a month. |
-  | Search embeddings | Private text put in the search index, once a month. |
-  | Security scans | History scans and dependency checks, once a month. |
-  | Payments | Card payments and invoices paid. |
-  | Credits from g1t | Credit g1t added (promotional, goodwill or a refund), and what of it expired or was withdrawn. See [Credits from g1t](#credits-from-g1t). |
-  | Refunds | Money given back to your card. |
-  | Tax | Tax paid with that day's payments. Not a charge, and not from your balance. |
-  | Card processing fees | Only on payments from before the card fee was folded into prices: the fee paid with them. Not a charge, and not from your balance. |
+  | Line                                              | What it holds                                                                                                                             |
+  | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+  | Runner minutes, 2-core and Runner minutes, 4-core | Each job on g1t's machines, with the minutes charged on that machine.                                                                     |
+  | Sandbox time                                      | Each sandbox's time, in months before runner minutes.                                                                                     |
+  | Self-hosted runner time                           | Each job on your own runners, at $0.                                                                                                      |
+  | Deployments                                       | Builds as they finish; each month's requests, CPU time, custom domains and container time when it closes.                                 |
+  | Private storage                                   | Storage past the free 1 GB, once a month.                                                                                                 |
+  | Actions cache storage                             | What `actions/cache` and artifacts held, on the plan, once a month.                                                                       |
+  | Git operations                                    | Operations past the free 50,000, once a month.                                                                                            |
+  | Search embeddings                                 | Private text put in the search index, once a month.                                                                                       |
+  | Security scans                                    | History scans and dependency checks, once a month.                                                                                        |
+  | Payments                                          | Card payments and invoices paid.                                                                                                          |
+  | Credits from g1t                                  | Credit g1t added (promotional, goodwill or a refund), and what of it expired or was withdrawn. See [Credits from g1t](#credits-from-g1t). |
+  | Refunds                                           | Money given back to your card.                                                                                                            |
+  | Tax                                               | Tax paid with that day's payments. Not a charge, and not from your balance.                                                               |
+  | Card processing fees                              | Only on payments from before the card fee was folded into prices: the fee paid with them. Not a charge, and not from your balance.        |
 
   Payments are what reached your balance; the tax paid with them is the
   line below them, and the totals say what it came to.
@@ -988,16 +988,17 @@ time. Every member can see it.
 - **Covered.** Below the totals, what paid for usage before it was
   charged, each with its amount:
 
-  | Line | What paid |
-  | --- | --- |
-  | Paid by your plan's included usage | The plan's $10 a month. |
-  | Paid by your trial credit | The one-time trial. |
-  | Paid by g1t's open-source pool | The pool, for public repositories. |
-  | Covered by g1t | A free workspace's last trial run past its trial. |
+  | Line                               | What paid                                         |
+  | ---------------------------------- | ------------------------------------------------- |
+  | Paid by your plan's included usage | The plan's $10 a month.                           |
+  | Paid by your trial credit          | The one-time trial.                               |
+  | Paid by g1t's open-source pool     | The pool, for public repositories.                |
+  | Covered by g1t                     | A free workspace's last trial run past its trial. |
 
   Each entry says in its description how much of it was paid this way. A
   month that closed under the [minimum charge](#the-minimum-charge) says
   what carried over.
+
 - **Open a line** to see its entries, 50 at a time, newest first.
 - **Pick a month** to see an earlier one.
 - **CSV** downloads every entry of the month, with the line it falls under
@@ -1016,10 +1017,10 @@ the workspace's settings).
 **What it reads.** The provider's cost report for the whole organization
 the key belongs to, in US dollars, one line per day and line item:
 
-| Provider | Report | Line items |
-| --- | --- | --- |
-| Anthropic | The Usage and Cost Admin API's cost report (`/v1/organizations/cost_report`) | Each description, such as *Claude Opus 5.5 Usage - Input Tokens*, for each of the organization's Console workspaces |
-| OpenAI | The Costs API (`/v1/organization/costs`) | Each line item, for each of the organization's projects |
+| Provider  | Report                                                                       | Line items                                                                                                          |
+| --------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Anthropic | The Usage and Cost Admin API's cost report (`/v1/organizations/cost_report`) | Each description, such as _Claude Opus 5.5 Usage - Input Tokens_, for each of the organization's Console workspaces |
+| OpenAI    | The Costs API (`/v1/organization/costs`)                                     | Each line item, for each of the organization's projects                                                             |
 
 **Which key.** An admin key, which only an organization's admins can make:
 
@@ -1070,11 +1071,11 @@ Every g1t service that starts something that costs money asks billing
 first. These RPCs are internal; they are documented so the behavior above
 can be traced.
 
-| RPC | Takes | Returns |
-| --- | --- | --- |
-| `entitlements` | `workspace` | What the workspace may do now (below). |
-| `reserve` | `workspace`, `repo`, `public`, `kind`, `estimateMicros` | A reservation, or a refusal. |
-| `settle` | `reservationId`, `actualMicros` | `true`, or `false` if it was settled or had lapsed before. Safe to repeat. |
+| RPC            | Takes                                                   | Returns                                                                    |
+| -------------- | ------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `entitlements` | `workspace`                                             | What the workspace may do now (below).                                     |
+| `reserve`      | `workspace`, `repo`, `public`, `kind`, `estimateMicros` | A reservation, or a refusal.                                               |
+| `settle`       | `reservationId`, `actualMicros`                         | `true`, or `false` if it was settled or had lapsed before. Safe to repeat. |
 
 **`entitlements`** returns, among others: `plan` (`free`, `paid`,
 `internal` or `enterprise`), `compute` (may start compute at all),
@@ -1090,7 +1091,7 @@ None of these is a quota on the plan.
 month's usage in five lines, `builds`, `requests`, `domains`,
 `git_storage` and `search_scans`, each with `micros` (at cost plus 20%,
 before included usage or a pool paid for it) and a `quantity` such as
-*42 build minutes*, each at price (what was charged plus what paid for it), as Usage measures it.
+_42 build minutes_, each at price (what was charged plus what paid for it), as Usage measures it.
 
 **`usage_report`** (`workspace`, `viewer`, `from`, `until`, optional `products` and `projects`; members only) is what the Usage page reads: totals (`priceMicros`, `discountMicros`, `includedMicros`, `creditsMicros`, `chargedMicros`, `pendingMicros`, `pendingChargedMicros`), each day's usage by product, and every product family with its meters, their daily figures and their projects.
 
@@ -1105,12 +1106,12 @@ A reservation has an `id`, `paidBy` (`credit` for included usage, `trial`,
 **lapses after 3 hours**. A refusal has one of these codes and a message
 for the owner with the page to fix it on:
 
-| Code | Why |
-| --- | --- |
-| `not_paid` | No plan, and nothing else pays for this kind of work, or no card check yet. |
-| `trial_used` | The one-time trial is spent. |
-| `limit` | The spend limit or g1t's ceiling would be passed. |
-| `paused` | A spend spike is waiting for an owner, or g1t staff put a hold on compute. |
+| Code             | Why                                                                         |
+| ---------------- | --------------------------------------------------------------------------- |
+| `not_paid`       | No plan, and nothing else pays for this kind of work, or no card check yet. |
+| `trial_used`     | The one-time trial is spent.                                                |
+| `limit`          | The spend limit or g1t's ceiling would be passed.                           |
+| `paused`         | A spend spike is waiting for an owner, or g1t staff put a hold on compute.  |
 | `oss_pool_empty` | The open-source pool, or the repository's share of it, is spent this month. |
 
 **`settle`** releases the hold with what the work cost, at cost before the

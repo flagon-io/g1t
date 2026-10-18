@@ -1,15 +1,7 @@
 import { Check, Minus } from "lucide-react";
 import type { ComponentProps } from "react";
 
-import {
-  CAPABILITIES,
-  OWNER_ONLY,
-  REPO_ROLES,
-  REPO_ROLE_LABELS,
-  REPO_ROLE_SUMMARIES,
-  type RepoRole,
-  allows,
-} from "@g1t/contracts";
+import { CAPABILITIES, OWNER_ONLY, REPO_ROLES, REPO_ROLE_LABELS, REPO_ROLE_SUMMARIES, type RepoRole, allows } from "@g1t/contracts";
 
 import { Card } from "./ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -66,43 +58,43 @@ export function RolesTable() {
           })}
         </ul>
       </Card>
-    <Card tone="plain" className="hidden overflow-x-auto sm:block">
-      <table className="w-full min-w-136 text-sm">
-        <thead>
-          <tr className="border-b border-line bg-surface text-left text-xs text-muted">
-            <th scope="col" className="px-4 py-2.5 font-medium">
-              Can
-            </th>
-            {REPO_ROLES.map((role) => (
-              <th key={role} scope="col" className="w-18 px-1 py-2.5 text-center font-medium">
-                {REPO_ROLE_LABELS[role]}
+      <Card tone="plain" className="hidden overflow-x-auto sm:block">
+        <table className="w-full min-w-136 text-sm">
+          <thead>
+            <tr className="border-b border-line bg-surface text-left text-xs text-muted">
+              <th scope="col" className="px-4 py-2.5 font-medium">
+                Can
               </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-line">
-          {CAPABILITIES.map((row) => {
-            const owners = (OWNER_ONLY as readonly string[]).includes(row.capability);
-            return (
-              <tr key={row.capability}>
-                <th scope="row" className="px-4 py-2 text-left font-normal text-fg/90">
-                  {row.about}
+              {REPO_ROLES.map((role) => (
+                <th key={role} scope="col" className="w-18 px-1 py-2.5 text-center font-medium">
+                  {REPO_ROLE_LABELS[role]}
                 </th>
-                {REPO_ROLES.map((role) => (
-                  <td key={role} className="px-1 py-2 text-center">
-                    {allows(role, row.capability) ? (
-                      <Check size={15} aria-label="Yes" className={`inline ${owners ? "text-muted" : "text-success"}`} />
-                    ) : (
-                      <Minus size={13} aria-label="No" className="inline text-line-strong" />
-                    )}
-                  </td>
-                ))}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </Card>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {CAPABILITIES.map((row) => {
+              const owners = (OWNER_ONLY as readonly string[]).includes(row.capability);
+              return (
+                <tr key={row.capability}>
+                  <th scope="row" className="px-4 py-2 text-left font-normal text-fg/90">
+                    {row.about}
+                  </th>
+                  {REPO_ROLES.map((role) => (
+                    <td key={role} className="px-1 py-2 text-center">
+                      {allows(role, row.capability) ? (
+                        <Check size={15} aria-label="Yes" className={`inline ${owners ? "text-muted" : "text-success"}`} />
+                      ) : (
+                        <Minus size={13} aria-label="No" className="inline text-line-strong" />
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </Card>
     </>
   );
 }

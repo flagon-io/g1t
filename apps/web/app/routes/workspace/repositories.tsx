@@ -12,16 +12,7 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Checkbox } from "../../components/ui/checkbox";
-import {
-  type BulkResult,
-  REPO_FILTERS,
-  daysUntil,
-  filterCounts,
-  filterRepos,
-  longDate,
-  parseFilter,
-  summariseBulk,
-} from "../../lib/repo-lifecycle";
+import { type BulkResult, REPO_FILTERS, daysUntil, filterCounts, filterRepos, longDate, parseFilter, summariseBulk } from "../../lib/repo-lifecycle";
 import { projects, repos } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
 import { Unavailable } from "../../components/boundary";
@@ -138,7 +129,11 @@ export default function WorkspaceRepositories({ loaderData, actionData }: Route.
     <div className="space-y-10">
       {justDeleted && !actionData && (
         <p role="status" className="rounded-lg border border-accent/30 bg-accent/5 px-4 py-2.5 text-sm">
-          Deleted <span className="font-mono">{slug}/{justDeleted}</span>. You can restore it below for {RESTORE_DAYS} days.
+          Deleted{" "}
+          <span className="font-mono">
+            {slug}/{justDeleted}
+          </span>
+          . You can restore it below for {RESTORE_DAYS} days.
         </p>
       )}
       {rowResult?.message && (
@@ -188,30 +183,16 @@ export default function WorkspaceRepositories({ loaderData, actionData }: Route.
               <label className="flex items-center gap-2 text-sm text-muted">
                 <Checkbox
                   checked={all ? true : picked.length > 0 ? "indeterminate" : false}
-                  onCheckedChange={(on) =>
-                    setSelected(on === true && !all ? new Set(shown.map((r) => r.name)) : new Set())
-                  }
+                  onCheckedChange={(on) => setSelected(on === true && !all ? new Set(shown.map((r) => r.name)) : new Set())}
                   aria-label="Select every repository shown"
                 />
                 {picked.length > 0 ? `${picked.length} selected` : "Select"}
               </label>
               <div className="ml-auto flex gap-2">
-                <Button
-                  type="submit"
-                  name="intent"
-                  value="archive"
-                  variant="outline"
-                  disabled={picked.length === 0 || bulk !== ""}
-                >
+                <Button type="submit" name="intent" value="archive" variant="outline" disabled={picked.length === 0 || bulk !== ""}>
                   {bulk === "archive" ? "Archiving…" : "Archive"}
                 </Button>
-                <Button
-                  type="submit"
-                  name="intent"
-                  value="unarchive"
-                  variant="outline"
-                  disabled={picked.length === 0 || bulk !== ""}
-                >
+                <Button type="submit" name="intent" value="unarchive" variant="outline" disabled={picked.length === 0 || bulk !== ""}>
                   {bulk === "unarchive" ? "Unarchiving…" : "Unarchive"}
                 </Button>
               </div>
@@ -311,17 +292,15 @@ export default function WorkspaceRepositories({ loaderData, actionData }: Route.
               Recently deleted
             </h2>
             <p className="mt-1 text-sm text-muted">
-              Deleted repositories can be restored as they were for {RESTORE_DAYS} days, then they are removed for good.
-              Their names stay taken until then. Only owners see this list.
+              Deleted repositories can be restored as they were for {RESTORE_DAYS} days, then they are removed for good. Their names stay taken until then. Only
+              owners see this list.
             </p>
           </div>
           {isFailed(deleted) ? (
             <Unavailable what={deleted.what} />
           ) : deleted.length === 0 ? (
             <Card asChild tone="plain" className="border-dashed px-4 py-6 text-center text-sm text-faint">
-              <p>
-                Nothing has been deleted in the last {RESTORE_DAYS} days.
-              </p>
+              <p>Nothing has been deleted in the last {RESTORE_DAYS} days.</p>
             </Card>
           ) : (
             <Card asChild tone="plain" divided className="overflow-hidden">
@@ -329,22 +308,18 @@ export default function WorkspaceRepositories({ loaderData, actionData }: Route.
                 {deleted.map((repo) => {
                   const full = `${repo.namespace}/${repo.name}`;
                   const restoring =
-                    navigation.state !== "idle" &&
-                    navigation.formData?.get("intent") === "restore" &&
-                    navigation.formData?.get("name") === repo.name;
+                    navigation.state !== "idle" && navigation.formData?.get("intent") === "restore" && navigation.formData?.get("name") === repo.name;
                   const left = daysUntil(repo.purgeAfter);
                   return (
                     <li key={repo.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
                       <div className="min-w-0 grow">
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                          <span className="truncate font-mono text-sm font-medium text-muted">
-                            {repo.name}
-                          </span>
+                          <span className="truncate font-mono text-sm font-medium text-muted">{repo.name}</span>
                           <Badge>{repo.isPrivate ? "private" : "public"}</Badge>
                         </div>
                         <p className="mt-1 text-xs text-faint">
-                          Deleted by <span className="font-mono text-muted">{repo.deletedBy}</span>{" "}
-                          <TimeAgo at={repo.deletedAt} /> · removed for good on {longDate(repo.purgeAfter)}
+                          Deleted by <span className="font-mono text-muted">{repo.deletedBy}</span> <TimeAgo at={repo.deletedAt} /> · removed for good on{" "}
+                          {longDate(repo.purgeAfter)}
                           {left <= 7 && ` (${left === 0 ? "today" : left === 1 ? "in a day" : `in ${left} days`})`}
                         </p>
                         {rowResult?.name === repo.name && <ErrorText>{rowResult.error}</ErrorText>}
@@ -374,8 +349,7 @@ export default function WorkspaceRepositories({ loaderData, actionData }: Route.
                         >
                           <li>It is removed for good now, its git data with it. It cannot be restored after this.</li>
                           <li>
-                            Its name is free at once: a new repository can be made at{" "}
-                            <span className="font-mono text-fg">g1t.sh/{full}</span>.
+                            Its name is free at once: a new repository can be made at <span className="font-mono text-fg">g1t.sh/{full}</span>.
                           </li>
                         </ConfirmDialog>
                       </div>

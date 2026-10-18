@@ -115,9 +115,8 @@ function Reported({ deployment, base }: { deployment: DeploymentDetail; base: st
           </h1>
           <p className="mt-1 text-sm text-muted">
             {deployment.task === "deploy" ? "Deployment" : <span className="font-mono">{deployment.task}</span>} of{" "}
-            <span className="font-mono text-fg-soft">{deployment.ref}</span> by{" "}
-            <span className="text-fg-soft">{deployment.creator}</span> via {sourceLabel(deployment.source)},{" "}
-            <TimeAgo at={deployment.created_at} />
+            <span className="font-mono text-fg-soft">{deployment.ref}</span> by <span className="text-fg-soft">{deployment.creator}</span> via{" "}
+            {sourceLabel(deployment.source)}, <TimeAgo at={deployment.created_at} />
           </p>
         </div>
         {url && (
@@ -131,9 +130,7 @@ function Reported({ deployment, base }: { deployment: DeploymentDetail; base: st
         )}
       </header>
 
-      {deployment.description && (
-        <p className="mt-4 max-w-3xl text-sm text-fg-soft wrap-anywhere">{deployment.description}</p>
-      )}
+      {deployment.description && <p className="mt-4 max-w-3xl text-sm text-fg-soft wrap-anywhere">{deployment.description}</p>}
 
       <Card asChild tone="plain" className="mt-6 grid grid-cols-1 gap-px overflow-hidden bg-line text-sm sm:grid-cols-2 lg:grid-cols-4">
         <dl>
@@ -203,12 +200,7 @@ function Reported({ deployment, base }: { deployment: DeploymentDetail; base: st
         ) : (
           <ol className="mt-4">
             {deployment.statuses.map((status, index) => (
-              <StatusItem
-                key={status.id}
-                status={status}
-                last={index === deployment.statuses.length - 1}
-                over={!isNewestStatus(deployment.statuses, index)}
-              />
+              <StatusItem key={status.id} status={status} last={index === deployment.statuses.length - 1} over={!isNewestStatus(deployment.statuses, index)} />
             ))}
           </ol>
         )}
@@ -253,8 +245,7 @@ function StatusItem({ status, last, over }: { status: DeploymentStatus; last: bo
         <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
           <span className={`font-medium ${over && status.state === "in_progress" ? "text-muted" : STATE_TONE[status.state]}`}>{STATE_WORD[status.state]}</span>
           <span className="text-xs text-faint">
-            {status.creator} ·{" "}
-            <TimeAgo at={status.created_at} />
+            {status.creator} · <TimeAgo at={status.created_at} />
           </span>
         </p>
         {status.description && <p className="mt-0.5 text-sm text-muted wrap-anywhere">{status.description}</p>}
@@ -323,9 +314,7 @@ function BuildDetails({ build }: { build: Deployment & { log: string | null } })
           {build.buildSeconds != null && ` · built in ${build.buildSeconds} s`}
         </span>
       </h2>
-      {error && (
-        <p className="mt-3 rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-sm wrap-anywhere">{error}</p>
-      )}
+      {error && <p className="mt-3 rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-sm wrap-anywhere">{error}</p>}
       {build.warnings.length > 0 && (
         <ul className="mt-3 space-y-1 rounded-lg border border-warn/30 bg-warn/5 px-4 py-3 text-sm">
           {build.warnings.map((warning) => (
@@ -336,9 +325,7 @@ function BuildDetails({ build }: { build: Deployment & { log: string | null } })
       <h3 className="mt-5 text-sm font-medium text-muted">Build log</h3>
       {/* Long lines wrap, so a narrow screen shows the whole log without scrolling sideways. */}
       <Card asChild tone="bg" className="mt-3 max-h-[70vh] overflow-auto whitespace-pre-wrap p-4 font-mono text-xs leading-relaxed text-muted wrap-anywhere">
-        <pre>
-          {build.log || (build.status === "queued" || build.status === "building" ? "The log appears when the build finishes." : "No log.")}
-        </pre>
+        <pre>{build.log || (build.status === "queued" || build.status === "building" ? "The log appears when the build finishes." : "No log.")}</pre>
       </Card>
     </section>
   );

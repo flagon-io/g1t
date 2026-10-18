@@ -15,9 +15,9 @@ Worker runs as a container on Cloudflare Containers behind one; see
 [What a project is built as](#what-a-project-is-built-as) and
 [Docker deployments](#docker-deployments):
 
-| | Address |
-| --- | --- |
-| Production | `https://<project>-<workspace>.g1t.page` |
+|                                   | Address                                                |
+| --------------------------------- | ------------------------------------------------------ |
+| Production                        | `https://<project>-<workspace>.g1t.page`               |
 | Preview of the branch `fix-login` | `https://<project>-git-fix-login-<workspace>.g1t.page` |
 
 A preview's address follows its branch, so it stays the same for every push
@@ -134,17 +134,17 @@ payments, the card you enter is charged.
 g1t looks at the project's root directory and builds it the way it is meant to be built.
 You do not configure anything for the common cases.
 
-| The project has | g1t |
-| --- | --- |
-| `wrangler.jsonc`, `wrangler.json` or `wrangler.toml` | Builds it as a **Workers project**: installs dependencies, runs `wrangler deploy --dry-run` to bundle it (which runs the config's own `build` command), and deploys the bundle with the config's static assets, `compatibility_date`, `compatibility_flags` and `vars`. |
-| A framework from the table below, even beside a `Dockerfile` | Installs dependencies, builds it with the framework's command, and serves the folder it writes as a **static site**, or deploys the Worker its Cloudflare adapter writes as a **Workers project**. |
-| A framework set up to need a server (Next.js without a static export, Astro's `@astrojs/node`, SvelteKit's `adapter-node`, a server-rendered React Router or Remix app) | Builds it as a **container**: from its `Dockerfile`, or one g1t writes for it. |
-| A Node.js server (Express, Koa, Hono, `node:http` and others) with no `Dockerfile` | Runs it as a **Workers project**: wraps its server in a Worker, bundles it, and checks that it starts. One that cannot run as a Worker runs as a **container** instead, and the build's log says why. See [Node.js servers as Workers](#nodejs-servers-as-workers). |
-| A Python, Go, Ruby, PHP or Rust server, or a Node.js server with a `Dockerfile` | Builds it as a **container**: from its `Dockerfile`, or one g1t writes for it and shows in the build's log. See [Docker deployments](#docker-deployments). |
-| A `build` script in `package.json`, even beside a `Dockerfile` | Installs dependencies, runs `npm run build`, and serves the output as a **static site**. |
-| An `index.html` and nothing to build, even beside a `Dockerfile` | Serves it as it is. |
-| A `Dockerfile` and nothing else to serve | Builds the image and runs it as a **container**. |
-| Nothing g1t recognises | Fails, saying to add a `Dockerfile`, a `build` script or an `index.html`. |
+| The project has                                                                                                                                                         | g1t                                                                                                                                                                                                                                                                     |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `wrangler.jsonc`, `wrangler.json` or `wrangler.toml`                                                                                                                    | Builds it as a **Workers project**: installs dependencies, runs `wrangler deploy --dry-run` to bundle it (which runs the config's own `build` command), and deploys the bundle with the config's static assets, `compatibility_date`, `compatibility_flags` and `vars`. |
+| A framework from the table below, even beside a `Dockerfile`                                                                                                            | Installs dependencies, builds it with the framework's command, and serves the folder it writes as a **static site**, or deploys the Worker its Cloudflare adapter writes as a **Workers project**.                                                                      |
+| A framework set up to need a server (Next.js without a static export, Astro's `@astrojs/node`, SvelteKit's `adapter-node`, a server-rendered React Router or Remix app) | Builds it as a **container**: from its `Dockerfile`, or one g1t writes for it.                                                                                                                                                                                          |
+| A Node.js server (Express, Koa, Hono, `node:http` and others) with no `Dockerfile`                                                                                      | Runs it as a **Workers project**: wraps its server in a Worker, bundles it, and checks that it starts. One that cannot run as a Worker runs as a **container** instead, and the build's log says why. See [Node.js servers as Workers](#nodejs-servers-as-workers).     |
+| A Python, Go, Ruby, PHP or Rust server, or a Node.js server with a `Dockerfile`                                                                                         | Builds it as a **container**: from its `Dockerfile`, or one g1t writes for it and shows in the build's log. See [Docker deployments](#docker-deployments).                                                                                                              |
+| A `build` script in `package.json`, even beside a `Dockerfile`                                                                                                          | Installs dependencies, runs `npm run build`, and serves the output as a **static site**.                                                                                                                                                                                |
+| An `index.html` and nothing to build, even beside a `Dockerfile`                                                                                                        | Serves it as it is.                                                                                                                                                                                                                                                     |
+| A `Dockerfile` and nothing else to serve                                                                                                                                | Builds the image and runs it as a **container**.                                                                                                                                                                                                                        |
+| Nothing g1t recognises                                                                                                                                                  | Fails, saying to add a `Dockerfile`, a `build` script or an `index.html`.                                                                                                                                                                                               |
 
 ### What a project is built as
 
@@ -200,26 +200,26 @@ command is the package's own `build` script when it has one, else the
 command in the table. A **Build command** or **Output directory** of
 your own, under **Settings → Deployments**, always wins over the table.
 
-| Framework | Found by | Builds with | Serves |
-| --- | --- | --- | --- |
-| Vite, and React, Vue, Svelte, Solid or Preact on Vite | `vite` | `vite build` | `dist`, or `build.outDir` from `vite.config` |
-| Astro | `astro` | `astro build` | `dist`, or `outDir` |
-| Astro with `@astrojs/cloudflare` | `astro`, `@astrojs/cloudflare` | `astro build` | A Workers project: the Worker and config the adapter writes |
-| Next.js with `output: 'export'` | `next`, and `output: 'export'` in `next.config` | `next build` | `out` |
-| Next.js with OpenNext | `next`, `@opennextjs/cloudflare` and a `wrangler.jsonc` | `opennextjs-cloudflare build`, then `wrangler deploy --dry-run` | A Workers project |
-| SvelteKit with `@sveltejs/adapter-static` | `@sveltejs/kit` and the adapter | `vite build` | `build`, or the adapter's `pages` |
-| SvelteKit with `@sveltejs/adapter-cloudflare` | `@sveltejs/kit` and the adapter | `vite build` | A Workers project: `.svelte-kit/cloudflare/_worker.js` and the files beside it |
-| Nuxt | `nuxt` | `npm run generate` if there is one, else `nuxi generate` | `.output/public` |
-| React Router in SPA mode | `@react-router/dev`, and `ssr: false` in `react-router.config` | `react-router build` | `build/client` |
-| Remix in SPA mode | `@remix-run/dev`, and `ssr: false` in `vite.config` | `remix vite:build` | `build/client` |
-| Gatsby | `gatsby` | `gatsby build` | `public` |
-| Docusaurus | `@docusaurus/core` | `docusaurus build` | `build` |
-| Eleventy | `@11ty/eleventy` | `eleventy` | `_site`, or `dir.output` |
-| Angular | `@angular/core` and `angular.json` | `ng build` | `dist/<project>/browser`, from `angular.json` |
-| Create React App | `react-scripts` | `react-scripts build` | `build` |
-| Hugo | `hugo.toml`, `hugo.yaml` or `hugo.json`; or a Hugo `config.toml` and no `package.json` | `hugo --minify` | `public`, or `publishDir` |
-| Jekyll | `_config.yml` and a `Gemfile` | `bundle install`, then `bundle exec jekyll build` | `_site`, or `destination` |
-| mdBook | `book.toml` | `mdbook build` | `book`, or `build.build-dir` |
+| Framework                                             | Found by                                                                               | Builds with                                                     | Serves                                                                         |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Vite, and React, Vue, Svelte, Solid or Preact on Vite | `vite`                                                                                 | `vite build`                                                    | `dist`, or `build.outDir` from `vite.config`                                   |
+| Astro                                                 | `astro`                                                                                | `astro build`                                                   | `dist`, or `outDir`                                                            |
+| Astro with `@astrojs/cloudflare`                      | `astro`, `@astrojs/cloudflare`                                                         | `astro build`                                                   | A Workers project: the Worker and config the adapter writes                    |
+| Next.js with `output: 'export'`                       | `next`, and `output: 'export'` in `next.config`                                        | `next build`                                                    | `out`                                                                          |
+| Next.js with OpenNext                                 | `next`, `@opennextjs/cloudflare` and a `wrangler.jsonc`                                | `opennextjs-cloudflare build`, then `wrangler deploy --dry-run` | A Workers project                                                              |
+| SvelteKit with `@sveltejs/adapter-static`             | `@sveltejs/kit` and the adapter                                                        | `vite build`                                                    | `build`, or the adapter's `pages`                                              |
+| SvelteKit with `@sveltejs/adapter-cloudflare`         | `@sveltejs/kit` and the adapter                                                        | `vite build`                                                    | A Workers project: `.svelte-kit/cloudflare/_worker.js` and the files beside it |
+| Nuxt                                                  | `nuxt`                                                                                 | `npm run generate` if there is one, else `nuxi generate`        | `.output/public`                                                               |
+| React Router in SPA mode                              | `@react-router/dev`, and `ssr: false` in `react-router.config`                         | `react-router build`                                            | `build/client`                                                                 |
+| Remix in SPA mode                                     | `@remix-run/dev`, and `ssr: false` in `vite.config`                                    | `remix vite:build`                                              | `build/client`                                                                 |
+| Gatsby                                                | `gatsby`                                                                               | `gatsby build`                                                  | `public`                                                                       |
+| Docusaurus                                            | `@docusaurus/core`                                                                     | `docusaurus build`                                              | `build`                                                                        |
+| Eleventy                                              | `@11ty/eleventy`                                                                       | `eleventy`                                                      | `_site`, or `dir.output`                                                       |
+| Angular                                               | `@angular/core` and `angular.json`                                                     | `ng build`                                                      | `dist/<project>/browser`, from `angular.json`                                  |
+| Create React App                                      | `react-scripts`                                                                        | `react-scripts build`                                           | `build`                                                                        |
+| Hugo                                                  | `hugo.toml`, `hugo.yaml` or `hugo.json`; or a Hugo `config.toml` and no `package.json` | `hugo --minify`                                                 | `public`, or `publishDir`                                                      |
+| Jekyll                                                | `_config.yml` and a `Gemfile`                                                          | `bundle install`, then `bundle exec jekyll build`               | `_site`, or `destination`                                                      |
+| mdBook                                                | `book.toml`                                                                            | `mdbook build`                                                  | `book`, or `build.build-dir`                                                   |
 
 - **Frameworks that need a server run as containers.** A Next.js app
   without `output: 'export'`, an Astro site with `@astrojs/node`, a
@@ -320,15 +320,15 @@ What is known not to run as a Worker is found before anything is built,
 and the app runs as a container instead, from a Dockerfile g1t writes,
 with the reason in the build's log:
 
-| The app | Why |
-| --- | --- |
-| Depends on a native addon: `better-sqlite3`, `sqlite3`, `bcrypt`, `sharp`, `canvas`, `argon2`, `puppeteer`, `playwright`, `node-pty`, `ssh2` and others | A Worker cannot load native code. |
-| Is a Fastify, NestJS or Sails app | They start on timers or read their modules from disk as they start, which a Worker cannot do before its first request. |
-| Accepts WebSocket connections with `socket.io`, `express-ws`, `WebSocketServer` or an `upgrade` handler | Workers do not support Node's `upgrade` event. |
-| Uses `child_process`, `cluster` or `worker_threads` | A Worker cannot start processes or threads. |
-| Reads or writes files while it runs: `readFile`, `writeFile`, `createReadStream`, `sendFile`, `res.render` and a view engine, `multer`'s disk storage | A Worker has no disk with the project's files. |
-| Serves files from disk under a path (`app.use("/static", express.static("public"))`), from a folder that does not exist, or from more than one folder | g1t can serve one folder, at the top, for it. |
-| Has a `start` script g1t cannot read (`nest start`, `pm2-runtime …`) | g1t cannot tell which file starts it. |
+| The app                                                                                                                                                 | Why                                                                                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Depends on a native addon: `better-sqlite3`, `sqlite3`, `bcrypt`, `sharp`, `canvas`, `argon2`, `puppeteer`, `playwright`, `node-pty`, `ssh2` and others | A Worker cannot load native code.                                                                                      |
+| Is a Fastify, NestJS or Sails app                                                                                                                       | They start on timers or read their modules from disk as they start, which a Worker cannot do before its first request. |
+| Accepts WebSocket connections with `socket.io`, `express-ws`, `WebSocketServer` or an `upgrade` handler                                                 | Workers do not support Node's `upgrade` event.                                                                         |
+| Uses `child_process`, `cluster` or `worker_threads`                                                                                                     | A Worker cannot start processes or threads.                                                                            |
+| Reads or writes files while it runs: `readFile`, `writeFile`, `createReadStream`, `sendFile`, `res.render` and a view engine, `multer`'s disk storage   | A Worker has no disk with the project's files.                                                                         |
+| Serves files from disk under a path (`app.use("/static", express.static("public"))`), from a folder that does not exist, or from more than one folder   | g1t can serve one folder, at the top, for it.                                                                          |
+| Has a `start` script g1t cannot read (`nest start`, `pm2-runtime …`)                                                                                    | g1t cannot tell which file starts it.                                                                                  |
 
 g1t looks for these in the app's own JavaScript and TypeScript, not in
 `node_modules`, tests, `scripts`, `public` or a build's output. A Worker
@@ -363,19 +363,19 @@ Worker cannot load; deploying as a container."
 
 g1t writes a Dockerfile for these, when there is none:
 
-| The project has | Runs with |
-| --- | --- |
-| `package.json` with a `start` script, or a server package (`express`, `fastify`, `koa`, `@nestjs/core`, `@hono/node-server` and others) and a main file | `npm start`, or `node <main>`, on `node:22-slim` (or the major release in `.nvmrc` or `.node-version`), after `npm run build` when there is one |
-| Next.js, Astro with `@astrojs/node`, SvelteKit with `adapter-node`, React Router or Remix | `next start` (or `node .next/standalone/server.js`, with its static files beside it, for `output: 'standalone'`), `node ./dist/server/entry.mjs`, `node build`, `react-router-serve` or `remix-serve`, after the build |
-| `requirements.txt`, `pyproject.toml` or `Pipfile`, and `manage.py` (Django) | `gunicorn <project>.wsgi` on `python:3.12-slim` |
-| The same, with Flask and an `app.py`, `main.py`, `server.py`, `wsgi.py` or `asgi.py` | `gunicorn <module>:app` |
-| The same, with FastAPI or Starlette | `uvicorn <module>:app` |
-| The same, with neither | `python <module>.py` |
-| `go.mod` and one `package main`, at the top or in one folder of `cmd/` | The program, built with `golang:1.25` into an image with nothing else |
-| A `Gemfile` with Rails | `rails server`, after `assets:precompile`, on `ruby:3.3-slim` |
-| A `Gemfile` and a `config.ru` | `rackup` |
-| `composer.json`, and `artisan` with `public/index.php` (Laravel), or an `index.php` | Apache with PHP 8.3, after `composer install` |
-| `Cargo.toml` with one program and `axum`, `actix-web`, `rocket`, `warp`, `poem`, `salvo` or `tide` | The program, built with `rust:1` into `debian:bookworm-slim` |
+| The project has                                                                                                                                         | Runs with                                                                                                                                                                                                              |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `package.json` with a `start` script, or a server package (`express`, `fastify`, `koa`, `@nestjs/core`, `@hono/node-server` and others) and a main file | `npm start`, or `node <main>`, on `node:22-slim` (or the major release in `.nvmrc` or `.node-version`), after `npm run build` when there is one                                                                        |
+| Next.js, Astro with `@astrojs/node`, SvelteKit with `adapter-node`, React Router or Remix                                                               | `next start` (or `node .next/standalone/server.js`, with its static files beside it, for `output: 'standalone'`), `node ./dist/server/entry.mjs`, `node build`, `react-router-serve` or `remix-serve`, after the build |
+| `requirements.txt`, `pyproject.toml` or `Pipfile`, and `manage.py` (Django)                                                                             | `gunicorn <project>.wsgi` on `python:3.12-slim`                                                                                                                                                                        |
+| The same, with Flask and an `app.py`, `main.py`, `server.py`, `wsgi.py` or `asgi.py`                                                                    | `gunicorn <module>:app`                                                                                                                                                                                                |
+| The same, with FastAPI or Starlette                                                                                                                     | `uvicorn <module>:app`                                                                                                                                                                                                 |
+| The same, with neither                                                                                                                                  | `python <module>.py`                                                                                                                                                                                                   |
+| `go.mod` and one `package main`, at the top or in one folder of `cmd/`                                                                                  | The program, built with `golang:1.25` into an image with nothing else                                                                                                                                                  |
+| A `Gemfile` with Rails                                                                                                                                  | `rails server`, after `assets:precompile`, on `ruby:3.3-slim`                                                                                                                                                          |
+| A `Gemfile` and a `config.ru`                                                                                                                           | `rackup`                                                                                                                                                                                                               |
+| `composer.json`, and `artisan` with `public/index.php` (Laravel), or an `index.php`                                                                     | Apache with PHP 8.3, after `composer install`                                                                                                                                                                          |
+| `Cargo.toml` with one program and `axum`, `actix-web`, `rocket`, `warp`, `poem`, `salvo` or `tide`                                                      | The program, built with `rust:1` into `debian:bookworm-slim`                                                                                                                                                           |
 
 The Dockerfile g1t writes is printed whole in the build's log. To change
 how the app is built or run, commit it as `Dockerfile` and edit it. It
@@ -419,11 +419,11 @@ fork.
 
 The pull request shows the deployment as a check named **g1t / deploy**:
 
-| State | Means |
-| --- | --- |
-| Pending, "Building" | The build is running. The link opens its log. |
-| Passed, "Preview is live" | The link opens the preview. |
-| Failed, "Deployment failed" | The link opens the build log and the reason. |
+| State                       | Means                                         |
+| --------------------------- | --------------------------------------------- |
+| Pending, "Building"         | The build is running. The link opens its log. |
+| Passed, "Preview is live"   | The link opens the preview.                   |
+| Failed, "Deployment failed" | The link opens the build log and the reason.  |
 
 A newer push replaces a build that is still running for the same pull
 request. Previews are marked `noindex`, so search engines leave them alone.
@@ -511,23 +511,23 @@ jobs:
 
 What the run builds:
 
-| The run | Builds |
-| --- | --- |
-| On the project's production branch (a push, `workflow_dispatch` or `schedule` there) | Production |
-| For a pull request (`pull_request`, `pull_request_target`) | That pull request's preview, at its branch's address, or `pr-<number>` for one from a fork |
-| On another branch | That branch's preview |
-| For a tag | Nothing: the step fails and says to run the workflow on a branch |
+| The run                                                                              | Builds                                                                                     |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| On the project's production branch (a push, `workflow_dispatch` or `schedule` there) | Production                                                                                 |
+| For a pull request (`pull_request`, `pull_request_target`)                           | That pull request's preview, at its branch's address, or `pr-<number>` for one from a fork |
+| On another branch                                                                    | That branch's preview                                                                      |
+| For a tag                                                                            | Nothing: the step fails and says to run the workflow on a branch                           |
 
 `g1t/deploy` takes these inputs:
 
-| Input | Default | |
-| --- | --- | --- |
-| `project` | The repository's one project with Deployments on | The project's slug. Needed when the repository has several. |
-| `root-dir` | The project's **Root directory** | Where the project is in the checkout. |
-| `build-command` | The project's **Build command**, else what the build finds | What builds it, run after the install. |
-| `output-dir` | The project's **Output directory**, else the first folder found | The folder a static build writes. |
-| `sha` | The run's commit | The commit the `g1t / deploy` check goes on. |
-| `token` | `${{ github.token }}` | The job's own token. No other token can open a build. |
+| Input           | Default                                                         |                                                             |
+| --------------- | --------------------------------------------------------------- | ----------------------------------------------------------- |
+| `project`       | The repository's one project with Deployments on                | The project's slug. Needed when the repository has several. |
+| `root-dir`      | The project's **Root directory**                                | Where the project is in the checkout.                       |
+| `build-command` | The project's **Build command**, else what the build finds      | What builds it, run after the install.                      |
+| `output-dir`    | The project's **Output directory**, else the first folder found | The folder a static build writes.                           |
+| `sha`           | The run's commit                                                | The commit the `g1t / deploy` check goes on.                |
+| `token`         | `${{ github.token }}`                                           | The job's own token. No other token can open a build.       |
 
 Its outputs are `url` (the app's address), `deployment-id` (`dpl_…`) and
 `kind` (`production` or `preview`).
@@ -663,8 +663,8 @@ the Admin [role](/guides/access-and-roles/) on the project's repository.
 
 Add one record:
 
-| Type | Name | Target |
-| --- | --- | --- |
+| Type    | Name  | Target             |
+| ------- | ----- | ------------------ |
 | `CNAME` | `www` | `domains.g1t.page` |
 
 The same goes for any subdomain, such as `app.example.com` (name `app`).
@@ -674,12 +674,12 @@ The same goes for any subdomain, such as `app.example.com` (name `app`).
 DNS does not allow a plain `CNAME` at the apex of a domain, so use your
 provider's flattened form of one, pointed at `domains.g1t.page`:
 
-| DNS provider | Record |
-| --- | --- |
-| Cloudflare DNS | `CNAME` at `@` (Cloudflare flattens it) |
-| Amazon Route 53 | Not supported by alias records to other zones; use the www pairing below |
-| DNSimple, NS1, Namecheap, Porkbun, Gandi | `ALIAS` at `@` |
-| DNS Made Easy, Constellix | `ANAME` at `@` |
+| DNS provider                             | Record                                                                   |
+| ---------------------------------------- | ------------------------------------------------------------------------ |
+| Cloudflare DNS                           | `CNAME` at `@` (Cloudflare flattens it)                                  |
+| Amazon Route 53                          | Not supported by alias records to other zones; use the www pairing below |
+| DNSimple, NS1, Namecheap, Porkbun, Gandi | `ALIAS` at `@`                                                           |
+| DNS Made Easy, Constellix                | `ANAME` at `@`                                                           |
 
 If your provider has no flattened `CNAME`, `ALIAS` or `ANAME`, add
 `www.example.com` on g1t instead, and set up your provider's forwarding (or
@@ -713,14 +713,14 @@ domain redirecting to it goes too. Your DNS records are left as they are.
 Nothing keeps running unasked. An app comes down, and stops costing
 anything, when:
 
-| | |
-| --- | --- |
-| Its pull request is merged or closed | That preview, at once. |
-| No one visits a preview for the project's **idle days** | That preview, at the next sweep (every 10 minutes). The default is 7 days. |
-| You choose **Take down** on the Deployments page | That app, at once. |
-| You turn off previews or production | All of that kind, at once. |
-| You choose **Turn off deployments** | Every app of the project, at once, and no more builds. |
-| The workspace's plan ends or its payment fails | Every app of the workspace, at the next sweep. |
+|                                                             |                                                                                                                                                                                                                                                                  |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Its pull request is merged or closed                        | That preview, at once.                                                                                                                                                                                                                                           |
+| No one visits a preview for the project's **idle days**     | That preview, at the next sweep (every 10 minutes). The default is 7 days.                                                                                                                                                                                       |
+| You choose **Take down** on the Deployments page            | That app, at once.                                                                                                                                                                                                                                               |
+| You turn off previews or production                         | All of that kind, at once.                                                                                                                                                                                                                                       |
+| You choose **Turn off deployments**                         | Every app of the project, at once, and no more builds.                                                                                                                                                                                                           |
+| The workspace's plan ends or its payment fails              | Every app of the workspace, at the next sweep.                                                                                                                                                                                                                   |
 | The repository is [deleted](/guides/managing-repositories/) | Every app of its projects, at once. Custom domains stay set up and serve nothing. If you restore the repository, production is built again and its domains serve it; previews come back with their next push. When it is purged, its custom domains are removed. |
 
 A preview that came down comes back with the next push to its pull
@@ -731,12 +731,12 @@ request, or **Redeploy** on the Deployments page.
 What you can do with a project's deployments follows your
 [role](/guides/access-and-roles/) on its repository:
 
-| | Needs |
-| --- | --- |
-| See its deployments, their build logs, previews and domains | Read |
-| **Redeploy**, take an app down | Write |
-| Turn deployments on or off, change their settings | Admin |
-| Add, verify and remove custom domains | Admin |
+|                                                             | Needs |
+| ----------------------------------------------------------- | ----- |
+| See its deployments, their build logs, previews and domains | Read  |
+| **Redeploy**, take an app down                              | Write |
+| Turn deployments on or off, change their settings           | Admin |
+| Add, verify and remove custom domains                       | Admin |
 
 A public repository's deployments, and their build logs, can be seen by
 anyone, signed in or not, the same as its code. Its settings and domains
@@ -748,17 +748,17 @@ people with a role on it.
 Under the project's **Settings → Deployments**,
 `g1t.sh/<workspace>/<repo>/settings/deployments`:
 
-| Setting | Default | |
-| --- | --- | --- |
-| Production | On | Deploy the default branch on every push. |
-| Previews | On | A preview for every branch with an open pull request. |
-| Build as | Auto | **Auto** (found from its files, a site or a Worker before a container), **Static site**, **Workers** or **Container**; see [What a project is built as](#what-a-project-is-built-as). |
-| Dockerfile | `Dockerfile` or `Containerfile` | For a container: its Dockerfile's path, inside the project. |
-| Container size | `lite` | For a container: the instance it runs at, with its price an hour awake. |
-| Build command | The project's own | Runs instead of `npm run build`, or before bundling a Workers project. Not used for a container. |
-| Output directory | Found by itself | What a static site serves. |
-| Idle days | 7 | 1 to 90. A preview no one visits this long comes down. |
-| Build with a workflow | Off | Build through the deploy workflow g1t manages for the project; see [build with a workflow](#build-with-a-workflow). |
+| Setting               | Default                         |                                                                                                                                                                                       |
+| --------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Production            | On                              | Deploy the default branch on every push.                                                                                                                                              |
+| Previews              | On                              | A preview for every branch with an open pull request.                                                                                                                                 |
+| Build as              | Auto                            | **Auto** (found from its files, a site or a Worker before a container), **Static site**, **Workers** or **Container**; see [What a project is built as](#what-a-project-is-built-as). |
+| Dockerfile            | `Dockerfile` or `Containerfile` | For a container: its Dockerfile's path, inside the project.                                                                                                                           |
+| Container size        | `lite`                          | For a container: the instance it runs at, with its price an hour awake.                                                                                                               |
+| Build command         | The project's own               | Runs instead of `npm run build`, or before bundling a Workers project. Not used for a container.                                                                                      |
+| Output directory      | Found by itself                 | What a static site serves.                                                                                                                                                            |
+| Idle days             | 7                               | 1 to 90. A preview no one visits this long comes down.                                                                                                                                |
+| Build with a workflow | Off                             | Build through the deploy workflow g1t manages for the project; see [build with a workflow](#build-with-a-workflow).                                                                   |
 
 The same settings are read and changed with
 [`get_deployment_settings`](/reference/api/deployments/get-deployment-settings/) and
@@ -785,10 +785,10 @@ Builds and running apps read the project's
 [secrets and variables](/guides/secrets-and-variables/) that are
 available to Deployments, and the workspace's that reach it:
 
-| | Reads |
-| --- | --- |
+|                                    | Reads                                                         |
+| ---------------------------------- | ------------------------------------------------------------- |
 | A production build, and production | Each key's Production row, else its row for all environments. |
-| A preview build, and the preview | Each key's Preview row, else its row for all environments. |
+| A preview build, and the preview   | Each key's Preview row, else its row for all environments.    |
 
 The build gets them as environment variables, with secrets hidden in its
 log. The running app gets them as bindings, `env.KEY`, put in place by g1t
@@ -815,15 +815,15 @@ from the first unit, at Cloudflare's price plus 20%, and paid from the
 plan's $10 of included usage first; past it, it is charged up to your
 [spend limit](/guides/usage-and-billing/#limits).
 
-| | Costs g1t | You pay |
-| --- | --- | --- |
-| Projects, previews and the apps behind them | Next to nothing | Not charged |
-| Builds g1t runs, by the second, whether they succeed or fail (a [workflow's build](#deploying-from-a-workflow) is its job's Actions time instead) | About $0.001 a minute | About $0.0012 a minute |
-| Requests, to all of the workspace's apps | $0.30 a million | $0.36 a million |
-| CPU time your code spends computing (waiting on the network is not counted) | $0.02 a million ms | $0.024 a million ms |
-| Custom domains, with their certificates (a www/apex pair is two) | $0.10 a month | $0.12 a month, by the most the workspace had at once that month |
-| A container, while it is awake, by the minute (see the sizes below) | From $0.0129 an hour (`lite`) | From $0.0155 an hour |
-| Data a container sends | $0.05 a GB, at most | $0.06 a GB |
+|                                                                                                                                                   | Costs g1t                     | You pay                                                         |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | --------------------------------------------------------------- |
+| Projects, previews and the apps behind them                                                                                                       | Next to nothing               | Not charged                                                     |
+| Builds g1t runs, by the second, whether they succeed or fail (a [workflow's build](#deploying-from-a-workflow) is its job's Actions time instead) | About $0.001 a minute         | About $0.0012 a minute                                          |
+| Requests, to all of the workspace's apps                                                                                                          | $0.30 a million               | $0.36 a million                                                 |
+| CPU time your code spends computing (waiting on the network is not counted)                                                                       | $0.02 a million ms            | $0.024 a million ms                                             |
+| Custom domains, with their certificates (a www/apex pair is two)                                                                                  | $0.10 a month                 | $0.12 a month, by the most the workspace had at once that month |
+| A container, while it is awake, by the minute (see the sizes below)                                                                               | From $0.0129 an hour (`lite`) | From $0.0155 an hour                                            |
+| Data a container sends                                                                                                                            | $0.05 a GB, at most           | $0.06 a GB                                                      |
 
 A container's price is its size's memory, disk and vCPU while it is awake,
 with the Durable Object in front of it, at Cloudflare's
@@ -836,14 +836,14 @@ cannot tell where it went. Each minute it is awake is charged from its
 start, so a container woken by one request, and stopped five minutes after
 it, is charged five minutes.
 
-| Size | vCPU | Memory | Disk, and the largest image | An hour awake | Awake all month (730 hours) |
-| --- | --- | --- | --- | --- | --- |
-| `lite` | 1/16 | 256 MiB | 2 GB | $0.0155 | $11.28 |
-| `basic` | 1/4 | 1 GiB | 4 GB | $0.0404 | $29.46 |
-| `standard-1` | 1/2 | 4 GiB | 8 GB | $0.0956 | $69.77 |
-| `standard-2` | 1 | 6 GiB | 12 GB | $0.1616 | $117.95 |
-| `standard-3` | 2 | 8 GiB | 16 GB | $0.2708 | $197.68 |
-| `standard-4` | 4 | 12 GiB | 20 GB | $0.4880 | $356.24 |
+| Size         | vCPU | Memory  | Disk, and the largest image | An hour awake | Awake all month (730 hours) |
+| ------------ | ---- | ------- | --------------------------- | ------------- | --------------------------- |
+| `lite`       | 1/16 | 256 MiB | 2 GB                        | $0.0155       | $11.28                      |
+| `basic`      | 1/4  | 1 GiB   | 4 GB                        | $0.0404       | $29.46                      |
+| `standard-1` | 1/2  | 4 GiB   | 8 GB                        | $0.0956       | $69.77                      |
+| `standard-2` | 1    | 6 GiB   | 12 GB                       | $0.1616       | $117.95                     |
+| `standard-3` | 2    | 8 GiB   | 16 GB                       | $0.2708       | $197.68                     |
+| `standard-4` | 4    | 12 GiB  | 20 GB                       | $0.4880       | $356.24                     |
 
 **Settings → Deployments** shows these with the price book's prices of the
 day. A container that is visited all day never sleeps, and costs the last
@@ -852,9 +852,9 @@ column; one visited for an hour a day costs about a thirtieth of it.
 Builds are charged when they finish. Requests, CPU time, custom domains
 and container time are counted through the month, so your limit and
 **Billing** follow them as they happen, and charged once, on the first
-sweep after the month ends, as one line: *Deployments in 2026-10:
+sweep after the month ends, as one line: _Deployments in 2026-10:
 1,240,000 requests, 3,100,000 CPU ms, 2 custom domains, 41.5 container
-hours and 2.3 GB sent*.
+hours and 2.3 GB sent_.
 
 A static site, or plain HTML, runs no code when it is visited: its files
 are served as they are, so serving it adds no requests or CPU time. Its
@@ -877,12 +877,12 @@ renewed.
 
 ### Seeing what you use
 
-- **Usage** shows **Deployments** with *Builds*
-  (build minutes and their cost), *Requests & CPU* and *Custom domains*,
+- **Usage** shows **Deployments** with _Builds_
+  (build minutes and their cost), _Requests & CPU_ and _Custom domains_,
   in dollars, beside the rest of the workspace's usage. Requests and CPU
   time are counted from Cloudflare's analytics every 10 minutes.
-- The **statement** on Billing lists every build (*Building acme/web to
-  production (48 s), paid by your plan's included usage*) and every
+- The **statement** on Billing lists every build (_Building acme/web to
+  production (48 s), paid by your plan's included usage_) and every
   month's requests, CPU time and custom domains.
 - Each build's page shows how long it ran.
 
@@ -998,31 +998,31 @@ own code (October 2026):
 
 ## Troubleshooting
 
-| You see | Do |
-| --- | --- |
-| "Deployments come with the g1t plan … and `<workspace>` does not have it" | An owner starts the g1t plan under Billing. |
-| A deployment **Skipped**, saying it reached its spend limit or that new compute is paused | The build was refused before it started. Follow the link in the message: raise the spend limit, prepay, or answer the spike, on Billing. |
-| "Stopped: unusual CPU use" | The build looked like it was mining. Contact support if it was a real build; see [abuse and mining](/guides/guardrails/#abuse-and-mining). |
-| "found nothing to serve" | Add a `build` script, an `index.html`, a Workers config or a `Dockerfile`; or set **Output directory**. |
-| "Docker deployments are switched off on this g1t" | The project is a container, and this g1t (a self-hosted one) runs none. Set **Build as** to Static site or Workers if it can be built as one. See [Docker deployments](#docker-deployments). |
-| "**Build as** is Container, but this project has no Dockerfile" | Add a `Dockerfile`, or set **Dockerfile** to its path. |
-| "Could not run as a Worker: …; deploying as a container" | The Node.js server cannot run as a Worker, for the reason given; it deploys as a container. See [Node.js servers as Workers](#nodejs-servers-as-workers) for what to change, or set **Build as** to **Container** to skip the attempt. |
-| "Built as a … site; Dockerfile is not used" | A site is preferred to a container. Set **Build as** to **Container** to deploy the `Dockerfile` instead. |
-| "The image is 2.4 GB, more than the 2.0 GB an app of its size (lite) can hold" | Make the image smaller (a slim base image, a multi-stage build), or choose a larger **Container size**. |
-| A container app says "The app did not start" | It did not answer on its port within 90 seconds. Make it listen on `0.0.0.0` at `PORT`, or `EXPOSE` the port it uses in its Dockerfile. Its output is in the build's log only while it builds; run the image locally with `docker run -e PORT=8080 -p 8080:8080` to see it start. |
-| "the output directory `x` does not exist after the build" | The build wrote elsewhere: check its log, then fix **Output directory**. |
-| "`d1_databases` is not provisioned on g1t.page yet" | The app deployed without that binding. See [Workers projects](#workers-projects). |
-| "`triggers.crons` (1 schedule) is not set up on g1t.page yet" | The app deployed, but its `scheduled` handler never runs. See [Workers projects](#workers-projects). |
-| A preview page says "This preview is not up" | It came down (see [When apps come down](#when-apps-come-down)). Push, or choose **Redeploy**. |
-| "Custom domains are being switched on" | Custom domains are not on for g1t.page yet. Domains you add are kept, and set up by themselves once they are. |
-| A domain stays at **Waiting for DNS** | Check the record against the one listed, remove other `A`/`AAAA` records for the same name, then choose **Check now**. |
-| A domain says "This domain is not set up" | It points at g1t, but no project has added it. Add it under **Settings → Domains**. |
-| "This pull request's commit no longer exists" | The pull request's head was force-pushed over, or its branch deleted, after the build was asked for. Push to the pull request again, or close it. g1t does not try that commit again. |
-| g1t/deploy says "The job's token needs `deployments: write`" | Add `deployments: write` to the workflow's or the job's `permissions:`. A pull request's run from outside gets a read-only token and cannot deploy. |
-| g1t/deploy says "Name the project to build" | The repository has several projects with Deployments on: give `project:`. |
-| g1t/deploy says "g1t.page deploys branches and pull requests" | The run is for a tag. Run the workflow on a branch, such as on a push to `main`. |
-| "The workflow job was cancelled before the build finished" | The job that opened the build (`g1t/deploy`) was cancelled, or ended another way the message names, before `g1t-runner deploy` reported. Run the job again. |
-| "The build did not finish in 45 minutes" | The build stopped reporting: a build stops at 30 minutes, and one not heard from after 45 is failed. Make the build faster, or build less for previews with **Build command**. |
+| You see                                                                                   | Do                                                                                                                                                                                                                                                                                |
+| ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "Deployments come with the g1t plan … and `<workspace>` does not have it"                 | An owner starts the g1t plan under Billing.                                                                                                                                                                                                                                       |
+| A deployment **Skipped**, saying it reached its spend limit or that new compute is paused | The build was refused before it started. Follow the link in the message: raise the spend limit, prepay, or answer the spike, on Billing.                                                                                                                                          |
+| "Stopped: unusual CPU use"                                                                | The build looked like it was mining. Contact support if it was a real build; see [abuse and mining](/guides/guardrails/#abuse-and-mining).                                                                                                                                        |
+| "found nothing to serve"                                                                  | Add a `build` script, an `index.html`, a Workers config or a `Dockerfile`; or set **Output directory**.                                                                                                                                                                           |
+| "Docker deployments are switched off on this g1t"                                         | The project is a container, and this g1t (a self-hosted one) runs none. Set **Build as** to Static site or Workers if it can be built as one. See [Docker deployments](#docker-deployments).                                                                                      |
+| "**Build as** is Container, but this project has no Dockerfile"                           | Add a `Dockerfile`, or set **Dockerfile** to its path.                                                                                                                                                                                                                            |
+| "Could not run as a Worker: …; deploying as a container"                                  | The Node.js server cannot run as a Worker, for the reason given; it deploys as a container. See [Node.js servers as Workers](#nodejs-servers-as-workers) for what to change, or set **Build as** to **Container** to skip the attempt.                                            |
+| "Built as a … site; Dockerfile is not used"                                               | A site is preferred to a container. Set **Build as** to **Container** to deploy the `Dockerfile` instead.                                                                                                                                                                         |
+| "The image is 2.4 GB, more than the 2.0 GB an app of its size (lite) can hold"            | Make the image smaller (a slim base image, a multi-stage build), or choose a larger **Container size**.                                                                                                                                                                           |
+| A container app says "The app did not start"                                              | It did not answer on its port within 90 seconds. Make it listen on `0.0.0.0` at `PORT`, or `EXPOSE` the port it uses in its Dockerfile. Its output is in the build's log only while it builds; run the image locally with `docker run -e PORT=8080 -p 8080:8080` to see it start. |
+| "the output directory `x` does not exist after the build"                                 | The build wrote elsewhere: check its log, then fix **Output directory**.                                                                                                                                                                                                          |
+| "`d1_databases` is not provisioned on g1t.page yet"                                       | The app deployed without that binding. See [Workers projects](#workers-projects).                                                                                                                                                                                                 |
+| "`triggers.crons` (1 schedule) is not set up on g1t.page yet"                             | The app deployed, but its `scheduled` handler never runs. See [Workers projects](#workers-projects).                                                                                                                                                                              |
+| A preview page says "This preview is not up"                                              | It came down (see [When apps come down](#when-apps-come-down)). Push, or choose **Redeploy**.                                                                                                                                                                                     |
+| "Custom domains are being switched on"                                                    | Custom domains are not on for g1t.page yet. Domains you add are kept, and set up by themselves once they are.                                                                                                                                                                     |
+| A domain stays at **Waiting for DNS**                                                     | Check the record against the one listed, remove other `A`/`AAAA` records for the same name, then choose **Check now**.                                                                                                                                                            |
+| A domain says "This domain is not set up"                                                 | It points at g1t, but no project has added it. Add it under **Settings → Domains**.                                                                                                                                                                                               |
+| "This pull request's commit no longer exists"                                             | The pull request's head was force-pushed over, or its branch deleted, after the build was asked for. Push to the pull request again, or close it. g1t does not try that commit again.                                                                                             |
+| g1t/deploy says "The job's token needs `deployments: write`"                              | Add `deployments: write` to the workflow's or the job's `permissions:`. A pull request's run from outside gets a read-only token and cannot deploy.                                                                                                                               |
+| g1t/deploy says "Name the project to build"                                               | The repository has several projects with Deployments on: give `project:`.                                                                                                                                                                                                         |
+| g1t/deploy says "g1t.page deploys branches and pull requests"                             | The run is for a tag. Run the workflow on a branch, such as on a push to `main`.                                                                                                                                                                                                  |
+| "The workflow job was cancelled before the build finished"                                | The job that opened the build (`g1t/deploy`) was cancelled, or ended another way the message names, before `g1t-runner deploy` reported. Run the job again.                                                                                                                       |
+| "The build did not finish in 45 minutes"                                                  | The build stopped reporting: a build stops at 30 minutes, and one not heard from after 45 is failed. Make the build faster, or build less for previews with **Build command**.                                                                                                    |
 
 ## Running your own g1t
 

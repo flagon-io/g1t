@@ -119,7 +119,13 @@ const snake = (name) => name.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCas
  * message when the answer has errors.
  */
 export function parseDoGroups(body, variant, names = {}) {
-  if (body?.errors?.length) throw new Error(body.errors.map((error) => error.message).join("; ").slice(0, 400));
+  if (body?.errors?.length)
+    throw new Error(
+      body.errors
+        .map((error) => error.message)
+        .join("; ")
+        .slice(0, 400),
+    );
   const groups = body?.data?.viewer?.accounts?.[0]?.rows;
   if (!Array.isArray(groups)) throw new Error("no rows in the answer");
   const rows = groups.map((group) => {
@@ -188,7 +194,12 @@ export function telemetryQuestions({ script, from, to, samples, serviceKey = SER
         ...base,
         queryId: "g1t-runner-failed-invocations",
         view: "calculations",
-        parameters: { datasets: ["cloudflare-workers"], filters: [service, failed], calculations: count, groupBys: group(KEYS.entrypoint, KEYS.eventType, KEYS.outcome) },
+        parameters: {
+          datasets: ["cloudflare-workers"],
+          filters: [service, failed],
+          calculations: count,
+          groupBys: group(KEYS.entrypoint, KEYS.eventType, KEYS.outcome),
+        },
       },
     },
     {
@@ -208,7 +219,12 @@ export function telemetryQuestions({ script, from, to, samples, serviceKey = SER
         ...base,
         queryId: "g1t-runner-error-logs",
         view: "calculations",
-        parameters: { datasets: ["cloudflare-workers"], filters: [service, filter(KEYS.level, "eq", "error")], calculations: count, groupBys: group(KEYS.message) },
+        parameters: {
+          datasets: ["cloudflare-workers"],
+          filters: [service, filter(KEYS.level, "eq", "error")],
+          calculations: count,
+          groupBys: group(KEYS.message),
+        },
       },
     },
     {
@@ -274,12 +290,37 @@ function messagesOf(body) {
  * whether it is expected. Order matters: the first match wins.
  */
 export const BUCKETS = [
-  { bucket: "deploy_reset", expected: true, why: "a runner deploy reset the object mid-invocation", test: /code (was|has been) updated|reset because its code|new version of the (script|worker)|durable object reset/i },
-  { bucket: "stop_not_reported", expected: false, why: "onStop could not tell a service the sandbox stopped (now logged, not thrown)", test: /sandbox stop not reported/i },
+  {
+    bucket: "deploy_reset",
+    expected: true,
+    why: "a runner deploy reset the object mid-invocation",
+    test: /code (was|has been) updated|reset because its code|new version of the (script|worker)|durable object reset/i,
+  },
+  {
+    bucket: "stop_not_reported",
+    expected: false,
+    why: "onStop could not tell a service the sandbox stopped (now logged, not thrown)",
+    test: /sandbox stop not reported/i,
+  },
   { bucket: "alarm_failed", expected: false, why: "the sandbox's alarm threw (retried by Cloudflare)", test: /sandbox alarm failed/i },
-  { bucket: "no_capacity", expected: true, why: "no container instance free (max_instances, or provisioning)", test: /no container instance|max(imum)? concurrent instance|too many containers per second/i },
-  { bucket: "not_started", expected: false, why: "a sandbox could not start (guardrails unreadable, or the container would not start)", test: /sandbox not started|could not read this project's guardrails|did not start after|failed to start container/i },
-  { bucket: "container_exited", expected: true, why: "the container exited or was stopped (a finished run, a time cap, a stop)", test: /container exited|runtime signalled|exited before we could determine|crashed while checking for ports|exit code/i },
+  {
+    bucket: "no_capacity",
+    expected: true,
+    why: "no container instance free (max_instances, or provisioning)",
+    test: /no container instance|max(imum)? concurrent instance|too many containers per second/i,
+  },
+  {
+    bucket: "not_started",
+    expected: false,
+    why: "a sandbox could not start (guardrails unreadable, or the container would not start)",
+    test: /sandbox not started|could not read this project's guardrails|did not start after|failed to start container/i,
+  },
+  {
+    bucket: "container_exited",
+    expected: true,
+    why: "the container exited or was stopped (a finished run, a time cap, a stop)",
+    test: /container exited|runtime signalled|exited before we could determine|crashed while checking for ports|exit code/i,
+  },
   { bucket: "connection_lost", expected: false, why: "the connection to the container was lost", test: /network connection lost|disconnected/i },
   { bucket: "storage", expected: false, why: "Durable Object storage failed or was overloaded", test: /storage|sqlite|overloaded/i },
   { bucket: "limits", expected: false, why: "a CPU, memory or subrequest limit", test: /exceeded|too many subrequests|memory limit/i },
@@ -333,14 +374,20 @@ export function format(report, top = 25) {
     ];
     if (query.metrics.includes("errors")) columns.push({ title: "error_rate", right: true, value: (row) => percent(row.errors, row.requests) });
     lines.push(...table(query.rows.slice(0, top), columns));
-    lines.push(`  total: ${Object.entries(query.totals).map(([metric, value]) => `${metric} ${number(value)}`).join(", ")}`);
+    lines.push(
+      `  total: ${Object.entries(query.totals)
+        .map(([metric, value]) => `${metric} ${number(value)}`)
+        .join(", ")}`,
+    );
     if (query.by_status?.length) {
       lines.push("  by status:");
-      lines.push(...table(query.by_status, [
-        { title: "status", value: (row) => row.status },
-        { title: "requests", right: true, value: (row) => number(row.requests) },
-        { title: "errors", right: true, value: (row) => number(row.errors) },
-      ]).map((line) => `  ${line}`));
+      lines.push(
+        ...table(query.by_status, [
+          { title: "status", value: (row) => row.status },
+          { title: "requests", right: true, value: (row) => number(row.requests) },
+          { title: "errors", right: true, value: (row) => number(row.errors) },
+        ]).map((line) => `  ${line}`),
+      );
     }
   }
   for (const question of report.telemetry) {
@@ -358,13 +405,16 @@ export function format(report, top = 25) {
       continue;
     }
     const keys = Object.keys(question.rows[0] ?? {}).filter((key) => key !== "count");
-    lines.push(...table(question.rows.slice(0, top), [
-      ...keys.map((key) => ({ title: key, value: (row) => String(row[key] ?? "").slice(0, 120) })),
-      { title: "count", right: true, value: (row) => number(row.count) },
-    ]));
+    lines.push(
+      ...table(question.rows.slice(0, top), [
+        ...keys.map((key) => ({ title: key, value: (row) => String(row[key] ?? "").slice(0, 120) })),
+        { title: "count", right: true, value: (row) => number(row.count) },
+      ]),
+    );
     if (question.buckets?.length) {
       lines.push("  most likely:");
-      for (const bucket of question.buckets) lines.push(`    ${String(number(bucket.count)).padStart(6)}  ${bucket.bucket}${bucket.expected ? " (expected)" : ""}: ${bucket.why}`);
+      for (const bucket of question.buckets)
+        lines.push(`    ${String(number(bucket.count)).padStart(6)}  ${bucket.bucket}${bucket.expected ? " (expected)" : ""}: ${bucket.why}`);
     }
   }
   if (report.keys) lines.push("", "Telemetry keys:", ...report.keys.map((key) => `  ${key}`));
@@ -387,7 +437,9 @@ async function durableNames(auth, account) {
   const out = {};
   try {
     for (let page = 1; page <= 10; page++) {
-      const response = await fetch(`${API}/accounts/${account}/workers/durable_objects/namespaces?per_page=100&page=${page}`, { headers: { ...auth, "user-agent": "g1t-ops" } });
+      const response = await fetch(`${API}/accounts/${account}/workers/durable_objects/namespaces?per_page=100&page=${page}`, {
+        headers: { ...auth, "user-agent": "g1t-ops" },
+      });
       const body = await response.json();
       if (!response.ok || !Array.isArray(body.result)) break;
       for (const item of body.result) if (item.id) out[item.id] = item.name ?? item.id;
@@ -405,7 +457,10 @@ async function analytics(auth, options, window, names) {
       let error = null;
       for (const variant of query.variants) {
         try {
-          const body = await post(auth, "/graphql", { query: doQuery(variant), variables: { accountTag: options.account, start: window.start, end: window.end, script: options.script } });
+          const body = await post(auth, "/graphql", {
+            query: doQuery(variant),
+            variables: { accountTag: options.account, start: window.start, end: window.end, script: options.script },
+          });
           const parsed = parseDoGroups(body, variant, names);
           return { key: query.key, label: query.label, ...parsed, by_status: query.key === "by_namespace" ? byStatus(parsed) : undefined };
         } catch (thrown) {
@@ -474,7 +529,16 @@ async function main() {
   const notes = [];
   if (!Object.keys(names).length) notes.push("Namespace ids are not named: the token cannot read the Durable Objects listing (Workers Scripts: Read).");
   notes.push(`Telemetry is filtered on ${logs.serviceKey}.`);
-  const report = { account: options.account, script: options.script, start: window.start, end: window.end, analytics: graph, telemetry: logs.results, keys, notes };
+  const report = {
+    account: options.account,
+    script: options.script,
+    start: window.start,
+    end: window.end,
+    analytics: graph,
+    telemetry: logs.results,
+    keys,
+    notes,
+  };
   console.log(options.json ? JSON.stringify(report, null, 2) : format(report));
   const read = [...graph, ...logs.results].some((part) => !part.error);
   return read ? 0 : 1;

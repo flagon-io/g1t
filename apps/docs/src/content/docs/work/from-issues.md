@@ -64,24 +64,24 @@ Labels and milestones now belong to the workspace, too.
 Nothing that reads links or references needs to change. What calls g1t by
 name does:
 
-| Was | Now |
-| --- | --- |
-| `g1t issue …` | `g1t work …`: `list`, `view`, `new`, `comment`, `edit`, `close`, `reopen` |
-| `g1t browse --issues` | `g1t browse --work` |
-| `g1t work context N` | `g1t work view N` |
-| `g1t work list` (claims and sessions) | `g1t work status` |
-| `--issue N` on `g1t pr create`, `g1t session …` and `g1t work events` | `--item N` |
-| The MCP `issue` tool | `work_item`, with `workspace` and `number` |
-| `pull_request` `create` with `issue` | `pull_request` `create` with `item` |
-| `/repos/{owner}/{name}/issues…` | `/workspaces/{workspace}/work…` |
-| Repository labels and milestones routes | `/workspaces/{workspace}/labels` and `/workspaces/{workspace}/milestones` |
-| `issue.*` events and webhooks | `work_item.*`. Webhooks you had were moved over for you. |
-| `issue` and `other_issue` in event payloads | `item` and `other_item` |
+| Was                                                                              | Now                                                                                                                                                             |
+| -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `g1t issue …`                                                                    | `g1t work …`: `list`, `view`, `new`, `comment`, `edit`, `close`, `reopen`                                                                                       |
+| `g1t browse --issues`                                                            | `g1t browse --work`                                                                                                                                             |
+| `g1t work context N`                                                             | `g1t work view N`                                                                                                                                               |
+| `g1t work list` (claims and sessions)                                            | `g1t work status`                                                                                                                                               |
+| `--issue N` on `g1t pr create`, `g1t session …` and `g1t work events`            | `--item N`                                                                                                                                                      |
+| The MCP `issue` tool                                                             | `work_item`, with `workspace` and `number`                                                                                                                      |
+| `pull_request` `create` with `issue`                                             | `pull_request` `create` with `item`                                                                                                                             |
+| `/repos/{owner}/{name}/issues…`                                                  | `/workspaces/{workspace}/work…`                                                                                                                                 |
+| Repository labels and milestones routes                                          | `/workspaces/{workspace}/labels` and `/workspaces/{workspace}/milestones`                                                                                       |
+| `issue.*` events and webhooks                                                    | `work_item.*`. Webhooks you had were moved over for you.                                                                                                        |
+| `issue` and `other_issue` in event payloads                                      | `item` and `other_item`                                                                                                                                         |
 | Workflows `on: issues` and `on: issue_comment`, and `permissions: { issues: … }` | `on: work_item`, `on: work_item_comment` and `permissions: { work: … }`. The old names still read but start and grant nothing, and the workflow's page says so. |
-| The repository settings `has_issues` and `auto_close_issues` | `has_work_items` and `auto_close_items` |
-| Search `is:issue` and `type: issues` | `is:item` and `type: items` |
-| `issues:read`, `issues:write` scopes | `work:read`, `work:write` |
-| `/g1t:work-on-issue` in Claude Code | `/g1t:work-on-item`, with the plugin 0.3.0 and the CLI 0.4.0 or later |
+| The repository settings `has_issues` and `auto_close_issues`                     | `has_work_items` and `auto_close_items`                                                                                                                         |
+| Search `is:issue` and `type: issues`                                             | `is:item` and `type: items`                                                                                                                                     |
+| `issues:read`, `issues:write` scopes                                             | `work:read`, `work:write`                                                                                                                                       |
+| `/g1t:work-on-issue` in Claude Code                                              | `/g1t:work-on-item`, with the plugin 0.3.0 and the CLI 0.4.0 or later                                                                                           |
 
 There are no aliases for the old names: a script that calls one gets an
 error, not a silent change. Numbers in your own data, such as a tracker

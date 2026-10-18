@@ -114,10 +114,15 @@ export function messageDeliveries(input: {
 }
 
 /** A person's counts for one conversation after they read up to `lastReadId`, from the rows after it. */
-export function countsAfterRead(rows: UnreadRow[], channelId: string, member: string, username: string, lastReadId: string): { unread: number; mentions: number } {
+export function countsAfterRead(
+  rows: UnreadRow[],
+  channelId: string,
+  member: string,
+  username: string,
+  lastReadId: string,
+): { unread: number; mentions: number } {
   return tally(rows, member, username, new Map([[channelId, lastReadId]])).get(channelId) ?? { unread: 0, mentions: 0 };
 }
-
 
 // ── Wiring, used by src/index.ts ─────────────────────────────────────────
 
@@ -197,9 +202,7 @@ export async function notifyRead(
   if (!notify) return;
   const member = `user:${input.user_id}`;
   const rows = await db
-    .prepare(
-      "SELECT channel_id, id, author, mentions FROM messages WHERE channel_id = ? AND id > ? AND deleted_at IS NULL AND author != ? LIMIT 5000",
-    )
+    .prepare("SELECT channel_id, id, author, mentions FROM messages WHERE channel_id = ? AND id > ? AND deleted_at IS NULL AND author != ? LIMIT 5000")
     .bind(input.channel_id, input.last_read_id, member)
     .all<UnreadRow>();
   const counts = countsAfterRead(rows.results, input.channel_id, member, input.username, input.last_read_id);

@@ -8,19 +8,19 @@ production is free, everywhere. The rest of the security suite is free on
 public repositories and comes with the g1t plan, as **Security and
 quality**, on private ones.
 
-| Feature | Public repositories | Private repositories |
-| --- | --- | --- |
-| Secret scanning and push protection | Free | Free |
-| Bypassing push protection with a reason | Free | Free |
-| Vulnerability alerts | Free | Free |
-| Security updates | Free | Free |
-| Dependency graph and SBOM | Free | Free |
-| Custom patterns | Free | With the plan |
-| Validity checks | Free | With the plan |
-| Delegated bypass | Free | With the plan |
-| Code scanning | Free | With the plan |
-| Dependency review | Free | With the plan |
-| Security overview | Free | With the plan |
+| Feature                                 | Public repositories | Private repositories |
+| --------------------------------------- | ------------------- | -------------------- |
+| Secret scanning and push protection     | Free                | Free                 |
+| Bypassing push protection with a reason | Free                | Free                 |
+| Vulnerability alerts                    | Free                | Free                 |
+| Security updates                        | Free                | Free                 |
+| Dependency graph and SBOM               | Free                | Free                 |
+| Custom patterns                         | Free                | With the plan        |
+| Validity checks                         | Free                | With the plan        |
+| Delegated bypass                        | Free                | With the plan        |
+| Code scanning                           | Free                | With the plan        |
+| Dependency review                       | Free                | With the plan        |
+| Security overview                       | Free                | With the plan        |
 
 ## Security and quality
 

@@ -61,13 +61,7 @@ const MANIFEST_TYPES =
  * the registry answers with the token exchange registries use
  * (`WWW-Authenticate: Bearer`).
  */
-async function registryFetch(
-  login: { username: string; password: string },
-  path: string,
-  method: string,
-  scope: string,
-  body?: string,
-): Promise<Response> {
+async function registryFetch(login: { username: string; password: string }, path: string, method: string, scope: string, body?: string): Promise<Response> {
   const basic = `Basic ${btoa(`${login.username}:${login.password}`)}`;
   const url = `https://${REGISTRY_HOST}${path}`;
   const headers = (authorization: string): Record<string, string> => ({
@@ -116,7 +110,7 @@ async function listTags(login: { username: string; password: string }, repositor
   return [];
 }
 
-const HTML_HANDLING =["auto-trailing-slash", "force-trailing-slash", "drop-trailing-slash", "none"];
+const HTML_HANDLING = ["auto-trailing-slash", "force-trailing-slash", "drop-trailing-slash", "none"];
 const NOT_FOUND_HANDLING = ["single-page-application", "404-page", "none"];
 
 export class Cloudflare {
@@ -183,9 +177,7 @@ export class Cloudflare {
     const vars: Record<string, unknown> = { ...(worker.vars ?? {}), ...runtime.variables };
     for (const name of Object.keys(runtime.secrets)) delete vars[name];
     const bindings: object[] = Object.entries(vars).map(([name, value]) =>
-      typeof value === "string"
-        ? { type: "plain_text", name, text: value }
-        : { type: "json", name, json: value },
+      typeof value === "string" ? { type: "plain_text", name, text: value } : { type: "json", name, json: value },
     );
     for (const [name, text] of Object.entries(runtime.secrets)) bindings.push({ type: "secret_text", name, text });
     if (completionJwt) bindings.push({ type: "assets", name: assetsBinding });
@@ -198,7 +190,7 @@ export class Cloudflare {
     }
     if (worker._headers) assetsConfig._headers = worker._headers;
     if (worker._redirects) assetsConfig._redirects = worker._redirects;
-    const mainModule = modules ? worker.mainModule ?? modules[0].name : "index.js";
+    const mainModule = modules ? (worker.mainModule ?? modules[0].name) : "index.js";
     form.append(
       "metadata",
       JSON.stringify({
@@ -220,10 +212,7 @@ export class Cloudflare {
       }
     } else {
       if (!completionJwt) throw new Error("The build produced neither code nor files to serve.");
-      form.append(
-        "index.js",
-        new File([ASSETS_ONLY], "index.js", { type: "application/javascript+module" }),
-      );
+      form.append("index.js", new File([ASSETS_ONLY], "index.js", { type: "application/javascript+module" }));
     }
     await this.call("PUT", this.scriptPath(script), form);
   }
@@ -299,9 +288,7 @@ export class Cloudflare {
    * documented schema does not promise).
    */
   async appNamespace(script: string): Promise<string> {
-    const bindings = await this.call<{ type: string; name: string; namespace_id?: string }[]>("GET", `${this.scriptPath(script)}/bindings`).catch(
-      () => [],
-    );
+    const bindings = await this.call<{ type: string; name: string; namespace_id?: string }[]>("GET", `${this.scriptPath(script)}/bindings`).catch(() => []);
     const bound = bindings.find((b) => b.type === "durable_object_namespace" && b.name === "APP" && b.namespace_id);
     if (bound?.namespace_id) return bound.namespace_id;
     for (let page = 1; page <= 20; page++) {
@@ -363,10 +350,7 @@ export class Cloudflare {
 
   /** Every app in the namespace, with when it was last changed. */
   async listScripts(): Promise<{ id: string; modified_on: string }[]> {
-    return this.call<{ id: string; modified_on: string }[]>(
-      "GET",
-      `/accounts/${this.account}/workers/dispatch/namespaces/${this.namespace}/scripts`,
-    );
+    return this.call<{ id: string; modified_on: string }[]>("GET", `/accounts/${this.account}/workers/dispatch/namespaces/${this.namespace}/scripts`);
   }
 
   /**
@@ -404,10 +388,7 @@ export class Cloudflare {
 
   private async placeholder(script: string, code: string, tag: string): Promise<void> {
     const form = new FormData();
-    form.append(
-      "metadata",
-      JSON.stringify({ main_module: "index.js", compatibility_date: "2026-09-26", bindings: [], tags: [tag] }),
-    );
+    form.append("metadata", JSON.stringify({ main_module: "index.js", compatibility_date: "2026-09-26", bindings: [], tags: [tag] }));
     form.append("index.js", new File([code], "index.js", { type: "application/javascript+module" }));
     await this.call("PUT", this.scriptPath(script), form);
   }
@@ -416,11 +397,7 @@ export class Cloudflare {
    * Requests and CPU time per app over a period, from Workers analytics.
    * Apps with no traffic are absent.
    */
-  async usage(
-    scripts: string[],
-    since: string,
-    until: string,
-  ): Promise<Map<string, { requests: number; cpuMs: number }>> {
+  async usage(scripts: string[], since: string, until: string): Promise<Map<string, { requests: number; cpuMs: number }>> {
     const totals = new Map<string, { requests: number; cpuMs: number }>();
     if (scripts.length === 0) return totals;
     const query = (withCpu: boolean) => `query ($account: string!, $since: Time!, $until: Time!, $scripts: [string!]) {

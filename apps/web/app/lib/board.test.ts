@@ -102,18 +102,40 @@ test("the board puts each item in its column with who and which session is on it
   ];
   const board = boardOf(
     items,
-    { claims: [claim(2, "cy")], sessions: [live(3, { pull: 9, pullStatus: "open" }), live(1, { state: "ended" })], pulls: pullsByItem([{ repo: "acme/web", number: 20, item: 4, status: "draft" }, { repo: "acme/web", number: 21, item: null, status: "open" }]) },
+    {
+      claims: [claim(2, "cy")],
+      sessions: [live(3, { pull: 9, pullStatus: "open" }), live(1, { state: "ended" })],
+      pulls: pullsByItem([
+        { repo: "acme/web", number: 20, item: 4, status: "draft" },
+        { repo: "acme/web", number: 21, item: null, status: "open" },
+      ]),
+    },
     NOW,
   );
-  assert.deepEqual(board.backlog.map((card) => card.item.number), [1]);
-  assert.deepEqual(board.progress.map((card) => card.item.number), [2, 4]);
+  assert.deepEqual(
+    board.backlog.map((card) => card.item.number),
+    [1],
+  );
+  assert.deepEqual(
+    board.progress.map((card) => card.item.number),
+    [2, 4],
+  );
   assert.deepEqual(board.progress[0]!.on.people, ["cy"]);
   // A live session's open pull request puts its item in review, the session on the card.
-  assert.deepEqual(board.review.map((card) => card.item.number), [3]);
-  assert.deepEqual(board.review[0]!.on.sessions.map((session) => session.id), ["ses_3"]);
+  assert.deepEqual(
+    board.review.map((card) => card.item.number),
+    [3],
+  );
+  assert.deepEqual(
+    board.review[0]!.on.sessions.map((session) => session.id),
+    ["ses_3"],
+  );
   assert.deepEqual(board.review[0]!.on.people, ["bo"]);
   // Done: the most recently closed first.
-  assert.deepEqual(board.done.map((card) => card.item.number), [5, 6]);
+  assert.deepEqual(
+    board.done.map((card) => card.item.number),
+    [5, 6],
+  );
 });
 
 test("a phone shows the stage asked for, else the first with something in it", () => {
@@ -145,7 +167,10 @@ test("closed as not planned, a duplicate among them, is not Done: it did not shi
   assert.equal(stageOf(item(1, { ...closed, reason: "completed" }), {}, NOW), "done");
   assert.equal(stageOf(item(2, { ...closed, reason: "not_planned" }), {}, NOW), null);
   const board = boardOf([item(1, { ...closed, reason: "completed" }), item(2, { ...closed, reason: "not_planned" })], {}, NOW);
-  assert.deepEqual(board.done.map((card) => card.item.number), [1]);
+  assert.deepEqual(
+    board.done.map((card) => card.item.number),
+    [1],
+  );
 });
 
 test("a merged pull request keeps an open item on the board: Landing with a target to land, else In progress", () => {

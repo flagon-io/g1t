@@ -28,7 +28,13 @@ function LogLine({ log, base, showRequest, fresh }: { log: TelemetryLog; base: s
   const attributes = Object.entries(log.attributes);
   const multiline = log.body.includes("\n");
   return (
-    <li className={cn("group", log.severity === "error" || log.severity === "fatal" ? "bg-danger/5" : log.severity === "warn" ? "bg-warn/5" : "", fresh && "animate-[g1t-fresh_1.2s_ease-out]")}>
+    <li
+      className={cn(
+        "group",
+        log.severity === "error" || log.severity === "fatal" ? "bg-danger/5" : log.severity === "warn" ? "bg-warn/5" : "",
+        fresh && "animate-[g1t-fresh_1.2s_ease-out]",
+      )}
+    >
       <button
         type="button"
         onClick={() => setOpen(!open)}
@@ -39,7 +45,9 @@ function LogLine({ log, base, showRequest, fresh }: { log: TelemetryLog; base: s
         <span className="text-faint tabular-nums">{clock(log.time_us, true).slice(6)}</span>
         <LevelBadge level={log.severity} />
         <span className="hidden truncate text-muted sm:block">{log.service || "—"}</span>
-        <span className={cn("min-w-0 text-fg", open || !multiline ? "wrap-break-word whitespace-pre-wrap" : "truncate")}>{open ? log.body : log.body.split("\n")[0]}</span>
+        <span className={cn("min-w-0 text-fg", open || !multiline ? "wrap-break-word whitespace-pre-wrap" : "truncate")}>
+          {open ? log.body : log.body.split("\n")[0]}
+        </span>
       </button>
       {open && (
         <div className="space-y-2 px-3 pt-1 pb-3 pl-9">

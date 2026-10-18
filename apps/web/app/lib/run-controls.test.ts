@@ -43,7 +43,12 @@ test("an earlier attempt's page offers Cancel run while the latest attempt runs"
 
 test("a job not finished keeps the latest attempt going, whatever the run's own status says", () => {
   for (const status of ["waiting", "pending", "queued", "in_progress", "calling"] as const) {
-    const controls = runControls({ run: run({ attempt: 2, status: "completed" }), jobs: jobs("completed", status), attempts: attempts(2, "completed"), member: true });
+    const controls = runControls({
+      run: run({ attempt: 2, status: "completed" }),
+      jobs: jobs("completed", status),
+      attempts: attempts(2, "completed"),
+      member: true,
+    });
     assert.equal(controls.canCancel, true, status);
     assert.equal(controls.canRerun, false, status);
   }
@@ -68,7 +73,12 @@ test("a finished run is re-run from its latest attempt only", () => {
 });
 
 test("a run being cancelled shows Force cancel", () => {
-  const controls = runControls({ run: run({ status: "in_progress", conclusion: "cancelled" }), jobs: jobs("in_progress"), attempts: attempts(1, "in_progress"), member: true });
+  const controls = runControls({
+    run: run({ status: "in_progress", conclusion: "cancelled" }),
+    jobs: jobs("in_progress"),
+    attempts: attempts(1, "in_progress"),
+    member: true,
+  });
   assert.equal(controls.cancelling, true);
   assert.equal(controls.canCancel, true);
 });

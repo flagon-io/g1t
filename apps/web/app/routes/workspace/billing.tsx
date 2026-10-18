@@ -5,27 +5,10 @@ import { Await, Form, Link, data, redirect } from "react-router";
 import { MICROS_PER_DOLLAR } from "@g1t/contracts";
 
 import type { Route } from "./+types/billing";
-import {
-  Alerts,
-  CreditsCard,
-  OverageCard,
-  PrepayCard,
-  RaiseCard,
-  type SectionError,
-  SpendLimitCard,
-  SpikeBanner,
-  TrialCard,
-} from "../../components/billing";
+import { Alerts, CreditsCard, OverageCard, PrepayCard, RaiseCard, type SectionError, SpendLimitCard, SpikeBanner, TrialCard } from "../../components/billing";
 import { AddOns, BillingOnStripeCard, BudgetAlerts, ComplimentaryCard, PlanSummary, StripeSkeleton } from "../../components/billing-settings";
 import { StatementView } from "../../components/statement";
-import {
-  cardCheckResult,
-  parseBudgetAlerts,
-  parseLimitRequest,
-  parsePrepay,
-  parseSpendLimit,
-  planStatus,
-} from "../../lib/billing";
+import { cardCheckResult, parseBudgetAlerts, parseLimitRequest, parsePrepay, parseSpendLimit, planStatus } from "../../lib/billing";
 import { planReturnNotice, prepaymentSettled } from "../../lib/billing-return";
 import { wholeDollars } from "../../lib/money";
 import { isStaff } from "../../lib/usage";
@@ -262,8 +245,25 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function WorkspaceBilling({ loaderData, actionData }: Route.ComponentProps) {
-  const { slug, role, staff, account, statement, group, plan, securityPlan, entitlements, entitlementsFailed, credits, report, details, trialMicros, firstMonthMicros, notice, problem } =
-    loaderData;
+  const {
+    slug,
+    role,
+    staff,
+    account,
+    statement,
+    group,
+    plan,
+    securityPlan,
+    entitlements,
+    entitlementsFailed,
+    credits,
+    report,
+    details,
+    trialMicros,
+    firstMonthMicros,
+    notice,
+    problem,
+  } = loaderData;
   const limit = orElse(loaderData.limit, null);
   const { status } = account;
   const owner = role === "owner" || loaderData.managesBilling;
@@ -301,8 +301,7 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
           <div className="mb-6 rounded-xl border border-accent/30 bg-accent/5 p-5">
             <h2 className="font-medium">Free while g1t is being built out</h2>
             <p className="mt-1.5 max-w-2xl text-sm text-muted">
-              Usage is recorded with what it costs, so Usage shows what you use, but nothing is charged for now. We will say so well
-              before anything is.
+              Usage is recorded with what it costs, so Usage shows what you use, but nothing is charged for now. We will say so well before anything is.
             </p>
           </div>
         )}
@@ -317,8 +316,8 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
                   <div className="min-w-0 flex-1 basis-64">
                     <p className="font-medium">Add your billing address in Stripe</p>
                     <p className="mt-1 text-muted">
-                      Stripe needs it to work out tax, so g1t did not charge the card. Nothing is lost: the charge goes through once the
-                      address is saved.{owner ? "" : " An owner or billing manager adds it from Manage billing."}
+                      Stripe needs it to work out tax, so g1t did not charge the card. Nothing is lost: the charge goes through once the address is saved.
+                      {owner ? "" : " An owner or billing manager adds it from Manage billing."}
                     </p>
                   </div>
                   {owner && status.enabled && (
@@ -407,18 +406,18 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
             <h3 className="font-medium">How it is charged</h3>
             <ul className="mt-2 list-disc space-y-1.5 pl-4 text-muted">
               <li>
-                The plan is {wholeDollars((plan?.plan.monthlyCents ?? 2100) * 10_000)} a month for the workspace, with $10 of usage
-                included. Runner minutes are a flat rate per machine; other usage is charged at what it costs g1t plus{" "}
-                {account.marginPercent}%, from the first second, after what is included.
+                The plan is {wholeDollars((plan?.plan.monthlyCents ?? 2100) * 10_000)} a month for the workspace, with $10 of usage included. Runner minutes are
+                a flat rate per machine; other usage is charged at what it costs g1t plus {account.marginPercent}%, from the first second, after what is
+                included.
               </li>
               <li>Credit from g1t comes off what you owe, the soonest-expiring first.</li>
               <li>
-                Each month closes with an itemised invoice. No card is charged less than{" "}
-                {wholeDollars(entitlements?.minChargeMicros ?? 5 * MICROS_PER_DOLLAR)}; less carries over.
+                Each month closes with an itemised invoice. No card is charged less than {wholeDollars(entitlements?.minChargeMicros ?? 5 * MICROS_PER_DOLLAR)};
+                less carries over.
               </li>
               <li>
-                Prices exclude tax. Stripe adds tax where it applies, worked out from the billing address you keep on Stripe, and it is
-                its own line on every receipt and invoice.
+                Prices exclude tax. Stripe adds tax where it applies, worked out from the billing address you keep on Stripe, and it is its own line on every
+                receipt and invoice.
               </li>
               <li>No card processing fee on top: it is part of the price.</li>
               <li>Invoices and receipts are on Stripe's billing page, under Manage billing.</li>

@@ -13,12 +13,7 @@ export function HoverCard({ openDelay = 450, closeDelay = 150, ...props }: Compo
 
 export const HoverCardTrigger = Primitive.Trigger;
 
-export function HoverCardContent({
-  className,
-  align = "start",
-  sideOffset = 6,
-  ...props
-}: ComponentProps<typeof Primitive.Content>) {
+export function HoverCardContent({ className, align = "start", sideOffset = 6, ...props }: ComponentProps<typeof Primitive.Content>) {
   return (
     <Primitive.Portal>
       <Primitive.Content

@@ -13,7 +13,8 @@ test("llms.txt follows the heading and file-list format and preserves the detail
     assert.ok(lines.length > 0);
     for (const line of lines) assert.match(line, /^- \[[^\]]+\]\(https:\/\/[^)]+\)(: .+)?$/);
   }
-  for (const url of ["/features", "/developers", "/agents.md", "/openapi.json", "/reference/versioning.md", "/settings/tokens"]) assert.ok(index.includes(url), url);
+  for (const url of ["/features", "/developers", "/agents.md", "/openapi.json", "/reference/versioning.md", "/settings/tokens"])
+    assert.ok(index.includes(url), url);
   assert.match(read("apps/web/public/agents.md"), /## Set someone up/);
 });
 
@@ -35,7 +36,8 @@ test("agent guides name work items, not the issues they replaced", () => {
     }
   }
   const guide = read("apps/web/public/agents.md");
-  for (const text of ["`work_item`", "/workspaces/{workspace}/work", "work:write", "is:item", "keep_item_open", "/-/work/sessions"]) assert.ok(guide.includes(text), text);
+  for (const text of ["`work_item`", "/workspaces/{workspace}/work", "work:write", "is:item", "keep_item_open", "/-/work/sessions"])
+    assert.ok(guide.includes(text), text);
 });
 
 test("features is routed, discoverable on desktop and mobile, and has real documentation targets", () => {
@@ -45,11 +47,15 @@ test("features is routed, discoverable on desktop and mobile, and has real docum
   assert.match(header, /<HeaderLink to="\/features">Features<\/HeaderLink>/);
   assert.match(header, /<Link to="\/features">/);
   assert.equal(new Set(FEATURES.map((f) => f.id)).size, FEATURES.length);
-  for (const feature of FEATURES) for (const link of feature.links) {
-    if (!link.href.startsWith("https://docs.g1t.sh/")) continue;
-    const slug = new URL(link.href).pathname.replace(/\/$/, "");
-    assert.ok(["md", "mdx"].some((ext) => existsSync(new URL(`../apps/docs/src/content/docs${slug}.${ext}`, import.meta.url))), link.href);
-  }
+  for (const feature of FEATURES)
+    for (const link of feature.links) {
+      if (!link.href.startsWith("https://docs.g1t.sh/")) continue;
+      const slug = new URL(link.href).pathname.replace(/\/$/, "");
+      assert.ok(
+        ["md", "mdx"].some((ext) => existsSync(new URL(`../apps/docs/src/content/docs${slug}.${ext}`, import.meta.url))),
+        link.href,
+      );
+    }
 });
 
 test("built developer pages have branded headings, canonical URLs and Markdown counterparts", () => {
@@ -61,5 +67,6 @@ test("built developer pages have branded headings, canonical URLs and Markdown c
     assert.match(read(`apps/docs/dist/${slug}.md`), /^# g1t /);
   }
   const policy = read("apps/docs/dist/reference/versioning.md");
-  for (const text of ["X-G1t-Api-Version", "Deprecation", "Sunset", 'rel="deprecation"', "No REST version is currently deprecated"]) assert.ok(policy.includes(text), text);
+  for (const text of ["X-G1t-Api-Version", "Deprecation", "Sunset", 'rel="deprecation"', "No REST version is currently deprecated"])
+    assert.ok(policy.includes(text), text);
 });

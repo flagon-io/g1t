@@ -190,12 +190,26 @@ async function unfurl(slug: string, address: string, viewer: User): Promise<Resu
   const f = found.value;
   return {
     ok: true,
-    value: { id: f.id, kind: f.kind, title: f.title, icon: f.icon, path: f.path, space: f.space?.name ?? null, private: f.private, excerpt: f.excerpt, edited_at: f.edited_at, edited_by: f.edited_by?.display_name ?? null },
+    value: {
+      id: f.id,
+      kind: f.kind,
+      title: f.title,
+      icon: f.icon,
+      path: f.path,
+      space: f.space?.name ?? null,
+      private: f.private,
+      excerpt: f.excerpt,
+      edited_at: f.edited_at,
+      edited_by: f.edited_by?.display_name ?? null,
+    },
   };
 }
 
 /** What chat's card for an artifact link shows to someone who can read it. */
-export type FolioUnfurl = Pick<Folio, "id" | "kind" | "title" | "icon" | "path" | "private" | "excerpt" | "edited_at"> & { space: string | null; edited_by: string | null };
+export type FolioUnfurl = Pick<Folio, "id" | "kind" | "title" | "icon" | "path" | "private" | "excerpt" | "edited_at"> & {
+  space: string | null;
+  edited_by: string | null;
+};
 
 /**
  * The card for a g1t address embedded in a doc, as this reader may see
@@ -207,7 +221,8 @@ async function embed(slug: string, address: string, viewer: User, origin: string
   let path: string;
   try {
     const url = new URL(address, origin);
-    if (url.origin !== origin) return { ok: true, value: { kind: "link", title: url.hostname + url.pathname, subtitle: url.hostname, state: null, href: url.toString() } };
+    if (url.origin !== origin)
+      return { ok: true, value: { kind: "link", title: url.hostname + url.pathname, subtitle: url.hostname, state: null, href: url.toString() } };
     path = url.pathname;
   } catch {
     return { ok: false, error: { code: "invalid", message: "That isn't an address." } };
@@ -222,22 +237,37 @@ async function embed(slug: string, address: string, viewer: User, origin: string
     const found = await folios.folio(slug, viewer, id, { peek: true });
     if (!found.ok) return missing;
     const f = found.value;
-    return { ok: true, value: { kind: "page", title: `${f.icon ? `${f.icon} ` : ""}${f.title || "Untitled"}`, subtitle: f.space?.name ?? "Private", state: null, href: f.path } };
+    return {
+      ok: true,
+      value: { kind: "page", title: `${f.icon ? `${f.icon} ` : ""}${f.title || "Untitled"}`, subtitle: f.space?.name ?? "Private", state: null, href: f.path },
+    };
   }
   // /<owner>/-/chat/<channel>
   if (parts[1] === "-" && parts[2] === "chat" && parts[3]) {
     return { ok: true, value: { kind: "channel", title: parts[3] === "dm" ? "A direct message" : `#${parts[3]}`, subtitle: "Chat", state: null, href: path } };
   }
   // /<workspace>/-/work/<n>, and an old issue's /<owner>/<repo>/issues/<n>, which reads as `#n` there.
-  const item = parts[1] === "-" && parts[2] === "work" && /^\d+$/.test(parts[3] ?? "") ? { workspace: parts[0]!.toLowerCase(), number: Number(parts[3]) } : null;
+  const item =
+    parts[1] === "-" && parts[2] === "work" && /^\d+$/.test(parts[3] ?? "") ? { workspace: parts[0]!.toLowerCase(), number: Number(parts[3]) } : null;
   const legacy = parts[1] !== "-" && parts[2] === "issues" && /^\d+$/.test(parts[3] ?? "") ? Number(parts[3]) : null;
   if (item || legacy) {
-    const target = item ? { kind: "work_item" as const, ...item } : await work.resolveRef(viewer, { repo: { namespace: parts[0]!.toLowerCase(), name: parts[1]! } }, legacy!).catch(() => null);
+    const target = item
+      ? { kind: "work_item" as const, ...item }
+      : await work.resolveRef(viewer, { repo: { namespace: parts[0]!.toLowerCase(), name: parts[1]! } }, legacy!).catch(() => null);
     if (target?.kind === "work_item") {
       const found = await work.getWorkItem(target.workspace, target.number, viewer);
       if (!found.ok) return missing;
       const { item: shown } = found.value;
-      return { ok: true, value: { kind: "item", title: `${shown.title} #${shown.number}`, subtitle: shown.workspace, state: shown.state, href: `/${shown.workspace}/-/work/${shown.number}` } };
+      return {
+        ok: true,
+        value: {
+          kind: "item",
+          title: `${shown.title} #${shown.number}`,
+          subtitle: shown.workspace,
+          state: shown.state,
+          href: `/${shown.workspace}/-/work/${shown.number}`,
+        },
+      };
     }
     if (target?.kind !== "pull") return missing;
     path = `/${target.repo}/pull/${target.number}`;
@@ -256,7 +286,16 @@ async function embed(slug: string, address: string, viewer: User, origin: string
   }
   const found = await repos.get(repo, viewer);
   if (!found.ok) return missing;
-  return { ok: true, value: { kind: "project", title: `${repo.namespace}/${repo.name}`, subtitle: (found.value as { description?: string | null }).description ?? "Project", state: null, href: `/${repo.namespace}/${repo.name}` } };
+  return {
+    ok: true,
+    value: {
+      kind: "project",
+      title: `${repo.namespace}/${repo.name}`,
+      subtitle: (found.value as { description?: string | null }).description ?? "Project",
+      state: null,
+      href: `/${repo.namespace}/${repo.name}`,
+    },
+  };
 }
 
 /** The workspace's repositories the viewer can read, newest first: `owner/name` and its default branch. */
@@ -276,7 +315,11 @@ async function repositories(slug: string, viewer: User): Promise<Result<{ repo: 
  * the default branch's head commit, once the file or folder is there (a
  * glob is taken as written).
  */
-async function cite(viewer: User, repo: string, rawPath: string): Promise<Result<{ repo: string; path: string; ref: string | null; kind: "file" | "folder" | "glob" }>> {
+async function cite(
+  viewer: User,
+  repo: string,
+  rawPath: string,
+): Promise<Result<{ repo: string; path: string; ref: string | null; kind: "file" | "folder" | "glob" }>> {
   const [namespace, name, ...rest] = repo.trim().toLowerCase().split("/");
   const missing = { ok: false as const, error: { code: "not_found" as const, message: "No such repository, or you can't read it." } };
   if (!namespace || !name || rest.length) return missing;
@@ -286,7 +329,8 @@ async function cite(viewer: User, repo: string, rawPath: string): Promise<Result
     .split("/")
     .filter((p) => p && p !== ".")
     .join("/");
-  if (!path || path.split("/").includes("..")) return { ok: false, error: { code: "invalid", message: "Name a file, a folder or a pattern in the repository." } };
+  if (!path || path.split("/").includes(".."))
+    return { ok: false, error: { code: "invalid", message: "Name a file, a folder or a pattern in the repository." } };
   const where = { namespace, name };
   const root = await repos.tree(where, viewer, null, "");
   if (!root.ok) return missing;
@@ -302,13 +346,25 @@ async function cite(viewer: User, repo: string, rawPath: string): Promise<Result
 /** Names and faces for member keys, as the workspace knows them. */
 async function who(slug: string, viewer: User, keys: string[]): Promise<Result<unknown>> {
   const userIds = keys.filter((k) => k.startsWith("user:")).map((k) => k.slice(5));
-  const [names, people] = await Promise.all([userIds.length ? identity.usernames(userIds).catch(() => ({}) as Record<string, string>) : Promise.resolve({} as Record<string, string>), workspacePeople(slug, viewer)]);
+  const [names, people] = await Promise.all([
+    userIds.length ? identity.usernames(userIds).catch(() => ({}) as Record<string, string>) : Promise.resolve({} as Record<string, string>),
+    workspacePeople(slug, viewer),
+  ]);
   const out = keys.map((key) => {
     // An old agent's (agents no longer exist): its comments and edits stay, under a plain name.
-    if (key.startsWith("agent:")) return { key, kind: "agent", id: key.slice(6), name: "agent", display_name: "A deleted agent", avatar: null, avatar_seed: null };
+    if (key.startsWith("agent:"))
+      return { key, kind: "agent", id: key.slice(6), name: "agent", display_name: "A deleted agent", avatar: null, avatar_seed: null };
     const username = names[key.slice(5)]?.toLowerCase();
     const person = username ? people.find((p) => p.name === username) : undefined;
-    return { key, kind: "user", id: key.slice(5), name: username ?? "ghost", display_name: person?.display_name ?? username ?? "Former member", avatar: person?.avatar ?? null, avatar_seed: null };
+    return {
+      key,
+      kind: "user",
+      id: key.slice(5),
+      name: username ?? "ghost",
+      display_name: person?.display_name ?? username ?? "Former member",
+      avatar: person?.avatar ?? null,
+      avatar_seed: null,
+    };
   });
   return { ok: true, value: out };
 }

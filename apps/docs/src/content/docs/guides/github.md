@@ -117,30 +117,30 @@ import page.
 
 ### What comes across
 
-| | |
-| --- | --- |
-| Every branch and tag | Yes, with full history |
-| Its description | Yes, as its [project's](/guides/projects/) description, since a repository on g1t has none of its own. Change it later in the project's **Settings → General**. |
-| Issues | When **Copy issues too** is ticked: up to 200, oldest first, open or closed as on GitHub, with their labels (up to 10 each). Each becomes a work item of the workspace, with the new repository as its origin |
-| Who opened an issue | Named in the work item: by their g1t username if they have linked GitHub, otherwise by their GitHub login. The work item itself is opened by you. |
-| Milestones | Named in each work item; not copied |
-| Issue numbers | New numbers on g1t, the workspace's next; each work item links to the original issue |
-| Comments on issues | No |
-| Pull requests | No. Their branches come across; open pull requests stay on GitHub. |
-| GitHub Actions workflows | Yes, as files. Rename `.github` to `.g1t` to run them on g1t: see [GitHub Actions](/guides/actions/). |
-| Releases, wikis, Git LFS objects | No |
+|                                  |                                                                                                                                                                                                               |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Every branch and tag             | Yes, with full history                                                                                                                                                                                        |
+| Its description                  | Yes, as its [project's](/guides/projects/) description, since a repository on g1t has none of its own. Change it later in the project's **Settings → General**.                                               |
+| Issues                           | When **Copy issues too** is ticked: up to 200, oldest first, open or closed as on GitHub, with their labels (up to 10 each). Each becomes a work item of the workspace, with the new repository as its origin |
+| Who opened an issue              | Named in the work item: by their g1t username if they have linked GitHub, otherwise by their GitHub login. The work item itself is opened by you.                                                             |
+| Milestones                       | Named in each work item; not copied                                                                                                                                                                           |
+| Issue numbers                    | New numbers on g1t, the workspace's next; each work item links to the original issue                                                                                                                          |
+| Comments on issues               | No                                                                                                                                                                                                            |
+| Pull requests                    | No. Their branches come across; open pull requests stay on GitHub.                                                                                                                                            |
+| GitHub Actions workflows         | Yes, as files. Rename `.github` to `.g1t` to run them on g1t: see [GitHub Actions](/guides/actions/).                                                                                                         |
+| Releases, wikis, Git LFS objects | No                                                                                                                                                                                                            |
 
 A repository is copied in one piece of at most 40 MB, after compression.
 Push a larger one with git instead: see [git](/guides/git/).
 
 ## What g1t's GitHub App can do
 
-| Permission | Access | Why |
-| --- | --- | --- |
-| Contents | Read | Clone the repositories you choose. |
-| Metadata | Read | Required by GitHub for every app: names, visibility, and whether a branch is protected. |
-| Issues | Read | Copy issues, as work items, when you ask. |
-| Email addresses (account) | Read | Find your verified email when you sign in. |
+| Permission                | Access | Why                                                                                     |
+| ------------------------- | ------ | --------------------------------------------------------------------------------------- |
+| Contents                  | Read   | Clone the repositories you choose.                                                      |
+| Metadata                  | Read   | Required by GitHub for every app: names, visibility, and whether a branch is protected. |
+| Issues                    | Read   | Copy issues, as work items, when you ask.                                               |
+| Email addresses (account) | Read   | Find your verified email when you sign in.                                              |
 
 The app only ever sees the repositories you or your organization's owners
 choose on GitHub. g1t keeps your GitHub user token, which expires every 8
@@ -168,14 +168,14 @@ GitHub tells g1t about installations and repository changes at
 id it has already seen (`X-GitHub-Delivery`), and answers `202` before
 acting on it.
 
-| Answer | When |
-| --- | --- |
-| `202` | Received; acted on afterwards |
-| `200` | A delivery already received |
-| `400` | No `X-GitHub-Delivery`, or a body that is not JSON |
-| `401` | Not signed with the app's webhook secret |
-| `404` | No GitHub App is configured on this g1t |
-| `413` | A body over 10 MB |
+| Answer | When                                               |
+| ------ | -------------------------------------------------- |
+| `202`  | Received; acted on afterwards                      |
+| `200`  | A delivery already received                        |
+| `400`  | No `X-GitHub-Delivery`, or a body that is not JSON |
+| `401`  | Not signed with the app's webhook secret           |
+| `404`  | No GitHub App is configured on this g1t            |
+| `413`  | A body over 10 MB                                  |
 
 On your own g1t, register an app of your own: see
 [run g1t yourself](/guides/self-hosting/#sign-in-with-github-and-import-from-github).

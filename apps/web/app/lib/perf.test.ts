@@ -64,7 +64,27 @@ test("what each call asks for", () => {
 });
 
 test("only known reads are taken not to write", () => {
-  for (const method of ["get_pull", "list_pulls", "counts", "user_for_session", "explore", "usage", "get", "list", "queue", "pulls_for_repos", "stars", "about", "public_links", "branch_drift", "tags", "commit_checks", "shortcuts", "last_commits", "languages"]) {
+  for (const method of [
+    "get_pull",
+    "list_pulls",
+    "counts",
+    "user_for_session",
+    "explore",
+    "usage",
+    "get",
+    "list",
+    "queue",
+    "pulls_for_repos",
+    "stars",
+    "about",
+    "public_links",
+    "branch_drift",
+    "tags",
+    "commit_checks",
+    "shortcuts",
+    "last_commits",
+    "languages",
+  ]) {
     assert.equal(mayWrite(method), false, method);
   }
   for (const method of ["merge_pull", "verify_email", "github_finish", "sign_in", "something_new"]) {
@@ -91,7 +111,14 @@ test("timings", () => {
   assert.deepEqual(databaseTime('svc;dur=40;desc="session", db;dur=22;desc="2 round trips, 21 statements", rpc;dur=18;desc="1 calls"'), { ms: 22, trips: 2 });
   assert.equal(databaseTime('svc;dur=40;desc="session"'), null);
   // Overlapping calls are counted once.
-  assert.equal(coveredMs([[0, 100], [50, 120], [200, 210]]), 130);
+  assert.equal(
+    coveredMs([
+      [0, 100],
+      [50, 120],
+      [200, 210],
+    ]),
+    130,
+  );
   assert.equal(coveredMs([]), 0);
   assert.equal(metricName("routes/repo/pull"), "repo.pull");
   const header = serverTiming({

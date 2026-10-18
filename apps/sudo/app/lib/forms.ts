@@ -114,13 +114,7 @@ export function parseTerms(form: FormData, by: string, now = new Date()): Parsed
 export function parseEmail(raw: string): Parsed<string> {
   const email = raw.trim().toLowerCase();
   const [local, domain, ...rest] = email.split("@");
-  const ok =
-    rest.length === 0 &&
-    email.length <= 254 &&
-    !!local &&
-    !!domain &&
-    /^[^\s@,;<>"]+$/.test(local) &&
-    /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain);
+  const ok = rest.length === 0 && email.length <= 254 && !!local && !!domain && /^[^\s@,;<>"]+$/.test(local) && /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain);
   return ok ? { ok: true, value: email } : { ok: false, error: "Enter one email address, such as billing@acme.com." };
 }
 
@@ -340,11 +334,7 @@ export const MIN_REASON = 10;
  * credit, or a second within 12 months). The day is when the accidental
  * usage happened; blank lets billing choose it.
  */
-export function parseGoodwill(
-  form: FormData,
-  needsReason: (amountMicros: number | null) => boolean,
-  now = new Date(),
-): Parsed<GoodwillInput> {
+export function parseGoodwill(form: FormData, needsReason: (amountMicros: number | null) => boolean, now = new Date()): Parsed<GoodwillInput> {
   let amountMicros: number | null = null;
   const raw = text(form, "amount");
   if (raw) {

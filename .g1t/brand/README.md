@@ -25,29 +25,29 @@ PNGs are drawn with every pixel edge on a device pixel.
 These are the files to upload to Stripe and similar services. The site serves
 its own copies from `apps/web/public` and `apps/docs/public`.
 
-| File | Size | Use |
-| --- | --- | --- |
-| `icon-512.png` | 512×512, dark square | Stripe branding icon (square, at least 128px), Slack, GitHub app avatars |
-| `icon-1024.png` | 1024×1024, dark square | App stores and anywhere asking for a large square icon |
-| `icon-transparent-1024.png` | 1024×1024, transparent | Placing the icon on a dark surface of your own |
-| `logo-on-dark.png` | 1056×642, dark background | Stripe branding logo (wide), docs and decks on dark |
-| `logo-on-light.png` | 1056×642, white background | Invoices, receipts and anywhere the background is light |
+| File                        | Size                       | Use                                                                      |
+| --------------------------- | -------------------------- | ------------------------------------------------------------------------ |
+| `icon-512.png`              | 512×512, dark square       | Stripe branding icon (square, at least 128px), Slack, GitHub app avatars |
+| `icon-1024.png`             | 1024×1024, dark square     | App stores and anywhere asking for a large square icon                   |
+| `icon-transparent-1024.png` | 1024×1024, transparent     | Placing the icon on a dark surface of your own                           |
+| `logo-on-dark.png`          | 1056×642, dark background  | Stripe branding logo (wide), docs and decks on dark                      |
+| `logo-on-light.png`         | 1056×642, white background | Invoices, receipts and anywhere the background is light                  |
 
 ## Sources
 
 `svg/` holds the source of every file above and of the site's favicons:
 
-| File | What it is |
-| --- | --- |
-| `svg/mark.svg` | The icon, the pixel 1, centred in a transparent square, for dark backgrounds (also `packages/theme/mark.svg`) |
-| `svg/mark-on-light.svg` | The icon on transparent, for light backgrounds |
-| `svg/mark-small.svg` | The 16px cut: each cell 2px, no gap |
-| `svg/icon-square.svg` | The icon on a full-bleed dark square, 1024 box on 100-unit cells (`icon-512.png`, `icon-1024.png`) |
-| `svg/icon-rounded.svg` | The icon on a rounded dark tile, the 256px cut (`brand/g1t-mark.*`) |
-| `svg/icon-padded.svg` | The icon with room for a circle crop, the 512px cut (`icon-512.png` in the apps; `apple-touch-icon.png` and `icon-192.png` are cut the same way at their own sizes) |
-| `svg/favicon.svg` | The 16px cut with no tile, coloured for a light or dark browser (`favicon.svg` in the apps and `packages/theme`) |
-| `svg/logo.svg`, `svg/logo-on-light.svg` | The wordmark, transparent and cropped to its ink, for dark and light backgrounds |
-| `svg/logo-dark-bg.svg`, `svg/logo-light-bg.svg` | The wordmark with padding and a background, on 40px cells |
+| File                                            | What it is                                                                                                                                                          |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `svg/mark.svg`                                  | The icon, the pixel 1, centred in a transparent square, for dark backgrounds (also `packages/theme/mark.svg`)                                                       |
+| `svg/mark-on-light.svg`                         | The icon on transparent, for light backgrounds                                                                                                                      |
+| `svg/mark-small.svg`                            | The 16px cut: each cell 2px, no gap                                                                                                                                 |
+| `svg/icon-square.svg`                           | The icon on a full-bleed dark square, 1024 box on 100-unit cells (`icon-512.png`, `icon-1024.png`)                                                                  |
+| `svg/icon-rounded.svg`                          | The icon on a rounded dark tile, the 256px cut (`brand/g1t-mark.*`)                                                                                                 |
+| `svg/icon-padded.svg`                           | The icon with room for a circle crop, the 512px cut (`icon-512.png` in the apps; `apple-touch-icon.png` and `icon-192.png` are cut the same way at their own sizes) |
+| `svg/favicon.svg`                               | The 16px cut with no tile, coloured for a light or dark browser (`favicon.svg` in the apps and `packages/theme`)                                                    |
+| `svg/logo.svg`, `svg/logo-on-light.svg`         | The wordmark, transparent and cropped to its ink, for dark and light backgrounds                                                                                    |
+| `svg/logo-dark-bg.svg`, `svg/logo-light-bg.svg` | The wordmark with padding and a background, on 40px cells                                                                                                           |
 
 `favicon.ico` in the apps holds the 16, 32 and 48px cuts of the icon on a
 rounded dark tile. The pixels are squares, so no file needs a font.

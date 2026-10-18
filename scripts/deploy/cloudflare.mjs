@@ -393,7 +393,8 @@ export function wranglerError(out, count = 20) {
  */
 export function retryableDeploy(out) {
   const error = wranglerError(out);
-  const ours = /Build failed|Could not resolve|No loader is configured|is not exported by|Unexpected token|Processing .*wrangler\.jsonc? configuration|is not a valid|Missing entry-point|The entry-point file .* was not found/i;
+  const ours =
+    /Build failed|Could not resolve|No loader is configured|is not exported by|Unexpected token|Processing .*wrangler\.jsonc? configuration|is not a valid|Missing entry-point|The entry-point file .* was not found/i;
   return !ours.test(error);
 }
 

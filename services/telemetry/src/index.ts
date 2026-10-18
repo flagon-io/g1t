@@ -200,7 +200,14 @@ async function onTail(events: readonly TraceItem[], env: Env): Promise<void> {
       const app = await appOf(env, group.script);
       if (!app) continue;
       project = app.project;
-      halves = halves.map((h) => ({ ...h, service: app.service, environment: app.environment, deployment_id: app.deployment, commit_sha: app.commit, source: "cloudflare" }));
+      halves = halves.map((h) => ({
+        ...h,
+        service: app.service,
+        environment: app.environment,
+        deployment_id: app.deployment,
+        commit_sha: app.commit,
+        source: "cloudflare",
+      }));
     }
     const into = byProject.get(project) ?? { batch: emptyBatch(), halves: [] };
     merge(into.batch, group.batch);
@@ -234,7 +241,11 @@ function merge(into: Batch, from: Batch) {
 
 async function otlp(request: Request, env: Env, signal: Signal): Promise<Response> {
   const token = tokenOf(request);
-  if (!token) return refused(401, `No token: send the project's ingest token as "Authorization: Bearer ${TELEMETRY_TOKEN_PREFIX}…". Make one under the project's Observability settings.`);
+  if (!token)
+    return refused(
+      401,
+      `No token: send the project's ingest token as "Authorization: Bearer ${TELEMETRY_TOKEN_PREFIX}…". Make one under the project's Observability settings.`,
+    );
   const project = projectOfToken(token);
   if (!project) return refused(401, "That is not a g1t ingest token.");
   // Counted before the body is read or the project's store is woken, so a
@@ -267,7 +278,13 @@ async function cloudflareExport(request: Request, env: Env, signal: Signal): Pro
   if (request.headers.get("x-g1t-export-key") !== env.CLOUDFLARE_EXPORT_KEY) return refused(401, "Wrong export key.");
   if (signal === "metrics") return accepted(false);
   // Resources are read twice: first to find the scripts, then filed.
-  const body = await request.clone().json().catch(() => null) as { resourceSpans?: { resource?: { attributes?: { key: string; value?: { stringValue?: string } }[] } }[]; resourceLogs?: { resource?: { attributes?: { key: string; value?: { stringValue?: string } }[] } }[] } | null;
+  const body = (await request
+    .clone()
+    .json()
+    .catch(() => null)) as {
+    resourceSpans?: { resource?: { attributes?: { key: string; value?: { stringValue?: string } }[] } }[];
+    resourceLogs?: { resource?: { attributes?: { key: string; value?: { stringValue?: string } }[] } }[];
+  } | null;
   const scripts = new Set<string>();
   for (const r of [...(body?.resourceSpans ?? []), ...(body?.resourceLogs ?? [])]) {
     const attrs = r.resource?.attributes ?? [];

@@ -67,7 +67,9 @@ export function DndMenu({ className }: { className?: string }) {
         )}
         <DropdownMenuSeparator />
         <p className="max-w-56 px-2.5 py-1 text-xs leading-snug text-faint">
-          {on ? "No sounds, pop-ups or browser notifications until then. Counts still move." : "Silences sounds, pop-ups and browser notifications. Counts still move."}
+          {on
+            ? "No sounds, pop-ups or browser notifications until then. Counts still move."
+            : "Silences sounds, pop-ups and browser notifications. Counts still move."}
         </p>
       </DropdownMenuContent>
     </DropdownMenu>

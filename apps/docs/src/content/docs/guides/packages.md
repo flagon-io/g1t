@@ -11,16 +11,16 @@ Go modules. Each registry speaks its tool's own protocol, so `docker`,
 and `go` work with nothing but a login and an address. Composer packages and Go modules are
 read from the workspace's repositories: there is nothing to upload.
 
-| Registry | Address | Guide |
-| --- | --- | --- |
-| Container images | `g1t.sh/<workspace>/<name>` | [Container images](/guides/containers/) |
-| npm | `https://g1t.sh/-/npm/`, for the scope `@<workspace>` | [npm](/guides/npm/) |
-| Cargo | `sparse+https://g1t.sh/-/cargo/<workspace>/index/`, a registry per workspace | [Cargo](/guides/cargo/) |
-| Maven | `https://g1t.sh/-/maven/<workspace>/`, a repository per workspace, for Maven and Gradle | [Maven](/guides/maven/) |
-| NuGet | `https://g1t.sh/-/nuget/<workspace>/v3/index.json`, a feed per workspace, with a symbol server | [NuGet](/guides/nuget/) |
-| RubyGems | `https://g1t.sh/-/rubygems/<workspace>/`, a registry per workspace, for `gem push`, `gem install` and Bundler | [RubyGems](/guides/rubygems/) |
-| Composer | `https://g1t.sh/-/composer/<workspace>/`, from the workspace's repositories | [Composer](/guides/composer/) |
-| Go | `g1t.sh/<workspace>/<repo>`, straight from git | [Go modules](/guides/go/) |
+| Registry         | Address                                                                                                       | Guide                                   |
+| ---------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| Container images | `g1t.sh/<workspace>/<name>`                                                                                   | [Container images](/guides/containers/) |
+| npm              | `https://g1t.sh/-/npm/`, for the scope `@<workspace>`                                                         | [npm](/guides/npm/)                     |
+| Cargo            | `sparse+https://g1t.sh/-/cargo/<workspace>/index/`, a registry per workspace                                  | [Cargo](/guides/cargo/)                 |
+| Maven            | `https://g1t.sh/-/maven/<workspace>/`, a repository per workspace, for Maven and Gradle                       | [Maven](/guides/maven/)                 |
+| NuGet            | `https://g1t.sh/-/nuget/<workspace>/v3/index.json`, a feed per workspace, with a symbol server                | [NuGet](/guides/nuget/)                 |
+| RubyGems         | `https://g1t.sh/-/rubygems/<workspace>/`, a registry per workspace, for `gem push`, `gem install` and Bundler | [RubyGems](/guides/rubygems/)           |
+| Composer         | `https://g1t.sh/-/composer/<workspace>/`, from the workspace's repositories                                   | [Composer](/guides/composer/)           |
+| Go               | `g1t.sh/<workspace>/<repo>`, straight from git                                                                | [Go modules](/guides/go/)               |
 
 ## Names
 
@@ -32,10 +32,10 @@ such as `g1t.sh/acme/web/worker`.
 
 Everyone has one role on a package, the highest of what reaches them:
 
-| Role | Lets them |
-| --- | --- |
-| Read | Pull and install it. Anyone, signed in or not, may on a public package. |
-| Write | Also publish new versions and tags. |
+| Role  | Lets them                                                                                  |
+| ----- | ------------------------------------------------------------------------------------------ |
+| Read  | Pull and install it. Anyone, signed in or not, may on a public package.                    |
+| Write | Also publish new versions and tags.                                                        |
 | Admin | Also delete and restore it and its versions, and change its [settings](#package-settings). |
 
 A package is linked to a repository, or belongs to its workspace, and that
@@ -81,15 +81,15 @@ not pull them.
 A package's admins see a **Settings** tab on its page, at
 `g1t.sh/<workspace>/-/packages/<type>/<name>?tab=settings`:
 
-| Setting | What it does |
-| --- | --- |
+| Setting                                   | What it does                                                                                                                               |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | Inherit access from the linked repository | On (the default), the repository's roles reach the package. Off, only the roles below and the workspace's owners do. Linked packages only. |
-| Manage access | People (by username) and teams of the workspace (by slug), each with the Read, Write or Admin role on the package. |
-| Manage Actions access | The repositories whose workflows may use the package, each with Read or Write. See [below](#manage-actions-access). |
-| Visibility | Public or private, for an unlinked package. A linked one has its repository's. |
-| Repository | Link it to a repository of its workspace (Admin on that repository is needed too), or unlink it: it is then the workspace's, and private. |
-| Deleted versions | Versions deleted in the last 30 days, each with **Restore**. |
-| Delete this package | Delete it, with every version. See [deleting and restoring](#delete-and-restore). |
+| Manage access                             | People (by username) and teams of the workspace (by slug), each with the Read, Write or Admin role on the package.                         |
+| Manage Actions access                     | The repositories whose workflows may use the package, each with Read or Write. See [below](#manage-actions-access).                        |
+| Visibility                                | Public or private, for an unlinked package. A linked one has its repository's.                                                             |
+| Repository                                | Link it to a repository of its workspace (Admin on that repository is needed too), or unlink it: it is then the workspace's, and private.  |
+| Deleted versions                          | Versions deleted in the last 30 days, each with **Restore**.                                                                               |
+| Delete this package                       | Delete it, with every version. See [deleting and restoring](#delete-and-restore).                                                          |
 
 ### Manage access
 
@@ -102,12 +102,12 @@ workspace gives someone stays when the package's own role is removed.
 A workflow job's [`G1T_TOKEN`](/guides/actions/#the-jobs-token) reaches a
 package only from these repositories:
 
-| Repository | Its workflows may |
-| --- | --- |
-| The one the package is linked to | Pull and publish it, always. It is listed, and cannot be removed: unlink the package instead. |
-| One added with Read | Pull it |
-| One added with Write | Pull and publish it |
-| Any other | Nothing: the job is refused, with a message naming the package and saying to add its repository here. A public package still pulls. |
+| Repository                       | Its workflows may                                                                                                                   |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| The one the package is linked to | Pull and publish it, always. It is listed, and cannot be removed: unlink the package instead.                                       |
+| One added with Read              | Pull it                                                                                                                             |
+| One added with Write             | Pull and publish it                                                                                                                 |
+| Any other                        | Nothing: the job is refused, with a message naming the package and saying to add its repository here. A public package still pulls. |
 
 A package a workflow job makes that is not linked to the job's repository
 (a workspace package, say `g1t.sh/acme/tools` pushed from `acme/web`) is
@@ -144,24 +144,24 @@ Sign in to a registry with your username and an
 [access token](/guides/authentication/#access-tokens) as the password.
 A token with scopes needs the package ones:
 
-| Scope | Lets a token |
-| --- | --- |
-| `packages:read` | Pull private packages. Public ones need no scope. |
-| `packages:write` | Push and publish. Includes `packages:read`. |
-| `packages:delete` | Delete and restore versions and packages |
+| Scope             | Lets a token                                      |
+| ----------------- | ------------------------------------------------- |
+| `packages:read`   | Pull private packages. Public ones need no scope. |
+| `packages:write`  | Push and publish. Includes `packages:read`.       |
+| `packages:delete` | Delete and restore versions and packages          |
 
 Tokens with full access, and tokens made before scopes, have all three.
 Changing a package's settings needs `packages:write` and the Admin role on
 it. A token never does more than its owner could: `packages:delete` alone
 does not let a member delete an owner's package.
 
-| Token | Reaches |
-| --- | --- |
-| A personal access token for all your workspaces | What its owner may do, limited by its permissions. |
-| A personal access token for one workspace | Packages linked to a repository in its selection, and the unlinked packages of its workspace. Elsewhere it pulls public packages only. |
-| A workspace's own token | The workspace's packages, as a member with Write; with Admin when it has Repositories: admin. With selected repositories, linked packages of those only. |
-| A workflow job's `G1T_TOKEN` | Its own repository's packages, and those that list its repository under [Manage Actions access](#manage-actions-access), as the job's `permissions:` allow. |
-| A deploy key | No packages. |
+| Token                                           | Reaches                                                                                                                                                     |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A personal access token for all your workspaces | What its owner may do, limited by its permissions.                                                                                                          |
+| A personal access token for one workspace       | Packages linked to a repository in its selection, and the unlinked packages of its workspace. Elsewhere it pulls public packages only.                      |
+| A workspace's own token                         | The workspace's packages, as a member with Write; with Admin when it has Repositories: admin. With selected repositories, linked packages of those only.    |
+| A workflow job's `G1T_TOKEN`                    | Its own repository's packages, and those that list its repository under [Manage Actions access](#manage-actions-access), as the job's `permissions:` allow. |
+| A deploy key                                    | No packages.                                                                                                                                                |
 
 In [workflows](/guides/actions/#the-jobs-token), `G1T_TOKEN` is the job's
 own token: it pushes and pulls its repository's packages with no setup, and
@@ -214,25 +214,25 @@ type (`container`, `npm`, `cargo`, `maven`, `nuget`, `rubygems` or
 `composer`) and its name, URL-encoded where it holds a slash
 (`web%2Fworker`):
 
-| Route | Operation | Scope |
-| --- | --- | --- |
-| `GET /workspaces/{workspace}/packages` | `list_packages` (`state=deleted` for deleted ones) | `packages:read` |
-| `GET /workspaces/{workspace}/packages/{package_type}/{package_name}` | `get_package` | `packages:read` |
-| `PATCH …/{package_name}` | `update_package`: `visibility`, `inherit_access` | `packages:write` |
-| `DELETE …/{package_name}` | `delete_package` | `packages:delete` |
-| `POST …/{package_name}/restore` | `restore_package` | `packages:delete` |
-| `GET …/{package_name}/versions` | `list_package_versions` (`state=deleted` for deleted ones) | `packages:read` |
-| `GET …/versions/{version_id}` | `get_package_version` | `packages:read` |
-| `DELETE …/versions/{version_id}` | `delete_package_version` | `packages:delete` |
-| `POST …/versions/{version_id}/restore` | `restore_package_version` | `packages:delete` |
-| `PUT …/{package_name}/repository` | `link_package` | `packages:write` |
-| `DELETE …/{package_name}/repository` | `unlink_package` | `packages:write` |
-| `GET …/{package_name}/access` | `list_package_access` | `packages:read` |
-| `PUT …/{package_name}/access` | `set_package_access`: `username` or `team`, and `role` | `packages:write` |
-| `DELETE …/{package_name}/access?username=…` or `?team=…` | `remove_package_access` | `packages:write` |
-| `GET …/{package_name}/actions-access` | `list_package_actions_access` | `packages:read` |
-| `PUT …/{package_name}/actions-access` | `set_package_actions_access`: `repository` and `role` | `packages:write` |
-| `DELETE …/{package_name}/actions-access/{repository}` | `remove_package_actions_access` | `packages:write` |
+| Route                                                                | Operation                                                  | Scope             |
+| -------------------------------------------------------------------- | ---------------------------------------------------------- | ----------------- |
+| `GET /workspaces/{workspace}/packages`                               | `list_packages` (`state=deleted` for deleted ones)         | `packages:read`   |
+| `GET /workspaces/{workspace}/packages/{package_type}/{package_name}` | `get_package`                                              | `packages:read`   |
+| `PATCH …/{package_name}`                                             | `update_package`: `visibility`, `inherit_access`           | `packages:write`  |
+| `DELETE …/{package_name}`                                            | `delete_package`                                           | `packages:delete` |
+| `POST …/{package_name}/restore`                                      | `restore_package`                                          | `packages:delete` |
+| `GET …/{package_name}/versions`                                      | `list_package_versions` (`state=deleted` for deleted ones) | `packages:read`   |
+| `GET …/versions/{version_id}`                                        | `get_package_version`                                      | `packages:read`   |
+| `DELETE …/versions/{version_id}`                                     | `delete_package_version`                                   | `packages:delete` |
+| `POST …/versions/{version_id}/restore`                               | `restore_package_version`                                  | `packages:delete` |
+| `PUT …/{package_name}/repository`                                    | `link_package`                                             | `packages:write`  |
+| `DELETE …/{package_name}/repository`                                 | `unlink_package`                                           | `packages:write`  |
+| `GET …/{package_name}/access`                                        | `list_package_access`                                      | `packages:read`   |
+| `PUT …/{package_name}/access`                                        | `set_package_access`: `username` or `team`, and `role`     | `packages:write`  |
+| `DELETE …/{package_name}/access?username=…` or `?team=…`             | `remove_package_access`                                    | `packages:write`  |
+| `GET …/{package_name}/actions-access`                                | `list_package_actions_access`                              | `packages:read`   |
+| `PUT …/{package_name}/actions-access`                                | `set_package_actions_access`: `repository` and `role`      | `packages:write`  |
+| `DELETE …/{package_name}/actions-access/{repository}`                | `remove_package_actions_access`                            | `packages:write`  |
 
 `version_id` is a version's id (`ver_…`), its version, its digest, or a tag
 that points to it. Reading access and deleted versions, and every change,
@@ -253,12 +253,12 @@ unlinking (see the [audit log's list](/guides/audit-log/)).
 package's go to its repository's webhooks and its workspace's; an
 unlinked package's go to its workspace's webhooks.
 
-| Event | Sent when |
-| --- | --- |
-| `package.published` | A version is published. `data.tags` names the tags that now point to it. |
-| `package.version_deleted` | A version is deleted. |
-| `package.deleted` | A package is deleted. |
-| `package.visibility_changed` | A package is made public or private. `data.visibility` is the new one. |
+| Event                        | Sent when                                                                |
+| ---------------------------- | ------------------------------------------------------------------------ |
+| `package.published`          | A version is published. `data.tags` names the tags that now point to it. |
+| `package.version_deleted`    | A version is deleted.                                                    |
+| `package.deleted`            | A package is deleted.                                                    |
+| `package.visibility_changed` | A package is made public or private. `data.visibility` is the new one.   |
 
 Each one's `data` has `package_id`, `workspace`, `ecosystem`, `name` and
 `repo_id` (null for an unlinked package); a version's event also has its

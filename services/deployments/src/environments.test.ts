@@ -85,9 +85,12 @@ test("a run's outcome for an environment comes from the jobs that ran", () => {
 
 test("production comes first, then the newest", () => {
   const env = (name: string, production: boolean, at: string) => ({ name, production_environment: production, updated_at: at });
-  const sorted = [env("preview", false, "2026-10-07"), env("staging", false, "2026-10-06"), env("Production", true, "2026-10-01"), env("eu", true, "2026-10-05")].sort(
-    compareEnvironments,
-  );
+  const sorted = [
+    env("preview", false, "2026-10-07"),
+    env("staging", false, "2026-10-06"),
+    env("Production", true, "2026-10-01"),
+    env("eu", true, "2026-10-05"),
+  ].sort(compareEnvironments);
   assert.deepEqual(
     sorted.map((e) => e.name),
     ["Production", "eu", "preview", "staging"],
@@ -123,7 +126,12 @@ test("a g1t.page build is a deployment in the same model", () => {
   assert.equal(live.environment_url, "https://web-acme.g1t.page");
   assert.equal(live.log_url, "https://g1t.sh/acme/web/deployments/dpl_1");
   assert.equal(live.production_environment, true);
-  const preview = fromBuild(build({ kind: "preview", branch: "fix", number: 7, status: "failed", error: "The build failed.", finished_at: null }), "main", "https://g1t.sh", appUrl);
+  const preview = fromBuild(
+    build({ kind: "preview", branch: "fix", number: 7, status: "failed", error: "The build failed.", finished_at: null }),
+    "main",
+    "https://g1t.sh",
+    appUrl,
+  );
   assert.equal(preview.ref, "fix");
   assert.equal(preview.number, 7);
   assert.equal(preview.transient_environment, true);

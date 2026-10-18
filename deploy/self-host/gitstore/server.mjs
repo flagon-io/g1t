@@ -141,9 +141,7 @@ function writeMeta(key, meta) {
 async function info(key) {
   const dir = requireRepo(key);
   const meta = readMeta(key);
-  const head = (await git(["symbolic-ref", "--short", "HEAD"], { cwd: dir, allowFail: true })).stdout
-    .toString()
-    .trim();
+  const head = (await git(["symbolic-ref", "--short", "HEAD"], { cwd: dir, allowFail: true })).stdout.toString().trim();
   let lastPushAt = null;
   try {
     lastPushAt = statSync(join(dir, "g1t-pushed")).mtime.toISOString();
@@ -265,10 +263,7 @@ async function log(key, { ref = "HEAD", limit = 50, offset = 0 } = {}) {
   if (typeof ref !== "string" || ref.startsWith("-")) return [];
   const count = Math.max(1, Math.min(Number(limit) || 50, 1000));
   const skip = Math.max(0, Number(offset) || 0);
-  const listed = await git(
-    ["rev-list", "--first-parent", `--max-count=${count}`, `--skip=${skip}`, ref, "--"],
-    { cwd: dir, allowFail: true },
-  );
+  const listed = await git(["rev-list", "--first-parent", `--max-count=${count}`, `--skip=${skip}`, ref, "--"], { cwd: dir, allowFail: true });
   if (listed.code !== 0) return [];
   const hashes = listed.stdout.toString().split("\n").filter(Boolean);
   const commits = [];
@@ -278,7 +273,7 @@ async function log(key, { ref = "HEAD", limit = 50, offset = 0 } = {}) {
   return commits;
 }
 
-const TYPES = { "040000": "tree", "100644": "blob", "100755": "exec", "120000": "symlink", "160000": "gitlink" };
+const TYPES = { "040000": "tree", 100644: "blob", 100755: "exec", 120000: "symlink", 160000: "gitlink" };
 
 async function readTree(key, hash) {
   const dir = requireRepo(key);
@@ -496,8 +491,7 @@ async function api(request, response, parts, params) {
     return send(response, 200, await readTree(key, arg));
   }
   if (method === "GET" && (action === "blobs" || action === "file")) {
-    const bytes =
-      action === "blobs" ? await readBlob(key, arg) : await readFile(key, params.get("ref"), params.get("path"));
+    const bytes = action === "blobs" ? await readBlob(key, arg) : await readFile(key, params.get("ref"), params.get("path"));
     return bytes ? send(response, 200, bytes) : send(response, 404, { code: "NOT_FOUND", message: "no such object" });
   }
   return send(response, 404, { code: "NOT_FOUND", message: "no such route" });

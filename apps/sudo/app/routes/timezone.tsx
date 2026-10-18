@@ -45,10 +45,7 @@ export default function TimeZone({ loaderData }: Route.ComponentProps) {
   const at = new Date(now);
   return (
     <main className="mx-auto max-w-3xl px-4 py-8 sm:py-10">
-      <PageHeader
-        title="Time zone"
-        description="Every time in sudo is shown in this zone, with its abbreviation. Hover a time to see it in UTC."
-      />
+      <PageHeader title="Time zone" description="Every time in sudo is shown in this zone, with its abbreviation. Hover a time to see it in UTC." />
       <form method="post" className="mt-6 space-y-6">
         <input type="hidden" name="back" value={back} />
         <Section title="Show times in">

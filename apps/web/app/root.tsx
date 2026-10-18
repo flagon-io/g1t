@@ -14,24 +14,14 @@ import {
   useRouteLoaderData,
 } from "react-router";
 
-import {
-  type User,
-  awaitsConfirmation,
-  hasAccessIn,
-  sharedWorkspaces,
-} from "@g1t/contracts";
+import { type User, awaitsConfirmation, hasAccessIn, sharedWorkspaces } from "@g1t/contracts";
 
 import type { Route } from "./+types/root";
 import appCss from "./app.css?url";
 import displayFont from "@g1t/theme/fonts/bricolage-grotesque-latin.woff2?url";
 import sansFont from "@g1t/theme/fonts/hanken-grotesk-latin.woff2?url";
 import { ButtonLink } from "./components/ui";
-import {
-  AppShell,
-  Progress,
-  type ShellData,
-  useLeaving,
-} from "./components/shell";
+import { AppShell, Progress, type ShellData, useLeaving } from "./components/shell";
 import { SiteFooter } from "./components/footer";
 import { PublicHeader } from "./components/public-header";
 import { SpikeBanner } from "./components/spike-banner";
@@ -44,22 +34,10 @@ import { WORKSPACE_COOKIE, workspaceFor } from "./lib/workspace-choice";
 import { PageMain } from "./components/landmark";
 import { NotFound } from "./components/not-found";
 import { frameOf } from "./lib/chrome";
-import {
-  DOCK_COOKIE,
-  SIDEBAR_COOKIE,
-  pinsToShow,
-  sidebarClosed,
-} from "./lib/apps";
+import { DOCK_COOKIE, SIDEBAR_COOKIE, pinsToShow, sidebarClosed } from "./lib/apps";
 import { savedPins } from "./lib/dock.server";
 import { StandaloneFrame } from "./components/standalone";
-import {
-  ai,
-  billing,
-  chat,
-  identity,
-  inbox,
-  projects,
-} from "./lib/services.server";
+import { ai, billing, chat, identity, inbox, projects } from "./lib/services.server";
 import { unreadTotals } from "./lib/chat";
 import { countsFor, readableRepos } from "./lib/access.server";
 import { agentForProviders, DEFAULT_AGENT, parseAgent, rememberAgentDefault } from "./lib/agent-setup";
@@ -68,13 +46,7 @@ import { getViewer, viewerMiddleware } from "./lib/session.server";
 import { shortcutOf, workspaceProjects } from "./lib/workspace-projects.server";
 import { addresses } from "./lib/addresses.server";
 import { orElse, part } from "./lib/partial";
-import {
-  RELOADED_KEY,
-  RELOAD_GIVE_UP_MS,
-  clientNavigated,
-  reloadFixes,
-  reloadedBefore,
-} from "./lib/stale-build";
+import { RELOADED_KEY, RELOAD_GIVE_UP_MS, clientNavigated, reloadFixes, reloadedBefore } from "./lib/stale-build";
 import { useNonce } from "./lib/nonce";
 import { useStuckNavigationRescue } from "./lib/stuck";
 import { isNeedsSignIn } from "./lib/website-token";
@@ -83,18 +55,8 @@ import { socketTicketFor } from "./lib/socket-ticket.server";
 import { DesktopApp } from "./components/desktop-app";
 import { DesktopRunnerLink } from "./components/desktop-runner-link";
 import { LiveNotifications } from "./components/notifications/live-notifications";
-import {
-  THEME_COLOR,
-  THEME_COOKIE,
-  readTheme,
-  themeAttribute,
-  useThemeChoice,
-} from "./lib/theme";
-import {
-  DEVELOPER_COOKIE,
-  readDeveloperMode,
-  useDeveloperMode,
-} from "./lib/developer-mode";
+import { THEME_COLOR, THEME_COOKIE, readTheme, themeAttribute, useThemeChoice } from "./lib/theme";
+import { DEVELOPER_COOKIE, readDeveloperMode, useDeveloperMode } from "./lib/developer-mode";
 import { RouteError } from "./components/route-error";
 import { ConnectionToast } from "./components/connection-toast";
 import { NavigationRecovery } from "./components/navigation-recovery";
@@ -151,15 +113,12 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
       : visitorShell(params, context),
     // Their chat sounds, with the page, so the first live event already
     // respects them (lib/sounds.ts); the defaults when identity is slow.
-    user && !awaitsConfirmation(user)
-      ? identity.soundSettings(user).catch(() => null)
-      : Promise.resolve(null),
+    user && !awaitsConfirmation(user) ? identity.soundSettings(user).catch(() => null) : Promise.resolve(null),
   ]);
   // The apps this person pinned to their rail here: as their account keeps
   // them (read with the rest of the shell), else as this device's cookie
   // remembers them (lib/apps.ts).
-  if (shell.workspace)
-    shell.pins = pinsToShow(shell.pins, dock, shell.workspace.slug);
+  if (shell.workspace) shell.pins = pinsToShow(shell.pins, dock, shell.workspace.slug);
   // Where this g1t lives, for clone lines, agent setup and link previews.
   return {
     user,
@@ -167,20 +126,19 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
     // Cache only the derived UI default, scoped to this viewer and workspace.
     // shortCache bypasses old answers after settings writes; failures are not cached.
     agentChoice: parseAgent(readCookie(cookies, "g1t_agent")),
-    agentDefault: user && shell.workspace
-      ? await shortCache(`agent-default:${user.id}:${shell.workspace.slug}`, 300_000, async () => {
-          const result = await ai.list(shell.workspace!.slug, user);
-          if (!result.ok) throw new Error("AI providers unavailable");
-          return agentForProviders(result.value);
-        }).catch(() => DEFAULT_AGENT)
-      : DEFAULT_AGENT,
+    agentDefault:
+      user && shell.workspace
+        ? await shortCache(`agent-default:${user.id}:${shell.workspace.slug}`, 300_000, async () => {
+            const result = await ai.list(shell.workspace!.slug, user);
+            if (!result.ok) throw new Error("AI providers unavailable");
+            return agentForProviders(result.value);
+          }).catch(() => DEFAULT_AGENT)
+        : DEFAULT_AGENT,
     // For a page opened with an access token: the feed socket's ticket,
     // minted here so the feed opens without asking for one (lib/live-socket.ts).
     // Without one the feed asks for its own ticket, so a ticket that could
     // not be minted is no reason to lose the page.
-    liveTicket: user?.token?.website
-      ? orElse(await part(socketTicketFor(context, request, "/-/live"), "The live feed's ticket"), null)
-      : null,
+    liveTicket: user?.token?.website ? orElse(await part(socketTicketFor(context, request, "/-/live"), "The live feed's ticket"), null) : null,
     // Whether they folded the sidebar away, so the page is drawn that way from the start.
     sidebarClosed: sidebarClosed(readCookie(cookies, SIDEBAR_COOKIE)),
     // Their Appearance, so the page is drawn in it from the first byte (lib/theme.ts).
@@ -200,14 +158,8 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
  * open counts of the project being looked at. One call, and only in a
  * project; it answers the same for a private project as a missing one.
  */
-async function visitorShell(
-  params: { owner?: string; repo?: string },
-  context: Route.LoaderArgs["context"],
-): Promise<ShellData> {
-  const path =
-    params.owner && params.repo
-      ? { namespace: params.owner, name: params.repo }
-      : null;
+async function visitorShell(params: { owner?: string; repo?: string }, context: Route.LoaderArgs["context"]): Promise<ShellData> {
+  const path = params.owner && params.repo ? { namespace: params.owner, name: params.repo } : null;
   // The counts are the sidebar's, never the page's: without them it shows none.
   const counts = path ? orElse(await part(countsFor(context, params), "Open counts"), null) : null;
   return {
@@ -228,11 +180,7 @@ async function visitorShell(
 }
 
 /** The sidebar from what the session already says, with no service asked. */
-function bareShell(
-  user: User,
-  params: { owner?: string; repo?: string },
-  chosen: string | null,
-): ShellData {
+function bareShell(user: User, params: { owner?: string; repo?: string }, chosen: string | null): ShellData {
   return {
     workspace: workspaceFor(user.workspaces ?? [], chosen, params),
     repos: [],
@@ -246,17 +194,9 @@ function bareShell(
  * The sidebar only changes with the workspace or repository being looked
  * at, or after something was submitted: not on every page within them.
  */
-export function shouldRevalidate({
-  currentParams,
-  nextParams,
-  formMethod,
-  defaultShouldRevalidate,
-}: ShouldRevalidateFunctionArgs) {
+export function shouldRevalidate({ currentParams, nextParams, formMethod, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
   if (formMethod && formMethod !== "GET") return defaultShouldRevalidate;
-  return (
-    currentParams.owner !== nextParams.owner ||
-    currentParams.repo !== nextParams.repo
-  );
+  return currentParams.owner !== nextParams.owner || currentParams.repo !== nextParams.repo;
 }
 
 /**
@@ -272,65 +212,32 @@ async function shellFor(
 ): Promise<ShellData> {
   const memberships = user.workspaces ?? [];
   const workspace = workspaceFor(memberships, chosen, params);
-  const path =
-    params.owner && params.repo
-      ? { namespace: params.owner, name: params.repo }
-      : null;
+  const path = params.owner && params.repo ? { namespace: params.owner, name: params.repo } : null;
   const now = new Date();
-  const monthStart = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
-  ).toISOString();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
   // What the sidebar shows of the workspace changes rarely: kept for a few
   // seconds per person and workspace, except just after they changed
   // something (lib/cache.server.ts).
   const kept = <T,>(what: string, load: () => Promise<T>) =>
-    workspace
-      ? shortCache(
-          `shell:${what}:${user.id}:${workspace.slug}`,
-          SHELL_TTL_MS,
-          load,
-        )
-      : Promise.resolve(null);
-  const [
-    listed,
-    counts,
-    status,
-    usage,
-    limit,
-    entitlements,
-    shared,
-    unread,
-    shortcuts,
-    chatUnread,
-    dockPins,
-  ] = await Promise.all([
+    workspace ? shortCache(`shell:${what}:${user.id}:${workspace.slug}`, SHELL_TTL_MS, load) : Promise.resolve(null);
+  const [listed, counts, status, usage, limit, entitlements, shared, unread, shortcuts, chatUnread, dockPins] = await Promise.all([
     // Every project, for the palette and the count; the sidebar lists only
     // the person's pinned and recent ones (lib/pins.ts).
     // Each of these is one part of the sidebar: one that fails leaves only
     // itself out (logged by `part`), never the rest of the sidebar with it.
-    workspace
-      ? part(workspaceProjects(workspace.slug, user), "Projects").then((value) => orElse(value, null))
-      : Promise.resolve(null),
-    path
-      ? part(countsFor(context, params), "Open counts").then((value) => orElse(value, null))
-      : Promise.resolve(null),
+    workspace ? part(workspaceProjects(workspace.slug, user), "Projects").then((value) => orElse(value, null)) : Promise.resolve(null),
+    path ? part(countsFor(context, params), "Open counts").then((value) => orElse(value, null)) : Promise.resolve(null),
     // Whether billing is on, without reading the account: that asks the
     // card processor about the workspace's cards, too slow for every page.
     kept("status", () => billing.status()).catch(() => null),
-    kept(`usage:${monthStart}`, () =>
-      billing.usage(workspace!.slug, user, monthStart),
-    ).catch(() => null),
+    kept(`usage:${monthStart}`, () => billing.usage(workspace!.slug, user, monthStart)).catch(() => null),
     kept("limit", () => billing.limit(workspace!.slug, user)).catch(() => null),
-    kept("entitlements", () => billing.entitlements(workspace!.slug)).catch(
-      () => null,
-    ),
+    kept("entitlements", () => billing.entitlements(workspace!.slug)).catch(() => null),
     part(sharedRepos(user), "Shared with you").then((value) => orElse(value, [])),
     // The bell's count: one query, never kept, so marking an item shows at once.
     inbox.counts(user.username).catch(() => null),
     // Never kept: opening a project moves it up Recent.
-    workspace
-      ? projects.shortcuts(workspace.slug, user).catch(() => null)
-      : Promise.resolve(null),
+    workspace ? projects.shortcuts(workspace.slug, user).catch(() => null) : Promise.resolve(null),
     // The rail's Chat badge: never kept, and never waited on for long.
     workspace ? chatUnreadFor(workspace.slug, user) : Promise.resolve(null),
     // The rail's pins, kept with the account so every device shows the same
@@ -367,9 +274,7 @@ async function shellFor(
     free: Boolean(status?.free),
     // A spend spike or a hold pauses new compute: the shell says so on every page.
     compute:
-      workspace &&
-      entitlements &&
-      (entitlements.paused || entitlements.spike?.status === "open")
+      workspace && entitlements && (entitlements.paused || entitlements.spike?.status === "open")
         ? {
             paused: entitlements.paused,
             spike: entitlements.spike ?? null,
@@ -382,11 +287,7 @@ async function shellFor(
     pins: dockPins ?? undefined,
     // While g1t is free every charge is zero, so usage is shown at cost.
     // Usage at price, the one figure every page shows.
-    monthUsageMicros: usage?.ok
-      ? usage.value.free
-        ? usage.value.usedMicros
-        : (usage.value.priceMicros ?? usage.value.spentMicros)
-      : null,
+    monthUsageMicros: usage?.ok ? (usage.value.free ? usage.value.usedMicros : (usage.value.priceMicros ?? usage.value.spentMicros)) : null,
   };
 }
 
@@ -398,23 +299,14 @@ const SHELL_CONVERSATIONS = 8;
  * conversations, for Home's sidebar; null when chat is slow to answer or
  * does not.
  */
-async function chatUnreadFor(
-  slug: string,
-  user: User,
-): Promise<ShellData["chat"]> {
-  const timeout = new Promise<null>((resolve) =>
-    setTimeout(() => resolve(null), CHAT_BADGE_WAIT_MS),
-  );
+async function chatUnreadFor(slug: string, user: User): Promise<ShellData["chat"]> {
+  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), CHAT_BADGE_WAIT_MS));
   const read = chat
     .sidebar(slug, user)
     .then((result) => {
       if (!result.ok) return null;
       const entries = result.value.entries;
-      const latest = [...entries].sort((a, b) =>
-        (b.channel.last_message_at ?? "").localeCompare(
-          a.channel.last_message_at ?? "",
-        ),
-      );
+      const latest = [...entries].sort((a, b) => (b.channel.last_message_at ?? "").localeCompare(a.channel.last_message_at ?? ""));
       return {
         ...unreadTotals(entries),
         starred: entries.filter((e) => e.starred).slice(0, SHELL_CONVERSATIONS),
@@ -455,9 +347,7 @@ async function sharedRepos(user: User): Promise<ShellData["shared"]> {
       name: repo.name,
       isPrivate: repo.isPrivate,
     }))
-    .sort((a, b) =>
-      `${a.namespace}/${a.name}`.localeCompare(`${b.namespace}/${b.name}`),
-    );
+    .sort((a, b) => `${a.namespace}/${a.name}`.localeCompare(`${b.namespace}/${b.name}`));
 }
 
 /**
@@ -487,42 +377,30 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const error = useRouteError();
   const missing = isRouteErrorResponse(error) && error.status === 404;
   // The billing page shows the full banner itself.
-  const paused = root?.shell?.compute &&
-    root.shell.workspace &&
-    !pathname.endsWith("/-/billing") && (
-      <SpikeBanner
-        compact
-        slug={root.shell.workspace.slug}
-        entitlements={{
-          paused: root.shell.compute.paused,
-          spike: root.shell.compute.spike,
-        }}
-        owner={root.shell.compute.owner}
-      />
-    );
+  const paused = root?.shell?.compute && root.shell.workspace && !pathname.endsWith("/-/billing") && (
+    <SpikeBanner
+      compact
+      slug={root.shell.workspace.slug}
+      entitlements={{
+        paused: root.shell.compute.paused,
+        spike: root.shell.compute.spike,
+      }}
+      owner={root.shell.compute.owner}
+    />
+  );
   // On the few pages an account still confirming its address can open
   // besides /confirm-email (policies, support, signing in): the way back.
-  const verify = user &&
-    awaitsConfirmation(user) &&
-    pathname !== "/confirm-email" && (
-      <p
-        role="status"
-        className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-warn/30 bg-warn/10 px-4 py-2 text-sm"
-      >
-        <span>Confirm your email address to start using g1t.</span>
-        <Link
-          to="/confirm-email"
-          className="font-medium underline underline-offset-4"
-        >
-          Enter your code
-        </Link>
-      </p>
-    );
+  const verify = user && awaitsConfirmation(user) && pathname !== "/confirm-email" && (
+    <p role="status" className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-warn/30 bg-warn/10 px-4 py-2 text-sm">
+      <span>Confirm your email address to start using g1t.</span>
+      <Link to="/confirm-email" className="font-medium underline underline-offset-4">
+        Enter your code
+      </Link>
+    </p>
+  );
   // A workspace that requires two-factor authentication or single sign-on
   // of someone who has not met it: they keep their place, and cannot use it yet.
-  const held = user?.held &&
-    user.held.length > 0 &&
-    pathname !== "/settings/two-factor" && <PolicyNotice held={user.held} />;
+  const held = user?.held && user.held.length > 0 && pathname !== "/settings/two-factor" && <PolicyNotice held={user.held} />;
   const leaving = useLeaving();
   // Auto, Light or Dark: as the cookie said when the page was drawn, or as just switched.
   const theme = useThemeChoice(root?.theme);
@@ -543,46 +421,27 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <html lang="en" data-theme={themeAttribute(theme)}>
       <head>
         <meta charSet="utf-8" />
-        <meta
-          name="viewport"
-          content="width=device-width, initial-scale=1, viewport-fit=cover"
-        />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         {/* The browser bar matches the page: one colour for a chosen theme, the system's for Auto. */}
         {theme === "auto" ? (
           <>
-            <meta
-              name="theme-color"
-              media="(prefers-color-scheme: light)"
-              content={THEME_COLOR.light}
-            />
-            <meta
-              name="theme-color"
-              media="(prefers-color-scheme: dark)"
-              content={THEME_COLOR.dark}
-            />
+            <meta name="theme-color" media="(prefers-color-scheme: light)" content={THEME_COLOR.light} />
+            <meta name="theme-color" media="(prefers-color-scheme: dark)" content={THEME_COLOR.dark} />
           </>
         ) : (
           <meta name="theme-color" content={THEME_COLOR[theme]} />
         )}
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta
-          name="apple-mobile-web-app-status-bar-style"
-          content="black-translucent"
-        />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         {/* The stylesheet before everything React Router preloads, so a slow
             connection paints sooner. */}
         <link rel="stylesheet" href={appCss} precedence="default" />
-        {root?.analyticsConsent && (
-          <meta name="g1t-analytics" content="consent" />
-        )}
+        {root?.analyticsConsent && <meta name="g1t-analytics" content="consent" />}
         <Meta />
         <Links nonce={nonce} />
       </head>
-      <body
-        className="flex min-h-screen flex-col"
-        data-frame={frame === "app" && user && root?.shell ? "app" : frame}
-      >
+      <body className="flex min-h-screen flex-col" data-frame={frame === "app" && user && root?.shell ? "app" : frame}>
         {/* The first stop for the keyboard: past the menus, to the page. */}
         <a
           href="#content"
@@ -593,13 +452,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {frame === "standalone" ? (
           <StandaloneFrame>{children}</StandaloneFrame>
         ) : frame === "app" && user && root?.shell ? (
-          <AppShell
-            user={user}
-            shell={root.shell}
-            missing={missing}
-            banner={banner}
-            sidebarClosed={root.sidebarClosed}
-          >
+          <AppShell user={user} shell={root.shell} missing={missing} banner={banner} sidebarClosed={root.sidebarClosed}>
             {children}
           </AppShell>
         ) : (
@@ -607,12 +460,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <Progress />
             <PublicHeader user={user} />
             {banner}
-            <div
-              id="content"
-              tabIndex={-1}
-              {...leaving}
-              className={`grow outline-none ${leaving.className}`}
-            >
+            <div id="content" tabIndex={-1} {...leaving} className={`grow outline-none ${leaving.className}`}>
               {children}
             </div>
             <SiteFooter user={user} />
@@ -635,9 +483,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <DesktopRunnerLink
             offer={{
               signedIn: user != null,
-              workspaces: (user?.workspaces ?? [])
-                .filter((m) => m.role === "owner")
-                .map((m) => ({ slug: m.slug, name: m.name ?? null })),
+              workspaces: (user?.workspaces ?? []).filter((m) => m.role === "owner").map((m) => ({ slug: m.slug, name: m.name ?? null })),
               current: root?.shell?.workspace?.slug ?? null,
             }}
           />
@@ -656,7 +502,9 @@ export default function App() {
   const root = useRouteLoaderData<typeof loader>("root");
   const userId = root?.user?.id ?? null;
   const agentDefault = root?.agentDefault ?? DEFAULT_AGENT;
-  useEffect(() => { rememberAgentDefault(agentDefault); }, [agentDefault]);
+  useEffect(() => {
+    rememberAgentDefault(agentDefault);
+  }, [agentDefault]);
   // Tell analytics who is signed in, once per change; signing out forgets them.
   const lastUserId = useRef<string | null>(null);
   useEffect(() => {

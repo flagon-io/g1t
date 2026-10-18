@@ -177,11 +177,7 @@ export function localInputValue(at: Date): string {
  * People by id and by username (lowercased), after a word from the feed:
  * all of a workspace (`full`), or some who changed. A later word wins.
  */
-export function mergePeople(
-  people: Record<string, PresenceEntry>,
-  incoming: PresenceEntry[],
-  full: boolean,
-): Record<string, PresenceEntry> {
+export function mergePeople(people: Record<string, PresenceEntry>, incoming: PresenceEntry[], full: boolean): Record<string, PresenceEntry> {
   const next: Record<string, PresenceEntry> = { ...people };
   let changed = false;
   for (const entry of incoming) {

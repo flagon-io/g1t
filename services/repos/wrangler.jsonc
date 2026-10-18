@@ -1,147 +1,147 @@
 {
-	"$schema": "../../node_modules/wrangler/config-schema.json",
-	"name": "g1t-repos",
-	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
-	"compatibility_date": "2026-09-26",
-	// Runs next to its database: a request makes several queries in turn,
-	// and each would otherwise cross the distance to it.
-	"placement": { "mode": "off" },
-	"main": "build/index.js",
-	"build": { "command": "node ../../scripts/build-rust-worker.mjs" },
-	"workers_dev": false,
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "g1t-repos",
-			"database_id": "f9544c51-c3bf-4621-a96f-8a6d5cf24a97",
-			"migrations_dir": "migrations"
-		}
-	],
-	// The git store: Cloudflare Artifacts, bound as GITSTORE (so "artifacts"
-	// in code means g1t's own Artifacts; the namespaces keep their names).
-	// Every repository made before sharding is in `g1t`.
-	// More namespaces (src/shards.rs) are more bindings, named in
-	// GITSTORE_NAMESPACES below, e.g.
-	//   { "binding": "GITSTORE_1", "namespace": "g1t-us-1" },
-	//   { "binding": "GITSTORE_EU", "namespace": "g1t-eu" }
-	// and new repositories go to those named in GITSTORE_NEW_REPOS. A
-	// namespace's jurisdiction is set when it is made, never in the binding.
-	"artifacts": [{ "binding": "GITSTORE", "namespace": "g1t" }],
-	// Shared between isolates (src/shared.rs): the git store's credentials
-	// (src/store.rs) and the ref listings git asks for first
-	// (src/refs_cache.rs), every value sealed with the REPOS_KEY secret (64
-	// hex characters). Without the binding or the secret each isolate keeps
-	// only its own. Made by `npx wrangler kv namespace create g1t-repos-git-cache`:
-	"kv_namespaces": [{ "binding": "GIT_CACHE", "id": "be765052d0124c2a935b3db4dff99f1f" }],
-	// Packs for fresh clones (wants and no haves), kept under the
-	// repository's refs version so the next clone of the same commit skips
-	// the git store (src/pack_cache.rs). Without the binding nothing is
-	// kept. Made with a lifecycle rule that deletes packs after 7 days and
-	// unfinished uploads after 1:
-	//   npx wrangler r2 bucket create g1t-git-packs
-	//   npx wrangler r2 bucket lifecycle add g1t-git-packs expire-packs packs/ --expire-days 7 --abort-multipart-days 1
-	// Nightly backups go to the second bucket: a git bundle per repository
-	// and a manifest of each chain (src/backups.rs). Made by
-	// `npx wrangler r2 bucket create g1t-backups`.
-	"r2_buckets": [
-		{ "binding": "GIT_PACKS", "bucket_name": "g1t-git-packs" },
-		{ "binding": "BACKUPS", "bucket_name": "g1t-backups" }
-	],
-	"services": [
-		{ "binding": "IDENTITY", "service": "g1t-identity" },
-		{ "binding": "EVENTS", "service": "g1t-events" },
-		// Push protection asks which secrets were allowed, and records the rest.
-		{ "binding": "SECURITY", "service": "g1t-security" },
-		// Whether a workspace far past its free git operations is on the
-		// plan (src/git_ops.rs); asked only then.
-		{ "binding": "BILLING", "service": "g1t-billing" },
-		// Rulesets: which hold for a push or another change to a branch or
-		// tag, and where how they judged it is kept (src/rules.rs).
-		{ "binding": "WORK", "service": "g1t-work" }
-	],
-	// A free workspace past this many git operations in a month is slowed
-	// to this many an hour, never charged (src/git_ops.rs). It is billing's
-	// GIT_OPERATIONS_INCLUDED, the amount free for every workspace: past it,
-	// a workspace on the plan pays at cost plus 20% and is never slowed.
-	// FREE_PRIVATE_STORAGE_BYTES: a free workspace's private repositories may
-	// hold this much (1 GB); past it, pushes to them stop. Billing reads the
-	// same amount. FREE_PUBLIC_STORAGE_BYTES: every workspace's public
-	// repositories may hold this much together (5 GB); past it, pushes to
-	// them stop, including on paid plans. Nonpositive values retain 5 GB.
-	//
-	// The git store:
-	// REPO_STORAGE_LIMIT_BYTES: pushes stop before a repository holds this
-	//   much; the store holds 1 GB (src/pack_limits.rs).
-	// LARGE_PUSHES: a push too large to scan for secrets (24 MiB) is
-	//   "refuse"d, or streamed to the store "unscanned" (src/git_http.rs).
-	// FORK_RETENTION_DAYS: a pull request working copy is removed this long
-	//   after its pull request merges or closes (src/forks.rs).
-	// GITSTORE_NAMESPACES: JSON, each Artifacts binding and its namespace;
-	//   GITSTORE_NEW_REPOS: comma-separated namespaces new repositories go
-	//   to, the emptier healthy ones first (empty: g1t); GITSTORE_EU_NAMESPACE:
-	//   where workspaces that keep their data in the EU put new repositories,
-	//   and unset until that namespace exists (src/shards.rs);
-	//   GITSTORE_NAMESPACE_LIMITS (optional): JSON, {"g1t": {"max_repos": N}},
-	//   past which a namespace takes no new repositories while another can.
-	//
-	// The fallback git store (src/fallback.rs), all
-	// unset: nothing changes. Set as secrets, so switching takes no build:
-	//   npx wrangler secret put GIT_FALLBACK_URL         # https://gitstore.example
-	//   npx wrangler secret put GIT_FALLBACK_SECRET      # the store's API secret
-	//   npx wrangler secret put GIT_FALLBACK_NAMESPACES  # g1t (or g1t,g1t-us-1, or *)
-	// GIT_FALLBACK_WRITES: unset or "refuse" keeps a switched namespace
-	//   read-only; "allow" lets it take pushes (reconcile them afterwards).
-	// GITSTORE_REMOTE_BASE (optional): where remotes start,
-	//   https://<account>.artifacts.cloudflare.net/git, so a new isolate
-	//   needs no info() call before its first credential (src/store.rs).
-	//
-	// Backups (src/backups.rs):
-	// BACKUP_STORE: r2 (the BACKUPS bucket) or s3 (BACKUP_S3_BUCKET on the
-	//   installation's S3_ENDPOINT, as self-hosting uses).
-	// BACKUPS_PER_NIGHT: how many repositories one night queues, those
-	//   longest since their last backup first.
-	// BACKUP_FULL_EVERY: incremental bundles before a full one again.
-	"vars": {
-		"BACKUP_STORE": "r2",
-		"BACKUPS_PER_NIGHT": "200",
-		"BACKUP_FULL_EVERY": "30",
-		"GIT_OPERATIONS_FREE_CAP": "50000",
-		"GIT_OPERATIONS_FREE_HOURLY": "60",
-		"FREE_PRIVATE_STORAGE_BYTES": "1000000000",
-		"FREE_PUBLIC_STORAGE_BYTES": "5000000000",
-		"REPO_STORAGE_LIMIT_BYTES": "950000000",
-		"LARGE_PUSHES": "unscanned",
-		"FORK_RETENTION_DAYS": "1",
-		"GITSTORE_NAMESPACES": "{\"GITSTORE\":\"g1t\"}",
-		"GITSTORE_NEW_REPOS": ""
-	},
-	// Every hour, deleted repositories whose 30 days to be restored have
-	// passed are purged, their git data with them (src/lifecycle.rs), and
-	// pull request working copies past FORK_RETENTION_DAYS are removed
-	// (src/forks.rs), and a repository queued to move to another namespace
-	// is moved (src/moves.rs). At 02:53 UTC, the repositories whose refs moved since
-	// their last backup are queued for one (src/backups.rs, BACKUP_CRON);
-	// the runner's sweep starts them a few at a time.
-	"triggers": { "crons": ["23 * * * *", "53 2 * * *"] },
-	// A workspace renamed moves its repositories to the new slug; one
-	// deleted purges the repositories it left in Recently deleted.
-	"queues": {
-		"consumers": [{ "queue": "g1t-events-repos", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
-	},
-	// What an anonymous clone can cost a repository's owner (src/limits.rs):
-	// packs written to GIT_PACKS, and anonymous fetches the git store
-	// answers, each per repository. Ids and limits: RATE_LIMITS in
-	// packages/contracts. Without them, nothing is limited.
-	"ratelimits": [
-		{ "name": "PACK_FILL_LIMIT", "namespace_id": "4301", "simple": { "limit": 30, "period": 60 } },
-		{ "name": "ANONYMOUS_FETCH_LIMIT", "namespace_id": "4302", "simple": { "limit": 120, "period": 60 } }
-	],
-	// Logs of a quarter of requests: every git request and page is one, so
-	// keeping every one costs more than it tells, and a quarter still
-	// catches a rare error within hours. Slow answers still show: an RPC
-	// answer that took a second or more logs `{"rpc", "answered_ms"}`
-	// (src/lib.rs, SLOW_RPC_MS) and a slow or partial About run
-	// `{"about_run", "took_ms"}` (src/about.rs), so in the quarter kept they
-	// can be counted by method without reading request lines.
-	"observability": { "enabled": true, "head_sampling_rate": 0.25 }
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "g1t-repos",
+  "account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+  "compatibility_date": "2026-09-26",
+  // Runs next to its database: a request makes several queries in turn,
+  // and each would otherwise cross the distance to it.
+  "placement": { "mode": "off" },
+  "main": "build/index.js",
+  "build": { "command": "node ../../scripts/build-rust-worker.mjs" },
+  "workers_dev": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "g1t-repos",
+      "database_id": "f9544c51-c3bf-4621-a96f-8a6d5cf24a97",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // The git store: Cloudflare Artifacts, bound as GITSTORE (so "artifacts"
+  // in code means g1t's own Artifacts; the namespaces keep their names).
+  // Every repository made before sharding is in `g1t`.
+  // More namespaces (src/shards.rs) are more bindings, named in
+  // GITSTORE_NAMESPACES below, e.g.
+  //   { "binding": "GITSTORE_1", "namespace": "g1t-us-1" },
+  //   { "binding": "GITSTORE_EU", "namespace": "g1t-eu" }
+  // and new repositories go to those named in GITSTORE_NEW_REPOS. A
+  // namespace's jurisdiction is set when it is made, never in the binding.
+  "artifacts": [{ "binding": "GITSTORE", "namespace": "g1t" }],
+  // Shared between isolates (src/shared.rs): the git store's credentials
+  // (src/store.rs) and the ref listings git asks for first
+  // (src/refs_cache.rs), every value sealed with the REPOS_KEY secret (64
+  // hex characters). Without the binding or the secret each isolate keeps
+  // only its own. Made by `npx wrangler kv namespace create g1t-repos-git-cache`:
+  "kv_namespaces": [{ "binding": "GIT_CACHE", "id": "be765052d0124c2a935b3db4dff99f1f" }],
+  // Packs for fresh clones (wants and no haves), kept under the
+  // repository's refs version so the next clone of the same commit skips
+  // the git store (src/pack_cache.rs). Without the binding nothing is
+  // kept. Made with a lifecycle rule that deletes packs after 7 days and
+  // unfinished uploads after 1:
+  //   npx wrangler r2 bucket create g1t-git-packs
+  //   npx wrangler r2 bucket lifecycle add g1t-git-packs expire-packs packs/ --expire-days 7 --abort-multipart-days 1
+  // Nightly backups go to the second bucket: a git bundle per repository
+  // and a manifest of each chain (src/backups.rs). Made by
+  // `npx wrangler r2 bucket create g1t-backups`.
+  "r2_buckets": [
+    { "binding": "GIT_PACKS", "bucket_name": "g1t-git-packs" },
+    { "binding": "BACKUPS", "bucket_name": "g1t-backups" }
+  ],
+  "services": [
+    { "binding": "IDENTITY", "service": "g1t-identity" },
+    { "binding": "EVENTS", "service": "g1t-events" },
+    // Push protection asks which secrets were allowed, and records the rest.
+    { "binding": "SECURITY", "service": "g1t-security" },
+    // Whether a workspace far past its free git operations is on the
+    // plan (src/git_ops.rs); asked only then.
+    { "binding": "BILLING", "service": "g1t-billing" },
+    // Rulesets: which hold for a push or another change to a branch or
+    // tag, and where how they judged it is kept (src/rules.rs).
+    { "binding": "WORK", "service": "g1t-work" }
+  ],
+  // A free workspace past this many git operations in a month is slowed
+  // to this many an hour, never charged (src/git_ops.rs). It is billing's
+  // GIT_OPERATIONS_INCLUDED, the amount free for every workspace: past it,
+  // a workspace on the plan pays at cost plus 20% and is never slowed.
+  // FREE_PRIVATE_STORAGE_BYTES: a free workspace's private repositories may
+  // hold this much (1 GB); past it, pushes to them stop. Billing reads the
+  // same amount. FREE_PUBLIC_STORAGE_BYTES: every workspace's public
+  // repositories may hold this much together (5 GB); past it, pushes to
+  // them stop, including on paid plans. Nonpositive values retain 5 GB.
+  //
+  // The git store:
+  // REPO_STORAGE_LIMIT_BYTES: pushes stop before a repository holds this
+  //   much; the store holds 1 GB (src/pack_limits.rs).
+  // LARGE_PUSHES: a push too large to scan for secrets (24 MiB) is
+  //   "refuse"d, or streamed to the store "unscanned" (src/git_http.rs).
+  // FORK_RETENTION_DAYS: a pull request working copy is removed this long
+  //   after its pull request merges or closes (src/forks.rs).
+  // GITSTORE_NAMESPACES: JSON, each Artifacts binding and its namespace;
+  //   GITSTORE_NEW_REPOS: comma-separated namespaces new repositories go
+  //   to, the emptier healthy ones first (empty: g1t); GITSTORE_EU_NAMESPACE:
+  //   where workspaces that keep their data in the EU put new repositories,
+  //   and unset until that namespace exists (src/shards.rs);
+  //   GITSTORE_NAMESPACE_LIMITS (optional): JSON, {"g1t": {"max_repos": N}},
+  //   past which a namespace takes no new repositories while another can.
+  //
+  // The fallback git store (src/fallback.rs), all
+  // unset: nothing changes. Set as secrets, so switching takes no build:
+  //   npx wrangler secret put GIT_FALLBACK_URL         # https://gitstore.example
+  //   npx wrangler secret put GIT_FALLBACK_SECRET      # the store's API secret
+  //   npx wrangler secret put GIT_FALLBACK_NAMESPACES  # g1t (or g1t,g1t-us-1, or *)
+  // GIT_FALLBACK_WRITES: unset or "refuse" keeps a switched namespace
+  //   read-only; "allow" lets it take pushes (reconcile them afterwards).
+  // GITSTORE_REMOTE_BASE (optional): where remotes start,
+  //   https://<account>.artifacts.cloudflare.net/git, so a new isolate
+  //   needs no info() call before its first credential (src/store.rs).
+  //
+  // Backups (src/backups.rs):
+  // BACKUP_STORE: r2 (the BACKUPS bucket) or s3 (BACKUP_S3_BUCKET on the
+  //   installation's S3_ENDPOINT, as self-hosting uses).
+  // BACKUPS_PER_NIGHT: how many repositories one night queues, those
+  //   longest since their last backup first.
+  // BACKUP_FULL_EVERY: incremental bundles before a full one again.
+  "vars": {
+    "BACKUP_STORE": "r2",
+    "BACKUPS_PER_NIGHT": "200",
+    "BACKUP_FULL_EVERY": "30",
+    "GIT_OPERATIONS_FREE_CAP": "50000",
+    "GIT_OPERATIONS_FREE_HOURLY": "60",
+    "FREE_PRIVATE_STORAGE_BYTES": "1000000000",
+    "FREE_PUBLIC_STORAGE_BYTES": "5000000000",
+    "REPO_STORAGE_LIMIT_BYTES": "950000000",
+    "LARGE_PUSHES": "unscanned",
+    "FORK_RETENTION_DAYS": "1",
+    "GITSTORE_NAMESPACES": "{\"GITSTORE\":\"g1t\"}",
+    "GITSTORE_NEW_REPOS": ""
+  },
+  // Every hour, deleted repositories whose 30 days to be restored have
+  // passed are purged, their git data with them (src/lifecycle.rs), and
+  // pull request working copies past FORK_RETENTION_DAYS are removed
+  // (src/forks.rs), and a repository queued to move to another namespace
+  // is moved (src/moves.rs). At 02:53 UTC, the repositories whose refs moved since
+  // their last backup are queued for one (src/backups.rs, BACKUP_CRON);
+  // the runner's sweep starts them a few at a time.
+  "triggers": { "crons": ["23 * * * *", "53 2 * * *"] },
+  // A workspace renamed moves its repositories to the new slug; one
+  // deleted purges the repositories it left in Recently deleted.
+  "queues": {
+    "consumers": [{ "queue": "g1t-events-repos", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
+  },
+  // What an anonymous clone can cost a repository's owner (src/limits.rs):
+  // packs written to GIT_PACKS, and anonymous fetches the git store
+  // answers, each per repository. Ids and limits: RATE_LIMITS in
+  // packages/contracts. Without them, nothing is limited.
+  "ratelimits": [
+    { "name": "PACK_FILL_LIMIT", "namespace_id": "4301", "simple": { "limit": 30, "period": 60 } },
+    { "name": "ANONYMOUS_FETCH_LIMIT", "namespace_id": "4302", "simple": { "limit": 120, "period": 60 } }
+  ],
+  // Logs of a quarter of requests: every git request and page is one, so
+  // keeping every one costs more than it tells, and a quarter still
+  // catches a rare error within hours. Slow answers still show: an RPC
+  // answer that took a second or more logs `{"rpc", "answered_ms"}`
+  // (src/lib.rs, SLOW_RPC_MS) and a slow or partial About run
+  // `{"about_run", "took_ms"}` (src/about.rs), so in the quarter kept they
+  // can be counted by method without reading request lines.
+  "observability": { "enabled": true, "head_sampling_rate": 0.25 }
 }

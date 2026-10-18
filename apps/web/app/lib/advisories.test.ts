@@ -40,7 +40,10 @@ test("a report needs a title and a description, and an email when signed out", (
   assert.equal(signedIn.severity, "medium");
   assert.equal(signedIn.email, null);
   assert.equal(reportFromForm(form({ title: "XSS", description: "…" }), false), "Give an email address the maintainers can answer at, or sign in.");
-  assert.equal(reportFromForm(form({ title: "XSS", description: "…", email: "not an address" }), false), "Give an email address the maintainers can answer at, or sign in.");
+  assert.equal(
+    reportFromForm(form({ title: "XSS", description: "…", email: "not an address" }), false),
+    "Give an email address the maintainers can answer at, or sign in.",
+  );
   const signedOut = reportFromForm(form({ title: "XSS", description: "…", email: "finder@example.com", severity: "nope" }), false);
   assert.ok(typeof signedOut !== "string");
   assert.equal(signedOut.email, "finder@example.com");
@@ -56,6 +59,12 @@ test("states and severities parse only to what is known", () => {
   assert.equal(parseAdvisoryState("gone"), null);
   assert.equal(parseReportState("new"), "new");
   assert.deepEqual(advisoryStanding({ state: "draft", createdBy: "ana" }), { verb: "Drafted by ana", at: null });
-  assert.deepEqual(advisoryStanding({ state: "published", createdBy: "ana", publishedAt: "2026-10-07T15:02:40.000Z" }), { verb: "Published", at: "2026-10-07T15:02:40.000Z" });
-  assert.deepEqual(advisoryStanding({ state: "withdrawn", createdBy: "ana", withdrawnAt: "2026-10-08T00:00:00.000Z" }), { verb: "Withdrawn", at: "2026-10-08T00:00:00.000Z" });
+  assert.deepEqual(advisoryStanding({ state: "published", createdBy: "ana", publishedAt: "2026-10-07T15:02:40.000Z" }), {
+    verb: "Published",
+    at: "2026-10-07T15:02:40.000Z",
+  });
+  assert.deepEqual(advisoryStanding({ state: "withdrawn", createdBy: "ana", withdrawnAt: "2026-10-08T00:00:00.000Z" }), {
+    verb: "Withdrawn",
+    at: "2026-10-08T00:00:00.000Z",
+  });
 });

@@ -3,7 +3,15 @@ import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
 import { useBusy } from "../lib/busy";
-import { BACKEND_LABEL, type DesktopRunnerCapability, type DesktopRunnerView, desktopRunner, jobHref, kindStatusKey, runnerStatusKey } from "../lib/desktop-runner";
+import {
+  BACKEND_LABEL,
+  type DesktopRunnerCapability,
+  type DesktopRunnerView,
+  desktopRunner,
+  jobHref,
+  kindStatusKey,
+  runnerStatusKey,
+} from "../lib/desktop-runner";
 import { cn } from "../lib/cn";
 import { ActButton, Actions, BADGE, DOT, ICON, Toggle } from "./desktop-runners";
 import { TimeAgo } from "./ui";
@@ -42,7 +50,10 @@ export function DesktopRunnerMenu({
   onSettings: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
-  const fail = useCallback((reason: unknown) => setError(reason instanceof Error ? reason.message : typeof reason === "string" ? reason : "That didn't work."), []);
+  const fail = useCallback(
+    (reason: unknown) => setError(reason instanceof Error ? reason.message : typeof reason === "string" ? reason : "That didn't work."),
+    [],
+  );
   return (
     <Popover
       open={open && runner !== null}
@@ -99,7 +110,9 @@ function MenuBody({ runner, fail, onSettings }: { runner: DesktopRunnerView; fai
             {chip.label}
           </p>
           <p className="truncate text-xs text-muted">
-            {[BACKEND_LABEL[runner.backend], runner.workspace ? `for ${runner.workspace}` : null, runner.version ? `g1t-runner ${runner.version}` : null].filter(Boolean).join(" · ")}
+            {[BACKEND_LABEL[runner.backend], runner.workspace ? `for ${runner.workspace}` : null, runner.version ? `g1t-runner ${runner.version}` : null]
+              .filter(Boolean)
+              .join(" · ")}
           </p>
         </div>
         <Button
@@ -201,7 +214,9 @@ function KindRow({ kind, runner, fail }: { kind: DesktopRunnerCapability; runner
   return (
     <li className="space-y-2 px-4 py-3">
       <div className="flex items-center gap-2.5">
-        <span className={cn("grid size-7 shrink-0 place-items-center rounded-md bg-raised", kind.enabled === false ? "text-faint" : "text-fg-soft")}>{ICON[kind.id] ?? ICON.linux}</span>
+        <span className={cn("grid size-7 shrink-0 place-items-center rounded-md bg-raised", kind.enabled === false ? "text-faint" : "text-fg-soft")}>
+          {ICON[kind.id] ?? ICON.linux}
+        </span>
         <div className="min-w-0 grow">
           <p className="truncate text-sm font-medium text-fg">{kind.label}</p>
           <Badge tone={BADGE[kind.tone]} role="status">

@@ -8,10 +8,10 @@ secrets and variables.
 Workflows and deployments both read from it; each row says whether one,
 the other or both do, and which environments it applies to.
 
-| Where | Page | Who sees and changes it |
-| --- | --- | --- |
-| A project | **Settings → Secrets and variables**, `g1t.sh/<workspace>/<project>/settings/secrets` | People with the Admin [role](/guides/access-and-roles/) on its repository |
-| A workspace | **Settings → Secrets and variables**, `g1t.sh/<workspace>/-/secrets` | Owners |
+| Where       | Page                                                                                  | Who sees and changes it                                                   |
+| ----------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| A project   | **Settings → Secrets and variables**, `g1t.sh/<workspace>/<project>/settings/secrets` | People with the Admin [role](/guides/access-and-roles/) on its repository |
+| A workspace | **Settings → Secrets and variables**, `g1t.sh/<workspace>/-/secrets`                  | Owners                                                                    |
 
 Seeing the list needs the same as changing it: a project's rows, config
 values included, are for Admins of its repository, and the page is not
@@ -23,16 +23,16 @@ here: it can sign in with the job's short-lived
 
 ## A row
 
-| Field | |
-| --- | --- |
-| **Type** | **Secret**: sealed when saved and never shown again, hidden in logs. For passwords, API keys and tokens. **Config**: readable by whoever may see the list. For values that are not sensitive. Config can be changed to a secret; a secret can never become config. |
-| **Key** | Letters, digits and underscores, not starting with a digit, upper-cased: `STRIPE_KEY`. Keys starting with `G1T_` or `GITHUB_` are g1t's own. |
-| **Value** | Up to 48 KB. |
-| **Brokered** | A secret only: the hosts it is for. Jobs get a stand-in, and g1t fills in the value on their requests to those hosts. See [brokered secrets](#brokered-secrets). |
-| **Note** | Optional: where to rotate it, or who to ask. |
-| **Environments** | **All environments**, or only some: **Production**, **Preview**, or any name a workflow job uses in `environment:`, such as `staging`. |
-| **Available to** | **Workflows**, **Deployments**, or both (the default). |
-| **Projects** | A workspace's row only: every project, or the ones you choose. |
+| Field            |                                                                                                                                                                                                                                                                    |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Type**         | **Secret**: sealed when saved and never shown again, hidden in logs. For passwords, API keys and tokens. **Config**: readable by whoever may see the list. For values that are not sensitive. Config can be changed to a secret; a secret can never become config. |
+| **Key**          | Letters, digits and underscores, not starting with a digit, upper-cased: `STRIPE_KEY`. Keys starting with `G1T_` or `GITHUB_` are g1t's own.                                                                                                                       |
+| **Value**        | Up to 48 KB.                                                                                                                                                                                                                                                       |
+| **Brokered**     | A secret only: the hosts it is for. Jobs get a stand-in, and g1t fills in the value on their requests to those hosts. See [brokered secrets](#brokered-secrets).                                                                                                   |
+| **Note**         | Optional: where to rotate it, or who to ask.                                                                                                                                                                                                                       |
+| **Environments** | **All environments**, or only some: **Production**, **Preview**, or any name a workflow job uses in `environment:`, such as `staging`.                                                                                                                             |
+| **Available to** | **Workflows**, **Deployments**, or both (the default).                                                                                                                                                                                                             |
+| **Projects**     | A workspace's row only: every project, or the ones you choose.                                                                                                                                                                                                     |
 
 ### A value per environment
 
@@ -40,10 +40,10 @@ A key can have one row per environment, so production and previews use
 different values. For example, Stripe's live key in production and its
 test key everywhere else:
 
-| Key | Type | Environments | Value |
-| --- | --- | --- | --- |
-| `STRIPE_KEY` | Secret | Production | `sk_live_…` |
-| `STRIPE_KEY` | Secret | Preview | `sk_test_…` |
+| Key          | Type   | Environments | Value       |
+| ------------ | ------ | ------------ | ----------- |
+| `STRIPE_KEY` | Secret | Production   | `sk_live_…` |
+| `STRIPE_KEY` | Secret | Preview      | `sk_test_…` |
 
 Two rows of the same key and type cannot apply to the same environment.
 A key can also have a row for all environments alongside rows for some:
@@ -57,12 +57,12 @@ choose; blank lines and `#` comments are skipped.
 
 ## Who reads what
 
-| Reader | Reads | Environment it asks for |
-| --- | --- | --- |
-| A workflow job | Rows available to Workflows: secrets as `${{ secrets.KEY }}`, config as `${{ vars.KEY }}` | The job's `environment:`, if it has one |
-| A deploy build | Rows available to Deployments, as environment variables | `production` or `preview` |
-| A running app | The same rows, as bindings: `env.KEY` (a secret as a secret binding) | `production` or `preview` |
-| The merge queue's builds | Nothing | |
+| Reader                   | Reads                                                                                     | Environment it asks for                 |
+| ------------------------ | ----------------------------------------------------------------------------------------- | --------------------------------------- |
+| A workflow job           | Rows available to Workflows: secrets as `${{ secrets.KEY }}`, config as `${{ vars.KEY }}` | The job's `environment:`, if it has one |
+| A deploy build           | Rows available to Deployments, as environment variables                                   | `production` or `preview`               |
+| A running app            | The same rows, as bindings: `env.KEY` (a secret as a secret binding)                      | `production` or `preview`               |
+| The merge queue's builds | Nothing                                                                                   |                                         |
 
 For each key, a reader gets the row for its environment if there is one,
 else the row for all environments. A row only for other environments gives
@@ -128,12 +128,12 @@ Workflows use it as they would any secret: `${{ secrets.NPM_TOKEN }}` in an
 
 ### Where the value is filled in
 
-| In the request | |
-| --- | --- |
-| Any header | As it is: `Authorization: Bearer …`, `Authorization: token …`, `X-Api-Key: …` |
-| `Authorization: Basic` | Decoded, filled in, and encoded again, so `user:$TOKEN` works |
-| The query string | `?key=…`, encoded for the URL |
-| The path and the body | Never: the stand-in goes as it is |
+| In the request         |                                                                               |
+| ---------------------- | ----------------------------------------------------------------------------- |
+| Any header             | As it is: `Authorization: Bearer …`, `Authorization: token …`, `X-Api-Key: …` |
+| `Authorization: Basic` | Decoded, filled in, and encoded again, so `user:$TOKEN` works                 |
+| The query string       | `?key=…`, encoded for the URL                                                 |
+| The path and the body  | Never: the stand-in goes as it is                                             |
 
 A request to a host the secret is not for goes out with the stand-in,
 which is useless to whoever receives it, and the job's log says so once:
@@ -206,12 +206,12 @@ hosts its requests go to g1t for.
 Requests to brokered hosts take the longer way, through g1t, so they are
 a little slower, and have limits:
 
-| Limit | |
-| --- | --- |
-| A request's body | 32 MB |
-| An answer's body | 1 GB |
-| One request, its answer included | 10 minutes |
-| HTTP versions | HTTP/1.1 between the job and the runner; plain HTTP is never filled in, and `HTTP_PROXY` is left as your computer has it |
+| Limit                            |                                                                                                                          |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| A request's body                 | 32 MB                                                                                                                    |
+| An answer's body                 | 1 GB                                                                                                                     |
+| One request, its answer included | 10 minutes                                                                                                               |
+| HTTP versions                    | HTTP/1.1 between the job and the runner; plain HTTP is never filled in, and `HTTP_PROXY` is left as your computer has it |
 
 What a self-hosted runner does not cover:
 
@@ -273,25 +273,25 @@ The routes are GitHub's, and calls written for GitHub work unchanged: a
 key named without an `id` or `environments` is the key's row for all
 environments.
 
-| MCP (`secret` tool) | Route |
-| --- | --- |
-| `list_secrets` | `GET /repos/{owner}/{repo}/actions/secrets` |
-| `set_secret` | `PUT /repos/{owner}/{repo}/actions/secrets/{key}` |
-| `delete_secret` | `DELETE /repos/{owner}/{repo}/actions/secrets/{key}` |
-| `list_variables` | `GET /repos/{owner}/{repo}/actions/variables` |
-| `set_variable` | `POST /repos/{owner}/{repo}/actions/variables`, `PATCH …/variables/{key}` |
-| `delete_variable` | `DELETE /repos/{owner}/{repo}/actions/variables/{key}` |
+| MCP (`secret` tool) | Route                                                                     |
+| ------------------- | ------------------------------------------------------------------------- |
+| `list_secrets`      | `GET /repos/{owner}/{repo}/actions/secrets`                               |
+| `set_secret`        | `PUT /repos/{owner}/{repo}/actions/secrets/{key}`                         |
+| `delete_secret`     | `DELETE /repos/{owner}/{repo}/actions/secrets/{key}`                      |
+| `list_variables`    | `GET /repos/{owner}/{repo}/actions/variables`                             |
+| `set_variable`      | `POST /repos/{owner}/{repo}/actions/variables`, `PATCH …/variables/{key}` |
+| `delete_variable`   | `DELETE /repos/{owner}/{repo}/actions/variables/{key}`                    |
 
 A workspace's are under `/workspaces/{workspace}/actions/secrets` and
 `…/variables`. Beyond GitHub's fields, a row takes:
 
-| Field | |
-| --- | --- |
-| `id` | The row to change or remove, from a list. |
-| `available_to` | `["workflows"]`, `["deployments"]` or both. `availableTo` works too. |
-| `environments` | `["production"]`, `["preview", "staging"]`; `[]` for all. |
-| `projects` | A workspace's row: project names; `[]` for every one. (`repositories` is read the same way.) |
-| `note` | Where to rotate it, or who to ask. |
+| Field            |                                                                                                                                                  |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `id`             | The row to change or remove, from a list.                                                                                                        |
+| `available_to`   | `["workflows"]`, `["deployments"]` or both. `availableTo` works too.                                                                             |
+| `environments`   | `["production"]`, `["preview", "staging"]`; `[]` for all.                                                                                        |
+| `projects`       | A workspace's row: project names; `[]` for every one. (`repositories` is read the same way.)                                                     |
+| `note`           | Where to rotate it, or who to ask.                                                                                                               |
 | `brokered_hosts` | A secret's: `["registry.npmjs.org"]`, `["*.example.com"]` to [broker it](#brokered-secrets); `[]` stops brokering it. Listed rows return it too. |
 
 ```sh

@@ -65,7 +65,14 @@ test("what a file's colours depend on: each line's side and text, not its number
   const one: FileDiff = { ...FILE, hunks: [{ lines: [{ kind: "add", old: null, new: 1, text: "a\nb" }] }] };
   const two: FileDiff = {
     ...FILE,
-    hunks: [{ lines: [{ kind: "add", old: null, new: 1, text: "a" }, { kind: "add", old: null, new: 2, text: "b" }] }],
+    hunks: [
+      {
+        lines: [
+          { kind: "add", old: null, new: 1, text: "a" },
+          { kind: "add", old: null, new: 2, text: "b" },
+        ],
+      },
+    ],
   };
   assert.notEqual(diffContent(one), diffContent(two));
 });
@@ -105,7 +112,10 @@ test("past the first screens' lines, files are sent with their counts but not th
   assert.equal(later.path, "f7");
   // Once one does not fit, a smaller one after it waits too: what is drawn is the top of the change.
   const mixed = firstScreens(comparisonOf([sized("a", 800), sized("b", 900), sized("c", 10)]), { budget: 1_000 });
-  assert.deepEqual(mixed.files.map((file) => file.deferred?.lines ?? null), [null, 900, 10]);
+  assert.deepEqual(
+    mixed.files.map((file) => file.deferred?.lines ?? null),
+    [null, 900, 10],
+  );
 });
 
 test("a very large file waits to be asked for, and does not hold back the files after it", () => {

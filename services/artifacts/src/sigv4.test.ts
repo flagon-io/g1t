@@ -17,7 +17,10 @@ test("signs AWS's get-vanilla test vector", async () => {
     date: new Date("2015-08-30T12:36:00Z"),
   });
   assert.equal(signed.canonical_request, `GET\n/\n\nhost:example.amazonaws.com\nx-amz-date:20150830T123600Z\n\nhost;x-amz-date\n${EMPTY}`);
-  assert.equal(signed.string_to_sign, "AWS4-HMAC-SHA256\n20150830T123600Z\n20150830/us-east-1/service/aws4_request\nbb579772317eb040ac9ed261061d46c1f17a8133879d6129b6e1c25292927e63");
+  assert.equal(
+    signed.string_to_sign,
+    "AWS4-HMAC-SHA256\n20150830T123600Z\n20150830/us-east-1/service/aws4_request\nbb579772317eb040ac9ed261061d46c1f17a8133879d6129b6e1c25292927e63",
+  );
   assert.equal(signed.signature, "5fa00fa31553b73ebf1942676e86291e8372ff2a2260956d9b8aae1d763fbf31");
   assert.equal(
     signed.headers.authorization,

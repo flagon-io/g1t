@@ -125,12 +125,7 @@ export type ContainerCosts = {
  * whole vCPU while it is awake, so it never sells below cost.
  */
 export function containerSecondMicros(instance: AppInstance, costs: ContainerCosts): number {
-  return (
-    instance.vcpu * costs.vcpuSecond +
-    instance.memoryGib * costs.memoryGibSecond +
-    instance.diskGb * costs.diskGbSecond +
-    costs.instanceSecond
-  );
+  return instance.vcpu * costs.vcpuSecond + instance.memoryGib * costs.memoryGibSecond + instance.diskGb * costs.diskGbSecond + costs.instanceSecond;
 }
 
 /** One size as Settings, Deployments shows it: what an hour awake is charged, the margin included. */

@@ -262,8 +262,7 @@ export function testOnlySource(file, crateDirs, { read, list = () => [] }, depth
   // are declared by `a.rs` or `a/mod.rs` (by `lib.rs` or `main.rs` in src).
   const name = base === "mod" ? baseOf(dir) : base;
   const parentDir = base === "mod" ? dirOf(dir) : dir;
-  const parents =
-    parentDir === src ? [`${src}/lib.rs`, `${src}/main.rs`] : [`${parentDir}/mod.rs`, `${dirOf(parentDir)}/${baseOf(parentDir)}.rs`];
+  const parents = parentDir === src ? [`${src}/lib.rs`, `${src}/main.rs`] : [`${parentDir}/mod.rs`, `${dirOf(parentDir)}/${baseOf(parentDir)}.rs`];
   // One declaration that is built is enough to stop: most changed files
   // are ordinary modules, settled by reading their parent.
   let declared = false;
@@ -307,9 +306,7 @@ export function touches(unit, files) {
 /** Whether changed files touch a unit's Containers image. */
 export function touchesImage(unit, files) {
   if (!unit.image) return false;
-  return files.some(
-    (file) => unit.image.files.includes(file) || (unit.image.dirs.some((dir) => under(file, dir)) && !inCrateTests(file, unit.image.dirs)),
-  );
+  return files.some((file) => unit.image.files.includes(file) || (unit.image.dirs.some((dir) => under(file, dir)) && !inCrateTests(file, unit.image.dirs)));
 }
 
 /** Whether changed files touch the folder a unit's base image is built from. */
@@ -319,7 +316,10 @@ export function touchesBase(unit, files) {
 
 /** Units named on the command line: short names, folders or Worker names. */
 export function pick(stack, names) {
-  const wanted = names.flatMap((name) => name.split(",")).map((name) => name.trim().replace(/\/$/, "")).filter(Boolean);
+  const wanted = names
+    .flatMap((name) => name.split(","))
+    .map((name) => name.trim().replace(/\/$/, ""))
+    .filter(Boolean);
   const found = [];
   for (const name of wanted) {
     const unit = stack.units.find((u) => u.id === name || u.path === name || u.worker === name);

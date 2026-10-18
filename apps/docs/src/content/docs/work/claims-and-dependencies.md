@@ -50,7 +50,7 @@ repositories see each other's claims on the same work item.
   [`POST /workspaces/{workspace}/work/{number}/release`](/reference/api/work-items/release-claim/),
   with an optional `reason`.
 - **Hand it off** with `work_item` `handoff`, `g1t work handoff 12 --note
-  "…"`, or
+"…"`, or
   [`POST /workspaces/{workspace}/work/{number}/handoff`](/reference/api/work-items/hand-off-work-item/),
   with a `note` on where the work stands, for `to` (a username) or anyone.
   When whoever it was for claims the work item, their `work.claimed` event
@@ -68,12 +68,12 @@ curl -X POST https://api.g1t.sh/workspaces/acme/claims \
   -d '{"session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2", "repo": "acme/web", "title": "Preview builds time out on large repositories"}'
 ```
 
-| | |
-| --- | --- |
-| How long a claim lasts | `ttl_minutes`: 30 unless you say, at most 240 (`--ttl 2h` on the CLI). |
-| Filing its work item | `title` (and `body`) instead of `number`. Giving both is refused with `422`. |
-| When it ends | Released, handed off, its work item closed (`reason` `item_closed`), or not renewed in time (`expired`). |
-| States | `active`, `released`, `expired`, `handed_off`. |
+|                        |                                                                                                          |
+| ---------------------- | -------------------------------------------------------------------------------------------------------- |
+| How long a claim lasts | `ttl_minutes`: 30 unless you say, at most 240 (`--ttl 2h` on the CLI).                                   |
+| Filing its work item   | `title` (and `body`) instead of `number`. Giving both is refused with `422`.                             |
+| When it ends           | Released, handed off, its work item closed (`reason` `item_closed`), or not renewed in time (`expired`). |
+| States                 | `active`, `released`, `expired`, `handed_off`.                                                           |
 
 See who is on what with `work_item` `list_claims`, `g1t work status`, or
 [`GET /repos/{owner}/{name}/claims`](/reference/api/work-items/list-claims/):
@@ -164,11 +164,11 @@ out).
 
 An active session receives the updates that concern it:
 
-| The session is | It receives |
-| --- | --- |
+| The session is                                                                                 | It receives                                                                                                                                                                                                                                  |
+| ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Attached to a work item or pull request, or tied to one (a claim, its branch, a `#N` it named) | Updates about that work item or pull request: its claims, decisions, overlaps, dependency changes and merge-queue results, and those that name it, such as an integration failure listing it as a suspect or a work item newly blocked by it |
-| Not on anything yet | Every update, so it can find who else is working and on what |
-| Either | Updates about nothing in particular, such as a session starting without a work item; and an overlap between its own files and another session's, which goes only to the two sessions |
+| Not on anything yet                                                                            | Every update, so it can find who else is working and on what                                                                                                                                                                                 |
+| Either                                                                                         | Updates about nothing in particular, such as a session starting without a work item; and an overlap between its own files and another session's, which goes only to the two sessions                                                         |
 
 A session does not receive its own start or end, or the claims it made,
 released or handed off. It does hear when its claim expires. A new session
@@ -221,17 +221,17 @@ deliver and Sessions' **What happened** lists. Each carries `number` (the
 work item or pull request it is about) and `item` (the work item's number
 in the workspace) where there is one.
 
-| Event | When |
-| --- | --- |
-| `session.started` | A session (or a subagent) starts, or one that ended starts again. Not on a repeated start. |
-| `session.ended` | A session ends, or times out after 30 minutes without a heartbeat. |
-| `session.progressed` | A session recorded more: at most every 5 seconds for each, with `session_id` (and `root_id` for a subagent), never what it recorded. Pages showing the session follow it with this. |
-| `work.claimed` | Someone claims a work item. `others` lists the claims already on it; `took_over` names a hand-off it takes. |
-| `work.released` | A claim is released, or its work item closed (`reason` `item_closed`). |
-| `work.claim_expired` | A claim was not renewed in time. |
-| `work.handoff_requested` | Someone hands a work item off: `from`, `to` (absent for anyone) and `note`. |
-| `dependency.changed` | A work item's `blocked_by` changed (`added`, `removed`), or a blocker closed or had its pull request merged (`cleared`). `remaining` lists the blockers still open. |
-| `overlap.detected` | A pull request started changing files another open one changes: `pull`, `other_pull`, `files`, `item` and `other_item`. Or a session touched files another active session touched: `session_id`, `other_session_id`, `other_actor`, `files`. |
+| Event                    | When                                                                                                                                                                                                                                         |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `session.started`        | A session (or a subagent) starts, or one that ended starts again. Not on a repeated start.                                                                                                                                                   |
+| `session.ended`          | A session ends, or times out after 30 minutes without a heartbeat.                                                                                                                                                                           |
+| `session.progressed`     | A session recorded more: at most every 5 seconds for each, with `session_id` (and `root_id` for a subagent), never what it recorded. Pages showing the session follow it with this.                                                          |
+| `work.claimed`           | Someone claims a work item. `others` lists the claims already on it; `took_over` names a hand-off it takes.                                                                                                                                  |
+| `work.released`          | A claim is released, or its work item closed (`reason` `item_closed`).                                                                                                                                                                       |
+| `work.claim_expired`     | A claim was not renewed in time.                                                                                                                                                                                                             |
+| `work.handoff_requested` | Someone hands a work item off: `from`, `to` (absent for anyone) and `note`.                                                                                                                                                                  |
+| `dependency.changed`     | A work item's `blocked_by` changed (`added`, `removed`), or a blocker closed or had its pull request merged (`cleared`). `remaining` lists the blockers still open.                                                                          |
+| `overlap.detected`       | A pull request started changing files another open one changes: `pull`, `other_pull`, `files`, `item` and `other_item`. Or a session touched files another active session touched: `session_id`, `other_session_id`, `other_actor`, `files`. |
 
 A session or claim that went quiet is announced as ended or expired when
 the repository's sessions or claims are next read or changed, not at the
@@ -239,15 +239,15 @@ minute it lapsed.
 
 ## Who may do what
 
-| To | You need |
-| --- | --- |
-| Read sessions and claims | To be able to read the repository. Public repositories need no token. What a session shows depends on who you are: see [who sees what](/work/sessions/#who-sees-what). |
-| Read a workspace's **Sessions** | It lists the sessions of the workspace's repositories you can read; g1t's own agent's sessions only for members. |
-| Read a work item's context | To be able to see the work item: see [who sees a work item](/work/work-items/#who-sees-a-work-item). |
-| Start a session, claim a work item, file one by claiming it | A confirmed email address and a role that may file work items; the repository must not be archived. |
-| Update, record in or end a session | To be the person whose token started it. Ending one by hand: also anyone with write access. |
-| Release a claim or hand it off | To be the person who made it. |
-| Set `blocked_by` | To be the work item's owner, or the Triage role. |
+| To                                                          | You need                                                                                                                                                               |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Read sessions and claims                                    | To be able to read the repository. Public repositories need no token. What a session shows depends on who you are: see [who sees what](/work/sessions/#who-sees-what). |
+| Read a workspace's **Sessions**                             | It lists the sessions of the workspace's repositories you can read; g1t's own agent's sessions only for members.                                                       |
+| Read a work item's context                                  | To be able to see the work item: see [who sees a work item](/work/work-items/#who-sees-a-work-item).                                                                   |
+| Start a session, claim a work item, file one by claiming it | A confirmed email address and a role that may file work items; the repository must not be archived.                                                                    |
+| Update, record in or end a session                          | To be the person whose token started it. Ending one by hand: also anyone with write access.                                                                            |
+| Release a claim or hand it off                              | To be the person who made it.                                                                                                                                          |
+| Set `blocked_by`                                            | To be the work item's owner, or the Triage role.                                                                                                                       |
 
 With an access token, sessions need `pull_requests:read` or
 `pull_requests:write`, and claims and the work context need `work:read` or

@@ -51,7 +51,10 @@ export default function SecurityReport({ loaderData, actionData, params }: Route
   if (actionData?.sent) {
     return (
       <div className="max-w-3xl space-y-6">
-        <SectionHeader title="Thank you" about="Your report reached the maintainers, and only them. They will look into it and answer you when there is news." />
+        <SectionHeader
+          title="Thank you"
+          about="Your report reached the maintainers, and only them. They will look into it and answer you when there is news."
+        />
         <ButtonLink to={`${base}/security`} variant="outline">
           Back to Security
         </ButtonLink>

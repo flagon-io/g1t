@@ -70,7 +70,11 @@ function AppTabs() {
           title: "Chat",
           tabBarIcon: (props) => <BarIcon icon={MessagesSquare} {...props} />,
           tabBarBadge: badge,
-          tabBarBadgeStyle: { backgroundColor: mentions > 0 ? colors.accent : colors.lineStrong, color: mentions > 0 ? colors.onAccent : colors.fg, fontSize: 11 },
+          tabBarBadgeStyle: {
+            backgroundColor: mentions > 0 ? colors.accent : colors.lineStrong,
+            color: mentions > 0 ? colors.onAccent : colors.fg,
+            fontSize: 11,
+          },
         }}
       />
       <Tabs.Screen name="notifications" options={{ title: "Notifications", tabBarIcon: (props) => <BarIcon icon={Bell} {...props} /> }} />
@@ -85,7 +89,16 @@ function AppTabs() {
 function BarIcon({ icon: Icon, focused }: { icon: LucideIcon | ComponentType<{ color: string; size: number }>; focused: boolean }) {
   const colors = useColors();
   return (
-    <View style={{ width: 44, height: 28, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: focused ? colors.railAccent : "transparent" }}>
+    <View
+      style={{
+        width: 44,
+        height: 28,
+        borderRadius: 10,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: focused ? colors.railAccent : "transparent",
+      }}
+    >
       <Icon color={focused ? colors.fg : colors.muted} size={20} />
     </View>
   );

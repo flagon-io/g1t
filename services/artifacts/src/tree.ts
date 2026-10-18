@@ -31,12 +31,7 @@ export function lastPosition(rows: TreeRow[], parent: string | null): number {
  * end): its new position, and any siblings that had to be renumbered to
  * make room (`renumber`), as id → position.
  */
-export function placeBefore(
-  rows: TreeRow[],
-  id: string,
-  parent: string | null,
-  beforeId: string | null,
-): { position: number; renumber: Map<string, number> } {
+export function placeBefore(rows: TreeRow[], id: string, parent: string | null, beforeId: string | null): { position: number; renumber: Map<string, number> } {
   const siblings = childrenOf(rows, parent).filter((r) => r.id !== id);
   const at = beforeId ? siblings.findIndex((r) => r.id === beforeId) : -1;
   if (at < 0) {

@@ -34,7 +34,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const user = requireUser(context, request);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
-  const name = String(form.get("repo") ?? "").trim().replace(/^.*\//, "");
+  const name = String(form.get("repo") ?? "")
+    .trim()
+    .replace(/^.*\//, "");
   if (!name) return { intent, repo: name, error: "Choose a repository." };
   if (intent === "remove") {
     const removed = await identity.removeTeamRepo(user, params.owner, params.team, params.owner, name);
@@ -73,8 +75,8 @@ export default function TeamRepositories({ loaderData, actionData }: Route.Compo
   return (
     <div className="max-w-3xl space-y-6">
       <p className="text-sm text-muted">
-        Everyone in {team.name}, and in its child teams, has these roles. Where someone has a role another way too, the
-        highest one counts. Giving a team a role on a repository needs the Admin role there.
+        Everyone in {team.name}, and in its child teams, has these roles. Where someone has a role another way too, the highest one counts. Giving a team a role
+        on a repository needs the Admin role there.
       </p>
       {granted.length === 0 ? (
         <Card tone="plain" className="border-dashed px-6 py-10 text-center">
@@ -85,7 +87,12 @@ export default function TeamRepositories({ loaderData, actionData }: Route.Compo
         <Card asChild tone="plain" divided className="overflow-hidden">
           <ul>
             {granted.map((repo) => (
-              <RepoRow key={repo.repo_id} repo={repo} manage={team.can_manage} error={actionData?.repo === repo.repo.split("/")[1] && actionData.intent !== "add" ? actionData.error : null} />
+              <RepoRow
+                key={repo.repo_id}
+                repo={repo}
+                manage={team.can_manage}
+                error={actionData?.repo === repo.repo.split("/")[1] && actionData.intent !== "add" ? actionData.error : null}
+              />
             ))}
           </ul>
         </Card>
@@ -148,10 +155,7 @@ function RepoRow({ repo, manage, error }: { repo: TeamRepo; manage: boolean; err
           <Badge>{REPO_ROLE_LABELS[repo.role]}</Badge>
         ) : (
           <span className="flex items-center gap-1">
-            <RoleSelect
-              value={repo.role}
-              onValueChange={(role) => fetcher.submit({ intent: "role", repo: name, role }, { method: "post" })}
-            />
+            <RoleSelect value={repo.role} onValueChange={(role) => fetcher.submit({ intent: "role", repo: name, role }, { method: "post" })} />
             <Form method="post">
               <input type="hidden" name="intent" value="remove" />
               <input type="hidden" name="repo" value={name} />

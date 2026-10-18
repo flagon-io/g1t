@@ -4,12 +4,7 @@ import { test } from "node:test";
 import { isValue, qualifier, searchHref, shortCount, tokens, withIs, withQualifier } from "./search.ts";
 
 test("quoted runs stay whole", () => {
-  assert.deepEqual(tokens('parse "two words" label:"good first issue" x'), [
-    "parse",
-    '"two words"',
-    'label:"good first issue"',
-    "x",
-  ]);
+  assert.deepEqual(tokens('parse "two words" label:"good first issue" x'), ["parse", '"two words"', 'label:"good first issue"', "x"]);
 });
 
 test("a qualifier is read, quotes and all", () => {

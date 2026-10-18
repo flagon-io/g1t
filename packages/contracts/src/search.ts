@@ -104,18 +104,11 @@ export type Explore = {
 
 export interface SearchApi {
   /** One page of results of one type, with counts for every type. */
-  search(
-    viewer: Viewer,
-    query: string,
-    options?: { type?: SearchType | null; page?: number; perPage?: number },
-  ): Promise<Result<SearchResults>>;
+  search(viewer: Viewer, query: string, options?: { type?: SearchType | null; page?: number; perPage?: number }): Promise<Result<SearchResults>>;
   /** A few repositories, work items, pull requests and people, as someone types. */
   suggest(viewer: Viewer, query: string): Promise<SiteHit[]>;
   /** Public repositories, recently active or new, by language or topic. */
-  explore(
-    viewer: Viewer,
-    options?: { sort?: "active" | "new"; language?: string | null; topic?: string | null; page?: number },
-  ): Promise<Explore>;
+  explore(viewer: Viewer, options?: { sort?: "active" | "new"; language?: string | null; topic?: string | null; page?: number }): Promise<Explore>;
 }
 
 export function searchClient(service: ServiceBinding): SearchApi {

@@ -61,11 +61,7 @@ export function isValidRedirectUri(uri: string): boolean {
 export function encodeOAuthClient(client: OAuthClient): string | null {
   const name = client.name.trim().slice(0, MAX_NAME_CHARS) || "An application";
   const { redirectUris } = client;
-  if (
-    redirectUris.length === 0 ||
-    redirectUris.length > MAX_REDIRECTS ||
-    !redirectUris.every(isValidRedirectUri)
-  ) {
+  if (redirectUris.length === 0 || redirectUris.length > MAX_REDIRECTS || !redirectUris.every(isValidRedirectUri)) {
     return null;
   }
   return PREFIX + toBase64Url(JSON.stringify({ n: name, r: redirectUris }));

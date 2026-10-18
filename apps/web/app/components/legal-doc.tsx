@@ -49,8 +49,7 @@ export function PolicyText({ source }: { source: string }) {
               {children}
             </h3>
           ),
-          a: ({ href = "", children }) =>
-            href.startsWith("/") ? <Link to={href}>{children}</Link> : <a href={href}>{children}</a>,
+          a: ({ href = "", children }) => (href.startsWith("/") ? <Link to={href}>{children}</Link> : <a href={href}>{children}</a>),
           table: ({ children }) => (
             <div className="overflow-x-auto">
               <table>{children}</table>

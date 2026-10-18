@@ -56,7 +56,11 @@ export function sections(): Section[] {
     },
     {
       key: "Deployments",
-      tabs: [{ label: "Deployments", path: "deployments" }, { label: "Build configuration", path: "settings/deployments", members: true, needs: "manage_integrations" }, ...soon("Deployments")],
+      tabs: [
+        { label: "Deployments", path: "deployments" },
+        { label: "Build configuration", path: "settings/deployments", members: true, needs: "manage_integrations" },
+        ...soon("Deployments"),
+      ],
     },
     {
       key: "Observability",
@@ -116,9 +120,7 @@ function matches(rest: string, tab: Tab): boolean {
  */
 export function tabsFor(rest: string, member: boolean, can?: Partial<Abilities>): Tab[] | null {
   for (const section of [...sections(), PULLS]) {
-    const visible = section.tabs.filter(
-      (tab) => (member || !tab.members) && (!tab.needs || !can || Boolean(can[tab.needs])),
-    );
+    const visible = section.tabs.filter((tab) => (member || !tab.members) && (!tab.needs || !can || Boolean(can[tab.needs])));
     if (visible.length > 1 && visible.some((tab) => matches(rest, tab))) return visible;
   }
   return null;

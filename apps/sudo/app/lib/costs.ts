@@ -2,7 +2,18 @@
  * Costs & margin: the arithmetic behind the page, apart from the SVG and
  * the Workers runtime so it can be tested under Node. Money is in micros.
  */
-import type { BillRead, CloudflareCycle, CostDay, CostMappingInput, CostSettings, CycleMeter, OverallMargin, PauseLevel, PlatformGuard, SpendCaps } from "@g1t/contracts";
+import type {
+  BillRead,
+  CloudflareCycle,
+  CostDay,
+  CostMappingInput,
+  CostSettings,
+  CycleMeter,
+  OverallMargin,
+  PauseLevel,
+  PlatformGuard,
+  SpendCaps,
+} from "@g1t/contracts";
 
 import { parseDollars, usd } from "./money.ts";
 
@@ -276,9 +287,7 @@ export function parseMapping(form: FormData): Parsed<CostMappingInput> {
 export function spendBanner(caps: SpendCaps): string | null {
   const parts: string[] = [];
   if (caps.tripped) {
-    parts.push(
-      `the daily breaker is open (${usd(caps.todayMicros)} of ${usd(caps.dailyCapMicros)} today), so new work g1t pays for waits until 00:00 UTC`,
-    );
+    parts.push(`the daily breaker is open (${usd(caps.todayMicros)} of ${usd(caps.dailyCapMicros)} today), so new work g1t pays for waits until 00:00 UTC`);
   }
   for (const budget of caps.comped) {
     if (budget.ceilingMicros > 0 && budget.usedMicros >= budget.ceilingMicros) {

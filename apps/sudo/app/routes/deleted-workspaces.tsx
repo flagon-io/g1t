@@ -11,10 +11,7 @@ import { identity } from "~/lib/services.server";
 import { settle } from "~/lib/settle";
 import { requireStaff } from "~/lib/staff";
 
-export const meta: Route.MetaFunction = () => [
-  { title: "Deleted workspaces · sudo" },
-  { name: "robots", content: "noindex, nofollow" },
-];
+export const meta: Route.MetaFunction = () => [{ title: "Deleted workspaces · sudo" }, { name: "robots", content: "noindex, nofollow" }];
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   requireStaff(context);

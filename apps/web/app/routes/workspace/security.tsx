@@ -46,18 +46,14 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     for (const severity of SEVERITIES) total[severity] += project.counts[severity];
   }
   // Most to fix first.
-  projects.sort(
-    (a, b) =>
-      SEVERITIES.reduce((order, severity) => order || b.counts[severity] - a.counts[severity], 0) || a.name.localeCompare(b.name),
-  );
-  const full = !isFailed(overview) && overview.ok
-    ? {
-        ...overview.value,
-        repos: overview.value.repos
-          .filter((repo) => live.has(repo.repoId))
-          .map((repo) => ({ ...repo, private: privacy.get(repo.repoId) ?? repo.private })),
-      }
-    : null;
+  projects.sort((a, b) => SEVERITIES.reduce((order, severity) => order || b.counts[severity] - a.counts[severity], 0) || a.name.localeCompare(b.name));
+  const full =
+    !isFailed(overview) && overview.ok
+      ? {
+          ...overview.value,
+          repos: overview.value.repos.filter((repo) => live.has(repo.repoId)).map((repo) => ({ ...repo, private: privacy.get(repo.repoId) ?? repo.private })),
+        }
+      : null;
   return {
     projects,
     total,
@@ -116,16 +112,12 @@ export default function WorkspaceSecurity({ loaderData, params }: Route.Componen
           <div>
             <SeverityCountsGrid counts={total} />
             <p className="mt-2 text-xs text-faint">
-              Open alerts by severity. A secret in the history that looks real counts as critical; blocked pushes and likely test
-              values do not.
+              Open alerts by severity. A secret in the history that looks real counts as critical; blocked pushes and likely test values do not.
             </p>
           </div>
           {projects.length === 0 ? (
             <Card asChild tone="plain" className="border-dashed px-4 py-6 text-sm text-muted">
-              <p>
-                No project has been scanned yet. Each one is scanned on its next push to its default branch, or when its Security
-                page is first opened.
-              </p>
+              <p>No project has been scanned yet. Each one is scanned on its next push to its default branch, or when its Security page is first opened.</p>
             </Card>
           ) : (
             <Card asChild divided className="overflow-hidden">

@@ -17,12 +17,12 @@ them, managed or self-hosted, under **AI**, its own setting: see
 
 There are two places to connect things, and they are for different people:
 
-| | Workspace integrations | Your integrations |
-| --- | --- | --- |
-| Where | **Integrations**, at `g1t.sh/<workspace>/-/integrations`, with each integration's setup page under it | **Your settings → Integrations**, at [`g1t.sh/settings/integrations`](https://g1t.sh/settings/integrations) |
-| Who it is for | Everyone in that workspace | Just you, in every workspace you belong to |
-| Who connects | Workspace owners. Members see what is connected. | You |
-| Examples | Sentry, Jira, Linear, GitHub imports, webhooks | Signing in with GitHub, coding agents you connect through MCP, and soon your calendar |
+|               | Workspace integrations                                                                                | Your integrations                                                                                           |
+| ------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Where         | **Integrations**, at `g1t.sh/<workspace>/-/integrations`, with each integration's setup page under it | **Your settings → Integrations**, at [`g1t.sh/settings/integrations`](https://g1t.sh/settings/integrations) |
+| Who it is for | Everyone in that workspace                                                                            | Just you, in every workspace you belong to                                                                  |
+| Who connects  | Workspace owners. Members see what is connected.                                                      | You                                                                                                         |
+| Examples      | Sentry, Jira, Linear, GitHub imports, webhooks                                                        | Signing in with GitHub, coding agents you connect through MCP, and soon your calendar                       |
 
 Some tools have both sides. GitHub, for instance: a workspace owner
 installs g1t's GitHub App to import the team's repositories, and
@@ -55,11 +55,11 @@ repositories**, **Sets your status**, and so on.
 
 ## Available today
 
-| Category | Workspace | Personal |
-| --- | --- | --- |
-| Code & CI | [GitHub](/guides/github/) import, [webhooks](/guides/webhooks/) | [Signing in with GitHub](/guides/github/#link-and-unlink-github); [MCP clients](/guides/authentication/#signing-in-with-oauth): your [coding agent](/guides/bring-your-own-agent/), connected to g1t as you; [Claude Code plugin](/guides/claude-code-plugin/) |
-| Work & projects | [Jira and Linear](#trackers) | |
-| Monitoring & incidents | [Sentry, Datadog, and any system that sends a webhook](#alerts) | |
+| Category               | Workspace                                                       | Personal                                                                                                                                                                                                                                                       |
+| ---------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Code & CI              | [GitHub](/guides/github/) import, [webhooks](/guides/webhooks/) | [Signing in with GitHub](/guides/github/#link-and-unlink-github); [MCP clients](/guides/authentication/#signing-in-with-oauth): your [coding agent](/guides/bring-your-own-agent/), connected to g1t as you; [Claude Code plugin](/guides/claude-code-plugin/) |
+| Work & projects        | [Jira and Linear](#trackers)                                    |                                                                                                                                                                                                                                                                |
+| Monitoring & incidents | [Sentry, Datadog, and any system that sends a webhook](#alerts) |                                                                                                                                                                                                                                                                |
 
 Alerts and trackers each have a setup page under the directory:
 `-/integrations/alerts` and `-/integrations/trackers`. GitHub and webhooks
@@ -74,9 +74,9 @@ apart.
 Every category has integrations on the way, among them Slack, Microsoft
 Teams, Google Docs, PagerDuty, AWS, Miro, Okta and Google Drive for
 workspaces. For you: **Google Calendar** and **Outlook
-Calendar** will set your [status](/guides/chat/#presence-and-status) to *In a meeting* while
+Calendar** will set your [status](/guides/chat/#presence-and-status) to _In a meeting_ while
 you are in one; **Zoom**
-and **Google Meet** will set it to *On a call*. A status you set by hand
+and **Google Meet** will set it to _On a call_. A status you set by hand
 always wins over one an integration sets.
 
 The directory lists them all. Nothing on a **Soon** card does anything
@@ -180,15 +180,15 @@ Sign it either way:
 
 g1t reads these fields, taking the first name present:
 
-| Field | Names | Notes |
-| --- | --- | --- |
-| Title | `title`, `event_title`, `summary`, `name` | Required. |
-| Id | `id`, `alert_id`, `aggregate`, `incident_key`, `dedup_key` | Alerts with the same id are one work item. The title if missing. |
-| Description | `body`, `message`, `event_msg`, `text`, `description` | Markdown. |
-| Link | `url`, `link`, `html_url` | |
-| State | `status`, `transition`, `alert_transition`, `state` | `recovered`, `resolved`, `ok` or `closed` means it stopped. |
-| Priority | `priority`, `severity`, `level` | |
-| Count | `count` | How many times it has happened. |
+| Field       | Names                                                      | Notes                                                            |
+| ----------- | ---------------------------------------------------------- | ---------------------------------------------------------------- |
+| Title       | `title`, `event_title`, `summary`, `name`                  | Required.                                                        |
+| Id          | `id`, `alert_id`, `aggregate`, `incident_key`, `dedup_key` | Alerts with the same id are one work item. The title if missing. |
+| Description | `body`, `message`, `event_msg`, `text`, `description`      | Markdown.                                                        |
+| Link        | `url`, `link`, `html_url`                                  |                                                                  |
+| State       | `status`, `transition`, `alert_transition`, `state`        | `recovered`, `resolved`, `ok` or `closed` means it stopped.      |
+| Priority    | `priority`, `severity`, `level`                            |                                                                  |
+| Count       | `count`                                                    | How many times it has happened.                                  |
 
 g1t answers `202` once the request is verified and acts on it just after,
 so a slow step never makes the sender retry. It answers `401` to a request
@@ -239,19 +239,19 @@ to what merged. For Sentry, closing as done resolves the Sentry issue.
 
 ### Jira
 
-| Setting | |
-| --- | --- |
-| Site | Your Jira's address, such as `https://acme.atlassian.net`. |
-| Email | The Atlassian account the API token belongs to. |
-| API token | From id.atlassian.com, **Security → API tokens**. g1t sees what that account can see. |
+| Setting      |                                                                                                     |
+| ------------ | --------------------------------------------------------------------------------------------------- |
+| Site         | Your Jira's address, such as `https://acme.atlassian.net`.                                          |
+| Email        | The Atlassian account the API token belongs to.                                                     |
+| API token    | From id.atlassian.com, **Security → API tokens**. g1t sees what that account can see.               |
 | Project keys | Optional. The projects this connection answers for, such as `TECH, OPS`. Empty answers for any key. |
 
 ### Linear
 
-| Setting | |
-| --- | --- |
-| API key | From Linear, **Settings → Security & access → Personal API keys**. |
-| Team keys | Optional, such as `ENG`. Empty answers for any key. |
+| Setting   |                                                                    |
+| --------- | ------------------------------------------------------------------ |
+| API key   | From Linear, **Settings → Security & access → Personal API keys**. |
+| Team keys | Optional, such as `ENG`. Empty answers for any key.                |
 
 A key that matches several connections is looked up in the ones that name
 its project first.
@@ -261,15 +261,15 @@ its project first.
 Owners can manage integrations through the API and MCP, with a person's
 token (a workspace token cannot):
 
-| MCP tool and action | Route |
-| --- | --- |
-| `workspace` `list_integrations` | `GET /workspaces/{workspace}/integrations` |
-| `workspace` `connect_integration` | `POST /workspaces/{workspace}/integrations` |
-| `workspace` `update_integration` | `PATCH /workspaces/{workspace}/integrations/{id}` |
-| `workspace` `test_integration` | `POST /workspaces/{workspace}/integrations/{id}/test` |
-| `workspace` `disconnect_integration` | `DELETE /workspaces/{workspace}/integrations/{id}` |
-| `search` `ticket` | `GET /repos/{owner}/{name}/context?reference=` |
-| `work_item` `import` | `POST /workspaces/{workspace}/work/import` |
+| MCP tool and action                  | Route                                                 |
+| ------------------------------------ | ----------------------------------------------------- |
+| `workspace` `list_integrations`      | `GET /workspaces/{workspace}/integrations`            |
+| `workspace` `connect_integration`    | `POST /workspaces/{workspace}/integrations`           |
+| `workspace` `update_integration`     | `PATCH /workspaces/{workspace}/integrations/{id}`     |
+| `workspace` `test_integration`       | `POST /workspaces/{workspace}/integrations/{id}/test` |
+| `workspace` `disconnect_integration` | `DELETE /workspaces/{workspace}/integrations/{id}`    |
+| `search` `ticket`                    | `GET /repos/{owner}/{name}/context?reference=`        |
+| `work_item` `import`                 | `POST /workspaces/{workspace}/work/import`            |
 
 ```sh
 curl -X POST https://api.g1t.sh/workspaces/acme/integrations \

@@ -97,7 +97,10 @@ function Annotations({ run, annotations, base }: { run: CommitCheckRun; annotati
         <Card key={path} tone="plain" className="overflow-hidden">
           <p className="flex items-center gap-2 border-b border-line bg-surface px-4 py-2.5 text-sm">
             <FileCode2 size={15} className="shrink-0 text-faint" />
-            <Link to={`${base}/blob/${run.headSha}/${encodePath(path)}`} className="min-w-0 truncate font-mono text-[0.8125rem] hover:text-accent hover:underline">
+            <Link
+              to={`${base}/blob/${run.headSha}/${encodePath(path)}`}
+              className="min-w-0 truncate font-mono text-[0.8125rem] hover:text-accent hover:underline"
+            >
               {path}
             </Link>
           </p>

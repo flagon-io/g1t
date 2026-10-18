@@ -225,8 +225,7 @@ async function deliver(event: unknown, attempts = 1): Promise<boolean> {
   return acked;
 }
 
-const rows = (sql: string, ...params: unknown[]) =>
-  (w.state.sqlite.prepare(sql).all(...(params as never[])) as any[]).map((row) => ({ ...row }));
+const rows = (sql: string, ...params: unknown[]) => (w.state.sqlite.prepare(sql).all(...(params as never[])) as any[]).map((row) => ({ ...row }));
 
 test("a transfer rebuilds every app under the new workspace, paused ones too", async () => {
   assert.equal(await deliver(transferred), true);
@@ -291,16 +290,20 @@ test("once the new app is live, the old address redirects to it, paused or not",
   const finish = await worker.fetch(
     new Request(`https://deployments/jobs/${build.deployId}/finish`, {
       method: "POST",
-      body: JSON.stringify({ token: build.token, worker: { mainModule: "index.js", modules: [{ name: "index.js", contentBase64: btoa("export default {}"), contentType: "application/javascript+module" }] }, buildSeconds: 30 }),
+      body: JSON.stringify({
+        token: build.token,
+        worker: {
+          mainModule: "index.js",
+          modules: [{ name: "index.js", contentBase64: btoa("export default {}"), contentType: "application/javascript+module" }],
+        },
+        buildSeconds: 30,
+      }),
     }),
     w.env as never,
     {} as never,
   );
   assert.deepEqual(await finish.json(), { ok: true, value: true });
-  assert.deepEqual(
-    rows("SELECT script, workspace FROM apps WHERE kind = 'production'"),
-    [{ script: "lab-api-flagonio", workspace: "flagon-io" }],
-  );
+  assert.deepEqual(rows("SELECT script, workspace FROM apps WHERE kind = 'production'"), [{ script: "lab-api-flagonio", workspace: "flagon-io" }]);
   const [redirect] = rows("SELECT script, target, workspace FROM redirects");
   assert.deepEqual({ ...redirect }, { script: "lab-api-syntaqx", target: "lab-api-flagonio.g1t.page", workspace: "flagon-io" });
   // The dispatcher's entry, followed before the old (paused) script runs.
@@ -318,7 +321,10 @@ test("the sweep never pauses a moved app for its old workspace's limit", async (
   w.state.sqlite.exec("UPDATE settings SET workspace = 'flagon-io'; UPDATE apps SET paused_at = NULL");
   w.state.runnerUp = false;
   await worker.scheduled({} as never, w.env as never);
-  assert.deepEqual(rows("SELECT paused_at FROM apps").map((r) => r.paused_at), [null, null]);
+  assert.deepEqual(
+    rows("SELECT paused_at FROM apps").map((r) => r.paused_at),
+    [null, null],
+  );
   // When the project's own workspace is over its limit, they are paused.
   w.state.limits.set("flagon-io", "stopped");
   await worker.scheduled({} as never, w.env as never);

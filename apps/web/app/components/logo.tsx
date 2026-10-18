@@ -22,14 +22,7 @@ const ICON = pixels(ONE, 0, true);
 /** Cells of 10 units, squares of 8, centred. */
 function Pixels({ of }: { of: Pixel[] }) {
   return of.map((p) => (
-    <rect
-      key={`${p.x}.${p.y}`}
-      x={p.x * 10 + 1}
-      y={p.y * 10 + 1}
-      width="8"
-      height="8"
-      fill={p.one ? "var(--color-accent)" : "currentColor"}
-    />
+    <rect key={`${p.x}.${p.y}`} x={p.x * 10 + 1} y={p.y * 10 + 1} width="8" height="8" fill={p.one ? "var(--color-accent)" : "currentColor"} />
   ));
 }
 
@@ -66,12 +59,7 @@ export function MarkGlyph({ className = "h-3.5" }: { className?: string }) {
 export function Logo({ className = "text-[1.5rem]" }: { className?: string }) {
   return (
     <span className={`inline-flex items-baseline leading-none text-fg ${className}`}>
-      <svg
-        viewBox="1 1 148 68"
-        role="img"
-        aria-label="g1t"
-        className="h-[0.85em] w-auto shrink-0 self-baseline"
-      >
+      <svg viewBox="1 1 148 68" role="img" aria-label="g1t" className="h-[0.85em] w-auto shrink-0 self-baseline">
         <Pixels of={WORD} />
       </svg>
     </span>

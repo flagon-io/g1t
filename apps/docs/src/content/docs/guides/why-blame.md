@@ -13,13 +13,13 @@ A pull request's session records how the change was made, entry by entry,
 as it happens. Entries come from `record_session` on the pull request, and
 from any [harness session](/guides/sessions/#record-a-session) attached to it:
 
-| Kind | What it holds |
-| --- | --- |
-| `prompt` | What the agent was asked to do, and messages people sent it while it worked. |
-| `message` | The agent's own reasoning and explanation. |
-| `tool_call` | A tool the agent ran, and with what input. |
-| `tool_result` | What the tool returned. |
-| `note` | Anything else worth keeping, such as what the agent was told about other work in progress. |
+| Kind          | What it holds                                                                              |
+| ------------- | ------------------------------------------------------------------------------------------ |
+| `prompt`      | What the agent was asked to do, and messages people sent it while it worked.               |
+| `message`     | The agent's own reasoning and explanation.                                                 |
+| `tool_call`   | A tool the agent ran, and with what input.                                                 |
+| `tool_result` | What the tool returned.                                                                    |
+| `note`        | Anything else worth keeping, such as what the agent was told about other work in progress. |
 
 Each entry is stored with the head commit of the pull request at the time
 it was recorded. That link is what lets g1t show the reasoning behind a
@@ -120,13 +120,13 @@ curl "https://api.g1t.sh/repos/acme/web/why?path=src/config.rs&line=42" \
   -H "Authorization: Bearer $G1T_TOKEN"
 ```
 
-| Field | |
-| --- | --- |
-| `commit` | The commit that last changed the line: `hash`, `message`, `author` (`name` as git wrote it, and `username`, the g1t account the author's address belongs to, when one does; never the address), `parents`, `authored_at`. |
-| `pull` | The merged pull request it arrived in: `number`, `title`, `author`, `agent`, `merged_by`, `merged_at`. Absent when it did not arrive through one. |
-| `item` | That pull request's work item: `workspace`, `number`, `title`, `state` and `body` (cut at 900 characters). |
-| `decisions` | The [decision records](#decision-records) on the pull request, oldest first. |
-| `sessions` | Up to eight entries of the pull request's session behind that commit: the messages, and the tool calls that touched the file. |
+| Field       |                                                                                                                                                                                                                           |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `commit`    | The commit that last changed the line: `hash`, `message`, `author` (`name` as git wrote it, and `username`, the g1t account the author's address belongs to, when one does; never the address), `parents`, `authored_at`. |
+| `pull`      | The merged pull request it arrived in: `number`, `title`, `author`, `agent`, `merged_by`, `merged_at`. Absent when it did not arrive through one.                                                                         |
+| `item`      | That pull request's work item: `workspace`, `number`, `title`, `state` and `body` (cut at 900 characters).                                                                                                                |
+| `decisions` | The [decision records](#decision-records) on the pull request, oldest first.                                                                                                                                              |
+| `sessions`  | Up to eight entries of the pull request's session behind that commit: the messages, and the tool calls that touched the file.                                                                                             |
 
 A pull request is found for a commit as on the site: the one whose head it
 is, or the one whose stretch of the default branch's last 300 commits holds
@@ -139,20 +139,20 @@ A decision record is a reason kept on a work item or pull request, with how
 sure it is. Sessions say what happened; decisions say why the result is
 the way it is, in a sentence, with what it rests on.
 
-| Confidence | Meaning |
-| --- | --- |
-| `claimed` | Someone said so: an agent or a person recorded it. |
-| `tested` | A check or the merge queue proved it. |
-| `approved` | A person approved it. |
+| Confidence | Meaning                                            |
+| ---------- | -------------------------------------------------- |
+| `claimed`  | Someone said so: an agent or a person recorded it. |
+| `tested`   | A check or the merge queue proved it.              |
+| `approved` | A person approved it.                              |
 
 g1t keeps these itself:
 
-| Kind | When | Confidence |
-| --- | --- | --- |
-| `integration_failure` | The [merge queue](/guides/merge-queue/#when-an-entry-fails) found a combination of pull requests fails: which ones, and the check. | `tested` |
-| `integration_passed` | A combined state passed in the merge queue. | `tested` |
-| `approval` | Someone approved the pull request. | `approved` for a person, `claimed` for an agent's token |
-| `merge` | It was merged. | `tested` through the queue or a repository's own auto-merge, `approved` when a person merged it, `claimed` for an agent's token |
+| Kind                  | When                                                                                                                               | Confidence                                                                                                                      |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `integration_failure` | The [merge queue](/guides/merge-queue/#when-an-entry-fails) found a combination of pull requests fails: which ones, and the check. | `tested`                                                                                                                        |
+| `integration_passed`  | A combined state passed in the merge queue.                                                                                        | `tested`                                                                                                                        |
+| `approval`            | Someone approved the pull request.                                                                                                 | `approved` for a person, `claimed` for an agent's token                                                                         |
+| `merge`               | It was merged.                                                                                                                     | `tested` through the queue or a repository's own auto-merge, `approved` when a person merged it, `claimed` for an agent's token |
 
 Agents and people record their own, of kind `proposal` (why the change is
 made this way), `claim` (something true of it), `fix` (what fixed a

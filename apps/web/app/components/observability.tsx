@@ -207,7 +207,7 @@ export function TimeChart({
   const max = Math.max(0, ...peaks);
   const scale = niceTicks(max);
   const top = scale[scale.length - 1] || 1;
-  const spanMs = (times.length * stepS * 1000) || 1;
+  const spanMs = times.length * stepS * 1000 || 1;
   const labelEvery = Math.max(1, Math.ceil(times.length / 6));
   const anything = series.some((s) => s.values.some((v) => v !== null && v > 0));
   const W = 1000;
@@ -251,7 +251,12 @@ export function TimeChart({
                 <div key={t} className="absolute inset-x-0 border-t border-line/70" style={{ top: `${100 - (t / top) * 100}%` }} aria-hidden="true" />
               ))}
               {kind === "lines" && (
-                <svg className="absolute inset-0 h-full w-full overflow-visible" viewBox={`0 0 ${W} ${CHART_HEIGHT}`} preserveAspectRatio="none" aria-hidden="true">
+                <svg
+                  className="absolute inset-0 h-full w-full overflow-visible"
+                  viewBox={`0 0 ${W} ${CHART_HEIGHT}`}
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                >
                   {series.map((s) => {
                     // Steps with no requests break the line rather than drop it to zero.
                     const runs: string[] = [];
@@ -265,9 +270,24 @@ export function TimeChart({
                     if (run.length) runs.push(run.join(" "));
                     return runs.map((points, i) =>
                       points.includes(" ") ? (
-                        <polyline key={`${s.key}-${i}`} points={points} fill="none" stroke={s.color} strokeWidth={2} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                        <polyline
+                          key={`${s.key}-${i}`}
+                          points={points}
+                          fill="none"
+                          stroke={s.color}
+                          strokeWidth={2}
+                          strokeLinejoin="round"
+                          vectorEffect="non-scaling-stroke"
+                        />
                       ) : (
-                        <circle key={`${s.key}-${i}`} cx={points.split(",")[0]} cy={points.split(",")[1]} r={3} fill={s.color} vectorEffect="non-scaling-stroke" />
+                        <circle
+                          key={`${s.key}-${i}`}
+                          cx={points.split(",")[0]}
+                          cy={points.split(",")[1]}
+                          r={3}
+                          fill={s.color}
+                          vectorEffect="non-scaling-stroke"
+                        />
                       ),
                     );
                   })}
@@ -305,7 +325,11 @@ export function TimeChart({
               {at !== null && (
                 <div
                   className="pointer-events-none absolute top-0 z-10 min-w-36 rounded-md border border-line bg-bg px-2.5 py-2 text-xs shadow-lg"
-                  style={at > times.length / 2 ? { right: `${100 - ((at + 0.5) / times.length) * 100}%`, marginRight: 8 } : { left: `${((at + 0.5) / times.length) * 100}%`, marginLeft: 8 }}
+                  style={
+                    at > times.length / 2
+                      ? { right: `${100 - ((at + 0.5) / times.length) * 100}%`, marginRight: 8 }
+                      : { left: `${((at + 0.5) / times.length) * 100}%`, marginLeft: 8 }
+                  }
                   role="status"
                 >
                   <p className="font-medium tabular-nums">{axisTime(times[at]!, spanMs)} UTC</p>
@@ -412,7 +436,10 @@ export function LiveDot({ on }: { on: boolean }) {
 export function DurationBar({ ms, max, failed }: { ms: number; max: number; failed?: boolean }) {
   return (
     <span className="relative block h-1.5 w-full overflow-hidden rounded-full bg-line" aria-hidden="true">
-      <span className={cn("absolute inset-y-0 left-0 rounded-full", failed ? "bg-danger" : "bg-accent")} style={{ width: `${Math.max(2, Math.min(100, (ms / (max || 1)) * 100))}%` }} />
+      <span
+        className={cn("absolute inset-y-0 left-0 rounded-full", failed ? "bg-danger" : "bg-accent")}
+        style={{ width: `${Math.max(2, Math.min(100, (ms / (max || 1)) * 100))}%` }}
+      />
     </span>
   );
 }

@@ -23,8 +23,7 @@ import {
   withFilter,
 } from "./deployments.ts";
 
-const GIT =
-  "the commit could not be checked out: git -c failed: fatal: reference is not a tree: d2ca224ba0fea430dcc9933cda14d8aa9fa94b4b";
+const GIT = "the commit could not be checked out: git -c failed: fatal: reference is not a tree: d2ca224ba0fea430dcc9933cda14d8aa9fa94b4b";
 
 type Build = Parameters<typeof groupBuilds>[0][number] & { id: string };
 
@@ -41,10 +40,7 @@ const build = (over: Partial<Build>): Build => ({
 });
 
 test("a commit that is gone is said plainly, naming the pull request", () => {
-  assert.equal(
-    buildError({ kind: "preview", number: 1, error: GIT }),
-    "This pull request's commit no longer exists. Push again, or close pull request #1.",
-  );
+  assert.equal(buildError({ kind: "preview", number: 1, error: GIT }), "This pull request's commit no longer exists. Push again, or close pull request #1.");
   assert.match(buildError({ kind: "production", number: null, error: GIT })!, /default branch/);
   assert.equal(buildError({ kind: "preview", number: 1, error: "npm run build exited 1." }), "npm run build exited 1.");
   assert.equal(buildError({ kind: "preview", number: 1, error: null }), null);
@@ -90,7 +86,10 @@ test("other apps' builds in between do not break a run; a different error does",
 test("builds that did not fail are never folded", () => {
   hour = 0;
   const ready = groupBuilds([build({ status: "ready", error: null }), build({ status: "ready", error: null })]);
-  assert.deepEqual(ready.map((g) => g.count), [1, 1]);
+  assert.deepEqual(
+    ready.map((g) => g.count),
+    [1, 1],
+  );
   assert.deepEqual(groupBuilds([]), []);
 });
 
@@ -132,8 +131,7 @@ test("production is the production environment that has had a deployment, named 
     "production",
   );
   assert.equal(
-    productionEnvironment([env("production", { production_environment: true }), env("live", { production_environment: true, latest: deployed })])
-      ?.name,
+    productionEnvironment([env("production", { production_environment: true }), env("live", { production_environment: true, latest: deployed })])?.name,
     "live",
   );
 });
@@ -141,10 +139,7 @@ test("production is the production environment that has had a deployment, named 
 test("an environment is served at its own address, else its current deployment's", () => {
   const at = (environment_url: string | null, state = "success") => ({ environment_url, state }) as never;
   assert.equal(environmentUrl({ url: "https://g1t.sh", current: null, latest: null }), "https://g1t.sh");
-  assert.equal(
-    environmentUrl({ url: null, current: at("https://a.g1t.page"), latest: at("https://b.g1t.page", "failure") }),
-    "https://a.g1t.page",
-  );
+  assert.equal(environmentUrl({ url: null, current: at("https://a.g1t.page"), latest: at("https://b.g1t.page", "failure") }), "https://a.g1t.page");
   assert.equal(environmentUrl({ url: null, current: null, latest: at("https://b.g1t.page", "failure") }), null);
 });
 

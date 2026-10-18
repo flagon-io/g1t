@@ -4,16 +4,7 @@ import { useRouteLoaderData } from "react-router";
 
 import type { loader as rootLoader } from "../root";
 
-import {
-  AGENT_IDS,
-  type AgentId,
-  DEFAULT_AGENT,
-  agentsFor,
-  cursorInstallLink,
-  getAgentChoice,
-  setAgentChoice,
-  subscribeAgentChoice,
-} from "../lib/agent-setup";
+import { AGENT_IDS, type AgentId, DEFAULT_AGENT, agentsFor, cursorInstallLink, getAgentChoice, setAgentChoice, subscribeAgentChoice } from "../lib/agent-setup";
 import { useAddresses } from "../lib/addresses";
 import { SelectField } from "./ui/select";
 import { Button } from "./ui/button";
@@ -23,7 +14,11 @@ import { Card } from "./ui/card";
 export function useAgentChoice(): [AgentId, (id: AgentId) => void] {
   const root = useRouteLoaderData<typeof rootLoader>("root");
   const fallback = root?.agentDefault ?? DEFAULT_AGENT;
-  const id = useSyncExternalStore(subscribeAgentChoice, () => getAgentChoice(fallback), () => root?.agentChoice ?? fallback);
+  const id = useSyncExternalStore(
+    subscribeAgentChoice,
+    () => getAgentChoice(fallback),
+    () => root?.agentChoice ?? fallback,
+  );
   return [id, setAgentChoice];
 }
 
@@ -57,16 +52,17 @@ export function AgentSetup({ hint = true, className }: { hint?: boolean; classNa
           <SelectField
             aria-label="AI client"
             value={chosen}
-            onValueChange={(id) => { setCopied(false); choose(id as AgentId); }}
+            onValueChange={(id) => {
+              setCopied(false);
+              choose(id as AgentId);
+            }}
             options={AGENT_IDS.map((id) => ({ value: id, label: agents[id].label }))}
             size="sm"
             className="w-44"
           />
         </div>
         <div className="relative" role="region" aria-label={`${agent.label} setup`}>
-          {agent.file && (
-            <p className="px-3.5 pt-2.5 font-mono text-[0.6875rem] text-faint">{agent.file}</p>
-          )}
+          {agent.file && <p className="px-3.5 pt-2.5 font-mono text-[0.6875rem] text-faint">{agent.file}</p>}
           <pre className="overflow-x-auto py-2.5 pr-11 pl-3.5 font-mono text-[0.8125rem] leading-relaxed">
             <code>
               {agent.lang === "sh"
@@ -103,7 +99,13 @@ export function AgentSetup({ hint = true, className }: { hint?: boolean; classNa
             ),
           )}
           {chosen === "codex" && mcp === "https://mcp.g1t.sh" && (
-            <> {" "}<a href="https://docs.g1t.sh/guides/bring-your-own-agent/#codex-marketplace" className="text-fg underline underline-offset-4">Install the Codex plugin</a> for work item and session workflows.</>
+            <>
+              {" "}
+              <a href="https://docs.g1t.sh/guides/bring-your-own-agent/#codex-marketplace" className="text-fg underline underline-offset-4">
+                Install the Codex plugin
+              </a>{" "}
+              for work item and session workflows.
+            </>
           )}
           {chosen === "cursor" && (
             <>

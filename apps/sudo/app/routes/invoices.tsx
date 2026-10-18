@@ -56,7 +56,11 @@ export default function Invoices({ loaderData }: Route.ComponentProps) {
         </div>
       ) : (
         <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Stat label={filtered ? `Invoices, ${scope}` : "Invoices"} value={`${totals.count}${capped ? "+" : ""}`} hint={capped ? `The newest ${MOST}` : "Void ones count for nothing"} />
+          <Stat
+            label={filtered ? `Invoices, ${scope}` : "Invoices"}
+            value={`${totals.count}${capped ? "+" : ""}`}
+            hint={capped ? `The newest ${MOST}` : "Void ones count for nothing"}
+          />
           <Stat label="Amount" value={usd(totals.amountMicros)} hint="Everything not void" />
           <Stat label="Paid" value={usd(totals.paidMicros)} tone={totals.paidMicros > 0 ? "mint" : undefined} />
           <Stat
@@ -94,7 +98,9 @@ export default function Invoices({ loaderData }: Route.ComponentProps) {
         (invoices.length === 0 ? (
           <div className="mt-4">
             <EmptyState title={filtered ? "No invoices match" : "No invoices yet"}>
-              {filtered ? "Try another status or month, or clear the filters." : "Invoices appear here as months close and workspaces are charged near their limits."}
+              {filtered
+                ? "Try another status or month, or clear the filters."
+                : "Invoices appear here as months close and workspaces are charged near their limits."}
             </EmptyState>
           </div>
         ) : (
@@ -182,9 +188,7 @@ function Customer({ invoice }: { invoice: InvoiceSummary }) {
       ) : (
         name
       )}
-      <div className="mt-1.5">
-        {invoice.kind === "enterprise" ? <Badge tone="lavender">Enterprise</Badge> : <Badge>Workspace</Badge>}
-      </div>
+      <div className="mt-1.5">{invoice.kind === "enterprise" ? <Badge tone="lavender">Enterprise</Badge> : <Badge>Workspace</Badge>}</div>
     </div>
   );
 }

@@ -97,15 +97,7 @@ export default function Requests({ loaderData, actionData }: Route.ComponentProp
   );
 }
 
-function RequestCard({
-  row,
-  now,
-  error,
-}: {
-  row: LimitRequestReview;
-  now: string;
-  error: { error: string; values?: Record<string, string> } | null;
-}) {
+function RequestCard({ row, now, error }: { row: LimitRequestReview; now: string; error: { error: string; values?: Record<string, string> } | null }) {
   const { request, history } = row;
   const { pathname, search } = useLocation();
   const wait = waiting(request.createdAt, new Date(now));
@@ -124,10 +116,7 @@ function RequestCard({
     ["Last day", usd(history.lastDayMicros)],
   ];
   return (
-    <section
-      id={request.id}
-      className={`scroll-mt-20 rounded-lg border bg-surface ${open && wait.overdue ? "border-danger/40" : "border-line"}`}
-    >
+    <section id={request.id} className={`scroll-mt-20 rounded-lg border bg-surface ${open && wait.overdue ? "border-danger/40" : "border-line"}`}>
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-4 py-3 sm:px-5">
         <div className="min-w-0">
           <p className="flex flex-wrap items-center gap-2">
@@ -167,7 +156,14 @@ function RequestCard({
           <blockquote className="border-l-2 border-line-strong pl-3 text-sm wrap-break-word whitespace-pre-line text-fg-soft">{request.reason}</blockquote>
           {request.answer && (
             <p className="text-sm text-muted">
-              Answer{request.decidedBy ? <> by <span className="font-mono">{request.decidedBy}</span></> : null}: {request.answer}
+              Answer
+              {request.decidedBy ? (
+                <>
+                  {" "}
+                  by <span className="font-mono">{request.decidedBy}</span>
+                </>
+              ) : null}
+              : {request.answer}
             </p>
           )}
           {history.months.length > 0 && (
@@ -212,7 +208,13 @@ function RequestCard({
                 </Field>
               )}
               <Field label="Note for the owner" hint="Required to decline: they read it in the app and by email.">
-                <Textarea name="note" rows={2} maxLength={500} defaultValue={error?.values?.note ?? ""} placeholder="e.g. Approved for the launch; it grows with your payments from here." />
+                <Textarea
+                  name="note"
+                  rows={2}
+                  maxLength={500}
+                  defaultValue={error?.values?.note ?? ""}
+                  placeholder="e.g. Approved for the launch; it grows with your payments from here."
+                />
               </Field>
               <div className="flex flex-wrap justify-end gap-2">
                 <Button type="submit" name="decision" value="decline" variant="danger">

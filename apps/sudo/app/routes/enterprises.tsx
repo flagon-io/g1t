@@ -51,7 +51,12 @@ export default function Enterprises({ loaderData }: Route.ComponentProps) {
       <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-3">
         <Stat label="Enterprises" value={String(enterprises.length)} hint={`Paying for ${totals.workspaces} workspace${totals.workspaces === 1 ? "" : "s"}`} />
         <Stat label="Charged this month" value={usd(totals.charged)} />
-        <Stat label="Cost to g1t" value={usd(totals.cost)} hint={`Margin ${usd(totals.charged - totals.cost)}`} tone={totals.charged < totals.cost ? "danger" : undefined} />
+        <Stat
+          label="Cost to g1t"
+          value={usd(totals.cost)}
+          hint={`Margin ${usd(totals.charged - totals.cost)}`}
+          tone={totals.charged < totals.cost ? "danger" : undefined}
+        />
       </div>
 
       {enterprises.length === 0 ? (
@@ -88,9 +93,7 @@ export default function Enterprises({ loaderData }: Route.ComponentProps) {
                     {row.members.slice(0, 5).map((member) => (
                       <li key={member.slug} className="truncate">
                         <span className="font-mono">{member.slug}</span>
-                        {member.owners.length > 0 && (
-                          <span className="text-xs text-faint"> · {member.owners.map((owner) => owner.username).join(", ")}</span>
-                        )}
+                        {member.owners.length > 0 && <span className="text-xs text-faint"> · {member.owners.map((owner) => owner.username).join(", ")}</span>}
                       </li>
                     ))}
                     {row.members.length > 5 && <li className="text-xs text-faint">and {row.members.length - 5} more</li>}

@@ -28,7 +28,10 @@ test("the last confirmed address stays, even when it is not the primary", () => 
 
 test("the backup is a confirmed address other than the primary", () => {
   const all = [email("a@x.io", true, true), email("b@x.io", true), email("c@x.io", false)];
-  assert.deepEqual(backupChoices(all).map((choice) => choice.email), ["b@x.io"]);
+  assert.deepEqual(
+    backupChoices(all).map((choice) => choice.email),
+    ["b@x.io"],
+  );
 });
 
 test("a change waiting on the password keeps its fields but never the password", () => {

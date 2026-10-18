@@ -51,12 +51,7 @@ export type FileCommits = { entries: { name: string; commit: FileCommit }[]; com
  * agents and merge queue used before (as "g1t agent"), which history
  * keeps. Every one is shown as g1t.
  */
-export const G1T_COMMIT_EMAILS: ReadonlySet<string> = new Set([
-  "g1t@users.noreply.g1t.sh",
-  "agent@g1t.sh",
-  "queue@g1t.sh",
-  "mergecheck@g1t.sh",
-]);
+export const G1T_COMMIT_EMAILS: ReadonlySet<string> = new Set(["g1t@users.noreply.g1t.sh", "agent@g1t.sh", "queue@g1t.sh", "mergecheck@g1t.sh"]);
 
 const CO_AUTHOR = /^co-authored-by:\s*(.*?)\s*<([^>]*)>\s*$/i;
 

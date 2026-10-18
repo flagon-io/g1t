@@ -1,10 +1,5 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": [
-    "src/**/*",
-    "worker-configuration.d.ts"
-  ],
-  "exclude": [
-    "src/**/*.test.ts"
-  ]
+  "include": ["src/**/*", "worker-configuration.d.ts"],
+  "exclude": ["src/**/*.test.ts"]
 }

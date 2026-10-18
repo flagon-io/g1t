@@ -93,10 +93,13 @@ test("one person's burst in one project reads as one line", () => {
   ]);
   assert.equal(groups.length, 3);
   assert.equal(groups[0].count, 4);
-  assert.deepEqual(groups[0].parts.map((p) => [p.verb, p.numbers]), [
-    ["landed", [4, 3]],
-    ["started", [5, 6]],
-  ]);
+  assert.deepEqual(
+    groups[0].parts.map((p) => [p.verb, p.numbers]),
+    [
+      ["landed", [4, 3]],
+      ["started", [5, 6]],
+    ],
+  );
   assert.equal(groups[0].from, NOW - 12 * MIN);
   assert.equal(groups[1].actor, "ana");
 });
@@ -113,13 +116,11 @@ test("a burst breaks across projects and long gaps", () => {
 
 test("needs are ranked by urgency, then by how long they waited", () => {
   const need = (key: string, kind: Need["kind"], at: number): Need => ({ key, kind, at, title: key, detail: "", to: "/", action: "Open", where: null });
-  const ranked = rankNeeds([
-    need("r1", "review", NOW - HOUR),
-    need("d", "deploy", NOW),
-    need("r2", "review", NOW - DAY),
-    need("r2", "review", NOW - DAY),
-  ]);
-  assert.deepEqual(ranked.map((n) => n.key), ["d", "r2", "r1"]);
+  const ranked = rankNeeds([need("r1", "review", NOW - HOUR), need("d", "deploy", NOW), need("r2", "review", NOW - DAY), need("r2", "review", NOW - DAY)]);
+  assert.deepEqual(
+    ranked.map((n) => n.key),
+    ["d", "r2", "r1"],
+  );
 });
 
 test("a running run quiet for ten minutes is stuck", () => {
@@ -129,11 +130,7 @@ test("a running run quiet for ten minutes is stuck", () => {
 });
 
 test("daily buckets put each point on its day, oldest first", () => {
-  const buckets = dailyBuckets(
-    [{ at: NOW }, { at: NOW - DAY }, { at: NOW - DAY, value: 2 }, { at: NOW - 10 * DAY }],
-    7,
-    NOW,
-  );
+  const buckets = dailyBuckets([{ at: NOW }, { at: NOW - DAY }, { at: NOW - DAY, value: 2 }, { at: NOW - 10 * DAY }], 7, NOW);
   assert.deepEqual(buckets, [0, 0, 0, 0, 0, 3, 1]);
 });
 
@@ -168,8 +165,15 @@ test("median, pass rates and spans", () => {
 
 test("work item to merge pairs a merge with the work item it landed", () => {
   const spans = itemToMerge(
-    [{ repo: "a", number: 1, at: 100 }, { repo: "b", number: 1, at: 50 }],
-    [{ repo: "a", item: 1, at: 400 }, { repo: "a", item: null, at: 500 }, { repo: "c", item: 1, at: 900 }],
+    [
+      { repo: "a", number: 1, at: 100 },
+      { repo: "b", number: 1, at: 50 },
+    ],
+    [
+      { repo: "a", item: 1, at: 400 },
+      { repo: "a", item: null, at: 500 },
+      { repo: "c", item: 1, at: 900 },
+    ],
   );
   assert.deepEqual(spans, [300]);
 });
@@ -190,11 +194,11 @@ test("sparkline points span the box, zero on the floor", () => {
 });
 
 test("open work items by age", () => {
-  const buckets = ageBuckets(
-    [new Date(NOW - HOUR).toISOString(), new Date(NOW - 3 * DAY).toISOString(), new Date(NOW - 90 * DAY).toISOString()],
-    NOW,
+  const buckets = ageBuckets([new Date(NOW - HOUR).toISOString(), new Date(NOW - 3 * DAY).toISOString(), new Date(NOW - 90 * DAY).toISOString()], NOW);
+  assert.deepEqual(
+    buckets.map((b) => b.count),
+    [1, 1, 0, 1],
   );
-  assert.deepEqual(buckets.map((b) => b.count), [1, 1, 0, 1]);
 });
 
 test("the feed names people, not account ids", () => {

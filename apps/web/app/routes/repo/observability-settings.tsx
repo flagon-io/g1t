@@ -130,12 +130,14 @@ export default function ObservabilitySettings({ loaderData, actionData }: Route.
           Sending here
         </h2>
         <p className="mt-1 text-sm text-muted">
-          Any OpenTelemetry SDK or collector sends traces, logs and metrics over OTLP/HTTP (JSON or protobuf) to this endpoint, with an ingest
-          token below. Most SDKs read these variables:
+          Any OpenTelemetry SDK or collector sends traces, logs and metrics over OTLP/HTTP (JSON or protobuf) to this endpoint, with an ingest token below. Most
+          SDKs read these variables:
         </p>
         <div className="mt-3 space-y-2">
           <CopyLine text={TELEMETRY_OTLP_ENDPOINT} />
-          <pre className="overflow-x-auto rounded-lg border border-line bg-surface p-3 font-mono text-xs">{otelEnv(TELEMETRY_OTLP_ENDPOINT, slug, "g1to_…")}</pre>
+          <pre className="overflow-x-auto rounded-lg border border-line bg-surface p-3 font-mono text-xs">
+            {otelEnv(TELEMETRY_OTLP_ENDPOINT, slug, "g1to_…")}
+          </pre>
         </div>
         {isFailed(settings) ? (
           <div className="mt-4">
@@ -148,8 +150,8 @@ export default function ObservabilitySettings({ loaderData, actionData }: Route.
               defaultChecked={settings.deployments}
               onCheckedChange={(on) => submit({ intent: "deployments", deployments: on ? "on" : "" }, { method: "post", preventScrollReset: true })}
             >
-              Each request the project's apps answer, with their logs and exceptions, arrives on its own; their OpenTelemetry SDKs are given the
-              endpoint and the project's deployments token. Off keeps what is here and stops what is new.
+              Each request the project's apps answer, with their logs and exceptions, arrives on its own; their OpenTelemetry SDKs are given the endpoint and
+              the project's deployments token. Off keeps what is here and stops what is new.
             </SwitchCard>
           </Form>
         )}
@@ -163,8 +165,8 @@ export default function ObservabilitySettings({ loaderData, actionData }: Route.
           <NewToken />
         </div>
         <p className="mt-1 text-sm text-muted">
-          For software running anywhere other than g1t.page: a token lets it send to this project and do nothing else. Each is shown once, when
-          it is made. Apps on g1t.page need none; g1t gives them their own.
+          For software running anywhere other than g1t.page: a token lets it send to this project and do nothing else. Each is shown once, when it is made. Apps
+          on g1t.page need none; g1t gives them their own.
         </p>
         {isFailed(tokens) ? (
           <div className="mt-3">
@@ -230,8 +232,8 @@ export default function ObservabilitySettings({ loaderData, actionData }: Route.
           <ExportDialog />
         </div>
         <p className="mt-1 text-sm text-muted">
-          Send everything that arrives on to any OTLP/HTTP endpoint as well: a collector of your own, or any tool that takes OpenTelemetry.
-          Requests on g1t.page go as server spans, their logs as log records.
+          Send everything that arrives on to any OTLP/HTTP endpoint as well: a collector of your own, or any tool that takes OpenTelemetry. Requests on g1t.page
+          go as server spans, their logs as log records.
         </p>
         {isFailed(exports) && (
           <div className="mt-3">
@@ -360,7 +362,10 @@ function NewToken() {
   // Each opening is a fresh form: a token shown once is not shown again.
   const [round, setRound] = useState(0);
   const fetcher = useFetcher<typeof action>({ key: `new-token-${round}` });
-  const made = fetcher.data && "secret" in fetcher.data && typeof fetcher.data.secret === "string" ? { name: String(fetcher.data.name ?? ""), secret: fetcher.data.secret } : null;
+  const made =
+    fetcher.data && "secret" in fetcher.data && typeof fetcher.data.secret === "string"
+      ? { name: String(fetcher.data.name ?? ""), secret: fetcher.data.secret }
+      : null;
   return (
     <Dialog
       open={open}
@@ -380,7 +385,9 @@ function NewToken() {
           <div className="grid gap-4">
             <DialogHeader>
               <DialogTitle>{made.name}</DialogTitle>
-              <DialogDescription>Copy it now: it is not shown again. Send it as <code>authorization: Bearer …</code>.</DialogDescription>
+              <DialogDescription>
+                Copy it now: it is not shown again. Send it as <code>authorization: Bearer …</code>.
+              </DialogDescription>
             </DialogHeader>
             <CopyLine text={made.secret} />
             <DialogFooter>
@@ -444,7 +451,15 @@ function ExportDialog({ existing }: { existing?: TelemetryExport }) {
           </Field>
           <Field>
             <FieldLabel htmlFor="export-endpoint">Endpoint</FieldLabel>
-            <Input id="export-endpoint" name="endpoint" required type="url" defaultValue={existing?.endpoint} placeholder="https://otel.example.com" className="font-mono" />
+            <Input
+              id="export-endpoint"
+              name="endpoint"
+              required
+              type="url"
+              defaultValue={existing?.endpoint}
+              placeholder="https://otel.example.com"
+              className="font-mono"
+            />
           </Field>
           <fieldset className="grid gap-2">
             <legend className="text-sm font-medium">Send</legend>
@@ -460,7 +475,9 @@ function ExportDialog({ existing }: { existing?: TelemetryExport }) {
             <Textarea id="export-headers" name="headers" rows={3} className="font-mono text-xs" placeholder={"authorization: Bearer …\nx-api-key: …"} />
             <FieldDescription>
               One <code>name: value</code> a line, kept as secrets and never shown again.
-              {existing?.header_names.length ? ` Kept now: ${existing.header_names.join(", ")}. Give one again to change it, or with nothing after the colon to remove it.` : ""}
+              {existing?.header_names.length
+                ? ` Kept now: ${existing.header_names.join(", ")}. Give one again to change it, or with nothing after the colon to remove it.`
+                : ""}
             </FieldDescription>
           </Field>
           <label className="flex items-center gap-2 text-sm">

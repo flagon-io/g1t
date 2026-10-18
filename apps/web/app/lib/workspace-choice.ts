@@ -23,11 +23,7 @@ export function chosenWorkspace<M extends Membership>(memberships: M[], chosen: 
  * yours, whether the page is the workspace's own or a project in it, else
  * the chosen one.
  */
-export function workspaceFor<M extends Membership>(
-  memberships: M[],
-  chosen: string | null | undefined,
-  params: { owner?: string; repo?: string },
-): M | null {
+export function workspaceFor<M extends Membership>(memberships: M[], chosen: string | null | undefined, params: { owner?: string; repo?: string }): M | null {
   if (params.owner) {
     const here = memberships.find((m) => m.slug.toLowerCase() === params.owner!.toLowerCase());
     if (here) return here;

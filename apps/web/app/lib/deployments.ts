@@ -3,15 +3,7 @@
  * words, and a run of the same failure as one row; and a repository's
  * deployments wherever they run: states, environments and the list's filter.
  */
-import type {
-  Deployment,
-  DeploymentEnvironment,
-  DeploymentFilter,
-  DeploymentSource,
-  DeploymentState,
-  DeploymentStatus,
-  RepoDeployment,
-} from "@g1t/contracts";
+import type { Deployment, DeploymentEnvironment, DeploymentFilter, DeploymentSource, DeploymentState, DeploymentStatus, RepoDeployment } from "@g1t/contracts";
 
 /** What git says when the commit asked for is not in the repository (as services/deployments/src/retries.ts). */
 const MISSING_COMMIT = /reference is not a tree|not our ref|bad object|unknown revision|no such commit/i;
@@ -50,9 +42,7 @@ const appOf = (build: Pick<Deployment, "kind" | "branch">) => `${build.kind}/${b
  * of other apps between them do not break the run; any other build of
  * the same app does.
  */
-export function groupBuilds<T extends Pick<Deployment, "kind" | "branch" | "number" | "status" | "error" | "createdAt">>(
-  builds: T[],
-): BuildGroup<T>[] {
+export function groupBuilds<T extends Pick<Deployment, "kind" | "branch" | "number" | "status" | "error" | "createdAt">>(builds: T[]): BuildGroup<T>[] {
   const groups: BuildGroup<T>[] = [];
   // Each app's run still open, by the error it failed with.
   const open = new Map<string, { group: BuildGroup<T>; error: string | null }>();
@@ -127,9 +117,7 @@ type Ordered = Pick<DeploymentEnvironment, "name" | "production_environment" | "
  */
 export function orderEnvironments<T extends Ordered>(environments: readonly T[]): T[] {
   const rank = (env: T) => (env.production_environment ? (env.name === "production" ? 0 : 1) : env.transient_environment ? 3 : 2);
-  return [...environments].sort(
-    (a, b) => rank(a) - rank(b) || Date.parse(b.updated_at) - Date.parse(a.updated_at) || a.name.localeCompare(b.name),
-  );
+  return [...environments].sort((a, b) => rank(a) - rank(b) || Date.parse(b.updated_at) - Date.parse(a.updated_at) || a.name.localeCompare(b.name));
 }
 
 /**

@@ -300,7 +300,11 @@ export function useBoard(workspace: string | undefined, poll = false) {
   const { client } = useSignedIn();
   const key = workspace?.toLowerCase();
   const open = useQuery({ queryKey: ["work", "board", key, "open"], enabled: Boolean(workspace), queryFn: () => allItems(client, workspace!, "open", 10) });
-  const closed = useQuery({ queryKey: ["work", "board", key, "closed"], enabled: Boolean(workspace), queryFn: () => allItems(client, workspace!, "closed", 3) });
+  const closed = useQuery({
+    queryKey: ["work", "board", key, "closed"],
+    enabled: Boolean(workspace),
+    queryFn: () => allItems(client, workspace!, "closed", 3),
+  });
   const sessions = useWorkspaceSessions(workspace, { state: "live" }, poll);
   const repos = (sessions.data?.repos ?? []).slice(0, BOARD_REPOS);
   const pulls = useQueries({

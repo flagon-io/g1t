@@ -21,7 +21,14 @@ export function ConversationContent({ className, ...props }: ComponentProps<type
   return <StickToBottom.Content className={cn("flex flex-col gap-6 px-5 py-4", className)} {...props} />;
 }
 
-export function ConversationEmptyState({ className, title, description, icon, children, ...props }: ComponentProps<"div"> & { title?: string; description?: ReactNode; icon?: ReactNode }) {
+export function ConversationEmptyState({
+  className,
+  title,
+  description,
+  icon,
+  children,
+  ...props
+}: ComponentProps<"div"> & { title?: string; description?: ReactNode; icon?: ReactNode }) {
   return (
     <div className={cn("flex flex-col items-center justify-center gap-3 px-6 py-10 text-center", className)} {...props}>
       {children ?? (

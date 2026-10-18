@@ -131,12 +131,7 @@ export function ownOf(entry: PresenceEntry, kept: Kept): OwnPresence {
 /** Whether two entries would show the same, whenever they were made. */
 export function sameEntry(a: PresenceEntry | null | undefined, b: PresenceEntry | null | undefined): boolean {
   if (!a || !b) return a === b;
-  return (
-    a.presence === b.presence &&
-    a.username === b.username &&
-    a.dnd_until === b.dnd_until &&
-    JSON.stringify(a.status) === JSON.stringify(b.status)
-  );
+  return a.presence === b.presence && a.username === b.username && a.dnd_until === b.dnd_until && JSON.stringify(a.status) === JSON.stringify(b.status);
 }
 
 /** An entry as it stands at `now`: Do Not Disturb and a status past their time are gone. */

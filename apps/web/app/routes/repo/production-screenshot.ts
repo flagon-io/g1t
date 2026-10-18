@@ -36,15 +36,10 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     host: new URL(production.url).host,
     commit: production.commit,
     since: production.deployedAt,
-  }).catch(
-    (error: unknown) => (console.warn("screenshot:", error), null),
-  );
+  }).catch((error: unknown) => (console.warn("screenshot:", error), null));
   if (!shot) return none(404);
   const asked = new URL(request.url).searchParams.get("v");
-  const current =
-    shot.commit === production.commit &&
-    Date.parse(shot.capturedAt) >= Date.parse(production.deployedAt) &&
-    asked === shotVersion(production);
+  const current = shot.commit === production.commit && Date.parse(shot.capturedAt) >= Date.parse(production.deployedAt) && asked === shotVersion(production);
   return new Response(shot.body, {
     headers: {
       "content-type": shot.contentType,

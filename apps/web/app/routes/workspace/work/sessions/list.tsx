@@ -163,8 +163,8 @@ export default function SessionsPage({ loaderData }: Route.ComponentProps) {
         Sessions
       </h1>
       <p className="mt-1.5 max-w-2xl text-sm text-muted">
-        What is cooking across {workspace}: everyone's harness sessions and their subagents, sessions started on g1t, g1t's own agent,
-        the merge queues combining their changes, and what landed.
+        What is cooking across {workspace}: everyone's harness sessions and their subagents, sessions started on g1t, g1t's own agent, the merge queues
+        combining their changes, and what landed.
       </p>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <SessionsViews workspace={workspace} filters={filters} />
@@ -271,7 +271,17 @@ export default function SessionsPage({ loaderData }: Route.ComponentProps) {
           icon={<History size={15} className="text-faint" />}
           title="Recent"
           aside={
-            <Link to={sessionsPath(workspace, { state: "recent", repo: filters.repo, person: filters.person, harness: filters.harness, kind: filters.kind, item: filters.item ? String(filters.item) : null })} className="hover:text-fg">
+            <Link
+              to={sessionsPath(workspace, {
+                state: "recent",
+                repo: filters.repo,
+                person: filters.person,
+                harness: filters.harness,
+                kind: filters.kind,
+                item: filters.item ? String(filters.item) : null,
+              })}
+              className="hover:text-fg"
+            >
               Every session
             </Link>
           }

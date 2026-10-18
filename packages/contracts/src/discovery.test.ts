@@ -5,8 +5,22 @@ import { connectLink, parseDiscovery } from "./discovery.ts";
 
 test("a discovery document is read for its origins", () => {
   assert.deepEqual(
-    parseDiscovery({ name: "g1t", site: "https://g1t.example.com/", api: "http://10.0.0.5:8789/x", mcp: "https://g1t.example.com/mcp/", hosted: false, phone: { chat: true, push: false } }),
-    { name: "g1t", site: "https://g1t.example.com", api: "http://10.0.0.5:8789", mcp: "https://g1t.example.com/mcp", hosted: false, phone: { chat: true, push: false } },
+    parseDiscovery({
+      name: "g1t",
+      site: "https://g1t.example.com/",
+      api: "http://10.0.0.5:8789/x",
+      mcp: "https://g1t.example.com/mcp/",
+      hosted: false,
+      phone: { chat: true, push: false },
+    }),
+    {
+      name: "g1t",
+      site: "https://g1t.example.com",
+      api: "http://10.0.0.5:8789",
+      mcp: "https://g1t.example.com/mcp",
+      hosted: false,
+      phone: { chat: true, push: false },
+    },
   );
 });
 

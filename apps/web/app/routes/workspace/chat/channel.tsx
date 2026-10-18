@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { type ShouldRevalidateFunctionArgs, data, redirect } from "react-router";
 
-
 import type { Channel, ChannelAccessRequest, ChannelDetail, ChannelInvitation, ChannelMember, ChatMessage, User } from "@g1t/contracts";
 
 import type { Route } from "./+types/channel";
@@ -70,19 +69,21 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     if (opened?.ok) throw redirect(channelPath(slug, opened.value));
   }
   const fallbackTitle = name ? `#${name}` : "Direct message";
-  const read = await readConversation(slug, viewer, name, "id" in params ? (params.id as string | undefined) : undefined).catch(
-    (error: unknown) => {
-      console.error("chat: the conversation could not be read", error);
-      return "unavailable" as const;
-    },
-  );
+  const read = await readConversation(slug, viewer, name, "id" in params ? (params.id as string | undefined) : undefined).catch((error: unknown) => {
+    console.error("chat: the conversation could not be read", error);
+    return "unavailable" as const;
+  });
   if (read === "missing") {
     // A channel's link that does not open: offer to ask to be let in, the same whether or not it is there.
     if (!name) throw data(null, { status: 404 });
     const workspace = await identity.getWorkspace(slug).catch(() => null);
     if (!workspace) throw data(null, { status: 404 });
     return data(
-      { unavailable: true, title: `#${name}`, locked: { name, workspace: { slug: workspace.slug.toLowerCase(), name: workspace.name }, member } } satisfies ChannelData,
+      {
+        unavailable: true,
+        title: `#${name}`,
+        locked: { name, workspace: { slug: workspace.slug.toLowerCase(), name: workspace.name }, member },
+      } satisfies ChannelData,
       { status: 403 },
     );
   }
@@ -108,10 +109,7 @@ async function readConversation(
   // A public channel can be read before joining it.
   const joined = members.some((m) => m.member.kind === "user" && m.member.id === viewer.id);
   const others = members.filter((m) => !(m.member.kind === "user" && m.member.id === viewer.id));
-  const title =
-    channel.kind === "channel"
-      ? `#${channel.name}`
-      : others.map((m) => m.member.display_name || m.member.name).join(", ") || "Direct message";
+  const title = channel.kind === "channel" ? `#${channel.name}` : others.map((m) => m.member.display_name || m.member.name).join(", ") || "Direct message";
   return {
     unavailable: false,
     title,
@@ -169,6 +167,7 @@ export default function ChannelPage({ loaderData }: Route.ComponentProps) {
   useEffect(() => {
     if (!loaderData.unavailable) cache.set(window.location.pathname, loaderData);
   }, [loaderData]);
-  if (loaderData.unavailable) return "locked" in loaderData && loaderData.locked ? <RequestAccess {...loaderData.locked} /> : <ChatUnavailable title={loaderData.title} />;
+  if (loaderData.unavailable)
+    return "locked" in loaderData && loaderData.locked ? <RequestAccess {...loaderData.locked} /> : <ChatUnavailable title={loaderData.title} />;
   return <ChannelView key={loaderData.channel.id} data={loaderData} />;
 }

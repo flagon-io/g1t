@@ -10,7 +10,10 @@ test("a card shows only its links: nothing answers the rest any more", () => {
     { id: "file", label: "File issue" },
     { id: "open", label: "Open", href: "/acme/web/issues/1" },
   ];
-  assert.deepEqual(shownActions({ actions }).map((a) => a.id), ["open"]);
+  assert.deepEqual(
+    shownActions({ actions }).map((a) => a.id),
+    ["open"],
+  );
   assert.deepEqual(shownActions({}), []);
 });
 

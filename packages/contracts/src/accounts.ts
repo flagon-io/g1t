@@ -210,13 +210,7 @@ export interface AccountsAdminApi {
    * on the way stops it before the account. Recorded in sudo's audit log
    * (`workspace_deleted` for each, `account_deleted`).
    */
-  deleteAccount(
-    username: string,
-    reason: string,
-    confirm: string,
-    staff: string,
-    withSoleWorkspaces?: boolean,
-  ): Promise<Result<boolean>>;
+  deleteAccount(username: string, reason: string, confirm: string, staff: string, withSoleWorkspaces?: boolean): Promise<Result<boolean>>;
   /** Deleted accounts not purged yet, newest first. */
   deletedAccounts(): Promise<DeletedAccount[]>;
   /** Brings a deleted account back within its window, with the memberships it left. Publishes `user.restored`. */

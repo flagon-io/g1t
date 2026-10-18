@@ -69,11 +69,29 @@ const AWS_CLI_IMAGE = process.env.AWS_CLI_IMAGE ?? "amazon/aws-cli:2.37.10";
 const PACKS_BUCKET = "g1t-git-packs";
 /** The AWS CLI's `s3api`, in a container on the store's network, against it. */
 const s3api = (args, options = {}) =>
-  run("docker", [
-    "run", "--rm", "--network", `container:${STORAGE}`,
-    "-e", `AWS_ACCESS_KEY_ID=${S3_USER}`, "-e", `AWS_SECRET_ACCESS_KEY=${S3_PASSWORD}`, "-e", "AWS_DEFAULT_REGION=us-east-1",
-    AWS_CLI_IMAGE, "--endpoint-url", "http://localhost:9000", "--output", "json", "s3api", ...args,
-  ], options);
+  run(
+    "docker",
+    [
+      "run",
+      "--rm",
+      "--network",
+      `container:${STORAGE}`,
+      "-e",
+      `AWS_ACCESS_KEY_ID=${S3_USER}`,
+      "-e",
+      `AWS_SECRET_ACCESS_KEY=${S3_PASSWORD}`,
+      "-e",
+      "AWS_DEFAULT_REGION=us-east-1",
+      AWS_CLI_IMAGE,
+      "--endpoint-url",
+      "http://localhost:9000",
+      "--output",
+      "json",
+      "s3api",
+      ...args,
+    ],
+    options,
+  );
 /** The same, its answer parsed. */
 const s3json = (args) => JSON.parse(s3api(args).stdout.trim() || "{}");
 // Wrangler from the repository's packages, run with node: no shell to quote for.
@@ -172,21 +190,37 @@ try {
     cwd: service,
     env: { ...process.env, CI: "1" },
   });
-  sql("INSERT INTO repos (id, namespace, name, is_private, owner_id, default_branch, refs_version) VALUES ('rep_rocket', 'acme', 'rocket', 0, 'usr_dev', 'main', 1)");
+  sql(
+    "INSERT INTO repos (id, namespace, name, is_private, owner_id, default_branch, refs_version) VALUES ('rep_rocket', 'acme', 'rocket', 0, 'usr_dev', 'main', 1)",
+  );
 
   // RustFS, with the bucket and lifecycle rule deploy/self-host/docker-compose.yml makes.
   const s3Vars = [];
   if (S3) {
     run("docker", ["rm", "-f", STORAGE], { allowFail: true });
     run("docker", [
-      "run", "-d", "--rm", "--name", STORAGE, "-p", `${S3_PORT}:9000`,
-      "-e", `RUSTFS_ACCESS_KEY=${S3_USER}`, "-e", `RUSTFS_SECRET_KEY=${S3_PASSWORD}`, "-e", "RUSTFS_CONSOLE_ENABLE=false",
+      "run",
+      "-d",
+      "--rm",
+      "--name",
+      STORAGE,
+      "-p",
+      `${S3_PORT}:9000`,
+      "-e",
+      `RUSTFS_ACCESS_KEY=${S3_USER}`,
+      "-e",
+      `RUSTFS_SECRET_KEY=${S3_PASSWORD}`,
+      "-e",
+      "RUSTFS_CONSOLE_ENABLE=false",
       RUSTFS_IMAGE,
     ]);
     await waitFor(`http://localhost:${S3_PORT}/health/ready`, "RustFS");
     s3api(["create-bucket", "--bucket", PACKS_BUCKET]);
     s3api([
-      "put-bucket-lifecycle-configuration", "--bucket", PACKS_BUCKET, "--lifecycle-configuration",
+      "put-bucket-lifecycle-configuration",
+      "--bucket",
+      PACKS_BUCKET,
+      "--lifecycle-configuration",
       JSON.stringify({
         Rules: [
           { ID: "expire-packs", Status: "Enabled", Filter: { Prefix: "packs/" }, Expiration: { Days: 7 } },
@@ -207,7 +241,22 @@ try {
   }
   start(
     "node",
-    [WRANGLER, "dev", "-c", "dev/repos.jsonc", "-c", GITSTORE_CONFIG, "-c", "dev/stubs.jsonc", "--local", "--persist-to", persist, "--port", REPOS_PORT, ...s3Vars],
+    [
+      WRANGLER,
+      "dev",
+      "-c",
+      "dev/repos.jsonc",
+      "-c",
+      GITSTORE_CONFIG,
+      "-c",
+      "dev/stubs.jsonc",
+      "--local",
+      "--persist-to",
+      persist,
+      "--port",
+      REPOS_PORT,
+      ...s3Vars,
+    ],
     { cwd: service, env: { ...process.env, CI: "1" }, stdio: ["ignore", "inherit", "inherit"] },
   );
   await waitFor(`${REPOS}/acme/rocket.git/info/refs?service=git-upload-pack`, "wrangler dev");
@@ -231,16 +280,31 @@ try {
     const sizes = listed.map((entry) => entry.Size);
     // Nine clones: four kinds twice, each kept once, and one more after the refs moved.
     check("the packs are in RustFS, one per distinct clone", listed.length === 5, `${listed.length}: ${sizes.join(", ")}`);
-    check("the full clone's pack went up in parts", sizes.some((size) => size > 5 * 1024 * 1024), `largest ${Math.max(...sizes)}`);
+    check(
+      "the full clone's pack went up in parts",
+      sizes.some((size) => size > 5 * 1024 * 1024),
+      `largest ${Math.max(...sizes)}`,
+    );
     // A multipart object's ETag ends in -<number of parts>.
-    check("the large pack is one multipart object", listed.some((entry) => /-\d+"?$/.test(entry.ETag ?? "")), listed.map((entry) => entry.ETag).join(", "));
+    check(
+      "the large pack is one multipart object",
+      listed.some((entry) => /-\d+"?$/.test(entry.ETag ?? "")),
+      listed.map((entry) => entry.ETag).join(", "),
+    );
     const short = listed.filter((entry) => s3json(["head-object", "--bucket", PACKS_BUCKET, "--key", entry.Key]).ContentLength !== entry.Size);
     check("every pack reads back whole", short.length === 0, short.map((entry) => entry.Key).join(", "));
     const incomplete = s3json(["list-multipart-uploads", "--bucket", PACKS_BUCKET]).Uploads ?? [];
     check("no upload is left unfinished", incomplete.length === 0, incomplete.map((upload) => upload.Key).join(", "));
     const rules = s3json(["get-bucket-lifecycle-configuration", "--bucket", PACKS_BUCKET]).Rules ?? [];
-    check("the bucket expires packs after 7 days", rules.some((rule) => rule.Expiration?.Days === 7 && rule.Filter?.Prefix === "packs/"), JSON.stringify(rules));
-    check("the bucket aborts uploads unfinished after a day", rules.some((rule) => rule.AbortIncompleteMultipartUpload?.DaysAfterInitiation === 1));
+    check(
+      "the bucket expires packs after 7 days",
+      rules.some((rule) => rule.Expiration?.Days === 7 && rule.Filter?.Prefix === "packs/"),
+      JSON.stringify(rules),
+    );
+    check(
+      "the bucket aborts uploads unfinished after a day",
+      rules.some((rule) => rule.AbortIncompleteMultipartUpload?.DaysAfterInitiation === 1),
+    );
   }
 } catch (error) {
   console.error(error);

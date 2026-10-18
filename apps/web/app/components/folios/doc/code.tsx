@@ -66,7 +66,19 @@ const LABEL_HINTS: Record<DocCitationKind, string> = {
  * is pinned to the default branch's head, and the doc is marked possibly
  * out of date when a merge changes it.
  */
-export function CiteDialog({ slug, open, onOpenChange, onCite, projects = [] }: { slug: string; open: boolean; onOpenChange: (open: boolean) => void; onCite: (c: CitationInput) => void; projects?: string[] }) {
+export function CiteDialog({
+  slug,
+  open,
+  onOpenChange,
+  onCite,
+  projects = [],
+}: {
+  slug: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCite: (c: CitationInput) => void;
+  projects?: string[];
+}) {
   const { repos, error: loadError } = useRepoChoices(slug, open);
   const [repo, setRepo] = useState("");
   const [path, setPath] = useState("");
@@ -103,7 +115,9 @@ export function CiteDialog({ slug, open, onOpenChange, onCite, projects = [] }: 
           <DialogTitle className="flex items-center gap-2">
             <FileCode2 size={16} /> Cite code
           </DialogTitle>
-          <DialogDescription>Link this doc to the code it describes. When a merged pull request changes it, the doc&apos;s owner hears that it may be out of date.</DialogDescription>
+          <DialogDescription>
+            Link this doc to the code it describes. When a merged pull request changes it, the doc&apos;s owner hears that it may be out of date.
+          </DialogDescription>
         </DialogHeader>
         <form
           className="space-y-4"
@@ -116,10 +130,23 @@ export function CiteDialog({ slug, open, onOpenChange, onCite, projects = [] }: 
             <RepoPicker repos={repos} value={repo} onChange={setRepo} />
           </Field>
           <Field label="Path" hint="A file, a folder (everything in it), or a pattern such as src/export/** or *.sql.">
-            <Input value={path} onChange={(e) => setPath(e.target.value)} placeholder="src/export.ts" autoComplete="off" spellCheck={false} className="font-mono" />
+            <Input
+              value={path}
+              onChange={(e) => setPath(e.target.value)}
+              placeholder="src/export.ts"
+              autoComplete="off"
+              spellCheck={false}
+              className="font-mono"
+            />
           </Field>
           <Field label="What it describes">
-            <SelectField value={kind} onValueChange={(v) => setKind(v as DocCitationKind)} options={(Object.keys(DOC_CITATION_KIND_LABELS) as DocCitationKind[]).map((k) => ({ value: k, label: DOC_CITATION_KIND_LABELS[k] }))} className="w-full" aria-label="What it describes" />
+            <SelectField
+              value={kind}
+              onValueChange={(v) => setKind(v as DocCitationKind)}
+              options={(Object.keys(DOC_CITATION_KIND_LABELS) as DocCitationKind[]).map((k) => ({ value: k, label: DOC_CITATION_KIND_LABELS[k] }))}
+              className="w-full"
+              aria-label="What it describes"
+            />
           </Field>
           {kind !== "path" && (
             <Field label={kind === "symbol" ? "Symbol" : kind === "endpoint" ? "Endpoint" : "Variable"} hint={LABEL_HINTS[kind]}>
@@ -139,7 +166,19 @@ export function CiteDialog({ slug, open, onOpenChange, onCite, projects = [] }: 
 }
 
 /** Show a project's docs: choose a repository the viewer can read; its `docs/` folder and README appear in the sidebar and search. */
-export function RepoDocsDialog({ slug, open, onOpenChange, shown, onAdded }: { slug: string; open: boolean; onOpenChange: (open: boolean) => void; shown: string[]; onAdded: (space: DocRepoSpace) => void }) {
+export function RepoDocsDialog({
+  slug,
+  open,
+  onOpenChange,
+  shown,
+  onAdded,
+}: {
+  slug: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  shown: string[];
+  onAdded: (space: DocRepoSpace) => void;
+}) {
   const { repos, error: loadError } = useRepoChoices(slug, open);
   const [repo, setRepo] = useState("");
   const [busy, setBusy] = useState(false);
@@ -152,7 +191,10 @@ export function RepoDocsDialog({ slug, open, onOpenChange, shown, onAdded }: { s
           <DialogTitle className="flex items-center gap-2">
             <FolderGit2 size={16} /> Show a project&apos;s docs
           </DialogTitle>
-          <DialogDescription>The repository&apos;s docs folder and README, read from its default branch, appear beside your spaces and in search, and follow every push. Only people who can read the repository see them. Changes go through the repository.</DialogDescription>
+          <DialogDescription>
+            The repository&apos;s docs folder and README, read from its default branch, appear beside your spaces and in search, and follow every push. Only
+            people who can read the repository see them. Changes go through the repository.
+          </DialogDescription>
         </DialogHeader>
         <form
           className="space-y-4"

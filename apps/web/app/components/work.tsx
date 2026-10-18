@@ -61,17 +61,17 @@ function hueFor(name: string): number {
 export function Label({ name, color }: { name: string; color?: string | null }) {
   const hue = LABEL_HUES[name] ?? hueFor(name);
   const own = chipStyle(color);
-  const style: CSSProperties = Object.keys(own).length > 0 ? own : {
-    // Light text on a dark page, deep text on a light one (lib/theme.ts).
-    color: `light-dark(oklch(0.46 0.13 ${hue}), oklch(0.84 0.11 ${hue}))`,
-    borderColor: `light-dark(oklch(0.55 0.13 ${hue} / 0.35), oklch(0.84 0.11 ${hue} / 0.35))`,
-    backgroundColor: `light-dark(oklch(0.55 0.13 ${hue} / 0.08), oklch(0.84 0.11 ${hue} / 0.1))`,
-  };
+  const style: CSSProperties =
+    Object.keys(own).length > 0
+      ? own
+      : {
+          // Light text on a dark page, deep text on a light one (lib/theme.ts).
+          color: `light-dark(oklch(0.46 0.13 ${hue}), oklch(0.84 0.11 ${hue}))`,
+          borderColor: `light-dark(oklch(0.55 0.13 ${hue} / 0.35), oklch(0.84 0.11 ${hue} / 0.35))`,
+          backgroundColor: `light-dark(oklch(0.55 0.13 ${hue} / 0.08), oklch(0.84 0.11 ${hue} / 0.1))`,
+        };
   return (
-    <span
-      style={style}
-      className="inline-flex shrink-0 items-center rounded-full border px-2 py-px text-xs font-medium"
-    >
+    <span style={style} className="inline-flex shrink-0 items-center rounded-full border px-2 py-px text-xs font-medium">
       {name}
     </span>
   );
@@ -126,11 +126,7 @@ export function ItemState({ item }: { item: Pick<WorkItem, "state" | "reason"> }
   return (
     <span className={`${PILL} ${style}`}>
       <ItemIcon item={item} size={14} />
-      {item.state === "open"
-        ? "Open"
-        : item.reason === "not_planned"
-          ? "Closed as not planned"
-          : "Closed"}
+      {item.state === "open" ? "Open" : item.reason === "not_planned" ? "Closed as not planned" : "Closed"}
     </span>
   );
 }
@@ -171,8 +167,7 @@ export function StateTabs({
   query?: string;
   action?: ReactNode;
 }) {
-  const link = (value: State) =>
-    `${to}?${[value === "open" ? "" : "state=closed", query].filter(Boolean).join("&")}`;
+  const link = (value: State) => `${to}?${[value === "open" ? "" : "state=closed", query].filter(Boolean).join("&")}`;
   const tab = (value: State, label: string) => (
     <Link
       to={link(value)}
@@ -189,7 +184,6 @@ export function StateTabs({
     <div className="flex flex-wrap items-center justify-between gap-3">
       {/* A filter, the height of the filters beside it: the section's views above it outweigh it. */}
       <Card tone="plain" radius="lg" className="flex h-8 gap-0.5 rounded-md p-0.5">
-
         {tab("open", "Open")}
         {tab("closed", "Closed")}
       </Card>
@@ -207,17 +201,7 @@ const VERDICTS = {
  * A person's name (or `children`) linking to their profile at `/u/<name>`.
  * g1t, and names that are not usernames, stay plain text.
  */
-export function PersonLink({
-  name,
-  className,
-  label,
-  children,
-}: {
-  name: string;
-  className?: string;
-  label?: string;
-  children?: ReactNode;
-}) {
+export function PersonLink({ name, className, label, children }: { name: string; className?: string; label?: string; children?: ReactNode }) {
   // g1t itself has no profile; its name carries a small label instead, and
   // its card says what it is.
   if (name === "g1t" && !children) {
@@ -293,12 +277,7 @@ export function TimelineItem({
   aside?: ReactNode;
   children?: ReactNode;
 }) {
-  const face = (size: number) =>
-    agent ? (
-      <Avatar name={agent.ref.displayName} agent size={size} />
-    ) : (
-      <Avatar name={author} size={size} agent={bot} />
-    );
+  const face = (size: number) => (agent ? <Avatar name={agent.ref.displayName} agent size={size} /> : <Avatar name={author} size={size} agent={bot} />);
   return (
     <div id={id} className="flex scroll-mt-20 gap-3">
       <span className="mt-1 hidden shrink-0 sm:block">
@@ -394,11 +373,7 @@ function WithReferences({ text, base, workspace, filesUrl }: { text: string; bas
       {text.split(/(`[^`\n]+`)/).map((chunk, index) =>
         /^`[^`]+`$/.test(chunk) ? (
           filesUrl ? (
-            <Link
-              key={index}
-              to={`${filesUrl}#file-${chunk.slice(1, -1)}`}
-              className="font-mono text-xs text-fg hover:underline"
-            >
+            <Link key={index} to={`${filesUrl}#file-${chunk.slice(1, -1)}`} className="font-mono text-xs text-fg hover:underline">
               {chunk.slice(1, -1)}
             </Link>
           ) : (
@@ -424,7 +399,13 @@ function WithReferences({ text, base, workspace, filesUrl }: { text: string; bas
                 )
               ) : part.kind === "session" ? (
                 // The session it was closed in.
-                base ? <SessionChip key={at} href={sessionPath(base.split("/").filter(Boolean)[0] ?? "", part.id)} id={part.id} /> : <code key={at} className="font-mono text-xs text-fg">{part.text}</code>
+                base ? (
+                  <SessionChip key={at} href={sessionPath(base.split("/").filter(Boolean)[0] ?? "", part.id)} id={part.id} />
+                ) : (
+                  <code key={at} className="font-mono text-xs text-fg">
+                    {part.text}
+                  </code>
+                )
               ) : (
                 part.text
               ),
@@ -443,9 +424,7 @@ function WithReferences({ text, base, workspace, filesUrl }: { text: string; bas
 function TimelineRow({ comment, mark, children }: { comment: Comment; mark?: ReactNode; children: ReactNode }) {
   return (
     <div className="flex items-center gap-3 text-sm text-muted">
-      <span className="hidden w-8 shrink-0 justify-center sm:flex">
-        {mark ?? <span className="size-2 rounded-full border border-line-strong bg-bg" />}
-      </span>
+      <span className="hidden w-8 shrink-0 justify-center sm:flex">{mark ?? <span className="size-2 rounded-full border border-line-strong bg-bg" />}</span>
       <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
         {comment.agent ? (
           <>
@@ -506,13 +485,7 @@ function TimelineVerdict({ comment, verdict }: { comment: Comment; verdict: keyo
   return (
     <TimelineRow
       comment={comment}
-      mark={
-        verdict === "approve" ? (
-          <CircleCheck size={16} className="text-success" />
-        ) : (
-          <CircleSlash size={16} className="text-danger" />
-        )
-      }
+      mark={verdict === "approve" ? <CircleCheck size={16} className="text-success" /> : <CircleSlash size={16} className="text-danger" />}
     >
       <span className={VERDICTS[verdict].style}>{VERDICTS[verdict].label}</span>
       {comment.advisory && <AdvisoryChip />}
@@ -521,15 +494,7 @@ function TimelineVerdict({ comment, verdict }: { comment: Comment; verdict: keyo
 }
 
 /** Edit and Delete, under a comment the viewer may change. */
-function CommentActions({
-  comment,
-  can,
-  error,
-}: {
-  comment: Comment;
-  can: { edit: boolean; delete: boolean };
-  error?: string | null;
-}) {
+function CommentActions({ comment, can, error }: { comment: Comment; can: { edit: boolean; delete: boolean }; error?: string | null }) {
   return (
     <div className="mt-3 border-t border-line pt-2 text-sm">
       <div className="flex flex-wrap items-center gap-1">
@@ -552,12 +517,7 @@ function CommentActions({
         {can.delete && (
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="inline"
-                className="gap-1 px-1.5 py-1 text-xs text-faint hover:text-danger font-normal"
-              >
+              <Button type="button" variant="ghost" size="inline" className="gap-1 px-1.5 py-1 text-xs text-faint hover:text-danger font-normal">
                 <Trash2 size={12} />
                 Delete
               </Button>
@@ -646,60 +606,51 @@ export function CommentList({
   );
 
   function entry(comment: Comment) {
-        if (comment.kind === "event") {
-          return <TimelineEvent key={comment.id} comment={comment} base={base} workspace={workspace} filesUrl={review?.changesUrl} />;
+    if (comment.kind === "event") {
+      return <TimelineEvent key={comment.id} comment={comment} base={base} workspace={workspace} filesUrl={review?.changesUrl} />;
+    }
+    const verdict = comment.verdict;
+    // A verdict with nothing said and no line it is about is one line, not a card.
+    if (verdict && !comment.body.trim() && !comment.path) {
+      return <TimelineVerdict key={comment.id} comment={comment} verdict={verdict} />;
+    }
+    const can = mayChangeComment(comment, viewerId, canModerate);
+    return (
+      <TimelineItem
+        key={comment.id}
+        id={comment.id}
+        author={comment.author.username}
+        bot={comment.author.kind === "agent"}
+        agent={
+          comment.agent && {
+            ref: comment.agent,
+            actingFor: comment.actingFor?.username,
+          }
         }
-        const verdict = comment.verdict;
-        // A verdict with nothing said and no line it is about is one line, not a card.
-        if (verdict && !comment.body.trim() && !comment.path) {
-          return <TimelineVerdict key={comment.id} comment={comment} verdict={verdict} />;
+        actingFor={comment.actingFor?.username}
+        at={comment.createdAt}
+        action={
+          <>
+            {verdict ? <Verdict verdict={verdict} /> : <span>{comment.advisory ? "reviewed" : "commented"}</span>}
+            {comment.advisory && <AdvisoryChip />}
+          </>
         }
-        const can = mayChangeComment(comment, viewerId, canModerate);
-        return (
-          <TimelineItem
-            key={comment.id}
-            id={comment.id}
-            author={comment.author.username}
-            bot={comment.author.kind === "agent"}
-            agent={
-              comment.agent && {
-                ref: comment.agent,
-                actingFor: comment.actingFor?.username,
-              }
-            }
-            actingFor={comment.actingFor?.username}
-            at={comment.createdAt}
-            action={
-              <>
-                {verdict ? (
-                  <Verdict verdict={verdict} />
-                ) : (
-                  <span>{comment.advisory ? "reviewed" : "commented"}</span>
-                )}
-                {comment.advisory && <AdvisoryChip />}
-              </>
-            }
-            edited={comment.editedAt}
-            aside={
-              comment.path &&
-              review && (
-                <Link
-                  to={`${review.changesUrl}#file-${comment.path}`}
-                  className="block truncate font-mono text-xs text-faint hover:text-fg"
-                >
-                  {comment.path}
-                  {comment.line != null && `:${comment.line}`}
-                </Link>
-              )
-            }
-          >
-            {comment.body && <Markdown source={comment.body} repo={repoAt(base)} workspace={workspace} />}
-            <Reactions reactions={comment.reactions} commentId={comment.id} viewer={viewerName} className="mt-3" />
-            {(can.edit || can.delete) && (
-              <CommentActions comment={comment} can={can} error={failed?.comment === comment.id ? failed.error : null} />
-            )}
-          </TimelineItem>
-        );
+        edited={comment.editedAt}
+        aside={
+          comment.path &&
+          review && (
+            <Link to={`${review.changesUrl}#file-${comment.path}`} className="block truncate font-mono text-xs text-faint hover:text-fg">
+              {comment.path}
+              {comment.line != null && `:${comment.line}`}
+            </Link>
+          )
+        }
+      >
+        {comment.body && <Markdown source={comment.body} repo={repoAt(base)} workspace={workspace} />}
+        <Reactions reactions={comment.reactions} commentId={comment.id} viewer={viewerName} className="mt-3" />
+        {(can.edit || can.delete) && <CommentActions comment={comment} can={can} error={failed?.comment === comment.id ? failed.error : null} />}
+      </TimelineItem>
+    );
   }
 }
 
@@ -739,11 +690,7 @@ export function CommentForm({
           name="body"
           handles={handles}
           rows={3}
-          placeholder={
-            review?.canJudge
-              ? "Leave a comment, or a review. Markdown works."
-              : "Leave a comment. Markdown works."
-          }
+          placeholder={review?.canJudge ? "Leave a comment, or a review. Markdown works." : "Leave a comment. Markdown works."}
         />
         <div className="flex flex-wrap gap-2">
           {/* A plain comment's verdict is none the action knows, so each button tells its own post apart. */}
@@ -756,13 +703,7 @@ export function CommentForm({
                 <CircleCheck size={14} className="text-success" />
                 Approve
               </SubmitButton>
-              <SubmitButton
-                variant="outline"
-                name="verdict"
-                value="request_changes"
-                match={{ action: "comment" }}
-                pending="Requesting changes…"
-              >
+              <SubmitButton variant="outline" name="verdict" value="request_changes" match={{ action: "comment" }} pending="Requesting changes…">
                 <CircleSlash size={14} className="text-danger" />
                 Request changes
               </SubmitButton>

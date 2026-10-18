@@ -99,8 +99,7 @@ export default function NewProject({ loaderData, actionData }: Route.ComponentPr
       </span>
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">New project</h1>
       <p className="mt-1.5 text-sm text-muted">
-        A project is what you build and run. Its code lives in its source; its deployments, environments, secrets and
-        variables belong to the project.
+        A project is what you build and run. Its code lives in its source; its deployments, environments, secrets and variables belong to the project.
       </p>
 
       <Form method="post" className="mt-8 space-y-8">
@@ -109,20 +108,12 @@ export default function NewProject({ loaderData, actionData }: Route.ComponentPr
           <RadioGroup
             name="source"
             value={source}
-            onValueChange={(value) =>
-              value === "github" ? navigate("/new/github") : setSource(value as Source)
-            }
+            onValueChange={(value) => (value === "github" ? navigate("/new/github") : setSource(value as Source))}
             aria-label="Where its code comes from"
             className="gap-3 sm:grid-cols-3"
           >
             {sources.map((option) => (
-              <RadioCard
-                key={option.id}
-                value={option.id}
-                title={option.title}
-                description={option.text}
-                icon={option.icon}
-              />
+              <RadioCard key={option.id} value={option.id} title={option.title} description={option.text} icon={option.icon} />
             ))}
           </RadioGroup>
           {loaderData.githubUnknown && <Unavailable what="Importing from GitHub" compact />}
@@ -174,18 +165,8 @@ export default function NewProject({ loaderData, actionData }: Route.ComponentPr
         <FieldSet>
           <FieldLegend>Who can see it</FieldLegend>
           <RadioGroup name="visibility" defaultValue="public" aria-label="Who can see it" className="gap-3 sm:grid-cols-2">
-            <RadioCard
-              value="public"
-              icon={<Globe />}
-              title="Public"
-              description="Anyone can see its code and open work items."
-            />
-            <RadioCard
-              value="private"
-              icon={<Lock />}
-              title="Private"
-              description="Only members of the workspace."
-            />
+            <RadioCard value="public" icon={<Globe />} title="Public" description="Anyone can see its code and open work items." />
+            <RadioCard value="private" icon={<Lock />} title="Private" description="Only members of the workspace." />
           </RadioGroup>
         </FieldSet>
 

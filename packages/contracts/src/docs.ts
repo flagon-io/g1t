@@ -602,7 +602,6 @@ export type DocsApi = {
    * started (false: one is already going).
    */
   reindexDocs(workspace: string, viewer: User): Promise<Result<boolean>>;
-
 };
 
 async function rpc<T>(service: ServiceBinding, method: string, args: object): Promise<T> {

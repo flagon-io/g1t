@@ -213,7 +213,7 @@ function rows(tier: Required<FreeTier>): Row[] {
       plan: "Included",
       note: "Pages, live editing and history, once Docs ships.",
     },
-      {
+    {
       what: "The forge",
       free: "Free",
       plan: "Included",
@@ -291,7 +291,11 @@ function rows(tier: Required<FreeTier>): Row[] {
 
 export default function Pricing({ loaderData }: Route.ComponentProps) {
   const { book, unpriced, free } = loaderData;
-  const checked = book?.prices.map((p) => p.checkedAt).filter((at): at is string => !!at).sort().at(-1);
+  const checked = book?.prices
+    .map((p) => p.checkedAt)
+    .filter((at): at is string => !!at)
+    .sort()
+    .at(-1);
   const given = Object.fromEntries(Object.entries(book?.free ?? {}).filter(([, value]) => value != null));
   const tier: Required<FreeTier> = { ...DEFAULT_FREE, ...given };
   const plan = book?.plans?.find((p) => p.feature === "plan") ?? DEFAULT_PLAN;
@@ -309,9 +313,9 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
       <p className="text-sm font-medium text-accent">Pricing</p>
       <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">What g1t runs, priced from cost plus {markup}.</h1>
       <p className="mt-3 max-w-2xl text-muted">
-        People chatting and the forge are free for everyone. Everything g1t runs is priced from what it costs g1t plus{" "}
-        {markup}: runner minutes at a fixed rate for each machine, the rest at cost plus {markup}. Your own runners are free, connecting your coding agents costs nothing, and there are no seats. The numbers on this page are the live price book g1t charges from. Prices exclude tax, which is added
-        where it applies.
+        People chatting and the forge are free for everyone. Everything g1t runs is priced from what it costs g1t plus {markup}: runner minutes at a fixed rate
+        for each machine, the rest at cost plus {markup}. Your own runners are free, connecting your coding agents costs nothing, and there are no seats. The
+        numbers on this page are the live price book g1t charges from. Prices exclude tax, which is added where it applies.
       </p>
       <Card asChild tone="plain" className="mt-6 grid gap-px overflow-hidden bg-line text-sm sm:grid-cols-2 lg:grid-cols-4">
         <ul>
@@ -343,14 +347,11 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
             <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium tracking-normal text-accent">Recommended</span>
           </h2>
           <p>
-            <span className="text-3xl font-semibold tabular-nums">${price}</span>{" "}
-            <span className="text-sm text-muted">a month per workspace</span>
+            <span className="text-3xl font-semibold tabular-nums">${price}</span> <span className="text-sm text-muted">a month per workspace</span>
             <span className="block text-right text-xs text-faint">Plus tax where it applies</span>
           </p>
         </div>
-        <p className="mt-2 text-sm text-muted">
-          The plan for a team that ships: unlimited members, checks, the merge queue and deployments.
-        </p>
+        <p className="mt-2 text-sm text-muted">The plan for a team that ships: unlimited members, checks, the merge queue and deployments.</p>
         <p className="mt-3 text-sm text-fg-soft">
           One price for the whole team: a 10-person team pays ${price} a month, not ${price} a person.
         </p>
@@ -369,16 +370,15 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
           <div>
             <p className="font-medium">Where the ${price} goes</p>
             <p className="mt-1 text-muted">
-              $10 comes back to you as usage: runner minutes, builds and deployments, priced from cost plus 20%, used before
-              anything else. The other $10 pays for running g1t, the free forge for everyone, and the people building it.
+              $10 comes back to you as usage: runner minutes, builds and deployments, priced from cost plus 20%, used before anything else. The other $10 pays
+              for running g1t, the free forge for everyone, and the people building it.
             </p>
           </div>
           <div>
             <p className="font-medium">No quotas</p>
             <p className="mt-1 text-muted">
-              No count of projects, previews, builds, requests or git operations ever stops a workspace on the plan. Past
-              the $10, usage is charged at the same prices, and only your spend limit stops it. Unused included usage does
-              not roll over.
+              No count of projects, previews, builds, requests or git operations ever stops a workspace on the plan. Past the $10, usage is charged at the same
+              prices, and only your spend limit stops it. Unused included usage does not roll over.
             </p>
           </div>
         </div>
@@ -408,9 +408,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
       </section>
 
       <h2 className="mt-14 text-xl font-semibold tracking-tight">Free and the plan, side by side</h2>
-      <p className="mt-1 text-sm text-muted">
-        Secret scanning, push protection, vulnerability alerts and security updates are free everywhere, on every plan.
-      </p>
+      <p className="mt-1 text-sm text-muted">Secret scanning, push protection, vulnerability alerts and security updates are free everywhere, on every plan.</p>
       {/* On a phone, one row at a time with both answers under it; a table that wide would scroll. */}
       <Card asChild tone="plain" divided className="mt-4 text-sm sm:hidden">
         <ul>
@@ -456,24 +454,21 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
         </table>
       </Card>
       <p className="mt-3 text-sm text-muted">
-        Git operations cost g1t money too: Cloudflare charges g1t $0.15 per 1,000. {count(tier.gitOperationsIncluded)} a
-        month is far more than an active workspace uses.
+        Git operations cost g1t money too: Cloudflare charges g1t $0.15 per 1,000. {count(tier.gitOperationsIncluded)} a month is far more than an active
+        workspace uses.
       </p>
 
       <h2 className="mt-14 text-xl font-semibold tracking-tight">No card, no compute</h2>
       <div className="mt-3 max-w-3xl space-y-3 text-sm text-muted">
+        <p>Checks, workflows, the merge queue, deployments and semantic search run on g1t's machines. They need the plan, or a card check.</p>
         <p>
-          Checks, workflows, the merge queue, deployments and semantic search run on g1t's machines. They need
-          the plan, or a card check.
+          The reason: compute costs g1t real money from the first second, and free compute draws people who use it to mine cryptocurrency. A card check is the
+          smallest gate that stops that, with one trial per card.
         </p>
         <p>
-          The reason: compute costs g1t real money from the first second, and free compute draws people who use it to
-          mine cryptocurrency. A card check is the smallest gate that stops that, with one trial per card.
-        </p>
-        <p>
-          A card check is never charged. Stripe saves and verifies the card, with 3-D Secure where your bank asks for it.
-          Nothing is charged until an owner starts the plan, and then the same card is used, without asking for it again.
-          The trial needs a credit or debit card; prepaid cards can still pay for the plan.
+          A card check is never charged. Stripe saves and verifies the card, with 3-D Secure where your bank asks for it. Nothing is charged until an owner
+          starts the plan, and then the same card is used, without asking for it again. The trial needs a credit or debit card; prepaid cards can still pay for
+          the plan.
         </p>
       </div>
 
@@ -482,11 +477,9 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
           <section>
             <h3 className="font-medium">The trial</h3>
             <p className="mt-1.5 text-sm text-muted">
-              {dollars(tier.trialWorkspaceMicros)} of usage, once per workspace and once per card, after a card check with a credit or
-              debit card. It comes from a{" "}
-              {dollars(tier.trialMonthlyPoolMicros)} pool each month for everyone; when a month's pool is given out, new
-              trials wait until the 1st. The trial does not cover deployments and never turns into a charge. If the last
-              run on a trial goes past it, g1t covers the difference.
+              {dollars(tier.trialWorkspaceMicros)} of usage, once per workspace and once per card, after a card check with a credit or debit card. It comes from
+              a {dollars(tier.trialMonthlyPoolMicros)} pool each month for everyone; when a month's pool is given out, new trials wait until the 1st. The trial
+              does not cover deployments and never turns into a charge. If the last run on a trial goes past it, g1t covers the difference.
             </p>
           </section>
         </Card>
@@ -494,26 +487,23 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
           <section>
             <h3 className="font-medium">The open-source pool</h3>
             <p className="mt-1.5 text-sm text-muted">
-              Checks, workflows and the merge queue on public repositories, after a card check:{" "}
-              {dollars(tier.ossPoolMicros)} a month in all, up to {dollars(tier.ossRepoMicros)} a month per repository.
-              When the pool or a repository's share is used up, the work waits for the
-              month to turn, or the workspace pays as usual.
+              Checks, workflows and the merge queue on public repositories, after a card check: {dollars(tier.ossPoolMicros)} a month in all, up to{" "}
+              {dollars(tier.ossRepoMicros)} a month per repository. When the pool or a repository's share is used up, the work waits for the month to turn, or
+              the workspace pays as usual.
             </p>
           </section>
         </Card>
       </div>
 
       <h2 className="mt-14 text-xl font-semibold tracking-tight">Limits, and how to raise them</h2>
-      <p className="mt-1 max-w-3xl text-sm text-muted">
-        g1t lets usage run ahead of payment only so far. Limits keep a mistake small, for you and for g1t.
-      </p>
+      <p className="mt-1 max-w-3xl text-sm text-muted">g1t lets usage run ahead of payment only so far. Limits keep a mistake small, for you and for g1t.</p>
       <ul className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
         <Card asChild className="p-4">
           <li>
             <p className="font-medium">{dollars(tier.paidStartCeilingMicros)} in the first month</p>
             <p className="mt-1 text-muted">
-              A workspace on the plan can use up to {dollars(tier.paidStartCeilingMicros)} in its first month. After that,
-              the limit grows with payments that clear.
+              A workspace on the plan can use up to {dollars(tier.paidStartCeilingMicros)} in its first month. After that, the limit grows with payments that
+              clear.
             </p>
           </li>
         </Card>
@@ -521,8 +511,8 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
           <li>
             <p className="font-medium">Your own spend limit</p>
             <p className="mt-1 text-muted">
-              Owners set a monthly spend limit anywhere up to the highest limit the workspace has had, with no approval.
-              Once, you can raise it yourself to twice that.
+              Owners set a monthly spend limit anywhere up to the highest limit the workspace has had, with no approval. Once, you can raise it yourself to
+              twice that.
             </p>
           </li>
         </Card>
@@ -530,8 +520,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
           <li>
             <p className="font-medium">Prepay to raise it now</p>
             <p className="mt-1 text-muted">
-              Prepaying from $25 raises what you can use by the same amount, at once. From $1,000 you can also pay by bank
-              transfer.
+              Prepaying from $25 raises what you can use by the same amount, at once. From $1,000 you can also pay by bank transfer.
             </p>
           </li>
         </Card>
@@ -539,8 +528,8 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
           <li>
             <p className="font-medium">Raise my limit</p>
             <p className="mt-1 text-muted">
-              Need more? Ask from Billing with the amount, why, and what you expect to spend. You get an answer within one
-              business day, in the app and by email.
+              Need more? Ask from Billing with the amount, why, and what you expect to spend. You get an answer within one business day, in the app and by
+              email.
             </p>
           </li>
         </Card>
@@ -552,32 +541,30 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
           <li>
             <p className="font-medium">A spike pauses new work</p>
             <p className="mt-1 text-muted">
-              When an hour's spend is five times your usual hour, and at least $5, new compute waits for an owner to choose
-              Keep going or Stop. Runs already going finish.
+              When an hour's spend is five times your usual hour, and at least $5, new compute waits for an owner to choose Keep going or Stop. Runs already
+              going finish.
             </p>
           </li>
         </Card>
         <Card asChild className="p-4">
           <li>
             <p className="font-medium">Alerts at 50, 75, 90 and 100%</p>
-            <p className="mt-1 text-muted">
-              Of the plan's included usage, your spend limit and g1t's limit: in the app and by email.
-            </p>
+            <p className="mt-1 text-muted">Of the plan's included usage, your spend limit and g1t's limit: in the app and by email.</p>
           </li>
         </Card>
         <Card asChild className="p-4">
           <li>
             <p className="font-medium">Spent more than you meant to? Tell us</p>
             <p className="mt-1 text-muted">
-              Tell us from Billing what happened. Once in 12 months, g1t can credit back usage you did not mean, always
-              including its 20% on it. Larger credits, or a second one within 12 months, are reviewed by a person.
+              Tell us from Billing what happened. Once in 12 months, g1t can credit back usage you did not mean, always including its 20% on it. Larger credits,
+              or a second one within 12 months, are reviewed by a person.
             </p>
           </li>
         </Card>
       </ul>
       <p className="mt-3 text-sm text-muted">
-        No card is charged less than {dollars(tier.minChargeMicros)} when a month closes, so a payment's fee is never most
-        of it. Smaller amounts carry over to the next invoice. Charges at a limit always go through.
+        No card is charged less than {dollars(tier.minChargeMicros)} when a month closes, so a payment's fee is never most of it. Smaller amounts carry over to
+        the next invoice. Charges at a limit always go through.
       </p>
 
       <div className="mt-14 grid gap-4 sm:grid-cols-2">
@@ -616,12 +603,8 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
             {machines().map((instance) => (
               <tr key={instance.machine}>
                 <td className="px-4 py-3">
-                  <p className="font-medium">
-                    Runner minutes, {instance.label === "standard" ? "standard machine" : instance.label}
-                  </p>
-                  <p className="text-xs text-faint">
-                    {machineSize(instance)}. Each job's time rounded up to the minute; checks, workflows and the merge queue
-                  </p>
+                  <p className="font-medium">Runner minutes, {instance.label === "standard" ? "standard machine" : instance.label}</p>
+                  <p className="text-xs text-faint">{machineSize(instance)}. Each job's time rounded up to the minute; checks, workflows and the merge queue</p>
                 </td>
                 <td className="px-4 py-3 font-mono text-xs tabular-nums text-muted">Up to {money(busyMinuteMicros(instance))} a minute</td>
                 <td className="hidden px-4 py-3 tabular-nums sm:table-cell">Fixed rate</td>
@@ -653,28 +636,28 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
                 </td>
               </tr>
             )}
-            {(book?.prices ?? []).filter((price) => !SHOWN_APART.has(price.meter)).map((price) => (
-              <tr key={price.meter}>
-                <td className="px-4 py-3">
-                  <p className="font-medium">{price.title}</p>
-                  <p className="text-xs text-faint">
-                    {price.meter === "actions_cache" ? "On the plan only. A free workspace is never charged for it. " : ""}
-                    {price.source === "cloudflare" ? "Measured from Cloudflare's bill" : "Cloudflare's published price"}
-                  </p>
-                </td>
-                <td className="px-4 py-3 font-mono text-xs tabular-nums text-muted">{perUnit(price, price.costMicros)}</td>
-                <td className="hidden px-4 py-3 tabular-nums sm:table-cell">{price.markupPercent}%</td>
-                <td className="px-4 py-3 font-mono text-xs tabular-nums">{perUnit(price, price.priceMicros)}</td>
-              </tr>
-            ))}
+            {(book?.prices ?? [])
+              .filter((price) => !SHOWN_APART.has(price.meter))
+              .map((price) => (
+                <tr key={price.meter}>
+                  <td className="px-4 py-3">
+                    <p className="font-medium">{price.title}</p>
+                    <p className="text-xs text-faint">
+                      {price.meter === "actions_cache" ? "On the plan only. A free workspace is never charged for it. " : ""}
+                      {price.source === "cloudflare" ? "Measured from Cloudflare's bill" : "Cloudflare's published price"}
+                    </p>
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs tabular-nums text-muted">{perUnit(price, price.costMicros)}</td>
+                  <td className="hidden px-4 py-3 tabular-nums sm:table-cell">{price.markupPercent}%</td>
+                  <td className="px-4 py-3 font-mono text-xs tabular-nums">{perUnit(price, price.priceMicros)}</td>
+                </tr>
+              ))}
           </tbody>
         </table>
       </Card>
 
       <h2 className="mt-14 text-xl font-semibold tracking-tight">Enterprise</h2>
-      <p className="mt-1 text-sm text-muted">
-        For organizations with several workspaces: one invoice and one limit. The prices are the ones on this page.
-      </p>
+      <p className="mt-1 text-sm text-muted">For organizations with several workspaces: one invoice and one limit. The prices are the ones on this page.</p>
       <Card asChild className="mt-4 p-5">
         <section>
           <ul className="grid gap-3 text-sm sm:grid-cols-2">
@@ -689,8 +672,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
             <li>
               <p className="font-medium">Security on every plan</p>
               <p className="text-muted">
-                The audit log with export, {tier.planAuditRetentionDays} days or longer by arrangement, and secret push
-                protection, for every workspace.
+                The audit log with export, {tier.planAuditRetentionDays} days or longer by arrangement, and secret push protection, for every workspace.
               </p>
             </li>
             <li>
@@ -757,7 +739,9 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
         <p className="mt-2 text-sm text-muted">None yet. When a price moves, it is listed here with why.</p>
       )}
 
-      <h2 id="faq" className="mt-14 text-xl font-semibold tracking-tight">Questions</h2>
+      <h2 id="faq" className="mt-14 text-xl font-semibold tracking-tight">
+        Questions
+      </h2>
       <Card asChild tone="plain" divided className="mt-4">
         <dl>
           {FAQ.map((item) => (
@@ -769,10 +753,7 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
         </dl>
       </Card>
 
-      <a
-        href="https://docs.g1t.sh/guides/usage-and-billing/"
-        className="mt-12 inline-flex items-center gap-1.5 text-sm text-accent hover:underline"
-      >
+      <a href="https://docs.g1t.sh/guides/usage-and-billing/" className="mt-12 inline-flex items-center gap-1.5 text-sm text-accent hover:underline">
         How usage and billing work
         <ArrowUpRight size={14} />
       </a>

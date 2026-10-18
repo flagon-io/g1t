@@ -74,10 +74,16 @@ test("merging keeps one copy of each message, and drops the pending one once sav
   const pending = { ...message("tmp-1", "2026-10-08T10:00:00Z"), pending: true, client_id: "tmp-1" };
   const saved = { ...message("05", "2026-10-08T10:00:01Z"), client_id: "tmp-1" };
   const merged = mergeMessages([message("02", "2026-10-08T09:00:00Z"), pending], [saved, message("02", "2026-10-08T09:00:00Z", { body: "edited" })]);
-  assert.deepEqual(merged.map((m) => m.id), ["02", "05"]);
+  assert.deepEqual(
+    merged.map((m) => m.id),
+    ["02", "05"],
+  );
   assert.equal(merged[0]!.body, "edited");
   // Still pending: last, after everything saved.
-  assert.deepEqual(mergeMessages([pending], [message("09", "2026-10-08T11:00:00Z")]).map((m) => m.id), ["09", "tmp-1"]);
+  assert.deepEqual(
+    mergeMessages([pending], [message("09", "2026-10-08T11:00:00Z")]).map((m) => m.id),
+    ["09", "tmp-1"],
+  );
 });
 
 test("an @ being typed suggests people", () => {
@@ -86,7 +92,10 @@ test("an @ being typed suggests people", () => {
     { kind: "user" as const, name: "rene", display_name: "Rene", avatar: null },
     { kind: "user" as const, name: "bo", display_name: "Robert Reed", avatar: null },
   ];
-  assert.deepEqual(mentionQuery("hey @re", 7, people)?.options.map((p) => p.name), ["rene", "bo"]);
+  assert.deepEqual(
+    mentionQuery("hey @re", 7, people)?.options.map((p) => p.name),
+    ["rene", "bo"],
+  );
   assert.equal(mentionQuery("hey @re", 7, people)?.start, 4);
   assert.equal(mentionQuery("mail me@an", 10, people), null);
   assert.deepEqual(mentionQuery("@", 1, people)?.options.length, 3);
@@ -111,7 +120,10 @@ test("message text: mentions, references, links and code, never HTML", () => {
     { t: "strong", c: [{ t: "text", v: "bold" }] },
   ]);
   assert.ok(inline("[x](javascript:alert(1))").every((span) => span.t === "text"));
-  assert.deepEqual(inline("https://g1t.sh/a."), [{ t: "link", href: "https://g1t.sh/a", c: [{ t: "text", v: "https://g1t.sh/a" }] }, { t: "text", v: "." }]);
+  assert.deepEqual(inline("https://g1t.sh/a."), [
+    { t: "link", href: "https://g1t.sh/a", c: [{ t: "text", v: "https://g1t.sh/a" }] },
+    { t: "text", v: "." },
+  ]);
   assert.deepEqual(inline("me@example.com"), [{ t: "text", v: "me@example.com" }]);
   assert.equal(safeHref("//evil.example"), null);
   assert.equal(safeHref("/acme/web/pull/3"), "/acme/web/pull/3");
@@ -119,11 +131,17 @@ test("message text: mentions, references, links and code, never HTML", () => {
 
 test("message blocks: fenced code, lists, quotes and paragraphs", () => {
   const parsed = blocks("Plan:\n- one\n- two\n\n```ts\nconst a = 1;\n```\n> quoted\nlast");
-  assert.deepEqual(parsed.map((block) => block.t), ["p", "list", "code", "quote", "p"]);
+  assert.deepEqual(
+    parsed.map((block) => block.t),
+    ["p", "list", "code", "quote", "p"],
+  );
   assert.deepEqual(parsed[2], { t: "code", lang: "ts", v: "const a = 1;" });
 });
 
-function entry(id: string, over: Partial<ChatSidebarEntry> & { kind?: "channel" | "dm"; last?: string; visibility?: "private" | "workspace" | "public" } = {}): ChatSidebarEntry {
+function entry(
+  id: string,
+  over: Partial<ChatSidebarEntry> & { kind?: "channel" | "dm"; last?: string; visibility?: "private" | "workspace" | "public" } = {},
+): ChatSidebarEntry {
   return {
     channel: {
       id,
@@ -158,14 +176,32 @@ test("the sidebar: sections, filters and the rail's count", () => {
     entry("d4", { kind: "dm", title: "notes", others: [], last: "2026-10-01T00:00:00Z" }),
   ];
   const { pinned, channels, publicChannels, dms } = sections(all);
-  assert.deepEqual(pinned.map((e) => e.title), ["general"]);
-  assert.deepEqual(channels.map((e) => e.title), ["noisy", "random"]);
+  assert.deepEqual(
+    pinned.map((e) => e.title),
+    ["general"],
+  );
+  assert.deepEqual(
+    channels.map((e) => e.title),
+    ["noisy", "random"],
+  );
   assert.deepEqual(publicChannels, []);
-  assert.deepEqual(dms.map((e) => e.title), ["ana", "ana, reviewer", "reviewer", "notes"]);
+  assert.deepEqual(
+    dms.map((e) => e.title),
+    ["ana", "ana, reviewer", "reviewer", "notes"],
+  );
   // An old conversation with an agent alone is left out until searched for or open.
-  assert.deepEqual(filterEntries(all, "unread", "").map((e) => e.title), ["general", "noisy"]);
-  assert.deepEqual(filterEntries(all, "unread", "", "d1").map((e) => e.title), ["general", "reviewer", "noisy"]);
-  assert.deepEqual(filterEntries(all, "all", "@Review").map((e) => e.title), ["reviewer", "ana, reviewer"]);
+  assert.deepEqual(
+    filterEntries(all, "unread", "").map((e) => e.title),
+    ["general", "noisy"],
+  );
+  assert.deepEqual(
+    filterEntries(all, "unread", "", "d1").map((e) => e.title),
+    ["general", "reviewer", "noisy"],
+  );
+  assert.deepEqual(
+    filterEntries(all, "all", "@Review").map((e) => e.title),
+    ["reviewer", "ana, reviewer"],
+  );
   assert.deepEqual(unreadTotals(all), { unread: 3, mentions: 1 });
 });
 
@@ -180,12 +216,27 @@ test("the sidebar keeps public channels apart from the workspace's own", () => {
   ];
   const { pinned, channels, publicChannels, dms } = sections(all);
   // Pinned keeps a public channel you pinned; the rest are by name in their own group.
-  assert.deepEqual(pinned.map((e) => e.title), ["launch"]);
-  assert.deepEqual(channels.map((e) => e.title), ["general", "leads"]);
-  assert.deepEqual(publicChannels.map((e) => e.title), ["announcements", "support"]);
-  assert.deepEqual(dms.map((e) => e.title), ["ana"]);
+  assert.deepEqual(
+    pinned.map((e) => e.title),
+    ["launch"],
+  );
+  assert.deepEqual(
+    channels.map((e) => e.title),
+    ["general", "leads"],
+  );
+  assert.deepEqual(
+    publicChannels.map((e) => e.title),
+    ["announcements", "support"],
+  );
+  assert.deepEqual(
+    dms.map((e) => e.title),
+    ["ana"],
+  );
   // Filters reach both groups.
-  assert.deepEqual(sections(filterEntries(all, "unread", "")).publicChannels.map((e) => e.title), ["support"]);
+  assert.deepEqual(
+    sections(filterEntries(all, "unread", "")).publicChannels.map((e) => e.title),
+    ["support"],
+  );
   assert.deepEqual(sections(filterEntries(all, "mentions", "")).channels, []);
 });
 
@@ -197,7 +248,10 @@ test("an old conversation with an agent alone opens read-only, under the name th
     entry("d2", { kind: "dm", title: "ana, triage", others: [ana, deleted], last: "2026-10-03T00:00:00Z" }),
     entry("d3", { kind: "dm", title: "ana", others: [ana], last: "2026-10-04T00:00:00Z" }),
   ];
-  assert.deepEqual(all.map((e) => formerAgentDm(e)?.name ?? null), ["triage", null, null]);
+  assert.deepEqual(
+    all.map((e) => formerAgentDm(e)?.name ?? null),
+    ["triage", null, null],
+  );
   assert.equal(formerAgentLine(deleted), "Triage was an agent and no longer answers here. Everything said here stays to read.");
 });
 
@@ -205,8 +259,14 @@ test("addresses, names, money and reconnecting", () => {
   assert.equal(channelPath("acme", { id: "c1", kind: "channel", name: "general" }), "/acme/-/chat/general");
   assert.equal(channelPath("acme", { id: "d1", kind: "dm", name: null }), "/acme/-/chat/dm/d1");
   assert.equal(channelName("#Release Train_2!"), "release-train-2");
-  assert.equal(backoff(0, () => 0.5), 1000);
-  assert.equal(backoff(10, () => 0.5), 30_000);
+  assert.equal(
+    backoff(0, () => 0.5),
+    1000,
+  );
+  assert.equal(
+    backoff(10, () => 0.5),
+    30_000,
+  );
 });
 
 test("a member shows by display name, else by their username as they wrote it", () => {

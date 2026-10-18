@@ -38,7 +38,8 @@ export function parseNpmLock(text) {
   return packages;
 }
 
-const signature = (entries) => JSON.stringify((entries ?? []).map((e) => ({ ...e, deps: [...e.deps].sort() })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));
+const signature = (entries) =>
+  JSON.stringify((entries ?? []).map((e) => ({ ...e, deps: [...e.deps].sort() })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));
 
 /** Names whose entries differ between two parsed lockfiles. */
 export function changedNames(before, after) {

@@ -20,13 +20,15 @@ type Match = { start: number; typed: string; options: EmojiPick[] };
  * key events first (it says whether it used one), render `menu` above the
  * box, and dismiss on blur.
  */
-export function useEmojiAutocomplete({
-  box,
-  setText,
-}: {
-  box: RefObject<HTMLTextAreaElement | HTMLInputElement | null>;
-  setText: (text: string) => void;
-}): { menu: ReactNode; open: boolean; look: () => void; onKeyDown: (event: KeyboardEvent<HTMLElement>) => boolean; dismiss: () => void; listId: string; activeId: string | undefined } {
+export function useEmojiAutocomplete({ box, setText }: { box: RefObject<HTMLTextAreaElement | HTMLInputElement | null>; setText: (text: string) => void }): {
+  menu: ReactNode;
+  open: boolean;
+  look: () => void;
+  onKeyDown: (event: KeyboardEvent<HTMLElement>) => boolean;
+  dismiss: () => void;
+  listId: string;
+  activeId: string | undefined;
+} {
   const { customs, byName, usercontent } = useEmojiContext();
   const [match, setMatch] = useState<Match | null>(null);
   const [active, setActive] = useState(0);

@@ -35,12 +35,7 @@ export interface GuardrailsApi {
   /** Members only. With `repo`, that project's level too. */
   getGuardrails(viewer: Viewer, workspace: string, repo?: RepoPath | null): Promise<Result<GuardrailsView>>;
   /** The workspace's level (owners), or with `repo`, that project's (members). */
-  updateGuardrails(
-    actor: User,
-    workspace: string,
-    repo: RepoPath | null,
-    settings: GuardrailSettings,
-  ): Promise<Result<GuardrailsView>>;
+  updateGuardrails(actor: User, workspace: string, repo: RepoPath | null, settings: GuardrailSettings): Promise<Result<GuardrailsView>>;
   /**
    * For the runner: what a run in `repo` gets, which is always its
    * project's. `repoId` names the project however it has moved since; a
@@ -63,8 +58,7 @@ export function guardrailsClient(service: ServiceBinding): GuardrailsApi {
   };
   return {
     getGuardrails: (viewer, workspace, repo) => call("get_guardrails", { viewer, workspace, repo: repo ?? null }),
-    updateGuardrails: (actor, workspace, repo, settings) =>
-      call("update_guardrails", { actor, workspace, repo, settings }),
+    updateGuardrails: (actor, workspace, repo, settings) => call("update_guardrails", { actor, workspace, repo, settings }),
     runGuardrails: (repo, repoId) => call("run_guardrails", { repo, repo_id: repoId ?? null }),
   };
 }

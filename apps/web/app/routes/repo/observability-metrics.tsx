@@ -23,7 +23,10 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const { projectId, service, view, filter } = await observed(context, params, request);
   const search = new URL(request.url).searchParams;
-  const [metrics, facets] = await Promise.all([soft(service.metrics({ project_id: projectId }), "metrics"), soft(service.facets({ project_id: projectId }), "facets")]);
+  const [metrics, facets] = await Promise.all([
+    soft(service.metrics({ project_id: projectId }), "metrics"),
+    soft(service.facets({ project_id: projectId }), "facets"),
+  ]);
   const name = search.get("name") ?? metrics?.[0]?.name ?? null;
   const info = metrics?.find((m) => m.name === name) ?? null;
   const aggregate = AGGREGATES.find((a) => a === search.get("agg")) ?? (info?.kind === "sum" ? "sum" : "avg");
@@ -61,8 +64,8 @@ export default function Metrics({ loaderData, params }: Route.ComponentProps) {
           <Unavailable what="Metrics" />
         ) : metrics.length === 0 ? (
           <EmptyState title="No metrics yet">
-            Request counts, errors and latency are on the Overview already. Metrics of your own arrive from an OpenTelemetry SDK's metric exporter,
-            with an ingest token.{" "}
+            Request counts, errors and latency are on the Overview already. Metrics of your own arrive from an OpenTelemetry SDK's metric exporter, with an
+            ingest token.{" "}
             <a href="https://docs.g1t.sh/guides/observability/#metrics" className="text-accent hover:underline">
               How
             </a>
@@ -135,7 +138,9 @@ export default function Metrics({ loaderData, params }: Route.ComponentProps) {
                 />
               )}
               {series && !isFailed(series) && series.series.length > PRODUCT_STYLE.length && (
-                <p className="mt-2 text-xs text-faint">Showing the first {PRODUCT_STYLE.length} of {series.series.length} groups.</p>
+                <p className="mt-2 text-xs text-faint">
+                  Showing the first {PRODUCT_STYLE.length} of {series.series.length} groups.
+                </p>
               )}
             </div>
           </div>

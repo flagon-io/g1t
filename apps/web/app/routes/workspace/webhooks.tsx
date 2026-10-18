@@ -24,12 +24,5 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
 export default function WorkspaceWebhooks({ loaderData, actionData, params }: Route.ComponentProps) {
   const { role, ...data } = loaderData;
-  return (
-    <WebhooksPanel
-      data={data}
-      action={actionData}
-      manage={role === "owner"}
-      scope={`every repository in ${params.owner}`}
-    />
-  );
+  return <WebhooksPanel data={data} action={actionData} manage={role === "owner"} scope={`every repository in ${params.owner}`} />;
 }

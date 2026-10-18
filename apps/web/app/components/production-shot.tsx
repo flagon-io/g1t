@@ -70,12 +70,7 @@ export function ProductionShot({
   const waiting = !empty && !loaded ? (source.kind === "screenshot" ? "Taking a screenshot…" : "Loading the image…") : null;
 
   const frame = (
-    <span
-      className={cn(
-        "block w-full overflow-hidden rounded-lg border border-line bg-bg",
-        href && "transition-colors group-hover:border-line-strong",
-      )}
-    >
+    <span className={cn("block w-full overflow-hidden rounded-lg border border-line bg-bg", href && "transition-colors group-hover:border-line-strong")}>
       <span className="flex h-7 items-center gap-1.5 border-b border-line bg-surface px-2.5">
         <span aria-hidden="true" className="flex shrink-0 gap-1.5">
           <span className="size-1.5 rounded-full bg-line-strong" />
@@ -111,10 +106,7 @@ export function ProductionShot({
               setLoaded(false);
               setAt((index) => index + 1);
             }}
-            className={cn(
-              "absolute inset-0 size-full object-cover object-top transition-opacity duration-300",
-              loaded ? "opacity-100" : "opacity-0",
-            )}
+            className={cn("absolute inset-0 size-full object-cover object-top transition-opacity duration-300", loaded ? "opacity-100" : "opacity-0")}
           />
         )}
       </span>

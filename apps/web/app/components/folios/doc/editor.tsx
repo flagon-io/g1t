@@ -105,7 +105,21 @@ export default function DocEditor(props: DocEditorProps) {
   return <LiveEditor {...props} />;
 }
 
-function LiveEditor({ slug, folioId, role, me, mentionables, usercontent, suggestions, showComments, onPresence, renderSuggestion, onPageThreads, projects, provider }: DocEditorProps) {
+function LiveEditor({
+  slug,
+  folioId,
+  role,
+  me,
+  mentionables,
+  usercontent,
+  suggestions,
+  showComments,
+  onPresence,
+  renderSuggestion,
+  onPageThreads,
+  projects,
+  provider,
+}: DocEditorProps) {
   const editable = canDo(role, "edit");
   // BlockNote's own parts follow the page's Appearance (lib/theme.ts).
   const theme = useDrawnTheme();
@@ -139,7 +153,11 @@ function LiveEditor({ slug, folioId, role, me, mentionables, usercontent, sugges
             return ids.map((id) => {
               const p = found.get(id);
               const avatar = id === me.key ? me.avatar : (p?.avatar ?? null);
-              return { id, username: id === me.key ? me.display_name : (p?.display_name ?? "Someone"), avatarUrl: avatar ? `${usercontent}/avatars/${avatar}` : "" };
+              return {
+                id,
+                username: id === me.key ? me.display_name : (p?.display_name ?? "Someone"),
+                avatarUrl: avatar ? `${usercontent}/avatars/${avatar}` : "",
+              };
             });
           },
         }),
@@ -202,7 +220,12 @@ function LiveEditor({ slug, folioId, role, me, mentionables, usercontent, sugges
           resolved: !!t.get("resolved"),
           comments: comments
             .filter((c) => !c.get("deletedAt"))
-            .map((c) => ({ id: String(c.get("id")), author: String(c.get("userId")), text: commentText(c.get("body")), created_at: Number(c.get("createdAt")) || 0 })),
+            .map((c) => ({
+              id: String(c.get("id")),
+              author: String(c.get("userId")),
+              text: commentText(c.get("body")),
+              created_at: Number(c.get("createdAt")) || 0,
+            })),
         });
       });
       onPageThreads(out.sort((a, b) => (a.comments[0]?.created_at ?? 0) - (b.comments[0]?.created_at ?? 0)));
@@ -226,12 +249,54 @@ function LiveEditor({ slug, folioId, role, me, mentionables, usercontent, sugges
   const slashItems = (query: string) => {
     const insert = (block: { type: string; props?: Record<string, unknown> }) => () => insertOrUpdateBlockForSlashMenu(editor as never, block as never);
     const custom = [
-      { title: "Info callout", subtext: "A note set apart from the text", aliases: ["callout", "note", "info"], group: "Callouts", icon: <Info size={18} />, onItemClick: insert({ type: "callout", props: { kind: "info" } }) },
-      { title: "Warning callout", subtext: "Something to be careful about", aliases: ["callout", "warning", "caution"], group: "Callouts", icon: <AlertTriangle size={18} />, onItemClick: insert({ type: "callout", props: { kind: "warning" } }) },
-      { title: "Success callout", subtext: "A tip, or what good looks like", aliases: ["callout", "success", "tip"], group: "Callouts", icon: <CheckCircle2 size={18} />, onItemClick: insert({ type: "callout", props: { kind: "success" } }) },
-      { title: "Diagram", subtext: "A Mermaid diagram, drawn as you type", aliases: ["mermaid", "flowchart", "sequence", "chart"], group: "Advanced", icon: <Workflow size={18} />, onItemClick: insert({ type: "mermaid" }) },
-      { title: "Math", subtext: "A formula, typeset with KaTeX", aliases: ["math", "latex", "katex", "equation", "formula"], group: "Advanced", icon: <Sigma size={18} />, onItemClick: insert({ type: "math" }) },
-      { title: "Embed from g1t", subtext: "A work item, pull request, channel, project or artifact, live", aliases: ["embed", "item", "work", "pull", "pr", "channel", "project"], group: "g1t", icon: <GitPullRequest size={18} />, onItemClick: insert({ type: "embed" }) },
+      {
+        title: "Info callout",
+        subtext: "A note set apart from the text",
+        aliases: ["callout", "note", "info"],
+        group: "Callouts",
+        icon: <Info size={18} />,
+        onItemClick: insert({ type: "callout", props: { kind: "info" } }),
+      },
+      {
+        title: "Warning callout",
+        subtext: "Something to be careful about",
+        aliases: ["callout", "warning", "caution"],
+        group: "Callouts",
+        icon: <AlertTriangle size={18} />,
+        onItemClick: insert({ type: "callout", props: { kind: "warning" } }),
+      },
+      {
+        title: "Success callout",
+        subtext: "A tip, or what good looks like",
+        aliases: ["callout", "success", "tip"],
+        group: "Callouts",
+        icon: <CheckCircle2 size={18} />,
+        onItemClick: insert({ type: "callout", props: { kind: "success" } }),
+      },
+      {
+        title: "Diagram",
+        subtext: "A Mermaid diagram, drawn as you type",
+        aliases: ["mermaid", "flowchart", "sequence", "chart"],
+        group: "Advanced",
+        icon: <Workflow size={18} />,
+        onItemClick: insert({ type: "mermaid" }),
+      },
+      {
+        title: "Math",
+        subtext: "A formula, typeset with KaTeX",
+        aliases: ["math", "latex", "katex", "equation", "formula"],
+        group: "Advanced",
+        icon: <Sigma size={18} />,
+        onItemClick: insert({ type: "math" }),
+      },
+      {
+        title: "Embed from g1t",
+        subtext: "A work item, pull request, channel, project or artifact, live",
+        aliases: ["embed", "item", "work", "pull", "pr", "channel", "project"],
+        group: "g1t",
+        icon: <GitPullRequest size={18} />,
+        onItemClick: insert({ type: "embed" }),
+      },
       {
         title: "Mention",
         subtext: "A person",
@@ -287,7 +352,8 @@ function LiveEditor({ slug, folioId, role, me, mentionables, usercontent, sugges
       title: p.title || "Untitled",
       subtext: p.space_name ?? "Private",
       icon: p.icon ? <span className="text-base leading-none">{p.icon}</span> : <FileText size={16} />,
-      onItemClick: () => editor.insertInlineContent([{ type: "mention", props: { kind: "page", id: p.id, name: p.title || "Untitled", href: p.path } }, " "] as never),
+      onItemClick: () =>
+        editor.insertInlineContent([{ type: "mention", props: { kind: "page", id: p.id, name: p.title || "Untitled", href: p.path } }, " "] as never),
     }));
   };
 
@@ -303,7 +369,15 @@ function LiveEditor({ slug, folioId, role, me, mentionables, usercontent, sugges
       {struck && (
         <style>{`${struck} { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--g1t-danger) 70%, transparent); background: color-mix(in srgb, var(--g1t-danger) 8%, transparent); border-radius: 4px; }`}</style>
       )}
-      <BlockNoteView editor={editor as never} editable={editable} theme={theme} renderEditor={false} slashMenu={false} comments={canDo(role, "view")} className="g1t-bn">
+      <BlockNoteView
+        editor={editor as never}
+        editable={editable}
+        theme={theme}
+        renderEditor={false}
+        slashMenu={false}
+        comments={canDo(role, "view")}
+        className="g1t-bn"
+      >
         <div className={`grid gap-8 ${showComments ? "xl:grid-cols-[minmax(0,1fr)_18rem]" : ""}`}>
           <div className="relative min-w-0">
             <BlockNoteViewEditor />
@@ -341,7 +415,17 @@ function LiveEditor({ slug, folioId, role, me, mentionables, usercontent, sugges
  * Each suggestion beside the blocks it changes, in the margin on a wide
  * screen (the doc lists them above the editor on a narrow one).
  */
-function SuggestionRail({ editor, suggestions, render, hidden }: { editor: DocEditorInstance; suggestions: FolioSuggestion[]; render: (s: FolioSuggestion) => ReactNode; hidden: boolean }) {
+function SuggestionRail({
+  editor,
+  suggestions,
+  render,
+  hidden,
+}: {
+  editor: DocEditorInstance;
+  suggestions: FolioSuggestion[];
+  render: (s: FolioSuggestion) => ReactNode;
+  hidden: boolean;
+}) {
   const box = useRef<HTMLDivElement>(null);
   const [tops, setTops] = useState<Record<string, number>>({});
   useLayoutEffect(() => {

@@ -87,8 +87,7 @@ export function LabelsBox({
   const colors = useMemo(() => new Map(labels.map((label) => [label.name, label.color])), [labels]);
   const typed = tidyLabelName(query);
   const offerNew = canCreate && typed !== "" && !labels.some((label) => label.name === typed) && !picked.includes(typed);
-  const toggle = (name: string) =>
-    setPicked((now) => (now.includes(name) ? now.filter((other) => other !== name) : [...now, name]));
+  const toggle = (name: string) => setPicked((now) => (now.includes(name) ? now.filter((other) => other !== name) : [...now, name]));
   const save = (next: string[]) => {
     const same = next.length === chosen.length && next.every((name) => chosen.includes(name));
     if (same) return;
@@ -115,13 +114,7 @@ export function LabelsBox({
             }}
           >
             <PopoverTrigger asChild>
-              <Button
-                type="button"
-                aria-label="Edit labels"
-                variant="ghost"
-                size="inline"
-                className="p-1 text-faint"
-              >
+              <Button type="button" aria-label="Edit labels" variant="ghost" size="inline" className="p-1 text-faint">
                 <Settings2 size={15} />
               </Button>
             </PopoverTrigger>
@@ -133,15 +126,11 @@ export function LabelsBox({
                   <CommandGroup heading="Labels">
                     {matchLabels(labels, query).map((label) => (
                       <CommandItem key={label.name} value={label.name} onSelect={() => toggle(label.name)}>
-                        <span className="flex size-4 items-center justify-center">
-                          {picked.includes(label.name) && <Check className="text-accent" />}
-                        </span>
+                        <span className="flex size-4 items-center justify-center">{picked.includes(label.name) && <Check className="text-accent" />}</span>
                         <Swatch color={label.color} />
                         <span className="min-w-0 grow">
                           <span className="block truncate">{label.name}</span>
-                          {label.description && (
-                            <span className="block truncate text-xs text-faint">{label.description}</span>
-                          )}
+                          {label.description && <span className="block truncate text-xs text-faint">{label.description}</span>}
                         </span>
                       </CommandItem>
                     ))}
@@ -177,10 +166,7 @@ export function LabelsBox({
                 </CommandList>
               </Command>
               {manageUrl && (
-                <Link
-                  to={manageUrl}
-                  className="flex items-center gap-2 border-t border-line px-3 py-2 text-xs text-muted hover:text-fg"
-                >
+                <Link to={manageUrl} className="flex items-center gap-2 border-t border-line px-3 py-2 text-xs text-muted hover:text-fg">
                   <Tag size={13} />
                   Edit labels
                 </Link>
@@ -243,13 +229,7 @@ export function MilestoneBox({
         {canEdit && (
           <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
-              <Button
-                type="button"
-                aria-label="Choose a milestone"
-                variant="ghost"
-                size="inline"
-                className="p-1 text-faint"
-              >
+              <Button type="button" aria-label="Choose a milestone" variant="ghost" size="inline" className="p-1 text-faint">
                 <Settings2 size={15} />
               </Button>
             </PopoverTrigger>
@@ -270,11 +250,7 @@ export function MilestoneBox({
                     {milestones
                       .filter((milestone) => milestone.state === "open")
                       .map((milestone) => (
-                        <CommandItem
-                          key={milestone.number}
-                          value={`${milestone.title} ${milestone.number}`}
-                          onSelect={() => choose(milestone.number)}
-                        >
+                        <CommandItem key={milestone.number} value={`${milestone.title} ${milestone.number}`} onSelect={() => choose(milestone.number)}>
                           <span className="flex size-4 items-center justify-center">
                             {milestone.number === current?.number && <Check className="text-accent" />}
                           </span>
@@ -285,10 +261,7 @@ export function MilestoneBox({
                   </CommandGroup>
                 </CommandList>
               </Command>
-              <Link
-                to={`${base}/milestones`}
-                className="flex items-center gap-2 border-t border-line px-3 py-2 text-xs text-muted hover:text-fg"
-              >
+              <Link to={`${base}/milestones`} className="flex items-center gap-2 border-t border-line px-3 py-2 text-xs text-muted hover:text-fg">
                 <MilestoneIcon size={13} />
                 All milestones
               </Link>
@@ -376,9 +349,7 @@ export function FilterMenu({
             <CommandGroup>
               {options.map((option) => (
                 <CommandItem key={option.key} value={option.keywords} onSelect={() => go(option.to)}>
-                  <span className="flex size-4 items-center justify-center">
-                    {option.selected && <Check className="text-accent" />}
-                  </span>
+                  <span className="flex size-4 items-center justify-center">{option.selected && <Check className="text-accent" />}</span>
                   {option.label}
                 </CommandItem>
               ))}

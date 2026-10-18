@@ -407,34 +407,15 @@ export interface ActionsApi {
   jobLogText(repo: RepoPath, viewer: Viewer, job: string): Promise<Result<JobLogText>>;
   /** Every job's whole log for an attempt, to download as one archive. */
   runLogs(repo: RepoPath, viewer: Viewer, id: string, attempt?: number): Promise<Result<JobLogText[]>>;
-  dispatch(
-    actor: User,
-    repo: RepoPath,
-    workflow: string,
-    ref: string | undefined,
-    inputs: Record<string, unknown>,
-  ): Promise<Result<WorkflowRun>>;
+  dispatch(actor: User, repo: RepoPath, workflow: string, ref: string | undefined, inputs: Record<string, unknown>): Promise<Result<WorkflowRun>>;
   /** Running jobs clean up first; `force` (or cancelling a run that is cancelling) stops them outright. */
   cancel(actor: User, repo: RepoPath, id: string, force?: boolean): Promise<Result<WorkflowRun>>;
   /** A new attempt: every job, the failed ones, or `job` and what needs it; `debug` for debug logging. */
-  rerun(
-    actor: User,
-    repo: RepoPath,
-    id: string,
-    failedOnly?: boolean,
-    options?: { job?: string; debug?: boolean },
-  ): Promise<Result<WorkflowRun>>;
+  rerun(actor: User, repo: RepoPath, id: string, failedOnly?: boolean, options?: { job?: string; debug?: boolean }): Promise<Result<WorkflowRun>>;
   setWorkflowEnabled(actor: User, repo: RepoPath, workflow: string, enabled: boolean): Promise<Result<Workflow>>;
   settings(actor: User, owner: SettingsOwner, kind: SettingKindFilter): Promise<Result<Setting[]>>;
   /** `value` null keeps an existing entry's default value. */
-  setSetting(
-    actor: User,
-    owner: SettingsOwner,
-    kind: SettingKind,
-    name: string,
-    value: string | null,
-    options?: SettingOptions,
-  ): Promise<Result<Setting>>;
+  setSetting(actor: User, owner: SettingsOwner, kind: SettingKind, name: string, value: string | null, options?: SettingOptions): Promise<Result<Setting>>;
   /** One row by `id`, or every row of the key. */
   deleteSetting(actor: User, owner: SettingsOwner, kind: SettingKindFilter, name: string, id?: string): Promise<Result<boolean>>;
   /** Lets a pull request's run from outside start. Write role. */
@@ -455,11 +436,7 @@ export interface ActionsApi {
   /** Members. */
   workspaceActionsSettings(workspace: string, viewer: Viewer): Promise<Result<WorkspaceActionsSettings>>;
   /** Owners. Left out is unchanged. */
-  setWorkspaceActionsSettings(
-    actor: User,
-    workspace: string,
-    change: Partial<WorkspaceActionsSettings>,
-  ): Promise<Result<WorkspaceActionsSettings>>;
+  setWorkspaceActionsSettings(actor: User, workspace: string, change: Partial<WorkspaceActionsSettings>): Promise<Result<WorkspaceActionsSettings>>;
   /** Owners. */
   workspaceManagedWorkflows(workspace: string, viewer: Viewer): Promise<Result<WorkspaceManagedWorkflow[]>>;
   /** Owners. `create` adds one, which needs `source` and `mode`; otherwise left out is unchanged. */

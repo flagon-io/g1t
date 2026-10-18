@@ -265,10 +265,10 @@ the linked repository (an owner, for the workspace's own artifacts).
 An artifact linked to a repository has the repository's visibility; one of
 the workspace's own is private until an owner makes it public on its page.
 
-| The workspace's artifacts | Without credentials | With credentials |
-| --- | --- | --- |
-| All public | Maven and Gradle download them. | The same; credentials are sent to deploy. |
-| Some private | Every request without credentials is answered `401`, which makes Maven and Gradle send theirs. | Each artifact the credentials' owner may see. |
+| The workspace's artifacts | Without credentials                                                                            | With credentials                              |
+| ------------------------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| All public                | Maven and Gradle download them.                                                                | The same; credentials are sent to deploy.     |
+| Some private              | Every request without credentials is answered `401`, which makes Maven and Gradle send theirs. | Each artifact the credentials' owner may see. |
 
 A private artifact you cannot see looks exactly like one that does not
 exist.
@@ -310,11 +310,11 @@ stored once, by its content.
 
 ## Errors
 
-| Error | Means |
-| --- | --- |
+| Error | Means                                                                                                                                                 |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `401` | No credentials, or a wrong or expired token. Check the `<server>` whose `id` matches the repository's, or Gradle's `acmeUsername` and `acmePassword`. |
-| `403` | Signed in, but your role or your token's scopes do not allow it, or the workspace is out of free package storage. The response says which. |
-| `404` | No such artifact, version or file, or a private one you cannot see. |
-| `409` | That file of a release is already there with other content. Bump the version. |
-| `400` | The upload was refused: a POM that does not match its path, or a checksum that does not match its file. The response says which. |
-| `413` | The file is over 100 MB. |
+| `403` | Signed in, but your role or your token's scopes do not allow it, or the workspace is out of free package storage. The response says which.            |
+| `404` | No such artifact, version or file, or a private one you cannot see.                                                                                   |
+| `409` | That file of a release is already there with other content. Bump the version.                                                                         |
+| `400` | The upload was refused: a POM that does not match its path, or a checksum that does not match its file. The response says which.                      |
+| `413` | The file is over 100 MB.                                                                                                                              |

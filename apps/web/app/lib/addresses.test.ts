@@ -31,7 +31,10 @@ test("settings replace the addresses, without trailing slashes", () => {
 test("files people supply are served from an origin of their own", () => {
   assert.equal(addressesFor({}).usercontent, "https://g1tusercontent.com");
   assert.equal(addressesFor({ SITE_URL: "https://git.example.com", USERCONTENT_URL: "https://files.example.net/" }).usercontent, "https://files.example.net");
-  assert.equal(addressesFor({ SITE_URL: "https://git.example.com", USERCONTENT_URL: "https://git.example.com" }).usercontent, "https://git.example.com/-/usercontent");
+  assert.equal(
+    addressesFor({ SITE_URL: "https://git.example.com", USERCONTENT_URL: "https://git.example.com" }).usercontent,
+    "https://git.example.com/-/usercontent",
+  );
   assert.equal(usercontentFrom(undefined), "");
   assert.equal(usercontentFrom({ addresses: HOSTED_ADDRESSES }), "https://g1tusercontent.com");
 });

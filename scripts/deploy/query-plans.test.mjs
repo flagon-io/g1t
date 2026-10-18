@@ -16,7 +16,9 @@ import { ROOT } from "./stack.mjs";
 function migrated(service) {
   const db = new DatabaseSync(":memory:");
   const dir = join(ROOT, "services", service, "migrations");
-  for (const file of readdirSync(dir).filter((name) => name.endsWith(".sql")).sort()) {
+  for (const file of readdirSync(dir)
+    .filter((name) => name.endsWith(".sql"))
+    .sort()) {
     db.exec(readFileSync(join(dir, file), "utf8"));
   }
   return db;
@@ -48,13 +50,12 @@ test("webhooks: the hourly purge deletes old deliveries by time", () => {
 });
 
 test("billing: this month's users are read from an index, not the ledger", () => {
-  const steps = plan(
-    migrated("billing"),
-    "SELECT DISTINCT workspace FROM ledger WHERE kind = 'usage' AND created_at >= ?",
-    "2026-10-01",
-  );
+  const steps = plan(migrated("billing"), "SELECT DISTINCT workspace FROM ledger WHERE kind = 'usage' AND created_at >= ?", "2026-10-01");
   assertSearches(steps, "ledger_usage_by_time");
-  assert.ok(steps.some((step) => step.includes("COVERING INDEX")), steps.join("\n"));
+  assert.ok(
+    steps.some((step) => step.includes("COVERING INDEX")),
+    steps.join("\n"),
+  );
 });
 
 test("events: a repository's events of one type, newest first, page by page", () => {
@@ -109,12 +110,19 @@ test("chat: the sidebar's unread messages are read from each channel's index, af
     "wsp_1",
   );
   assertSearches(steps, "channel_members_by_principal");
-  assert.ok(steps.some((step) => step.includes("messages_by_channel (channel_id=? AND id>?)")), steps.join("\n"));
+  assert.ok(
+    steps.some((step) => step.includes("messages_by_channel (channel_id=? AND id>?)")),
+    steps.join("\n"),
+  );
 });
 
 test("chat: a page's reactions are read by message, and a workspace's emoji by name", () => {
   const db = migrated("chat");
-  const reactions = plan(db, "SELECT message_id, emoji, principal, created_at FROM reactions WHERE message_id IN (SELECT value FROM json_each(?))", '["msg_1","msg_2"]');
+  const reactions = plan(
+    db,
+    "SELECT message_id, emoji, principal, created_at FROM reactions WHERE message_id IN (SELECT value FROM json_each(?))",
+    '["msg_1","msg_2"]',
+  );
   assertSearches(reactions, "sqlite_autoindex_reactions_1");
   const emoji = plan(db, "SELECT * FROM custom_emoji WHERE workspace_id = ? AND deleted_at IS NULL ORDER BY name", "wsp_1");
   assertSearches(emoji, "custom_emoji_by_name");

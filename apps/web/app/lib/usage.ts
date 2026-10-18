@@ -224,7 +224,8 @@ export function bytes(n: number): string {
 /** What paid for usage, in order, each line with anything to show: the receipt under the totals. */
 export function receipt(totals: UsageTotals, discountPercent: number | null | undefined): { label: string; micros: number; minus: boolean }[] {
   const lines: { label: string; micros: number; minus: boolean }[] = [{ label: "Usage at price", micros: totals.priceMicros, minus: false }];
-  if (totals.discountMicros > 0) lines.push({ label: `Discount${discountPercent ? ` (${discountPercent}%)` : ""}`, micros: totals.discountMicros, minus: true });
+  if (totals.discountMicros > 0)
+    lines.push({ label: `Discount${discountPercent ? ` (${discountPercent}%)` : ""}`, micros: totals.discountMicros, minus: true });
   if (totals.includedMicros > 0) lines.push({ label: "Included usage and pools", micros: totals.includedMicros, minus: true });
   if (totals.creditsMicros > 0) lines.push({ label: "Credits applied", micros: totals.creditsMicros, minus: true });
   lines.push({ label: "Charged", micros: totals.chargedMicros, minus: false });

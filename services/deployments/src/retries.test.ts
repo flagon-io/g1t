@@ -5,8 +5,7 @@ import { commitMissing, missingCommitMessage, retryDecision, type PastBuild } fr
 
 const HOUR = 60 * 60 * 1000;
 const NOW = Date.parse("2026-10-07T12:00:00Z");
-const GIT =
-  "the commit could not be checked out: git -c failed: fatal: reference is not a tree: d2ca224ba0fea430dcc9933cda14d8aa9fa94b4b";
+const GIT = "the commit could not be checked out: git -c failed: fatal: reference is not a tree: d2ca224ba0fea430dcc9933cda14d8aa9fa94b4b";
 
 const build = (hoursAgo: number, over: Partial<PastBuild> = {}): PastBuild => ({
   status: "failed",
@@ -25,10 +24,7 @@ test("git's words for a commit that is gone are recognised, and only those", () 
 });
 
 test("a commit that is gone says so plainly, naming the pull request", () => {
-  assert.equal(
-    missingCommitMessage({ kind: "preview", number: 1 }),
-    "This pull request's commit no longer exists. Push again, or close pull request #1.",
-  );
+  assert.equal(missingCommitMessage({ kind: "preview", number: 1 }), "This pull request's commit no longer exists. Push again, or close pull request #1.");
   assert.match(missingCommitMessage({ kind: "preview", number: null }), /branch's commit no longer exists/);
   assert.match(missingCommitMessage({ kind: "production", number: null }), /default branch/);
 });

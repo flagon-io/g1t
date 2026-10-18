@@ -137,7 +137,13 @@ function rangedUpstream(cuts: (number | null)[], options: { ranges?: boolean; en
       const rest = file.slice(start);
       return new Response(breaking(rest, cut === null ? null : cut - start), {
         status: 206,
-        headers: { "content-length": String(rest.length), "content-range": `bytes ${start}-${LARGE - 1}/${LARGE}`, "accept-ranges": "bytes", etag: ETAG, ...(options.encodedRest ? { "content-encoding": "gzip" } : {}) },
+        headers: {
+          "content-length": String(rest.length),
+          "content-range": `bytes ${start}-${LARGE - 1}/${LARGE}`,
+          "accept-ranges": "bytes",
+          etag: ETAG,
+          ...(options.encodedRest ? { "content-encoding": "gzip" } : {}),
+        },
       });
     }
     return new Response(breaking(file, cut), {
@@ -147,8 +153,7 @@ function rangedUpstream(cuts: (number | null)[], options: { ranges?: boolean; en
   return { requests, send };
 }
 
-const tarball = () =>
-  new Request("https://registry.npmjs.org/@pagefind/linux-x64/-/linux-x64-1.5.2.tgz", { headers: { "user-agent": "npm/11" } });
+const tarball = () => new Request("https://registry.npmjs.org/@pagefind/linux-x64/-/linux-x64-1.5.2.tgz", { headers: { "user-agent": "npm/11" } });
 
 test("a large tarball that breaks off midway is resumed from where it stopped, and arrives whole", async () => {
   waits.length = 0;

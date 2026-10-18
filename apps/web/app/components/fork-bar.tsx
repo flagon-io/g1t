@@ -88,10 +88,9 @@ export function ForkBar({
                   <input type="hidden" name="branch" value={branch} />
                   <p className="font-medium">Bring in {upstreamRef}</p>
                   <p className="text-muted">
-                    Commits on <span className="font-mono">{upstreamRef}</span> that{" "}
-                    <span className="font-mono">{branch}</span> lacks come in. When it has none of its own, it moves up to
-                    match; when it has some, they are kept and a merge commit joins the two. If both changed the same
-                    lines, nothing changes and you are told which files.
+                    Commits on <span className="font-mono">{upstreamRef}</span> that <span className="font-mono">{branch}</span> lacks come in. When it has none
+                    of its own, it moves up to match; when it has some, they are kept and a merge commit joins the two. If both changed the same lines, nothing
+                    changes and you are told which files.
                   </p>
                   <SubmitButton size="sm" variant="accent" fetcher={fetcher} pending="Syncing…" className="w-full">
                     Update branch
@@ -114,38 +113,32 @@ export function ForkBar({
 }
 
 /** What syncing did, said in place. */
-function SyncResult({
-  synced,
-  upstream,
-  upstreamRef,
-  contribute,
-}: {
-  synced: SyncedFork;
-  upstream: string;
-  upstreamRef: string;
-  contribute: string;
-}) {
+function SyncResult({ synced, upstream, upstreamRef, contribute }: { synced: SyncedFork; upstream: string; upstreamRef: string; contribute: string }) {
   const remote = cloneUrl(useAddresses(), upstream);
   switch (synced.status) {
     case "up_to_date":
       return (
         <Alert role="status" tone="info">
           Already up to date with <span className="font-mono">{upstreamRef}</span>.
-          {synced.ahead > 0 && <> {synced.branch} has {commits(synced.ahead)} of its own.</>}
+          {synced.ahead > 0 && (
+            <>
+              {" "}
+              {synced.branch} has {commits(synced.ahead)} of its own.
+            </>
+          )}
         </Alert>
       );
     case "fast_forwarded":
       return (
         <Alert role="status" tone="success">
-          Updated: {synced.branch} moved up {commits(synced.behind)} to match{" "}
-          <span className="font-mono">{upstreamRef}</span>.
+          Updated: {synced.branch} moved up {commits(synced.behind)} to match <span className="font-mono">{upstreamRef}</span>.
         </Alert>
       );
     case "merged":
       return (
         <Alert role="status" tone="success">
-          Updated: {commits(synced.behind)} from <span className="font-mono">{upstreamRef}</span> merged into{" "}
-          {synced.branch} with a merge commit. Its own {commits(synced.ahead)} are kept.
+          Updated: {commits(synced.behind)} from <span className="font-mono">{upstreamRef}</span> merged into {synced.branch} with a merge commit. Its own{" "}
+          {commits(synced.ahead)} are kept.
         </Alert>
       );
     case "conflicted":

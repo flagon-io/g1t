@@ -208,7 +208,13 @@ export function explicitAccess(chain: readonly FolioAclNode[], grants: FolioGran
  * used only when the chain inherits it; `visited` says they opened the
  * folio's link (or its access root's).
  */
-export function effectiveRole(chain: readonly FolioAclNode[], grants: FolioGrants, spaceRole: DocRole | null, person: Person, options: { visited?: boolean } = {}): DocRole | null {
+export function effectiveRole(
+  chain: readonly FolioAclNode[],
+  grants: FolioGrants,
+  spaceRole: DocRole | null,
+  person: Person,
+  options: { visited?: boolean } = {},
+): DocRole | null {
   const root = chain[chain.length - 1];
   if (!root) return null;
   const keys = new Set(personKeys(person));
@@ -274,4 +280,3 @@ export function materialize(ids: readonly string[], byId: ReadonlyMap<string, Fo
 export function canShare(role: DocRole | null, editorsCanShare = false): boolean {
   return atLeast(role, "manage") || (editorsCanShare && atLeast(role, "edit"));
 }
-

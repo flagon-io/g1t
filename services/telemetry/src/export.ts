@@ -4,7 +4,16 @@
  * into OTLP/JSON. Requests go as server spans (and their logs as log
  * records), so wherever they land shows them as it shows any service.
  */
-import { TELEMETRY_OTLP_ENDPOINT, type AttributeValue, type Attributes, type TelemetryExport, type TelemetryLog, type TelemetryOrigin, type TelemetryRequest, type TelemetrySpan } from "@g1t/contracts/telemetry";
+import {
+  TELEMETRY_OTLP_ENDPOINT,
+  type AttributeValue,
+  type Attributes,
+  type TelemetryExport,
+  type TelemetryLog,
+  type TelemetryOrigin,
+  type TelemetryRequest,
+  type TelemetrySpan,
+} from "@g1t/contracts/telemetry";
 
 import type { Batch, MetricPoint } from "./batch.ts";
 
@@ -115,30 +124,48 @@ function metric(m: MetricPoint) {
         ...base,
         histogram: {
           aggregationTemporality: 1,
-          dataPoints: [{ ...point, count: String(m.count ?? 0), sum: m.sum ?? undefined, min: m.min ?? undefined, max: m.max ?? undefined, explicitBounds: m.bounds ?? [], bucketCounts: (m.counts ?? []).map(String) }],
+          dataPoints: [
+            {
+              ...point,
+              count: String(m.count ?? 0),
+              sum: m.sum ?? undefined,
+              min: m.min ?? undefined,
+              max: m.max ?? undefined,
+              explicitBounds: m.bounds ?? [],
+              bucketCounts: (m.counts ?? []).map(String),
+            },
+          ],
         },
       };
     case "summary":
-      return { ...base, summary: { dataPoints: [{ ...point, count: String(m.count ?? 0), sum: m.sum ?? 0, quantileValues: (m.quantiles ?? []).map((q) => ({ quantile: q.q, value: q.v })) }] } };
+      return {
+        ...base,
+        summary: {
+          dataPoints: [
+            { ...point, count: String(m.count ?? 0), sum: m.sum ?? 0, quantileValues: (m.quantiles ?? []).map((q) => ({ quantile: q.q, value: q.v })) },
+          ],
+        },
+      };
   }
 }
 
 /** The OTLP/JSON bodies a batch makes, by signal; a signal with nothing in it is absent. */
 export function otlpBodies(batch: Batch, requests: TelemetryRequest[]): { traces?: object; logs?: object; metrics?: object } {
   const out: { traces?: object; logs?: object; metrics?: object } = {};
-  type Traced = (TelemetryOrigin & { span: object });
-  const traced: Traced[] = [
-    ...requests.map((r) => ({ ...r, span: requestSpan(r) })),
-    ...batch.spans.map((s) => ({ ...s, span: span(s) })),
-  ];
+  type Traced = TelemetryOrigin & { span: object };
+  const traced: Traced[] = [...requests.map((r) => ({ ...r, span: requestSpan(r) })), ...batch.spans.map((s) => ({ ...s, span: span(s) }))];
   if (traced.length) {
-    out.traces = { resourceSpans: byResource(traced).map((g) => ({ resource: resourceOf(g[0]), scopeSpans: [{ scope: SCOPE, spans: g.map((t) => t.span) }] })) };
+    out.traces = {
+      resourceSpans: byResource(traced).map((g) => ({ resource: resourceOf(g[0]), scopeSpans: [{ scope: SCOPE, spans: g.map((t) => t.span) }] })),
+    };
   }
   if (batch.logs.length) {
     out.logs = { resourceLogs: byResource(batch.logs).map((g) => ({ resource: resourceOf(g[0]), scopeLogs: [{ scope: SCOPE, logRecords: g.map(log) }] })) };
   }
   if (batch.metrics.length) {
-    out.metrics = { resourceMetrics: byResource(batch.metrics).map((g) => ({ resource: resourceOf(g[0]), scopeMetrics: [{ scope: SCOPE, metrics: g.map(metric) }] })) };
+    out.metrics = {
+      resourceMetrics: byResource(batch.metrics).map((g) => ({ resource: resourceOf(g[0]), scopeMetrics: [{ scope: SCOPE, metrics: g.map(metric) }] })),
+    };
   }
   return out;
 }
@@ -157,14 +184,25 @@ export function exportEndpointProblem(endpoint: string): string | null {
   if (url.protocol !== "https:") return "The address must start with https://.";
   const host = url.hostname.toLowerCase();
   if (host === new URL(TELEMETRY_OTLP_ENDPOINT).hostname) return "That is g1t's own endpoint: it would send everything back here.";
-  if (host === "localhost" || /^(127|10|0)\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host) || host.endsWith(".internal") || host.startsWith("[")) {
+  if (
+    host === "localhost" ||
+    /^(127|10|0)\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
+    host.endsWith(".internal") ||
+    host.startsWith("[")
+  ) {
     return "The address must be reachable on the internet.";
   }
   return null;
 }
 
 /** Sends one signal's body to an export; the error, or null. */
-export async function send(target: Pick<TelemetryExport, "endpoint"> & { headers: Record<string, string> }, signal: "traces" | "logs" | "metrics", body: object): Promise<string | null> {
+export async function send(
+  target: Pick<TelemetryExport, "endpoint"> & { headers: Record<string, string> },
+  signal: "traces" | "logs" | "metrics",
+  body: object,
+): Promise<string | null> {
   const base = target.endpoint.replace(/\/+$/, "");
   const url = /\/v1\/(traces|logs|metrics)$/.test(base) ? base.replace(/(traces|logs|metrics)$/, signal) : `${base}/v1/${signal}`;
   try {

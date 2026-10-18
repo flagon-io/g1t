@@ -65,10 +65,10 @@ on the site and to git.
 On the site, an address you cannot see gives the same page either way, with
 status 404:
 
-| You are | The page says |
-| --- | --- |
-| Signed out | **Nothing here**: this page doesn't exist, or it's private; sign in if it's yours. **Sign in** brings you back to the same address. |
-| Signed in | **Nothing here**: this page doesn't exist, or you don't have access to it, with which account you are signed in as and a link to switch account. If you should have access, ask someone with the Admin role on it to add you. |
+| You are    | The page says                                                                                                                                                                                                                 |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Signed out | **Nothing here**: this page doesn't exist, or it's private; sign in if it's yours. **Sign in** brings you back to the same address.                                                                                           |
+| Signed in  | **Nothing here**: this page doesn't exist, or you don't have access to it, with which account you are signed in as and a link to switch account. If you should have access, ask someone with the Admin role on it to add you. |
 
 Work items, pull requests and workspace pages work the same way. The sidebar
 does not open the project or workspace the address names, so nothing on
@@ -186,23 +186,23 @@ git push origin my-change
 A repository's **Branches** tab, `g1t.sh/<workspace>/<repo>/branches`, lists
 its branches under five tabs, each at its own address:
 
-| Tab | What it lists |
-| --- | --- |
-| **Overview** | The default branch, then the first five of each of the others below that has any: yours, active and stale, each with a link to the rest. |
-| **Yours** (`/branches/yours`) | Branches whose latest commit is yours. |
-| **Active** (`/branches/active`) | Branches with a commit in the last 90 days. |
-| **Stale** (`/branches/stale`) | Branches with no commit in the last 90 days. |
-| **All** (`/branches/all`) | Every branch but the default, newest commit first. |
+| Tab                             | What it lists                                                                                                                            |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| **Overview**                    | The default branch, then the first five of each of the others below that has any: yours, active and stale, each with a link to the rest. |
+| **Yours** (`/branches/yours`)   | Branches whose latest commit is yours.                                                                                                   |
+| **Active** (`/branches/active`) | Branches with a commit in the last 90 days.                                                                                              |
+| **Stale** (`/branches/stale`)   | Branches with no commit in the last 90 days.                                                                                             |
+| **All** (`/branches/all`)       | Every branch but the default, newest commit first.                                                                                       |
 
 **Search branches** narrows any tab by name (`?q=`). Each branch shows:
 
-| Column | What it says |
-| --- | --- |
-| **Branch** | Its name, linked to its files, with a button that copies it; a globe when it has a preview. |
-| **Updated** | Who made its latest commit, and when, linked to the commit. |
-| **Check status** | All of its latest commit's checks at once: a check when they passed, a cross when one failed, a dot while any runs. Choose it to see each. |
+| Column             | What it says                                                                                                                                                                                                                                                                                                                    |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Branch**         | Its name, linked to its files, with a button that copies it; a globe when it has a preview.                                                                                                                                                                                                                                     |
+| **Updated**        | Who made its latest commit, and when, linked to the commit.                                                                                                                                                                                                                                                                     |
+| **Check status**   | All of its latest commit's checks at once: a check when they passed, a cross when one failed, a dot while any runs. Choose it to see each.                                                                                                                                                                                      |
 | **Behind / Ahead** | How many commits the default branch has that it lacks, and the other way round, with bars drawn against the largest count shown. The counts are exact, merges included. g1t reads up to 1,000 commits of each history to find where the two meet; a branch that left the default branch further back than that shows no counts. |
-| **Pull request** | Its open pull request, else its newest merged or closed one, with its state and number. |
+| **Pull request**   | Its open pull request, else its newest merged or closed one, with its state and number.                                                                                                                                                                                                                                         |
 
 On a phone, the columns fold under the name. Up to 60 branches are read for
 a page, those with an open pull request first; search finds the rest.
@@ -236,11 +236,11 @@ repository offers none of these changes.
 
 From the API, a person's token with `repo:write` can do the same:
 
-| Route | MCP | What it does |
-| --- | --- | --- |
-| [`POST /repos/{owner}/{name}/branches`](/reference/api/repositories/create-branch/) | `repository` `create_branch` | Makes branch `name` at `from` (a branch, tag or commit; the default branch when left out). Answers with its `name` and `hash`. |
-| [`DELETE /repos/{owner}/{name}/branches/{branch}`](/reference/api/repositories/delete-branch/) | `repository` `delete_branch` | Deletes it and answers with the `hash` it pointed to. `?head=<sha>` leaves it alone (`409`) if it has moved since. |
-| [`POST /repos/{owner}/{name}/branches/{branch}/rename`](/reference/api/repositories/rename-branch/) | `repository` `rename_branch` | Renames it to `new_name`. |
+| Route                                                                                               | MCP                          | What it does                                                                                                                   |
+| --------------------------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| [`POST /repos/{owner}/{name}/branches`](/reference/api/repositories/create-branch/)                 | `repository` `create_branch` | Makes branch `name` at `from` (a branch, tag or commit; the default branch when left out). Answers with its `name` and `hash`. |
+| [`DELETE /repos/{owner}/{name}/branches/{branch}`](/reference/api/repositories/delete-branch/)      | `repository` `delete_branch` | Deletes it and answers with the `hash` it pointed to. `?head=<sha>` leaves it alone (`409`) if it has moved since.             |
+| [`POST /repos/{owner}/{name}/branches/{branch}/rename`](/reference/api/repositories/rename-branch/) | `repository` `rename_branch` | Renames it to `new_name`.                                                                                                      |
 
 To restore a deleted branch, make it again with the `hash` deleting it
 answered with as `from`. Encode a branch name with slashes as one path
@@ -355,13 +355,13 @@ before a push is stored, and declines a push that would cross one. git
 prints the reason beside each branch (`! [remote rejected] main (…)`), and
 what to do as `remote:` lines. Nothing in a declined push is stored.
 
-| Limit | Size | What happens past it |
-| --- | --- | --- |
-| A file | 32 MB | The push is declined, naming the file's size. |
-| A repository, with its pull requests' forks | 950 MB, as g1t counts what was pushed (the store holds 1 GB) | The push is declined; once full, pushes are refused with the reason before any data is sent. |
-| A free workspace's repositories | 1 GB private and 5 GB public, together; none on the g1t plan | Pushes to the full kind are refused with the reason before any data is sent; see [usage and billing](/guides/usage-and-billing/). |
-| A push that push protection can scan before it lands | Most pushes; very large ones are scanned after they land | A very large push goes through and is scanned after it lands; secrets found are open alerts. To have it checked first, push in parts, oldest commits first. |
-| A push | 100 MB | Refused by the network with HTTP `413` before g1t sees it. |
+| Limit                                                | Size                                                         | What happens past it                                                                                                                                        |
+| ---------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A file                                               | 32 MB                                                        | The push is declined, naming the file's size.                                                                                                               |
+| A repository, with its pull requests' forks          | 950 MB, as g1t counts what was pushed (the store holds 1 GB) | The push is declined; once full, pushes are refused with the reason before any data is sent.                                                                |
+| A free workspace's repositories                      | 1 GB private and 5 GB public, together; none on the g1t plan | Pushes to the full kind are refused with the reason before any data is sent; see [usage and billing](/guides/usage-and-billing/).                           |
+| A push that push protection can scan before it lands | Most pushes; very large ones are scanned after they land     | A very large push goes through and is scanned after it lands; secrets found are open alerts. To have it checked first, push in parts, oldest commits first. |
+| A push                                               | 100 MB                                                       | Refused by the network with HTTP `413` before g1t sees it.                                                                                                  |
 
 To push a large history in parts:
 
@@ -378,12 +378,12 @@ Every branch and tag in a push is stored. Each one is also announced as a
 `git.push` event, which starts workflows and calls webhooks, except in a
 push of many:
 
-| A push of | What is announced |
-| --- | --- |
-| Up to 3 tags | Each tag |
-| More than 3 tags (`git push --tags`, say) | None of the tags |
-| Up to 1,000 branches | Each branch |
-| More than 1,000 branches | Only the default branch, if it moved |
+| A push of                                 | What is announced                    |
+| ----------------------------------------- | ------------------------------------ |
+| Up to 3 tags                              | Each tag                             |
+| More than 3 tags (`git push --tags`, say) | None of the tags                     |
+| Up to 1,000 branches                      | Each branch                          |
+| More than 1,000 branches                  | Only the default branch, if it moved |
 
 To have tags start workflows, push them 3 or fewer at a time.
 
@@ -429,20 +429,20 @@ HTTP trace on:
 GIT_TRACE_CURL=1 git ls-remote https://g1t.sh/<owner>/<repo>.git 2>&1 | grep -i server-timing
 ```
 
-| Step | What it is |
-| --- | --- |
-| `repo` | Finding the repository, and checking your credentials if you sent any |
-| `moved` | Only for an address with no repository: looking for a renamed workspace or a transferred repository to send you to |
-| `access` | Deciding whether you may fetch from or push to it |
-| `kept` | A free workspace's limits, and looking for a ref listing and a store credential made a moment ago |
-| `mint` | Only when no credential was kept: the git store making one for the request |
-| `store` | The git store's answer to a clone or fetch |
-| `recv` | Only for a push: receiving it from git |
+| Step     | What it is                                                                                                                                                                              |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `repo`   | Finding the repository, and checking your credentials if you sent any                                                                                                                   |
+| `moved`  | Only for an address with no repository: looking for a renamed workspace or a transferred repository to send you to                                                                      |
+| `access` | Deciding whether you may fetch from or push to it                                                                                                                                       |
+| `kept`   | A free workspace's limits, and looking for a ref listing and a store credential made a moment ago                                                                                       |
+| `mint`   | Only when no credential was kept: the git store making one for the request                                                                                                              |
+| `store`  | The git store's answer to a clone or fetch                                                                                                                                              |
+| `recv`   | Only for a push: receiving it from git                                                                                                                                                  |
 | `checks` | Only for a push: checking it against the rules of the branches and tags it changes, for workflow files a token may not change, and for secrets and private email addresses, all at once |
-| `upload` | Only for a push: handing it to the git store and its answer |
-| `refs` | Only for a push: recording that the repository's refs changed |
-| `total` | Everything g1t did |
-| `repos` | The same, measured where your request arrived |
+| `upload` | Only for a push: handing it to the git store and its answer                                                                                                                             |
+| `refs`   | Only for a push: recording that the repository's refs changed                                                                                                                           |
+| `total`  | Everything g1t did                                                                                                                                                                      |
+| `repos`  | The same, measured where your request arrived                                                                                                                                           |
 
 A push's checks run side by side, so each also has its own entry, after
 the steps and not counted in the total: `read` (reading the push's
@@ -459,12 +459,12 @@ repository to check it, and says `thin;desc=yes`.
 
 Some entries say how a step went rather than how long it took:
 
-| Entry | Values |
-| --- | --- |
+| Entry        | Values                                                                                                     |
+| ------------ | ---------------------------------------------------------------------------------------------------------- |
 | `refs;desc=` | `hit-colo` or `hit-shared` when the ref listing came from g1t's cache, `miss` when the git store was asked |
-| `pack;desc=` | Only for a fresh clone: `hit` when its pack came from g1t's cache, `miss` when the git store built it |
-| `cred;desc=` | `isolate` or `shared` for a store credential made a moment ago, `mint` for a new one |
-| `thin;desc=` | Only for a push: `no` when it came whole, `yes` when it built on objects outside it |
+| `pack;desc=` | Only for a fresh clone: `hit` when its pack came from g1t's cache, `miss` when the git store built it      |
+| `cred;desc=` | `isolate` or `shared` for a store credential made a moment ago, `mint` for a new one                       |
+| `thin;desc=` | Only for a push: `no` when it came whole, `yes` when it built on objects outside it                        |
 
 The ref listing git asks for first on every clone and fetch is kept for up
 to a minute, and only the same question about the same refs gets the same
@@ -513,10 +513,10 @@ clone and push over HTTPS with a
 A deploy key is read-only unless you choose **Allow write access** when
 you add it:
 
-| Access | It can |
-| --- | --- |
-| **Read-only** (the default) | Clone and fetch the repository, private or not. |
-| **Read and write** | Clone, fetch and push, workflow files under `.g1t/workflows/` and `.github/workflows/` included. |
+| Access                      | It can                                                                                           |
+| --------------------------- | ------------------------------------------------------------------------------------------------ |
+| **Read-only** (the default) | Clone and fetch the repository, private or not.                                                  |
+| **Read and write**          | Clone, fetch and push, workflow files under `.g1t/workflows/` and `.github/workflows/` included. |
 
 Either way it reaches only its own repository: any other address is
 refused, in its workspace or anywhere else, and so is pushing to an
@@ -599,12 +599,12 @@ a `Host` alias with its own `IdentityFile`.
 
 ### Through the API
 
-| Route | MCP tool and action | What it does |
-| --- | --- | --- |
-| `GET /repos/{owner}/{name}/keys` | `access` `list_deploy_keys` | The repository's deploy keys. |
-| `GET /repos/{owner}/{name}/keys/{id}` | `access` `get_deploy_key` | One key, by its `id`. |
-| `POST /repos/{owner}/{name}/keys` | `access` `add_deploy_key` | Add a key. Body: `title`, `key` and `read_only` (true unless you send false). |
-| `DELETE /repos/{owner}/{name}/keys/{id}` | `access` `remove_deploy_key` | Delete a key. |
+| Route                                    | MCP tool and action          | What it does                                                                  |
+| ---------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------- |
+| `GET /repos/{owner}/{name}/keys`         | `access` `list_deploy_keys`  | The repository's deploy keys.                                                 |
+| `GET /repos/{owner}/{name}/keys/{id}`    | `access` `get_deploy_key`    | One key, by its `id`.                                                         |
+| `POST /repos/{owner}/{name}/keys`        | `access` `add_deploy_key`    | Add a key. Body: `title`, `key` and `read_only` (true unless you send false). |
+| `DELETE /repos/{owner}/{name}/keys/{id}` | `access` `remove_deploy_key` | Delete a key.                                                                 |
 
 Listing and reading need the `access:read` scope; adding and deleting
 need `access:admin`. Each needs the Admin role on the repository.

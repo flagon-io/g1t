@@ -30,27 +30,14 @@ const TRIGGERS: Record<Variant, string> = {
   ),
 };
 
-export function TabsList({
-  className,
-  variant = "default",
-  ...props
-}: ComponentProps<typeof Primitive.List> & { variant?: Variant }) {
+export function TabsList({ className, variant = "default", ...props }: ComponentProps<typeof Primitive.List> & { variant?: Variant }) {
   return <Primitive.List className={cn(LISTS[variant], className)} {...props} />;
 }
 
-export function TabsTrigger({
-  className,
-  variant = "default",
-  ...props
-}: ComponentProps<typeof Primitive.Trigger> & { variant?: Variant }) {
+export function TabsTrigger({ className, variant = "default", ...props }: ComponentProps<typeof Primitive.Trigger> & { variant?: Variant }) {
   return <Primitive.Trigger className={cn(TRIGGERS[variant], className)} {...props} />;
 }
 
-export function TabsContent({
-  className,
-  ...props
-}: ComponentProps<typeof Primitive.Content>) {
-  return (
-    <Primitive.Content className={cn("mt-3 outline-none", className)} {...props} />
-  );
+export function TabsContent({ className, ...props }: ComponentProps<typeof Primitive.Content>) {
+  return <Primitive.Content className={cn("mt-3 outline-none", className)} {...props} />;
 }

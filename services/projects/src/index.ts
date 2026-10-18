@@ -12,7 +12,6 @@
  * Reached through service bindings: `POST /rpc/<method>`.
  */
 
-
 import { NEEDS, repoRef } from "./access";
 import { ownDescription } from "./description";
 import {
@@ -236,10 +235,7 @@ class Projects {
     const base = slugOf(wanted) || "project";
     for (let n = 1; n < 100; n++) {
       const slug = n === 1 ? base : `${base}-${n}`;
-      const taken = await this.db
-        .prepare("SELECT 1 FROM projects WHERE workspace = ? AND slug = ?")
-        .bind(workspace, slug)
-        .first();
+      const taken = await this.db.prepare("SELECT 1 FROM projects WHERE workspace = ? AND slug = ?").bind(workspace, slug).first();
       if (!taken) return slug;
     }
     return `${base}-${crypto.randomUUID().slice(0, 6)}`;
@@ -251,9 +247,7 @@ class Projects {
     const existing = await this.db.prepare("SELECT id FROM projects WHERE repo_id = ?").bind(repo.id).first();
     if (existing) {
       await this.db
-        .prepare(
-          "UPDATE projects SET repo_private = ?, default_branch = ?, repo_name = ?, repo_archived_at = ?, repo_website = ? WHERE repo_id = ?",
-        )
+        .prepare("UPDATE projects SET repo_private = ?, default_branch = ?, repo_name = ?, repo_archived_at = ?, repo_website = ? WHERE repo_id = ?")
         .bind(repo.isPrivate ? 1 : 0, repo.defaultBranch, repo.name, repo.archivedAt ?? null, repo.website ?? null, repo.id)
         .run();
       return;
@@ -429,9 +423,7 @@ class Projects {
     const claimed = await this.db.prepare("INSERT OR IGNORE INTO sweeps (key, at) VALUES ('descriptions', ?)").bind(now()).run();
     descriptionsSwept = true;
     if (!claimed.meta.changes) return;
-    const rows = await this.db
-      .prepare("SELECT * FROM projects WHERE is_primary = 1 AND repo_deleted_at IS NULL AND description IS NOT NULL")
-      .all<Row>();
+    const rows = await this.db.prepare("SELECT * FROM projects WHERE is_primary = 1 AND repo_deleted_at IS NULL AND description IS NOT NULL").all<Row>();
     const events = rows.results.map((row) => projectUpdated(row, null));
     for (let at = 0; at < events.length; at += 50) {
       await eventsClient(this.env.EVENTS)
@@ -453,20 +445,14 @@ class Projects {
   }
 
   async byRepo(a: { repoId: string }): Promise<Project[]> {
-    const rows = await this.db
-      .prepare("SELECT * FROM projects WHERE repo_id = ? ORDER BY is_primary DESC, created_at")
-      .bind(a.repoId)
-      .all<Row>();
+    const rows = await this.db.prepare("SELECT * FROM projects WHERE repo_id = ? ORDER BY is_primary DESC, created_at").bind(a.repoId).all<Row>();
     // A deleted repository's projects are hidden until it is restored.
     if (rows.results.length > 0) return rows.results.filter((row) => !row.repo_deleted_at).map(toProject);
     // A repository from before projects: give it its own now.
     const repo = await this.repoById(a.repoId);
     if (!repo) return [];
     await this.ensureFor(repo, "g1t");
-    const again = await this.db
-      .prepare("SELECT * FROM projects WHERE repo_id = ? AND repo_deleted_at IS NULL")
-      .bind(a.repoId)
-      .all<Row>();
+    const again = await this.db.prepare("SELECT * FROM projects WHERE repo_id = ? AND repo_deleted_at IS NULL").bind(a.repoId).all<Row>();
     return again.results.map(toProject);
   }
 
@@ -519,12 +505,7 @@ class Projects {
     return ok(toProject((await this.db.prepare("SELECT * FROM projects WHERE id = ?").bind(id).first<Row>())!));
   }
 
-  async update(a: {
-    actor: User;
-    workspace: string;
-    slug: string;
-    changes: ProjectChanges;
-  }): Promise<Result<Project>> {
+  async update(a: { actor: User; workspace: string; slug: string; changes: ProjectChanges }): Promise<Result<Project>> {
     const changes = a.changes ?? {};
     const workspace = a.workspace.toLowerCase();
     const row = await this.db
@@ -537,7 +518,12 @@ class Projects {
     const name = changes.name?.trim() || row.name;
     // Blank or null clears it.
     const description = ownDescription(row.description, changes.description);
-    const rootDir = changes.rootDir === undefined ? row.root_dir : String(changes.rootDir).trim().replace(/^\/+|\/+$/g, "");
+    const rootDir =
+      changes.rootDir === undefined
+        ? row.root_dir
+        : String(changes.rootDir)
+            .trim()
+            .replace(/^\/+|\/+$/g, "");
     if (rootDir.split("/").some((part) => part === "..")) return fail("invalid", "The root directory is inside the repository.");
     const known = (value: unknown, allowed: readonly string[], what: string) =>
       value === undefined || allowed.includes(value as string) ? null : fail("invalid", `${what} is one of ${allowed.join(", ")}.`);
@@ -571,19 +557,7 @@ class Projects {
         `UPDATE projects SET name = ?, description = ?, root_dir = ?, kind_setting = ?, runs_setting = ?, production_url = ?,
            homepage = ?, docs_url = ?, links = ?, updated_at = ? WHERE id = ?`,
       )
-      .bind(
-        name.slice(0, 100),
-        description,
-        rootDir,
-        setting.kind,
-        setting.runs,
-        production.value,
-        homepage.value,
-        docs.value,
-        linksJson,
-        now(),
-        row.id,
-      )
+      .bind(name.slice(0, 100), description, rootDir, setting.kind, setting.runs, production.value, homepage.value, docs.value, linksJson, now(), row.id)
       .run();
     let saved = (await this.db.prepare("SELECT * FROM projects WHERE id = ?").bind(row.id).first<Row>())!;
     // Another root has other files: read them again.
@@ -612,12 +586,7 @@ class Projects {
     this.defer(this.capture(url, commit));
   }
 
-  async setProductionImage(a: {
-    actor: User;
-    workspace: string;
-    slug: string;
-    change: ProductionImageChange;
-  }): Promise<Result<Project>> {
+  async setProductionImage(a: { actor: User; workspace: string; slug: string; change: ProductionImageChange }): Promise<Result<Project>> {
     const change = a.change ?? {};
     const row = await this.db
       .prepare("SELECT * FROM projects WHERE workspace = ? AND slug = ? AND repo_deleted_at IS NULL")
@@ -672,7 +641,10 @@ class Projects {
            AND (runs_setting IS NULL OR runs_setting = 'elsewhere') AND production_image_preferred = 0`,
       )
       .all<Row>();
-    const urls = rows.results.map(toProject).filter(wantsScreenshot).map((project) => project.productionUrl!);
+    const urls = rows.results
+      .map(toProject)
+      .filter(wantsScreenshot)
+      .map((project) => project.productionUrl!);
     return [...new Set(urls)];
   }
 
@@ -691,9 +663,7 @@ class Projects {
     // The repository's own project first: the one that deploys itself, or
     // else one nobody has placed and that could run (not one on g1t.page,
     // nor one set to a library, a tool or other), which now deploys itself.
-    const project = rows.results
-      .map(toProject)
-      .find((one) => one.runs === "elsewhere" || (one.runs === null && !neverRuns(one.setting)));
+    const project = rows.results.map(toProject).find((one) => one.runs === "elsewhere" || (one.runs === null && !neverRuns(one.setting)));
     if (!project) return;
     await this.db.prepare("UPDATE projects SET reports_production = 1 WHERE id = ? AND reports_production IS NOT 1").bind(project.id).run();
     if (project.productionImage?.preferred) return;
@@ -792,7 +762,10 @@ class Projects {
     const pins = pinned.filter(shown);
     return {
       pinned: pins.map(toProject),
-      recent: recentAfterPins(visited.results.filter(shown), pins.map((row) => row.id)).map(toProject),
+      recent: recentAfterPins(
+        visited.results.filter(shown),
+        pins.map((row) => row.id),
+      ).map(toProject),
     };
   }
 
@@ -1007,7 +980,10 @@ class Projects {
       const query = strandedQuery(stale, current, move.repoId);
       if (!query) return;
       const workspace = current.split("/")[0]!;
-      const stranded = await this.db.prepare(query.sql).bind(...query.params).all<Row>();
+      const stranded = await this.db
+        .prepare(query.sql)
+        .bind(...query.params)
+        .all<Row>();
       for (const row of stranded.results) {
         const slug = await this.freeSlug(workspace, row.slug);
         console.log("project", row.id, "moved to", workspace, "as", slug, "since", row.slug, "was taken");
@@ -1020,10 +996,7 @@ class Projects {
     }
     if (event.type === "repo.deleted") {
       // Hidden, not gone: a restore brings its projects back as they were.
-      await this.db
-        .prepare("UPDATE projects SET repo_deleted_at = COALESCE(repo_deleted_at, ?) WHERE repo_id = ?")
-        .bind(now(), event.data.repoId)
-        .run();
+      await this.db.prepare("UPDATE projects SET repo_deleted_at = COALESCE(repo_deleted_at, ?) WHERE repo_id = ?").bind(now(), event.data.repoId).run();
       return;
     }
     if (event.type === "repo.restored") {
@@ -1081,10 +1054,7 @@ class Projects {
       for (const row of rows.results) await this.detect({ ...row, detected_commit: null });
       return;
     }
-    if (
-      (event.type === "package.published" || event.type === "package.deleted" || event.type === "package.version_deleted") &&
-      event.data.repoId
-    ) {
+    if ((event.type === "package.published" || event.type === "package.deleted" || event.type === "package.version_deleted") && event.data.repoId) {
       const rows = await this.db.prepare("SELECT * FROM projects WHERE repo_id = ?").bind(event.data.repoId).all<Row>();
       for (const row of rows.results) await this.detect(row, null, "packages");
       return;
@@ -1096,18 +1066,14 @@ class Projects {
       if (isProtectedWorkspace(event.data.slug)) return;
       const at = now();
       await this.db
-        .prepare(
-          "UPDATE projects SET repo_deleted_at = ?1, workspace_deleted_at = ?1 WHERE workspace = ?2 AND repo_deleted_at IS NULL",
-        )
+        .prepare("UPDATE projects SET repo_deleted_at = ?1, workspace_deleted_at = ?1 WHERE workspace = ?2 AND repo_deleted_at IS NULL")
         .bind(at, event.data.slug.toLowerCase())
         .run();
       return;
     }
     if (event.type === "workspace.restored") {
       await this.db
-        .prepare(
-          "UPDATE projects SET repo_deleted_at = NULL, workspace_deleted_at = NULL WHERE workspace = ? AND workspace_deleted_at IS NOT NULL",
-        )
+        .prepare("UPDATE projects SET repo_deleted_at = NULL, workspace_deleted_at = NULL WHERE workspace = ? AND workspace_deleted_at IS NOT NULL")
         .bind(event.data.slug.toLowerCase())
         .run();
       return;

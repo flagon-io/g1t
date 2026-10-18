@@ -46,13 +46,13 @@ as per repository, read it as the workspace's.
 
 Labels used throughout:
 
-| Label | Meaning |
-| --- | --- |
-| **[built]** | Implemented and reachable on g1t.sh today |
-| **[partial]** | Implemented but incomplete, heuristic or narrow |
-| **[stub]** | Types, flags or UI exist; behaviour does not |
-| **[claimed]** | Stated in README/docs/marketing; not supported by the code |
-| **[proposed]** | My recommendation |
+| Label          | Meaning                                                    |
+| -------------- | ---------------------------------------------------------- |
+| **[built]**    | Implemented and reachable on g1t.sh today                  |
+| **[partial]**  | Implemented but incomplete, heuristic or narrow            |
+| **[stub]**     | Types, flags or UI exist; behaviour does not               |
+| **[claimed]**  | Stated in README/docs/marketing; not supported by the code |
+| **[proposed]** | My recommendation                                          |
 
 Provider facts (Claude Code, Codex, Cursor, Gemini CLI, Copilot) were
 checked against vendor docs and, for Codex and Gemini CLI, against source at
@@ -66,7 +66,7 @@ re-check before you build on them.
 ## Part I — Executive verdict
 
 **g1t should be an agent-native Git forge (C) whose one genuinely new
-primitive is the *session*: a first-class, provider-neutral record of a
+primitive is the _session_: a first-class, provider-neutral record of a
 unit of work by a human-sponsored agent, linked to commits by Git itself and
 observed by deterministic client hooks. Coordination (B) is a thin layer of
 that forge, not a product of its own. Managed execution (A) is just another
@@ -79,15 +79,15 @@ That is your hypothesis D in shape, but I disagree with it in three places:
    detection), B is mostly premature and partly unsound: what can be
    detected deterministically is file overlap, Git conflicts and test
    failures, and the forge already computes the latter two. The coordination
-   that is worth building now is *visibility of in-progress work before it
-   becomes a PR*, delivered into the agent's context by hooks. That is a
+   that is worth building now is _visibility of in-progress work before it
+   becomes a PR_, delivered into the agent's context by hooks. That is a
    forge feature (an "Active work" view plus a per-repository lease table),
    not a platform.
 2. **The biggest architectural problem is not missing coordination; it is
    that g1t is currently two products.** About a third of the backend and
    most of the positioning (README: "where a company's people and agents
    work together", chat, artifacts, agents hired into roles, an org chart,
-   `@g1t` the orchestrator) is an *AI workforce/Slack* product. The other
+   `@g1t` the orchestrator) is an _AI workforce/Slack_ product. The other
    ~60% is a good, unusually rigorous Git forge. Your prompt describes the
    second. The code and homepage lead with the first. Pick the forge.
 3. **Managed execution is already closer to "just a client" than you
@@ -95,7 +95,7 @@ That is your hypothesis D in shape, but I disagree with it in three places:
    runs headless Claude Code in a Cloudflare Container that talks to g1t
    only through the public API, MCP and Git
    (`crates/runner/src/harness.rs:169`, `run_claude`). The coupling that
-   makes it special lives in the *forge's data model* (`pulls.agent`,
+   makes it special lives in the _forge's data model_ (`pulls.agent`,
    `pulls.runtime`, `pulls.managed`, `pulls.stage`, `made_by_g1t()` in
    `services/work/src/lifecycle.rs:121`), not in the runtime. Unwinding that
    is a refactor, not a rewrite.
@@ -105,8 +105,8 @@ That is your hypothesis D in shape, but I disagree with it in three places:
 - A chat/workforce platform with a forge attached (Slack + Devin + GitHub).
 - An agent orchestrator that schedules and plans for other people's agents
   (`plans`, `hand_off`, `@g1t` routing).
-- A transcript warehouse. Sessions should keep *summaries, provenance edges
-  and bounded observed facts*, not full conversations.
+- A transcript warehouse. Sessions should keep _summaries, provenance edges
+  and bounded observed facts_, not full conversations.
 - A proprietary memory system competing with `AGENTS.md`/`CLAUDE.md`.
 - A coordinator on the hot path of every edit. Coordination must be
   advisory, cached locally and fail-open.
@@ -136,43 +136,43 @@ That is your hypothesis D in shape, but I disagree with it in three places:
   (`deploy/self-host`). Runner-dependent features are off there: agents,
   merge-queue builds and hosted Actions jobs.
 
-| Area | Status | Where |
-| --- | --- | --- |
-| Git storage on Cloudflare Artifacts, sharded namespaces, R2 pack cache, nightly bundles, cold fallback | [built] | `services/repos/src/{store,shards,pack_cache,backups,fallback}.rs` |
-| Smart HTTP (proxied to Artifacts), push checks: workflow gate, rulesets, secret push protection | [built] | `services/repos/src/{git_http,push_checks,workflow_gate,rules,secret_scan}.rs` |
-| Repository size: 950 MB repo / 32 MB object / 100 MB push | [built] (hard limits) | `services/repos/src/pack_limits.rs` |
-| Landing: fast-forward only; merge commits made earlier by catch-up | [built] | `services/repos/src/land.rs:209`, `catch_up.rs` |
-| Squash / rebase merges | [stub] (enum + validation; `merge_gate` hard-codes `Merge`) | `services/work/src/rulesets.rs:851` |
-| Issues, PRs, comments-as-reviews, labels, milestones, CODEOWNERS | [built] | `services/work/migrations/*` |
-| GitHub-compatible checks/statuses | [built] | `services/work/migrations/0029_commit_checks.sql` |
-| Rulesets incl. `applies_to: Everyone/Agents/People`, `count_agent_approvals`, `confidence_threshold`, `cost_cap`, `path_review`, `merge_window` | [built] | `crates/rules`, `crates/contracts/src/rules.rs:304,830` |
-| Speculative merge queue (batches of ≤4, `g1t-queue/<id>`, in-order landing, eject + retest) | [built] | `services/work/src/queue.rs`, `0010_merge_queue.sql` |
-| Actions engine (GitHub-compatible), self-hosted runner under Sysbox | [built] | `services/actions`, `crates/actions`, `crates/runner` |
-| Event bus: Queue → D1 append log → 16 subscriber queues; at-least-once, DLQ | [built] | `services/events/src/lib.rs`, `crates/contracts/src/subscribers.rs` |
-| Webhooks with per-hook dedupe and retries over ~7.5 h | [built] | `services/webhooks/src/deliver.rs` |
-| Event stream or replay cursor for API clients | absent | (log is queryable via `list_events`, no cursor/SSE) |
-| PR file overlap ("overlaps" on `pull_request get`) | [partial] (file paths, PR↔PR only, after push) | `services/work/src/reviews.rs:95` |
-| Mergeability precompute (disjoint-files fast path, sandbox probe) | [built] | `services/work/src/mergeability.rs` |
+| Area                                                                                                                                            | Status                                                      | Where                                                                          |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Git storage on Cloudflare Artifacts, sharded namespaces, R2 pack cache, nightly bundles, cold fallback                                          | [built]                                                     | `services/repos/src/{store,shards,pack_cache,backups,fallback}.rs`             |
+| Smart HTTP (proxied to Artifacts), push checks: workflow gate, rulesets, secret push protection                                                 | [built]                                                     | `services/repos/src/{git_http,push_checks,workflow_gate,rules,secret_scan}.rs` |
+| Repository size: 950 MB repo / 32 MB object / 100 MB push                                                                                       | [built] (hard limits)                                       | `services/repos/src/pack_limits.rs`                                            |
+| Landing: fast-forward only; merge commits made earlier by catch-up                                                                              | [built]                                                     | `services/repos/src/land.rs:209`, `catch_up.rs`                                |
+| Squash / rebase merges                                                                                                                          | [stub] (enum + validation; `merge_gate` hard-codes `Merge`) | `services/work/src/rulesets.rs:851`                                            |
+| Issues, PRs, comments-as-reviews, labels, milestones, CODEOWNERS                                                                                | [built]                                                     | `services/work/migrations/*`                                                   |
+| GitHub-compatible checks/statuses                                                                                                               | [built]                                                     | `services/work/migrations/0029_commit_checks.sql`                              |
+| Rulesets incl. `applies_to: Everyone/Agents/People`, `count_agent_approvals`, `confidence_threshold`, `cost_cap`, `path_review`, `merge_window` | [built]                                                     | `crates/rules`, `crates/contracts/src/rules.rs:304,830`                        |
+| Speculative merge queue (batches of ≤4, `g1t-queue/<id>`, in-order landing, eject + retest)                                                     | [built]                                                     | `services/work/src/queue.rs`, `0010_merge_queue.sql`                           |
+| Actions engine (GitHub-compatible), self-hosted runner under Sysbox                                                                             | [built]                                                     | `services/actions`, `crates/actions`, `crates/runner`                          |
+| Event bus: Queue → D1 append log → 16 subscriber queues; at-least-once, DLQ                                                                     | [built]                                                     | `services/events/src/lib.rs`, `crates/contracts/src/subscribers.rs`            |
+| Webhooks with per-hook dedupe and retries over ~7.5 h                                                                                           | [built]                                                     | `services/webhooks/src/deliver.rs`                                             |
+| Event stream or replay cursor for API clients                                                                                                   | absent                                                      | (log is queryable via `list_events`, no cursor/SSE)                            |
+| PR file overlap ("overlaps" on `pull_request get`)                                                                                              | [partial] (file paths, PR↔PR only, after push)             | `services/work/src/reviews.rs:95`                                              |
+| Mergeability precompute (disjoint-files fast path, sandbox probe)                                                                               | [built]                                                     | `services/work/src/mergeability.rs`                                            |
 
 ### II.2 External agent integration (the part that matters most)
 
-| Capability | Status | Where / notes |
-| --- | --- | --- |
-| MCP server, streamable HTTP but stateless JSON replies; OAuth 2.1 + PKCE + dynamic client registration; PAT | [built] | `apps/api/src/{mcp,oauth}.rs` |
-| 20 MCP tools, ~380 actions, generated from the same `Op` table as REST/OpenAPI, so permissions/audit/billing are shared | [built]. This is a strong design worth keeping. | `apps/api/src/{tools,operations,rest,openapi}.rs` |
-| MCP resources/prompts | absent | capabilities = tools only |
-| `record_session` / `read_session` | [built] but **append-only log keyed to a PR**: no session id, actor, client, start/end | `services/work/migrations/0001_init.sql` `session_entries(pull_id, seq, kind, text, tool, commit, at)` |
-| Only the PR owner may record | [built] | `services/work/src/lib.rs:2432`, `Pull::is_owned_by` |
-| Claude Code hook installer (`UserPromptSubmit`, `PostToolUse *`, `Stop`) | [partial] | `apps/web/public/install/{claude.sh,setup.mjs,hook.mjs}` |
-| ↳ records nothing until an open PR exists for the branch; caches a miss **permanently** (`~/.g1t/pulls.json`), so a PR opened later is never picked up | bug | `hook.mjs` `pullFor` |
-| ↳ blocking network call on every tool use (10 s timeout), no offline spool, no idempotency key | design flaw | `hook.mjs` `main` |
-| ↳ sends raw `tool_response` (clipped to 4 kB) **without secret redaction**; installed into global `~/.claude/settings.json` so it fires in every repo | security flaw | `hook.mjs`, `setup.mjs` |
-| ↳ never sets `commit`, so the server stamps whatever head the PR had | accuracy flaw | `hook.mjs` |
-| why-blame | [partial]: heuristic window from "Pushed <sha>" notes that only hosted runs write; for external sessions it pulls in all earlier entries | `apps/web/app/routes/repo/why.ts`, `apps/web/app/lib/provenance.server.ts` |
-| Coding-agent recognition from commit email / Co-authored-by | [built], display only | `crates/contracts/src/coding_agents.rs`, `apps/web/app/lib/commit-people.ts` |
-| `g1t` CLI | [built] **image push only**: no login, sessions or hooks | `crates/g1t/src/main.rs` |
-| Codex / Cursor / Gemini / Copilot adapters | absent | — |
-| "Any coding agent over MCP, recording its session onto its pull requests" (README) | [claimed] in its general form: any agent *can* call `record_session`, but only voluntarily, only after a PR exists, and only Claude Code has a hook | README.md |
+| Capability                                                                                                                                             | Status                                                                                                                                              | Where / notes                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| MCP server, streamable HTTP but stateless JSON replies; OAuth 2.1 + PKCE + dynamic client registration; PAT                                            | [built]                                                                                                                                             | `apps/api/src/{mcp,oauth}.rs`                                                                          |
+| 20 MCP tools, ~380 actions, generated from the same `Op` table as REST/OpenAPI, so permissions/audit/billing are shared                                | [built]. This is a strong design worth keeping.                                                                                                     | `apps/api/src/{tools,operations,rest,openapi}.rs`                                                      |
+| MCP resources/prompts                                                                                                                                  | absent                                                                                                                                              | capabilities = tools only                                                                              |
+| `record_session` / `read_session`                                                                                                                      | [built] but **append-only log keyed to a PR**: no session id, actor, client, start/end                                                              | `services/work/migrations/0001_init.sql` `session_entries(pull_id, seq, kind, text, tool, commit, at)` |
+| Only the PR owner may record                                                                                                                           | [built]                                                                                                                                             | `services/work/src/lib.rs:2432`, `Pull::is_owned_by`                                                   |
+| Claude Code hook installer (`UserPromptSubmit`, `PostToolUse *`, `Stop`)                                                                               | [partial]                                                                                                                                           | `apps/web/public/install/{claude.sh,setup.mjs,hook.mjs}`                                               |
+| ↳ records nothing until an open PR exists for the branch; caches a miss **permanently** (`~/.g1t/pulls.json`), so a PR opened later is never picked up | bug                                                                                                                                                 | `hook.mjs` `pullFor`                                                                                   |
+| ↳ blocking network call on every tool use (10 s timeout), no offline spool, no idempotency key                                                         | design flaw                                                                                                                                         | `hook.mjs` `main`                                                                                      |
+| ↳ sends raw `tool_response` (clipped to 4 kB) **without secret redaction**; installed into global `~/.claude/settings.json` so it fires in every repo  | security flaw                                                                                                                                       | `hook.mjs`, `setup.mjs`                                                                                |
+| ↳ never sets `commit`, so the server stamps whatever head the PR had                                                                                   | accuracy flaw                                                                                                                                       | `hook.mjs`                                                                                             |
+| why-blame                                                                                                                                              | [partial]: heuristic window from "Pushed <sha>" notes that only hosted runs write; for external sessions it pulls in all earlier entries            | `apps/web/app/routes/repo/why.ts`, `apps/web/app/lib/provenance.server.ts`                             |
+| Coding-agent recognition from commit email / Co-authored-by                                                                                            | [built], display only                                                                                                                               | `crates/contracts/src/coding_agents.rs`, `apps/web/app/lib/commit-people.ts`                           |
+| `g1t` CLI                                                                                                                                              | [built] **image push only**: no login, sessions or hooks                                                                                            | `crates/g1t/src/main.rs`                                                                               |
+| Codex / Cursor / Gemini / Copilot adapters                                                                                                             | absent                                                                                                                                              | —                                                                                                      |
+| "Any coding agent over MCP, recording its session onto its pull requests" (README)                                                                     | [claimed] in its general form: any agent _can_ call `record_session`, but only voluntarily, only after a PR exists, and only Claude Code has a hook | README.md                                                                                              |
 
 ### II.3 Two internal agent runtimes that don't share a model
 
@@ -192,8 +192,8 @@ That is your hypothesis D in shape, but I disagree with it in three places:
 
 So "session" means three unrelated things: `agent_sessions` (chat-born work
 of workspace agents), `agent_runs` (sandboxes) and `session_entries` (a PR's
-log). None of them can represent *the founder's Claude Code session that
-hasn't produced a PR*.
+log). None of them can represent _the founder's Claude Code session that
+hasn't produced a PR_.
 
 ### II.4 Identity and authority: one significant hole
 
@@ -205,16 +205,16 @@ hasn't produced a PR*.
   - An OAuth grant from Claude Code, or a PAT, never sets `acting` (`services/identity/src/oauth.rs`, `tokens.rs`), so `rules::is_agent` returns false (`crates/contracts/src/rules.rs:1329`).
   - A review is only treated as an agent's if `reviewer_id == AGENT_ID` (`services/work/src/rulesets.rs:184`).
   - Consequence: **a local Claude Code session holding the founder's MCP grant can approve a colleague's protected PR, and that approval counts as the founder's.**
-  - `agent_change()` falls back on the *self-reported* free-text `pulls.agent` field (`rulesets.rs:176-181`).
+  - `agent_change()` falls back on the _self-reported_ free-text `pulls.agent` field (`rulesets.rs:176-181`).
   - This is the most important correctness issue in the audit, and it gets worse the more you succeed at bringing external agents in.
 
 ### II.5 Memory and context: three overlapping systems
 
-| System | What it holds | Where |
-| --- | --- | --- |
-| Work `memories` | Per repo or workspace; candidates/kept; confidence; fingerprints; sources | `0015`, `0019_memory_capture.sql` |
-| Agents `agent_memories` | Workspace/channel/person scopes | `services/agents/src/memory.ts` |
-| `services/context` | Catalog, Vectorize search, scorecards, `runcontext.ts` injected into hosted runs | `services/context` |
+| System                  | What it holds                                                                    | Where                             |
+| ----------------------- | -------------------------------------------------------------------------------- | --------------------------------- |
+| Work `memories`         | Per repo or workspace; candidates/kept; confidence; fingerprints; sources        | `0015`, `0019_memory_capture.sql` |
+| Agents `agent_memories` | Workspace/channel/person scopes                                                  | `services/agents/src/memory.ts`   |
+| `services/context`      | Catalog, Vectorize search, scorecards, `runcontext.ts` injected into hosted runs | `services/context`                |
 
 - The repository itself has **no `AGENTS.md` or `CLAUDE.md`**, even though the docs recommend one (`guides/bring-your-own-agent.mdx`).
 - That is the clearest dogfooding signal in the repo: the knowledge your Claude Code sessions use to build g1t lives in commit messages and in your head, not in any of g1t's three memory systems.
@@ -246,27 +246,27 @@ prerequisite for g1t being useful.
 
 ### III.1 The four options, judged
 
-| Option | Verdict | Why |
-| --- | --- | --- |
-| **A. Execution platform** | Reject as the core; keep as an optional adapter | Commodity and capital-intensive. Anthropic, OpenAI, Cursor, GitHub and Cloudflare all sell sandboxes plus agents. Your own use proves the agent of choice lives elsewhere. |
-| **B. Coordination platform (standalone)** | Reject as a separate product | Without the repository, PRs, checks and approvals, coordination has nothing authoritative to coordinate against. It becomes a chat bus or a task tracker (Linear, Jira and Copilot's Agents tab already exist). |
-| **C. Agent-native forge** | **Core** | The forge already owns the things agents cannot fake: refs, diffs, checks, rulesets, approvals and the merge queue. Making sessions and agent identity native to it is new, defensible, and useful with zero hosted agents. |
-| **D. Combination** | Yes, as **C ⊃ B-lite, A as a client** | Not three products with three architectures: one forge, one session protocol, and an execution adapter that speaks it. |
+| Option                                    | Verdict                                         | Why                                                                                                                                                                                                                         |
+| ----------------------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A. Execution platform**                 | Reject as the core; keep as an optional adapter | Commodity and capital-intensive. Anthropic, OpenAI, Cursor, GitHub and Cloudflare all sell sandboxes plus agents. Your own use proves the agent of choice lives elsewhere.                                                  |
+| **B. Coordination platform (standalone)** | Reject as a separate product                    | Without the repository, PRs, checks and approvals, coordination has nothing authoritative to coordinate against. It becomes a chat bus or a task tracker (Linear, Jira and Copilot's Agents tab already exist).             |
+| **C. Agent-native forge**                 | **Core**                                        | The forge already owns the things agents cannot fake: refs, diffs, checks, rulesets, approvals and the merge queue. Making sessions and agent identity native to it is new, defensible, and useful with zero hosted agents. |
+| **D. Combination**                        | Yes, as **C ⊃ B-lite, A as a client**           | Not three products with three architectures: one forge, one session protocol, and an execution adapter that speaks it.                                                                                                      |
 
 ### III.2 Where "separate the agent from the platform" breaks down
 
 The principle is right. It breaks in four specific places, and the design
 should name them rather than paper over them:
 
-1. **Control.** g1t can stop a managed run (kill the container, revoke the credential). For an external session it can only *revoke the session credential* and *ask*, through hook-injected context. The protocol must expose `capabilities` per session (`can_cancel`, `can_steer`) rather than pretend.
+1. **Control.** g1t can stop a managed run (kill the container, revoke the credential). For an external session it can only _revoke the session credential_ and _ask_, through hook-injected context. The protocol must expose `capabilities` per session (`can_cancel`, `can_steer`) rather than pretend.
 2. **Observation fidelity.**
    - Managed runs give g1t the full stream-json and exact cost.
    - Local Claude Code gives hook events that an honest client observed: tool names, file paths, Bash commands and `session_id`.
    - Codex and Cursor give somewhat less.
    - An MCP-only client gives only what the model chooses to say.
    - The data model needs a `source` and `trust` on every observed fact.
-3. **Credentials.** A managed run gets a short-lived credential g1t mints. A local agent runs as the developer's OS user and can read `~/.g1t/config.json` and the Git credential helper. g1t can distinguish *credentials*, never *processes*. Authority rules must therefore rest on credential type plus step-up for human-only acts (§III.6), not on trusting the client to say it is an agent.
-4. **Lifecycle automation** (auto-revise on failing checks, auto-review, catch-up) is a policy that needs something to *execute*. For a managed run g1t executes it. For an external session the same policy can only *notify* the session's client, or start a managed run. Put the policy on the PR and the executor behind an interface.
+3. **Credentials.** A managed run gets a short-lived credential g1t mints. A local agent runs as the developer's OS user and can read `~/.g1t/config.json` and the Git credential helper. g1t can distinguish _credentials_, never _processes_. Authority rules must therefore rest on credential type plus step-up for human-only acts (§III.6), not on trusting the client to say it is an agent.
+4. **Lifecycle automation** (auto-revise on failing checks, auto-review, catch-up) is a policy that needs something to _execute_. For a managed run g1t executes it. For an external session the same policy can only _notify_ the session's client, or start a managed run. Put the policy on the PR and the executor behind an interface.
 
 ### III.3 System diagram
 
@@ -322,15 +322,15 @@ flowchart LR
 
 ### III.4 Responsibilities and data ownership
 
-| Component | Owns (authoritative) | Does not own |
-| --- | --- | --- |
-| **Git / Artifacts** | Source, refs, commit graph, trailers | Anything about who *ran* what |
-| **identity** | Principals, grants, session credentials, client registrations, step-up state | Session content |
-| **work** | Issues, PRs, reviews, checks, rulesets, merge queue, **sessions, session events (bounded), provenance edges** | Live leases (it reads them) |
-| **RepoCoordinator DO** [proposed] | Live presence and leases for one repo, plus the overlap index of in-flight paths. Snapshotted to D1. | Durable history (events do that) |
-| **events** | Ordered append log per stream; fan-out; replay cursor | Business state |
-| **execution** (`services/runner`) | Runs: compute, credentials it minted, cancellation, cost | Sessions (it *creates* them like any client) |
-| **agents / chat / artifacts** | Frozen (Part VIII) | — |
+| Component                         | Owns (authoritative)                                                                                          | Does not own                                 |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| **Git / Artifacts**               | Source, refs, commit graph, trailers                                                                          | Anything about who _ran_ what                |
+| **identity**                      | Principals, grants, session credentials, client registrations, step-up state                                  | Session content                              |
+| **work**                          | Issues, PRs, reviews, checks, rulesets, merge queue, **sessions, session events (bounded), provenance edges** | Live leases (it reads them)                  |
+| **RepoCoordinator DO** [proposed] | Live presence and leases for one repo, plus the overlap index of in-flight paths. Snapshotted to D1.          | Durable history (events do that)             |
+| **events**                        | Ordered append log per stream; fan-out; replay cursor                                                         | Business state                               |
+| **execution** (`services/runner`) | Runs: compute, credentials it minted, cancellation, cost                                                      | Sessions (it _creates_ them like any client) |
+| **agents / chat / artifacts**     | Frozen (Part VIII)                                                                                            | —                                            |
 
 Why sessions live in `work` and not a new service:
 
@@ -350,12 +350,12 @@ Split them out later only if volume demands it.
 Four distinct concepts, which the code currently conflates for external
 agents:
 
-| Concept | Definition | Representation |
-| --- | --- | --- |
-| **Principal** | Who is accountable | A human `User` or a workspace (service account). Never an agent. |
-| **Agent client** | What software is acting | `{provider, product, version}` on the grant and the session. Descriptive and self-declared, so not a security boundary. |
-| **Delegation** | A principal letting a client act within limits | A *session credential* [proposed]: `Acting { agent: client, on_behalf_of: principal, scope }`. This is the type that already exists in `crates/contracts/src/credentials.rs`, extended to external clients. |
-| **Authorization** | What a request may do | Intersection of principal rights × credential scope × rule constraints for agent actors. |
+| Concept           | Definition                                     | Representation                                                                                                                                                                                              |
+| ----------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Principal**     | Who is accountable                             | A human `User` or a workspace (service account). Never an agent.                                                                                                                                            |
+| **Agent client**  | What software is acting                        | `{provider, product, version}` on the grant and the session. Descriptive and self-declared, so not a security boundary.                                                                                     |
+| **Delegation**    | A principal letting a client act within limits | A _session credential_ [proposed]: `Acting { agent: client, on_behalf_of: principal, scope }`. This is the type that already exists in `crates/contracts/src/credentials.rs`, extended to external clients. |
+| **Authorization** | What a request may do                          | Intersection of principal rights × credential scope × rule constraints for agent actors.                                                                                                                    |
 
 Rules [proposed]:
 
@@ -371,21 +371,22 @@ Rules [proposed]:
    - minting tokens.
 
    "Interactive human credential" means a browser or desktop session, or a PAT marked `human_interactive` used with a recent WebAuthn/TOTP step-up (e.g. within 12 h). A compromised laptop agent can still click through a browser it controls. Nothing at the forge prevents that, and the review should say so.
-3. Agent approvals are recorded, shown and *never* count unless the ruleset sets `count_agent_approvals` (existing flag), and never for the PR's own sponsor.
+
+3. Agent approvals are recorded, shown and _never_ count unless the ruleset sets `count_agent_approvals` (existing flag), and never for the PR's own sponsor.
 4. **Self-approval is forbidden by principal, not by client.** An agent acting for Alice cannot approve Alice's PR, and Alice can't approve a PR whose sessions she sponsored if the ruleset requires an independent reviewer.
 5. Session credentials are scoped to one workspace and an explicit repo set, expire (default 12 h, renewable while active) and are revocable from the session page.
 
 ### III.7 Consistency guarantees
 
-| Data | Guarantee |
-| --- | --- |
-| Refs, merges, queue landing | Linearizable per ref (Artifacts compare-and-swap, fast-forward land). Unchanged. |
-| Session creation, close, link | Idempotent upsert by `(principal, client_session_id)`. Read-your-writes per request. |
-| Session events | At-least-once from client; deduped by `(session_id, client_seq)`. Ordered per session by `client_seq`, not across sessions. |
-| Leases | Linearizable per repo (one DO). TTL expiry is authoritative only at the DO. Clients see eventually consistent copies (≤ a few seconds). |
-| Overlap / conflict hints | Eventually consistent, advisory, may be stale. Never block a push or merge on them. |
-| Provenance edges from trailers | Derived from Git at push time. Recomputable from Git alone. |
-| Event feed | At-least-once, per-repo ordering by log id, replayable for retention window (proposed 7 days). |
+| Data                           | Guarantee                                                                                                                               |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Refs, merges, queue landing    | Linearizable per ref (Artifacts compare-and-swap, fast-forward land). Unchanged.                                                        |
+| Session creation, close, link  | Idempotent upsert by `(principal, client_session_id)`. Read-your-writes per request.                                                    |
+| Session events                 | At-least-once from client; deduped by `(session_id, client_seq)`. Ordered per session by `client_seq`, not across sessions.             |
+| Leases                         | Linearizable per repo (one DO). TTL expiry is authoritative only at the DO. Clients see eventually consistent copies (≤ a few seconds). |
+| Overlap / conflict hints       | Eventually consistent, advisory, may be stale. Never block a push or merge on them.                                                     |
+| Provenance edges from trailers | Derived from Git at push time. Recomputable from Git alone.                                                                             |
+| Event feed                     | At-least-once, per-repo ordering by log id, replayable for retention window (proposed 7 days).                                          |
 
 ---
 
@@ -393,21 +394,21 @@ Rules [proposed]:
 
 ### IV.1 Which concepts get entities
 
-| Concept | Entity? | Decision |
-| --- | --- | --- |
-| **Commit** | Git | Never duplicate. Store only edges *to* SHAs. |
-| **Changeset** | No | A branch + head SHA + base SHA is the changeset. Git has it. |
-| **Pull request** | Yes (exists) | Remains *the* approval and integration artifact. Strip the agent-lifecycle columns into a separate table. |
-| **Issue** | Yes (exists) | Is the intent *and* the task. Sub-issues and `blocked_by` (exists) cover decomposition. |
-| **Intent** | No | An issue, or a session's `goal` text. A separate entity adds a concept nobody maintains. |
-| **Task** | No | An issue. If you need "a task an agent claimed", that is a lease on an issue. |
-| **Session** | **Yes, new** | The unit of participation; may never produce a commit. |
-| **Run** | Yes (rename `agent_runs`) | Exists only for managed execution: compute g1t controls and bills. A run *serves* a session. |
-| **Session event** | Yes, bounded | Observed or reported facts with source and trust. Not a transcript. |
-| **Lease (claim)** | Yes, lives in the DO | Advisory, TTL'd, owned by a session. |
-| **Provenance edge** | Yes, link tables | `session_commits`, `session_links` (issue/PR), `pull_heads`. |
-| **Contract / decision** | No | Files in the repo (OpenAPI, `.proto`, ADRs) guarded by CODEOWNERS/path rules. |
-| **Integration frontier** | No | Merge queue + speculative batches (exists). |
+| Concept                  | Entity?                   | Decision                                                                                                  |
+| ------------------------ | ------------------------- | --------------------------------------------------------------------------------------------------------- |
+| **Commit**               | Git                       | Never duplicate. Store only edges _to_ SHAs.                                                              |
+| **Changeset**            | No                        | A branch + head SHA + base SHA is the changeset. Git has it.                                              |
+| **Pull request**         | Yes (exists)              | Remains _the_ approval and integration artifact. Strip the agent-lifecycle columns into a separate table. |
+| **Issue**                | Yes (exists)              | Is the intent _and_ the task. Sub-issues and `blocked_by` (exists) cover decomposition.                   |
+| **Intent**               | No                        | An issue, or a session's `goal` text. A separate entity adds a concept nobody maintains.                  |
+| **Task**                 | No                        | An issue. If you need "a task an agent claimed", that is a lease on an issue.                             |
+| **Session**              | **Yes, new**              | The unit of participation; may never produce a commit.                                                    |
+| **Run**                  | Yes (rename `agent_runs`) | Exists only for managed execution: compute g1t controls and bills. A run _serves_ a session.              |
+| **Session event**        | Yes, bounded              | Observed or reported facts with source and trust. Not a transcript.                                       |
+| **Lease (claim)**        | Yes, lives in the DO      | Advisory, TTL'd, owned by a session.                                                                      |
+| **Provenance edge**      | Yes, link tables          | `session_commits`, `session_links` (issue/PR), `pull_heads`.                                              |
+| **Contract / decision**  | No                        | Files in the repo (OpenAPI, `.proto`, ADRs) guarded by CODEOWNERS/path rules.                             |
+| **Integration frontier** | No                        | Merge queue + speculative batches (exists).                                                               |
 
 ### IV.2 TypeScript interfaces
 
@@ -421,19 +422,20 @@ type PrincipalRef = { kind: "user" | "workspace"; id: string; name: string };
 /** Self-declared; descriptive only. */
 interface AgentClient {
   provider: "anthropic" | "openai" | "cursor" | "google" | "github" | "g1t" | "other";
-  product: string;            // "claude-code", "codex-cli", "cursor", "gemini-cli", "g1t-runner"
+  product: string; // "claude-code", "codex-cli", "cursor", "gemini-cli", "g1t-runner"
   version?: string;
-  adapter?: string;           // "g1t-hook/0.3.0" – our code, so slightly more trustworthy
+  adapter?: string; // "g1t-hook/0.3.0" – our code, so slightly more trustworthy
 }
 
-interface SessionCredential {  // extends existing Acting
-  id: string;                  // cred_…
-  principal: PrincipalRef;     // on_behalf_of
+interface SessionCredential {
+  // extends existing Acting
+  id: string; // cred_…
+  principal: PrincipalRef; // on_behalf_of
   client: AgentClient;
   workspace: string;
-  repos: string[];             // explicit; [] = none
-  scopes: string[];            // ⊆ grant scopes ⊆ principal rights
-  sessionId?: string;          // bound once the session is opened
+  repos: string[]; // explicit; [] = none
+  scopes: string[]; // ⊆ grant scopes ⊆ principal rights
+  sessionId?: string; // bound once the session is opened
   expiresAt: string;
   revokedAt?: string;
 }
@@ -445,30 +447,30 @@ type Execution =
   | { kind: "managed"; runId: string };
 
 type SessionState =
-  | "active"       // event within idle window
-  | "idle"         // no event for > 15 min
-  | "ended"        // SessionEnd / explicit end
-  | "abandoned"    // no event for > lease max (default 4 h); leases released
-  | "handed_off";  // ended with a successor session
+  | "active" // event within idle window
+  | "idle" // no event for > 15 min
+  | "ended" // SessionEnd / explicit end
+  | "abandoned" // no event for > lease max (default 4 h); leases released
+  | "handed_off"; // ended with a successor session
 
 interface Session {
-  id: string;                     // ses_… (ULID)
+  id: string; // ses_… (ULID)
   workspace: string;
-  repoId: string | null;          // null allowed: investigation outside any g1t repo isn't recorded at all
-  principal: PrincipalRef;        // AUTHORITATIVE (from credential)
-  client: AgentClient;            // SELF-REPORTED
-  clientSessionId: string;        // provider's id (Claude session_id, Codex thread id). SELF-REPORTED, unique per principal
-  execution: Execution;           // managed: AUTHORITATIVE; else SELF-REPORTED
-  parentId?: string;              // subagent or handoff source
-  state: SessionState;            // DERIVED (server)
-  title?: string;                 // REPORTED (model/human)
-  goal?: string;                  // REPORTED
-  summary?: string;               // REPORTED, shown with "agent's account" label
+  repoId: string | null; // null allowed: investigation outside any g1t repo isn't recorded at all
+  principal: PrincipalRef; // AUTHORITATIVE (from credential)
+  client: AgentClient; // SELF-REPORTED
+  clientSessionId: string; // provider's id (Claude session_id, Codex thread id). SELF-REPORTED, unique per principal
+  execution: Execution; // managed: AUTHORITATIVE; else SELF-REPORTED
+  parentId?: string; // subagent or handoff source
+  state: SessionState; // DERIVED (server)
+  title?: string; // REPORTED (model/human)
+  goal?: string; // REPORTED
+  summary?: string; // REPORTED, shown with "agent's account" label
   // Git position: last OBSERVED by the client adapter (git rev-parse), verified when SHA appears in a push
   branch?: string;
-  baseSha?: string;               // merge-base with default branch when started / last seen
+  baseSha?: string; // merge-base with default branch when started / last seen
   headSha?: string;
-  touchedPaths: string[];         // OBSERVED by client hooks (Edit/Write/patch), capped 500, repo-relative
+  touchedPaths: string[]; // OBSERVED by client hooks (Edit/Write/patch), capped 500, repo-relative
   capabilities: { cancel: boolean; steer: boolean; costExact: boolean }; // DERIVED from execution+adapter
   usage?: { inputTokens?: number; outputTokens?: number; costUsd?: number; exact: boolean }; // managed: exact
   visibility: "repo" | "private"; // private: only principal + admins (investigations)
@@ -494,7 +496,13 @@ interface SessionCommit {
 }
 
 /** Every head a PR has ever had: survives force-push and rebase. */
-interface PullHead { pullId: string; sha: string; pushedBy: string; pushedAt: string; forced: boolean }
+interface PullHead {
+  pullId: string;
+  sha: string;
+  pushedBy: string;
+  pushedAt: string;
+  forced: boolean;
+}
 
 // ---------- session events (bounded, typed, not a transcript) ----------
 type Trust = "verified" | "observed" | "reported";
@@ -503,55 +511,54 @@ type Trust = "verified" | "observed" | "reported";
 // reported: model/user text
 
 type SessionEventKind =
-  | "lifecycle"      // start, resume, compact, end, stop_failure
-  | "prompt"         // OFF by default; opt-in per repo, redacted
-  | "tool"           // {tool, target (path/cmd head), ok, durationMs} – no outputs
-  | "files"          // {paths[], op: edit|write|delete}
-  | "git"            // {op: commit|push|checkout|rebase, sha?, branch?}
-  | "note"           // model or human text: decisions, blockers, summary
-  | "lease"          // acquired/renewed/released (mirrors DO)
-  | "warning";       // server → session: overlap, behind, failing check (echoed for audit)
+  | "lifecycle" // start, resume, compact, end, stop_failure
+  | "prompt" // OFF by default; opt-in per repo, redacted
+  | "tool" // {tool, target (path/cmd head), ok, durationMs} – no outputs
+  | "files" // {paths[], op: edit|write|delete}
+  | "git" // {op: commit|push|checkout|rebase, sha?, branch?}
+  | "note" // model or human text: decisions, blockers, summary
+  | "lease" // acquired/renewed/released (mirrors DO)
+  | "warning"; // server → session: overlap, behind, failing check (echoed for audit)
 
 interface SessionEvent {
   sessionId: string;
-  seq: number;                    // client-assigned, monotonic per session; dedupe key
+  seq: number; // client-assigned, monotonic per session; dedupe key
   kind: SessionEventKind;
   trust: Trust;
   source: "hook" | "mcp" | "api" | "runner" | "server";
-  at: string;                     // client clock; server stores receivedAt too
-  data: Record<string, unknown>;  // ≤ 4 KB after redaction
+  at: string; // client clock; server stores receivedAt too
+  data: Record<string, unknown>; // ≤ 4 KB after redaction
 }
 
 // ---------- coordination ----------
-type LeaseTarget =
-  | { kind: "issue"; number: number }
-  | { kind: "paths"; globs: string[] };   // e.g. ["services/work/src/queue.rs", "crates/rules/**"]
+type LeaseTarget = { kind: "issue"; number: number } | { kind: "paths"; globs: string[] }; // e.g. ["services/work/src/queue.rs", "crates/rules/**"]
 
 interface Lease {
-  id: string;                     // lse_…
+  id: string; // lse_…
   repoId: string;
   sessionId: string;
   principal: PrincipalRef;
   target: LeaseTarget;
-  mode: "advisory";               // exclusive is NOT offered (see Part VII)
-  note?: string;                  // "changing merge_gate signature"
+  mode: "advisory"; // exclusive is NOT offered (see Part VII)
+  note?: string; // "changing merge_gate signature"
   acquiredAt: string;
-  expiresAt: string;              // ≤ 30 min; renewed by any session event
+  expiresAt: string; // ≤ 30 min; renewed by any session event
 }
 
-interface Overlap {               // computed, never stored as truth
+interface Overlap {
+  // computed, never stored as truth
   withSession?: string;
   withPull?: number;
   paths: string[];
   kind: "lease" | "touched" | "pr_diff";
-  freshness: string;              // when computed
+  freshness: string; // when computed
 }
 
 // ---------- managed execution ----------
 type RunState = "queued" | "starting" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out";
 interface Run {
-  id: string;                     // run_…
-  sessionId: string;              // every run serves exactly one session; a session may have many runs (retries)
+  id: string; // run_…
+  sessionId: string; // every run serves exactly one session; a session may have many runs (retries)
   workspace: string;
   repoId: string;
   kind: "implement" | "revise" | "review" | "update" | "answer" | "plan";
@@ -559,14 +566,17 @@ interface Run {
   state: RunState;
   attempt: number;
   timeoutAt: string;
-  costUsd?: number;               // exact, from model proxy
+  costUsd?: number; // exact, from model proxy
   sandboxSeconds?: number;
   error?: string;
-  createdAt: string; startedAt?: string; finishedAt?: string;
+  createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
 }
 
 // ---------- PR automation, moved off `pulls` ----------
-interface PullAutomation {        // replaces pulls.managed/stage/revisions/working_*/stalled
+interface PullAutomation {
+  // replaces pulls.managed/stage/revisions/working_*/stalled
   pullId: string;
   policy: "none" | "notify_session" | "managed_revise";
   stage?: string;
@@ -660,19 +670,19 @@ A PR's lifecycle is unchanged. Sessions attach to it; they never gate it.
 
 ### V.1 Layering
 
-| Layer | Role | Primary or adapter? |
-| --- | --- | --- |
-| **Git** | Code transport, branches, commits, **trailers as provenance** (`G1t-Session: ses_…`) | Primary, unchanged |
-| **REST `/v1/sessions…`** | Deterministic integration surface for adapters, daemons and runners. No model involvement. | **Primary** |
-| **`g1t` CLI** | Auth, repo detection, hook adapter for every provider, local spool, Git hook installer | **Essential.** Hooks need a fast, local, offline-tolerant executable; a script piping to `curl` isn't one. |
-| **MCP** | Discovery, context reads, voluntary structured reports (notes, leases, links), platform actions | **Convenience adapter** over the same `Op`s. Never the only path for anything that must be reliable. |
-| **Event feed** | Clients and integrations learn what changed | Small: cursor long-poll |
+| Layer                    | Role                                                                                            | Primary or adapter?                                                                                        |
+| ------------------------ | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| **Git**                  | Code transport, branches, commits, **trailers as provenance** (`G1t-Session: ses_…`)            | Primary, unchanged                                                                                         |
+| **REST `/v1/sessions…`** | Deterministic integration surface for adapters, daemons and runners. No model involvement.      | **Primary**                                                                                                |
+| **`g1t` CLI**            | Auth, repo detection, hook adapter for every provider, local spool, Git hook installer          | **Essential.** Hooks need a fast, local, offline-tolerant executable; a script piping to `curl` isn't one. |
+| **MCP**                  | Discovery, context reads, voluntary structured reports (notes, leases, links), platform actions | **Convenience adapter** over the same `Op`s. Never the only path for anything that must be reliable.       |
+| **Event feed**           | Clients and integrations learn what changed                                                     | Small: cursor long-poll                                                                                    |
 
 Why MCP is not primary:
 
 - Every MCP call depends on the model deciding to make it. The current docs admit it: "it has to remember to."
 - Session open and close, file touches, commits and pushes must be captured by hooks.
-- MCP remains excellent for *reading* (context, active work, PR state) and for *intentional* acts (claim this issue, record this decision, open this PR).
+- MCP remains excellent for _reading_ (context, active work, PR state) and for _intentional_ acts (claim this issue, record this decision, open this PR).
 
 ### V.2 Authentication
 
@@ -722,16 +732,21 @@ Content-Type: application/json
 
 ```json
 {
-  "session": { "id": "ses_01JA…", "state": "active", "repo": "flagon-io/g1t",
-               "capabilities": { "cancel": false, "steer": true, "costExact": false } },
+  "session": { "id": "ses_01JA…", "state": "active", "repo": "flagon-io/g1t", "capabilities": { "cancel": false, "steer": true, "costExact": false } },
   "credential": { "token": "g1s_…", "expires_at": "2026-10-13T02:00:00Z" },
   "trailer": "G1t-Session: ses_01JA…",
   "context": {
     "active": [
-      { "session": "ses_01J9…", "who": "syntaqx · codex-cli", "branch": "fix/queue-retest",
-        "touched": ["services/work/src/queue.rs"], "issue": 412, "last": "2m" }
+      {
+        "session": "ses_01J9…",
+        "who": "syntaqx · codex-cli",
+        "branch": "fix/queue-retest",
+        "touched": ["services/work/src/queue.rs"],
+        "issue": 412,
+        "last": "2m"
+      }
     ],
-    "open_pulls_touching_hot_paths": [ { "number": 418, "paths": ["crates/rules/src/merge.rs"] } ],
+    "open_pulls_touching_hot_paths": [{ "number": 418, "paths": ["crates/rules/src/merge.rs"] }],
     "default_branch_failing": [],
     "instructions": ["AGENTS.md"]
   },
@@ -759,12 +774,19 @@ Idempotency-Key: ses_01JA…:17-24
 ```
 
 ```json
-{ "accepted": [17,18,19], "duplicates": [], "next_seq": 20,
+{
+  "accepted": [17, 18, 19],
+  "duplicates": [],
+  "next_seq": 20,
   "advice": [
-    { "kind": "overlap", "paths": ["services/work/src/queue.rs"],
+    {
+      "kind": "overlap",
+      "paths": ["services/work/src/queue.rs"],
       "with": { "session": "ses_01J9…", "who": "syntaqx · codex-cli", "lease_note": "changing retest ordering" },
-      "freshness": "2026-10-12T15:02:11Z" }
-  ] }
+      "freshness": "2026-10-12T15:02:11Z"
+    }
+  ]
+}
 ```
 
 - `advice` is how the server talks back without a socket. The adapter turns it into hook output (`additionalContext`) on the next hook call.
@@ -785,15 +807,15 @@ caller is told about the conflict.
 
 ### V.4 Failure handling and reconnection
 
-| Failure | Behaviour |
-| --- | --- |
-| Network down | The CLI appends to `~/.g1t/spool/<session>.ndjson` and returns immediately (hooks are never slower than ~20 ms locally). A detached flusher retries with backoff. Advice comes from the last cached `activity` snapshot, marked stale. |
-| Duplicate delivery | Server dedupes on `(session_id, seq)`; open dedupes on `(principal, client_session_id)`. |
-| Clock skew | `at` is the client's; ordering uses `seq`; `received_at` is the server's. |
-| Laptop sleeps / process killed | No `SessionEnd`. The server derives `idle` at 15 min and `abandoned` at 4 h, and leases expire at their TTL (≤ 30 min unless renewed by events). Resume with the same `client_session_id` reattaches. |
-| Credential expired mid-session | The CLI silently re-exchanges the grant. If the grant was revoked, the spool is discarded after 24 h and the user is told on next `g1t status`. |
-| Malicious client | Can only lie about its *own* sessions' reported/observed fields, inside its principal's repos. It cannot affect approvals (§III.6). Its overlap claims are labelled with who made them. Rate limits apply per credential (events ≤ 20/s, leases ≤ 50 active). |
-| Secrets in events | Redaction runs **client-side** (the existing `crates/scan` patterns compiled into the CLI) and **again server-side**. Tool outputs are never sent; only tool name, target head and status. Prompt capture is opt-in per repository and per user. |
+| Failure                        | Behaviour                                                                                                                                                                                                                                                     |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Network down                   | The CLI appends to `~/.g1t/spool/<session>.ndjson` and returns immediately (hooks are never slower than ~20 ms locally). A detached flusher retries with backoff. Advice comes from the last cached `activity` snapshot, marked stale.                        |
+| Duplicate delivery             | Server dedupes on `(session_id, seq)`; open dedupes on `(principal, client_session_id)`.                                                                                                                                                                      |
+| Clock skew                     | `at` is the client's; ordering uses `seq`; `received_at` is the server's.                                                                                                                                                                                     |
+| Laptop sleeps / process killed | No `SessionEnd`. The server derives `idle` at 15 min and `abandoned` at 4 h, and leases expire at their TTL (≤ 30 min unless renewed by events). Resume with the same `client_session_id` reattaches.                                                         |
+| Credential expired mid-session | The CLI silently re-exchanges the grant. If the grant was revoked, the spool is discarded after 24 h and the user is told on next `g1t status`.                                                                                                               |
+| Malicious client               | Can only lie about its _own_ sessions' reported/observed fields, inside its principal's repos. It cannot affect approvals (§III.6). Its overlap claims are labelled with who made them. Rate limits apply per credential (events ≤ 20/s, leases ≤ 50 active). |
+| Secrets in events              | Redaction runs **client-side** (the existing `crates/scan` patterns compiled into the CLI) and **again server-side**. Tool outputs are never sent; only tool name, target head and status. Prompt capture is opt-in per repository and per user.              |
 
 ### V.5 Events feed (smallest useful)
 
@@ -832,29 +854,29 @@ the adapter's test suite, because the hook surface has grown quickly.
 
 ### VI.2 Responsibilities
 
-| Concern | Hook | CLI (`g1t hook claude <event>`) | MCP | Backend |
-| --- | --- | --- | --- | --- |
-| Open/resume session | `SessionStart` | Read `session_id`, `cwd`, git branch/head/base; open via REST; write `~/.g1t/sessions/<claude id>.json`; print `additionalContext` with active work + instructions pointer | — | Upsert session; compute context |
-| Bind commits | `PostToolUse` (Bash with `git commit`/`git push`) + Git `prepare-commit-msg` hook | Git hook adds `G1t-Session:` trailer from the session file matching `cwd`; PostToolUse reads `git rev-parse HEAD` | — | Parse trailers on `git.push` (own and mirrored repos) |
-| File touches | `PostToolUse` matcher `Edit\|Write\|MultiEdit\|NotebookEdit` | Collect `tool_input.file_path`, relativize, spool | — | Update `touched_paths`, recompute overlaps |
-| Overlap warning | `PostToolUse` on Edit/Write | If cached advice mentions the path, return `additionalContext`: "ses_… (Codex, syntaqx) holds a lease on this file: 'changing retest ordering'. Consider coordinating before diverging." | — | Advice in events response |
-| Optional soft gate | `PreToolUse` on Edit/Write | Only if repo setting `coordination.ask_on_leased_paths`: return `permissionDecision: "ask"` with reason. **Never `deny`.** | — | Repo setting |
-| Tool activity | `PostToolUse` (all) | Name + target head + ok + duration. **No `tool_response` content.** | — | Store bounded events |
-| Prompts | `UserPromptSubmit` | Only if opted in; redacted; ≤ 2 kB | — | Store |
-| Turn summary | `Stop` | `last_assistant_message`, ≤ 2 kB, as `note` (trust: reported), debounced to the last per 5 min | — | Shown as "agent's account" |
-| End | `SessionEnd` | End via REST; flush spool | — | State → ended; release leases |
-| Subagents | `SubagentStart/Stop` | Child session with `parentId` (only if it edits files) | — | — |
-| Link issue/PR | — | `g1t link 412` (human) | `session.link` (model) | Also auto-link: branch matches a PR's head, or commits with trailer land in a PR |
-| Claim | — | `g1t claim services/work/**` | `session.lease` | DO |
-| Read context | `SessionStart` injection | `g1t status` | `session.activity`, `repo.context` resources | — |
-| Cost | — | Optional: parse final `result`/OTel if the user enables OTel → `usage` (exact: false unless from OTel) | — | — |
+| Concern             | Hook                                                                              | CLI (`g1t hook claude <event>`)                                                                                                                                                           | MCP                                          | Backend                                                                          |
+| ------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------- |
+| Open/resume session | `SessionStart`                                                                    | Read `session_id`, `cwd`, git branch/head/base; open via REST; write `~/.g1t/sessions/<claude id>.json`; print `additionalContext` with active work + instructions pointer                | —                                            | Upsert session; compute context                                                  |
+| Bind commits        | `PostToolUse` (Bash with `git commit`/`git push`) + Git `prepare-commit-msg` hook | Git hook adds `G1t-Session:` trailer from the session file matching `cwd`; PostToolUse reads `git rev-parse HEAD`                                                                         | —                                            | Parse trailers on `git.push` (own and mirrored repos)                            |
+| File touches        | `PostToolUse` matcher `Edit\|Write\|MultiEdit\|NotebookEdit`                      | Collect `tool_input.file_path`, relativize, spool                                                                                                                                         | —                                            | Update `touched_paths`, recompute overlaps                                       |
+| Overlap warning     | `PostToolUse` on Edit/Write                                                       | If cached advice mentions the path, return `additionalContext`: "ses\_… (Codex, syntaqx) holds a lease on this file: 'changing retest ordering'. Consider coordinating before diverging." | —                                            | Advice in events response                                                        |
+| Optional soft gate  | `PreToolUse` on Edit/Write                                                        | Only if repo setting `coordination.ask_on_leased_paths`: return `permissionDecision: "ask"` with reason. **Never `deny`.**                                                                | —                                            | Repo setting                                                                     |
+| Tool activity       | `PostToolUse` (all)                                                               | Name + target head + ok + duration. **No `tool_response` content.**                                                                                                                       | —                                            | Store bounded events                                                             |
+| Prompts             | `UserPromptSubmit`                                                                | Only if opted in; redacted; ≤ 2 kB                                                                                                                                                        | —                                            | Store                                                                            |
+| Turn summary        | `Stop`                                                                            | `last_assistant_message`, ≤ 2 kB, as `note` (trust: reported), debounced to the last per 5 min                                                                                            | —                                            | Shown as "agent's account"                                                       |
+| End                 | `SessionEnd`                                                                      | End via REST; flush spool                                                                                                                                                                 | —                                            | State → ended; release leases                                                    |
+| Subagents           | `SubagentStart/Stop`                                                              | Child session with `parentId` (only if it edits files)                                                                                                                                    | —                                            | —                                                                                |
+| Link issue/PR       | —                                                                                 | `g1t link 412` (human)                                                                                                                                                                    | `session.link` (model)                       | Also auto-link: branch matches a PR's head, or commits with trailer land in a PR |
+| Claim               | —                                                                                 | `g1t claim services/work/**`                                                                                                                                                              | `session.lease`                              | DO                                                                               |
+| Read context        | `SessionStart` injection                                                          | `g1t status`                                                                                                                                                                              | `session.activity`, `repo.context` resources | —                                                                                |
+| Cost                | —                                                                                 | Optional: parse final `result`/OTel if the user enables OTel → `usage` (exact: false unless from OTel)                                                                                    | —                                            | —                                                                                |
 
 ### VI.3 Installation
 
 - **Ship a Claude Code plugin** (`g1t`, in a g1t-hosted marketplace) containing:
   - `hooks/hooks.json` calling `g1t hook claude <event>`,
   - `.mcp.json` pointing at `https://mcp.g1t.sh`,
-  - a skill telling the model *when* to call `session.lease`, `session.link` and `session.note`.
+  - a skill telling the model _when_ to call `session.lease`, `session.link` and `session.note`.
 - **Install at project scope** (`.claude/settings.json` committed in the repo):
   - this makes it fire in cloud sessions too,
   - it fires only where the repo opts in, unlike today's global install,
@@ -897,14 +919,14 @@ sequenceDiagram
 
 ### VI.5 Unreliable or unavailable observability
 
-| Signal | Reliability |
-| --- | --- |
-| **Commits made outside Claude** (e.g., in a terminal) | Captured only by the Git `prepare-commit-msg` hook, if installed and a session file matches `cwd`. |
-| **File edits via Bash** (`sed -i`, codegen) | Not visible as Edit events. Mitigation: at `Stop` and on `git commit`, the CLI runs `git diff --name-only <base>` and reports those paths with `trust: observed`. This is more reliable than tool events anyway. |
-| **Cost** | Not in hook payloads. Only via OTel (user opt-in) or headless `result`. Treat as approximate for local sessions; exact only for managed runs through the model proxy. |
-| **"Why"** | Only `last_assistant_message` and explicit notes. Model-generated, so always labelled. |
-| **Liveness while idle** | Unknown. No events means "idle", not "dead". |
-| **Cloud sessions** | Same hooks, but only if the environment can reach g1t and has the binary. Plan for the failure case: commit trailers still carry provenance when the session pushes to GitHub and g1t mirrors it. |
+| Signal                                                | Reliability                                                                                                                                                                                                      |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Commits made outside Claude** (e.g., in a terminal) | Captured only by the Git `prepare-commit-msg` hook, if installed and a session file matches `cwd`.                                                                                                               |
+| **File edits via Bash** (`sed -i`, codegen)           | Not visible as Edit events. Mitigation: at `Stop` and on `git commit`, the CLI runs `git diff --name-only <base>` and reports those paths with `trust: observed`. This is more reliable than tool events anyway. |
+| **Cost**                                              | Not in hook payloads. Only via OTel (user opt-in) or headless `result`. Treat as approximate for local sessions; exact only for managed runs through the model proxy.                                            |
+| **"Why"**                                             | Only `last_assistant_message` and explicit notes. Model-generated, so always labelled.                                                                                                                           |
+| **Liveness while idle**                               | Unknown. No events means "idle", not "dead".                                                                                                                                                                     |
+| **Cloud sessions**                                    | Same hooks, but only if the environment can reach g1t and has the binary. Plan for the failure case: commit trailers still carry provenance when the session pushes to GitHub and g1t mirrors it.                |
 
 ---
 
@@ -915,22 +937,22 @@ sequenceDiagram
 Three humans run Claude Code, plus two remote autonomous agents, in one
 repo. What can actually go wrong, and what g1t can know:
 
-| Conflict type | Detectable how | Deterministic? | g1t action |
-| --- | --- | --- | --- |
-| Duplicate work (same issue) | Two sessions linked to / leasing the same issue | Yes (if linked) | Warn both at link/lease time |
-| File overlap, in progress | `touched_paths` ∩ across active sessions, ∩ open PR diffs | Yes (honest clients) | Advice to both sessions; badge on board |
-| File overlap, pushed | PR diffs (exists: `overlaps`) | Yes | Existing; extend to session ↔ PR |
-| Git merge conflict | Trial merge (exists: mergeability) | Yes | Existing; add *pairwise* trial merge between overlapping PRs on push, not just vs. base |
-| Symbol overlap | Tree-sitter diff of changed symbols per language | Mostly (per supported language) | **Defer.** Useful but language-by-language work; file overlap gets 80% |
-| Interface incompatibility | Contract files changed (OpenAPI, proto, `crates/contracts`, exported types); typecheck of the combined state | Partly: "contract file changed" yes; "incompatible" only by compiling/testing the combination | Path rule: changes to declared contract paths notify sessions touching dependents; the merge queue's combined build is the real check |
-| Behavioural incompatibility | Tests on the combined state | Only as good as the tests | Speculative merge queue (exists) |
-| Dependency conflicts | Lockfile/manifest diffs; resolution on combined state | Yes for "both changed lockfile"; resolution needs a build | Treat lockfiles as always-overlapping; queue catches the rest |
-| Contradictory architecture decisions | Not detectable reliably | No (LLM judgment) | Don't build a detector. Make decisions *files* (ADRs) so they show up as file overlap and review |
+| Conflict type                        | Detectable how                                                                                               | Deterministic?                                                                                | g1t action                                                                                                                            |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Duplicate work (same issue)          | Two sessions linked to / leasing the same issue                                                              | Yes (if linked)                                                                               | Warn both at link/lease time                                                                                                          |
+| File overlap, in progress            | `touched_paths` ∩ across active sessions, ∩ open PR diffs                                                    | Yes (honest clients)                                                                          | Advice to both sessions; badge on board                                                                                               |
+| File overlap, pushed                 | PR diffs (exists: `overlaps`)                                                                                | Yes                                                                                           | Existing; extend to session ↔ PR                                                                                                     |
+| Git merge conflict                   | Trial merge (exists: mergeability)                                                                           | Yes                                                                                           | Existing; add _pairwise_ trial merge between overlapping PRs on push, not just vs. base                                               |
+| Symbol overlap                       | Tree-sitter diff of changed symbols per language                                                             | Mostly (per supported language)                                                               | **Defer.** Useful but language-by-language work; file overlap gets 80%                                                                |
+| Interface incompatibility            | Contract files changed (OpenAPI, proto, `crates/contracts`, exported types); typecheck of the combined state | Partly: "contract file changed" yes; "incompatible" only by compiling/testing the combination | Path rule: changes to declared contract paths notify sessions touching dependents; the merge queue's combined build is the real check |
+| Behavioural incompatibility          | Tests on the combined state                                                                                  | Only as good as the tests                                                                     | Speculative merge queue (exists)                                                                                                      |
+| Dependency conflicts                 | Lockfile/manifest diffs; resolution on combined state                                                        | Yes for "both changed lockfile"; resolution needs a build                                     | Treat lockfiles as always-overlapping; queue catches the rest                                                                         |
+| Contradictory architecture decisions | Not detectable reliably                                                                                      | No (LLM judgment)                                                                             | Don't build a detector. Make decisions _files_ (ADRs) so they show up as file overlap and review                                      |
 
 **What not to oversell:**
 
 - "Semantic conflict detection" in practice is (a) file and lease overlap early, (b) pairwise trial merges, and (c) building and testing the combination in the merge queue.
-- An LLM "these two changes look incompatible" reviewer can be an *optional* advisory check later, labelled as such. It must never gate anything.
+- An LLM "these two changes look incompatible" reviewer can be an _optional_ advisory check later, labelled as such. It must never gate anything.
 
 ### VII.2 Leases (claims)
 
@@ -940,7 +962,7 @@ repo. What can actually go wrong, and what g1t can know:
 - **Not created implicitly from touched files.** Touches are signals, leases are intentions. Keep them separate so a broad `grep -l | xargs sed` doesn't "claim" half the repo.
 - **TTL** ≤ 30 min, renewed by any event from the owning session. Released on `SessionEnd`; expired on `abandoned`.
 - **Disconnected clients:** the DO is the clock. A laptop that comes back after expiry gets `lease_expired` in advice and may re-acquire.
-- **Storage:** one `RepoCoordinator` Durable Object per repository (SQLite inside), snapshotting to D1 for the board and history. It is per repo because coordination is meaningless across repos, and a DO handles ~1k req/s, orders of magnitude above one repo's session traffic. *(Superseded in part, 2026-10-17: work items now span repositories, so a claim on a work item belongs to the workspace's work item; path overlaps and sessions stay per repository. See the decision at the top.)*
+- **Storage:** one `RepoCoordinator` Durable Object per repository (SQLite inside), snapshotting to D1 for the board and history. It is per repo because coordination is meaningless across repos, and a DO handles ~1k req/s, orders of magnitude above one repo's session traffic. _(Superseded in part, 2026-10-17: work items now span repositories, so a claim on a work item belongs to the workspace's work item; path overlaps and sessions stay per repository. See the decision at the top.)_
 
 ### VII.3 Presence and the overlap index
 
@@ -970,10 +992,10 @@ repo. What can actually go wrong, and what g1t can know:
 
 ### VII.6 Coordination boundary
 
-| Scope | Role |
-| --- | --- |
-| **Repository** | The unit for presence, leases, overlap and the event feed. |
-| **Workspace** | Aggregates for Home ("what's running"), never for locking. |
+| Scope                  | Role                                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------------------- |
+| **Repository**         | The unit for presence, leases, overlap and the event feed.                                  |
+| **Workspace**          | Aggregates for Home ("what's running"), never for locking.                                  |
 | **Integration branch** | The merge queue's unit (exists: default branch only; extend to any protected branch later). |
 
 There is no central coordinator: each repo's DO is independent, and the
@@ -983,7 +1005,7 @@ forge's authoritative state stays in D1 and Git.
 
 ## Part VIII — Pull requests, integration and HITL
 
-1. **The PR remains the approval artifact.** It is what humans already know how to review, what branch protection binds to, and what mirrors back to GitHub. Sessions *decorate* the PR:
+1. **The PR remains the approval artifact.** It is what humans already know how to review, what branch protection binds to, and what mirrors back to GitHub. Sessions _decorate_ the PR:
    - a "Work" tab listing the sessions that produced its commits (via `session_commits`), each with principal, client, summary (labelled as the agent's account), touched files and verified checks,
    - the diff annotated by session.
 2. **The integration pipeline is what exists, made agent-aware:**
@@ -1017,15 +1039,15 @@ forge's authoritative state stays in D1 and Git.
 
 **Chain:** Human → (Issue) → Session → Commit → PR → Checks → Approval → Merge.
 
-| Edge | How it is established | Trust |
-| --- | --- | --- |
-| Human → Session | Credential principal | Verified |
-| Session → Issue/PR | Explicit link, branch match, trailer-in-PR | Verified (explicit by principal) / derived |
-| Session → Commit | `G1t-Session:` trailer in the commit | Verified as "the committer's tooling said so". Strong because it is in Git and survives rebase, cherry-pick and mirroring. |
-| Session → Commit (fallback) | Hook observed `git commit` → sha | Observed |
-| Commit → PR | `pull_heads` (every pushed head) + ancestry | Verified |
-| PR → Checks/Approval/Merge | Exists | Verified |
-| "Why" | Session notes, `Stop` summaries, PR body | **Reported.** Always shown as the agent's account, never as fact. |
+| Edge                        | How it is established                       | Trust                                                                                                                      |
+| --------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Human → Session             | Credential principal                        | Verified                                                                                                                   |
+| Session → Issue/PR          | Explicit link, branch match, trailer-in-PR  | Verified (explicit by principal) / derived                                                                                 |
+| Session → Commit            | `G1t-Session:` trailer in the commit        | Verified as "the committer's tooling said so". Strong because it is in Git and survives rebase, cherry-pick and mirroring. |
+| Session → Commit (fallback) | Hook observed `git commit` → sha            | Observed                                                                                                                   |
+| Commit → PR                 | `pull_heads` (every pushed head) + ancestry | Verified                                                                                                                   |
+| PR → Checks/Approval/Merge  | Exists                                      | Verified                                                                                                                   |
+| "Why"                       | Session notes, `Stop` summaries, PR body    | **Reported.** Always shown as the agent's account, never as fact.                                                          |
 
 Design rules:
 
@@ -1051,7 +1073,7 @@ Design rules:
   - Existing docs stay where they are.
   - These are portable across every provider, reviewed like code, versioned, and readable by humans. g1t should add **no** competing authoritative store.
 - **g1t's role is distribution and freshness, not storage:**
-  1. `GET /v1/repos/{o}/{r}/context` and MCP resources (`g1t://repo/{o}/{r}/context`) return pointers plus *live state*: active sessions and leases, open PRs touching hot paths, default-branch CI failures, recent merges into the session's touched paths, and blocked issues. Live state is not memory, so it should not be stored as memory.
+  1. `GET /v1/repos/{o}/{r}/context` and MCP resources (`g1t://repo/{o}/{r}/context`) return pointers plus _live state_: active sessions and leases, open PRs touching hot paths, default-branch CI failures, recent merges into the session's touched paths, and blocked issues. Live state is not memory, so it should not be stored as memory.
   2. `SessionStart` injects a ≤ 1.5 kB digest of that, deterministically.
   3. **Memory capture becomes suggestion PRs.**
      - The existing `memories` candidate pipeline (`0019_memory_capture.sql`: review corrections, merge summaries, agent reports, with fingerprints and multi-source confirmation) is good machinery pointed at the wrong sink.
@@ -1075,25 +1097,31 @@ creates sessions, takes leases, links issues and opens PRs **through the
 same `/v1` endpoints** with a session credential, which is nearly what it
 does today.
 
-| Current piece | Disposition |
-| --- | --- |
-| `crates/runner` running headless Claude Code with MCP + hooks | **Keep.** Add a `codex exec --json` harness behind the same `Harness` trait. Install the same `g1t hook` adapter inside the container so session events come through the identical path. |
-| `services/runner` containers, admission (`ComputeGate`), credentials, egress allowlist, time caps | **Keep**, as the execution service. |
-| `work` lifecycle (`lifecycle.rs` decide → review/revise/catch-up) | **Refactor.** Move to a `PullAutomation` policy executed by the execution service. Today it keys on `made_by_g1t` (`runtime == Hosted && agent == "g1t"`); key it on `pull_automation.policy`. External PRs can opt into "managed revise on failing checks", which is a strong upsell. |
-| Run records in work D1 (`agent_runs`) | **Move** to the execution service's own D1 as `runs`, FK `session_id`. |
-| Model proxy, per-run spend cap (`services/models`, `RunSpend` DO) | **Keep.** It is the only place exact cost exists. |
-| `agent_messages` exchanges, `plans`, `@g1t` hand-off routing | **Remove/freeze** (§VII.5; planning belongs to the human or their orchestrator). |
+| Current piece                                                                                     | Disposition                                                                                                                                                                                                                                                                            |
+| ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `crates/runner` running headless Claude Code with MCP + hooks                                     | **Keep.** Add a `codex exec --json` harness behind the same `Harness` trait. Install the same `g1t hook` adapter inside the container so session events come through the identical path.                                                                                               |
+| `services/runner` containers, admission (`ComputeGate`), credentials, egress allowlist, time caps | **Keep**, as the execution service.                                                                                                                                                                                                                                                    |
+| `work` lifecycle (`lifecycle.rs` decide → review/revise/catch-up)                                 | **Refactor.** Move to a `PullAutomation` policy executed by the execution service. Today it keys on `made_by_g1t` (`runtime == Hosted && agent == "g1t"`); key it on `pull_automation.policy`. External PRs can opt into "managed revise on failing checks", which is a strong upsell. |
+| Run records in work D1 (`agent_runs`)                                                             | **Move** to the execution service's own D1 as `runs`, FK `session_id`.                                                                                                                                                                                                                 |
+| Model proxy, per-run spend cap (`services/models`, `RunSpend` DO)                                 | **Keep.** It is the only place exact cost exists.                                                                                                                                                                                                                                      |
+| `agent_messages` exchanges, `plans`, `@g1t` hand-off routing                                      | **Remove/freeze** (§VII.5; planning belongs to the human or their orchestrator).                                                                                                                                                                                                       |
 
 Execution abstraction for later:
 
 ```ts
 interface Executor {
   start(spec: {
-    session: Session; kind: Run["kind"]; harness: "claude-code" | "codex" | string;
-    model?: string; size: string; timeoutS: number; egress: string[]; credential: SessionCredential;
+    session: Session;
+    kind: Run["kind"];
+    harness: "claude-code" | "codex" | string;
+    model?: string;
+    size: string;
+    timeoutS: number;
+    egress: string[];
+    credential: SessionCredential;
     workspaceSecrets: string[]; // names only; resolved inside execution, never visible to coordination
   }): Promise<Run>;
-  cancel(runId: string, reason: string): Promise<void>;   // real for managed only
+  cancel(runId: string, reason: string): Promise<void>; // real for managed only
   status(runId: string): Promise<Run>;
 }
 // Implementations: CloudflareContainers (exists), SelfHostedRunner (exists via actions queue), later: vendor clouds.
@@ -1116,19 +1144,19 @@ providers, live overlap advice, trailers binding commits to sessions) is
 also the most honest demo of that requirement. It needs no architecture
 built only for the contest.
 
-| Need | Fit | Notes |
-| --- | --- | --- |
-| Repository storage | Good | Artifacts is native Git with CoW forks (used for PR forks). Constraints: control-plane rate limits per namespace (already handled by sharding), repo size (g1t caps at 950 MB; Artifacts' documented limit may now be higher, so re-check), no inbound TCP, so no SSH yet (`crates/sshd` waits). Large monorepos are not a near-term market. |
-| Coordination (leases, presence) | **Excellent** | A Durable Object per repo with SQLite is exactly a linearizable lease table with alarms for expiry. This is the strongest leverage point and the forge doesn't use DOs today. |
-| Durable control-plane state | Fine | D1 per service. Watch write contention on hot tables (`session_events`): batch writes, or buffer in the DO and flush. |
-| Event processing | Fine | Queues with at-least-once delivery and a DLQ, already built. Adding a cursor feed over the D1 log is cheap. |
-| Idempotency | Fine | D1 unique keys; DO single-threaded writes. |
-| Long-running executions | Adequate | Containers (up to standard-4) for runs and CI. Self-hosted runner for bigger or GPU work, or for macOS/Windows. Workflows could replace bits of runner state machines, but the existing alarm/queue design works; no need. |
-| CI at scale | Cost risk | Containers are billed per active time at cost +20%. Large CI fleets will want the self-hosted runner (exists). |
-| Tenant isolation | Good | Containers per run, egress allowlist and credential stripping exist. Keep coordination per repo DO, and never place two workspaces in one DO. |
-| High concurrency | Good | Per-repo DOs scale horizontally; Workers scale. |
-| Filesystem/network limits | Real | Workers can't run git binaries, so trial merges and catch-up need sandboxes (exists). Pairwise trial merges should reuse the disjoint-file fast path and batch sandbox probes. |
-| Self-host | OK | workerd/Miniflare emulate D1 and DOs. A RepoCoordinator DO works there too. |
+| Need                            | Fit           | Notes                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Repository storage              | Good          | Artifacts is native Git with CoW forks (used for PR forks). Constraints: control-plane rate limits per namespace (already handled by sharding), repo size (g1t caps at 950 MB; Artifacts' documented limit may now be higher, so re-check), no inbound TCP, so no SSH yet (`crates/sshd` waits). Large monorepos are not a near-term market. |
+| Coordination (leases, presence) | **Excellent** | A Durable Object per repo with SQLite is exactly a linearizable lease table with alarms for expiry. This is the strongest leverage point and the forge doesn't use DOs today.                                                                                                                                                                |
+| Durable control-plane state     | Fine          | D1 per service. Watch write contention on hot tables (`session_events`): batch writes, or buffer in the DO and flush.                                                                                                                                                                                                                        |
+| Event processing                | Fine          | Queues with at-least-once delivery and a DLQ, already built. Adding a cursor feed over the D1 log is cheap.                                                                                                                                                                                                                                  |
+| Idempotency                     | Fine          | D1 unique keys; DO single-threaded writes.                                                                                                                                                                                                                                                                                                   |
+| Long-running executions         | Adequate      | Containers (up to standard-4) for runs and CI. Self-hosted runner for bigger or GPU work, or for macOS/Windows. Workflows could replace bits of runner state machines, but the existing alarm/queue design works; no need.                                                                                                                   |
+| CI at scale                     | Cost risk     | Containers are billed per active time at cost +20%. Large CI fleets will want the self-hosted runner (exists).                                                                                                                                                                                                                               |
+| Tenant isolation                | Good          | Containers per run, egress allowlist and credential stripping exist. Keep coordination per repo DO, and never place two workspaces in one DO.                                                                                                                                                                                                |
+| High concurrency                | Good          | Per-repo DOs scale horizontally; Workers scale.                                                                                                                                                                                                                                                                                              |
+| Filesystem/network limits       | Real          | Workers can't run git binaries, so trial merges and catch-up need sandboxes (exists). Pairwise trial merges should reuse the disjoint-file fast path and batch sandbox probes.                                                                                                                                                               |
+| Self-host                       | OK            | workerd/Miniflare emulate D1 and DOs. A RepoCoordinator DO works there too.                                                                                                                                                                                                                                                                  |
 
 ---
 
@@ -1138,23 +1166,23 @@ Assumptions: the repo is on g1t (or mirrored from GitHub); you use Claude
 Code locally and in the cloud, and sometimes Codex; `g1t` CLI + plugin
 installed.
 
-| # | Step | Local | g1t | Protocol | Auto/explicit | Offline | Recovery | Visible to team |
-|---|---|---|---|---|---|---|---|---|
-| 1 | Clone | `git clone https://g1t.sh/flagon-io/g1t` (or GitHub; mirror) | Nothing new | Git | — | n/a | Git | — |
-| 2 | Open Claude Code | `claude` loads project plugin | — | — | Auto | — | — | — |
-| 3 | Session associates | `SessionStart` → `g1t hook claude` | Session upserted, presence in DO | REST | **Auto** | Spooled; context from cache, marked stale | Flushed later with original `seq` | "syntaqx · Claude Code · active · main" on the repo's Active work |
-| 4 | Discover context | Injected digest; `AGENTS.md` | `/context` composed | Hook output, MCP resource | Auto | Cached digest | — | — |
-| 5 | Investigate (no issue/PR) | Reads/greps | Tool events, no files | REST (async) | Auto | Spool | — | Visible as "investigating", or private if `visibility: private` |
-| 6 | Change code | Edits | `touched_paths`, overlap computed | REST | Auto | Spool; overlap unknown | — | Touched files on the board |
-| 7 | Associate with issue | "this is #412" → model calls `session.link`, or `g1t link 412` | `session_links`, issue lease | MCP or CLI | Explicit | Spooled link | Idempotent | Issue shows "being worked on by …" |
-| 8 | Another agent overlaps | Codex session edits `queue.rs` | DO detects overlap | — | Auto | — | — | Both sessions flagged |
-| 9 | Receive conflict info | Next `PostToolUse` injects advice; base-drift advice if main moved | advice in event response | Hook output | Auto | Stale cache; warn on reconnect | — | Overlap badge |
-| 10 | Complete | Tests run, commit (trailer added) | `git` event | Git hook + REST | Auto | Commit works offline | Trailer still binds later | — |
-| 11 | Push | `git push` | `git.push` (or mirror sync) parses trailers → `session_commits` | Git | Auto | Push when online | — | Commits show session badge |
-| 12 | Create/update PR | `g1t pr` / MCP `pull_request create` / GitHub PR mirrored | Sessions auto-linked by trailer + branch | REST/MCP | Explicit | — | — | PR "Work" tab |
-| 13 | Link evidence | — | Checks and queue results already join by SHA | — | Auto | — | — | — |
-| 14 | Review in g1t | Browser | Diff by session, agent's account vs. verified checks, overlaps, behind | Web | Human | — | — | Reviewers |
-| 15 | Merge | Approve with an interactive credential → queue | Speculative batch → land | Web | Human | — | Queue retests | Everyone |
+| #   | Step                      | Local                                                              | g1t                                                                    | Protocol                  | Auto/explicit | Offline                                   | Recovery                          | Visible to team                                                   |
+| --- | ------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------- | ------------------------- | ------------- | ----------------------------------------- | --------------------------------- | ----------------------------------------------------------------- |
+| 1   | Clone                     | `git clone https://g1t.sh/flagon-io/g1t` (or GitHub; mirror)       | Nothing new                                                            | Git                       | —             | n/a                                       | Git                               | —                                                                 |
+| 2   | Open Claude Code          | `claude` loads project plugin                                      | —                                                                      | —                         | Auto          | —                                         | —                                 | —                                                                 |
+| 3   | Session associates        | `SessionStart` → `g1t hook claude`                                 | Session upserted, presence in DO                                       | REST                      | **Auto**      | Spooled; context from cache, marked stale | Flushed later with original `seq` | "syntaqx · Claude Code · active · main" on the repo's Active work |
+| 4   | Discover context          | Injected digest; `AGENTS.md`                                       | `/context` composed                                                    | Hook output, MCP resource | Auto          | Cached digest                             | —                                 | —                                                                 |
+| 5   | Investigate (no issue/PR) | Reads/greps                                                        | Tool events, no files                                                  | REST (async)              | Auto          | Spool                                     | —                                 | Visible as "investigating", or private if `visibility: private`   |
+| 6   | Change code               | Edits                                                              | `touched_paths`, overlap computed                                      | REST                      | Auto          | Spool; overlap unknown                    | —                                 | Touched files on the board                                        |
+| 7   | Associate with issue      | "this is #412" → model calls `session.link`, or `g1t link 412`     | `session_links`, issue lease                                           | MCP or CLI                | Explicit      | Spooled link                              | Idempotent                        | Issue shows "being worked on by …"                                |
+| 8   | Another agent overlaps    | Codex session edits `queue.rs`                                     | DO detects overlap                                                     | —                         | Auto          | —                                         | —                                 | Both sessions flagged                                             |
+| 9   | Receive conflict info     | Next `PostToolUse` injects advice; base-drift advice if main moved | advice in event response                                               | Hook output               | Auto          | Stale cache; warn on reconnect            | —                                 | Overlap badge                                                     |
+| 10  | Complete                  | Tests run, commit (trailer added)                                  | `git` event                                                            | Git hook + REST           | Auto          | Commit works offline                      | Trailer still binds later         | —                                                                 |
+| 11  | Push                      | `git push`                                                         | `git.push` (or mirror sync) parses trailers → `session_commits`        | Git                       | Auto          | Push when online                          | —                                 | Commits show session badge                                        |
+| 12  | Create/update PR          | `g1t pr` / MCP `pull_request create` / GitHub PR mirrored          | Sessions auto-linked by trailer + branch                               | REST/MCP                  | Explicit      | —                                         | —                                 | PR "Work" tab                                                     |
+| 13  | Link evidence             | —                                                                  | Checks and queue results already join by SHA                           | —                         | Auto          | —                                         | —                                 | —                                                                 |
+| 14  | Review in g1t             | Browser                                                            | Diff by session, agent's account vs. verified checks, overlaps, behind | Web                       | Human         | —                                         | —                                 | Reviewers                                                         |
+| 15  | Merge                     | Approve with an interactive credential → queue                     | Speculative batch → land                                               | Web                       | Human         | —                                         | Queue retests                     | Everyone                                                          |
 
 **Minimum that makes this valuable:** steps 3, 6, 8–9 and 11–12. That means:
 
@@ -1168,13 +1196,13 @@ Everything else can wait.
 
 ## Part XIV — Differentiation
 
-| Compared with | What they have | What g1t adds |
-| --- | --- | --- |
-| GitHub + Copilot/Claude/Codex agents | Forge, Agents tab for *their* cloud agents, session logs for Copilot, hooks in `.github/hooks` | Provider-neutral sessions including **local** ones; in-progress overlap before PRs; agent credentials distinct from humans in branch rules; provenance via trailers across providers. GitHub can copy any one of these. It is unlikely to prioritise local, non-Copilot agents as first-class. |
-| GitLab | Forge, Duo agents | Same as above |
-| Claude Code / Codex / Cursor | The agent, local and cloud, plus hooks and MCP | Nothing about the agent. g1t is where their output meets other people's output under rules. |
-| Orchestration frameworks | Plan/execute graphs | Not competing; they become clients |
-| Agent task boards (Linear agents, etc.) | Assignment and status | Status grounded in Git and hooks, not self-report |
+| Compared with                           | What they have                                                                                 | What g1t adds                                                                                                                                                                                                                                                                                  |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GitHub + Copilot/Claude/Codex agents    | Forge, Agents tab for _their_ cloud agents, session logs for Copilot, hooks in `.github/hooks` | Provider-neutral sessions including **local** ones; in-progress overlap before PRs; agent credentials distinct from humans in branch rules; provenance via trailers across providers. GitHub can copy any one of these. It is unlikely to prioritise local, non-Copilot agents as first-class. |
+| GitLab                                  | Forge, Duo agents                                                                              | Same as above                                                                                                                                                                                                                                                                                  |
+| Claude Code / Codex / Cursor            | The agent, local and cloud, plus hooks and MCP                                                 | Nothing about the agent. g1t is where their output meets other people's output under rules.                                                                                                                                                                                                    |
+| Orchestration frameworks                | Plan/execute graphs                                                                            | Not competing; they become clients                                                                                                                                                                                                                                                             |
+| Agent task boards (Linear agents, etc.) | Assignment and status                                                                          | Status grounded in Git and hooks, not self-report                                                                                                                                                                                                                                              |
 
 **What's commodity:**
 
@@ -1184,7 +1212,7 @@ Everything else can wait.
 
 **What's new:**
 
-- a *neutral* session layer that sees local and remote agents of any vendor,
+- a _neutral_ session layer that sees local and remote agents of any vendor,
 - in-context coordination by deterministic hooks,
 - identity rules that separate agent credentials from human authority.
 
@@ -1211,40 +1239,40 @@ Everything else can wait.
 2. the PR's **Work** tab,
 3. **why-blame**.
 
-The agent side of the interface is *inside the developer's agent* (injected
+The agent side of the interface is _inside the developer's agent_ (injected
 context), which is the only place developers reliably look.
 
 ---
 
 ## Part XV — Existing code disposition
 
-| Subsystem | Decision | Reason |
-| --- | --- | --- |
-| `services/repos` (Artifacts, smart HTTP, push checks, landing, mirror) | **Keep** | Core, solid |
-| `services/work` issues/PRs/reviews/checks/rulesets/queue | **Keep**; add squash/rebase | Core |
-| `crates/rules` | **Keep**; extend for human-only approvals and agent credentials | Already models `applies_to` |
-| `apps/api` Op table → REST/MCP/OpenAPI | **Keep**; add `session` tool, MCP resources | Best-designed part of the integration surface |
-| `services/identity` | **Retain & refactor**: agent grants set `acting`; step-up; session credentials | Closes the approval hole |
-| `session_entries`, `record_session` | **Replace** with sessions; keep shim | PR-bound, no identity |
-| `apps/web/public/install/*` hook | **Replace** with `g1t hook` + plugin | Fixes PR-only, caching, latency, redaction, global install |
-| `crates/g1t` CLI | **Retain & extend** (login, hook, link, claim, status, pr) | Static Rust binary is the right vehicle |
-| why-blame heuristic | **Replace** with trailer/edge-based lookup | Accuracy |
-| `coding_agents.rs` | **Keep**; feed provenance | Cheap signal |
-| PR overlaps, mergeability | **Keep**; extend to sessions and pairwise | Foundation of coordination |
-| `services/events`, webhooks | **Keep**; add cursor feed | Already right semantics |
-| `services/runner`, `crates/runner` | **Retain & refactor**: runs create sessions via `/v1`; add Codex harness; move `agent_runs` here | Already "external agent in a box" |
-| `work/lifecycle.rs` hosted automation, `pulls.managed/stage/...` | **Retain & refactor** into `PullAutomation` | Decouple PR from runtime |
-| `services/models` | **Keep** | Exact cost, BYO keys |
-| `work.memories` + capture pipeline | **Refactor**: output = suggestion PRs to `AGENTS.md`/ADRs | One source of truth |
-| `services/context` | **Defer** (keep running; off critical path) | Search value; not core |
-| `plans` (agent splits outcome into issues) | **Defer/freeze** | Orchestration, not forge |
-| `agent_messages` exchanges between agents | **Remove** (after migrating human→agent steering to session steer) | Agent chatter |
-| `services/agents` (workspace agents, Desk, `turn.ts` loop, `@g1t` orchestrator, hand_off, routines, personalities, org-chart roles) | **Freeze, then remove from the product surface** | A second agent runtime and a different product; can't open PRs anyway. Routines could return later as scheduled managed runs. |
-| Skills library, marketplaces, plugins, connectors (in agents) | **Retain the part that installs Claude Code plugins on managed runners and that publishes g1t's own plugin**; freeze the rest | Customize for runners is useful; a skills marketplace isn't core |
-| `services/chat`, `services/artifacts`, notify chat parts, Home digest of agent work | **Freeze** (no new investment); keep notifications | Not the forge. Notifications stay. |
-| Billing attribution per agent handle | **Keep** for managed runs only | — |
-| Desktop/mobile apps | **Freeze** | Distraction pre-PMF |
-| Deployments/pages, packages, security, actions | **Keep** | Forge-adjacent, already working, revenue |
+| Subsystem                                                                                                                           | Decision                                                                                                                      | Reason                                                                                                                        |
+| ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `services/repos` (Artifacts, smart HTTP, push checks, landing, mirror)                                                              | **Keep**                                                                                                                      | Core, solid                                                                                                                   |
+| `services/work` issues/PRs/reviews/checks/rulesets/queue                                                                            | **Keep**; add squash/rebase                                                                                                   | Core                                                                                                                          |
+| `crates/rules`                                                                                                                      | **Keep**; extend for human-only approvals and agent credentials                                                               | Already models `applies_to`                                                                                                   |
+| `apps/api` Op table → REST/MCP/OpenAPI                                                                                              | **Keep**; add `session` tool, MCP resources                                                                                   | Best-designed part of the integration surface                                                                                 |
+| `services/identity`                                                                                                                 | **Retain & refactor**: agent grants set `acting`; step-up; session credentials                                                | Closes the approval hole                                                                                                      |
+| `session_entries`, `record_session`                                                                                                 | **Replace** with sessions; keep shim                                                                                          | PR-bound, no identity                                                                                                         |
+| `apps/web/public/install/*` hook                                                                                                    | **Replace** with `g1t hook` + plugin                                                                                          | Fixes PR-only, caching, latency, redaction, global install                                                                    |
+| `crates/g1t` CLI                                                                                                                    | **Retain & extend** (login, hook, link, claim, status, pr)                                                                    | Static Rust binary is the right vehicle                                                                                       |
+| why-blame heuristic                                                                                                                 | **Replace** with trailer/edge-based lookup                                                                                    | Accuracy                                                                                                                      |
+| `coding_agents.rs`                                                                                                                  | **Keep**; feed provenance                                                                                                     | Cheap signal                                                                                                                  |
+| PR overlaps, mergeability                                                                                                           | **Keep**; extend to sessions and pairwise                                                                                     | Foundation of coordination                                                                                                    |
+| `services/events`, webhooks                                                                                                         | **Keep**; add cursor feed                                                                                                     | Already right semantics                                                                                                       |
+| `services/runner`, `crates/runner`                                                                                                  | **Retain & refactor**: runs create sessions via `/v1`; add Codex harness; move `agent_runs` here                              | Already "external agent in a box"                                                                                             |
+| `work/lifecycle.rs` hosted automation, `pulls.managed/stage/...`                                                                    | **Retain & refactor** into `PullAutomation`                                                                                   | Decouple PR from runtime                                                                                                      |
+| `services/models`                                                                                                                   | **Keep**                                                                                                                      | Exact cost, BYO keys                                                                                                          |
+| `work.memories` + capture pipeline                                                                                                  | **Refactor**: output = suggestion PRs to `AGENTS.md`/ADRs                                                                     | One source of truth                                                                                                           |
+| `services/context`                                                                                                                  | **Defer** (keep running; off critical path)                                                                                   | Search value; not core                                                                                                        |
+| `plans` (agent splits outcome into issues)                                                                                          | **Defer/freeze**                                                                                                              | Orchestration, not forge                                                                                                      |
+| `agent_messages` exchanges between agents                                                                                           | **Remove** (after migrating human→agent steering to session steer)                                                            | Agent chatter                                                                                                                 |
+| `services/agents` (workspace agents, Desk, `turn.ts` loop, `@g1t` orchestrator, hand_off, routines, personalities, org-chart roles) | **Freeze, then remove from the product surface**                                                                              | A second agent runtime and a different product; can't open PRs anyway. Routines could return later as scheduled managed runs. |
+| Skills library, marketplaces, plugins, connectors (in agents)                                                                       | **Retain the part that installs Claude Code plugins on managed runners and that publishes g1t's own plugin**; freeze the rest | Customize for runners is useful; a skills marketplace isn't core                                                              |
+| `services/chat`, `services/artifacts`, notify chat parts, Home digest of agent work                                                 | **Freeze** (no new investment); keep notifications                                                                            | Not the forge. Notifications stay.                                                                                            |
+| Billing attribution per agent handle                                                                                                | **Keep** for managed runs only                                                                                                | —                                                                                                                             |
+| Desktop/mobile apps                                                                                                                 | **Freeze**                                                                                                                    | Distraction pre-PMF                                                                                                           |
+| Deployments/pages, packages, security, actions                                                                                      | **Keep**                                                                                                                      | Forge-adjacent, already working, revenue                                                                                      |
 
 "Freeze" means: keep running for existing workspaces, remove from the dock
 and onboarding, accept no new features, and revisit in a quarter. Deletion
@@ -1383,8 +1411,8 @@ Acceptance:
    - If current alpha users are there for chat and agents, this verdict costs real traction.
    - Check usage before freezing.
 5. **That GitHub mirroring is a sufficient bridge while cloud agents can't push to g1t.**
-   - If Claude Code on the web and Codex cloud stay GitHub-only, g1t may be permanently the *second* remote for agent work.
-   - That pushes g1t toward being a governance and coordination layer *over* GitHub, which is a different company. Decide deliberately (see "single most important decision").
+   - If Claude Code on the web and Codex cloud stay GitHub-only, g1t may be permanently the _second_ remote for agent work.
+   - That pushes g1t toward being a governance and coordination layer _over_ GitHub, which is a different company. Decide deliberately (see "single most important decision").
 
 ### Three biggest technical risks
 
@@ -1394,7 +1422,7 @@ Acceptance:
 
 ### Three biggest product risks
 
-1. GitHub ships "local agent sessions on PRs" for Copilot *and* Claude/Codex via hooks before g1t has users, and the differentiation compresses to "not GitHub".
+1. GitHub ships "local agent sessions on PRs" for Copilot _and_ Claude/Codex via hooks before g1t has users, and the differentiation compresses to "not GitHub".
 2. A board nobody looks at: if overlap is rare in small teams, the visible value is low until a team has 3+ concurrent agents.
 3. Spreading across chat, workforce, deployments, packages, mobile and desktop leaves the core session experience half-done. The current codebase shows that pattern.
 

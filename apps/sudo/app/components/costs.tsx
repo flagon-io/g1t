@@ -65,7 +65,15 @@ function DaysSvg({ days, width, height, floor, label }: { days: DayFigures[]; wi
         const y = baseline - (value / top) * plot.height;
         return (
           <g key={value}>
-            <line x1={plot.x} x2={plot.x + plot.width} y1={y} y2={y} stroke="var(--color-line)" strokeWidth="1" strokeDasharray={value === 0 ? undefined : "2 4"} />
+            <line
+              x1={plot.x}
+              x2={plot.x + plot.width}
+              y1={y}
+              y2={y}
+              stroke="var(--color-line)"
+              strokeWidth="1"
+              strokeDasharray={value === 0 ? undefined : "2 4"}
+            />
             <text x={plot.x - 8} y={y + 3.5} textAnchor="end" fontSize="11" className="fill-faint tabular">
               {axisDollars(value)}
             </text>

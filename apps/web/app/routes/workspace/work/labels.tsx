@@ -217,9 +217,7 @@ export default function Labels({ loaderData, actionData }: Route.ComponentProps)
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold tracking-tight">Labels</h2>
-          <p className="mt-1 text-sm text-muted">
-            Work items and pull requests carry labels to say what they are. Filter either list by one.
-          </p>
+          <p className="mt-1 text-sm text-muted">Work items and pull requests carry labels to say what they are. Filter either list by one.</p>
         </div>
         {canEdit && !creating && (
           <div className="flex flex-wrap items-center gap-2">
@@ -260,9 +258,7 @@ export default function Labels({ loaderData, actionData }: Route.ComponentProps)
         </div>
         {labels.length === 0 ? (
           <div className="p-4">
-            <EmptyState title="No labels yet">
-              {canEdit ? "Add the default labels, or make your own." : "Nobody has made a label here yet."}
-            </EmptyState>
+            <EmptyState title="No labels yet">{canEdit ? "Add the default labels, or make your own." : "Nobody has made a label here yet."}</EmptyState>
           </div>
         ) : shown.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-faint">No label matches “{query}”.</p>

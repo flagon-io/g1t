@@ -34,7 +34,10 @@ export default function FoliosStale({ loaderData, params }: Route.ComponentProps
       <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
         <AlertTriangle size={18} className="text-warn" /> Possibly out of date
       </h1>
-      <p className="mt-1 text-sm text-muted">A merged pull request or a push to a default branch changed code these artifacts cite. Read what changed, update it (or ask an agent to), then mark it current.</p>
+      <p className="mt-1 text-sm text-muted">
+        A merged pull request or a push to a default branch changed code these artifacts cite. Read what changed, update it (or ask an agent to), then mark it
+        current.
+      </p>
       <div className="mt-6">
         {items === null ? (
           <EmptyState title="Artifacts didn't answer">Try again in a moment.</EmptyState>

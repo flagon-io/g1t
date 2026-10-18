@@ -159,40 +159,46 @@ export default function Support() {
             </ul>
           </Card>
           <p className="mt-4 text-sm text-muted">
-            Write from the email address on your g1t account, so we know it's you. Found a bug in g1t itself? You can
-            also open a work item on <Link to="/flagon-io/-/work?repo=g1t" className="text-accent hover:underline">flagon-io/g1t</Link>.
+            Write from the email address on your g1t account, so we know it's you. Found a bug in g1t itself? You can also open a work item on{" "}
+            <Link to="/flagon-io/-/work?repo=g1t" className="text-accent hover:underline">
+              flagon-io/g1t
+            </Link>
+            .
           </p>
         </Section>
 
         <Section title="What to include">
           <ul className="list-disc space-y-1.5 pl-5 text-[0.9375rem] text-fg/90">
-            <li>Your username, and the workspace and project, such as <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[0.85em]">g1t.sh/acme/web</code>.</li>
+            <li>
+              Your username, and the workspace and project, such as{" "}
+              <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[0.85em]">g1t.sh/acme/web</code>.
+            </li>
             <li>A link to where it happened: the page, work item, pull request or workflow run.</li>
             <li>What you did, what you expected, and what happened instead, with any error message as text.</li>
             <li>When it happened, with your time zone.</li>
           </ul>
           <p className="mt-4 rounded-xl border border-warn/30 bg-warn/5 px-4 py-3 text-sm">
             <span className="font-medium">Never send a password, an access token, a secret or a card number.</span>{" "}
-            <span className="text-muted">
-              g1t staff will never ask for them, by email or any other way. If you've sent one, revoke or change it.
-            </span>
+            <span className="text-muted">g1t staff will never ask for them, by email or any other way. If you've sent one, revoke or change it.</span>
           </p>
         </Section>
 
         <Section title="From your workspace">
           <p className="text-[0.9375rem] text-fg/90">
-            Owners can ask for two things straight from <span className="font-medium">Settings → Billing and plans</span>, and
-            the answer comes back to the same page and by email:
+            Owners can ask for two things straight from <span className="font-medium">Settings → Billing and plans</span>, and the answer comes back to the same
+            page and by email:
           </p>
           <ul className="mt-3 list-disc space-y-1.5 pl-5 text-[0.9375rem] text-fg/90">
             <li>
-              <span className="font-medium">Raise my limit</span>, when the workspace needs more than its spend limit allows.
-              A person answers within one business day.
+              <span className="font-medium">Raise my limit</span>, when the workspace needs more than its spend limit allows. A person answers within one
+              business day.
             </li>
             <li>
-              <span className="font-medium">Spent more than you meant to? Tell us.</span>, when a month ran over by
-              accident. See <Link to="/policies/refunds" className="text-accent hover:underline">refunds</Link> for the
-              goodwill credit.
+              <span className="font-medium">Spent more than you meant to? Tell us.</span>, when a month ran over by accident. See{" "}
+              <Link to="/policies/refunds" className="text-accent hover:underline">
+                refunds
+              </Link>{" "}
+              for the goodwill credit.
             </li>
           </ul>
         </Section>
@@ -205,8 +211,10 @@ export default function Support() {
           </ul>
           <p className="mt-3 text-sm text-muted">
             Business days are Monday to Friday, US time, apart from public holidays. If something seems down, the{" "}
-            <a href={STATUS_URL} className="text-accent hover:underline">status page</a> checks every part of g1t each
-            minute.
+            <a href={STATUS_URL} className="text-accent hover:underline">
+              status page
+            </a>{" "}
+            checks every part of g1t each minute.
           </p>
         </Section>
       </div>

@@ -136,10 +136,13 @@ function useG1tConversation(slug: string, open: boolean) {
     if (open) void load();
   }, [open, load]);
 
-  const onEvent = useCallback((event: ChatLiveEvent) => {
-    if (!channelId) return;
-    setMessages((now) => applyLive(now, event, channelId) as Shown[]);
-  }, [channelId]);
+  const onEvent = useCallback(
+    (event: ChatLiveEvent) => {
+      if (!channelId) return;
+      setMessages((now) => applyLive(now, event, channelId) as Shown[]);
+    },
+    [channelId],
+  );
 
   // Read up to the newest message while the panel is open and in view, as
   // the conversation in Chat does: it is the same direct message, so what
@@ -189,7 +192,9 @@ function useG1tConversation(slug: string, open: boolean) {
       };
       setMessages((now) => [...now, pending]);
       const saved = await chatApi<ChatMessage>(slug, { intent: "post", channel_id: id, body, page: { ...askPage(pathname), time_zone: browserTimeZone() } });
-      setMessages((now) => (saved.ok ? byId([...now.filter((m) => m.id !== pendingId), saved.value]) : now.map((m) => (m.id === pendingId ? { ...m, failed: true } : m))));
+      setMessages((now) =>
+        saved.ok ? byId([...now.filter((m) => m.id !== pendingId), saved.value]) : now.map((m) => (m.id === pendingId ? { ...m, failed: true } : m)),
+      );
       // The answer arrives over the socket; should it have opened late, ask once more.
       if (saved.ok) setTimeout(() => void load(), 1_500);
     },
@@ -251,7 +256,17 @@ export function AskSheet({ slug, open, queued = null, onQueuedTaken }: { slug: s
 }
 
 /** The live socket of the direct message, while the panel is open. */
-function LiveSocket({ slug, channelId, onEvent, onReconnect }: { slug: string; channelId: string; onEvent: (event: ChatLiveEvent) => void; onReconnect: () => void }) {
+function LiveSocket({
+  slug,
+  channelId,
+  onEvent,
+  onReconnect,
+}: {
+  slug: string;
+  channelId: string;
+  onEvent: (event: ChatLiveEvent) => void;
+  onReconnect: () => void;
+}) {
   useChatLive(slug, channelId, onEvent, onReconnect);
   return null;
 }

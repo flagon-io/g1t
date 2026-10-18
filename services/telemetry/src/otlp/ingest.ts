@@ -58,7 +58,8 @@ async function readBody(request: Request): Promise<Uint8Array> {
   if (raw.length > MAX_BODY) throw new IngestError(413, `A request may be at most ${MAX_BODY / 1024 / 1024} MB; send smaller batches.`);
   const encoding = (request.headers.get("content-encoding") ?? "").toLowerCase();
   if (!encoding || encoding === "identity") return raw;
-  if (encoding !== "gzip" && encoding !== "deflate") throw new IngestError(415, `Content-Encoding ${encoding} is not one this endpoint reads: send gzip or none.`);
+  if (encoding !== "gzip" && encoding !== "deflate")
+    throw new IngestError(415, `Content-Encoding ${encoding} is not one this endpoint reads: send gzip or none.`);
   const stream = new Blob([raw]).stream().pipeThrough(new DecompressionStream(encoding));
   const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
@@ -95,12 +96,17 @@ export async function readOtlp(request: Request, signal: Signal, door: Door): Pr
       body = bytes.length ? JSON.parse(new TextDecoder().decode(bytes)) : {};
     }
   } catch (error) {
-    if (error instanceof ProtoError || error instanceof SyntaxError) throw new IngestError(400, `The body is not OTLP ${protobuf ? "protobuf" : "JSON"}: ${error.message}`);
+    if (error instanceof ProtoError || error instanceof SyntaxError)
+      throw new IngestError(400, `The body is not OTLP ${protobuf ? "protobuf" : "JSON"}: ${error.message}`);
     throw error;
   }
   if (!body || typeof body !== "object") throw new IngestError(400, "The body is not an OTLP export request.");
   const batch =
-    signal === "traces" ? readTraces(body as never, door, bytes.length) : signal === "logs" ? readLogs(body as never, door, bytes.length) : readMetrics(body as never, door, bytes.length);
+    signal === "traces"
+      ? readTraces(body as never, door, bytes.length)
+      : signal === "logs"
+        ? readLogs(body as never, door, bytes.length)
+        : readMetrics(body as never, door, bytes.length);
   return { batch, protobuf };
 }
 

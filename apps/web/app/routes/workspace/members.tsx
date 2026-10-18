@@ -169,20 +169,13 @@ function MemberMenu({ member, self, owners, slug }: { member: Member; self: bool
   const submit = useSubmit();
   const [confirm, setConfirm] = useState<"transfer" | "remove" | null>(null);
   const roles = member.org_roles ?? [];
-  const post = (fields: Record<string, string>) =>
-    submit({ ...fields, member: member.username }, { method: "post", preventScrollReset: true });
+  const post = (fields: Record<string, string>) => submit({ ...fields, member: member.username }, { method: "post", preventScrollReset: true });
   const lastOwner = member.role === "owner" && owners <= 1;
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            aria-label={`Manage ${member.username}`}
-            variant="ghost"
-            size="inline"
-            className="p-1.5 text-faint max-sm:p-2.5"
-          >
+          <Button type="button" aria-label={`Manage ${member.username}`} variant="ghost" size="inline" className="p-1.5 text-faint max-sm:p-2.5">
             <Ellipsis size={16} />
           </Button>
         </DropdownMenuTrigger>
@@ -210,9 +203,7 @@ function MemberMenu({ member, self, owners, slug }: { member: Member; self: bool
           {!self && (
             <>
               <DropdownMenuSeparator />
-              {member.role === "member" && (
-                <DropdownMenuItem onSelect={() => setConfirm("transfer")}>Transfer ownership…</DropdownMenuItem>
-              )}
+              {member.role === "member" && <DropdownMenuItem onSelect={() => setConfirm("transfer")}>Transfer ownership…</DropdownMenuItem>}
               <DropdownMenuItem disabled={lastOwner} onSelect={() => setConfirm("remove")} className="text-danger">
                 Remove from {slug}…
               </DropdownMenuItem>
@@ -226,9 +217,7 @@ function MemberMenu({ member, self, owners, slug }: { member: Member; self: bool
             <input type="hidden" name="action" value={confirm === "transfer" ? "transfer" : "remove"} />
             <input type="hidden" name="member" value={member.username} />
             <AlertDialogHeader>
-              <AlertDialogTitle>
-                {confirm === "transfer" ? `Hand ${slug} to ${member.username}?` : `Remove ${member.username} from ${slug}?`}
-              </AlertDialogTitle>
+              <AlertDialogTitle>{confirm === "transfer" ? `Hand ${slug} to ${member.username}?` : `Remove ${member.username} from ${slug}?`}</AlertDialogTitle>
               <AlertDialogDescription>
                 {confirm === "transfer"
                   ? `${member.username} becomes an owner and you a member. Only an owner can make you an owner again.`
@@ -376,17 +365,20 @@ export default function WorkspaceMembers({ loaderData, actionData, params }: Rou
   const { role, members, outside, teams, teamsFailed, free, me, name, pendingInvitations } = loaderData;
   const owner = role === "owner";
   const owners = members.filter((member) => member.role === "owner").length;
-  const rowError = (username: string) =>
-    actionData && "row" in actionData && actionData.row === username ? (actionData.error ?? null) : null;
+  const rowError = (username: string) => (actionData && "row" in actionData && actionData.row === username ? (actionData.error ?? null) : null);
   const [search, setSearch] = useSearchParams();
   const tab = search.get("tab") === "outside" && owner ? "outside" : "members";
   const filters = memberFilters(search);
   const shown = filterMembers(members, filters, teams);
   const filtered = filters.role !== "all" || filters.twoFactor !== "all" || filters.team !== null || filters.query !== "";
   // Every team a listed member is on, once each, to filter by.
-  const teamChoices = [...new Map(Object.values(teams).flat().map((team) => [team.slug.toLowerCase(), team])).values()].sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
+  const teamChoices = [
+    ...new Map(
+      Object.values(teams)
+        .flat()
+        .map((team) => [team.slug.toLowerCase(), team]),
+    ).values(),
+  ].sort((a, b) => a.name.localeCompare(b.name));
   // Who was just invited from the dialog, said under the list.
   const [invited, setInvited] = useState<string | null>(null);
   const invite = owner && !free ? <InviteDialog name={name} action={`/${params.owner}/-/members`} onInvited={setInvited} /> : null;
@@ -461,7 +453,10 @@ export default function WorkspaceMembers({ loaderData, actionData, params }: Rou
         {owner && pendingInvitations === null && (
           <>
             {" · "}
-            <Link to={`/${params.owner}/-/members/invitations?state=pending`} className="inline-flex items-center gap-1 text-muted underline-offset-4 hover:text-fg hover:underline">
+            <Link
+              to={`/${params.owner}/-/members/invitations?state=pending`}
+              className="inline-flex items-center gap-1 text-muted underline-offset-4 hover:text-fg hover:underline"
+            >
               <Mail size={12} aria-hidden="true" />
               Invitations
             </Link>
@@ -470,7 +465,10 @@ export default function WorkspaceMembers({ loaderData, actionData, params }: Rou
         {owner && pendingInvitations != null && pendingInvitations > 0 && (
           <>
             {" · "}
-            <Link to={`/${params.owner}/-/members/invitations?state=pending`} className="inline-flex items-center gap-1 text-muted underline-offset-4 hover:text-fg hover:underline">
+            <Link
+              to={`/${params.owner}/-/members/invitations?state=pending`}
+              className="inline-flex items-center gap-1 text-muted underline-offset-4 hover:text-fg hover:underline"
+            >
               <Mail size={12} aria-hidden="true" />
               {pendingInvitations} {pendingInvitations === 1 ? "invitation" : "invitations"} waiting
             </Link>
@@ -502,11 +500,7 @@ export default function WorkspaceMembers({ loaderData, actionData, params }: Rou
         !("leaving" in actionData) &&
         !("converting" in actionData && actionData.converting) && <ErrorText>{actionData.error}</ErrorText>}
 
-      <LeaveSection
-        slug={params.owner}
-        soleOwner={owner && owners <= 1}
-        error={actionData && "leaving" in actionData ? (actionData.error ?? null) : null}
-      />
+      <LeaveSection slug={params.owner} soleOwner={owner && owners <= 1} error={actionData && "leaving" in actionData ? (actionData.error ?? null) : null} />
     </>
   );
   return (
@@ -561,8 +555,8 @@ function OutsideCollaborators({
   return (
     <>
       <p className="mb-4 text-sm text-muted">
-        People given a role on one or more of {slug}'s repositories without being members. They see only those
-        repositories. Change or take away a role on the repository's Access settings.
+        People given a role on one or more of {slug}'s repositories without being members. They see only those repositories. Change or take away a role on the
+        repository's Access settings.
       </p>
       {free && (
         <div className="mb-4">

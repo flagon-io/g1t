@@ -105,9 +105,7 @@ export function PackageSettingsTab({ settings, outcome }: { settings: PackageSet
         {repo && <InheritToggle on={pkg.inherit_access !== false} repo={repo} />}
         {access.length === 0 ? (
           <Card asChild tone="plain" className="border-dashed px-4 py-6 text-center text-sm text-muted">
-            <p>
-              No one has a role on the package itself.
-            </p>
+            <p>No one has a role on the package itself.</p>
           </Card>
         ) : (
           <Card asChild tone="plain" divided>
@@ -127,9 +125,7 @@ export function PackageSettingsTab({ settings, outcome }: { settings: PackageSet
       >
         <Card asChild tone="plain" divided>
           <ul>
-            {actions.length === 0 && (
-              <li className="px-4 py-6 text-center text-sm text-muted">No repository's workflows may use it yet.</li>
-            )}
+            {actions.length === 0 && <li className="px-4 py-6 text-center text-sm text-muted">No repository's workflows may use it yet.</li>}
             {actions.map((entry) => (
               <ActionsRow key={entry.repo_id} entry={entry} />
             ))}
@@ -138,10 +134,7 @@ export function PackageSettingsTab({ settings, outcome }: { settings: PackageSet
         <AddActionsForm workspace={pkg.workspace} />
       </Section>
 
-      <Section
-        title="Visibility"
-        about="Who may pull it. Public packages need no sign-in to pull; pushing always needs the Write role."
-      >
+      <Section title="Visibility" about="Who may pull it. Public packages need no sign-in to pull; pushing always needs the Write role.">
         {repo ? (
           <Card asChild className="p-4 text-sm text-muted">
             <p>
@@ -243,9 +236,7 @@ export function PackageSettingsTab({ settings, outcome }: { settings: PackageSet
       {permissions.delete && (
         <Section title="Delete this package" about={`Every version goes from the registry at once. An admin can restore it for ${PACKAGE_RESTORE_DAYS} days.`}>
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger/30 bg-surface p-4">
-            <p className="text-sm text-muted">
-              Its name stays taken until it is purged, so nobody else can publish a package called {pkg.name} meanwhile.
-            </p>
+            <p className="text-sm text-muted">Its name stays taken until it is purged, so nobody else can publish a package called {pkg.name} meanwhile.</p>
             <ConfirmDialog
               intent="delete-package"
               title={`Delete ${pkg.name}?`}
@@ -306,10 +297,7 @@ function AccessRow({ entry, workspace }: { entry: PackageAccess; workspace: stri
       </span>
       <div className="min-w-0 grow basis-40">
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <Link
-            to={entry.kind === "user" ? `/u/${entry.name}` : `/${workspace}/-/teams/${slug}`}
-            className="truncate font-mono text-sm hover:text-accent"
-          >
+          <Link to={entry.kind === "user" ? `/u/${entry.name}` : `/${workspace}/-/teams/${slug}`} className="truncate font-mono text-sm hover:text-accent">
             {entry.name}
           </Link>
           <Badge>{entry.kind === "user" ? "Person" : "Team"}</Badge>

@@ -32,7 +32,17 @@ import {
 import { type ReactNode, type Ref, type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Form, Link, useLoaderData, useSearchParams } from "react-router";
 
-import { type Annotation, type EnvironmentReviewer, type Job, type JobSummary, type PendingDeployment, type RunApproval, type RunAttempt, type StepState, isManagedWorkflow } from "@g1t/contracts";
+import {
+  type Annotation,
+  type EnvironmentReviewer,
+  type Job,
+  type JobSummary,
+  type PendingDeployment,
+  type RunApproval,
+  type RunAttempt,
+  type StepState,
+  isManagedWorkflow,
+} from "@g1t/contracts";
 
 import type { Route } from "./+types/actions-run";
 import { page } from "../../lib/meta";
@@ -87,8 +97,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   ]);
   // Artifacts an older runner kept in KV: asked for only once the service
   // has shown the viewer the run, and never while it is still going.
-  const artifacts =
-    !isFailed(kept) && legacyArtifactsWorthAsking(detail.run) ? await withLegacyArtifacts(kept, params.id) : kept;
+  const artifacts = !isFailed(kept) && legacyArtifactsWorthAsking(detail.run) ? await withLegacyArtifacts(kept, params.id) : kept;
   // Cancelling and re-running need Write.
   return {
     detail,
@@ -193,7 +202,9 @@ function StepRow({
       </summary>
       <div className="border-t border-line bg-bg/60">
         {log === undefined && !running ? (
-          <p className="px-4 py-2 text-xs text-faint">{step.status === "queued" ? "Not started." : step.conclusion === "skipped" ? "Skipped." : "No output."}</p>
+          <p className="px-4 py-2 text-xs text-faint">
+            {step.status === "queued" ? "Not started." : step.conclusion === "skipped" ? "Skipped." : "No output."}
+          </p>
         ) : (
           log !== undefined && <LogText log={log} query={query} timestamps={timestamps} anchor={`step:${step.number}`} target={target} />
         )}
@@ -720,9 +731,7 @@ function timerRunning(deployment: PendingDeployment): boolean {
 
 /** Whether environments still hold some of the run's jobs. */
 function held(deployments: PendingDeployment[]): boolean {
-  return deployments.some(
-    (deployment) => deployment.state === "waiting" || (deployment.state === "approved" && timerRunning(deployment)),
-  );
+  return deployments.some((deployment) => deployment.state === "waiting" || (deployment.state === "approved" && timerRunning(deployment)));
 }
 
 /** `in 12m`, `in 2h 5m`: how long until a time. */
@@ -913,8 +922,7 @@ function DeploymentsPanel({ deployments, busy }: { deployments: PendingDeploymen
           <div className="min-w-0">
             <h3 className="text-sm font-medium">{review ? "Waiting for review" : "Waiting to deploy"}</h3>
             <p className="mt-0.5 text-sm text-muted">
-              Jobs that deploy to these environments wait until each environment's protection rules let them through, and
-              only then get its secrets.
+              Jobs that deploy to these environments wait until each environment's protection rules let them through, and only then get its secrets.
             </p>
           </div>
         </header>
@@ -948,8 +956,7 @@ function RunCard({
   const label = "text-xs text-muted";
   return (
     <Card asChild className="grid gap-x-6 gap-y-4 p-4 text-sm sm:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))]">
-      <section
-        aria-label="Run">
+      <section aria-label="Run">
         <div className="min-w-0 space-y-1.5">
           <p className={label}>
             Triggered via {run.event} <TimeAgo at={run.createdAt} />
@@ -1216,20 +1223,13 @@ function NavUnit({ unit, selected, jobHref }: { unit: Unit; selected: Job | null
     <details open={unit.kind === "call" || inside} className="group/unit">
       <summary className={`${NAV_ROW} cursor-pointer list-none text-muted hover:bg-raised/60 hover:text-fg`}>
         <ChevronRight size={13} className="shrink-0 text-faint transition-transform group-open/unit:rotate-90" />
-        <StatusIcon
-          status={standing.status === "calling" ? "in_progress" : standing.status}
-          conclusion={standing.conclusion}
-          of="job"
-          size={14}
-        />
+        <StatusIcon status={standing.status === "calling" ? "in_progress" : standing.status} conclusion={standing.conclusion} of="job" size={14} />
         <span className="min-w-0 truncate">{unit.label}</span>
         {unit.kind === "matrix" && <span className="ml-auto shrink-0 text-xs text-faint">{unit.jobs.length}</span>}
       </summary>
       <div className="ml-3 space-y-0.5 border-l border-line pl-1.5">
         {unit.kind === "matrix" ? (
-          unit.jobs.map((job) => (
-            <NavJob key={job.id} job={job} label={job.name.split(" / ").pop() ?? job.name} selected={selected} jobHref={jobHref} />
-          ))
+          unit.jobs.map((job) => <NavJob key={job.id} job={job} label={job.name.split(" / ").pop() ?? job.name} selected={selected} jobHref={jobHref} />)
         ) : (
           <>
             {unit.callers.map((job) => (
@@ -1342,9 +1342,9 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
               <Hint label={latest ? "Every job's log, as a zip" : `Attempt #${run.attempt}'s logs, as a zip`}>
                 <Button asChild variant="outline">
                   <a href={logsUrl}>
-                  <Download size={13} />
-                  Download logs
-                </a>
+                    <Download size={13} />
+                    Download logs
+                  </a>
                 </Button>
               </Hint>
             )}

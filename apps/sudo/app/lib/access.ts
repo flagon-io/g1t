@@ -139,11 +139,7 @@ export function clearKeyCache(): void {
 
 const RSA = { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" } as const;
 
-async function fetchKeySet(
-  teamDomain: string,
-  fetcher: (url: string) => Promise<Response>,
-  now: number,
-): Promise<KeySet> {
+async function fetchKeySet(teamDomain: string, fetcher: (url: string) => Promise<Response>, now: number): Promise<KeySet> {
   const response = await fetcher(`https://${teamDomain}/cdn-cgi/access/certs`);
   if (!response.ok) throw new Error(`Access keys answered ${response.status}`);
   const body = (await response.json()) as { keys?: unknown };
@@ -164,12 +160,7 @@ async function fetchKeySet(
 }
 
 /** The key a token names, fetching the team's keys when they are stale or it is new. */
-async function keyFor(
-  teamDomain: string,
-  kid: string,
-  fetcher: (url: string) => Promise<Response>,
-  now: number,
-): Promise<CryptoKey | null> {
+async function keyFor(teamDomain: string, kid: string, fetcher: (url: string) => Promise<Response>, now: number): Promise<CryptoKey | null> {
   let set = keySets.get(teamDomain);
   const stale = !set || now - set.fetchedAt >= JWKS_TTL_MS;
   const unknown = set && !set.keys.has(kid) && now - set.fetchedAt >= JWKS_REFETCH_MS;
@@ -206,11 +197,7 @@ function decodeJson(segment: string): Record<string, unknown> | null {
 }
 
 /** Verifies an Access JWT: signature, algorithm, issuer, audience and lifetime. */
-export async function verifyAccessJwt(
-  token: string,
-  settings: Pick<AccessSettings, "teamDomain" | "aud">,
-  options: VerifyOptions = {},
-): Promise<Verified> {
+export async function verifyAccessJwt(token: string, settings: Pick<AccessSettings, "teamDomain" | "aud">, options: VerifyOptions = {}): Promise<Verified> {
   const now = options.now ?? Date.now();
   const fetcher = options.fetcher ?? ((url: string) => fetch(url));
 
@@ -262,11 +249,7 @@ export type Authorized = { ok: true; email: string } | { ok: false; reason: stri
  * client id as `common_name`) listed in STAFF_SERVICE_TOKENS, which acts as
  * `<name>@service.g1t.sh`. Any other service token is refused.
  */
-export async function authorize(
-  request: Request,
-  settings: AccessSettings,
-  options: VerifyOptions = {},
-): Promise<Authorized> {
+export async function authorize(request: Request, settings: AccessSettings, options: VerifyOptions = {}): Promise<Authorized> {
   const token = request.headers.get("cf-access-jwt-assertion");
   if (!token) return { ok: false, reason: "no Access token" };
   const verified = await verifyAccessJwt(token, settings, options);

@@ -42,9 +42,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     .filter((p) => !selected || p.slug === selected)
     .map((p) => ({ slug: p.slug, name: p.name, repoId: p.source.repoId, usage: usageKey(p.source.repo) }));
   const ids = [...new Set(projects.map((p) => p.repoId))];
-  const usageTask = billing
-    .usageReport(slug, viewer, { from, until, projects: selected ? projects.map((p) => p.usage) : [] })
-    .catch(() => null);
+  const usageTask = billing.usageReport(slug, viewer, { from, until, projects: selected ? projects.map((p) => p.usage) : [] }).catch(() => null);
   // Bounded batches cover every project, without one RPC per repository.
   const batches = await Promise.allSettled(
     Array.from({ length: Math.ceil(ids.length / 100) }, (_, i) => work.deliveryInsights(ids.slice(i * 100, i * 100 + 100), viewer, from, until)),
@@ -175,10 +173,7 @@ export default function Insights({ loaderData: d }: Route.ComponentProps) {
                   {d.days.map((day) => (
                     <Hint key={day.day} label={`${day.day}: ${day.merged} merged`}>
                       <div className="flex h-full min-w-0 flex-1 items-end">
-                        <div
-                          className="w-full rounded-t bg-accent"
-                          style={{ height: `${day.merged ? Math.max(2, (day.merged / peak) * 100) : 0}%` }}
-                        />
+                        <div className="w-full rounded-t bg-accent" style={{ height: `${day.merged ? Math.max(2, (day.merged / peak) * 100) : 0}%` }} />
                       </div>
                     </Hint>
                   ))}
@@ -284,13 +279,11 @@ export default function Insights({ loaderData: d }: Route.ComponentProps) {
             </section>
           )}
           <p className="text-xs leading-relaxed text-muted">
-            Lead time runs from a pull request’s opening to its merge, for those merged in this period. First review runs
-            from opening to the first approval or request for changes by a person other than its owner (not g1t or a
-            workspace agent), for first reviews given in this period. Waiting counts are as of now and may overlap. Checks
-            count each open pull request once, by its latest commit’s statuses, check runs and g1t Actions jobs: failed if
-            any failed, else running if any is still going. Costs are usage at price, before what the plan, credit or
-            discounts paid; cost per merged change divides the period’s usage by its merges, not what each change cost. A
-            dash means no sample, or no data to show.
+            Lead time runs from a pull request’s opening to its merge, for those merged in this period. First review runs from opening to the first approval or
+            request for changes by a person other than its owner (not g1t or a workspace agent), for first reviews given in this period. Waiting counts are as
+            of now and may overlap. Checks count each open pull request once, by its latest commit’s statuses, check runs and g1t Actions jobs: failed if any
+            failed, else running if any is still going. Costs are usage at price, before what the plan, credit or discounts paid; cost per merged change divides
+            the period’s usage by its merges, not what each change cost. A dash means no sample, or no data to show.
           </p>
         </>
       )}

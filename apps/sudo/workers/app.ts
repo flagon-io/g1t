@@ -5,10 +5,7 @@ import { denied, secure } from "../app/lib/guard";
 import { staffContext, zoneContext } from "../app/lib/staff";
 import { readZone } from "../app/lib/time";
 
-const requestHandler = createRequestHandler(
-  () => import("virtual:react-router/server-build"),
-  import.meta.env.MODE,
-);
+const requestHandler = createRequestHandler(() => import("virtual:react-router/server-build"), import.meta.env.MODE);
 
 /** Files the build emits for the pages; still behind the same check. */
 const ASSET = /^\/(?:assets\/[\w.-]+|favicon\.svg)$/;

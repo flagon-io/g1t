@@ -1,8 +1,92 @@
-import { Database, Activity, BarChart3, Bot, Cpu, Columns3, Radio, ScrollText, BrickWall, Building2, ChartLine, Flag, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTodo, Lock, LogOut, Mail, MonitorCog, MonitorDown, Package, PlayCircle, Plug, Plus, ReceiptText, Repeat, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Star, House, Ticket, TrendingUp, UserPlus, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
+import {
+  Database,
+  Activity,
+  BarChart3,
+  Bot,
+  Cpu,
+  Columns3,
+  Radio,
+  ScrollText,
+  BrickWall,
+  Building2,
+  ChartLine,
+  Flag,
+  MessagesSquare,
+  Bell,
+  BookMarked,
+  BookOpen,
+  Bookmark,
+  Blocks,
+  Box,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  CircleDot,
+  GripVertical,
+  CircleUserRound,
+  Code2,
+  Compass,
+  CreditCard,
+  Fingerprint,
+  Gauge,
+  GitBranch,
+  GitPullRequest,
+  Globe,
+  History,
+  Keyboard,
+  KeyRound,
+  Layers,
+  LayoutDashboard,
+  LayoutGrid,
+  LifeBuoy,
+  ListTodo,
+  Lock,
+  LogOut,
+  Mail,
+  MonitorCog,
+  MonitorDown,
+  Package,
+  PlayCircle,
+  Plug,
+  Plus,
+  ReceiptText,
+  Repeat,
+  Rocket,
+  Search,
+  ServerCog,
+  Settings,
+  Shapes,
+  Shield,
+  ShieldCheck,
+  Scale,
+  Smile,
+  Sparkles,
+  Star,
+  House,
+  Ticket,
+  TrendingUp,
+  UserPlus,
+  UserRoundKey,
+  Users,
+  UsersRound,
+  Webhook,
+  X,
+} from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
-import { type Abilities, type ChatSidebarEntry, type InboxCounts, type Membership, type Spike, type User, hasCodeAccess, mayCreateTeams, shownUsername } from "@g1t/contracts";
+import {
+  type Abilities,
+  type ChatSidebarEntry,
+  type InboxCounts,
+  type Membership,
+  type Spike,
+  type User,
+  hasCodeAccess,
+  mayCreateTeams,
+  shownUsername,
+} from "@g1t/contracts";
 
 import { InMain } from "./landmark";
 import { CommandPalette, type PaletteCommand, PaletteKey, usePaletteShortcut } from "./command-palette";
@@ -150,8 +234,7 @@ function useRowState(to: string, { end, also, current: lit }: { end?: boolean; a
   const destination = useSidebarLocation();
   const going = destination.key !== key ? destination : undefined;
   const current = lit ?? (under(pathname, to, end) || [also ?? []].flat().some((prefix) => under(pathname, prefix)));
-  const pending =
-    going != null && !current && (lit === undefined ? under(going.pathname, to, end) : `${going.pathname}${going.search}` === to);
+  const pending = going != null && !current && (lit === undefined ? under(going.pathname, to, end) : `${going.pathname}${going.search}` === to);
   return { current, pending };
 }
 
@@ -374,135 +457,134 @@ function AccountMenu({ user, side = "right" }: { user: User; side?: "right" | "b
   const profile = `/u/${user.username}`;
   return (
     <>
-    <DropdownMenu open={open} onOpenChange={setOpen}>
-      {/* The avatar alone, with a dot that says how others see you (components/presence.tsx). */}
-      <Hint label={side === "right" ? "Your account" : undefined} side="right">
-        <DropdownMenuTrigger
-          aria-label={`Account menu for ${shownUsername(user)}`}
-          onPointerEnter={prefetch}
-          onFocus={prefetch}
-          className={
-            side === "right"
-              ? // At the foot of the rail: a 40px rounded square, as the rail's icons are.
-                "relative flex size-10 items-center justify-center rounded-[10px] outline-none transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-sidebar-accent"
-              : "relative flex rounded-full outline-none transition-transform hover:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:ring-2 data-[state=open]:ring-line-strong"
-          }
-        >
-          <Avatar name={user.username} image={user.avatar} size={side === "right" ? 40 : 28} square={side === "right"} />
-          <OwnPresenceDot ring={side === "right" ? "var(--color-rail)" : "var(--color-bg)"} className={side === "right" ? "absolute -right-1 -bottom-1" : "absolute -right-0.5 -bottom-0.5"} />
-        </DropdownMenuTrigger>
-      </Hint>
-      <DropdownMenuContent align="end" side={side} sideOffset={side === "right" ? 14 : 6} collisionPadding={8} className="w-70 p-1.5">
-        {/* Who is signed in, and a way to their profile. */}
-        <DropdownMenuItem asChild className="gap-3 px-2 py-2">
-          <Link to={profile} aria-label={`${me?.name ?? shownUsername(user)} (@${shownUsername(user)}), your profile`}>
-            <Avatar name={user.username} image={user.avatar} size={36} />
-            <span className="flex min-w-0 grow flex-col leading-tight" aria-busy={loading}>
-              {loading ? (
-                <Skeleton className="my-0.75 h-3.5 w-28" />
-              ) : (
-                <span className="truncate text-sm font-medium text-fg">{me?.name ?? shownUsername(user)}</span>
-              )}
-              <span className="truncate font-mono text-xs text-muted">@{shownUsername(user)}</span>
-              {loading ? (
-                <Skeleton className="mt-1 h-3 w-40" />
-              ) : (
-                me?.email && <span className="mt-0.5 truncate text-xs text-faint">{me.email}</span>
-              )}
-            </span>
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator className="my-1.5" />
-        {/* Your status, away, and pausing notifications. */}
-        <DropdownMenuGroup>
-          <OwnPresenceItems className="min-h-9 py-1.5 text-[0.8125rem]" onEdit={() => setEditing(true)} />
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator className="my-1.5" />
-        <DropdownMenuGroup>
-          <DropdownMenuItem asChild className={MENU_ROW}>
-            <Link to={profile}>
-              <CircleUserRound />
-              Your profile
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        {/* The avatar alone, with a dot that says how others see you (components/presence.tsx). */}
+        <Hint label={side === "right" ? "Your account" : undefined} side="right">
+          <DropdownMenuTrigger
+            aria-label={`Account menu for ${shownUsername(user)}`}
+            onPointerEnter={prefetch}
+            onFocus={prefetch}
+            className={
+              side === "right"
+                ? // At the foot of the rail: a 40px rounded square, as the rail's icons are.
+                  "relative flex size-10 items-center justify-center rounded-[10px] outline-none transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-sidebar-accent"
+                : "relative flex rounded-full outline-none transition-transform hover:scale-[1.04] focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:ring-2 data-[state=open]:ring-line-strong"
+            }
+          >
+            <Avatar name={user.username} image={user.avatar} size={side === "right" ? 40 : 28} square={side === "right"} />
+            <OwnPresenceDot
+              ring={side === "right" ? "var(--color-rail)" : "var(--color-bg)"}
+              className={side === "right" ? "absolute -right-1 -bottom-1" : "absolute -right-0.5 -bottom-0.5"}
+            />
+          </DropdownMenuTrigger>
+        </Hint>
+        <DropdownMenuContent align="end" side={side} sideOffset={side === "right" ? 14 : 6} collisionPadding={8} className="w-70 p-1.5">
+          {/* Who is signed in, and a way to their profile. */}
+          <DropdownMenuItem asChild className="gap-3 px-2 py-2">
+            <Link to={profile} aria-label={`${me?.name ?? shownUsername(user)} (@${shownUsername(user)}), your profile`}>
+              <Avatar name={user.username} image={user.avatar} size={36} />
+              <span className="flex min-w-0 grow flex-col leading-tight" aria-busy={loading}>
+                {loading ? (
+                  <Skeleton className="my-0.75 h-3.5 w-28" />
+                ) : (
+                  <span className="truncate text-sm font-medium text-fg">{me?.name ?? shownUsername(user)}</span>
+                )}
+                <span className="truncate font-mono text-xs text-muted">@{shownUsername(user)}</span>
+                {loading ? <Skeleton className="mt-1 h-3 w-40" /> : me?.email && <span className="mt-0.5 truncate text-xs text-faint">{me.email}</span>}
+              </span>
             </Link>
           </DropdownMenuItem>
-          <DropdownMenuItem asChild className={MENU_ROW}>
-            <Link to={FIRST_SETTINGS_PAGE}>
-              <Settings />
-              Your settings
-            </Link>
-          </DropdownMenuItem>
-          {/* Invite a friend to g1t: word of mouth, never needed to sign up (routes/settings/invites.tsx). */}
-          <DropdownMenuItem asChild className={MENU_ROW}>
-            <Link to="/settings/invites?new">
-              <UserPlus />
-              {G1T_INVITES.action}
-              {loading && <Skeleton className="ml-auto h-4 w-12 rounded-full" />}
-              {leftBadge(me?.invites_left) && (
-                <Badge size="sm" className="ml-auto tabular-nums">
-                  {leftBadge(me?.invites_left)}
-                </Badge>
-              )}
-            </Link>
-          </DropdownMenuItem>
-          {/* The app's own: starting with the computer, closing to the tray, the badge (apps/desktop). */}
-          {inApp && desktopBridge()?.openSettings && (
-            <DropdownMenuItem className={MENU_ROW} onSelect={() => desktopBridge()?.openSettings?.()}>
-              <MonitorCog />
-              Desktop app settings
-            </DropdownMenuItem>
-          )}
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator className="my-1.5" />
-        {/* Auto, Light or Dark, switched in place (lib/theme.ts). */}
-        <ThemeMenuSwitch />
-        <DropdownMenuSeparator className="my-1.5" />
-        <DropdownMenuGroup>
-          <DropdownMenuItem asChild className={MENU_ROW}>
-            <a href="https://docs.g1t.sh/">
-              <BookOpen />
-              Documentation
-            </a>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild className={MENU_ROW}>
-            <Link to="/support">
-              <LifeBuoy />
-              Support
-            </Link>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild className={MENU_ROW}>
-            <a href={STATUS_URL}>
-              <Activity />
-              Status
-              <StatusSummary open={open} />
-            </a>
-          </DropdownMenuItem>
-          <DropdownMenuItem className={MENU_ROW} onSelect={() => setKeys(true)}>
-            <Keyboard />
-            Keyboard shortcuts
-            <PaletteKey className="ml-auto font-sans text-xs text-faint" />
-          </DropdownMenuItem>
-          {!inApp && (
+          <DropdownMenuSeparator className="my-1.5" />
+          {/* Your status, away, and pausing notifications. */}
+          <DropdownMenuGroup>
+            <OwnPresenceItems className="min-h-9 py-1.5 text-[0.8125rem]" onEdit={() => setEditing(true)} />
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator className="my-1.5" />
+          <DropdownMenuGroup>
             <DropdownMenuItem asChild className={MENU_ROW}>
-              <Link to="/download">
-                <MonitorDown />
-                Get the desktop app
+              <Link to={profile}>
+                <CircleUserRound />
+                Your profile
               </Link>
             </DropdownMenuItem>
-          )}
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator className="my-1.5" />
-        {/* Submitted from here: the menu closes on select, and a button
+            <DropdownMenuItem asChild className={MENU_ROW}>
+              <Link to={FIRST_SETTINGS_PAGE}>
+                <Settings />
+                Your settings
+              </Link>
+            </DropdownMenuItem>
+            {/* Invite a friend to g1t: word of mouth, never needed to sign up (routes/settings/invites.tsx). */}
+            <DropdownMenuItem asChild className={MENU_ROW}>
+              <Link to="/settings/invites?new">
+                <UserPlus />
+                {G1T_INVITES.action}
+                {loading && <Skeleton className="ml-auto h-4 w-12 rounded-full" />}
+                {leftBadge(me?.invites_left) && (
+                  <Badge size="sm" className="ml-auto tabular-nums">
+                    {leftBadge(me?.invites_left)}
+                  </Badge>
+                )}
+              </Link>
+            </DropdownMenuItem>
+            {/* The app's own: starting with the computer, closing to the tray, the badge (apps/desktop). */}
+            {inApp && desktopBridge()?.openSettings && (
+              <DropdownMenuItem className={MENU_ROW} onSelect={() => desktopBridge()?.openSettings?.()}>
+                <MonitorCog />
+                Desktop app settings
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator className="my-1.5" />
+          {/* Auto, Light or Dark, switched in place (lib/theme.ts). */}
+          <ThemeMenuSwitch />
+          <DropdownMenuSeparator className="my-1.5" />
+          <DropdownMenuGroup>
+            <DropdownMenuItem asChild className={MENU_ROW}>
+              <a href="https://docs.g1t.sh/">
+                <BookOpen />
+                Documentation
+              </a>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild className={MENU_ROW}>
+              <Link to="/support">
+                <LifeBuoy />
+                Support
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild className={MENU_ROW}>
+              <a href={STATUS_URL}>
+                <Activity />
+                Status
+                <StatusSummary open={open} />
+              </a>
+            </DropdownMenuItem>
+            <DropdownMenuItem className={MENU_ROW} onSelect={() => setKeys(true)}>
+              <Keyboard />
+              Keyboard shortcuts
+              <PaletteKey className="ml-auto font-sans text-xs text-faint" />
+            </DropdownMenuItem>
+            {!inApp && (
+              <DropdownMenuItem asChild className={MENU_ROW}>
+                <Link to="/download">
+                  <MonitorDown />
+                  Get the desktop app
+                </Link>
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator className="my-1.5" />
+          {/* Submitted from here: the menu closes on select, and a button
             that has left the page cannot submit a form. */}
-        <DropdownMenuItem className={MENU_ROW} onSelect={() => submit(null, { method: "post", action: "/logout" })}>
-          <LogOut />
-          Sign out
-        </DropdownMenuItem>
-        <DropdownMenuSeparator className="my-1.5" />
-        <MenuLegalRow />
-      </DropdownMenuContent>
-    </DropdownMenu>
-    <StatusDialog open={editing} onOpenChange={setEditing} />
-    <ShortcutsDialog open={keys} onOpenChange={setKeys} />
+          <DropdownMenuItem className={MENU_ROW} onSelect={() => submit(null, { method: "post", action: "/logout" })}>
+            <LogOut />
+            Sign out
+          </DropdownMenuItem>
+          <DropdownMenuSeparator className="my-1.5" />
+          <MenuLegalRow />
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <StatusDialog open={editing} onOpenChange={setEditing} />
+      <ShortcutsDialog open={keys} onOpenChange={setKeys} />
     </>
   );
 }
@@ -567,11 +649,7 @@ function Drill({ trail }: { trail: Level[] }) {
         // A list that was not there before arrives: from the right when
         // drilling in, in place when moving across.
         const arriving = hydrated && current && !shown.current.keys.includes(level.key);
-        const enter = arriving
-          ? depth > shown.current.depth
-            ? "starting:translate-x-full starting:opacity-0"
-            : "starting:opacity-0"
-          : "";
+        const enter = arriving ? (depth > shown.current.depth ? "starting:translate-x-full starting:opacity-0" : "starting:opacity-0") : "";
         return (
           <div key={level.key} className={`${LAYER} ${place} ${enter}`} inert={!current} aria-hidden={!current || undefined}>
             {level.node}
@@ -681,68 +759,67 @@ function SidebarProjects({ slug, shell, current }: { slug: string; shell: ShellD
         </Hint>
       </div>
       <SidebarGroupContent>
-      {/* Only there once something is pinned: each row below has its own pin. */}
-      {pinned.length > 0 && (
-        <>
-        <SidebarSubhead>Pinned</SidebarSubhead>
-        <SidebarMenu aria-label="Pinned projects">
-          {pinned.map((project, index) => (
-            <SidebarMenuItem
-              key={project.name}
-              draggable={pinned.length > 1}
-              onDragStart={(event) => {
-                setDragging(index);
-                event.dataTransfer.effectAllowed = "move";
-              }}
-              onDragOver={(event) => {
-                if (dragging != null) event.preventDefault();
-              }}
-              onDrop={(event) => {
-                event.preventDefault();
-                if (dragging != null && dragging !== index) move(dragging, index - dragging);
-                setDragging(null);
-              }}
-              onDragEnd={() => setDragging(null)}
-              onKeyDown={(event) => {
-                if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
-                event.preventDefault();
-                move(index, event.key === "ArrowUp" ? -1 : 1);
-              }}
-              className={`group/pin ${dragging === index ? "opacity-50" : ""}`}
-            >
-              {row(project, true)}
-              {pinned.length > 1 && (
-                <Hint label="Drag, or Alt and an arrow key, to reorder" side="right">
-                  <span className="absolute top-1/2 -left-2 -translate-y-1/2 cursor-grab text-faint opacity-0 transition-opacity group-hover/pin:opacity-100">
-                    <GripVertical size={12} aria-hidden="true" />
-                  </span>
-                </Hint>
-              )}
-            </SidebarMenuItem>
-          ))}
+        {/* Only there once something is pinned: each row below has its own pin. */}
+        {pinned.length > 0 && (
+          <>
+            <SidebarSubhead>Pinned</SidebarSubhead>
+            <SidebarMenu aria-label="Pinned projects">
+              {pinned.map((project, index) => (
+                <SidebarMenuItem
+                  key={project.name}
+                  draggable={pinned.length > 1}
+                  onDragStart={(event) => {
+                    setDragging(index);
+                    event.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragOver={(event) => {
+                    if (dragging != null) event.preventDefault();
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    if (dragging != null && dragging !== index) move(dragging, index - dragging);
+                    setDragging(null);
+                  }}
+                  onDragEnd={() => setDragging(null)}
+                  onKeyDown={(event) => {
+                    if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+                    event.preventDefault();
+                    move(index, event.key === "ArrowUp" ? -1 : 1);
+                  }}
+                  className={`group/pin ${dragging === index ? "opacity-50" : ""}`}
+                >
+                  {row(project, true)}
+                  {pinned.length > 1 && (
+                    <Hint label="Drag, or Alt and an arrow key, to reorder" side="right">
+                      <span className="absolute top-1/2 -left-2 -translate-y-1/2 cursor-grab text-faint opacity-0 transition-opacity group-hover/pin:opacity-100">
+                        <GripVertical size={12} aria-hidden="true" />
+                      </span>
+                    </Hint>
+                  )}
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </>
+        )}
+        {recent.length > 0 && (
+          <>
+            <SidebarSubhead>Recent</SidebarSubhead>
+            <SidebarMenu aria-label="Recent projects">
+              {recent.map((project) => (
+                <Fragment key={`${project.namespace}/${project.name}`}>{row(project, false)}</Fragment>
+              ))}
+            </SidebarMenu>
+          </>
+        )}
+        <SidebarMenu className="pt-1">
+          <SidebarLink to={`/${slug}/-/projects`} icon={<LayoutGrid />} count={shell.repos.length} current={current}>
+            All projects
+          </SidebarLink>
         </SidebarMenu>
-        </>
-      )}
-      {recent.length > 0 && (
-        <>
-          <SidebarSubhead>Recent</SidebarSubhead>
-          <SidebarMenu aria-label="Recent projects">
-            {recent.map((project) => (
-              <Fragment key={`${project.namespace}/${project.name}`}>{row(project, false)}</Fragment>
-            ))}
-          </SidebarMenu>
-        </>
-      )}
-      <SidebarMenu className="pt-1">
-        <SidebarLink to={`/${slug}/-/projects`} icon={<LayoutGrid />} count={shell.repos.length} current={current}>
-          All projects
-        </SidebarLink>
-      </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>
   );
 }
-
 
 /**
  * A page a project will have that is a page of its own, not a tab: its own
@@ -777,12 +854,7 @@ type MenuRepo = {
 };
 
 function sameRepo(a: { namespace: string; name: string } | null, b: { namespace: string; name: string } | null) {
-  return (
-    a != null &&
-    b != null &&
-    a.namespace.toLowerCase() === b.namespace.toLowerCase() &&
-    a.name.toLowerCase() === b.name.toLowerCase()
-  );
+  return a != null && b != null && a.namespace.toLowerCase() === b.namespace.toLowerCase() && a.name.toLowerCase() === b.name.toLowerCase();
 }
 
 /**
@@ -829,7 +901,20 @@ function RepoMenu({
           than one view shows them as tabs across its top. */}
       <Rule />
       <NavRows>
-        <SidebarLink to={`${base}/code`} also={[`${base}/tree`, `${base}/blob`, `${base}/commits`, `${base}/commit`, `${base}/branches`, `${base}/tags`, `${base}/compare`, ...soonPaths(base, "Code")]} icon={<Code2 size={15} />}>
+        <SidebarLink
+          to={`${base}/code`}
+          also={[
+            `${base}/tree`,
+            `${base}/blob`,
+            `${base}/commits`,
+            `${base}/commit`,
+            `${base}/branches`,
+            `${base}/tags`,
+            `${base}/compare`,
+            ...soonPaths(base, "Code"),
+          ]}
+          icon={<Code2 size={15} />}
+        >
           Code
         </SidebarLink>
         {shows.has("pulls") && (
@@ -877,8 +962,18 @@ function RepoMenu({
           <NavRows>
             {PROJECT_OPERATIONS.filter((page) => shows.has(page)).map((page) => {
               const link = PROJECT_PAGE_LINKS[page];
-              const icons = { secrets: <KeyRound size={15} />, environments: <Layers size={15} />, domains: <Globe size={15} />, runners: <ServerCog size={15} />, webhooks: <Webhook size={15} /> };
-              return <SidebarLink key={page} to={`${base}/${link.path}`} icon={icons[page]}>{link.label}</SidebarLink>;
+              const icons = {
+                secrets: <KeyRound size={15} />,
+                environments: <Layers size={15} />,
+                domains: <Globe size={15} />,
+                runners: <ServerCog size={15} />,
+                webhooks: <Webhook size={15} />,
+              };
+              return (
+                <SidebarLink key={page} to={`${base}/${link.path}`} icon={icons[page]}>
+                  {link.label}
+                </SidebarLink>
+              );
             })}
             <ProjectSoonRow base={base} feature="storage" icon={<Database size={15} />} />
             <ProjectSoonRow base={base} feature="daemons" icon={<Repeat size={15} />} />
@@ -963,9 +1058,6 @@ function RepoSettingsMenu({ repo }: { repo: MenuRepo }) {
             Actions
           </SidebarLink>
         )}
-
-
-
       </NavRows>
     </nav>
   );
@@ -1038,7 +1130,32 @@ function CodeSidebar({
   const active = shell.repo;
   // In a repository, or on the way into one, its own list.
   const repoPath = /^\/([^/]+)\/([^/-][^/]*)(\/|$)/.exec(target);
-  const reserved = new Set(["settings", "explore", "search", "new", "u", "pricing", "avatars", "workspaces", "login", "logout", "register", "verify", "forgot", "reset", "device", "oauth", "policies", "security", "support", "status", "invite", "notifications", "inbox", ".well-known"]);
+  const reserved = new Set([
+    "settings",
+    "explore",
+    "search",
+    "new",
+    "u",
+    "pricing",
+    "avatars",
+    "workspaces",
+    "login",
+    "logout",
+    "register",
+    "verify",
+    "forgot",
+    "reset",
+    "device",
+    "oauth",
+    "policies",
+    "security",
+    "support",
+    "status",
+    "invite",
+    "notifications",
+    "inbox",
+    ".well-known",
+  ]);
   // An invitation to a repository is answered before its menu means anything.
   const inRepo =
     repoPath != null &&
@@ -1060,9 +1177,7 @@ function CodeSidebar({
         }
     : null;
   // The viewer's role there, from the repository's page once it has loaded.
-  const page = useRouteLoaderData("routes/repo/layout") as
-    | { repo?: { namespace: string; name: string }; access?: ViewerAccess }
-    | undefined;
+  const page = useRouteLoaderData("routes/repo/layout") as { repo?: { namespace: string; name: string }; access?: ViewerAccess } | undefined;
   const menuRepo: MenuRepo | null =
     guessed && page?.access && page.repo && sameRepo(page.repo, guessed)
       ? { ...guessed, member: page.access.insider, settings: seesSettings(page.access), can: page.access.can }
@@ -1165,7 +1280,7 @@ function BrowseMenu({ user, owner }: { user: User; owner: BrowsedOwner | null })
     | undefined;
   if (owner?.kind === "workspace" && shown) {
     const base = `/${owner.name}`;
-    const projects = workspace?.workspace.slug.toLowerCase() === owner.name.toLowerCase() ? workspace.projects ?? [] : [];
+    const projects = workspace?.workspace.slug.toLowerCase() === owner.name.toLowerCase() ? (workspace.projects ?? []) : [];
     return (
       <nav aria-label={`${owner.name} workspace`} className={PANEL}>
         <NavRows>
@@ -1179,7 +1294,11 @@ function BrowseMenu({ user, owner }: { user: User; owner: BrowsedOwner | null })
         <Rule />
         <NavGroup title="Projects">
           {projects.slice(0, 8).map((project) => (
-            <SidebarLink key={project.name} to={`/${project.namespace}/${project.name}`} icon={<ProjectIcon kind={project.kind} isPrivate={project.isPrivate} lockPrivate size={15} />}>
+            <SidebarLink
+              key={project.name}
+              to={`/${project.namespace}/${project.name}`}
+              icon={<ProjectIcon kind={project.kind} isPrivate={project.isPrivate} lockPrivate size={15} />}
+            >
               {project.title}
             </SidebarLink>
           ))}
@@ -1189,11 +1308,15 @@ function BrowseMenu({ user, owner }: { user: User; owner: BrowsedOwner | null })
         </NavGroup>
         <Rule />
         <NavRows>
-          <SidebarLink to={`${base}/-/packages`} icon={<Package size={15} />}>Packages</SidebarLink>
+          <SidebarLink to={`${base}/-/packages`} icon={<Package size={15} />}>
+            Packages
+          </SidebarLink>
         </NavRows>
         <Rule />
         <NavRows>
-          <SidebarLink to="/explore" icon={<Compass size={15} />}>Explore</SidebarLink>
+          <SidebarLink to="/explore" icon={<Compass size={15} />}>
+            Explore
+          </SidebarLink>
         </NavRows>
       </nav>
     );
@@ -1226,11 +1349,7 @@ function BrowseMenu({ user, owner }: { user: User; owner: BrowsedOwner | null })
           <NavGroup title="You are viewing">
             {owner.kind === "person" && (
               <>
-                <SidebarLink
-                  to={`/u/${owner.name}`}
-                  icon={<Avatar name={owner.name} image={shown.avatar} size={16} />}
-                  current={profileTab !== "stars"}
-                >
+                <SidebarLink to={`/u/${owner.name}`} icon={<Avatar name={owner.name} image={shown.avatar} size={16} />} current={profileTab !== "stars"}>
                   {shown.name}
                 </SidebarLink>
                 <SidebarLink to={profilePath(owner.name, "stars")} icon={<Star size={15} />} current={profileTab === "stars"}>
@@ -1552,7 +1671,7 @@ function NotificationsSidebar({ counts }: { counts: InboxCounts | null }) {
           ))}
         </NavRows>
         <Rule />
-      <NavGroup title="Why you were told">
+        <NavGroup title="Why you were told">
           {REASON_FILTERS.map((entry) => (
             <SidebarLink
               key={entry.reason ?? "any"}
@@ -1667,7 +1786,9 @@ function Breadcrumbs({
   // Your settings: Settings / Emails.
   if (parts[0] === "settings") {
     const page = accountSettingsPage(pathname);
-    return <Trail trail={[{ label: "Settings", to: FIRST_SETTINGS_PAGE }, ...(page ? [{ label: ACCOUNT_SETTINGS[page].title, to: `/settings/${page}` }] : [])]} />;
+    return (
+      <Trail trail={[{ label: "Settings", to: FIRST_SETTINGS_PAGE }, ...(page ? [{ label: ACCOUNT_SETTINGS[page].title, to: `/settings/${page}` }] : [])]} />
+    );
   }
   if (reserved.includes(parts[0]!)) {
     const words: Record<string, string> = {
@@ -1722,8 +1843,7 @@ function Breadcrumbs({
     else if (third === "settings" && fourth && projectPageAt(`settings/${fourth}`) !== "settings" && projectPageAt(`settings/${fourth}`) != null) {
       const page = projectPageAt(`settings/${fourth}`) as keyof typeof PROJECT_PAGE_LINKS;
       trail.push({ label: fourth === "deployments" ? "Build configuration" : PROJECT_PAGE_LINKS[page].label, to: `${repo}/settings/${fourth}` });
-    }
-    else if (third && SECTIONS[third]) {
+    } else if (third && SECTIONS[third]) {
       trail.push({ label: SECTIONS[third]!, to: `${repo}/${third}` });
       // A settings page names which one: Settings / Secrets and variables.
       if (third === "settings" && fourth && SECTIONS[fourth]) {
@@ -1884,7 +2004,12 @@ function commandsFor(user: User, shell: ShellData): Command[] {
   }
   for (const membership of user.workspaces ?? []) {
     commands.push(
-      { label: displayName(membership), hint: `Workspace · ${membership.slug}`, to: `/${membership.slug}`, icon: <Avatar name={membership.slug} image={membership.avatar} size={15} square /> },
+      {
+        label: displayName(membership),
+        hint: `Workspace · ${membership.slug}`,
+        to: `/${membership.slug}`,
+        icon: <Avatar name={membership.slug} image={membership.avatar} size={15} square />,
+      },
       { label: "All projects", hint: membership.slug, to: `/${membership.slug}/-/projects`, icon: <LayoutGrid size={15} /> },
       { label: "People", hint: membership.slug, to: `/${membership.slug}/-/people`, icon: <Users size={15} /> },
       { label: "Usage", hint: membership.slug, to: `/${membership.slug}/-/usage`, icon: <BarChart3 size={15} /> },
@@ -1958,14 +2083,9 @@ export function Progress() {
   return (
     <div
       aria-hidden="true"
-      className={`pointer-events-none fixed inset-x-0 top-0 z-60 h-0.75 transition-opacity duration-300 ${
-        visible ? "opacity-100" : "opacity-0"
-      }`}
+      className={`pointer-events-none fixed inset-x-0 top-0 z-60 h-0.75 transition-opacity duration-300 ${visible ? "opacity-100" : "opacity-0"}`}
     >
-      <div
-        className="h-full bg-accent shadow-[0_0_10px_var(--color-accent)] transition-[width] duration-200 ease-out"
-        style={{ width: `${width}%` }}
-      />
+      <div className="h-full bg-accent shadow-[0_0_10px_var(--color-accent)] transition-[width] duration-200 ease-out" style={{ width: `${width}%` }} />
     </div>
   );
 }
@@ -2134,9 +2254,11 @@ export function AppShell({
       return !was;
     });
   }, []);
-  useSidebarShortcut(useCallback(() => {
-    if (panel) toggleSidebar();
-  }, [panel, toggleSidebar]));
+  useSidebarShortcut(
+    useCallback(() => {
+      if (panel) toggleSidebar();
+    }, [panel, toggleSidebar]),
+  );
 
   const inline = panel != null && !closed;
   const sidebarNode = () => {
@@ -2273,7 +2395,9 @@ export function AppShell({
           </main>
         </div>
       </div>
-      {ws && <BottomBar user={user} workspace={ws} mode={mode} pins={shell.pins ?? []} unread={unread} onReselect={panel ? () => setDrawer(true) : undefined} />}
+      {ws && (
+        <BottomBar user={user} workspace={ws} mode={mode} pins={shell.pins ?? []} unread={unread} onReselect={panel ? () => setDrawer(true) : undefined} />
+      )}
       <CommandPalette open={palette} onOpenChange={setPalette} commands={commands} repo={shell.repo ? `${shell.repo.namespace}/${shell.repo.name}` : null} />
     </SidebarProvider>
   );

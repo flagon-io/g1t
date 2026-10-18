@@ -20,7 +20,9 @@ function charge(micros: number): string {
 /** A usage entry at its price: what was charged, what paid for it first, and what the discount took off. */
 export function entryPrice(entry: Pick<LedgerEntry, "amountMicros" | "creditMicros" | "trialMicros" | "ossMicros" | "givenMicros" | "discountMicros">): number {
   if ((entry.discountMicros ?? 0) === 0) return -entry.amountMicros;
-  return -entry.amountMicros + (entry.creditMicros ?? 0) + (entry.trialMicros ?? 0) + (entry.ossMicros ?? 0) + (entry.givenMicros ?? 0) + (entry.discountMicros ?? 0);
+  return (
+    -entry.amountMicros + (entry.creditMicros ?? 0) + (entry.trialMicros ?? 0) + (entry.ossMicros ?? 0) + (entry.givenMicros ?? 0) + (entry.discountMicros ?? 0)
+  );
 }
 
 /** `Discount (100%)`, or `Discount` when the percentage is not known (a discount since ended). */
@@ -51,18 +53,9 @@ function dayLabel(day: string): string {
  * project) with one line per kind of charge. A line opens to its entries,
  * 50 at a time.
  */
-export function StatementView({
-  slug,
-  statement,
-  group,
-}: {
-  slug: string;
-  statement: Statement;
-  group: "day" | "project";
-}) {
+export function StatementView({ slug, statement, group }: { slug: string; statement: Statement; group: "day" | "project" }) {
   const navigate = useNavigate();
-  const go = (month: string, by: string) =>
-    navigate(`/${slug}/-/billing?month=${month}&group=${by}#statement`, { preventScrollReset: true });
+  const go = (month: string, by: string) => navigate(`/${slug}/-/billing?month=${month}&group=${by}#statement`, { preventScrollReset: true });
   const months = statement.months.includes(statement.month) ? statement.months : [statement.month, ...statement.months];
   const { totals } = statement;
   // With a discount, every line at its price, and the discount beside it.
@@ -145,8 +138,8 @@ export function StatementView({
       {((totals.taxMicros ?? 0) !== 0 || (totals.cardFeeMicros ?? 0) !== 0) && (
         <p className="mt-2 text-xs text-faint">
           Paid with this month's payments on top of what they credited: tax {money(totals.taxMicros ?? 0)}
-          {(totals.cardFeeMicros ?? 0) !== 0 ? `, and card processing fees on earlier payments ${money(totals.cardFeeMicros ?? 0)}` : ""}. Prices
-          exclude tax, and it never comes from your balance.
+          {(totals.cardFeeMicros ?? 0) !== 0 ? `, and card processing fees on earlier payments ${money(totals.cardFeeMicros ?? 0)}` : ""}. Prices exclude tax,
+          and it never comes from your balance.
         </p>
       )}
       {((totals.covered?.length ?? 0) > 0 || (totals.carriedMicros ?? 0) > 0) && (
@@ -178,9 +171,7 @@ export function StatementView({
             {statement.groups.map((g) => (
               <div key={g.key} className="border-b border-line last:border-b-0">
                 <div className="flex items-center gap-4 bg-surface px-4 py-2 text-xs">
-                  <span className="grow truncate font-medium text-muted">
-                    {group === "day" ? dayLabel(g.key) : g.label}
-                  </span>
+                  <span className="grow truncate font-medium text-muted">{group === "day" ? dayLabel(g.key) : g.label}</span>
                   <span className="font-mono tabular-nums text-faint">{charge(g.chargedMicros)}</span>
                 </div>
                 <ul className="divide-y divide-line">
@@ -195,18 +186,18 @@ export function StatementView({
                         <span className="w-24 shrink-0 text-right font-mono tabular-nums text-muted">{money(line.passedMicros ?? 0)}</span>
                       </li>
                     ) : (
-                    <StatementLineRow
-                      key={line.kind}
-                      slug={slug}
-                      month={statement.month}
-                      kind={line.kind}
-                      count={line.count}
-                      minutes={line.minutes ?? null}
-                      chargedMicros={atPrice && line.chargedMicros >= 0 ? (line.priceMicros ?? line.chargedMicros) : line.chargedMicros}
-                      coveredMicros={line.coveredMicros ?? 0}
-                      day={group === "day" ? g.key : null}
-                      project={group === "project" ? g.key : null}
-                    />
+                      <StatementLineRow
+                        key={line.kind}
+                        slug={slug}
+                        month={statement.month}
+                        kind={line.kind}
+                        count={line.count}
+                        minutes={line.minutes ?? null}
+                        chargedMicros={atPrice && line.chargedMicros >= 0 ? (line.priceMicros ?? line.chargedMicros) : line.chargedMicros}
+                        coveredMicros={line.coveredMicros ?? 0}
+                        day={group === "day" ? g.key : null}
+                        project={group === "project" ? g.key : null}
+                      />
                     ),
                   )}
                   {(g.discountMicros ?? 0) > 0 && (
@@ -284,12 +275,7 @@ function StatementLineRow({
 
   return (
     <li>
-      <button
-        type="button"
-        onClick={toggle}
-        aria-expanded={open}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-surface/60"
-      >
+      <button type="button" onClick={toggle} aria-expanded={open} className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-surface/60">
         <ChevronRight size={14} className={`shrink-0 text-faint transition-transform ${open ? "rotate-90" : ""}`} />
         <span className="grow truncate font-medium">{kind}</span>
         <span className="shrink-0 text-xs text-faint tabular-nums">
@@ -297,9 +283,7 @@ function StatementLineRow({
           {count.toLocaleString("en-US")} {count === 1 ? "entry" : "entries"}
           {coveredMicros > 0 && ` · ${charge(coveredMicros)} paid for`}
         </span>
-        <span
-          className={`w-24 shrink-0 text-right font-mono tabular-nums ${moneyIn ? "text-success" : "text-fg"}`}
-        >
+        <span className={`w-24 shrink-0 text-right font-mono tabular-nums ${moneyIn ? "text-success" : "text-fg"}`}>
           {moneyIn ? `+${money(-chargedMicros)}` : charge(chargedMicros)}
         </span>
       </button>

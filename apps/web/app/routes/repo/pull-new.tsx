@@ -6,14 +6,7 @@ import { page } from "../../lib/meta";
 import { cloneUrl, useAddresses } from "../../lib/addresses";
 import { Combobox } from "../../components/ui/combobox";
 import { Hint } from "../../components/ui/hint";
-import {
-  SubmitButton,
-  CopyLine,
-  EmptyState,
-  ErrorText,
-  Field,
-  Input,
-} from "../../components/ui";
+import { SubmitButton, CopyLine, EmptyState, ErrorText, Field, Input } from "../../components/ui";
 import { Card } from "../../components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { accessFor } from "../../lib/access.server";
@@ -52,7 +45,10 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     repos.branches(path, user),
     part(work.listPulls(path, user, "open"), "Open pull requests"),
     // Forks of it the viewer can push to: pull requests can come from their branches.
-    part(repos.forks(path, user, 100).then((found) => (found.ok ? found.value : [])), "Your forks"),
+    part(
+      repos.forks(path, user, 100).then((found) => (found.ok ? found.value : [])),
+      "Your forks",
+    ),
   ]);
   const { defaultBranch } = unwrap(repo);
   const all = unwrap(branches).filter((branch) => !branch.name.startsWith("g1t-queue/"));
@@ -76,7 +72,10 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (fork && !theirs.some((f) => f.id === fork.id)) theirs.unshift(fork);
   const headRepo = fork ? { namespace: fork.namespace, name: fork.name } : null;
   const headFound = headRepo
-    ? await part(repos.branches(headRepo, user).then((found) => (found.ok ? found.value : [])), "The fork's branches")
+    ? await part(
+        repos.branches(headRepo, user).then((found) => (found.ok ? found.value : [])),
+        "The fork's branches",
+      )
     : all;
   // A fork asked for whose branches could not be read: the form says so,
   // rather than offering this repository's branches or none.
@@ -206,8 +205,8 @@ export default function NewPull({ loaderData, actionData, params }: Route.Compon
           <CopyLine prompt text={`git push ${remote} my-change`} />
         </div>
         <p className="mt-4 text-sm text-muted">
-          A coding agent connected through the MCP server does not need a branch: it can
-          open a draft pull request for a work item and get a fork of its own to push to.
+          A coding agent connected through the MCP server does not need a branch: it can open a draft pull request for a work item and get a fork of its own to
+          push to.
         </p>
       </div>
     );

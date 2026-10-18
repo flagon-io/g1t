@@ -4,12 +4,7 @@
  * connected, can connect now, and will be able to soon.
  */
 
-import {
-  CONNECTOR_CATEGORIES,
-  type ConnectorCategory,
-  type ConnectorScope,
-  type ConnectorView,
-} from "@g1t/contracts/connectors";
+import { CONNECTOR_CATEGORIES, type ConnectorCategory, type ConnectorScope, type ConnectorView } from "@g1t/contracts/connectors";
 
 /** "all", or one category: what the directory's navigation selects. */
 export type CategoryFilter = ConnectorCategory | "all";
@@ -69,9 +64,7 @@ export function arrange(
   { category, query, connected }: { category: CategoryFilter; query: string; connected: ReadonlySet<string> },
 ): Directory {
   const searching = query.trim().length > 0;
-  const shown = views.filter(
-    (view) => (searching || category === "all" || view.category === category) && matchesQuery(view, query),
-  );
+  const shown = views.filter((view) => (searching || category === "all" || view.category === category) && matchesQuery(view, query));
   return {
     connected: shown.filter((view) => connected.has(view.id)),
     available: shown.filter((view) => view.status === "available" && !connected.has(view.id)),

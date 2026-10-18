@@ -241,10 +241,7 @@ export default function Routines({ loaderData }: Route.ComponentProps) {
           <fieldset disabled aria-describedby="routines-soon" className="mt-4 flex min-w-0 flex-col gap-5">
             <Field>
               <FieldLabel htmlFor="routine-prompt">What should it do?</FieldLabel>
-              <Textarea
-                id="routine-prompt"
-                placeholder="Every weekday at 9, post what shipped yesterday and what is waiting on review to #general."
-              />
+              <Textarea id="routine-prompt" placeholder="Every weekday at 9, post what shipped yesterday and what is waiting on review to #general." />
               <FieldDescription>Each run starts fresh, so say everything it needs to know.</FieldDescription>
             </Field>
             <div className="grid gap-5 md:grid-cols-2">
@@ -276,9 +273,7 @@ export default function Routines({ loaderData }: Route.ComponentProps) {
                 <ToggleGroupItem value="mine">Yours</ToggleGroupItem>
                 <ToggleGroupItem value="workspace">{name}'s</ToggleGroupItem>
               </ToggleGroup>
-              <FieldDescription>
-                Yours runs as you, with what you can reach. {name}'s is kept by a team and seen by everyone in it.
-              </FieldDescription>
+              <FieldDescription>Yours runs as you, with what you can reach. {name}'s is kept by a team and seen by everyone in it.</FieldDescription>
             </Field>
             <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line pt-4">
               <Button variant="outline">Try it once</Button>
@@ -346,9 +341,8 @@ export default function Routines({ loaderData }: Route.ComponentProps) {
           ))}
         </div>
         <p className="mt-4 max-w-3xl text-sm text-muted">
-          Every run is a session: titled, recorded and on {name}'s bill, so you can see what each routine did, when, and why. It thinks with
-          your workspace's AI, or runs as your own agent on a runner, in a sandbox. Each has a budget per run and per day, and can be paused
-          at any time.
+          Every run is a session: titled, recorded and on {name}'s bill, so you can see what each routine did, when, and why. It thinks with your workspace's
+          AI, or runs as your own agent on a runner, in a sandbox. Each has a budget per run and per day, and can be paused at any time.
         </p>
       </section>
     </main>

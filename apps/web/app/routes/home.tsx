@@ -2,7 +2,15 @@ import { useEffect } from "react";
 import { data, redirect, useNavigate } from "react-router";
 
 import type { Route } from "./+types/home";
-import { DESKTOP_COOKIE, DESKTOP_COOKIE_SECONDS, DESKTOP_QUERY, DESKTOP_VALUE, fromDesktopApp, launchedFromDesktopApp, rememberDesktopApp } from "../lib/desktop";
+import {
+  DESKTOP_COOKIE,
+  DESKTOP_COOKIE_SECONDS,
+  DESKTOP_QUERY,
+  DESKTOP_VALUE,
+  fromDesktopApp,
+  launchedFromDesktopApp,
+  rememberDesktopApp,
+} from "../lib/desktop";
 import { cookie } from "../lib/github";
 import { desktopBridge } from "../lib/notify-client";
 import { page } from "../lib/meta";

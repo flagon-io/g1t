@@ -67,13 +67,13 @@ action.
 
 ### What the fork gets
 
-| Copied | Not copied |
-| --- | --- |
-| The default branch, or every branch and tag | Work items, pull requests and comments |
-| Its project's description, to the fork's project | Settings, rulesets and branch protection |
-| | Secrets, variables and webhooks |
-| | Environments, projects, deployments and custom domains |
-| | Releases, packages and stars |
+| Copied                                           | Not copied                                             |
+| ------------------------------------------------ | ------------------------------------------------------ |
+| The default branch, or every branch and tag      | Work items, pull requests and comments                 |
+| Its project's description, to the fork's project | Settings, rulesets and branch protection               |
+|                                                  | Secrets, variables and webhooks                        |
+|                                                  | Environments, projects, deployments and custom domains |
+|                                                  | Releases, packages and stars                           |
 
 Filing work items is off in a new fork, and so are its workflows: a fork runs none of
 the workflows it copied until someone turns them on (see
@@ -82,12 +82,12 @@ up the fork's own project.
 
 ### When forking is refused
 
-| Response | Why | What to do |
-| --- | --- | --- |
-| `403 forbidden` | The repository is private and its admins have not allowed forking, or you cannot create a repository of its kind in the workspace. | Ask its admins to allow forking, or pick another workspace. |
-| `409 conflict` | The workspace already has a repository with that name, or a recently deleted one holds it. | Give the fork another `name`. |
-| `402 payment_required` | The fork is private, the workspace is on no plan, and its private repositories would hold more than a free workspace's 1 GB. | Start the g1t plan in the workspace, or fork into another. |
-| `422 invalid` | The name is not valid, no workspace was named and you belong to several, or the repository is a pull request's working copy. | Name a workspace, or fork the repository the working copy belongs to. |
+| Response               | Why                                                                                                                                | What to do                                                            |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `403 forbidden`        | The repository is private and its admins have not allowed forking, or you cannot create a repository of its kind in the workspace. | Ask its admins to allow forking, or pick another workspace.           |
+| `409 conflict`         | The workspace already has a repository with that name, or a recently deleted one holds it.                                         | Give the fork another `name`.                                         |
+| `402 payment_required` | The fork is private, the workspace is on no plan, and its private repositories would hold more than a free workspace's 1 GB.       | Start the g1t plan in the workspace, or fork into another.            |
+| `422 invalid`          | The name is not valid, no workspace was named and you belong to several, or the repository is a pull request's working copy.       | Name a workspace, or fork the repository the working copy belongs to. |
 
 ## Sync a fork
 
@@ -121,12 +121,12 @@ curl -X POST https://api.g1t.sh/repos/ada-labs/rocket/merge-upstream \
 Syncing needs the Write role on the fork and read access to its parent. What
 happens depends on the branch:
 
-| `status` | The branch | What changed |
-| --- | --- | --- |
-| `up_to_date` | Already had every commit of the parent's branch. | Nothing. |
-| `fast_forwarded` | Was only behind. | It now points where the parent's does. |
-| `merged` | Had commits of its own, and the two sides' changes do not clash: different files, or different lines of the same file. | A merge commit joins them. |
-| `conflicted` | Had commits of its own, and both sides changed the same lines (or one deleted a file the other changed, or both changed a binary file), in the files listed in `conflicts`. | Nothing. |
+| `status`         | The branch                                                                                                                                                                  | What changed                           |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| `up_to_date`     | Already had every commit of the parent's branch.                                                                                                                            | Nothing.                               |
+| `fast_forwarded` | Was only behind.                                                                                                                                                            | It now points where the parent's does. |
+| `merged`         | Had commits of its own, and the two sides' changes do not clash: different files, or different lines of the same file.                                                      | A merge commit joins them.             |
+| `conflicted`     | Had commits of its own, and both sides changed the same lines (or one deleted a file the other changed, or both changed a binary file), in the files listed in `conflicts`. | Nothing.                               |
 
 The answer also says how many commits the branch was `behind` and `ahead`.
 A conflicted branch is yours to merge: pull the parent's branch into your

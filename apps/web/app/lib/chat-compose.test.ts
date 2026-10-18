@@ -37,7 +37,10 @@ test("each paragraph is a line; an empty one is a blank line", () => {
 
 test("text that only looks like Markdown is escaped, and mentions stay mentions", () => {
   assert.equal(escapeText("2*3 and snake_case and _edge_ and [x] and `t` and ~5"), "2\\*3 and snake_case and \\_edge\\_ and \\[x\\] and \\`t\\` and \\~5");
-  assert.equal(docToMarkdown(doc(p(text("- not a list")), p(text("1. not either")), p(text("# nor this")), p(text("> or this")))), "\\- not a list\n1\\. not either\n\\# nor this\n\\> or this");
+  assert.equal(
+    docToMarkdown(doc(p(text("- not a list")), p(text("1. not either")), p(text("# nor this")), p(text("> or this")))),
+    "\\- not a list\n1\\. not either\n\\# nor this\n\\> or this",
+  );
   assert.equal(docToMarkdown(doc(p(text("ask @ana in #web about #12")))), "ask @ana in #web about #12");
 });
 
@@ -47,7 +50,10 @@ test("lists, quotes and code blocks", () => {
     docToMarkdown(
       doc(
         p(text("Plan:")),
-        { type: "bulletList", content: [item(p(text("one"))), item(p(text("two")), { type: "orderedList", attrs: { start: 1 }, content: [item(p(text("deep")))] })] },
+        {
+          type: "bulletList",
+          content: [item(p(text("one"))), item(p(text("two")), { type: "orderedList", attrs: { start: 1 }, content: [item(p(text("deep")))] })],
+        },
         p(text("after")),
       ),
     ),
@@ -55,8 +61,14 @@ test("lists, quotes and code blocks", () => {
   );
   assert.equal(docToMarkdown(doc({ type: "orderedList", attrs: { start: 3 }, content: [item(p(text("c"))), item(p(text("d")))] })), "3. c\n4. d");
   assert.equal(docToMarkdown(doc({ type: "blockquote", content: [p(text("quoted")), p(), p(text("more"))] })), "> quoted\n>\n> more");
-  assert.equal(docToMarkdown(doc({ type: "codeBlock", attrs: { language: "ts" }, content: [{ type: "text", text: "const a = 1;\n\n\nconst b = `x`;" }] })), "```ts\nconst a = 1;\n\n\nconst b = `x`;\n```");
-  assert.equal(docToMarkdown(doc({ type: "codeBlock", attrs: { language: null }, content: [{ type: "text", text: "```\nfence\n```" }] })), "````\n```\nfence\n```\n````");
+  assert.equal(
+    docToMarkdown(doc({ type: "codeBlock", attrs: { language: "ts" }, content: [{ type: "text", text: "const a = 1;\n\n\nconst b = `x`;" }] })),
+    "```ts\nconst a = 1;\n\n\nconst b = `x`;\n```",
+  );
+  assert.equal(
+    docToMarkdown(doc({ type: "codeBlock", attrs: { language: null }, content: [{ type: "text", text: "```\nfence\n```" }] })),
+    "````\n```\nfence\n```\n````",
+  );
 });
 
 test("Markdown comes back into the composer as it was written", () => {

@@ -222,10 +222,16 @@ export class RepoDeployments {
     const marks = (ids: string[]) => ids.map(() => "?").join(", ");
     const [reported, builds] = await Promise.all([
       reportedIds.length
-        ? this.db.prepare(`SELECT * FROM reported_deployments WHERE id IN (${marks(reportedIds)})`).bind(...reportedIds).all<ReportedRow>()
+        ? this.db
+            .prepare(`SELECT * FROM reported_deployments WHERE id IN (${marks(reportedIds)})`)
+            .bind(...reportedIds)
+            .all<ReportedRow>()
         : Promise.resolve({ results: [] as ReportedRow[] }),
       buildIds.length
-        ? this.db.prepare(`SELECT * FROM deployments WHERE id IN (${marks(buildIds)})`).bind(...buildIds).all<BuildRow>()
+        ? this.db
+            .prepare(`SELECT * FROM deployments WHERE id IN (${marks(buildIds)})`)
+            .bind(...buildIds)
+            .all<BuildRow>()
         : Promise.resolve({ results: [] as BuildRow[] }),
     ]);
     const names = await this.names(builds.results);
@@ -265,7 +271,10 @@ export class RepoDeployments {
         .prepare(`WITH d AS (${UNION}) SELECT id, build FROM d ${where} ORDER BY created_at DESC, id DESC LIMIT ?10 OFFSET ?11`)
         .bind(...binds, perPage, (page - 1) * perPage)
         .all<Listed>(),
-      this.db.prepare(`WITH d AS (${UNION}) SELECT COUNT(*) AS n FROM d ${where}`).bind(...binds).first<{ n: number }>(),
+      this.db
+        .prepare(`WITH d AS (${UNION}) SELECT COUNT(*) AS n FROM d ${where}`)
+        .bind(...binds)
+        .first<{ n: number }>(),
     ]);
     return ok({
       deployments: await this.hydrate(rows.results, repo),
@@ -283,23 +292,14 @@ export class RepoDeployments {
 
   private async detail(repo: Repo, id: string): Promise<Result<DeploymentDetail>> {
     if (id.startsWith("dpl_")) {
-      const row = await this.db
-        .prepare("SELECT * FROM deployments WHERE id = ? AND repo_id = ?")
-        .bind(id, repo.id)
-        .first<BuildRow>();
+      const row = await this.db.prepare("SELECT * FROM deployments WHERE id = ? AND repo_id = ?").bind(id, repo.id).first<BuildRow>();
       if (!row) return fail("not_found", "There is no such deployment.");
       const deployment = fromBuild(row, repo.defaultBranch, this.env.SITE, appUrl, await this.names([row]));
       return ok({ ...deployment, statuses: buildStatuses(row, deployment) });
     }
-    const row = await this.db
-      .prepare("SELECT * FROM reported_deployments WHERE id = ? AND repo_id = ?")
-      .bind(id, repo.id)
-      .first<ReportedRow>();
+    const row = await this.db.prepare("SELECT * FROM reported_deployments WHERE id = ? AND repo_id = ?").bind(id, repo.id).first<ReportedRow>();
     if (!row) return fail("not_found", "There is no such deployment.");
-    const statuses = await this.db
-      .prepare("SELECT * FROM deployment_statuses WHERE deployment_id = ? ORDER BY created_at, id")
-      .bind(id)
-      .all<StatusRow>();
+    const statuses = await this.db.prepare("SELECT * FROM deployment_statuses WHERE deployment_id = ? ORDER BY created_at, id").bind(id).all<StatusRow>();
     return ok({ ...toDeployment(row), statuses: statuses.results.map(toStatus) });
   }
 
@@ -366,7 +366,13 @@ export class RepoDeployments {
   async environment(a: { repo: RepoPath; name: string; viewer: Viewer }): Promise<Result<DeploymentEnvironment>> {
     const all = await this.environments(a);
     if (!all.ok) return all;
-    const found = all.value.environments.find((env) => env.name.toLowerCase() === String(a.name ?? "").trim().toLowerCase());
+    const found = all.value.environments.find(
+      (env) =>
+        env.name.toLowerCase() ===
+        String(a.name ?? "")
+          .trim()
+          .toLowerCase(),
+    );
     return found ? ok(found) : fail("not_found", `There is no environment called ${a.name}.`);
   }
 
@@ -378,10 +384,7 @@ export class RepoDeployments {
       .prepare("INSERT INTO environments (repo_id, name, created_at) VALUES (?, ?, ?) ON CONFLICT (repo_id, name) DO NOTHING")
       .bind(repoId, name, now())
       .run();
-    const row = await this.db
-      .prepare("SELECT name FROM environments WHERE repo_id = ? AND name = ?")
-      .bind(repoId, name)
-      .first<{ name: string }>();
+    const row = await this.db.prepare("SELECT name FROM environments WHERE repo_id = ? AND name = ?").bind(repoId, name).first<{ name: string }>();
     // A g1t.page environment is spelled as g1t.page spells it.
     const builtIn = ["production", "preview"].find((own) => own === name.toLowerCase());
     return builtIn ?? row?.name ?? name;
@@ -594,11 +597,7 @@ export class RepoDeployments {
   }
 
   /** `deploy / <environment>` on the commit, linked to the deployment's page. */
-  private async reportOnCommit(
-    repo: Pick<Repo, "id" | "namespace" | "name">,
-    deployment: RepoDeployment,
-    status: DeploymentStatus,
-  ): Promise<void> {
+  private async reportOnCommit(repo: Pick<Repo, "id" | "namespace" | "name">, deployment: RepoDeployment, status: DeploymentStatus): Promise<void> {
     const state = commitState(status.state);
     if (!state) return;
     await this.env.WORK.fetch("https://work/rpc/set_commit_status", {
@@ -746,9 +745,7 @@ export class RepoDeployments {
   /** A purged repository's reported deployments go with it. */
   async purge(repoId: string): Promise<void> {
     await this.db.batch([
-      this.db.prepare(
-        "DELETE FROM deployment_statuses WHERE deployment_id IN (SELECT id FROM reported_deployments WHERE repo_id = ?)",
-      ).bind(repoId),
+      this.db.prepare("DELETE FROM deployment_statuses WHERE deployment_id IN (SELECT id FROM reported_deployments WHERE repo_id = ?)").bind(repoId),
       this.db.prepare("DELETE FROM reported_deployments WHERE repo_id = ?").bind(repoId),
       this.db.prepare("DELETE FROM environments WHERE repo_id = ?").bind(repoId),
     ]);

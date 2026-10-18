@@ -4,7 +4,21 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { DATASETS, WATCHER_QUERIES, assemble, buildQuery, format, lastFullHour, logsDataset, parseArgs, parseGroups, snake, verdict, watcherQuery, windows } from "./platform-usage.mjs";
+import {
+  DATASETS,
+  WATCHER_QUERIES,
+  assemble,
+  buildQuery,
+  format,
+  lastFullHour,
+  logsDataset,
+  parseArgs,
+  parseGroups,
+  snake,
+  verdict,
+  watcherQuery,
+  windows,
+} from "./platform-usage.mjs";
 
 const NOW = new Date("2026-10-08T15:30:00.000Z");
 const answer = (rows) => ({ data: { viewer: { accounts: [{ rows }] } } });
@@ -46,7 +60,13 @@ test("groups are summed per name, named from the listing, sorted largest first, 
   ]);
   const parsed = parseGroups(body, variantOf("d1"), { bbb: "g1t-repos" });
   assert.deepEqual(parsed.metrics, ["rows_read", "rows_written", "read_queries", "write_queries"]);
-  assert.deepEqual(parsed.rows.map((row) => [row.name, row.rows_read]), [["g1t-repos", 500], ["aaa", 15]]);
+  assert.deepEqual(
+    parsed.rows.map((row) => [row.name, row.rows_read]),
+    [
+      ["g1t-repos", 500],
+      ["aaa", 15],
+    ],
+  );
   assert.deepEqual(parsed.totals, { rows_read: 515, rows_written: 21, read_queries: 12, write_queries: 4 });
   const kv = parseGroups(
     answer([
@@ -56,7 +76,10 @@ test("groups are summed per name, named from the listing, sorted largest first, 
     variantOf("kv"),
     { n1: "SESSIONS" },
   );
-  assert.deepEqual(kv.rows.map((row) => row.name), ["SESSIONS / read", "SESSIONS / write"]);
+  assert.deepEqual(
+    kv.rows.map((row) => row.name),
+    ["SESSIONS / read", "SESSIONS / write"],
+  );
   assert.throws(() => parseGroups({ errors: [{ message: "unknown field cpuTimeUs" }] }, variantOf("workers")), /cpuTimeUs/);
   assert.equal(snake("billableOperations"), "billable_operations");
 });
@@ -65,17 +88,28 @@ test("a dataset that errors or is missing is a note, and the others still report
   const windowList = windows(NOW);
   const outcomes = {
     month_to_date: {
-      workers: { body: answer([{ sum: { requests: 7, errors: 0, cpuTimeUs: 1200 }, dimensions: { scriptName: "web" } }]), variant: variantOf("workers"), dataset: "workersInvocationsAdaptive" },
-      d1: { body: { errors: [{ message: "unknown field \"readQueries\"" }] }, variant: variantOf("d1"), dataset: "d1AnalyticsAdaptiveGroups" },
+      workers: {
+        body: answer([{ sum: { requests: 7, errors: 0, cpuTimeUs: 1200 }, dimensions: { scriptName: "web" } }]),
+        variant: variantOf("workers"),
+        dataset: "workersInvocationsAdaptive",
+      },
+      d1: { body: { errors: [{ message: 'unknown field "readQueries"' }] }, variant: variantOf("d1"), dataset: "d1AnalyticsAdaptiveGroups" },
       queues: { skipped: "queueMessageOperationsAdaptiveGroups is not in this account's schema" },
       kv: { error: new Error("fetch failed") },
-      artifacts: { body: answer([{ count: 4, sum: { durationMs: 80 }, dimensions: { repositoryNamespace: "g1t", eventType: "pull" } }]), variant: variantOf("artifacts"), dataset: "artifactsEventsAdaptiveGroups" },
+      artifacts: {
+        body: answer([{ count: 4, sum: { durationMs: 80 }, dimensions: { repositoryNamespace: "g1t", eventType: "pull" } }]),
+        variant: variantOf("artifacts"),
+        dataset: "artifactsEventsAdaptiveGroups",
+      },
     },
     last_24h: {},
   };
   const report = assemble({ account: "acct", now: NOW, windowList, outcomes });
   const month = report.windows[0];
-  assert.deepEqual(month.datasets.map((set) => set.key), ["workers", "artifacts"]);
+  assert.deepEqual(
+    month.datasets.map((set) => set.key),
+    ["workers", "artifacts"],
+  );
   assert.equal(month.notes.length, 3);
   assert.match(month.notes.join("\n"), /D1 rows.*readQueries/);
   assert.match(month.notes.join("\n"), /not in this account's schema/);
@@ -90,7 +124,10 @@ test("a dataset that errors or is missing is a note, and the others still report
 test("the JSON report is one snake_case object with every row", () => {
   const windowList = windows(NOW);
   const rows = Array.from({ length: 15 }, (_, at) => ({ sum: { requests: at + 1 }, dimensions: { scriptName: `s${at}` } }));
-  const outcomes = { month_to_date: { durable_objects: { body: answer(rows), variant: variantOf("durable_objects", 1), dataset: "durableObjectsInvocationsAdaptiveGroups" } }, last_24h: {} };
+  const outcomes = {
+    month_to_date: { durable_objects: { body: answer(rows), variant: variantOf("durable_objects", 1), dataset: "durableObjectsInvocationsAdaptiveGroups" } },
+    last_24h: {},
+  };
   const report = JSON.parse(JSON.stringify(assemble({ account: "acct", now: NOW, windowList, outcomes })));
   assert.deepEqual(Object.keys(report), ["account", "generated_at", "windows"]);
   assert.deepEqual(Object.keys(report.windows[0]), ["key", "label", "start", "end", "datasets", "notes", "errors"]);
@@ -99,7 +136,9 @@ test("the JSON report is one snake_case object with every row", () => {
   assert.equal(set.rows.length, 15);
   assert.equal(set.rows[0].name, "s14");
   assert.equal(set.totals.requests, 120);
-  const keys = JSON.stringify(report).match(/"([^"]+)":/g).map((key) => key.slice(1, -2));
+  const keys = JSON.stringify(report)
+    .match(/"([^"]+)":/g)
+    .map((key) => key.slice(1, -2));
   for (const key of keys) assert.match(key, /^[a-z0-9_]+$/, key);
   // The tables show only the top.
   assert.match(format(assemble({ account: "acct", now: NOW, windowList, outcomes }), 10), /\.\.\. and 5 more/);
@@ -115,7 +154,13 @@ test("the command line reads --json, --top and the account", () => {
 test("errors, fallbacks, failed watcher queries and an all-empty account fail the check", () => {
   const windowList = windows(NOW);
   const ok = {
-    month_to_date: { workers: { body: answer([{ sum: { requests: 7, errors: 0, cpuTimeUs: 1 }, dimensions: { scriptName: "web" } }]), variant: variantOf("workers"), dataset: "workersInvocationsAdaptive" } },
+    month_to_date: {
+      workers: {
+        body: answer([{ sum: { requests: 7, errors: 0, cpuTimeUs: 1 }, dimensions: { scriptName: "web" } }]),
+        variant: variantOf("workers"),
+        dataset: "workersInvocationsAdaptive",
+      },
+    },
     last_24h: {},
   };
   assert.deepEqual(verdict(assemble({ account: "acct", now: NOW, windowList, outcomes: ok }), { workers: { rows: 3 } }), []);
@@ -126,13 +171,19 @@ test("errors, fallbacks, failed watcher queries and an all-empty account fail th
     },
     last_24h: {},
   };
-  const problems = verdict(assemble({ account: "acct", now: NOW, windowList, outcomes: broken }), { do_sql: { error: 'unknown field "rowsWritten"' }, d1: { rows: 2 } });
+  const problems = verdict(assemble({ account: "acct", now: NOW, windowList, outcomes: broken }), {
+    do_sql: { error: 'unknown field "rowsWritten"' },
+    d1: { rows: 2 },
+  });
   assert.equal(problems.length, 3);
   assert.match(problems.join("\n"), /fell back to fewer fields: unknown field "cpuTimeUs"/);
   assert.match(problems.join("\n"), /fetch failed/);
   assert.match(problems.join("\n"), /watcher query do_sql \(durableObjectsPeriodicGroups\): unknown field "rowsWritten"/);
   const empty = { month_to_date: { workers: { body: answer([]), variant: variantOf("workers"), dataset: "workersInvocationsAdaptive" } }, last_24h: {} };
-  assert.match(verdict(assemble({ account: "acct", now: NOW, windowList, outcomes: empty }), { kv: { rows: 0 } }).join("\n"), /every dataset answered with no rows/);
+  assert.match(
+    verdict(assemble({ account: "acct", now: NOW, windowList, outcomes: empty }), { kv: { rows: 0 } }).join("\n"),
+    /every dataset answered with no rows/,
+  );
 });
 
 test("the watcher queries are billing's, field for field, over the last full hour", async () => {

@@ -1,15 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import {
-  DeadlineExceeded,
-  LONG_DEADLINE_MS,
-  READ_DEADLINE_MS,
-  SLOW_READ_DEADLINE_MS,
-  WRITE_DEADLINE_MS,
-  deadlineFor,
-  withDeadline,
-} from "./deadline.ts";
+import { DeadlineExceeded, LONG_DEADLINE_MS, READ_DEADLINE_MS, SLOW_READ_DEADLINE_MS, WRITE_DEADLINE_MS, deadlineFor, withDeadline } from "./deadline.ts";
 import { STUCK_NAVIGATION_MS } from "./stuck.ts";
 
 test("an answer in time is passed through", async () => {
@@ -27,7 +19,10 @@ test("a call that never answers fails at its deadline, and its signal aborts", a
 });
 
 test("a call that ignores its signal is still let go", async () => {
-  await assert.rejects(withDeadline("chat sidebar", 10, () => new Promise<never>(() => {})), DeadlineExceeded);
+  await assert.rejects(
+    withDeadline("chat sidebar", 10, () => new Promise<never>(() => {})),
+    DeadlineExceeded,
+  );
 });
 
 test("a failure in time is the call's own, not a deadline", async () => {

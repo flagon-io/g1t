@@ -34,8 +34,28 @@ const activity: RunnerActivity = {
   cloud_jobs: [{ id: "job_1", name: "test (ubuntu)", run_id: "wr_1", repo: "acme/web", started_at: "2026-10-10T10:05:00Z" }],
   cloud_jobs_queued: 2,
   handed_over: [
-    { id: "rtk_1", run_id: "run_mine", kind: "implement", title: "On my runner", repo: "acme/web", status: "in_progress", runner_name: "mac", created_at: "2026-10-10T09:00:00Z", started_at: null },
-    { id: "rtk_2", run_id: null, kind: "checks", title: "Waiting", repo: "acme/web", status: "queued", runner_name: null, created_at: "2026-10-10T09:00:00Z", started_at: null },
+    {
+      id: "rtk_1",
+      run_id: "run_mine",
+      kind: "implement",
+      title: "On my runner",
+      repo: "acme/web",
+      status: "in_progress",
+      runner_name: "mac",
+      created_at: "2026-10-10T09:00:00Z",
+      started_at: null,
+    },
+    {
+      id: "rtk_2",
+      run_id: null,
+      kind: "checks",
+      title: "Waiting",
+      repo: "acme/web",
+      status: "queued",
+      runner_name: null,
+      created_at: "2026-10-10T09:00:00Z",
+      started_at: null,
+    },
   ],
   self_hosted_jobs_queued: 3,
 };
@@ -67,7 +87,16 @@ test("a full list says there may be more", () => {
 });
 
 test("this month's time adds agent sandbox and sandbox time for g1t cloud, and self-hosted time for the workspace's own", () => {
-  const meter = (key: string, quantity: number, micros: number) => ({ key, label: key, product: "x", unit: "seconds", quantity, micros, daily: [], byProject: [] });
+  const meter = (key: string, quantity: number, micros: number) => ({
+    key,
+    label: key,
+    product: "x",
+    unit: "seconds",
+    quantity,
+    micros,
+    daily: [],
+    byProject: [],
+  });
   const report = {
     from: "2026-10-01",
     until: "2026-10-10",
@@ -78,12 +107,7 @@ test("this month's time adds agent sandbox and sandbox time for g1t cloud, and s
         key: "sandboxes",
         label: "Sandboxes",
         micros: 0,
-        meters: [
-          meter("runner_2-core", 10, 40_000),
-          meter("runner_4-core", 2, 14_000),
-          meter("sandbox", 120, 200_000),
-          meter("self_hosted", 3600, 0),
-        ],
+        meters: [meter("runner_2-core", 10, 40_000), meter("runner_4-core", 2, 14_000), meter("sandbox", 120, 200_000), meter("self_hosted", 3600, 0)],
       },
     ],
   } as unknown as UsageReport;

@@ -69,7 +69,13 @@ test("a request carrying a stand-in for its host is filled in, sent, and its ans
       }),
   );
   const response = await relay(
-    brokerRequest({ url: "https://registry.npmjs.org/pkg", headers: [["authorization", `Bearer ${NPM.standIn}`], ["connection", "keep-alive"]] }),
+    brokerRequest({
+      url: "https://registry.npmjs.org/pkg",
+      headers: [
+        ["authorization", `Bearer ${NPM.standIn}`],
+        ["connection", "keep-alive"],
+      ],
+    }),
     d,
   );
   assert.equal(response.status, 200);
@@ -156,7 +162,7 @@ test("a value split across chunks is still scrubbed, and other bytes pass as the
   assert.equal(new TextDecoder().decode(held.out), "x");
   assert.equal(new TextDecoder().decode(held.rest), "x sec");
 
-  const chunks = ["{\"t\":\"npm_real", "value123\",\"u\":\"npm_", "realvalue123\"}"];
+  const chunks = ['{"t":"npm_real', 'value123","u":"npm_', 'realvalue123"}'];
   const source = new ReadableStream<Uint8Array>({
     start(controller) {
       for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk));

@@ -50,12 +50,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 }
 
 /** Where it can be transferred: a workspace where the person can create a repository like it. */
-function destinations(
-  viewer: ReturnType<typeof getViewer>,
-  from: string,
-  isPrivate: boolean,
-  allowed: boolean,
-): { slug: string; name: string }[] {
+function destinations(viewer: ReturnType<typeof getViewer>, from: string, isPrivate: boolean, allowed: boolean): { slug: string; name: string }[] {
   if (!allowed) return [];
   return (viewer?.workspaces ?? [])
     .filter((m) => m.slug !== from.toLowerCase())
@@ -85,7 +80,13 @@ async function lifecycle(intent: LifecycleIntent, form: FormData, request: Reque
       // repos checks both workspaces' owners, the name and storage, and
       // keeps the old address as a redirect.
       if (!confirmsName(typed, full)) return { lifecycle: intent, error: `Type ${full} to confirm.` };
-      const moved = await repos.transfer(user, path, String(form.get("to") ?? "").trim().toLowerCase());
+      const moved = await repos.transfer(
+        user,
+        path,
+        String(form.get("to") ?? "")
+          .trim()
+          .toLowerCase(),
+      );
       if (!moved.ok) return failed(moved);
       throw redirect(`/${moved.value.namespace}/${moved.value.name}/settings`);
     }
@@ -196,10 +197,7 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
               </div>
             </Card>
           )}
-          <Field
-            label="Root directory"
-            hint="Where in the repository this project lives, such as apps/web. Builds run there. Empty for the whole repository."
-          >
+          <Field label="Root directory" hint="Where in the repository this project lives, such as apps/web. Builds run there. Empty for the whole repository.">
             <Input name="rootDir" defaultValue={source?.rootDir ?? ""} placeholder="apps/web" className="font-mono" />
           </Field>
         </section>
@@ -212,8 +210,8 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
             What it is
           </h2>
           <p className="max-w-2xl text-xs text-muted">
-            Its overview follows: production for what is deployed, packages and releases for a library or a tool, and
-            the steps that apply to it. Only an app or site hosted on g1t.page is asked to turn on Deployments.
+            Its overview follows: production for what is deployed, packages and releases for a library or a tool, and the steps that apply to it. Only an app or
+            site hosted on g1t.page is asked to turn on Deployments.
           </p>
           <KindFields project={project} choice={choice} onChoice={setChoice} />
           {blocked && (
@@ -233,8 +231,7 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
             Links
           </h2>
           <p className="max-w-2xl text-xs text-muted">
-            Shown on its overview, its card, and its workspace's Projects. Each is an http or https address;
-            https:// is added when you leave it out.
+            Shown on its overview, its card, and its workspace's Projects. Each is an http or https address; https:// is added when you leave it out.
           </p>
           <LinkFields links={project.links} />
         </section>
@@ -269,9 +266,8 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
           Production image
         </h2>
         <p className="max-w-2xl text-xs text-muted">
-          The picture on its overview's production card. A screenshot is taken by itself for an app hosted on g1t.page,
-          and of production's address for one that deploys itself, about once a day and after each production deployment
-          reported to g1t.
+          The picture on its overview's production card. A screenshot is taken by itself for an app hosted on g1t.page, and of production's address for one that
+          deploys itself, about once a day and after each production deployment reported to g1t.
         </p>
         <ProductionImageField
           image={project.productionImage}

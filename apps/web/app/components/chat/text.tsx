@@ -58,10 +58,28 @@ function SpanView({ span, context }: { span: Span; context: TextContext }): Reac
       // A link to a work item, a pull request or a commit here is its chip (components/chat/ref-chip.tsx).
       const target = refTarget(span.href);
       if (target?.kind === "item") {
-        return <RefChip slug={context.slug} scope={{ workspace: target.workspace }} number={target.number} to={target.href} label={spans(span.c, context)} kind="item" />;
+        return (
+          <RefChip
+            slug={context.slug}
+            scope={{ workspace: target.workspace }}
+            number={target.number}
+            to={target.href}
+            label={spans(span.c, context)}
+            kind="item"
+          />
+        );
       }
       if ((target?.kind === "pull" || target?.kind === "ref") && !context.codeLink) {
-        return <RefChip slug={context.slug} scope={{ repo: repoOf(target.repo) }} number={target.number} to={target.href} label={spans(span.c, context)} kind={target.kind === "pull" ? "pull" : undefined} />;
+        return (
+          <RefChip
+            slug={context.slug}
+            scope={{ repo: repoOf(target.repo) }}
+            number={target.number}
+            to={target.href}
+            label={spans(span.c, context)}
+            kind={target.kind === "pull" ? "pull" : undefined}
+          />
+        );
       }
       if (target?.kind === "commit" && !context.codeLink) return <CommitChip href={target.href} sha={target.sha} />;
       if (span.href.startsWith("/")) {
@@ -178,7 +196,10 @@ function BlockView({ block, context }: { block: Block; context: TextContext }) {
     case "list": {
       const Tag = block.ordered ? "ol" : "ul";
       return (
-        <Tag start={block.ordered && block.start !== 1 ? block.start : undefined} className={`space-y-0.5 pl-5 ${block.ordered ? "list-decimal" : "list-disc"} marker:text-faint`}>
+        <Tag
+          start={block.ordered && block.start !== 1 ? block.start : undefined}
+          className={`space-y-0.5 pl-5 ${block.ordered ? "list-decimal" : "list-disc"} marker:text-faint`}
+        >
           {block.items.map((item, index) => (
             <ListItem key={index} item={item} context={context} />
           ))}
@@ -203,7 +224,10 @@ function BlockView({ block, context }: { block: Block; context: TextContext }) {
 function TableView({ block, context }: { block: Extract<Block, { t: "table" }>; context: TextContext }) {
   const align = (index: number) => block.align[index] ?? undefined;
   return (
-    <Table frameProps={{ role: "region", "aria-label": "Table", tabIndex: 0, className: "my-1 rounded-lg border border-line" }} className="min-w-max text-[0.8125rem] leading-snug sm:min-w-full">
+    <Table
+      frameProps={{ role: "region", "aria-label": "Table", tabIndex: 0, className: "my-1 rounded-lg border border-line" }}
+      className="min-w-max text-[0.8125rem] leading-snug sm:min-w-full"
+    >
       <TableHeader>
         <TableRow>
           {block.head.map((cell, index) => (
@@ -307,7 +331,9 @@ export function CodeBlock({ language, code, title = null, bar = false }: { langu
   }
   return (
     <div className="group/code relative my-1">
-      <pre className="overflow-x-auto rounded-md border border-line bg-bg px-3 py-2 pointer-coarse:pr-10 font-mono text-[0.8125rem] leading-relaxed text-fg-soft scrollbar-thin">{body}</pre>
+      <pre className="overflow-x-auto rounded-md border border-line bg-bg px-3 py-2 pointer-coarse:pr-10 font-mono text-[0.8125rem] leading-relaxed text-fg-soft scrollbar-thin">
+        {body}
+      </pre>
       <div className="absolute top-1.5 right-1.5 flex items-center gap-2 opacity-0 transition-opacity group-hover/code:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
         {language && <span className="font-mono text-[0.6875rem] text-faint pointer-coarse:hidden">{language}</span>}
         {copy}

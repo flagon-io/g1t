@@ -3,21 +3,21 @@ title: Connect an AI client
 description: Connect coding agents, ChatGPT, Claude chat, Grok, Open WebUI or LibreChat to g1t projects through MCP.
 ---
 
-import AgentSetup from '../../../components/AgentSetup.astro';
+import AgentSetup from "../../../components/AgentSetup.astro";
 
 Coding agents such as Claude Code and Codex, chat apps such as ChatGPT
 and Grok, and open-source MCP clients connect to g1t and act as you,
 with the access you give them:
 
-| To | Use |
-| --- | --- |
-| Read and change anything on g1t from inside the agent | The MCP server at `https://mcp.g1t.sh`: [MCP tools](/reference/mcp/) |
-| Work from the agent's shell | The [g1t CLI](/guides/cli/): `g1t pr create`, `g1t pr checks --watch`, `g1t run logs --failed` |
-| Push code | git over HTTPS, signed in with `g1t auth setup-git` or an [access token](/guides/authentication/#access-tokens) |
-| Start the agent when something happens | [Webhooks](/guides/webhooks/), or a [workflow](/guides/actions/) on `work_item` or `work_item_comment` |
-| Show people how a change was made | The pull request's [session](/guides/why-blame/#sessions) |
-| See who is working on what, and not collide | [Claims and dependencies](/work/claims-and-dependencies/) |
-| Script anything else | The [REST API](/reference/api/), which has the same operations as the tools |
+| To                                                    | Use                                                                                                             |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Read and change anything on g1t from inside the agent | The MCP server at `https://mcp.g1t.sh`: [MCP tools](/reference/mcp/)                                            |
+| Work from the agent's shell                           | The [g1t CLI](/guides/cli/): `g1t pr create`, `g1t pr checks --watch`, `g1t run logs --failed`                  |
+| Push code                                             | git over HTTPS, signed in with `g1t auth setup-git` or an [access token](/guides/authentication/#access-tokens) |
+| Start the agent when something happens                | [Webhooks](/guides/webhooks/), or a [workflow](/guides/actions/) on `work_item` or `work_item_comment`          |
+| Show people how a change was made                     | The pull request's [session](/guides/why-blame/#sessions)                                                       |
+| See who is working on what, and not collide           | [Claims and dependencies](/work/claims-and-dependencies/)                                                       |
+| Script anything else                                  | The [REST API](/reference/api/), which has the same operations as the tools                                     |
 
 The agent runs where you run it: on your machine, in your CI, or on a
 [runner](/guides/self-hosted-runners/) of your own, on your own model
@@ -48,12 +48,12 @@ compatible model you host. An Ollama or vLLM model endpoint alone is not an MCP
 client: configure the model in your chat app and add g1t separately.
 Use a model with reliable tool calling.
 
-| Client | Connection |
-| --- | --- |
-| Grok chat | [Custom MCP connector](https://docs.x.ai/grok/connectors) at grok.com/connectors; sign in to g1t. |
+| Client                | Connection                                                                                                                                                                  |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Grok chat             | [Custom MCP connector](https://docs.x.ai/grok/connectors) at grok.com/connectors; sign in to g1t.                                                                           |
 | Claude chat / Desktop | [Custom remote connector](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp); choose automatic OAuth client registration. |
-| Open WebUI | An admin adds an [MCP Streamable HTTP server](https://docs.openwebui.com/features/extensibility/mcp/) with OAuth 2.1. |
-| LibreChat | Add the [MCP server configuration](https://www.librechat.ai/docs/configuration/librechat_yaml/object_structure/mcp_servers) shown above; each user signs in. |
+| Open WebUI            | An admin adds an [MCP Streamable HTTP server](https://docs.openwebui.com/features/extensibility/mcp/) with OAuth 2.1.                                                       |
+| LibreChat             | Add the [MCP server configuration](https://www.librechat.ai/docs/configuration/librechat_yaml/object_structure/mcp_servers) shown above; each user signs in.                |
 
 These are setup instructions based on the clients' documented capabilities;
 they are not an end-to-end certification of every model and client version.
@@ -91,10 +91,10 @@ send it as a bearer token:
 
 Give an agent the least that lets it do its work:
 
-| Choose | For an agent |
-| --- | --- |
-| Scopes | The **Agent** [preset](/guides/authentication/#presets), which reads across g1t and writes what an agent's work needs, and never includes an admin scope. Add one only for a task that needs it. |
-| Expires | The shortest that fits the work, such as 30 days. |
+| Choose  | For an agent                                                                                                                                                                                     |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Scopes  | The **Agent** [preset](/guides/authentication/#presets), which reads across g1t and writes what an agent's work needs, and never includes an admin scope. Add one only for a task that needs it. |
+| Expires | The shortest that fits the work, such as 30 days.                                                                                                                                                |
 
 A token reaches every workspace and repository you can. To keep an agent
 to one workspace, give it that workspace's own
@@ -137,7 +137,15 @@ the repository as its origin, and claims it in one step, and attaches the
 session (`session_id`) to it:
 
 ```json
-{ "name": "work_item", "arguments": { "action": "claim", "repo": "flagon-io/hello", "title": "Preview builds time out on large repositories", "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2" } }
+{
+  "name": "work_item",
+  "arguments": {
+    "action": "claim",
+    "repo": "flagon-io/hello",
+    "title": "Preview builds time out on large repositories",
+    "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2"
+  }
+}
 ```
 
 See [Work with no work item yet](/guides/sessions/#work-with-no-work-item-yet).
@@ -263,7 +271,7 @@ workspace's own Anthropic account. Once an owner adds an Anthropic key
 under [**AI**](/guides/ai/):
 
 - **Assign to g1t** in a work item's sidebar (or `g1t work edit 12
-  --add-assignee g1t`), or mention `@g1t` in a comment on a work item or
+--add-assignee g1t`), or mention `@g1t` in a comment on a work item or
   pull request, with what you want done.
 - **Start a session** on a work item's page, `g1t work dispatch 12`, or the
   `session` tool's `dispatch` action, to choose the mode (`plan`,
@@ -331,10 +339,14 @@ token sees only the actions its scope allows.
    your Private, where only you can open it until you share it.
 
 ```json
-{ "action": "edit", "workspace": "acme", "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+{
+  "action": "edit",
+  "workspace": "acme",
+  "artifact_id": "fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
   "target": { "kind": "section", "heading": "Risks" },
   "markdown": "## Risks\n\nThe migration needs a maintenance window.\n",
-  "note": "Adds the migration risk" }
+  "note": "Adds the migration risk"
+}
 ```
 
 Name an artifact by its id (`fol_…`) or by its link. Each action is also
@@ -360,27 +372,27 @@ or `create`. Repositories are given as `owner/name`, pull requests as the
 repository and a `number`, and work items as the `workspace` and a
 `number`.
 
-| Tool | What it covers |
-| --- | --- |
-| `search` | Code, repositories, work items, pull requests and people across g1t; a tracker's ticket |
-| `repository` | Repositories, their settings, rulesets, branches and releases |
-| `work_item` | Work items, their repositories, labels and comments; a work item's whole context, and claims |
-| `pull_request` | Pull requests: create, record and read sessions, review, merge, the merge queue |
-| `session` | Your harness's session: start, update, record, end, get, list; dispatch work on a work item; who else is working |
-| `workflow` | Workflow runs and logs, checks, deployments, environments and runners |
-| `observability` | A project's requests, logs, traces, errors and metrics in production |
-| `package` | Packages in every registry |
-| `secret` | Secrets and variables |
-| `security` | Secret scanning, code scanning, vulnerable dependencies and advisories |
-| `webhook` | Webhooks and their deliveries |
-| `access` | Who has which role on a repository, and deploy keys |
-| `team` | Teams and their members and repositories |
-| `workspace` | Workspaces, members, labels, milestones, integrations, projects, rulesets and token rules |
-| `ai` | The workspace's AI providers, and what Ask answers with |
-| `billing` | Usage, budget and invoices |
-| `notifications` | Your inbox |
-| `account` | Who the token acts as, and your invitations |
-| `artifact` | A workspace's docs |
+| Tool            | What it covers                                                                                                   |
+| --------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `search`        | Code, repositories, work items, pull requests and people across g1t; a tracker's ticket                          |
+| `repository`    | Repositories, their settings, rulesets, branches and releases                                                    |
+| `work_item`     | Work items, their repositories, labels and comments; a work item's whole context, and claims                     |
+| `pull_request`  | Pull requests: create, record and read sessions, review, merge, the merge queue                                  |
+| `session`       | Your harness's session: start, update, record, end, get, list; dispatch work on a work item; who else is working |
+| `workflow`      | Workflow runs and logs, checks, deployments, environments and runners                                            |
+| `observability` | A project's requests, logs, traces, errors and metrics in production                                             |
+| `package`       | Packages in every registry                                                                                       |
+| `secret`        | Secrets and variables                                                                                            |
+| `security`      | Secret scanning, code scanning, vulnerable dependencies and advisories                                           |
+| `webhook`       | Webhooks and their deliveries                                                                                    |
+| `access`        | Who has which role on a repository, and deploy keys                                                              |
+| `team`          | Teams and their members and repositories                                                                         |
+| `workspace`     | Workspaces, members, labels, milestones, integrations, projects, rulesets and token rules                        |
+| `ai`            | The workspace's AI providers, and what Ask answers with                                                          |
+| `billing`       | Usage, budget and invoices                                                                                       |
+| `notifications` | Your inbox                                                                                                       |
+| `account`       | Who the token acts as, and your invitations                                                                      |
+| `artifact`      | A workspace's docs                                                                                               |
 
 [MCP tools](/reference/mcp/) lists every action with its required inputs,
 its scope and its REST route.

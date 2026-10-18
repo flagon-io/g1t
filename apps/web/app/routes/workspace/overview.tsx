@@ -64,9 +64,11 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     .map((listedProject) => byId.get(listedProject.id)!);
   const active = byActivity.filter((project) => !pinnedIds.has(project.id)).slice(0, MAX_ACTIVE);
 
-  const pathOf = (project: Project) =>
-    project.source.kind === "hosted" ? project.source.repo : { namespace: project.workspace, name: project.slug };
-  const counted = [...new Map([...pinned, ...active, ...byActivity].map((project) => [project.id, project])).values()].slice(0, Math.max(MAX_COUNTED, pinned.length + active.length));
+  const pathOf = (project: Project) => (project.source.kind === "hosted" ? project.source.repo : { namespace: project.workspace, name: project.slug });
+  const counted = [...new Map([...pinned, ...active, ...byActivity].map((project) => [project.id, project])).values()].slice(
+    0,
+    Math.max(MAX_COUNTED, pinned.length + active.length),
+  );
   // The projects are what the page is about. What is open in each, and the
   // pull requests in progress, are beside them: a project whose counts
   // could not be read shows none, and the page says the totals are short.
@@ -176,30 +178,18 @@ function ProjectCard({
             {project.name}
           </Link>
           {link && !(library && pkg && !production) ? (
-            <DeployLink
-              href={link}
-              className="relative z-10 mt-0.5 flex items-center gap-1 truncate font-mono text-xs text-muted hover:text-accent"
-            >
+            <DeployLink href={link} className="relative z-10 mt-0.5 flex items-center gap-1 truncate font-mono text-xs text-muted hover:text-accent">
               {host(link)}
               <ArrowUpRight size={11} className="shrink-0" />
             </DeployLink>
           ) : library && pkg ? (
-            <Link
-              to={packagePath(pkg)}
-              className="relative z-10 mt-0.5 block truncate font-mono text-xs text-muted hover:text-accent"
-            >
+            <Link to={packagePath(pkg)} className="relative z-10 mt-0.5 block truncate font-mono text-xs text-muted hover:text-accent">
               {packageLine(pkg)}
             </Link>
           ) : (
             <p className="mt-0.5 truncate text-xs text-faint">
               {project.description ??
-                (library
-                  ? "Not published yet"
-                  : project.runs === "g1t"
-                    ? deploys?.enabled
-                      ? "Not deployed yet"
-                      : "Deployments are off"
-                    : kindLabel(project))}
+                (library ? "Not published yet" : project.runs === "g1t" ? (deploys?.enabled ? "Not deployed yet" : "Deployments are off") : kindLabel(project))}
             </p>
           )}
         </div>
@@ -220,9 +210,7 @@ function ProjectCard({
         {member && latest && (
           <p className="mb-3 flex items-center gap-2 text-xs text-muted">
             <StatusDot status={latest.status} />
-            <span className="truncate">
-              {latest.kind === "production" ? "Production" : `Preview of ${latest.branch}`}
-            </span>
+            <span className="truncate">{latest.kind === "production" ? "Production" : `Preview of ${latest.branch}`}</span>
             <span className="ml-auto shrink-0 text-faint">
               <TimeAgo at={latest.createdAt} />
             </span>
@@ -270,9 +258,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
   );
   const totals = Object.values(open).reduce((sum, counts) => ({ pulls: sum.pulls + counts.pulls }), { pulls: 0 });
   // Live on g1t, or deployed elsewhere with an address.
-  const liveApps =
-    Object.values(deploys).filter((entry) => entry.production).length +
-    loaderData.elsewhere;
+  const liveApps = Object.values(deploys).filter((entry) => entry.production).length + loaderData.elsewhere;
   return (
     <div className="grid gap-10 lg:grid-cols-[1fr_18rem]">
       <div className="min-w-0 space-y-10">
@@ -418,14 +404,10 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
                 Deploy on g1t.page
               </h2>
               <p className="mt-1.5 text-sm text-muted">
-                Off until you turn them on for a project, under its Settings. Then production builds from its default
-                branch, with a live preview for every pull request. Apps cost nothing while no one visits.
+                Off until you turn them on for a project, under its Settings. Then production builds from its default branch, with a live preview for every pull
+                request. Apps cost nothing while no one visits.
               </p>
-              <Link
-                prefetch="intent"
-                to={`/${slug}/-/billing`}
-                className="mt-3 inline-flex items-center gap-1 text-sm text-accent hover:underline"
-              >
+              <Link prefetch="intent" to={`/${slug}/-/billing`} className="mt-3 inline-flex items-center gap-1 text-sm text-accent hover:underline">
                 Billing and plans <ArrowRight size={13} />
               </Link>
             </section>
@@ -440,14 +422,9 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
                 Automate without a service account
               </h2>
               <p className="mt-1.5 text-sm text-muted">
-                A workspace has access tokens of its own for CI, integrations and agents. They act as the workspace,
-                not as a person.
+                A workspace has access tokens of its own for CI, integrations and agents. They act as the workspace, not as a person.
               </p>
-              <Link
-                prefetch="intent"
-                to={`/${slug}/-/tokens`}
-                className="mt-3 inline-flex items-center gap-1 text-sm text-accent hover:underline"
-              >
+              <Link prefetch="intent" to={`/${slug}/-/tokens`} className="mt-3 inline-flex items-center gap-1 text-sm text-accent hover:underline">
                 Access tokens <ArrowRight size={13} />
               </Link>
             </section>

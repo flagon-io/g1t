@@ -135,7 +135,11 @@ export function EmojiPicker({ onPick, autoFocus = true }: { onPick: (emoji: stri
             </Button>
           </Hint>
           {toning && (
-            <div role="radiogroup" aria-label="Skin tone" className="absolute top-full right-0 z-10 mt-1 flex gap-0.5 rounded-lg border border-line-strong bg-raised p-1 shadow-xl shadow-black/40">
+            <div
+              role="radiogroup"
+              aria-label="Skin tone"
+              className="absolute top-full right-0 z-10 mt-1 flex gap-0.5 rounded-lg border border-line-strong bg-raised p-1 shadow-xl shadow-black/40"
+            >
               {SKIN_TONES.map((hand, choice) => (
                 <button
                   key={hand}

@@ -62,9 +62,7 @@ export async function enqueueTask(
 
 /** Withdraws a sandbox's task: a person stopped it, or its time ran out. Never throws. */
 export async function cancelTask(actions: ServiceBinding, sandbox: string, reason: string | null): Promise<void> {
-  await call(actions, "cancel_task", { sandbox, reason }).catch((error: unknown) =>
-    console.log("self-hosted task not cancelled", sandbox, String(error)),
-  );
+  await call(actions, "cancel_task", { sandbox, reason }).catch((error: unknown) => console.log("self-hosted task not cancelled", sandbox, String(error)));
 }
 
 /**
@@ -90,7 +88,11 @@ export function handedOverStep(labels: string[]): string {
 }
 
 /** Where the work is: the tracked repository, else the meter's `owner/name`. */
-export function taskRepo(track: { repo: RepoPath } | undefined, meter: { repo: string } | undefined, owner: { repo: string | null } | undefined): RepoPath | null {
+export function taskRepo(
+  track: { repo: RepoPath } | undefined,
+  meter: { repo: string } | undefined,
+  owner: { repo: string | null } | undefined,
+): RepoPath | null {
   if (track) return track.repo;
   const full = meter?.repo ?? owner?.repo ?? null;
   if (!full) return null;

@@ -119,7 +119,10 @@ export function AskedFrom({ page }: { page: AskPage | null | undefined }) {
   const from = askedFrom(page);
   if (!from) return null;
   return (
-    <a href={from.href} className="mt-0.5 inline-flex max-w-full items-center gap-1 text-xs text-faint hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+    <a
+      href={from.href}
+      className="mt-0.5 inline-flex max-w-full items-center gap-1 text-xs text-faint hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+    >
       <CornerDownRight size={12} aria-hidden="true" className="shrink-0" />
       <span className="truncate">Asked on {from.label}</span>
     </a>

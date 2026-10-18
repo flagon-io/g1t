@@ -89,12 +89,7 @@ function row(kind: string, entry: LedgerEntry): string[] {
 /** A usage entry at its price: charged, what paid for it first, and the discount. */
 function usagePrice(entry: LedgerEntry): number {
   return (
-    -entry.amountMicros +
-    (entry.creditMicros ?? 0) +
-    (entry.trialMicros ?? 0) +
-    (entry.ossMicros ?? 0) +
-    (entry.givenMicros ?? 0) +
-    (entry.discountMicros ?? 0)
+    -entry.amountMicros + (entry.creditMicros ?? 0) + (entry.trialMicros ?? 0) + (entry.ossMicros ?? 0) + (entry.givenMicros ?? 0) + (entry.discountMicros ?? 0)
   );
 }
 

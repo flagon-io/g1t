@@ -68,7 +68,10 @@ test("an import fills in what it leaves out and refuses what is not a ruleset", 
   assert.throws(() => importRuleset(JSON.stringify({ rules: [{ type: "teleport" }] }), "repository"), /teleport is not a rule type/);
   // Rule types no longer offered are left out rather than refused.
   const retired = importRuleset(JSON.stringify({ rules: [{ type: "cost_cap", parameters: { max_usd: 5 } }, { type: "deletion" }] }), "repository");
-  assert.deepEqual(retired.rules.map((rule) => rule.type), ["deletion"]);
+  assert.deepEqual(
+    retired.rules.map((rule) => rule.type),
+    ["deletion"],
+  );
 });
 
 test("who may bypass, and whose changes a rule holds for, read plainly", () => {

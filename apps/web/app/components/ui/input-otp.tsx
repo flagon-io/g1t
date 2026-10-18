@@ -52,7 +52,5 @@ export function InputOTPSlot({ index, className, ...props }: ComponentProps<"div
 }
 
 export function InputOTPSeparator(props: ComponentProps<"div">) {
-  return (
-    <div data-slot="input-otp-separator" role="separator" className="h-px w-2.5 shrink-0 bg-line-strong" {...props} />
-  );
+  return <div data-slot="input-otp-separator" role="separator" className="h-px w-2.5 shrink-0 bg-line-strong" {...props} />;
 }

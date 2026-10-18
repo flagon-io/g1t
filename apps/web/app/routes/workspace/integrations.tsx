@@ -2,14 +2,7 @@ import { AlertTriangle, ArrowLeft, CheckCircle2, Siren, Ticket, X } from "lucide
 import type { ReactNode } from "react";
 import { Form, Link, redirect } from "react-router";
 
-import {
-  type Connection,
-  type ConnectionConfig,
-  type Delivery,
-  type Provider,
-  type ProviderKind,
-  PROVIDERS,
-} from "@g1t/contracts";
+import { type Connection, type ConnectionConfig, type Delivery, type Provider, type ProviderKind, PROVIDERS } from "@g1t/contracts";
 
 import type { Route } from "./+types/integrations";
 import { page } from "../../lib/meta";
@@ -166,48 +159,26 @@ export default function WorkspaceIntegrations({ loaderData, actionData }: Route.
 
       {/* Alerts -------------------------------------------------------------- */}
       {kind === "alerts" && (
-      <Section kind="alerts">
-        <Connections
-          list={connections.filter((c) => c.kind === "alerts")}
-          owner={owner}
-          tested={tested}
-          updated={updated}
-          deliveries={deliveries}
-        />
-        {owner && <Choices kind="alerts" slug={slug} adding={adding} />}
-        {adding && PROVIDERS[adding].kind === "alerts" && reposMissing}
-        {adding && PROVIDERS[adding].kind === "alerts" && owner && (
-          <AddForm
-            provider={adding}
-            slug={slug}
-            repos={repoNames}
-            error={actionData && "provider" in actionData ? error : null}
-          />
-        )}
-      </Section>
+        <Section kind="alerts">
+          <Connections list={connections.filter((c) => c.kind === "alerts")} owner={owner} tested={tested} updated={updated} deliveries={deliveries} />
+          {owner && <Choices kind="alerts" slug={slug} adding={adding} />}
+          {adding && PROVIDERS[adding].kind === "alerts" && reposMissing}
+          {adding && PROVIDERS[adding].kind === "alerts" && owner && (
+            <AddForm provider={adding} slug={slug} repos={repoNames} error={actionData && "provider" in actionData ? error : null} />
+          )}
+        </Section>
       )}
 
       {/* Trackers ------------------------------------------------------------ */}
       {kind === "tracker" && (
-      <Section kind="tracker">
-        <Connections
-          list={connections.filter((c) => c.kind === "tracker")}
-          owner={owner}
-          tested={tested}
-          updated={updated}
-          deliveries={deliveries}
-        />
-        {owner && <Choices kind="tracker" slug={slug} adding={adding} />}
-        {adding && PROVIDERS[adding].kind === "tracker" && reposMissing}
-        {adding && PROVIDERS[adding].kind === "tracker" && owner && (
-          <AddForm
-            provider={adding}
-            slug={slug}
-            repos={repoNames}
-            error={actionData && "provider" in actionData ? error : null}
-          />
-        )}
-      </Section>
+        <Section kind="tracker">
+          <Connections list={connections.filter((c) => c.kind === "tracker")} owner={owner} tested={tested} updated={updated} deliveries={deliveries} />
+          {owner && <Choices kind="tracker" slug={slug} adding={adding} />}
+          {adding && PROVIDERS[adding].kind === "tracker" && reposMissing}
+          {adding && PROVIDERS[adding].kind === "tracker" && owner && (
+            <AddForm provider={adding} slug={slug} repos={repoNames} error={actionData && "provider" in actionData ? error : null} />
+          )}
+        </Section>
       )}
 
       {!owner && <p className="mt-8 text-sm text-muted">An owner of {slug} can add and remove integrations.</p>}
@@ -323,9 +294,7 @@ function ConnectionRow({
           </Form>
         )}
       </div>
-      {tested?.id === connection.id && (
-        <p className={`mt-3 text-sm ${tested.ok ? "text-success" : "text-danger"}`}>{tested.message}</p>
-      )}
+      {tested?.id === connection.id && <p className={`mt-3 text-sm ${tested.ok ? "text-success" : "text-danger"}`}>{tested.message}</p>}
       {connection.lastError && (
         <p className="mt-3 flex items-start gap-2 text-xs text-warn">
           <AlertTriangle size={13} className="mt-0.5 shrink-0" />
@@ -357,35 +326,30 @@ function ConnectionRow({
         <div className="mt-3">
           <Unavailable what={deliveries.what} compact />
         </div>
-      ) : deliveries.length > 0 && (
-        <ul className="mt-3 space-y-1 text-xs">
-          {deliveries.map((delivery) => (
-            <li key={delivery.id} className="flex items-center gap-2 text-muted">
-              <span
-                className={`size-1.5 shrink-0 rounded-full ${
-                  delivery.outcome === "refused"
-                    ? "bg-danger"
-                    : delivery.outcome === "ignored"
-                      ? "bg-faint"
-                      : "bg-success"
-                }`}
-              />
-              <span className="font-mono text-faint">{delivery.event}</span>
-              <span className="min-w-0 truncate">{delivery.detail}</span>
-              {delivery.item && (
-                <Link
-                  to={`/${delivery.item.replace("#", "/-/work/")}`}
-                  className="shrink-0 font-mono text-fg hover:underline"
-                >
-                  {delivery.item}
-                </Link>
-              )}
-              <span className="ml-auto shrink-0 text-faint">
-                <TimeAgo at={delivery.receivedAt} />
-              </span>
-            </li>
-          ))}
-        </ul>
+      ) : (
+        deliveries.length > 0 && (
+          <ul className="mt-3 space-y-1 text-xs">
+            {deliveries.map((delivery) => (
+              <li key={delivery.id} className="flex items-center gap-2 text-muted">
+                <span
+                  className={`size-1.5 shrink-0 rounded-full ${
+                    delivery.outcome === "refused" ? "bg-danger" : delivery.outcome === "ignored" ? "bg-faint" : "bg-success"
+                  }`}
+                />
+                <span className="font-mono text-faint">{delivery.event}</span>
+                <span className="min-w-0 truncate">{delivery.detail}</span>
+                {delivery.item && (
+                  <Link to={`/${delivery.item.replace("#", "/-/work/")}`} className="shrink-0 font-mono text-fg hover:underline">
+                    {delivery.item}
+                  </Link>
+                )}
+                <span className="ml-auto shrink-0 text-faint">
+                  <TimeAgo at={delivery.receivedAt} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        )
       )}
     </div>
   );
@@ -425,17 +389,7 @@ function RepoField({ repos, required, hint }: { repos: string[]; required?: bool
   );
 }
 
-function AddForm({
-  provider,
-  slug,
-  repos,
-  error,
-}: {
-  provider: Provider;
-  slug: string;
-  repos: string[];
-  error: string | null;
-}) {
+function AddForm({ provider, slug, repos, error }: { provider: Provider; slug: string; repos: string[]; error: string | null }) {
   const fields: Partial<Record<Provider, ReactNode>> = {
     sentry: (
       <>
@@ -443,7 +397,10 @@ function AddForm({
           <Input name="organization" required placeholder="acme" />
         </Field>
         <RepoField repos={repos} required hint="The repository its work items are filed from." />
-        <Field label="Auth token" hint="The internal integration's token, with Issue & Event read and write. Lets g1t read stack traces and resolve Sentry issues. Optional, but recommended.">
+        <Field
+          label="Auth token"
+          hint="The internal integration's token, with Issue & Event read and write. Lets g1t read stack traces and resolve Sentry issues. Optional, but recommended."
+        >
           <Input name="secret" type="password" />
         </Field>
         <Field label="Client secret" hint="You get this from Sentry after giving it this connection's address; you can add it on the next step.">
@@ -532,10 +489,7 @@ function Connected({ connected }: { connected: { connection: Connection; signing
       </p>
       {connection.provider === "sentry" && url && (
         <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-muted">
-          <li>
-            In Sentry, open Settings → Developer Settings → Custom Integrations, and create an internal
-            integration.
-          </li>
+          <li>In Sentry, open Settings → Developer Settings → Custom Integrations, and create an internal integration.</li>
           <li>
             Set its webhook URL to <CopyLine text={url} />
           </li>
@@ -568,17 +522,15 @@ function Connected({ connected }: { connected: { connection: Connection; signing
               <p>Send JSON with at least a title to:</p>
               <CopyLine text={url} />
               <p>
-                with <code>Authorization: Bearer &lt;secret&gt;</code>, or an HMAC-SHA256 of the body in{" "}
-                <code>X-G1t-Signature</code>. An <code>id</code> keeps repeats on one work item.
+                with <code>Authorization: Bearer &lt;secret&gt;</code>, or an HMAC-SHA256 of the body in <code>X-G1t-Signature</code>. An <code>id</code> keeps
+                repeats on one work item.
               </p>
             </>
           )}
         </div>
       )}
       {connection.kind === "tracker" && (
-        <p className="mt-2 text-sm text-muted">
-          You can import a ticket from New work item, under Work. Use Test to check the token.
-        </p>
+        <p className="mt-2 text-sm text-muted">You can import a ticket from New work item, under Work. Use Test to check the token.</p>
       )}
     </div>
   );

@@ -99,12 +99,23 @@ export default function Credits({ loaderData, actionData }: Route.ComponentProps
         </div>
       ) : (
         <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Stat label="Given this month" value={usd(now?.givenMicros ?? 0, { cents: true })} hint={`${now?.grants ?? 0} credit${now?.grants === 1 ? "" : "s"}`} />
+          <Stat
+            label="Given this month"
+            value={usd(now?.givenMicros ?? 0, { cents: true })}
+            hint={`${now?.grants ?? 0} credit${now?.grants === 1 ? "" : "s"}`}
+          />
           <Stat label="Spent this month" value={usd(now?.usedMicros ?? 0, { cents: true })} hint="On usage, every kind" />
-          <Stat label="Taken back this month" value={usd((now?.expiredMicros ?? 0) + (now?.revokedMicros ?? 0), { cents: true })} hint="Expired or revoked unused" />
+          <Stat
+            label="Taken back this month"
+            value={usd((now?.expiredMicros ?? 0) + (now?.revokedMicros ?? 0), { cents: true })}
+            hint="Expired or revoked unused"
+          />
           <Stat
             label="Left to spend"
-            value={usd(open.reduce((sum, grant) => sum + grant.leftMicros, 0), { cents: true })}
+            value={usd(
+              open.reduce((sum, grant) => sum + grant.leftMicros, 0),
+              { cents: true },
+            )}
             hint={`${open.length} open credit${open.length === 1 ? "" : "s"}${filtered ? ", filtered" : ""}`}
           />
         </div>

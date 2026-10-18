@@ -37,28 +37,19 @@ export async function action({ request, context }: Route.ActionArgs) {
   // Accepting or declining an invitation shown here (lib/invitations.server.ts).
   const answered = await answerInvitation(user, form, request);
   if (answered) return answered;
-  const result = await identity.createWorkspace(
-    user,
-    String(form.get("slug") ?? ""),
-    String(form.get("displayName") ?? ""),
-  );
+  const result = await identity.createWorkspace(user, String(form.get("slug") ?? ""), String(form.get("displayName") ?? ""));
   if (!result.ok) return { error: result.error.message };
   // Someone sent here on their way elsewhere carries on to it.
   const next = nextPath(request);
   throw redirect(next === "/" ? `/${result.value.slug}` : next);
 }
 
-export default function NewWorkspace({
-  loaderData,
-  actionData,
-}: Route.ComponentProps) {
+export default function NewWorkspace({ loaderData, actionData }: Route.ComponentProps) {
   const { user, first, free, invitations, next } = loaderData;
   const said = actionData as { error?: string; invitationError?: string; invitationId?: string; declined?: string } | undefined;
   return (
     <main className="mx-auto max-w-lg pt-8">
-      <h1 className="text-xl font-semibold">
-        {first ? "Create your workspace or ask to join one" : "New workspace"}
-      </h1>
+      <h1 className="text-xl font-semibold">{first ? "Create your workspace or ask to join one" : "New workspace"}</h1>
       {first && (
         <section className="mt-4">
           {said?.declined !== undefined && (
@@ -82,39 +73,25 @@ export default function NewWorkspace({
         </section>
       )}
       <p className="mt-2 text-sm text-muted">
-        {first && "Everything on g1t lives in a workspace, so this comes first. "}
-        A workspace holds repositories, the people who work on them and the
-        access tokens that automate them, and is the first part of every
-        address: <span className="font-mono text-fg">g1t.sh/workspace/repo</span>.
-        Use one for yourself, and one for each team or company you work with.
+        {first && "Everything on g1t lives in a workspace, so this comes first. "}A workspace holds repositories, the people who work on them and the access
+        tokens that automate them, and is the first part of every address: <span className="font-mono text-fg">g1t.sh/workspace/repo</span>. Use one for
+        yourself, and one for each team or company you work with.
       </p>
       {free.length > 0 ? (
         <OneFreeWorkspace free={free} />
       ) : (
         <>
           <Form method="post" className="mt-8 space-y-4">
-            <Field
-              label="Name in URLs"
-              hint="Lowercase letters, digits and single hyphens. An owner can change it later; old addresses redirect for 90 days."
-            >
+            <Field label="Name in URLs" hint="Lowercase letters, digits and single hyphens. An owner can change it later; old addresses redirect for 90 days.">
               <div className="flex items-center gap-2 font-mono text-sm">
                 <span className="text-muted">g1t.sh/</span>
-                <Input
-                  name="slug"
-                  required
-                  autoFocus
-                  maxLength={39}
-                  defaultValue={first ? user.username : ""}
-                  pattern="[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9]))*"
-                />
+                <Input name="slug" required autoFocus maxLength={39} defaultValue={first ? user.username : ""} pattern="[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9]))*" />
               </div>
             </Field>
             <Field label="Display name (optional)">
               <Input name="displayName" maxLength={80} />
             </Field>
-            <p className="text-xs text-faint">
-              A new workspace is free. Each person can own one free workspace; more need the plan on the ones you have.
-            </p>
+            <p className="text-xs text-faint">A new workspace is free. Each person can own one free workspace; more need the plan on the ones you have.</p>
             <ErrorText>{said?.error}</ErrorText>
             <SubmitButton pending="Creating…">Create workspace</SubmitButton>
           </Form>

@@ -66,7 +66,4 @@ export function httpStatus(failure: Failure): number {
 }
 
 /** Returned when an account with an unconfirmed email tries to change something. */
-export const UNVERIFIED = fail(
-  "forbidden",
-  "Confirm your email address first. Check your inbox, or resend the link from the banner on g1t.sh.",
-);
+export const UNVERIFIED = fail("forbidden", "Confirm your email address first. Check your inbox, or resend the link from the banner on g1t.sh.");

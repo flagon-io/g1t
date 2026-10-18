@@ -176,7 +176,10 @@ export function hasPage(session: Pick<ApiWorkspaceSession, "kind">): boolean {
  * how deep it is under `root` (1 for its own). Ones whose parent is not
  * in the list sit under the root.
  */
-export function subagentTree<T extends { id: string; parent_id?: string | null; started_at: string }>(root: string, children: T[]): { session: T; depth: number }[] {
+export function subagentTree<T extends { id: string; parent_id?: string | null; started_at: string }>(
+  root: string,
+  children: T[],
+): { session: T; depth: number }[] {
   const ids = new Set(children.map((child) => child.id));
   const under = new Map<string, T[]>();
   for (const child of [...children].sort((a, b) => a.started_at.localeCompare(b.started_at))) {

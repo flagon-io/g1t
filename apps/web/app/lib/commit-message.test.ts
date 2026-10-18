@@ -4,9 +4,7 @@ import { test } from "node:test";
 import { HINT_LIMIT, commitHint, messageParts, parseCommitMessage } from "./commit-message.ts";
 
 test("co-authors leave the body and keep only their names", () => {
-  const parsed = parseCommitMessage(
-    "Document every option\n\nAdds the missing rows.\n\nCo-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>",
-  );
+  const parsed = parseCommitMessage("Document every option\n\nAdds the missing rows.\n\nCo-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>");
   assert.equal(parsed.subject, "Document every option");
   assert.equal(parsed.body, "Adds the missing rows.");
   assert.deepEqual(parsed.coAuthors, ["Claude Sonnet 5.5"]);

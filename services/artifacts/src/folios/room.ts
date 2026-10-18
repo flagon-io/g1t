@@ -122,8 +122,15 @@ export class FolioRoom extends DurableObject<FolioRoomEnv> {
     this.setMeta(`erased:${key}`, true);
     await this.setRole(key, null);
     await Promise.allSettled([...this.saves]);
-    for (const field of ["editors", "pending_authors"]) this.setMeta(field, this.meta<string[]>(field, []).filter(value => value !== key));
-    this.setMeta("editor_names", this.meta<string[]>("editor_names", []).filter(value => value.toLowerCase() !== username.toLowerCase()));
+    for (const field of ["editors", "pending_authors"])
+      this.setMeta(
+        field,
+        this.meta<string[]>(field, []).filter((value) => value !== key),
+      );
+    this.setMeta(
+      "editor_names",
+      this.meta<string[]>("editor_names", []).filter((value) => value.toLowerCase() !== username.toLowerCase()),
+    );
   }
 
   async destroy(): Promise<void> {
@@ -187,7 +194,10 @@ export class FolioRoom extends DurableObject<FolioRoomEnv> {
   private compact(): void {
     const doc = this.load();
     this.ctx.storage.transactionSync(() => {
-      this.ctx.storage.sql.exec("INSERT INTO snapshot (id, data) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET data = excluded.data", Y.encodeStateAsUpdate(doc));
+      this.ctx.storage.sql.exec(
+        "INSERT INTO snapshot (id, data) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET data = excluded.data",
+        Y.encodeStateAsUpdate(doc),
+      );
       this.ctx.storage.sql.exec("DELETE FROM updates");
     });
   }
@@ -215,7 +225,11 @@ export class FolioRoom extends DurableObject<FolioRoomEnv> {
     if (this.meta("erased", false)) return null;
     const saving = this.save(version);
     this.saves.add(saving);
-    try { return await saving; } finally { this.saves.delete(saving); }
+    try {
+      return await saving;
+    } finally {
+      this.saves.delete(saving);
+    }
   }
 
   private async save(version: FolioOrigin | null = null): Promise<string | null> {
@@ -249,7 +263,11 @@ export class FolioRoom extends DurableObject<FolioRoomEnv> {
       // Told only if they can read it (the service checks), so this waits on nothing.
       const slug = this.meta<string | null>("workspace_slug", null);
       if (slug) {
-        this.ctx.waitUntil(notifyFolioMentions(this.env, slug, folioId, result.mentioned, result.last).catch((error: unknown) => console.error("folios could not tell people they were mentioned", String(error))));
+        this.ctx.waitUntil(
+          notifyFolioMentions(this.env, slug, folioId, result.mentioned, result.last).catch((error: unknown) =>
+            console.error("folios could not tell people they were mentioned", String(error)),
+          ),
+        );
       }
     }
     return result.version_id;
@@ -266,7 +284,11 @@ export class FolioRoom extends DurableObject<FolioRoomEnv> {
     if (folioId) {
       const indexing = indexFolio(this.env, folioId);
       this.saves.add(indexing);
-      try { await indexing; } finally { this.saves.delete(indexing); }
+      try {
+        await indexing;
+      } finally {
+        this.saves.delete(indexing);
+      }
     }
   }
 
@@ -280,7 +302,14 @@ export class FolioRoom extends DurableObject<FolioRoomEnv> {
    * fill it with, an empty room says false and the service reads what
    * was saved, so the usual open costs one call and no D1 read.
    */
-  async ensure(init: { folio_id: string; kind: FolioKind; workspace_slug: string; text?: string | null; spec?: unknown; state?: Uint8Array | null }): Promise<boolean> {
+  async ensure(init: {
+    folio_id: string;
+    kind: FolioKind;
+    workspace_slug: string;
+    text?: string | null;
+    spec?: unknown;
+    state?: Uint8Array | null;
+  }): Promise<boolean> {
     this.setMeta("folio_id", init.folio_id);
     this.setMeta("kind", init.kind);
     if (init.workspace_slug) this.setMeta("workspace_slug", init.workspace_slug);
@@ -421,7 +450,6 @@ export class FolioRoom extends DurableObject<FolioRoomEnv> {
   }
 
   /** Forgets everything: the folio was deleted for good. */
-
 
   // ── Sockets ────────────────────────────────────────────────────────────
 

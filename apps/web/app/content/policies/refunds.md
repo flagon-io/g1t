@@ -21,7 +21,7 @@ If a month went well past what you meant to spend (a runaway job, a workflow tha
 - **What the overage cost us is covered up to $50.**
 - Larger amounts, or a second request within 12 months, are reviewed by a person.
 
-The credit appears on your statement with the day it happened, such as *Credit from g1t: accidental usage on 2026-11-12*, and pays for usage before your card is charged. Credits have no cash value.
+The credit appears on your statement with the day it happened, such as _Credit from g1t: accidental usage on 2026-11-12_, and pays for usage before your card is charged. Credits have no cash value.
 
 ## When we refund to your card
 

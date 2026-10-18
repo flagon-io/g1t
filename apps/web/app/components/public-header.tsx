@@ -17,25 +17,14 @@ import { Logo } from "./logo";
 import { ButtonLink, notACredential } from "./ui";
 import { Avatar } from "./ui/avatar";
 import { Button } from "./ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { useSignUpCopy } from "../lib/registration";
 
 function HeaderLink({ to, children }: { to: string; children: React.ReactNode }) {
   return (
     <NavLink
       to={to}
-      className={({ isActive }) =>
-        `rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-raised hover:text-fg ${
-          isActive ? "text-fg" : "text-muted"
-        }`
-      }
+      className={({ isActive }) => `rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-raised hover:text-fg ${isActive ? "text-fg" : "text-muted"}`}
     >
       {children}
     </NavLink>
@@ -73,10 +62,7 @@ export function PublicHeader({ user }: { user: User | null | undefined }) {
           <Logo />
         </Link>
         <Form action="/search" role="search" className="relative hidden min-w-0 grow sm:block sm:max-w-xs">
-          <Search
-            size={14}
-            className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint"
-          />
+          <Search size={14} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint" />
           <input
             name="q"
             {...notACredential()}
@@ -86,21 +72,16 @@ export function PublicHeader({ user }: { user: User | null | undefined }) {
           />
           <PaletteKey className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded bg-raised px-1.5 font-mono text-[0.625rem] text-muted ring-1 ring-line" />
         </Form>
-        <Button
-          type="button"
-          aria-label="Search g1t"
-          onClick={() => setPalette(true)}
-          variant="ghost"
-          size="icon-lg"
-          className="sm:hidden"
-        >
+        <Button type="button" aria-label="Search g1t" onClick={() => setPalette(true)} variant="ghost" size="icon-lg" className="sm:hidden">
           <Search size={18} />
         </Button>
         <CommandPalette
           open={palette}
           onOpenChange={setPalette}
           commands={[
-            ...(user ? PUBLIC_COMMANDS.filter((command) => !["/login", "/register"].includes(command.to ?? "")) : PUBLIC_COMMANDS.map((command) => (command.to === "/register" ? { ...command, label: signUp.primary } : command))),
+            ...(user
+              ? PUBLIC_COMMANDS.filter((command) => !["/login", "/register"].includes(command.to ?? ""))
+              : PUBLIC_COMMANDS.map((command) => (command.to === "/register" ? { ...command, label: signUp.primary } : command))),
             ...THEME_COMMANDS,
           ]}
           repo={repo}
@@ -121,7 +102,10 @@ export function PublicHeader({ user }: { user: User | null | undefined }) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuItem asChild className="min-h-11">
-                <Link to="/features"><BookOpen />Features</Link>
+                <Link to="/features">
+                  <BookOpen />
+                  Features
+                </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild className="min-h-11">
                 <Link to="/explore">
@@ -168,10 +152,7 @@ export function PublicHeader({ user }: { user: User | null | undefined }) {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel>
-                    Signed in as{" "}
-                    <span className="font-mono font-medium text-fg">
-                      {user.username}
-                    </span>
+                    Signed in as <span className="font-mono font-medium text-fg">{user.username}</span>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
@@ -191,9 +172,7 @@ export function PublicHeader({ user }: { user: User | null | undefined }) {
                   <DropdownMenuSeparator />
                   {/* Submitted from here: the menu closes on select, and a button
                       that has left the page cannot submit a form. */}
-                  <DropdownMenuItem
-                    onSelect={() => submit(null, { method: "post", action: "/logout" })}
-                  >
+                  <DropdownMenuItem onSelect={() => submit(null, { method: "post", action: "/logout" })}>
                     <LogOut />
                     Sign out
                   </DropdownMenuItem>
@@ -213,4 +192,3 @@ export function PublicHeader({ user }: { user: User | null | undefined }) {
     </header>
   );
 }
-

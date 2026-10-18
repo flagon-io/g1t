@@ -16,7 +16,19 @@ export const MCP_URL = "https://mcp.g1t.sh";
 /** Installs g1t's Claude Code plugin, which adds g1t.sh's MCP server and records sessions. */
 export const PLUGIN_INSTALL = "claude plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git\nclaude plugin install g1t@g1t";
 
-export const AGENT_IDS = ["claude-code", "codex", "opencode", "cursor", "gemini", "chatgpt", "claude-chat", "grok", "open-webui", "librechat", "other"] as const;
+export const AGENT_IDS = [
+  "claude-code",
+  "codex",
+  "opencode",
+  "cursor",
+  "gemini",
+  "chatgpt",
+  "claude-chat",
+  "grok",
+  "open-webui",
+  "librechat",
+  "other",
+] as const;
 export type AgentId = (typeof AGENT_IDS)[number];
 export const DEFAULT_AGENT: AgentId = "claude-code";
 /** Where the choice is kept in `localStorage`. */
@@ -85,34 +97,67 @@ export function agentsFor(mcp: string = MCP_URL): Record<AgentId, AgentSetup> {
       instructions: "AGENTS.md",
     },
     gemini: {
-      id: "gemini", label: "Gemini CLI", file: null, lang: "sh",
+      id: "gemini",
+      label: "Gemini CLI",
+      file: null,
+      lang: "sh",
       code: `gemini mcp add --transport http g1t ${mcp}`,
-      then: "Start Gemini CLI and use `/mcp auth g1t` to sign in through your browser.", instructions: "GEMINI.md",
+      then: "Start Gemini CLI and use `/mcp auth g1t` to sign in through your browser.",
+      instructions: "GEMINI.md",
     },
     chatgpt: {
-      id: "chatgpt", label: "ChatGPT", file: null, lang: "text", code: mcp,
-      then: "In ChatGPT Plugins, choose Add custom MCP server, enter this URL and choose OAuth. Sign in to g1t and approve access. Availability depends on your plan and workspace settings.", instructions: "AGENTS.md",
+      id: "chatgpt",
+      label: "ChatGPT",
+      file: null,
+      lang: "text",
+      code: mcp,
+      then: "In ChatGPT Plugins, choose Add custom MCP server, enter this URL and choose OAuth. Sign in to g1t and approve access. Availability depends on your plan and workspace settings.",
+      instructions: "AGENTS.md",
     },
     "claude-chat": {
-      id: "claude-chat", label: "Claude chat", file: null, lang: "text", code: mcp,
-      then: "In Claude, open Customize > Connectors and add a custom connector with this URL. Choose browser sign-in and Register automatically for the OAuth client. Team administrators may need to add it first. The server must be publicly reachable.", instructions: "",
+      id: "claude-chat",
+      label: "Claude chat",
+      file: null,
+      lang: "text",
+      code: mcp,
+      then: "In Claude, open Customize > Connectors and add a custom connector with this URL. Choose browser sign-in and Register automatically for the OAuth client. Team administrators may need to add it first. The server must be publicly reachable.",
+      instructions: "",
     },
     grok: {
-      id: "grok", label: "Grok", file: null, lang: "text", code: mcp,
-      then: "Open grok.com/connectors, choose New Connector > Custom, enter this URL and sign in to g1t. Business and Enterprise teams may need an administrator to provision it first. The server must be publicly reachable.", instructions: "",
+      id: "grok",
+      label: "Grok",
+      file: null,
+      lang: "text",
+      code: mcp,
+      then: "Open grok.com/connectors, choose New Connector > Custom, enter this URL and sign in to g1t. Business and Enterprise teams may need an administrator to provision it first. The server must be publicly reachable.",
+      instructions: "",
     },
     "open-webui": {
-      id: "open-webui", label: "Open WebUI", file: null, lang: "text", code: mcp,
-      then: "An administrator adds this URL under Settings > Admin > Integrations > External Tool Servers. Choose MCP (Streamable HTTP) and OAuth 2.1, then sign in to g1t. Select a model with tool calling, including a local model served by Ollama or an OpenAI-compatible endpoint.", instructions: "",
+      id: "open-webui",
+      label: "Open WebUI",
+      file: null,
+      lang: "text",
+      code: mcp,
+      then: "An administrator adds this URL under Settings > Admin > Integrations > External Tool Servers. Choose MCP (Streamable HTTP) and OAuth 2.1, then sign in to g1t. Select a model with tool calling, including a local model served by Ollama or an OpenAI-compatible endpoint.",
+      instructions: "",
     },
     librechat: {
-      id: "librechat", label: "LibreChat", file: "librechat.yaml", lang: "yaml",
+      id: "librechat",
+      label: "LibreChat",
+      file: "librechat.yaml",
+      lang: "yaml",
       code: `mcpServers:\n  g1t:\n    type: streamable-http\n    url: ${JSON.stringify(mcp)}\n    requiresOAuth: true`,
-      then: "Add this to your LibreChat configuration and restart it. Connect g1t from the MCP tools menu and complete browser sign-in. Choose a model that supports tool calling; the model provider and your g1t connection are configured separately.", instructions: "",
+      then: "Add this to your LibreChat configuration and restart it. Connect g1t from the MCP tools menu and complete browser sign-in. Choose a model that supports tool calling; the model provider and your g1t connection are configured separately.",
+      instructions: "",
     },
     other: {
-      id: "other", label: "Other MCP", file: null, lang: "text", code: mcp,
-      then: "Add this URL as a remote Streamable HTTP MCP server in your AI client. Choose OAuth and sign in to g1t. Your client must support remote MCP and browser authentication.", instructions: "AGENTS.md",
+      id: "other",
+      label: "Other MCP",
+      file: null,
+      lang: "text",
+      code: mcp,
+      then: "Add this URL as a remote Streamable HTTP MCP server in your AI client. Choose OAuth and sign in to g1t. Your client must support remote MCP and browser authentication.",
+      instructions: "AGENTS.md",
     },
     cursor: {
       id: "cursor",
@@ -198,8 +243,17 @@ export function getAgentChoice(fallback: AgentId = DEFAULT_AGENT): AgentId {
 /** Only a public UI preference crosses subdomains; no account or provider details. */
 export function cookieAgent(name: string): AgentId | null {
   if (typeof document === "undefined") return null;
-  try { return parseAgent(document.cookie.split(";").map(s => s.trim()).find(s => s.startsWith(name + "="))?.split("=")[1]); }
-  catch { return null; }
+  try {
+    return parseAgent(
+      document.cookie
+        .split(";")
+        .map((s) => s.trim())
+        .find((s) => s.startsWith(name + "="))
+        ?.split("=")[1],
+    );
+  } catch {
+    return null;
+  }
 }
 
 export function rememberAgentDefault(id: AgentId): void {
@@ -209,20 +263,32 @@ export function rememberAgentDefault(id: AgentId): void {
 function agentCookie(name: string, id: AgentId, seconds: number): void {
   if (typeof document === "undefined") return;
   const domain = location.hostname === "g1t.sh" || location.hostname.endsWith(".g1t.sh") ? "; Domain=g1t.sh" : "";
-  try { document.cookie = `${name}=${id}; Path=/; Max-Age=${seconds}; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}${domain}`; }
-  catch { /* Restricted storage must not prevent switching tabs. */ }
+  try {
+    document.cookie = `${name}=${id}; Path=/; Max-Age=${seconds}; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}${domain}`;
+  } catch {
+    /* Restricted storage must not prevent switching tabs. */
+  }
 }
 
 /** The first configured provider, in the same order as the workspace AI page. */
 export function agentForProviders(providers: readonly { provider: string }[]): AgentId {
   switch (providers[0]?.provider) {
-    case "anthropic": case "anthropic_endpoint": return "claude-code";
-    case "openai": case "azure_openai": return "codex";
-    case "gemini": return "gemini";
-    case "xai": return "grok";
-    case "openai_endpoint": return "open-webui";
-    case undefined: return DEFAULT_AGENT;
-    default: return "opencode";
+    case "anthropic":
+    case "anthropic_endpoint":
+      return "claude-code";
+    case "openai":
+    case "azure_openai":
+      return "codex";
+    case "gemini":
+      return "gemini";
+    case "xai":
+      return "grok";
+    case "openai_endpoint":
+      return "open-webui";
+    case undefined:
+      return DEFAULT_AGENT;
+    default:
+      return "opencode";
   }
 }
 

@@ -70,7 +70,7 @@ jobs:
     environment:
       name: production
       deployment: false
-    timeout-minutes: 60  # the most g1t's own machines run a job
+    timeout-minutes: 60 # the most g1t's own machines run a job
     steps:
       - uses: actions/checkout@v5
       # rust: the toolchain; desktop: the app's Cargo.lock's crates.io and
@@ -174,7 +174,7 @@ jobs:
     environment:
       name: production
       deployment: false
-    timeout-minutes: 60  # the most g1t's own machines run a job
+    timeout-minutes: 60 # the most g1t's own machines run a job
     steps:
       - uses: actions/checkout@v5
       - name: Cache keys

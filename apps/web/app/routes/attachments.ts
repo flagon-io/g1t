@@ -17,7 +17,8 @@ import { assertSameOrigin, getViewer } from "../lib/session.server";
 
 type Answer = { ok: true; url: string; markdown: string; name: string } | { ok: false; error: { code: string; message: string } };
 
-const refused = (code: string, message: string, status: number) => Response.json({ ok: false, error: { code, message } } satisfies Answer, { status, headers: { "cache-control": "no-store" } });
+const refused = (code: string, message: string, status: number) =>
+  Response.json({ ok: false, error: { code, message } } satisfies Answer, { status, headers: { "cache-control": "no-store" } });
 
 export async function action({ request, context }: Route.ActionArgs) {
   assertSameOrigin(request);

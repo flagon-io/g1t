@@ -33,7 +33,7 @@ test("viewers can't comment; only authors edit; editors delete others' comments 
   const made = applyThreadAction(doc, "user:u1", "comment", { op: "create", body: body("x") });
   assert.ok(made.ok);
   const threadId = made.ok ? made.thread_id! : "";
-  const commentId = String(((doc.getMap<Y.Map<unknown>>("threads").get(threadId)!.get("comments") as Y.Array<Y.Map<unknown>>).get(0)).get("id"));
+  const commentId = String((doc.getMap<Y.Map<unknown>>("threads").get(threadId)!.get("comments") as Y.Array<Y.Map<unknown>>).get(0).get("id"));
   assert.equal(applyThreadAction(doc, "user:u2", "edit", { op: "edit_comment", thread_id: threadId, comment_id: commentId, body: body("y") }).ok, false);
   assert.equal(applyThreadAction(doc, "user:u1", "comment", { op: "edit_comment", thread_id: threadId, comment_id: commentId, body: body("y") }).ok, true);
   assert.equal(applyThreadAction(doc, "user:u2", "comment", { op: "delete_comment", thread_id: threadId, comment_id: commentId }).ok, false);
@@ -62,7 +62,9 @@ test("replies, resolving and reactions", () => {
       ["agent:a1", "an answer"],
     ],
   );
-  const reactions = ((doc.getMap<Y.Map<unknown>>("threads").get(threadId)!.get("comments") as Y.Array<Y.Map<unknown>>).get(1).get("reactionsByUser") as Y.Map<unknown>);
+  const reactions = (doc.getMap<Y.Map<unknown>>("threads").get(threadId)!.get("comments") as Y.Array<Y.Map<unknown>>)
+    .get(1)
+    .get("reactionsByUser") as Y.Map<unknown>;
   assert.equal(reactions.size, 1);
 });
 

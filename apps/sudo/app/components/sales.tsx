@@ -87,11 +87,7 @@ export function SalesSection({
             {done && <Notice tone="ok">{done}</Notice>}
             {salesError && <Notice tone="error">{salesError.error}</Notice>}
             {record?.nextStep && (
-              <div
-                className={`flex gap-2.5 rounded-md border px-3 py-2.5 text-sm ${
-                  isDue(record.nextAt) ? "border-warn/40 bg-warn/8" : "border-line bg-bg"
-                }`}
-              >
+              <div className={`flex gap-2.5 rounded-md border px-3 py-2.5 text-sm ${isDue(record.nextAt) ? "border-warn/40 bg-warn/8" : "border-line bg-bg"}`}>
                 <CalendarClock size={16} className={`mt-0.5 shrink-0 ${isDue(record.nextAt) ? "text-warn" : "text-faint"}`} />
                 <div className="min-w-0">
                   <p className="text-fg-soft">{record.nextStep}</p>
@@ -126,7 +122,12 @@ export function SalesSection({
             </div>
             <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_10rem]">
               <Field label="Next step">
-                <Input name="nextStep" maxLength={200} placeholder="e.g. Call the owner about an enterprise plan" defaultValue={values?.nextStep ?? record?.nextStep ?? ""} />
+                <Input
+                  name="nextStep"
+                  maxLength={200}
+                  placeholder="e.g. Call the owner about an enterprise plan"
+                  defaultValue={values?.nextStep ?? record?.nextStep ?? ""}
+                />
               </Field>
               <Field label="By" hint="UTC.">
                 <Input type="date" name="nextAt" defaultValue={values?.nextAt ?? record?.nextAt?.slice(0, 10) ?? ""} />
@@ -146,7 +147,14 @@ export function SalesSection({
               <input type="hidden" name="intent" value="note" />
               {noteError && <Notice tone="error">{noteError.error}</Notice>}
               <Field label="Add a note" hint="Calls, emails, what they asked for. Staff only; signed with your email.">
-                <Textarea name="text" rows={3} required maxLength={2000} defaultValue={noteError?.values?.text ?? ""} placeholder="e.g. Spoke to the owner: they want annual billing." />
+                <Textarea
+                  name="text"
+                  rows={3}
+                  required
+                  maxLength={2000}
+                  defaultValue={noteError?.values?.text ?? ""}
+                  placeholder="e.g. Spoke to the owner: they want annual billing."
+                />
               </Field>
               <div className="flex justify-end">
                 <Button type="submit" variant="quiet">

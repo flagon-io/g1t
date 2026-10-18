@@ -28,10 +28,7 @@ test("the headline says the worst of a commit's checks", () => {
 test("the tally counts each kind, worst first", () => {
   assert.equal(checksTally({ total: 2, successful: 2, failed: 0, pending: 0, skipped: 0 }), "2 successful checks");
   assert.equal(checksTally({ total: 1, successful: 1, failed: 0, pending: 0, skipped: 0 }), "1 successful check");
-  assert.equal(
-    checksTally({ total: 4, successful: 2, failed: 1, pending: 1, skipped: 0 }),
-    "1 failing, 1 in progress and 2 successful checks",
-  );
+  assert.equal(checksTally({ total: 4, successful: 2, failed: 1, pending: 1, skipped: 0 }), "1 failing, 1 in progress and 2 successful checks");
 });
 
 test("a check run says how it went and how long it took", () => {

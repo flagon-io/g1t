@@ -9,7 +9,7 @@ export function useSidebarLocation() {
   const navigation = useNavigation();
   const router = context?.router;
   const subscribe = useCallback((notify: () => void) => router?.subscribe(notify) ?? (() => {}), [router]);
-  const snapshot = useCallback(() => router ? sidebarLocation(router.state) : location, [router, location]);
+  const snapshot = useCallback(() => (router ? sidebarLocation(router.state) : location), [router, location]);
   const serverSnapshot = () => navigation.location ?? location;
   return useSyncExternalStore(subscribe, snapshot, serverSnapshot);
 }

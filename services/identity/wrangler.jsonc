@@ -1,71 +1,71 @@
 {
-	"$schema": "../../node_modules/wrangler/config-schema.json",
-	"name": "g1t-identity",
-	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
-	"compatibility_date": "2026-09-26",
-	// Runs next to its database: a request makes several queries in turn,
-	// and each would otherwise cross the distance to it.
-	"placement": { "mode": "off" },
-	"main": "build/index.js",
-	// Purging deleted workspaces and accounts once their restore window
-	// passes (src/lib.rs `scheduled`).
-	"triggers": { "crons": ["*/15 * * * *"] },
-	"build": { "command": "node ../../scripts/build-rust-worker.mjs" },
-	// Reached only through service bindings.
-	"workers_dev": false,
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "g1t",
-			"database_id": "b7d49c93-2666-4006-a3c3-073a01838dc9",
-			"migrations_dir": "migrations"
-		}
-	],
-	"send_email": [{ "name": "EMAIL", "remote": true }],
-	// Uploaded avatars, keyed by the SHA-256 of their bytes. Only this
-	// service writes them; the site reads them to serve /avatars/<hash>.
-	"kv_namespaces": [{ "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" }],
-	// Renaming a workspace publishes workspace.renamed, so every service
-	// moves what it keeps under the old slug.
-	"services": [
-		{ "binding": "EVENTS", "service": "g1t-events" },
-		{ "binding": "CHAT", "service": "g1t-chat" },
-		{ "binding": "NOTIFY", "service": "g1t-notify" },
-		{ "binding": "ARTIFACTS", "service": "g1t-artifacts" },
-		// Deleting a workspace counts what goes with it, and has billing
-		// settle it first; staff restores and purges are recorded in sudo's
-		// audit log, which billing keeps (src/deletion.rs).
-		{ "binding": "REPOS", "service": "g1t-repos" },
-		{ "binding": "PROJECTS", "service": "g1t-projects" },
-		{ "binding": "BILLING", "service": "g1t-billing" }
-	],
-	// Signing in with GitHub (src/github.rs), through g1t's GitHub App.
-	// Its client ID is public. Secrets: GITHUB_APP_CLIENT_SECRET, the app's
-	// client secret, and IDENTITY_KEY, 64 hex characters, which seals the
-	// GitHub user tokens kept for each linked account. Without the client ID
-	// and secret, nobody is offered GitHub sign-in.
-	//
-	// Invites (src/invites.rs): anyone may register. An invitation sent to
-	// an address without an account carries an invite code, working
-	// INVITE_TTL_DAYS. IDENTITY_KEY also seals invite codes so their makers
-	// can copy them again. Each person may invite INVITES_PER_USER friends
-	// to g1t by email (src/invites/friends.rs); that invite is never needed
-	// to sign up.
-	//
-	// PROTECTED_WORKSPACES: workspaces nobody can ever delete, by owner,
-	// token or staff, as comma-separated slugs or workspace ids. flagon-io
-	// is protected whatever this says (src/deletion.rs).
-	//
-	// PROTECTED_ACCOUNTS: accounts nobody can ever delete, by the person or
-	// staff, as comma-separated usernames or user ids. g1t, g1t-agent and
-	// ghost are protected whatever this says (src/account_deletion.rs).
-	"vars": {
-		"PROTECTED_WORKSPACES": "flagon-io",
-		"PROTECTED_ACCOUNTS": "",
-		"GITHUB_APP_CLIENT_ID": "Iv23liZS94alfjIUn1eW",
-		"INVITE_TTL_DAYS": "30",
-		"INVITES_PER_USER": "20"
-	},
-	// Every log kept: sign-ins and tokens, where every failure matters.
-	"observability": { "enabled": true, "head_sampling_rate": 1 }
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "g1t-identity",
+  "account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+  "compatibility_date": "2026-09-26",
+  // Runs next to its database: a request makes several queries in turn,
+  // and each would otherwise cross the distance to it.
+  "placement": { "mode": "off" },
+  "main": "build/index.js",
+  // Purging deleted workspaces and accounts once their restore window
+  // passes (src/lib.rs `scheduled`).
+  "triggers": { "crons": ["*/15 * * * *"] },
+  "build": { "command": "node ../../scripts/build-rust-worker.mjs" },
+  // Reached only through service bindings.
+  "workers_dev": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "g1t",
+      "database_id": "b7d49c93-2666-4006-a3c3-073a01838dc9",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "send_email": [{ "name": "EMAIL", "remote": true }],
+  // Uploaded avatars, keyed by the SHA-256 of their bytes. Only this
+  // service writes them; the site reads them to serve /avatars/<hash>.
+  "kv_namespaces": [{ "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" }],
+  // Renaming a workspace publishes workspace.renamed, so every service
+  // moves what it keeps under the old slug.
+  "services": [
+    { "binding": "EVENTS", "service": "g1t-events" },
+    { "binding": "CHAT", "service": "g1t-chat" },
+    { "binding": "NOTIFY", "service": "g1t-notify" },
+    { "binding": "ARTIFACTS", "service": "g1t-artifacts" },
+    // Deleting a workspace counts what goes with it, and has billing
+    // settle it first; staff restores and purges are recorded in sudo's
+    // audit log, which billing keeps (src/deletion.rs).
+    { "binding": "REPOS", "service": "g1t-repos" },
+    { "binding": "PROJECTS", "service": "g1t-projects" },
+    { "binding": "BILLING", "service": "g1t-billing" }
+  ],
+  // Signing in with GitHub (src/github.rs), through g1t's GitHub App.
+  // Its client ID is public. Secrets: GITHUB_APP_CLIENT_SECRET, the app's
+  // client secret, and IDENTITY_KEY, 64 hex characters, which seals the
+  // GitHub user tokens kept for each linked account. Without the client ID
+  // and secret, nobody is offered GitHub sign-in.
+  //
+  // Invites (src/invites.rs): anyone may register. An invitation sent to
+  // an address without an account carries an invite code, working
+  // INVITE_TTL_DAYS. IDENTITY_KEY also seals invite codes so their makers
+  // can copy them again. Each person may invite INVITES_PER_USER friends
+  // to g1t by email (src/invites/friends.rs); that invite is never needed
+  // to sign up.
+  //
+  // PROTECTED_WORKSPACES: workspaces nobody can ever delete, by owner,
+  // token or staff, as comma-separated slugs or workspace ids. flagon-io
+  // is protected whatever this says (src/deletion.rs).
+  //
+  // PROTECTED_ACCOUNTS: accounts nobody can ever delete, by the person or
+  // staff, as comma-separated usernames or user ids. g1t, g1t-agent and
+  // ghost are protected whatever this says (src/account_deletion.rs).
+  "vars": {
+    "PROTECTED_WORKSPACES": "flagon-io",
+    "PROTECTED_ACCOUNTS": "",
+    "GITHUB_APP_CLIENT_ID": "Iv23liZS94alfjIUn1eW",
+    "INVITE_TTL_DAYS": "30",
+    "INVITES_PER_USER": "20"
+  },
+  // Every log kept: sign-ins and tokens, where every failure matters.
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
 }

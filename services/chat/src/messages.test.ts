@@ -1,16 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import {
-  DEFAULT_PAGE,
-  MAX_BODY,
-  MAX_PAGE,
-  isTypingFrame,
-  messageBody,
-  meterDay,
-  pageOf,
-  pageSize,
-} from "./messages.ts";
+import { DEFAULT_PAGE, MAX_BODY, MAX_PAGE, isTypingFrame, messageBody, meterDay, pageOf, pageSize } from "./messages.ts";
 
 test("a message needs something in it, and not too much", () => {
   assert.deepEqual(messageBody("hello  \n"), { ok: true, body: "hello" });

@@ -9,8 +9,14 @@ const overlap = (number: number, item: number | null): Overlap => ({ number, tit
 
 test("overlaps for the same work item are alternatives; the rest are collisions", () => {
   const { collisions, alternatives } = splitOverlaps([overlap(3, 2), overlap(4, 7), overlap(5, null)], 2);
-  assert.deepEqual(alternatives.map((o) => o.number), [3]);
-  assert.deepEqual(collisions.map((o) => o.number), [4, 5]);
+  assert.deepEqual(
+    alternatives.map((o) => o.number),
+    [3],
+  );
+  assert.deepEqual(
+    collisions.map((o) => o.number),
+    [4, 5],
+  );
   // A pull request for no work item has no alternatives.
   assert.deepEqual(splitOverlaps([overlap(5, null)], null).alternatives, []);
 });
@@ -24,10 +30,10 @@ test("the other attempts are the work item's other pull requests, newest first, 
 });
 
 test("shared paths are the files both change", () => {
-  assert.deepEqual(
-    sharedPaths([{ path: "README.md" }, { path: "src/lib.rs" }, { path: "src/main.rs" }], [{ path: "src/main.rs" }, { path: "README.md" }]),
-    ["README.md", "src/main.rs"],
-  );
+  assert.deepEqual(sharedPaths([{ path: "README.md" }, { path: "src/lib.rs" }, { path: "src/main.rs" }], [{ path: "src/main.rs" }, { path: "README.md" }]), [
+    "README.md",
+    "src/main.rs",
+  ]);
 });
 
 const said = (username: string, verdict: "approve" | "request_changes" | null) => ({

@@ -17,8 +17,7 @@ type Side = "right" | "left";
 
 const SIDES: Record<Side, string> = {
   // Full width on a phone, a column beside the page from there up.
-  right:
-    "inset-y-0 right-0 border-l data-[state=open]:animate-sheet-in-right data-[state=closed]:animate-sheet-out-right sm:max-w-md",
+  right: "inset-y-0 right-0 border-l data-[state=open]:animate-sheet-in-right data-[state=closed]:animate-sheet-out-right sm:max-w-md",
   left: "inset-y-0 left-0 border-r data-[state=open]:animate-sheet-in-left data-[state=closed]:animate-sheet-out-left sm:max-w-md",
 };
 

@@ -16,28 +16,26 @@
 // Then make a repository row and its store (clone-check.mjs shows how) and
 // `git clone http://localhost:8791/acme/rocket.git`.
 {
-	"name": "g1t-repos",
-	"main": "../build/index.js",
-	"compatibility_date": "2026-09-26",
-	"d1_databases": [
-		{ "binding": "DB", "database_name": "g1t-repos", "database_id": "local", "migrations_dir": "../migrations" }
-	],
-	"r2_buckets": [{ "binding": "GIT_PACKS", "bucket_name": "g1t-git-packs" }],
-	"services": [
-		{ "binding": "GITSTORE", "service": "g1t-gitstore" },
-		{ "binding": "IDENTITY", "service": "g1t-repos-stubs" },
-		{ "binding": "EVENTS", "service": "g1t-repos-stubs" },
-		{ "binding": "SECURITY", "service": "g1t-repos-stubs" },
-		{ "binding": "BILLING", "service": "g1t-repos-stubs" }
-	],
-	"vars": {
-		"GIT_OPERATIONS_FREE_CAP": "50000",
-		"GIT_OPERATIONS_FREE_HOURLY": "100000",
-		"FREE_PRIVATE_STORAGE_BYTES": "1000000000",
-		"REPO_STORAGE_LIMIT_BYTES": "950000000",
-		"LARGE_PUSHES": "unscanned",
-		"FORK_RETENTION_DAYS": "1",
-		"GITSTORE_NAMESPACES": "{\"GITSTORE\":\"g1t\"}",
-		"GITSTORE_NEW_REPOS": ""
-	}
+  "name": "g1t-repos",
+  "main": "../build/index.js",
+  "compatibility_date": "2026-09-26",
+  "d1_databases": [{ "binding": "DB", "database_name": "g1t-repos", "database_id": "local", "migrations_dir": "../migrations" }],
+  "r2_buckets": [{ "binding": "GIT_PACKS", "bucket_name": "g1t-git-packs" }],
+  "services": [
+    { "binding": "GITSTORE", "service": "g1t-gitstore" },
+    { "binding": "IDENTITY", "service": "g1t-repos-stubs" },
+    { "binding": "EVENTS", "service": "g1t-repos-stubs" },
+    { "binding": "SECURITY", "service": "g1t-repos-stubs" },
+    { "binding": "BILLING", "service": "g1t-repos-stubs" }
+  ],
+  "vars": {
+    "GIT_OPERATIONS_FREE_CAP": "50000",
+    "GIT_OPERATIONS_FREE_HOURLY": "100000",
+    "FREE_PRIVATE_STORAGE_BYTES": "1000000000",
+    "REPO_STORAGE_LIMIT_BYTES": "950000000",
+    "LARGE_PUSHES": "unscanned",
+    "FORK_RETENTION_DAYS": "1",
+    "GITSTORE_NAMESPACES": "{\"GITSTORE\":\"g1t\"}",
+    "GITSTORE_NEW_REPOS": ""
+  }
 }

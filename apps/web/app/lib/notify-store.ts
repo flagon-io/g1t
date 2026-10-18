@@ -38,12 +38,7 @@ export function isViewing(notification: FeedNotification, viewing: { path: strin
  * The toasts after one arrives: never twice, never for what is on screen,
  * newest last, at most `MAX_TOASTS`.
  */
-export function addToast(
-  toasts: Toast[],
-  notification: FeedNotification,
-  viewing: { path: string; channel_id?: string | null },
-  now: number,
-): Toast[] {
+export function addToast(toasts: Toast[], notification: FeedNotification, viewing: { path: string; channel_id?: string | null }, now: number): Toast[] {
   if (toasts.some((t) => t.notification.id === notification.id)) return toasts;
   if (isViewing(notification, viewing)) return toasts;
   // A newer message in the same conversation replaces the older toast.
@@ -81,11 +76,18 @@ export function dismissToast(toasts: Toast[], id: string): Toast[] {
 
 /** Whether a notification gets a reply box: something said to you, in a conversation. */
 export function canQuickReply(notification: FeedNotification): boolean {
-  return (notification.kind === "dm" || notification.kind === "mention" || notification.kind === "thread_reply") && !!notification.channel_id && !!notification.workspace;
+  return (
+    (notification.kind === "dm" || notification.kind === "mention" || notification.kind === "thread_reply") &&
+    !!notification.channel_id &&
+    !!notification.workspace
+  );
 }
 
 /** What a quick reply posts to the chat api route. */
-export function quickReplyRequest(notification: FeedNotification, body: string): { url: string; body: { intent: "post"; channel_id: string; body: string; thread_root: string | null } } | null {
+export function quickReplyRequest(
+  notification: FeedNotification,
+  body: string,
+): { url: string; body: { intent: "post"; channel_id: string; body: string; thread_root: string | null } } | null {
   const text = body.trim();
   if (!text || !canQuickReply(notification)) return null;
   return {

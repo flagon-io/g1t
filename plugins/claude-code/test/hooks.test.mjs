@@ -53,7 +53,11 @@ const base = { session_id: "abc-123", cwd: "/work/repo", transcript_path: "/t.js
 
 /** An assistant line of a transcript, as Claude Code writes one for each part of an API response. */
 function assistant(id, model, usage, requestId = `req_${id}`) {
-  return JSON.stringify({ type: "assistant", requestId, message: { id, model, role: "assistant", content: [{ type: "text", text: "the secret plan" }], usage } });
+  return JSON.stringify({
+    type: "assistant",
+    requestId,
+    message: { id, model, role: "assistant", content: [{ type: "text", text: "the secret plan" }], usage },
+  });
 }
 
 describe("plan", () => {
@@ -81,7 +85,10 @@ describe("plan", () => {
   test("UserPromptSubmit sends no title: g1t names the session from what it records", () => {
     for (const prompt of ["fix the login redirect", "/clear", "Build me a todo app. Use React."]) {
       const job = plan({ ...base, hook_event_name: "UserPromptSubmit", prompt }, {});
-      assert.ok(job.steps.every((s) => s.args && !s.title && !s.args.includes("attach")), prompt);
+      assert.ok(
+        job.steps.every((s) => s.args && !s.title && !s.args.includes("attach")),
+        prompt,
+      );
     }
     assert.equal(plan({ ...base, hook_event_name: "UserPromptSubmit", prompt: "fix it" }, { G1T_RECORD_PROMPTS: "0" }), null);
   });
@@ -184,7 +191,14 @@ const fixtures = {
     hook_event_name: "PostToolUse",
     tool_name: "Agent",
     tool_input: { description: "Review the diff", prompt: "Review it", subagent_type: "code-reviewer", run_in_background: true },
-    tool_response: { status: "async_launched", agentId: "b5", description: "Review the diff", prompt: "Review it", outputFile: "/tmp/b5.out", resolvedModel: "claude-sonnet-4-5" },
+    tool_response: {
+      status: "async_launched",
+      agentId: "b5",
+      description: "Review the diff",
+      prompt: "Review it",
+      outputFile: "/tmp/b5.out",
+      resolvedModel: "claude-sonnet-4-5",
+    },
   },
   inSubagent: {
     ...base,
@@ -195,7 +209,13 @@ const fixtures = {
     tool_input: { file_path: "/work/repo/src/api/routes.ts", old_string: "a", new_string: "b" },
     tool_response: { filePath: "/work/repo/src/api/routes.ts", structuredPatch: "SECRET PATCH" },
   },
-  skill: { ...base, hook_event_name: "PostToolUse", tool_name: "Skill", tool_input: { skill: "work-on-item", args: "42" }, tool_response: { success: true, commandName: "work-on-item" } },
+  skill: {
+    ...base,
+    hook_event_name: "PostToolUse",
+    tool_name: "Skill",
+    tool_input: { skill: "work-on-item", args: "42" },
+    tool_response: { success: true, commandName: "work-on-item" },
+  },
 };
 
 describe("subagents", () => {
@@ -262,7 +282,10 @@ describe("subagents", () => {
     assert.deepEqual(bash("git checkout -b 42-fix").steps.at(-1), { args: ["session", "touch", "--branch", "42-fix"] });
     assert.deepEqual(bash('git commit -m "x" --trailer "G1t-Session: $G1T_SESSION"').steps.at(-1), { touchHead: true });
     assert.deepEqual(bash("g1t work claim 42").steps.at(-1), { args: ["session", "touch", "--item", "42"] });
-    const mcp = plan({ ...base, hook_event_name: "PostToolUse", tool_name: "mcp__plugin_g1t_g1t__work_item", tool_input: { action: "claim", workspace: "a", number: 7 } }, {});
+    const mcp = plan(
+      { ...base, hook_event_name: "PostToolUse", tool_name: "mcp__plugin_g1t_g1t__work_item", tool_input: { action: "claim", workspace: "a", number: 7 } },
+      {},
+    );
     assert.equal(mcp.item, 7);
     assert.equal(branchFromCommand("git switch -c feat/x && echo"), "feat/x");
     assert.equal(branchFromCommand("git branch -d old"), null);
@@ -315,7 +338,15 @@ describe("summaries", () => {
       assert.ok(!out.includes(secret), `${secret} in ${out}`);
       assert.ok(out.includes("[redacted]"), out);
     }
-    for (const kept of ["A path is not a secret: the rule read it as one", "password: the one you set", "TOKEN=$G1T_TOKEN", "token: ${{ secrets.DEPLOY }}", "fn f(token: String)", "npm_config_user_agent", "git show 58def4040e93a1dcda5f388f55360f3cd46cd97e"]) {
+    for (const kept of [
+      "A path is not a secret: the rule read it as one",
+      "password: the one you set",
+      "TOKEN=$G1T_TOKEN",
+      "token: ${{ secrets.DEPLOY }}",
+      "fn f(token: String)",
+      "npm_config_user_agent",
+      "git show 58def4040e93a1dcda5f388f55360f3cd46cd97e",
+    ]) {
       assert.equal(redact(kept), kept);
     }
   });
@@ -341,7 +372,12 @@ describe("summaries", () => {
 describe("the plugin's files", () => {
   const root = join(HERE, "..", "..", "..");
   test("parse as JSON", () => {
-    for (const file of [".claude-plugin/marketplace.json", "plugins/claude-code/.claude-plugin/plugin.json", "plugins/claude-code/.mcp.json", "plugins/claude-code/hooks/hooks.json"]) {
+    for (const file of [
+      ".claude-plugin/marketplace.json",
+      "plugins/claude-code/.claude-plugin/plugin.json",
+      "plugins/claude-code/.mcp.json",
+      "plugins/claude-code/hooks/hooks.json",
+    ]) {
       assert.doesNotThrow(() => JSON.parse(readFileSync(join(root, file), "utf8")), file);
     }
   });
@@ -491,9 +527,28 @@ describe("with a working copy", () => {
     const edited = { ...fixtures.inSubagent.tool_input, file_path: join(dir, "src", "api", "routes.ts") };
     work(hook(at({ ...fixtures.inSubagent, tool_input: edited }), env).job, env);
     // Its g1t commands act as it.
-    const bash = hook(at({ ...base, hook_event_name: "PreToolUse", agent_id: "agent-def456", agent_type: "Explore", tool_name: "Bash", tool_input: { command: "g1t work claim 42" } }), env);
+    const bash = hook(
+      at({
+        ...base,
+        hook_event_name: "PreToolUse",
+        agent_id: "agent-def456",
+        agent_type: "Explore",
+        tool_name: "Bash",
+        tool_input: { command: "g1t work claim 42" },
+      }),
+      env,
+    );
     assert.equal(bash.output.hookSpecificOutput.updatedInput.command, "export G1T_SESSION=ses_sub_def456; g1t work claim 42");
-    const mcp = hook(at({ ...base, hook_event_name: "PreToolUse", agent_id: "agent-def456", tool_name: "mcp__plugin_g1t_g1t__work_item", tool_input: { action: "claim", workspace: "acme", number: 42 } }), env);
+    const mcp = hook(
+      at({
+        ...base,
+        hook_event_name: "PreToolUse",
+        agent_id: "agent-def456",
+        tool_name: "mcp__plugin_g1t_g1t__work_item",
+        tool_input: { action: "claim", workspace: "acme", number: 42 },
+      }),
+      env,
+    );
     assert.equal(mcp.output.hookSpecificOutput.updatedInput.session_id, "ses_sub_def456");
     // Outside a subagent, a command is left alone.
     assert.equal(hook(at({ ...base, hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "g1t work claim 42" } }), env).output, null);
@@ -504,7 +559,16 @@ describe("with a working copy", () => {
     const childStarts = log.filter((c) => c.args[1] === "start" && c.args.includes("--parent"));
     assert.ok(childStarts.length >= 2);
     const first = childStarts[0].args;
-    assert.deepEqual(first.slice(0, 8), ["session", "start", "--harness", "claude_code", "--harness-session-id", "abc-123/agent/def456", "--parent", "ses_fake01"]);
+    assert.deepEqual(first.slice(0, 8), [
+      "session",
+      "start",
+      "--harness",
+      "claude_code",
+      "--harness-session-id",
+      "abc-123/agent/def456",
+      "--parent",
+      "ses_fake01",
+    ]);
     assert.ok(first.includes("--no-remember"));
     assert.ok(first.includes("--agent-type=Explore"));
     assert.ok(first.includes("--task=Find API endpoints"));
@@ -513,7 +577,10 @@ describe("with a working copy", () => {
     const touched = log.find((c) => c.args[1] === "touch");
     assert.deepEqual(touched, { args: ["session", "touch", "--file=src/api/routes.ts"], session: "ses_sub_def456" });
     const ended = log.find((c) => c.args[1] === "end");
-    assert.deepEqual(ended, { args: ["session", "end", "--reason", "done", "--result=Analysis complete. Found 3 potential issues..."], session: "ses_sub_def456" });
+    assert.deepEqual(ended, {
+      args: ["session", "end", "--reason", "done", "--result=Analysis complete. Found 3 potential issues..."],
+      session: "ses_sub_def456",
+    });
   });
 
   test("five subagents of one type started at once each get their own Agent call's task, whatever order they start in", () => {
@@ -532,8 +599,16 @@ describe("with a working copy", () => {
       hook(at({ ...base, hook_event_name: "PreToolUse", tool_name: "Agent", tool_input, tool_use_id: `toolu_${i}` }), env);
     }
     const files = (i, { meta = true, first = true } = {}) => {
-      if (meta) writeFileSync(join(subagents, `agent-a${i}.meta.json`), JSON.stringify({ agentType: "general-purpose", description: `Task ${i}`, toolUseId: `toolu_${i}` }));
-      if (first) writeFileSync(join(subagents, `agent-a${i}.jsonl`), `${JSON.stringify({ type: "user", agentId: `a${i}`, message: { role: "user", content: `Do thing ${i}, and only thing ${i}.` } })}\n{"type":"attachment"}\n`);
+      if (meta)
+        writeFileSync(
+          join(subagents, `agent-a${i}.meta.json`),
+          JSON.stringify({ agentType: "general-purpose", description: `Task ${i}`, toolUseId: `toolu_${i}` }),
+        );
+      if (first)
+        writeFileSync(
+          join(subagents, `agent-a${i}.jsonl`),
+          `${JSON.stringify({ type: "user", agentId: `a${i}`, message: { role: "user", content: `Do thing ${i}, and only thing ${i}.` } })}\n{"type":"attachment"}\n`,
+        );
     };
     // They start in another order: one with its meta file, one with only its transcript (by prompt), the rest with both.
     files(4);
@@ -541,7 +616,8 @@ describe("with a working copy", () => {
     files(5);
     files(1);
     files(3, { first: false });
-    for (const i of [4, 2, 5, 1, 3]) work(hook(at({ ...base, hook_event_name: "SubagentStart", agent_id: `a${i}`, agent_type: "general-purpose" }), env).job, env);
+    for (const i of [4, 2, 5, 1, 3])
+      work(hook(at({ ...base, hook_event_name: "SubagentStart", agent_id: `a${i}`, agent_type: "general-purpose" }), env).job, env);
     const starts = calls().filter((c) => c.args[1] === "start" && c.args.includes("--parent"));
     assert.equal(starts.length, 5);
     for (const i of n) {
@@ -574,7 +650,10 @@ describe("with a working copy", () => {
     const subagents = join(dir, "t", "subagents");
     mkdirSync(subagents, { recursive: true });
     writeFileSync(join(subagents, "agent-a7.meta.json"), JSON.stringify({ description: "Look around", toolUseId: "toolu_7" }));
-    writeFileSync(join(subagents, "agent-a7.jsonl"), `${JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: "Look around the repo" }] } })}\n`);
+    writeFileSync(
+      join(subagents, "agent-a7.jsonl"),
+      `${JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: "Look around the repo" }] } })}\n`,
+    );
     const files = sessionFiles(base.session_id, env);
     rememberTask(files, { description: "Someone else's", prompt: "not yours", subagent_type: "Explore" }, "toolu_8");
     const agent = pairSubagent({ id: "agent-a7", type: "Explore" }, files, join(dir, "t.jsonl"), env);
@@ -608,7 +687,10 @@ describe("with a working copy", () => {
     assert.ok(!recorded.some((c) => c.args[1] === "attach"));
     const next = hook(at({ hook_event_name: "UserPromptSubmit", prompt: "Now add tests" }), env).job;
     assert.ok(next && !next.start);
-    assert.deepEqual(next.steps.map((s) => s.args.slice(0, 4)), [["session", "log", "--kind", "prompt"]]);
+    assert.deepEqual(
+      next.steps.map((s) => s.args.slice(0, 4)),
+      [["session", "log", "--kind", "prompt"]],
+    );
   });
 
   test("a session given a g1t remote between prompts is recorded at the next one", () => {
@@ -625,7 +707,13 @@ describe("with a working copy", () => {
   });
 
   test("only commands that may add a remote look for one", () => {
-    for (const command of ["git remote add origin https://g1t.sh/a/b.git", "git -C app push -u origin main", "git init", "g1t repo create a/b", "cd x && git clone https://g1t.sh/a/b"]) {
+    for (const command of [
+      "git remote add origin https://g1t.sh/a/b.git",
+      "git -C app push -u origin main",
+      "git init",
+      "g1t repo create a/b",
+      "cd x && git clone https://g1t.sh/a/b",
+    ]) {
       assert.equal(mayAddRemote(command), true, command);
     }
     for (const command of ["git status", "npm install", "g1t work list", "echo push", undefined]) assert.equal(mayAddRemote(command), false, String(command));
@@ -725,7 +813,11 @@ describe("with a working copy", () => {
     work({ cwd: dir, sid: base.session_id, start: true, steps: [] }, old);
     work(plan({ ...base, cwd: dir, hook_event_name: "Stop" }, old), old);
     // SessionStart still asks it for the work item's context.
-    assert.deepEqual(calls().map((c) => c.args.join(" ")), ["work view 42"], "nothing is recorded with it");
+    assert.deepEqual(
+      calls().map((c) => c.args.join(" ")),
+      ["work view 42"],
+      "nothing is recorded with it",
+    );
     assert.equal(allCalls().filter((c) => c.args[0] === "--version").length, 1, "the version is asked once for each build of the CLI");
     const first = hook({ ...base, cwd: dir, hook_event_name: "UserPromptSubmit", prompt: "hi" }, old);
     assert.match(first.output.systemMessage, /g1t CLI is 0\.3\.1, and the plugin needs 0\.4\.0 or later/);
@@ -769,7 +861,10 @@ describe("with a working copy", () => {
 
   test("a session's usage is reported from its own transcript, to a CLI that takes it, and only the counts", () => {
     const transcript = join(dir, "t.jsonl");
-    writeFileSync(transcript, `${JSON.stringify({ type: "user", message: { role: "user", content: "the secret plan" } })}\n${assistant("msg_1", "claude-opus-5-5", { input_tokens: 10, output_tokens: 20 })}\n`);
+    writeFileSync(
+      transcript,
+      `${JSON.stringify({ type: "user", message: { role: "user", content: "the secret plan" } })}\n${assistant("msg_1", "claude-opus-5-5", { input_tokens: 10, output_tokens: 20 })}\n`,
+    );
     const subagent = join(dir, "agent-def456.jsonl");
     writeFileSync(subagent, `${assistant("msg_2", "claude-haiku-4-5", { input_tokens: 7 })}\n`);
     const newer = { ...env, FAKE_G1T_VERSION: USAGE_CLI };
@@ -780,11 +875,18 @@ describe("with a working copy", () => {
     const heartbeats = calls().filter((c) => c.args[1] === "heartbeat");
     const usage = (call) => JSON.parse(call.args.find((a) => a.startsWith("--usage-json=")).slice("--usage-json=".length));
     assert.equal(heartbeats[0].session, "ses_fake01");
-    assert.deepEqual(usage(heartbeats[0]), [{ model: "claude-opus-5-5", input_tokens: 10, output_tokens: 20, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, cache_read_tokens: 0 }]);
+    assert.deepEqual(usage(heartbeats[0]), [
+      { model: "claude-opus-5-5", input_tokens: 10, output_tokens: 20, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, cache_read_tokens: 0 },
+    ]);
     // The subagent's own, to its own session, before it ends; never its parent's.
     assert.equal(heartbeats[1].session, "ses_sub_def456");
-    assert.deepEqual(usage(heartbeats[1]).map((row) => [row.model, row.input_tokens]), [["claude-haiku-4-5", 7]]);
-    const order = calls().filter((c) => c.session === "ses_sub_def456").map((c) => c.args[1]);
+    assert.deepEqual(
+      usage(heartbeats[1]).map((row) => [row.model, row.input_tokens]),
+      [["claude-haiku-4-5", 7]],
+    );
+    const order = calls()
+      .filter((c) => c.session === "ses_sub_def456")
+      .map((c) => c.args[1]);
     assert.ok(order.indexOf("heartbeat") < order.indexOf("end"), String(order));
     assert.ok(!allCalls().some((c) => c.args.join(" ").includes("secret plan")), "nothing of what the transcript says is sent");
     // A CLI without --usage-json gets a plain heartbeat, and no extra one before a subagent ends.
@@ -792,7 +894,12 @@ describe("with a working copy", () => {
     rmSync(join(env.CLAUDE_PLUGIN_DATA, "cli.json"), { force: true });
     work(hook({ ...base, transcript_path: transcript, cwd: dir, hook_event_name: "Stop" }, env).job, env);
     work(hook({ ...fixtures.subagentStop, transcript_path: transcript, agent_transcript_path: subagent, cwd: dir }, env).job, env);
-    assert.deepEqual(calls().filter((c) => c.args[1] === "heartbeat").map((c) => c.args), [["session", "heartbeat"]]);
+    assert.deepEqual(
+      calls()
+        .filter((c) => c.args[1] === "heartbeat")
+        .map((c) => c.args),
+      [["session", "heartbeat"]],
+    );
   });
 
   test("PowerShell commands are read as Bash ones are, and a subagent's act as its session", () => {
@@ -805,7 +912,8 @@ describe("with a working copy", () => {
     work({ cwd: dir, sid: base.session_id, start: true, steps: [] }, env);
     work(hook({ ...fixtures.subagentStart, cwd: dir }, env).job, env);
     const pre = (tool_name, command) =>
-      hook({ ...base, cwd: dir, hook_event_name: "PreToolUse", agent_id: "agent-def456", agent_type: "Explore", tool_name, tool_input: { command } }, env).output;
+      hook({ ...base, cwd: dir, hook_event_name: "PreToolUse", agent_id: "agent-def456", agent_type: "Explore", tool_name, tool_input: { command } }, env)
+        .output;
     assert.equal(pre("PowerShell", "g1t work claim 42").hookSpecificOutput.updatedInput.command, "$env:G1T_SESSION='ses_sub_def456'; g1t work claim 42");
     assert.equal(pre("PowerShell", "g1t.exe session view").hookSpecificOutput.updatedInput.command, "$env:G1T_SESSION='ses_sub_def456'; g1t.exe session view");
     assert.equal(pre("Bash", "echo $G1T_SESSION").hookSpecificOutput.updatedInput.command, "export G1T_SESSION=ses_sub_def456; echo $G1T_SESSION");
@@ -825,9 +933,18 @@ describe("with a working copy", () => {
     hook({ ...base, cwd: dir, hook_event_name: "SessionStart" }, env);
     work({ cwd: dir, sid: base.session_id, start: true, steps: [] }, env);
     const typed = hook({ ...base, cwd: dir, hook_event_name: "UserPromptSubmit", prompt: "/g1t:work-on-item 42" }, env).job;
-    assert.deepEqual(typed.steps.map((s) => s.args.slice(0, 4)), [["session", "log", "--kind", "prompt"], ["session", "log", "--kind", "skill"]]);
+    assert.deepEqual(
+      typed.steps.map((s) => s.args.slice(0, 4)),
+      [
+        ["session", "log", "--kind", "prompt"],
+        ["session", "log", "--kind", "skill"],
+      ],
+    );
     work(typed, env);
-    const tool = hook({ ...base, cwd: dir, hook_event_name: "PostToolUse", tool_name: "Skill", tool_input: { skill: "g1t:work-on-item", args: "42" } }, env).job;
+    const tool = hook(
+      { ...base, cwd: dir, hook_event_name: "PostToolUse", tool_name: "Skill", tool_input: { skill: "g1t:work-on-item", args: "42" } },
+      env,
+    ).job;
     work(tool, env);
     const skills = calls().filter((c) => c.args.includes("skill"));
     assert.equal(skills.length, 2);
@@ -841,7 +958,10 @@ describe("with a working copy", () => {
     assert.equal(later.steps[0].key, "skill:work-on-item:2", "a turn whose prompt is not sent is still a turn");
     // Prompts kept back: the typed skill's name is still recorded, the prompt is not.
     const quiet = hook({ ...base, cwd: dir, hook_event_name: "UserPromptSubmit", prompt: "/g1t:status" }, { ...env, G1T_RECORD_PROMPTS: "0" }).job;
-    assert.deepEqual(quiet.steps.map((s) => s.args.at(-1)), ["g1t:status"]);
+    assert.deepEqual(
+      quiet.steps.map((s) => s.args.at(-1)),
+      ["g1t:status"],
+    );
   });
 
   test("with no work item in sight, Claude is told the session is recorded and when to open or claim one", () => {
@@ -912,7 +1032,13 @@ test("pending updates survive delivery and stay isolated between parent and chil
     assert.equal(updateContext(event, env, { throttle: true, now: 1000 }), first);
     assert.equal(updateContext(event, env, { throttle: true, now: 2000 }), null);
     assert.equal(updateContext(event, env, { throttle: true, now: 1000 + UPDATES_REPEAT_MS }), first);
-    writeFileSync(files.updates("ses_parent"), JSON.stringify([{ id: "parent-update", kind: "overlap.detected", data: {} }, { id: "newer", kind: "work.claimed", data: {} }]));
+    writeFileSync(
+      files.updates("ses_parent"),
+      JSON.stringify([
+        { id: "parent-update", kind: "overlap.detected", data: {} },
+        { id: "newer", kind: "work.claimed", data: {} },
+      ]),
+    );
     assert.match(updateContext(event, env, { throttle: true, now: 1001 + UPDATES_REPEAT_MS }), /newer/);
     writeFileSync(files.updates("ses_parent"), JSON.stringify([{ id: "parent-update", kind: "overlap.detected", data: {} }]));
     const child = updateContext({ ...event, agent_id: "child" }, env);
@@ -928,7 +1054,9 @@ test("pending updates survive delivery and stay isolated between parent and chil
     writeFileSync(files.updates("ses_parent"), "[]");
     assert.equal(updateContext(event, env), null);
     assert.equal(updateContext({ ...event, agent_id: "child" }, env), child);
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("a CLI too old to acknowledge is told to update, once per set of updates", () => {
@@ -949,7 +1077,13 @@ test("a CLI too old to acknowledge is told to update, once per set of updates", 
     // Nothing can clear them, so not again on every prompt or tool.
     assert.equal(updateContext(event, env), null);
     assert.equal(updateContext(event, env, { throttle: true, now: Date.now() + 10 * UPDATES_REPEAT_MS }), null);
-    writeFileSync(files.updates("ses_old"), JSON.stringify([{ id: "upd_1", data: {} }, { id: "upd_2", data: {} }]));
+    writeFileSync(
+      files.updates("ses_old"),
+      JSON.stringify([
+        { id: "upd_1", data: {} },
+        { id: "upd_2", data: {} },
+      ]),
+    );
     assert.match(updateContext(event, env), /upd_2/);
     // A CLI that acknowledges is asked to.
     writeFileSync(join(dir, "cli.json"), JSON.stringify({ stamp: "x", version: "0.3.3" }));
@@ -957,7 +1091,9 @@ test("a CLI too old to acknowledge is told to update, once per set of updates", 
     assert.equal(howToUpdate("0.3.4"), "`g1t upgrade`");
     assert.match(howToUpdate("0.3.3"), /curl -fsSL https:\/\/g1t\.sh\/install \| sh/);
     assert.match(howToUpdate(null), /installer/);
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("an acknowledgement refreshes the inbox at once, from the shell or MCP", () => {
@@ -971,7 +1107,9 @@ test("an acknowledgement refreshes the inbox at once, from the shell or MCP", ()
     assert.equal(mcp.refreshUpdates, true);
     const other = plan({ ...base, tool_name: "Bash", tool_input: { command: "git status" } }, env);
     assert.equal(other.refreshUpdates, undefined);
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 describe("a transcript's usage", () => {
@@ -984,9 +1122,27 @@ describe("a transcript's usage", () => {
   const lines = [
     JSON.stringify({ type: "user", message: { role: "user", content: "hi" } }),
     // One response written as three lines, the last with its final output count.
-    assistant("msg_1", "claude-opus-5-5", { input_tokens: 2, output_tokens: 6, cache_read_input_tokens: 100, cache_creation_input_tokens: 50, cache_creation: { ephemeral_5m_input_tokens: 30, ephemeral_1h_input_tokens: 20 } }),
-    assistant("msg_1", "claude-opus-5-5", { input_tokens: 2, output_tokens: 6, cache_read_input_tokens: 100, cache_creation_input_tokens: 50, cache_creation: { ephemeral_5m_input_tokens: 30, ephemeral_1h_input_tokens: 20 } }),
-    assistant("msg_1", "claude-opus-5-5", { input_tokens: 2, output_tokens: 40, cache_read_input_tokens: 100, cache_creation_input_tokens: 50, cache_creation: { ephemeral_5m_input_tokens: 30, ephemeral_1h_input_tokens: 20 } }),
+    assistant("msg_1", "claude-opus-5-5", {
+      input_tokens: 2,
+      output_tokens: 6,
+      cache_read_input_tokens: 100,
+      cache_creation_input_tokens: 50,
+      cache_creation: { ephemeral_5m_input_tokens: 30, ephemeral_1h_input_tokens: 20 },
+    }),
+    assistant("msg_1", "claude-opus-5-5", {
+      input_tokens: 2,
+      output_tokens: 6,
+      cache_read_input_tokens: 100,
+      cache_creation_input_tokens: 50,
+      cache_creation: { ephemeral_5m_input_tokens: 30, ephemeral_1h_input_tokens: 20 },
+    }),
+    assistant("msg_1", "claude-opus-5-5", {
+      input_tokens: 2,
+      output_tokens: 40,
+      cache_read_input_tokens: 100,
+      cache_creation_input_tokens: 50,
+      cache_creation: { ephemeral_5m_input_tokens: 30, ephemeral_1h_input_tokens: 20 },
+    }),
     // Without the split, a cache write is the 5-minute kind.
     assistant("msg_2", "claude-opus-5-5", { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 9 }),
     // The same message id from another request is another response.
@@ -1004,7 +1160,15 @@ describe("a transcript's usage", () => {
     const usage = transcriptUsage(path, null);
     assert.deepEqual(usage, [
       { model: "claude-opus-5-5", input_tokens: 4, output_tokens: 42, cache_write_5m_tokens: 39, cache_write_1h_tokens: 20, cache_read_tokens: 100 },
-      { model: "claude-haiku-5-5-20260101", tier: "long", input_tokens: 10, output_tokens: 5, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, cache_read_tokens: LONG_PROMPT_TOKENS },
+      {
+        model: "claude-haiku-5-5-20260101",
+        tier: "long",
+        input_tokens: 10,
+        output_tokens: 5,
+        cache_write_5m_tokens: 0,
+        cache_write_1h_tokens: 0,
+        cache_read_tokens: LONG_PROMPT_TOKENS,
+      },
       { model: "claude-haiku-5-5-20260101", input_tokens: 10, output_tokens: 5, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, cache_read_tokens: 99_000 },
     ]);
   });
@@ -1021,7 +1185,10 @@ describe("a transcript's usage", () => {
     assert.deepEqual(transcriptUsage(path, state), transcriptUsage(path, null));
     // A transcript written again from the top is counted again.
     writeFileSync(path, `${lines[4]}\n`);
-    assert.deepEqual(transcriptUsage(path, state).map((row) => row.input_tokens), [1]);
+    assert.deepEqual(
+      transcriptUsage(path, state).map((row) => row.input_tokens),
+      [1],
+    );
   });
 
   test("a transcript that cannot be read gives nothing, and never throws", () => {

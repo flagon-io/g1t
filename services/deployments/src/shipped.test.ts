@@ -21,7 +21,12 @@ test("a deployment ships what no deployment shipped before, and stops at the las
 
 const ask = { sha: "abc", landed_at: "2026-10-14T10:00:00.000Z" };
 const at = (minutes: number) => new Date(Date.parse(ask.landed_at) + minutes * 60_000).toISOString();
-const attempt = (minutes: number, outcome: Attempt["outcome"], url = `/acme/web/deployments/d${minutes}`): Attempt => ({ at: at(minutes), outcome, url, environment: "production" });
+const attempt = (minutes: number, outcome: Attempt["outcome"], url = `/acme/web/deployments/d${minutes}`): Attempt => ({
+  at: at(minutes),
+  outcome,
+  url,
+  environment: "production",
+});
 
 test("a change shipped is live from the deployment that first shipped it", () => {
   const shipped = { deployed_at: at(9), url: "/acme/web/actions/runs/run_1", environment: "production" };
@@ -81,11 +86,18 @@ test("only a production success is a shipment, linked to its page", () => {
     url: "/acme/web/actions/runs/run_1",
   });
   assert.equal(shipmentOf({ repoId: "rep_1", deployment, deploymentStatus: { ...status, state: "in_progress" } }, repo, "https://g1t.sh"), null);
-  assert.equal(shipmentOf({ repoId: "rep_1", deployment: { ...deployment, production_environment: false }, deploymentStatus: status }, repo, "https://g1t.sh"), null);
+  assert.equal(
+    shipmentOf({ repoId: "rep_1", deployment: { ...deployment, production_environment: false }, deploymentStatus: status }, repo, "https://g1t.sh"),
+    null,
+  );
   const build = { ...deployment, id: "dpl_1", source: "g1t_page" as const, project: "site", run_url: null };
   assert.equal(shipmentOf({ repoId: "rep_1", deployment: build, deploymentStatus: status }, repo, "https://g1t.sh")?.url, "/acme/site/deployments/dpl_1");
   // Reported through the API with no run: the repository's deployments.
-  assert.equal(shipmentOf({ repoId: "rep_1", deployment: { ...deployment, source: "api" as const, run_url: null }, deploymentStatus: status }, repo, "https://g1t.sh")?.url, "/acme/web/deployments");
+  assert.equal(
+    shipmentOf({ repoId: "rep_1", deployment: { ...deployment, source: "api" as const, run_url: null }, deploymentStatus: status }, repo, "https://g1t.sh")
+      ?.url,
+    "/acme/web/deployments",
+  );
 });
 
 test("addresses stay on the site", () => {

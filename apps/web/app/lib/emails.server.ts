@@ -24,10 +24,7 @@ export const EMAIL_INTENTS = ["add-email", "remove-email", "resend-email", "prim
 
 /** A person's addresses and security log for their settings. */
 export async function loadEmails(user: User): Promise<{ emails: AccountEmails | null; log: SecurityEvent[] }> {
-  const [emails, log] = await Promise.all([
-    accounts.listEmails(user).catch(() => null),
-    accounts.securityLog(user).catch(() => null),
-  ]);
+  const [emails, log] = await Promise.all([accounts.listEmails(user).catch(() => null), accounts.securityLog(user).catch(() => null)]);
   return {
     emails: emails?.ok ? emails.value : null,
     log: log?.ok ? log.value : [],
@@ -59,21 +56,13 @@ export async function emailAction(user: User, form: FormData, request: Request):
   const email = String(form.get("email") ?? "").trim();
   switch (form.get("intent")) {
     case "add-email":
-      return answer(
-        await accounts.addEmail(user, email, proof(request, form)),
-        form,
-        `A confirmation link is on its way to ${email}.`,
-      );
+      return answer(await accounts.addEmail(user, email, proof(request, form)), form, `A confirmation link is on its way to ${email}.`);
     case "remove-email":
       return answer(await accounts.removeEmail(user, email, proof(request, form)), form, `Removed ${email}.`);
     case "resend-email":
       return answer(await accounts.resendEmailVerification(user, email), form, `Sent the link to ${email} again.`);
     case "primary-email":
-      return answer(
-        await accounts.updateEmailSettings(user, { primary: email }, proof(request, form)),
-        form,
-        `${email} is now your primary address.`,
-      );
+      return answer(await accounts.updateEmailSettings(user, { primary: email }, proof(request, form)), form, `${email} is now your primary address.`);
     case "backup-email":
       return answer(
         await accounts.updateEmailSettings(user, { backup: String(form.get("backup") ?? "") }, proof(request, form)),

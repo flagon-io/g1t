@@ -7,13 +7,7 @@ import type { Pull, WorkItem } from "@g1t/contracts";
  * work.tsx so that a page listing work does not load the Markdown renderer.
  */
 
-export function ItemIcon({
-  item,
-  size = 16,
-}: {
-  item: Pick<WorkItem, "state" | "reason">;
-  size?: number;
-}) {
+export function ItemIcon({ item, size = 16 }: { item: Pick<WorkItem, "state" | "reason">; size?: number }) {
   if (item.state === "open") return <CircleDot size={size} className="shrink-0 text-success" />;
   if (item.reason === "not_planned") {
     return <CircleSlash size={size} className="shrink-0 text-faint" />;

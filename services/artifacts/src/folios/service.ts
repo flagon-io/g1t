@@ -104,30 +104,49 @@ import {
   type ReaderContext,
 } from "./access-store.ts";
 import { publishFolioEvent, publishSpaceDeleted } from "./events.ts";
-import { MAX_DEPTH, MAX_PAGE_STATE, cleanCover, cleanIcon, cleanNote, cleanSource, cleanTarget, cleanTitle, decodeCursor, depthOf, encodeCursor, listLimit, pageState, sharedTops, slugOf, subtreeHeight, treeNodes } from "./list.ts";
+import {
+  MAX_DEPTH,
+  MAX_PAGE_STATE,
+  cleanCover,
+  cleanIcon,
+  cleanNote,
+  cleanSource,
+  cleanTarget,
+  cleanTitle,
+  decodeCursor,
+  depthOf,
+  encodeCursor,
+  listLimit,
+  pageState,
+  sharedTops,
+  slugOf,
+  subtreeHeight,
+  treeNodes,
+} from "./list.ts";
 import { REQUEST_RECIPIENTS, claimAccessRequest } from "./requests.ts";
 import type { FolioRoom } from "./room.ts";
 import { builtinFolioTemplate, builtinFolioTemplates } from "./templates.ts";
 import { deleteSpaceRows, eraseFolios, landingFor } from "./trash.ts";
 
-export type FoliosEnv = WhoEnv & QuotaEnv & {
-  FOLIOS: DurableObjectNamespace<FolioRoom>;
-  NOTIFY?: ServiceBinding;
-  EVENTS?: ServiceBinding;
-  REPOS?: ServiceBinding;
-  AI?: Ai;
-  VECTORS?: Vectorize;
-  FOLIO_VECTORS?: Vectorize;
-  JOBS?: Queue<DocsJob>;
-  FILES?: R2Bucket;
-  DOCS_FILES?: string;
-  DOCS_S3_ENDPOINT?: string;
-  DOCS_S3_BUCKET?: string;
-  DOCS_S3_REGION?: string;
-  DOCS_S3_ACCESS_KEY_ID?: string;
-  DOCS_S3_SECRET_ACCESS_KEY?: string;
-  DOCS_S3_VIRTUAL_HOSTED?: string;
-};
+export type FoliosEnv = WhoEnv &
+  QuotaEnv & {
+    FOLIOS: DurableObjectNamespace<FolioRoom>;
+    NOTIFY?: ServiceBinding;
+    EVENTS?: ServiceBinding;
+    REPOS?: ServiceBinding;
+    AI?: Ai;
+    VECTORS?: Vectorize;
+    FOLIO_VECTORS?: Vectorize;
+    JOBS?: Queue<DocsJob>;
+    FILES?: R2Bucket;
+    DOCS_FILES?: string;
+    DOCS_S3_ENDPOINT?: string;
+    DOCS_S3_BUCKET?: string;
+    DOCS_S3_REGION?: string;
+    DOCS_S3_ACCESS_KEY_ID?: string;
+    DOCS_S3_SECRET_ACCESS_KEY?: string;
+    DOCS_S3_VIRTUAL_HOSTED?: string;
+  };
 
 type Args = { workspace: string; viewer: Viewer };
 
@@ -150,7 +169,17 @@ type SuggestionRow = {
   marks_current: number;
 };
 
-type VersionRow = { id: string; folio_id: string; created_at: string; kind: FolioVersion["kind"]; authors: string; note: string | null; text: string; state: ArrayBuffer | null; state_key: string | null };
+type VersionRow = {
+  id: string;
+  folio_id: string;
+  created_at: string;
+  kind: FolioVersion["kind"];
+  authors: string;
+  note: string | null;
+  text: string;
+  state: ArrayBuffer | null;
+  state_key: string | null;
+};
 
 /** Queries' embeddings, a minute per isolate. */
 const queryVectors = new QueryCache();
@@ -207,7 +236,10 @@ export class Folios {
     const room = this.room(row.id);
     const named = { folio_id: row.id, kind: row.kind, workspace_slug: workspace.slug };
     if (await room.ensure(named)) return room;
-    const saved = await this.db.prepare("SELECT text, state FROM folios WHERE id = ?").bind(row.id).first<{ text: string; state: ArrayBuffer | number[] | null }>();
+    const saved = await this.db
+      .prepare("SELECT text, state FROM folios WHERE id = ?")
+      .bind(row.id)
+      .first<{ text: string; state: ArrayBuffer | number[] | null }>();
     await room.ensure({ ...named, text: saved?.text ?? row.text ?? "", state: saved?.state ? new Uint8Array(saved.state as ArrayBuffer) : null });
     return room;
   }
@@ -224,7 +256,15 @@ export class Folios {
     const [person] = await Promise.all([this.who.viewerPerson(workspace, user), this.who.ensureDefault(workspace, user), this.who.allSpaces(workspace)]);
     // Read again only when General was just made (which forgets the spaces).
     const spaces = await this.who.spacesFor(workspace, person);
-    return ok({ workspace, viewer: user, key: userKey(user), person, spaces, spaceById: new Map(spaces.map((s) => [s.row.id, s])), owner: this.who.viewerOwner(user, workspace.slug) });
+    return ok({
+      workspace,
+      viewer: user,
+      key: userKey(user),
+      person,
+      spaces,
+      spaceById: new Map(spaces.map((s) => [s.row.id, s])),
+      owner: this.who.viewerOwner(user, workspace.slug),
+    });
   }
 
   private reader(ctx: Ctx, visits: ReadonlySet<string>): ReaderContext {
@@ -243,17 +283,30 @@ export class Folios {
    * read it at all. `opening` counts as opening its link (the `folio`
    * read and the live socket), which is what makes a link folio readable.
    */
-  private async open(ctx: Ctx, folioId: unknown, need: DocRole, options: { trashed?: boolean; opening?: boolean; text?: boolean; state?: boolean } = {}): Promise<Result<{ row: FolioRow; role: DocRole; found: Ancestry }>> {
+  private async open(
+    ctx: Ctx,
+    folioId: unknown,
+    need: DocRole,
+    options: { trashed?: boolean; opening?: boolean; text?: boolean; state?: boolean } = {},
+  ): Promise<Result<{ row: FolioRow; role: DocRole; found: Ancestry }>> {
     let columns = options.text ? FOLIO_COLUMNS.replace("'' AS text", "text") : FOLIO_COLUMNS;
     if (options.state) columns += ", state";
-    const row = await this.db.prepare(`SELECT ${columns} FROM folios WHERE id = ? AND workspace_id = ?`).bind(String(folioId ?? ""), ctx.workspace.id).first<FolioRow>();
+    const row = await this.db
+      .prepare(`SELECT ${columns} FROM folios WHERE id = ? AND workspace_id = ?`)
+      .bind(String(folioId ?? ""), ctx.workspace.id)
+      .first<FolioRow>();
     if (!row) return fail("not_found", "No such artifact.");
     if (row.trashed_at && !options.trashed) return fail("not_found", "That artifact is in the trash.");
     const { roles, found } = await this.roles(ctx, [row], options.opening ? [row.id] : []);
     const role = roles.get(row.id) ?? null;
     if (!role) return fail("not_found", "No such artifact.");
     if (!atLeast(role, need)) {
-      const message = need === "comment" ? "You can read this but not comment on it." : need === "manage" ? "Only people with full access can do that." : "You can read this but not change it.";
+      const message =
+        need === "comment"
+          ? "You can read this but not comment on it."
+          : need === "manage"
+            ? "Only people with full access can do that."
+            : "You can read this but not change it.";
       return fail("forbidden", message);
     }
     return ok({ row, role, found });
@@ -277,9 +330,18 @@ export class Folios {
     const ids = readable.map((r) => r.id);
     // The people (identity, the slow part) with the rows' D1 reads, not after them.
     const [favorites, counts, kids, stale, people] = await Promise.all([
-      this.db.prepare("SELECT folio_id FROM folio_favorites WHERE user_id = ? AND folio_id IN (SELECT value FROM json_each(?))").bind(ctx.viewer.id, json(ids)).all<{ folio_id: string }>(),
-      this.db.prepare("SELECT folio_id, COUNT(*) AS n FROM folio_grants WHERE folio_id IN (SELECT value FROM json_each(?)) GROUP BY folio_id").bind(json(ids)).all<{ folio_id: string; n: number }>(),
-      this.db.prepare("SELECT DISTINCT parent_id FROM folios WHERE parent_id IN (SELECT value FROM json_each(?)) AND trashed_at IS NULL").bind(json(ids)).all<{ parent_id: string }>(),
+      this.db
+        .prepare("SELECT folio_id FROM folio_favorites WHERE user_id = ? AND folio_id IN (SELECT value FROM json_each(?))")
+        .bind(ctx.viewer.id, json(ids))
+        .all<{ folio_id: string }>(),
+      this.db
+        .prepare("SELECT folio_id, COUNT(*) AS n FROM folio_grants WHERE folio_id IN (SELECT value FROM json_each(?)) GROUP BY folio_id")
+        .bind(json(ids))
+        .all<{ folio_id: string; n: number }>(),
+      this.db
+        .prepare("SELECT DISTINCT parent_id FROM folios WHERE parent_id IN (SELECT value FROM json_each(?)) AND trashed_at IS NULL")
+        .bind(json(ids))
+        .all<{ parent_id: string }>(),
       this.staleIds(ids),
       this.who.profiles(
         ctx.workspace,
@@ -368,12 +430,22 @@ export class Folios {
     const limit = listLimit(query.limit);
     if (query.q && ftsQuery(query.q)) {
       // Words or meaning: the search's order, the list's filters.
-      const hits = await this.searchFor(ctx, { q: query.q, kinds: query.kinds, space_id: query.space_id, project: query.project, owner: query.owner, mode: "hybrid", limit });
+      const hits = await this.searchFor(ctx, {
+        q: query.q,
+        kinds: query.kinds,
+        space_id: query.space_id,
+        project: query.project,
+        owner: query.owner,
+        mode: "hybrid",
+        limit,
+      });
       const rows = await foliosById(
         this.db,
         hits.map((h) => h.id),
       );
-      const ordered = hits.map((h) => rows.get(h.id)).filter((r): r is FolioRow => !!r && (query.tab !== "yours" || r.owner === ctx.key) && (query.tab !== "shared" || r.owner !== ctx.key));
+      const ordered = hits
+        .map((h) => rows.get(h.id))
+        .filter((r): r is FolioRow => !!r && (query.tab !== "yours" || r.owner === ctx.key) && (query.tab !== "shared" || r.owner !== ctx.key));
       return { items: await this.toFolios(ctx, ordered), next_cursor: null };
     }
     const keys = personKeys(ctx.person);
@@ -390,7 +462,8 @@ export class Folios {
         `(f.id IN (SELECT folio_id FROM folio_access WHERE principal IN (SELECT value FROM json_each(?)) AND via <> 'owner') OR (r.general_access = 'link' AND EXISTS (SELECT 1 FROM folio_visits v WHERE v.user_id = ? AND (v.folio_id = f.id OR v.folio_id = f.acl_root))))`,
       );
       binds.push(ctx.key, json(keys), ctx.viewer.id);
-      sortKey = "MAX(f.edited_at, COALESCE((SELECT MAX(a.since) FROM folio_access a WHERE a.folio_id = f.id AND a.principal IN (SELECT value FROM json_each(?))), ''))";
+      sortKey =
+        "MAX(f.edited_at, COALESCE((SELECT MAX(a.since) FROM folio_access a WHERE a.folio_id = f.id AND a.principal IN (SELECT value FROM json_each(?))), ''))";
       sortBinds.push(json(keys));
     } else {
       const filter = this.filterOf(ctx);
@@ -423,7 +496,9 @@ export class Folios {
     }
     const rows = (
       await this.db
-        .prepare(`SELECT ${folioColumns("f")}, ${sortKey} AS sort_key FROM folios f JOIN folios r ON r.id = f.acl_root WHERE ${where.join(" AND ")} ORDER BY sort_key DESC, f.id DESC LIMIT ?`)
+        .prepare(
+          `SELECT ${folioColumns("f")}, ${sortKey} AS sort_key FROM folios f JOIN folios r ON r.id = f.acl_root WHERE ${where.join(" AND ")} ORDER BY sort_key DESC, f.id DESC LIMIT ?`,
+        )
         .bind(...sortBinds, ...binds, limit + 1)
         .all<FolioRow & { sort_key: string }>()
     ).results;
@@ -445,16 +520,17 @@ export class Folios {
     const ctx = found.value;
     const joins = new Set(joined.results.map((r) => r.space_id));
     // Joined open spaces (General always), team spaces of theirs, Members-only spaces they're in; never archived or deleted ones.
-    const shown = ctx.spaces.filter((s) => s.role && !s.row.archived_at && !s.row.deleted_at && (s.row.kind !== "workspace" || s.row.is_default || joins.has(s.row.id)));
+    const shown = ctx.spaces.filter(
+      (s) => s.role && !s.row.archived_at && !s.row.deleted_at && (s.row.kind !== "workspace" || s.row.is_default || joins.has(s.row.id)),
+    );
     const keys = personKeys(ctx.person);
     const [spaceRows, privateRows, sharedRows, favoriteRows, repos, trashed] = await Promise.all([
       shown.length
         ? this.db
-            .prepare(`SELECT ${FOLIO_COLUMNS} FROM folios WHERE workspace_id = ? AND trashed_at IS NULL AND space_id IN (SELECT value FROM json_each(?)) ORDER BY position LIMIT 5000`)
-            .bind(
-              ctx.workspace.id,
-              json(shown.map((s) => s.row.id)),
+            .prepare(
+              `SELECT ${FOLIO_COLUMNS} FROM folios WHERE workspace_id = ? AND trashed_at IS NULL AND space_id IN (SELECT value FROM json_each(?)) ORDER BY position LIMIT 5000`,
             )
+            .bind(ctx.workspace.id, json(shown.map((s) => s.row.id)))
             .all<FolioRow>()
         : Promise.resolve({ results: [] as FolioRow[] }),
       // Their Private: everything under a top-level Private folio of theirs.
@@ -476,7 +552,9 @@ export class Folios {
         .bind(ctx.workspace.id, ctx.key, json(keys), ctx.viewer.id)
         .all<FolioRow>(),
       this.db
-        .prepare(`SELECT ${folioColumns("f")} FROM folio_favorites v JOIN folios f ON f.id = v.folio_id WHERE v.user_id = ? AND f.workspace_id = ? AND f.trashed_at IS NULL ORDER BY v.position`)
+        .prepare(
+          `SELECT ${folioColumns("f")} FROM folio_favorites v JOIN folios f ON f.id = v.folio_id WHERE v.user_id = ? AND f.workspace_id = ? AND f.trashed_at IS NULL ORDER BY v.position`,
+        )
         .bind(ctx.viewer.id, ctx.workspace.id)
         .all<FolioRow>(),
       this.repoSpacesFor(ctx).catch((error: unknown) => {
@@ -536,7 +614,9 @@ export class Folios {
     const at = now();
     this.defer(
       this.db
-        .prepare("INSERT INTO folio_visits (folio_id, user_id, first_at, last_at) VALUES (?, ?, ?, ?) ON CONFLICT (folio_id, user_id) DO UPDATE SET last_at = excluded.last_at")
+        .prepare(
+          "INSERT INTO folio_visits (folio_id, user_id, first_at, last_at) VALUES (?, ?, ?, ?) ON CONFLICT (folio_id, user_id) DO UPDATE SET last_at = excluded.last_at",
+        )
         .bind(opened.value.row.id, ctx.viewer.id, at, at)
         .run(),
     );
@@ -555,7 +635,9 @@ export class Folios {
     const at = now();
     this.defer(
       this.db
-        .prepare("INSERT INTO folio_visits (folio_id, user_id, first_at, last_at) VALUES (?, ?, ?, ?) ON CONFLICT (folio_id, user_id) DO UPDATE SET last_at = excluded.last_at")
+        .prepare(
+          "INSERT INTO folio_visits (folio_id, user_id, first_at, last_at) VALUES (?, ?, ?, ?) ON CONFLICT (folio_id, user_id) DO UPDATE SET last_at = excluded.last_at",
+        )
         .bind(row.id, ctx.viewer.id, at, at)
         .run(),
     );
@@ -565,9 +647,14 @@ export class Folios {
     const known = { roles: new Map([[row.id, role]]), found: opened.value.found };
     const [aboveRows, childRows, linkRows, [folio], suggestions] = await Promise.all([
       foliosById(this.db, above),
-      this.db.prepare(`SELECT ${FOLIO_COLUMNS} FROM folios WHERE parent_id = ? AND trashed_at IS NULL ORDER BY position LIMIT 200`).bind(row.id).all<FolioRow>(),
       this.db
-        .prepare(`SELECT ${folioColumns("f")} FROM folio_links l JOIN folios f ON f.id = l.from_folio WHERE l.to_folio = ? AND f.workspace_id = ? AND f.trashed_at IS NULL LIMIT 200`)
+        .prepare(`SELECT ${FOLIO_COLUMNS} FROM folios WHERE parent_id = ? AND trashed_at IS NULL ORDER BY position LIMIT 200`)
+        .bind(row.id)
+        .all<FolioRow>(),
+      this.db
+        .prepare(
+          `SELECT ${folioColumns("f")} FROM folio_links l JOIN folios f ON f.id = l.from_folio WHERE l.to_folio = ? AND f.workspace_id = ? AND f.trashed_at IS NULL LIMIT 200`,
+        )
         .bind(row.id, ctx.workspace.id)
         .all<FolioRow>(),
       this.toFolios(ctx, [row], known),
@@ -617,10 +704,16 @@ export class Folios {
   // ── Making and changing ─────────────────────────────────────────────────
 
   /** Where a new folio may go for this person: a parent doc they can edit, a space they can edit, or their Private. */
-  private async placeFor(ctx: Ctx, input: { space_id?: string | null; parent_id?: string | null }): Promise<Result<{ space_id: string | null; parent: FolioRow | null }>> {
+  private async placeFor(
+    ctx: Ctx,
+    input: { space_id?: string | null; parent_id?: string | null },
+  ): Promise<Result<{ space_id: string | null; parent: FolioRow | null }>> {
     if (input.parent_id) {
       const parent = await this.open(ctx, input.parent_id, "edit");
-      if (!parent.ok) return parent.error.code === "forbidden" ? fail("forbidden", "You can read that doc but not add to it.") : fail("not_found", "No such doc to put it under.");
+      if (!parent.ok)
+        return parent.error.code === "forbidden"
+          ? fail("forbidden", "You can read that doc but not add to it.")
+          : fail("not_found", "No such doc to put it under.");
       if (parent.value.row.kind !== "doc") return fail("invalid", "Only a doc can hold other artifacts.");
       if (depthOf(parent.value.row.path) >= MAX_DEPTH) return fail("invalid", `Artifacts go at most ${MAX_DEPTH} deep.`);
       return ok({ space_id: parent.value.row.space_id, parent: parent.value.row });
@@ -635,7 +728,11 @@ export class Folios {
   }
 
   /** Where a new folio starts: a template's or the given content, and its title and icon. */
-  private async startingPoint(ctx: Ctx, kind: FolioKind, input: { title?: string | null; icon?: string | null; template_id?: string | null; content?: FolioContentInput | null }): Promise<Result<{ text: string; spec: unknown; title: string; icon: string | null }>> {
+  private async startingPoint(
+    ctx: Ctx,
+    kind: FolioKind,
+    input: { title?: string | null; icon?: string | null; template_id?: string | null; content?: FolioContentInput | null },
+  ): Promise<Result<{ text: string; spec: unknown; title: string; icon: string | null }>> {
     let text = "";
     let spec: unknown = undefined;
     let title = cleanTitle(input.title);
@@ -693,8 +790,14 @@ export class Folios {
     const siblings = input.parent
       ? await this.db.prepare("SELECT MAX(position) AS p FROM folios WHERE parent_id = ?").bind(input.parent.id).first<{ p: number | null }>()
       : input.space_id
-        ? await this.db.prepare("SELECT MAX(position) AS p FROM folios WHERE space_id = ? AND parent_id IS NULL").bind(input.space_id).first<{ p: number | null }>()
-        : await this.db.prepare("SELECT MAX(position) AS p FROM folios WHERE workspace_id = ? AND space_id IS NULL AND parent_id IS NULL AND owner = ?").bind(ctx.workspace.id, input.owner).first<{ p: number | null }>();
+        ? await this.db
+            .prepare("SELECT MAX(position) AS p FROM folios WHERE space_id = ? AND parent_id IS NULL")
+            .bind(input.space_id)
+            .first<{ p: number | null }>()
+        : await this.db
+            .prepare("SELECT MAX(position) AS p FROM folios WHERE workspace_id = ? AND space_id IS NULL AND parent_id IS NULL AND owner = ?")
+            .bind(ctx.workspace.id, input.owner)
+            .first<{ p: number | null }>();
     const position = input.position ?? (siblings?.p ?? 0) + 1024;
     const inherit = input.inherit ?? true;
     const aclRoot = !inherit || !input.parent ? id : input.parent.acl_root;
@@ -737,10 +840,38 @@ export class Folios {
           `INSERT INTO folios (id, workspace_id, kind, title, icon, owner, space_id, parent_id, position, inherit, acl_root, path, text, excerpt, source, created_by, created_at, updated_by, updated_at, edited_by, edited_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .bind(id, row.workspace_id, row.kind, row.title, row.icon, row.owner, row.space_id, row.parent_id, position, row.inherit, aclRoot, path, row.text, row.excerpt, row.source, row.created_by, at, row.created_by, at, row.created_by, at),
+        .bind(
+          id,
+          row.workspace_id,
+          row.kind,
+          row.title,
+          row.icon,
+          row.owner,
+          row.space_id,
+          row.parent_id,
+          position,
+          row.inherit,
+          aclRoot,
+          path,
+          row.text,
+          row.excerpt,
+          row.source,
+          row.created_by,
+          at,
+          row.created_by,
+          at,
+          row.created_by,
+          at,
+        ),
       this.db.prepare("INSERT INTO folios_fts (folio_id, kind, title, body) VALUES (?, ?, ?, ?)").bind(id, row.kind, row.title, searchText(row.text)),
-      this.db.prepare("INSERT INTO folio_versions (id, folio_id, created_at, kind, authors, note, text, state) VALUES (?, ?, ?, 'created', ?, NULL, ?, NULL)").bind(newId("ver"), id, at, JSON.stringify([input.created_by]), row.text),
-      ...grants.map((g) => this.db.prepare("INSERT OR REPLACE INTO folio_grants (folio_id, principal, role, granted_by, granted_at) VALUES (?, ?, ?, ?, ?)").bind(id, g.principal, g.role, input.created_by, at)),
+      this.db
+        .prepare("INSERT INTO folio_versions (id, folio_id, created_at, kind, authors, note, text, state) VALUES (?, ?, ?, 'created', ?, NULL, ?, NULL)")
+        .bind(newId("ver"), id, at, JSON.stringify([input.created_by]), row.text),
+      ...grants.map((g) =>
+        this.db
+          .prepare("INSERT OR REPLACE INTO folio_grants (folio_id, principal, role, granted_by, granted_at) VALUES (?, ?, ?, ?, ?)")
+          .bind(id, g.principal, g.role, input.created_by, at),
+      ),
     ]);
     await rebuildSubtree(this.db, id);
     const room = this.room(id);
@@ -749,14 +880,22 @@ export class Folios {
     await room.flush();
     const open = await workspaceReadable(this.db, id).catch(() => false);
     this.defer(
-      publishFolioEvent(this.env.EVENTS, "folio.created", { workspace: ctx.workspace.slug, workspaceId: ctx.workspace.id, folioId: id, kind: row.kind, spaceId: row.space_id, title: open ? row.title : null }, input.created_by),
+      publishFolioEvent(
+        this.env.EVENTS,
+        "folio.created",
+        { workspace: ctx.workspace.slug, workspaceId: ctx.workspace.id, folioId: id, kind: row.kind, spaceId: row.space_id, title: open ? row.title : null },
+        input.created_by,
+      ),
     );
     this.defer(indexFolio(this.env, id));
     return (await foliosById(this.db, [id])).get(id) ?? row;
   }
 
   /** Grants asked for at creation: people and teams of this workspace, never above `edit` for teams' sake of sense. */
-  private async cleanShares(ctx: Ctx, share: { principal: string; role: DocRole }[] | null | undefined): Promise<Result<{ principal: string; role: DocRole }[]>> {
+  private async cleanShares(
+    ctx: Ctx,
+    share: { principal: string; role: DocRole }[] | null | undefined,
+  ): Promise<Result<{ principal: string; role: DocRole }[]>> {
     const out: { principal: string; role: DocRole }[] = [];
     for (const s of (share ?? []).slice(0, FOLIO_MAX_SHARE)) {
       const principal = s.principal.startsWith("team:") ? `team:${s.principal.slice(5).toLowerCase()}` : s.principal;
@@ -827,7 +966,10 @@ export class Folios {
     }
     if (c.projects !== undefined) {
       statements.push(this.db.prepare("DELETE FROM folio_projects WHERE folio_id = ?").bind(row.id));
-      const projects = [...new Set((Array.isArray(c.projects) ? c.projects : []).map((p) => projectRef(String(p))).filter((p): p is string => !!p))].slice(0, 20);
+      const projects = [...new Set((Array.isArray(c.projects) ? c.projects : []).map((p) => projectRef(String(p))).filter((p): p is string => !!p))].slice(
+        0,
+        20,
+      );
       for (const repo of projects) statements.push(this.db.prepare("INSERT INTO folio_projects (folio_id, repo) VALUES (?, ?)").bind(row.id, repo));
     }
     if (statements.length) await this.db.batch(statements);
@@ -849,7 +991,10 @@ export class Folios {
     let parent: FolioRow | null = null;
     if (move.parent_id) {
       const target = await this.open(ctx, move.parent_id, "edit");
-      if (!target.ok) return target.error.code === "forbidden" ? fail("forbidden", "You can read that doc but not add to it.") : fail("not_found", "No such doc to put it under.");
+      if (!target.ok)
+        return target.error.code === "forbidden"
+          ? fail("forbidden", "You can read that doc but not add to it.")
+          : fail("not_found", "No such doc to put it under.");
       parent = target.value.row;
       if (parent.kind !== "doc") return fail("invalid", "Only a doc can hold other artifacts.");
       if (parent.path.startsWith(row.path)) return fail("invalid", "An artifact can't go inside itself.");
@@ -868,17 +1013,27 @@ export class Folios {
     if (depthOf(parent?.path ?? "") + 1 + subtreeHeight(row, below) > MAX_DEPTH) return fail("invalid", `Artifacts go at most ${MAX_DEPTH} deep.`);
     const siblings = (
       parent
-        ? await this.db.prepare("SELECT id, parent_id, position FROM folios WHERE parent_id = ? AND trashed_at IS NULL").bind(parent.id).all<{ id: string; parent_id: string | null; position: number }>()
+        ? await this.db
+            .prepare("SELECT id, parent_id, position FROM folios WHERE parent_id = ? AND trashed_at IS NULL")
+            .bind(parent.id)
+            .all<{ id: string; parent_id: string | null; position: number }>()
         : spaceId
-          ? await this.db.prepare("SELECT id, parent_id, position FROM folios WHERE space_id = ? AND parent_id IS NULL AND trashed_at IS NULL").bind(spaceId).all<{ id: string; parent_id: string | null; position: number }>()
+          ? await this.db
+              .prepare("SELECT id, parent_id, position FROM folios WHERE space_id = ? AND parent_id IS NULL AND trashed_at IS NULL")
+              .bind(spaceId)
+              .all<{ id: string; parent_id: string | null; position: number }>()
           : await this.db
-              .prepare("SELECT id, parent_id, position FROM folios WHERE workspace_id = ? AND space_id IS NULL AND parent_id IS NULL AND owner = ? AND trashed_at IS NULL")
+              .prepare(
+                "SELECT id, parent_id, position FROM folios WHERE workspace_id = ? AND space_id IS NULL AND parent_id IS NULL AND owner = ? AND trashed_at IS NULL",
+              )
               .bind(ctx.workspace.id, row.owner)
               .all<{ id: string; parent_id: string | null; position: number }>()
     ).results;
     const placed = placeBefore(siblings, row.id, parent?.id ?? null, move.before_id ?? null);
     const statements: D1PreparedStatement[] = [
-      this.db.prepare("UPDATE folios SET parent_id = ?, space_id = ?, position = ?, updated_at = ?, updated_by = ? WHERE id = ?").bind(parent?.id ?? null, spaceId, placed.position, now(), ctx.key, row.id),
+      this.db
+        .prepare("UPDATE folios SET parent_id = ?, space_id = ?, position = ?, updated_at = ?, updated_by = ? WHERE id = ?")
+        .bind(parent?.id ?? null, spaceId, placed.position, now(), ctx.key, row.id),
     ];
     for (const [id, position] of placed.renumber) statements.push(this.db.prepare("UPDATE folios SET position = ? WHERE id = ?").bind(position, id));
     await this.db.batch(statements);
@@ -999,10 +1154,29 @@ export class Folios {
       this.db,
       ids.map((id) => this.db.prepare("UPDATE folios SET trashed_at = ?, trashed_by = ? WHERE id = ? AND trashed_at IS NULL").bind(at, ctx.key, id)),
     );
-    for (const id of ids.slice(0, INLINE_ROOMS)) this.defer(this.room(id).closeAll("Moved to the trash").catch(() => undefined));
+    for (const id of ids.slice(0, INLINE_ROOMS))
+      this.defer(
+        this.room(id)
+          .closeAll("Moved to the trash")
+          .catch(() => undefined),
+      );
     this.defer(forgetFolios(this.env, ids));
     const open = await workspaceReadable(this.db, row.id).catch(() => false);
-    this.defer(publishFolioEvent(this.env.EVENTS, "folio.trashed", { workspace: ctx.workspace.slug, workspaceId: ctx.workspace.id, folioId: row.id, kind: row.kind, spaceId: row.space_id, title: open ? row.title : null }, ctx.key));
+    this.defer(
+      publishFolioEvent(
+        this.env.EVENTS,
+        "folio.trashed",
+        {
+          workspace: ctx.workspace.slug,
+          workspaceId: ctx.workspace.id,
+          folioId: row.id,
+          kind: row.kind,
+          spaceId: row.space_id,
+          title: open ? row.title : null,
+        },
+        ctx.key,
+      ),
+    );
     const [folio] = await this.toFolios(ctx, [{ ...row, trashed_at: at, trashed_by: ctx.key }]);
     return ok(folio!);
   }
@@ -1031,15 +1205,39 @@ export class Folios {
     if (relocate) {
       spaceId = landingFor(ctx.spaces)?.row.id ?? null;
       const last = spaceId
-        ? await this.db.prepare("SELECT MAX(position) AS p FROM folios WHERE space_id = ? AND parent_id IS NULL AND trashed_at IS NULL").bind(spaceId).first<{ p: number | null }>()
-        : await this.db.prepare("SELECT MAX(position) AS p FROM folios WHERE workspace_id = ? AND space_id IS NULL AND parent_id IS NULL AND owner = ? AND trashed_at IS NULL").bind(ctx.workspace.id, row.owner).first<{ p: number | null }>();
-      statements.push(this.db.prepare("UPDATE folios SET space_id = ?, parent_id = NULL, position = ?, updated_at = ?, updated_by = ? WHERE id = ?").bind(spaceId, (last?.p ?? 0) + 1, now(), ctx.key, row.id));
+        ? await this.db
+            .prepare("SELECT MAX(position) AS p FROM folios WHERE space_id = ? AND parent_id IS NULL AND trashed_at IS NULL")
+            .bind(spaceId)
+            .first<{ p: number | null }>()
+        : await this.db
+            .prepare(
+              "SELECT MAX(position) AS p FROM folios WHERE workspace_id = ? AND space_id IS NULL AND parent_id IS NULL AND owner = ? AND trashed_at IS NULL",
+            )
+            .bind(ctx.workspace.id, row.owner)
+            .first<{ p: number | null }>();
+      statements.push(
+        this.db
+          .prepare("UPDATE folios SET space_id = ?, parent_id = NULL, position = ?, updated_at = ?, updated_by = ? WHERE id = ?")
+          .bind(spaceId, (last?.p ?? 0) + 1, now(), ctx.key, row.id),
+      );
     }
     await runBatches(this.db, statements);
     if (detach || gone) await this.afterAccessChange(ctx, row.id, below.length);
-    else this.defer((async () => { for (const id of ids.slice(0, 2000)) await indexFolio(this.env, id); })());
+    else
+      this.defer(
+        (async () => {
+          for (const id of ids.slice(0, 2000)) await indexFolio(this.env, id);
+        })(),
+      );
     const open = await workspaceReadable(this.db, row.id).catch(() => false);
-    this.defer(publishFolioEvent(this.env.EVENTS, "folio.restored", { workspace: ctx.workspace.slug, workspaceId: ctx.workspace.id, folioId: row.id, kind: row.kind, spaceId, title: open ? row.title : null }, ctx.key));
+    this.defer(
+      publishFolioEvent(
+        this.env.EVENTS,
+        "folio.restored",
+        { workspace: ctx.workspace.slug, workspaceId: ctx.workspace.id, folioId: row.id, kind: row.kind, spaceId, title: open ? row.title : null },
+        ctx.key,
+      ),
+    );
     return ok(await this.folioOf(ctx, row));
   }
 
@@ -1053,8 +1251,27 @@ export class Folios {
     if (!row.trashed_at) return fail("invalid", "Move it to the trash first.");
     const open = await workspaceReadable(this.db, row.id).catch(() => false);
     const ids = await eraseFolios(this.env, await subtree(this.db, row));
-    for (const id of ids.slice(0, INLINE_ROOMS)) this.defer(this.room(id).destroy().catch(() => undefined));
-    this.defer(publishFolioEvent(this.env.EVENTS, "folio.deleted", { workspace: ctx.workspace.slug, workspaceId: ctx.workspace.id, folioId: row.id, kind: row.kind, spaceId: row.space_id, title: open ? row.title : null }, ctx.key));
+    for (const id of ids.slice(0, INLINE_ROOMS))
+      this.defer(
+        this.room(id)
+          .destroy()
+          .catch(() => undefined),
+      );
+    this.defer(
+      publishFolioEvent(
+        this.env.EVENTS,
+        "folio.deleted",
+        {
+          workspace: ctx.workspace.slug,
+          workspaceId: ctx.workspace.id,
+          folioId: row.id,
+          kind: row.kind,
+          spaceId: row.space_id,
+          title: open ? row.title : null,
+        },
+        ctx.key,
+      ),
+    );
     return ok(true);
   }
 
@@ -1076,9 +1293,21 @@ export class Folios {
       const rows: FolioRow[] = [];
       for (const top of tops) rows.push(...(await subtree(this.db, top)));
       const ids = await eraseFolios(this.env, rows);
-      for (const id of ids.slice(0, INLINE_ROOMS)) this.defer(this.room(id).destroy().catch(() => undefined));
+      for (const id of ids.slice(0, INLINE_ROOMS))
+        this.defer(
+          this.room(id)
+            .destroy()
+            .catch(() => undefined),
+        );
       for (const top of tops) {
-        this.defer(publishFolioEvent(this.env.EVENTS, "folio.deleted", { workspace: ctx.workspace.slug, workspaceId: ctx.workspace.id, folioId: top.id, kind: top.kind, spaceId: top.space_id, title: null }, ctx.key));
+        this.defer(
+          publishFolioEvent(
+            this.env.EVENTS,
+            "folio.deleted",
+            { workspace: ctx.workspace.slug, workspaceId: ctx.workspace.id, folioId: top.id, kind: top.kind, spaceId: top.space_id, title: null },
+            ctx.key,
+          ),
+        );
       }
       deleted += tops.length;
       if (tops.length < 500) break;
@@ -1091,7 +1320,9 @@ export class Folios {
     const filter = this.filterOf(ctx);
     const rows = (
       await this.db
-        .prepare(`SELECT ${folioColumns("f")} FROM folios f JOIN folios r ON r.id = f.acl_root WHERE f.workspace_id = ? AND f.trashed_at IS NOT NULL AND ${filter.sql} ORDER BY f.trashed_at DESC LIMIT ?`)
+        .prepare(
+          `SELECT ${folioColumns("f")} FROM folios f JOIN folios r ON r.id = f.acl_root WHERE f.workspace_id = ? AND f.trashed_at IS NOT NULL AND ${filter.sql} ORDER BY f.trashed_at DESC LIMIT ?`,
+        )
         .bind(ctx.workspace.id, ...filter.binds, limit * 2)
         .all<FolioRow>()
     ).results;
@@ -1122,13 +1353,25 @@ export class Folios {
     if (!space?.role || space.row.deleted_at) return fail("not_found", "No such space.");
     if (!atLeast(space.role, "manage") && !ctx.owner) return fail("forbidden", "Only people with full access to a space, or a workspace owner, can delete it.");
     const ids = await deleteSpaceRows(this.db, space.row, now(), ctx.key);
-    for (const id of ids.slice(0, INLINE_ROOMS)) this.defer(this.room(id).closeAll("Moved to the trash").catch(() => undefined));
+    for (const id of ids.slice(0, INLINE_ROOMS))
+      this.defer(
+        this.room(id)
+          .closeAll("Moved to the trash")
+          .catch(() => undefined),
+      );
     this.defer(forgetFolios(this.env, ids));
     this.who.forgetSpaces();
     this.defer(
       publishSpaceDeleted(
         this.env.EVENTS,
-        { workspace: ctx.workspace.slug, workspaceId: ctx.workspace.id, spaceId: space.row.id, name: space.row.kind === "private" ? null : space.row.name, kind: space.row.kind, trashed: ids.length },
+        {
+          workspace: ctx.workspace.slug,
+          workspaceId: ctx.workspace.id,
+          spaceId: space.row.id,
+          name: space.row.kind === "private" ? null : space.row.name,
+          kind: space.row.kind,
+          trashed: ids.length,
+        },
         ctx.key,
       ),
     );
@@ -1143,7 +1386,9 @@ export class Folios {
     if (!opened.ok) return opened;
     if (a.on) {
       await this.db
-        .prepare("INSERT OR IGNORE INTO folio_favorites (user_id, folio_id, position, created_at) VALUES (?, ?, (SELECT COALESCE(MAX(position), 0) + 1024 FROM folio_favorites WHERE user_id = ?), ?)")
+        .prepare(
+          "INSERT OR IGNORE INTO folio_favorites (user_id, folio_id, position, created_at) VALUES (?, ?, (SELECT COALESCE(MAX(position), 0) + 1024 FROM folio_favorites WHERE user_id = ?), ?)",
+        )
         .bind(ctx.viewer.id, opened.value.row.id, ctx.viewer.id, now())
         .run();
     } else {
@@ -1209,7 +1454,12 @@ export class Folios {
       return ok({ mode: "applied", version_id: result.version_id, folio: ref, summary: result.summary });
     }
     if (edit.kind !== "doc") return fail("forbidden", `Suggesting changes to ${kindLabel(row.kind)} comes with proposals, which aren't here yet.`);
-    const suggestion = await this.fileSuggestion(ctx, row, { author: ctx.key, asked_by: null }, { target: cleanTarget(edit.target)!, markdown: edit.markdown, note: cleanNote(edit.note), marks_current: edit.marks_current === true });
+    const suggestion = await this.fileSuggestion(
+      ctx,
+      row,
+      { author: ctx.key, asked_by: null },
+      { target: cleanTarget(edit.target)!, markdown: edit.markdown, note: cleanNote(edit.note), marks_current: edit.marks_current === true },
+    );
     return suggestion.ok ? ok({ mode: "suggested", suggestion: suggestion.value, folio: ref }) : suggestion;
   }
 
@@ -1228,7 +1478,12 @@ export class Folios {
     for (const [principal, entry] of entries) {
       if (principal === row.owner && entry.via === "owner") continue;
       const via = entry.via === row.id ? null : found.rows.get(entry.via);
-      const source: FolioAccessRow["source"] = entry.via === row.id ? { kind: "grant" } : via ? { kind: "folio", id: via.id, title: via.title || "Untitled", path: this.ref(ctx.workspace.slug, via).path } : { kind: "grant" };
+      const source: FolioAccessRow["source"] =
+        entry.via === row.id
+          ? { kind: "grant" }
+          : via
+            ? { kind: "folio", id: via.id, title: via.title || "Untitled", path: this.ref(ctx.workspace.slug, via).path }
+            : { kind: "grant" };
       const profile: FolioAccessRow["profile"] = principal.startsWith("team:")
         ? { kind: "team", id: principal.slice(5), name: principal.slice(5), display_name: `@${ctx.workspace.slug}/${principal.slice(5)}` }
         : people.get(principal)!;
@@ -1276,14 +1531,26 @@ export class Folios {
     const again = await this.open(ctx, row.id, "view", { trashed: true });
     if (!again.ok) {
       // They shared themselves out of it.
-      return { folio_id: row.id, owner: (await this.who.profiles(ctx.workspace, [row.owner])).get(row.owner)!, rows: [], general_access: "none", general_role: null, inherit: !!row.inherit, inherited_from: null, agent_mode: null, can_share: false, public_link: "off" };
+      return {
+        folio_id: row.id,
+        owner: (await this.who.profiles(ctx.workspace, [row.owner])).get(row.owner)!,
+        rows: [],
+        general_access: "none",
+        general_role: null,
+        inherit: !!row.inherit,
+        inherited_from: null,
+        agent_mode: null,
+        can_share: false,
+        public_link: "off",
+      };
     }
     return this.accessList(ctx, again.value.row, again.value.role, again.value.found);
   }
 
   async setGrant(a: Args & { folio_id: string; change: FolioAccessChange }): Promise<Result<FolioAccessList>> {
     const change = a.change;
-    if (!change || (change.op !== "grant" && change.op !== "revoke")) return fail("invalid", "Grants and revokes only; other changes go to set_folio_general_access.");
+    if (!change || (change.op !== "grant" && change.op !== "revoke"))
+      return fail("invalid", "Grants and revokes only; other changes go to set_folio_general_access.");
     const invalid = folioAccessChangeError(change);
     if (invalid) return fail("invalid", invalid);
     const found = await this.ctx(a.workspace, a.viewer);
@@ -1298,7 +1565,10 @@ export class Folios {
     const principal = change.principal.startsWith("team:") ? `team:${change.principal.slice(5).toLowerCase()}` : change.principal;
     if (principal === row.owner) return fail("invalid", "Its owner always has full access.");
     if (role !== "manage") {
-      const held = await this.db.prepare("SELECT role FROM folio_grants WHERE folio_id = ? AND principal = ?").bind(row.id, principal).first<{ role: DocRole }>();
+      const held = await this.db
+        .prepare("SELECT role FROM folio_grants WHERE folio_id = ? AND principal = ?")
+        .bind(row.id, principal)
+        .first<{ role: DocRole }>();
       if (held?.role === "manage") return fail("forbidden", "Only people with full access can change someone else's full access.");
     }
     if (change.op === "revoke") {
@@ -1307,7 +1577,9 @@ export class Folios {
     }
     if (!(await this.principalExists(ctx, principal))) return fail("invalid", "Share with a member or a team of this workspace.");
     await this.db
-      .prepare("INSERT INTO folio_grants (folio_id, principal, role, granted_by, granted_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (folio_id, principal) DO UPDATE SET role = excluded.role")
+      .prepare(
+        "INSERT INTO folio_grants (folio_id, principal, role, granted_by, granted_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (folio_id, principal) DO UPDATE SET role = excluded.role",
+      )
       .bind(row.id, principal, change.role, ctx.key, now())
       .run();
     const list = await this.afterShare(ctx, row);
@@ -1316,7 +1588,16 @@ export class Folios {
       publishFolioEvent(
         this.env.EVENTS,
         "folio.shared",
-        { workspace: ctx.workspace.slug, workspaceId: ctx.workspace.id, folioId: row.id, kind: row.kind, spaceId: row.space_id, title: open ? row.title : null, principals: [principal], role: change.role },
+        {
+          workspace: ctx.workspace.slug,
+          workspaceId: ctx.workspace.id,
+          folioId: row.id,
+          kind: row.kind,
+          spaceId: row.space_id,
+          title: open ? row.title : null,
+          principals: [principal],
+          role: change.role,
+        },
         ctx.key,
       ),
     );
@@ -1372,7 +1653,12 @@ export class Folios {
       if (!row.parent_id && !row.space_id) return fail("invalid", "It's in Private, so there is nothing for it to follow.");
       if (change.inherit && !row.inherit) {
         // Following again: its own general access gives way to what it follows.
-        await this.db.prepare("UPDATE folios SET inherit = 1, general_access = CASE WHEN parent_id IS NULL THEN general_access ELSE 'none' END, general_role = CASE WHEN parent_id IS NULL THEN general_role ELSE NULL END, updated_at = ?, updated_by = ? WHERE id = ?").bind(at, ctx.key, row.id).run();
+        await this.db
+          .prepare(
+            "UPDATE folios SET inherit = 1, general_access = CASE WHEN parent_id IS NULL THEN general_access ELSE 'none' END, general_role = CASE WHEN parent_id IS NULL THEN general_role ELSE NULL END, updated_at = ?, updated_by = ? WHERE id = ?",
+          )
+          .bind(at, ctx.key, row.id)
+          .run();
       } else if (!change.inherit && row.inherit) {
         await this.db.prepare("UPDATE folios SET inherit = 0, updated_at = ?, updated_by = ? WHERE id = ?").bind(at, ctx.key, row.id).run();
       }
@@ -1390,15 +1676,22 @@ export class Folios {
     const found = await this.ctx(a.workspace, a.viewer);
     if (!found.ok) return found;
     const ctx = found.value;
-    const row = await this.db.prepare(`SELECT ${FOLIO_COLUMNS} FROM folios WHERE id = ? AND workspace_id = ? AND trashed_at IS NULL`).bind(String(a.folio_id ?? ""), ctx.workspace.id).first<FolioRow>();
+    const row = await this.db
+      .prepare(`SELECT ${FOLIO_COLUMNS} FROM folios WHERE id = ? AND workspace_id = ? AND trashed_at IS NULL`)
+      .bind(String(a.folio_id ?? ""), ctx.workspace.id)
+      .first<FolioRow>();
     if (!row) return fail("not_found", "No such artifact.");
     const { roles } = await this.roles(ctx, [row]);
     if (roles.get(row.id)) return ok(true);
     if (!this.env.NOTIFY) return ok(true);
-    if (!(await claimAccessRequest(this.db, row.id, ctx.viewer.id))) return fail("conflict", "You already asked for access to this in the last day. Its owner has your request; you can ask again tomorrow.");
+    if (!(await claimAccessRequest(this.db, row.id, ctx.viewer.id)))
+      return fail("conflict", "You already asked for access to this in the last day. Its owner has your request; you can ask again tomorrow.");
     // The owner and anyone with full access through a grant hear of it.
     const managers = (
-      await this.db.prepare("SELECT principal FROM folio_access WHERE folio_id = ? AND role = 'manage' AND principal LIKE 'user:%'").bind(row.id).all<{ principal: string }>()
+      await this.db
+        .prepare("SELECT principal FROM folio_access WHERE folio_id = ? AND role = 'manage' AND principal LIKE 'user:%'")
+        .bind(row.id)
+        .all<{ principal: string }>()
     ).results.map((r) => r.principal.slice(5));
     const me = (await this.who.profiles(ctx.workspace, [ctx.key])).get(ctx.key)!;
     const message = cleanNote(a.message);
@@ -1433,7 +1726,9 @@ export class Folios {
     if (!space?.role || space.row.archived_at || space.row.deleted_at) return fail("not_found", "No such space.");
     if (space.row.kind !== "workspace") return fail("invalid", "Only open spaces are joined; you're in team and members-only spaces already.");
     await this.db
-      .prepare("INSERT OR IGNORE INTO space_joins (space_id, user_id, position, joined_at) VALUES (?, ?, (SELECT COALESCE(MAX(position), 0) + 1024 FROM space_joins WHERE user_id = ?), ?)")
+      .prepare(
+        "INSERT OR IGNORE INTO space_joins (space_id, user_id, position, joined_at) VALUES (?, ?, (SELECT COALESCE(MAX(position), 0) + 1024 FROM space_joins WHERE user_id = ?), ?)",
+      )
       .bind(space.row.id, ctx.viewer.id, ctx.viewer.id, now())
       .run();
     return ok(true);
@@ -1442,13 +1737,28 @@ export class Folios {
   async leaveSpace(a: Args & { space_id: string }): Promise<Result<boolean>> {
     const found = await this.ctx(a.workspace, a.viewer);
     if (!found.ok) return found;
-    await this.db.prepare("DELETE FROM space_joins WHERE space_id = ? AND user_id = ?").bind(String(a.space_id ?? ""), found.value.viewer.id).run();
+    await this.db
+      .prepare("DELETE FROM space_joins WHERE space_id = ? AND user_id = ?")
+      .bind(String(a.space_id ?? ""), found.value.viewer.id)
+      .run();
     return ok(true);
   }
 
   // ── Search ──────────────────────────────────────────────────────────────
 
-  async search(a: Args & { query: { q: string; kinds?: FolioKind[] | null; space_id?: string | null; project?: string | null; owner?: string | null; mode?: "words" | "hybrid" | null; limit?: number | null } }): Promise<Result<FolioSearchHit[]>> {
+  async search(
+    a: Args & {
+      query: {
+        q: string;
+        kinds?: FolioKind[] | null;
+        space_id?: string | null;
+        project?: string | null;
+        owner?: string | null;
+        mode?: "words" | "hybrid" | null;
+        limit?: number | null;
+      };
+    },
+  ): Promise<Result<FolioSearchHit[]>> {
     const found = await this.ctx(a.workspace, a.viewer);
     if (!found.ok) return found;
     return ok(await this.searchFor(found.value, a.query ?? { q: "" }));
@@ -1457,7 +1767,15 @@ export class Folios {
   /** Words over titles and text (folios_fts), and by meaning over passages when asked; only folios the viewer can read now. */
   private async searchFor(
     ctx: Ctx,
-    query: { q: string; kinds?: FolioKind[] | null; space_id?: string | null; project?: string | null; owner?: string | null; mode?: "words" | "hybrid" | null; limit?: number | null },
+    query: {
+      q: string;
+      kinds?: FolioKind[] | null;
+      space_id?: string | null;
+      project?: string | null;
+      owner?: string | null;
+      mode?: "words" | "hybrid" | null;
+      limit?: number | null;
+    },
     narrow?: (rows: FolioRow[]) => Promise<Set<string>>,
   ): Promise<FolioSearchHit[]> {
     const q = ftsQuery(String(query.q ?? ""));
@@ -1494,7 +1812,14 @@ export class Folios {
             .bind(q, ...binds, limit * 3)
             .all<Hit>()
         ).results
-      : (await this.db.prepare(`SELECT ${folioColumns("f")}, f.excerpt AS snippet FROM folios f JOIN folios r ON r.id = f.acl_root WHERE ${where.join(" AND ")} ORDER BY f.edited_at DESC LIMIT ?`).bind(...binds, limit * 3).all<Hit>()).results;
+      : (
+          await this.db
+            .prepare(
+              `SELECT ${folioColumns("f")}, f.excerpt AS snippet FROM folios f JOIN folios r ON r.id = f.acl_root WHERE ${where.join(" AND ")} ORDER BY f.edited_at DESC LIMIT ?`,
+            )
+            .bind(...binds, limit * 3)
+            .all<Hit>()
+        ).results;
     // Meaning: passages near the query from scopes the viewer may read, each one checked again below.
     let meaning: { folio_id: string; heading: string | null; text: string; score: number }[] = [];
     if (q && query.mode === "hybrid") {
@@ -1504,8 +1829,18 @@ export class Folios {
       });
       meaning = meaning.filter((m) => m.score >= MEANING_FLOOR);
     }
-    const extra = meaning.length ? await foliosById(this.db, meaning.map((m) => m.folio_id)) : new Map<string, FolioRow>();
-    const candidates = [...new Map([...words.map((w) => [w.id, w as FolioRow] as const), ...[...extra.values()].filter((r) => r.workspace_id === ctx.workspace.id && !r.trashed_at).map((r) => [r.id, r] as const)]).values()];
+    const extra = meaning.length
+      ? await foliosById(
+          this.db,
+          meaning.map((m) => m.folio_id),
+        )
+      : new Map<string, FolioRow>();
+    const candidates = [
+      ...new Map([
+        ...words.map((w) => [w.id, w as FolioRow] as const),
+        ...[...extra.values()].filter((r) => r.workspace_id === ctx.workspace.id && !r.trashed_at).map((r) => [r.id, r] as const),
+      ]).values(),
+    ];
     const { roles } = await this.roles(ctx, candidates);
     let readable = new Set(candidates.filter((r) => roles.get(r.id)).map((r) => r.id));
     if (narrow) {
@@ -1513,7 +1848,10 @@ export class Folios {
       readable = new Set([...readable].filter((id) => allowed.has(id)));
     }
     // Meaning-only hits still have to match the filters.
-    const fits = (r: FolioRow) => (!query.kinds?.length || query.kinds.includes(r.kind)) && (!query.space_id || (query.space_id === "private" ? !r.space_id : r.space_id === query.space_id)) && (!query.owner || r.owner === query.owner);
+    const fits = (r: FolioRow) =>
+      (!query.kinds?.length || query.kinds.includes(r.kind)) &&
+      (!query.space_id || (query.space_id === "private" ? !r.space_id : r.space_id === query.space_id)) &&
+      (!query.owner || r.owner === query.owner);
     const byWords = new Map(words.filter((w) => readable.has(w.id)).map((w) => [w.id, w]));
     const bestMeaning = new Map<string, (typeof meaning)[number]>();
     for (const m of meaning) {
@@ -1521,7 +1859,13 @@ export class Folios {
       if (!r || !readable.has(r.id) || !fits(r) || (project && !byWords.has(r.id))) continue;
       if ((bestMeaning.get(m.folio_id)?.score ?? -1) < m.score) bestMeaning.set(m.folio_id, m);
     }
-    const order = query.mode === "hybrid" ? fuseRanks([...byWords.keys()], [...bestMeaning.values()].sort((x, y) => y.score - x.score).map((m) => m.folio_id)) : [...byWords.keys()];
+    const order =
+      query.mode === "hybrid"
+        ? fuseRanks(
+            [...byWords.keys()],
+            [...bestMeaning.values()].sort((x, y) => y.score - x.score).map((m) => m.folio_id),
+          )
+        : [...byWords.keys()];
     const spaceName = (id: string | null) => (id ? (ctx.spaceById.get(id)?.row.name ?? null) : null);
     const out: FolioSearchHit[] = [];
     for (const id of order) {
@@ -1552,12 +1896,19 @@ export class Folios {
     const keys = personKeys(ctx.person);
     const [shared, general, visited] = await Promise.all([
       this.db
-        .prepare("SELECT DISTINCT f.acl_root AS id FROM folio_access a JOIN folios f ON f.id = a.folio_id WHERE a.principal IN (SELECT value FROM json_each(?)) AND f.workspace_id = ? AND f.trashed_at IS NULL LIMIT 2000")
+        .prepare(
+          "SELECT DISTINCT f.acl_root AS id FROM folio_access a JOIN folios f ON f.id = a.folio_id WHERE a.principal IN (SELECT value FROM json_each(?)) AND f.workspace_id = ? AND f.trashed_at IS NULL LIMIT 2000",
+        )
         .bind(json(keys), ctx.workspace.id)
         .all<{ id: string }>(),
-      this.db.prepare("SELECT id FROM folios WHERE workspace_id = ? AND id = acl_root AND general_access = 'workspace' AND trashed_at IS NULL LIMIT 2000").bind(ctx.workspace.id).all<{ id: string }>(),
       this.db
-        .prepare("SELECT DISTINCT f.acl_root AS id FROM folio_visits v JOIN folios f ON f.id = v.folio_id WHERE v.user_id = ? AND f.workspace_id = ? AND f.trashed_at IS NULL LIMIT 2000")
+        .prepare("SELECT id FROM folios WHERE workspace_id = ? AND id = acl_root AND general_access = 'workspace' AND trashed_at IS NULL LIMIT 2000")
+        .bind(ctx.workspace.id)
+        .all<{ id: string }>(),
+      this.db
+        .prepare(
+          "SELECT DISTINCT f.acl_root AS id FROM folio_visits v JOIN folios f ON f.id = v.folio_id WHERE v.user_id = ? AND f.workspace_id = ? AND f.trashed_at IS NULL LIMIT 2000",
+        )
         .bind(ctx.viewer.id, ctx.workspace.id)
         .all<{ id: string }>(),
     ]);
@@ -1582,7 +1933,12 @@ export class Folios {
   }
 
   /** Folio passages nearest the query, from these scopes (by the index's filter, or after). Empty without an index. */
-  private async meaningPassages(ctx: Ctx, query: string, scopes: string[], kinds?: FolioKind[] | null): Promise<{ id: string; folio_id: string; heading: string | null; text: string; score: number }[]> {
+  private async meaningPassages(
+    ctx: Ctx,
+    query: string,
+    scopes: string[],
+    kinds?: FolioKind[] | null,
+  ): Promise<{ id: string; folio_id: string; heading: string | null; text: string; score: number }[]> {
     const { embedder, store } = folioAdapters(this.env);
     const plan = vectorQueryPlan(ctx.workspace.id, scopes);
     if (!store || !plan) return [];
@@ -1590,7 +1946,10 @@ export class Folios {
     if (!vector) return [];
     let matches: { id: string; score: number }[] = [];
     try {
-      matches = await store.query(vector, { topK: plan.topK, filter: { workspace_id: ctx.workspace.id, ...(plan.filter.space_ids ? { scopes: plan.filter.space_ids } : {}) } });
+      matches = await store.query(vector, {
+        topK: plan.topK,
+        filter: { workspace_id: ctx.workspace.id, ...(plan.filter.space_ids ? { scopes: plan.filter.space_ids } : {}) },
+      });
     } catch (error) {
       console.error("folios semantic query failed; matching words instead", String(error));
       return [];
@@ -1600,25 +1959,35 @@ export class Folios {
     const rows = (
       await this.db
         .prepare("SELECT id, folio_id, kind, scope, heading, text FROM folio_chunks WHERE workspace_id = ? AND id IN (SELECT value FROM json_each(?))")
-        .bind(
-          ctx.workspace.id,
-          json(matches.map((m) => m.id)),
-        )
+        .bind(ctx.workspace.id, json(matches.map((m) => m.id)))
         .all<{ id: string; folio_id: string; kind: FolioKind; scope: string; heading: string | null; text: string }>()
     ).results;
     const byId = new Map(rows.map((r) => [r.id, r]));
     return matches
       .map((m) => ({ m, r: byId.get(m.id) }))
-      .filter((x): x is { m: { id: string; score: number }; r: (typeof rows)[number] } => !!x.r && allowed.has(x.r.scope) && (!kinds?.length || kinds.includes(x.r.kind)))
+      .filter(
+        (x): x is { m: { id: string; score: number }; r: (typeof rows)[number] } =>
+          !!x.r && allowed.has(x.r.scope) && (!kinds?.length || kinds.includes(x.r.kind)),
+      )
       .map(({ m, r }) => ({ id: r.id, folio_id: r.folio_id, heading: r.heading, text: r.text, score: m.score }));
   }
 
   // ── History ─────────────────────────────────────────────────────────────
 
-  private async toVersions(workspace: Workspace, rows: Pick<VersionRow, "id" | "folio_id" | "created_at" | "kind" | "authors" | "note">[]): Promise<FolioVersion[]> {
+  private async toVersions(
+    workspace: Workspace,
+    rows: Pick<VersionRow, "id" | "folio_id" | "created_at" | "kind" | "authors" | "note">[],
+  ): Promise<FolioVersion[]> {
     const authors = rows.map((r) => parseJson<string[]>(r.authors, []));
     const people = await this.who.profiles(workspace, authors.flat());
-    return rows.map((r, i) => ({ id: r.id, folio_id: r.folio_id, created_at: r.created_at, kind: r.kind, note: r.note, authors: authors[i]!.map((k) => people.get(k)!).filter(Boolean) }));
+    return rows.map((r, i) => ({
+      id: r.id,
+      folio_id: r.folio_id,
+      created_at: r.created_at,
+      kind: r.kind,
+      note: r.note,
+      authors: authors[i]!.map((k) => people.get(k)!).filter(Boolean),
+    }));
   }
 
   async versions(a: Args & { folio_id: string }): Promise<Result<FolioVersion[]>> {
@@ -1631,7 +2000,10 @@ export class Folios {
       .flush()
       .catch(() => undefined);
     const rows = (
-      await this.db.prepare("SELECT id, folio_id, created_at, kind, authors, note FROM folio_versions WHERE folio_id = ? ORDER BY created_at DESC LIMIT 200").bind(opened.value.row.id).all<VersionRow>()
+      await this.db
+        .prepare("SELECT id, folio_id, created_at, kind, authors, note FROM folio_versions WHERE folio_id = ? ORDER BY created_at DESC LIMIT 200")
+        .bind(opened.value.row.id)
+        .all<VersionRow>()
     ).results;
     return ok(await this.toVersions(ctx.workspace, rows));
   }
@@ -1642,9 +2014,15 @@ export class Folios {
     const ctx = found.value;
     const opened = await this.open(ctx, a.folio_id, "view");
     if (!opened.ok) return opened;
-    const row = await this.db.prepare("SELECT id, folio_id, created_at, kind, authors, note, text FROM folio_versions WHERE id = ? AND folio_id = ?").bind(String(a.version_id ?? ""), opened.value.row.id).first<VersionRow>();
+    const row = await this.db
+      .prepare("SELECT id, folio_id, created_at, kind, authors, note, text FROM folio_versions WHERE id = ? AND folio_id = ?")
+      .bind(String(a.version_id ?? ""), opened.value.row.id)
+      .first<VersionRow>();
     if (!row) return fail("not_found", "No such version.");
-    const before = await this.db.prepare("SELECT text FROM folio_versions WHERE folio_id = ? AND created_at < ? ORDER BY created_at DESC LIMIT 1").bind(row.folio_id, row.created_at).first<{ text: string }>();
+    const before = await this.db
+      .prepare("SELECT text FROM folio_versions WHERE folio_id = ? AND created_at < ? ORDER BY created_at DESC LIMIT 1")
+      .bind(row.folio_id, row.created_at)
+      .first<{ text: string }>();
     const [version] = await this.toVersions(ctx.workspace, [row]);
     return ok({ ...version!, text: row.text, diff: diffLines(before?.text ?? "", row.text) });
   }
@@ -1656,7 +2034,10 @@ export class Folios {
     const opened = await this.open(ctx, a.folio_id, "edit");
     if (!opened.ok) return opened;
     const { row } = opened.value;
-    const version = await this.db.prepare("SELECT * FROM folio_versions WHERE id = ? AND folio_id = ?").bind(String(a.version_id ?? ""), row.id).first<VersionRow>();
+    const version = await this.db
+      .prepare("SELECT * FROM folio_versions WHERE id = ? AND folio_id = ?")
+      .bind(String(a.version_id ?? ""), row.id)
+      .first<VersionRow>();
     if (!version) return fail("not_found", "No such version.");
     let state: Uint8Array | null = version.state ? new Uint8Array(version.state) : null;
     if (!state && version.state_key) {
@@ -1669,7 +2050,9 @@ export class Folios {
     const when = new Date(version.created_at).toISOString().slice(0, 16).replace("T", " ");
     const origin: FolioOrigin = { key: ctx.key, kind: "restore", note: `Restored the version of ${when} UTC` };
     const versionId = await room.restore({ state, text: version.text }, origin);
-    const created = versionId ? await this.db.prepare("SELECT id, folio_id, created_at, kind, authors, note FROM folio_versions WHERE id = ?").bind(versionId).first<VersionRow>() : null;
+    const created = versionId
+      ? await this.db.prepare("SELECT id, folio_id, created_at, kind, authors, note FROM folio_versions WHERE id = ?").bind(versionId).first<VersionRow>()
+      : null;
     if (!created) return fail("conflict", "It could not be restored. Try again.");
     const [v] = await this.toVersions(ctx.workspace, [created]);
     this.tell(row.id, { type: "version.created", version: v! });
@@ -1705,7 +2088,16 @@ export class Folios {
     );
     return ok([
       ...builtinFolioTemplates(kind),
-      ...rows.map((r) => ({ id: r.id, kind: r.kind, name: r.name, description: r.description, icon: r.icon, builtin: false, body: r.body, created_by: people.get(r.created_by) ?? null })),
+      ...rows.map((r) => ({
+        id: r.id,
+        kind: r.kind,
+        name: r.name,
+        description: r.description,
+        icon: r.icon,
+        builtin: false,
+        body: r.body,
+        created_by: people.get(r.created_by) ?? null,
+      })),
     ]);
   }
 
@@ -1733,7 +2125,10 @@ export class Folios {
     const found = await this.ctx(a.workspace, a.viewer);
     if (!found.ok) return found;
     const ctx = found.value;
-    const row = await this.db.prepare("SELECT created_by FROM folio_templates WHERE id = ? AND workspace_id = ?").bind(String(a.template_id ?? ""), ctx.workspace.id).first<{ created_by: string }>();
+    const row = await this.db
+      .prepare("SELECT created_by FROM folio_templates WHERE id = ? AND workspace_id = ?")
+      .bind(String(a.template_id ?? ""), ctx.workspace.id)
+      .first<{ created_by: string }>();
     if (!row) return fail("not_found", "No such template.");
     if (row.created_by !== ctx.key && !ctx.owner) return fail("forbidden", "Only whoever saved a template, or an owner, can delete it.");
     await this.db.prepare("DELETE FROM folio_templates WHERE id = ?").bind(a.template_id).run();
@@ -1783,7 +2178,9 @@ export class Folios {
   }
 
   private async openSuggestions(ctx: Ctx, row: FolioRow): Promise<FolioSuggestion[]> {
-    const rows = (await this.db.prepare("SELECT * FROM folio_suggestions WHERE folio_id = ? AND status = 'open' ORDER BY created_at").bind(row.id).all<SuggestionRow>()).results;
+    const rows = (
+      await this.db.prepare("SELECT * FROM folio_suggestions WHERE folio_id = ? AND status = 'open' ORDER BY created_at").bind(row.id).all<SuggestionRow>()
+    ).results;
     if (!rows.length) return [];
     let blocks: (string[] | null)[] = rows.map(() => []);
     try {
@@ -1827,7 +2224,9 @@ export class Folios {
       marks_current: edit.marks_current ? 1 : 0,
     };
     await this.db
-      .prepare("INSERT INTO folio_suggestions (id, folio_id, author, asked_by, target, before_markdown, after_markdown, note, status, created_at, marks_current) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)")
+      .prepare(
+        "INSERT INTO folio_suggestions (id, folio_id, author, asked_by, target, before_markdown, after_markdown, note, status, created_at, marks_current) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)",
+      )
       .bind(s.id, s.folio_id, s.author, s.asked_by, s.target, s.before_markdown, s.after_markdown, s.note, s.created_at, s.marks_current)
       .run();
     const [suggestion] = await this.toSuggestions(ctx.workspace, [s], [current.block_ids]);
@@ -1849,7 +2248,13 @@ export class Folios {
           title: `${suggestion.author.display_name} suggested a change to ${row.title || "Untitled"}`,
           body: suggestion.note ?? excerpt(suggestion.after_markdown, 140),
           href: this.ref(ctx.workspace.slug, row).path,
-          actor: { kind: suggestion.author.kind, id: suggestion.author.id, name: suggestion.author.display_name, avatar: suggestion.author.avatar, avatar_seed: suggestion.author.avatar_seed ?? null },
+          actor: {
+            kind: suggestion.author.kind,
+            id: suggestion.author.id,
+            name: suggestion.author.display_name,
+            avatar: suggestion.author.avatar,
+            avatar_seed: suggestion.author.avatar_seed ?? null,
+          },
           created_at: suggestion.created_at,
         },
       )
@@ -1867,7 +2272,10 @@ export class Folios {
   }
 
   async decideSuggestion(a: Args & { suggestion_id: string; decision: "accept" | "reject" }): Promise<Result<FolioSuggestion>> {
-    const s = await this.db.prepare("SELECT * FROM folio_suggestions WHERE id = ?").bind(String(a.suggestion_id ?? "")).first<SuggestionRow>();
+    const s = await this.db
+      .prepare("SELECT * FROM folio_suggestions WHERE id = ?")
+      .bind(String(a.suggestion_id ?? ""))
+      .first<SuggestionRow>();
     if (!s) return fail("not_found", "No such suggestion.");
     const found = await this.ctx(a.workspace, a.viewer);
     if (!found.ok) return found;
@@ -1882,7 +2290,12 @@ export class Folios {
       const room = await this.ready(ctx.workspace, row);
       const result = await room.edit(
         { kind: "doc", target: parseJson<DocEditTarget>(s.target, { kind: "append" }), markdown: s.after_markdown },
-        { key: ctx.key, kind: "suggestion", note: `Suggested by @${people.get(s.author)!.name}, accepted by @${people.get(ctx.key)!.name}`, authors: [s.author, ctx.key] },
+        {
+          key: ctx.key,
+          kind: "suggestion",
+          note: `Suggested by @${people.get(s.author)!.name}, accepted by @${people.get(ctx.key)!.name}`,
+          authors: [s.author, ctx.key],
+        },
       );
       if (!result.applied) status = "stale";
       else if (s.marks_current) await this.clearStale(row.id, s.author);
@@ -1903,9 +2316,22 @@ export class Folios {
     if (!opened.ok) return opened;
     const rows = (
       await this.db
-        .prepare("SELECT id, folio_id, author, asked_by, note, summary, status, created_at, decided_by, decided_at FROM folio_proposals WHERE folio_id = ? ORDER BY created_at DESC LIMIT 100")
+        .prepare(
+          "SELECT id, folio_id, author, asked_by, note, summary, status, created_at, decided_by, decided_at FROM folio_proposals WHERE folio_id = ? ORDER BY created_at DESC LIMIT 100",
+        )
         .bind(opened.value.row.id)
-        .all<{ id: string; folio_id: string; author: string; asked_by: string | null; note: string | null; summary: string; status: FolioProposal["status"]; created_at: string; decided_by: string | null; decided_at: string | null }>()
+        .all<{
+          id: string;
+          folio_id: string;
+          author: string;
+          asked_by: string | null;
+          note: string | null;
+          summary: string;
+          status: FolioProposal["status"];
+          created_at: string;
+          decided_by: string | null;
+          decided_at: string | null;
+        }>()
     ).results;
     const people = await this.who.profiles(
       ctx.workspace,
@@ -1930,7 +2356,10 @@ export class Folios {
   async decideProposal(a: Args & { proposal_id: string; decision: "accept" | "reject" }): Promise<Result<FolioProposal>> {
     const found = await this.ctx(a.workspace, a.viewer);
     if (!found.ok) return found;
-    const row = await this.db.prepare("SELECT folio_id FROM folio_proposals WHERE id = ?").bind(String(a.proposal_id ?? "")).first<{ folio_id: string }>();
+    const row = await this.db
+      .prepare("SELECT folio_id FROM folio_proposals WHERE id = ?")
+      .bind(String(a.proposal_id ?? ""))
+      .first<{ folio_id: string }>();
     if (!row) return fail("not_found", "No such proposal.");
     const opened = await this.open(found.value, row.folio_id, "edit");
     if (!opened.ok) return opened;
@@ -1998,7 +2427,9 @@ export class Folios {
             title: who ? `${who.display_name} mentioned you in ${row.title || "Untitled"}` : `You were mentioned in ${row.title || "Untitled"}`,
             body: excerpt(text, 140),
             href,
-            actor: who ? { kind: who.kind, id: who.id, name: who.display_name, avatar: who.avatar, avatar_seed: who.avatar_seed ?? null } : { kind: "system", id: "g1t", name: "g1t", avatar: null, avatar_seed: null },
+            actor: who
+              ? { kind: who.kind, id: who.id, name: who.display_name, avatar: who.avatar, avatar_seed: who.avatar_seed ?? null }
+              : { kind: "system", id: "g1t", name: "g1t", avatar: null, avatar_seed: null },
             created_at: now(),
           },
         )
@@ -2025,7 +2456,10 @@ export class Folios {
   // ── Staleness ───────────────────────────────────────────────────────────
 
   private async clearStale(folioId: string, by: string): Promise<boolean> {
-    const done = await this.db.prepare("UPDATE folio_changes SET cleared_at = ?, cleared_by = ? WHERE folio_id = ? AND cleared_at IS NULL").bind(now(), by, folioId).run();
+    const done = await this.db
+      .prepare("UPDATE folio_changes SET cleared_at = ?, cleared_by = ? WHERE folio_id = ? AND cleared_at IS NULL")
+      .bind(now(), by, folioId)
+      .run();
     const cleared = (done.meta?.changes ?? 0) > 0;
     if (cleared) this.tell(folioId, { type: "folio.staleness" });
     return cleared;
@@ -2120,7 +2554,10 @@ export class Folios {
     if (row.trashed_at) return new Response("That artifact is in the trash\n", { status: 410 });
     if (!kindModel(row.kind)) return new Response("That kind of artifact isn't here yet\n", { status: 409 });
     // The room (one call, when it has the document) and who this is (identity) together.
-    const [room, member] = await Promise.all([this.ready(ctx.workspace, row), this.who.profiles(ctx.workspace, [ctx.key]).then((people) => people.get(ctx.key)!)]);
+    const [room, member] = await Promise.all([
+      this.ready(ctx.workspace, row),
+      this.who.profiles(ctx.workspace, [ctx.key]).then((people) => people.get(ctx.key)!),
+    ]);
     const headers = new Headers(request.headers);
     headers.delete(DOCS_VIEWER_HEADER);
     headers.set(ROOM_MEMBER_HEADER, JSON.stringify({ folio_id: row.id, workspace_slug: ctx.workspace.slug, key: ctx.key, member, role }));
@@ -2147,9 +2584,11 @@ export class Folios {
     await fileStore(this.env).put(`docs/${key}`, request.body ?? new Uint8Array(), contentType);
     try {
       const inserted = await this.db
-      .prepare("INSERT INTO folio_files (id, workspace_id, folio_id, key, name, content_type, bytes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .bind(id, ctx.workspace.id, opened.value.row.id, key, name, contentType, bytes, ctx.key, now())
-      .run();
+        .prepare(
+          "INSERT INTO folio_files (id, workspace_id, folio_id, key, name, content_type, bytes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(id, ctx.workspace.id, opened.value.row.id, key, name, contentType, bytes, ctx.key, now())
+        .run();
       if (Number(inserted.meta.changes) === 0) {
         await fileStore(this.env).delete(`docs/${key}`);
         return new Response("Upload destination erased", { status: 410 });
@@ -2185,7 +2624,9 @@ export async function notifyFolioMentions(env: FoliosEnv, slug: string, folioId:
   const service = new Folios(env);
   const workspace = await service.who.workspace(slug);
   if (!workspace) return;
-  const row = await env.DB.prepare(`SELECT ${FOLIO_COLUMNS.replace("'' AS text", "text")} FROM folios WHERE id = ? AND workspace_id = ?`).bind(folioId, workspace.id).first<FolioRow>();
+  const row = await env.DB.prepare(`SELECT ${FOLIO_COLUMNS.replace("'' AS text", "text")} FROM folios WHERE id = ? AND workspace_id = ?`)
+    .bind(folioId, workspace.id)
+    .first<FolioRow>();
   if (!row || row.trashed_at) return;
   await service.notifyMentioned(workspace, row, usernames, last, row.text, null);
 }
@@ -2200,10 +2641,18 @@ export const TRASH_DAYS = 30;
  */
 export async function purgeTrash(env: FoliosEnv, at = new Date()): Promise<number> {
   const cutoff = new Date(at.getTime() - TRASH_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  const rows = (await env.DB.prepare("SELECT id, path FROM folios WHERE trashed_at IS NOT NULL AND trashed_at < ? ORDER BY length(path) DESC LIMIT 500").bind(cutoff).all<{ id: string; path: string }>()).results;
+  const rows = (
+    await env.DB.prepare("SELECT id, path FROM folios WHERE trashed_at IS NOT NULL AND trashed_at < ? ORDER BY length(path) DESC LIMIT 500")
+      .bind(cutoff)
+      .all<{ id: string; path: string }>()
+  ).results;
   if (!rows.length) return 0;
   const ids = await eraseFolios(env, rows);
-  if (env.FOLIOS) for (const id of ids) await env.FOLIOS.get(env.FOLIOS.idFromName(id)).destroy().catch(() => undefined);
+  if (env.FOLIOS)
+    for (const id of ids)
+      await env.FOLIOS.get(env.FOLIOS.idFromName(id))
+        .destroy()
+        .catch(() => undefined);
   return ids.length;
 }
 

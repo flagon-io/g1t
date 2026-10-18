@@ -8,8 +8,7 @@ import type { Comment } from "@g1t/contracts";
  * only says which buttons to show.
  */
 export function mayChangeComment(
-  comment: Pick<Comment, "kind" | "verdict"> &
-    Partial<Pick<Comment, "advisory">> & { author: { id: string }; actingFor?: { id: string } | null },
+  comment: Pick<Comment, "kind" | "verdict"> & Partial<Pick<Comment, "advisory">> & { author: { id: string }; actingFor?: { id: string } | null },
   viewerId: string | null | undefined,
   canModerate: boolean,
 ): { edit: boolean; delete: boolean } {

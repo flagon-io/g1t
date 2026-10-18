@@ -24,7 +24,10 @@ export async function connectedStates(slug: string, viewer: User): Promise<Recor
  * can't connect at all, by id, each with why: GitHub when no GitHub App is
  * set up (as on a self-hosted g1t that hasn't added one).
  */
-export async function workspaceConnections(slug: string, viewer: User): Promise<{ connected: Record<string, ConnectedState>; unavailable: Record<string, string> }> {
+export async function workspaceConnections(
+  slug: string,
+  viewer: User,
+): Promise<{ connected: Record<string, ConnectedState>; unavailable: Record<string, string> }> {
   const [connections, github, hooks] = await Promise.all([
     integrations.list(slug, viewer).catch(() => null),
     githubApp.status(viewer, slug).catch(() => null),

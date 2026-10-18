@@ -33,8 +33,7 @@ export async function invitationFromForm(user: User, slug: string, form: FormDat
   const id = String(form.get("id") ?? "").trim();
   if (action !== "revoke-invite" && action !== "resend-invite") return null;
   if (!id) return { error: "Which invitation?", id };
-  const result =
-    action === "revoke-invite" ? await identity.revokeWorkspaceInvite(user, slug, id) : await identity.resendWorkspaceInvite(user, slug, id);
+  const result = action === "revoke-invite" ? await identity.revokeWorkspaceInvite(user, slug, id) : await identity.resendWorkspaceInvite(user, slug, id);
   if (!result.ok) return { error: result.error.message, id };
   return { done: action === "revoke-invite" ? "revoked" : "resent", id };
 }

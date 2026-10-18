@@ -56,9 +56,7 @@ export async function action({ request, params, context }: Route.ActionArgs): Pr
       key: String(form.get("key") ?? ""),
       readOnly: form.get("write") !== "on",
     });
-    return added.ok
-      ? { intent, ok: true, message: `Added ${added.value.title}.`, error: null }
-      : failed(added.error.message);
+    return added.ok ? { intent, ok: true, message: `Added ${added.value.title}.`, error: null } : failed(added.error.message);
   }
   if (intent === "delete") {
     const removed = await identity.removeDeployKey(user, params.owner, params.repo, String(form.get("id") ?? ""));
@@ -77,9 +75,8 @@ export default function DeployKeys({ loaderData, actionData, params }: Route.Com
       <div className="space-y-10">
         <Card asChild tone="plain" radius="lg" className="border-dashed p-3 text-xs text-muted">
           <p>
-            Deploy keys are used over SSH, and git over SSH is not on yet: it is waiting on inbound TCP on Cloudflare,
-            which g1t has applied for. Keys you add now will work as soon as it is. Until then, machines can clone and
-            push over HTTPS with a{" "}
+            Deploy keys are used over SSH, and git over SSH is not on yet: it is waiting on inbound TCP on Cloudflare, which g1t has applied for. Keys you add
+            now will work as soon as it is. Until then, machines can clone and push over HTTPS with a{" "}
             <Link to={`/${params.owner}/-/tokens`} className="text-fg underline underline-offset-4">
               workspace access token
             </Link>
@@ -93,9 +90,7 @@ export default function DeployKeys({ loaderData, actionData, params }: Route.Com
         >
           {keys.length === 0 ? (
             <Card asChild tone="plain" className="border-dashed px-4 py-6 text-center text-sm text-muted">
-              <p>
-                No deploy keys yet.
-              </p>
+              <p>No deploy keys yet.</p>
             </Card>
           ) : (
             <Card asChild tone="plain" divided>
@@ -182,8 +177,7 @@ function DeleteKey({ deployKey }: { deployKey: DeployKey }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {deployKey.title}?</AlertDialogTitle>
             <AlertDialogDescription>
-              Anything using this key can no longer clone{deployKey.read_only ? "" : " or push"} at once. To use it
-              again, add it again.
+              Anything using this key can no longer clone{deployKey.read_only ? "" : " or push"} at once. To use it again, add it again.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -238,8 +232,8 @@ function AddForm({ result }: { result: Outcome | undefined }) {
           <p className="flex items-start gap-2 rounded-lg border border-warn/40 bg-warn/5 px-3.5 py-2.5 text-sm text-fg-soft">
             <TriangleAlert size={15} className="mt-0.5 shrink-0 text-warn" aria-hidden="true" />
             <span>
-              Anyone with the private key can push to this repository and change its workflows, which run with its
-              secrets. Keep it read-only unless the machine must push.
+              Anyone with the private key can push to this repository and change its workflows, which run with its secrets. Keep it read-only unless the machine
+              must push.
             </span>
           </p>
         )}

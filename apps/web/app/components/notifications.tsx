@@ -126,9 +126,7 @@ export function WatchMenu({ action, level, events }: { action: string; level: Wa
               }}
               className="items-start"
             >
-              <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
-                {selected && <Check size={14} className="text-accent!" />}
-              </span>
+              <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">{selected && <Check size={14} className="text-accent!" />}</span>
               <span className="min-w-0">
                 <span className="block text-sm text-fg">{choice.label}</span>
                 <span className="block text-xs text-muted">{choice.detail}</span>

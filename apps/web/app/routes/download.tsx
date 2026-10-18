@@ -197,7 +197,10 @@ export default function DownloadPage() {
   const data = useLoaderData<typeof loader>();
   const device = useDevice(data.device);
   const first: PlatformId =
-    data.asked ?? data.device.platform ?? (["macos", "windows", "linux"] as const).find((p) => data.release?.downloads.some((d) => d.platform === p)) ?? "macos";
+    data.asked ??
+    data.device.platform ??
+    (["macos", "windows", "linux"] as const).find((p) => data.release?.downloads.some((d) => d.platform === p)) ??
+    "macos";
   const [tab, setTab] = useState<PlatformId>(first);
   const chosen = useRef(data.asked !== null);
   // An iPad found out only in the browser opens on iOS, unless the visitor has chosen.
@@ -222,12 +225,10 @@ export default function DownloadPage() {
       <section className="dusk relative">
         <div className="relative mx-auto max-w-5xl px-4 pt-14 text-center sm:pt-20">
           <p className="font-mono text-xs tracking-[0.2em] text-accent uppercase">Download</p>
-          <h1 className="mx-auto mt-4 max-w-3xl text-4xl leading-[1.05] font-semibold tracking-tight text-balance sm:text-6xl">
-            g1t in an app of its own
-          </h1>
+          <h1 className="mx-auto mt-4 max-w-3xl text-4xl leading-[1.05] font-semibold tracking-tight text-balance sm:text-6xl">g1t in an app of its own</h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-balance text-fg-soft/80">
-            Chat, artifacts and code in an app of their own, with notifications from your system and updates that install themselves. The phone app is
-            highly experimental.
+            Chat, artifacts and code in an app of their own, with notifications from your system and updates that install themselves. The phone app is highly
+            experimental.
           </p>
         </div>
 
@@ -371,7 +372,8 @@ function DesktopPanel({ platform, data, device }: { platform: DesktopPlatform; d
   const alternates = release ? alternateFiles(release.downloads, featured) : [];
   const href = (download: DesktopDownload) => `/downloads/desktop/${release!.version}/${download.name}`;
   const released = release?.pub_date ? day(release.pub_date) : "";
-  const label = (d: DesktopDownload) => (d.platform === "linux" ? `.${d.name.split(".").pop()}` : d.platform === "macos" ? `${archLabel(d.platform, d.arch)} Mac` : archLabel(d.platform, d.arch));
+  const label = (d: DesktopDownload) =>
+    d.platform === "linux" ? `.${d.name.split(".").pop()}` : d.platform === "macos" ? `${archLabel(d.platform, d.arch)} Mac` : archLabel(d.platform, d.arch);
   const tools = commandLineTools(platform, data.runner, data.cli);
   const out = release ? Array.from(new Set(release.downloads.map((d) => PLATFORMS[d.platform]?.name).filter(Boolean))) : [];
 
@@ -405,8 +407,8 @@ function DesktopPanel({ platform, data, device }: { platform: DesktopPlatform; d
         </>
       ) : release ? (
         <Meanwhile>
-          {yours ? `Your ${info.device} isn't in this release yet.` : `${info.name} isn't in this release yet.`} Version {release.version} is out for {out.join(" and ")}, and{" "}
-          {info.name} comes in a later one.
+          {yours ? `Your ${info.device} isn't in this release yet.` : `${info.name} isn't in this release yet.`} Version {release.version} is out for{" "}
+          {out.join(" and ")}, and {info.name} comes in a later one.
         </Meanwhile>
       ) : (
         <Meanwhile>The first release of the desktop app is on its way.</Meanwhile>
@@ -416,7 +418,17 @@ function DesktopPanel({ platform, data, device }: { platform: DesktopPlatform; d
 }
 
 /** Every file of a platform in the release, with its SHA-256 on hover. */
-function FileList({ platform, files, version, href }: { platform: DesktopPlatform; files: DesktopDownload[]; version: string; href: (d: DesktopDownload) => string }) {
+function FileList({
+  platform,
+  files,
+  version,
+  href,
+}: {
+  platform: DesktopPlatform;
+  files: DesktopDownload[];
+  version: string;
+  href: (d: DesktopDownload) => string;
+}) {
   return (
     <div>
       <h3 className="text-sm font-medium">All {PLATFORMS[platform].name} downloads</h3>
@@ -455,7 +467,13 @@ const OS_FILE: Record<DesktopPlatform, string> = { macos: "macos", windows: "win
 /** The runner and the CLI for a computer's system, those whose releases have one. */
 function commandLineTools(platform: DesktopPlatform, runner: ToolRelease | null, cli: ToolRelease | null) {
   return [
-    { id: "runner", title: "g1t-runner", text: "Runs your workspace's jobs on a server. The desktop app runs one for you.", release: runner, guide: "https://docs.g1t.sh/guides/self-hosted-runners/" },
+    {
+      id: "runner",
+      title: "g1t-runner",
+      text: "Runs your workspace's jobs on a server. The desktop app runs one for you.",
+      release: runner,
+      guide: "https://docs.g1t.sh/guides/self-hosted-runners/",
+    },
     { id: "cli", title: "g1t CLI", text: "g1t from your terminal and scripts.", release: cli, guide: "https://docs.g1t.sh/guides/containers/" },
   ]
     .map((tool) => ({
@@ -567,14 +585,11 @@ function AndroidPanel({ data, device }: { data: Data; device: Device }) {
       <Alert tone="warn" className="mb-6 max-w-md px-4 py-3">
         <AlertTitle>Highly experimental</AlertTitle>
         <AlertDescription>
-          The phone app is early and barely works yet: expect missing screens, rough edges and things that break. For real work, use the desktop app or
-          g1t in your phone's browser.
+          The phone app is early and barely works yet: expect missing screens, rough edges and things that break. For real work, use the desktop app or g1t in
+          your phone's browser.
         </AlertDescription>
       </Alert>
-      <DownloadButtons
-        main={{ href: apkUrl, label: "Download for Android", detail: ["APK", size(apk.size)].filter(Boolean).join(" · ") }}
-        alternates={[]}
-      />
+      <DownloadButtons main={{ href: apkUrl, label: "Download for Android", detail: ["APK", size(apk.size)].filter(Boolean).join(" · ") }} alternates={[]} />
       <ol className="mt-6 space-y-2 text-sm text-muted">
         {steps.map((step, index) => (
           <li key={step} className="flex gap-3">
@@ -619,8 +634,8 @@ function ConnectCard({ site }: { site: string }) {
       <div className="min-w-0">
         <h2 className="text-xl font-semibold tracking-tight">Use the phone app with {host}</h2>
         <p className="mt-2 text-sm text-muted">
-          With the g1t app on your phone, scan this with the camera, or open this page on the phone and tap the button: the app signs in here instead
-          of g1t.sh. In the app, <span className="text-fg-soft">Using your own g1t?</span> on the sign-in screen does the same with the address typed.
+          With the g1t app on your phone, scan this with the camera, or open this page on the phone and tap the button: the app signs in here instead of g1t.sh.
+          In the app, <span className="text-fg-soft">Using your own g1t?</span> on the sign-in screen does the same with the address typed.
         </p>
         <ButtonLink to={link} reloadDocument variant="secondary" className="mt-4 rounded-full">
           <Smartphone size={16} />
@@ -635,7 +650,11 @@ const FEATURES: { icon: ReactNode; title: string; text: string }[] = [
   { icon: <Bell size={18} />, title: "Notifications", text: "A message to you, a mention, or a review requested, from your system, with a badge on the icon." },
   { icon: <Link2 size={18} />, title: "g1t:// links", text: "Open a page in the app from anywhere on your computer. Other links open in your browser." },
   { icon: <RefreshCw size={18} />, title: "Updates install themselves", text: "Signed by g1t and downloaded in the background. The app asks only to restart." },
-  { icon: <Server size={18} />, title: "A runner built in", text: "Your workspace's self-hosted jobs run on your computer while g1t is open, in a sandbox, at no cost." },
+  {
+    icon: <Server size={18} />,
+    title: "A runner built in",
+    text: "Your workspace's self-hosted jobs run on your computer while g1t is open, in a sandbox, at no cost.",
+  },
 ];
 
 function Features() {

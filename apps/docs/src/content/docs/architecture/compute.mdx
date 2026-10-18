@@ -3,18 +3,18 @@ title: Actions, runners and sandboxes
 description: How a workflow job is planned and run, on g1t's runners or yours, what walls each job in, how secrets reach a job without the job holding them, and what else runs in a sandbox.
 ---
 
-import Aside from '../../../components/Aside.astro';
-import Diagram from '../../../components/Diagram.astro';
+import Aside from "../../../components/Aside.astro";
+import Diagram from "../../../components/Diagram.astro";
 
 Everything that runs code you did not write runs in a sandbox: workflow
 jobs, merge checks, deployments, dependency updates, backups. Three pieces
 share the work.
 
-| Piece | Is | Does |
-| --- | --- | --- |
-| `services/actions` | A Rust Worker, D1 `g1t-actions` | Reads workflows, starts runs, plans jobs, keeps logs, secrets and self-hosted runners |
-| `services/runner` | A TypeScript Worker on Cloudflare Containers | Starts a sandbox per job, and owns what leaves it |
-| `crates/runner` | The `g1t-runner` binary | Runs inside every sandbox and on every self-hosted runner, does one job, and exits |
+| Piece              | Is                                           | Does                                                                                  |
+| ------------------ | -------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `services/actions` | A Rust Worker, D1 `g1t-actions`              | Reads workflows, starts runs, plans jobs, keeps logs, secrets and self-hosted runners |
+| `services/runner`  | A TypeScript Worker on Cloudflare Containers | Starts a sandbox per job, and owns what leaves it                                     |
+| `crates/runner`    | The `g1t-runner` binary                      | Runs inside every sandbox and on every self-hosted runner, does one job, and exits    |
 
 `crates/actions` holds the workflow language itself, with no I/O:
 syntax, `${{ }}` expressions, filters, matrices and cron. The Worker plans
@@ -52,14 +52,14 @@ jobs whose runner went quiet.
 
 ### Limits
 
-| | |
-| --- | --- |
+|                             |                                                                                                   |
+| --------------------------- | ------------------------------------------------------------------------------------------------- |
 | Hosted jobs running at once | 4 per workspace always, up to 12 while the pool of 40 sandboxes keeps 8 free for other workspaces |
-| A hosted job's timeout | 60 minutes at most |
-| A self-hosted job's timeout | 24 hours at most |
-| Logs | 4 MiB a job, kept 90 days |
-| Workflows per repository | 50 |
-| Schedules | Paused after 60 days without a push |
+| A hosted job's timeout      | 60 minutes at most                                                                                |
+| A self-hosted job's timeout | 24 hours at most                                                                                  |
+| Logs                        | 4 MiB a job, kept 90 days                                                                         |
+| Workflows per repository    | 50                                                                                                |
+| Schedules                   | Paused after 60 days without a push                                                               |
 
 ### Logs, caches and artifacts
 
@@ -74,11 +74,11 @@ what is kept.
 `runner` defines three Container classes, picked by `runs-on`, each a
 named Cloudflare instance type:
 
-| `runs-on` | Class | Size |
-| --- | --- | --- |
-| Any other hosted label, and every other kind of work | `AttemptSandbox` | `standard-3`: 2 vCPU, 8 GiB memory, 16 GB disk |
-| `g1t-2core` | `Sandbox2Core` | `standard-3`: 2 vCPU, 8 GiB memory, 16 GB disk |
-| `g1t-4core` | `Sandbox4Core` | `standard-4`: 4 vCPU, 12 GiB memory, 20 GB disk |
+| `runs-on`                                            | Class            | Size                                            |
+| ---------------------------------------------------- | ---------------- | ----------------------------------------------- |
+| Any other hosted label, and every other kind of work | `AttemptSandbox` | `standard-3`: 2 vCPU, 8 GiB memory, 16 GB disk  |
+| `g1t-2core`                                          | `Sandbox2Core`   | `standard-3`: 2 vCPU, 8 GiB memory, 16 GB disk  |
+| `g1t-4core`                                          | `Sandbox4Core`   | `standard-4`: 4 vCPU, 12 GiB memory, 20 GB disk |
 
 `g1t-2core` is kept as a name of the standard machine, so workflows that
 ask for it keep working; it keeps its class and its own `max_instances`
@@ -112,12 +112,12 @@ it, so the value never reaches your machine at all.
 A [self-hosted runner](/guides/self-hosted-runners/) only ever calls out,
 over HTTPS, so it needs no open port:
 
-| Call | What it does |
-| --- | --- |
-| `POST /runners/register` | Trades a registration token, `g1trt_…`, valid for an hour, for a runner credential, `g1tr_…` |
-| `POST /runners/{id}/poll` | Waits up to 20 seconds for a job; doubles as the heartbeat |
-| `POST /runners/{id}/finished` | Says the job is over |
-| `POST /runners/{id}/remove` | Signs the runner out |
+| Call                          | What it does                                                                                 |
+| ----------------------------- | -------------------------------------------------------------------------------------------- |
+| `POST /runners/register`      | Trades a registration token, `g1trt_…`, valid for an hour, for a runner credential, `g1tr_…` |
+| `POST /runners/{id}/poll`     | Waits up to 20 seconds for a job; doubles as the heartbeat                                   |
+| `POST /runners/{id}/finished` | Says the job is over                                                                         |
+| `POST /runners/{id}/remove`   | Signs the runner out                                                                         |
 
 The runner credential is stored only as a hash and rotates every day on a
 poll. A runner that has not polled for 90 seconds is offline; one offline
@@ -147,13 +147,13 @@ open; Docker or direct execution happen only if you choose them.
 
 `g1t-runner` takes a `MODE`, so the same image does more than workflows:
 
-| Mode | Started by | Does |
-| --- | --- | --- |
-| `actions` | `actions` | A workflow job |
-| `mergecheck` | `runner`, when a pull request changes | Checks whether a pull request merges cleanly |
-| `deploy` | `deployments` | Builds an app ([Deployments](/architecture/deployments/)) |
-| `bump` | `security` | Makes a dependency update |
-| `backup` | `runner`'s sweep, every 5 minutes | Cuts a repository backup ([Git](/architecture/git/#backups)) |
+| Mode         | Started by                            | Does                                                         |
+| ------------ | ------------------------------------- | ------------------------------------------------------------ |
+| `actions`    | `actions`                             | A workflow job                                               |
+| `mergecheck` | `runner`, when a pull request changes | Checks whether a pull request merges cleanly                 |
+| `deploy`     | `deployments`                         | Builds an app ([Deployments](/architecture/deployments/))    |
+| `bump`       | `security`                            | Makes a dependency update                                    |
+| `backup`     | `runner`'s sweep, every 5 minutes     | Cuts a repository backup ([Git](/architecture/git/#backups)) |
 
 The merge queue needs no sandbox of its own: `work` builds each queued
 state in the repository itself ([Work](/architecture/work/#the-merge-queue)),
@@ -165,7 +165,6 @@ Compute is admitted through billing: a sandbox starts only after
 with the real cost when it ends (`settle`).
 
 <Aside type="caution" title="Self-hosted installations">
-	A [self-hosted g1t](/guides/self-hosting-architecture/) binds `runner`
-	to a Worker that answers that it is off, so workflows, the merge queue
-	and deployments do not run there yet.
+  A [self-hosted g1t](/guides/self-hosting-architecture/) binds `runner` to a Worker that answers that it is off, so workflows, the merge queue and deployments
+  do not run there yet.
 </Aside>

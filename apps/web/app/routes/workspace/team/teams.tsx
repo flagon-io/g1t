@@ -54,8 +54,7 @@ export default function ChildTeams({ loaderData, actionData }: Route.ComponentPr
   return (
     <div className="max-w-3xl space-y-6">
       <p className="text-sm text-muted">
-        Child teams have {team.name}'s roles on repositories as well as their own, and hear when {team.name} is mentioned
-        or asked to review.
+        Child teams have {team.name}'s roles on repositories as well as their own, and hear when {team.name} is mentioned or asked to review.
       </p>
       {children.length === 0 ? (
         <Card tone="plain" className="border-dashed px-6 py-10 text-center">

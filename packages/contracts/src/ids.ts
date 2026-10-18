@@ -1,6 +1,49 @@
 const ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
 
-export type IdPrefix = "usr" | "ses" | "tok" | "key" | "rep" | "int" | "att" | "evt" | "dpl" | "prj" | "dom" | "dep" | "dst" | "chn" | "msg" | "agt" | "arp" | "asn" | "mem" | "rtn" | "drf" | "spc" | "pag" | "ver" | "thr" | "cmt" | "sug" | "tpl" | "fil" | "rds" | "fol" | "prp" | "ins" | "skl" | "ska" | "abr" | "mcp" | "mkt" | "plg" | "con" | "cgr" | "civ" | "crq";
+export type IdPrefix =
+  | "usr"
+  | "ses"
+  | "tok"
+  | "key"
+  | "rep"
+  | "int"
+  | "att"
+  | "evt"
+  | "dpl"
+  | "prj"
+  | "dom"
+  | "dep"
+  | "dst"
+  | "chn"
+  | "msg"
+  | "agt"
+  | "arp"
+  | "asn"
+  | "mem"
+  | "rtn"
+  | "drf"
+  | "spc"
+  | "pag"
+  | "ver"
+  | "thr"
+  | "cmt"
+  | "sug"
+  | "tpl"
+  | "fil"
+  | "rds"
+  | "fol"
+  | "prp"
+  | "ins"
+  | "skl"
+  | "ska"
+  | "abr"
+  | "mcp"
+  | "mkt"
+  | "plg"
+  | "con"
+  | "cgr"
+  | "civ"
+  | "crq";
 
 let lastMs = 0;
 let lastCounter = 0;
@@ -15,10 +58,7 @@ export function newId(prefix: IdPrefix, now: number = Date.now()): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
 
   // Ids made in the same millisecond count up in the 12-bit rand_a field.
-  const counter =
-    now === lastMs
-      ? (lastCounter + 1) & 0x0fff
-      : ((bytes[6] << 8) | bytes[7]) & 0x07ff;
+  const counter = now === lastMs ? (lastCounter + 1) & 0x0fff : ((bytes[6] << 8) | bytes[7]) & 0x07ff;
   lastMs = now;
   lastCounter = counter;
 

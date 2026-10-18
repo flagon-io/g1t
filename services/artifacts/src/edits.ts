@@ -15,7 +15,11 @@ import { blocksMarkdown, partsOf, plainText, topContainers } from "./markdown.ts
 export type Range = { start: number; end: number };
 
 function norm(text: string): string {
-  return text.replace(/[*_`~#]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+  return text
+    .replace(/[*_`~#]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 }
 
 /** Where a target is in the document now, or null when it is gone. */
@@ -157,7 +161,12 @@ export function anchorThread(doc: Y.Doc, fragment: Y.XmlFragment, anchor: unknow
       const end = t === to.at ? to.index : text.length;
       if (end > start) {
         text.format(start, end - start, { [key]: value });
-        quote += (quote ? " " : "") + text.toString().replace(/<[^>]+>/g, "").slice(start, end);
+        quote +=
+          (quote ? " " : "") +
+          text
+            .toString()
+            .replace(/<[^>]+>/g, "")
+            .slice(start, end);
       }
     }
   });

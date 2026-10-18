@@ -10,13 +10,7 @@ import { EmptyState, ErrorText, TimeAgo } from "../../components/ui";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../../components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { InviteDialog } from "../../components/invite-dialog";
@@ -119,7 +113,14 @@ function InvitationMenu({ invite, origin, onDone }: { invite: Invite; origin: st
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" aria-label={`Manage the invitation for ${invite.email ?? invite.invitee ?? invite.hint}`} variant="ghost" size="inline" className="p-1.5 text-faint max-sm:p-2.5" disabled={working}>
+        <Button
+          type="button"
+          aria-label={`Manage the invitation for ${invite.email ?? invite.invitee ?? invite.hint}`}
+          variant="ghost"
+          size="inline"
+          className="p-1.5 text-faint max-sm:p-2.5"
+          disabled={working}
+        >
           <Ellipsis size={16} />
         </Button>
       </DropdownMenuTrigger>
@@ -143,7 +144,11 @@ function InvitationMenu({ invite, origin, onDone }: { invite: Invite; origin: st
           {resendable ? "Send again" : "Already in their hands"}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem disabled={!pending} className="text-danger" onSelect={() => fetcher.submit({ action: "revoke-invite", id: invite.id }, { method: "post" })}>
+        <DropdownMenuItem
+          disabled={!pending}
+          className="text-danger"
+          onSelect={() => fetcher.submit({ action: "revoke-invite", id: invite.id }, { method: "post" })}
+        >
           <X />
           Revoke
         </DropdownMenuItem>
@@ -198,7 +203,9 @@ export default function WorkspaceInvitations({ loaderData, params }: Route.Compo
         </div>
       )}
       {shown.length === 0 ? (
-        <EmptyState title={filter === "all" ? "No invitations yet" : `No ${INVITATION_FILTERS.find((entry) => entry.key === filter)?.label.toLowerCase()} invitations`}>
+        <EmptyState
+          title={filter === "all" ? "No invitations yet" : `No ${INVITATION_FILTERS.find((entry) => entry.key === filter)?.label.toLowerCase()} invitations`}
+        >
           {filter === "all"
             ? `Invite someone and the invitation is listed here until they answer, and after.`
             : "Choose All to see every invitation sent to join the workspace."}
@@ -262,7 +269,14 @@ export default function WorkspaceInvitations({ loaderData, params }: Route.Compo
       <p className="mt-2 text-xs text-faint">
         An invitation works for 30 days. One nobody used by then shows as Expired; g1t does not yet know whether its email was delivered.
       </p>
-      {notice && (notice.tone === "ok" ? <p className="mt-3 text-sm text-muted" role="status">{notice.text}</p> : <ErrorText>{notice.text}</ErrorText>)}
+      {notice &&
+        (notice.tone === "ok" ? (
+          <p className="mt-3 text-sm text-muted" role="status">
+            {notice.text}
+          </p>
+        ) : (
+          <ErrorText>{notice.text}</ErrorText>
+        ))}
     </div>
   );
 }

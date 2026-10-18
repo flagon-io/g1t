@@ -43,11 +43,7 @@ export function CommitAvatar({ person, size = 20 }: { person: CommitPerson; size
     );
   }
   const silhouette = (
-    <span
-      aria-hidden="true"
-      className="inline-flex shrink-0 items-center justify-center rounded-full bg-line text-faint"
-      style={{ width: size, height: size }}
-    >
+    <span aria-hidden="true" className="inline-flex shrink-0 items-center justify-center rounded-full bg-line text-faint" style={{ width: size, height: size }}>
       <User size={Math.round(size * 0.62)} strokeWidth={2.25} />
     </span>
   );

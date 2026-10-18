@@ -16,17 +16,7 @@ import { Textarea } from "./ui/textarea";
  * The Profile section of a person's settings: what everyone sees at
  * `/u/<username>`. Posts `intent=profile`; identity checks every field.
  */
-export function ProfileSection({
-  username,
-  profile,
-  error,
-  saved,
-}: {
-  username: string;
-  profile: Profile | null;
-  error?: string;
-  saved: boolean;
-}) {
+export function ProfileSection({ username, profile, error, saved }: { username: string; profile: Profile | null; error?: string; saved: boolean }) {
   const busy = usePending({ intent: "profile" });
   const [bio, setBio] = useState(profile?.bio ?? "");
   const [timezone, setTimezone] = useState(profile?.timezone ?? "");
@@ -54,30 +44,17 @@ export function ProfileSection({
         </Link>
       </div>
       <p className="mt-1 text-sm text-muted">
-        Shown to everyone at <span className="font-mono text-fg">g1t.sh/u/{username}</span>. All of it is
-        optional; your email address is never shown.
+        Shown to everyone at <span className="font-mono text-fg">g1t.sh/u/{username}</span>. All of it is optional; your email address is never shown.
       </p>
       <Form method="post" className="mt-4 grid gap-4 sm:grid-cols-2">
         <input type="hidden" name="intent" value="profile" />
         <Field>
           <FieldLabel htmlFor="profile-name">Name</FieldLabel>
-          <Input
-            id="profile-name"
-            name="name"
-            defaultValue={profile?.name ?? ""}
-            maxLength={PROFILE_LIMITS.name}
-            placeholder={username}
-          />
+          <Input id="profile-name" name="name" defaultValue={profile?.name ?? ""} maxLength={PROFILE_LIMITS.name} placeholder={username} />
         </Field>
         <Field>
           <FieldLabel htmlFor="profile-pronouns">Pronouns</FieldLabel>
-          <Input
-            id="profile-pronouns"
-            name="pronouns"
-            defaultValue={profile?.pronouns ?? ""}
-            maxLength={PROFILE_LIMITS.pronouns}
-            placeholder="they/them"
-          />
+          <Input id="profile-pronouns" name="pronouns" defaultValue={profile?.pronouns ?? ""} maxLength={PROFILE_LIMITS.pronouns} placeholder="they/them" />
         </Field>
         <Field className="sm:col-span-2">
           <FieldLabel htmlFor="profile-bio">Bio</FieldLabel>
@@ -133,13 +110,7 @@ export function ProfileSection({
             {browserZone && browserZone !== timezone && (
               <>
                 {" "}
-                <Button
-                  type="button"
-                  onClick={() => setTimezone(browserZone)}
-                  variant="link"
-                  size="inline"
-                  className="font-normal"
-                >
+                <Button type="button" onClick={() => setTimezone(browserZone)} variant="link" size="inline" className="font-normal">
                   Use my browser's time zone ({timeZoneLabel(browserZone)})
                 </Button>
               </>

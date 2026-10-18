@@ -32,7 +32,9 @@ export const git = {
   /** The files directly in a folder at a commit (repository-relative). */
   list: (sha, dir) => {
     try {
-      return run(["ls-tree", "--name-only", sha, "--", `${dir}/`]).split("\n").filter(Boolean);
+      return run(["ls-tree", "--name-only", sha, "--", `${dir}/`])
+        .split("\n")
+        .filter(Boolean);
     } catch {
       return [];
     }
@@ -165,7 +167,11 @@ export function decide(units, { live, head, force = false, rollback = false, git
   });
 }
 
-const firstLine = (text) => String(text).trim().split("\n").find((line) => /error|\[ERROR\]|X /i.test(line)) ?? String(text).trim().split("\n")[0];
+const firstLine = (text) =>
+  String(text)
+    .trim()
+    .split("\n")
+    .find((line) => /error|\[ERROR\]|X /i.test(line)) ?? String(text).trim().split("\n")[0];
 
 /**
  * The plan as data, for `plan --json` and the workflow: the migrations to
@@ -176,7 +182,13 @@ export function planJson(stack, decisions, migrations, head) {
   const stages = {};
   for (const stage of codeStages(stack)) {
     const units = deploying.filter((u) => u.stage === stage);
-    stages[stage] = { units: units.map((u) => u.id), jobs: buildGroups(units, decisions.filter((d) => d.deploy && d.image).map((d) => d.unit.id)) };
+    stages[stage] = {
+      units: units.map((u) => u.id),
+      jobs: buildGroups(
+        units,
+        decisions.filter((d) => d.deploy && d.image).map((d) => d.unit.id),
+      ),
+    };
   }
   return {
     commit: head,
@@ -202,7 +214,11 @@ export function planJson(stack, decisions, migrations, head) {
 /** A plain table. */
 export function table(rows, headers) {
   const widths = headers.map((h, i) => Math.max(h.length, ...rows.map((r) => String(r[i] ?? "").length)));
-  const line = (cells) => cells.map((c, i) => String(c ?? "").padEnd(widths[i])).join("  ").trimEnd();
+  const line = (cells) =>
+    cells
+      .map((c, i) => String(c ?? "").padEnd(widths[i]))
+      .join("  ")
+      .trimEnd();
   return [line(headers), line(widths.map((w) => "-".repeat(w))), ...rows.map(line)].join("\n");
 }
 

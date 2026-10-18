@@ -2,18 +2,7 @@ import * as Clipboard from "expo-clipboard";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";
 import * as WebBrowser from "expo-web-browser";
-import {
-  CircleCheck,
-  CircleDot,
-  CircleX,
-  Copy,
-  ExternalLink,
-  FolderGit2,
-  Link2,
-  Plus,
-  Search,
-  Unlink,
-} from "lucide-react-native";
+import { CircleCheck, CircleDot, CircleX, Copy, ExternalLink, FolderGit2, Link2, Plus, Search, Unlink } from "lucide-react-native";
 import { useState } from "react";
 import { Alert, KeyboardAvoidingView, RefreshControl, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from "react-native";
 
@@ -100,11 +89,7 @@ export default function WorkItem() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
           refreshControl={
-            <RefreshControl
-              refreshing={detail.isRefetching}
-              onRefresh={() => Promise.all([detail.refetch(), context.refetch()])}
-              tintColor={colors.accent}
-            />
+            <RefreshControl refreshing={detail.isRefetching} onRefresh={() => Promise.all([detail.refetch(), context.refetch()])} tintColor={colors.accent} />
           }
         >
           <View style={{ gap: space.sm }}>
@@ -148,13 +133,7 @@ export default function WorkItem() {
                     leading={<FolderGit2 size={20} color={colors.muted} />}
                     title={repoName(repo.path, workspace)}
                     subtitle={`${roleLabel(repo.role)}${repo.legacy_number ? ` · was #${repo.legacy_number} there` : ""}`}
-                    trailing={
-                      repo.landed ? (
-                        <Badge label="Landed" tone="merged" />
-                      ) : repo.role === "target" ? (
-                        <Badge label="Not landed" tone="warn" />
-                      ) : null
-                    }
+                    trailing={repo.landed ? <Badge label="Landed" tone="merged" /> : repo.role === "target" ? <Badge label="Not landed" tone="warn" /> : null}
                     // A deleted repository has nothing to open or unlink.
                     onPress={repo.path ? () => setPicked(repo) : undefined}
                   />

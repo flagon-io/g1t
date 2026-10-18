@@ -6,15 +6,15 @@ The short version: we collect what we need to run a git platform for you and you
 
 ### Your account
 
-| What | Why |
-| --- | --- |
-| Username and email address | To identify you, sign you in, and reach you about your account. Your username is public; your email address is not. |
-| Password | To sign you in. We store only a salted hash of it (PBKDF2-SHA256), never the password itself. |
-| Profile: name, bio, location, website, pronouns and time zone, if you add them | Shown on your public profile, and your local time on the card over your name. All optional. |
-| Avatar, if you upload one | Shown next to your name. Stored by its content's hash and served publicly at `g1t.sh/avatars/…`. |
-| Sessions, access tokens, SSH keys, and apps you've approved through sign-in with g1t | To keep you signed in and let your tools act for you. Session and token secrets are stored only as hashes. |
-| Whether your email address is confirmed | Unconfirmed accounts can't create repositories or push. |
-| Devices you turn notifications on for | To send them notifications: a browser's push subscription, or the phone app's push token, platform and device name. Removed when the device stops taking them. |
+| What                                                                                 | Why                                                                                                                                                            |
+| ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Username and email address                                                           | To identify you, sign you in, and reach you about your account. Your username is public; your email address is not.                                            |
+| Password                                                                             | To sign you in. We store only a salted hash of it (PBKDF2-SHA256), never the password itself.                                                                  |
+| Profile: name, bio, location, website, pronouns and time zone, if you add them       | Shown on your public profile, and your local time on the card over your name. All optional.                                                                    |
+| Avatar, if you upload one                                                            | Shown next to your name. Stored by its content's hash and served publicly at `g1t.sh/avatars/…`.                                                               |
+| Sessions, access tokens, SSH keys, and apps you've approved through sign-in with g1t | To keep you signed in and let your tools act for you. Session and token secrets are stored only as hashes.                                                     |
+| Whether your email address is confirmed                                              | Unconfirmed accounts can't create repositories or push.                                                                                                        |
+| Devices you turn notifications on for                                                | To send them notifications: a browser's push subscription, or the phone app's push token, platform and device name. Removed when the device stops taking them. |
 
 ### Your workspaces and content
 
@@ -68,16 +68,16 @@ The email sign-up form uses **Cloudflare Turnstile** to distinguish people from 
 
 g1t uses the cookies it needs to work, and one analytics cookie. There are **no advertising or cross-site tracking cookies**.
 
-| Cookie | What it's for | How long |
-| --- | --- | --- |
-| `g1t_session` | Keeps you signed in. HttpOnly and Secure; set only when you sign in. | 30 days, or until you sign out |
-| `g1t_ws` | Remembers which workspace you last chose, so the sidebar opens on it. | 1 year |
-| `g1t_seen` | Remembers when you last looked at mission control, so it can show what's new since. | 1 year |
-| `g1t_tz` | Your browser's time zone, so mission control's greeting and days fit your day. | 1 year |
-| `g1t_theme` | Whether this browser shows g1t light, dark or as your system is set, if you chose. | 1 year |
-| `g1t_dock` | This browser's copy of the apps you pinned to your dock, used when your account's copy can't be read. | 1 year |
-| `g1t_sidebar` | Whether you folded the sidebar away. | 1 year |
-| `ph_…_posthog` | Set by HeyCatch's analytics on g1t.sh: a random id for your browser, so its visits count as one visitor ([above](#how-the-site-is-used)). In the EU, the EEA, the UK and Switzerland, only after you allow it. | 1 year |
+| Cookie         | What it's for                                                                                                                                                                                                  | How long                       |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| `g1t_session`  | Keeps you signed in. HttpOnly and Secure; set only when you sign in.                                                                                                                                           | 30 days, or until you sign out |
+| `g1t_ws`       | Remembers which workspace you last chose, so the sidebar opens on it.                                                                                                                                          | 1 year                         |
+| `g1t_seen`     | Remembers when you last looked at mission control, so it can show what's new since.                                                                                                                            | 1 year                         |
+| `g1t_tz`       | Your browser's time zone, so mission control's greeting and days fit your day.                                                                                                                                 | 1 year                         |
+| `g1t_theme`    | Whether this browser shows g1t light, dark or as your system is set, if you chose.                                                                                                                             | 1 year                         |
+| `g1t_dock`     | This browser's copy of the apps you pinned to your dock, used when your account's copy can't be read.                                                                                                          | 1 year                         |
+| `g1t_sidebar`  | Whether you folded the sidebar away.                                                                                                                                                                           | 1 year                         |
+| `ph_…_posthog` | Set by HeyCatch's analytics on g1t.sh: a random id for your browser, so its visits count as one visitor ([above](#how-the-site-is-used)). In the EU, the EEA, the UK and Switzerland, only after you allow it. | 1 year                         |
 
 Cloudflare may set its own security cookies (such as `__cf_bm`) to tell people from bots when g1t is under attack.
 
@@ -113,16 +113,16 @@ We share information only to run g1t, at your direction, or when the law require
 
 ## How long we keep it
 
-| What | How long |
-| --- | --- |
+| What                             | How long                                                                                                                                                                                                                                     |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Your account and private content | Ordinary account closure has a 30-day recovery period before permanent cleanup begins. Shared content and records retained for legal reasons are assessed separately, as described below. An approved erasure request can be handled sooner. |
-| Agent sessions and logs | As long as their project, unless you delete them. |
-| Observability data | The project's retention, 1 to 30 days. |
-| The audit log | 7 days on a free workspace, 90 on the g1t plan, longer where agreed. |
-| Billing records | As long as tax and accounting law requires. |
-| Email to us | As long as we need it to help you, then deleted. |
-| Request logs | 7 days. |
-| Database history | g1t's databases keep 30 days of point-in-time history (Cloudflare D1 Time Travel), so purged data leaves it within 30 days of being purged. |
+| Agent sessions and logs          | As long as their project, unless you delete them.                                                                                                                                                                                            |
+| Observability data               | The project's retention, 1 to 30 days.                                                                                                                                                                                                       |
+| The audit log                    | 7 days on a free workspace, 90 on the g1t plan, longer where agreed.                                                                                                                                                                         |
+| Billing records                  | As long as tax and accounting law requires.                                                                                                                                                                                                  |
+| Email to us                      | As long as we need it to help you, then deleted.                                                                                                                                                                                             |
+| Request logs                     | 7 days.                                                                                                                                                                                                                                      |
+| Database history                 | g1t's databases keep 30 days of point-in-time history (Cloudflare D1 Time Travel), so purged data leaves it within 30 days of being purged.                                                                                                  |
 
 Some content can stay after you leave because it is part of someone else's work, including shared conversations and documents, forks, comments and reviews. Where appropriate, we replace account attribution with `ghost`. This does not necessarily remove personal information within the content itself. If you request erasure, we assess that content and any lawful grounds for retaining it, and explain the outcome. We keep a limited record of privacy requests and deletion identifiers where needed to demonstrate our response, prevent restoration of erased data, and prevent reassignment of deleted usernames.
 

@@ -64,7 +64,8 @@ export default function RepoRules({ loaderData, params }: Route.ComponentProps) 
   const [search] = useSearchParams();
   const own = rulesets.filter((ruleset) => ruleset.level === "repository");
   const inherited = rulesets.filter((ruleset) => ruleset.level === "workspace");
-  const hrefFor = (id: string, level: "repository" | "workspace") => (level === "workspace" ? `/${params.owner}/-/rules/${id}` : `${base}/settings/rules/${id}`);
+  const hrefFor = (id: string, level: "repository" | "workspace") =>
+    level === "workspace" ? `/${params.owner}/-/rules/${id}` : `${base}/settings/rules/${id}`;
   const tabLink = (name: "rulesets" | "insights") => {
     const next = new URLSearchParams(search);
     next.delete("before");
@@ -125,7 +126,9 @@ export default function RepoRules({ loaderData, params }: Route.ComponentProps) 
           {inherited.length > 0 && (
             <section>
               <h2 className="font-medium">From the workspace</h2>
-              <p className="mt-1 mb-3 text-sm text-muted">Set for every repository of {params.owner} they select. Owners change them in the workspace's settings.</p>
+              <p className="mt-1 mb-3 text-sm text-muted">
+                Set for every repository of {params.owner} they select. Owners change them in the workspace's settings.
+              </p>
               <RulesetList rulesets={inherited} level="repository" hrefFor={(ruleset) => hrefFor(ruleset.id, ruleset.level)} empty={null} />
             </section>
           )}
@@ -135,7 +138,13 @@ export default function RepoRules({ loaderData, params }: Route.ComponentProps) 
             <Form method="get" className="mb-4 flex flex-wrap items-center gap-2">
               <div className="relative w-72 max-w-full">
                 <Search size={14} className="absolute top-1/2 left-3 -translate-y-1/2 text-faint" />
-                <Input name={target === "tag" ? "tag" : "branch"} defaultValue={branch} aria-label="Branch" placeholder={defaultBranch} className="pl-8 font-mono text-[0.8125rem]" />
+                <Input
+                  name={target === "tag" ? "tag" : "branch"}
+                  defaultValue={branch}
+                  aria-label="Branch"
+                  placeholder={defaultBranch}
+                  className="pl-8 font-mono text-[0.8125rem]"
+                />
               </div>
               <Button type="submit" variant="outline" size="sm" className="px-3 text-sm text-muted font-normal">
                 Show rules
@@ -153,7 +162,10 @@ export default function RepoRules({ loaderData, params }: Route.ComponentProps) 
       ) : isFailed(evaluations) ? (
         <Unavailable what={evaluations.what} />
       ) : evaluations ? (
-        <InsightsView page={evaluations} olderHref={evaluations.next ? `${base}/settings/rules/insights?before=${encodeURIComponent(evaluations.next)}` : null} />
+        <InsightsView
+          page={evaluations}
+          olderHref={evaluations.next ? `${base}/settings/rules/insights?before=${encodeURIComponent(evaluations.next)}` : null}
+        />
       ) : (
         <p className="text-sm text-muted">Insights could not be read just now.</p>
       )}

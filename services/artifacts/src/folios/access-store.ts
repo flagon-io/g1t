@@ -7,7 +7,18 @@
  */
 import type { DocRole, FolioGeneralAccess } from "@g1t/contracts";
 
-import { aclChain, aclRootOf, effectiveRole, folioPathOf, folioReadableByWorkspace, folioScope, materialize, type FolioAclNode, type FolioGrant, type Person } from "../access.ts";
+import {
+  aclChain,
+  aclRootOf,
+  effectiveRole,
+  folioPathOf,
+  folioReadableByWorkspace,
+  folioScope,
+  materialize,
+  type FolioAclNode,
+  type FolioGrant,
+  type Person,
+} from "../access.ts";
 
 /** A folio row as stored. `text` is left out of lists (see FOLIO_COLUMNS). */
 export type FolioRow = {
@@ -65,7 +76,9 @@ export async function runBatches(db: D1Database, statements: D1PreparedStatement
   for (let i = 0; i < statements.length; i += BATCH) await db.batch(statements.slice(i, i + BATCH));
 }
 
-export function aclNode(row: Pick<FolioRow, "id" | "owner" | "parent_id" | "space_id" | "inherit" | "general_access" | "general_role" | "created_at">): FolioAclNode {
+export function aclNode(
+  row: Pick<FolioRow, "id" | "owner" | "parent_id" | "space_id" | "inherit" | "general_access" | "general_role" | "created_at">,
+): FolioAclNode {
   return {
     id: row.id,
     owner: row.owner,
@@ -182,7 +195,10 @@ export async function workspaceReadable(db: D1Database, folioId: string): Promis
   const root = chain[chain.length - 1];
   let space = null;
   if (root?.space_id) {
-    const s = await db.prepare("SELECT kind, team, default_role FROM spaces WHERE id = ?").bind(root.space_id).first<{ kind: "workspace" | "team" | "private"; team: string | null; default_role: DocRole | null }>();
+    const s = await db
+      .prepare("SELECT kind, team, default_role FROM spaces WHERE id = ?")
+      .bind(root.space_id)
+      .first<{ kind: "workspace" | "team" | "private"; team: string | null; default_role: DocRole | null }>();
     if (s) space = { ...s, members: [] };
   }
   return folioReadableByWorkspace(chain, space);
@@ -243,7 +259,9 @@ export async function rebuildSubtree(db: D1Database, rootId: string): Promise<st
   for (const row of queue) {
     const place = next.get(row.id)!;
     if (place.space_id !== row.space_id || place.acl_root !== row.acl_root || place.path !== row.path) {
-      statements.push(db.prepare("UPDATE folios SET space_id = ?, acl_root = ?, path = ? WHERE id = ?").bind(place.space_id, place.acl_root, place.path, row.id));
+      statements.push(
+        db.prepare("UPDATE folios SET space_id = ?, acl_root = ?, path = ? WHERE id = ?").bind(place.space_id, place.acl_root, place.path, row.id),
+      );
       Object.assign(row, place);
     }
   }
@@ -268,10 +286,16 @@ export async function rematerialize(db: D1Database, rows: FolioRow[]): Promise<v
   );
   const statements: D1PreparedStatement[] = [];
   for (let i = 0; i < rows.length; i += 500) {
-    statements.push(db.prepare("DELETE FROM folio_access WHERE folio_id IN (SELECT value FROM json_each(?))").bind(json(rows.slice(i, i + 500).map((r) => r.id))));
+    statements.push(
+      db.prepare("DELETE FROM folio_access WHERE folio_id IN (SELECT value FROM json_each(?))").bind(json(rows.slice(i, i + 500).map((r) => r.id))),
+    );
   }
   for (const a of access) {
-    statements.push(db.prepare("INSERT OR REPLACE INTO folio_access (folio_id, principal, role, via, since) VALUES (?, ?, ?, ?, ?)").bind(a.folio_id, a.principal, a.role, a.via, a.since));
+    statements.push(
+      db
+        .prepare("INSERT OR REPLACE INTO folio_access (folio_id, principal, role, via, since) VALUES (?, ?, ?, ?, ?)")
+        .bind(a.folio_id, a.principal, a.role, a.via, a.since),
+    );
   }
   await runBatches(db, statements);
 }

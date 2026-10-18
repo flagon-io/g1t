@@ -116,9 +116,7 @@ export async function action({ request, params, context }: Route.ActionArgs): Pr
     }
     case "remove": {
       const removed = await identity.removeCollaborator(user, params.owner, params.repo, text("username"));
-      return removed.ok
-        ? { intent, ok: true, error: null, message: `${text("username")} no longer has a role given here.` }
-        : failed(removed.error.message);
+      return removed.ok ? { intent, ok: true, error: null, message: `${text("username")} no longer has a role given here.` } : failed(removed.error.message);
     }
     case "team-add":
     case "team-role": {
@@ -126,16 +124,12 @@ export async function action({ request, params, context }: Route.ActionArgs): Pr
       if (!team) return failed("Choose a team.");
       if (!isRole(role)) return failed("Choose a role.");
       const set = await identity.setTeamRepo(user, params.owner, team, params.owner, params.repo, role);
-      return set.ok
-        ? { intent, ok: true, error: null, message: `${team} has the ${REPO_ROLE_LABELS[set.value.role]} role.` }
-        : failed(set.error.message);
+      return set.ok ? { intent, ok: true, error: null, message: `${team} has the ${REPO_ROLE_LABELS[set.value.role]} role.` } : failed(set.error.message);
     }
     case "team-remove": {
       const team = text("team");
       const removed = await identity.removeTeamRepo(user, params.owner, team, params.owner, params.repo);
-      return removed.ok
-        ? { intent, ok: true, error: null, message: `${team} no longer has a role here.` }
-        : failed(removed.error.message);
+      return removed.ok ? { intent, ok: true, error: null, message: `${team} no longer has a role here.` } : failed(removed.error.message);
     }
     case "revoke": {
       const revoked = await identity.revokeRepoInvitation(user, params.owner, params.repo, text("id"));
@@ -158,14 +152,10 @@ export default function RepoAccessSettings({ loaderData, actionData, params }: R
   const base = `/${params.owner}/${params.repo}`;
   const full = `${params.owner}/${params.repo}`;
   const pending = access.invitations.filter((invitation) => invitation.status === "pending");
-  const people = [...access.people].sort(
-    (a, b) => REPO_ROLES.indexOf(b.role) - REPO_ROLES.indexOf(a.role) || a.username.localeCompare(b.username),
-  );
+  const people = [...access.people].sort((a, b) => REPO_ROLES.indexOf(b.role) - REPO_ROLES.indexOf(a.role) || a.username.localeCompare(b.username));
   const result = actionData?.intent === "add" ? actionData : undefined;
   const teamResult = actionData?.intent === "team-add" ? actionData : undefined;
-  const repoTeams = [...(access.teams ?? [])].sort(
-    (a, b) => REPO_ROLES.indexOf(b.role) - REPO_ROLES.indexOf(a.role) || a.name.localeCompare(b.name),
-  );
+  const repoTeams = [...(access.teams ?? [])].sort((a, b) => REPO_ROLES.indexOf(b.role) - REPO_ROLES.indexOf(a.role) || a.name.localeCompare(b.name));
   const listed = new Set(repoTeams.map((team) => team.slug));
   const addable = isFailed(teams) ? null : teams.filter((team) => !listed.has(team.slug));
   // Roles are changed and people removed from their own rows, which say
@@ -175,10 +165,7 @@ export default function RepoAccessSettings({ loaderData, actionData, params }: R
     <>
       <RepoSettingsHeading base={base} />
       <div className="max-w-4xl space-y-8">
-        <Section
-          title="Base permission"
-          about={`What every member of ${params.owner} gets on its repositories.`}
-        >
+        <Section title="Base permission" about={`What every member of ${params.owner} gets on its repositories.`}>
           <Card className="p-4 text-sm">
             <p>
               Members have{" "}
@@ -186,8 +173,8 @@ export default function RepoAccessSettings({ loaderData, actionData, params }: R
                 {access.base_permission === "none" ? "no permission" : `the ${BASE_PERMISSION_LABELS[access.base_permission]} role`}
               </span>{" "}
               on {full}
-              {access.base_permission === "none" ? " unless they are given a role here." : ", or the higher role they are given here."}{" "}
-              Owners of the workspace are Admins on every repository.
+              {access.base_permission === "none" ? " unless they are given a role here." : ", or the higher role they are given here."} Owners of the workspace
+              are Admins on every repository.
             </p>
             <p className="mt-2 text-muted">
               {owner ? (
@@ -251,9 +238,7 @@ export default function RepoAccessSettings({ loaderData, actionData, params }: R
         >
           {repoTeams.length === 0 ? (
             <Card asChild tone="plain" className="border-dashed px-4 py-6 text-center text-sm text-muted">
-              <p>
-                No team has a role here.
-              </p>
+              <p>No team has a role here.</p>
             </Card>
           ) : (
             <Card asChild tone="plain" divided>
@@ -272,9 +257,7 @@ export default function RepoAccessSettings({ loaderData, actionData, params }: R
           <Section title="Pending invitations" about="Invitations not yet accepted. Each expires after 7 days.">
             {pending.length === 0 ? (
               <Card asChild tone="plain" className="border-dashed px-4 py-6 text-center text-sm text-muted">
-                <p>
-                  No invitations are waiting.
-                </p>
+                <p>No invitations are waiting.</p>
               </Card>
             ) : (
               <Card asChild tone="plain" divided>
@@ -324,7 +307,9 @@ function AddForm({ result }: { result: Outcome | undefined }) {
             Add
           </SubmitButton>
         </div>
-        <p className="text-xs text-faint">{REPO_ROLE_LABELS[role]}: {roleLine(role)}</p>
+        <p className="text-xs text-faint">
+          {REPO_ROLE_LABELS[role]}: {roleLine(role)}
+        </p>
         {result &&
           (result.ok ? (
             <p className="flex items-start gap-2 text-sm text-fg" role="status">
@@ -414,9 +399,7 @@ function PersonRow({
             value={shown}
             className="w-32"
             disabled={fetcher.state !== "idle"}
-            onValueChange={(role) =>
-              fetcher.submit({ intent: "role", username: person.username, role }, { method: "post" })
-            }
+            onValueChange={(role) => fetcher.submit({ intent: "role", username: person.username, role }, { method: "post" })}
           />
         ) : (
           <span className="inline-flex h-8 w-32 items-center rounded-md border border-line px-2.5 text-[0.8125rem] text-muted">
@@ -426,9 +409,7 @@ function PersonRow({
         {/* The same room for Remove on every row, so the roles line up. */}
         {manage && (
           <span className="flex w-22 justify-end">
-            {editable && person.direct != null && (
-              <RemoveButton person={person} full={full} outside={outside} onDone={onDone} />
-            )}
+            {editable && person.direct != null && <RemoveButton person={person} full={full} outside={outside} onDone={onDone} />}
           </span>
         )}
       </div>
@@ -437,17 +418,7 @@ function PersonRow({
 }
 
 /** Taking someone's role here away, after saying what that means. */
-function RemoveButton({
-  person,
-  full,
-  outside,
-  onDone,
-}: {
-  person: Collaborator;
-  full: string;
-  outside: boolean;
-  onDone: (notice: string | null) => void;
-}) {
+function RemoveButton({ person, full, outside, onDone }: { person: Collaborator; full: string; outside: boolean; onDone: (notice: string | null) => void }) {
   const fetcher = useFetcher<Outcome>();
   const [open, setOpen] = useState(false);
   // Said as soon as the answer comes, before the row leaves the list.
@@ -566,9 +537,7 @@ function TeamRow({
           </span>
           {team.visibility === "secret" && <Badge tone="warn">Secret</Badge>}
         </p>
-        <p className="mt-0.5 text-xs text-faint">
-          {team.members_count === 1 ? "1 member" : `${team.members_count} members`}
-        </p>
+        <p className="mt-0.5 text-xs text-faint">{team.members_count === 1 ? "1 member" : `${team.members_count} members`}</p>
         {fetcher.data && !fetcher.data.ok && !open && <ErrorText>{fetcher.data.error}</ErrorText>}
       </div>
       <div className="flex shrink-0 items-center gap-2">
@@ -672,7 +641,9 @@ function AddTeamForm({ teams, result, workspace }: { teams: Team[]; result: Outc
             Add team
           </SubmitButton>
         </div>
-        <p className="text-xs text-faint">{REPO_ROLE_LABELS[role]}: everyone on the team {roleLine(role).replace(/^they /, "")}</p>
+        <p className="text-xs text-faint">
+          {REPO_ROLE_LABELS[role]}: everyone on the team {roleLine(role).replace(/^they /, "")}
+        </p>
         {result &&
           (result.ok ? (
             <p className="text-sm text-success" role="status">

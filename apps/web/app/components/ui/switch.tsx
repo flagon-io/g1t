@@ -6,11 +6,7 @@ import { cn } from "../../lib/cn";
 // shadcn/ui's switch, styled with g1t's tokens. Like a checkbox, inside a
 // <Form> a `name` posts `value` (default "on") when on and nothing when off.
 
-export function Switch({
-  className,
-  size = "default",
-  ...props
-}: ComponentProps<typeof Primitive.Root> & { size?: "sm" | "default" }) {
+export function Switch({ className, size = "default", ...props }: ComponentProps<typeof Primitive.Root> & { size?: "sm" | "default" }) {
   return (
     <Primitive.Root
       data-size={size}
@@ -39,12 +35,7 @@ export function Switch({
  * A setting that is on or off, as a card: a title, what it means, and the
  * switch. The whole card toggles it.
  */
-export function SwitchCard({
-  title,
-  children,
-  className,
-  ...props
-}: ComponentProps<typeof Primitive.Root> & { title: ReactNode; children?: ReactNode }) {
+export function SwitchCard({ title, children, className, ...props }: ComponentProps<typeof Primitive.Root> & { title: ReactNode; children?: ReactNode }) {
   const generated = useId();
   const id = props.id ?? generated;
   return (

@@ -47,7 +47,8 @@ export function zoneAbbr(date: Date, tz: string): string {
   if (tz === "UTC" || tz === "Etc/UTC" || tz === "Etc/GMT") return "UTC";
   let offset = "";
   for (const locale of ["en-US", "en-GB"]) {
-    const name = new Intl.DateTimeFormat(locale, { timeZone: tz, timeZoneName: "short" }).formatToParts(date).find((p) => p.type === "timeZoneName")?.value ?? "";
+    const name =
+      new Intl.DateTimeFormat(locale, { timeZone: tz, timeZoneName: "short" }).formatToParts(date).find((p) => p.type === "timeZoneName")?.value ?? "";
     if (name && !/^(GMT|UTC)[+-−]/.test(name)) return name;
     offset ||= name;
   }

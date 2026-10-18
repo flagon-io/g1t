@@ -74,8 +74,21 @@ function useMessage(slug: string) {
   };
 }
 
-
-function PersonBody({ username, display, avatar, ctx, open, close }: { username: string; display: string; avatar: string | null; ctx: CardContextValue; open: boolean; close: () => void }) {
+function PersonBody({
+  username,
+  display,
+  avatar,
+  ctx,
+  open,
+  close,
+}: {
+  username: string;
+  display: string;
+  avatar: string | null;
+  ctx: CardContextValue;
+  open: boolean;
+  close: () => void;
+}) {
   const card = usePersonCard(ctx.slug, username, open);
   const message = useMessage(ctx.slug);
   const [now, setNow] = useState(() => Date.now());
@@ -128,7 +141,13 @@ function PersonBody({ username, display, avatar, ctx, open, close }: { username:
         )}
       </div>
       <div className="mt-4 flex gap-2">
-        <Button type="button" disabled={message.busy} onClick={() => void message.open(`user:${username}`)} variant="accent" className="grow rounded-lg max-md:h-11">
+        <Button
+          type="button"
+          disabled={message.busy}
+          onClick={() => void message.open(`user:${username}`)}
+          variant="accent"
+          className="grow rounded-lg max-md:h-11"
+        >
           <MessageSquare size={15} />
           {message.busy ? "Opening…" : "Message"}
         </Button>
@@ -138,7 +157,9 @@ function PersonBody({ username, display, avatar, ctx, open, close }: { username:
             close();
             ctx.onViewProfile(username);
           }}
-          variant="outline" className="grow rounded-lg max-md:h-11">
+          variant="outline"
+          className="grow rounded-lg max-md:h-11"
+        >
           <UserRound size={15} />
           View profile
         </Button>

@@ -40,8 +40,7 @@ export const ACCOUNT_SETTINGS: Record<AccountSettingsPage, { title: string; abou
   keys: { title: "SSH keys", about: "Keys that let git on your computers reach g1t as you." },
   tokens: {
     title: "Access tokens",
-    about:
-      "Use a token as the password when git asks for one over HTTPS, and to authenticate agents and the API. A token here acts as you.",
+    about: "Use a token as the password when git asks for one over HTTPS, and to authenticate agents and the API. A token here acts as you.",
   },
   integrations: {
     title: "Integrations",
@@ -55,13 +54,11 @@ export const ACCOUNT_SETTINGS: Record<AccountSettingsPage, { title: string; abou
   },
   applications: {
     title: "Connected applications",
-    about:
-      "Applications you signed in to through your browser, such as an agent connected to the g1t MCP server. Signing one out ends its access at once.",
+    about: "Applications you signed in to through your browser, such as an agent connected to the g1t MCP server. Signing one out ends its access at once.",
   },
   "two-factor": {
     title: "Two-factor authentication",
-    about:
-      "A code from an app on your phone as well as your password when you sign in. Workspaces can require it of their members.",
+    about: "A code from an app on your phone as well as your password when you sign in. Workspaces can require it of their members.",
   },
   "security-log": {
     title: "Security log",

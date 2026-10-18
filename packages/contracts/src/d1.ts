@@ -78,7 +78,14 @@ export function timedD1<D extends object>(db: D, timing: D1Timing): D {
       const value = Reflect.get(target, prop, target);
       if (typeof value !== "function") return value;
       if (prop === "prepare") return (query: string) => statement(value.call(target, query));
-      if (prop === "batch") return (statements: object[]) => trip(() => value.call(target, statements.map((s) => raw.get(s) ?? s)));
+      if (prop === "batch")
+        return (statements: object[]) =>
+          trip(() =>
+            value.call(
+              target,
+              statements.map((s) => raw.get(s) ?? s),
+            ),
+          );
       return value.bind(target);
     },
   });

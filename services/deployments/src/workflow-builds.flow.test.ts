@@ -115,7 +115,8 @@ function world() {
       return ok(null);
     }),
     BILLING: service("BILLING", (method) => {
-      if (method === "has_feature") return state.plan ? ok(true) : { ok: false, error: { code: "payment_required", message: "Deployments need the Team plan." } };
+      if (method === "has_feature")
+        return state.plan ? ok(true) : { ok: false, error: { code: "payment_required", message: "Deployments need the Team plan." } };
       if (method === "check_limit") return ok({ state: state.limit, message: state.limit === "stopped" ? "The workspace reached its spend limit." : null });
       if (method === "prices") return { prices: [] };
       if (method === "charge_feature" && state.chargeFails) return { ok: false, error: { code: "unavailable", message: "billing is down" } };
@@ -173,19 +174,13 @@ const jobActor = (scopes: string[] = ["contents:read", "deployments:write"]) => 
 });
 
 async function post(path: string, body: unknown): Promise<any> {
-  const response = await worker.fetch(
-    new Request(`https://deployments${path}`, { method: "POST", body: JSON.stringify(body) }),
-    w.env as never,
-    {} as never,
-  );
+  const response = await worker.fetch(new Request(`https://deployments${path}`, { method: "POST", body: JSON.stringify(body) }), w.env as never, {} as never);
   return response.json();
 }
 
-const open = (body: Record<string, unknown> = {}) =>
-  post("/rpc/start_from_workflow", { actor: jobActor(), repo: { namespace: "acme", name: "web" }, ...body });
+const open = (body: Record<string, unknown> = {}) => post("/rpc/start_from_workflow", { actor: jobActor(), repo: { namespace: "acme", name: "web" }, ...body });
 
-const rows = (sql: string, ...params: unknown[]) =>
-  (w.state.sqlite.prepare(sql).all(...(params as never[])) as any[]).map((row) => ({ ...row }));
+const rows = (sql: string, ...params: unknown[]) => (w.state.sqlite.prepare(sql).all(...(params as never[])) as any[]).map((row) => ({ ...row }));
 
 test("a push to the production branch opens a production build the job runs, with no sandbox and nothing reserved", async () => {
   const answer = await open();
@@ -270,7 +265,12 @@ test("a build billing cannot charge still goes live and is announced; the sweep 
     )
     .run(PROJECT, REPO, SHA, createHash("sha256").update(token).digest("hex"));
   w.state.chargeFails = true;
-  const finished = await post("/jobs/dpl_owed/finish", { token, worker: { compatibilityDate: "2026-09-26", vars: {} }, completionJwt: "done", buildSeconds: 30 });
+  const finished = await post("/jobs/dpl_owed/finish", {
+    token,
+    worker: { compatibilityDate: "2026-09-26", vars: {} },
+    completionJwt: "done",
+    buildSeconds: 30,
+  });
   assert.equal(finished.ok, true, JSON.stringify(finished));
   // Live and said so, though billing refused the charge.
   assert.deepEqual(rows("SELECT status, build_seconds, build_charged_at FROM deployments"), [{ status: "ready", build_seconds: 30, build_charged_at: null }]);
@@ -296,7 +296,10 @@ test("another branch builds its preview; a pull request's run builds the pull re
   w.state.run = { ...w.state.run, event: "pull_request", ref: "refs/pull/9/merge", pull: 9 };
   const pull = (await open()).value;
   assert.deepEqual([pull.kind, pull.branch, pull.number, pull.trusted], ["preview", "feature", 9, true]);
-  assert.deepEqual(w.state.resolved.map((r) => r.environment), ["preview", "preview"]);
+  assert.deepEqual(
+    w.state.resolved.map((r) => r.environment),
+    ["preview", "preview"],
+  );
 });
 
 test("a pull request from a fork, or one that had to be approved, gets no build secrets", async () => {
@@ -308,7 +311,10 @@ test("a pull request from a fork, or one that had to be approved, gets no build 
   w.state.approval = { state: "approved" };
   const approved = (await open()).value;
   assert.deepEqual([approved.trusted, approved.build_secrets], [false, {}]);
-  assert.deepEqual(w.state.resolved.map((r) => r.trusted), [false, false]);
+  assert.deepEqual(
+    w.state.resolved.map((r) => r.trusted),
+    [false, false],
+  );
 });
 
 test("it is refused without a job's write token, after the job, without the plan, or with previews off", async () => {

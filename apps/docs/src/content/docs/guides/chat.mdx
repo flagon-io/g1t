@@ -3,13 +3,13 @@ title: Chat
 description: Talk to your team in channels, direct messages and threads, live. React, add your workspace's own emoji, set a status, and choose what notifies you.
 ---
 
-import { Steps } from '@astrojs/starlight/components';
-import Soon from '../../../components/Soon.astro';
-import Conversation from '../../../components/Conversation.astro';
-import Message from '../../../components/Message.astro';
-import Aside from '../../../components/Aside.astro';
-import Card from '../../../components/Card.astro';
-import { CardGrid } from '@astrojs/starlight/components';
+import { Steps } from "@astrojs/starlight/components";
+import Soon from "../../../components/Soon.astro";
+import Conversation from "../../../components/Conversation.astro";
+import Message from "../../../components/Message.astro";
+import Aside from "../../../components/Aside.astro";
+import Card from "../../../components/Card.astro";
+import { CardGrid } from "@astrojs/starlight/components";
 
 **Chat is where a workspace talks.** Everyone in a workspace can find its
 channels, write in the same threads and message each other directly. You
@@ -71,12 +71,12 @@ in it the first time they open Chat (owners can choose other
 Each channel is one of three kinds, and its mark says which, in the
 sidebar, in Browse channels and at the top of the channel:
 
-| | Workspace `#` | Private 🔒 | Public 🌐 |
-| --- | --- | --- | --- |
-| Who can find it | Every member, under **Browse channels** | Only the people in it | Every member, and anyone on g1t with its link |
-| Who can join | Any member | Only people someone in it adds, or lets in on a [request](#ask-to-join) | Anyone signed in to g1t with a confirmed email address, except someone outside the workspace who was [taken out of it](#public-channels) |
-| Who can read it | Every member | Only the people in it | Every member, and anyone signed in to g1t with a confirmed email address |
-| Who can make one | Members, unless owners keep it to themselves | Members, unless owners keep it to themselves | Workspace owners |
+|                  | Workspace `#`                                | Private 🔒                                                              | Public 🌐                                                                                                                                |
+| ---------------- | -------------------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Who can find it  | Every member, under **Browse channels**      | Only the people in it                                                   | Every member, and anyone on g1t with its link                                                                                            |
+| Who can join     | Any member                                   | Only people someone in it adds, or lets in on a [request](#ask-to-join) | Anyone signed in to g1t with a confirmed email address, except someone outside the workspace who was [taken out of it](#public-channels) |
+| Who can read it  | Every member                                 | Only the people in it                                                   | Every member, and anyone signed in to g1t with a confirmed email address                                                                 |
+| Who can make one | Members, unless owners keep it to themselves | Members, unless owners keep it to themselves                            | Workspace owners                                                                                                                         |
 
 Anyone in a channel who is not a member of the workspace shows as a
 **Guest**, beside their name on every message, in the channel's people and
@@ -192,12 +192,12 @@ it is let in, as a guest, by those who may invite guests.
 Open a channel's details (the members button at the top right) to change
 it.
 
-| Change | Who can |
-| --- | --- |
-| **Topic** | Any member of the channel. |
-| **Rename** | The channel's owners and the workspace's owners, or only the workspace's owners if they chose so in [chat settings](#workspace-chat-settings). The address follows the new name for everyone who has it open. |
-| **Archive** | The same people as rename. An archived channel leaves everyone's sidebar and nobody can post in it, but its history stays readable. |
-| **Unarchive** | The same people, from the archived channel itself or **Browse channels → Archived**. |
+| Change        | Who can                                                                                                                                                                                                       |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Topic**     | Any member of the channel.                                                                                                                                                                                    |
+| **Rename**    | The channel's owners and the workspace's owners, or only the workspace's owners if they chose so in [chat settings](#workspace-chat-settings). The address follows the new name for everyone who has it open. |
+| **Archive**   | The same people as rename. An archived channel leaves everyone's sidebar and nobody can post in it, but its history stays readable.                                                                           |
+| **Unarchive** | The same people, from the archived channel itself or **Browse channels → Archived**.                                                                                                                          |
 
 `#general` is never renamed or archived. Everyone looking at a channel sees
 a change to it the moment it is made.
@@ -214,12 +214,12 @@ Both are yours alone; nobody else's sidebar changes.
 
 Chat's sidebar lists, from the top:
 
-| Section | What's in it |
-| --- | --- |
-| **Pinned** | Conversations you pinned (hover over one and choose the pin, or right-click it). Only when you have some. |
-| **Channels** | The workspace's own channels you're in, workspace and private, by name, then **Browse channels** with how many more you could join. **+** creates one. |
-| **Public channels** | The [public channels](#public-channels) you're in, by name, kept apart because anyone on g1t can be in them. Only when you're in some. |
-| **Direct messages** | [g1t](#talk-with-g1t) first, then your direct messages, the latest first. The pencil starts a new message. Empty, it says **Message a teammate.** |
+| Section             | What's in it                                                                                                                                           |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Pinned**          | Conversations you pinned (hover over one and choose the pin, or right-click it). Only when you have some.                                              |
+| **Channels**        | The workspace's own channels you're in, workspace and private, by name, then **Browse channels** with how many more you could join. **+** creates one. |
+| **Public channels** | The [public channels](#public-channels) you're in, by name, kept apart because anyone on g1t can be in them. Only when you're in some.                 |
+| **Direct messages** | [g1t](#talk-with-g1t) first, then your direct messages, the latest first. The pencil starts a new message. Empty, it says **Message a teammate.**      |
 
 Unread conversations are in bold with a count; mentions of you are counted
 in lavender. **All**, **Unread** and **Mentions** filter every section, and
@@ -302,17 +302,17 @@ code, code blocks, lists and quotes. Format as you write, three ways:
 - **Markdown, typed inline.** It turns into its formatting as you type:
   `*bold*` becomes **bold** when you type the closing `*`.
 
-| Formatting | Shortcut (⌘ on a Mac) | Or type |
-| --- | --- | --- |
-| Bold | Ctrl+B | `*bold*` or `**bold**` |
-| Italic | Ctrl+I | `_italic_` |
-| Strikethrough | Ctrl+Shift+X | `~struck~` or `~~struck~~` |
-| Link | Ctrl+K | Select words and paste an address over them |
-| Inline code | Ctrl+Shift+C or Ctrl+E | `` `code` `` |
-| Code block | Ctrl+Alt+Shift+C | ` ``` ` then Enter, or ` ```ts ` to name the language |
-| Bulleted list | Ctrl+Shift+8 | `- ` at the start of a line |
-| Numbered list | Ctrl+Shift+7 | `1. ` at the start of a line |
-| Quote | Ctrl+Shift+9 | `> ` at the start of a line |
+| Formatting    | Shortcut (⌘ on a Mac)  | Or type                                               |
+| ------------- | ---------------------- | ----------------------------------------------------- |
+| Bold          | Ctrl+B                 | `*bold*` or `**bold**`                                |
+| Italic        | Ctrl+I                 | `_italic_`                                            |
+| Strikethrough | Ctrl+Shift+X           | `~struck~` or `~~struck~~`                            |
+| Link          | Ctrl+K                 | Select words and paste an address over them           |
+| Inline code   | Ctrl+Shift+C or Ctrl+E | `` `code` ``                                          |
+| Code block    | Ctrl+Alt+Shift+C       | ` ``` ` then Enter, or ` ```ts ` to name the language |
+| Bulleted list | Ctrl+Shift+8           | `- ` at the start of a line                           |
+| Numbered list | Ctrl+Shift+7           | `1. ` at the start of a line                          |
+| Quote         | Ctrl+Shift+9           | `> ` at the start of a line                           |
 
 **Ctrl+K** asks where the link goes, and for its text when nothing is
 selected. On a link already, it changes the address or removes the link.
@@ -321,11 +321,11 @@ else is refused. Undo (**Ctrl+Z**) takes formatting back off.
 
 ### Enter and new lines
 
-| Key | In a line of text | In a list | In a code block |
-| --- | --- | --- | --- |
-| **Enter** | Sends | Adds an item; on an empty item, leaves the list | Adds a line; three in a row leave the block |
-| **Shift+Enter** | Starts a new line | Adds an item | Adds a line |
-| **Ctrl+Enter** | Sends | Sends | Sends |
+| Key             | In a line of text | In a list                                       | In a code block                             |
+| --------------- | ----------------- | ----------------------------------------------- | ------------------------------------------- |
+| **Enter**       | Sends             | Adds an item; on an empty item, leaves the list | Adds a line; three in a row leave the block |
+| **Shift+Enter** | Starts a new line | Adds an item                                    | Adds a line                                 |
+| **Ctrl+Enter**  | Sends             | Sends                                           | Sends                                       |
 
 In a quote, Enter sends and Shift+Enter starts the next line of the quote.
 
@@ -344,9 +344,9 @@ message. The composer has no table to edit, so editing a message with
 one shows its rows as the lines they were written as.
 
 ```md
-| Session | Length | Who |
-| --- | --: | --- |
-| Welcome and tour | 45 min | Ana |
+| Session              | Length | Who   |
+| -------------------- | -----: | ----- |
+| Welcome and tour     | 45 min | Ana   |
 | Your first work item | 60 min | Margo |
 ```
 
@@ -360,7 +360,7 @@ What you send is kept as Markdown, the formatting written as `**bold**`,
 a message, so formatting survives the round trip. Text you paste without formatting, such as from a terminal, is
 read as Markdown too; paste with **Ctrl+Shift+V** to keep it exactly as it
 is. Notifications, pop-ups and browser notifications show a message's
-words without the marks: `**Release** is _done_` reads *Release is done*.
+words without the marks: `**Release** is _done_` reads _Release is done_.
 
 To show a character that would format, put a backslash before it: `\*`
 shows `*`.
@@ -392,25 +392,25 @@ A message can be up to 40,000 characters, and is written in Markdown (see
 
 ## Reactions
 
-A reaction says *seen*, *agreed* or *done* without another message.
+A reaction says _seen_, _agreed_ or _done_ without another message.
 
-| Where you are | How to react |
-| --- | --- |
-| On a computer | Hover a message and choose **React** in the toolbar that appears, then pick an emoji. |
-| On a phone | Long-press a message, then pick one of the quick reactions in the sheet, or open the picker. |
-| On an existing reaction | Click its pill to add yours. Click it again to take yours back. |
+| Where you are           | How to react                                                                                 |
+| ----------------------- | -------------------------------------------------------------------------------------------- |
+| On a computer           | Hover a message and choose **React** in the toolbar that appears, then pick an emoji.        |
+| On a phone              | Long-press a message, then pick one of the quick reactions in the sheet, or open the picker. |
+| On an existing reaction | Click its pill to add yours. Click it again to take yours back.                              |
 
 The picker has a search box, **Recently used**, the standard emoji by group,
 a skin tone, and a **This workspace** tab for your
 [custom emoji](#custom-emoji). Arrow keys move through it and Enter picks.
 
-Hover a reaction's pill to see who reacted, such as *Priya, Dana and 3
-more*. Your own reactions are highlighted.
+Hover a reaction's pill to see who reacted, such as _Priya, Dana and 3
+more_. Your own reactions are highlighted.
 
-| Limit | |
-| --- | --- |
-| Different emoji on one message | 50. More of an emoji already there always fits. |
-| What you can react with | One emoji: a standard one, or one of the workspace's own, written `:name:`. |
+| Limit                          |                                                                             |
+| ------------------------------ | --------------------------------------------------------------------------- |
+| Different emoji on one message | 50. More of an emoji already there always fits.                             |
+| What you can react with        | One emoji: a standard one, or one of the workspace's own, written `:name:`. |
 
 ## Custom emoji
 
@@ -429,9 +429,9 @@ joke. Everyone in the workspace can use them in messages and reactions.
 
 </Steps>
 
-| | Rules |
-| --- | --- |
-| File | A PNG, GIF or WebP, up to 256 KB and 512×512 pixels. Animated GIFs and WebPs stay animated. The file's type is read from its contents, not its name. |
+|      | Rules                                                                                                                                                   |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| File | A PNG, GIF or WebP, up to 256 KB and 512×512 pixels. Animated GIFs and WebPs stay animated. The file's type is read from its contents, not its name.    |
 | Name | 2 to 32 characters: lowercase letters, digits, `-`, `_` and `+`. Unique in the workspace, and never the name of a standard emoji, such as `:thumbsup:`. |
 
 Custom emoji images are served from `g1tusercontent.com`, apart from the
@@ -447,10 +447,10 @@ Aliases follow the same name rules.
 
 Owners choose in the workspace's [chat settings](#workspace-chat-settings):
 
-| Setting | Means |
-| --- | --- |
-| **Any member** (the default) | Anyone in the workspace can add emoji and aliases. |
-| **Owners only** | Members use the workspace's emoji; only owners add them. |
+| Setting                      | Means                                                    |
+| ---------------------------- | -------------------------------------------------------- |
+| **Any member** (the default) | Anyone in the workspace can add emoji and aliases.       |
+| **Owners only**              | Members use the workspace's emoji; only owners add them. |
 
 ### Remove an emoji
 
@@ -472,12 +472,12 @@ Every member can open the page to see what is allowed; only owners can
 change it. g1t enforces each setting, whichever app or API the request
 comes from.
 
-| Setting | Choices |
-| --- | --- |
-| **Creating channels** | Who can create workspace and private channels (**Any member**, the default, or **Owners only**) is set with the workspace's other permissions, under [Permissions → Chat](/guides/permissions/#chat); this page says what is allowed today and leads there. |
-| **Renaming and archiving** | **Channel owners and workspace owners** (the default) or **Workspace owners only**. Any member of a channel can still change its topic. |
-| **Custom emoji** | Who can add them: **Any member** (the default) or **Owners only**. |
-| **Default channels** | The workspace and public channels someone new is put in the first time they open Chat. `#general` unless owners choose others. People already in the workspace are not moved, and anyone can leave a default channel. |
+| Setting                    | Choices                                                                                                                                                                                                                                                     |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Creating channels**      | Who can create workspace and private channels (**Any member**, the default, or **Owners only**) is set with the workspace's other permissions, under [Permissions → Chat](/guides/permissions/#chat); this page says what is allowed today and leads there. |
+| **Renaming and archiving** | **Channel owners and workspace owners** (the default) or **Workspace owners only**. Any member of a channel can still change its topic.                                                                                                                     |
+| **Custom emoji**           | Who can add them: **Any member** (the default) or **Owners only**.                                                                                                                                                                                          |
+| **Default channels**       | The workspace and public channels someone new is put in the first time they open Chat. `#general` unless owners choose others. People already in the workspace are not moved, and anyone can leave a default channel.                                       |
 
 Changing a setting doesn't change what already exists: channels already
 made stay, whoever made them.
@@ -490,12 +490,12 @@ message in the sidebar, on the card over your name, in a channel's member
 list, in the workspace's [People directory](/guides/people-and-teams/#the-directory) and after your name on your messages.
 It all moves live; nobody has to reload.
 
-| The dot on an avatar | It means |
-| --- | --- |
-| Green | **Active**: g1t is open and they've used it in the last 10 minutes. |
-| A ring | **Away**: every tab they have open has sat untouched for 10 minutes, or they set themselves away. |
-| Amber, with a bar | **Notifications paused**: they're here, but nothing pops up for them until the time they chose. |
-| None | **Offline**: no tab of g1t is open. |
+| The dot on an avatar | It means                                                                                          |
+| -------------------- | ------------------------------------------------------------------------------------------------- |
+| Green                | **Active**: g1t is open and they've used it in the last 10 minutes.                               |
+| A ring               | **Away**: every tab they have open has sat untouched for 10 minutes, or they set themselves away. |
+| Amber, with a bar    | **Notifications paused**: they're here, but nothing pops up for them until the time they chose.   |
+| None                 | **Offline**: no tab of g1t is open.                                                               |
 
 ### Set a status
 
@@ -503,13 +503,13 @@ Open the menu on your avatar at the foot of the rail (on a phone, **More**,
 then **You and help**) and choose **Set a status**. Give it an
 emoji and a few words, or pick one:
 
-| | Clears after |
-| --- | --- |
-| 🗓️ In a meeting | 1 hour |
-| 🚌 Commuting | 30 minutes |
-| 🎯 Focusing | 1 hour |
-| 🤒 Out sick | Today |
-| 🌴 On vacation | Never: it stays until you change it |
+|                 | Clears after                        |
+| --------------- | ----------------------------------- |
+| 🗓️ In a meeting | 1 hour                              |
+| 🚌 Commuting    | 30 minutes                          |
+| 🎯 Focusing     | 1 hour                              |
+| 🤒 Out sick     | Today                               |
+| 🌴 On vacation  | Never: it stays until you change it |
 
 **Clear after** can be 30 minutes, 1 hour, 4 hours, today (your midnight),
 this week (the end of your Sunday), never, or a time you choose. When the
@@ -534,22 +534,22 @@ wins: a calendar never replaces or clears it. <Soon />
 
 g1t tells you when something is for you, wherever you are in the app.
 
-| | |
-| --- | --- |
-| **Pop-ups** | While g1t is open in any tab, a message for you pops up in the corner, whichever page you are on: a DM, a mention, a reply in your thread, a review requested. Reply from the pop-up without leaving the page, or open the conversation. |
-| **Sounds** | A short sound when something is for you: a message in a conversation you have open but are not looking at, a direct message, a mention. Which, and how loud, is yours to set; see [Sounds and do not disturb](#sounds-and-do-not-disturb). |
-| **Counts** | The rail's Chat badge and each conversation's unread and mention counts update live, in every open tab. |
-| **Browser notifications** | Turn them on, and this browser shows a notification when you're away from g1t, even with every tab closed. g1t never pushes to a browser where you're already looking at g1t. |
+|                           |                                                                                                                                                                                                                                            |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Pop-ups**               | While g1t is open in any tab, a message for you pops up in the corner, whichever page you are on: a DM, a mention, a reply in your thread, a review requested. Reply from the pop-up without leaving the page, or open the conversation.   |
+| **Sounds**                | A short sound when something is for you: a message in a conversation you have open but are not looking at, a direct message, a mention. Which, and how loud, is yours to set; see [Sounds and do not disturb](#sounds-and-do-not-disturb). |
+| **Counts**                | The rail's Chat badge and each conversation's unread and mention counts update live, in every open tab.                                                                                                                                    |
+| **Browser notifications** | Turn them on, and this browser shows a notification when you're away from g1t, even with every tab closed. g1t never pushes to a browser where you're already looking at g1t.                                                              |
 
 ### Choose what you hear about
 
 Open **Settings → Notifications** (`g1t.sh/settings/notifications`):
 
-| Notify me about | You hear about |
-| --- | --- |
-| **DMs and mentions** (the default) | Direct messages, mentions and replies in your threads. |
-| **Everything** | Every message in conversations you're in, and everything in your notifications. |
-| **Nothing** | No pop-ups or browser notifications. Counts still update. |
+| Notify me about                    | You hear about                                                                  |
+| ---------------------------------- | ------------------------------------------------------------------------------- |
+| **DMs and mentions** (the default) | Direct messages, mentions and replies in your threads.                          |
+| **Everything**                     | Every message in conversations you're in, and everything in your notifications. |
+| **Nothing**                        | No pop-ups or browser notifications. Counts still update.                       |
 
 Under **For a workspace**, you can give one workspace a different level,
 such as **Everything** for a small team and **DMs and mentions** for a big
@@ -561,12 +561,12 @@ Chat makes a sound when something is for you, and only then. Each sound is
 short (under a quarter of a second), warm and two-toned, made by g1t
 itself: nothing is downloaded. What plays when:
 
-| Sound | When |
-| --- | --- |
-| **New message** | A message in a conversation you have open, while the window is behind another or you are in another conversation. |
-| **Direct message** | A direct message from someone else. |
-| **Mention** | A message that @mentions you. It wins over the other two. |
-| **Sent** | A soft tick as your message goes. Off until you turn it on. |
+| Sound              | When                                                                                                              |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| **New message**    | A message in a conversation you have open, while the window is behind another or you are in another conversation. |
+| **Direct message** | A direct message from someone else.                                                                               |
+| **Mention**        | A message that @mentions you. It wins over the other two.                                                         |
+| **Sent**           | A soft tick as your message goes. Off until you turn it on.                                                       |
 
 The rules behind them:
 
@@ -583,14 +583,14 @@ Open **Settings → Notifications** (`g1t.sh/settings/notifications`),
 under **Sounds & notifications**, to change them. The settings are kept
 with your account, so every device you sign in on sounds the same:
 
-| Setting | What it does | Default |
-| --- | --- | --- |
-| **Sounds** | Whether anything plays at all. Counts and pop-ups still show. | On |
-| **Sound set** | **Soft** (warm and low) or **Bright** (higher and shorter). Press play by any sound to hear it. | Soft |
-| **Volume** | From 0 to 100. | 60 |
-| **New message**, **Direct message**, **Mention**, **Sent** | Each sound on or off. | All on but Sent |
-| **Do not disturb** | Off, or for 30 minutes, an hour, two hours, or until tomorrow at 9:00 your time. | Off |
-| **Desktop notifications** | While this window is behind another, a message to you shows as a system notification from the open tab. Turning it on asks the browser's permission once, from this switch and never when a page loads. Not offered where browser notifications above are on: those already show it. In [the desktop app](/guides/desktop/) it is on, and the app shows them itself. | Off |
+| Setting                                                    | What it does                                                                                                                                                                                                                                                                                                                                                         | Default         |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| **Sounds**                                                 | Whether anything plays at all. Counts and pop-ups still show.                                                                                                                                                                                                                                                                                                        | On              |
+| **Sound set**                                              | **Soft** (warm and low) or **Bright** (higher and shorter). Press play by any sound to hear it.                                                                                                                                                                                                                                                                      | Soft            |
+| **Volume**                                                 | From 0 to 100.                                                                                                                                                                                                                                                                                                                                                       | 60              |
+| **New message**, **Direct message**, **Mention**, **Sent** | Each sound on or off.                                                                                                                                                                                                                                                                                                                                                | All on but Sent |
+| **Do not disturb**                                         | Off, or for 30 minutes, an hour, two hours, or until tomorrow at 9:00 your time.                                                                                                                                                                                                                                                                                     | Off             |
+| **Desktop notifications**                                  | While this window is behind another, a message to you shows as a system notification from the open tab. Turning it on asks the browser's permission once, from this switch and never when a page loads. Not offered where browser notifications above are on: those already show it. In [the desktop app](/guides/desktop/) it is on, and the app shows them itself. | Off             |
 
 **Do not disturb** is one thing everywhere: the bell-off button at the top
 of the chat sidebar, **Pause notifications** on the menu on your avatar,
@@ -616,27 +616,23 @@ deal with it, whatever these settings say.
 These are planned and not built yet:
 
 <CardGrid>
-	<Card title="Cards for everything" icon="layout-list">
-		Pull requests, checks, deploys and approvals as cards in the channels
-		linked to a project, with their buttons working in place. <Soon />
-	</Card>
-	<Card title="Mentions in Notifications" icon="bell">
-		Mentions as items in [Notifications](/guides/notifications/), so
-		acting in either place settles both. <Soon />
-	</Card>
-	<Card title="Files" icon="paperclip">
-		Files uploaded to a conversation, under the workspace's file rules.
-		<Soon />
-	</Card>
-	<Card title="Search" icon="search">
-		Messages in [site-wide search](/guides/search/), with only what you can
-		read. <Soon />
-	</Card>
-	<Card title="Desktop app" icon="monitor">
-		g1t in a window of its own, with notifications from your system and a
-		badge on the icon: [the desktop app](/guides/desktop/). On a phone,
-		[the phone app](/guides/mobile/) has Chat in full, with notifications.
-	</Card>
+  <Card title="Cards for everything" icon="layout-list">
+    Pull requests, checks, deploys and approvals as cards in the channels linked to a project, with their buttons working in place. <Soon />
+  </Card>
+  <Card title="Mentions in Notifications" icon="bell">
+    Mentions as items in [Notifications](/guides/notifications/), so acting in either place settles both. <Soon />
+  </Card>
+  <Card title="Files" icon="paperclip">
+    Files uploaded to a conversation, under the workspace's file rules.
+    <Soon />
+  </Card>
+  <Card title="Search" icon="search">
+    Messages in [site-wide search](/guides/search/), with only what you can read. <Soon />
+  </Card>
+  <Card title="Desktop app" icon="monitor">
+    g1t in a window of its own, with notifications from your system and a badge on the icon: [the desktop app](/guides/desktop/). On a phone, [the phone
+    app](/guides/mobile/) has Chat in full, with notifications.
+  </Card>
 </CardGrid>
 
 ## Next

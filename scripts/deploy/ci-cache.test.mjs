@@ -71,7 +71,9 @@ test("only the units the build did not use are pruned", () => {
     ].join("\n");
     const hashes = usedHashes(messages);
     assert.deepEqual([...hashes].sort(), [used, script, run].sort());
-    const gone = stale(dir, hashes).map((p) => p.slice(dir.length + 1).replaceAll("\\", "/")).sort();
+    const gone = stale(dir, hashes)
+      .map((p) => p.slice(dir.length + 1).replaceAll("\\", "/"))
+      .sort();
     assert.deepEqual(gone, [`.fingerprint/serde-${old}`, `build/serde-${old}`, `deps/libserde-${old}.rlib`, `deps/serde-${old}.d`]);
     // Nothing listed: nothing would be kept, so the caller prunes nothing.
     assert.equal(usedHashes("error: could not compile").size, 0);

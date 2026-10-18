@@ -103,28 +103,29 @@ import { Folios, purgeTrash, runReacl } from "./folios/service.ts";
 export { PageRoom } from "./room.ts";
 export { FolioRoom } from "./folios/room.ts";
 
-type Env = FileStoreEnv & QuotaEnv & {
-  DB: D1Database;
-  IDENTITY: ServiceBinding;
-  NOTIFY?: ServiceBinding;
-  /** Repositories: who may read one, what a change touched, a project's docs (src/staleness.ts, src/repo-spaces.ts). */
-  REPOS?: ServiceBinding;
-  /** Pull requests: what a merged one changed. */
-  WORK?: ServiceBinding;
-  /** The bus: `doc.page.*` events (src/events.ts). */
-  EVENTS?: ServiceBinding;
-  PAGES: DurableObjectNamespace<PageRoom>;
-  /** Workers AI: embeds passages and queries for the semantic index (src/vectors.ts). Without it, words only. */
-  AI?: Ai;
-  /** The semantic index, Vectorize `g1t-docs` (src/vectors.ts, src/indexer.ts). */
-  VECTORS?: Vectorize;
-  /** The artifacts service's own events queue, also carrying its backfill jobs (`docs.index`, src/indexer.ts) and folio access jobs (`folios.reacl`). */
-  JOBS?: Queue<DocsJob>;
-  /** One room per folio (Artifacts mode, src/folios/room.ts). */
-  FOLIOS: DurableObjectNamespace<FolioRoom>;
-  /** Folios' semantic index, Vectorize `g1t-folios`; optional (words only without it). */
-  FOLIO_VECTORS?: Vectorize;
-};
+type Env = FileStoreEnv &
+  QuotaEnv & {
+    DB: D1Database;
+    IDENTITY: ServiceBinding;
+    NOTIFY?: ServiceBinding;
+    /** Repositories: who may read one, what a change touched, a project's docs (src/staleness.ts, src/repo-spaces.ts). */
+    REPOS?: ServiceBinding;
+    /** Pull requests: what a merged one changed. */
+    WORK?: ServiceBinding;
+    /** The bus: `doc.page.*` events (src/events.ts). */
+    EVENTS?: ServiceBinding;
+    PAGES: DurableObjectNamespace<PageRoom>;
+    /** Workers AI: embeds passages and queries for the semantic index (src/vectors.ts). Without it, words only. */
+    AI?: Ai;
+    /** The semantic index, Vectorize `g1t-docs` (src/vectors.ts, src/indexer.ts). */
+    VECTORS?: Vectorize;
+    /** The artifacts service's own events queue, also carrying its backfill jobs (`docs.index`, src/indexer.ts) and folio access jobs (`folios.reacl`). */
+    JOBS?: Queue<DocsJob>;
+    /** One room per folio (Artifacts mode, src/folios/room.ts). */
+    FOLIOS: DurableObjectNamespace<FolioRoom>;
+    /** Folios' semantic index, Vectorize `g1t-folios`; optional (words only without it). */
+    FOLIO_VECTORS?: Vectorize;
+  };
 
 /** The daily cron (wrangler.jsonc `triggers`); the other one reports embeddings every quarter hour. */
 const DAILY_CRON = "17 3 * * *";
@@ -200,7 +201,16 @@ type ChangeRow = {
   cleared_by: string | null;
 };
 
-type VersionRow = { id: string; page_id: string; created_at: string; kind: DocVersion["kind"]; authors: string; note: string | null; markdown: string; state: ArrayBuffer | null };
+type VersionRow = {
+  id: string;
+  page_id: string;
+  created_at: string;
+  kind: DocVersion["kind"];
+  authors: string;
+  note: string | null;
+  markdown: string;
+  state: ArrayBuffer | null;
+};
 
 /** A passage as recall and search read it back (`passages`): its page's or file's title, and the page's space now. */
 type PassageRow = {
@@ -221,7 +231,8 @@ type PassageRow = {
 type Space = { row: SpaceRow; members: { principal: string; role: DocRole }[]; projects: string[]; role: DocRole | null };
 
 /** The page columns lists read: everything but the Markdown. */
-const PAGE_COLUMNS = "id, workspace_id, space_id, parent_id, position, title, icon, cover, '' AS markdown, created_by, created_at, updated_by, updated_at, archived_at, archived_by";
+const PAGE_COLUMNS =
+  "id, workspace_id, space_id, parent_id, position, title, icon, cover, '' AS markdown, created_by, created_at, updated_by, updated_at, archived_at, archived_by";
 
 const MAX_TITLE = 200;
 const MAX_MARKDOWN = 512 * 1024;
@@ -355,7 +366,16 @@ class Docs {
         });
       } else {
         // Workspaces no longer have agents: what one wrote shows as a deleted agent's.
-        out.set(principalKey(p), { ...p, name: p.id, display_name: "A deleted agent", avatar: null, role: null, title: null, avatar_seed: null, deleted: true });
+        out.set(principalKey(p), {
+          ...p,
+          name: p.id,
+          display_name: "A deleted agent",
+          avatar: null,
+          role: null,
+          title: null,
+          avatar_seed: null,
+          deleted: true,
+        });
       }
     }
     // Anything else (system, ghost keys): a plain name.
@@ -386,7 +406,9 @@ class Docs {
   private async allSpaces(workspace: Workspace, archived = false): Promise<Omit<Space, "role">[]> {
     const [spaces, members, projects] = await Promise.all([
       this.db
-        .prepare(`SELECT * FROM spaces WHERE workspace_id = ? AND deleted_at IS NULL ${archived ? "" : "AND archived_at IS NULL"} ORDER BY is_default DESC, name COLLATE NOCASE`)
+        .prepare(
+          `SELECT * FROM spaces WHERE workspace_id = ? AND deleted_at IS NULL ${archived ? "" : "AND archived_at IS NULL"} ORDER BY is_default DESC, name COLLATE NOCASE`,
+        )
         .bind(workspace.id)
         .all<SpaceRow>(),
       this.db
@@ -421,7 +443,9 @@ class Docs {
   private async ensureDefault(workspace: Workspace, viewer: User): Promise<boolean> {
     const found = await this.db.prepare("SELECT id FROM spaces WHERE workspace_id = ? AND is_default = 1").bind(workspace.id).first<{ id: string }>();
     if (found) return false;
-    const taken = new Set((await this.db.prepare("SELECT slug FROM spaces WHERE workspace_id = ?").bind(workspace.id).all<{ slug: string }>()).results.map((r) => r.slug));
+    const taken = new Set(
+      (await this.db.prepare("SELECT slug FROM spaces WHERE workspace_id = ?").bind(workspace.id).all<{ slug: string }>()).results.map((r) => r.slug),
+    );
     const id = newId("spc");
     await this.db
       .prepare(
@@ -467,8 +491,14 @@ class Docs {
     const ids = rows.map((r) => r.id);
     const marks = ids.map(() => "?").join(",");
     const [owners, projects, kids, stale] = await Promise.all([
-      this.db.prepare(`SELECT page_id, principal FROM page_owners WHERE page_id IN (${marks})`).bind(...ids).all<{ page_id: string; principal: string }>(),
-      this.db.prepare(`SELECT page_id, repo FROM page_projects WHERE page_id IN (${marks})`).bind(...ids).all<{ page_id: string; repo: string }>(),
+      this.db
+        .prepare(`SELECT page_id, principal FROM page_owners WHERE page_id IN (${marks})`)
+        .bind(...ids)
+        .all<{ page_id: string; principal: string }>(),
+      this.db
+        .prepare(`SELECT page_id, repo FROM page_projects WHERE page_id IN (${marks})`)
+        .bind(...ids)
+        .all<{ page_id: string; repo: string }>(),
       this.db
         .prepare(`SELECT DISTINCT parent_id FROM pages WHERE parent_id IN (${marks}) AND archived_at IS NULL`)
         .bind(...ids)
@@ -515,16 +545,25 @@ class Docs {
   }
 
   /** A page and its space, with the viewer's role; not found when they can't read it. */
-  private async pageFor(slug: string, pageId: string, viewer: Viewer, need: DocRole): Promise<Result<{ workspace: Workspace; page: PageRow; space: Space; spaces: Space[] }>> {
+  private async pageFor(
+    slug: string,
+    pageId: string,
+    viewer: Viewer,
+    need: DocRole,
+  ): Promise<Result<{ workspace: Workspace; page: PageRow; space: Space; spaces: Space[] }>> {
     const found = await this.viewerWorkspace(slug, viewer);
     if (!found.ok) return found;
     const workspace = found.value;
-    const page = await this.db.prepare("SELECT * FROM pages WHERE id = ? AND workspace_id = ?").bind(String(pageId ?? ""), workspace.id).first<PageRow>();
+    const page = await this.db
+      .prepare("SELECT * FROM pages WHERE id = ? AND workspace_id = ?")
+      .bind(String(pageId ?? ""), workspace.id)
+      .first<PageRow>();
     if (!page) return fail("not_found", "No such page.");
     const spaces = await this.spacesFor(workspace, viewer!, true);
     const space = spaces.find((s) => s.row.id === page.space_id);
     if (!space || !space.role) return fail("not_found", "No such page.");
-    if (!atLeast(space.role, need)) return fail("forbidden", need === "comment" ? "You can read this page but not comment on it." : "You can read this page but not change it.");
+    if (!atLeast(space.role, need))
+      return fail("forbidden", need === "comment" ? "You can read this page but not comment on it." : "You can read this page but not change it.");
     return ok({ workspace, page, space, spaces });
   }
 
@@ -566,11 +605,15 @@ class Docs {
         .bind(...ids)
         .all<Pick<PageRow, "id" | "space_id" | "parent_id" | "position" | "title" | "icon">>(),
       this.db
-        .prepare(`SELECT p.id, p.space_id, p.title, p.icon FROM favorites f JOIN pages p ON p.id = f.page_id WHERE f.user_id = ? AND p.space_id IN (${marks}) AND p.archived_at IS NULL ORDER BY f.created_at`)
+        .prepare(
+          `SELECT p.id, p.space_id, p.title, p.icon FROM favorites f JOIN pages p ON p.id = f.page_id WHERE f.user_id = ? AND p.space_id IN (${marks}) AND p.archived_at IS NULL ORDER BY f.created_at`,
+        )
         .bind(viewer.id, ...ids)
         .all<Pick<PageRow, "id" | "space_id" | "title" | "icon">>(),
       this.db
-        .prepare(`SELECT p.id, p.space_id, p.title, p.icon FROM page_views v JOIN pages p ON p.id = v.page_id WHERE v.user_id = ? AND p.space_id IN (${marks}) AND p.archived_at IS NULL ORDER BY v.viewed_at DESC LIMIT 8`)
+        .prepare(
+          `SELECT p.id, p.space_id, p.title, p.icon FROM page_views v JOIN pages p ON p.id = v.page_id WHERE v.user_id = ? AND p.space_id IN (${marks}) AND p.archived_at IS NULL ORDER BY v.viewed_at DESC LIMIT 8`,
+        )
         .bind(viewer.id, ...ids)
         .all<Pick<PageRow, "id" | "space_id" | "title" | "icon">>(),
       this.db
@@ -578,7 +621,9 @@ class Docs {
         .bind(...ids)
         .first<{ n: number }>(),
       this.db
-        .prepare(`SELECT DISTINCT c.page_id FROM page_changes c JOIN pages p ON p.id = c.page_id WHERE c.cleared_at IS NULL AND p.space_id IN (${marks}) AND p.archived_at IS NULL`)
+        .prepare(
+          `SELECT DISTINCT c.page_id FROM page_changes c JOIN pages p ON p.id = c.page_id WHERE c.cleared_at IS NULL AND p.space_id IN (${marks}) AND p.archived_at IS NULL`,
+        )
         .bind(...ids)
         .all<{ page_id: string }>(),
     ]);
@@ -590,7 +635,17 @@ class Docs {
         const mine = pages.results.filter((p) => p.space_id === s.row.id);
         return {
           ...this.toSpace(s, mine.length),
-          pages: mine.map((p): DocTreeNode => ({ id: p.id, parent_id: p.parent_id, position: p.position, title: p.title, icon: p.icon, slug: pageSlug(p.title, p.id), stale: staleSet.has(p.id) })),
+          pages: mine.map(
+            (p): DocTreeNode => ({
+              id: p.id,
+              parent_id: p.parent_id,
+              position: p.position,
+              title: p.title,
+              icon: p.icon,
+              slug: pageSlug(p.title, p.id),
+              stale: staleSet.has(p.id),
+            }),
+          ),
         };
       }),
       favorites: favorites.results.map(ref),
@@ -675,7 +730,9 @@ class Docs {
       added_at: now(),
     };
     const inserted = await this.db
-      .prepare("INSERT INTO repo_spaces (id, workspace_id, repo_id, repo, default_branch, added_by, added_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (workspace_id, repo_id) DO NOTHING RETURNING id")
+      .prepare(
+        "INSERT INTO repo_spaces (id, workspace_id, repo_id, repo, default_branch, added_by, added_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (workspace_id, repo_id) DO NOTHING RETURNING id",
+      )
       .bind(row.id, row.workspace_id, row.repo_id, row.repo, row.default_branch, row.added_by, row.added_at)
       .first<{ id: string }>();
     if (!inserted) return fail("conflict", `${ref}'s docs are already in Docs.`);
@@ -693,10 +750,17 @@ class Docs {
   async removeRepoSpace(a: { workspace: string; viewer: Viewer; id: string }): Promise<Result<boolean>> {
     const found = await this.viewerWorkspace(a.workspace, a.viewer);
     if (!found.ok) return found;
-    const row = await this.db.prepare("SELECT * FROM repo_spaces WHERE id = ? AND workspace_id = ?").bind(String(a.id ?? ""), found.value.id).first<RepoSpaceRow>();
+    const row = await this.db
+      .prepare("SELECT * FROM repo_spaces WHERE id = ? AND workspace_id = ?")
+      .bind(String(a.id ?? ""), found.value.id)
+      .first<RepoSpaceRow>();
     if (!row) return fail("not_found", "No such project's docs.");
-    if (row.added_by !== this.userKey(a.viewer!) && !this.viewerOwner(a.viewer!, a.workspace)) return fail("forbidden", "Only whoever added a project's docs, or an owner, can remove them.");
-    await this.db.batch([this.db.prepare("DELETE FROM repo_files_fts WHERE space_id = ?").bind(row.id), this.db.prepare("DELETE FROM repo_spaces WHERE id = ?").bind(row.id)]);
+    if (row.added_by !== this.userKey(a.viewer!) && !this.viewerOwner(a.viewer!, a.workspace))
+      return fail("forbidden", "Only whoever added a project's docs, or an owner, can remove them.");
+    await this.db.batch([
+      this.db.prepare("DELETE FROM repo_files_fts WHERE space_id = ?").bind(row.id),
+      this.db.prepare("DELETE FROM repo_spaces WHERE id = ?").bind(row.id),
+    ]);
     this.defer(forgetDocs(this.env, { space_id: row.id }));
     return ok(true);
   }
@@ -711,7 +775,10 @@ class Docs {
     const match = spaces.find((s) => `${s.repo.namespace}/${s.repo.name}`.toLowerCase() === ref || s.row.repo === ref);
     if (!match) return fail("not_found", "No such file.");
     const path = String(a.path ?? "").replace(/^\/+/, "");
-    const file = await this.db.prepare("SELECT path, title, markdown FROM repo_files WHERE space_id = ? AND path = ?").bind(match.row.id, path).first<{ path: string; title: string; markdown: string }>();
+    const file = await this.db
+      .prepare("SELECT path, title, markdown FROM repo_files WHERE space_id = ? AND path = ?")
+      .bind(match.row.id, path)
+      .first<{ path: string; title: string; markdown: string }>();
     if (!file) return fail("not_found", "No such file.");
     const [space] = await this.toRepoSpaces(workspace, a.viewer!, [match]);
     const repoPath = `${match.repo.namespace}/${match.repo.name}`;
@@ -742,7 +809,9 @@ class Docs {
     const marks = ids.map(() => "?").join(",");
     const [recentRows, mineRows, pageProjects, counts, staleRows] = await Promise.all([
       this.db
-        .prepare(`SELECT id, workspace_id, space_id, parent_id, position, title, icon, cover, substr(markdown, 1, 600) AS markdown, created_by, created_at, updated_by, updated_at, archived_at, archived_by FROM pages WHERE space_id IN (${marks}) AND archived_at IS NULL ORDER BY updated_at DESC LIMIT 60`)
+        .prepare(
+          `SELECT id, workspace_id, space_id, parent_id, position, title, icon, cover, substr(markdown, 1, 600) AS markdown, created_by, created_at, updated_by, updated_at, archived_at, archived_by FROM pages WHERE space_id IN (${marks}) AND archived_at IS NULL ORDER BY updated_at DESC LIMIT 60`,
+        )
         .bind(...ids)
         .all<PageRow>(),
       this.db
@@ -776,7 +845,9 @@ class Docs {
       recent,
       mine,
       stale,
-      spaces: spaces.filter((s) => !project || s.projects.includes(project) || recentRows.results.some((r) => r.space_id === s.row.id && keep(r))).map((s) => this.toSpace(s, count.get(s.row.id) ?? 0)),
+      spaces: spaces
+        .filter((s) => !project || s.projects.includes(project) || recentRows.results.some((r) => r.space_id === s.row.id && keep(r)))
+        .map((s) => this.toSpace(s, count.get(s.row.id) ?? 0)),
       projects: [...allProjects].sort(),
       project,
     });
@@ -792,10 +863,19 @@ class Docs {
     return space.members
       .map((m): DocSpaceMember => {
         const key = memberKey(m.principal);
-        if (key?.kind === "team") return { key: m.principal, kind: "team", name: key.id, display_name: `@${workspace.slug}/${key.id}`, avatar: null, role: m.role };
+        if (key?.kind === "team")
+          return { key: m.principal, kind: "team", name: key.id, display_name: `@${workspace.slug}/${key.id}`, avatar: null, role: m.role };
         const p = people.get(m.principal)!;
         // Spaces hold people (and agents of the past); never g1t itself.
-        return { key: m.principal, kind: p.kind === "user" ? "user" : "agent", name: p.name, display_name: p.display_name, avatar: p.avatar, avatar_seed: p.avatar_seed ?? null, role: m.role };
+        return {
+          key: m.principal,
+          kind: p.kind === "user" ? "user" : "agent",
+          name: p.name,
+          display_name: p.display_name,
+          avatar: p.avatar,
+          avatar_seed: p.avatar_seed ?? null,
+          role: m.role,
+        };
       })
       .sort((x, y) => RANK[y.role] - RANK[x.role] || x.display_name.localeCompare(y.display_name));
   }
@@ -809,7 +889,9 @@ class Docs {
     if (!space?.role) return fail("not_found", "No such space.");
     const rows = (
       await this.db
-        .prepare("SELECT id, workspace_id, space_id, parent_id, position, title, icon, cover, substr(markdown, 1, 600) AS markdown, created_by, created_at, updated_by, updated_at, archived_at, archived_by FROM pages WHERE space_id = ? AND archived_at IS NULL ORDER BY position")
+        .prepare(
+          "SELECT id, workspace_id, space_id, parent_id, position, title, icon, cover, substr(markdown, 1, 600) AS markdown, created_by, created_at, updated_by, updated_at, archived_at, archived_by FROM pages WHERE space_id = ? AND archived_at IS NULL ORDER BY position",
+        )
         .bind(space.row.id)
         .all<PageRow>()
     ).results;
@@ -834,14 +916,21 @@ class Docs {
     const name = cleanTitle(input.name).slice(0, 80);
     if (!name) return fail("invalid", "Name the space.");
     const kind: DocSpaceKind = input.kind === "team" || input.kind === "private" ? input.kind : "workspace";
-    const team = kind === "team" ? String(input.team ?? "").trim().toLowerCase() : null;
+    const team =
+      kind === "team"
+        ? String(input.team ?? "")
+            .trim()
+            .toLowerCase()
+        : null;
     if (kind === "team") {
       if (!team) return fail("invalid", "Choose the team the space is for.");
       const teams = await this.teamsOf(workspace);
       const known = [...teams.values()].some((set) => set.has(team));
       if (!known) return fail("invalid", "No such team in this workspace.");
     }
-    const taken = new Set((await this.db.prepare("SELECT slug FROM spaces WHERE workspace_id = ?").bind(workspace.id).all<{ slug: string }>()).results.map((r) => r.slug));
+    const taken = new Set(
+      (await this.db.prepare("SELECT slug FROM spaces WHERE workspace_id = ?").bind(workspace.id).all<{ slug: string }>()).results.map((r) => r.slug),
+    );
     let slug: string;
     if (input.slug) {
       const wanted = validSpaceSlug(input.slug);
@@ -859,7 +948,22 @@ class Docs {
         .prepare(
           "INSERT INTO spaces (id, workspace_id, slug, name, description, icon, kind, team, default_role, agent_mode, is_default, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
         )
-        .bind(id, workspace.id, slug, name, String(input.description ?? "").trim().slice(0, 300) || null, cleanIcon(input.icon), kind, team, defaultRole, input.agent_mode === "edit" ? "edit" : "suggest", me, at),
+        .bind(
+          id,
+          workspace.id,
+          slug,
+          name,
+          String(input.description ?? "")
+            .trim()
+            .slice(0, 300) || null,
+          cleanIcon(input.icon),
+          kind,
+          team,
+          defaultRole,
+          input.agent_mode === "edit" ? "edit" : "suggest",
+          me,
+          at,
+        ),
       // Whoever makes a space manages it.
       this.db.prepare("INSERT INTO space_members (space_id, principal, role, added_by, added_at) VALUES (?, ?, 'manage', ?, ?)").bind(id, me, me, at),
       ...projects.map((repo) => this.db.prepare("INSERT INTO space_projects (space_id, repo) VALUES (?, ?)").bind(id, repo)),
@@ -889,12 +993,21 @@ class Docs {
       if (!name) return fail("invalid", "Name the space.");
       set("name", name);
     }
-    if (c.description !== undefined) set("description", String(c.description ?? "").trim().slice(0, 300) || null);
+    if (c.description !== undefined)
+      set(
+        "description",
+        String(c.description ?? "")
+          .trim()
+          .slice(0, 300) || null,
+      );
     if (c.icon !== undefined) set("icon", cleanIcon(c.icon));
     if (c.slug !== undefined && c.slug !== space.row.slug) {
       const wanted = validSpaceSlug(String(c.slug ?? ""));
       if (!wanted) return fail("invalid", "A space's address is lowercase letters, numbers and hyphens.");
-      const clash = await this.db.prepare("SELECT 1 FROM spaces WHERE workspace_id = ? AND slug = ? AND id <> ?").bind(workspace.id, wanted, space.row.id).first();
+      const clash = await this.db
+        .prepare("SELECT 1 FROM spaces WHERE workspace_id = ? AND slug = ? AND id <> ?")
+        .bind(workspace.id, wanted, space.row.id)
+        .first();
       if (clash) return fail("conflict", "Another space has that address.");
       set("slug", wanted);
     }
@@ -907,7 +1020,9 @@ class Docs {
       if (c.kind === "private" && !space.members.some((m) => m.role === "manage")) {
         // Someone must still manage it: whoever made it private.
         await this.db
-          .prepare("INSERT INTO space_members (space_id, principal, role, added_by, added_at) VALUES (?, ?, 'manage', ?, ?) ON CONFLICT (space_id, principal) DO UPDATE SET role = 'manage'")
+          .prepare(
+            "INSERT INTO space_members (space_id, principal, role, added_by, added_at) VALUES (?, ?, 'manage', ?, ?) ON CONFLICT (space_id, principal) DO UPDATE SET role = 'manage'",
+          )
           .bind(space.row.id, this.userKey(a.viewer!), this.userKey(a.viewer!), now())
           .run();
       }
@@ -922,7 +1037,8 @@ class Docs {
     if (sets.length) statements.push(this.db.prepare(`UPDATE spaces SET ${sets.join(", ")} WHERE id = ?`).bind(...values, space.row.id));
     if (c.projects !== undefined) {
       statements.push(this.db.prepare("DELETE FROM space_projects WHERE space_id = ?").bind(space.row.id));
-      for (const repo of cleanProjects(c.projects)) statements.push(this.db.prepare("INSERT INTO space_projects (space_id, repo) VALUES (?, ?)").bind(space.row.id, repo));
+      for (const repo of cleanProjects(c.projects))
+        statements.push(this.db.prepare("INSERT INTO space_projects (space_id, repo) VALUES (?, ?)").bind(space.row.id, repo));
     }
     if (statements.length) await this.db.batch(statements);
     this.workspaces.clear();
@@ -958,7 +1074,9 @@ class Docs {
     if (leavesNoManager(space.row.kind, space.members, principal, role)) return fail("invalid", "Someone must keep full access to a private space.");
     if (role) {
       await this.db
-        .prepare("INSERT INTO space_members (space_id, principal, role, added_by, added_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (space_id, principal) DO UPDATE SET role = excluded.role")
+        .prepare(
+          "INSERT INTO space_members (space_id, principal, role, added_by, added_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (space_id, principal) DO UPDATE SET role = excluded.role",
+        )
         .bind(space.row.id, principal, role, this.userKey(a.viewer!), now())
         .run();
     } else {
@@ -980,7 +1098,9 @@ class Docs {
     const [tree, backlinks, children, favorite, viewed, suggestions, cited, staleness] = await Promise.all([
       this.db.prepare("SELECT id, space_id, parent_id, position, title, icon FROM pages WHERE space_id = ?").bind(page.space_id).all<PageRow>(),
       this.db
-        .prepare("SELECT p.id, p.space_id, p.title, p.icon FROM page_links l JOIN pages p ON p.id = l.from_page WHERE l.to_page = ? AND p.archived_at IS NULL LIMIT 50")
+        .prepare(
+          "SELECT p.id, p.space_id, p.title, p.icon FROM page_links l JOIN pages p ON p.id = l.from_page WHERE l.to_page = ? AND p.archived_at IS NULL LIMIT 50",
+        )
         .bind(page.id)
         .all<PageRow>(),
       this.db.prepare("SELECT id, space_id, title, icon FROM pages WHERE parent_id = ? AND archived_at IS NULL ORDER BY position").bind(page.id).all<PageRow>(),
@@ -992,7 +1112,9 @@ class Docs {
     ]);
     this.defer(
       this.db
-        .prepare("INSERT INTO page_views (page_id, user_id, viewed_at) VALUES (?, ?, ?) ON CONFLICT (page_id, user_id) DO UPDATE SET viewed_at = excluded.viewed_at")
+        .prepare(
+          "INSERT INTO page_views (page_id, user_id, viewed_at) VALUES (?, ?, ?) ON CONFLICT (page_id, user_id) DO UPDATE SET viewed_at = excluded.viewed_at",
+        )
         .bind(page.id, viewer.id, now())
         .run(),
     );
@@ -1021,7 +1143,9 @@ class Docs {
     const out = new Map<string, DocCitation[]>();
     if (!pageIds.length) return out;
     const rows = await this.db
-      .prepare(`SELECT page_id, repo, path, kind, label, ref, source FROM citations WHERE page_id IN (${pageIds.map(() => "?").join(",")}) ORDER BY source DESC, repo, path`)
+      .prepare(
+        `SELECT page_id, repo, path, kind, label, ref, source FROM citations WHERE page_id IN (${pageIds.map(() => "?").join(",")}) ORDER BY source DESC, repo, path`,
+      )
       .bind(...pageIds)
       .all<Omit<DocCitation, "label"> & { page_id: string; label: string }>();
     for (const r of rows.results) {
@@ -1124,7 +1248,10 @@ class Docs {
 
   /** Clears every open change on a page. */
   private async clearStale(pageId: string, by: string): Promise<boolean> {
-    const done = await this.db.prepare("UPDATE page_changes SET cleared_at = ?, cleared_by = ? WHERE page_id = ? AND cleared_at IS NULL").bind(now(), by, pageId).run();
+    const done = await this.db
+      .prepare("UPDATE page_changes SET cleared_at = ?, cleared_by = ? WHERE page_id = ? AND cleared_at IS NULL")
+      .bind(now(), by, pageId)
+      .run();
     const cleared = (done.meta?.changes ?? 0) > 0;
     if (cleared) this.tell(pageId, { type: "page.staleness" });
     return cleared;
@@ -1159,7 +1286,15 @@ class Docs {
       .bind(id, workspace.id)
       .first<{ id: string; name: string; description: string; icon: string; markdown: string; created_by: string }>();
     if (!row) return null;
-    return { id: row.id, name: row.name, description: row.description, icon: row.icon, markdown: row.markdown, builtin: false, created_by: parsePrincipalKey(row.created_by) };
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      icon: row.icon,
+      markdown: row.markdown,
+      builtin: false,
+      created_by: parsePrincipalKey(row.created_by),
+    };
   }
 
   /** Inserts a page row and fills its room. */
@@ -1167,9 +1302,19 @@ class Docs {
     workspace: Workspace,
     space: SpaceRow,
     author: string,
-    input: { parent_id: string | null; title: string; icon: string | null; markdown: string; state?: Uint8Array | null; projects?: string[]; owners?: string[]; position?: number },
+    input: {
+      parent_id: string | null;
+      title: string;
+      icon: string | null;
+      markdown: string;
+      state?: Uint8Array | null;
+      projects?: string[];
+      owners?: string[];
+      position?: number;
+    },
   ): Promise<PageRow> {
-    const rows = (await this.db.prepare("SELECT id, parent_id, position FROM pages WHERE space_id = ? AND archived_at IS NULL").bind(space.id).all<PageRow>()).results;
+    const rows = (await this.db.prepare("SELECT id, parent_id, position FROM pages WHERE space_id = ? AND archived_at IS NULL").bind(space.id).all<PageRow>())
+      .results;
     const id = newId("pag");
     const at = now();
     const position = input.position ?? lastPosition(rows, input.parent_id);
@@ -1198,7 +1343,9 @@ class Docs {
         .bind(id, workspace.id, space.id, input.parent_id, position, input.title, input.icon, input.markdown, author, at, author, at),
       this.db.prepare("INSERT INTO pages_fts (page_id, title, body) VALUES (?, ?, ?)").bind(id, input.title, searchText(input.markdown)),
       this.db.prepare("INSERT INTO page_owners (page_id, principal) VALUES (?, ?)").bind(id, author),
-      ...(input.owners ?? []).filter((o) => o !== author).map((o) => this.db.prepare("INSERT OR IGNORE INTO page_owners (page_id, principal) VALUES (?, ?)").bind(id, o)),
+      ...(input.owners ?? [])
+        .filter((o) => o !== author)
+        .map((o) => this.db.prepare("INSERT OR IGNORE INTO page_owners (page_id, principal) VALUES (?, ?)").bind(id, o)),
       ...(input.projects ?? []).map((repo) => this.db.prepare("INSERT OR IGNORE INTO page_projects (page_id, repo) VALUES (?, ?)").bind(id, repo)),
       this.db
         .prepare("INSERT INTO page_versions (id, page_id, created_at, kind, authors, note, markdown, state) VALUES (?, ?, ?, 'created', ?, NULL, ?, NULL)")
@@ -1213,7 +1360,14 @@ class Docs {
 
   /** What every `doc.page.*` event says of a page. */
   private eventData(workspace: Workspace, space: Pick<SpaceRow, "id" | "slug">, row: Pick<PageRow, "id" | "title" | "icon">) {
-    return { workspace: workspace.slug, workspaceId: workspace.id, pageId: row.id, spaceId: space.id, title: row.title, path: this.ref(workspace.slug, space, row).path };
+    return {
+      workspace: workspace.slug,
+      workspaceId: workspace.id,
+      pageId: row.id,
+      spaceId: space.id,
+      title: row.title,
+      path: this.ref(workspace.slug, space, row).path,
+    };
   }
 
   async createPage(a: { workspace: string; viewer: Viewer; input: NewDocPage }): Promise<Result<DocPage>> {
@@ -1226,7 +1380,10 @@ class Docs {
     if (!space?.role) return fail("not_found", "No such space.");
     if (!atLeast(space.role, "edit")) return fail("forbidden", "You can read this space but not add pages to it.");
     const parent = input.parent_id
-      ? await this.db.prepare("SELECT id FROM pages WHERE id = ? AND space_id = ? AND archived_at IS NULL").bind(input.parent_id, space.row.id).first<{ id: string }>()
+      ? await this.db
+          .prepare("SELECT id FROM pages WHERE id = ? AND space_id = ? AND archived_at IS NULL")
+          .bind(input.parent_id, space.row.id)
+          .first<{ id: string }>()
       : null;
     if (input.parent_id && !parent) return fail("not_found", "No such parent page.");
     const start = await this.startingPoint(workspace, input);
@@ -1269,12 +1426,17 @@ class Docs {
     }
     if (c.projects !== undefined) {
       statements.push(this.db.prepare("DELETE FROM page_projects WHERE page_id = ?").bind(page.id));
-      for (const repo of cleanProjects(c.projects)) statements.push(this.db.prepare("INSERT INTO page_projects (page_id, repo) VALUES (?, ?)").bind(page.id, repo));
+      for (const repo of cleanProjects(c.projects))
+        statements.push(this.db.prepare("INSERT INTO page_projects (page_id, repo) VALUES (?, ?)").bind(page.id, repo));
     }
     if (c.describes !== undefined) {
       statements.push(this.db.prepare("DELETE FROM citations WHERE page_id = ? AND source = 'header'").bind(page.id));
       for (const d of cleanDescribes(c.describes)) {
-        statements.push(this.db.prepare("INSERT OR IGNORE INTO citations (page_id, repo, path, kind, label, ref, source) VALUES (?, ?, ?, 'path', '', NULL, 'header')").bind(page.id, d.repo, d.path));
+        statements.push(
+          this.db
+            .prepare("INSERT OR IGNORE INTO citations (page_id, repo, path, kind, label, ref, source) VALUES (?, ?, ?, 'path', '', NULL, 'header')")
+            .bind(page.id, d.repo, d.path),
+        );
       }
     }
     if (c.owners !== undefined) {
@@ -1307,7 +1469,9 @@ class Docs {
     if (parent && !targetRows.results.some((r) => r.id === parent)) return fail("not_found", "No such parent page in that space.");
     if (wouldCycle(sourceRows.results, page.id, parent)) return fail("invalid", "A page can't go inside itself.");
     const placed = placeBefore(targetRows.results, page.id, parent, move.before_id ?? null);
-    const statements: D1PreparedStatement[] = [this.db.prepare("UPDATE pages SET parent_id = ?, position = ? WHERE id = ?").bind(parent, placed.position, page.id)];
+    const statements: D1PreparedStatement[] = [
+      this.db.prepare("UPDATE pages SET parent_id = ?, position = ? WHERE id = ?").bind(parent, placed.position, page.id),
+    ];
     for (const [id, position] of placed.renumber) statements.push(this.db.prepare("UPDATE pages SET position = ? WHERE id = ?").bind(position, id));
     let moved: string[] = [];
     if (target.row.id !== page.space_id) {
@@ -1332,8 +1496,13 @@ class Docs {
     const room = this.room(page.id);
     await room.ensure({ page_id: page.id, workspace_slug: workspace.slug, markdown: page.markdown });
     const [state, read] = await Promise.all([room.state(), room.read()]);
-    const rows = (await this.db.prepare("SELECT id, parent_id, position FROM pages WHERE space_id = ? AND archived_at IS NULL").bind(page.space_id).all<PageRow>()).results;
-    const next = rows.filter((r) => r.parent_id === page.parent_id).sort((x, y) => x.position - y.position).find((r) => r.position > page.position);
+    const rows = (
+      await this.db.prepare("SELECT id, parent_id, position FROM pages WHERE space_id = ? AND archived_at IS NULL").bind(page.space_id).all<PageRow>()
+    ).results;
+    const next = rows
+      .filter((r) => r.parent_id === page.parent_id)
+      .sort((x, y) => x.position - y.position)
+      .find((r) => r.position > page.position);
     const row = await this.insertPage(workspace, space.row, this.userKey(a.viewer!), {
       parent_id: page.parent_id,
       title: `${page.title || "Untitled"} (copy)`.slice(0, MAX_TITLE),
@@ -1350,11 +1519,22 @@ class Docs {
     const found = await this.pageFor(a.workspace, a.page_id, a.viewer, "edit");
     if (!found.ok) return found;
     const { workspace, page, space } = found.value;
-    const all = (await this.db.prepare("SELECT id, parent_id, position FROM pages WHERE space_id = ? AND archived_at IS NULL").bind(page.space_id).all<PageRow>()).results;
+    const all = (
+      await this.db.prepare("SELECT id, parent_id, position FROM pages WHERE space_id = ? AND archived_at IS NULL").bind(page.space_id).all<PageRow>()
+    ).results;
     const ids = descendants(all, page.id);
     const at = now();
-    await this.db.batch(ids.map((id) => this.db.prepare("UPDATE pages SET archived_at = ?, archived_by = ? WHERE id = ? AND archived_at IS NULL").bind(at, this.userKey(a.viewer!), id)));
-    for (const id of ids) this.defer(this.room(id).closeAll("Moved to the trash").catch(() => undefined));
+    await this.db.batch(
+      ids.map((id) =>
+        this.db.prepare("UPDATE pages SET archived_at = ?, archived_by = ? WHERE id = ? AND archived_at IS NULL").bind(at, this.userKey(a.viewer!), id),
+      ),
+    );
+    for (const id of ids)
+      this.defer(
+        this.room(id)
+          .closeAll("Moved to the trash")
+          .catch(() => undefined),
+      );
     // Out of search while in the trash; restoring indexes them again.
     this.defer(forgetDocs(this.env, { page_ids: ids }));
     this.defer(publishDocEvent(this.env.EVENTS, "doc.page.archived", this.eventData(workspace, space.row, page), this.userKey(a.viewer!)));
@@ -1389,11 +1569,18 @@ class Docs {
     if (!page.archived_at) return fail("invalid", "Move the page to the trash first.");
     const all = (await this.db.prepare("SELECT id, parent_id, position FROM pages WHERE space_id = ?").bind(page.space_id).all<PageRow>()).results;
     const ids = descendants(all, page.id);
-    await this.db.batch(ids.flatMap((id) => [this.db.prepare("DELETE FROM pages_fts WHERE page_id = ?").bind(id), this.db.prepare("DELETE FROM pages WHERE id = ?").bind(id)]));
+    await this.db.batch(
+      ids.flatMap((id) => [this.db.prepare("DELETE FROM pages_fts WHERE page_id = ?").bind(id), this.db.prepare("DELETE FROM pages WHERE id = ?").bind(id)]),
+    );
     this.defer(forgetDocs(this.env, { page_ids: ids }));
     // Deleted for good: its live document (text and comment threads) goes too, not only the rows.
     // Its uploads stay: a copy of the page may still show them by URL.
-    for (const id of ids) this.defer(this.room(id).destroy().catch((error) => console.error("docs could not destroy a deleted page's room", id, String(error))));
+    for (const id of ids)
+      this.defer(
+        this.room(id)
+          .destroy()
+          .catch((error) => console.error("docs could not destroy a deleted page's room", id, String(error))),
+      );
     return ok(true);
   }
 
@@ -1454,7 +1641,9 @@ class Docs {
     } else {
       rows = (
         await this.db
-          .prepare(`SELECT id, space_id, title, icon, updated_at, substr(markdown, 1, 160) AS snippet FROM pages WHERE space_id IN (${marks}) AND archived_at IS NULL ORDER BY updated_at DESC LIMIT ?`)
+          .prepare(
+            `SELECT id, space_id, title, icon, updated_at, substr(markdown, 1, 160) AS snippet FROM pages WHERE space_id IN (${marks}) AND archived_at IS NULL ORDER BY updated_at DESC LIMIT ?`,
+          )
           .bind(...ids, limit * 3)
           .all<Hit>()
       ).results;
@@ -1494,12 +1683,13 @@ class Docs {
     const spaces = (await this.spacesFor(workspace, a.viewer!)).filter((s) => s.role);
     const hybrid = query.mode === "hybrid" && !!ftsQuery(query.query);
     // A project's docs, when the search isn't narrowed to one of the workspace's spaces.
-    const repoSpaces = query.space_id || !ftsQuery(query.query)
-      ? []
-      : await this.repoSpacesMatching(workspace, a.viewer!, query).catch((error: unknown) => {
-          console.error("docs could not list projects' docs for search", String(error));
-          return [] as { row: RepoSpaceRow; repo: Repo }[];
-        });
+    const repoSpaces =
+      query.space_id || !ftsQuery(query.query)
+        ? []
+        : await this.repoSpacesMatching(workspace, a.viewer!, query).catch((error: unknown) => {
+            console.error("docs could not list projects' docs for search", String(error));
+            return [] as { row: RepoSpaceRow; repo: Repo }[];
+          });
     const [pages, files, meaning] = await Promise.all([
       this.searchIn(workspace, spaces, query),
       this.searchRepoFiles(workspace, repoSpaces, query).catch((error: unknown) => {
@@ -1532,13 +1722,27 @@ class Docs {
   }
 
   /** By meaning: each page's or file's closest passage above the floor, closest first. */
-  private async meaningHits(workspace: Workspace, spaces: Space[], repoSpaces: { row: RepoSpaceRow }[], query: DocSearchQuery): Promise<{ key: string; row: PassageRow; score: number }[]> {
-    const allowed = [...searchSpaces(spaces.map((s) => s.row.id), query.space_id ?? null), ...repoSpaces.map((r) => r.row.id)];
+  private async meaningHits(
+    workspace: Workspace,
+    spaces: Space[],
+    repoSpaces: { row: RepoSpaceRow }[],
+    query: DocSearchQuery,
+  ): Promise<{ key: string; row: PassageRow; score: number }[]> {
+    const allowed = [
+      ...searchSpaces(
+        spaces.map((s) => s.row.id),
+        query.space_id ?? null,
+      ),
+      ...repoSpaces.map((r) => r.row.id),
+    ];
     if (!allowed.length) return [];
     const vector = await this.queryVector(query.query);
     if (!vector) return [];
     const matches = (await this.meaningMatches(workspace.id, allowed, vector)).filter((m) => m.score >= MEANING_FLOOR);
-    const rows = await this.passages(workspace.id, matches.map((m) => m.id));
+    const rows = await this.passages(
+      workspace.id,
+      matches.map((m) => m.id),
+    );
     const may = new Set(allowed);
     const best = new Map<string, { key: string; row: PassageRow; score: number }>();
     for (const m of matches) {
@@ -1708,7 +1912,14 @@ class Docs {
       }
     });
     const people = await this.profiles(workspace, authors.flat());
-    return rows.map((r, i) => ({ id: r.id, page_id: r.page_id, created_at: r.created_at, kind: r.kind, note: r.note, authors: authors[i]!.map((k) => people.get(k)!).filter(Boolean) }));
+    return rows.map((r, i) => ({
+      id: r.id,
+      page_id: r.page_id,
+      created_at: r.created_at,
+      kind: r.kind,
+      note: r.note,
+      authors: authors[i]!.map((k) => people.get(k)!).filter(Boolean),
+    }));
   }
 
   async versions(a: { workspace: string; page_id: string; viewer: Viewer }): Promise<Result<DocVersion[]>> {
@@ -1755,7 +1966,10 @@ class Docs {
     const origin: Origin = { key: this.userKey(a.viewer!), kind: "restore", note: `Restored the version of ${when} UTC` };
     const versionId = await room.restore({ state: row.state ? new Uint8Array(row.state) : null, markdown: row.markdown }, origin);
     const created = versionId
-      ? await this.db.prepare("SELECT id, page_id, created_at, kind, authors, note FROM page_versions WHERE id = ?").bind(versionId).first<Omit<VersionRow, "markdown" | "state">>()
+      ? await this.db
+          .prepare("SELECT id, page_id, created_at, kind, authors, note FROM page_versions WHERE id = ?")
+          .bind(versionId)
+          .first<Omit<VersionRow, "markdown" | "state">>()
       : null;
     if (!created) return fail("conflict", "The page could not be restored. Try again.");
     const [version] = await this.toVersions(workspace, [created]);
@@ -1776,11 +1990,23 @@ class Docs {
     ).results;
     return ok([
       ...BUILTIN_TEMPLATES,
-      ...rows.map((r) => ({ id: r.id, name: r.name, description: r.description, icon: r.icon, markdown: r.markdown, builtin: false, created_by: parsePrincipalKey(r.created_by) })),
+      ...rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        description: r.description,
+        icon: r.icon,
+        markdown: r.markdown,
+        builtin: false,
+        created_by: parsePrincipalKey(r.created_by),
+      })),
     ]);
   }
 
-  async saveTemplate(a: { workspace: string; viewer: Viewer; input: { page_id: string; name: string; description?: string | null } }): Promise<Result<DocTemplate>> {
+  async saveTemplate(a: {
+    workspace: string;
+    viewer: Viewer;
+    input: { page_id: string; name: string; description?: string | null };
+  }): Promise<Result<DocTemplate>> {
     const found = await this.pageFor(a.workspace, a.input?.page_id, a.viewer, "view");
     if (!found.ok) return found;
     const { workspace, page } = found.value;
@@ -1790,7 +2016,9 @@ class Docs {
     await room.ensure({ page_id: page.id, workspace_slug: workspace.slug, markdown: page.markdown });
     const { markdown } = await room.read();
     const id = newId("tpl");
-    const description = String(a.input.description ?? "").trim().slice(0, 200);
+    const description = String(a.input.description ?? "")
+      .trim()
+      .slice(0, 200);
     await this.db
       .prepare("INSERT INTO templates (id, workspace_id, name, description, icon, markdown, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
       .bind(id, workspace.id, name, description, page.icon ?? "📄", markdown, this.userKey(a.viewer!), now())
@@ -1801,9 +2029,13 @@ class Docs {
   async deleteTemplate(a: { workspace: string; template_id: string; viewer: Viewer }): Promise<Result<boolean>> {
     const found = await this.viewerWorkspace(a.workspace, a.viewer);
     if (!found.ok) return found;
-    const row = await this.db.prepare("SELECT created_by FROM templates WHERE id = ? AND workspace_id = ?").bind(a.template_id, found.value.id).first<{ created_by: string }>();
+    const row = await this.db
+      .prepare("SELECT created_by FROM templates WHERE id = ? AND workspace_id = ?")
+      .bind(a.template_id, found.value.id)
+      .first<{ created_by: string }>();
     if (!row) return fail("not_found", "No such template.");
-    if (row.created_by !== this.userKey(a.viewer!) && !this.viewerOwner(a.viewer!, a.workspace)) return fail("forbidden", "Only whoever saved a template, or an owner, can delete it.");
+    if (row.created_by !== this.userKey(a.viewer!) && !this.viewerOwner(a.viewer!, a.workspace))
+      return fail("forbidden", "Only whoever saved a template, or an owner, can delete it.");
     await this.db.prepare("DELETE FROM templates WHERE id = ?").bind(a.template_id).run();
     return ok(true);
   }
@@ -1819,19 +2051,28 @@ class Docs {
     return ok({ filename: `${title.replace(/[\\/:*?"<>|]+/g, " ").trim() || "page"}.md`, markdown: `# ${title}\n\n${markdown}` });
   }
 
-  async exportSpace(a: { workspace: string; space_id: string; viewer: Viewer }): Promise<Result<{ name: string; files: { path: string; markdown: string }[] }>> {
+  async exportSpace(a: {
+    workspace: string;
+    space_id: string;
+    viewer: Viewer;
+  }): Promise<Result<{ name: string; files: { path: string; markdown: string }[] }>> {
     const found = await this.viewerWorkspace(a.workspace, a.viewer);
     if (!found.ok) return found;
     const spaces = await this.spacesFor(found.value, a.viewer!);
     const space = spaces.find((s) => s.row.id === a.space_id);
     if (!space?.role) return fail("not_found", "No such space.");
     const rows = (
-      await this.db.prepare("SELECT id, parent_id, position, title, markdown FROM pages WHERE space_id = ? AND archived_at IS NULL").bind(space.row.id).all<PageRow>()
+      await this.db
+        .prepare("SELECT id, parent_id, position, title, markdown FROM pages WHERE space_id = ? AND archived_at IS NULL")
+        .bind(space.row.id)
+        .all<PageRow>()
     ).results;
     const paths = exportPaths(rows.map((r) => ({ ...r, title: r.title || "Untitled" })));
     return ok({
       name: space.row.slug,
-      files: rows.map((r) => ({ path: paths.get(r.id)!, markdown: `# ${r.title || "Untitled"}\n\n${r.markdown}` })).sort((x, y) => x.path.localeCompare(y.path)),
+      files: rows
+        .map((r) => ({ path: paths.get(r.id)!, markdown: `# ${r.title || "Untitled"}\n\n${r.markdown}` }))
+        .sort((x, y) => x.path.localeCompare(y.path)),
     });
   }
 
@@ -1861,7 +2102,9 @@ class Docs {
 
   /** A page's open suggestions, with the blocks each covers now; ones whose target is gone become stale. */
   private async openSuggestions(workspace: Workspace, pageId: string): Promise<DocSuggestion[]> {
-    const rows = (await this.db.prepare("SELECT * FROM suggestions WHERE page_id = ? AND status = 'open' ORDER BY created_at").bind(pageId).all<SuggestionRow>()).results;
+    const rows = (
+      await this.db.prepare("SELECT * FROM suggestions WHERE page_id = ? AND status = 'open' ORDER BY created_at").bind(pageId).all<SuggestionRow>()
+    ).results;
     if (!rows.length) return [];
     let blocks: (string[] | null)[] = rows.map(() => []);
     try {
@@ -1888,7 +2131,10 @@ class Docs {
   }
 
   async decideSuggestion(a: { workspace: string; suggestion_id: string; viewer: Viewer; decision: "accept" | "reject" }): Promise<Result<DocSuggestion>> {
-    const row = await this.db.prepare("SELECT * FROM suggestions WHERE id = ?").bind(String(a.suggestion_id ?? "")).first<SuggestionRow>();
+    const row = await this.db
+      .prepare("SELECT * FROM suggestions WHERE id = ?")
+      .bind(String(a.suggestion_id ?? ""))
+      .first<SuggestionRow>();
     if (!row) return fail("not_found", "No such suggestion.");
     const found = await this.pageFor(a.workspace, row.page_id, a.viewer, "edit");
     if (!found.ok) return found.error.code === "forbidden" ? fail("forbidden", "Only people who can edit the page can accept or reject a suggestion.") : found;
@@ -1919,7 +2165,9 @@ class Docs {
   async acceptAll(a: { workspace: string; page_id: string; viewer: Viewer }): Promise<Result<DocSuggestion[]>> {
     const found = await this.pageFor(a.workspace, a.page_id, a.viewer, "edit");
     if (!found.ok) return found;
-    const rows = (await this.db.prepare("SELECT id FROM suggestions WHERE page_id = ? AND status = 'open' ORDER BY created_at").bind(a.page_id).all<{ id: string }>()).results;
+    const rows = (
+      await this.db.prepare("SELECT id FROM suggestions WHERE page_id = ? AND status = 'open' ORDER BY created_at").bind(a.page_id).all<{ id: string }>()
+    ).results;
     const out: DocSuggestion[] = [];
     for (const r of rows) {
       const decided = await this.decideSuggestion({ workspace: a.workspace, suggestion_id: r.id, viewer: a.viewer, decision: "accept" });
@@ -1944,7 +2192,15 @@ class Docs {
   }
 
   /** People mentioned in a comment hear of it, if they can read the page. */
-  private async notifyMentioned(workspace: Workspace, page: PageRow, space: SpaceRow, author: string, mentions: string[], text: string, threadId: string | null): Promise<void> {
+  private async notifyMentioned(
+    workspace: Workspace,
+    page: PageRow,
+    space: SpaceRow,
+    author: string,
+    mentions: string[],
+    text: string,
+    threadId: string | null,
+  ): Promise<void> {
     if (!this.env.NOTIFY) return;
     // Comment mentions name people by username (`user:<username>`).
     const me = author.startsWith("user:") ? (this.usernames.get(author.slice(5)) ?? "").toLowerCase() : "";
@@ -2103,7 +2359,13 @@ class Docs {
     const room = this.room(page.id);
     await room.ensure({ page_id: page.id, workspace_slug: workspace.slug, markdown: page.markdown });
     const key = this.userKey(viewer);
-    const who: RoomMember = { page_id: page.id, workspace_slug: workspace.slug, key, member: (await this.profiles(workspace, [key])).get(key)!, role: space.role! };
+    const who: RoomMember = {
+      page_id: page.id,
+      workspace_slug: workspace.slug,
+      key,
+      member: (await this.profiles(workspace, [key])).get(key)!,
+      role: space.role!,
+    };
     const headers = new Headers(request.headers);
     headers.delete(DOCS_VIEWER_HEADER);
     headers.set(ROOM_MEMBER_HEADER, JSON.stringify(who));
@@ -2128,9 +2390,9 @@ class Docs {
     await fileStore(this.env).put(`docs/${key}`, request.body ?? new Uint8Array(), contentType);
     try {
       const inserted = await this.db
-      .prepare("INSERT INTO files (id, workspace_id, page_id, key, name, content_type, bytes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .bind(id, found.value.workspace.id, found.value.page.id, key, name, contentType, bytes, this.userKey(viewer!), now())
-      .run();
+        .prepare("INSERT INTO files (id, workspace_id, page_id, key, name, content_type, bytes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(id, found.value.workspace.id, found.value.page.id, key, name, contentType, bytes, this.userKey(viewer!), now())
+        .run();
       if (Number(inserted.meta.changes) === 0) {
         await fileStore(this.env).delete(`docs/${key}`);
         return new Response("Upload destination erased", { status: 410 });
@@ -2252,10 +2514,13 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const defer = (work: Promise<unknown>) => ctx.waitUntil(work);
-    if (request.method === "GET" && url.pathname === "/live") return url.searchParams.has("folio") ? new Folios(env, defer).live(request) : new Docs(env, defer).live(request);
-    if (request.method === "PUT" && url.pathname === "/files") return url.searchParams.has("folio") ? new Folios(env, defer).upload(request) : new Docs(env, defer).upload(request);
+    if (request.method === "GET" && url.pathname === "/live")
+      return url.searchParams.has("folio") ? new Folios(env, defer).live(request) : new Docs(env, defer).live(request);
+    if (request.method === "PUT" && url.pathname === "/files")
+      return url.searchParams.has("folio") ? new Folios(env, defer).upload(request) : new Docs(env, defer).upload(request);
     const file = /^\/files\/([0-9a-f]{64})$/.exec(url.pathname);
-    if ((request.method === "GET" || request.method === "HEAD") && file) return (await new Folios(env, defer).file(file[1]!)) ?? new Docs(env, defer).file(file[1]!);
+    if ((request.method === "GET" || request.method === "HEAD") && file)
+      return (await new Folios(env, defer).file(file[1]!)) ?? new Docs(env, defer).file(file[1]!);
     const match = url.pathname.match(/^\/rpc\/([a-z_]+)$/);
     if (request.method !== "POST" || !match) return new Response("Not found\n", { status: 404 });
     // A replica near the caller when it asks for one (@g1t/contracts d1.ts).
@@ -2301,7 +2566,9 @@ export default {
         }
         if (body.type === "repo.purged") {
           // Its docs leave Docs (src/staleness.ts); their passages leave the index first.
-          const gone = await env.DB.prepare("SELECT id FROM repo_spaces WHERE repo_id = ?").bind((body as G1tEvent<"repo.purged">).data.repoId).all<{ id: string }>();
+          const gone = await env.DB.prepare("SELECT id FROM repo_spaces WHERE repo_id = ?")
+            .bind((body as G1tEvent<"repo.purged">).data.repoId)
+            .all<{ id: string }>();
           for (const space of gone.results) await forgetDocs(env, { space_id: space.id });
         }
         await onEvent(env, body as G1tEvent, reindex);

@@ -106,8 +106,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   // which the layout makes in this request too.
   const accessP = accessTo(context, params);
   const memberP = accessP.then((access) => access.insider);
-  const forMembers = <T,>(start: () => Promise<T>): Promise<T | null> =>
-    memberP.then((member) => (member ? soft(start()) : null));
+  const forMembers = <T,>(start: () => Promise<T>): Promise<T | null> => memberP.then((member) => (member ? soft(start()) : null));
   const repoP = soft(repoFor(context, params));
   const projectP = soft(projectFor(context, params));
   // Deployments from anywhere (g1t.page, g1t Actions, the API), by environment, for anyone who can read it.
@@ -121,9 +120,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   const workflowRunsP = soft(actions.runs(path, viewer, { limit: 30 }));
   // What waits on someone signed in: their pull requests' lifecycles, and the open ones.
   const minePullsP = repoP.then((repo) =>
-    repo?.ok && viewer
-      ? soft(work.listActivePulls(viewer)).then((list) => (list ?? []).filter((item) => item.pull.repoId === repo.value.id))
-      : null,
+    repo?.ok && viewer ? soft(work.listActivePulls(viewer)).then((list) => (list ?? []).filter((item) => item.pull.repoId === repo.value.id)) : null,
   );
   const openP = viewer ? soft(work.listPulls(path, viewer, "open")) : Promise.resolve(null);
   // Where its code came from on GitHub, for members.
@@ -133,23 +130,21 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   const service = telemetry;
   const telemetryP = service
     ? projectP.then((found) =>
-      found?.ok
-        ? forMembers(async () => {
-          const project_id = found.value.id;
-          const [overview, errors] = await Promise.all([
-            soft(service.overview({ project_id, workspace: params.owner, from_us: (now - DAY_MS) * 1000, to_us: now * 1000, step_s: 3600 })),
-            soft(service.errors({ project_id, workspace: params.owner, state: "open" })),
-          ]);
-          return { overview, errors };
-        })
-        : null,
-    )
+        found?.ok
+          ? forMembers(async () => {
+              const project_id = found.value.id;
+              const [overview, errors] = await Promise.all([
+                soft(service.overview({ project_id, workspace: params.owner, from_us: (now - DAY_MS) * 1000, to_us: now * 1000, step_s: 3600 })),
+                soft(service.errors({ project_id, workspace: params.owner, state: "open" })),
+              ]);
+              return { overview, errors };
+            })
+          : null,
+      )
     : Promise.resolve(null);
-  const commitP = soft(repos.log(path, viewer, null, 1)).then((log) => log?.ok ? (log.value[0] ?? null) : null);
+  const commitP = soft(repos.log(path, viewer, null, 1)).then((log) => (log?.ok ? (log.value[0] ?? null) : null));
   const range = resolveRange("30d", {}, new Date(now));
-  const insightsP = repoP.then((repo) => repo?.ok
-    ? forMembers(() => work.deliveryInsights([repo.value.id], viewer, range.from, range.until))
-    : null);
+  const insightsP = repoP.then((repo) => (repo?.ok ? forMembers(() => work.deliveryInsights([repo.value.id], viewer, range.from, range.until)) : null));
 
   const [
     { insider: member, can },
@@ -224,17 +219,53 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     const lifecycle = lifecycleOf.get(pull.number);
     if (lifecycle?.stage === "needs_you") {
       const conflict = /conflict/i.test(lifecycle.detail);
-      needs.push({ key: `pull:${pull.number}`, kind: conflict ? "conflict" : "stalled", title: pull.title, detail: lifecycle.detail, to, action: conflict ? "Resolve" : "Decide", at: Date.parse(pull.updatedAt), where });
+      needs.push({
+        key: `pull:${pull.number}`,
+        kind: conflict ? "conflict" : "stalled",
+        title: pull.title,
+        detail: lifecycle.detail,
+        to,
+        action: conflict ? "Resolve" : "Decide",
+        at: Date.parse(pull.updatedAt),
+        where,
+      });
     } else if (lifecycle?.stage === "ready") {
-      needs.push({ key: `pull:${pull.number}`, kind: "ready", title: pull.title, detail: "Ready to land when you merge it.", to, action: "Merge", at: Date.parse(pull.updatedAt), where });
+      needs.push({
+        key: `pull:${pull.number}`,
+        kind: "ready",
+        title: pull.title,
+        detail: "Ready to land when you merge it.",
+        to,
+        action: "Merge",
+        at: Date.parse(pull.updatedAt),
+        where,
+      });
     }
     // Never your own, nor one g1t made for you; whoever it is for asked.
     const owner = workOwner(pull).username;
     if (me && pull.status === "open" && owner.toLowerCase() !== me && pull.reviewers.some((name) => name.toLowerCase() === me)) {
-      needs.push({ key: `review:${pull.number}`, kind: "review", title: pull.title, detail: `${owner} asked for your review.`, to, action: "Review", at: Date.parse(pull.updatedAt), where });
+      needs.push({
+        key: `review:${pull.number}`,
+        kind: "review",
+        title: pull.title,
+        detail: `${owner} asked for your review.`,
+        to,
+        action: "Review",
+        at: Date.parse(pull.updatedAt),
+        where,
+      });
     }
     if (member && pull.status === "open" && pull.checkStatus === "failed" && !lifecycle) {
-      needs.push({ key: `checks:${pull.number}`, kind: "checks", title: pull.title, detail: "Its checks failed.", to, action: "See checks", at: Date.parse(pull.updatedAt), where });
+      needs.push({
+        key: `checks:${pull.number}`,
+        kind: "checks",
+        title: pull.title,
+        detail: "Its checks failed.",
+        to,
+        action: "See checks",
+        at: Date.parse(pull.updatedAt),
+        where,
+      });
     }
   }
 
@@ -269,9 +300,9 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   // anyone else from the production environment, which they may read.
   const liveProduction = live.find((app) => app.kind === "production") ?? null;
   const current = productionEnv?.current ?? null;
-  const production = nativeProduction(environmentList?.environments ?? []) ?? (liveProduction
-    ? { url: liveProduction.url, commit: liveProduction.commit, deployedAt: liveProduction.deployedAt }
-    : null);
+  const production =
+    nativeProduction(environmentList?.environments ?? []) ??
+    (liveProduction ? { url: liveProduction.url, commit: liveProduction.commit, deployedAt: liveProduction.deployedAt } : null);
   const telemetryData = observed?.overview && (observed.overview.totals.requests > 0 || (observed.errors?.length ?? 0) > 0) ? observed : null;
 
   return {
@@ -322,12 +353,15 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     defaultBranch,
     health: {
       ...runHealth(ok(workflowRuns) ?? []),
-      ages: openItems ? ageBuckets(openItems.map((item) => item.createdAt), now) : null,
+      ages: openItems
+        ? ageBuckets(
+            openItems.map((item) => item.createdAt),
+            now,
+          )
+        : null,
     },
     telemetry: telemetryData ? { overview: telemetryData.overview!, errors: telemetryData.errors ?? [] } : null,
-    library: isLibrary
-      ? { packages: published.slice(0, PACKAGES_SHOWN), total: published.length, loaded: packageList?.ok ?? false }
-      : null,
+    library: isLibrary ? { packages: published.slice(0, PACKAGES_SHOWN), total: published.length, loaded: packageList?.ok ?? false } : null,
   };
 }
 
@@ -471,16 +505,26 @@ export default function ProjectOverview({ loaderData, actionData, params }: Rout
 
 /** The overview's sections as they will sit, while they stream in. */
 function OverviewSkeleton() {
-  return <Loading className="space-y-8" aria-label="Loading the overview">
-    <Card className="overflow-hidden rounded-2xl">
-      <div className="border-b border-line p-5"><Skeleton className="h-5 w-48" /></div>
-      <div className="grid gap-6 p-6 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-        <Skeleton className="aspect-16/10 w-full rounded-lg" />
-        <SkeletonRows rows={5} />
+  return (
+    <Loading className="space-y-8" aria-label="Loading the overview">
+      <Card className="overflow-hidden rounded-2xl">
+        <div className="border-b border-line p-5">
+          <Skeleton className="h-5 w-48" />
+        </div>
+        <div className="grid gap-6 p-6 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+          <Skeleton className="aspect-16/10 w-full rounded-lg" />
+          <SkeletonRows rows={5} />
+        </div>
+      </Card>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {[0, 1, 2].map((key) => (
+          <Card key={key} className="p-5">
+            <SkeletonRows rows={4} />
+          </Card>
+        ))}
       </div>
-    </Card>
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{[0, 1, 2].map((key) => <Card key={key} className="p-5"><SkeletonRows rows={4} /></Card>)}</div>
-  </Loading>;
+    </Loading>
+  );
 }
 
 function OverviewFailed() {
@@ -524,7 +568,13 @@ function CodeLine({ project, base }: { project: Project; base: string }) {
 }
 
 /** Production on g1t.page: its picture, address and state. Actions live in the card header. */
-function ProductionHead({ loaderData, base, name, upload, addImage }: {
+function ProductionHead({
+  loaderData,
+  base,
+  name,
+  upload,
+  addImage,
+}: {
   loaderData: Loaded;
   base: string;
   name: string;
@@ -591,8 +641,8 @@ function ProductionHead({ loaderData, base, name, upload, addImage }: {
             <>
               <p className="mt-2 text-lg font-medium">Deployments are off</p>
               <p className="mt-1 max-w-lg text-sm text-muted">
-                Nothing builds or runs until you turn them on. Then {name} goes up on g1t.page: production from the default branch, and a
-                live preview for every pull request. It runs only while someone visits.
+                Nothing builds or runs until you turn them on. Then {name} goes up on g1t.page: production from the default branch, and a live preview for every
+                pull request. It runs only while someone visits.
               </p>
             </>
           ) : (
@@ -608,13 +658,26 @@ function ProductionHead({ loaderData, base, name, upload, addImage }: {
 }
 
 /** The running deployment owns these fields; a newer attempt never changes its status. */
-function ProductionSummary({ loaderData: d, base, upload, addImage, elsewhere }: {
-  loaderData: Loaded; base: string; upload: { url: string; preferred: boolean } | null;
-  addImage: string | null; elsewhere: boolean;
+function ProductionSummary({
+  loaderData: d,
+  base,
+  upload,
+  addImage,
+  elsewhere,
+}: {
+  loaderData: Loaded;
+  base: string;
+  upload: { url: string; preferred: boolean } | null;
+  addImage: string | null;
+  elsewhere: boolean;
 }) {
   const current = d.serving;
   const sha = current?.sha ?? d.production?.commit;
-  const url = elsewhere ? d.deployment?.url ?? d.project?.productionUrl : d.settings?.primaryDomain ? `https://${d.settings.primaryDomain}` : d.production?.url;
+  const url = elsewhere
+    ? (d.deployment?.url ?? d.project?.productionUrl)
+    : d.settings?.primaryDomain
+      ? `https://${d.settings.primaryDomain}`
+      : d.production?.url;
   const at = current?.at ?? d.production?.deployedAt;
   const latest = d.productionLatest;
   const newerAttempt = latest && hasSeparateAttempt(current?.id, sha, latest);
@@ -622,33 +685,104 @@ function ProductionSummary({ loaderData: d, base, upload, addImage, elsewhere }:
   return (
     <>
       <div className="grid gap-6 p-5 sm:p-6 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:gap-8">
-        <ProductionShot sources={cardSources(screenshot, upload)} href={url ?? null} label={url ? host(url) : ""} addImage={addImage} className="w-full self-start" />
+        <ProductionShot
+          sources={cardSources(screenshot, upload)}
+          href={url ?? null}
+          label={url ? host(url) : ""}
+          addImage={addImage}
+          className="w-full self-start"
+        />
         <dl className="grid min-w-0 content-start grid-cols-2 gap-x-5 gap-y-5 text-sm">
           <div className="col-span-2 min-w-0">
             <dt className="text-xs text-muted">Deployment</dt>
             <dd className="mt-1 break-words font-medium">
-              {current ? <Link to={`${base}/deployments/${current.id}`} className="hover:text-accent">Current production <ArrowUpRight size={14} className="inline text-faint" /></Link> : <span>Production</span>}
+              {current ? (
+                <Link to={`${base}/deployments/${current.id}`} className="hover:text-accent">
+                  Current production <ArrowUpRight size={14} className="inline text-faint" />
+                </Link>
+              ) : (
+                <span>Production</span>
+              )}
             </dd>
           </div>
           <div className="col-span-2 min-w-0">
             <dt className="text-xs text-muted">Domain</dt>
-            <dd className="mt-1">{url ? <DeployLink href={url} className="inline-flex max-w-full items-center gap-1.5 font-medium hover:text-accent"><span className="truncate">{host(url)}</span><ArrowUpRight size={14} className="shrink-0 text-faint" /></DeployLink> : <span className="text-muted">No address reported</span>}</dd>
-            {!elsewhere && d.settings?.primaryDomain && d.production && <dd className="mt-1 text-xs text-muted"><DeployLink href={d.production.url} className="break-all hover:text-fg">{host(d.production.url)}</DeployLink></dd>}
+            <dd className="mt-1">
+              {url ? (
+                <DeployLink href={url} className="inline-flex max-w-full items-center gap-1.5 font-medium hover:text-accent">
+                  <span className="truncate">{host(url)}</span>
+                  <ArrowUpRight size={14} className="shrink-0 text-faint" />
+                </DeployLink>
+              ) : (
+                <span className="text-muted">No address reported</span>
+              )}
+            </dd>
+            {!elsewhere && d.settings?.primaryDomain && d.production && (
+              <dd className="mt-1 text-xs text-muted">
+                <DeployLink href={d.production.url} className="break-all hover:text-fg">
+                  {host(d.production.url)}
+                </DeployLink>
+              </dd>
+            )}
           </div>
-          <div><dt className="text-xs text-muted">Status</dt><dd className="mt-1"><StatusDot status="ready" label="Ready" /></dd></div>
-          <div><dt className="text-xs text-muted">Deployed</dt><dd className="mt-1 text-xs">{at && <TimeAgo at={at} />}{current?.creator && <span className="text-muted"> by {current.creator}</span>}</dd></div>
+          <div>
+            <dt className="text-xs text-muted">Status</dt>
+            <dd className="mt-1">
+              <StatusDot status="ready" label="Ready" />
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted">Deployed</dt>
+            <dd className="mt-1 text-xs">
+              {at && <TimeAgo at={at} />}
+              {current?.creator && <span className="text-muted"> by {current.creator}</span>}
+            </dd>
+          </div>
           <div className="col-span-2 min-w-0">
             <dt className="text-xs text-muted">Source</dt>
             <dd className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-2">
-              {current?.ref && current.ref !== sha && <Link to={`${base}/tree/${encodeURIComponent(current.ref)}`} className="inline-flex min-w-0 items-center gap-1.5 hover:text-accent"><GitBranch size={14} className="shrink-0 text-faint" /><span className="truncate">{current.ref}</span></Link>}
-              {sha && <Link to={`${base}/commit/${sha}`} className="inline-flex items-center gap-1.5 font-mono text-xs hover:text-accent"><GitCommitHorizontal size={14} className="text-faint" />{sha.slice(0, 7)}</Link>}
-              {current?.runUrl && <Link to={current.runUrl} className="text-xs text-muted hover:text-fg">View workflow <ArrowUpRight size={12} className="inline" /></Link>}
+              {current?.ref && current.ref !== sha && (
+                <Link to={`${base}/tree/${encodeURIComponent(current.ref)}`} className="inline-flex min-w-0 items-center gap-1.5 hover:text-accent">
+                  <GitBranch size={14} className="shrink-0 text-faint" />
+                  <span className="truncate">{current.ref}</span>
+                </Link>
+              )}
+              {sha && (
+                <Link to={`${base}/commit/${sha}`} className="inline-flex items-center gap-1.5 font-mono text-xs hover:text-accent">
+                  <GitCommitHorizontal size={14} className="text-faint" />
+                  {sha.slice(0, 7)}
+                </Link>
+              )}
+              {current?.runUrl && (
+                <Link to={current.runUrl} className="text-xs text-muted hover:text-fg">
+                  View workflow <ArrowUpRight size={12} className="inline" />
+                </Link>
+              )}
             </dd>
-            {sha && sha !== d.commit?.hash && <dd className="mt-3"><CommitChecksSummary checks={d.checks} sha={sha} label="Checks for deployed commit" /></dd>}
+            {sha && sha !== d.commit?.hash && (
+              <dd className="mt-3">
+                <CommitChecksSummary checks={d.checks} sha={sha} label="Checks for deployed commit" />
+              </dd>
+            )}
           </div>
         </dl>
       </div>
-      {newerAttempt && <Link to={`${base}/deployments/${latest.id}`} className="flex flex-wrap items-center gap-2 border-t border-line bg-raised/30 px-5 py-3 text-xs hover:bg-raised/60 sm:px-6"><DeploymentStateIcon state={latest.state} size={14} /><span>Latest attempt: {STATE_WORD[latest.state]}</span><span className="font-mono text-muted">{latest.sha.slice(0, 7)}</span><span className="text-muted"><TimeAgo at={latest.at} /></span><span className="ml-auto text-muted">View deployment <ArrowRight size={12} className="inline" /></span></Link>}
+      {newerAttempt && (
+        <Link
+          to={`${base}/deployments/${latest.id}`}
+          className="flex flex-wrap items-center gap-2 border-t border-line bg-raised/30 px-5 py-3 text-xs hover:bg-raised/60 sm:px-6"
+        >
+          <DeploymentStateIcon state={latest.state} size={14} />
+          <span>Latest attempt: {STATE_WORD[latest.state]}</span>
+          <span className="font-mono text-muted">{latest.sha.slice(0, 7)}</span>
+          <span className="text-muted">
+            <TimeAgo at={latest.at} />
+          </span>
+          <span className="ml-auto text-muted">
+            View deployment <ArrowRight size={12} className="inline" />
+          </span>
+        </Link>
+      )}
     </>
   );
 }
@@ -656,22 +790,64 @@ function ProductionSummary({ loaderData: d, base, upload, addImage, elsewhere }:
 /** Branch health belongs to the repository head, independently of what is deployed. */
 function BranchCard({ loaderData: d, base }: { loaderData: Loaded; base: string }) {
   const branch = projectCheckSections(d.commit?.hash, d.defaultBranch, null)[0];
-  return <Card asChild className="min-w-0 p-5"><section aria-labelledby="overview-branch">
-    <h2 id="overview-branch" className="flex items-center gap-2 text-sm font-semibold"><GitBranch size={14} className="text-faint" />Latest on {d.defaultBranch ?? "default branch"}</h2>
-    {branch ? <><div className="my-4 flex flex-wrap items-center gap-2 text-xs"><Link to={`${base}/commit/${branch.sha}`} className="font-mono hover:text-accent">{branch.sha.slice(0, 7)}</Link><span className="text-muted">committed {d.commit && <TimeAgo at={d.commit.authoredAt} />}</span></div><CommitChecksSummary checks={d.checks} sha={branch.sha} /></> : <p className="my-4 text-xs text-muted">The latest commit is unavailable.</p>}
-    <dl className="mt-4 space-y-3 border-t border-line pt-4 text-xs">
-      <div className="flex justify-between gap-3"><dt className="text-muted">Latest release</dt><dd><Link to={`${base}/tags`} className="font-mono hover:text-accent">{d.release?.name ?? "None yet"}</Link>{d.release?.at && <span className="ml-2 text-muted"><TimeAgo at={d.release.at} /></span>}</dd></div>
-      <div className="flex justify-between gap-3"><dt className="text-muted">Open pull requests</dt><dd><Link to={`${base}/pulls`} className="tabular-nums hover:text-accent">{d.open.pulls}</Link></dd></div>
-    </dl>
-  </section></Card>;
+  return (
+    <Card asChild className="min-w-0 p-5">
+      <section aria-labelledby="overview-branch">
+        <h2 id="overview-branch" className="flex items-center gap-2 text-sm font-semibold">
+          <GitBranch size={14} className="text-faint" />
+          Latest on {d.defaultBranch ?? "default branch"}
+        </h2>
+        {branch ? (
+          <>
+            <div className="my-4 flex flex-wrap items-center gap-2 text-xs">
+              <Link to={`${base}/commit/${branch.sha}`} className="font-mono hover:text-accent">
+                {branch.sha.slice(0, 7)}
+              </Link>
+              <span className="text-muted">committed {d.commit && <TimeAgo at={d.commit.authoredAt} />}</span>
+            </div>
+            <CommitChecksSummary checks={d.checks} sha={branch.sha} />
+          </>
+        ) : (
+          <p className="my-4 text-xs text-muted">The latest commit is unavailable.</p>
+        )}
+        <dl className="mt-4 space-y-3 border-t border-line pt-4 text-xs">
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted">Latest release</dt>
+            <dd>
+              <Link to={`${base}/tags`} className="font-mono hover:text-accent">
+                {d.release?.name ?? "None yet"}
+              </Link>
+              {d.release?.at && (
+                <span className="ml-2 text-muted">
+                  <TimeAgo at={d.release.at} />
+                </span>
+              )}
+            </dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted">Open pull requests</dt>
+            <dd>
+              <Link to={`${base}/pulls`} className="tabular-nums hover:text-accent">
+                {d.open.pulls}
+              </Link>
+            </dd>
+          </div>
+        </dl>
+      </section>
+    </Card>
+  );
 }
 
 /** Production controls share a header, whether g1t or a workflow hosts it. */
 function ProductionActions({ loaderData, base, elsewhere }: { loaderData: Loaded; base: string; elsewhere: boolean }) {
   const { member, settings, production, project, can } = loaderData;
   const url = elsewhere
-    ? loaderData.deployment?.url ?? project?.productionUrl
-    : production ? (settings?.primaryDomain ? `https://${settings.primaryDomain}` : production.url) : null;
+    ? (loaderData.deployment?.url ?? project?.productionUrl)
+    : production
+      ? settings?.primaryDomain
+        ? `https://${settings.primaryDomain}`
+        : production.url
+      : null;
   return (
     <div className="flex flex-wrap items-center gap-2">
       {member && (can.run || can.manage_integrations) && (
@@ -790,13 +966,33 @@ function Overview({
               {"error" in actionData ? actionData.error : actionData.notice}
             </p>
           )}
-          {productionPlan && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-3 sm:px-6">
-            <span className="text-xs text-muted">{plan === "elsewhere" ? "Production is deployed by its own pipeline." : loaderData.settings?.enabled === false ? "Deployments are not enabled for this project." : <>Push to <span className="font-mono text-fg-soft">{defaultBranch ?? "the default branch"}</span> to update production.</>}</span>
-            <div className="flex flex-wrap items-center gap-2">
-              {member && loaderData.can.manage_integrations && <ButtonLink to={`${base}/settings/deployments`} variant="ghost" size="sm"><Settings2 size={14} />Deployment settings</ButtonLink>}
-              <ButtonLink to={`${base}/deployments`} variant="outline" size="sm"><Rocket size={14} />Deployments{loaderData.environments && <span className="text-muted">{loaderData.environments.total_count}</span>}</ButtonLink>
+          {productionPlan && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-3 sm:px-6">
+              <span className="text-xs text-muted">
+                {plan === "elsewhere" ? (
+                  "Production is deployed by its own pipeline."
+                ) : loaderData.settings?.enabled === false ? (
+                  "Deployments are not enabled for this project."
+                ) : (
+                  <>
+                    Push to <span className="font-mono text-fg-soft">{defaultBranch ?? "the default branch"}</span> to update production.
+                  </>
+                )}
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                {member && loaderData.can.manage_integrations && (
+                  <ButtonLink to={`${base}/settings/deployments`} variant="ghost" size="sm">
+                    <Settings2 size={14} />
+                    Deployment settings
+                  </ButtonLink>
+                )}
+                <ButtonLink to={`${base}/deployments`} variant="outline" size="sm">
+                  <Rocket size={14} />
+                  Deployments{loaderData.environments && <span className="text-muted">{loaderData.environments.total_count}</span>}
+                </ButtonLink>
+              </div>
             </div>
-          </div>}
+          )}
           {project && <CodeLine project={project} base={base} />}
         </section>
       </Card>
@@ -818,12 +1014,22 @@ function Overview({
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="truncate font-mono text-[0.8125rem] font-medium">{app.branch}</span>
-                      {app.number != null && <Link to={`${base}/pull/${app.number}`} className="text-xs text-muted hover:text-accent">#{app.number}</Link>}
+                      {app.number != null && (
+                        <Link to={`${base}/pull/${app.number}`} className="text-xs text-muted hover:text-accent">
+                          #{app.number}
+                        </Link>
+                      )}
                     </div>
-                    <DeployLink href={app.url} className="mt-1 block truncate text-xs text-muted hover:text-accent">{host(app.url)}</DeployLink>
+                    <DeployLink href={app.url} className="mt-1 block truncate text-xs text-muted hover:text-accent">
+                      {host(app.url)}
+                    </DeployLink>
                   </div>
-                  <span className="shrink-0 text-xs text-faint"><TimeAgo at={app.deployedAt} /></span>
-                  <ButtonLink to={app.url} variant="outline" size="sm" reloadDocument target="_blank" rel="noopener noreferrer">Visit <ArrowUpRight size={14} /></ButtonLink>
+                  <span className="shrink-0 text-xs text-faint">
+                    <TimeAgo at={app.deployedAt} />
+                  </span>
+                  <ButtonLink to={app.url} variant="outline" size="sm" reloadDocument target="_blank" rel="noopener noreferrer">
+                    Visit <ArrowUpRight size={14} />
+                  </ButtonLink>
                 </li>
               ))}
             </ul>
@@ -833,7 +1039,12 @@ function Overview({
 
       {/* Deployments panel (deployments-panel.tsx): each environment's latest deployment. */}
       {loaderData.environmentsLoaded ? (
-        <DeploymentsPanel base={base} summary={loaderData.environments} excludeEnvironment={productionPlan ? loaderData.productionLatest?.environment : undefined} className="rounded-xl border border-line bg-surface p-5" />
+        <DeploymentsPanel
+          base={base}
+          summary={loaderData.environments}
+          excludeEnvironment={productionPlan ? loaderData.productionLatest?.environment : undefined}
+          className="rounded-xl border border-line bg-surface p-5"
+        />
       ) : (
         <Unavailable what="Deployments" compact />
       )}
@@ -887,14 +1098,14 @@ function Overview({
           ) : member ? (
             <StartHere title={`Nobody is working on ${name} right now`} />
           ) : (
-            <Quiet>
-              Nobody is working on {name} right now. When people and their coding agents claim a work item or start a session, it shows here.
-            </Quiet>
+            <Quiet>Nobody is working on {name} right now. When people and their coding agents claim a work item or start a session, it shows here.</Quiet>
           )}
         </Panel>
 
-        <div className="grid items-start gap-6 xl:grid-cols-2"><DeliveryPanel loaderData={loaderData} base={base} /><WorkflowPanel loaderData={loaderData} base={base} /></div>
-
+        <div className="grid items-start gap-6 xl:grid-cols-2">
+          <DeliveryPanel loaderData={loaderData} base={base} />
+          <WorkflowPanel loaderData={loaderData} base={base} />
+        </div>
       </div>
     </div>
   );
@@ -940,8 +1151,19 @@ function ObservabilityCard({ overview, errors, base }: { overview: TelemetryOver
           <RequestBars points={overview.points} />
         </div>
         <dl className="mt-3 grid grid-cols-2 gap-3 text-xs">
-          <div><dt className="text-faint">Requests</dt><dd className="mt-0.5 font-medium tabular-nums">{count(overview.totals.requests)}</dd></div>
-          <div><dt className="text-faint">Error rate</dt><dd className="mt-0.5 font-medium tabular-nums"><Link to={`${base}/observability/errors`} className={overview.totals.error_rate >= 0.01 ? "text-danger" : "hover:text-accent"}>{percent(overview.totals.error_rate)}</Link><span className="ml-1 text-muted">({count(overview.totals.errors)})</span></dd></div>
+          <div>
+            <dt className="text-faint">Requests</dt>
+            <dd className="mt-0.5 font-medium tabular-nums">{count(overview.totals.requests)}</dd>
+          </div>
+          <div>
+            <dt className="text-faint">Error rate</dt>
+            <dd className="mt-0.5 font-medium tabular-nums">
+              <Link to={`${base}/observability/errors`} className={overview.totals.error_rate >= 0.01 ? "text-danger" : "hover:text-accent"}>
+                {percent(overview.totals.error_rate)}
+              </Link>
+              <span className="ml-1 text-muted">({count(overview.totals.errors)})</span>
+            </dd>
+          </div>
           <div>
             <dt className="text-faint">Latency p50</dt>
             <dd className="mt-0.5 font-medium tabular-nums">{duration(overview.totals.latency.p50)}</dd>
@@ -1047,28 +1269,61 @@ function DeliveryPanel({ loaderData: d, base }: { loaderData: Loaded; base: stri
   const days = deliveryDays(d.range.from, d.range.until, d.insights?.days ?? []);
   const peak = Math.max(1, ...days.map((day) => day.merged));
   return (
-    <Panel title="Delivery" icon={<Activity size={14} />} extra={<span className="text-xs text-muted">Last 30 days</span>}
-      all={d.workspaceMember ? { to: `/${base.split("/")[1]}/-/insights?period=30d&project=${encodeURIComponent(base.split("/")[2])}`, label: "Insights" } : undefined}>
-      {!metrics ? <Unavailable what="Delivery insights" /> : (
+    <Panel
+      title="Delivery"
+      icon={<Activity size={14} />}
+      extra={<span className="text-xs text-muted">Last 30 days</span>}
+      all={
+        d.workspaceMember
+          ? { to: `/${base.split("/")[1]}/-/insights?period=30d&project=${encodeURIComponent(base.split("/")[2])}`, label: "Insights" }
+          : undefined
+      }
+    >
+      {!metrics ? (
+        <Unavailable what="Delivery insights" />
+      ) : (
         <Card className="overflow-hidden">
           <dl className="grid grid-cols-1 divide-y divide-line border-b border-line sm:grid-cols-3 sm:divide-x sm:divide-y-0">
             {[
               { label: "Pull requests merged", value: metrics.merged },
               { label: "Average time to merge", value: deliveryDuration(metrics.merged ? metrics.leadSeconds / metrics.merged : null) },
               { label: "Average first review", value: deliveryDuration(metrics.reviewed ? metrics.reviewSeconds / metrics.reviewed : null) },
-            ].map((stat) => <div key={stat.label} className="p-4"><dt className="text-xs text-muted">{stat.label}</dt><dd className="mt-2 text-xl font-semibold tabular-nums">{stat.value}</dd></div>)}
+            ].map((stat) => (
+              <div key={stat.label} className="p-4">
+                <dt className="text-xs text-muted">{stat.label}</dt>
+                <dd className="mt-2 text-xl font-semibold tabular-nums">{stat.value}</dd>
+              </div>
+            ))}
           </dl>
           <div className="p-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted"><span>Merged pull requests per day</span><span>{rangeLabel(d.range.from, d.range.until)} · UTC</span></div>
-            <div className="flex h-16 items-end gap-1" role="img" aria-label={`${metrics.merged} pull requests merged in the last 30 days`}>
-              {days.map((day) => <Hint key={day.day} label={`${day.day}: ${plural(day.merged, "merged pull request")}`}><span className={`min-w-0 flex-1 rounded-sm ${day.merged ? "bg-accent/70" : "bg-line"}`} style={{ height: `${Math.max(4, day.merged / peak * 100)}%` }} /></Hint>)}
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+              <span>Merged pull requests per day</span>
+              <span>{rangeLabel(d.range.from, d.range.until)} · UTC</span>
             </div>
-            {metrics.merged === 0 && <p className="mt-3 text-xs text-faint">No pull requests merged in this period. Direct pushes appear in workflows below.</p>}
+            <div className="flex h-16 items-end gap-1" role="img" aria-label={`${metrics.merged} pull requests merged in the last 30 days`}>
+              {days.map((day) => (
+                <Hint key={day.day} label={`${day.day}: ${plural(day.merged, "merged pull request")}`}>
+                  <span
+                    className={`min-w-0 flex-1 rounded-sm ${day.merged ? "bg-accent/70" : "bg-line"}`}
+                    style={{ height: `${Math.max(4, (day.merged / peak) * 100)}%` }}
+                  />
+                </Hint>
+              ))}
+            </div>
+            {metrics.merged === 0 && (
+              <p className="mt-3 text-xs text-faint">No pull requests merged in this period. Direct pushes appear in workflows below.</p>
+            )}
           </div>
           <div className="flex flex-wrap gap-x-5 gap-y-2 border-t border-line px-4 py-3 text-xs text-muted">
-            <Link to={`${base}/pulls`} className="hover:text-fg">{metrics.active} active pull requests</Link>
-            <Link to={`${base}/pulls`} className="hover:text-fg">{metrics.unreviewed} awaiting first review</Link>
-            <Link to={`${base}/queue`} className="hover:text-fg">{metrics.queued} in merge queue</Link>
+            <Link to={`${base}/pulls`} className="hover:text-fg">
+              {metrics.active} active pull requests
+            </Link>
+            <Link to={`${base}/pulls`} className="hover:text-fg">
+              {metrics.unreviewed} awaiting first review
+            </Link>
+            <Link to={`${base}/queue`} className="hover:text-fg">
+              {metrics.queued} in merge queue
+            </Link>
           </div>
         </Card>
       )}
@@ -1082,7 +1337,11 @@ function WorkflowPanel({ loaderData: d, base }: { loaderData: Loaded; base: stri
   const oldest = runs?.at(-1);
   return (
     <Panel title="Recent workflows" icon={<Activity size={14} />} all={{ to: `${base}/actions`, label: "All workflows" }}>
-      {runs == null ? <Unavailable what="Workflows" /> : runs.length === 0 ? <Quiet>No workflows have run yet.</Quiet> : (
+      {runs == null ? (
+        <Unavailable what="Workflows" />
+      ) : runs.length === 0 ? (
+        <Quiet>No workflows have run yet.</Quiet>
+      ) : (
         <Card className="overflow-hidden">
           <div className="space-y-3 border-b border-line p-4">
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
@@ -1090,20 +1349,41 @@ function WorkflowPanel({ loaderData: d, base }: { loaderData: Loaded; base: stri
               <span>{oldest && <TimeAgo at={oldest.createdAt} />} → latest</span>
             </div>
             <div className="flex gap-1" aria-label="Workflow history, oldest first">
-              {[...runs].reverse().map((run) => <Hint key={run.id} label={`${run.name}: ${standingWord(run)} · ${run.createdAt}`}>
-                <Link to={`${base}/actions/runs/${run.id}`} aria-label={`${run.name}: ${standingWord(run)}`} className={`h-6 min-w-0 flex-1 rounded-sm transition-opacity hover:opacity-70 focus-visible:outline-2 focus-visible:outline-accent ${run.status !== "completed" ? "bg-warn/70 motion-safe:animate-pulse" : run.conclusion === "success" ? "bg-success/70" : run.conclusion === "failure" ? "bg-danger/70" : "bg-line"}`} />
-              </Hint>)}
+              {[...runs].reverse().map((run) => (
+                <Hint key={run.id} label={`${run.name}: ${standingWord(run)} · ${run.createdAt}`}>
+                  <Link
+                    to={`${base}/actions/runs/${run.id}`}
+                    aria-label={`${run.name}: ${standingWord(run)}`}
+                    className={`h-6 min-w-0 flex-1 rounded-sm transition-opacity hover:opacity-70 focus-visible:outline-2 focus-visible:outline-accent ${run.status !== "completed" ? "bg-warn/70 motion-safe:animate-pulse" : run.conclusion === "success" ? "bg-success/70" : run.conclusion === "failure" ? "bg-danger/70" : "bg-line"}`}
+                  />
+                </Hint>
+              ))}
             </div>
-            <p className="text-xs text-muted">{d.health.checkRuns ? `${share(d.health.passRate)} succeeded across ${d.health.checkRuns} completed runs. Cancelled and skipped runs excluded.` : "No completed successful or failed runs in this sample."}</p>
+            <p className="text-xs text-muted">
+              {d.health.checkRuns
+                ? `${share(d.health.passRate)} succeeded across ${d.health.checkRuns} completed runs. Cancelled and skipped runs excluded.`
+                : "No completed successful or failed runs in this sample."}
+            </p>
           </div>
           <ul className="divide-y divide-line">
-            {runs.slice(0, 5).map((run) => <li key={run.id}>
-              <Link to={`${base}/actions/runs/${run.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-raised/40">
-                <StatusIcon status={run.status} conclusion={run.conclusion} />
-                <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{run.title || run.name}</span><span className="block truncate text-xs text-muted">{run.name} · {shortRef(run.ref)} · {standingWord(run)}{run.attempt > 1 ? ` · attempt ${run.attempt}` : ""}</span></span>
-                <span className="shrink-0 text-right text-xs text-muted"><TimeAgo at={run.createdAt} />{run.startedAt && <Duration className="block" start={run.startedAt} end={run.finishedAt} />}</span>
-              </Link>
-            </li>)}
+            {runs.slice(0, 5).map((run) => (
+              <li key={run.id}>
+                <Link to={`${base}/actions/runs/${run.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-raised/40">
+                  <StatusIcon status={run.status} conclusion={run.conclusion} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{run.title || run.name}</span>
+                    <span className="block truncate text-xs text-muted">
+                      {run.name} · {shortRef(run.ref)} · {standingWord(run)}
+                      {run.attempt > 1 ? ` · attempt ${run.attempt}` : ""}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right text-xs text-muted">
+                    <TimeAgo at={run.createdAt} />
+                    {run.startedAt && <Duration className="block" start={run.startedAt} end={run.finishedAt} />}
+                  </span>
+                </Link>
+              </li>
+            ))}
           </ul>
         </Card>
       )}

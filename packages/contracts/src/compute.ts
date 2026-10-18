@@ -165,11 +165,7 @@ export function onBillingError(plan: ComputePlan | null | undefined): "allow" | 
  * the note people see before they try. Billing's `reserve` is the
  * decision. Null when it can; the refusal when not.
  */
-export function localRefusal(
-  ent: ComputeEntitlements,
-  kind: ComputeKind,
-  isPublic: boolean,
-): ComputeRefusalCode | null {
+export function localRefusal(ent: ComputeEntitlements, kind: ComputeKind, isPublic: boolean): ComputeRefusalCode | null {
   if (ent.paused) return "paused";
   if (ent.plan !== "free") return null;
   if (ent.compute) return null;
@@ -191,18 +187,11 @@ const WHAT: Record<ComputeKind, string> = {
 };
 
 /** What people are told when compute is refused: plain, with what to do and where. */
-export function refusalMessage(
-  code: GateRefusalCode,
-  workspace: string,
-  kind: ComputeKind,
-  detail?: string | null,
-): string {
+export function refusalMessage(code: GateRefusalCode, workspace: string, kind: ComputeKind, detail?: string | null): string {
   const link = billingPath(workspace);
   switch (code) {
     case "not_paid": {
-      const oss = OSS_KINDS.has(kind)
-        ? " Public repositories can use g1t's open-source pool instead, after a card check."
-        : "";
+      const oss = OSS_KINDS.has(kind) ? " Public repositories can use g1t's open-source pool instead, after a card check." : "";
       return `${WHAT[kind]} a paid workspace.${oss} Start the $21 plan or try it with $5 of free usage after a card check: ${link}`;
     }
     case "trial_used":
@@ -223,12 +212,7 @@ export function refusalMessage(
  * workspace's plan would refuse it: plain, with where to fix it. Null when
  * it would go ahead.
  */
-export function computeNote(
-  ent: ComputeEntitlements,
-  kind: ComputeKind,
-  isPublic: boolean,
-  workspace: string,
-): string | null {
+export function computeNote(ent: ComputeEntitlements, kind: ComputeKind, isPublic: boolean, workspace: string): string | null {
   const refused = localRefusal(ent, kind, isPublic);
   if (!refused) return null;
   const link = billingPath(workspace);
@@ -302,10 +286,7 @@ export const defaultPlanMemory: PlanMemory = {
     const cache = (globalThis as { caches?: { default?: PlanCache } }).caches?.default;
     if (!cache) return;
     try {
-      await cache.put(
-        planKey(workspace),
-        new Response(plan, { headers: { "cache-control": `max-age=${PLAN_MEMORY_SECONDS}` } }),
-      );
+      await cache.put(planKey(workspace), new Response(plan, { headers: { "cache-control": `max-age=${PLAN_MEMORY_SECONDS}` } }));
     } catch {
       // Remembering is a convenience; the isolate's copy is enough.
     }
@@ -355,11 +336,7 @@ export class ComputeGate {
 
   // Plain fields, not parameter properties: Node's type stripping, which
   // the services' tests run under, does not take those.
-  constructor(
-    billing: ServiceBinding,
-    memory: PlanMemory = defaultPlanMemory,
-    log: (...args: unknown[]) => void = console.log,
-  ) {
+  constructor(billing: ServiceBinding, memory: PlanMemory = defaultPlanMemory, log: (...args: unknown[]) => void = console.log) {
     this.billing = billing;
     this.memory = memory;
     this.log = log;

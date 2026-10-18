@@ -195,7 +195,15 @@ export type TelemetryOverview = {
   points: TelemetryPoint[];
   routes: { route: string; method: string | null; requests: number; errors: number; latency: Percentiles }[];
   /** Each deployment's numbers over the period, newest first: a regression points at the deployment it began with. */
-  deployments: { deployment_id: string; environment: string | null; commit_sha: string | null; first_us: number; requests: number; errors: number; latency: Percentiles }[];
+  deployments: {
+    deployment_id: string;
+    environment: string | null;
+    commit_sha: string | null;
+    first_us: number;
+    requests: number;
+    errors: number;
+    latency: Percentiles;
+  }[];
   services: { service: string; source: TelemetrySource; requests: number; errors: number; last_us: number }[];
   regions: { region: string; requests: number }[];
 };
@@ -342,7 +350,15 @@ export interface TelemetryApi {
   errors(args: ProjectRef & TelemetryFilter & { state?: ErrorGroup["state"] | null }): Promise<ErrorGroup[]>;
   setError(args: ProjectRef & { fingerprint: string; state?: ErrorGroup["state"]; item?: number | null }): Promise<ErrorGroup | null>;
   metrics(args: ProjectRef): Promise<MetricInfo[]>;
-  metric(args: ProjectRef & TelemetryFilter & { name: string; aggregate?: "avg" | "sum" | "min" | "max" | "p50" | "p95" | "p99" | null; group_by?: string | null; step_s?: number | null }): Promise<MetricSeries>;
+  metric(
+    args: ProjectRef &
+      TelemetryFilter & {
+        name: string;
+        aggregate?: "avg" | "sum" | "min" | "max" | "p50" | "p95" | "p99" | null;
+        group_by?: string | null;
+        step_s?: number | null;
+      },
+  ): Promise<MetricSeries>;
   /** What is in the store: services, environments and attribute keys seen, for filters. */
   facets(args: ProjectRef): Promise<{ services: string[]; environments: string[]; attribute_keys: string[] }>;
   settings(args: ProjectRef): Promise<TelemetrySettings>;
@@ -356,7 +372,16 @@ export interface TelemetryApi {
    */
   deploymentToken(args: ProjectRef): Promise<{ secret: string }>;
   exports(args: ProjectRef): Promise<TelemetryExport[]>;
-  putExport(args: ProjectRef & { id?: string | null; name: string; endpoint: string; signals: TelemetryExport["signals"]; headers?: Record<string, string> | null; enabled: boolean }): Promise<TelemetryExport>;
+  putExport(
+    args: ProjectRef & {
+      id?: string | null;
+      name: string;
+      endpoint: string;
+      signals: TelemetryExport["signals"];
+      headers?: Record<string, string> | null;
+      enabled: boolean;
+    },
+  ): Promise<TelemetryExport>;
   deleteExport(args: ProjectRef & { id: string }): Promise<boolean>;
   usage(args: ProjectRef): Promise<TelemetryUsage>;
   /** Everything kept for a project, gone: when the project is deleted. */
@@ -368,10 +393,7 @@ export interface TelemetryApi {
  * WebSocket the site opens after checking the viewer may read the
  * project. Each message is one `LiveItem`.
  */
-export type LiveItem =
-  | { type: "request"; request: TelemetryRequest }
-  | { type: "log"; log: TelemetryLog }
-  | { type: "span"; span: TelemetrySpan };
+export type LiveItem = { type: "request"; request: TelemetryRequest } | { type: "log"; log: TelemetryLog } | { type: "span"; span: TelemetrySpan };
 
 async function call<T>(service: ServiceBinding, method: string, args: object): Promise<T> {
   const response = await service.fetch(`https://service/rpc/${method}`, {
@@ -384,7 +406,10 @@ async function call<T>(service: ServiceBinding, method: string, args: object): P
 }
 
 export function telemetryClient(service: ServiceBinding): TelemetryApi {
-  const c = <T>(method: string) => (args: object) => call<T>(service, method, args);
+  const c =
+    <T>(method: string) =>
+    (args: object) =>
+      call<T>(service, method, args);
   return {
     overview: c("overview"),
     requests: c("requests"),

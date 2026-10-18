@@ -16,10 +16,27 @@ import { Worker, isMainThread, parentPort, workerData } from "node:worker_thread
 if (!isMainThread) {
   // Enough of a browser for modules that look at it as they load; nothing here runs a page.
   const noop = () => {};
-  const element = () => ({ style: {}, setAttribute: noop, appendChild: noop, addEventListener: noop, classList: { add: noop, remove: noop, contains: () => false } });
+  const element = () => ({
+    style: {},
+    setAttribute: noop,
+    appendChild: noop,
+    addEventListener: noop,
+    classList: { add: noop, remove: noop, contains: () => false },
+  });
   globalThis.window ??= globalThis;
   globalThis.self ??= globalThis;
-  globalThis.document ??= { documentElement: element(), head: element(), body: element(), createElement: element, querySelector: () => null, querySelectorAll: () => [], addEventListener: noop, removeEventListener: noop, cookie: "", visibilityState: "visible" };
+  globalThis.document ??= {
+    documentElement: element(),
+    head: element(),
+    body: element(),
+    createElement: element,
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    addEventListener: noop,
+    removeEventListener: noop,
+    cookie: "",
+    visibilityState: "visible",
+  };
   globalThis.location ??= new URL("https://g1t.sh/");
   globalThis.history ??= { state: null, pushState: noop, replaceState: noop };
   globalThis.matchMedia ??= () => ({ matches: false, addEventListener: noop, removeEventListener: noop, addListener: noop, removeListener: noop });
@@ -33,7 +50,10 @@ if (!isMainThread) {
   try {
     for (const module of modules) await import(pathToFileURL(join(root, module)).href);
   } catch (caught) {
-    error = String(caught?.stack ?? caught).split("\n").slice(0, 2).join(" | ");
+    error = String(caught?.stack ?? caught)
+      .split("\n")
+      .slice(0, 2)
+      .join(" | ");
   }
   parentPort.postMessage(error);
 } else {

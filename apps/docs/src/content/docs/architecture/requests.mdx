@@ -3,8 +3,8 @@ title: How a request is served
 description: What happens between a request reaching g1t.sh or api.g1t.sh and its answer leaving, step by step, with the deadlines, caches, rate limits and timings along the way.
 ---
 
-import Aside from '../../../components/Aside.astro';
-import Diagram from '../../../components/Diagram.astro';
+import Aside from "../../../components/Aside.astro";
+import Diagram from "../../../components/Diagram.astro";
 
 Two Workers answer almost everything you send g1t: the site, `apps/web`
 on `g1t.sh`, and the API, `apps/api` on `api.g1t.sh` and `mcp.g1t.sh`.
@@ -63,11 +63,11 @@ which gives every call a deadline (`app/lib/deadline.ts`). A call that
 outlives it is aborted and throws `DeadlineExceeded`, so one slow service
 cannot hold a page forever.
 
-| Call | Deadline |
-| --- | --- |
-| A read | 15 s |
-| A write, or a read named in `SLOW_READS` | 60 s |
-| A long job, named in `LONG_CALLS` | 600 s |
+| Call                                     | Deadline |
+| ---------------------------------------- | -------- |
+| A read                                   | 15 s     |
+| A write, or a read named in `SLOW_READS` | 60 s     |
+| A long job, named in `LONG_CALLS`        | 600 s    |
 
 ### Reading your own writes
 
@@ -99,11 +99,9 @@ about itself (`svc`, `db` and `rpc`, from `Served` in
 to see where its time went.
 
 <Aside title="Where it runs">
-	Every Worker runs with placement off, in the data centre nearest the
-	visitor. `scripts/perf/placement-probe.mjs` measures the alternative,
-	and CONTRIBUTING.md's **Speed** section has the rules this design
-	follows: start calls together, add no round trips, and never wake a
-	Durable Object for a read D1 can answer.
+  Every Worker runs with placement off, in the data centre nearest the visitor. `scripts/perf/placement-probe.mjs` measures the alternative, and
+  CONTRIBUTING.md's **Speed** section has the rules this design follows: start calls together, add no round trips, and never wake a Durable Object for a read D1
+  can answer.
 </Aside>
 
 ## The API and MCP
@@ -179,12 +177,12 @@ Every limit is a Workers rate-limit binding, and
 `packages/contracts/src/rate-limits.ts` is the table of record: a test
 checks every `wrangler.jsonc` against it.
 
-| Where | Limit | Counted by |
-| --- | --- | --- |
-| The API, without a token | 60 a minute | The client's address |
-| The API, with a token | 1,000 a minute | The token, hashed |
-| REST and MCP | Counted separately | |
-| Sandbox and runner reports | Not counted | |
+| Where                      | Limit              | Counted by           |
+| -------------------------- | ------------------ | -------------------- |
+| The API, without a token   | 60 a minute        | The client's address |
+| The API, with a token      | 1,000 a minute     | The token, hashed    |
+| REST and MCP               | Counted separately |                      |
+| Sandbox and runner reports | Not counted        |                      |
 
 When the limiter itself cannot answer, the request goes through: the
 limits fail open. The [rate limits page](/reference/rate-limits/) lists

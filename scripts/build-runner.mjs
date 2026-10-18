@@ -67,28 +67,41 @@ function inDocker() {
   const have = quiet("docker", ["image", "inspect", BUILDER_IMAGE, "--format", "{{.Id}}"]);
   if (have.status !== 0) {
     console.error(`building ${BUILDER_IMAGE}`);
-    const made = run("docker", ["build", "--platform", "linux/amd64", "-t", BUILDER_IMAGE, "-"], { input: BUILDER_DOCKERFILE, stdio: ["pipe", "inherit", "inherit"] });
+    const made = run("docker", ["build", "--platform", "linux/amd64", "-t", BUILDER_IMAGE, "-"], {
+      input: BUILDER_DOCKERFILE,
+      stdio: ["pipe", "inherit", "inherit"],
+    });
     if (made.status !== 0) throw new Error(`could not build ${BUILDER_IMAGE}`);
   }
   mkdirSync(OUT_DIR, { recursive: true });
   // The source is mounted read-only; Cargo writes only to its volumes, and
   // the binary is copied out to target/runner-image.
-  const script = [
-    "set -e",
-    "cargo build --release --locked --package g1t-runner",
-    "cp /target/release/g1t-runner /out/g1t-runner",
-  ].join("\n");
+  const script = ["set -e", "cargo build --release --locked --package g1t-runner", "cp /target/release/g1t-runner /out/g1t-runner"].join("\n");
   const built = run("docker", [
-    "run", "--rm", "--platform", "linux/amd64",
-    "-v", `${ROOT}:/src:ro`,
-    "-v", `${OUT_DIR}:/out`,
-    "-v", `${VOLUMES.registry}:/usr/local/cargo/registry`,
-    "-v", `${VOLUMES.git}:/usr/local/cargo/git`,
-    "-v", `${VOLUMES.target}:/target`,
-    "-e", "CARGO_TARGET_DIR=/target",
-    "-e", "CARGO_TERM_COLOR=never",
-    "-w", "/src",
-    BUILDER_IMAGE, "sh", "-c", script,
+    "run",
+    "--rm",
+    "--platform",
+    "linux/amd64",
+    "-v",
+    `${ROOT}:/src:ro`,
+    "-v",
+    `${OUT_DIR}:/out`,
+    "-v",
+    `${VOLUMES.registry}:/usr/local/cargo/registry`,
+    "-v",
+    `${VOLUMES.git}:/usr/local/cargo/git`,
+    "-v",
+    `${VOLUMES.target}:/target`,
+    "-e",
+    "CARGO_TARGET_DIR=/target",
+    "-e",
+    "CARGO_TERM_COLOR=never",
+    "-w",
+    "/src",
+    BUILDER_IMAGE,
+    "sh",
+    "-c",
+    script,
   ]);
   if (built.status !== 0) throw new Error("cargo build of the runner in the builder container failed");
   return BINARY;
@@ -124,7 +137,9 @@ export function buildRunner({ mode = "auto" } = {}) {
   }
   if (!isStaticElf(BINARY)) throw new Error(`${BINARY} is not a static x86-64 Linux binary`);
   const size = statSync(BINARY).size;
-  console.error(`g1t-runner: ${(size / 1048576).toFixed(1)} MB, static, built ${useNative ? "natively" : "in the builder container"} in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+  console.error(
+    `g1t-runner: ${(size / 1048576).toFixed(1)} MB, static, built ${useNative ? "natively" : "in the builder container"} in ${((Date.now() - started) / 1000).toFixed(1)}s`,
+  );
   return BINARY;
 }
 

@@ -78,7 +78,15 @@ export type SlidesOp =
   | { op: "set_notes"; slide_id: string; markdown: string }
   | { op: "set_theme"; theme: string; accent: string | null };
 
-export const SLIDES_OPS: readonly SlidesOp["op"][] = ["replace_deck", "insert_slides", "replace_slide", "delete_slides", "move_slide", "set_notes", "set_theme"];
+export const SLIDES_OPS: readonly SlidesOp["op"][] = [
+  "replace_deck",
+  "insert_slides",
+  "replace_slide",
+  "delete_slides",
+  "move_slide",
+  "set_notes",
+  "set_theme",
+];
 
 /** The largest Markdown one op carries, in characters. */
 export const SLIDES_MAX_MARKDOWN = 200_000;

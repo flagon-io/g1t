@@ -1,17 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import {
-  confirmsName,
-  daysUntil,
-  filterCounts,
-  filterRepos,
-  longDate,
-  parseFilter,
-  renamedBranchPath,
-  summariseBulk,
-  tidyName,
-} from "./repo-lifecycle.ts";
+import { confirmsName, daysUntil, filterCounts, filterRepos, longDate, parseFilter, renamedBranchPath, summariseBulk, tidyName } from "./repo-lifecycle.ts";
 
 test("the typed name confirms only the full name, in any case", () => {
   assert.equal(confirmsName("acme/web", "acme/web"), true);
@@ -28,17 +18,41 @@ const repos = [
 ];
 
 test("filters by visibility and archived", () => {
-  assert.deepEqual(filterRepos(repos, "all", "").map((r) => r.name), ["web", "api", "old-site"]);
-  assert.deepEqual(filterRepos(repos, "public", "").map((r) => r.name), ["web", "old-site"]);
-  assert.deepEqual(filterRepos(repos, "private", "").map((r) => r.name), ["api"]);
-  assert.deepEqual(filterRepos(repos, "archived", "").map((r) => r.name), ["old-site"]);
+  assert.deepEqual(
+    filterRepos(repos, "all", "").map((r) => r.name),
+    ["web", "api", "old-site"],
+  );
+  assert.deepEqual(
+    filterRepos(repos, "public", "").map((r) => r.name),
+    ["web", "old-site"],
+  );
+  assert.deepEqual(
+    filterRepos(repos, "private", "").map((r) => r.name),
+    ["api"],
+  );
+  assert.deepEqual(
+    filterRepos(repos, "archived", "").map((r) => r.name),
+    ["old-site"],
+  );
 });
 
 test("search matches every word in name, description or topics", () => {
-  assert.deepEqual(filterRepos(repos, "all", "rust").map((r) => r.name), ["api"]);
-  assert.deepEqual(filterRepos(repos, "all", "SITE").map((r) => r.name), ["web", "old-site"]);
-  assert.deepEqual(filterRepos(repos, "all", "site astro").map((r) => r.name), ["web"]);
-  assert.deepEqual(filterRepos(repos, "private", "site").map((r) => r.name), []);
+  assert.deepEqual(
+    filterRepos(repos, "all", "rust").map((r) => r.name),
+    ["api"],
+  );
+  assert.deepEqual(
+    filterRepos(repos, "all", "SITE").map((r) => r.name),
+    ["web", "old-site"],
+  );
+  assert.deepEqual(
+    filterRepos(repos, "all", "site astro").map((r) => r.name),
+    ["web"],
+  );
+  assert.deepEqual(
+    filterRepos(repos, "private", "site").map((r) => r.name),
+    [],
+  );
 });
 
 test("counts each filter", () => {

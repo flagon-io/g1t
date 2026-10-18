@@ -36,7 +36,9 @@ export function inProject(project: string | null | undefined, pageProjects: stri
 
 /** A project reference as stored: `owner/name`, lowercased; null when it is not one. */
 export function projectRef(value: string): string | null {
-  const s = String(value ?? "").trim().replace(/^\/+|\/+$/g, "").toLowerCase();
+  const s = String(value ?? "")
+    .trim()
+    .replace(/^\/+|\/+$/g, "")
+    .toLowerCase();
   return /^[a-z0-9][a-z0-9._-]{0,99}\/[a-z0-9._-]{1,100}$/.test(s) ? s : null;
 }
-

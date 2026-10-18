@@ -68,12 +68,7 @@ const row = (id: string, author: string, body: string, meta: object | null = nul
 const done = { answer: { state: "done" } };
 
 test("the conversation maps the person to user and g1t's answers to assistant, alternating", () => {
-  const rows = [
-    row("m1", ana, "Hi"),
-    row("m2", G1T_KEY, "Hello! What can I do?", done),
-    row("m3", ana, "What shipped?"),
-    row("m4", ana, "Today, I mean."),
-  ];
+  const rows = [row("m1", ana, "Hi"), row("m2", G1T_KEY, "Hello! What can I do?", done), row("m3", ana, "What shipped?"), row("m4", ana, "Today, I mean.")];
   assert.deepEqual(conversation(rows), [
     { role: "user", content: "Hi" },
     { role: "assistant", content: "Hello! What can I do?" },

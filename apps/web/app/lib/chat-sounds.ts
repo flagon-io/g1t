@@ -46,9 +46,7 @@ export type SoundContext = {
  * or a notification over the feed (which only carries what is for you: a
  * DM, a mention, a reply in your thread).
  */
-export type Arrival =
-  | { source: "chat"; message: ChatMessage; channelKind: "channel" | "dm" }
-  | { source: "feed"; notification: FeedNotification };
+export type Arrival = { source: "chat"; message: ChatMessage; channelKind: "channel" | "dm" } | { source: "feed"; notification: FeedNotification };
 
 /** No two sounds closer than this: a burst of messages is one sound. */
 export const SOUND_GAP_MS = 1_500;
@@ -59,7 +57,9 @@ export const SAME_MESSAGE_MS = 10_000;
 export function mentionsMe(body: string, username: string): boolean {
   const name = username.trim().toLowerCase();
   if (!name) return false;
-  const outsideCode = String(body ?? "").replace(/```[\s\S]*?(```|$)/g, " ").replace(/`[^`\n]*`/g, " ");
+  const outsideCode = String(body ?? "")
+    .replace(/```[\s\S]*?(```|$)/g, " ")
+    .replace(/`[^`\n]*`/g, " ");
   const pattern = new RegExp(`(^|[^a-z0-9_.@-])@${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![a-z0-9_/-])`, "i");
   return pattern.test(outsideCode);
 }

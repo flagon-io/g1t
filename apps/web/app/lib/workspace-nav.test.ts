@@ -67,10 +67,7 @@ test("an alias or old name leads to the same page under the workspace", () => {
 
 test("a click's data request for an alias leads to the page, not its data", () => {
   assert.equal(underWorkspace("/g1t.data", "?_routes=routes%2Fworkspace%2Flayout", "flagon-io"), "/flagon-io");
-  assert.equal(
-    underWorkspace("/g1t/g1t/pulls.data", "?_routes=routes%2Frepo%2Flayout&state=closed", "flagon-io"),
-    "/flagon-io/g1t/pulls?state=closed",
-  );
+  assert.equal(underWorkspace("/g1t/g1t/pulls.data", "?_routes=routes%2Frepo%2Flayout&state=closed", "flagon-io"), "/flagon-io/g1t/pulls?state=closed");
 });
 
 test("the rail's mode follows the address", async () => {
@@ -215,7 +212,18 @@ test("g1t beyond your workspaces is browsed, and whose it is", async () => {
   assert.equal(browsingOf("/friend/notes/issues", viewer), null);
   assert.deepEqual(browsingOf("/friend/other", viewer), { owner: { kind: "workspace", name: "friend", repo: "other" } });
   // g1t's own pages and files are no one's.
-  for (const path of ["/", "/settings/emails", "/notifications", "/new", "/policies/terms", "/workspaces/new", "/invitations", "/robots.txt", "/.well-known/g1t.json", "/u"]) {
+  for (const path of [
+    "/",
+    "/settings/emails",
+    "/notifications",
+    "/new",
+    "/policies/terms",
+    "/workspaces/new",
+    "/invitations",
+    "/robots.txt",
+    "/.well-known/g1t.json",
+    "/u",
+  ]) {
     assert.equal(browsingOf(path, viewer), null, path);
   }
   // Without a workspace there is no rail, and nothing is browsed.

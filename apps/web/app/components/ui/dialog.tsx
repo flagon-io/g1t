@@ -62,7 +62,12 @@ export function DialogContent({
         {children}
         {showClose && (
           <Primitive.Close asChild>
-            <Button variant="ghost" size="inline" aria-label="Close" className="absolute top-4 right-4 p-1 text-faint max-sm:top-2.5 max-sm:right-2.5 max-sm:size-10">
+            <Button
+              variant="ghost"
+              size="inline"
+              aria-label="Close"
+              className="absolute top-4 right-4 p-1 text-faint max-sm:top-2.5 max-sm:right-2.5 max-sm:size-10"
+            >
               <X size={16} />
             </Button>
           </Primitive.Close>

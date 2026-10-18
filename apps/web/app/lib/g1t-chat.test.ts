@@ -51,9 +51,15 @@ test("other conversations, thread replies and deletions", () => {
   const elsewhere: ChatLiveEvent = { type: "message.created", message: message("msg_3", { channel_id: "chn_2" }) };
   assert.equal(applyLive(list, elsewhere, "chn_1").length, 2);
   assert.equal(applyLive(list, { type: "message.created", message: message("msg_3", { thread_root: "msg_1" }) }, "chn_1").length, 2);
-  assert.deepEqual(applyLive(list, { type: "message.deleted", channel_id: "chn_1", id: "msg_1" }, "chn_1").map((m) => m.id), ["msg_2"]);
+  assert.deepEqual(
+    applyLive(list, { type: "message.deleted", channel_id: "chn_1", id: "msg_1" }, "chn_1").map((m) => m.id),
+    ["msg_2"],
+  );
   // Out of order arrivals land in order.
-  assert.deepEqual(applyLive([message("msg_3")], { type: "message.created", message: message("msg_2") }, "chn_1").map((m) => m.id), ["msg_2", "msg_3"]);
+  assert.deepEqual(
+    applyLive([message("msg_3")], { type: "message.created", message: message("msg_2") }, "chn_1").map((m) => m.id),
+    ["msg_2", "msg_3"],
+  );
 });
 
 test("a cleared conversation empties, and only that one", () => {

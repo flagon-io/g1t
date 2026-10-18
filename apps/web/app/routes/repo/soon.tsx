@@ -17,7 +17,12 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 }
 
 /** Soon pages that have since been built, and where each is now. */
-const BUILT: Record<string, string> = { environments: "settings/environments", releases: "releases", logs: "observability/logs", errors: "observability/errors" };
+const BUILT: Record<string, string> = {
+  environments: "settings/environments",
+  releases: "releases",
+  logs: "observability/logs",
+  errors: "observability/errors",
+};
 
 export function loader({ params }: Route.LoaderArgs) {
   const built = BUILT[params.feature];
@@ -99,10 +104,7 @@ export function SoonView({
               <ul className="mt-2 divide-y divide-line">
                 {inProjects.map((project) => (
                   <li key={project.to}>
-                    <Link
-                      to={`${project.to}/${item.today!.path}`}
-                      className="group flex items-center justify-between gap-4 py-2.5 text-sm"
-                    >
+                    <Link to={`${project.to}/${item.today!.path}`} className="group flex items-center justify-between gap-4 py-2.5 text-sm">
                       <span className="font-medium">
                         {item.today!.label} in {project.name}
                       </span>
@@ -112,10 +114,7 @@ export function SoonView({
                 ))}
               </ul>
             ) : (
-              <Link
-                to={newProject ?? "/new"}
-                className="group mt-2 flex items-center justify-between gap-4 text-sm"
-              >
+              <Link to={newProject ?? "/new"} className="group mt-2 flex items-center justify-between gap-4 text-sm">
                 <span>
                   <span className="font-medium">Create a project</span>
                   <span className="text-muted"> to plan {item.today.label.toLowerCase()} in it.</span>

@@ -61,7 +61,10 @@ function rank(query: string, codes: string[], name: string, tags: string[]): num
  * query is ignored; an empty query finds nothing.
  */
 export function searchEmoji(data: EmojiData | null, customs: readonly Pick<CustomEmoji, "name" | "file">[], typed: string, limit = 60): EmojiPick[] {
-  const query = typed.trim().toLowerCase().replace(/^:+|:+$/g, "");
+  const query = typed
+    .trim()
+    .toLowerCase()
+    .replace(/^:+|:+$/g, "");
   if (!query) return [];
   const found: { pick: EmojiPick; score: number; order: number }[] = [];
   customs.forEach((custom, order) => {
@@ -83,7 +86,11 @@ export const EMOJI_NAME = /^[a-z0-9_+-]{2,32}$/;
 
 /** A name typed for a new emoji, as it would be kept: lowercase, without colons. */
 export function cleanEmojiName(typed: string): string {
-  return typed.trim().replace(/^:+|:+$/g, "").toLowerCase().replace(/\s+/g, "_");
+  return typed
+    .trim()
+    .replace(/^:+|:+$/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, "_");
 }
 
 /**
@@ -197,7 +204,11 @@ export function reactionsAfterEvent(reactions: readonly ChatReaction[], event: R
 }
 
 /** Applies a reaction event to the messages it is about. */
-export function applyReactionEvent<M extends { id: string; reactions?: ChatReaction[] }>(messages: readonly M[], event: ReactionEvent, meId: string | null): M[] {
+export function applyReactionEvent<M extends { id: string; reactions?: ChatReaction[] }>(
+  messages: readonly M[],
+  event: ReactionEvent,
+  meId: string | null,
+): M[] {
   return messages.map((m) => (m.id === event.message_id ? { ...m, reactions: reactionsAfterEvent(m.reactions ?? [], event, meId) } : m));
 }
 

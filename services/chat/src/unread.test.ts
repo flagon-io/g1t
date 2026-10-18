@@ -18,7 +18,15 @@ test("counts per channel, replies included, with mentions of the viewer", () => 
     { channel_id: "c2", id: "m4", author: "user:b", mentions: " syntaqxx " },
     { channel_id: "c2", id: "m0", author: "user:b", mentions: " syntaqx " },
   ];
-  const counts = tally(rows, "user:a", "syntaqx", new Map([["c1", null], ["c2", "m1"]]));
+  const counts = tally(
+    rows,
+    "user:a",
+    "syntaqx",
+    new Map([
+      ["c1", null],
+      ["c2", "m1"],
+    ]),
+  );
   assert.deepEqual(counts.get("c1"), { unread: 2, mentions: 1 });
   // m0 was read already, and @syntaqxx is someone else.
   assert.deepEqual(counts.get("c2"), { unread: 1, mentions: 0 });
@@ -37,7 +45,10 @@ test("the sidebar puts starred first, then the most recently active", () => {
     entry("pinned", true, "2026-10-02T00:00:00.000Z"),
     entry("older", false, "2026-10-05T00:00:00.000Z"),
   ]);
-  assert.deepEqual(ordered.map((e) => e.title), ["pinned", "busy", "older", "quiet"]);
+  assert.deepEqual(
+    ordered.map((e) => e.title),
+    ["pinned", "busy", "older", "quiet"],
+  );
 });
 
 test("a direct message is titled by the others, or by you for notes", () => {

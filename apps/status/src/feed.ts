@@ -35,7 +35,13 @@ export function feedItems(incidents: StatusIncident[], maintenance: StatusMainte
   }
   for (const m of maintenance) {
     for (const update of m.updates) {
-      items.push({ id: `${m.url}#update-${update.id}`, url: `${m.url}#update-${update.id}`, title: `Maintenance: ${m.title}`, text: update.text, at: update.at });
+      items.push({
+        id: `${m.url}#update-${update.id}`,
+        url: `${m.url}#update-${update.id}`,
+        title: `Maintenance: ${m.title}`,
+        text: update.text,
+        at: update.at,
+      });
     }
   }
   return items.sort((a, b) => b.at.localeCompare(a.at)).slice(0, size);

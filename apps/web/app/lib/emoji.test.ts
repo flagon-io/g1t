@@ -158,5 +158,11 @@ test("who reacted reads as a sentence", () => {
 
 test("recent emoji: newest first, each once, a few", () => {
   assert.deepEqual(pushRecent(["🎉", "👍"], "👍"), ["👍", "🎉"]);
-  assert.equal(pushRecent(Array.from({ length: 30 }, (_, i) => String(i)), "x").length, 24);
+  assert.equal(
+    pushRecent(
+      Array.from({ length: 30 }, (_, i) => String(i)),
+      "x",
+    ).length,
+    24,
+  );
 });

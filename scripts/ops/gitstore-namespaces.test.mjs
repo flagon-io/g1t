@@ -19,7 +19,7 @@ const sharded = {
     GITSTORE_NAMESPACES: JSON.stringify({ GITSTORE: "g1t", GITSTORE_1: "g1t-us-1", GITSTORE_EU: "g1t-eu", GITSTORE_2: "g1t-us-2" }),
     GITSTORE_NEW_REPOS: "g1t,g1t-us-1,g1t-us-2",
     GITSTORE_EU_NAMESPACE: "g1t-eu",
-    GITSTORE_NAMESPACE_LIMITS: JSON.stringify({ "g1t": { max_repos: 100 } }),
+    GITSTORE_NAMESPACE_LIMITS: JSON.stringify({ g1t: { max_repos: 100 } }),
   },
 };
 
@@ -59,7 +59,10 @@ test("standings add up holdings and health, and warn about what needs doing", ()
     { window: "hour", store: "g1t", peak: 100, calls: 5_000, errors: 0, rate_limited: 2, rejected: 0 },
     { window: "hour", store: "g1t-us-1@fallback", peak: 3, calls: 40, errors: 0, rate_limited: 0, rejected: 0 },
   ];
-  const rows = standings(configured(sharded), held, health, [{ namespace: "g1t", count: 7 }, { namespace: "g1t-eu", count: 1 }]);
+  const rows = standings(configured(sharded), held, health, [
+    { namespace: "g1t", count: 7 },
+    { namespace: "g1t-eu", count: 1 },
+  ]);
   const by = Object.fromEntries(rows.map((row) => [row.namespace, row]));
   assert.equal(by.g1t.repos, 100);
   assert.equal(by.g1t.stored_bytes, 3e9);
@@ -89,7 +92,13 @@ test("what Cloudflare has is checked against what is bound", () => {
   assert.equal(by.g1t.jurisdiction, "any");
   // Named and bound nowhere, and not made: both said.
   assert.ok(by["g1t-us-2"].warnings.some((w) => /no namespace of this name/.test(w)));
-  const right = standings(configured(sharded), [], [], [], made.map((one) => (one.namespace === "g1t-eu" ? { ...one, jurisdiction: "eu" } : one)));
+  const right = standings(
+    configured(sharded),
+    [],
+    [],
+    [],
+    made.map((one) => (one.namespace === "g1t-eu" ? { ...one, jurisdiction: "eu" } : one)),
+  );
   assert.deepEqual(right.find((row) => row.namespace === "g1t-eu").warnings, []);
   assert.equal(right.find((row) => row.namespace === "g1t-eu").jurisdiction, "eu");
 });

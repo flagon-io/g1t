@@ -25,7 +25,17 @@
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import type { FeedCounts, FeedEvent, FeedNotification, NotifyPreferences, OwnPresence, PresenceChange, PresenceEntry, RepoChange, WorkspaceChange } from "@g1t/contracts";
+import type {
+  FeedCounts,
+  FeedEvent,
+  FeedNotification,
+  NotifyPreferences,
+  OwnPresence,
+  PresenceChange,
+  PresenceEntry,
+  RepoChange,
+  WorkspaceChange,
+} from "@g1t/contracts";
 
 import type { DesktopRunnerBridge } from "./desktop-runner";
 import type { DesktopSettingsBridge } from "./desktop-settings";
@@ -139,7 +149,11 @@ const never = () => () => {};
 
 /** Whether this page is inside the desktop app: false on the server, and until hydrated. */
 export function useDesktopApp(): boolean {
-  return useSyncExternalStore(never, () => !!desktopBridge(), () => false);
+  return useSyncExternalStore(
+    never,
+    () => !!desktopBridge(),
+    () => false,
+  );
 }
 
 /**
@@ -196,7 +210,8 @@ export const webSink: NotificationSink = {
     showToast(notification);
   },
   setBadge(count) {
-    const nav = typeof navigator !== "undefined" ? (navigator as Navigator & { setAppBadge?(n: number): Promise<void>; clearAppBadge?(): Promise<void> }) : null;
+    const nav =
+      typeof navigator !== "undefined" ? (navigator as Navigator & { setAppBadge?(n: number): Promise<void>; clearAppBadge?(): Promise<void> }) : null;
     try {
       if (count > 0) void nav?.setAppBadge?.(count)?.catch(() => {});
       else void nav?.clearAppBadge?.()?.catch(() => {});
@@ -290,7 +305,11 @@ function subscribeStore(listener: () => void): () => void {
 }
 
 export function useNotifyState(): NotifyState {
-  return useSyncExternalStore(subscribeStore, () => state, () => SERVER_STATE);
+  return useSyncExternalStore(
+    subscribeStore,
+    () => state,
+    () => SERVER_STATE,
+  );
 }
 
 /** The rail's numbers for a workspace from the feed, or null while it cannot say. */
@@ -517,7 +536,11 @@ function onEvent(event: FeedEvent): void {
     case "inbox": {
       // Items that settled by themselves: their notifications go from every tab's recent list.
       const settled = new Set(Array.isArray(event.settled) ? event.settled : []);
-      set(settled.size > 0 ? { inbox: event.unread, recent: state.recent.filter((n) => !n.inbox_thread || !settled.has(n.inbox_thread)) } : { inbox: event.unread });
+      set(
+        settled.size > 0
+          ? { inbox: event.unread, recent: state.recent.filter((n) => !n.inbox_thread || !settled.has(n.inbox_thread)) }
+          : { inbox: event.unread },
+      );
       break;
     }
     case "presence": {
@@ -753,7 +776,8 @@ export async function enablePush(): Promise<PushResult> {
   try {
     const reg = await registration();
     await navigator.serviceWorker.ready;
-    const subscription = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) }));
+    const subscription =
+      (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) }));
     const response = await api({ intent: "subscribe", subscription: subscription.toJSON() });
     if (!response.ok) return "failed";
     setPushChoice("on");

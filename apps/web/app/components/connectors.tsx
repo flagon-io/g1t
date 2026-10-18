@@ -318,9 +318,7 @@ export function ConnectorDirectory({ scope, views, connected, workspace, canMana
                       : "border-line text-muted hover:border-line-strong hover:text-fg md:hover:bg-surface",
                   )}
                 >
-                  <span className={cn("hidden text-faint", nav === "sidebar" && "md:inline-flex", current && "text-accent")}>
-                    {CATEGORY_ICONS[option.id]}
-                  </span>
+                  <span className={cn("hidden text-faint", nav === "sidebar" && "md:inline-flex", current && "text-accent")}>{CATEGORY_ICONS[option.id]}</span>
                   <span className="grow text-left">{option.title}</span>
                   <span className="text-xs text-faint tabular-nums">{counts[option.id]}</span>
                 </button>
@@ -369,11 +367,7 @@ export function ConnectorDirectory({ scope, views, connected, workspace, canMana
             title="Available"
             count={found.available.length}
             about={
-              scope === "workspace"
-                ? canManage
-                  ? "Ready to connect now."
-                  : `Ready now. An owner of ${workspace} connects them.`
-                : "Ready to connect now."
+              scope === "workspace" ? (canManage ? "Ready to connect now." : `Ready now. An owner of ${workspace} connects them.`) : "Ready to connect now."
             }
           >
             <Cards>{found.available.map(card)}</Cards>
@@ -389,7 +383,11 @@ export function ConnectorDirectory({ scope, views, connected, workspace, canMana
                       {CATEGORY_ICONS[group.id]}
                       {group.title}
                     </p>
-                    <Cards>{group.views.map((view) => <ConnectorCard key={view.id} view={view} scope={scope} state={null} workspace={workspace} canManage={canManage} showCategory={false} />)}</Cards>
+                    <Cards>
+                      {group.views.map((view) => (
+                        <ConnectorCard key={view.id} view={view} scope={scope} state={null} workspace={workspace} canManage={canManage} showCategory={false} />
+                      ))}
+                    </Cards>
                   </div>
                 ))}
               </div>
@@ -518,8 +516,7 @@ export function ScopeNote({ scope, workspace }: { scope: ConnectorScope; workspa
       <p>
         {scope === "workspace" ? (
           <>
-            Connected here, a tool works <span className="text-fg">for everyone in {workspace}</span>.
-            Your own accounts, such as your calendar, are under{" "}
+            Connected here, a tool works <span className="text-fg">for everyone in {workspace}</span>. Your own accounts, such as your calendar, are under{" "}
             <Link to="/settings/integrations" className="text-accent hover:underline">
               your integrations
             </Link>
@@ -527,8 +524,8 @@ export function ScopeNote({ scope, workspace }: { scope: ConnectorScope; workspa
           </>
         ) : (
           <>
-            Connected here, a tool works <span className="text-fg">just for you, in every workspace</span> you belong to. Tools
-            the whole team shares are connected by a workspace owner, under the workspace's Integrations.
+            Connected here, a tool works <span className="text-fg">just for you, in every workspace</span> you belong to. Tools the whole team shares are
+            connected by a workspace owner, under the workspace's Integrations.
           </>
         )}
       </p>

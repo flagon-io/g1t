@@ -94,7 +94,13 @@ test("a refusal from the service reads as a sentence", () => {
 test("deferred images get their addresses once the work item is open", () => {
   const body = `Steps:\n![a.png](${deferredUrl("k1")})\n![b.png](${deferredUrl("k2")})\nEnd`;
   assert.deepEqual([...deferredRefs(body)], ["k1", "k2"]);
-  const resolved = resolveDeferred(body, new Map([["k1", "https://u/attachments/1"], ["k2", null]]));
+  const resolved = resolveDeferred(
+    body,
+    new Map([
+      ["k1", "https://u/attachments/1"],
+      ["k2", null],
+    ]),
+  );
   assert.equal(resolved, "Steps:\n![a.png](https://u/attachments/1)\nEnd");
   // A ref it was not given is left alone.
   assert.equal(resolveDeferred(`![c](${deferredUrl("k3")})`, new Map()), "![c](attachment:k3)");

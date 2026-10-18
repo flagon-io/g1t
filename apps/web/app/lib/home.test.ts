@@ -126,12 +126,18 @@ test("Start here: the most pressing tier first, then what has waited longest", (
     row({ key: "pull:p", kind: "pull_blocked", at: NOW - 10 * 60_000, action: { label: "Look", to: "/acme/web/pull/3" } }),
   ];
   const ranked = rankAttention(rows);
-  assert.deepEqual(ranked.map((r) => r.key), ["pull:p", "review:old", "review:new", "chat:old"]);
+  assert.deepEqual(
+    ranked.map((r) => r.key),
+    ["pull:p", "review:old", "review:new", "chat:old"],
+  );
   const start = startHere(ranked);
   assert.equal(start?.row.key, "pull:p");
   assert.match(start?.why ?? "", /can't land/);
   // A failed production deploy beats everything.
-  const withDeploy = rankAttention([...rows, row({ key: "deploy:site", kind: "deploy", at: NOW, action: { label: "See the build", to: "/acme/site/deployments/1" } })]);
+  const withDeploy = rankAttention([
+    ...rows,
+    row({ key: "deploy:site", kind: "deploy", at: NOW, action: { label: "See the build", to: "/acme/site/deployments/1" } }),
+  ]);
   assert.equal(startHere(withDeploy)?.row.key, "deploy:site");
   // Ties in tier say so.
   const two = startHere(rankAttention(rows.filter((r) => r.kind === "review")));
@@ -142,8 +148,14 @@ test("Start here: the most pressing tier first, then what has waited longest", (
 
 test("the same order whatever order the rows came in", () => {
   const rows = [row({ key: "b", kind: "review", at: NOW }), row({ key: "a", kind: "review", at: NOW, action: { label: "Review", to: "/y" } })];
-  assert.deepEqual(rankAttention(rows).map((r) => r.key), ["a", "b"]);
-  assert.deepEqual(rankAttention([...rows].reverse()).map((r) => r.key), ["a", "b"]);
+  assert.deepEqual(
+    rankAttention(rows).map((r) => r.key),
+    ["a", "b"],
+  );
+  assert.deepEqual(
+    rankAttention([...rows].reverse()).map((r) => r.key),
+    ["a", "b"],
+  );
 });
 
 const item = (over: Partial<InboxItem>): InboxItem => ({
@@ -188,7 +200,10 @@ test("a notification about something already listed is left out", () => {
     notifications: [item({})],
     chat: [],
   });
-  assert.deepEqual(out.rows.map((r) => r.key), ["pull:p1"]);
+  assert.deepEqual(
+    out.rows.map((r) => r.key),
+    ["pull:p1"],
+  );
   assert.deepEqual(out.missing, []);
 });
 
@@ -200,8 +215,14 @@ test("without Code access no Code row is asked for or shown, and a silent source
     notifications: [item({}), item({ id: "n2", repo: null, reason: "mention", severity: "warning", url: "/acme/-/chat/general" })],
     chat: null,
   });
-  assert.deepEqual(out.rows.map((r) => r.key), ["notification:n2"]);
-  assert.equal(out.rows.some((r) => r.from === "code"), false);
+  assert.deepEqual(
+    out.rows.map((r) => r.key),
+    ["notification:n2"],
+  );
+  assert.equal(
+    out.rows.some((r) => r.from === "code"),
+    false,
+  );
   assert.deepEqual(out.missing, ["Chat"]);
 });
 
@@ -340,17 +361,46 @@ function busyDay(): ActivityDigest {
       },
       {
         ...quietRepo("rep_api"),
-        pushes: { count: 5, commits: 8, branches: ["main"], by: [{ actor: CY, count: 5, commits: 8 }], default_branch: { count: 5, commits: 8, by: [{ actor: CY, count: 5, commits: 8 }], last_at: iso(NOW - 5 * HOUR) } },
+        pushes: {
+          count: 5,
+          commits: 8,
+          branches: ["main"],
+          by: [{ actor: CY, count: 5, commits: 8 }],
+          default_branch: { count: 5, commits: 8, by: [{ actor: CY, count: 5, commits: 8 }], last_at: iso(NOW - 5 * HOUR) },
+        },
         pulls: { opened: [count(CY, 1)], merged: [count(CY, 1)], closed: [] },
         packages: [{ ecosystem: "container", name: "api", version: "1.4.0", actor: G1T, at: iso(NOW - HOUR) }],
       },
       {
         ...quietRepo("rep_docs"),
-        pushes: { count: 2, commits: 2, branches: ["typo"], by: [{ actor: BO, count: 2, commits: 2 }], default_branch: { count: 0, commits: 0, by: [], last_at: null } },
+        pushes: {
+          count: 2,
+          commits: 2,
+          branches: ["typo"],
+          by: [{ actor: BO, count: 2, commits: 2 }],
+          default_branch: { count: 0, commits: 0, by: [], last_at: null },
+        },
       },
       {
         ...quietRepo("rep_cli"),
-        pushes: { count: 3, commits: 4, branches: ["trunk"], by: [{ actor: ANA, count: 1, commits: 2 }, { actor: MARGO, count: 2, commits: 2 }], default_branch: { count: 3, commits: 4, by: [{ actor: ANA, count: 1, commits: 2 }, { actor: MARGO, count: 2, commits: 2 }], last_at: iso(NOW - 30 * 60_000) } },
+        pushes: {
+          count: 3,
+          commits: 4,
+          branches: ["trunk"],
+          by: [
+            { actor: ANA, count: 1, commits: 2 },
+            { actor: MARGO, count: 2, commits: 2 },
+          ],
+          default_branch: {
+            count: 3,
+            commits: 4,
+            by: [
+              { actor: ANA, count: 1, commits: 2 },
+              { actor: MARGO, count: 2, commits: 2 },
+            ],
+            last_at: iso(NOW - 30 * 60_000),
+          },
+        },
       },
     ],
     folios: {
@@ -415,7 +465,11 @@ test("the digest: what was done, by kind with counts, and who, agents marked", (
   assert.equal(digest.people.actors[0]!.name, "ana");
   // Each row's parts add up to its count, and the kinds' counts to every row's.
   for (const actor of digest.people.actors) {
-    assert.equal(Object.values(actor.parts).reduce((a, b) => a + b, 0), actor.count, actor.name);
+    assert.equal(
+      Object.values(actor.parts).reduce((a, b) => a + b, 0),
+      actor.count,
+      actor.name,
+    );
   }
   // The summary still counts people only.
   assert.deepEqual(digest.summary, { people: 3, commits: 41, merged: 5, said: 105, anything: true, peopleRead: true });
@@ -424,7 +478,15 @@ test("the digest: what was done, by kind with counts, and who, agents marked", (
 });
 
 test("g1t is one row, named, whichever key it used: its account, a workspace, or chat's system:g1t", () => {
-  const chat: ChatActivity = { ...busyChat, messages: 5, channels: 1, authors: [{ key: "system:g1t", messages: 3 }, { key: ANA, messages: 2 }] };
+  const chat: ChatActivity = {
+    ...busyChat,
+    messages: 5,
+    channels: 1,
+    authors: [
+      { key: "system:g1t", messages: 3 },
+      { key: ANA, messages: 2 },
+    ],
+  };
   const activity = { ...busyDay(), folios: null, repos: [{ ...quietRepo("rep_web"), comments: [count(G1T, 2), count("user:wsp_acme", 1)] }] };
   const digest = digestOf({ slug: "acme", repos: REPOS, activity, chat, names: { [ANA]: "ana", "user:wsp_acme": "g1t", "system:g1t": "g1t" }, code: true });
   assert.deepEqual(
@@ -436,14 +498,27 @@ test("g1t is one row, named, whichever key it used: its account, a workspace, or
   );
   assert.equal(digest.summary.people, 1);
   // A person whose name could not be read is an unknown account, never "someone".
-  const unread = digestOf({ slug: "acme", repos: REPOS, activity: null, chat: { ...chat, authors: [{ key: "user:usr_gone", messages: 1 }] }, names: {}, code: true });
-  assert.deepEqual(unread.people.actors.map((actor) => actor.name), ["unknown account"]);
+  const unread = digestOf({
+    slug: "acme",
+    repos: REPOS,
+    activity: null,
+    chat: { ...chat, authors: [{ key: "user:usr_gone", messages: 1 }] },
+    names: {},
+    code: true,
+  });
+  assert.deepEqual(
+    unread.people.actors.map((actor) => actor.name),
+    ["unknown account"],
+  );
 });
 
 test("the digest says which part didn't answer, and counts what could be read", () => {
   const noChat = digestOf({ slug: "acme", repos: REPOS, activity: busyDay(), chat: null, names: NAMES, code: true });
   assert.deepEqual(noChat.missing, ["Chat"]);
-  assert.equal(noChat.people.lines.some((line) => line.key === "chat"), false);
+  assert.equal(
+    noChat.people.lines.some((line) => line.key === "chat"),
+    false,
+  );
   const noCode = digestOf({ slug: "acme", repos: REPOS, activity: null, chat: busyChat, names: NAMES, code: true });
   assert.deepEqual(noCode.missing, ["Code"]);
   assert.deepEqual(
@@ -465,7 +540,22 @@ test("the digest says which part didn't answer, and counts what could be read", 
   const imported = digestOf({
     slug: "acme",
     repos: REPOS,
-    activity: { ...busyDay(), folios: null, repos: [{ ...quietRepo("rep_web"), pushes: { count: 2, commits: 7, branches: ["main"], by: [{ actor: "", count: 2, commits: 7 }], default_branch: { count: 2, commits: 7, by: [{ actor: "", count: 2, commits: 7 }], last_at: iso(NOW - HOUR) } } }] },
+    activity: {
+      ...busyDay(),
+      folios: null,
+      repos: [
+        {
+          ...quietRepo("rep_web"),
+          pushes: {
+            count: 2,
+            commits: 7,
+            branches: ["main"],
+            by: [{ actor: "", count: 2, commits: 7 }],
+            default_branch: { count: 2, commits: 7, by: [{ actor: "", count: 2, commits: 7 }], last_at: iso(NOW - HOUR) },
+          },
+        },
+      ],
+    },
     chat: null,
     names: {},
     code: true,
@@ -483,11 +573,25 @@ test("the sentence: people first, then what landed; honest when quiet or unread"
     spanSentence({ words: "Since Tuesday evening" }, digest, 12),
     "Since Tuesday evening, 3 people pushed 41 commits and merged 5 changes and 12 changes landed.",
   );
-  const quiet = digestOf({ slug: "acme", repos: REPOS, activity: { ...busyDay(), repos: [], folios: { created: [], edited: [], edited_count: 0 } }, chat: { ...busyChat, messages: 0, channels: 0, authors: [] }, names: {}, code: true });
+  const quiet = digestOf({
+    slug: "acme",
+    repos: REPOS,
+    activity: { ...busyDay(), repos: [], folios: { created: [], edited: [], edited_count: 0 } },
+    chat: { ...busyChat, messages: 0, channels: 0, authors: [] },
+    names: {},
+    code: true,
+  });
   assert.equal(spanSentence({ words: "Since Tuesday evening" }, quiet, 0), "Quiet since Tuesday evening: nothing pushed, merged, deployed or said.");
   assert.equal(spanSentence({ words: "In the last 24 hours" }, quiet, 0), "Quiet in the last 24 hours: nothing pushed, merged, deployed or said.");
   // Only merges.
-  const mergesOnly = digestOf({ slug: "acme", repos: REPOS, activity: { ...busyDay(), repos: [], folios: null }, chat: { ...busyChat, authors: [], messages: 0, channels: 0 }, names: {}, code: true });
+  const mergesOnly = digestOf({
+    slug: "acme",
+    repos: REPOS,
+    activity: { ...busyDay(), repos: [], folios: null },
+    chat: { ...busyChat, authors: [], messages: 0, channels: 0 },
+    names: {},
+    code: true,
+  });
   assert.equal(spanSentence({ words: "Since this morning" }, mergesOnly, 5), "Since this morning, 5 changes landed.");
   // People only talked.
   const talked = digestOf({ slug: "acme", repos: REPOS, activity: { ...busyDay(), repos: [], folios: null }, chat: busyChat, names: NAMES, code: true });
@@ -513,10 +617,13 @@ test("what landed: every merge in the span, newest first, g1t's older ones as @g
     ],
     SPAN,
   );
-  assert.deepEqual(merged.map((change) => [change.kind, change.title, change.detail]), [
-    ["merge", "Fix the flaky test", "web#2 · by bo"],
-    ["merge", "Fix the flaky test", "web#1 · by @g1t, merged by bo"],
-  ]);
+  assert.deepEqual(
+    merged.map((change) => [change.kind, change.title, change.detail]),
+    [
+      ["merge", "Fix the flaky test", "web#2 · by bo"],
+      ["merge", "Fix the flaky test", "web#1 · by @g1t, merged by bo"],
+    ],
+  );
 });
 
 test("what landed, besides merges: direct pushes, releases, packages and production builds, newest first", () => {
@@ -532,9 +639,39 @@ test("what landed, besides merges: direct pushes, releases, packages and product
     ],
   );
   const builds = landedDeploys([
-    { key: "deploy:site:d1", project: "site", kind: "production", outcome: "live", commit: "abcdef1", branch: null, at: NOW - HOUR, to: "/acme/site/deployments/d1", by: "@g1t" },
-    { key: "deploy:site:d2", project: "site", kind: "preview", outcome: "live", commit: "abcdef2", branch: "fix", at: NOW - HOUR, to: "/acme/site/deployments/d2", by: "bo" },
-    { key: "deploy:site:d3", project: "site", kind: "production", outcome: "failed", commit: "abcdef3", branch: null, at: NOW - HOUR, to: "/acme/site/deployments/d3", by: "bo" },
+    {
+      key: "deploy:site:d1",
+      project: "site",
+      kind: "production",
+      outcome: "live",
+      commit: "abcdef1",
+      branch: null,
+      at: NOW - HOUR,
+      to: "/acme/site/deployments/d1",
+      by: "@g1t",
+    },
+    {
+      key: "deploy:site:d2",
+      project: "site",
+      kind: "preview",
+      outcome: "live",
+      commit: "abcdef2",
+      branch: "fix",
+      at: NOW - HOUR,
+      to: "/acme/site/deployments/d2",
+      by: "bo",
+    },
+    {
+      key: "deploy:site:d3",
+      project: "site",
+      kind: "production",
+      outcome: "failed",
+      commit: "abcdef3",
+      branch: null,
+      at: NOW - HOUR,
+      to: "/acme/site/deployments/d3",
+      by: "bo",
+    },
   ]);
   assert.deepEqual(
     builds.map((change) => [change.kind, change.title, change.failed ?? false]),
@@ -551,11 +688,43 @@ test("what landed, besides merges: direct pushes, releases, packages and product
 });
 
 test("a production build is its own row only where no merge or push on the list says it", () => {
-  const row = (key: string, commit: string): DeployRow => ({ key, project: "site", kind: "production", outcome: "live", commit, branch: null, at: NOW - HOUR, to: `/acme/site/deployments/${key}`, by: "bo" });
-  const merge: LandedChange = { key: "merge:1", kind: "merge", title: "Fix", detail: "", to: "/acme/site/pull/1", at: NOW - 2 * HOUR, sha: "aaaaaaa111", repoId: "r" };
-  const push: LandedChange = { key: "push:1", kind: "push", title: "Push", detail: "", to: "/acme/site/activity", at: NOW - 2 * HOUR, sha: "bbbbbbb222", repoId: "r", shipped: { state: "live", at: NOW - HOUR, to: "/acme/site/deployments/d2" } };
+  const row = (key: string, commit: string): DeployRow => ({
+    key,
+    project: "site",
+    kind: "production",
+    outcome: "live",
+    commit,
+    branch: null,
+    at: NOW - HOUR,
+    to: `/acme/site/deployments/${key}`,
+    by: "bo",
+  });
+  const merge: LandedChange = {
+    key: "merge:1",
+    kind: "merge",
+    title: "Fix",
+    detail: "",
+    to: "/acme/site/pull/1",
+    at: NOW - 2 * HOUR,
+    sha: "aaaaaaa111",
+    repoId: "r",
+  };
+  const push: LandedChange = {
+    key: "push:1",
+    kind: "push",
+    title: "Push",
+    detail: "",
+    to: "/acme/site/activity",
+    at: NOW - 2 * HOUR,
+    sha: "bbbbbbb222",
+    repoId: "r",
+    shipped: { state: "live", at: NOW - HOUR, to: "/acme/site/deployments/d2" },
+  };
   const builds = landedDeploys([row("d1", "aaaaaaa"), row("d2", "ccccccc"), row("d3", "ddddddd")], [merge, push]);
-  assert.deepEqual(builds.map((change) => change.key), ["landed:d3"]);
+  assert.deepEqual(
+    builds.map((change) => change.key),
+    ["landed:d3"],
+  );
 });
 
 const deploy = (over: Partial<Deployment>): Deployment => ({
@@ -594,11 +763,14 @@ test("builds that finished in the span: live or failed, never skipped", () => {
     SPAN,
     { "user:bo": "bo" },
   );
-  assert.deepEqual(rows.map((row) => [row.key, row.outcome]), [
-    ["deploy:site:d1", "live"],
-    ["deploy:site:d2", "live"],
-    ["deploy:site:d3", "failed"],
-  ]);
+  assert.deepEqual(
+    rows.map((row) => [row.key, row.outcome]),
+    [
+      ["deploy:site:d1", "live"],
+      ["deploy:site:d2", "live"],
+      ["deploy:site:d3", "failed"],
+    ],
+  );
   assert.equal(rows[0]!.to, "/acme/site/deployments/d1");
   assert.equal(rows[0]!.commit, "abcdef1");
   // The maker is named, never shown as an id; an older agent's by its handle; an id identity doesn't know as someone.
@@ -617,7 +789,10 @@ test("running now: workflow runs and builds going", () => {
     ],
     "acme",
   );
-  assert.deepEqual(builds.map((row) => row.status), ["Building"]);
+  assert.deepEqual(
+    builds.map((row) => row.status),
+    ["Building"],
+  );
   const run = (over: Partial<WorkflowRun>): WorkflowRun => ({
     id: "run_1",
     workflowId: "wf_1",
@@ -640,7 +815,15 @@ test("running now: workflow runs and builds going", () => {
     ...over,
   });
   const workflows = runningWorkflows([
-    { repo, runs: [run({}), run({ id: "run_2", status: "queued", startedAt: null, title: "" }), run({ id: "run_3", status: "completed", conclusion: "success" }), run({ id: "run_4", status: "action_required" })] },
+    {
+      repo,
+      runs: [
+        run({}),
+        run({ id: "run_2", status: "queued", startedAt: null, title: "" }),
+        run({ id: "run_3", status: "completed", conclusion: "success" }),
+        run({ id: "run_4", status: "action_required" }),
+      ],
+    },
   ]);
   assert.deepEqual(
     workflows.map((row) => [row.key, row.title, row.detail, row.status, row.to]),
@@ -651,9 +834,11 @@ test("running now: workflow runs and builds going", () => {
     ],
   );
   // Longest-going first within a kind: workflow runs, then builds.
-  assert.deepEqual(running([builds, workflows.slice(0, 1)]).map((row) => row.key), ["workflow:acme/web:run_1", "deploy:site:d1"]);
+  assert.deepEqual(
+    running([builds, workflows.slice(0, 1)]).map((row) => row.key),
+    ["workflow:acme/web:run_1", "deploy:site:d1"],
+  );
 });
-
 
 test("the span's months: one, or the ones it crosses", () => {
   assert.deepEqual(spanMonths(SPAN), ["2026-10"]);
@@ -687,15 +872,17 @@ test("spend in the span: the UTC days it covers across months, at price, without
   const spend = spendIn([september, october], { from: Date.parse("2026-09-29T15:00:00Z"), now: NOW }, 13_609_000);
   assert.deepEqual([spend.from, spend.to], ["2026-09-29", "2026-10-09"]);
   assert.equal(spend.totalMicros, 5_600_000);
-  assert.deepEqual(spend.lines.map((l) => [l.kind, l.micros, l.count]), [
-    ["Workflow minutes", 5_000_000, 14],
-    ["Sandbox time", 600_000, 12],
-  ]);
+  assert.deepEqual(
+    spend.lines.map((l) => [l.kind, l.micros, l.count]),
+    [
+      ["Workflow minutes", 5_000_000, 14],
+      ["Sandbox time", 600_000, 12],
+    ],
+  );
   // The month so far is billing's usage report, the top bar's figure, not the statement: it carries what is not yet closed.
   assert.equal(spend.monthMicros, 13_609_000);
   assert.equal(spendIn([september, october], { from: Date.parse("2026-09-29T15:00:00Z"), now: NOW }, null).monthMicros, null);
 });
-
 
 // --- What landed: shipped, made in a session, day by day -----------------------
 
@@ -715,7 +902,13 @@ test("each merge and push says whether it is live, from what deployments recorde
   const push = merge({ key: "push:rep_web:evt_1", kind: "push", sha: "p1", at: NOW - HOUR });
   const release = merge({ key: "release:rep_web:v1", kind: "release", sha: null });
   assert.deepEqual(shippedAsks([merge(), push, release]), [
-    { repo_id: "rep_web", commits: [{ sha: "m12", landed_at: iso(NOW - 2 * HOUR) }, { sha: "p1", landed_at: iso(NOW - HOUR) }] },
+    {
+      repo_id: "rep_web",
+      commits: [
+        { sha: "m12", landed_at: iso(NOW - 2 * HOUR) },
+        { sha: "p1", landed_at: iso(NOW - HOUR) },
+      ],
+    },
   ]);
   const answers = [
     {
@@ -741,9 +934,23 @@ test("each merge and push says whether it is live, from what deployments recorde
 });
 
 test("a change made in a harness session carries the agent mark, linked to the session", () => {
-  const [marked, plain] = withSessions([merge(), merge({ key: "landed:acme/web#13", sha: "m13" })], [
-    { repo: { namespace: "acme", name: "web" }, pulls: [{ number: 12, sessions: [{ id: "ses_1", harness: "claude_code" }, { id: "ses_2", harness: "codex" }] }] },
-  ]);
+  const [marked, plain] = withSessions(
+    [merge(), merge({ key: "landed:acme/web#13", sha: "m13" })],
+    [
+      {
+        repo: { namespace: "acme", name: "web" },
+        pulls: [
+          {
+            number: 12,
+            sessions: [
+              { id: "ses_1", harness: "claude_code" },
+              { id: "ses_2", harness: "codex" },
+            ],
+          },
+        ],
+      },
+    ],
+  );
   assert.deepEqual(marked!.agent, { harness: "claude_code", to: "/acme/-/work/sessions/ses_1" });
   assert.equal(agentLabel(marked!.agent!), "Made in a Claude Code session");
   assert.equal(plain!.agent, undefined);
@@ -769,7 +976,11 @@ test("each person's push to a default branch is a row: its commit, who pushed, a
     by: "ana",
   });
   const span = { from: NOW - DAY, now: NOW };
-  const rows = pushRows([push("evt_2", "c3", "c2", NOW - HOUR), push("evt_1", "c2", "c0", NOW - 2 * HOUR), push("evt_0", "c1", "c0", NOW - 2 * DAY)], history, span);
+  const rows = pushRows(
+    [push("evt_2", "c3", "c2", NOW - HOUR), push("evt_1", "c2", "c0", NOW - 2 * HOUR), push("evt_0", "c1", "c0", NOW - 2 * DAY)],
+    history,
+    span,
+  );
   assert.deepEqual(
     rows.map((row) => [row.title, row.detail, row.sha, row.to, row.agent?.to ?? null]),
     [
@@ -784,7 +995,14 @@ test("each person's push to a default branch is a row: its commit, who pushed, a
 test("what landed over the week reads day by day, newest first", () => {
   const tz = "America/Los_Angeles";
   const days = landedByDay([merge({ at: NOW - DAY }), merge({ key: "b", at: NOW - HOUR }), merge({ key: "c", at: NOW - 3 * DAY })], NOW, tz);
-  assert.deepEqual(days.map((day) => [day.label, day.rows.length]), [["Today", 1], ["Yesterday", 1], ["Tue, Oct 6", 1]]);
+  assert.deepEqual(
+    days.map((day) => [day.label, day.rows.length]),
+    [
+      ["Today", 1],
+      ["Yesterday", 1],
+      ["Tue, Oct 6", 1],
+    ],
+  );
 });
 
 test("while you were away: what settled by itself, what shipped, and what still needs you", () => {
@@ -810,10 +1028,18 @@ test("while you were away: what settled by itself, what shipped, and what still 
       ["settled:n2", "Merged by @ana", "acme/web#12"],
     ],
   );
-  assert.equal(settledIn([item({ doneAt: iso(NOW - HOUR), settledReason: "Merged" })], "acme", false, span).length, 0, "nothing about repositories without Code");
+  assert.equal(
+    settledIn([item({ doneAt: iso(NOW - HOUR), settledReason: "Merged" })], "acme", false, span).length,
+    0,
+    "nothing about repositories without Code",
+  );
   const away = awayOf({
     settled,
-    landed: [merge({ shipped: { state: "live", at: NOW, to: null } }), merge({ key: "x", shipped: { state: "waiting", at: null, to: null } }), merge({ key: "y" })],
+    landed: [
+      merge({ shipped: { state: "live", at: NOW, to: null } }),
+      merge({ key: "x", shipped: { state: "waiting", at: null, to: null } }),
+      merge({ key: "y" }),
+    ],
     needs: 3,
   });
   assert.deepEqual({ ...away, settled: away.settled.length }, { settled: 2, shipped: 1, waiting: 1, deploying: 0, failed: 0, needs: 3 });
@@ -825,14 +1051,23 @@ test("Summarize asks about the span the page shows, as a person would", () => {
     summarizeQuestion({ key: "last", note: null, words: "Since this afternoon", from: Date.UTC(2026, 9, 14, 18, 0), now }, "UTC"),
     "Summarize what changed since I was last here (6:00 PM) in plain English.",
   );
-  assert.equal(summarizeQuestion({ key: "24h", note: null, words: "In the last 24 hours", from: now - DAY, now }, "UTC"), "Summarize what changed in the last 24 hours in plain English.");
+  assert.equal(
+    summarizeQuestion({ key: "24h", note: null, words: "In the last 24 hours", from: now - DAY, now }, "UTC"),
+    "Summarize what changed in the last 24 hours in plain English.",
+  );
   // A first visit shows the last 24 hours, so it is not asked as "since I was last here".
   assert.doesNotMatch(summarizeQuestion({ key: "last", note: "first", words: "In the last 24 hours", from: now - DAY, now }, "UTC"), /last here/);
 });
 
 test("Explain asks about the one change, by what it is", () => {
-  assert.equal(explainQuestion({ kind: "merge", title: "Faster pushes", to: "/acme/web/pull/12" }), "Explain pull request #12 in acme/web in plain English: what changed, why, and is it live?");
-  assert.equal(explainQuestion({ kind: "push", title: "Fix login", to: "/acme/web/commit/abc1234def" }), "Explain commit abc1234 in acme/web in plain English: what changed, why, and is it live?");
+  assert.equal(
+    explainQuestion({ kind: "merge", title: "Faster pushes", to: "/acme/web/pull/12" }),
+    "Explain pull request #12 in acme/web in plain English: what changed, why, and is it live?",
+  );
+  assert.equal(
+    explainQuestion({ kind: "push", title: "Fix login", to: "/acme/web/commit/abc1234def" }),
+    "Explain commit abc1234 in acme/web in plain English: what changed, why, and is it live?",
+  );
   assert.match(explainQuestion({ kind: "deploy", title: "web", to: "/acme/web/deployments/1" }), /went out in this deployment/);
   assert.match(explainQuestion({ kind: "release", title: "v1.2.0", to: "/acme/web/releases/v1.2.0" }), /What's new in v1\.2\.0/);
 });

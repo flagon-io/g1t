@@ -129,10 +129,7 @@ export function tokenPermissions(token: Pick<AccessToken, "scopes" | "permission
  * `editing`, the reach's workspace and the expiry are the token's own and
  * are not read. `workspaceOwned` is a workspace's own token.
  */
-export function tokenFromForm(
-  form: FormLike,
-  options: { editing?: boolean; workspaceOwned?: boolean; owner?: string | null } = {},
-): Parsed<TokenInput> {
+export function tokenFromForm(form: FormLike, options: { editing?: boolean; workspaceOwned?: boolean; owner?: string | null } = {}): Parsed<TokenInput> {
   const { editing = false, workspaceOwned = false } = options;
   const name = String(form.get("name") ?? "").trim();
   if (!editing && !name) return { ok: false, error: "Name the token after what will use it." };
@@ -150,7 +147,9 @@ export function tokenFromForm(
   }
 
   // Where it reaches.
-  const reach = String(form.get("workspace") ?? ALL_WORKSPACES).trim().toLowerCase();
+  const reach = String(form.get("workspace") ?? ALL_WORKSPACES)
+    .trim()
+    .toLowerCase();
   let workspace: string | null = null;
   let repositorySelection: RepositorySelection = "all";
   const posted = String(form.get("repository_selection") ?? "");
@@ -165,7 +164,14 @@ export function tokenFromForm(
     workspace = reach;
     repositorySelection = selection ?? "all";
   }
-  const repositories = [...new Set(form.getAll("repo").map((repo) => String(repo).trim()).filter(Boolean))];
+  const repositories = [
+    ...new Set(
+      form
+        .getAll("repo")
+        .map((repo) => String(repo).trim())
+        .filter(Boolean),
+    ),
+  ];
   if (repositorySelection === "selected") {
     if (repositories.length === 0) return { ok: false, error: "Choose at least one repository, or all repositories." };
     if (repositories.length > MAX_SELECTED_REPOSITORIES) {
@@ -277,7 +283,14 @@ export function currentTokensPath(base: string, search: URLSearchParams): string
 }
 
 const sameNames = (a: readonly string[] | undefined, b: readonly string[] | undefined) =>
-  [...(a ?? [])].map((name) => name.toLowerCase()).sort().join(" ") === [...(b ?? [])].map((name) => name.toLowerCase()).sort().join(" ");
+  [...(a ?? [])]
+    .map((name) => name.toLowerCase())
+    .sort()
+    .join(" ") ===
+  [...(b ?? [])]
+    .map((name) => name.toLowerCase())
+    .sort()
+    .join(" ");
 
 /**
  * What the edit form changes about a token, and nothing else: a token made

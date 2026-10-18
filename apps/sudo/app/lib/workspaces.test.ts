@@ -42,7 +42,14 @@ const OWN: AccountSummary = {
 };
 
 const ACME: AccountSummary = {
-  account: { id: "ent_acme", kind: "enterprise", name: "Acme Corp", terms: STANDARD_TERMS, workspaces: ["acme", "acme-labs"], createdAt: "2026-10-02T00:00:00Z" },
+  account: {
+    id: "ent_acme",
+    kind: "enterprise",
+    name: "Acme Corp",
+    terms: STANDARD_TERMS,
+    workspaces: ["acme", "acme-labs"],
+    createdAt: "2026-10-02T00:00:00Z",
+  },
   limit: limit("acme", "ent_acme", 9_000_000),
   chargedMicros: 12_000_000,
   costMicros: 6_000_000,

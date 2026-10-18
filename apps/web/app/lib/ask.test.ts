@@ -51,12 +51,29 @@ test("an answer's kept lines fold into its steps, each as it last was, and its s
   assert.equal(folded.sources.length, 1);
   assert.equal(folded.sources[0]!.url, "https://g1t.sh/acme/web/pull/7");
   assert.deepEqual(foldAnswer("junk"), { steps: [], sources: [], proposals: [], kept: {} });
-  const kept = foldAnswer([{ type: "proposal", id: "p", repo: "a/b", item: null, title: "x", body: null, mode: "implement", instruction: null }, { type: "proposal_state", id: "p", started: true, session_url: "/s" }]).kept;
+  const kept = foldAnswer([
+    { type: "proposal", id: "p", repo: "a/b", item: null, title: "x", body: null, mode: "implement", instruction: null },
+    { type: "proposal_state", id: "p", started: true, session_url: "/s" },
+  ]).kept;
   assert.deepEqual(kept, { p: { id: "p", started: true, session_url: "/s" } }, "what a card did comes back with its answer");
 });
 
 test("a proposed session is kept once and says what it will do", () => {
-  const proposal = { type: "proposal" as const, id: "proposal_0_0", repo: "acme/web", item: 12, title: null, body: null, mode: "implement" as const, instruction: null };
-  const folded = foldAnswer([proposal, proposal, { ...proposal, id: "proposal_0_1", item: null, title: "Add a route", mode: "plan" }, { type: "proposal", id: "x", repo: "acme/web" }]);
+  const proposal = {
+    type: "proposal" as const,
+    id: "proposal_0_0",
+    repo: "acme/web",
+    item: 12,
+    title: null,
+    body: null,
+    mode: "implement" as const,
+    instruction: null,
+  };
+  const folded = foldAnswer([
+    proposal,
+    proposal,
+    { ...proposal, id: "proposal_0_1", item: null, title: "Add a route", mode: "plan" },
+    { type: "proposal", id: "x", repo: "acme/web" },
+  ]);
   assert.deepEqual(folded.proposals.map(proposalTitle), ["Implement #12 in acme/web", "Plan “Add a route” in acme/web"]);
 });

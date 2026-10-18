@@ -114,7 +114,7 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
   const times: Record<string, number> = {};
   // Each call is timed, and one that fails leaves its section empty rather
   // than taking the page down.
-  const soft = <T,>(name: string, promise: Promise<T>): Promise<T | null> =>
+  const soft = <T>(name: string, promise: Promise<T>): Promise<T | null> =>
     promise.then(
       (value) => ((times[name] = Date.now() - started), value),
       (error) => {
@@ -123,7 +123,7 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
         return null;
       },
     );
-  const okOr = <T,>(result: { ok: true; value: T } | { ok: false } | null): T | null => (result?.ok ? result.value : null);
+  const okOr = <T>(result: { ok: true; value: T } | { ok: false } | null): T | null => (result?.ok ? result.value : null);
 
   const cookies = request.headers.get("cookie");
   const tz = readCookie(cookies, TZ_COOKIE);
@@ -142,11 +142,15 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
   // requests, all in one call to work, and their recent events, read as
   // soon as the projects are known.
   const perRepoP = reposP.then(async (repos) => {
-    const chosen = (repos ?? [])
-      .filter((repo) => slug != null && repo.namespace.toLowerCase() === slug.toLowerCase())
-      .slice(0, MAX_PROJECTS);
+    const chosen = (repos ?? []).filter((repo) => slug != null && repo.namespace.toLowerCase() === slug.toLowerCase()).slice(0, MAX_PROJECTS);
     const [batch, logs, pushes] = await Promise.all([
-      work.pullsForRepos(chosen.map((repo) => repo.id), viewer, PULL_PAGE).catch(() => []),
+      work
+        .pullsForRepos(
+          chosen.map((repo) => repo.id),
+          viewer,
+          PULL_PAGE,
+        )
+        .catch(() => []),
       Promise.all(chosen.map((repo) => eventLog.list({ repoId: repo.id, types: [...FEED_EVENT_TYPES], limit: EVENTS_PER_PROJECT }).catch(() => null))),
       // People's pushes straight to the default branch, which no pull
       // request counts: the commits each brought, for the week.
@@ -207,10 +211,7 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
   const openPulls = (perRepo ?? []).flatMap(({ repo, pulls }) => (pulls ?? []).map((pull) => ({ pull, repo })));
   // Never your own.
   const reviewRequested = openPulls.filter(
-    ({ pull }) =>
-      pull.status === "open" &&
-      workOwner(pull).username.toLowerCase() !== lower &&
-      pull.reviewers.some((name) => name.toLowerCase() === lower),
+    ({ pull }) => pull.status === "open" && workOwner(pull).username.toLowerCase() !== lower && pull.reviewers.some((name) => name.toLowerCase() === lower),
   );
 
   // --- Needs you ------------------------------------------------------------
@@ -298,13 +299,31 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
     if (lifecycle?.stage === "needs_you") {
       const conflict = /conflict/i.test(lifecycle.detail);
       const key = `pull:${pull.id}`;
-      needs.push({ key, kind: conflict ? "conflict" : "stalled", title: pull.title, detail: lifecycle.detail, to, action: conflict ? "Resolve" : "Decide", at: Date.parse(pull.updatedAt), where });
+      needs.push({
+        key,
+        kind: conflict ? "conflict" : "stalled",
+        title: pull.title,
+        detail: lifecycle.detail,
+        to,
+        action: conflict ? "Resolve" : "Decide",
+        at: Date.parse(pull.updatedAt),
+        where,
+      });
       extras.set(key, { ...pullExtra(pull, repo), quick: null });
       continue;
     }
     if (lifecycle?.stage === "ready") {
       const key = `ready:${pull.id}`;
-      needs.push({ key, kind: "ready", title: pull.title, detail: "Ready to land when you merge it.", to, action: "Merge", at: Date.parse(pull.updatedAt), where });
+      needs.push({
+        key,
+        kind: "ready",
+        title: pull.title,
+        detail: "Ready to land when you merge it.",
+        to,
+        action: "Merge",
+        at: Date.parse(pull.updatedAt),
+        where,
+      });
       // Its lifecycle says the required checks passed, which a list's merge-queue status does not.
       const [, ...rest] = pullExtra(pull, repo).facts ?? [];
       extras.set(key, { ...pullExtra(pull, repo), facts: [{ label: "Required checks", value: "Passing", tone: "good" }, ...rest], quick: null });

@@ -115,7 +115,8 @@ export function countDesignSpecs(specs: readonly DesignNodeSpec[], depth = 1): {
 export function designSpecError(spec: unknown, depth = 1): string | null {
   if (depth > DESIGN_MAX_DEPTH) return `Node specs nest at most ${DESIGN_MAX_DEPTH} deep.`;
   if (!isObject(spec)) return "A node spec is an object.";
-  if (typeof spec.type !== "string" || !(DESIGN_NODE_TYPES as readonly string[]).includes(spec.type)) return `There is no node type called ${String(spec.type)}.`;
+  if (typeof spec.type !== "string" || !(DESIGN_NODE_TYPES as readonly string[]).includes(spec.type))
+    return `There is no node type called ${String(spec.type)}.`;
   for (const key of ["x", "y", "w", "h", "rotation", "stroke_width", "radius", "opacity", "gap", "padding"]) {
     if (spec[key] !== undefined && (typeof spec[key] !== "number" || !Number.isFinite(spec[key]))) return `${key} is a number.`;
   }
@@ -139,7 +140,9 @@ export function designSpecError(spec: unknown, depth = 1): string | null {
 export function designOpError(op: unknown): string | null {
   if (!isObject(op) || typeof op.op !== "string") return "A design change has an op.";
   const ids = (key: string) =>
-    Array.isArray(op[key]) && (op[key] as unknown[]).length > 0 && (op[key] as unknown[]).every((item) => typeof item === "string" && item.length > 0) ? null : `${op.op} needs ${key}.`;
+    Array.isArray(op[key]) && (op[key] as unknown[]).length > 0 && (op[key] as unknown[]).every((item) => typeof item === "string" && item.length > 0)
+      ? null
+      : `${op.op} needs ${key}.`;
   const id = (key: string) => (typeof op[key] === "string" && (op[key] as string).length > 0 ? null : `${op.op} needs ${key}.`);
   switch (op.op) {
     case "upsert_nodes": {

@@ -40,20 +40,20 @@ Your own settings are at [g1t.sh/settings](https://g1t.sh/settings), one
 page each. Open them from your account menu at the bottom of the sidebar,
 under **Your settings**; the sidebar then lists every page.
 
-| Page | Address | What is on it |
-| --- | --- | --- |
-| Profile | [`/settings/profile`](https://g1t.sh/settings/profile) | Your picture, and your [public profile](/guides/workspaces/#profiles): name, pronouns, bio, location, website and time zone. |
-| Emails | [`/settings/emails`](https://g1t.sh/settings/emails) | Your [email addresses](#email-addresses), the backup address, and [keeping your address private](#keeping-your-address-private). |
-| Notifications | [`/settings/notifications`](https://g1t.sh/settings/notifications) | [Sounds and do not disturb](/guides/chat/#sounds-and-do-not-disturb), [pop-ups and browser notifications](/guides/chat/#notifications), and [what you are emailed for and how you watch repositories](/guides/notifications/#settings). |
-| Invites to g1t | [`/settings/invites`](https://g1t.sh/settings/invites) | [Invite a friend](#invite-a-friend): the invites you sent, who joined, and how many you have left. |
-| SSH keys | [`/settings/keys`](https://g1t.sh/settings/keys) | Public keys for [git over SSH](/guides/git/#ssh), each with when it was added and last used. |
-| Access tokens | [`/settings/tokens`](https://g1t.sh/settings/tokens) | Your [personal access tokens](#access-tokens): their permissions, where they reach, and when they expire. |
-| Integrations | [`/settings/integrations`](https://g1t.sh/settings/integrations) | [Your own integrations](/guides/integrations/#workspace-and-personal): what you have connected for yourself, in every workspace, and what is coming. |
-| GitHub | [`/settings/github`](https://g1t.sh/settings/github) | [Linking and unlinking GitHub](/guides/github/#link-and-unlink-github). |
-| Connected applications | [`/settings/applications`](https://g1t.sh/settings/applications) | Tools you [signed in to with OAuth](#signing-in-with-oauth), such as an agent using the MCP server. |
-| Two-factor authentication | [`/settings/two-factor`](https://g1t.sh/settings/two-factor) | [An authenticator app and recovery codes](#two-factor-authentication). |
-| Security log | [`/settings/security-log`](https://g1t.sh/settings/security-log) | [What happened to your account](#security-log). |
-| Account | [`/settings/account`](https://g1t.sh/settings/account) | Your username, and [deleting your account](#deleting-your-account). |
+| Page                      | Address                                                            | What is on it                                                                                                                                                                                                                           |
+| ------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Profile                   | [`/settings/profile`](https://g1t.sh/settings/profile)             | Your picture, and your [public profile](/guides/workspaces/#profiles): name, pronouns, bio, location, website and time zone.                                                                                                            |
+| Emails                    | [`/settings/emails`](https://g1t.sh/settings/emails)               | Your [email addresses](#email-addresses), the backup address, and [keeping your address private](#keeping-your-address-private).                                                                                                        |
+| Notifications             | [`/settings/notifications`](https://g1t.sh/settings/notifications) | [Sounds and do not disturb](/guides/chat/#sounds-and-do-not-disturb), [pop-ups and browser notifications](/guides/chat/#notifications), and [what you are emailed for and how you watch repositories](/guides/notifications/#settings). |
+| Invites to g1t            | [`/settings/invites`](https://g1t.sh/settings/invites)             | [Invite a friend](#invite-a-friend): the invites you sent, who joined, and how many you have left.                                                                                                                                      |
+| SSH keys                  | [`/settings/keys`](https://g1t.sh/settings/keys)                   | Public keys for [git over SSH](/guides/git/#ssh), each with when it was added and last used.                                                                                                                                            |
+| Access tokens             | [`/settings/tokens`](https://g1t.sh/settings/tokens)               | Your [personal access tokens](#access-tokens): their permissions, where they reach, and when they expire.                                                                                                                               |
+| Integrations              | [`/settings/integrations`](https://g1t.sh/settings/integrations)   | [Your own integrations](/guides/integrations/#workspace-and-personal): what you have connected for yourself, in every workspace, and what is coming.                                                                                    |
+| GitHub                    | [`/settings/github`](https://g1t.sh/settings/github)               | [Linking and unlinking GitHub](/guides/github/#link-and-unlink-github).                                                                                                                                                                 |
+| Connected applications    | [`/settings/applications`](https://g1t.sh/settings/applications)   | Tools you [signed in to with OAuth](#signing-in-with-oauth), such as an agent using the MCP server.                                                                                                                                     |
+| Two-factor authentication | [`/settings/two-factor`](https://g1t.sh/settings/two-factor)       | [An authenticator app and recovery codes](#two-factor-authentication).                                                                                                                                                                  |
+| Security log              | [`/settings/security-log`](https://g1t.sh/settings/security-log)   | [What happened to your account](#security-log).                                                                                                                                                                                         |
+| Account                   | [`/settings/account`](https://g1t.sh/settings/account)             | Your username, and [deleting your account](#deleting-your-account).                                                                                                                                                                     |
 
 `g1t.sh/settings` opens Profile.
 
@@ -325,16 +325,16 @@ ask one of its owners to invite you by your username.
 
 ### Invites through the API
 
-| Route | MCP tool and action | What it does |
-| --- | --- | --- |
-| [`GET /user/invites`](/reference/api/invites/list-invites/) | `account` `list_invites` | Your invites to g1t, newest first, and `allowance` (`limit`, `used`, `remaining`) |
-| [`POST /user/invites`](/reference/api/invites/create-invite/) | `account` `create_invite` | Invite a friend to g1t by `email`, with an optional `message`; optionally also to a paid `workspace` you own, as `role` |
-| [`DELETE /user/invites/{id}`](/reference/api/invites/revoke-invite/) | `account` `revoke_invite` | Revoke a pending invite; it comes back to you |
-| [`POST /user/invites/{id}/resend`](/reference/api/invites/resend-invite/) | `account` `resend_invite` | Send a pending invite's email again |
-| [`POST /workspaces/{workspace}/invitations`](/reference/api/invites/invite-member/) | `workspace` `invite_member` | Invite a `username` or an `email` into a workspace, with a `role`. Owners only. |
-| [`GET /user/invitations`](/reference/api/invites/list-invitations/) | `account` `list_workspace_invitations` | The workspace invitations waiting for your answer |
-| [`POST /user/invitations/{id}/accept`](/reference/api/invites/accept-invitation/) | `account` `accept_workspace_invitation` | Join the invitation's workspace with its role |
-| [`POST /user/invitations/{id}/decline`](/reference/api/invites/decline-invitation/) | `account` `decline_invitation` | Decline it; whoever sent it is told |
+| Route                                                                               | MCP tool and action                     | What it does                                                                                                            |
+| ----------------------------------------------------------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| [`GET /user/invites`](/reference/api/invites/list-invites/)                         | `account` `list_invites`                | Your invites to g1t, newest first, and `allowance` (`limit`, `used`, `remaining`)                                       |
+| [`POST /user/invites`](/reference/api/invites/create-invite/)                       | `account` `create_invite`               | Invite a friend to g1t by `email`, with an optional `message`; optionally also to a paid `workspace` you own, as `role` |
+| [`DELETE /user/invites/{id}`](/reference/api/invites/revoke-invite/)                | `account` `revoke_invite`               | Revoke a pending invite; it comes back to you                                                                           |
+| [`POST /user/invites/{id}/resend`](/reference/api/invites/resend-invite/)           | `account` `resend_invite`               | Send a pending invite's email again                                                                                     |
+| [`POST /workspaces/{workspace}/invitations`](/reference/api/invites/invite-member/) | `workspace` `invite_member`             | Invite a `username` or an `email` into a workspace, with a `role`. Owners only.                                         |
+| [`GET /user/invitations`](/reference/api/invites/list-invitations/)                 | `account` `list_workspace_invitations`  | The workspace invitations waiting for your answer                                                                       |
+| [`POST /user/invitations/{id}/accept`](/reference/api/invites/accept-invitation/)   | `account` `accept_workspace_invitation` | Join the invitation's workspace with its role                                                                           |
+| [`POST /user/invitations/{id}/decline`](/reference/api/invites/decline-invitation/) | `account` `decline_invitation`          | Decline it; whoever sent it is told                                                                                     |
 
 ## Confirming your email address
 
@@ -355,12 +355,12 @@ other. **Send a new code** on the confirmation page sends a fresh code and
 link, at most once a minute and 10 times an hour, and the ones before stop
 working.
 
-| On the confirmation page | What it does |
-| --- | --- |
-| **Confirm email** | Checks the code. A wrong, used or expired code gets the same answer. After 10 wrong codes in an hour, codes for the account are not checked for a while (a minute, then longer); the link in the email still works. Wrong codes from one network are limited the same way. |
-| **Send a new code** | A new code and link; the ones before stop working. |
-| **Wrong address? Change it** | Replaces the address you signed up with and sends the new one a code. Only while the account has no confirmed address. |
-| **Sign out** | Signs out. Sign in again to come back to the page. |
+| On the confirmation page     | What it does                                                                                                                                                                                                                                                               |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Confirm email**            | Checks the code. A wrong, used or expired code gets the same answer. After 10 wrong codes in an hour, codes for the account are not checked for a while (a minute, then longer); the link in the email still works. Wrong codes from one network are limited the same way. |
+| **Send a new code**          | A new code and link; the ones before stop working.                                                                                                                                                                                                                         |
+| **Wrong address? Change it** | Replaces the address you signed up with and sends the new one a code. Only while the account has no confirmed address.                                                                                                                                                     |
+| **Sign out**                 | Signs out. Sign in again to come back to the page.                                                                                                                                                                                                                         |
 
 ### Until you confirm
 
@@ -406,8 +406,8 @@ gives it a new address.
 
 ### Confirming through the API
 
-| Route | MCP tool and action | What it does |
-| --- | --- | --- |
+| Route                                                                 | MCP tool and action       | What it does                                      |
+| --------------------------------------------------------------------- | ------------------------- | ------------------------------------------------- |
 | [`POST /user/emails/confirm`](/reference/api/accounts/confirm-email/) | `account` `confirm_email` | Confirm an address with the `code` from its email |
 
 The answer says whether the account is now confirmed (`verified`), the
@@ -422,12 +422,12 @@ is joined without an answer.
 An account can have up to 10 email addresses. Manage them in
 [Settings → Emails](https://g1t.sh/settings/emails).
 
-| An address that is | Can |
-| --- | --- |
-| Primary | Get account mail and password reset links. Exactly one, always confirmed once any address is. |
-| Confirmed | Sign you in (type it instead of your username), ask for a password reset, and mark commits that carry it as yours. |
-| Backup | Get security notices as well as the primary. Optional, and a confirmed address other than the primary. |
-| Unconfirmed | Nothing yet. It is not yours until you enter the code or follow the link g1t sent it. |
+| An address that is | Can                                                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| Primary            | Get account mail and password reset links. Exactly one, always confirmed once any address is.                      |
+| Confirmed          | Sign you in (type it instead of your username), ask for a password reset, and mark commits that carry it as yours. |
+| Backup             | Get security notices as well as the primary. Optional, and a confirmed address other than the primary.             |
+| Unconfirmed        | Nothing yet. It is not yours until you enter the code or follow the link g1t sent it.                              |
 
 A confirmed address belongs to one account. Anyone can add an address they
 have not confirmed; the first account to confirm it keeps it, and the
@@ -521,12 +521,12 @@ for setting your noreply address in git.
 
 ### Email addresses through the API
 
-| Route | MCP tool and action | What it does |
-| --- | --- | --- |
-| [`GET /user/emails`](/reference/api/accounts/list-emails/) | `account` `list_emails` | Your addresses and email settings |
-| [`POST /user/emails`](/reference/api/accounts/add-email/) | `account` `add_email` | Add an address; takes `email` and `password` |
-| [`POST /user/emails/confirm`](/reference/api/accounts/confirm-email/) | `account` `confirm_email` | Confirm an address with the `code` from its email |
-| [`DELETE /user/emails/{email}`](/reference/api/accounts/remove-email/) | `account` `remove_email` | Remove an address; takes `password` |
+| Route                                                                          | MCP tool and action               | What it does                                                          |
+| ------------------------------------------------------------------------------ | --------------------------------- | --------------------------------------------------------------------- |
+| [`GET /user/emails`](/reference/api/accounts/list-emails/)                     | `account` `list_emails`           | Your addresses and email settings                                     |
+| [`POST /user/emails`](/reference/api/accounts/add-email/)                      | `account` `add_email`             | Add an address; takes `email` and `password`                          |
+| [`POST /user/emails/confirm`](/reference/api/accounts/confirm-email/)          | `account` `confirm_email`         | Confirm an address with the `code` from its email                     |
+| [`DELETE /user/emails/{email}`](/reference/api/accounts/remove-email/)         | `account` `remove_email`          | Remove an address; takes `password`                                   |
 | [`PATCH /user/email-settings`](/reference/api/accounts/update-email-settings/) | `account` `update_email_settings` | Change `primary`, `backup`, `private_email` or `block_private_pushes` |
 
 Through the API, `password` is the proof a sensitive change needs. Without
@@ -547,11 +547,11 @@ are covered in [workspaces](/guides/workspaces/).
 A token stands in for your password everywhere outside the website, and on
 the website too when you turn that on for it:
 
-| Where | How to send it |
-| --- | --- |
-| git | As the password, with your username. |
-| API | `Authorization: Bearer g1t_…` |
-| MCP | The same header, set when you add the server. |
+| Where       | How to send it                                                                                                                                                                                                                                                                                     |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| git         | As the password, with your username.                                                                                                                                                                                                                                                               |
+| API         | `Authorization: Bearer g1t_…`                                                                                                                                                                                                                                                                      |
+| MCP         | The same header, set when you add the server.                                                                                                                                                                                                                                                      |
 | The website | The same header on every request, from automation that drives a browser. Only a token with **Use the website as you** turned on. See [use a token on the website](#use-a-token-on-the-website). A token with [Chat's scopes](#chat-and-notifications-without-the-website) reaches Chat without it. |
 
 A token is shown once, when it is created; g1t stores only a hash of it.
@@ -678,9 +678,7 @@ only, add it per request instead:
 
 ```js
 const context = await browser.newContext();
-await context.route("https://g1t.sh/**", (route) =>
-  route.continue({ headers: { ...route.request().headers(), authorization: `Bearer ${token}` } }),
-);
+await context.route("https://g1t.sh/**", (route) => route.continue({ headers: { ...route.request().headers(), authorization: `Bearer ${token}` } }));
 ```
 
 Any HTTP client works the same way:
@@ -726,17 +724,17 @@ an expiration.
 Some things always need you to sign in on g1t.sh yourself. With a token,
 these pages answer **This needs you to sign in** (`403`):
 
-| What | Where |
-| --- | --- |
+| What                                                                                                 | Where                                                                                       |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | Access tokens, yours and a workspace's, and a workspace's rules for and approvals of members' tokens | Settings → Access tokens; a workspace's Settings → Access tokens and Personal access tokens |
-| Two-factor authentication | Settings → Two-factor authentication |
-| Your username, and deleting your account | Settings → Account |
-| Email addresses, which reset your password | Settings → Emails |
-| SSH keys | Settings → SSH keys |
-| Applications you signed in to, and signing in with GitHub | Settings → Connected applications, Settings → GitHub |
-| Letting a device or an application sign in | `g1t.sh/device`, `g1t.sh/oauth/authorize` |
-| Deleting a workspace, and giving it to another owner | A workspace's General settings, and its Members page |
-| Payment methods: the billing portal, adding a card and subscribing | A workspace's Billing |
+| Two-factor authentication                                                                            | Settings → Two-factor authentication                                                        |
+| Your username, and deleting your account                                                             | Settings → Account                                                                          |
+| Email addresses, which reset your password                                                           | Settings → Emails                                                                           |
+| SSH keys                                                                                             | Settings → SSH keys                                                                         |
+| Applications you signed in to, and signing in with GitHub                                            | Settings → Connected applications, Settings → GitHub                                        |
+| Letting a device or an application sign in                                                           | `g1t.sh/device`, `g1t.sh/oauth/authorize`                                                   |
+| Deleting a workspace, and giving it to another owner                                                 | A workspace's General settings, and its Members page                                        |
+| Payment methods: the billing portal, adding a card and subscribing                                   | A workspace's Billing                                                                       |
 
 ### Chat and notifications without the website
 
@@ -746,13 +744,13 @@ chat pages call. A token with Chat's scopes, from
 [OAuth](#signing-in-with-oauth) or a personal token, may use those
 addresses without **Use the website as you**, and nothing else on the site:
 
-| Request | Needs |
-| --- | --- |
-| `GET /{workspace}/-/chat/api`, `GET /{workspace}/-/chat/person/{username}` | `chat:read` |
-| `POST /{workspace}/-/chat/api` | `chat:write` |
-| `GET /-/live/ticket?path=…`, for Chat's live socket `/{workspace}/-/chat/live` or your feed `/-/live` | `chat:read` |
-| `GET /-/notify`, registering for push notifications and reading your notification settings | `notifications:read` |
-| `POST /-/notify`, changing them | `notifications:write` |
+| Request                                                                                               | Needs                 |
+| ----------------------------------------------------------------------------------------------------- | --------------------- |
+| `GET /{workspace}/-/chat/api`, `GET /{workspace}/-/chat/person/{username}`                            | `chat:read`           |
+| `POST /{workspace}/-/chat/api`                                                                        | `chat:write`          |
+| `GET /-/live/ticket?path=…`, for Chat's live socket `/{workspace}/-/chat/live` or your feed `/-/live` | `chat:read`           |
+| `GET /-/notify`, registering for push notifications and reading your notification settings            | `notifications:read`  |
+| `POST /-/notify`, changing them                                                                       | `notifications:write` |
 
 The socket opens with the ticket, and the token is checked again then, so a
 token that has lost `chat:read` opens nothing. Such a token gets no ticket
@@ -772,39 +770,39 @@ API, the MCP server and git check every token by those scopes.
 
 Repository permissions apply in every repository the token reaches:
 
-| Permission | Levels | Scope names |
-| --- | --- | --- |
-| Repositories | read, read and create, read and write, admin | `repo:read`, `repo:create`, `repo:write`, `repo:admin` |
-| Code | read, read and write | `code:read`, `code:write` |
-| Security | read, read and write | `security:read`, `security:write` |
-| Packages | read, read and write, read, write and delete | `packages:read`, `packages:write`, `packages:delete` |
-| Work | read, read and write | `work:read`, `work:write` |
-| Pull requests | read, read and write | `pull_requests:read`, `pull_requests:write` |
-| Workflows | read, read and write | `workflows:read`, `workflows:write` |
-| Workflow files | write | `workflow_files:write` |
-| Checks and statuses | read, read and write | `checks:read`, `checks:write` |
-| Deployments | read, read and write | `deployments:read`, `deployments:write` |
-| Who has access | read, admin | `access:read`, `access:admin` |
-| Webhooks | read, admin | `webhooks:read`, `webhooks:admin` |
-| Secrets and variables | read, admin | `secrets:read`, `secrets:admin` |
+| Permission            | Levels                                       | Scope names                                            |
+| --------------------- | -------------------------------------------- | ------------------------------------------------------ |
+| Repositories          | read, read and create, read and write, admin | `repo:read`, `repo:create`, `repo:write`, `repo:admin` |
+| Code                  | read, read and write                         | `code:read`, `code:write`                              |
+| Security              | read, read and write                         | `security:read`, `security:write`                      |
+| Packages              | read, read and write, read, write and delete | `packages:read`, `packages:write`, `packages:delete`   |
+| Work                  | read, read and write                         | `work:read`, `work:write`                              |
+| Pull requests         | read, read and write                         | `pull_requests:read`, `pull_requests:write`            |
+| Workflows             | read, read and write                         | `workflows:read`, `workflows:write`                    |
+| Workflow files        | write                                        | `workflow_files:write`                                 |
+| Checks and statuses   | read, read and write                         | `checks:read`, `checks:write`                          |
+| Deployments           | read, read and write                         | `deployments:read`, `deployments:write`                |
+| Who has access        | read, admin                                  | `access:read`, `access:admin`                          |
+| Webhooks              | read, admin                                  | `webhooks:read`, `webhooks:admin`                      |
+| Secrets and variables | read, admin                                  | `secrets:read`, `secrets:admin`                        |
 
 Workspace permissions apply to the workspaces the token reaches themselves:
 
-| Permission | Levels | Scope names |
-| --- | --- | --- |
-| Workspaces | read, admin | `workspace:read`, `workspace:admin` |
-| Billing | read, read and write | `billing:read`, `billing:write` |
-| Self-hosted runners | read, admin | `runners:read`, `runners:admin` |
-| Artifacts | read, read and write, admin | `artifacts:read`, `artifacts:write`, `artifacts:admin` |
+| Permission          | Levels                      | Scope names                                            |
+| ------------------- | --------------------------- | ------------------------------------------------------ |
+| Workspaces          | read, admin                 | `workspace:read`, `workspace:admin`                    |
+| Billing             | read, read and write        | `billing:read`, `billing:write`                        |
+| Self-hosted runners | read, admin                 | `runners:read`, `runners:admin`                        |
+| Artifacts           | read, read and write, admin | `artifacts:read`, `artifacts:write`, `artifacts:admin` |
 
 Account permissions are about you, wherever you are, and only a personal
 token can hold them:
 
-| Permission | Levels | Scope names |
-| --- | --- | --- |
-| Your account | read, read and write | `account:read`, `account:write` |
+| Permission    | Levels               | Scope names                                 |
+| ------------- | -------------------- | ------------------------------------------- |
+| Your account  | read, read and write | `account:read`, `account:write`             |
 | Notifications | read, read and write | `notifications:read`, `notifications:write` |
-| Chat | read, read and write | `chat:read`, `chat:write` |
+| Chat          | read, read and write | `chat:read`, `chat:write`                   |
 
 What each level lets a token do is in [scopes](#scopes). On the form, each
 row says it for the level chosen, and admin and delete levels are shown in
@@ -813,13 +811,13 @@ what. Give them only to something you trust as much as yourself.
 
 ### Where a token reaches
 
-| Made for | Reaches |
-| --- | --- |
-| All your workspaces | Every workspace you belong to, and repositories you were given, including ones you join later, unless a workspace's [rules](#a-workspaces-rules-for-tokens) keep it out. |
-| One workspace, all repositories | That workspace, and every repository of it you can reach. |
-| One workspace, select repositories | That workspace, and only the repositories chosen. |
-| One workspace, no private repositories | That workspace's own settings its permissions allow, and public repositories. |
-| No workspace | Your account, and public repositories. |
+| Made for                               | Reaches                                                                                                                                                                  |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| All your workspaces                    | Every workspace you belong to, and repositories you were given, including ones you join later, unless a workspace's [rules](#a-workspaces-rules-for-tokens) keep it out. |
+| One workspace, all repositories        | That workspace, and every repository of it you can reach.                                                                                                                |
+| One workspace, select repositories     | That workspace, and only the repositories chosen.                                                                                                                        |
+| One workspace, no private repositories | That workspace's own settings its permissions allow, and public repositories.                                                                                            |
+| No workspace                           | Your account, and public repositories.                                                                                                                                   |
 
 Wherever it does not reach, a token reads public repositories, read-only,
 as anyone can; it cannot comment, open work items or push there. While a token
@@ -836,11 +834,11 @@ if it did not exist.
 A preset fills in a starting set of permissions. Select one, then change
 any row.
 
-| Preset | Permissions |
-| --- | --- |
-| Read only | Every resource at read except Chat. Changes nothing. |
-| Agent | Every resource at read except Self-hosted runners and Chat, Repositories at read and create, and Code, Work, Pull requests and Notifications at read and write. For a [coding agent](/guides/bring-your-own-agent/): reads everything, creates repositories, works on work items and pull requests, pushes code, and answers your inbox. It cannot change or delete a repository, its settings, branches or releases. No admin level. |
-| CI | Repositories: read; Code, Packages, Workflows, Checks and statuses, and Deployments: read and write. Clones and pushes code, pushes and pulls packages, runs workflows, and reports [checks](/guides/checks/) and deployments. |
+| Preset    | Permissions                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Read only | Every resource at read except Chat. Changes nothing.                                                                                                                                                                                                                                                                                                                                                                                  |
+| Agent     | Every resource at read except Self-hosted runners and Chat, Repositories at read and create, and Code, Work, Pull requests and Notifications at read and write. For a [coding agent](/guides/bring-your-own-agent/): reads everything, creates repositories, works on work items and pull requests, pushes code, and answers your inbox. It cannot change or delete a repository, its settings, branches or releases. No admin level. |
+| CI        | Repositories: read; Code, Packages, Workflows, Checks and statuses, and Deployments: read and write. Clones and pushes code, pushes and pulls packages, runs workflows, and reports [checks](/guides/checks/) and deployments.                                                                                                                                                                                                        |
 
 **All** is not a preset that grows: it ticks every permission there is
 when you select it. A permission g1t adds later is not added to a token on
@@ -861,51 +859,51 @@ Applications that [sign in with OAuth](#signing-in-with-oauth) ask for
 scopes by these names, and you choose them on a checklist when you approve
 one.
 
-| Scope | What it lets a token do |
-| --- | --- |
-| `repo:read` | See repositories, their settings, labels, timelines, releases, languages, contributors and security alerts, and search |
-| `repo:create` | Create repositories, and nothing that changes or deletes one |
-| `repo:write` | Create repositories, rename branches, change how pull requests merge and publish releases |
-| `repo:admin` | Rename, archive, transfer, delete or change who can see a repository, and dismiss security alerts |
-| `code:read` | Clone and fetch private repositories with git |
-| `code:write` | Push commits with git |
-| `security:read` | See [secret scanning](/guides/security/secret-protection/), [code scanning](/guides/security/code-scanning/) and vulnerability alerts, custom patterns, the dependency graph and SBOM, and security settings |
-| `security:write` | Dismiss and reopen alerts, bypass push protection, review bypass requests, manage custom patterns, upload SARIF and change security settings |
-| `packages:read` | Pull container images and install private [packages](/guides/packages/). Public ones need no scope. |
-| `packages:write` | Push container images and publish packages; with the Admin role on a package, change its settings |
-| `packages:delete` | Delete and restore packages and their versions |
-| `work:read` | Read [work items](/work/work-items/) and their comments, and the workspace's [labels](/work/labels/) and [milestones](/work/milestones/) |
-| `work:write` | Open, edit, link, claim, close, comment on and react to work items; manage labels and milestones |
-| `pull_requests:read` | Read pull requests, their changes, sessions and merge queues |
-| `pull_requests:write` | Open, review, comment on, close and merge pull requests |
-| `workflows:read` | Read workflows, runs and logs |
-| `workflows:write` | Run, cancel, rerun and turn workflows on or off |
-| `workflow_files:write` | Add, change and delete [workflow files](#workflow-files) under `.g1t/workflows` and `.github/workflows`, with git or the API. Not in any preset. |
-| `checks:read` | Read commits' statuses, check runs, check suites and annotations |
-| `checks:write` | Report [statuses and check runs](/guides/checks/) on commits, and ask for checks to run again |
-| `deployments:read` | See [deployments](/guides/deployments-api/), their statuses and environments |
-| `deployments:write` | Report deployments and their statuses, from any CI |
-| `account:read` | Read your email addresses, invites, invitations, pinned projects and stars |
-| `account:write` | Change your email addresses, make invites, answer invitations, pin projects and star repositories |
-| `notifications:read` | See your [notifications](/guides/notifications/), its threads, and what you subscribe to and watch |
-| `notifications:write` | Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories |
-| `chat:read` | Read the conversations you are in: channels, direct messages, threads and reactions, live. Not in any preset. See [Chat and notifications without the website](#chat-and-notifications-without-the-website). |
-| `chat:write` | Send, edit and delete your messages, react, mark conversations read, and answer cards in chat. Not in any preset. |
-| `workspace:read` | Read workspace settings, invites, integrations and [teams](/guides/teams/) |
-| `workspace:admin` | Create and delete workspaces, invite members, manage teams, connect integrations |
-| `billing:read` | See a workspace's [usage, budget and invoices](/guides/usage-and-billing/) |
-| `billing:write` | Change a workspace's budget. Only owners, as people: a workspace's own token never changes billing, whatever its scopes. Not in any preset. |
-| `access:read` | See who has access to repositories |
-| `access:admin` | Give people and teams access to repositories, and take it away |
-| `webhooks:read` | See webhooks and their deliveries |
-| `webhooks:admin` | Create, change and delete webhooks |
-| `secrets:read` | List secrets (never their values) and read variables |
-| `secrets:admin` | Set and delete secrets and variables |
-| `runners:read` | See [self-hosted runners](/guides/self-hosted-runners/), their groups and the jobs they run. Not in the Agent preset. |
-| `runners:admin` | Register and remove self-hosted runners, change their groups and settings |
-| `artifacts:read` | List, read and search the [artifacts](/guides/bring-your-own-agent/#artifacts) you can open (docs, and later slides, designs and dashboards), their versions and who can open them. Not workflow runs' artifacts, which are `workflows:read`. |
-| `artifacts:write` | Create, rename, move, edit, trash and restore artifacts, and suggest changes to them |
-| `artifacts:admin` | Share artifacts, change who can open them, and delete them for good. Not in any preset. |
+| Scope                  | What it lets a token do                                                                                                                                                                                                                       |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `repo:read`            | See repositories, their settings, labels, timelines, releases, languages, contributors and security alerts, and search                                                                                                                        |
+| `repo:create`          | Create repositories, and nothing that changes or deletes one                                                                                                                                                                                  |
+| `repo:write`           | Create repositories, rename branches, change how pull requests merge and publish releases                                                                                                                                                     |
+| `repo:admin`           | Rename, archive, transfer, delete or change who can see a repository, and dismiss security alerts                                                                                                                                             |
+| `code:read`            | Clone and fetch private repositories with git                                                                                                                                                                                                 |
+| `code:write`           | Push commits with git                                                                                                                                                                                                                         |
+| `security:read`        | See [secret scanning](/guides/security/secret-protection/), [code scanning](/guides/security/code-scanning/) and vulnerability alerts, custom patterns, the dependency graph and SBOM, and security settings                                  |
+| `security:write`       | Dismiss and reopen alerts, bypass push protection, review bypass requests, manage custom patterns, upload SARIF and change security settings                                                                                                  |
+| `packages:read`        | Pull container images and install private [packages](/guides/packages/). Public ones need no scope.                                                                                                                                           |
+| `packages:write`       | Push container images and publish packages; with the Admin role on a package, change its settings                                                                                                                                             |
+| `packages:delete`      | Delete and restore packages and their versions                                                                                                                                                                                                |
+| `work:read`            | Read [work items](/work/work-items/) and their comments, and the workspace's [labels](/work/labels/) and [milestones](/work/milestones/)                                                                                                      |
+| `work:write`           | Open, edit, link, claim, close, comment on and react to work items; manage labels and milestones                                                                                                                                              |
+| `pull_requests:read`   | Read pull requests, their changes, sessions and merge queues                                                                                                                                                                                  |
+| `pull_requests:write`  | Open, review, comment on, close and merge pull requests                                                                                                                                                                                       |
+| `workflows:read`       | Read workflows, runs and logs                                                                                                                                                                                                                 |
+| `workflows:write`      | Run, cancel, rerun and turn workflows on or off                                                                                                                                                                                               |
+| `workflow_files:write` | Add, change and delete [workflow files](#workflow-files) under `.g1t/workflows` and `.github/workflows`, with git or the API. Not in any preset.                                                                                              |
+| `checks:read`          | Read commits' statuses, check runs, check suites and annotations                                                                                                                                                                              |
+| `checks:write`         | Report [statuses and check runs](/guides/checks/) on commits, and ask for checks to run again                                                                                                                                                 |
+| `deployments:read`     | See [deployments](/guides/deployments-api/), their statuses and environments                                                                                                                                                                  |
+| `deployments:write`    | Report deployments and their statuses, from any CI                                                                                                                                                                                            |
+| `account:read`         | Read your email addresses, invites, invitations, pinned projects and stars                                                                                                                                                                    |
+| `account:write`        | Change your email addresses, make invites, answer invitations, pin projects and star repositories                                                                                                                                             |
+| `notifications:read`   | See your [notifications](/guides/notifications/), its threads, and what you subscribe to and watch                                                                                                                                            |
+| `notifications:write`  | Mark notifications read, done, saved or snoozed, subscribe to threads and watch repositories                                                                                                                                                  |
+| `chat:read`            | Read the conversations you are in: channels, direct messages, threads and reactions, live. Not in any preset. See [Chat and notifications without the website](#chat-and-notifications-without-the-website).                                  |
+| `chat:write`           | Send, edit and delete your messages, react, mark conversations read, and answer cards in chat. Not in any preset.                                                                                                                             |
+| `workspace:read`       | Read workspace settings, invites, integrations and [teams](/guides/teams/)                                                                                                                                                                    |
+| `workspace:admin`      | Create and delete workspaces, invite members, manage teams, connect integrations                                                                                                                                                              |
+| `billing:read`         | See a workspace's [usage, budget and invoices](/guides/usage-and-billing/)                                                                                                                                                                    |
+| `billing:write`        | Change a workspace's budget. Only owners, as people: a workspace's own token never changes billing, whatever its scopes. Not in any preset.                                                                                                   |
+| `access:read`          | See who has access to repositories                                                                                                                                                                                                            |
+| `access:admin`         | Give people and teams access to repositories, and take it away                                                                                                                                                                                |
+| `webhooks:read`        | See webhooks and their deliveries                                                                                                                                                                                                             |
+| `webhooks:admin`       | Create, change and delete webhooks                                                                                                                                                                                                            |
+| `secrets:read`         | List secrets (never their values) and read variables                                                                                                                                                                                          |
+| `secrets:admin`        | Set and delete secrets and variables                                                                                                                                                                                                          |
+| `runners:read`         | See [self-hosted runners](/guides/self-hosted-runners/), their groups and the jobs they run. Not in the Agent preset.                                                                                                                         |
+| `runners:admin`        | Register and remove self-hosted runners, change their groups and settings                                                                                                                                                                     |
+| `artifacts:read`       | List, read and search the [artifacts](/guides/bring-your-own-agent/#artifacts) you can open (docs, and later slides, designs and dashboards), their versions and who can open them. Not workflow runs' artifacts, which are `workflows:read`. |
+| `artifacts:write`      | Create, rename, move, edit, trash and restore artifacts, and suggest changes to them                                                                                                                                                          |
+| `artifacts:admin`      | Share artifacts, change who can open them, and delete them for good. Not in any preset.                                                                                                                                                       |
 
 Every operation of the API and the MCP server needs exactly one of these,
 except `whoami` (`GET /user`), which any token may use. Each endpoint's page
@@ -914,8 +912,8 @@ action in [MCP tools](/reference/mcp/); the MCP server lists only the tools
 a token's permissions can use. One call needs a second scope for what it
 asks:
 
-| Call | Also needs |
-| --- | --- |
+| Call                                             | Also needs   |
+| ------------------------------------------------ | ------------ |
 | `update_repo` with `private` or `default_branch` | `repo:admin` |
 
 ### What a token can do
@@ -934,11 +932,11 @@ What a request may do is where these overlap:
 
 Over HTTPS, git checks the same token:
 
-| To | Needs |
-| --- | --- |
-| Clone or fetch a public repository | No permission |
-| Clone or fetch a private repository | Code: read (`code:read`) |
-| Push | Code: read and write (`code:write`) |
+| To                                                                        | Needs                                                                    |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Clone or fetch a public repository                                        | No permission                                                            |
+| Clone or fetch a private repository                                       | Code: read (`code:read`)                                                 |
+| Push                                                                      | Code: read and write (`code:write`)                                      |
 | Push commits that add, change or delete [workflow files](#workflow-files) | Code: read and write, and Workflow files: write (`workflow_files:write`) |
 
 Your role on the repository applies too, as on the website. A refused push
@@ -962,6 +960,7 @@ and write:
 
   A push too large for g1t to read whole is declined for such a token too,
   since it cannot be checked; push it in smaller parts.
+
 - **Through g1t**, a file written for a token (such as a starter workflow)
   is refused the same way.
 - **A workflow job's token** never may, whatever its `permissions:` say.
@@ -1044,13 +1043,13 @@ token's next request, to tokens made before them too. A token they keep out
 keeps working everywhere else, and reads the workspace's public
 repositories as anyone can.
 
-| Rule | Default | What it does |
-| --- | --- | --- |
-| Allow tokens made for the workspace | On | Off: no token can be made for the workspace alone, and existing ones stop reaching it. |
-| Require approval of tokens made for the workspace | On | A member's token made for the workspace waits for an owner's approval, and again when it is widened. Owners' own tokens never wait. |
-| Allow tokens made for all of a member's workspaces | On | Off: tokens made for all of their owner's workspaces no longer reach this one; members make a token for it alone instead, which the rule above can require approval for. |
-| Tokens must expire | Off | On: a token that never expires does not reach the workspace. |
-| Longest lifetime | No limit | A token that lasts longer (from when it was made to when it expires), or never expires, does not reach the workspace. Tokens for it cannot be made longer. |
+| Rule                                               | Default  | What it does                                                                                                                                                             |
+| -------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Allow tokens made for the workspace                | On       | Off: no token can be made for the workspace alone, and existing ones stop reaching it.                                                                                   |
+| Require approval of tokens made for the workspace  | On       | A member's token made for the workspace waits for an owner's approval, and again when it is widened. Owners' own tokens never wait.                                      |
+| Allow tokens made for all of a member's workspaces | On       | Off: tokens made for all of their owner's workspaces no longer reach this one; members make a token for it alone instead, which the rule above can require approval for. |
+| Tokens must expire                                 | Off      | On: a token that never expires does not reach the workspace.                                                                                                             |
+| Longest lifetime                                   | No limit | A token that lasts longer (from when it was made to when it expires), or never expires, does not reach the workspace. Tokens for it cannot be made longer.               |
 
 The same page lists:
 
@@ -1077,14 +1076,14 @@ Approvals, denials, revocations and rule changes are
 Owners, as people (a personal token with the permission works; a
 workspace's own token does not):
 
-| Route | MCP tool and action | What it does | Scope |
-| --- | --- | --- | --- |
-| [`GET /workspaces/{workspace}/personal-access-token-policy`](/reference/api/personal-access-tokens/get-token-policy/) | `workspace` `get_token_policy` | The rules. Members may read them. | `workspace:read` |
-| [`PATCH /workspaces/{workspace}/personal-access-token-policy`](/reference/api/personal-access-tokens/set-token-policy/) | `workspace` `set_token_policy` | Change `allow_tokens_for_this_workspace`, `allow_tokens_for_all_workspaces`, `require_approval`, `max_lifetime_days` (0 for no limit) or `forbid_no_expiry` | `workspace:admin` |
-| [`GET /workspaces/{workspace}/personal-access-tokens`](/reference/api/personal-access-tokens/list-member-tokens/) | `workspace` `list_member_tokens` | The tokens that can reach it, each with its `permissions` (`{"work": "write"}`), `scopes`, `workspace` (null when made for all of its owner's), `repository_selection`, `repositories` and `status` | `access:read` |
-| [`GET /workspaces/{workspace}/personal-access-token-requests`](/reference/api/personal-access-tokens/list-token-requests/) | `workspace` `list_token_requests` | The tokens waiting for approval | `access:read` |
-| [`POST /workspaces/{workspace}/personal-access-token-requests/{id}`](/reference/api/personal-access-tokens/review-token-request/) | `workspace` `review_token_request` | `decision` is `approve` or `deny`, with an optional `reason` | `access:admin` |
-| [`POST /workspaces/{workspace}/personal-access-tokens/{id}`](/reference/api/personal-access-tokens/revoke-member-token/) | `workspace` `revoke_member_token` | Revoke a token in the workspace, with an optional `reason` | `access:admin` |
+| Route                                                                                                                             | MCP tool and action                | What it does                                                                                                                                                                                        | Scope             |
+| --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| [`GET /workspaces/{workspace}/personal-access-token-policy`](/reference/api/personal-access-tokens/get-token-policy/)             | `workspace` `get_token_policy`     | The rules. Members may read them.                                                                                                                                                                   | `workspace:read`  |
+| [`PATCH /workspaces/{workspace}/personal-access-token-policy`](/reference/api/personal-access-tokens/set-token-policy/)           | `workspace` `set_token_policy`     | Change `allow_tokens_for_this_workspace`, `allow_tokens_for_all_workspaces`, `require_approval`, `max_lifetime_days` (0 for no limit) or `forbid_no_expiry`                                         | `workspace:admin` |
+| [`GET /workspaces/{workspace}/personal-access-tokens`](/reference/api/personal-access-tokens/list-member-tokens/)                 | `workspace` `list_member_tokens`   | The tokens that can reach it, each with its `permissions` (`{"work": "write"}`), `scopes`, `workspace` (null when made for all of its owner's), `repository_selection`, `repositories` and `status` | `access:read`     |
+| [`GET /workspaces/{workspace}/personal-access-token-requests`](/reference/api/personal-access-tokens/list-token-requests/)        | `workspace` `list_token_requests`  | The tokens waiting for approval                                                                                                                                                                     | `access:read`     |
+| [`POST /workspaces/{workspace}/personal-access-token-requests/{id}`](/reference/api/personal-access-tokens/review-token-request/) | `workspace` `review_token_request` | `decision` is `approve` or `deny`, with an optional `reason`                                                                                                                                        | `access:admin`    |
+| [`POST /workspaces/{workspace}/personal-access-tokens/{id}`](/reference/api/personal-access-tokens/revoke-member-token/)          | `workspace` `revoke_member_token`  | Revoke a token in the workspace, with an optional `reason`                                                                                                                                          | `access:admin`    |
 
 ## Signing in with OAuth
 
@@ -1119,12 +1118,12 @@ at once.
 
 For people building a client:
 
-| | |
-| --- | --- |
-| Metadata | `https://api.g1t.sh/.well-known/oauth-authorization-server` |
-| Authorization | `https://g1t.sh/oauth/authorize` |
-| Token | `https://api.g1t.sh/oauth/token` |
-| Registration | `https://api.g1t.sh/oauth/register` |
+|               |                                                             |
+| ------------- | ----------------------------------------------------------- |
+| Metadata      | `https://api.g1t.sh/.well-known/oauth-authorization-server` |
+| Authorization | `https://g1t.sh/oauth/authorize`                            |
+| Token         | `https://api.g1t.sh/oauth/token`                            |
+| Registration  | `https://api.g1t.sh/oauth/register`                         |
 
 - The flow is authorization code with PKCE. `S256` is required.
 - Clients are public: there are no client secrets.
@@ -1255,10 +1254,10 @@ in as yourself, never with a token.
 
 ### What stands in the way
 
-| | |
-| --- | --- |
+|                           |                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | A workspace you own alone | Each live workspace where you are the only owner is listed. [Make someone else an owner](/guides/workspaces/#change-someones-role) of it, or [delete it](/guides/workspaces/#delete-a-workspace), first. Deleting a workspace settles its billing, which can ask for something first: the list says what. A workspace you own with someone else is not in the way. |
-| A protected account | `g1t` and the other names g1t uses for itself can never be deleted, by anyone. |
+| A protected account       | `g1t` and the other names g1t uses for itself can never be deleted, by anyone.                                                                                                                                                                                                                                                                                     |
 
 Billing belongs to workspaces, not to accounts, so once no workspace
 depends on you alone there is nothing for billing to settle.
@@ -1278,14 +1277,14 @@ way, nothing is deleted.
 
 At once, when you delete it:
 
-| | |
-| --- | --- |
-| Signing in | You are signed out everywhere. Signing in with your password, GitHub, a recovery code or from a tool fails, with the same answer a wrong password gets. |
+|                                          |                                                                                                                                                                                                                                          |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Signing in                               | You are signed out everywhere. Signing in with your password, GitHub, a recovery code or from a tool fails, with the same answer a wrong password gets.                                                                                  |
 | Access tokens, SSH keys and applications | Your personal access tokens, SSH keys, connected applications and sign-ins from a tool stop working and are removed, and so do the deploy keys you added to repositories. A workspace's own tokens are not affected, even ones you made. |
-| Workspaces, teams and repositories | You leave every workspace and team, and lose the roles you were given on single repositories. Repository invitations waiting for you are withdrawn, and invites you made that nobody used are revoked. |
-| Your profile | `g1t.sh/<username>` answers 404, and you drop out of search. Nobody can add you to a workspace, team or repository, and nothing more is emailed to you. |
-| What you wrote | Stays where it is, under your username for now. Commits made with your confirmed or noreply addresses show as `ghost`, and as yours again if your account is restored. |
-| Your username | Held for your account. Nobody else can take it. |
+| Workspaces, teams and repositories       | You leave every workspace and team, and lose the roles you were given on single repositories. Repository invitations waiting for you are withdrawn, and invites you made that nobody used are revoked.                                   |
+| Your profile                             | `g1t.sh/<username>` answers 404, and you drop out of search. Nobody can add you to a workspace, team or repository, and nothing more is emailed to you.                                                                                  |
+| What you wrote                           | Stays where it is, under your username for now. Commits made with your confirmed or noreply addresses show as `ghost`, and as yours again if your account is restored.                                                                   |
+| Your username                            | Held for your account. Nobody else can take it.                                                                                                                                                                                          |
 
 Within 30 days, support can restore it: write to support@g1t.sh from one
 of its addresses. You come back to the workspaces, teams and repositories
@@ -1294,13 +1293,13 @@ password. Your old sessions, tokens and keys stay ended: make new ones.
 
 After 30 days it is removed for good:
 
-| | |
-| --- | --- |
-| Your addresses, keys and profile | Removed: your email addresses, two-factor secret and recovery codes, GitHub link, picture, profile and security log, and your notifications and their settings. |
-| What you wrote | Work items, pull requests, comments and reviews keep their place and their words, and show as written by `ghost`. You are taken off work items and pull requests you were assigned to or asked to review. Commits keep the name and address git recorded in them; those made with your [noreply address](#keeping-your-address-private) show as `ghost`. |
-| Workspaces you made | Name `ghost` as their creator. |
-| Statements, invoices and audit logs | Kept with your username, for the workspaces they belong to. |
-| Your username | Never given to another account or workspace, so links, mentions and remotes that use it keep meaning what they meant. `ghost` is reserved for this, and nobody can register it. |
+|                                     |                                                                                                                                                                                                                                                                                                                                                          |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Your addresses, keys and profile    | Removed: your email addresses, two-factor secret and recovery codes, GitHub link, picture, profile and security log, and your notifications and their settings.                                                                                                                                                                                          |
+| What you wrote                      | Work items, pull requests, comments and reviews keep their place and their words, and show as written by `ghost`. You are taken off work items and pull requests you were assigned to or asked to review. Commits keep the name and address git recorded in them; those made with your [noreply address](#keeping-your-address-private) show as `ghost`. |
+| Workspaces you made                 | Name `ghost` as their creator.                                                                                                                                                                                                                                                                                                                           |
+| Statements, invoices and audit logs | Kept with your username, for the workspaces they belong to.                                                                                                                                                                                                                                                                                              |
+| Your username                       | Never given to another account or workspace, so links, mentions and remotes that use it keep meaning what they meant. `ghost` is reserved for this, and nobody can register it.                                                                                                                                                                          |
 
 ## Asking for your personal data to be erased
 

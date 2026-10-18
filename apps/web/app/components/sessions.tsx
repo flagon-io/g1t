@@ -296,24 +296,64 @@ const HARNESSES = Object.keys(HARNESS_NAMES) as Harness[];
 const KINDS = Object.keys(KIND_NAMES) as SessionKind[];
 
 /** Sessions' filters: a menu each on a computer, one sheet on a phone. Each choice is a link. */
-export function SessionsFiltersBar({ workspace, filters, repos, people, me }: { workspace: string; filters: SessionsFilters; repos: string[]; people: string[]; me: string | null }) {
+export function SessionsFiltersBar({
+  workspace,
+  filters,
+  repos,
+  people,
+  me,
+}: {
+  workspace: string;
+  filters: SessionsFilters;
+  repos: string[];
+  people: string[];
+  me: string | null;
+}) {
   const [open, setOpen] = useState(false);
   const to = (change: Partial<SessionsFilters>) => `${sessionsPath(workspace)}${sessionsQuery({ ...filters, ...change })}`;
   const count = [filters.repo, filters.person, filters.harness, filters.kind, filters.item].filter(Boolean).length;
   const clear = to({ repo: null, person: null, harness: null, kind: null, item: null });
   // A work item's own sessions (`?item=12`, from its page): said, with the way back to all of them.
   const onItem = filters.item ? (
-    <Link to={to({ item: null })} className="inline-flex h-8 items-center gap-1 rounded-md border border-line px-2.5 text-xs text-fg-soft hover:text-fg" aria-label={`On #${filters.item}: show sessions on every work item`}>
+    <Link
+      to={to({ item: null })}
+      className="inline-flex h-8 items-center gap-1 rounded-md border border-line px-2.5 text-xs text-fg-soft hover:text-fg"
+      aria-label={`On #${filters.item}: show sessions on every work item`}
+    >
       On #{filters.item}
       <X size={12} />
     </Link>
   ) : null;
   const everyone = me ? [me, ...people.filter((name) => name !== me)] : people;
   const menus: { title: string; active: string | null; any: string; field: keyof SessionsFilters; options: { key: string; label: ReactNode }[] }[] = [
-    { title: "Repository", active: filters.repo, any: "Any repository", field: "repo", options: repos.map((name) => ({ key: name, label: <span className="font-mono text-[0.8125rem]">{name}</span> })) },
-    { title: "Person", active: filters.person, any: "Anyone", field: "person", options: everyone.map((name) => ({ key: name, label: name === me ? `${name} (you)` : name })) },
-    { title: "Harness", active: filters.harness ? HARNESS_NAMES[filters.harness] : null, any: "Any harness", field: "harness", options: HARNESSES.map((key) => ({ key, label: HARNESS_NAMES[key] })) },
-    { title: "Kind", active: filters.kind ? KIND_NAMES[filters.kind] : null, any: "Every kind", field: "kind", options: KINDS.map((key) => ({ key, label: KIND_NAMES[key] })) },
+    {
+      title: "Repository",
+      active: filters.repo,
+      any: "Any repository",
+      field: "repo",
+      options: repos.map((name) => ({ key: name, label: <span className="font-mono text-[0.8125rem]">{name}</span> })),
+    },
+    {
+      title: "Person",
+      active: filters.person,
+      any: "Anyone",
+      field: "person",
+      options: everyone.map((name) => ({ key: name, label: name === me ? `${name} (you)` : name })),
+    },
+    {
+      title: "Harness",
+      active: filters.harness ? HARNESS_NAMES[filters.harness] : null,
+      any: "Any harness",
+      field: "harness",
+      options: HARNESSES.map((key) => ({ key, label: HARNESS_NAMES[key] })),
+    },
+    {
+      title: "Kind",
+      active: filters.kind ? KIND_NAMES[filters.kind] : null,
+      any: "Every kind",
+      field: "kind",
+      options: KINDS.map((key) => ({ key, label: KIND_NAMES[key] })),
+    },
   ];
   return (
     <>
@@ -368,7 +408,12 @@ export function SessionsFiltersBar({ workspace, filters, repos, people, me }: { 
             onPick={() => setOpen(false)}
             choices={[
               { key: "any", label: menu.any, to: to({ [menu.field]: null }), on: !filters[menu.field] },
-              ...menu.options.map((option) => ({ key: option.key, label: option.label, to: to({ [menu.field]: option.key }), on: filters[menu.field] === option.key })),
+              ...menu.options.map((option) => ({
+                key: option.key,
+                label: option.label,
+                to: to({ [menu.field]: option.key }),
+                on: filters[menu.field] === option.key,
+              })),
             ]}
           />
         ))}

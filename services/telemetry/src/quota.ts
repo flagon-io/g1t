@@ -83,7 +83,8 @@ export function sizeOf(value: unknown): number {
 
 /** What OTLP past the day's share is told; with a cap of 0, that the workspace is held. */
 export function overCapMessage(cap: number): string {
-  if (cap === 0) return "g1t staff put a hold on this project's workspace, so its telemetry is not taken. Write to hey@flagon.io if you think this is a mistake.";
+  if (cap === 0)
+    return "g1t staff put a hold on this project's workspace, so its telemetry is not taken. Write to hey@flagon.io if you think this is a mistake.";
   const mb = Math.round(cap / (1024 * 1024));
   return `This project's workspace has sent its ${mb} MB for today across its projects, a workspace on the free plan's daily share of its monthly observability. Send less, or start the g1t plan; more is taken from 00:00 UTC.`;
 }

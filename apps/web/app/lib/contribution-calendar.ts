@@ -97,9 +97,7 @@ export function buildCalendar(days: readonly { date: string; count: number; comm
  */
 export function dayLabel(count: number, date: string, commits = 0): string {
   const at = parse(date);
-  const when = Number.isNaN(at)
-    ? date
-    : new Date(at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+  const when = Number.isNaN(at) ? date : new Date(at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
   if (count === 0) return `No contributions on ${when}`;
   if (commits > 0 && commits >= count) return `${count.toLocaleString("en-US")} ${count === 1 ? "commit" : "commits"} on ${when}`;
   const all = `${count.toLocaleString("en-US")} ${count === 1 ? "contribution" : "contributions"} on ${when}`;

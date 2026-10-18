@@ -39,7 +39,11 @@ export const ROADMAP: RoadmapItem[] = [
     section: "Project",
     summary: "Configure databases and storage for your project.",
     why: "Manage the data services your app depends on alongside its deployments, with connections scoped to the right environment.",
-    plans: ["Connect databases and storage to a project", "Configure connections for production and preview environments", "Manage connection credentials alongside environment variables"],
+    plans: [
+      "Connect databases and storage to a project",
+      "Configure connections for production and preview environments",
+      "Manage connection credentials alongside environment variables",
+    ],
     today: { label: "Environment variables", path: "settings/secrets" },
   },
   {
@@ -48,7 +52,11 @@ export const ROADMAP: RoadmapItem[] = [
     section: "Project",
     summary: "Long-running background processes for your project.",
     why: "Keep queue consumers and background workers running alongside your app, with their configuration and activity in the same project.",
-    plans: ["Run containerized background processes", "Manage instances, restarts and environment variables", "See process health and logs alongside your deployments"],
+    plans: [
+      "Run containerized background processes",
+      "Manage instances, restarts and environment variables",
+      "See process health and logs alongside your deployments",
+    ],
   },
   {
     key: "analytics",

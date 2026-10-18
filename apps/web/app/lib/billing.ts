@@ -99,9 +99,7 @@ export function parseSpendLimit(form: {
  */
 export type SpendRange = { selfServeMicros: number | null; raiseOnceMicros: number | null; raisedAt: string | null };
 
-export function spendRange(
-  limit: Pick<Limit, "availableMicros" | "ceilingMicros" | "raiseOnceMicros" | "raisedAt">,
-): SpendRange {
+export function spendRange(limit: Pick<Limit, "availableMicros" | "ceilingMicros" | "raiseOnceMicros" | "raisedAt">): SpendRange {
   const selfServe = limit.availableMicros !== undefined ? limit.availableMicros : limit.ceilingMicros;
   const once = limit.raiseOnceMicros ?? null;
   return {
@@ -172,10 +170,7 @@ export function share(used: number, of: number | null | undefined): number {
 }
 
 /** Where the trial stands after a card check, in a sentence for the owner. */
-export function cardCheckResult(
-  entitlements: Pick<Entitlements, "trialVerified" | "trialMicrosLeft">,
-  trialMicros: number,
-): string {
+export function cardCheckResult(entitlements: Pick<Entitlements, "trialVerified" | "trialMicrosLeft">, trialMicros: number): string {
   if (!entitlements.trialVerified) return "The card check did not finish. Try again; the card is never charged.";
   if (entitlements.trialMicrosLeft > 0) return `Card checked. Your ${wholeDollars(entitlements.trialMicrosLeft)} trial is ready to use.`;
   return `Card checked, but no trial started. The ${wholeDollars(trialMicros)} trial needs a credit or debit card that has not started one before, and comes from a monthly pool that can run out. Prepaid cards can still pay for the plan.`;
@@ -210,8 +205,7 @@ export function needsAttention(entitlements: Pick<Entitlements, "paused" | "spik
 
 /** A request's state as the owner sees it. */
 export function requestStatus(request: LimitRequest): string {
-  if (request.status === "approved")
-    return request.decidedMicros != null ? `Approved at ${wholeDollars(request.decidedMicros)}` : "Approved";
+  if (request.status === "approved") return request.decidedMicros != null ? `Approved at ${wholeDollars(request.decidedMicros)}` : "Approved";
   if (request.status === "declined") return "Declined";
   return "Waiting for an answer";
 }
@@ -241,10 +235,12 @@ export function foldTasks<T extends { key: string; micros: number; runs: number 
   const known = slices.filter((slice) => slice.key !== "other" && slice.key in USAGE_TASKS);
   const rest = slices.filter((slice) => !known.includes(slice));
   if (rest.length === 0) return known;
-  const other = rest.reduce(
-    (sum, slice) => ({ ...sum, micros: sum.micros + slice.micros, runs: sum.runs + slice.runs }),
-    { ...rest[0]!, key: "other", micros: 0, runs: 0 },
-  );
+  const other = rest.reduce((sum, slice) => ({ ...sum, micros: sum.micros + slice.micros, runs: sum.runs + slice.runs }), {
+    ...rest[0]!,
+    key: "other",
+    micros: 0,
+    runs: 0,
+  });
   return [...known, other];
 }
 

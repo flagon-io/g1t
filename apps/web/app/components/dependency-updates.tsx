@@ -26,17 +26,7 @@ import { Link, useFetcher } from "react-router";
 
 import type { UpdatePull, VersionUpdateEntry, VersionUpdatesState } from "@g1t/contracts";
 
-import {
-  DEPENDENCY_UPDATES_DOCS,
-  PULL_STATES,
-  conditionText,
-  entryStatus,
-  groupText,
-  ignoreText,
-  livePulls,
-  timeUntil,
-  utc,
-} from "../lib/dependency-updates";
+import { DEPENDENCY_UPDATES_DOCS, PULL_STATES, conditionText, entryStatus, groupText, ignoreText, livePulls, timeUntil, utc } from "../lib/dependency-updates";
 import { TimeAgo } from "./ui";
 import { Badge, type BadgeTone } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -87,9 +77,7 @@ function Entry({ entry, action, canCheck }: { entry: VersionUpdateEntry; action:
     {
       label: "Allowed",
       values: entry.allow.map((rule) =>
-        [rule.dependency, rule.dependencyType, ...rule.updateTypes.map((type) => type.replace("version-update:semver-", ""))]
-          .filter(Boolean)
-          .join(" · "),
+        [rule.dependency, rule.dependencyType, ...rule.updateTypes.map((type) => type.replace("version-update:semver-", ""))].filter(Boolean).join(" · "),
       ),
     },
     { label: "Assignees", values: entry.assignees },
@@ -254,35 +242,30 @@ export function DependencyUpdates({
   return (
     <Card className="p-4">
       {titled && (
-      <>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-sm font-medium">Dependency updates</span>
-        <a
-          href={DEPENDENCY_UPDATES_DOCS}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1 text-xs text-fg-soft hover:text-fg hover:underline"
-        >
-          How to write the file
-          <ExternalLink size={10} />
-        </a>
-      </div>
-      <p className="mt-1 text-sm text-muted">
-        Pull requests that keep dependencies current on a schedule, from a <code className="text-fg-soft">dependabot.yml</code>{" "}
-        file (version 2) in <code className="text-fg-soft">.g1t/</code> or <code className="text-fg-soft">.github/</code>. Security
-        updates follow the same file.
-      </p>
-      </>
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-sm font-medium">Dependency updates</span>
+            <a
+              href={DEPENDENCY_UPDATES_DOCS}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-fg-soft hover:text-fg hover:underline"
+            >
+              How to write the file
+              <ExternalLink size={10} />
+            </a>
+          </div>
+          <p className="mt-1 text-sm text-muted">
+            Pull requests that keep dependencies current on a schedule, from a <code className="text-fg-soft">dependabot.yml</code> file (version 2) in{" "}
+            <code className="text-fg-soft">.g1t/</code> or <code className="text-fg-soft">.github/</code>. Security updates follow the same file.
+          </p>
+        </>
       )}
 
       <div className={`${titled ? "mt-3 " : ""}flex items-start gap-1.5 text-xs text-muted`}>
         {state.found && state.path ? (
           <>
-            {state.problems.length > 0 ? (
-              <FileWarning size={13} className="shrink-0 text-danger" />
-            ) : (
-              <FileCode size={13} className="shrink-0 text-accent" />
-            )}
+            {state.problems.length > 0 ? <FileWarning size={13} className="shrink-0 text-danger" /> : <FileCode size={13} className="shrink-0 text-accent" />}
             <span>
               Reading{" "}
               {fileLink ? (
@@ -317,7 +300,10 @@ export function DependencyUpdates({
         <p className="mt-1 flex items-start gap-1.5 text-xs text-warn">
           <Info size={12} className="mt-0.5 shrink-0" />
           <span>
-            Also found {state.ignoredPaths.map((path) => <code key={path}>{path} </code>)}
+            Also found{" "}
+            {state.ignoredPaths.map((path) => (
+              <code key={path}>{path} </code>
+            ))}
             and ignored it: the file under <code>.g1t/</code> is read in its place.
           </span>
         </p>
@@ -332,9 +318,7 @@ export function DependencyUpdates({
           <ul className="mt-2 space-y-1 text-xs">
             {state.problems.map((problem) => (
               <li key={`${problem.line}:${problem.column}:${problem.key}:${problem.message}`} className="flex gap-2">
-                <span className="w-14 shrink-0 font-mono text-faint tabular-nums">
-                  {problem.line > 0 ? `Line ${problem.line}` : "File"}
-                </span>
+                <span className="w-14 shrink-0 font-mono text-faint tabular-nums">{problem.line > 0 ? `Line ${problem.line}` : "File"}</span>
                 <span className="min-w-0 text-fg/90 wrap-anywhere">
                   {problem.key && <code className="mr-1 text-fg-soft">{problem.key}</code>}
                   <Said text={problem.message} />
@@ -395,10 +379,7 @@ export function DependencyUpdates({
           <Heading>Ignored in comments</Heading>
           <ul className="mt-2 space-y-1 text-xs">
             {state.ignores.map((condition) => (
-              <li
-                key={`${condition.ecosystem}:${condition.dependency}:${conditionText(condition)}`}
-                className="flex flex-wrap items-center gap-x-2 gap-y-0.5"
-              >
+              <li key={`${condition.ecosystem}:${condition.dependency}:${conditionText(condition)}`} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                 <EyeOff size={11} className="shrink-0 text-faint" />
                 <span className="font-mono text-fg-soft">{condition.dependency}</span>
                 <span className="text-muted">{conditionText(condition)}</span>

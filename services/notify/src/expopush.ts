@@ -71,11 +71,7 @@ export type ExpoMessage = {
 };
 
 /** The message for each token: what a browser push says, with where it is in chat for the app. */
-export function expoMessages(
-  tokens: string[],
-  payload: PushPayload,
-  notification: Pick<FeedNotification, "channel_id" | "thread_root">,
-): ExpoMessage[] {
+export function expoMessages(tokens: string[], payload: PushPayload, notification: Pick<FeedNotification, "channel_id" | "thread_root">): ExpoMessage[] {
   return tokens.map((to) => ({
     to,
     title: payload.title,

@@ -95,9 +95,7 @@ export default function Errors({ loaderData, actionData, params }: Route.Compone
           ))}
         </NavTabs>
       </FilterBar>
-      <div className="mt-3 min-h-5">
-        {actionData && "notice" in actionData && <p className="text-sm text-success">{actionData.notice}</p>}
-      </div>
+      <div className="mt-3 min-h-5">{actionData && "notice" in actionData && <p className="text-sm text-success">{actionData.notice}</p>}</div>
 
       <div className={cn("mt-2 transition-opacity", loading && "opacity-60")}>
         {!groups ? (
@@ -145,12 +143,18 @@ export default function Errors({ loaderData, actionData, params }: Route.Compone
                     </div>
                     <div className="flex shrink-0 flex-wrap gap-2">
                       {g.last_request_id && (
-                        <Link to={`${base}/observability/requests/${g.last_request_id}`} className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
+                        <Link
+                          to={`${base}/observability/requests/${g.last_request_id}`}
+                          className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg"
+                        >
                           Latest request <ExternalLink size={11} />
                         </Link>
                       )}
                       {g.last_trace_id && (
-                        <Link to={`${base}/observability/traces/${g.last_trace_id}`} className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
+                        <Link
+                          to={`${base}/observability/traces/${g.last_trace_id}`}
+                          className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg"
+                        >
                           Trace <ExternalLink size={11} />
                         </Link>
                       )}

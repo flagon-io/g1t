@@ -29,12 +29,5 @@ export async function action({ request, context }: Route.ActionArgs) {
 }
 
 export default function EmailSettings({ loaderData, actionData }: Route.ComponentProps) {
-  return (
-    <EmailsSection
-      data={loaderData.emails}
-      actionData={actionData?.emailAction}
-      intent={actionData?.emailIntent}
-      hasPassword={loaderData.hasPassword}
-    />
-  );
+  return <EmailsSection data={loaderData.emails} actionData={actionData?.emailAction} intent={actionData?.emailIntent} hasPassword={loaderData.hasPassword} />;
 }

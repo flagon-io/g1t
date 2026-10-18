@@ -61,7 +61,10 @@ test("an item closed in the last two weeks is done, and older ones are left out"
   assert.equal(stageOf(item(1, { state: "closed", reason: "not_planned", closed_at: new Date(NOW - DAY).toISOString() }), none), null);
   // Done wins over everything else.
   const repos = [target("acme/web", true), target("acme/api", false)];
-  assert.equal(stageOf(item(1, { state: "closed", repos, closed_at: new Date(NOW - DAY).toISOString() }), { ...none, pulls: [{ item: 1, status: "open" }] }), "done");
+  assert.equal(
+    stageOf(item(1, { state: "closed", repos, closed_at: new Date(NOW - DAY).toISOString() }), { ...none, pulls: [{ item: 1, status: "open" }] }),
+    "done",
+  );
 });
 
 test("the board puts each item in its stage once, done newest first", () => {
@@ -74,9 +77,18 @@ test("the board puts each item in its stage once, done newest first", () => {
     item(1),
   ];
   const board = boardOf(items, none);
-  assert.deepEqual(board.backlog.map((card) => card.item.number), [1]);
-  assert.deepEqual(board.in_progress.map((card) => card.item.number), [2]);
-  assert.deepEqual(board.done.map((card) => card.item.number), [4, 3]);
+  assert.deepEqual(
+    board.backlog.map((card) => card.item.number),
+    [1],
+  );
+  assert.deepEqual(
+    board.in_progress.map((card) => card.item.number),
+    [2],
+  );
+  assert.deepEqual(
+    board.done.map((card) => card.item.number),
+    [4, 3],
+  );
   assert.deepEqual([...board.in_review, ...board.landing], []);
 });
 

@@ -4,7 +4,10 @@ import { test } from "node:test";
 import { classify, hostPlatform, manifest, notesName, platformOfTriple } from "./desktop-release.mjs";
 
 test("each job's notes are named for the platforms they hold, so jobs on the same kind of machine do not overwrite each other", () => {
-  const linux = [{ platform: "linux", arch: "x64" }, { platform: "linux", arch: "x64" }];
+  const linux = [
+    { platform: "linux", arch: "x64" },
+    { platform: "linux", arch: "x64" },
+  ];
   const windows = [{ platform: "windows", arch: "x64" }];
   assert.equal(notesName(linux), "collect-linux-x64.json");
   assert.equal(notesName(windows), "collect-windows-x64.json");
@@ -47,7 +50,16 @@ test("platforms, from a machine and from a target", () => {
 
 test("the manifest serves the updater and the download page", () => {
   const entries = [
-    { platform: "windows", arch: "x64", kind: "installer", name: "g1t-0.1.0-windows-x64-setup.exe", updater: true, size: 10, sha256: "a", signature: "sig-win" },
+    {
+      platform: "windows",
+      arch: "x64",
+      kind: "installer",
+      name: "g1t-0.1.0-windows-x64-setup.exe",
+      updater: true,
+      size: 10,
+      sha256: "a",
+      signature: "sig-win",
+    },
     { platform: "macos", arch: "arm64", kind: "update", name: "g1t-0.1.0-macos-arm64.app.tar.gz", updater: true, size: 20, sha256: "b", signature: "sig-mac" },
     { platform: "macos", arch: "arm64", kind: "dmg", name: "g1t-0.1.0-macos-arm64.dmg", updater: false, size: 30, sha256: "c", signature: null },
     { platform: "linux", arch: "x64", kind: "deb", name: "g1t-0.1.0-linux-x64.deb", updater: false, size: 40, sha256: "d", signature: null },

@@ -35,12 +35,7 @@ export function filesRefusal(held: number, adding: number, cap: number): string 
 }
 
 /** Why an upload of `adding` bytes to `workspace` is refused, or null. */
-export async function uploadRefused(
-  db: D1Database,
-  env: QuotaEnv,
-  workspace: { id: string; slug: string },
-  adding: number,
-): Promise<string | null> {
+export async function uploadRefused(db: D1Database, env: QuotaEnv, workspace: { id: string; slug: string }, adding: number): Promise<string | null> {
   const cap = freeFilesCap(env.FREE_DOC_FILES_BYTES);
   if (cap <= 0) return null;
   const row = await db

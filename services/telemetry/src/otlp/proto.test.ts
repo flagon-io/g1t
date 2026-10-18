@@ -89,7 +89,9 @@ test("logs and metrics in protobuf", () => {
   const point = [...fixed64(3, 1_760_000_000_000_000_000n), ...fixed64(4, 6n), ...double(5, 300), ...bytes(6, counts), ...bytes(7, bounds)];
   const gauge = msg(5, msg(1, fixed64(3, 1_760_000_000_000_000_000n), double(4, 42)));
   const metrics = decodeMetrics(
-    Uint8Array.from(msg(1, msg(2, msg(2, str(1, "http.server.duration"), str(3, "ms"), msg(9, msg(1, point), vint(2, 2))), msg(2, str(1, "queue.depth"), gauge)))),
+    Uint8Array.from(
+      msg(1, msg(2, msg(2, str(1, "http.server.duration"), str(3, "ms"), msg(9, msg(1, point), vint(2, 2))), msg(2, str(1, "queue.depth"), gauge))),
+    ),
   );
   const [h, g] = metrics.resourceMetrics![0].scopeMetrics![0].metrics!;
   assert.equal(h.name, "http.server.duration");

@@ -35,7 +35,17 @@ const membersOnly: SpaceRules = { kind: "private", team: null, default_role: nul
 const SPACES: Record<string, SpaceRules> = { open, openView, team, membersOnly };
 
 function node(id: string, over: Partial<FolioAclNode> = {}): FolioAclNode {
-  return { id, owner: "user:ana", parent_id: null, space_id: null, inherit: true, general_access: "none", general_role: null, created_at: "2026-10-01T00:00:00Z", ...over };
+  return {
+    id,
+    owner: "user:ana",
+    parent_id: null,
+    space_id: null,
+    inherit: true,
+    general_access: "none",
+    general_role: null,
+    created_at: "2026-10-01T00:00:00Z",
+    ...over,
+  };
 }
 
 /** The role a person has on `id`, given every node and grant. */
@@ -82,7 +92,13 @@ test("a members-only space: only its members, never the workspace owner", () => 
 
 test("grants to a person, an agent and a team", () => {
   const nodes = [node("f")];
-  const grants = { f: [{ principal: "user:bo", role: "comment" as const }, { principal: "team:design", role: "edit" as const }, { principal: "agent:ag1", role: "edit" as const }] };
+  const grants = {
+    f: [
+      { principal: "user:bo", role: "comment" as const },
+      { principal: "team:design", role: "edit" as const },
+      { principal: "agent:ag1", role: "edit" as const },
+    ],
+  };
   assert.equal(roleIn(nodes, grants, "f", bo), "comment");
   assert.equal(roleIn(nodes, grants, "f", cy), "edit");
   // An agent grant gives no person anything.

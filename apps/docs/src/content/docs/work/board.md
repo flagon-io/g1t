@@ -10,13 +10,13 @@ has landed. There is nothing to drag. Do the work, and the card moves.
 
 ## The stages
 
-| Stage | Holds the work items |
-| --- | --- |
-| **Backlog** | Open, and nobody is on it. |
-| **In progress** | Claimed or assigned, with a live session on it, with a draft pull request, or with a pull request merged that did not close it. |
-| **In review** | With a pull request open for review. |
-| **Landing** | Landed in some of its target repositories and still missing in others, or with a pull request that closes it merged while a target still misses it. |
-| **Done** | Closed as completed in the last 14 days. |
+| Stage           | Holds the work items                                                                                                                                |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Backlog**     | Open, and nobody is on it.                                                                                                                          |
+| **In progress** | Claimed or assigned, with a live session on it, with a draft pull request, or with a pull request merged that did not close it.                     |
+| **In review**   | With a pull request open for review.                                                                                                                |
+| **Landing**     | Landed in some of its target repositories and still missing in others, or with a pull request that closes it merged while a target still misses it. |
+| **Done**        | Closed as completed in the last 14 days.                                                                                                            |
 
 A work item is in the first stage that holds for it, in the order
 **Done**, **Landing**, **In review**, **In progress**, **Backlog**. So a

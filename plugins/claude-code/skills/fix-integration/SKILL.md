@@ -42,10 +42,10 @@ Pull request: $ARGUMENTS (if empty, use the current branch's pull request).
    (`g1t pr comment OTHER`) instead of working around it, and tell the
    person who asked you.
 6. **Push, then queue again.** Push the fix, wait for `g1t pr checks
-   --watch` to pass, and merge again with `g1t pr merge`, which puts it
+--watch` to pass, and merge again with `g1t pr merge`, which puts it
    back in the queue.
 7. **Leave a record.** `g1t session log --kind note "Integration failure
-   with #OTHER: CAUSE. Fixed by CHANGE."` so the next person can see why
+with #OTHER: CAUSE. Fixed by CHANGE."` so the next person can see why
    the change looks the way it does. Include the tested commit and the
    reproducing check; distinguish what you observed from your hypothesis.
 

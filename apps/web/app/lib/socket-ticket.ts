@@ -137,12 +137,7 @@ export async function issueTicket(
  * The token and person a ticket was made for, when it is genuine, for
  * this socket path, and not past its minute; else null.
  */
-export async function openTicket(
-  secret: string,
-  ticket: string,
-  path: string,
-  nowMs = Date.now(),
-): Promise<{ token: string; userId: string } | null> {
+export async function openTicket(secret: string, ticket: string, path: string, nowMs = Date.now()): Promise<{ token: string; userId: string } | null> {
   if (!ticket.startsWith(PREFIX) || ticket.length > 2048) return null;
   const bytes = fromBase64url(ticket.slice(PREFIX.length));
   if (!bytes || bytes.length <= 12 + 16) return null;

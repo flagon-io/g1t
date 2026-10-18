@@ -13,7 +13,10 @@ test("a private project is seen by those who can read its repository", () => {
   const none = person({ workspaces: [{ slug: "acme", role: "member", base_permission: "none" }] });
   assert.equal(permission(none, repoRef(row(true))), null, "a member with no base permission does not see it");
   assert.ok(permission(none, repoRef(row(false))), "but sees a public one");
-  const granted = person({ workspaces: [{ slug: "acme", role: "member", base_permission: "none" }], grants: [{ repo_id: "repo_api", workspace: "acme", role: "read" }] });
+  const granted = person({
+    workspaces: [{ slug: "acme", role: "member", base_permission: "none" }],
+    grants: [{ repo_id: "repo_api", workspace: "acme", role: "read" }],
+  });
   assert.equal(permission(granted, repoRef(row(true))), "read");
   const outside = person({ grants: [{ repo_id: "repo_api", workspace: "acme", role: "read" }] });
   assert.equal(permission(outside, repoRef(row(true))), "read", "an outside collaborator sees the project of a repository shared with them");

@@ -24,7 +24,10 @@ const pulls = [{ branch: "fix", number: 7, title: "Fix it", checkStatus: "passed
 
 test("branches with an open pull request are read first, the default branch never", () => {
   const read = branchesToRead({ defaultBranch: "main", branches, pulls }, 2);
-  assert.deepEqual(read.reading.map((b) => b.name), ["fix", "old"]);
+  assert.deepEqual(
+    read.reading.map((b) => b.name),
+    ["fix", "old"],
+  );
   assert.equal(read.total, 3);
   assert.equal(read.mainHead, "m3");
 });
@@ -44,7 +47,10 @@ test("each branch gets its measured commit and drift, newest first, by head hash
   };
   const { reading } = branchesToRead({ defaultBranch: "main", branches, pulls }, 10);
   const shown = activeBranches(reading, measured, { pulls, previews: [{ number: 7, url: "https://fix.g1t.page" }] });
-  assert.deepEqual(shown.map((b) => b.name), ["idea", "fix", "old"]);
+  assert.deepEqual(
+    shown.map((b) => b.name),
+    ["idea", "fix", "old"],
+  );
   assert.deepEqual(shown[1], {
     name: "fix",
     head: "f2",
@@ -129,7 +135,10 @@ test("a branch's pull request is the open one, else the newest merged or closed"
     { name: "a", hash: "a" },
     { name: "done", hash: "d1" },
   ];
-  assert.deepEqual(branchesToRead({ defaultBranch: "main", branches: all, pulls: newestFirst }, 1).reading.map((b) => b.name), ["a"]);
+  assert.deepEqual(
+    branchesToRead({ defaultBranch: "main", branches: all, pulls: newestFirst }, 1).reading.map((b) => b.name),
+    ["a"],
+  );
 });
 
 const now = Date.parse("2026-10-11T00:00:00Z");
@@ -181,10 +190,22 @@ test("the overview shows a few of yours, the active and the stale ones; each tab
     ],
   );
   // Someone with no branches of their own sees no section of theirs.
-  assert.deepEqual(branchSections(rows, "overview", { username: "linus", now }).map((s) => s.tab), ["active", "stale"]);
-  assert.deepEqual(branchSections(rows, "stale", viewer)[0]?.branches.map((b) => b.name), ["d"]);
-  assert.deepEqual(branchSections(rows, "active", viewer)[0]?.branches.map((b) => b.name), ["a", "b", "c"]);
-  assert.deepEqual(branchSections(rows, "yours", viewer)[0]?.branches.map((b) => b.name), ["a", "c", "d"]);
+  assert.deepEqual(
+    branchSections(rows, "overview", { username: "linus", now }).map((s) => s.tab),
+    ["active", "stale"],
+  );
+  assert.deepEqual(
+    branchSections(rows, "stale", viewer)[0]?.branches.map((b) => b.name),
+    ["d"],
+  );
+  assert.deepEqual(
+    branchSections(rows, "active", viewer)[0]?.branches.map((b) => b.name),
+    ["a", "b", "c"],
+  );
+  assert.deepEqual(
+    branchSections(rows, "yours", viewer)[0]?.branches.map((b) => b.name),
+    ["a", "c", "d"],
+  );
   assert.equal(branchSections(rows, "all", viewer)[0]?.branches.length, 4);
 });
 

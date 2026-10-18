@@ -29,7 +29,8 @@ export const AI_PROVIDER_LOOKS: Record<AiProvider, AiProviderLook> = {
     mark: "A",
     keyUrl: "https://platform.claude.com/settings/keys",
     keyPlaceholder: "sk-ant-…",
-    keyHow: "Sign in to the Claude Console, choose Create key and copy it. The account needs credits under Billing; a Claude.ai subscription does not include the API.",
+    keyHow:
+      "Sign in to the Claude Console, choose Create key and copy it. The account needs credits under Billing; a Claude.ai subscription does not include the API.",
   },
   openai: {
     blurb: "GPT and the o-series, on your own OpenAI key.",
@@ -79,7 +80,8 @@ export const AI_PROVIDER_LOOKS: Record<AiProvider, AiProviderLook> = {
     color: "#0078d4",
     mark: "Az",
     keyUrl: "https://portal.azure.com",
-    keyHow: "Open your Azure OpenAI resource, then Resource Management → Keys and Endpoint: copy KEY 1 and the endpoint. Deployments are listed in the Azure AI Foundry portal.",
+    keyHow:
+      "Open your Azure OpenAI resource, then Resource Management → Keys and Endpoint: copy KEY 1 and the endpoint. Deployments are listed in the Azure AI Foundry portal.",
   },
   openrouter: {
     blurb: "Hundreds of models from every lab, on one key.",

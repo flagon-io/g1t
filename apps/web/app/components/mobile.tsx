@@ -211,7 +211,8 @@ export function BottomBar({
   );
 }
 
-const BAR_ITEM = "group relative flex h-full w-full flex-col items-center justify-center gap-1 outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset";
+const BAR_ITEM =
+  "group relative flex h-full w-full flex-col items-center justify-center gap-1 outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset";
 
 /** A tab's icon, marked as the rail marks the app you are in (ui/sidebar.tsx, `size: icon`). */
 function BarIcon({ current, children }: { current: boolean; children: ReactNode }) {
@@ -227,14 +228,30 @@ function BarIcon({ current, children }: { current: boolean; children: ReactNode 
 /** A tab's name, centred under its icon; a long one gives way rather than crowding its neighbours. */
 function BarLabel({ current, children }: { current: boolean; children: ReactNode }) {
   return (
-    <span className={`block w-full truncate px-0.5 text-center text-[0.6875rem] leading-none font-medium max-[380px]:text-[0.625rem] ${current ? "text-fg" : "text-faint"}`}>
+    <span
+      className={`block w-full truncate px-0.5 text-center text-[0.6875rem] leading-none font-medium max-[380px]:text-[0.625rem] ${current ? "text-fg" : "text-faint"}`}
+    >
       {children}
     </span>
   );
 }
 
 /** A big tile in the More sheet. */
-function MoreTile({ to, icon, label, onClick, disabled, note }: { to?: string; icon: ReactNode; label: string; onClick?: () => void; disabled?: boolean; note?: string }) {
+function MoreTile({
+  to,
+  icon,
+  label,
+  onClick,
+  disabled,
+  note,
+}: {
+  to?: string;
+  icon: ReactNode;
+  label: string;
+  onClick?: () => void;
+  disabled?: boolean;
+  note?: string;
+}) {
   const inner = (
     <>
       <span className={`flex size-11 items-center justify-center rounded-[10px] ${disabled ? "bg-raised/60 text-faint" : "bg-raised text-fg"}`}>{icon}</span>
@@ -242,7 +259,8 @@ function MoreTile({ to, icon, label, onClick, disabled, note }: { to?: string; i
       {note && <span className="-mt-0.5 rounded-full bg-line px-1.5 text-[0.625rem] font-medium text-muted">{note}</span>}
     </>
   );
-  const className = "flex min-w-0 flex-col items-center gap-1.5 rounded-md px-1 py-2.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-accent active:bg-raised/60";
+  const className =
+    "flex min-w-0 flex-col items-center gap-1.5 rounded-md px-1 py-2.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-accent active:bg-raised/60";
   if (to) {
     return (
       <Link to={to} className={className}>
@@ -399,7 +417,21 @@ export function BottomSheet({
 }
 
 /** A row in a bottom sheet: 48px tall, an icon, words, and what sits at its end. */
-export function SheetRow({ to, href, icon, children, end, onClick }: { to?: string; href?: string; icon: ReactNode; children: ReactNode; end?: ReactNode; onClick?: () => void }) {
+export function SheetRow({
+  to,
+  href,
+  icon,
+  children,
+  end,
+  onClick,
+}: {
+  to?: string;
+  href?: string;
+  icon: ReactNode;
+  children: ReactNode;
+  end?: ReactNode;
+  onClick?: () => void;
+}) {
   const className = "flex h-12 w-full items-center gap-3 rounded-md px-3 text-left text-[0.9375rem] text-fg-soft transition-colors active:bg-raised";
   const inner = (
     <>
@@ -555,9 +587,7 @@ const SOON_UNDER: Partial<Record<RoadmapItem["section"], ProjectPage>> = {
 // load this before the roadmap's chunk (lib/project-nav.ts says more).
 let soonPages: Record<string, ProjectPage> | null = null;
 const soonPagesOf = (): Record<string, ProjectPage> =>
-  (soonPages ??= Object.fromEntries(
-    ROADMAP.flatMap((item) => (SOON_UNDER[item.section] ? [[item.key, SOON_UNDER[item.section]!] as const] : [])),
-  ));
+  (soonPages ??= Object.fromEntries(ROADMAP.flatMap((item) => (SOON_UNDER[item.section] ? [[item.key, SOON_UNDER[item.section]!] as const] : []))));
 
 /**
  * A project's pages along the bottom of its header: the sidebar's own list
@@ -588,8 +618,10 @@ export function ProjectStrip({
   const { pathname } = useLocation();
   const rest = pathname.toLowerCase().startsWith(base.toLowerCase()) ? pathname.slice(base.length) : "";
   const at = projectPageAt(rest, soonPagesOf());
-  const pages: (ProjectPage | "overview")[] = ["overview", ...projectPages(member, can).filter((page) => page !== "observability" && page !== "settings"),
-    ...(settings ?? member ? (["settings"] as const) : []),
+  const pages: (ProjectPage | "overview")[] = [
+    "overview",
+    ...projectPages(member, can).filter((page) => page !== "observability" && page !== "settings"),
+    ...((settings ?? member) ? (["settings"] as const) : []),
   ];
   return (
     <NavTabs label="Project" className={always ? undefined : "md:hidden"}>

@@ -14,12 +14,7 @@ import { cleanCode, cleanProof, invitePath, looksAutomated } from "../lib/invite
 import { clientKey } from "../lib/registration.server";
 import { TURNSTILE_FAILED, TURNSTILE_SCRIPT } from "../lib/turnstile";
 import { turnstile, turnstileOk } from "../lib/turnstile.server";
-import {
-  assertSameOrigin,
-  getViewer,
-  nextPath,
-  startSession,
-} from "../lib/session.server";
+import { assertSameOrigin, getViewer, nextPath, startSession } from "../lib/session.server";
 
 export function meta(args: Route.MetaArgs) {
   return page(args, { title: "Create an account · g1t" });
@@ -88,30 +83,14 @@ export default function Register({ loaderData, actionData }: Route.ComponentProp
       )}
       <Form method="post" className="relative space-y-4">
         <Honeypot started={loaderData.started} />
-        <Field
-          label="Username"
-          hint="Letters, digits and single hyphens. It is how you sign in, and how others see you, in the case you type it."
-        >
-          <Input
-            name="username"
-            autoComplete="username"
-            required
-            autoFocus
-            maxLength={39}
-            pattern={USERNAME_PATTERN}
-          />
+        <Field label="Username" hint="Letters, digits and single hyphens. It is how you sign in, and how others see you, in the case you type it.">
+          <Input name="username" autoComplete="username" required autoFocus maxLength={39} pattern={USERNAME_PATTERN} />
         </Field>
         <Field label="Email" hint="We send a code to this address to confirm it.">
           <Input name="email" type="email" autoComplete="email" required />
         </Field>
         <Field label="Password" hint="At least 10 characters.">
-          <Input
-            name="password"
-            type="password"
-            autoComplete="new-password"
-            required
-            minLength={10}
-          />
+          <Input name="password" type="password" autoComplete="new-password" required minLength={10} />
         </Field>
         {loaderData.turnstile && (
           <>

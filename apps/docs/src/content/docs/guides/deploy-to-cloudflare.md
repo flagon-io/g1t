@@ -19,29 +19,29 @@ Before a first deploy to another account, change those to your own (see
 
 ## The pieces
 
-| Piece | Where |
-| --- | --- |
-| The manifest: every deployable part | `deploy/stack.jsonc` |
-| The tool | `scripts/deploy.mjs`, with its library and tests in `scripts/deploy/` |
-| Rust Worker builds | `scripts/build-rust-worker.mjs` |
-| The runner's images | `services/runner/base/Dockerfile`, `services/runner/Dockerfile`, `services/runner/base.json` |
-| The workflows | `.g1t/workflows/deploy.yml`, `.g1t/workflows/runner-base.yml` |
+| Piece                               | Where                                                                                        |
+| ----------------------------------- | -------------------------------------------------------------------------------------------- |
+| The manifest: every deployable part | `deploy/stack.jsonc`                                                                         |
+| The tool                            | `scripts/deploy.mjs`, with its library and tests in `scripts/deploy/`                        |
+| Rust Worker builds                  | `scripts/build-rust-worker.mjs`                                                              |
+| The runner's images                 | `services/runner/base/Dockerfile`, `services/runner/Dockerfile`, `services/runner/base.json` |
+| The workflows                       | `.g1t/workflows/deploy.yml`, `.g1t/workflows/runner-base.yml`                                |
 
 ## The manifest
 
 `deploy/stack.jsonc` lists every unit: each folder with a `wrangler.jsonc`.
 
-| Field | What it is |
-| --- | --- |
-| `path` | The unit's folder |
-| `kind` | `rust-worker`, `ts-worker`, `react-router` or `astro` |
-| `worker` | The Worker's name. It must match its `wrangler.jsonc`. |
-| `d1` | `{ database, migrations }`, when it has a database |
-| `stage` | `core`, `edge` or `front` (below) |
-| `secrets` | The Wrangler secrets it needs, by name |
-| `setup` | One-time steps a first deploy needs that no config can say |
-| `inputs` | Files outside its folder it is built from that no package names |
-| `image` | A Containers image, for the runner |
+| Field       | What it is                                                                                                             |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `path`      | The unit's folder                                                                                                      |
+| `kind`      | `rust-worker`, `ts-worker`, `react-router` or `astro`                                                                  |
+| `worker`    | The Worker's name. It must match its `wrangler.jsonc`.                                                                 |
+| `d1`        | `{ database, migrations }`, when it has a database                                                                     |
+| `stage`     | `core`, `edge` or `front` (below)                                                                                      |
+| `secrets`   | The Wrangler secrets it needs, by name                                                                                 |
+| `setup`     | One-time steps a first deploy needs that no config can say                                                             |
+| `inputs`    | Files outside its folder it is built from that no package names                                                        |
+| `image`     | A Containers image, for the runner                                                                                     |
 | `self_host` | `run`, `off`, `separate` or `none`: what a [self-hosted installation](/guides/self-hosting-architecture/) does with it |
 
 What a unit is built from is read, never listed by hand: Rust path
@@ -52,12 +52,12 @@ it uses changed. `node scripts/deploy.mjs manifest` prints the result.
 Units deploy in stages. A stage starts only when the one before it
 succeeded, and units inside a stage deploy in parallel:
 
-| Stage | What |
-| --- | --- |
-| `migrations` | Every pending D1 migration, before any code |
-| `core` | The services, reached through bindings |
-| `edge` | Public endpoints other than the site: `api`, `pages`, `status` |
-| `front` | The site, sudo and the docs |
+| Stage        | What                                                           |
+| ------------ | -------------------------------------------------------------- |
+| `migrations` | Every pending D1 migration, before any code                    |
+| `core`       | The services, reached through bindings                         |
+| `edge`       | Public endpoints other than the site: `api`, `pages`, `status` |
+| `front`      | The site, sudo and the docs                                    |
 
 A unit binds only to units in its own stage or an earlier one, so new code
 never calls a service that has not shipped. `npm run test:deploy` checks
@@ -123,18 +123,18 @@ node scripts/deploy.mjs build-base              # build and push the runner's ba
 node scripts/deploy.mjs image                   # make the runner's image in the registry (no Docker)
 ```
 
-| Flag | What it does |
-| --- | --- |
-| `--only a,b`, `--skip a,b` | Units by short name, folder or Worker name |
-| `--all` | Every unit, changed or not |
-| `--force` | The selected units even if unchanged |
-| `--concurrency N` | Units at once inside a stage, and migrations at once (default 4) |
-| `--stage core` | One stage only |
-| `--no-migrations` | Skip the migrations step |
-| `--allow-dirty` | Deploy with uncommitted changes. The version records no commit, so the next plan deploys it again. |
-| `--rebuild-image`, `--rebuild-base` | Build the runner's image, or its base, even if one exists |
-| `--rollback` | Allow deploying a commit older than the one live |
-| `--since REV` | Treat Workers with no recorded commit as running `REV` |
+| Flag                                | What it does                                                                                       |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `--only a,b`, `--skip a,b`          | Units by short name, folder or Worker name                                                         |
+| `--all`                             | Every unit, changed or not                                                                         |
+| `--force`                           | The selected units even if unchanged                                                               |
+| `--concurrency N`                   | Units at once inside a stage, and migrations at once (default 4)                                   |
+| `--stage core`                      | One stage only                                                                                     |
+| `--no-migrations`                   | Skip the migrations step                                                                           |
+| `--allow-dirty`                     | Deploy with uncommitted changes. The version records no commit, so the next plan deploys it again. |
+| `--rebuild-image`, `--rebuild-base` | Build the runner's image, or its base, even if one exists                                          |
+| `--rollback`                        | Allow deploying a commit older than the one live                                                   |
+| `--since REV`                       | Treat Workers with no recorded commit as running `REV`                                             |
 
 **Only what changed deploys.** Each deploy records its commit on the
 Worker's version (`wrangler deploy --message "g1t-deploy <sha> ..." --tag
@@ -168,13 +168,13 @@ Migrations never run backwards: undoing one is a new migration.
 hand (**Actions → Deploy → Run workflow**) with `units`, `all` and
 `dry_run`.
 
-| Job | Does |
-| --- | --- |
-| `check` | `manifest --check` and `npm run test:deploy` |
-| `plan` | The plan, shown in the run's summary |
-| `migrate` | Pending migrations; skipped when there are none |
-| `core`, `edge`, `front` | Each stage's units, one job per build group |
-| `smoke` | Loads the landing page, sign-in, sign-up and pricing |
+| Job                     | Does                                                 |
+| ----------------------- | ---------------------------------------------------- |
+| `check`                 | `manifest --check` and `npm run test:deploy`         |
+| `plan`                  | The plan, shown in the run's summary                 |
+| `migrate`               | Pending migrations; skipped when there are none      |
+| `core`, `edge`, `front` | Each stage's units, one job per build group          |
+| `smoke`                 | Loads the landing page, sign-in, sign-up and pricing |
 
 Deploys run one at a time; a second push waits. Rust units build on
 `g1t-4core` machines, at most four to a job, with Cargo's target and
@@ -193,17 +193,17 @@ hand reports one too when `G1T_DEPLOY_TOKEN` holds a g1t token with
 Make a custom token at **dash.cloudflare.com → My Profile → API Tokens**,
 restricted to your account and zones:
 
-| Scope | Permission |
-| --- | --- |
-| Account | Workers Scripts: Edit |
-| Account | D1: Edit |
-| Account | Queues: Edit |
+| Scope   | Permission               |
+| ------- | ------------------------ |
+| Account | Workers Scripts: Edit    |
+| Account | D1: Edit                 |
+| Account | Queues: Edit             |
 | Account | Workers R2 Storage: Read |
-| Account | Account Settings: Read |
-| Account | Containers: Edit |
-| Zone | Workers Routes: Edit |
-| Zone | DNS: Edit |
-| Zone | Zone: Read |
+| Account | Account Settings: Read   |
+| Account | Containers: Edit         |
+| Zone    | Workers Routes: Edit     |
+| Zone    | DNS: Edit                |
+| Zone    | Zone: Read               |
 
 Store it on the repository under **Settings → Secrets and variables** as
 the secret `CLOUDFLARE_API_TOKEN`, for workflows in the `production`
@@ -314,10 +314,10 @@ previous commit. Once it has deployed, the rooms are its own: fix forward.
 `services/runner` runs every sandbox (checks, the merge queue,
 workflow jobs and deploy builds) from one Containers image in two parts:
 
-| Image | Built from | Rebuilt |
-| --- | --- | --- |
-| The base | `services/runner/base/Dockerfile`: Debian, Node, Python, Docker, Go, Rust, Java, .NET and Ruby | When its folder changes, weekly by `runner-base.yml`, or by hand with `build-base` |
-| The runner | `services/runner/Dockerfile`: the base plus the `g1t-runner` binary | When the binary or the base changes |
+| Image      | Built from                                                                                     | Rebuilt                                                                            |
+| ---------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| The base   | `services/runner/base/Dockerfile`: Debian, Node, Python, Docker, Go, Rust, Java, .NET and Ruby | When its folder changes, weekly by `runner-base.yml`, or by hand with `build-base` |
+| The runner | `services/runner/Dockerfile`: the base plus the `g1t-runner` binary                            | When the binary or the base changes                                                |
 
 `services/runner/base.json` records the base that was pushed;
 `npm run test:deploy` fails while it and the base's folder disagree. The
@@ -404,8 +404,8 @@ On a new account, deploy a small server (an Express app with a
    deployments database has the minutes the app's Worker reported, which
    should be at least what Cloudflare billed for the same time.
 9. **Pausing and taking down.** A workspace over its limit gets its
-    container app's Worker put back paused, which stops the container, and
-    taking an app down deletes its application before its Worker.
+   container app's Worker put back paused, which stops the container, and
+   taking an app down deletes its application before its Worker.
 10. **Old images.** After a second deploy of the app, the registry's tag
     list for `<account>/g1t-<app>` has only the two newest builds' tags
     (`GET /v2/<account>/g1t-<app>/tags/list`), and none once the app is

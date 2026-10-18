@@ -107,29 +107,24 @@ export default function PersonalAccessTokens({ loaderData, actionData }: Route.C
           Rules
         </h2>
         <p className="mt-1 text-sm text-muted">
-          They apply from each token's next request, to tokens made before them too. A token they keep out still works
-          elsewhere, and reads {slug}'s public repositories as anyone can.
+          They apply from each token's next request, to tokens made before them too. A token they keep out still works elsewhere, and reads {slug}'s public
+          repositories as anyone can.
         </p>
         <Form method="post" className="mt-4 space-y-3">
           <input type="hidden" name="intent" value="policy" />
-          <SwitchCard
-            name="allow_tokens_for_this_workspace"
-            defaultChecked={policy.allowTokensForThisWorkspace}
-            title={`Allow tokens made for ${slug}`}
-          >
+          <SwitchCard name="allow_tokens_for_this_workspace" defaultChecked={policy.allowTokensForThisWorkspace} title={`Allow tokens made for ${slug}`}>
             Members may make tokens for {slug} alone, reaching only the repositories and permissions they choose.
           </SwitchCard>
           <SwitchCard name="require_approval" defaultChecked={policy.requireApproval} title={`Require approval of tokens made for ${slug}`}>
-            A member's token made for {slug} waits for an owner to approve it, and again when they widen it. Owners' own
-            tokens never wait.
+            A member's token made for {slug} waits for an owner to approve it, and again when they widen it. Owners' own tokens never wait.
           </SwitchCard>
           <SwitchCard
             name="allow_tokens_for_all_workspaces"
             defaultChecked={policy.allowTokensForAllWorkspaces}
             title="Allow tokens made for all of a member's workspaces"
           >
-            A token made for every workspace its owner belongs to reaches {slug} too. Off: such tokens no longer reach {slug},
-            and members make a token for {slug} alone instead.
+            A token made for every workspace its owner belongs to reaches {slug} too. Off: such tokens no longer reach {slug}, and members make a token for{" "}
+            {slug} alone instead.
           </SwitchCard>
           <SwitchCard name="forbid_no_expiry" defaultChecked={policy.forbidNoExpiry} title="Tokens must expire">
             A token that never expires does not reach {slug}.
@@ -268,9 +263,7 @@ function TokenLine({ member }: { member: MemberToken }) {
           <span className="truncate">{token.name}</span>
         </span>
         <TokenBadges token={token} />
-        {(token.status ?? "active") === "active" && !member.reaches && member.blockedBy && (
-          <Badge tone="danger">Kept out: {member.blockedBy}</Badge>
-        )}
+        {(token.status ?? "active") === "active" && !member.reaches && member.blockedBy && <Badge tone="danger">Kept out: {member.blockedBy}</Badge>}
       </p>
       {token.description && <p className="text-xs text-muted">{token.description}</p>}
       <TokenMeta token={token} />

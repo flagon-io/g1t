@@ -139,12 +139,7 @@ export function Sidebar({
  * window: a sheet from the left that holds focus and closes on Escape or a
  * tap outside. `title` names it for a screen reader.
  */
-export function SidebarMobile({
-  title,
-  className,
-  children,
-  ...props
-}: Omit<ComponentProps<typeof SheetContent>, "side" | "showClose"> & { title: string }) {
+export function SidebarMobile({ title, className, children, ...props }: Omit<ComponentProps<typeof SheetContent>, "side" | "showClose"> & { title: string }) {
   const { openMobile, setOpenMobile } = useSidebar();
   return (
     <Sheet open={openMobile} onOpenChange={setOpenMobile}>
@@ -244,7 +239,10 @@ export function SidebarContent({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
       data-slot="sidebar-content"
-      className={cn("flex min-h-0 flex-1 flex-col gap-2 overflow-x-hidden overflow-y-auto scrollbar-thin group-data-[collapsible=icon]/sidebar:overflow-hidden", className)}
+      className={cn(
+        "flex min-h-0 flex-1 flex-col gap-2 overflow-x-hidden overflow-y-auto scrollbar-thin group-data-[collapsible=icon]/sidebar:overflow-hidden",
+        className,
+      )}
       {...props}
     />
   );
@@ -321,7 +319,8 @@ export const sidebarMenuButtonVariants = cva(
       variant: {
         default: "text-muted [&>svg]:text-faint hover:[&>svg]:text-muted data-[active=true]:[&>svg]:text-fg",
         faint: "text-faint hover:text-muted [&>svg]:opacity-80",
-        outline: "border border-dashed border-sidebar-border text-muted hover:border-line-strong hover:bg-transparent data-[active=true]:border-accent/50 data-[active=true]:bg-accent/10 data-[active=true]:font-normal",
+        outline:
+          "border border-dashed border-sidebar-border text-muted hover:border-line-strong hover:bg-transparent data-[active=true]:border-accent/50 data-[active=true]:bg-accent/10 data-[active=true]:font-normal",
       },
       size: {
         // 36px rows, 13px words and 16px icons: the sidebar's row.
@@ -430,7 +429,11 @@ export function SidebarMenuSub({ className, ...props }: ComponentProps<"ul">) {
   return (
     <ul
       data-slot="sidebar-menu-sub"
-      className={cn("mx-3.5 flex min-w-0 translate-x-px flex-col gap-px border-l border-sidebar-border px-2.5 py-0.5", "group-data-[collapsible=icon]/sidebar:hidden", className)}
+      className={cn(
+        "mx-3.5 flex min-w-0 translate-x-px flex-col gap-px border-l border-sidebar-border px-2.5 py-0.5",
+        "group-data-[collapsible=icon]/sidebar:hidden",
+        className,
+      )}
       {...props}
     />
   );

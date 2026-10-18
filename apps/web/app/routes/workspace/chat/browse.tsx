@@ -31,7 +31,15 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const [listed, sidebar] = await Promise.all([chat.browse(slug, viewer, { archived }).catch(() => null), sidebarOrNull(slug, viewer)]);
   if (!listed?.ok) return { slug, unavailable: true as const };
   const joined = (sidebar?.entries ?? []).map((entry) => entry.channel.id);
-  return { slug, unavailable: false as const, archived, channels: listed.value, joined, guest: sidebar?.guest === true, name: sidebar?.workspace?.name ?? slug };
+  return {
+    slug,
+    unavailable: false as const,
+    archived,
+    channels: listed.value,
+    joined,
+    guest: sidebar?.guest === true,
+    name: sidebar?.workspace?.name ?? slug,
+  };
 }
 
 export default function Browse({ loaderData }: Route.ComponentProps) {

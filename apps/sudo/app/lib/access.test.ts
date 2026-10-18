@@ -22,11 +22,7 @@ const NOW_SECONDS = Math.floor(NOW / 1000);
 const RSA = { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" } as const;
 
 async function rsaKey() {
-  return crypto.subtle.generateKey(
-    { ...RSA, modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]) },
-    true,
-    ["sign", "verify"],
-  );
+  return crypto.subtle.generateKey({ ...RSA, modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]) }, true, ["sign", "verify"]);
 }
 
 const signing = await rsaKey();
@@ -96,11 +92,7 @@ test("a token for another Access application is refused", async () => {
 });
 
 test("a token from another team is refused", async () => {
-  const result = await verifyAccessJwt(
-    await sign(claims({ iss: "https://evil.cloudflareaccess.com" })),
-    SETTINGS,
-    { fetcher, now: NOW },
-  );
+  const result = await verifyAccessJwt(await sign(claims({ iss: "https://evil.cloudflareaccess.com" })), SETTINGS, { fetcher, now: NOW });
   assert.deepEqual(result, { ok: false, reason: "wrong issuer" });
 });
 

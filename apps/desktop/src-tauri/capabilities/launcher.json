@@ -1,21 +1,21 @@
 {
-	"$schema": "../gen/schemas/desktop-schema.json",
-	"identifier": "launcher",
-	"description": "The pages bundled with the app in the main window: the launcher, which finds the server and goes there, and the title bar across the top (src/frame.rs). The site's own pages get their capability at run time, for the server that is configured (src/config.rs).",
-	"windows": ["main"],
-	"permissions": [
-		"core:default",
-		"allow-desktop-info",
-		"allow-reachable",
-		"allow-set-server",
-		"allow-open-url",
-		"allow-check-for-updates",
-		"allow-open-settings",
-		"allow-window-control",
-		"allow-window-menu",
-		"allow-title-bar-page",
-		"allow-title-bar-current",
-		"allow-title-bar-act",
-		"allow-runner-status"
-	]
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "launcher",
+  "description": "The pages bundled with the app in the main window: the launcher, which finds the server and goes there, and the title bar across the top (src/frame.rs). The site's own pages get their capability at run time, for the server that is configured (src/config.rs).",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "allow-desktop-info",
+    "allow-reachable",
+    "allow-set-server",
+    "allow-open-url",
+    "allow-check-for-updates",
+    "allow-open-settings",
+    "allow-window-control",
+    "allow-window-menu",
+    "allow-title-bar-page",
+    "allow-title-bar-current",
+    "allow-title-bar-act",
+    "allow-runner-status"
+  ]
 }

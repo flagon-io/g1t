@@ -61,15 +61,11 @@ export default function Queue({ loaderData, params }: Route.ComponentProps) {
             Merge queue
           </h2>
           <p className="mt-1.5 max-w-2xl text-sm text-muted">
-            Each pull request is tested together with everything ahead of it, several
-            combinations at once, and {defaultBranch} only ever moves to a combination that
-            passed. One that fails goes back to its author; the ones behind it are tested
-            again without it.
+            Each pull request is tested together with everything ahead of it, several combinations at once, and {defaultBranch} only ever moves to a combination
+            that passed. One that fails goes back to its author; the ones behind it are tested again without it.
           </p>
         </div>
-        {member && (
-          <ButtonLink to={`${base}/settings/rules`}>{queue.enabled ? "Settings" : "Turn it on"}</ButtonLink>
-        )}
+        {member && <ButtonLink to={`${base}/settings/rules`}>{queue.enabled ? "Settings" : "Turn it on"}</ButtonLink>}
       </div>
 
       {!queue.enabled && queue.active.length === 0 && queue.recent.length === 0 ? (

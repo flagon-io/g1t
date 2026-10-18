@@ -14,9 +14,7 @@ export async function loader({ context }: Route.LoaderArgs) {
   return null;
 }
 
-type ActionData =
-  | { error: string; values: Record<string, string> }
-  | { review: { name: string; workspaces: string[]; values: Record<string, string> } };
+type ActionData = { error: string; values: Record<string, string> } | { review: { name: string; workspaces: string[]; values: Record<string, string> } };
 
 export async function action({ request, context }: Route.ActionArgs) {
   const staff = requireStaff(context);
@@ -58,16 +56,13 @@ export default function NewEnterprise({ actionData }: Route.ComponentProps) {
       </Link>
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">New enterprise</h1>
       <p className="mt-1 text-sm text-muted">
-        One customer that pays for several workspaces: one bill, one limit, one set of terms. Set its terms
-        once it exists.
+        One customer that pays for several workspaces: one bill, one limit, one set of terms. Set its terms once it exists.
       </p>
 
       {review && (
         <section id="review" className="mt-6 scroll-mt-20 rounded-lg border border-accent/40 bg-accent/5 p-4 sm:p-5">
           <h2 className="font-semibold tracking-tight">Create {review.name}?</h2>
-          <p className="mt-1 text-sm text-muted">
-            These workspaces will be billed to it from now on, under its limit and terms instead of their own:
-          </p>
+          <p className="mt-1 text-sm text-muted">These workspaces will be billed to it from now on, under its limit and terms instead of their own:</p>
           <ul className="mt-3 flex flex-wrap gap-2">
             {review.workspaces.map((slug) => (
               <li key={slug} className="inline-flex items-center gap-1.5 rounded-md border border-line bg-bg px-2 py-1 font-mono text-xs">

@@ -29,8 +29,8 @@ export function AddCiPrompt({
       <div className="min-w-0 grow">
         <p className="text-sm font-medium">This repository has no checks</p>
         <p className="mt-0.5 text-sm text-muted">
-          Nothing runs on its pull requests, so neither people nor agents can prove a change works before it merges.
-          Add a workflow in <code className="text-fg">.g1t/workflows</code>, then require it on the default branch.
+          Nothing runs on its pull requests, so neither people nor agents can prove a change works before it merges. Add a workflow in{" "}
+          <code className="text-fg">.g1t/workflows</code>, then require it on the default branch.
         </p>
         {canAdd && (
           <fetcher.Form method="post" action={`/${owner}/${repo}/add-ci`} className="mt-3 flex flex-wrap items-center gap-3">
@@ -38,9 +38,7 @@ export function AddCiPrompt({
               <Plus size={14} />
               Add CI
             </SubmitButton>
-            <span className="text-xs text-faint">
-              Opens a pull request with a starter workflow for the stack g1t finds. You can change it before merging.
-            </span>
+            <span className="text-xs text-faint">Opens a pull request with a starter workflow for the stack g1t finds. You can change it before merging.</span>
           </fetcher.Form>
         )}
         {fetcher.data?.error && (

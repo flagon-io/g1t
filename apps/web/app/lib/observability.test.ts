@@ -38,7 +38,14 @@ test("numbers read as people read them", () => {
 });
 
 test("a live line is shown only when the page's search would have found it", () => {
-  const log = { severity: "error" as const, body: "Payment timeout for order 7", environment: "production", service: "api", deployment_id: null, attributes: { "user.id": "42" } };
+  const log = {
+    severity: "error" as const,
+    body: "Payment timeout for order 7",
+    environment: "production",
+    service: "api",
+    deployment_id: null,
+    attributes: { "user.id": "42" },
+  };
   const view = parseView(new URLSearchParams("env=production"));
   assert.equal(matchesLog(log, view, []), true);
   assert.equal(matchesLog(log, { ...view, q: "timeout" }, []), true);
@@ -72,16 +79,42 @@ const span = (id: string, parent: string | null, start: number): TelemetrySpan =
 });
 
 test("spans nest under their parents, and orphans are still shown", () => {
-  const rows = spanTree([span("c", "a", 3), span("a", null, 1), span("b", "a", 2), span("x", "missing", 5), span("loop1", "loop2", 9), span("loop2", "loop1", 9)]);
+  const rows = spanTree([
+    span("c", "a", 3),
+    span("a", null, 1),
+    span("b", "a", 2),
+    span("x", "missing", 5),
+    span("loop1", "loop2", 9),
+    span("loop2", "loop1", 9),
+  ]);
   assert.deepEqual(
     rows.map((r) => [r.span.span_id, r.depth]),
-    [["a", 0], ["b", 1], ["c", 1], ["x", 0], ["loop1", 0], ["loop2", 0]],
+    [
+      ["a", 0],
+      ["b", 1],
+      ["c", 1],
+      ["x", 0],
+      ["loop1", 0],
+      ["loop2", 0],
+    ],
   );
 });
 
 test("an error's work item says what, how often and where to look", () => {
   const item = errorItem(
-    { name: "TypeError", message: "x is undefined", stack: "TypeError\n  at f (a.ts:1)", count: 3, first_us: 0, last_us: 60_000_000, service: "web", environment: "production", first_deployment_id: "dep_1", last_request_id: "r1", last_trace_id: null },
+    {
+      name: "TypeError",
+      message: "x is undefined",
+      stack: "TypeError\n  at f (a.ts:1)",
+      count: 3,
+      first_us: 0,
+      last_us: 60_000_000,
+      service: "web",
+      environment: "production",
+      first_deployment_id: "dep_1",
+      last_request_id: "r1",
+      last_trace_id: null,
+    },
     "https://g1t.sh/acme/web/observability",
   );
   assert.equal(item.title, "TypeError: x is undefined");

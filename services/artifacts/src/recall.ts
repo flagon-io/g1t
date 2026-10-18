@@ -28,7 +28,10 @@ export const MAX_IN_FILTER = 40;
  * to name, otherwise by workspace alone, more of them, filtered after.
  * Null when nothing may be read.
  */
-export function vectorQueryPlan(workspaceId: string, allowed: string[]): { topK: number; filter: { workspace_id: string; space_ids?: string[] }; filterAfter: boolean } | null {
+export function vectorQueryPlan(
+  workspaceId: string,
+  allowed: string[],
+): { topK: number; filter: { workspace_id: string; space_ids?: string[] }; filterAfter: boolean } | null {
   const ids = [...new Set(allowed)];
   if (!ids.length) return null;
   if (ids.length <= MAX_IN_FILTER) return { topK: TOP_K, filter: { workspace_id: workspaceId, space_ids: ids }, filterAfter: false };
@@ -85,5 +88,9 @@ export class QueryCache {
 
 /** A query as the cache keys it: the same words, however spaced or cased. */
 export function queryKey(query: string): string {
-  return String(query ?? "").replace(/\s+/g, " ").trim().toLowerCase().slice(0, 2000);
+  return String(query ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()
+    .slice(0, 2000);
 }

@@ -185,25 +185,10 @@ function FlagonMark({ className = "" }: { className?: string }) {
         </clipPath>
       </defs>
       <g clipPath="url(#g1t-footer-flagon-body)">
-        <path
-          d="M13 27 q3.75 -0.7 7.5 0 t7.5 0 t7.5 0 t7.5 0 t7.5 0 L51 52 L13 52 Z"
-          fill="currentColor"
-          fillOpacity="0.22"
-        />
+        <path d="M13 27 q3.75 -0.7 7.5 0 t7.5 0 t7.5 0 t7.5 0 t7.5 0 L51 52 L13 52 Z" fill="currentColor" fillOpacity="0.22" />
       </g>
-      <path
-        d="M37 27 L45.5 27 L48.5 30 L48.5 36.5 L45.5 39.5 L38 39.5"
-        stroke="currentColor"
-        strokeWidth="3.1"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M17.5 21 L36.5 21 L38.6 47 Q39 50 36 50 L18 50 Q15 50 15.4 47 Z"
-        stroke="currentColor"
-        strokeWidth="3.1"
-        strokeLinejoin="round"
-      />
+      <path d="M37 27 L45.5 27 L48.5 30 L48.5 36.5 L45.5 39.5 L38 39.5" stroke="currentColor" strokeWidth="3.1" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M17.5 21 L36.5 21 L38.6 47 Q39 50 36 50 L18 50 Q15 50 15.4 47 Z" stroke="currentColor" strokeWidth="3.1" strokeLinejoin="round" />
       <path d="M17 21 Q16.3 16.3 20 15.6 L33 15.6 Q37.2 16.2 37 21 Z" stroke="currentColor" strokeWidth="3" strokeLinejoin="round" />
       <path d="M36.7 17.1 L39.4 16.1" stroke="currentColor" strokeWidth="2.4" strokeLinejoin="round" />
       <circle cx="40.3" cy="15.8" r="1.4" fill="currentColor" />

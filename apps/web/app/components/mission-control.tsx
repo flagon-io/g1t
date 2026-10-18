@@ -100,11 +100,7 @@ function Facts({ facts }: { facts: Fact[] }) {
         <div key={fact.label} className={cn("min-w-0", fact.wide && "col-span-2")}>
           <dt className="text-xs text-faint">{fact.label}</dt>
           <dd
-            className={cn(
-              "mt-0.5 text-sm font-medium tabular-nums",
-              fact.wide ? "leading-5" : "truncate",
-              fact.tone ? FACT_TONE[fact.tone] : "text-fg-soft",
-            )}
+            className={cn("mt-0.5 text-sm font-medium tabular-nums", fact.wide ? "leading-5" : "truncate", fact.tone ? FACT_TONE[fact.tone] : "text-fg-soft")}
           >
             {fact.value}
           </dd>
@@ -133,9 +129,7 @@ function QuickForm({ quick, variant = "outline" }: { quick: QuickAction; variant
         disabled={done}
         className={cn(
           "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-default",
-          variant === "accent"
-            ? "bg-accent text-bg hover:bg-accent-hover"
-            : "border border-line-strong text-fg/90 hover:bg-raised hover:text-fg",
+          variant === "accent" ? "bg-accent text-bg hover:bg-accent-hover" : "border border-line-strong text-fg/90 hover:bg-raised hover:text-fg",
           done && "border-success/40 text-success",
         )}
       >
@@ -404,10 +398,7 @@ function WeekChart({ week }: { week: Week }) {
                 <div key={day.key} className="group relative flex h-full flex-1 flex-col items-center justify-end">
                   {day.count > 0 && (
                     <span
-                      className={cn(
-                        "mb-1 text-[0.625rem] tabular-nums",
-                        today ? "text-fg-soft" : "text-faint opacity-0 group-hover:opacity-100 max-md:hidden",
-                      )}
+                      className={cn("mb-1 text-[0.625rem] tabular-nums", today ? "text-fg-soft" : "text-faint opacity-0 group-hover:opacity-100 max-md:hidden")}
                     >
                       {day.count}
                     </span>
@@ -431,10 +422,7 @@ function WeekChart({ week }: { week: Week }) {
             {week.days.map((day, index) => (
               <span
                 key={day.key}
-                className={cn(
-                  "flex-1 text-center text-[0.6875rem]",
-                  index === week.days.length - 1 ? "font-medium text-fg-soft" : "text-faint",
-                )}
+                className={cn("flex-1 text-center text-[0.6875rem]", index === week.days.length - 1 ? "font-medium text-fg-soft" : "text-faint")}
               >
                 {day.label}
               </span>
@@ -496,14 +484,14 @@ function FeedLine({ group, titles }: { group: ActivityGroup; titles: Record<stri
     <li className="flex gap-2.5 py-2">
       <span className="mt-px">{agent ? <Avatar name={actor} image={null} size={22} /> : <UserAvatar username={actor} size={22} />}</span>
       <span className="min-w-0 grow text-[0.8125rem] leading-5 text-muted">
-        {agent ? (
-          <span className="font-medium text-accent">{actor}</span>
-        ) : (
-          <PersonLink name={actor} className="font-medium text-fg hover:text-accent" />
-        )}{" "}
+        {agent ? <span className="font-medium text-accent">{actor}</span> : <PersonLink name={actor} className="font-medium text-fg hover:text-accent" />}{" "}
         {VERB[part.verb]}{" "}
         {number != null ? (
-          <Link to={part.verb === "opened_item" || part.verb === "closed_item" ? itemPath(group.repo.namespace, number) : `${base}/pull/${number}`} prefetch="intent" className="text-fg-soft hover:text-fg">
+          <Link
+            to={part.verb === "opened_item" || part.verb === "closed_item" ? itemPath(group.repo.namespace, number) : `${base}/pull/${number}`}
+            prefetch="intent"
+            className="text-fg-soft hover:text-fg"
+          >
             <span className="font-mono text-xs">#{number}</span>
             {title && <> {title}</>}
           </Link>
@@ -567,9 +555,7 @@ export default function MissionControl({ loaderData }: { loaderData: Loaded }) {
             at: Date.now(),
             to: `/${workspace}/-/billing`,
             open: `/${workspace}/-/billing`,
-            facts: [
-              { label: "Used", value: `${dollars(limit.exposureMicros)} of ${dollars(limit.ceilingMicros ?? 0)}`, tone: "warn" as const },
-            ],
+            facts: [{ label: "Used", value: `${dollars(limit.exposureMicros)} of ${dollars(limit.ceilingMicros ?? 0)}`, tone: "warn" as const }],
             why: "Workflows, checks and deployments that are paid for stop at the workspace's usage limit. Only an owner can raise it or add a card.",
             quick: null,
             link: null,
@@ -754,9 +740,7 @@ export default function MissionControl({ loaderData }: { loaderData: Loaded }) {
                   <>
                     <Empty>
                       <p className="font-medium text-fg">Nothing needs you</p>
-                      <p className="mt-1">
-                        {landed.length > 0 ? "Here's what landed today." : "Reviews, failed deploys and invitations show up here first."}
-                      </p>
+                      <p className="mt-1">{landed.length > 0 ? "Here's what landed today." : "Reviews, failed deploys and invitations show up here first."}</p>
                     </Empty>
                     {landed.length > 0 && (
                       <div className="border-t border-line">
@@ -799,11 +783,7 @@ export default function MissionControl({ loaderData }: { loaderData: Loaded }) {
                 <span>
                   Showing {shown.length} of {rows.length}
                 </span>
-                <Link
-                  to={link({ all: all ? null : "1" })}
-                  preventScrollReset
-                  className="inline-flex items-center gap-1 font-medium text-fg-soft hover:text-fg"
-                >
+                <Link to={link({ all: all ? null : "1" })} preventScrollReset className="inline-flex items-center gap-1 font-medium text-fg-soft hover:text-fg">
                   {all ? "Show fewer" : "See all"} <ChevronRight size={12} />
                 </Link>
               </div>

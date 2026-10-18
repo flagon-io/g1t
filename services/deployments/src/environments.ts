@@ -209,8 +209,7 @@ export function compareEnvironments(
   a: { name: string; production_environment: boolean; updated_at: string },
   b: { name: string; production_environment: boolean; updated_at: string },
 ): number {
-  const rank = (env: { name: string; production_environment: boolean }) =>
-    env.name.toLowerCase() === "production" ? 0 : env.production_environment ? 1 : 2;
+  const rank = (env: { name: string; production_environment: boolean }) => (env.name.toLowerCase() === "production" ? 0 : env.production_environment ? 1 : 2);
   return rank(a) - rank(b) || b.updated_at.localeCompare(a.updated_at) || a.name.localeCompare(b.name);
 }
 
@@ -296,14 +295,7 @@ export function buildStatuses(row: BuildRow, deployment: RepoDeployment): Deploy
     out.push(status("finished", state, end, row.error ?? (state === "success" ? "Live" : stateDescription(state))));
   }
   if (row.status === "replaced" || row.status === "down") {
-    out.push(
-      status(
-        row.status,
-        "inactive",
-        end ?? row.created_at,
-        row.status === "replaced" ? "Replaced by a newer build" : "Taken down",
-      ),
-    );
+    out.push(status(row.status, "inactive", end ?? row.created_at, row.status === "replaced" ? "Replaced by a newer build" : "Taken down"));
   }
   return out;
 }

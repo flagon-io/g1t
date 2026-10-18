@@ -54,7 +54,10 @@ export async function indexRepoSpace(
   const listing = await repos.listFiles(space.repo_id, null, 10_000);
   const wanted = pickRepoDocs(listing.files.filter((f): f is { path: string; hash: string } => !!f.hash));
   const kept = new Map(
-    (await db.prepare("SELECT path, hash FROM repo_files WHERE space_id = ?").bind(space.id).all<{ path: string; hash: string }>()).results.map((r) => [r.path, r.hash]),
+    (await db.prepare("SELECT path, hash FROM repo_files WHERE space_id = ?").bind(space.id).all<{ path: string; hash: string }>()).results.map((r) => [
+      r.path,
+      r.hash,
+    ]),
   );
   const changed = wanted.filter((f) => kept.get(f.path) !== f.hash);
   const blobs = new Map<string, string | null>();
@@ -74,11 +77,15 @@ export async function indexRepoSpace(
     const title = repoDocTitle(file.path, markdown);
     statements.push(
       db
-        .prepare("INSERT INTO repo_files (space_id, path, hash, title, markdown) VALUES (?, ?, ?, ?, ?) ON CONFLICT (space_id, path) DO UPDATE SET hash = excluded.hash, title = excluded.title, markdown = excluded.markdown")
+        .prepare(
+          "INSERT INTO repo_files (space_id, path, hash, title, markdown) VALUES (?, ?, ?, ?, ?) ON CONFLICT (space_id, path) DO UPDATE SET hash = excluded.hash, title = excluded.title, markdown = excluded.markdown",
+        )
         .bind(space.id, file.path, file.hash, title, markdown),
     );
     statements.push(db.prepare("DELETE FROM repo_files_fts WHERE space_id = ? AND path = ?").bind(space.id, file.path));
-    statements.push(db.prepare("INSERT INTO repo_files_fts (space_id, path, title, body) VALUES (?, ?, ?, ?)").bind(space.id, file.path, title, searchText(markdown)));
+    statements.push(
+      db.prepare("INSERT INTO repo_files_fts (space_id, path, title, body) VALUES (?, ?, ?, ?)").bind(space.id, file.path, title, searchText(markdown)),
+    );
   }
   statements.push(db.prepare("UPDATE repo_spaces SET commit_sha = ?, indexed_at = ? WHERE id = ?").bind(listing.commit, now.toISOString(), space.id));
   for (let i = 0; i < statements.length; i += 50) await db.batch(statements.slice(i, i + 50));

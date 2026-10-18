@@ -8,13 +8,7 @@ import { PENDING_COOKIE, TWO_FACTOR_COOKIE, TWO_FACTOR_SECONDS, cookie, readCook
 import { githubSignIn, githubSignInEnabled } from "../lib/github.server";
 import { ErrorText, Field, Input, SubmitButton } from "../components/ui";
 import { identity } from "../lib/services.server";
-import {
-  assertSameOrigin,
-  getViewer,
-  nextPath,
-  clientOf,
-  startSession,
-} from "../lib/session.server";
+import { assertSameOrigin, getViewer, nextPath, clientOf, startSession } from "../lib/session.server";
 
 export function meta(args: Route.MetaArgs) {
   return page(args, { title: "Sign in · g1t" });
@@ -36,11 +30,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 export async function action({ request }: Route.ActionArgs) {
   assertSameOrigin(request);
   const form = await request.formData();
-  const result = await identity.signIn(
-    String(form.get("username") ?? "").trim(),
-    String(form.get("password") ?? ""),
-    clientOf(request),
-  );
+  const result = await identity.signIn(String(form.get("username") ?? "").trim(), String(form.get("password") ?? ""), clientOf(request));
   if (!result.ok) return { error: result.error.message };
   // Two-factor authentication on: no session yet, a code first.
   if (result.value.twoFactorChallenge) {
@@ -59,10 +49,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function Login({ loaderData, actionData }: Route.ComponentProps) {
-  const registerUrl =
-    loaderData.next === "/"
-      ? "/register"
-      : `/register?next=${encodeURIComponent(loaderData.next)}`;
+  const registerUrl = loaderData.next === "/" ? "/register" : `/register?next=${encodeURIComponent(loaderData.next)}`;
   return (
     <AuthCard
       title="Sign in to g1t"
@@ -80,8 +67,7 @@ export default function Login({ loaderData, actionData }: Route.ComponentProps) 
         <p className="mb-6 flex items-start gap-2 rounded-md border border-accent/40 bg-surface p-3 text-sm" role="status">
           <GithubMark className="mt-0.5 size-4 shrink-0" />
           <span>
-            An account with this email exists. Sign in to link GitHub (
-            <span className="font-mono">@{loaderData.linking}</span>) to it.
+            An account with this email exists. Sign in to link GitHub (<span className="font-mono">@{loaderData.linking}</span>) to it.
           </span>
         </p>
       ) : (
@@ -97,12 +83,7 @@ export default function Login({ loaderData, actionData }: Route.ComponentProps) 
           <Input name="username" autoComplete="username" required autoFocus />
         </Field>
         <Field label="Password">
-          <Input
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            required
-          />
+          <Input name="password" type="password" autoComplete="current-password" required />
         </Field>
         <ErrorText>{actionData?.error}</ErrorText>
         <div className="pt-2 *:w-full">

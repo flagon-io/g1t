@@ -47,13 +47,29 @@ test("per-part subscriptions", () => {
 });
 
 test("letters: escaped HTML, plain text, and an unsubscribe link in every update", () => {
-  const { text, html } = render(updateLetter({ heading: "Identified: <Pushes>", text: "A bad deploy.", url: "https://status.g1t.sh/incidents/a", affects: ["Git"], unsubscribe: "https://status.g1t.sh/unsubscribe?token=x" }));
+  const { text, html } = render(
+    updateLetter({
+      heading: "Identified: <Pushes>",
+      text: "A bad deploy.",
+      url: "https://status.g1t.sh/incidents/a",
+      affects: ["Git"],
+      unsubscribe: "https://status.g1t.sh/unsubscribe?token=x",
+    }),
+  );
   assert.ok(html.includes("Identified: &lt;Pushes&gt;") && !html.includes("<Pushes>"));
   assert.ok(text.includes("Unsubscribe: https://status.g1t.sh/unsubscribe?token=x"));
   assert.ok(text.includes("Affects: Git."));
   assert.equal(unsubscribeHeaders("https://u")["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click");
   assert.ok(render(confirmLetter("https://c", ["Git"])).text.includes("affecting Git"));
-  assert.ok(render(alertLetter({ title: "Detected: API not answering", lines: ["API has not answered on 3 checks in a row since 5 Oct 12:00 UTC."], link: "https://sudo.g1t.sh/incidents/x" })).text.includes("https://sudo.g1t.sh/incidents/x"));
+  assert.ok(
+    render(
+      alertLetter({
+        title: "Detected: API not answering",
+        lines: ["API has not answered on 3 checks in a row since 5 Oct 12:00 UTC."],
+        link: "https://sudo.g1t.sh/incidents/x",
+      }),
+    ).text.includes("https://sudo.g1t.sh/incidents/x"),
+  );
 });
 
 test("senders: the binding when there is one, none otherwise", async () => {
@@ -87,10 +103,23 @@ test("feeds: every public update and maintenance notice, newest first, in Atom a
     },
   ];
   const maintenance = [
-    { id: "m", title: "Upgrade", message: "m", components: ["git"], starts_at: "2026-10-06T02:00:00Z", ends_at: "2026-10-06T03:00:00Z", state: "scheduled" as const, url: "https://status.g1t.sh/maintenance/m", updates: [{ id: "mu", at: "2026-10-05T11:30:00Z", text: "Scheduled." }] },
+    {
+      id: "m",
+      title: "Upgrade",
+      message: "m",
+      components: ["git"],
+      starts_at: "2026-10-06T02:00:00Z",
+      ends_at: "2026-10-06T03:00:00Z",
+      state: "scheduled" as const,
+      url: "https://status.g1t.sh/maintenance/m",
+      updates: [{ id: "mu", at: "2026-10-05T11:30:00Z", text: "Scheduled." }],
+    },
   ];
   const items = feedItems(incidents, maintenance);
-  assert.deepEqual(items.map((i) => i.title), ["Resolved: Pushes & pulls failing", "Maintenance: Upgrade", "Investigating: Pushes & pulls failing"]);
+  assert.deepEqual(
+    items.map((i) => i.title),
+    ["Resolved: Pushes & pulls failing", "Maintenance: Upgrade", "Investigating: Pushes & pulls failing"],
+  );
   assert.equal(items[0]!.url, "https://status.g1t.sh/incidents/a#update-u2");
   const xml = atom(items, { origin: "https://status.g1t.sh", title: "g1t status", updated: "2026-10-05T13:00:00Z" });
   assert.ok(xml.startsWith('<?xml version="1.0" encoding="utf-8"?>\n<feed xmlns="http://www.w3.org/2005/Atom">'));
@@ -98,7 +127,10 @@ test("feeds: every public update and maintenance notice, newest first, in Atom a
   assert.ok(xml.includes("Looking &lt;now&gt;."));
   assert.ok(xml.includes("<updated>2026-10-05T12:00:00Z</updated>"));
   assert.equal((xml.match(/<entry>/g) ?? []).length, 3);
-  const json = jsonFeed(items, { origin: "https://status.g1t.sh", title: "g1t status", updated: "" }) as { version: string; items: { id: string; content_text: string }[] };
+  const json = jsonFeed(items, { origin: "https://status.g1t.sh", title: "g1t status", updated: "" }) as {
+    version: string;
+    items: { id: string; content_text: string }[];
+  };
   assert.equal(json.version, "https://jsonfeed.org/version/1.1");
   assert.equal(json.items[2]!.content_text, "Looking <now>.");
   assert.equal(feedItems(incidents, maintenance, 1).length, 1);

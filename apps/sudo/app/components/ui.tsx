@@ -13,17 +13,7 @@ import { usd } from "~/lib/money";
 import { fullDiscount, termsLabel } from "~/lib/terms";
 import { when } from "~/lib/time";
 
-export function Field({
-  label,
-  hint,
-  children,
-  className = "",
-}: {
-  label: string;
-  hint?: ReactNode;
-  children: ReactNode;
-  className?: string;
-}) {
+export function Field({ label, hint, children, className = "" }: { label: string; hint?: ReactNode; children: ReactNode; className?: string }) {
   return (
     <label className={`block ${className}`}>
       <span className="mb-1.5 block text-sm font-medium text-muted">{label}</span>
@@ -159,11 +149,7 @@ export function Badge({ tone = "plain", children }: { tone?: "plain" | "lavender
     danger: "border-danger/35 bg-danger/10 text-danger",
     info: "border-info/35 bg-info/10 text-info",
   };
-  return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-px text-xs font-medium whitespace-nowrap ${tones[tone]}`}>
-      {children}
-    </span>
-  );
+  return <span className={`inline-flex items-center rounded-full border px-2 py-px text-xs font-medium whitespace-nowrap ${tones[tone]}`}>{children}</span>;
 }
 
 export function TermsBadge({ terms }: { terms: Terms }) {
@@ -240,11 +226,15 @@ export function ExposureBar({ limit, wide = false }: { limit: Limit; wide?: bool
         </span>
         {percent != null && <span className={`tabular ${STATE[state].text}`}>{percent}%</span>}
       </div>
-      <svg viewBox="0 0 100 4" preserveAspectRatio="none" className="mt-1.5 block h-1.5 w-full" role="img" aria-label={`${STATE[state].label}: ${percent ?? 0}% of the limit`}>
+      <svg
+        viewBox="0 0 100 4"
+        preserveAspectRatio="none"
+        className="mt-1.5 block h-1.5 w-full"
+        role="img"
+        aria-label={`${STATE[state].label}: ${percent ?? 0}% of the limit`}
+      >
         <rect x="0" y="0" width="100" height="4" rx="2" fill="var(--color-raised)" />
-        {ceilingMicros != null && share > 0 && (
-          <rect x="0" y="0" width={Math.max(2, share * 100)} height="4" rx="2" fill={STATE[state].fill} />
-        )}
+        {ceilingMicros != null && share > 0 && <rect x="0" y="0" width={Math.max(2, share * 100)} height="4" rx="2" fill={STATE[state].fill} />}
       </svg>
     </div>
   );

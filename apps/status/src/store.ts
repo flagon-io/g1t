@@ -91,9 +91,7 @@ export async function record(db: D1Database, observations: Observation[], at: Da
         .bind(o.component, day, up, degraded, down, latency, counted),
     );
   }
-  statements.push(
-    db.prepare(`INSERT INTO meta (key, value) VALUES ('checked_at', ?1) ON CONFLICT (key) DO UPDATE SET value = ?1`).bind(when),
-  );
+  statements.push(db.prepare(`INSERT INTO meta (key, value) VALUES ('checked_at', ?1) ON CONFLICT (key) DO UPDATE SET value = ?1`).bind(when));
   statements.push(db.prepare(`DELETE FROM daily WHERE day < ?1`).bind(oldest));
   statements.push(db.prepare(`DELETE FROM check_history WHERE at < ?1`).bind(iso(at.getTime() - CHECK_HISTORY_DAYS * DAY_MS)));
   await db.batch(statements);
@@ -283,7 +281,10 @@ export function publicMaintenance(m: AdminMaintenance): StatusMaintenance {
 /** Public incidents matching `where`, with their parts and public updates. */
 async function publicIncidents(db: D1Database, where: string, args: unknown[], origin: string): Promise<StatusIncident[]> {
   const list = rows<IncidentRow>(
-    (await db.prepare(`SELECT * FROM incident WHERE visibility = 'public' AND (${where}) ORDER BY started_at DESC LIMIT 500`).bind(...args).all()) as D1Result,
+    (await db
+      .prepare(`SELECT * FROM incident WHERE visibility = 'public' AND (${where}) ORDER BY started_at DESC LIMIT 500`)
+      .bind(...args)
+      .all()) as D1Result,
   );
   if (!list.length) return [];
   const ids = list.map((i) => i.id);
@@ -297,11 +298,19 @@ async function publicIncidents(db: D1Database, where: string, args: unknown[], o
 }
 
 async function maintenanceWhere(db: D1Database, where: string, args: unknown[], origin: string): Promise<AdminMaintenance[]> {
-  const list = rows<MaintenanceRow>((await db.prepare(`SELECT * FROM maintenance WHERE ${where} ORDER BY starts_at DESC LIMIT 500`).bind(...args).all()) as D1Result);
+  const list = rows<MaintenanceRow>(
+    (await db
+      .prepare(`SELECT * FROM maintenance WHERE ${where} ORDER BY starts_at DESC LIMIT 500`)
+      .bind(...args)
+      .all()) as D1Result,
+  );
   if (!list.length) return [];
   const ids = list.map((m) => m.id);
   const updates = rows<MaintenanceUpdateRow>(
-    (await db.prepare(`SELECT * FROM maintenance_update WHERE maintenance_id IN (${inList(ids)})`).bind(...ids).all()) as D1Result,
+    (await db
+      .prepare(`SELECT * FROM maintenance_update WHERE maintenance_id IN (${inList(ids)})`)
+      .bind(...ids)
+      .all()) as D1Result,
   );
   return list.map((m) => toMaintenance(m, updates, origin));
 }
@@ -353,8 +362,17 @@ export async function loadHistory(db: D1Database, since: Date, origin: string) {
 
 // --- Staff reads -------------------------------------------------------------------
 
-async function adminIncidents(db: D1Database, where: string, args: unknown[]): Promise<{ list: IncidentRow[]; comps: ComponentRow[]; timeline: TimelineRow[]; followups: FollowUpRow[]; pms: PostmortemRow[] }> {
-  const list = rows<IncidentRow>((await db.prepare(`SELECT * FROM incident WHERE ${where} ORDER BY started_at DESC LIMIT 500`).bind(...args).all()) as D1Result);
+async function adminIncidents(
+  db: D1Database,
+  where: string,
+  args: unknown[],
+): Promise<{ list: IncidentRow[]; comps: ComponentRow[]; timeline: TimelineRow[]; followups: FollowUpRow[]; pms: PostmortemRow[] }> {
+  const list = rows<IncidentRow>(
+    (await db
+      .prepare(`SELECT * FROM incident WHERE ${where} ORDER BY started_at DESC LIMIT 500`)
+      .bind(...args)
+      .all()) as D1Result,
+  );
   if (!list.length) return { list, comps: [], timeline: [], followups: [], pms: [] };
   const ids = list.map((i) => i.id);
   const [comps, timeline, followups, pms] = await db.batch([
@@ -482,7 +500,9 @@ function timelineStatements(db: D1Database, incident: string, entries: (Entry & 
 function componentStatements(db: D1Database, incident: string, list: ImpactInput[]): D1PreparedStatement[] {
   return list.map((c) =>
     db
-      .prepare(`INSERT INTO incident_component (incident_id, component, impact) VALUES (?1, ?2, ?3) ON CONFLICT (incident_id, component) DO UPDATE SET impact = ?3`)
+      .prepare(
+        `INSERT INTO incident_component (incident_id, component, impact) VALUES (?1, ?2, ?3) ON CONFLICT (incident_id, component) DO UPDATE SET impact = ?3`,
+      )
       .bind(incident, c.key, c.impact),
   );
 }
@@ -586,7 +606,13 @@ export async function addFollowUp(db: D1Database, incident: string, input: { tit
     db
       .prepare(`INSERT INTO incident_followup (id, incident_id, title, owner, created_at, created_by) VALUES (?1, ?2, ?3, ?4, ?5, ?6)`)
       .bind(f.id, incident, f.title, f.owner, f.created_at, f.created_by),
-    ...timelineStatements(db, incident, [{ kind: "followup", public: false, status: null, text: `Follow-up: ${f.title}${f.owner ? ` (${f.owner})` : ""}.` }], now, input.by),
+    ...timelineStatements(
+      db,
+      incident,
+      [{ kind: "followup", public: false, status: null, text: `Follow-up: ${f.title}${f.owner ? ` (${f.owner})` : ""}.` }],
+      now,
+      input.by,
+    ),
     auditStatement(db, f.created_at, input.by, "incident_followup", incident, `Added follow-up: ${f.title}`),
   ]);
   return f;
@@ -623,8 +649,21 @@ export async function publishPostmortem(db: D1Database, incident: string, publis
   const at = now.toISOString();
   await db.batch([
     db.prepare(`UPDATE postmortem SET published_at = ?2, published_by = ?3 WHERE incident_id = ?1`).bind(incident, publish ? at : null, publish ? by : null),
-    ...timelineStatements(db, incident, [{ kind: "postmortem", public: false, status: null, text: publish ? "Postmortem published." : "Postmortem taken down." }], now, by),
-    auditStatement(db, at, by, publish ? "postmortem_published" : "postmortem_unpublished", incident, publish ? "Published the postmortem" : "Took the postmortem down"),
+    ...timelineStatements(
+      db,
+      incident,
+      [{ kind: "postmortem", public: false, status: null, text: publish ? "Postmortem published." : "Postmortem taken down." }],
+      now,
+      by,
+    ),
+    auditStatement(
+      db,
+      at,
+      by,
+      publish ? "postmortem_published" : "postmortem_unpublished",
+      incident,
+      publish ? "Published the postmortem" : "Took the postmortem down",
+    ),
   ]);
 }
 
@@ -763,9 +802,15 @@ export async function recipients(db: D1Database, about: string[]): Promise<{ id:
 // --- Detection ---------------------------------------------------------------------------
 
 export async function loadStreaks(db: D1Database): Promise<Map<string, Streak>> {
-  const list = rows<{ component: string; state: "degraded" | "down"; count: number; checks: number | null; recent: string | null; since: string; alerted: number }>(
-    (await db.prepare(`SELECT component, state, count, checks, recent, since, alerted FROM streak`).all()) as D1Result,
-  );
+  const list = rows<{
+    component: string;
+    state: "degraded" | "down";
+    count: number;
+    checks: number | null;
+    recent: string | null;
+    since: string;
+    alerted: number;
+  }>((await db.prepare(`SELECT component, state, count, checks, recent, since, alerted FROM streak`).all()) as D1Result);
   // Runs kept before migration 0003 have no `checks` or `recent`: upgradeStreak fills them in.
   return new Map(list.map((s) => [s.component, upgradeStreak({ ...s, alerted: s.alerted === 1 })]));
 }
@@ -831,10 +876,7 @@ export async function loadDeploy(db: D1Database): Promise<DeployWindow | null> {
 }
 
 export async function saveDeploy(db: D1Database, window: DeployWindow): Promise<void> {
-  await db
-    .prepare(`INSERT INTO meta (key, value) VALUES ('deploy', ?1) ON CONFLICT (key) DO UPDATE SET value = ?1`)
-    .bind(JSON.stringify(window))
-    .run();
+  await db.prepare(`INSERT INTO meta (key, value) VALUES ('deploy', ?1) ON CONFLICT (key) DO UPDATE SET value = ?1`).bind(JSON.stringify(window)).run();
 }
 
 const HEALTHY = "draft_healthy:";

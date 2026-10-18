@@ -68,10 +68,7 @@ export default function RepoActionsSettings({ loaderData, actionData, params }: 
     <>
       <RepoSettingsHeading base={base} />
       <Form method="post" className="max-w-4xl space-y-8">
-        <Section
-          title="Actions"
-          about="Whether this repository's workflows run at all."
-        >
+        <Section title="Actions" about="Whether this repository's workflows run at all.">
           <input type="hidden" name="enabledShown" value="1" />
           <SettingToggle name="enabled" on={settings.enabled} title="Run workflows">
             {settings.enabled
@@ -85,16 +82,12 @@ export default function RepoActionsSettings({ loaderData, actionData, params }: 
           title="Workflow permissions"
           about={
             <>
-              What the token of a job without <code className="font-mono text-xs">permissions:</code> can do. Workflows and
-              jobs that write <code className="font-mono text-xs">permissions:</code> get what they write.
+              What the token of a job without <code className="font-mono text-xs">permissions:</code> can do. Workflows and jobs that write{" "}
+              <code className="font-mono text-xs">permissions:</code> get what they write.
             </>
           }
         >
-          <RadioGroup
-            name="defaultPermissions"
-            defaultValue={settings.defaultChosen ? settings.defaultPermissions : "inherit"}
-            className="gap-3"
-          >
+          <RadioGroup name="defaultPermissions" defaultValue={settings.defaultChosen ? settings.defaultPermissions : "inherit"} className="gap-3">
             <RadioOption
               value="inherit"
               label="As the workspace says"
@@ -121,10 +114,14 @@ export default function RepoActionsSettings({ loaderData, actionData, params }: 
             />
           </RadioGroup>
           <p className="text-sm text-muted">
-            Whatever a workflow asks for, a pull request from outside the repository's writers gets a token that can only
-            read.
+            Whatever a workflow asks for, a pull request from outside the repository's writers gets a token that can only read.
           </p>
-          <input type="hidden" name="pullRequestsShown" value={settings.workspaceAllowsPullRequests ? "1" : ""} disabled={!settings.workspaceAllowsPullRequests} />
+          <input
+            type="hidden"
+            name="pullRequestsShown"
+            value={settings.workspaceAllowsPullRequests ? "1" : ""}
+            disabled={!settings.workspaceAllowsPullRequests}
+          />
           <CheckboxOption
             name="canApprovePullRequests"
             defaultChecked={settings.canApprovePullRequests}
@@ -142,8 +139,8 @@ export default function RepoActionsSettings({ loaderData, actionData, params }: 
           title="Approval for pull requests from outside"
           about={
             <>
-              Whose pull requests' runs wait as <span className="text-fg/85">Approval required</span> until someone with the
-              Write role approves them. Nothing runs before then, and no token or secret is handed out.
+              Whose pull requests' runs wait as <span className="text-fg/85">Approval required</span> until someone with the Write role approves them. Nothing
+              runs before then, and no token or secret is handed out.
             </>
           }
         >
@@ -163,8 +160,7 @@ export default function RepoActionsSettings({ loaderData, actionData, params }: 
             ))}
           </RadioGroup>
           <p className="text-sm text-muted">
-            Members' pull requests never wait, nor does g1t's own work. Each new push to a pull request that waits, waits
-            again. See{" "}
+            Members' pull requests never wait, nor does g1t's own work. Each new push to a pull request that waits, waits again. See{" "}
             <Link to={`${base}/settings/environments`} className="text-fg underline-offset-2 hover:underline">
               Environments
             </Link>{" "}
@@ -177,17 +173,15 @@ export default function RepoActionsSettings({ loaderData, actionData, params }: 
           about={
             <>
               Which other repositories' workflows may use this repository's actions (
-              <code className="font-mono text-xs">uses: {params.owner}/{params.repo}@main</code>) and reusable workflows while it
-              is private. A public repository's actions and workflows are anyone's.
+              <code className="font-mono text-xs">
+                uses: {params.owner}/{params.repo}@main
+              </code>
+              ) and reusable workflows while it is private. A public repository's actions and workflows are anyone's.
             </>
           }
         >
           <RadioGroup name="accessLevel" defaultValue={settings.accessLevel ?? "none"} className="gap-3">
-            <RadioOption
-              value="none"
-              label="Not accessible"
-              description="Only this repository's own workflows use them. The default."
-            />
+            <RadioOption value="none" label="Not accessible" description="Only this repository's own workflows use them. The default." />
             <RadioOption
               value="organization"
               label={`Accessible from repositories in ${params.owner}`}

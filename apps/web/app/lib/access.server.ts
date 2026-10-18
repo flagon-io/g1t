@@ -1,17 +1,6 @@
 import { data } from "react-router";
 
-import {
-  type Capability,
-  type Repo,
-  type Result,
-  type Viewer,
-  abilities,
-  can,
-  granted,
-  httpStatus,
-  needs,
-  permission,
-} from "@g1t/contracts";
+import { type Capability, type Repo, type Result, type Viewer, abilities, can, granted, httpStatus, needs, permission } from "@g1t/contracts";
 
 import type { ViewerAccess } from "./access";
 import { projects, repos, work } from "./services.server";
@@ -128,7 +117,9 @@ export async function requireInsider(context: Context, params: RepoParams, capab
 /** The viewer's access, or none when the repository cannot be read. */
 export async function accessTo(context: Context, params: RepoParams): Promise<ViewerAccess> {
   const found = await repoFor(context, params);
-  return found.ok ? accessFor(getViewer(context), found.value) : { role: null, insider: false, can: abilities(null, { id: "", namespace: "", isPrivate: true }) };
+  return found.ok
+    ? accessFor(getViewer(context), found.value)
+    : { role: null, insider: false, can: abilities(null, { id: "", namespace: "", isPrivate: true }) };
 }
 
 /**

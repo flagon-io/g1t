@@ -26,10 +26,7 @@ export function TokenFacts({ token, className }: { token: AccessToken; className
         {chips.map((chip) => (
           <span
             key={chip.label}
-            className={cn(
-              "rounded border px-1.5 py-px text-[0.6875rem]",
-              chip.dangerous ? "border-danger/40 text-danger" : "border-line text-muted",
-            )}
+            className={cn("rounded border px-1.5 py-px text-[0.6875rem]", chip.dangerous ? "border-danger/40 text-danger" : "border-line text-muted")}
           >
             {chip.label}
           </span>

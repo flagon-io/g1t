@@ -75,7 +75,13 @@ export interface PeopleClient {
 export function cleanOwns(owns: readonly string[]): string[] {
   const out: string[] = [];
   for (const raw of owns) {
-    const phrase = raw.split(/\s+/).filter(Boolean).join(" ").slice(0, MAX_OWNS_LENGTH).replace(/[.,;]+$/, "").trim();
+    const phrase = raw
+      .split(/\s+/)
+      .filter(Boolean)
+      .join(" ")
+      .slice(0, MAX_OWNS_LENGTH)
+      .replace(/[.,;]+$/, "")
+      .trim();
     if (!phrase || out.some((kept) => kept.toLowerCase() === phrase.toLowerCase())) continue;
     out.push(phrase);
     if (out.length === MAX_OWNS) break;

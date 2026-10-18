@@ -6,7 +6,10 @@ import { pathToFileURL } from "node:url";
 export function homebrewFormula(manifest) {
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/, "A stable release is required");
   const blocks = ["macos", "linux"].map((os) => {
-    const architectures = [["arm", "arm64"], ["intel", "x64"]].map(([arch, platform]) => {
+    const architectures = [
+      ["arm", "arm64"],
+      ["intel", "x64"],
+    ].map(([arch, platform]) => {
       const name = `g1t-${os}-${platform}`;
       const file = manifest.files[`${os}-${platform}`];
       assert.equal(file?.name, name, `Missing or invalid ${name}`);

@@ -21,7 +21,9 @@ export async function eraseFolios(env: IndexEnv, rows: readonly { id: string; pa
   if (!rows.length) return [];
   const unique = [...new Map(rows.map((r) => [r.id, r])).values()];
   const ids = unique.sort((x, y) => y.path.length - x.path.length).map((r) => r.id);
-  await env.DB.prepare("UPDATE folios SET parent_id = NULL WHERE parent_id IN (SELECT value FROM json_each(?)) AND id NOT IN (SELECT value FROM json_each(?))").bind(json(ids), json(ids)).run();
+  await env.DB.prepare("UPDATE folios SET parent_id = NULL WHERE parent_id IN (SELECT value FROM json_each(?)) AND id NOT IN (SELECT value FROM json_each(?))")
+    .bind(json(ids), json(ids))
+    .run();
   await forgetFolios(env, ids);
   await runBatches(
     env.DB,
@@ -45,7 +47,9 @@ export async function deleteSpaceRows(db: D1Database, space: { id: string; slug:
     db.prepare("UPDATE folios SET trashed_at = ?, trashed_by = ? WHERE space_id = ? AND trashed_at IS NULL").bind(at, by, space.id),
     db.prepare("UPDATE pages SET archived_at = ?, archived_by = ? WHERE space_id = ? AND archived_at IS NULL").bind(at, by, space.id),
     db.prepare("DELETE FROM space_joins WHERE space_id = ?").bind(space.id),
-    db.prepare("UPDATE spaces SET deleted_at = ?, deleted_by = ?, slug = ? WHERE id = ? AND deleted_at IS NULL").bind(at, by, `${space.slug}~${space.id}`, space.id),
+    db
+      .prepare("UPDATE spaces SET deleted_at = ?, deleted_by = ?, slug = ? WHERE id = ? AND deleted_at IS NULL")
+      .bind(at, by, `${space.slug}~${space.id}`, space.id),
   ]);
   return rows.map((r) => r.id);
 }

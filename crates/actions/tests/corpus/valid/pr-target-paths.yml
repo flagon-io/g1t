@@ -4,9 +4,9 @@ on:
     types: [opened, synchronize, closed]
     branches:
       - main
-      - 'release/**'
+      - "release/**"
     paths:
-      - 'docs/**'
+      - "docs/**"
 jobs:
   preview:
     runs-on: ubuntu-latest

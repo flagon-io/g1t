@@ -20,7 +20,12 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   if (!roleIn(getViewer(context), params.owner)) throw data(null, { status: 404 });
   const slug = params.owner.toLowerCase();
   const list = await chat.listEmoji(slug, viewer).catch(() => null);
-  return { slug, me: viewer.id, list: list?.ok ? list.value : null, error: list && !list.ok ? list.error.message : list ? null : "Chat didn't answer. Try again in a moment." };
+  return {
+    slug,
+    me: viewer.id,
+    list: list?.ok ? list.value : null,
+    error: list && !list.ok ? list.error.message : list ? null : "Chat didn't answer. Try again in a moment.",
+  };
 }
 
 /** The types the chat service keeps; it reads them from the bytes again. */

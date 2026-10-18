@@ -120,18 +120,14 @@ export const POLICY_HISTORY: { date: string; change: string }[] = [
   },
   {
     date: "2026-10-05",
-    change:
-      "First published: Terms of Service, Privacy Policy, Acceptable Use Policy, Refunds and Cancellation, and Subprocessors.",
+    change: "First published: Terms of Service, Privacy Policy, Acceptable Use Policy, Refunds and Cancellation, and Subprocessors.",
   },
 ];
 
 /** `2026-10-05` as "October 5, 2026". */
 export function longDate(day: string): string {
   const [year, month, date] = day.split("-").map(Number);
-  const months = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
-  ];
+  const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   return `${months[month - 1]} ${date}, ${year}`;
 }
 

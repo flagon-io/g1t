@@ -160,12 +160,7 @@ export default function Enterprise({ loaderData, actionData }: Route.ComponentPr
             addressError={error("address")}
           />
           <TermsForm terms={account.terms} pathname={pathname} error={error("terms")} />
-          <AllowancesForm
-            allowances={account.allowances}
-            comped={fullDiscount(account.terms)}
-            pathname={pathname}
-            error={error("allowances")}
-          />
+          <AllowancesForm allowances={account.allowances} comped={fullDiscount(account.terms)} pathname={pathname} error={error("allowances")} />
           <LedgerSection ledger={detail.ledger} showWorkspace description="Recent lines for every workspace it pays for, newest first." />
         </div>
         <div className="space-y-6">
@@ -173,7 +168,10 @@ export default function Enterprise({ loaderData, actionData }: Route.ComponentPr
           <Section
             id="credits"
             title="Credits"
-            description={`${usd(credits.reduce((sum, grant) => sum + grant.leftMicros, 0), { cents: true })} left to spend across its workspaces.`}
+            description={`${usd(
+              credits.reduce((sum, grant) => sum + grant.leftMicros, 0),
+              { cents: true },
+            )} left to spend across its workspaces.`}
           >
             {creditsError ? (
               <Notice tone="warn">Billing did not answer for credits: {creditsError}</Notice>
@@ -328,7 +326,11 @@ function InvoicesSection({
 
         <form method="post" action={`${pathname}#review`} className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <input type="hidden" name="intent" value="billing-email" />
-          <Field label="Invoices go to" hint={email ? "Stripe emails each invoice here." : "Not set yet. Needed before an invoice can be sent."} className="grow">
+          <Field
+            label="Invoices go to"
+            hint={email ? "Stripe emails each invoice here." : "Not set yet. Needed before an invoice can be sent."}
+            className="grow"
+          >
             <Input name="email" type="email" required placeholder="billing@acme.com" defaultValue={error?.values?.email ?? email ?? ""} />
           </Field>
           <Button type="submit" variant="quiet">
@@ -340,8 +342,8 @@ function InvoicesSection({
         <form method="post" action={`${pathname}#invoices`} className="space-y-2 border-t border-line pt-4">
           <input type="hidden" name="intent" value="billing-address" />
           <p className="text-sm text-muted">
-            Billing address, saved on its Stripe customer. Stripe Tax works its invoices&apos; tax out from it, so no invoice goes out without
-            one. Leave the tax ID blank to keep the one there is.
+            Billing address, saved on its Stripe customer. Stripe Tax works its invoices&apos; tax out from it, so no invoice goes out without one. Leave the
+            tax ID blank to keep the one there is.
           </p>
           {addressError && <Notice tone="error">{addressError.error}</Notice>}
           <div className="grid gap-2 sm:grid-cols-2">
@@ -376,7 +378,11 @@ function InvoicesSection({
           </Button>
         </form>
 
-        <form method="post" action={`${pathname}#review`} className="flex flex-col gap-2 border-t border-line pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <form
+          method="post"
+          action={`${pathname}#review`}
+          className="flex flex-col gap-2 border-t border-line pt-4 sm:flex-row sm:items-center sm:justify-between"
+        >
           <input type="hidden" name="intent" value="invoice" />
           <p className="text-sm text-muted">An invoice goes out on its own when each month closes. Send one now for what it owes so far.</p>
           <Button type="submit" variant="quiet" className="shrink-0">

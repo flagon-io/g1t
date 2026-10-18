@@ -12,12 +12,7 @@ import { repos } from "./services.server";
  * Otherwise it returns, and the caller 404s as before. Only the not-found
  * path pays for the lookup.
  */
-export async function redirectIfBranchRenamed(
-  request: Request,
-  path: RepoPath,
-  viewer: Viewer,
-  ref: string,
-): Promise<void> {
+export async function redirectIfBranchRenamed(request: Request, path: RepoPath, viewer: Viewer, ref: string): Promise<void> {
   let to: string | null = null;
   try {
     const repo = await repos.get(path, viewer);

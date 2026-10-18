@@ -48,9 +48,7 @@ export function Panel({
         <h2 className="flex items-center gap-2 text-sm font-semibold tracking-tight">
           {icon && <span className="text-faint">{icon}</span>}
           {title}
-          {count != null && count > 0 && (
-            <span className="rounded-full bg-line px-1.5 text-[0.6875rem] font-medium tabular-nums text-muted">{count}</span>
-          )}
+          {count != null && count > 0 && <span className="rounded-full bg-line px-1.5 text-[0.6875rem] font-medium tabular-nums text-muted">{count}</span>}
         </h2>
         <span className="grow" />
         {extra}
@@ -174,7 +172,14 @@ export function Sparkline({
   const [lastX, lastY] = points[points.length - 1];
   const slot = width / values.length;
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="overflow-visible text-accent" role="img" aria-label={values.map(format).join(", ")}>
+    <svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      className="overflow-visible text-accent"
+      role="img"
+      aria-label={values.map(format).join(", ")}
+    >
       <path d={area} fill="currentColor" opacity={0.12} />
       <path d={line} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
       <circle cx={lastX} cy={lastY} r={3} fill="currentColor" stroke="var(--color-surface)" strokeWidth={2} />
@@ -286,4 +291,3 @@ export function Meter({ value, tone = "bg-success" }: { value: number | null; to
 export function percent(value: number | null): string {
   return value == null ? "—" : `${Math.round(value * 100)}%`;
 }
-

@@ -7,3 +7,19 @@ build/
 .react-router/
 *.lock
 package-lock.json
+# Test fixtures: kept byte for byte as they were captured.
+**/fixtures/
+*.fixtures.json
+*_fixtures.json
+# Prettier's MDX printer changes this page again on every run.
+apps/docs/src/content/docs/guides/self-hosted-runners.mdx
+# Generated, and checked against their generator by tests.
+apps/docs/src/content/docs/reference/cli.md
+apps/docs/src/data/openapi.json
+**/worker-configuration.d.ts
+# Tables the deploy tool's tests read row by row (scripts/deploy/deploy.test.mjs).
+apps/docs/src/content/docs/architecture/services.md
+apps/docs/src/content/docs/guides/self-hosting-architecture.md
+# TypeScript mirrors that Rust tests read line by line (crates/contracts: datasets.rs, scopes.rs).
+packages/contracts/src/datasets.ts
+packages/contracts/src/scopes.ts

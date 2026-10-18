@@ -30,7 +30,12 @@ function untar(tar) {
   for (let at = 0; at + 512 <= tar.length; ) {
     const header = tar.subarray(at, at + 512);
     if (header.every((b) => b === 0)) break;
-    const field = (start, length) => header.subarray(start, start + length).toString("ascii").replace(/\0.*$/s, "").trim();
+    const field = (start, length) =>
+      header
+        .subarray(start, start + length)
+        .toString("ascii")
+        .replace(/\0.*$/s, "")
+        .trim();
     const summed = [...header].reduce((sum, byte, i) => sum + (i >= 148 && i < 156 ? 32 : byte), 0);
     assert.equal(Number.parseInt(field(148, 8), 8), summed, "the header's checksum");
     assert.equal(field(257, 6), "ustar");
@@ -81,7 +86,10 @@ test("the layer and entrypoint are what services/runner/Dockerfile builds", () =
   const entrypoint = /^ENTRYPOINT (.+)$/m.exec(dockerfile);
   assert.deepEqual(JSON.parse(entrypoint[1]), RUNNER_ENTRYPOINT);
   // Nothing else that would change the image.
-  const instructions = dockerfile.split(/\r?\n/).filter((line) => line.trim() && !line.startsWith("#")).map((line) => line.split(" ")[0]);
+  const instructions = dockerfile
+    .split(/\r?\n/)
+    .filter((line) => line.trim() && !line.startsWith("#"))
+    .map((line) => line.split(" ")[0]);
   assert.deepEqual(instructions, ["ARG", "FROM", "COPY", "ENTRYPOINT"]);
 });
 
@@ -140,7 +148,12 @@ test("the manifest names the base's layers, then the binary's, in the base's for
 
 test("image references and bearer challenges are read", () => {
   const digest = "sha256:" + "e".repeat(64);
-  assert.deepEqual(parseRef("registry.cloudflare.com/acct/g1t-runner:abc"), { host: "registry.cloudflare.com", name: "acct/g1t-runner", tag: "abc", digest: null });
+  assert.deepEqual(parseRef("registry.cloudflare.com/acct/g1t-runner:abc"), {
+    host: "registry.cloudflare.com",
+    name: "acct/g1t-runner",
+    tag: "abc",
+    digest: null,
+  });
   assert.deepEqual(parseRef(`localhost:5000/g1t-runner:base-1@${digest}`), { host: "localhost:5000", name: "g1t-runner", tag: "base-1", digest });
   assert.deepEqual(parseRef(`r.example/x@${digest}`), { host: "r.example", name: "x", tag: null, digest });
   assert.throws(() => parseRef("r.example/x"));
@@ -244,7 +257,10 @@ test("the runner's image is made in the registry from the base's manifest and on
   assert.equal(sha256(made.bytes), digest);
   assert.equal(made.type, OCI_MANIFEST);
   const manifest = JSON.parse(made.bytes);
-  assert.deepEqual(manifest.layers.slice(0, 2).map((l) => l.digest), layerBlobs.map(sha256));
+  assert.deepEqual(
+    manifest.layers.slice(0, 2).map((l) => l.digest),
+    layerBlobs.map(sha256),
+  );
   assert.equal(manifest.layers.length, 3);
   const config = JSON.parse(registry.blobs.get(manifest.config.digest));
   assert.deepEqual(config.config.Entrypoint, ["g1t-runner"]);
@@ -268,10 +284,18 @@ test("a base that is not where it should be, or not what base.json says, stops i
     appendRunnerImage({ ...options, ref: "registry.cloudflare.com/acct/g1t-runner:t", base: `registry.cloudflare.com/acct/other:b@${digest}` }),
     /not in the runner's repository/,
   );
-  await assert.rejects(appendRunnerImage({ ...options, ref: "registry.cloudflare.com/acct/g1t-runner:t", base: `registry.cloudflare.com/acct/g1t-runner:b@${digest}` }), /404/);
+  await assert.rejects(
+    appendRunnerImage({ ...options, ref: "registry.cloudflare.com/acct/g1t-runner:t", base: `registry.cloudflare.com/acct/g1t-runner:b@${digest}` }),
+    /404/,
+  );
   // Wrong credentials: the registry's answer is the error.
   await assert.rejects(
-    appendRunnerImage({ ...options, credentials: async () => ({ username: "u", password: "wrong" }), ref: "registry.cloudflare.com/acct/g1t-runner:t", base: `registry.cloudflare.com/acct/g1t-runner:b@${digest}` }),
+    appendRunnerImage({
+      ...options,
+      credentials: async () => ({ username: "u", password: "wrong" }),
+      ref: "registry.cloudflare.com/acct/g1t-runner:t",
+      base: `registry.cloudflare.com/acct/g1t-runner:b@${digest}`,
+    }),
     /401/,
   );
 });
@@ -292,7 +316,12 @@ test("a registry that asks for a bearer token is given the one its realm trades 
   const config = Buffer.from(JSON.stringify(BASE_CONFIG));
   registry.blobs.set(sha256(config), config);
   const manifest = Buffer.from(
-    JSON.stringify({ schemaVersion: 2, mediaType: DOCKER_MANIFEST, config: { mediaType: "application/vnd.docker.container.image.v1+json", digest: sha256(config), size: config.length }, layers: [] }),
+    JSON.stringify({
+      schemaVersion: 2,
+      mediaType: DOCKER_MANIFEST,
+      config: { mediaType: "application/vnd.docker.container.image.v1+json", digest: sha256(config), size: config.length },
+      layers: [],
+    }),
   );
   registry.manifests.set("base", { bytes: manifest, type: DOCKER_MANIFEST });
   await appendRunnerImage({

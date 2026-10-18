@@ -93,9 +93,7 @@ export default function PersonProfile({ loaderData, actionData }: Route.Componen
             {person.role === "owner" && <Badge tone="accent">Owner</Badge>}
             {self && <Badge>You</Badge>}
           </div>
-          <p className="text-sm text-muted">
-            {[person.title, `@${person.display_username ?? person.username}`, person.pronouns].filter(Boolean).join(" · ")}
-          </p>
+          <p className="text-sm text-muted">{[person.title, `@${person.display_username ?? person.username}`, person.pronouns].filter(Boolean).join(" · ")}</p>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted">
             <PresenceSummary person={{ id: person.user_id, username: person.username }} className="flex flex-wrap items-center gap-x-4 gap-y-1 space-y-0" />
             {person.location && (
@@ -201,13 +199,7 @@ function Quiet({ children }: { children: ReactNode }) {
 }
 
 /** Their title and what they own: theirs, or an owner's, to change. */
-function EditProfile({
-  person,
-  actionData,
-}: {
-  person: DirectoryPerson;
-  actionData: { intent: string; error: string | null; saved?: true } | undefined;
-}) {
+function EditProfile({ person, actionData }: { person: DirectoryPerson; actionData: { intent: string; error: string | null; saved?: true } | undefined }) {
   const [open, setOpen] = useState(false);
   const saved = actionData?.intent === "profile" && actionData.saved;
   useEffect(() => {

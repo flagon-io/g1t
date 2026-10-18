@@ -28,8 +28,8 @@ export function CloneBox({ path }: { path: string }) {
       <TabsContent value="ssh">
         <CopyLine text={sshUrl(addresses, path)} disabled />
         <p className="mt-2 text-xs text-muted">
-          Not on yet: git over SSH is waiting on inbound TCP on Cloudflare, which g1t has applied for. Use HTTPS for
-          now; it clones, fetches and pushes the same. Keys you add under{" "}
+          Not on yet: git over SSH is waiting on inbound TCP on Cloudflare, which g1t has applied for. Use HTTPS for now; it clones, fetches and pushes the
+          same. Keys you add under{" "}
           <Link to="/settings/keys" className="text-fg underline underline-offset-4">
             SSH keys
           </Link>{" "}

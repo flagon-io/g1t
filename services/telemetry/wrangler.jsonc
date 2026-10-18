@@ -1,48 +1,48 @@
 {
-	"$schema": "../../node_modules/wrangler/config-schema.json",
-	"name": "g1t-telemetry",
-	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
-	"compatibility_date": "2026-09-26",
-	"main": "./src/index.ts",
-	"workers_dev": false,
-	"placement": { "mode": "off" },
-	// The OpenTelemetry endpoint: OTLP over HTTP from anywhere, with a
-	// project's ingest token. Everything else here (RPC, the live tail) is
-	// for service bindings; the public paths are /v1/* and /cloudflare/v1/*.
-	"routes": [{ "pattern": "otel.g1t.sh", "custom_domain": true }],
-	// One store per project: its requests, logs, spans, metrics, error
-	// groups, ingest tokens and exports, in the object's own SQLite storage
-	// (src/store.ts). No D1. And one meter per workspace, by slug: what all
-	// its projects sent each day and month, and the plan billing last said
-	// it is on (src/meter.ts).
-	"durable_objects": {
-		"bindings": [
-			{ "name": "STORES", "class_name": "TelemetryStore" },
-			{ "name": "METERS", "class_name": "TelemetryMeter" }
-		]
-	},
-	"migrations": [
-		{ "tag": "v1", "new_sqlite_classes": ["TelemetryStore"] },
-		{ "tag": "v2", "new_sqlite_classes": ["TelemetryMeter"] }
-	],
-	// What the deployments service notes under each app's hostname (its
-	// project and deployment), read to file a request the dispatcher saw
-	// before its note reached it, and Cloudflare's own export. Read only.
-	"kv_namespaces": [{ "binding": "DOMAINS", "id": "14bc5c233d4c46a5bbf23b5367cce5fd" }],
-	// Whether a project's workspace has the plan: a free workspace's projects
-	// send FREE_TELEMETRY_BYTES_PER_MONTH (1 GiB) a month between them, a
-	// thirtieth a day; past it OTLP is answered 429 and tail events keep
-	// their requests only (src/quota.ts). 0 is no cap. On the plan, what is
-	// sent past it is reported to billing (note_pending, source telemetry).
-	"services": [{ "binding": "BILLING", "service": "g1t-billing" }],
-	"vars": { "FREE_TELEMETRY_BYTES_PER_MONTH": "1073741824" },
-	// Secret, optional: CLOUDFLARE_EXPORT_KEY, which a Workers
-	// Observability destination on the account sends as x-g1t-export-key
-	// to https://otel.g1t.sh/cloudflare/v1/{traces,logs}.
-	// OTLP requests per client address, counted before the body is read or a
-	// project's store is woken (src/index.ts). Id and limit: RATE_LIMITS in
-	// packages/contracts.
-	"ratelimits": [{ "name": "TELEMETRY_INGEST_LIMIT", "namespace_id": "4701", "simple": { "limit": 600, "period": 60 } }],
-	// Its own logs: few, as every request to an app is a tail event here.
-	"observability": { "enabled": true, "head_sampling_rate": 0.05 }
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "g1t-telemetry",
+  "account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+  "compatibility_date": "2026-09-26",
+  "main": "./src/index.ts",
+  "workers_dev": false,
+  "placement": { "mode": "off" },
+  // The OpenTelemetry endpoint: OTLP over HTTP from anywhere, with a
+  // project's ingest token. Everything else here (RPC, the live tail) is
+  // for service bindings; the public paths are /v1/* and /cloudflare/v1/*.
+  "routes": [{ "pattern": "otel.g1t.sh", "custom_domain": true }],
+  // One store per project: its requests, logs, spans, metrics, error
+  // groups, ingest tokens and exports, in the object's own SQLite storage
+  // (src/store.ts). No D1. And one meter per workspace, by slug: what all
+  // its projects sent each day and month, and the plan billing last said
+  // it is on (src/meter.ts).
+  "durable_objects": {
+    "bindings": [
+      { "name": "STORES", "class_name": "TelemetryStore" },
+      { "name": "METERS", "class_name": "TelemetryMeter" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["TelemetryStore"] },
+    { "tag": "v2", "new_sqlite_classes": ["TelemetryMeter"] }
+  ],
+  // What the deployments service notes under each app's hostname (its
+  // project and deployment), read to file a request the dispatcher saw
+  // before its note reached it, and Cloudflare's own export. Read only.
+  "kv_namespaces": [{ "binding": "DOMAINS", "id": "14bc5c233d4c46a5bbf23b5367cce5fd" }],
+  // Whether a project's workspace has the plan: a free workspace's projects
+  // send FREE_TELEMETRY_BYTES_PER_MONTH (1 GiB) a month between them, a
+  // thirtieth a day; past it OTLP is answered 429 and tail events keep
+  // their requests only (src/quota.ts). 0 is no cap. On the plan, what is
+  // sent past it is reported to billing (note_pending, source telemetry).
+  "services": [{ "binding": "BILLING", "service": "g1t-billing" }],
+  "vars": { "FREE_TELEMETRY_BYTES_PER_MONTH": "1073741824" },
+  // Secret, optional: CLOUDFLARE_EXPORT_KEY, which a Workers
+  // Observability destination on the account sends as x-g1t-export-key
+  // to https://otel.g1t.sh/cloudflare/v1/{traces,logs}.
+  // OTLP requests per client address, counted before the body is read or a
+  // project's store is woken (src/index.ts). Id and limit: RATE_LIMITS in
+  // packages/contracts.
+  "ratelimits": [{ "name": "TELEMETRY_INGEST_LIMIT", "namespace_id": "4701", "simple": { "limit": 600, "period": 60 } }],
+  // Its own logs: few, as every request to an app is a tail event here.
+  "observability": { "enabled": true, "head_sampling_rate": 0.05 }
 }

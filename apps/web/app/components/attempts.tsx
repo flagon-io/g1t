@@ -38,9 +38,7 @@ function AttemptRow({ attempt, base }: { attempt: Attempt; base: string }) {
             {attempt.title} <span className="font-normal text-faint">#{attempt.number}</span>
           </Link>
         )}
-        {attempt.current && (
-          <Badge className="px-1.5 text-[0.625rem] font-normal text-faint">This one</Badge>
-        )}
+        {attempt.current && <Badge className="px-1.5 text-[0.625rem] font-normal text-faint">This one</Badge>}
         <span className="ml-auto shrink-0">
           <ChangeSize files={attempt.files} />
         </span>
@@ -92,9 +90,7 @@ export function AttemptsBox({ attempts, item, base }: { attempts: Promise<Attemp
                   <GitPullRequestArrow size={16} className="shrink-0 text-info" />
                   Other attempts at #{item}
                 </h3>
-                <p className="px-4 pt-0.5 pb-2 text-xs text-faint">
-                  Pull requests for the same work item in this repository. Merging one closes the others.
-                </p>
+                <p className="px-4 pt-0.5 pb-2 text-xs text-faint">Pull requests for the same work item in this repository. Merging one closes the others.</p>
                 <ul className="divide-y divide-line border-t border-line">
                   {found.map((attempt) => (
                     <AttemptRow key={attempt.number} attempt={attempt} base={base} />

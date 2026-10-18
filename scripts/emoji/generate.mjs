@@ -49,8 +49,7 @@ const TONES = ["light skin tone", "medium-light skin tone", "medium skin tone", 
 // An emoji shown as one by default needs no variation selector after it
 // ("👍", not "👍" + U+FE0F): one spelling, so reactions compare equal.
 const VS16 = String.fromCodePoint(0xfe0f);
-const plain = (unicode) =>
-  unicode.endsWith(VS16) && /^\p{Emoji_Presentation}$/u.test(unicode.slice(0, -1)) ? unicode.slice(0, -1) : unicode;
+const plain = (unicode) => (unicode.endsWith(VS16) && /^\p{Emoji_Presentation}$/u.test(unicode.slice(0, -1)) ? unicode.slice(0, -1) : unicode);
 
 const codesOf = (hexcode) => {
   const list = [];

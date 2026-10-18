@@ -142,8 +142,7 @@ export function githubSignInClient(identity: ServiceBinding) {
       call<Result<{ authorizeUrl: string; state: string }>>("github_start", input),
     finish: (state: string, code: string) => call<Result<GithubFinished>>("github_finish", { state, code }),
     pending: (pending: string) => call<Result<GithubPending>>("github_pending", { pending }),
-    signUp: (pending: string, username: string) =>
-      call<Result<{ user: User; sessionToken: string }>>("github_sign_up", { pending, username }),
+    signUp: (pending: string, username: string) => call<Result<{ user: User; sessionToken: string }>>("github_sign_up", { pending, username }),
     claim: (pending: string, user: User) => call<Result<GithubAccount>>("github_claim", { pending, user }),
     account: (user: User) => call<GithubAccountView>("github_account", { user }),
     unlink: (user: User) => call<Result<boolean>>("github_unlink", { user }),
@@ -162,8 +161,7 @@ export function githubAppClient(integrations: ServiceBinding) {
       call<Result<boolean>>("github_remove_installation", { actor, workspace, installationId }),
     repositories: (actor: User, workspace: string, installationId: number, page?: number) =>
       call<Result<GithubRepositories>>("github_repositories", { actor, workspace, installationId, page: page ?? null }),
-    import: (actor: User, workspace: string, input: GithubImportInput) =>
-      call<Result<GithubRepoLink>>("github_import", { actor, workspace, ...input }),
+    import: (actor: User, workspace: string, input: GithubImportInput) => call<Result<GithubRepoLink>>("github_import", { actor, workspace, ...input }),
     link: (repoId: string) => call<GithubRepoLink | null>("github_link", { repoId }),
   };
 }

@@ -119,7 +119,10 @@ test("what is kept reads back, and anything else reads as nothing", () => {
 test("a workspace's presence narrows to the people asked about", () => {
   const entry = (user_id: string) => entryOf({ user_id, username: user_id }, "active", NOTHING_KEPT, NOW);
   const everyone = [entry("usr_a"), entry("usr_b"), entry("usr_c")];
-  assert.deepEqual(onlyPeople(everyone, ["usr_c", "usr_a", 7]).map((e) => e.user_id), ["usr_a", "usr_c"]);
+  assert.deepEqual(
+    onlyPeople(everyone, ["usr_c", "usr_a", 7]).map((e) => e.user_id),
+    ["usr_a", "usr_c"],
+  );
   assert.equal(onlyPeople(everyone, null).length, 3);
   assert.deepEqual(onlyPeople(everyone, []), []);
 });

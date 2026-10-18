@@ -30,7 +30,10 @@ test("the sign-up check sends an address identity refuses before writing or coun
   assert.ok(!("cf-turnstile-response" in signUp.form), "never answers the person check");
   // Turnstile off: identity refuses the address. On: the site refuses the form first.
   assert.equal(verdict(signUp, 422, "<p>Enter a valid email address.</p>"), null);
-  assert.equal(verdict(signUp, 422, "<p>We could not tell that a person sent this form. Wait for the check above the button to finish, then try again.</p>"), null);
+  assert.equal(
+    verdict(signUp, 422, "<p>We could not tell that a person sent this form. Wait for the check above the button to finish, then try again.</p>"),
+    null,
+  );
   assert.match(verdict(signUp, 422, "<p>Something else</p>"), /missing one of/);
   assert.equal(verdict(signUp, 200, "<p>Enter a valid email address.</p>"), "answered 200, expected 422");
 });

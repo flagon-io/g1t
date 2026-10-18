@@ -1,120 +1,120 @@
 {
-	"$schema": "../../node_modules/wrangler/config-schema.json",
-	// Artifacts: docs (and later slides, designs and dashboards), their
-	// spaces, sharing and live editing. Until 2026-10 this Worker was
-	// g1t-docs-service (services/docs); its database, bucket, indexes and
-	// queue kept their names, and its live rooms moved here with the
-	// transfer migration below.
-	"name": "g1t-artifacts",
-	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
-	"compatibility_date": "2026-09-26",
-	"main": "./src/index.ts",
-	// Reached only through service bindings. The live socket's and uploads'
-	// viewer comes in a header the site sets after checking the session,
-	// which is only safe to trust because nothing else can reach this Worker.
-	"workers_dev": false,
-	"placement": { "mode": "off" },
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "g1t-docs",
-			// Create it once, then put its id here:
-			//   npx wrangler d1 create g1t-docs
-			//   npx wrangler d1 migrations apply g1t-docs --remote
-			"database_id": "8f2193ed-fd2b-4322-b6cb-c79090e7603d",
-			"migrations_dir": "migrations"
-		}
-	],
-	// Files people put in pages (images, attachments), served from the
-	// usercontent origin at /docs-files/<key> (apps/web/workers/usercontent.ts).
-	// Create it once: npx wrangler r2 bucket create g1t-docs-files
-	// Self-hosted, any S3-compatible store instead: DOCS_FILES=s3 and the
-	// DOCS_S3_* settings (src/files.ts,
-	// docs.g1t.sh/guides/self-hosting-architecture/, "Storage").
-	"r2_buckets": [{ "binding": "FILES", "bucket_name": "g1t-docs-files" }],
-	// The semantic index search reads by meaning (src/indexer.ts, src/vectors.ts):
-	// Workers AI embeds passages (@cf/baai/bge-base-en-v1.5, 768 dimensions)
-	// into Vectorize, with metadata indexes on workspace_id and space_id so a
-	// query only reads spaces its reader may. Create it once:
-	//   npx wrangler vectorize create g1t-docs --dimensions=768 --metric=cosine
-	//   npx wrangler vectorize create-metadata-index g1t-docs --property-name=workspace_id --type=string
-	//   npx wrangler vectorize create-metadata-index g1t-docs --property-name=space_id --type=string
-	// Without them Docs still keeps passages in D1 and search matches words.
-	//
-	// Folios (Artifacts mode) have an index of their own, filtered by
-	// workspace, scope and kind. Create it once, before the first deploy that
-	// has this binding:
-	//   npx wrangler vectorize create g1t-folios --dimensions=768 --metric=cosine
-	//   npx wrangler vectorize create-metadata-index g1t-folios --property-name=workspace_id --type=string
-	//   npx wrangler vectorize create-metadata-index g1t-folios --property-name=scope --type=string
-	//   npx wrangler vectorize create-metadata-index g1t-folios --property-name=kind --type=string
-	// Without FOLIO_VECTORS, artifacts are searched by words.
-	"ai": { "binding": "AI" },
-	"vectorize": [
-		{ "binding": "VECTORS", "index_name": "g1t-docs" },
-		{ "binding": "FOLIO_VECTORS", "index_name": "g1t-folios" }
-	],
-	"services": [
-		// Workspaces by slug, people's names and avatars, and teams.
-		{ "binding": "IDENTITY", "service": "g1t-identity" },
-		// Mentions and suggestions reach people's inboxes (services/notify).
-		{ "binding": "NOTIFY", "service": "g1t-notify" },
-		// Who may read a repository, what a change touched, and a project's
-		// docs folder (src/staleness.ts, src/repo-spaces.ts).
-		{ "binding": "REPOS", "service": "g1t-repos" },
-		// What a merged pull request changed.
-		{ "binding": "WORK", "service": "g1t-work" },
-		// doc.page.* events on the bus (src/events.ts).
-		{ "binding": "EVENTS", "service": "g1t-events" },
-		// Whether a workspace has the plan, once its files pass the free cap (src/quota.ts).
-		{ "binding": "BILLING", "service": "g1t-billing" }
-	],
-	// What a workspace without the plan may keep in files put in its pages
-	// and artifacts, in bytes; past it, new uploads are refused (src/quota.ts).
-	// 0 is no cap.
-	"vars": { "FREE_DOC_FILES_BYTES": "1073741824" },
-	// Merges and pushes to default branches: pages whose cited code
-	// changed, and projects' docs read again (src/staleness.ts). The events
-	// service sends it what g1t_contracts::subscribers routes to
-	// SUBSCRIBER_DOCS. Create it once: npx wrangler queues create g1t-events-docs
-	"queues": {
-		// Its own backfill jobs ride the same queue (`docs.index`,
-		// src/indexer.ts): a workspace's pages and projects' docs indexed in
-		// batches, and waiting out the hourly embedding cap.
-		"producers": [{ "binding": "JOBS", "queue": "g1t-events-docs" }],
-		"consumers": [{ "queue": "g1t-events-docs", "max_batch_size": 20, "max_batch_timeout": 2, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
-	},
-	// One room per page: it holds the page's Yjs document and open sockets,
-	// hibernating while nobody types (src/room.ts). And one per folio
-	// (Artifacts mode, src/folios/room.ts): PageRoom stays until Phase 7
-	// deletes it (`deleted_classes` in a v4 migration).
-	"durable_objects": {
-		"bindings": [
-			{ "name": "PAGES", "class_name": "PageRoom" },
-			{ "name": "FOLIOS", "class_name": "FolioRoom" }
-		]
-	},
-	// Both classes were made on g1t-docs-service (v1 PageRoom, v2 FolioRoom,
-	// both SQLite). v3 transfers them, every room's storage with them, when
-	// this Worker first deploys; until the old Worker is deleted, its own
-	// bindings to them forward here. Never add new_sqlite_classes for them:
-	// the transfer makes them. A new Cloudflare account has no
-	// g1t-docs-service to transfer from, and `wrangler dev` learns a class
-	// is SQLite only from new_sqlite_classes: both use
-	// { "tag": "v3", "new_sqlite_classes": ["PageRoom", "FolioRoom"] }
-	// instead (docs.g1t.sh/guides/deploy-to-cloudflare/, "A first deploy").
-	"migrations": [
-		{
-			"tag": "v3",
-			"transferred_classes": [
-				{ "from": "PageRoom", "from_script": "g1t-docs-service", "to": "PageRoom" },
-				{ "from": "FolioRoom", "from_script": "g1t-docs-service", "to": "FolioRoom" }
-			]
-		}
-	],
-	// Daily: folios in the trash for over 30 days are deleted for good. Every
-	// quarter hour: each workspace's month of search embeddings is reported
-	// to billing (src/embed-billing.ts; DAILY_CRON in src/index.ts).
-	"triggers": { "crons": ["17 3 * * *", "*/15 * * * *"] },
-	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  // Artifacts: docs (and later slides, designs and dashboards), their
+  // spaces, sharing and live editing. Until 2026-10 this Worker was
+  // g1t-docs-service (services/docs); its database, bucket, indexes and
+  // queue kept their names, and its live rooms moved here with the
+  // transfer migration below.
+  "name": "g1t-artifacts",
+  "account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+  "compatibility_date": "2026-09-26",
+  "main": "./src/index.ts",
+  // Reached only through service bindings. The live socket's and uploads'
+  // viewer comes in a header the site sets after checking the session,
+  // which is only safe to trust because nothing else can reach this Worker.
+  "workers_dev": false,
+  "placement": { "mode": "off" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "g1t-docs",
+      // Create it once, then put its id here:
+      //   npx wrangler d1 create g1t-docs
+      //   npx wrangler d1 migrations apply g1t-docs --remote
+      "database_id": "8f2193ed-fd2b-4322-b6cb-c79090e7603d",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Files people put in pages (images, attachments), served from the
+  // usercontent origin at /docs-files/<key> (apps/web/workers/usercontent.ts).
+  // Create it once: npx wrangler r2 bucket create g1t-docs-files
+  // Self-hosted, any S3-compatible store instead: DOCS_FILES=s3 and the
+  // DOCS_S3_* settings (src/files.ts,
+  // docs.g1t.sh/guides/self-hosting-architecture/, "Storage").
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "g1t-docs-files" }],
+  // The semantic index search reads by meaning (src/indexer.ts, src/vectors.ts):
+  // Workers AI embeds passages (@cf/baai/bge-base-en-v1.5, 768 dimensions)
+  // into Vectorize, with metadata indexes on workspace_id and space_id so a
+  // query only reads spaces its reader may. Create it once:
+  //   npx wrangler vectorize create g1t-docs --dimensions=768 --metric=cosine
+  //   npx wrangler vectorize create-metadata-index g1t-docs --property-name=workspace_id --type=string
+  //   npx wrangler vectorize create-metadata-index g1t-docs --property-name=space_id --type=string
+  // Without them Docs still keeps passages in D1 and search matches words.
+  //
+  // Folios (Artifacts mode) have an index of their own, filtered by
+  // workspace, scope and kind. Create it once, before the first deploy that
+  // has this binding:
+  //   npx wrangler vectorize create g1t-folios --dimensions=768 --metric=cosine
+  //   npx wrangler vectorize create-metadata-index g1t-folios --property-name=workspace_id --type=string
+  //   npx wrangler vectorize create-metadata-index g1t-folios --property-name=scope --type=string
+  //   npx wrangler vectorize create-metadata-index g1t-folios --property-name=kind --type=string
+  // Without FOLIO_VECTORS, artifacts are searched by words.
+  "ai": { "binding": "AI" },
+  "vectorize": [
+    { "binding": "VECTORS", "index_name": "g1t-docs" },
+    { "binding": "FOLIO_VECTORS", "index_name": "g1t-folios" }
+  ],
+  "services": [
+    // Workspaces by slug, people's names and avatars, and teams.
+    { "binding": "IDENTITY", "service": "g1t-identity" },
+    // Mentions and suggestions reach people's inboxes (services/notify).
+    { "binding": "NOTIFY", "service": "g1t-notify" },
+    // Who may read a repository, what a change touched, and a project's
+    // docs folder (src/staleness.ts, src/repo-spaces.ts).
+    { "binding": "REPOS", "service": "g1t-repos" },
+    // What a merged pull request changed.
+    { "binding": "WORK", "service": "g1t-work" },
+    // doc.page.* events on the bus (src/events.ts).
+    { "binding": "EVENTS", "service": "g1t-events" },
+    // Whether a workspace has the plan, once its files pass the free cap (src/quota.ts).
+    { "binding": "BILLING", "service": "g1t-billing" }
+  ],
+  // What a workspace without the plan may keep in files put in its pages
+  // and artifacts, in bytes; past it, new uploads are refused (src/quota.ts).
+  // 0 is no cap.
+  "vars": { "FREE_DOC_FILES_BYTES": "1073741824" },
+  // Merges and pushes to default branches: pages whose cited code
+  // changed, and projects' docs read again (src/staleness.ts). The events
+  // service sends it what g1t_contracts::subscribers routes to
+  // SUBSCRIBER_DOCS. Create it once: npx wrangler queues create g1t-events-docs
+  "queues": {
+    // Its own backfill jobs ride the same queue (`docs.index`,
+    // src/indexer.ts): a workspace's pages and projects' docs indexed in
+    // batches, and waiting out the hourly embedding cap.
+    "producers": [{ "binding": "JOBS", "queue": "g1t-events-docs" }],
+    "consumers": [{ "queue": "g1t-events-docs", "max_batch_size": 20, "max_batch_timeout": 2, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
+  },
+  // One room per page: it holds the page's Yjs document and open sockets,
+  // hibernating while nobody types (src/room.ts). And one per folio
+  // (Artifacts mode, src/folios/room.ts): PageRoom stays until Phase 7
+  // deletes it (`deleted_classes` in a v4 migration).
+  "durable_objects": {
+    "bindings": [
+      { "name": "PAGES", "class_name": "PageRoom" },
+      { "name": "FOLIOS", "class_name": "FolioRoom" }
+    ]
+  },
+  // Both classes were made on g1t-docs-service (v1 PageRoom, v2 FolioRoom,
+  // both SQLite). v3 transfers them, every room's storage with them, when
+  // this Worker first deploys; until the old Worker is deleted, its own
+  // bindings to them forward here. Never add new_sqlite_classes for them:
+  // the transfer makes them. A new Cloudflare account has no
+  // g1t-docs-service to transfer from, and `wrangler dev` learns a class
+  // is SQLite only from new_sqlite_classes: both use
+  // { "tag": "v3", "new_sqlite_classes": ["PageRoom", "FolioRoom"] }
+  // instead (docs.g1t.sh/guides/deploy-to-cloudflare/, "A first deploy").
+  "migrations": [
+    {
+      "tag": "v3",
+      "transferred_classes": [
+        { "from": "PageRoom", "from_script": "g1t-docs-service", "to": "PageRoom" },
+        { "from": "FolioRoom", "from_script": "g1t-docs-service", "to": "FolioRoom" }
+      ]
+    }
+  ],
+  // Daily: folios in the trash for over 30 days are deleted for good. Every
+  // quarter hour: each workspace's month of search embeddings is reported
+  // to billing (src/embed-billing.ts; DAILY_CRON in src/index.ts).
+  "triggers": { "crons": ["17 3 * * *", "*/15 * * * *"] },
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

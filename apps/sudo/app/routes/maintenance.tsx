@@ -70,8 +70,8 @@ export default function Maintenance({ loaderData, actionData }: Route.ComponentP
           title={m.title}
           description={
             <>
-              <MaintenanceBadge state={m.state} /> <When at={m.starts_at} time /> to <When at={m.ends_at} time /> · {duration(secondsBetween(m.starts_at, m.ends_at))} ·{" "}
-              {m.components.map((k) => name.get(k) ?? k).join(", ")}
+              <MaintenanceBadge state={m.state} /> <When at={m.starts_at} time /> to <When at={m.ends_at} time /> ·{" "}
+              {duration(secondsBetween(m.starts_at, m.ends_at))} · {m.components.map((k) => name.get(k) ?? k).join(", ")}
             </>
           }
           actions={
@@ -148,7 +148,9 @@ export default function Maintenance({ loaderData, actionData }: Route.ComponentP
             </Section>
           ) : (
             <Section title="Finished">
-              <p className="text-sm text-muted">This maintenance is {m.state === "completed" ? "complete" : "cancelled"}. It stays in the status page's history.</p>
+              <p className="text-sm text-muted">
+                This maintenance is {m.state === "completed" ? "complete" : "cancelled"}. It stays in the status page's history.
+              </p>
             </Section>
           )}
           <Section title="Scheduled by">

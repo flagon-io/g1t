@@ -80,7 +80,8 @@ export function s3FileStore(config: S3Config, fetcher: typeof fetch = fetch): Fi
   return {
     async put(key, body, contentType) {
       // Signed over its bytes: a page's file is at most DOC_MAX_FILE_BYTES.
-      const bytes = body instanceof ReadableStream ? new Uint8Array(await new Response(body).arrayBuffer()) : body instanceof Uint8Array ? body : new Uint8Array(body);
+      const bytes =
+        body instanceof ReadableStream ? new Uint8Array(await new Response(body).arrayBuffer()) : body instanceof Uint8Array ? body : new Uint8Array(body);
       const response = await send("PUT", key, bytes, { "content-type": contentType });
       if (!response.ok) throw new Error(`The file store refused the file (${response.status}).`);
     },
@@ -133,11 +134,26 @@ export function fileStore(env: FileStoreEnv): FileStore {
 }
 
 /** Types a page's file is served as; anything else is served as a download. */
-const INLINE = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "video/mp4", "video/webm", "audio/mpeg", "audio/ogg", "audio/wav", "application/pdf"]);
+const INLINE = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/avif",
+  "video/mp4",
+  "video/webm",
+  "audio/mpeg",
+  "audio/ogg",
+  "audio/wav",
+  "application/pdf",
+]);
 
 /** The type a file is kept and served as: images and media as themselves, SVG and everything else as bytes to download (nothing served can run script). */
 export function servedType(contentType: string): string {
-  const type = String(contentType ?? "").split(";")[0]!.trim().toLowerCase();
+  const type = String(contentType ?? "")
+    .split(";")[0]!
+    .trim()
+    .toLowerCase();
   return INLINE.has(type) ? type : "application/octet-stream";
 }
 

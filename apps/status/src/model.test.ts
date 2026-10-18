@@ -174,9 +174,7 @@ test("buildPage: parts with no check are unmonitored and have no uptime; stalene
 });
 
 test("components: an installation without a host leaves that part off", () => {
-  const keys = components({ SITE_URL: "http://localhost:8787", API_URL: "http://localhost:8787/api", PROBE_REPO: "me/demo" }, false).map(
-    (c) => c.key,
-  );
+  const keys = components({ SITE_URL: "http://localhost:8787", API_URL: "http://localhost:8787/api", PROBE_REPO: "me/demo" }, false).map((c) => c.key);
   assert.deepEqual(keys, ["site", "api", "git", "speed"]);
   const bare = components({ SITE_URL: "http://g1t:8787" }, false);
   assert.deepEqual(
@@ -190,7 +188,13 @@ test("components: an installation without a host leaves that part off", () => {
     ["site", "api", "git", "speed", "mcp", "docs", "deployments", "sandboxes", "billing"],
   );
   const speed = all.find((c) => c.key === "speed")!;
-  assert.deepEqual(speed.check, { kind: "http", steps: [{ url: "https://g1t.sh/flagon-io/g1t", browser: true }, { url: "https://g1t.sh/explore", browser: true }] });
+  assert.deepEqual(speed.check, {
+    kind: "http",
+    steps: [
+      { url: "https://g1t.sh/flagon-io/g1t", browser: true },
+      { url: "https://g1t.sh/explore", browser: true },
+    ],
+  });
   assert.equal(classify({ ok: true, ms: 900 }, speed.slowMs).state, "degraded");
   assert.equal(classify({ ok: true, ms: 300 }, speed.slowMs).state, "up");
   const git = all.find((c) => c.key === "git")!;
@@ -224,9 +228,39 @@ test("buildPage: incident impacts and maintenance reach the parts and the banner
   const current = new Map(parts.map((p) => [p.key, { state: "up" as const, detail: "Answered in 80 ms", latency_ms: 80 }]));
   current.set("docs", { state: "down", detail: "Failed: HTTP 502", latency_ms: null });
   const maintenance = [
-    { id: "m1", title: "Docs move", message: "Moving docs.", components: ["docs"], starts_at: "2026-10-05T12:00:00Z", ends_at: "2026-10-05T13:00:00Z", state: "scheduled" as const, url: "", updates: [] },
-    { id: "m2", title: "Later", message: "Later.", components: ["api"], starts_at: "2026-10-06T12:00:00Z", ends_at: "2026-10-06T13:00:00Z", state: "scheduled" as const, url: "", updates: [] },
-    { id: "m3", title: "Called off", message: "No.", components: ["api"], starts_at: "2026-10-05T12:00:00Z", ends_at: "2026-10-05T13:00:00Z", state: "cancelled" as const, url: "", updates: [] },
+    {
+      id: "m1",
+      title: "Docs move",
+      message: "Moving docs.",
+      components: ["docs"],
+      starts_at: "2026-10-05T12:00:00Z",
+      ends_at: "2026-10-05T13:00:00Z",
+      state: "scheduled" as const,
+      url: "",
+      updates: [],
+    },
+    {
+      id: "m2",
+      title: "Later",
+      message: "Later.",
+      components: ["api"],
+      starts_at: "2026-10-06T12:00:00Z",
+      ends_at: "2026-10-06T13:00:00Z",
+      state: "scheduled" as const,
+      url: "",
+      updates: [],
+    },
+    {
+      id: "m3",
+      title: "Called off",
+      message: "No.",
+      components: ["api"],
+      starts_at: "2026-10-05T12:00:00Z",
+      ends_at: "2026-10-05T13:00:00Z",
+      state: "cancelled" as const,
+      url: "",
+      updates: [],
+    },
   ];
   const quiet = buildPage({ parts, current, checkedAt: "2026-10-05T12:29:30Z", days: [], incidents: [], maintenance, now });
   const docs = quiet.report.components.find((c) => c.key === "docs")!;
@@ -234,7 +268,13 @@ test("buildPage: incident impacts and maintenance reach the parts and the banner
   assert.equal(docs.check_state, "down");
   assert.equal(quiet.report.overall.state, "maintenance");
   assert.equal(quiet.report.overall.title, "Under maintenance");
-  assert.deepEqual(quiet.report.maintenance.map((m) => [m.id, m.state]), [["m1", "in_progress"], ["m2", "scheduled"]]);
+  assert.deepEqual(
+    quiet.report.maintenance.map((m) => [m.id, m.state]),
+    [
+      ["m1", "in_progress"],
+      ["m2", "scheduled"],
+    ],
+  );
 
   const incident = {
     id: "i1",
@@ -253,12 +293,22 @@ test("buildPage: incident impacts and maintenance reach the parts and the banner
   assert.equal(busy.report.components.find((c) => c.key === "api")!.state, "partial");
   assert.equal(busy.report.overall.title, "Partial outage");
   assert.equal(busy.report.overall.line, "Identified: API errors.");
-  const resolved = buildPage({ parts, current, checkedAt: "2026-10-05T12:29:30Z", days: [], incidents: [{ ...incident, resolved_at: "2026-10-05T12:20:00Z" }], now });
+  const resolved = buildPage({
+    parts,
+    current,
+    checkedAt: "2026-10-05T12:29:30Z",
+    days: [],
+    incidents: [{ ...incident, resolved_at: "2026-10-05T12:20:00Z" }],
+    now,
+  });
   assert.equal(resolved.report.components.find((c) => c.key === "api")!.state, "up", "a resolved incident no longer colours its part");
 });
 
 test("git storage is listed only with the repos service, and degraded says why", () => {
-  assert.equal(components(VARS, true).some((part) => part.key === "storage"), false);
+  assert.equal(
+    components(VARS, true).some((part) => part.key === "storage"),
+    false,
+  );
   const storage = components(VARS, true, true).find((part) => part.key === "storage");
   assert.equal(storage?.check.kind, "storage");
   assert.equal(storage?.core, false);

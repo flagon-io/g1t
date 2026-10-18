@@ -40,7 +40,10 @@ const NO_LEAD = "none";
 async function saveLeadChannel(form: FormData, workspace: string, slug: string, user: Parameters<typeof identity.updateTeam>[0]) {
   const intent = "people";
   const lead = String(form.get("lead") ?? NO_LEAD);
-  const channel = String(form.get("channel") ?? "").trim().replace(/^#/, "").toLowerCase();
+  const channel = String(form.get("channel") ?? "")
+    .trim()
+    .replace(/^#/, "")
+    .toLowerCase();
   if (lead !== NO_LEAD && !lead.startsWith("@")) return { intent, error: "Choose someone on the team.", saved: false };
   let channelId = "";
   let channelName = "";
@@ -151,8 +154,8 @@ export default function TeamSettings({ loaderData, actionData }: Route.Component
                 </SelectContent>
               </Select>
               <span className="mt-1.5 block text-xs text-faint">
-                It has its parent's roles on repositories, and hears what is asked of its parent. Moving it needs you to
-                maintain both teams, or own the workspace.
+                It has its parent's roles on repositories, and hears what is asked of its parent. Moving it needs you to maintain both teams, or own the
+                workspace.
               </span>
             </div>
           )}
@@ -185,7 +188,10 @@ export default function TeamSettings({ loaderData, actionData }: Route.Component
               className="w-full sm:max-w-72"
               options={[
                 { value: NO_LEAD, label: "No lead" },
-                ...people.map((person) => ({ value: `@${person.username}`, label: person.name ? `${person.name} (@${person.username})` : `@${person.username}` })),
+                ...people.map((person) => ({
+                  value: `@${person.username}`,
+                  label: person.name ? `${person.name} (@${person.username})` : `@${person.username}`,
+                })),
               ]}
             />
             <span className="mt-1.5 block text-xs text-faint">Someone on the team.</span>
@@ -213,8 +219,8 @@ export default function TeamSettings({ loaderData, actionData }: Route.Component
           Code review assignment
         </h2>
         <p className="mt-1 text-sm text-muted">
-          When {team.name} is asked to review a pull request, by a person or by a CODEOWNERS file. Off, everyone in the
-          team is asked. On, g1t picks people from it; the team stays shown as asked.
+          When {team.name} is asked to review a pull request, by a person or by a CODEOWNERS file. Off, everyone in the team is asked. On, g1t picks people from
+          it; the team stays shown as asked.
         </p>
         <Form method="post" className="mt-4 space-y-5" key={`review-${team.updated_at}`}>
           <input type="hidden" name="intent" value="review" />
@@ -292,8 +298,7 @@ export default function TeamSettings({ loaderData, actionData }: Route.Component
           Delete this team
         </h2>
         <p className="mt-1 text-sm text-muted">
-          Its people stay in {team.workspace}, and lose the roles the team gave them. Its child teams move up to{" "}
-          {team.parent ? team.parent.name : "the top"}.
+          Its people stay in {team.workspace}, and lose the roles the team gave them. Its child teams move up to {team.parent ? team.parent.name : "the top"}.
         </p>
         <div className="mt-4">
           <ConfirmDialog
@@ -310,7 +315,9 @@ export default function TeamSettings({ loaderData, actionData }: Route.Component
               </Button>
             )}
           >
-            <li>Mentions of @{team.workspace}/{team.slug} stop telling anyone.</li>
+            <li>
+              Mentions of @{team.workspace}/{team.slug} stop telling anyone.
+            </li>
             <li>Pull requests that asked it to review keep the people it picked.</li>
           </ConfirmDialog>
         </div>

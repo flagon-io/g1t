@@ -26,10 +26,17 @@ import {
 } from "./apps.ts";
 
 test("Work is a built-in app right after Home, for every member, and Sessions are in it", () => {
-  assert.deepEqual(BUILTINS.slice(0, 3).map((app) => app.key), ["home", "work", "chat"]);
+  assert.deepEqual(
+    BUILTINS.slice(0, 3).map((app) => app.key),
+    ["home", "work", "chat"],
+  );
   assert.equal(appOf("work").path("acme"), "/acme/-/work");
   assert.equal(appOf("work").code, undefined, "not part of Code");
-  assert.equal(BUILTINS.some((app) => (app.key as string) === "sessions"), false, "no Sessions app of its own");
+  assert.equal(
+    BUILTINS.some((app) => (app.key as string) === "sessions"),
+    false,
+    "no Sessions app of its own",
+  );
 });
 
 test("the rail is Home, Explore, Work, Chat, Code, Artifacts and Routines", () => {
@@ -75,7 +82,10 @@ test("an integration's app opens its page", () => {
 
 test("installed apps are what the workspace connected, opening where each is managed", () => {
   const apps = installedApps({ sentry: { manage: "/acme/-/integrations/alerts" }, github: { manage: null }, nonsense: { manage: null } });
-  assert.deepEqual(apps.map((app) => app.key), ["int-github", "int-sentry"]);
+  assert.deepEqual(
+    apps.map((app) => app.key),
+    ["int-github", "int-sentry"],
+  );
   assert.equal(apps[0]!.path("acme"), "/new/github?workspace=acme");
   assert.deepEqual(appData(apps[1]!, "acme").href, "/acme/-/integrations/alerts");
   assert.deepEqual(installedApps({}), []);

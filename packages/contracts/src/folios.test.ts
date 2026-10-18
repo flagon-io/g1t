@@ -146,7 +146,16 @@ test("slides ops are checked by shape", () => {
 });
 
 test("design ops are checked by shape and size", () => {
-  const frame = { type: "frame", name: "Home", layout: "column", gap: 16, children: [{ type: "text", text: "Hello" }, { type: "html", html: "<b>hi</b>" }] };
+  const frame = {
+    type: "frame",
+    name: "Home",
+    layout: "column",
+    gap: 16,
+    children: [
+      { type: "text", text: "Hello" },
+      { type: "html", html: "<b>hi</b>" },
+    ],
+  };
   assert.equal(designOpError({ op: "upsert_nodes", nodes: [frame] }), null);
   assert.deepEqual(countDesignSpecs([frame as never]), { nodes: 3, depth: 2 });
   assert.equal(designOpError({ op: "upsert_nodes", nodes: [{ type: "rect", children: [{ type: "text" }] }] }), "Only frames and components have children.");
@@ -172,12 +181,21 @@ test("dashboard ops check tiles, their queries and the grid", () => {
     grid: { x: 0, y: 0, w: 6, h: 4 },
   };
   assert.equal(dashboardOpError({ op: "upsert_tile", tile }, datasetQueryError), null);
-  assert.equal(dashboardOpError({ op: "upsert_tile", tile: { ...tile, query: { ...tile.query, group_by: "secret" } } }, datasetQueryError), "pull_requests can't be grouped by secret.");
+  assert.equal(
+    dashboardOpError({ op: "upsert_tile", tile: { ...tile, query: { ...tile.query, group_by: "secret" } } }, datasetQueryError),
+    "pull_requests can't be grouped by secret.",
+  );
   assert.equal(dashboardOpError({ op: "upsert_tile", tile: { ...tile, type: "markdown", query: null, markdown: "Notes" } }, datasetQueryError), null);
   assert.equal(dashboardOpError({ op: "upsert_tile", tile: { ...tile, type: "markdown" } }, datasetQueryError), "A text tile has no query.");
   assert.equal(dashboardOpError({ op: "upsert_tile", tile: { ...tile, grid: { x: 8, y: 0, w: 6, h: 4 } } }, datasetQueryError), "A tile fits in 12 columns.");
   assert.equal(dashboardOpError({ op: "set_filters", filters: { range: "30d", repos: ["acme/web"] } }, datasetQueryError), null);
-  assert.equal(dashboardOpError({ op: "set_filters", filters: { range: { from: "2026-02-30", to: "2026-03-01" } } }, datasetQueryError), "A range's from and to are dates or RFC 3339 UTC times.");
-  assert.equal(dashboardOpError({ op: "set_layout", tiles: [{ id: "t1", grid: { x: 0, y: 0, w: 0, h: 1 } }] }, datasetQueryError), "grid starts at 0, 0 and is at least 1 by 1.");
+  assert.equal(
+    dashboardOpError({ op: "set_filters", filters: { range: { from: "2026-02-30", to: "2026-03-01" } } }, datasetQueryError),
+    "A range's from and to are dates or RFC 3339 UTC times.",
+  );
+  assert.equal(
+    dashboardOpError({ op: "set_layout", tiles: [{ id: "t1", grid: { x: 0, y: 0, w: 0, h: 1 } }] }, datasetQueryError),
+    "grid starts at 0, 0 and is at least 1 by 1.",
+  );
   assert.equal(dashboardGridError({ x: 0, y: 0, w: 12, h: 1 }), null);
 });

@@ -71,9 +71,7 @@ export function storedLinks(text: string | null | undefined): ProjectLink[] {
   try {
     const parsed = JSON.parse(text) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((link): link is ProjectLink => typeof link?.label === "string" && typeof link?.url === "string")
-      .slice(0, MAX_PROJECT_LINKS);
+    return parsed.filter((link): link is ProjectLink => typeof link?.label === "string" && typeof link?.url === "string").slice(0, MAX_PROJECT_LINKS);
   } catch {
     return [];
   }

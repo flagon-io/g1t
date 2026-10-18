@@ -46,12 +46,7 @@ function editorChunk(): Plugin {
 
 export default defineConfig({
   define: { "import.meta.env.G1T_BUILD_ID": JSON.stringify(randomUUID()) },
-  plugins: [
-    cloudflare({ viteEnvironment: { name: "ssr" } }),
-    tailwindcss(),
-    reactRouter(),
-    editorChunk(),
-  ],
+  plugins: [cloudflare({ viteEnvironment: { name: "ssr" } }), tailwindcss(), reactRouter(), editorChunk()],
   resolve: {
     tsconfigPaths: true,
   },
@@ -74,7 +69,11 @@ export default defineConfig({
             // app's chunks they could end up in two that import each other,
             // and whichever a page loaded first would call into the other
             // before it was ready. Together, apart from the app, they can't.
-            { name: "ui", test: /[\\/]node_modules[\\/](radix-ui|@radix-ui[\\/][^\\/]+|@floating-ui[\\/][^\\/]+|aria-hidden|react-remove-scroll[^\\/]*|use-callback-ref|use-sidecar|react-style-singleton|get-nonce|tslib|detect-node-es)[\\/]/, priority: 3 },
+            {
+              name: "ui",
+              test: /[\\/]node_modules[\\/](radix-ui|@radix-ui[\\/][^\\/]+|@floating-ui[\\/][^\\/]+|aria-hidden|react-remove-scroll[^\\/]*|use-callback-ref|use-sidecar|react-style-singleton|get-nonce|tslib|detect-node-es)[\\/]/,
+              priority: 3,
+            },
             // Icons are shared by nearly every page, a few hundred bytes each:
             // one file for all of them, not a request per icon.
             { name: "icons", test: /[\\/]node_modules[\\/]lucide-react[\\/]/, priority: 2 },
@@ -87,7 +86,14 @@ export default defineConfig({
             // with that route. Packages are left to automatic splitting: a
             // group over them merged what the editor needs with what the
             // diagram renderers need, and every doc fetched both.
-            { name: "app", test: /[\\/]apps[\\/]web[\\/]app[\\/](components|lib)[\\/]/, minShareCount: 2, entriesAware: true, entriesAwareMergeThreshold: 24_000, priority: 1 },
+            {
+              name: "app",
+              test: /[\\/]apps[\\/]web[\\/]app[\\/](components|lib)[\\/]/,
+              minShareCount: 2,
+              entriesAware: true,
+              entriesAwareMergeThreshold: 24_000,
+              priority: 1,
+            },
           ],
         },
       },

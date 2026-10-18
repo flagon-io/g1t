@@ -4,13 +4,7 @@ import { Link } from "react-router";
 
 import type { Route } from "./+types/milestones";
 import { MilestoneBar } from "../../../components/labels";
-import {
-  DeleteMilestone,
-  DueLine,
-  MilestoneForm,
-  MilestoneStateButton,
-  ProgressLine,
-} from "../../../components/milestones";
+import { DeleteMilestone, DueLine, MilestoneForm, MilestoneStateButton, ProgressLine } from "../../../components/milestones";
 import { EmptyState, ErrorText } from "../../../components/ui";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
@@ -51,10 +45,7 @@ export default function Milestones({ loaderData, actionData }: Route.ComponentPr
   const tab = (value: "open" | "closed", label: string, count: number) => (
     <Link
       to={value === "open" ? `${base}/milestones` : `${base}/milestones?state=closed`}
-      className={
-        "rounded-md px-3 py-1.5 text-sm transition-colors " +
-        (state === value ? "bg-raised font-medium text-fg" : "text-muted hover:text-fg")
-      }
+      className={"rounded-md px-3 py-1.5 text-sm transition-colors " + (state === value ? "bg-raised font-medium text-fg" : "text-muted hover:text-fg")}
     >
       {label} <span className="tabular-nums text-faint">{count}</span>
     </Link>
@@ -103,9 +94,7 @@ export default function Milestones({ loaderData, actionData }: Route.ComponentPr
                       <DueLine milestone={milestone} today={today} />
                     )}
                   </p>
-                  {milestone.description && (
-                    <p className="mt-2 line-clamp-2 text-sm text-muted">{plainText(milestone.description)}</p>
-                  )}
+                  {milestone.description && <p className="mt-2 line-clamp-2 text-sm text-muted">{plainText(milestone.description)}</p>}
                 </div>
                 <div className="min-w-0">
                   <MilestoneBar milestone={milestone} />

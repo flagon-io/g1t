@@ -46,7 +46,10 @@ function selected() {
 }
 
 function stamp() {
-  return new Date().toISOString().replace(/[:.]/g, "-").replace(/-\d{3}Z$/, "Z");
+  return new Date()
+    .toISOString()
+    .replace(/[:.]/g, "-")
+    .replace(/-\d{3}Z$/, "Z");
 }
 
 async function gradeOne(question, truth, answer, { useJudge }) {
@@ -80,7 +83,9 @@ async function runSuite() {
       continue;
     }
     if (dry) {
-      say(`${label}: ${messages.at(-1).content}\n  page: ${JSON.stringify(page ?? {})}\n  truth: ${truth.digest.split("\n").slice(0, 6).join("\n         ")}\n  require: ${JSON.stringify([...(truth.require_any ?? []), ...(question.require_any ?? [])]).slice(0, 300)}`);
+      say(
+        `${label}: ${messages.at(-1).content}\n  page: ${JSON.stringify(page ?? {})}\n  truth: ${truth.digest.split("\n").slice(0, 6).join("\n         ")}\n  require: ${JSON.stringify([...(truth.require_any ?? []), ...(question.require_any ?? [])]).slice(0, 300)}`,
+      );
       continue;
     }
     if (index > 0) await sleep(pace);
@@ -90,7 +95,9 @@ async function runSuite() {
     results.push(result);
     write(join(dir, "questions", `${question.id}.json`), result);
     const passed = graded.checks.filter((c) => c.pass).length;
-    say(`${label}: ${answer.status} ${answer.total_ms} ms, checks ${passed}/${graded.checks.length}${graded.judge?.mean != null ? `, judge ${graded.judge.mean.toFixed(2)}` : graded.judge?.error ? `, ${graded.judge.error}` : ""}${answer.unknown_types.length ? `, new events: ${answer.unknown_types.join(",")}` : ""}`);
+    say(
+      `${label}: ${answer.status} ${answer.total_ms} ms, checks ${passed}/${graded.checks.length}${graded.judge?.mean != null ? `, judge ${graded.judge.mean.toFixed(2)}` : graded.judge?.error ? `, ${graded.judge.error}` : ""}${answer.unknown_types.length ? `, new events: ${answer.unknown_types.join(",")}` : ""}`,
+    );
   }
   if (dry) return;
   finish(dir, results);
@@ -144,7 +151,10 @@ function report(dir, results, s) {
     ...results.map((r) => {
       if (r.skipped) return `| ${r.id} | skipped | | | | | ${r.skipped} |`;
       const failed = r.checks.filter((c) => !c.pass);
-      return `| ${r.id} | ${r.checks.length - failed.length}/${r.checks.length} | ${r.judge?.mean?.toFixed(2) ?? (r.judge?.error ? "error" : "-")} | ${ms(r.answer.first_text_ms)} | ${ms(r.answer.total_ms)} | ${r.answer.tool_events.length} | ${failed.map((c) => `${c.safety ? "**SAFETY** " : ""}${c.name}`).join(", ").replace(/\|/g, "\\|")} |`;
+      return `| ${r.id} | ${r.checks.length - failed.length}/${r.checks.length} | ${r.judge?.mean?.toFixed(2) ?? (r.judge?.error ? "error" : "-")} | ${ms(r.answer.first_text_ms)} | ${ms(r.answer.total_ms)} | ${r.answer.tool_events.length} | ${failed
+        .map((c) => `${c.safety ? "**SAFETY** " : ""}${c.name}`)
+        .join(", ")
+        .replace(/\|/g, "\\|")} |`;
     }),
     "",
     "## Answers",
@@ -182,7 +192,9 @@ async function regrade() {
       Object.assign(saved, await gradeOne({ ...question, page: saved.page }, saved.truth, saved.answer, { useJudge }));
       if (!useJudge) saved.judge = kept;
       write(join(dir, "questions", file), saved);
-      say(`${saved.id}: checks ${saved.checks.filter((c) => c.pass).length}/${saved.checks.length}${saved.judge?.mean != null ? `, judge ${saved.judge.mean.toFixed(2)}` : ""}`);
+      say(
+        `${saved.id}: checks ${saved.checks.filter((c) => c.pass).length}/${saved.checks.length}${saved.judge?.mean != null ? `, judge ${saved.judge.mean.toFixed(2)}` : ""}`,
+      );
     }
     results.push(saved);
   }

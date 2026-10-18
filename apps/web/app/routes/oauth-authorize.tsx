@@ -87,9 +87,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const checked = check(form);
   if (!checked.ok) return null;
   if (form.get("decision") !== "approve") {
-    throw redirect(
-      oauthCallback(checked.redirectUri, { error: "access_denied", state: checked.state }, addresses().api),
-    );
+    throw redirect(oauthCallback(checked.redirectUri, { error: "access_denied", state: checked.state }, addresses().api));
   }
   // Only what the application asked for, never more, whatever the form says.
   const scopes = consentedScopes(form, requestedScopes(String(form.get("scope") ?? "")));
@@ -111,9 +109,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     return { error: "g1t could not approve this sign-in just now. Try again in a moment." };
   }
   // `iss` is the API's origin, the issuer its metadata names (RFC 9207).
-  throw redirect(
-    oauthCallback(checked.redirectUri, { code, state: checked.state }, addresses().api),
-  );
+  throw redirect(oauthCallback(checked.redirectUri, { code, state: checked.state }, addresses().api));
 }
 
 export default function Authorize({ loaderData, actionData }: Route.ComponentProps) {
@@ -136,12 +132,10 @@ export default function Authorize({ loaderData, actionData }: Route.ComponentPro
   return (
     <main className="mx-auto max-w-md pt-8">
       <KeyRound size={36} className="text-accent" />
-      <h1 className="mt-6 text-2xl font-semibold tracking-tight">
-        Sign in to {request.clientName}
-      </h1>
+      <h1 className="mt-6 text-2xl font-semibold tracking-tight">Sign in to {request.clientName}</h1>
       <p className="mt-2 text-muted">
-        <span className="font-medium text-fg">{request.clientName}</span> wants to act as{" "}
-        <span className="font-mono font-medium text-fg">{user.username}</span> on g1t.
+        <span className="font-medium text-fg">{request.clientName}</span> wants to act as <span className="font-mono font-medium text-fg">{user.username}</span>{" "}
+        on g1t.
       </p>
 
       <Form method="post" className="mt-6 space-y-6">
@@ -150,9 +144,7 @@ export default function Authorize({ loaderData, actionData }: Route.ComponentPro
         ))}
         <section>
           <h2 className="text-sm font-medium">It will be able to</h2>
-          <p className="mt-0.5 text-xs text-faint">
-            Everywhere you can, as you. Untick anything you would rather it could not do.
-          </p>
+          <p className="mt-0.5 text-xs text-faint">Everywhere you can, as you. Untick anything you would rather it could not do.</p>
           <div className="mt-3">
             <ScopeChecklist initial={requested} only={requested} allowFull={false} />
           </div>
@@ -161,16 +153,13 @@ export default function Authorize({ loaderData, actionData }: Route.ComponentPro
           <dl>
             <dt className="text-xs text-faint">You will be sent back to</dt>
             <dd className="mt-0.5 font-mono text-[0.8125rem] break-all">
-              {destination.protocol === "https:" || destination.protocol === "http:"
-                ? destination.host + destination.pathname
-                : request.redirectUri}
+              {destination.protocol === "https:" || destination.protocol === "http:" ? destination.host + destination.pathname : request.redirectUri}
             </dd>
           </dl>
         </Card>
         <div>
           <p className="text-xs text-faint">
-            Approve only if you started this from {request.clientName} yourself. You can change
-            what it may do, or sign it out, in Settings.
+            Approve only if you started this from {request.clientName} yourself. You can change what it may do, or sign it out, in Settings.
           </p>
           <ErrorText>{actionData?.error}</ErrorText>
           <div className="mt-4 flex gap-2">

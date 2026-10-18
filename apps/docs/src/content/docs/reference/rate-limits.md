@@ -37,22 +37,22 @@ and self-hosted installations without a working limiter omit the policy.
 
 ## Limits
 
-| Where | Counted by | Requests a minute |
-| --- | --- | --- |
-| REST API, with a token | Token | 1,000 |
-| REST API, without a token | Client IP address | 60 |
-| MCP server | Token | 1,000 |
-| Git over HTTPS, with credentials | Credentials | 1,200 |
-| Git over HTTPS, without credentials | Client IP address | 120 |
-| Anonymous clones of one repository that are not cached | Repository | 120 |
-| Pages on g1t.sh, signed in | Session | 1,200 |
-| Pages on g1t.sh, [with a token](/guides/authentication/#use-a-token-on-the-website) | Token | 1,000 |
-| Pages on g1t.sh, signed out | Client IP address | 600 |
-| [Ask g1t](/guides/ask/) questions | Person | 20 |
-| Archive downloads, workflow run pages, log downloads and search, signed out | Client IP address | 30 |
-| [Raw files](/guides/git/#raw-files) on g1tusercontent.com | Client IP address, together with pages signed out | 600 |
-| [OpenTelemetry ingest](/guides/observability/) at otel.g1t.sh | Client IP address | 600 |
-| Container and package registries | See [storage and pull limits](/guides/containers/#storage-and-pull-limits) | |
+| Where                                                                               | Counted by                                                                 | Requests a minute |
+| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ----------------- |
+| REST API, with a token                                                              | Token                                                                      | 1,000             |
+| REST API, without a token                                                           | Client IP address                                                          | 60                |
+| MCP server                                                                          | Token                                                                      | 1,000             |
+| Git over HTTPS, with credentials                                                    | Credentials                                                                | 1,200             |
+| Git over HTTPS, without credentials                                                 | Client IP address                                                          | 120               |
+| Anonymous clones of one repository that are not cached                              | Repository                                                                 | 120               |
+| Pages on g1t.sh, signed in                                                          | Session                                                                    | 1,200             |
+| Pages on g1t.sh, [with a token](/guides/authentication/#use-a-token-on-the-website) | Token                                                                      | 1,000             |
+| Pages on g1t.sh, signed out                                                         | Client IP address                                                          | 600               |
+| [Ask g1t](/guides/ask/) questions                                                   | Person                                                                     | 20                |
+| Archive downloads, workflow run pages, log downloads and search, signed out         | Client IP address                                                          | 30                |
+| [Raw files](/guides/git/#raw-files) on g1tusercontent.com                           | Client IP address, together with pages signed out                          | 600               |
+| [OpenTelemetry ingest](/guides/observability/) at otel.g1t.sh                       | Client IP address                                                          | 600               |
+| Container and package registries                                                    | See [storage and pull limits](/guides/containers/#storage-and-pull-limits) |                   |
 
 The REST API and the MCP server count apart: calls to one do not use up
 the other's limit. A request with a token that is not valid counts against
@@ -87,11 +87,11 @@ Content-Type: application/json
 { "error": { "code": "rate_limited", "message": "Too many requests with this token. Wait a minute and try again: https://docs.g1t.sh/reference/rate-limits/" } }
 ```
 
-| Where | Body |
-| --- | --- |
-| REST API and MCP server | JSON in the [error shape](/reference/api/#errors) every endpoint uses, with `code` `rate_limited`. Through MCP it comes back as the HTTP answer to the request, not as a tool result. |
-| Git over HTTPS | Plain text, which git prints after `remote:` or in its error. |
-| Pages on g1t.sh, and raw files | Plain text. |
+| Where                          | Body                                                                                                                                                                                  |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| REST API and MCP server        | JSON in the [error shape](/reference/api/#errors) every endpoint uses, with `code` `rate_limited`. Through MCP it comes back as the HTTP answer to the request, not as a tool result. |
+| Git over HTTPS                 | Plain text, which git prints after `remote:` or in its error.                                                                                                                         |
+| Pages on g1t.sh, and raw files | Plain text.                                                                                                                                                                           |
 
 Branch on the `429` status or the `rate_limited` code, never on the
 message. The API sends `Access-Control-Expose-Headers: retry-after`, so a

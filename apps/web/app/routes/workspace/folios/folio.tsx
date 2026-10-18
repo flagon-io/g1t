@@ -20,7 +20,11 @@ import { socketTicketFor } from "../../../lib/socket-ticket.server";
 
 export function meta({ loaderData: loaded, params, ...args }: Route.MetaArgs) {
   const f = loaded && "page" in loaded ? loaded.page.folio : null;
-  return pageMeta(args, { title: `${f ? `${f.icon ? `${f.icon} ` : ""}${f.title || "Untitled"}` : "Artifact"} · ${params.owner} · g1t`, description: f?.excerpt, type: "article" });
+  return pageMeta(args, {
+    title: `${f ? `${f.icon ? `${f.icon} ` : ""}${f.title || "Untitled"}` : "Artifact"} · ${params.owner} · g1t`,
+    description: f?.excerpt,
+    type: "article",
+  });
 }
 
 /**
@@ -35,7 +39,8 @@ function editorFiles(): string[] {
   return [...document.querySelectorAll('link[rel="modulepreload"][data-doc-editor]')].map((link) => link.getAttribute("href") ?? "").filter(Boolean);
 }
 
-export const links: Route.LinksFunction = () => editorFiles().map((href) => ({ rel: "modulepreload", href, "data-doc-editor": "" }) as unknown as HtmlLinkDescriptor);
+export const links: Route.LinksFunction = () =>
+  editorFiles().map((href) => ({ rel: "modulepreload", href, "data-doc-editor": "" }) as unknown as HtmlLinkDescriptor);
 
 /** The live socket's path in this workspace (lib/socket-ticket.ts `socketPath`). */
 const livePath = (slug: string) => `/${slug}/-/artifacts/live`;
@@ -90,7 +95,9 @@ function useLive(slug: string, page: FolioPage, ticket: OfferedTicket | null): {
   useEffect(() => {
     offerTicket(livePath(slug), ticket);
     const scheme = window.location.protocol === "https:" ? "wss" : "ws";
-    const provider = new FolioProvider(`${scheme}://${window.location.host}${livePath(slug)}?folio=${encodeURIComponent(id)}`, { state: pageStateBytes(state) });
+    const provider = new FolioProvider(`${scheme}://${window.location.host}${livePath(slug)}?folio=${encodeURIComponent(id)}`, {
+      state: pageStateBytes(state),
+    });
     const off = provider.onStatus(setStatus);
     setLive(provider);
     return () => {
@@ -142,10 +149,23 @@ function Opened({ slug, page, ticket }: { slug: string; page: FolioPage; ticket:
             </div>
           }
         >
-          <Body slug={slug} page={page} folio={folio} live={live} role={role} showComments={showComments} onPresence={setPresence} onFolio={setFolio} onRole={onRole} onError={setError} />
+          <Body
+            slug={slug}
+            page={page}
+            folio={folio}
+            live={live}
+            role={role}
+            showComments={showComments}
+            onPresence={setPresence}
+            onFolio={setFolio}
+            onRole={onRole}
+            onError={setError}
+          />
         </Suspense>
       ) : (
-        <p className="mx-auto mt-16 max-w-md text-center text-sm text-muted">This is a {FOLIO_KIND_NOUNS[folio.kind]}. Opening {ui.label.toLowerCase()} here is coming soon.</p>
+        <p className="mx-auto mt-16 max-w-md text-center text-sm text-muted">
+          This is a {FOLIO_KIND_NOUNS[folio.kind]}. Opening {ui.label.toLowerCase()} here is coming soon.
+        </p>
       )}
     </div>
   );
@@ -180,7 +200,14 @@ function NeedAccess({ slug, id }: { slug: string; id: string }) {
             }
           }}
         >
-          <input aria-label="Message" placeholder="Add a message (optional)" value={message} onChange={(e) => setMessage(e.target.value)} maxLength={500} className="h-9 w-full rounded-md border border-line bg-bg px-3 text-sm outline-none focus:border-accent/60" />
+          <input
+            aria-label="Message"
+            placeholder="Add a message (optional)"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            maxLength={500}
+            className="h-9 w-full rounded-md border border-line bg-bg px-3 text-sm outline-none focus:border-accent/60"
+          />
           <Button type="submit" disabled={state === "busy"} variant="accent" className="px-4 disabled:opacity-60">
             {state === "busy" ? "Asking…" : "Ask for access"}
           </Button>

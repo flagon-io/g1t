@@ -23,7 +23,11 @@ export function ToggleGroup({
     <Primitive.Root
       data-variant={variant}
       data-size={size}
-      className={cn("group/toggle-group inline-flex max-w-full flex-wrap items-center rounded-md", variant === "outline" && "border border-line bg-bg", className)}
+      className={cn(
+        "group/toggle-group inline-flex max-w-full flex-wrap items-center rounded-md",
+        variant === "outline" && "border border-line bg-bg",
+        className,
+      )}
       {...props}
     >
       <GroupContext.Provider value={{ variant, size }}>{children}</GroupContext.Provider>
@@ -47,9 +51,7 @@ export function ToggleGroupItem({ className, children, variant, size, ...props }
         "data-[state=on]:bg-accent/15 data-[state=on]:text-accent",
         "[&_svg]:size-3.5 [&_svg]:shrink-0",
         SIZES[size ?? group.size],
-        v === "outline"
-          ? "rounded-none border-l border-line first:rounded-l-[5px] first:border-l-0 last:rounded-r-[5px]"
-          : "rounded-md",
+        v === "outline" ? "rounded-none border-l border-line first:rounded-l-[5px] first:border-l-0 last:rounded-r-[5px]" : "rounded-md",
         className,
       )}
       {...props}

@@ -44,7 +44,16 @@ export function directoryEntries(directory: PeopleDirectory, query: string): Dir
   const out: DirectoryEntry[] = [];
   for (const person of directory.people) {
     const teams = teamsOfPerson(directory.teams, person.username);
-    const fields = [person.username, person.name, person.title, person.location, person.bio, ...person.owns, ...teams.map((team) => team.name), person.role === "owner" ? "owner" : null];
+    const fields = [
+      person.username,
+      person.name,
+      person.title,
+      person.location,
+      person.bio,
+      ...person.owns,
+      ...teams.map((team) => team.name),
+      person.role === "owner" ? "owner" : null,
+    ];
     if (matches(query, fields)) out.push({ person, teams });
   }
   return out;

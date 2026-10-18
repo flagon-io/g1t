@@ -49,15 +49,10 @@ export default function Verify({ loaderData }: Route.ComponentProps) {
       {loaderData.ok ? (
         <>
           <CircleCheck size={40} className="mx-auto text-success" />
-          <h1 className="mt-6 text-2xl font-semibold tracking-tight">
-            Email confirmed
-          </h1>
+          <h1 className="mt-6 text-2xl font-semibold tracking-tight">Email confirmed</h1>
           {loaderData.added ? (
             <>
-              <p className="mt-2 text-muted">
-                The address is confirmed on {loaderData.username}. You can make it
-                your primary address in your settings.
-              </p>
+              <p className="mt-2 text-muted">The address is confirmed on {loaderData.username}. You can make it your primary address in your settings.</p>
               <div className="mt-8">
                 <ButtonLink to="/settings/emails">Back to settings</ButtonLink>
               </div>
@@ -78,9 +73,7 @@ export default function Verify({ loaderData }: Route.ComponentProps) {
       ) : (
         <>
           <MailWarning size={40} className="mx-auto text-warn" />
-          <h1 className="mt-6 text-2xl font-semibold tracking-tight">
-            That link did not work
-          </h1>
+          <h1 className="mt-6 text-2xl font-semibold tracking-tight">That link did not work</h1>
           <p className="mt-2 text-muted">{loaderData.message}</p>
           <p className="mt-2 text-sm text-muted">
             Links work once, for an hour, and a newer email replaces them.

@@ -122,7 +122,11 @@ export default function More() {
         <SectionHeader title="Signed in" />
         <Row
           title={oauth ? "With g1t" : "With an access token"}
-          subtitle={oauth ? "End or narrow the app's access in Settings → Connected applications." : "The token you pasted. Delete it in Settings → Access tokens to end it."}
+          subtitle={
+            oauth
+              ? "End or narrow the app's access in Settings → Connected applications."
+              : "The token you pasted. Delete it in Settings → Access tokens to end it."
+          }
           trailing={<ExternalLink size={16} color={colors.faint} />}
           chevron={false}
           onPress={() => WebBrowser.openBrowserAsync(siteUrl(server, oauth ? "/settings/applications" : "/settings/tokens"))}

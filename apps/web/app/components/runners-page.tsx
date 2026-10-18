@@ -55,7 +55,21 @@ function Unknown({ what }: { what: string }) {
   return <span className="text-faint">{what} didn&apos;t answer</span>;
 }
 
-function PlaceCard({ icon, title, tag, about, headline, children }: { icon: ReactNode; title: string; tag: ReactNode; about: string; headline: ReactNode; children: ReactNode }) {
+function PlaceCard({
+  icon,
+  title,
+  tag,
+  about,
+  headline,
+  children,
+}: {
+  icon: ReactNode;
+  title: string;
+  tag: ReactNode;
+  about: string;
+  headline: ReactNode;
+  children: ReactNode;
+}) {
   return (
     <section className="flex min-w-0 flex-col rounded-2xl border border-line bg-surface">
       <header className="px-5 pt-4">
@@ -113,7 +127,10 @@ function CloudList({ data }: { data: RunnersPageData }) {
       ))}
       {(rest > 0 || cloud.more || cloud.queued > 0) && (
         <li className="px-5 py-2.5 text-xs text-muted">
-          {[rest > 0 || cloud.more ? `${rest > 0 ? rest : "More"}${cloud.more ? "+" : ""} more running` : null, cloud.queued > 0 ? `${cloud.queued} waiting to start` : null]
+          {[
+            rest > 0 || cloud.more ? `${rest > 0 ? rest : "More"}${cloud.more ? "+" : ""} more running` : null,
+            cloud.queued > 0 ? `${cloud.queued} waiting to start` : null,
+          ]
             .filter(Boolean)
             .join(" · ")}
         </li>
@@ -269,7 +286,10 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
         </Section>
       </div>
 
-      <Section title="Your runners" about={own.length === 0 ? "None yet." : `${online} of ${own.length} online. A runner that hasn't been heard from for 90 seconds is offline.`}>
+      <Section
+        title="Your runners"
+        about={own.length === 0 ? "None yet." : `${online} of ${own.length} online. A runner that hasn't been heard from for 90 seconds is offline.`}
+      >
         {own.length === 0 ? (
           <EmptyState title="No runners of your own yet">
             <a href="#add" className="underline underline-offset-2">
@@ -307,8 +327,12 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
               : "Checks, merge checks and the merge queue run on g1t cloud. Switch them to your runners below."}
           </WhereCard>
           <WhereCard icon={<Laptop size={15} />} title="Your desktop">
-            The g1t desktop app runs a runner while it&apos;s open, sandboxed and labelled <code className="font-mono text-fg-soft">desktop</code>, for jobs that ask for{" "}
-            <code className="font-mono text-fg-soft">self-hosted</code>. Each desktop is under <a href="#desktops" className="underline underline-offset-2">Desktops</a>.
+            The g1t desktop app runs a runner while it&apos;s open, sandboxed and labelled <code className="font-mono text-fg-soft">desktop</code>, for jobs
+            that ask for <code className="font-mono text-fg-soft">self-hosted</code>. Each desktop is under{" "}
+            <a href="#desktops" className="underline underline-offset-2">
+              Desktops
+            </a>
+            .
           </WhereCard>
         </div>
         <RunnerSettingsForm
@@ -327,10 +351,12 @@ export function RunnersPage({ data, action, slug }: { data: RunnersPageData; act
         <NewRunner token={action?.token ?? null} groups={data.groups} repoScoped={false} />
       </Section>
 
-      <Section title="Groups" about="Which repositories may use which runners. A runner joins the default group, every repository, unless its token names another.">
+      <Section
+        title="Groups"
+        about="Which repositories may use which runners. A runner joins the default group, every repository, unless its token names another."
+      >
         <Groups groups={data.groups} repositories={data.repositories} manage action={action} />
       </Section>
-
     </div>
   );
 }
@@ -352,7 +378,9 @@ function TimeSplit({ data }: { data: RunnersPageData }) {
   const cost = data.cost;
   if (!cost) {
     return (
-      <div className="rounded-2xl border border-line bg-surface px-5 py-4 text-sm text-muted">Billing didn&apos;t answer, so this month&apos;s time can&apos;t be shown right now.</div>
+      <div className="rounded-2xl border border-line bg-surface px-5 py-4 text-sm text-muted">
+        Billing didn&apos;t answer, so this month&apos;s time can&apos;t be shown right now.
+      </div>
     );
   }
   const total = cost.cloudSeconds + cost.ownSeconds;
@@ -381,7 +409,8 @@ function TimeSplit({ data }: { data: RunnersPageData }) {
         </li>
       </ul>
       <p className="mt-4 text-[0.6875rem] leading-relaxed text-faint">
-        {cost.free ? "Usage at cost: g1t charges nothing for it now." : "At price, before your plan's included usage or credit paid for any of it."} Models are separate.
+        {cost.free ? "Usage at cost: g1t charges nothing for it now." : "At price, before your plan's included usage or credit paid for any of it."} Models are
+        separate.
       </p>
     </div>
   );

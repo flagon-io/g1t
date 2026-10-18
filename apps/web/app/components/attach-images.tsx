@@ -175,7 +175,10 @@ export function useImageAttach(ref: RefObject<HTMLTextAreaElement | null>) {
   const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
     const data = event.clipboardData;
     if (!data) return;
-    const files = [...data.items].filter((item) => item.kind === "file").map((item) => item.getAsFile()).filter((file): file is File => file != null);
+    const files = [...data.items]
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file != null);
     const images = pastedImages({ files, text: data.getData("text/plain") });
     if (images.length === 0) return;
     event.preventDefault();

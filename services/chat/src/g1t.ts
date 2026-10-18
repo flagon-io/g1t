@@ -228,7 +228,10 @@ export function pageFrom(value: unknown): AskPage | null {
     workspace: typeof sent.workspace === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(sent.workspace) ? sent.workspace : null,
     item: number(sent.item),
     pull: number(sent.pull),
-    time_zone: typeof sent.time_zone === "string" && /^[A-Za-z][A-Za-z0-9_+\-]*(\/[A-Za-z0-9_+\-]+){0,2}$/.test(sent.time_zone) && sent.time_zone.length <= 64 ? sent.time_zone : null,
+    time_zone:
+      typeof sent.time_zone === "string" && /^[A-Za-z][A-Za-z0-9_+\-]*(\/[A-Za-z0-9_+\-]+){0,2}$/.test(sent.time_zone) && sent.time_zone.length <= 64
+        ? sent.time_zone
+        : null,
   };
   return page.path || page.repo || page.workspace || page.time_zone ? page : null;
 }
@@ -328,7 +331,9 @@ export class AnswerReader {
         // A tool step comes again with its id when it ends, and sources come
         // whole: each replaces the line it updates, so a step is kept once.
         const at = steps.findIndex((kept) =>
-          event.type === "sources" ? kept.type === "sources" : event.type === "tool" && typeof event.id === "string" && kept.type === "tool" && kept.id === event.id,
+          event.type === "sources"
+            ? kept.type === "sources"
+            : event.type === "tool" && typeof event.id === "string" && kept.type === "tool" && kept.id === event.id,
         );
         if (at !== -1) {
           this.answer = { ...this.answer, steps: steps.map((kept, index) => (index === at ? step : kept)) };

@@ -11,12 +11,22 @@ import { Button } from "../ui/button";
 import { Hint } from "../ui/hint";
 
 export function Message({ from, className, ...props }: ComponentProps<"div"> & { from: "user" | "assistant" }) {
-  return <div data-from={from} className={cn("group/message flex w-full flex-col gap-1.5", from === "user" ? "items-end" : "items-start", className)} {...props} />;
+  return (
+    <div data-from={from} className={cn("group/message flex w-full flex-col gap-1.5", from === "user" ? "items-end" : "items-start", className)} {...props} />
+  );
 }
 
 /** A person's words: a bubble, their line breaks kept. */
 export function MessageContent({ className, ...props }: ComponentProps<"div">) {
-  return <div className={cn("w-fit max-w-[85%] rounded-2xl rounded-br-md bg-raised px-3.5 py-2 text-[0.9375rem] leading-[1.55] wrap-break-word whitespace-pre-wrap text-fg", className)} {...props} />;
+  return (
+    <div
+      className={cn(
+        "w-fit max-w-[85%] rounded-2xl rounded-br-md bg-raised px-3.5 py-2 text-[0.9375rem] leading-[1.55] wrap-break-word whitespace-pre-wrap text-fg",
+        className,
+      )}
+      {...props}
+    />
+  );
 }
 
 /** What can be done with an answer, shown under it; brighter on hover. */

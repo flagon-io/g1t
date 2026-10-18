@@ -98,8 +98,7 @@ test("a chain restores every ref, and the drill fails once the live repository d
     const manifest = { version: 1, repo_id: "repo_1", store_key: "acme--rocket", path: null, updated_at: "", chain: [full, incr], previous: [] };
     writeFileSync(join(dir, "manifest.json"), JSON.stringify(manifest, null, 2));
 
-    const run = () =>
-      spawnSync(process.execPath, [DRILL, "--repo-id", "repo_1", "--bundles", bucket, "--live", origin], { encoding: "utf8" });
+    const run = () => spawnSync(process.execPath, [DRILL, "--repo-id", "repo_1", "--bundles", bucket, "--live", origin], { encoding: "utf8" });
     const passed = run();
     assert.equal(passed.status, 0, passed.stdout + passed.stderr);
     assert.match(passed.stdout, /every ref matches the live repository/);

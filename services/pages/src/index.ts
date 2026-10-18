@@ -93,14 +93,7 @@ async function lookup(env: Env, hostname: string): Promise<DomainEntry | null> {
  * and its project (`telemetry`), which observability reads from this
  * Worker's tail events and files with what the app's own tell it.
  */
-async function dispatch(
-  env: Env,
-  request: Request,
-  script: string,
-  shown: string,
-  missing: () => Response,
-  telemetry: AppTelemetry | null,
-): Promise<Response> {
+async function dispatch(env: Env, request: Request, script: string, shown: string, missing: () => Response, telemetry: AppTelemetry | null): Promise<Response> {
   const { id, trace, traceparent } = traceFor(request.headers.get("traceparent"));
   console.log(REQUEST_MARK, { id, script, trace_id: trace, app: telemetry });
   const headers = new Headers(request.headers);
@@ -125,12 +118,7 @@ async function dispatch(
         shown,
       );
     }
-    return page(
-      502,
-      "The app failed",
-      `<p>The app at <code>${escape(shown)}</code> threw an error before it could answer.</p>`,
-      shown,
-    );
+    return page(502, "The app failed", `<p>The app at <code>${escape(shown)}</code> threw an error before it could answer.</p>`, shown);
   }
 }
 

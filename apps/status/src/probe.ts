@@ -45,8 +45,7 @@ const STORAGE_DOWN_SHARE = 0.25;
  * mean call. Quiet is up.
  */
 export function judgeStorage(report: StorageReport): ProbeResult {
-  const sum = (key: keyof Omit<StoreHealthRow, "store">) =>
-    report.stores.reduce((total, row) => total + (Number(row[key]) || 0), 0);
+  const sum = (key: keyof Omit<StoreHealthRow, "store">) => report.stores.reduce((total, row) => total + (Number(row[key]) || 0), 0);
   const calls = sum("calls");
   const errors = sum("errors");
   const limited = sum("rate_limited");
@@ -93,11 +92,7 @@ type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 class Timeout extends Error {}
 
 /** Runs `work`, timing it, and failing it after `timeoutMs`. */
-export async function timed(
-  work: (signal: AbortSignal) => Promise<true | string>,
-  timeoutMs = TIMEOUT_MS,
-  now: () => number = Date.now,
-): Promise<ProbeResult> {
+export async function timed(work: (signal: AbortSignal) => Promise<true | string>, timeoutMs = TIMEOUT_MS, now: () => number = Date.now): Promise<ProbeResult> {
   const started = now();
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;

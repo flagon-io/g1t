@@ -283,9 +283,7 @@ export type FeedEvent =
  * focus, moves to another page, or goes idle (no input for a while) or
  * back, and the inbox count the page last read.
  */
-export type FeedClientFrame =
-  | { type: "state"; focused: boolean; path: string; idle?: boolean }
-  | { type: "inbox"; unread: number };
+export type FeedClientFrame = { type: "state"; focused: boolean; path: string; idle?: boolean } | { type: "inbox"; unread: number };
 
 /**
  * One delivery from chat: counts to move for one person in one

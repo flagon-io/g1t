@@ -84,7 +84,12 @@ test("marks are stored as y-prosemirror stores them", () => {
   const { fragment } = docFrom("a **b** [c](https://x.y)");
   const paragraph = topContainers(fragment)[0]!.get(0) as Y.XmlElement;
   const text = paragraph.get(0) as Y.XmlText;
-  assert.deepEqual(text.toDelta(), [{ insert: "a " }, { insert: "b", attributes: { bold: {} } }, { insert: " " }, { insert: "c", attributes: { link: { href: "https://x.y" } } }]);
+  assert.deepEqual(text.toDelta(), [
+    { insert: "a " },
+    { insert: "b", attributes: { bold: {} } },
+    { insert: " " },
+    { insert: "c", attributes: { link: { href: "https://x.y" } } },
+  ]);
 });
 
 test("nested list items become children", () => {

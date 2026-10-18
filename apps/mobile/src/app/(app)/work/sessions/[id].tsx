@@ -79,7 +79,9 @@ export default function SessionScreen() {
       {title}
       <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={query.isRefetching && !query.isFetchingNextPage} onRefresh={() => query.refetch()} tintColor={colors.accent} />}
+        refreshControl={
+          <RefreshControl refreshing={query.isRefetching && !query.isFetchingNextPage} onRefresh={() => query.refetch()} tintColor={colors.accent} />
+        }
       >
         <View style={{ gap: space.sm }}>
           <Text size="heading" selectable>
@@ -87,7 +89,10 @@ export default function SessionScreen() {
           </Text>
           <View style={styles.wrap}>
             <StateDot state={session.state} />
-            <Text size="small" style={{ fontWeight: "600", color: session.state === "active" ? colors.success : session.state === "idle" ? colors.warn : colors.muted }}>
+            <Text
+              size="small"
+              style={{ fontWeight: "600", color: session.state === "active" ? colors.success : session.state === "idle" ? colors.warn : colors.muted }}
+            >
               {stateName(session.state)}
             </Text>
             <Text size="small" tone="muted">
@@ -118,7 +123,11 @@ export default function SessionScreen() {
           {skills.length ? (
             <View style={styles.wrap}>
               {skills.map((skill) => (
-                <Chip key={`${skill.session_id}:${skill.name}`} label={skill.uses > 1 ? `${skill.name} ×${skill.uses}` : skill.name} leading={<Sparkles size={12} color={colors.muted} />} />
+                <Chip
+                  key={`${skill.session_id}:${skill.name}`}
+                  label={skill.uses > 1 ? `${skill.name} ×${skill.uses}` : skill.name}
+                  leading={<Sparkles size={12} color={colors.muted} />}
+                />
               ))}
             </View>
           ) : null}
@@ -152,7 +161,12 @@ export default function SessionScreen() {
                 <Row
                   leading={<StateDot state={child.state} />}
                   title={sessionTitle(child)}
-                  subtitle={[child.agent_type, child.state === "ended" ? `ended ${ago(child.ended_at ?? child.last_seen_at)}` : `heard from ${ago(child.last_seen_at)}`].filter(Boolean).join(" · ")}
+                  subtitle={[
+                    child.agent_type,
+                    child.state === "ended" ? `ended ${ago(child.ended_at ?? child.last_seen_at)}` : `heard from ${ago(child.last_seen_at)}`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                   onPress={() => openSession(child.id)}
                 />
               </View>
@@ -218,7 +232,10 @@ function Entry({ entry }: { entry: ApiSessionEntry }) {
   const Icon = kind.icon;
   const result = entry.kind === "tool_result" || entry.kind === "tool_call";
   return (
-    <Pressable onPress={() => setOpen(!open)} style={[styles.entry, { borderColor: colors.line, backgroundColor: entry.kind === "prompt" ? colors.raised : colors.surface }]}>
+    <Pressable
+      onPress={() => setOpen(!open)}
+      style={[styles.entry, { borderColor: colors.line, backgroundColor: entry.kind === "prompt" ? colors.raised : colors.surface }]}
+    >
       <View style={styles.wrap}>
         <Icon size={13} color={entry.kind === "prompt" ? colors.accent : colors.muted} />
         <Text size="small" style={{ fontWeight: "600", color: colors.fgSoft }}>

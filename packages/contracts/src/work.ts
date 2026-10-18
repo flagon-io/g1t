@@ -482,8 +482,7 @@ export type SessionEntry = {
   withheld?: boolean;
 };
 
-export type NewSessionEntry = Pick<SessionEntry, "kind" | "text"> &
-  Partial<Pick<SessionEntry, "tool" | "commit">>;
+export type NewSessionEntry = Pick<SessionEntry, "kind" | "text"> & Partial<Pick<SessionEntry, "tool" | "commit">>;
 
 export type PullDetail = {
   pull: Pull;
@@ -643,16 +642,7 @@ export type CommitStatus = {
  * then `ready` for a person to merge. `needs_you`
  * means g1t has stopped and a person decides what happens next.
  */
-export type Stage =
-  | "working"
-  | "checking"
-  | "reviewing"
-  | "revising"
-  | "catching_up"
-  | "answering"
-  | "queued"
-  | "ready"
-  | "needs_you";
+export type Stage = "working" | "checking" | "reviewing" | "revising" | "catching_up" | "answering" | "queued" | "ready" | "needs_you";
 
 export type Lifecycle = {
   stage: Stage;
@@ -964,13 +954,7 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
    * branch, naming it after a closing keyword) would have: it lands there,
    * and closes once nothing else is left to land.
    */
-  closeWorkItem(
-    actor: User,
-    workspace: string,
-    number: number,
-    reason?: CloseReason,
-    by?: { repo: RepoPath; commit: string },
-  ): Promise<Result<WorkItem>>;
+  closeWorkItem(actor: User, workspace: string, number: number, reason?: CloseReason, by?: { repo: RepoPath; commit: string }): Promise<Result<WorkItem>>;
   reopenWorkItem(actor: User, workspace: string, number: number): Promise<Result<WorkItem>>;
   /** Links a repository of the workspace as a target (or as touched), or changes how it is linked. Needs Triage. */
   linkWorkItem(actor: User, workspace: string, number: number, repo: RepoPath, role?: LinkRole): Promise<Result<WorkItem>>;
@@ -986,11 +970,7 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
    * Creates a label, or with `name` changes one; renaming it renames it on
    * everything that carries it. Needs the Write role in the workspace.
    */
-  saveLabel(
-    actor: User,
-    workspace: string,
-    label: { name?: string; newName?: string; color?: string; description?: string },
-  ): Promise<Result<Label>>;
+  saveLabel(actor: User, workspace: string, label: { name?: string; newName?: string; color?: string; description?: string }): Promise<Result<Label>>;
   /** Removes a label from the workspace and everything carrying it. */
   deleteLabel(actor: User, workspace: string, name: string): Promise<Result<boolean>>;
   /** Adds the default labels the workspace does not have yet; returns them all. */
@@ -1043,11 +1023,7 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
    * description without one; with `remove`, takes it back. Anyone who can
    * read it may. What it has now.
    */
-  react(
-    actor: User,
-    thread: Thread,
-    reaction: { commentId?: string; content: ReactionContent; remove?: boolean },
-  ): Promise<Result<ReactionGroup[]>>;
+  react(actor: User, thread: Thread, reaction: { commentId?: string; content: ReactionContent; remove?: boolean }): Promise<Result<ReactionGroup[]>>;
 
   /**
    * What a sandbox says about a run from before checks were workflows: so
@@ -1162,12 +1138,7 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
    * it (for a fork) or a member (for a branch). Otherwise `needs_agent`, and
    * nothing is pushed: the runner's `update` is the way on.
    */
-  catchUpPull(
-    actor: User,
-    repo: RepoPath,
-    number: number,
-    options?: { updateMethod?: UpdateMethod; expectedHead?: string },
-  ): Promise<Result<PullBranchUpdate>>;
+  catchUpPull(actor: User, repo: RepoPath, number: number, options?: { updateMethod?: UpdateMethod; expectedHead?: string }): Promise<Result<PullBranchUpdate>>;
   /**
    * Turns a pull request's auto-merge on (with how to merge) or off. On needs
    * Write, since it merges as whoever turned it on; its author may also turn
@@ -1190,13 +1161,7 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
   /** A commit's comments, oldest first; with no commit, the repository's, newest first, 30 a page. */
   commitComments(viewer: Viewer, repo: RepoPath, commit?: string | null, page?: number): Promise<Result<CommitComment[]>>;
   /** Comments on a commit, or on one line of a file it changed. Needs Read, where commit comments are on. */
-  addCommitComment(
-    actor: User,
-    repo: RepoPath,
-    commit: string,
-    body: string,
-    at?: { path: string; line: number },
-  ): Promise<Result<CommitComment>>;
+  addCommitComment(actor: User, repo: RepoPath, commit: string, body: string, at?: { path: string; line: number }): Promise<Result<CommitComment>>;
   editCommitComment(actor: User, repo: RepoPath, id: string, body: string): Promise<Result<CommitComment>>;
   deleteCommitComment(actor: User, repo: RepoPath, id: string): Promise<Result<boolean>>;
   /** Marks a draft ready for review and sets its description. */
@@ -1223,9 +1188,7 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
    * Drafts and open pull requests the viewer started, most recently active
    * first, each with where it stands if g1t is seeing it through.
    */
-  listActivePulls(
-    viewer: Viewer,
-  ): Promise<{ pull: Pull; item: WorkItem | null; lifecycle: Lifecycle | null }[]>;
+  listActivePulls(viewer: Viewer): Promise<{ pull: Pull; item: WorkItem | null; lifecycle: Lifecycle | null }[]>;
   /**
    * The work items and pull requests a person opened, a page at a time,
    * only those the viewer may read. Not found for no such account.
@@ -1237,8 +1200,6 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
    * calendar on their profile. Not found for no such account.
    */
   contributions(username: string, viewer: Viewer): Promise<Result<Contributions>>;
-
-
 
   appendSession(actor: User, repo: RepoPath, number: number, entries: NewSessionEntry[]): Promise<Result<{ count: number }>>;
   readSession(repo: RepoPath, number: number, viewer: Viewer, afterSeq?: number): Promise<Result<SessionEntry[]>>;
@@ -1280,7 +1241,6 @@ export function pullComparison(pull: Pull): {
 export function pullSourceId(pull: Pull): string {
   return pull.forkRepoId ?? pull.headRepoId ?? pull.repoId;
 }
-
 
 export type QueueState = "waiting" | "testing" | "passed" | "failed" | "landed" | "removed";
 
@@ -1735,15 +1695,7 @@ export type WorkPull = {
 
 // --- Decision records (crates/contracts/src/decisions.rs) ------------------
 
-export type DecisionKind =
-  | "proposal"
-  | "claim"
-  | "integration_failure"
-  | "integration_passed"
-  | "fix"
-  | "approval"
-  | "merge"
-  | "note";
+export type DecisionKind = "proposal" | "claim" | "integration_failure" | "integration_passed" | "fix" | "approval" | "merge" | "note";
 
 /** Claimed: someone said so. Tested: a check or the merge queue proved it. Approved: a person approved it. */
 export type DecisionConfidence = "claimed" | "tested" | "approved";
@@ -1838,11 +1790,7 @@ export interface CoordinationApi {
    * first; active ones unless `state` says otherwise. With `repo`, those
    * made from it or on work items linked to it.
    */
-  listClaims(
-    workspace: string,
-    viewer: Viewer,
-    filter?: { state?: ClaimState; item?: number; repo?: RepoPath },
-  ): Promise<Result<Claim[]>>;
+  listClaims(workspace: string, viewer: Viewer, filter?: { state?: ClaimState; item?: number; repo?: RepoPath }): Promise<Result<Claim[]>>;
   /** Most recently heard from first; `item` is a work item of the repository's workspace. */
   listWorkSessions(
     repo: RepoPath,
@@ -1883,7 +1831,19 @@ export interface CoordinationApi {
  * `checking` and `failed` count each open pull request once, by its head's
  * checks (statuses, check runs and g1t Actions jobs); one with none is in neither.
  */
-export type DeliveryMetrics = { repoId: string; opened: number; merged: number; active: number; unreviewed: number; checking: number; failed: number; queued: number; leadSeconds: number; reviewSeconds: number; reviewed: number };
+export type DeliveryMetrics = {
+  repoId: string;
+  opened: number;
+  merged: number;
+  active: number;
+  unreviewed: number;
+  checking: number;
+  failed: number;
+  queued: number;
+  leadSeconds: number;
+  reviewSeconds: number;
+  reviewed: number;
+};
 /** `checksUnavailable`: g1t Actions could not be read, so `checking` and `failed` are not known. */
 export type DeliveryInsights = { projects: DeliveryMetrics[]; days: { day: string; merged: number }[]; checksUnavailable: boolean };
 
@@ -1931,9 +1891,28 @@ export type SignalWeek = {
   /** Commits agent sessions pushed outside any pull request (to the default branch, most of all), each once. */
   agentCommits: number;
 };
-export type SignalDay = { repoId: string; day: string; opened: number; merged: number; agentMerged: number; reworked: number; reviews: number; sessions: number; agentCommits: number };
+export type SignalDay = {
+  repoId: string;
+  day: string;
+  opened: number;
+  merged: number;
+  agentMerged: number;
+  reworked: number;
+  reviews: number;
+  sessions: number;
+  agentCommits: number;
+};
 /** An open pull request no one has reviewed, oldest first; `blocks`: the open work items waiting on its work item. */
-export type WaitingPull = { repoId: string; number: number; title: string; createdAt: string; agent: boolean; draftSeconds: number | null; item: number | null; blocks: number[] };
+export type WaitingPull = {
+  repoId: string;
+  number: number;
+  title: string;
+  createdAt: string;
+  agent: boolean;
+  draftSeconds: number | null;
+  item: number | null;
+  blocks: number[];
+};
 export type SignalPull = {
   repoId: string;
   number: number;

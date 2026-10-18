@@ -169,9 +169,7 @@ function Headline({ invite }: { invite: InvitePreview }) {
   return (
     <>
       {copy.before}
-      {copy.place && (
-        <strong className={`font-semibold text-fg ${invite.repository && !invite.workspace ? "font-mono" : ""}`}>{copy.place}</strong>
-      )}
+      {copy.place && <strong className={`font-semibold text-fg ${invite.repository && !invite.workspace ? "font-mono" : ""}`}>{copy.place}</strong>}
       {copy.after}
     </>
   );
@@ -235,15 +233,7 @@ function SignUp({ loaded, error }: { loaded: Loaded; error: string | null }) {
             </Field>
           )}
           <Field label="Username" hint="Letters, digits and single hyphens. It is how you sign in, and how others see you, in the case you type it.">
-            <Input
-              name="username"
-              autoComplete="username"
-              required
-              autoFocus
-              maxLength={39}
-              defaultValue={loaded.suggestion}
-              pattern={USERNAME_PATTERN}
-            />
+            <Input name="username" autoComplete="username" required autoFocus maxLength={39} defaultValue={loaded.suggestion} pattern={USERNAME_PATTERN} />
           </Field>
           <Field label="Password" hint="At least 10 characters.">
             <Input name="password" type="password" autoComplete="new-password" required minLength={10} />
@@ -251,11 +241,7 @@ function SignUp({ loaded, error }: { loaded: Loaded; error: string | null }) {
           <ErrorText>{error}</ErrorText>
           <div className="pt-1 *:w-full">
             <SubmitButton pending="Creating account…" match={{ intent: "register" }}>
-              {invite.workspace
-                ? `Create account and join ${invite.workspace.name}`
-                : invite.repository
-                  ? "Create account and accept"
-                  : "Create account"}
+              {invite.workspace ? `Create account and join ${invite.workspace.name}` : invite.repository ? "Create account and accept" : "Create account"}
             </SubmitButton>
           </div>
         </Form>
@@ -300,9 +286,7 @@ function Next({ loaded, error }: { loaded: Loaded; error: string | null }) {
           {signedInAs}
           <div className="rounded-md border border-warn/40 bg-warn/5 p-4 text-sm" role="status">
             <p className="font-medium text-fg">This invite is for {invite.address ?? invite.email}, not this account.</p>
-            <p className="mt-1 text-muted">
-              Only an account with that address confirmed can use it. Sign out, then sign in or sign up with it.
-            </p>
+            <p className="mt-1 text-muted">Only an account with that address confirmed can use it. Sign out, then sign in or sign up with it.</p>
           </div>
           <ErrorText>{error}</ErrorText>
           <div className="flex flex-wrap gap-3">{signOut("Sign out and continue", "default")}</div>
@@ -324,8 +308,7 @@ function Next({ loaded, error }: { loaded: Loaded; error: string | null }) {
           {signedInAs}
           <div className="rounded-md border border-line bg-surface p-4 text-sm">
             <p>
-              You already have a g1t account, <span className="font-mono">{viewer.username}</span>, so this invite has
-              nothing more to give you.
+              You already have a g1t account, <span className="font-mono">{viewer.username}</span>, so this invite has nothing more to give you.
             </p>
             <p className="mt-2 text-muted">Pass it on to whoever it was meant for, or keep it for someone else.</p>
           </div>
@@ -342,9 +325,7 @@ function Next({ loaded, error }: { loaded: Loaded; error: string | null }) {
         <Form method="post" className="space-y-4">
           <input type="hidden" name="intent" value="accept" />
           {signedInAs}
-          {invite.forViewer === null && (
-            <p className="text-sm text-muted">This invite is for anyone with the link. Accepting uses it up.</p>
-          )}
+          {invite.forViewer === null && <p className="text-sm text-muted">This invite is for anyone with the link. Accepting uses it up.</p>}
           <ErrorText>{error}</ErrorText>
           <div className="flex flex-wrap items-center gap-3">
             <SubmitButton pending={invite.workspace ? "Joining…" : "Accepting…"} match={{ intent: "accept" }}>
@@ -376,7 +357,11 @@ function Next({ loaded, error }: { loaded: Loaded; error: string | null }) {
         <div className="rounded-md border border-line bg-surface p-4 text-sm">
           <p className="font-medium text-fg">{invite.address ?? invite.email ?? "This address"} has a g1t account.</p>
           <p className="mt-1 text-muted">
-            Sign in to it and {joinable ? `you ${invite.workspace ? `join ${invite.workspace.name}` : `get access to ${invite.repository!.name}`} straight away` : "the invite is accepted"}.
+            Sign in to it and{" "}
+            {joinable
+              ? `you ${invite.workspace ? `join ${invite.workspace.name}` : `get access to ${invite.repository!.name}`} straight away`
+              : "the invite is accepted"}
+            .
           </p>
         </div>
         <ErrorText>{error}</ErrorText>
@@ -406,7 +391,8 @@ function Dead({ loaded }: { loaded: Loaded }) {
       </h1>
       {invite ? (
         <p className="mt-3 text-sm leading-6 text-muted">
-          It was {invite.workspace ? `an invite to join ${invite.workspace.name}` : invite.repository ? `an invite to ${invite.repository.name}` : "an invite to g1t"}
+          It was{" "}
+          {invite.workspace ? `an invite to join ${invite.workspace.name}` : invite.repository ? `an invite to ${invite.repository.name}` : "an invite to g1t"}
           {invite.status === "expired" && `, and stopped working on ${LONG_DATE.format(new Date(invite.expiresAt))}`}.{" "}
           {from ? "Ask the person who sent it for a new one." : "Ask for access and we will send a new one."}
         </p>

@@ -31,11 +31,6 @@ export const MAX_DEPLOY_KEYS = 100;
 export interface DeployKeysClient {
   listDeployKeys(viewer: User | null, owner: string, name: string): Promise<Result<DeployKey[]>>;
   /** `readOnly` is true unless said otherwise. */
-  addDeployKey(
-    actor: User,
-    owner: string,
-    name: string,
-    key: { title: string; key: string; readOnly: boolean },
-  ): Promise<Result<DeployKey>>;
+  addDeployKey(actor: User, owner: string, name: string, key: { title: string; key: string; readOnly: boolean }): Promise<Result<DeployKey>>;
   removeDeployKey(actor: User, owner: string, name: string, id: string): Promise<Result<boolean>>;
 }
