@@ -114,15 +114,22 @@ struct SecretRow {
 
 /// Secrets with how many places each was found.
 /// Rewrites the work items kept by the old issue numbers of their
-/// repositories to their numbers in the workspace, `?1` a page of
-/// `work.migrated`'s items as JSON. Each new number is above every old one
-/// of its workspace, so a page heard twice changes nothing more.
+/// repositories to their numbers in the workspace, keeping each item's id
+/// and workspace with it, `?1` a page of `work.migrated`'s items as JSON.
+/// Each new number is above every old one of its workspace, so a page heard
+/// twice changes nothing more; a row already on its new number from before
+/// the ids were kept (migration 0009) gets them.
 pub const WORK_MIGRATED: [&str; 6] = [
-    "UPDATE updates SET item = m.number FROM moved_items m WHERE updates.repo_id = m.repo_id AND updates.item = m.legacy",
-    "UPDATE update_pulls SET item = m.number FROM moved_items m WHERE update_pulls.repo_id = m.repo_id AND update_pulls.item = m.legacy",
-    "UPDATE upgrades SET item = m.number FROM moved_items m WHERE upgrades.repo_id = m.repo_id AND upgrades.item = m.legacy",
-    "UPDATE code_alerts SET item = m.number FROM moved_items m WHERE code_alerts.repo_id = m.repo_id AND code_alerts.item = m.legacy",
-    "UPDATE alert_fixes SET item = m.number FROM moved_items m WHERE alert_fixes.repo_id = m.repo_id AND alert_fixes.item = m.legacy",
+    "UPDATE updates SET item = m.number, item_id = m.item_id, item_workspace = m.workspace FROM moved_items m
+     WHERE updates.repo_id = m.repo_id AND (updates.item = m.legacy OR (updates.item = m.number AND updates.item_id IS NULL))",
+    "UPDATE update_pulls SET item = m.number, item_id = m.item_id, item_workspace = m.workspace FROM moved_items m
+     WHERE update_pulls.repo_id = m.repo_id AND (update_pulls.item = m.legacy OR (update_pulls.item = m.number AND update_pulls.item_id IS NULL))",
+    "UPDATE upgrades SET item = m.number, item_id = m.item_id, item_workspace = m.workspace FROM moved_items m
+     WHERE upgrades.repo_id = m.repo_id AND (upgrades.item = m.legacy OR (upgrades.item = m.number AND upgrades.item_id IS NULL))",
+    "UPDATE code_alerts SET item = m.number, item_id = m.item_id, item_workspace = m.workspace FROM moved_items m
+     WHERE code_alerts.repo_id = m.repo_id AND (code_alerts.item = m.legacy OR (code_alerts.item = m.number AND code_alerts.item_id IS NULL))",
+    "UPDATE alert_fixes SET item = m.number, item_id = m.item_id, item_workspace = m.workspace FROM moved_items m
+     WHERE alert_fixes.repo_id = m.repo_id AND (alert_fixes.item = m.legacy OR (alert_fixes.item = m.number AND alert_fixes.item_id IS NULL))",
     // Only an update that needed code changes named a work item; the
     // other steps name pull requests, which kept their numbers.
     "UPDATE alert_activity SET number = m.number FROM moved_items m
@@ -132,8 +139,36 @@ pub const WORK_MIGRATED: [&str; 6] = [
 /// `work.migrated`'s items (`?1`), as the rows [`WORK_MIGRATED`] reads.
 const MOVED_ITEMS: &str = "WITH moved_items AS (
     SELECT json_extract(value, '$.repoId') AS repo_id, json_extract(value, '$.legacyNumber') AS legacy,
-           json_extract(value, '$.number') AS number
+           json_extract(value, '$.number') AS number, json_extract(value, '$.itemId') AS item_id,
+           json_extract(value, '$.workspace') AS workspace
     FROM json_each(?1))";
+
+/// The work item a row names: its number, and, from `work.migrated`, its
+/// id and the workspace it is in.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LinkedItem {
+    pub number: u32,
+    pub item_id: Option<String>,
+    pub workspace: Option<String>,
+}
+
+impl LinkedItem {
+    pub fn new(number: Option<i64>, item_id: Option<&str>, workspace: Option<&str>) -> Option<Self> {
+        number.map(|n| LinkedItem { number: n.max(0) as u32, item_id: item_id.map(str::to_owned), workspace: workspace.map(str::to_owned) })
+    }
+
+    /// The workspace to find it in: the one it was kept with, else the
+    /// repository's now (`repo_workspace`), for a row from before.
+    pub fn workspace_or<'a>(&'a self, repo_workspace: &'a str) -> &'a str {
+        self.workspace.as_deref().unwrap_or(repo_workspace)
+    }
+
+    /// Whether the item found by its number is this one: with its id kept,
+    /// only the item of that id is.
+    pub fn is(&self, found_id: &str) -> bool {
+        self.item_id.as_deref().is_none_or(|id| id == found_id)
+    }
+}
 
 /// One of [`WORK_MIGRATED`], ready to run.
 pub fn work_migrated_sql(statement: &str) -> String {
@@ -254,11 +289,19 @@ pub struct UpdateRow {
     pub branch: Option<String>,
     pub pull: Option<i64>,
     pub item: Option<i64>,
+    #[serde(default)]
+    pub item_id: Option<String>,
+    #[serde(default)]
+    pub item_workspace: Option<String>,
     pub error: Option<String>,
     pub updated_at: String,
 }
 
 impl UpdateRow {
+    pub fn linked_item(&self) -> Option<LinkedItem> {
+        LinkedItem::new(self.item, self.item_id.as_deref(), self.item_workspace.as_deref())
+    }
+
     pub fn state(&self) -> UpdateState {
         UpdateState::parse(&self.state).unwrap_or(UpdateState::Failed)
     }
@@ -337,6 +380,16 @@ pub struct Activity<'a> {
 #[derive(Deserialize)]
 pub struct UpgradeRow {
     pub item: i64,
+    #[serde(default)]
+    pub item_id: Option<String>,
+    #[serde(default)]
+    pub item_workspace: Option<String>,
+}
+
+impl UpgradeRow {
+    pub fn linked_item(&self) -> Option<LinkedItem> {
+        LinkedItem::new(Some(self.item), self.item_id.as_deref(), self.item_workspace.as_deref())
+    }
 }
 
 #[derive(Deserialize)]
@@ -1154,7 +1207,7 @@ impl Store {
     /// The work item opened for a package before security updates, if any.
     pub async fn upgrade(&self, repo_id: &str, ecosystem: &str, package: &str) -> Result<Option<UpgradeRow>> {
         self.db
-            .prepare("SELECT item FROM upgrades WHERE repo_id = ? AND ecosystem = ? AND package = ?")
+            .prepare("SELECT item, item_id, item_workspace FROM upgrades WHERE repo_id = ? AND ecosystem = ? AND package = ?")
             .bind(&[repo_id.into(), ecosystem.into(), package.into()])?
             .first::<UpgradeRow>(None)
             .await
@@ -1287,6 +1340,60 @@ mod tests {
         assert_eq!(item("SELECT number FROM alert_activity WHERE id = 'a1'"), Some(41));
         // A pull request kept its number.
         assert_eq!(item("SELECT number FROM alert_activity WHERE id = 'a2'"), Some(5));
+    }
+
+    #[test]
+    fn work_migrated_keeps_each_items_id_and_workspace() {
+        let db = rusqlite::Connection::open_in_memory().unwrap();
+        let (before, after): (Vec<_>, Vec<_>) = migrations().into_iter().partition(|(name, _)| name.as_str() < "0009");
+        for (name, sql) in &before {
+            db.execute_batch(sql).unwrap_or_else(|error| panic!("{name}: {error}"));
+        }
+        // rep_1's update is still on its old number; rep_2's upgrade was
+        // rewritten by a page heard before ids were kept, and the catch-up
+        // was done.
+        db.execute_batch(
+            "INSERT INTO updates (repo_id, ecosystem, package, target, state, pull, item, requested_at, updated_at)
+               VALUES ('rep_1', 'npm', 'a', '2', 'needs_code', NULL, 5, '', '');
+             INSERT INTO upgrades (repo_id, ecosystem, package, item, target, opened_at) VALUES ('rep_2', 'npm', 'b', 40, '2', '');
+             UPDATE work_catch_up SET page = 3, done_at = 'x';",
+        )
+        .unwrap();
+        for (name, sql) in &after {
+            db.execute_batch(sql).unwrap_or_else(|error| panic!("{name}: {error}"));
+        }
+        // The catch-up reads the map again, for the ids of rows already moved.
+        let done: Option<String> = db.query_row("SELECT done_at FROM work_catch_up", [], |row| row.get(0)).unwrap();
+        assert_eq!(done, None);
+        let page = serde_json::json!([
+            { "repoId": "rep_1", "legacyNumber": 5, "workspace": "acme", "number": 41, "itemId": "iss_5" },
+            { "repoId": "rep_2", "legacyNumber": 3, "workspace": "acme", "number": 40, "itemId": "iss_3" },
+        ])
+        .to_string();
+        for _ in 0..2 {
+            for statement in WORK_MIGRATED {
+                db.execute(&work_migrated_sql(statement), [&page]).unwrap();
+            }
+        }
+        let linked = |sql: &str| {
+            db.query_row(sql, [], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Option<String>>(1)?, row.get::<_, Option<String>>(2)?)))
+                .unwrap()
+        };
+        assert_eq!(linked("SELECT item, item_id, item_workspace FROM updates"), (41, Some("iss_5".into()), Some("acme".into())));
+        assert_eq!(linked("SELECT item, item_id, item_workspace FROM upgrades"), (40, Some("iss_3".into()), Some("acme".into())));
+    }
+
+    #[test]
+    fn a_linked_item_is_found_where_it_was_kept() {
+        let kept = LinkedItem::new(Some(41), Some("iss_5"), Some("acme")).unwrap();
+        // The repository moved to another workspace: its item did not.
+        assert_eq!(kept.workspace_or("globex"), "acme");
+        assert!(kept.is("iss_5"));
+        // Another item that has the number now is not it.
+        assert!(!kept.is("wki_9"));
+        let before = LinkedItem::new(Some(41), None, None).unwrap();
+        assert_eq!(before.workspace_or("globex"), "globex");
+        assert!(before.is("wki_9"));
     }
 
     #[test]

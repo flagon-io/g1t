@@ -403,10 +403,10 @@ impl Security {
         // failed: the work item closes, and the next run opens the update again
         // as a pull request that stays open with its failing checks.
         for row in self.store.needs_code_update_pulls(10).await? {
-            if let (Some(repo), Some(number)) = (self.store.repo(&row.repo_id).await?, row.item()) {
+            if let (Some(repo), Some(linked)) = (self.store.repo(&row.repo_id).await?, row.linked_item()) {
                 let why = "g1t no longer opens work items for updates whose checks fail. The entry's next run opens this update again \
                            as a pull request, which stays open with its checks for you to decide on.";
-                self.close_item_with(&repo, number, why.to_owned()).await?;
+                self.close_item_with(&repo, &linked, why.to_owned()).await?;
             }
             let error = "Raising the versions failed this branch's required checks.";
             self.store.set_update_pull(&row.id, UpdateState::Failed, row.pull(), None, Some(error)).await?;
@@ -1587,6 +1587,8 @@ mod tests {
             state: state.into(),
             pull: Some(3),
             item: None,
+            item_id: None,
+            item_workspace: None,
             head: None,
             merge_by: None,
             error: None,

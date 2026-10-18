@@ -45,6 +45,10 @@ pub struct PullRow {
     /// The work item g1t opened for it, from before it stopped doing that.
     #[serde(default)]
     pub item: Option<i64>,
+    #[serde(default)]
+    pub item_id: Option<String>,
+    #[serde(default)]
+    pub item_workspace: Option<String>,
     pub head: Option<String>,
     pub merge_by: Option<String>,
     pub error: Option<String>,
@@ -60,8 +64,8 @@ impl PullRow {
         self.pull.map(|n| n.max(0) as u32)
     }
 
-    pub fn item(&self) -> Option<u32> {
-        self.item.map(|n| n.max(0) as u32)
+    pub fn linked_item(&self) -> Option<crate::store::LinkedItem> {
+        crate::store::LinkedItem::new(self.item, self.item_id.as_deref(), self.item_workspace.as_deref())
     }
 
     pub fn dependencies(&self) -> Vec<UpdatedDependency> {
