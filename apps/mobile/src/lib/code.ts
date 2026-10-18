@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { workspaceRepos } from "./new-item";
 import { useSignedIn } from "./session";
 import type { ApiWorkItem } from "./work";
 
@@ -88,6 +89,20 @@ export function useRepos(search: string) {
 
 /** A workspace's project as the API answers; only what descriptions need. */
 type ApiProject = { repository: string | null; primary: boolean; description: string | null };
+
+/**
+ * The repositories of `workspace`'s own projects, `owner/name`: where a
+ * new work item of it may land, whichever workspace the app is in.
+ */
+export function useWorkspaceRepos(workspace: string | null | undefined) {
+  const { client } = useSignedIn();
+  return useQuery({
+    queryKey: ["code", "workspace-repos", workspace?.toLowerCase()],
+    enabled: Boolean(workspace),
+    queryFn: () => client.api<ApiProject[]>(`/workspaces/${encodeURIComponent(workspace!)}/projects`),
+    select: (projects) => workspaceRepos(workspace!, projects),
+  });
+}
 
 /**
  * The descriptions of a workspace's repositories, by lowercase
