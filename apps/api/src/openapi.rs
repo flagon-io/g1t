@@ -450,6 +450,8 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::Coordination(CoordinationOp::EndSession),
             Op::Coordination(CoordinationOp::GetSession),
             Op::Coordination(CoordinationOp::ListSessions),
+            Op::Coordination(CoordinationOp::ListWorkspaceSessions),
+            Op::Coordination(CoordinationOp::GetWorkspaceSession),
             Op::Coordination(CoordinationOp::RecordSessionEntries),
             Op::Coordination(CoordinationOp::StartAgentSession),
             Op::ReadSession,

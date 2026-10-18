@@ -25,6 +25,9 @@ pub use coordination::*;
 mod items;
 pub use items::*;
 
+mod workspace_sessions;
+pub use workspace_sessions::*;
+
 pub mod refs;
 
 /// The labels a new repository starts with, and that "Add the default

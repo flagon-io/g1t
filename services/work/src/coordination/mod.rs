@@ -18,6 +18,7 @@ mod overlaps;
 mod sessions;
 pub(crate) mod shown;
 pub(crate) mod titles;
+mod workspace;
 #[cfg(test)]
 mod tests;
 

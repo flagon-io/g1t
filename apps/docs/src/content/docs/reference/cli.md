@@ -1007,8 +1007,12 @@ g1t session list [OPTIONS]
 | `-L, --limit <LIMIT>` | Default: `20`. |
 | `--path <PATH>` | Only sessions that touched this file, or any under it when it ends in /. |
 | `--subagents` | List subagents too, under the sessions that started them. |
+| `--workspace [SLUG]` | Every repository of a workspace you may read, every kind of session: this repository's workspace, or the one named. |
+| `--harness <HARNESS>` | With --workspace: only sessions in this harness (claude_code, codex, …). |
+| `--person <PERSON>` | With --workspace: only sessions this person runs, by username. |
+| `--in <NAME>` | With --workspace: only sessions in this repository of it, by name. |
 
-Calls [`list_sessions`](/reference/api/sessions/list-sessions/).
+Calls [`list_sessions`](/reference/api/sessions/list-sessions/), [`list_workspace_sessions`](/reference/api/sessions/list-workspace-sessions/).
 
 ### g1t session view
 

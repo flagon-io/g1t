@@ -3277,6 +3277,218 @@
       }
     ]
   },
+  "list_workspace_sessions": {
+    "query": {
+      "state": "live"
+    },
+    "response": {
+      "sessions": [
+        {
+          "kind": "harness",
+          "id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+          "repo": "flagon-io/hello",
+          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+          "title": "Make the greeting name the caller",
+          "actor": "syntaqx",
+          "harness": "claude_code",
+          "agent": null,
+          "branch": "greet-caller",
+          "item": 12,
+          "item_title": "Greet the caller by name",
+          "pull": 14,
+          "pull_title": "Greet the caller by name",
+          "pull_status": "draft",
+          "state": "active",
+          "started_at": "2026-10-12T14:02:11.204Z",
+          "last_activity_at": "2026-10-12T14:31:40.518Z",
+          "subagents": 2,
+          "step": null,
+          "session": {
+            "id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+            "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+            "item": 12,
+            "pull": 14,
+            "branch": "greet-caller",
+            "actor": {
+              "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+              "username": "syntaqx"
+            },
+            "harness": "claude_code",
+            "harness_session_id": "5b0c1f9e-3d2a-4e8b-9f61-0c7d2a9e4b13",
+            "title": "Make the greeting name the caller",
+            "state": "active",
+            "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+            "started_at": "2026-10-12T14:02:11.204Z",
+            "last_seen_at": "2026-10-12T14:31:40.518Z",
+            "ended_at": null,
+            "end_reason": null,
+            "subagents": 2
+          }
+        },
+        {
+          "kind": "agent",
+          "id": "run_01m4c7d8e9f0g1h2j3k4m5n6p7",
+          "repo": "flagon-io/api",
+          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrs",
+          "title": "Retry webhooks that time out",
+          "actor": "g1t",
+          "harness": null,
+          "agent": "g1t",
+          "branch": null,
+          "item": 15,
+          "item_title": "Retry webhooks that time out",
+          "pull": 16,
+          "pull_title": "Retry webhooks that time out",
+          "pull_status": "open",
+          "state": "active",
+          "started_at": "2026-10-12T14:20:02.000Z",
+          "last_activity_at": "2026-10-12T14:30:55.000Z",
+          "subagents": 0,
+          "step": "Running cargo test",
+          "session": null
+        }
+      ],
+      "queue": [],
+      "landed": [],
+      "repos": [
+        {
+          "id": "rep_01m3m5q6p0e2qaw6mmjahk0qrs",
+          "path": "flagon-io/api",
+          "default_branch": "main"
+        },
+        {
+          "id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+          "path": "flagon-io/hello",
+          "default_branch": "main"
+        }
+      ]
+    },
+    "notes": "`queue` lists the merge queues with something waiting (each a repository's merge queue with its `repo` and `default_branch`), and `landed` the pull requests merged most recently, each with its `repo`."
+  },
+  "get_workspace_session": {
+    "response": {
+      "repo": "flagon-io/hello",
+      "session": {
+        "id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+        "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+        "item": 12,
+        "pull": 14,
+        "branch": "greet-caller",
+        "actor": {
+          "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+          "username": "syntaqx"
+        },
+        "harness": "claude_code",
+        "harness_session_id": "5b0c1f9e-3d2a-4e8b-9f61-0c7d2a9e4b13",
+        "title": "Make the greeting name the caller",
+        "state": "active",
+        "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+        "started_at": "2026-10-12T14:02:11.204Z",
+        "last_seen_at": "2026-10-12T14:31:40.518Z",
+        "ended_at": null,
+        "end_reason": null
+      },
+      "entries": [
+        {
+          "seq": 1,
+          "kind": "prompt",
+          "text": "Make the greeting name the caller (work item #12).",
+          "tool": null,
+          "commit": null,
+          "at": "2026-10-12T14:02:12.008Z"
+        },
+        {
+          "seq": 2,
+          "kind": "tool_call",
+          "text": "cargo test",
+          "tool": "Bash",
+          "commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+          "at": "2026-10-12T14:30:12.660Z"
+        }
+      ],
+      "children": [
+        {
+          "id": "ses_01m4b2d8x1y2z3a4b5c6d7e8f9",
+          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+          "item": 12,
+          "pull": null,
+          "branch": "greet-caller",
+          "actor": {
+            "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+            "username": "syntaqx"
+          },
+          "harness": "claude_code",
+          "harness_session_id": "5b0c1f9e-3d2a-4e8b-9f61-0c7d2a9e4b13/agent/a4d2c8f1e0b3a297",
+          "title": null,
+          "state": "ended",
+          "head_commit": null,
+          "started_at": "2026-10-12T14:05:40.112Z",
+          "last_seen_at": "2026-10-12T14:07:02.930Z",
+          "ended_at": "2026-10-12T14:07:02.930Z",
+          "end_reason": "done",
+          "parent_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+          "agent_type": "Explore",
+          "task": "Find where the greeting is built",
+          "prompt": "Find every place the greeting text is built and say which file to change.",
+          "result": "The greeting is built in src/greet.rs (greet) and nowhere else.",
+          "model": "claude-sonnet-5-5",
+          "subagents": 0
+        }
+      ],
+      "touched": [
+        {
+          "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+          "kind": "file",
+          "value": "src/greet.rs",
+          "at": "2026-10-12T14:12:30.004Z"
+        },
+        {
+          "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+          "kind": "branch",
+          "value": "greet-caller",
+          "at": "2026-10-12T14:30:40.871Z"
+        }
+      ],
+      "links": [
+        {
+          "kind": "pull",
+          "number": 14,
+          "title": "Name the caller in the greeting",
+          "state": "open",
+          "via": [
+            "attached",
+            "branch"
+          ],
+          "session_ids": [
+            "ses_01m4b2c3d4e5f6g7h8j9k0m1n2"
+          ]
+        },
+        {
+          "kind": "item",
+          "number": 12,
+          "title": "Make the greeting name the caller",
+          "state": "open",
+          "via": [
+            "attached",
+            "claim"
+          ],
+          "session_ids": [
+            "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+            "ses_01m4b2d8x1y2z3a4b5c6d7e8f9"
+          ]
+        }
+      ],
+      "skills": [
+        {
+          "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+          "name": "work-on-item",
+          "uses": 1
+        }
+      ],
+      "root": null
+    },
+    "notes": "Entries are numbered within the session and come 500 at a time; send the last `seq` you have as `after` for the next page. `children` are the session's subagents and theirs; `touched`, `links` and `skills` cover the whole tree."
+  },
   "record_session_entries": {
     "request": {
       "entries": [

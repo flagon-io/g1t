@@ -1453,6 +1453,84 @@ export type WorkSession = {
  */
 export type TitleSource = "prompt" | "agent" | "person" | "item" | "pull" | "summary";
 
+// --- Sessions across a workspace ------------------------------------------
+// Mirrors `crates/contracts/src/work/workspace_sessions.rs`.
+
+/**
+ * What kind of session one in a workspace's list is: someone's own
+ * `harness`, one g1t started for someone on the workspace's Anthropic
+ * provider (`hosted`), g1t's own `agent` on a pull request, or what a coding
+ * agent `recorded` on a pull request with no session of its own.
+ */
+export type SessionKind = "harness" | "hosted" | "agent" | "recorded";
+
+/** Which of a workspace's sessions to list: those going now, every one, or those that ended. */
+export type SessionsShown = "live" | "recent" | "ended";
+
+/** One session of a workspace, whatever its kind. */
+export type WorkspaceSession = {
+  kind: SessionKind;
+  /** `ses_…`, `run_…` for g1t's agent, the pull request's id for a recorded one. */
+  id: string;
+  /** `owner/name`. */
+  repo: string;
+  repoId: string;
+  title: string | null;
+  /** Who runs it; `g1t` for g1t's own. */
+  actor: string | null;
+  harness: Harness | null;
+  /** For g1t's agent and a recorded one: the agent label. */
+  agent: string | null;
+  branch: string | null;
+  item: number | null;
+  itemTitle: string | null;
+  pull: number | null;
+  pullTitle: string | null;
+  pullStatus: PullStatus | null;
+  state: SessionState;
+  startedAt: string;
+  lastActivityAt: string;
+  subagents: number;
+  /** For g1t's agent: what it is doing now. */
+  step: string | null;
+  /** For a harness or hosted session: the session itself. */
+  session: WorkSession | null;
+  /** With `subagents`: its subagents and theirs. */
+  children?: WorkSession[];
+};
+
+/** A repository of the workspace the viewer may read. */
+export type SessionsRepo = { id: string; path: string; defaultBranch: string };
+
+/** One repository's merge queue, when something waits in it. */
+export type RepoQueue = QueueView & { repo: string; defaultBranch: string };
+
+/** A pull request with the repository it is in. */
+export type RepoPull = Pull & { repo: string };
+
+/** `listWorkspaceSessions`. */
+export type WorkspaceSessions = {
+  sessions: WorkspaceSession[];
+  queue: RepoQueue[];
+  landed: RepoPull[];
+  repos: SessionsRepo[];
+};
+
+export type WorkspaceSessionsFilter = {
+  shown?: SessionsShown;
+  kind?: SessionKind;
+  harness?: Harness;
+  person?: string;
+  repo?: string;
+  item?: number;
+  subagents?: boolean;
+  sessionsOnly?: boolean;
+  limit?: number;
+};
+
+/** A session and the repository it runs in. */
+export type WorkspaceSessionDetail = WorkSessionDetail & { repo: string };
+
 /** What kind of thing a session touched. */
 export type TouchKind = "file" | "commit" | "branch" | "pull" | "item";
 
@@ -1719,6 +1797,10 @@ export interface CoordinationApi {
     filter?: { state?: SessionState; item?: number; pull?: number; path?: string; subagents?: boolean },
   ): Promise<Result<WorkSession[]>>;
   getWorkSession(repo: RepoPath, id: string, viewer: Viewer, afterSeq?: number): Promise<Result<WorkSessionDetail>>;
+  /** The sessions of every repository of a workspace the viewer may read, with its merge queues and what landed. */
+  listWorkspaceSessions(workspace: string, viewer: Viewer, filter?: WorkspaceSessionsFilter): Promise<Result<WorkspaceSessions>>;
+  /** One harness or hosted session of a workspace, in whichever of its repositories it runs. */
+  getWorkspaceSession(workspace: string, id: string, viewer: Viewer, afterSeq?: number): Promise<Result<WorkspaceSessionDetail>>;
   /**
    * Ends a session by hand, from the site: the actor's own, or anyone's
    * when they have write access to the repository. It ends as

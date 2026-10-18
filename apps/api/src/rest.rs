@@ -645,6 +645,22 @@ pub const ROUTES: &[Route] = &[
         Op::Coordination(CoordinationOp::ListClaims),
         &[("state", "state"), ("item", "item"), ("repo", "repo")],
     ),
+    route(
+        "GET",
+        "/workspaces/:workspace/sessions",
+        Op::Coordination(CoordinationOp::ListWorkspaceSessions),
+        &[
+            ("state", "state"),
+            ("kind", "kind"),
+            ("harness", "harness"),
+            ("person", "person"),
+            ("repo", "repo"),
+            ("item", "item"),
+            ("subagents", "subagents"),
+            ("limit", "limit"),
+        ],
+    ),
+    route("GET", "/workspaces/:workspace/sessions/:id", Op::Coordination(CoordinationOp::GetWorkspaceSession), &[("after", "after")]),
     route("POST", "/repos/:owner/:name/sessions", Op::Coordination(CoordinationOp::StartSession), &[]),
     route(
         "GET",
