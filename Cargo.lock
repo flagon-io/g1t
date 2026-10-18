@@ -1654,6 +1654,7 @@ version = "0.1.0"
 dependencies = [
  "g1t-contracts",
  "g1t-kit",
+ "rusqlite",
  "serde",
  "serde_json",
  "worker",

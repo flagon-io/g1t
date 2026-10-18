@@ -7,7 +7,7 @@ use serde::Serialize;
 use g1t_contracts::search::COUNT_CAP;
 
 use crate::query::{Filter, ItemKind, ItemState, Query, Visibility, path_pattern};
-use crate::visibility::{Reader, clause};
+use crate::visibility::{Reader, clause, item_clause};
 
 /// A value bound to a `?`.
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -321,14 +321,44 @@ pub fn first_pieces(fids: &[i64]) -> Sql {
     }
 }
 
-// ---- Issues and pull requests ----------------------------------------------
+// ---- Work items and pull requests ------------------------------------------
 
-const ITEM_COLUMNS: &str = "i.kind, i.number, i.title, i.state, i.status, i.author, i.requested_by, i.labels, i.updated_at, \
-                            r.repo_id, r.namespace, r.name, r.private";
+const ITEM_COLUMNS: &str = "i.kind, i.workspace, i.number, i.title, i.state, i.status, i.author, i.requested_by,                             i.labels, i.updated_at, r.repo_id, r.namespace, r.name, r.private";
+
+/// What every query of work items starts with: the visibility check (a
+/// member of the workspace, or a reader of the origin), then `repo:`
+/// (any repository it is linked to), `org:` (its workspace) and
+/// `is:public`/`is:private` (whether its origin is public).
+fn item_scope(query: &Query, reader: &Reader) -> Where {
+    let mut out = Where::default();
+    out.add(
+        item_clause("i", "r"),
+        vec![Param::Text(reader.members_json()), Param::Text(reader.namespaces_json()), Param::Text(reader.granted_json())],
+    );
+    let linked = "SELECT 1 FROM repos lr WHERE (lr.namespace || '/' || lr.name) IN (SELECT value FROM json_each(?))                   AND instr(i.repos, '|' || lr.repo_id || '|') > 0";
+    if !query.repos.include.is_empty() {
+        out.add(format!("EXISTS ({linked})"), vec![json(&query.repos.include)]);
+    }
+    if !query.repos.exclude.is_empty() {
+        out.add(format!("NOT EXISTS ({linked})"), vec![json(&query.repos.exclude)]);
+    }
+    in_list(&query.owners, "i.workspace", &mut out);
+    match query.visibility {
+        Some(Visibility::Public) => out.add("r.private = 0", vec![]),
+        Some(Visibility::Private) => out.add("COALESCE(r.private, 1) = 1", vec![]),
+        None => {}
+    }
+    out
+}
 
 fn items_select(query: &Query, reader: &Reader, kind: ItemKind) -> (Sql, bool) {
-    let mut filters = scope(query, reader, "r");
-    filters.add("i.kind = ?", vec![Param::Text(if kind == ItemKind::Issue { "issue" } else { "pull" }.into())]);
+    // A pull request belongs to its repository; a work item to its
+    // workspace, with its origin, if any, joined for who may read it.
+    let (mut filters, join) = match kind {
+        ItemKind::Item => (item_scope(query, reader), "LEFT JOIN repos r ON r.repo_id = i.repo_id"),
+        ItemKind::Pull => (scope(query, reader, "r"), "JOIN repos r ON r.repo_id = i.repo_id"),
+    };
+    filters.add("i.kind = ?", vec![Param::Text(if kind == ItemKind::Item { "item" } else { "pull" }.into())]);
     match query.state {
         Some(ItemState::Open) => filters.add("i.state = 'open'", vec![]),
         Some(ItemState::Closed) => filters.add("i.state = 'closed'", vec![]),
@@ -350,9 +380,7 @@ fn items_select(query: &Query, reader: &Reader, kind: ItemKind) -> (Sql, bool) {
             (
                 Sql {
                     text: format!(
-                        "SELECT {ITEM_COLUMNS}, snippet(items_fts, 1, '', '', '…', 40) AS body \
-                         FROM items_fts JOIN items i ON i.iid = items_fts.rowid JOIN repos r ON r.repo_id = i.repo_id \
-                         WHERE items_fts MATCH ? AND {}",
+                        "SELECT {ITEM_COLUMNS}, snippet(items_fts, 1, '', '', '…', 40) AS body                          FROM items_fts JOIN items i ON i.iid = items_fts.rowid {join}                          WHERE items_fts MATCH ? AND {}",
                         filters.text()
                     ),
                     params,
@@ -363,8 +391,7 @@ fn items_select(query: &Query, reader: &Reader, kind: ItemKind) -> (Sql, bool) {
         None => (
             Sql {
                 text: format!(
-                    "SELECT {ITEM_COLUMNS}, substr(i.body, 1, 400) AS body \
-                     FROM items i JOIN repos r ON r.repo_id = i.repo_id WHERE {}",
+                    "SELECT {ITEM_COLUMNS}, substr(i.body, 1, 400) AS body                      FROM items i {join} WHERE {}",
                     filters.text()
                 ),
                 params: filters.params,
@@ -465,7 +492,9 @@ mod tests {
             repos_count(&query, &reader),
             code_page(&plan, &query, &reader, PAGE),
             code_count(&plan, &query, &reader),
-            items_page(&query, &reader, ItemKind::Issue, PAGE),
+            items_page(&query, &reader, ItemKind::Item, PAGE),
+            items_count(&query, &reader, ItemKind::Item),
+            items_page(&query, &reader, ItemKind::Pull, PAGE),
             items_count(&query, &reader, ItemKind::Pull),
         ] {
             assert!(sql.text.contains("r.private = 0 OR r.namespace IN"), "{}", sql.text);
@@ -496,9 +525,25 @@ mod tests {
     }
 
     #[test]
-    fn issue_qualifiers_become_conditions() {
+    fn work_items_are_for_members_and_readers_of_their_origin() {
+        let query = Query::parse("crash repo:acme/web -repo:acme/old org:acme is:private");
+        let sql = items_page(&query, &reader(&["acme"]), ItemKind::Item, PAGE);
+        assert!(sql.text.contains("LEFT JOIN repos r"));
+        assert!(sql.text.contains("i.workspace IN (SELECT value FROM json_each(?)) OR ((r.repo_id IS NOT NULL)"));
+        // repo: is any linked repository, org: the workspace.
+        assert!(sql.text.contains("EXISTS (SELECT 1 FROM repos lr"));
+        assert!(sql.text.contains("NOT EXISTS (SELECT 1 FROM repos lr"));
+        assert!(sql.text.contains("i.workspace IN (SELECT value FROM json_each(?))"));
+        assert!(sql.text.contains("COALESCE(r.private, 1) = 1"));
+        assert!(sql.params.contains(&Param::Text(r#"["acme/web"]"#.into())));
+        assert!(sql.params.contains(&Param::Text("item".into())));
+        assert_eq!(placeholders(&sql), sql.params.len(), "{}", sql.text);
+    }
+
+    #[test]
+    fn item_qualifiers_become_conditions() {
         let query = Query::parse("crash is:closed author:ana label:bug -label:wontfix");
-        let sql = items_page(&query, &reader(&[]), ItemKind::Issue, PAGE);
+        let sql = items_page(&query, &reader(&[]), ItemKind::Item, PAGE);
         assert!(sql.text.contains("i.state = 'closed'"));
         assert!(sql.text.contains("i.author IN"));
         assert!(sql.params.contains(&Param::Text("|bug|".into())));
@@ -554,6 +599,7 @@ mod tests {
             "fn repo:acme/web",
             "repo:acme/web path:*.rs",
             "crash is:open label:bug author:ana",
+            "crash repo:acme/web -repo:acme/old org:acme is:private",
             "language:rust",
             "ana",
         ] {
@@ -565,7 +611,9 @@ mod tests {
                 out.push(code_count(&plan, &query, &reader));
                 out.push(code_pieces(&plan, &[1, 2], 10));
             }
-            out.push(items_page(&query, &reader, ItemKind::Issue, PAGE));
+            out.push(items_page(&query, &reader, ItemKind::Item, PAGE));
+            out.push(items_count(&query, &reader, ItemKind::Item));
+            out.push(items_page(&query, &reader, ItemKind::Pull, PAGE));
             out.push(items_count(&query, &reader, ItemKind::Pull));
             if let Some(sql) = people_page(&query, PAGE) {
                 out.push(sql);

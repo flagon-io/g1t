@@ -3,7 +3,7 @@ name = "g1t-search"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
-description = "Search across all of g1t: repositories, code, issues, pull requests, people and workspaces; and Explore."
+description = "Search across all of g1t: repositories, code, work items, pull requests, people and workspaces; and Explore."
 
 [lib]
 crate-type = ["cdylib"]
@@ -14,6 +14,9 @@ g1t-kit.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 worker.workspace = true
+
+[dev-dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 # wasm-opt at -O1: about the same gzipped size as -O in a tenth of the
 # time.

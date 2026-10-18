@@ -2,9 +2,9 @@
 //!
 //! - **What it searches.** Repositories (name, description, topics, the
 //!   opening of the README), code on default branches (paths and
-//!   contents), issues and pull requests (titles and bodies), people and
-//!   workspaces. Everything public, and private content the viewer is a
-//!   member of.
+//!   contents), work items and pull requests (titles and bodies), people
+//!   and workspaces. Everything public, and private content the viewer is
+//!   a member of.
 //! - **The index.** D1 with FTS5, a database that costs nothing while no
 //!   one uses it: words for prose (`unicode61`), every run of three
 //!   characters for code (`trigram`), each table kept in step with its
@@ -20,6 +20,8 @@
 //! `g1t_contracts::search`.
 
 mod index;
+#[cfg(test)]
+mod migrated;
 mod query;
 mod read;
 mod rules;
