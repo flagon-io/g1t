@@ -43,18 +43,28 @@ macro_rules! unwrap_or_fail {
 pub(crate) use unwrap_or_fail;
 
 /// A session's columns, with its work item's number beside its id.
-const SESSION_COLUMNS: &str = "id, repo_id, item_id,
-  (SELECT number FROM work_items WHERE work_items.id = sessions.item_id) AS item,
+const SESSION_COLUMNS: &str = concat!(
+    "id, repo_id, item_id,
+  ",
+    crate::items::sql::item_number!("sessions.item_id"),
+    " AS item,
   pull, branch, actor_id, actor_name, harness, harness_session_id,
   title, state, head_commit, started_at, last_seen_at, ended_at, end_reason,
-  parent_id, agent_type, task, prompt, result, model";
+  parent_id, agent_type, task, prompt, result, model"
+);
 
 /// A claim's columns, with its work item's workspace and number.
-const CLAIM_COLUMNS: &str = "id, item_id, repo_id,
-  (SELECT workspace FROM work_items WHERE work_items.id = claims.item_id) AS workspace,
-  (SELECT number FROM work_items WHERE work_items.id = claims.item_id) AS item,
+const CLAIM_COLUMNS: &str = concat!(
+    "id, item_id, repo_id,
+  ",
+    crate::items::sql::item_workspace!("claims.item_id"),
+    " AS workspace,
+  ",
+    crate::items::sql::item_number!("claims.item_id"),
+    " AS item,
   session_id, actor_id, actor_name, harness, note, state,
-  ttl_minutes, created_at, expires_at, ended_at, end_reason, handoff_to";
+  ttl_minutes, created_at, expires_at, ended_at, end_reason, handoff_to"
+);
 
 #[derive(Clone, Deserialize)]
 pub(crate) struct SessionRow {
@@ -247,9 +257,9 @@ impl Work {
                 self.db
                     .prepare(format!(
                         "SELECT {CLAIM_COLUMNS} FROM claims
-                         WHERE state = 'active' AND expires_at <= ?2
-                           AND (repo_id = ?1 OR item_id IN (SELECT item_id FROM work_item_repos WHERE repo_id = ?1))
-                         LIMIT ?3"
+                         WHERE state = 'active' AND expires_at <= ?2 AND (repo_id = ?1 OR item_id IN {linked})
+                         LIMIT ?3",
+                        linked = crate::items::sql::items_linked_to!("?1"),
                     ))
                     .bind(&[repo_id.into(), at.as_str().into(), SWEEP_LIMIT.into()])?,
             ])

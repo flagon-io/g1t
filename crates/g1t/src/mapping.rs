@@ -262,8 +262,8 @@ pub static COMMANDS: &[Mapping] = &[
     Mapping { command: "session touch", ops: &["record_session_entries"] },
     Mapping { command: "work list", ops: &["list_work_items"] },
     Mapping { command: "work view", ops: &["get_work", "get_work_item"] },
-    Mapping { command: "work new", ops: &["open_work_item", "update_work_item", "upload_attachment"] },
-    Mapping { command: "work comment", ops: &["add_work_item_comment", "upload_attachment"] },
+    Mapping { command: "work new", ops: &["open_work_item", "update_work_item", "upload_attachment", "upload_work_item_attachment"] },
+    Mapping { command: "work comment", ops: &["add_work_item_comment", "upload_work_item_attachment"] },
     Mapping { command: "work edit", ops: &["update_work_item", "get_work_item"] },
     Mapping { command: "work close", ops: &["close_work_item", "add_work_item_comment"] },
     Mapping { command: "work reopen", ops: &["reopen_work_item", "add_work_item_comment"] },
@@ -278,7 +278,7 @@ pub static COMMANDS: &[Mapping] = &[
     Mapping { command: "work events", ops: &["list_events"] },
     Mapping { command: "work dispatch", ops: &["start_agent_session"] },
     Mapping { command: "why", ops: &["why"] },
-    Mapping { command: "attach", ops: &["upload_attachment"] },
+    Mapping { command: "attach", ops: &["upload_attachment", "upload_work_item_attachment"] },
     // Every operation, by name: the table generated from the OpenAPI document.
     Mapping {
         command: "api",

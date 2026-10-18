@@ -11,8 +11,8 @@ use g1t_contracts::is_valid_namespace;
 use g1t_contracts::work::{Comment, CommentKind, Pull, WorkItem};
 use worker::Result;
 
-use crate::Work;
 use crate::rows::CommentRow;
+use crate::{Work, items};
 
 /// The most people one comment notifies by name.
 const MAX_MENTIONS: usize = 20;
@@ -268,17 +268,14 @@ impl Work {
         // What it is on: a work item, or a pull request with its work item.
         let (mut subject, body, repo_id) = match (&a.item_id, &a.repo_id) {
             (Some(item_id), _) => {
-                let Some(held) = self.item_by_id(item_id).await? else { return Ok(None) };
+                let Some(held) = items::by_id(self, item_id).await? else { return Ok(None) };
                 let repo_id = held.event_repo().map(str::to_owned);
                 let body = held.item.body.clone();
                 (of_item(held.item), Some(body), repo_id)
             }
             (None, Some(repo_id)) => {
                 let Some(pull) = self.pull(repo_id, a.number).await? else { return Ok(None) };
-                let item = match self.pull_item_id(&pull.id).await? {
-                    Some(id) => self.item_by_id(&id).await?.map(|held| held.item),
-                    None => None,
-                };
+                let item = items::for_pull(self, &pull.id).await?.map(|held| held.item);
                 let body = pull.body.clone();
                 (of_pull(pull, item), body, Some(repo_id.clone()))
             }

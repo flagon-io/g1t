@@ -505,6 +505,7 @@ export const OPERATION_SCOPES = [
   ["delete_work_item_comment", "work:write"],
   ["react_to_work_item", "work:write"],
   ["upload_attachment", "work:write"],
+  ["upload_work_item_attachment", "work:write"],
   ["create_commit_comment", "work:write"],
   ["update_commit_comment", "work:write"],
   ["delete_commit_comment", "work:write"],

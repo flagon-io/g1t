@@ -107,12 +107,14 @@ impl Work {
     async fn other_pulls(&self, pull: &Pull) -> Result<Vec<OtherRow>> {
         self
             .db
-            .prepare(
-                "SELECT number, title, (SELECT number FROM work_items WHERE work_items.id = pulls.item_id) AS item_number,
+            .prepare(concat!(
+                "SELECT number, title, ",
+                crate::items::sql::item_number!("pulls.item_id"),
+                " AS item_number,
                    files FROM pulls
                  WHERE repo_id = ? AND id != ? AND status IN ('draft', 'open')
                  ORDER BY number LIMIT 200",
-            )
+            ))
             .bind(&[pull.repo_id.as_str().into(), pull.id.as_str().into()])?
             .all()
             .await?

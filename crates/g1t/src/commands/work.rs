@@ -263,10 +263,11 @@ fn new(ctx: &Ctx, workspace: Option<&str>, args: WorkNewArgs) -> Result<()> {
         args.body.body_file.as_deref(),
         args.body.body_file.is_none() && args.attach.is_empty() && prompt::interactive() && !ctx.out.structured(),
     )?;
-    let body = if args.attach.is_empty() {
-        body
-    } else {
-        super::attach::with_attachments(&place.client, place.here("--attach")?, body, &args.attach)?
+    // Images go with a repository it is filed from; without one, the work
+    // item keeps them, once it is open.
+    let (body, later) = match &place.repo {
+        Some(repo) if !args.attach.is_empty() => (super::attach::with_attachments(&place.client, repo, body, &args.attach)?, &[][..]),
+        _ => (body, &args.attach[..]),
     };
     let labels: Vec<Value> = args.label.iter().map(|l| Value::String(l.clone())).collect();
     let targets: Vec<Value> = args.target.iter().map(|t| Value::String(t.trim().to_owned())).collect();
@@ -280,6 +281,12 @@ fn new(ctx: &Ctx, workspace: Option<&str>, args: WorkNewArgs) -> Result<()> {
         .field_opt("milestone", args.milestone)
         .send()?;
     let number = made["number"].as_u64().unwrap_or_default();
+    let made = if later.is_empty() {
+        made
+    } else {
+        let body = super::attach::with_item_attachments(&place.client, &place.workspace, number, made["body"].as_str().map(str::to_owned), later)?;
+        place.op("update_work_item").arg("number", number).field_opt("body", body).send()?
+    };
     let made = if args.assignee.is_empty() {
         made
     } else {
@@ -297,11 +304,7 @@ fn comment(ctx: &Ctx, workspace: Option<&str>, args: WorkCommentArgs) -> Result<
     let place = place(ctx, workspace)?;
     // Images alone make a comment; without any, the text is asked for.
     let body = prompt::body(args.body.body, args.body.body_file.as_deref(), args.attach.is_empty())?;
-    let body = if args.attach.is_empty() {
-        body
-    } else {
-        super::attach::with_attachments(&place.client, place.here("--attach")?, body, &args.attach)?
-    };
+    let body = super::attach::with_item_attachments(&place.client, &place.workspace, args.number, body, &args.attach)?;
     let body = body
         .filter(|b| !b.trim().is_empty())
         .ok_or_else(|| prompt::needed("The comment", "--body, --body-file or --attach"))?;

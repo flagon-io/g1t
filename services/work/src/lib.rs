@@ -22,16 +22,12 @@ mod inbox;
 mod insights;
 mod integration;
 mod items;
-#[cfg(test)]
-mod items_tests;
-mod labels;
 mod lifecycle;
 #[cfg(test)]
 mod migrated;
 mod merge_message;
 mod mergeability;
 mod merging;
-mod milestones;
 mod prefetch;
 mod pushed;
 mod queue;
@@ -44,7 +40,6 @@ mod runs;
 mod settings;
 mod statuses;
 mod team_reviews;
-mod work_migration;
 
 use g1t_contracts::events::{
     ChangedFrom, CommentChanges, CommentCreated, CommentDeleted, CommentEdited, CommentOn, DeletedComment, Event, NewEvent,
@@ -68,7 +63,7 @@ use worker::{
     event,
 };
 
-use items::{Held, ItemRow, ITEM_COLUMNS};
+use items::Held;
 use retired::writable;
 use rows::{CommentRow, MovedRow, NumberRow, PULL_COLUMNS, PullRow, SessionRow, Snapshot};
 
@@ -428,7 +423,7 @@ impl Work {
                 Outcome::Ok((repo, pull)) => Outcome::Ok(Thread::Pull(repo, pull)),
                 Outcome::Fail(failure) => Outcome::Fail(failure),
             },
-            None => match self.item_for(viewer, workspace, number, Capability::Read).await? {
+            None => match items::for_viewer(self, viewer, workspace, number, Capability::Read).await? {
                 Outcome::Ok(held) => Outcome::Ok(Thread::Item(held)),
                 Outcome::Fail(failure) => Outcome::Fail(failure),
             },
@@ -604,13 +599,14 @@ impl Work {
         let read = |repo_id: String| async move {
             let query = self
                 .db
-                .prepare(
+                .prepare(concat!(
                     "SELECT
-                       (SELECT count(*) FROM work_item_repos r JOIN work_items i ON i.id = r.item_id
-                        WHERE r.repo_id = ?1 AND i.state = 'open' AND i.number IS NOT NULL) AS items,
+                       ",
+                    items::sql::open_items_linked_to!("?1"),
+                    " AS items,
                        (SELECT count(*) FROM pulls
                         WHERE repo_id = ?1 AND status IN ('draft', 'open')) AS pulls",
-                )
+                ))
                 .bind(&[repo_id.into()])?;
             self.timing.db(1, query.first::<Counts>(None)).await
         };
@@ -693,10 +689,7 @@ impl Work {
                 .db
                 .prepare("UPDATE pulls SET updated_at = ? WHERE id = ?")
                 .bind(&[comment.created_at.as_str().into(), pull.id.as_str().into()])?,
-            Thread::Item(held) => self
-                .db
-                .prepare("UPDATE work_items SET updated_at = ? WHERE id = ?")
-                .bind(&[comment.created_at.as_str().into(), held.item.id.as_str().into()])?,
+            Thread::Item(held) => items::stamp(self, &held.item.id, &comment.created_at)?,
         };
         self.db
             .batch(vec![
@@ -801,7 +794,7 @@ impl Work {
                     .await?;
                 let Some(row) = found else { return not_found() };
                 let held = match row.item_id.as_deref() {
-                    Some(item_id) => self.item_by_id(item_id).await?,
+                    Some(item_id) => items::by_id(self, item_id).await?,
                     None => None,
                 };
                 let Some(held) = held.filter(|held| held.item.workspace == items::workspace_of(&a.workspace, None)) else {
@@ -913,7 +906,7 @@ impl Work {
         let workspace = repo.namespace.to_lowercase();
         // A work item of the repository's workspace, which the actor can see.
         let item = match a.item {
-            Some(number) => match self.item_for(&Some(a.actor.clone()), &workspace, number, Capability::Read).await? {
+            Some(number) => match items::for_viewer(self, &Some(a.actor.clone()), &workspace, number, Capability::Read).await? {
                 Outcome::Ok(held) if held.item.state == State::Open => Some(held),
                 Outcome::Ok(_) => {
                     return Ok(Outcome::fail(FailureCode::Conflict, "This work item is closed."));
@@ -1051,13 +1044,13 @@ impl Work {
         let body = Some(a.body.trim().to_owned()).filter(|body| !body.is_empty());
 
         // Numbered in the workspace, never as one of this repository's are.
-        self.remember_repo(&repo).await?;
-        let number = self.next_number(&workspace, Some(&repo.id)).await?;
+        items::remember_repo(self, &repo).await?;
+        let number = items::next_number(self, &workspace, Some(&repo.id)).await?;
         let timestamp = rfc3339(now);
         let (author, requested_by) = authorship(&a.actor);
         // The work items it says it closes and is part of (closing.rs).
         let item_id = item.as_ref().map(|held| held.item.id.clone());
-        let named = self.named_items(&repo, item_id.as_deref(), &format!("{title}\n{}", body.as_deref().unwrap_or_default())).await?;
+        let named = items::named(self, &repo, item_id.as_deref(), &format!("{title}\n{}", body.as_deref().unwrap_or_default())).await?;
         self.db
             .prepare(
                 "INSERT INTO pulls
@@ -1104,8 +1097,8 @@ impl Work {
         // The work item hears of it, and links the repository it is in.
         if let Some(held) = &item {
             let text = format!("opened {}#{} for this", items::path_of(&repo), pull.number);
-            self.note_item(&held.item.id, &a.actor, &text).await?;
-            self.touch_item(held, &repo, &a.actor).await?;
+            items::note(self, &held.item.id, &a.actor, &text).await?;
+            items::touch(self, held, &repo, &a.actor).await?;
         }
         // Its head and merge refs in the repository, before its events go out.
         self.keep_pull_refs(&pull).await;
@@ -1245,7 +1238,7 @@ impl Work {
             return Ok(no_pull());
         };
         let stored = found.first::<StoredBehind>(prefetch::Slot::Pull)?;
-        let item = found.first::<ItemRow>(prefetch::Slot::Item)?.and_then(ItemRow::held).map(|held| held.item);
+        let item = found.held(prefetch::Slot::Item)?.map(|held| held.item);
         let mut comments: Vec<Comment> =
             found.rows::<CommentRow>(prefetch::Slot::Comments)?.into_iter().map(Comment::from).collect();
         let reactions = reactions::attach(&found.rows::<reactions::ReactionRow>(prefetch::Slot::Reactions)?, &row.id, &mut comments);
@@ -1473,10 +1466,10 @@ impl Work {
                 check!(self.change_base(&a.actor, &repo, &pull, base).await?);
             }
             if let Some(number) = a.milestone {
-                check!(self.set_milestone(&a.actor, &labels::Labeled::Pull(repo.clone(), pull.clone()), number).await?);
+                check!(items::set_milestone(self, &a.actor, &items::Labeled::Pull(repo.clone(), pull.clone()), number).await?);
             }
             if let Some(labels) = &a.labels {
-                check!(self.relabel(&a.actor, &labels::Labeled::Pull(repo.clone(), pull.clone()), labels).await?);
+                check!(items::relabel(self, &a.actor, &items::Labeled::Pull(repo.clone(), pull.clone()), labels).await?);
             }
         }
         let assignees = match a.assignees {
@@ -1653,7 +1646,7 @@ impl Work {
         let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
         let own = self.pull_item_id(&pull.id).await?;
         let text = format!("{}\n{}", pull.title, summary.as_deref().or(pull.body.as_deref()).unwrap_or_default());
-        let named = self.named_items(&repo, own.as_deref(), &text).await?;
+        let named = items::named(self, &repo, own.as_deref(), &text).await?;
         self.db
             .prepare(
                 "UPDATE pulls SET status = 'open', body = COALESCE(?, body), updated_at = ?, closes_items = ?, parts = ?
@@ -2191,8 +2184,8 @@ impl Work {
             None => merging::merged_note(landed.method).to_owned(),
         };
         self.note(&repo.id, pull.number, who, &note).await?;
-        let landing = closing::Landing { pull: Some(pull.number), commit: None, pushed_by: None };
-        self.land(repo, &landing, actor, &named.close_ids(), &named.part_ids(), None, false).await?;
+        let landing = items::Landing { pull: Some(pull.number), commit: None, pushed_by: None };
+        items::land(self, repo, &landing, actor, &named.close_ids(), &named.part_ids(), None, false).await?;
         let through_queue = self.landed_through_queue(&pull.id).await?;
         self.keep_decision_quietly(
             &repo.id,
@@ -2252,23 +2245,23 @@ impl Work {
                         ))
                         .bind(&author)?,
                     self.db
-                        .prepare(format!(
-                            "SELECT {ITEM_COLUMNS} FROM work_items WHERE work_items.id IN (
+                        .prepare(items::select(
+                            "work_items.id IN (
                                SELECT item_id FROM pulls
                                WHERE COALESCE(requested_by_id, author_id) = ?1 AND status IN ('draft', 'open') AND item_id IS NOT NULL
-                               ORDER BY updated_at DESC LIMIT 50)"
+                               ORDER BY updated_at DESC LIMIT 50)",
                         ))
                         .bind(&author)?,
                 ]),
             )
             .await?;
-        let (Some(found), Some(items)) = (found.first(), found.get(1)) else {
+        let (Some(found), Some(item_rows)) = (found.first(), found.get(1)) else {
             return Ok(Vec::new());
         };
         let snapshots = found.results::<Snapshot>()?;
         let item_ids: Vec<Option<String>> = found.results::<PullItemRow>()?.into_iter().map(|row| row.item_id).collect();
         let pulls: Vec<Pull> = found.results::<PullRow>()?.into_iter().map(Pull::from).collect();
-        let items: Vec<Held> = items.results::<ItemRow>()?.into_iter().filter_map(ItemRow::held).collect();
+        let items: Vec<Held> = items::held_rows(item_rows)?;
         let items = &items;
         // Where each stands: the remembered assessment when there is one,
         // and worked out otherwise.
@@ -2393,10 +2386,10 @@ impl Work {
         // A new repository: where it is, for its workspace's work items and
         // numbers; a workspace's first starts it with the default labels.
         if event.kind == "repo.created" {
-            return self.repo_created(&event.data).await;
+            return items::repo_created(self, &event.data).await;
         }
         if event.kind == "repo.visibility_changed" || event.kind == "repo.updated" {
-            return self.repo_visibility(&event.data).await;
+            return items::repo_visibility(self, &event.data).await;
         }
         // Pull requests into the branch that became the default merge into
         // the default branch, which is stored as none.
@@ -2584,7 +2577,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
     work.db = db;
 
     let answered = match method.as_str() {
-        // Work items (items.rs) and moving issues into them (work_migration.rs).
+        // Work items (items/) and moving issues into them (items/migration.rs).
         "open_work_item" => reply(&work.open_work_item(args(body)?).await?),
         "list_work_items" => reply(&work.list_work_items(args(body)?).await?),
         "get_work_item" => reply(&work.get_work_item(args(body)?).await?),
@@ -2718,7 +2711,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
 }
 
 /// The cron trigger: moves on the job that moves issues into work items
-/// (work_migration.rs), until it is done.
+/// (items/migration.rs), until it is done.
 #[event(scheduled)]
 async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     let moved = async {
@@ -2737,20 +2730,26 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
     for message in batch.messages()? {
         // A workspace renamed: its runs, work items, labels, milestones and
         // numbers move to the slug it has now.
-        let renamed = [runs::RENAMED, guardrails::RENAMED, rulesets::RENAMED, work_migration::RENAMED].concat();
+        let renamed = [runs::RENAMED, guardrails::RENAMED, rulesets::RENAMED, items::RENAMED, attachments::RENAMED].concat();
         if g1t_kit::rename::on_event(&env, &env.d1("DB")?, message.body(), &renamed).await? {
             message.ack();
             continue;
         }
         // A repository renamed or transferred: its runs and guardrails
         // follow, and where it is is recorded for work items and numbers.
-        let transferred = [runs::TRANSFERRED, guardrails::TRANSFERRED, head_repo::TRANSFERRED, work_migration::TRANSFERRED].concat();
+        let transferred = [runs::TRANSFERRED, guardrails::TRANSFERRED, head_repo::TRANSFERRED, items::TRANSFERRED].concat();
         if g1t_kit::transfer::on_event(&env, &env.d1("DB")?, message.body(), &transferred).await? {
             message.ack();
             continue;
         }
-        // A workspace deleted: what it kept for itself goes.
-        let deleted = [guardrails::DELETED, work_migration::DELETED].concat();
+        // A workspace deleted: what it kept for itself goes, its work items'
+        // attachments' bytes first.
+        if message.body().kind == "workspace.deleted"
+            && let Some(slug) = message.body().data["slug"].as_str()
+        {
+            attachments::purge_workspace(&env, &work.db, slug).await?;
+        }
+        let deleted = [guardrails::DELETED, items::DELETED, attachments::DELETED].concat();
         if g1t_kit::deleted::on_event(&env.d1("DB")?, message.body(), &deleted).await? {
             message.ack();
             continue;

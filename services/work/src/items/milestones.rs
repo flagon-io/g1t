@@ -13,8 +13,8 @@ use serde::Deserialize;
 use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
-use crate::items::{ITEM_COLUMNS, ItemRow, workspace_of};
-use crate::labels::Labeled;
+use super::labels::Labeled;
+use super::rows::{ITEM_COLUMNS, ItemRow, workspace_of};
 use crate::rows::{PULL_COLUMNS, PullRow};
 use crate::Work;
 

@@ -1,7 +1,7 @@
-//! Files put in an issue's, a pull request's or a comment's Markdown: a
+//! Files put in a work item's, a pull request's or a comment's Markdown: a
 //! screenshot of a preview, a recording's still. The work service keeps
-//! them (`upload_attachment`), with whoever may comment on the repository
-//! allowed to add one, and the usercontent origin serves each at
+//! them (`upload_attachment`), with whoever may comment on the repository,
+//! or on the work item, allowed to add one, and the usercontent origin serves each at
 //! `<usercontent>/attachments/<id>` (apps/web/workers/usercontent.ts),
 //! never the site. An id is 256 random bits, so its address is its
 //! permission, as a Docs file's is: a private repository's attachment is
@@ -25,15 +25,23 @@ pub const MAX_ATTACHMENT_NAME_CHARS: usize = 200;
 /// `attachments/<id>`, with [`AttachmentMeta`].
 pub const ATTACHMENT_KEY_PREFIX: &str = "attachments/";
 
-/// `upload_attachment`: keep a file to show in Markdown on `repo`, for
-/// someone who may comment there. `data` is the file, base64-encoded; its
+/// `upload_attachment`: keep a file to show in Markdown on `repo`, or
+/// without one on work item `number` of `workspace` (one filed with no
+/// repository takes files too), for someone who may comment there. `data`
+/// is the file, base64-encoded; its
 /// type is read from its bytes, and a `content_type` that says otherwise
 /// is refused. Returns `Outcome<Attachment>`: too large is
 /// `FailureCode::TooLarge`, another type `FailureCode::UnsupportedType`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UploadAttachmentArgs {
     pub actor: User,
-    pub repo: RepoPath,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo: Option<RepoPath>,
+    /// With `number`, the work item it is for, when `repo` is not given.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub workspace: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub number: Option<u32>,
     /// The file's name, such as `preview.png`: the image's alt text.
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -59,7 +67,11 @@ pub struct AttachmentMeta {
     /// As the usercontent origin serves it.
     pub content_type: String,
     pub name: String,
-    pub repo_id: String,
+    /// The repository it was put in, or (`item_id`) the work item.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub item_id: Option<String>,
     pub user_id: String,
     pub size: u64,
     /// Milliseconds since the epoch.
@@ -158,7 +170,8 @@ mod tests {
         let meta = AttachmentMeta {
             content_type: "image/webp".into(),
             name: "é".repeat(MAX_ATTACHMENT_NAME_CHARS),
-            repo_id: "repo_01m4z09g22e7ysqpg2ha423cws".into(),
+            repo_id: Some("repo_01m4z09g22e7ysqpg2ha423cws".into()),
+            item_id: None,
             user_id: "usr_01m4z09g22e7ysqpg2ha423cws".into(),
             size: MAX_ATTACHMENT_BYTES as u64,
             at: 1_792_627_200_000,

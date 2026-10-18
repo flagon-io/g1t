@@ -33,6 +33,7 @@ const MAX_PULL_SESSIONS: usize = 100;
 use super::updates::push_delivery;
 use super::{SESSION_COLUMNS, SessionRow, after_minutes, shown, tidy, unwrap_or_fail};
 use crate::Work;
+use crate::items;
 use crate::rows::NumberRow;
 
 /// The most entries one look at a session returns.
@@ -222,7 +223,7 @@ impl Work {
         let workspace = repo.namespace.to_lowercase();
         let mut found_item = None;
         if let Some(number) = item.filter(|number| *number > 0) {
-            match self.item(&workspace, number).await? {
+            match items::by_number(self, &workspace, number).await? {
                 Some(held) => found_item = Some((held.item.id, number)),
                 None => return Ok(Outcome::fail(FailureCode::Invalid, format!("#{number} is not a work item in {workspace}."))),
             }
@@ -775,7 +776,7 @@ impl Work {
         let mut linked: Vec<String> = Vec::new();
         let mut item_id = None;
         if let Some(number) = a.item {
-            let Some(held) = self.item(&repo.namespace, number).await? else {
+            let Some(held) = items::by_number(self, &repo.namespace, number).await? else {
                 return Ok(Outcome::Ok(Vec::new()));
             };
             linked.extend(self.item_sessions(&repo.id, &held.item.id).await?);

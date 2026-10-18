@@ -162,7 +162,7 @@ pub const TOOLS: &[Tool] = &[
             a("delete_comment", Op::DeleteWorkItemComment, "Delete a comment: your own, or any with the Maintain role"),
             a("react", Op::ReactToWorkItem, "React with an emoji to it, or with comment_id to one of its comments; remove takes it back"),
             a("decisions", Op::ListWorkItemDecisions, "Decision records on it and its pull requests"),
-            a("attach", Op::UploadAttachment, "Upload an image (base64, PNG/JPEG/GIF/WebP, at most 10 MB; keep it small over MCP) for its markdown, to paste into a body, summary or comment"),
+            a("attach", Op::UploadWorkItemAttachment, "Upload an image (base64, PNG/JPEG/GIF/WebP, at most 10 MB; keep it small over MCP) for its markdown, to paste into its body or a comment"),
             a("import", Op::ImportWorkItems, "Open a work item from a Jira, Linear or Sentry item"),
             a("resolve", Op::ResolveRef, "What #N names in a workspace, or in repo: a work item or a pull request"),
             a("work", Op::Coordination(CoordinationOp::GetWork), "Everything to pick it up: done means, repositories and what landed, missing targets, suggested targets, claims, sessions, pull requests, blockers, decisions"),
@@ -191,6 +191,7 @@ pub const TOOLS: &[Tool] = &[
             a("edit_comment", Op::EditComment, "Change a comment's text: your own, or any with the Maintain role"),
             a("delete_comment", Op::DeleteComment, "Delete a comment: your own, or any with the Maintain role"),
             a("react", Op::React, "React with an emoji to it, or with comment_id to one of its comments; remove takes it back"),
+            a("attach", Op::UploadAttachment, "Upload an image (base64, PNG/JPEG/GIF/WebP, at most 10 MB; keep it small over MCP) for its markdown, to paste into its body, its summary or a comment"),
             a("ready", Op::MarkPullRequestReady, "Mark a draft ready, with a summary"),
             a("draft", Op::ConvertPullRequestToDraft, "Turn it back into a draft"),
             a("request_reviewers", Op::RequestReviewers, "Ask people or teams to review it"),
@@ -1046,8 +1047,8 @@ mod tests {
         // Labels and milestones are the workspace's, managed with work:write;
         // looking up the ticket a work item refers to is search's, and a
         // repository's commit comments and its work list are the
-        // repository's.
-        assert_eq!(names, vec![json!("search"), json!("repository"), json!("work_item"), json!("workspace"), json!("account")]);
+        // repository's; an image for a pull request is its attach.
+        assert_eq!(names, vec![json!("search"), json!("repository"), json!("work_item"), json!("pull_request"), json!("workspace"), json!("account")]);
         // Notifications are a resource of their own: reading them lists
         // only what reads.
         let reader = token(Some(vec![Scope::NotificationsRead]));

@@ -381,6 +381,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::EditWorkItemComment,
             Op::DeleteWorkItemComment,
             Op::ReactToWorkItem,
+            Op::UploadWorkItemAttachment,
             Op::UploadAttachment,
             Op::ListWorkItemLabels,
             Op::AddWorkItemLabels,
@@ -768,6 +769,7 @@ fn title(op: Op) -> &'static str {
         Op::DeleteWorkItemComment => "Delete a work item comment",
         Op::ReactToWorkItem => "React to a work item",
         Op::ListWorkItemDecisions => "List a work item's decisions",
+        Op::UploadWorkItemAttachment => "Upload an attachment to a work item",
         Op::UploadAttachment => "Upload an attachment",
         Op::ReviewPullRequest => "Review a pull request",
         Op::ListPullRequests => "List pull requests",
@@ -1154,7 +1156,7 @@ fn operation(route: &Route) -> Value {
     if op != Op::Whoami {
         responses.insert("422".into(), error_response("The input is not valid."));
     }
-    if op == Op::UploadAttachment {
+    if op == Op::UploadAttachment || op == Op::UploadWorkItemAttachment {
         responses.insert("413".into(), error_response("The file is over 10 MB (`too_large`)."));
         responses.insert("415".into(), error_response("The file is not a PNG, JPEG, GIF or WebP image by its bytes, or not the content_type given (`unsupported_type`)."));
     }

@@ -17,7 +17,7 @@ use serde_json::{Value, json};
 use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
-use crate::Work;
+use crate::{Work, items};
 
 /// The longest summary kept.
 pub(crate) const MAX_SUMMARY_CHARS: usize = 2000;
@@ -41,7 +41,7 @@ pub(crate) struct NewDecision<'a> {
 }
 
 /// A decision's columns, with its work item's number.
-const DECISION_COLUMNS: &str = "decisions.*, (SELECT number FROM work_items WHERE work_items.id = decisions.item_id) AS item";
+const DECISION_COLUMNS: &str = concat!("decisions.*, ", items::sql::item_number!("decisions.item_id"), " AS item");
 
 #[derive(Deserialize)]
 struct DecisionRow {
@@ -145,13 +145,7 @@ impl Work {
     pub(crate) async fn keep_decision(&self, repo_id: &str, new: NewDecision<'_>) -> Result<Decision> {
         let now = now_ms();
         let item = match &new.item {
-            Some(id) => self
-                .db
-                .prepare("SELECT number AS n FROM work_items WHERE id = ? AND number IS NOT NULL")
-                .bind(&[id.as_str().into()])?
-                .first::<crate::rows::NumberRow>(None)
-                .await?
-                .map(|row| row.n),
+            Some(id) => items::by_id(self, id).await?.map(|held| held.item.number),
             None => None,
         };
         let decision = Decision {
@@ -276,7 +270,7 @@ impl Work {
                     .results::<DecisionRow>()?
             }
             None => {
-                let held = match self.item_for(&a.viewer, &a.workspace, a.number, Capability::Read).await? {
+                let held = match items::for_viewer(self, &a.viewer, &a.workspace, a.number, Capability::Read).await? {
                     Outcome::Ok(held) => held,
                     Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
                 };
