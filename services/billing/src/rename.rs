@@ -121,6 +121,14 @@ pub(crate) const STATEMENTS: &[&str] = &[
     "DELETE FROM price_notices WHERE workspace = ?2",
     "UPDATE OR IGNORE closed_workspaces SET workspace = ?1 WHERE workspace = ?2",
     "DELETE FROM closed_workspaces WHERE workspace = ?2",
+    // A provider connected under both slugs: the current slug's stays, with
+    // its own costs (costs first, while the connections say whose they
+    // are). Keys are sealed to the row's id, not the slug.
+    "UPDATE OR IGNORE provider_costs SET workspace = ?1
+     WHERE workspace = ?2 AND provider NOT IN (SELECT provider FROM provider_connections WHERE workspace = ?1)",
+    "DELETE FROM provider_costs WHERE workspace = ?2",
+    "UPDATE OR IGNORE provider_connections SET workspace = ?1 WHERE workspace = ?2",
+    "DELETE FROM provider_connections WHERE workspace = ?2",
     // The margin figures and counts are redone each day from the ledger and
     // the meters; moved so the days between keep adding up.
     "UPDATE OR IGNORE workspace_costs SET workspace = ?1 WHERE workspace = ?2",
@@ -337,6 +345,7 @@ mod tests {
             "reservations", "spikes", "limit_requests", "plan_payments", "card_checks", "alerts_sent",
             "package_storage_days", "pending_days", "token_usage", "price_notices", "closed_workspaces",
             "workspace_costs", "own_counts", "ai_reload", "ai_reloads", "tax_and_fees", "reset_costs",
+            "provider_connections", "provider_costs",
         ] {
             assert!(all.contains(&format!("FROM {table} WHERE workspace = ?2"))
                 || all.contains(&format!("UPDATE {table} SET"))

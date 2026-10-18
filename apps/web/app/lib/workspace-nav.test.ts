@@ -134,6 +134,7 @@ test("Workspace mode's sidebar knows which group and page an address is", async 
   assert.deepEqual(workspaceSettingsPage("/acme/-/rules/rs_1", "acme"), { group: "security", page: "rules" });
   assert.deepEqual(workspaceSettingsPage("/acme/-/security/settings", "acme"), { group: "security", page: "security-settings" });
   assert.deepEqual(workspaceSettingsPage("/acme/-/usage", "acme"), { group: "money", page: "usage" });
+  assert.deepEqual(workspaceSettingsPage("/acme/-/provider-costs", "acme"), { group: "money", page: "provider-costs" });
   // The overview, Code's security page and another workspace are no settings page.
   assert.equal(workspaceSettingsPage("/acme/-/workspace", "acme"), null);
   assert.equal(workspaceSettingsPage("/acme/-/security", "acme"), null);

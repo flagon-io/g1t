@@ -1208,6 +1208,17 @@ export interface BillingApi {
   billingDetails(workspace: string, viewer: Viewer): Promise<Result<BillingDetails>>;
   /** Saves invoice details on the Stripe customer; absent fields stay, empty clears. Owners only. */
   setBillingDetails(actor: User, workspace: string, details: BillingDetailsInput): Promise<Result<BillingDetails>>;
+  /** The AI providers whose cost reports the workspace reads: never their keys. Members only. */
+  providerConnections(workspace: string, viewer: Viewer): Promise<Result<ProviderConnection[]>>;
+  /**
+   * Saves a provider's admin key after one small report request shows it works, then reads up to 90 days of its
+   * report. Connecting again replaces the key and the costs read with the old one. Owners only.
+   */
+  connectProvider(actor: User, workspace: string, provider: CostProvider, credential: string): Promise<Result<ProviderConnection>>;
+  /** Deletes the provider's key and every cost read with it. Owners only. True when there was one. */
+  disconnectProvider(actor: User, workspace: string, provider: CostProvider): Promise<Result<boolean>>;
+  /** What the connected providers say the organization spent, by day, from `since` (`YYYY-MM-DD`, UTC). Members only. */
+  providerCosts(workspace: string, viewer: Viewer, since: string): Promise<Result<ProviderCosts>>;
 }
 
 
@@ -1813,4 +1824,54 @@ export type BillingDetailsInput = {
   taxId?: string;
   poNumber?: string;
   language?: string;
+};
+
+/** An AI provider whose own cost report g1t reads, with the organization's admin key. */
+export type CostProvider = "anthropic" | "openai";
+
+export const COST_PROVIDERS: Record<CostProvider, { label: string }> = {
+  anthropic: { label: "Anthropic" },
+  openai: { label: "OpenAI" },
+};
+
+export function isCostProvider(value: unknown): value is CostProvider {
+  return value === "anthropic" || value === "openai";
+}
+
+/** A provider a workspace has connected: never its key, only the key's last four characters. */
+export type ProviderConnection = {
+  provider: CostProvider;
+  /** Such as `…a1B2`. */
+  hint: string;
+  /** The owner who connected it. */
+  connectedBy: string;
+  connectedAt: string;
+  /** When its report was last read in full; null until then. */
+  lastSyncedAt: string | null;
+  /** What went wrong at the last read, in a sentence that says what to do; null when it worked. */
+  lastError: string | null;
+  /** `YYYY-MM-DD`: the first day g1t has asked the provider for; null until the first read. */
+  syncedFrom?: string | null;
+};
+
+/** One day's cost of one line item at one provider, summed over the provider's own workspaces or projects. */
+export type ProviderCostDay = {
+  /** `YYYY-MM-DD`, UTC. */
+  day: string;
+  provider: CostProvider;
+  /** The provider's own words: Anthropic's description, OpenAI's line item. Empty when it gave none. */
+  item: string;
+  /** Millionths of a US dollar. */
+  micros: number;
+};
+
+export type ProviderCosts = {
+  connections: ProviderConnection[];
+  /** Oldest first. */
+  days: ProviderCostDay[];
+  /**
+   * True when at least one provider is connected and every one was last read without an error and back to `since`.
+   * The day in progress is never complete at the provider either.
+   */
+  complete: boolean;
 };
