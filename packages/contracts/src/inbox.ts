@@ -1,7 +1,7 @@
 /**
  * The inbox: what needs a person, or what they follow, as it happens. The
  * events service keeps it and brings each person's thread about a thing
- * (an issue, a pull request, a workflow on a branch, a deployment) back to
+ * (a work item, a pull request, a workflow on a branch, a deployment) back to
  * the top as things happen to it. Mirrors `crates/contracts/src/inbox.rs`,
  * which says who is told of what, and why.
  */
@@ -50,7 +50,7 @@ export const INBOX_REASONS: InboxReason[] = [
   "subscribed",
 ];
 
-export type InboxSubjectKind = "issue" | "pull" | "run" | "deploy";
+export type InboxSubjectKind = "item" | "pull" | "run" | "deploy";
 
 /** One thread in a person's inbox: what it is about, and its latest activity. */
 export type InboxItem = {

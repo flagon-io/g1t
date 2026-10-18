@@ -1,5 +1,5 @@
 /**
- * Starting work on an issue in a session on the person's own Claude.
+ * Starting work on a work item in a session on the person's own Claude.
  * Mirrors `crates/contracts/src/agent_sessions.rs` (the integrations
  * service's `start_agent_session`, `agent_sessions_setup`,
  * `sync_agent_session`, `agent_session_link` and `stop_agent_session`).
@@ -16,12 +16,13 @@ export type AgentMode = "plan" | "implement" | "review";
 export const AGENT_MODES: { mode: AgentMode; label: string; hint: string }[] = [
   { mode: "implement", label: "Implement", hint: "Make the change and open a pull request." },
   { mode: "plan", label: "Plan", hint: "Work out how, and report the plan. No code." },
-  { mode: "review", label: "Review", hint: "Review the issue's pull request." },
+  { mode: "review", label: "Review", hint: "Review the work item's pull request." },
 ];
 
 /** What `start_agent_session` started, or the hand-off to run. */
 export type AgentSessionStarted = {
-  issue: number;
+  /** The work item it works on, by number in the workspace: for a pull request with none, its number. */
+  item: number;
   /** The pull request it carries on with, when it was started on one. */
   pull?: number | null;
   session: WorkSession | null;
@@ -42,9 +43,9 @@ export type AgentSessionsSetup = {
   problem: string | null;
 };
 
-/** What to start: an issue, or a new one from a title and body. */
+/** What to start: a work item, or a new one from a title and body. */
 export type StartAgentSessionInput = {
-  issue?: number;
+  item?: number;
   title?: string;
   body?: string;
   instruction?: string;
@@ -85,7 +86,7 @@ export function agentSessionsClient(service: ServiceBinding): AgentSessionsApi {
       call("start_agent_session", {
         actor,
         repo,
-        issue: input.issue ?? null,
+        item: input.item ?? null,
         title: input.title ?? null,
         body: input.body ?? null,
         instruction: input.instruction ?? null,

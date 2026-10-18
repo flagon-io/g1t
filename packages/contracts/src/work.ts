@@ -8,26 +8,57 @@ import type { Result } from "./result";
 import type { MergeRules, RulesApi } from "./rules";
 
 /**
- * The filter on lists of issues and pull requests. An open pull request is
- * a draft or one ready for review; a closed one was merged or closed
- * without merging.
+ * The filter on lists of work items and pull requests. An open pull
+ * request is a draft or one ready for review; a closed one was merged or
+ * closed without merging.
  */
 export type State = "open" | "closed";
 
-/** Why an issue was closed. */
-export type IssueReason = "completed" | "not_planned";
+/** Why a work item was closed. */
+export type CloseReason = "completed" | "not_planned";
 
 /**
- * Something that should change in a repository: a bug, a feature, a
- * question. Opened by a person, an agent or an integration. Pull requests
- * are made against it; the one that is merged resolves it.
- *
- * Issues and pull requests share one sequence of numbers per repository.
+ * How a work item is linked to a repository: where it was filed (`origin`,
+ * which keeps an old issue's number), where the work is meant to land
+ * (`target`), or where work for it landed or is under way (`touched`).
  */
-export type Issue = {
-  id: string;
+export type LinkRole = "origin" | "target" | "touched";
+
+/** A repository a work item is linked to. */
+export type ItemRepo = {
   repoId: string;
-  /** Shown as `#12`. */
+  /** `owner/name`, as it is now, or as it was when the repository was deleted. */
+  path: string;
+  role: LinkRole;
+  /** For the origin of a work item moved from a repository's issues: its number there. */
+  legacyNumber: number | null;
+  /** A pull request or commit that closes it landed in this repository. */
+  landed: boolean;
+};
+
+/** What resolved a work item in one repository: a pull request merged, or a commit pushed. */
+export type Resolution = {
+  /** `owner/name`. */
+  repo: string;
+  pull: number | null;
+  commit: string | null;
+  /** Who pushed that commit, by username. */
+  pushedBy: string | null;
+};
+
+/**
+ * Any tracked work of a workspace: a feature, a bug, a chore. Numbered in
+ * the workspace with its new pull requests, and linked to the repositories
+ * it concerns. It closes once what closes it has landed in every target,
+ * or, with no targets, once anything that closes it lands. Mirrors
+ * `crates/contracts/src/work/items.rs`.
+ */
+export type WorkItem = {
+  /** `wki_…`; one moved from an issue keeps its `iss_…`. */
+  id: string;
+  /** The workspace's slug. */
+  workspace: string;
+  /** Shown as `#12`; on the site at `/<workspace>/-/work/<number>`. */
   number: number;
   title: string;
   /** Markdown. Also what an agent is given to work from. */
@@ -35,17 +66,13 @@ export type Issue = {
   labels: string[];
   state: State;
   /** Set when closed. */
-  reason: IssueReason | null;
-  /** The number of the pull request whose merge closed this issue. */
-  resolvedBy: number | null;
-  /** The commit pushed to the default branch whose message closed this issue (`Closes #12`), when a commit rather than a pull request closed it. */
-  resolvedCommit: string | null;
-  /** Who pushed that commit, by username. */
-  resolvedPushedBy: string | null;
+  reason: CloseReason | null;
+  /** What resolved it, in each repository it landed in, oldest first. */
+  resolutions: Resolution[];
   /** Who opened it: a person, an integration, or g1t (`kind` `agent`) for one its agent filed while at work. */
   author: User;
   /**
-   * For an issue g1t's agent filed: the person it was working for. They may
+   * For one g1t's agent filed: the person it was working for. They may
    * manage it as its author could. See `workOwner`.
    */
   requestedBy: User | null;
@@ -55,49 +82,87 @@ export type Issue = {
   updatedAt: string;
   /** RFC 3339. */
   closedAt: string | null;
-  /** Pull requests made against this issue, in any state. */
+  /** Pull requests made for it, in any state and repository. */
   pullCount: number;
   commentCount: number;
   /** Usernames of the people it is assigned to. */
   assignees: string[];
-  /** The numbers of the issues that have to be merged before this one is worked on. */
+  /** The numbers of the work items of the workspace that have to land before this one is worked on. */
   blockedBy: number[];
   /**
    * The agent working on it now: the one behind its newest pull request
    * that is still in progress in a fork, such as `g1t`.
    */
   agent: string | null;
-  /** The milestone it is in, if any. */
+  /** The workspace milestone it is in, if any. */
   milestone?: MilestoneRef | null;
+  /** The repositories it is linked to: its origin first, then targets, then those it touched. */
+  repos: ItemRepo[];
 };
 
+/** The targets of a work item that have not landed yet, by path. */
+export function missingTargets(repos: ItemRepo[]): string[] {
+  return repos.filter((repo) => repo.role === "target" && !repo.landed).map((repo) => repo.path);
+}
+
+/** A work item and everything on it. */
+export type WorkItemDetail = {
+  item: WorkItem;
+  /** Every pull request made for it, in the repositories the viewer may read, oldest first. */
+  pulls: Pull[];
+  comments: Comment[];
+  /** How people (and g1t) reacted to its description. */
+  reactions: ReactionGroup[];
+};
+
+/** What `#N` names (`resolveRef`): see `refs.ts` for the order it is read in. */
+export type RefTarget =
+  | { kind: "work_item"; workspace: string; number: number; itemId: string }
+  | { kind: "pull"; repo: string; number: number }
+  | { kind: "none" };
+
 /**
- * A label of a repository: a name, a color and what it means. Issues and
- * pull requests carry labels by name; names are lowercase.
+ * What a comment, a reaction or a set of labels is on: a pull request of a
+ * repository, or a work item of a workspace.
+ */
+export type Thread = { repo: RepoPath; number: number } | { workspace: string; number: number };
+
+/** The thread's fields as the work service reads them. */
+export function threadArgs(thread: Thread): { repo: RepoPath | null; workspace: string; number: number } {
+  return "repo" in thread
+    ? { repo: thread.repo, workspace: "", number: thread.number }
+    : { repo: null, workspace: thread.workspace, number: thread.number };
+}
+
+/**
+ * A label of a workspace: a name, a color and what it means. Work items and
+ * the pull requests of its repositories carry labels by name; names are
+ * lowercase.
  */
 export type Label = {
   name: string;
   /** Six hex digits, without `#`. */
   color: string;
   description: string;
-  /** How many issues carry it, open or closed. */
-  issues: number;
+  /** How many work items carry it, open or closed. */
+  items: number;
   /** How many pull requests carry it, in any state. */
   pulls: number;
 };
 
-/** A milestone, as an issue or pull request names it. */
-/** An issue a commit closed, as the commit page lists it. */
-export type ClosedIssue = { number: number; title: string };
+/** A work item a commit resolved, as the commit page lists it. */
+export type ClosedItem = { workspace: string; number: number; title: string; closed: boolean };
 
+/** A milestone, as a work item or pull request names it. */
 export type MilestoneRef = { number: number; title: string };
 
 /**
- * A goal, with an optional due date, that issues and pull requests are
- * gathered under. Its progress is how many of them are closed.
+ * A goal of a workspace, with an optional due date, that work items and
+ * pull requests are gathered under. Its progress is how many of them are
+ * closed.
  */
 export type Milestone = {
-  /** Numbered from 1 in each repository, apart from issues. */
+  /** Numbered from 1 in each workspace, apart from work items. */
   number: number;
   title: string;
   /** Markdown. */
@@ -105,23 +170,25 @@ export type Milestone = {
   /** `YYYY-MM-DD`. */
   dueOn: string | null;
   state: State;
-  /** Open issues and pull requests in it. */
+  /** Open work items and pull requests in it. */
   openItems: number;
-  /** Closed issues, and merged or closed pull requests, in it. */
+  /** Closed work items, and merged or closed pull requests, in it. */
   closedItems: number;
   createdAt: string;
   updatedAt: string;
   closedAt: string | null;
+  /** For one moved from a repository when work items moved to the workspace: its id. */
+  originRepoId?: string;
 };
 
-/** One milestone and what is in it, newest first. */
-export type MilestoneDetail = { milestone: Milestone; issues: Issue[]; pulls: Pull[] };
+/** One milestone and what is in it that the viewer may see, newest first. */
+export type MilestoneDetail = { milestone: Milestone; items: WorkItem[]; pulls: Pull[] };
 
 /** How `setLabels` changes an item's labels. */
 export type LabelChange = "set" | "add" | "remove";
 
 /**
- * Whose an issue or a pull request is to answer for: whoever asked g1t for
+ * Whose a work item or a pull request is to answer for: whoever asked g1t for
  * it, or its author. They may change, close and steer it, are never asked to
  * review it and cannot approve it, and see it as theirs. Mirrors
  * `Pull::owner` in the Rust contracts.
@@ -144,10 +211,10 @@ export type Runtime = "hosted" | "external";
 export type Pull = {
   id: string;
   repoId: string;
-  /** Shown as `#12`. */
+  /** Shown as `#12`. New ones are numbered in the workspace's sequence, which work items share. */
   number: number;
-  /** The number of the issue this is for, if any. */
-  issue: number | null;
+  /** The work item this is for, if any, by number in the workspace. */
+  item: number | null;
   title: string;
   /** Markdown: what changed and why. Set when marked ready. */
   body: string | null;
@@ -189,20 +256,24 @@ export type Pull = {
   /** Merge it on its own once everything it needs is met, as a person asked. */
   autoMerge?: AutoMerge | null;
   /**
-   * The issues it closes when it merges into the default branch: its issue and
-   * those its title and description name after a closing keyword (`Fixes #12`).
+   * The work items it closes when it merges into the default branch, by
+   * number: its own and those its title and description name after a
+   * closing keyword (`Fixes #12`). Merging marks this repository's link to
+   * each as landed.
    */
   closes?: number[];
+  /** The work items it is part of (`Part of #12`, `Refs #12`): linked, never closed by it. */
+  parts?: number[];
   /** Its branch was deleted after it merged or closed, and can be restored at `headCommit`. */
   headBranchDeleted?: boolean;
   /**
-   * Set on a pull request closed because another one for the same issue was
-   * merged: that one's number.
+   * Set on a pull request closed because another one for the same work item
+   * was merged: that one's number.
    */
   supersededBy: number | null;
   /**
-   * Where the latest run of the issue's acceptance checks stands, if there
-   * has been one against the current head.
+   * Where the latest run of the work item's acceptance checks stands, if
+   * there has been one against the current head.
    */
   checkStatus: CheckStatus | null;
   /** The files it changes, as of its latest push. */
@@ -231,7 +302,7 @@ export type Pull = {
   /** Who opened it: a person, or g1t (`kind` `agent`, username `g1t`) for a change g1t made. */
   author: User;
   /**
-   * For a change g1t made: the person who asked for it, by assigning an issue
+   * For a change g1t made: the person who asked for it, by assigning a work item
    * or handing g1t the work. They answer for it as its author would. See
    * `workOwner`.
    */
@@ -250,21 +321,21 @@ export type ChangedFile = { path: string; additions: number; deletions: number }
 
 /**
  * Another pull request in progress that changes some of the same files. Two
- * for the same issue are alternatives; two for different issues are heading
- * for a conflict.
+ * for the same work item are alternatives; two for different ones are
+ * heading for a conflict.
  */
 export type Overlap = {
   number: number;
   title: string;
-  /** The number of the issue the other pull request is for. */
-  issue: number | null;
+  /** The number of the work item the other pull request is for. */
+  item: number | null;
   /** The files both change. */
   paths: string[];
 };
 
 /**
  * On a pull request, `failed` means the merge queue took it out, until its
- * head moves. The other states are from runs of commands written on issues,
+ * head moves. The other states are from runs of commands written on work items,
  * which g1t no longer runs.
  */
 export type CheckStatus = "queued" | "running" | "passed" | "failed" | "errored";
@@ -282,7 +353,7 @@ export type CheckResult = {
 
 /**
  * A record against a pull request's head: the merge queue taking it out,
- * with why, or an earlier run of commands written on its issue.
+ * with why, or an earlier run of commands written on its work item.
  */
 export type CheckRun = {
   id: string;
@@ -302,7 +373,7 @@ export type CheckRun = {
 export type Verdict = "approve" | "request_changes";
 
 /**
- * A comment on an issue or a pull request. On a pull request it can sit on
+ * A comment on a work item or a pull request. On a pull request it can sit on
  * one line of the change, and it can carry a reviewer's verdict.
  */
 export type Comment = {
@@ -416,19 +487,10 @@ export type SessionEntry = {
 export type NewSessionEntry = Pick<SessionEntry, "kind" | "text"> &
   Partial<Pick<SessionEntry, "tool" | "commit">>;
 
-export type IssueDetail = {
-  issue: Issue;
-  /** Every pull request made against it, oldest first. */
-  pulls: Pull[];
-  comments: Comment[];
-  /** How people (and g1t) reacted to its description. */
-  reactions: ReactionGroup[];
-};
-
 export type PullDetail = {
   pull: Pull;
-  /** The issue it is for, if any. */
-  issue: Issue | null;
+  /** The work item it is for, if any. */
+  item: WorkItem | null;
   comments: Comment[];
   /** How people (and g1t) reacted to its description. */
   reactions: ReactionGroup[];
@@ -573,7 +635,7 @@ export type CommitStatus = {
 };
 
 /**
- * A step on the way from an assigned issue to a pull request that is ready
+ * A step on the way from an assigned work item to a pull request that is ready
  * to merge. g1t takes each one without being asked: `working` (the agent is
  * making the change), `checking`, `reviewing`, `revising` (the agent is
  * addressing failed checks or a review), `catching_up` (merging in the
@@ -645,13 +707,13 @@ export type RepoSettings = {
    */
   requireCodeOwnerReview?: boolean;
   /**
-   * Whether issues can be opened in it: null for the default, which is on
-   * for a repository and off for a fork of one. Existing issues stay
-   * readable either way.
+   * Whether work items can be filed from it (as their origin): null for the
+   * default, which is on for a repository and off for a fork of one. Those
+   * filed from it before stay readable, and it can always be a target.
    */
-  hasIssues?: boolean | null;
-  /** Whether issues can be opened in it now: `hasIssues`, or its default. */
-  issuesEnabled?: boolean;
+  hasWorkItems?: boolean | null;
+  /** Whether work items can be filed from it now: `hasWorkItems`, or its default. */
+  workItemsEnabled?: boolean;
   /** Which merge methods pull requests may use (at least one); rules can narrow them per branch. */
   allowMergeCommit: boolean;
   allowSquashMerge: boolean;
@@ -664,7 +726,7 @@ export type RepoSettings = {
   squashCommitMessage: CommitMessageDefault;
   /**
    * For `custom`: templates whose `{title}`, `{number}`, `{body}`, `{branch}`,
-   * `{head_repo}`, `{base}`, `{author}`, `{commits}`, `{issues}` and
+   * `{head_repo}`, `{base}`, `{author}`, `{commits}`, `{items}` and
    * `{co_authors}` are filled in.
    */
   mergeCommitTemplate: string | null;
@@ -679,8 +741,12 @@ export type RepoSettings = {
   requireWebCommitSignOff: boolean;
   /** Let anyone who can read it comment on its commits. */
   allowCommitComments: boolean;
-  /** Close the issues a pull request names when it merges into the default branch. */
-  autoCloseIssues: boolean;
+  /**
+   * Land the work items a pull request names in this repository when it
+   * merges into the default branch (and those a commit pushed there names),
+   * closing those with nothing else left to land.
+   */
+  autoCloseItems: boolean;
   /** Username of the member who last changed the settings, if anyone has. */
   updatedBy: string | null;
   /** RFC 3339. */
@@ -758,7 +824,8 @@ export type MergeChoice = {
 
 /** How a pull request merges, as the merger chose. */
 export type MergeOptions = {
-  keepIssueOpen?: boolean;
+  /** Leave its work item open: this pull request is only part of the work. */
+  keepItemOpen?: boolean;
   /** Merge although required checks have not passed, where the rule requiring them allows it. */
   ignoreChecks?: boolean;
   /** Merge past rules a ruleset lets the actor bypass. Recorded as a bypass. */
@@ -775,7 +842,7 @@ export type MergeOptions = {
 };
 
 /** The settings a member can change. */
-export type RepoSettingsInput = Omit<RepoSettings, "updatedBy" | "updatedAt" | "issuesEnabled">;
+export type RepoSettingsInput = Omit<RepoSettings, "updatedBy" | "updatedAt" | "workItemsEnabled">;
 
 /**
  * What the runner is to do next for a pull request: always nothing now,
@@ -783,32 +850,48 @@ export type RepoSettingsInput = Omit<RepoSettings, "updatedBy" | "updatedAt" | "
  */
 export type Advance = { action: "none" };
 
-export type OpenIssueInput = {
+export type OpenWorkItemInput = {
+  /** The workspace; may be left out with `repo`, meaning the repository's. */
+  workspace?: string;
+  /** The repository it is filed from, its origin. Without one, only a member of the workspace may file it. */
+  repo?: RepoPath;
+  /** Repositories of the workspace where the work is meant to land. */
+  targets?: RepoPath[];
   title: string;
   body: string;
   labels?: string[];
-  /** Deprecated: commands, added to the body under "Definition of done". */
-  checks?: string[];
-  /** The number of the milestone to put it in. Needs the Triage role. */
+  /** The number of the workspace milestone to put it in. Needs the Triage role. */
   milestone?: number;
 };
 
-export type UpdateIssueInput = {
+export type UpdateWorkItemInput = {
   title?: string;
   body?: string;
   labels?: string[];
   /** Usernames of the people it is assigned to; replaces the whole set. */
   assignees?: string[];
-  /** The number of the milestone to put it in; 0 takes it out. */
+  /** The number of the workspace milestone to put it in; 0 takes it out. */
   milestone?: number;
-  /** The issues of the same repository that have to land first; replaces the whole set. */
+  /** The work items of the workspace that have to land first, by number; replaces the whole set. */
   blocked_by?: number[];
 };
 
+/** The filters on `listWorkItems`. */
+export type WorkItemFilter = {
+  /** Only those linked to this repository (in any role, or in `role`). */
+  repo?: RepoPath;
+  role?: LinkRole;
+  state?: State;
+  label?: string;
+  milestone?: number;
+  /** Only those assigned to this username. */
+  assignee?: string;
+};
+
 export type OpenPullInput = {
-  /** The number of the issue this is for. */
-  issue?: number;
-  /** Defaults to the issue's title; required without an issue. */
+  /** The work item this is for, by number in the repository's workspace. */
+  item?: number;
+  /** Defaults to the work item's title; required without one. */
   title?: string;
   /** What changed and why. Usually set later, when a draft is marked ready. */
   body?: string;
@@ -842,86 +925,102 @@ export type RepoPulls = {
   closed: Pull[];
 };
 
-/** Issues, pull requests, comments and sessions. */
+/** Where a comment is kept, for changing it: a repository's pull requests, or a workspace's work items. */
+export type CommentScope = { repo: RepoPath } | { workspace: string };
+
+/** Work items, pull requests, comments and sessions. */
 export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
-  openIssue(actor: User, repo: RepoPath, input: OpenIssueInput): Promise<Result<Issue>>;
-  /** Newest first. */
-  listIssues(
-    repo: RepoPath,
-    viewer: Viewer,
-    filter?: { state?: State; label?: string; milestone?: number },
-  ): Promise<Result<Issue[]>>;
-  getIssue(repo: RepoPath, number: number, viewer: Viewer): Promise<Result<IssueDetail>>;
-  /** The issues of the repository, of those the viewer may read, that this commit's message closed when it was pushed to the default branch. */
-  closedByCommit(repo: RepoPath, commit: string, viewer: Viewer): Promise<Result<ClosedIssue[]>>;
-  /** The author or a member of the workspace may. */
-  updateIssue(actor: User, repo: RepoPath, number: number, input: UpdateIssueInput): Promise<Result<Issue>>;
-  closeIssue(actor: User, repo: RepoPath, number: number, reason?: IssueReason): Promise<Result<Issue>>;
-  reopenIssue(actor: User, repo: RepoPath, number: number): Promise<Result<Issue>>;
-  /** A repository's labels, by name, each with how many issues and pull requests carry it. */
-  listLabels(repo: RepoPath, viewer: Viewer): Promise<Result<Label[]>>;
+  /**
+   * Files a work item: from `repo` (its origin) by anyone who may take part
+   * there, or in the workspace alone by a member. `targets` are where it is
+   * meant to land.
+   */
+  openWorkItem(actor: User, input: OpenWorkItemInput): Promise<Result<WorkItem>>;
+  /** A workspace's work items the viewer may see, newest first. */
+  listWorkItems(workspace: string, viewer: Viewer, filter?: WorkItemFilter): Promise<Result<WorkItem[]>>;
+  getWorkItem(workspace: string, number: number, viewer: Viewer): Promise<Result<WorkItemDetail>>;
+  /** Its owner, or someone with the Triage role on it, may. */
+  updateWorkItem(actor: User, workspace: string, number: number, input: UpdateWorkItemInput): Promise<Result<WorkItem>>;
+  /**
+   * Closes it; with `by`, as the commit there (on its repository's default
+   * branch, naming it after a closing keyword) would have: it lands there,
+   * and closes once nothing else is left to land.
+   */
+  closeWorkItem(
+    actor: User,
+    workspace: string,
+    number: number,
+    reason?: CloseReason,
+    by?: { repo: RepoPath; commit: string },
+  ): Promise<Result<WorkItem>>;
+  reopenWorkItem(actor: User, workspace: string, number: number): Promise<Result<WorkItem>>;
+  /** Links a repository of the workspace as a target (or as touched), or changes how it is linked. Needs Triage. */
+  linkWorkItem(actor: User, workspace: string, number: number, repo: RepoPath, role?: LinkRole): Promise<Result<WorkItem>>;
+  /** Removes a repository's link (never its origin's). Needs Triage. */
+  unlinkWorkItem(actor: User, workspace: string, number: number, repo: RepoPath): Promise<Result<WorkItem>>;
+  /** What `#number` names for the viewer, read in a repository (and its workspace) or a workspace alone. */
+  resolveRef(viewer: Viewer, context: { repo: RepoPath } | { workspace: string }, number: number): Promise<RefTarget>;
+  /** The work items that a commit pushed to the repository's default branch resolved, of those the viewer may read. */
+  closedByCommit(repo: RepoPath, commit: string, viewer: Viewer): Promise<Result<ClosedItem[]>>;
+  /** A workspace's labels, by name, each with how many work items and pull requests carry it. */
+  listLabels(workspace: string, viewer: Viewer): Promise<Result<Label[]>>;
   /**
    * Creates a label, or with `name` changes one; renaming it renames it on
-   * everything that carries it. Needs the Triage role.
+   * everything that carries it. Needs the Write role in the workspace.
    */
   saveLabel(
     actor: User,
-    repo: RepoPath,
+    workspace: string,
     label: { name?: string; newName?: string; color?: string; description?: string },
   ): Promise<Result<Label>>;
-  /** Removes a label from the repository and everything carrying it. */
-  deleteLabel(actor: User, repo: RepoPath, name: string): Promise<Result<boolean>>;
-  /** Adds the default labels the repository does not have yet; returns them all. */
-  addDefaultLabels(actor: User, repo: RepoPath): Promise<Result<Label[]>>;
+  /** Removes a label from the workspace and everything carrying it. */
+  deleteLabel(actor: User, workspace: string, name: string): Promise<Result<boolean>>;
+  /** Adds the default labels the workspace does not have yet; returns them all. */
+  addDefaultLabels(actor: User, workspace: string): Promise<Result<Label[]>>;
   /**
-   * The labels of an issue or a pull request, replaced, added to or taken
-   * from. Labels the repository lacks are created for someone with the
-   * Triage role. Returns its labels now.
+   * The labels of a work item or a pull request, replaced, added to or
+   * taken from. Labels the workspace lacks are created for someone who may
+   * manage labels. Returns its labels now.
    */
-  setLabels(
-    actor: User,
-    repo: RepoPath,
-    number: number,
-    labels: string[],
-    change?: LabelChange,
-  ): Promise<Result<string[]>>;
-  /** Open ones by due date, then closed ones; both unless `state` says. */
-  listMilestones(repo: RepoPath, viewer: Viewer, state?: State): Promise<Result<Milestone[]>>;
-  getMilestone(repo: RepoPath, number: number, viewer: Viewer): Promise<Result<MilestoneDetail>>;
-  /** Creates a milestone, or with `number` changes the fields given. Needs the Triage role. */
+  setLabels(actor: User, thread: Thread, labels: string[], change?: LabelChange): Promise<Result<string[]>>;
+  /** A workspace's, open ones by due date, then closed ones; both unless `state` says. */
+  listMilestones(workspace: string, viewer: Viewer, state?: State): Promise<Result<Milestone[]>>;
+  getMilestone(workspace: string, number: number, viewer: Viewer): Promise<Result<MilestoneDetail>>;
+  /** Creates a milestone, or with `number` changes the fields given. Needs the Write role in the workspace. */
   saveMilestone(
     actor: User,
-    repo: RepoPath,
+    workspace: string,
     milestone: { number?: number; title?: string; description?: string; dueOn?: string; state?: State },
   ): Promise<Result<Milestone>>;
-  deleteMilestone(actor: User, repo: RepoPath, number: number): Promise<Result<boolean>>;
-  /** How many issues and pull requests are open. */
-  counts(repo: RepoPath, viewer: Viewer): Promise<Result<{ issues: number; pulls: number }>>;
+  deleteMilestone(actor: User, workspace: string, number: number): Promise<Result<boolean>>;
+  /** How many work items linked to the repository, and how many of its pull requests, are open. */
+  counts(repo: RepoPath, viewer: Viewer): Promise<Result<{ items: number; pulls: number }>>;
+  /** Moves on the job that moves issues into work items; does nothing once done. */
+  migrateWorkItems(): Promise<{ done: boolean; repos: number; numbered: number; unplaced: number }>;
 
   /**
-   * On an issue or a pull request. On a pull request it may name a line of
-   * the change and carry a verdict; nobody can give a verdict on their own.
+   * On a work item or a pull request. On a pull request it may name a line
+   * of the change and carry a verdict; nobody can give a verdict on their own.
    */
-  addComment(actor: User, repo: RepoPath, number: number, comment: NewComment): Promise<Result<Comment>>;
+  addComment(actor: User, thread: Thread, comment: NewComment): Promise<Result<Comment>>;
   /**
    * Changes a comment's text. Its author may, and so may anyone with the
    * Maintain role or higher; notes of what happened cannot be changed.
    */
-  editComment(actor: User, repo: RepoPath, commentId: string, body: string): Promise<Result<Comment>>;
+  editComment(actor: User, scope: CommentScope, commentId: string, body: string): Promise<Result<Comment>>;
   /**
    * Deletes a comment: its author, or anyone with the Maintain role or
    * higher. A review that gave a verdict cannot be deleted, only edited.
    */
-  deleteComment(actor: User, repo: RepoPath, commentId: string): Promise<Result<boolean>>;
+  deleteComment(actor: User, scope: CommentScope, commentId: string): Promise<Result<boolean>>;
   /**
-   * Reacts to comment `commentId` on issue or pull request `number`, or to
-   * its description without one; with `remove`, takes it back. Anyone who
-   * can read the repository may. What it has now.
+   * Reacts to comment `commentId` on a work item or pull request, or to its
+   * description without one; with `remove`, takes it back. Anyone who can
+   * read it may. What it has now.
    */
   react(
     actor: User,
-    repo: RepoPath,
-    number: number,
+    thread: Thread,
     reaction: { commentId?: string; content: ReactionContent; remove?: boolean },
   ): Promise<Result<ReactionGroup[]>>;
 
@@ -1069,9 +1168,10 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
   convertPullToDraft(actor: User, repo: RepoPath, number: number): Promise<Result<Pull>>;
   /**
    * Lands the pull request on the repository's default branch. Unless
-   * `keepIssueOpen`, that resolves the issue it was for: the issue closes
-   * naming this pull request, and the others still in progress for it close
-   * as superseded. Only members of the repository's workspace may merge.
+   * `keepItemOpen`, that lands the work items it closes in this repository
+   * (each closing once nothing else is left to land), and the others still
+   * in progress here for its own close as superseded. Only members of the
+   * repository's workspace may merge.
    *
    * If the default branch has moved, the pull request is brought up to date
    * first and lands when that is done; it comes back still open, and
@@ -1085,14 +1185,14 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
    */
   listActivePulls(
     viewer: Viewer,
-  ): Promise<{ pull: Pull; issue: Issue | null; lifecycle: Lifecycle | null }[]>;
+  ): Promise<{ pull: Pull; item: WorkItem | null; lifecycle: Lifecycle | null }[]>;
   /**
-   * The issues and pull requests a person opened, a page at a time, only
-   * on repositories the viewer may read. Not found for no such account.
+   * The work items and pull requests a person opened, a page at a time,
+   * only those the viewer may read. Not found for no such account.
    */
   byAuthor(username: string, viewer: Viewer, filter?: AuthoredFilter): Promise<Result<Authored>>;
   /**
-   * What a person did each day of the last year (issues and pull requests
+   * What a person did each day of the last year (work items and pull requests
    * opened, reviews given), only on repositories the viewer may read: the
    * calendar on their profile. Not found for no such account.
    */
@@ -1207,7 +1307,7 @@ export type QueueJob = {
 // --- A person's work ---------------------------------------------------------
 // Mirrors the `Authored*` types in `crates/contracts/src/work.rs`.
 
-export type AuthoredKind = "issue" | "pull";
+export type AuthoredKind = "item" | "pull";
 /** `closed` takes in merged pull requests too; `merged` is only those. */
 export type AuthoredState = "open" | "closed" | "merged";
 /** `created` is newest first, `updated` most recently changed, `oldest` oldest first. */
@@ -1229,15 +1329,18 @@ export type AuthoredFilter = {
 
 export type AuthoredItem = {
   kind: AuthoredKind;
-  repo: RepoPath;
+  /** The workspace it is numbered in. */
+  workspace: string;
+  /** A pull request's repository, or the repository a work item was filed from, if it was. */
+  repo: RepoPath | null;
   number: number;
   title: string;
   /** A merged pull request is closed. */
   state: State;
-  /** A pull request's own status; null on an issue. */
+  /** A pull request's own status; null on a work item. */
   status: PullStatus | null;
-  /** Why an issue was closed. */
-  reason: IssueReason | null;
+  /** Why a work item was closed. */
+  reason: CloseReason | null;
   draft: boolean;
   merged: boolean;
   /** RFC 3339. */
@@ -1253,8 +1356,8 @@ export type AuthoredCounts = {
   pullsMerged: number;
   pullsOpen: number;
   pulls: number;
-  issues: number;
-  issuesOpen: number;
+  items: number;
+  itemsOpen: number;
 };
 
 export type Authored = {
@@ -1310,7 +1413,8 @@ export type WorkSession = {
   /** `ses_…`. */
   id: string;
   repoId: string;
-  issue: number | null;
+  /** The work item it works on, by number in the repository's workspace. */
+  item: number | null;
   pull: number | null;
   branch: string | null;
   actor: { id: string; username: string };
@@ -1342,20 +1446,20 @@ export type WorkSession = {
 };
 
 /** What kind of thing a session touched. */
-export type TouchKind = "file" | "commit" | "branch" | "pull" | "issue";
+export type TouchKind = "file" | "commit" | "branch" | "pull" | "item";
 
-/** Something a session touched, kept once per session. */
+/** Something a session touched, kept once per session. A work item's `value` is its number. */
 export type SessionTouch = { sessionId: string; kind: TouchKind; value: string; at: string };
 
-/** How a session was tied to an issue or pull request. */
+/** How a session was tied to a work item or pull request. */
 export type LinkVia = "attached" | "claim" | "branch" | "commit" | "trailer" | "opened" | "ref";
 
-/** An issue or pull request a session, or one of its subagents, worked on. */
+/** A work item or pull request a session, or one of its subagents, worked on. */
 export type SessionLink = {
-  kind: "issue" | "pull";
+  kind: "item" | "pull";
   number: number;
   title: string;
-  /** The issue's state or the pull request's status. */
+  /** The work item's state or the pull request's status. */
   state: string;
   via: LinkVia[];
   sessionIds: string[];
@@ -1370,8 +1474,11 @@ export type ClaimState = "active" | "released" | "expired" | "handed_off";
 export type Claim = {
   /** `clm_…`. */
   id: string;
-  repoId: string;
-  issue: number;
+  /** The repository of the checkout it was made from, if any. */
+  repoId: string | null;
+  /** The work item it is on: its workspace and number. */
+  workspace: string;
+  item: number;
   sessionId: string | null;
   actor: { id: string; username: string };
   harness: Harness | null;
@@ -1386,13 +1493,16 @@ export type Claim = {
 };
 
 /** `session.started` and `session.ended`. */
-export type SessionEventData = { repoId: string; number?: number; issue?: number; session: WorkSession };
+export type SessionEventData = { repoId: string; number?: number; item?: number; session: WorkSession };
 
 /** `work.claimed`, `work.released`, `work.claim_expired` and `work.handoff_requested`. */
 export type ClaimEventData = {
-  repoId: string;
+  repoId?: string;
+  workspace: string;
   number: number;
-  issue: number;
+  item: number;
+  /** The repositories the work item is linked to. */
+  repoIds: string[];
   claim: Claim;
   others?: Claim[];
   tookOver?: string;
@@ -1404,9 +1514,10 @@ export type ClaimEventData = {
 
 /** `dependency.changed`. */
 export type DependencyChangedData = {
-  repoId: string;
+  workspace: string;
   number: number;
-  issue: number;
+  item: number;
+  repoIds: string[];
   blockedBy: number[];
   added: number[];
   removed: number[];
@@ -1422,8 +1533,8 @@ export type PullOverlapData = {
   pull: number;
   otherPull: number;
   files: string[];
-  issue?: number;
-  otherIssue?: number;
+  item?: number;
+  otherItem?: number;
 };
 
 /** `overlap.detected` between two sessions that touched the same files (siblings included), once for each side. */
@@ -1434,8 +1545,8 @@ export type SessionOverlapData = {
   otherSessionId: string;
   otherActor: string;
   files: string[];
-  issue?: number;
-  otherIssue?: number;
+  item?: number;
+  otherItem?: number;
 };
 
 /** `overlap.detected`: between pull requests, or between sessions (with `sessionId`). */
@@ -1444,13 +1555,13 @@ export type OverlapDetectedData = PullOverlapData | SessionOverlapData;
 /** `session.progressed`: a session recorded more (at most every few seconds). */
 export type SessionProgressedData = { repoId: string; number?: number; sessionId: string; rootId?: string };
 
-/** An issue in brief. */
-export type IssueBrief = { number: number; title: string; state: State };
+/** A work item in brief. */
+export type ItemBrief = { number: number; title: string; state: State };
 
 /** A pull request in brief. */
 export type PullBrief = { number: number; title: string; status: PullStatus };
 
-/** An issue another is blocked by, and where it stands. */
+/** A work item another is blocked by, and where it stands. */
 export type Blocker = {
   number: number;
   title: string;
@@ -1463,8 +1574,10 @@ export type Blocker = {
 /** A pull request's place in the merge queue; `position` 1 is the front. */
 export type QueuePlace = { state: QueueState; position: number };
 
-/** One of an issue's pull requests, with where it stands. */
+/** One of a work item's pull requests, with where it stands. */
 export type WorkPull = {
+  /** Its repository, `owner/name`. */
+  repo: string;
   number: number;
   title: string;
   status: PullStatus;
@@ -1496,11 +1609,12 @@ export type DecisionKind =
 /** Claimed: someone said so. Tested: a check or the merge queue proved it. Approved: a person approved it. */
 export type DecisionConfidence = "claimed" | "tested" | "approved";
 
-/** A structured reason kept on an issue or pull request, with how sure it is. */
+/** A structured reason kept on a work item or pull request, with how sure it is. */
 export type Decision = {
   /** `dec_…`. */
   id: string;
-  issue: number | null;
+  /** The work item it is about, by number in its workspace. */
+  item: number | null;
   pull: number | null;
   sessionId: string | null;
   /** Username of who recorded it; null when g1t did. */
@@ -1518,21 +1632,35 @@ export type Decision = {
   createdAt: string;
 };
 
-/** Everything about an issue an agent needs to pick it up: `get_work`. */
+/** One repository a work item is linked to, with what landed there and its pull requests for it. */
+export type WorkRepo = ItemRepo & {
+  /** The checks every pull request into its default branch must pass. */
+  requiredChecks: string[];
+  /** Its pull requests for the work item, oldest first. */
+  pulls: WorkPull[];
+};
+
+/** A repository of the workspace the work may belong in; confirming it is `linkWorkItem` as a target. */
+export type SuggestedTarget = { repoId: string; path: string; why: string; score: number };
+
+/** Everything about a work item an agent needs to pick it up: `get_work`. */
 export type WorkContext = {
-  issue: Issue;
+  item: WorkItem;
   /** The items under its "Definition of done" heading. */
   definitionOfDone: string[];
-  /** The checks every pull request into the default branch must pass. */
-  requiredChecks: string[];
+  /** Its repositories: origin, then targets, then touched. */
+  repos: WorkRepo[];
+  /** The targets it has not landed in yet, by path. */
+  missing: string[];
+  /** Repositories it may belong in, likeliest first, each with why. */
+  suggestedTargets: SuggestedTarget[];
   /** Active claims on it. */
   claims: Claim[];
   /** Sessions on it or its pull requests, most recently heard from first. */
   sessions: WorkSession[];
-  pulls: WorkPull[];
   blockedBy: Blocker[];
-  /** The issues it blocks. */
-  blocks: IssueBrief[];
+  /** The work items it blocks. */
+  blocks: ItemBrief[];
   /** On it and its pull requests, newest first. */
   decisions: Decision[];
   /** The latest `integration_failure` decision among them. */
@@ -1551,7 +1679,7 @@ export type WorkSessionDetail = {
   children?: WorkSession[];
   /** What it and its subagents touched. */
   touched?: SessionTouch[];
-  /** The issues and pull requests it and its subagents worked on. */
+  /** The work items and pull requests it and its subagents worked on. */
   links?: SessionLink[];
   skills?: SessionSkill[];
   /** For a subagent: the session at the top of its tree. */
@@ -1565,14 +1693,22 @@ export type WorkSessionDetail = {
 
 /** Reading coordination: work service methods (services/work/src/coordination, decisions.rs). */
 export interface CoordinationApi {
-  getWork(repo: RepoPath, number: number, viewer: Viewer): Promise<Result<WorkContext>>;
-  /** Newest first; active ones unless `state` says otherwise. */
-  listClaims(repo: RepoPath, viewer: Viewer, filter?: { state?: ClaimState; issue?: number }): Promise<Result<Claim[]>>;
-  /** Most recently heard from first. */
+  getWork(workspace: string, number: number, viewer: Viewer): Promise<Result<WorkContext>>;
+  /**
+   * A workspace's claims on the work items the viewer may see, newest
+   * first; active ones unless `state` says otherwise. With `repo`, those
+   * made from it or on work items linked to it.
+   */
+  listClaims(
+    workspace: string,
+    viewer: Viewer,
+    filter?: { state?: ClaimState; item?: number; repo?: RepoPath },
+  ): Promise<Result<Claim[]>>;
+  /** Most recently heard from first; `item` is a work item of the repository's workspace. */
   listWorkSessions(
     repo: RepoPath,
     viewer: Viewer,
-    filter?: { state?: SessionState; issue?: number; pull?: number; path?: string; subagents?: boolean },
+    filter?: { state?: SessionState; item?: number; pull?: number; path?: string; subagents?: boolean },
   ): Promise<Result<WorkSession[]>>;
   getWorkSession(repo: RepoPath, id: string, viewer: Viewer, afterSeq?: number): Promise<Result<WorkSessionDetail>>;
   /**
@@ -1588,8 +1724,8 @@ export interface CoordinationApi {
    * Only pull requests with any are listed.
    */
   pullSessions(repo: RepoPath, viewer: Viewer, numbers: number[]): Promise<Result<PullSessions[]>>;
-  /** An issue's (with its pull requests') or a pull request's, oldest first. */
-  listDecisions(repo: RepoPath, number: number, viewer: Viewer): Promise<Result<Decision[]>>;
+  /** A work item's (with its pull requests') or a pull request's, oldest first. */
+  listDecisions(thread: Thread, viewer: Viewer): Promise<Result<Decision[]>>;
 }
 
 /**

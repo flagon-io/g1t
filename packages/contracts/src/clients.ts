@@ -8,8 +8,8 @@ import type { IdentityAdminApi, IdentityApi } from "./identity";
 import type { IntegrationsApi } from "./integrations";
 import type { PackagesApi } from "./packages";
 import type { WebhooksApi } from "./webhooks";
-import type { ReposApi } from "./repos";
-import type { PullDetail, WorkApi } from "./work";
+import type { RepoPath, ReposApi } from "./repos";
+import { threadArgs, type CommentScope, type PullDetail, type WorkApi } from "./work";
 import type { Result } from "./result";
 import type { RunnersAdminApi, RunnersApi } from "./runners";
 
@@ -455,34 +455,77 @@ export function pullDetailFromWire(raw: Record<string, unknown>): PullDetail {
   return detail as PullDetail;
 }
 
+/** A comment's scope as the work service reads it. */
+function commentScope(scope: CommentScope): { repo: RepoPath | null; workspace: string } {
+  return "repo" in scope ? { repo: scope.repo, workspace: "" } : { repo: null, workspace: scope.workspace };
+}
+
 export function workClient(service: ServiceBinding): WorkApi {
   const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
   return {
-    openIssue: (actor, repo, input) => call("open_issue", { actor, repo, ...input }),
-    listIssues: (repo, viewer, filter = {}) => call("list_issues", { repo, viewer, ...filter }),
-    getIssue: (repo, number, viewer) => call("get_issue", { repo, number, viewer }),
+    // Work items are numbered in a workspace; their arguments are
+    // snake_case, as the Rust service reads them.
+    openWorkItem: (actor, input) =>
+      call("open_work_item", {
+        actor,
+        workspace: input.workspace ?? "",
+        repo: input.repo ?? null,
+        targets: input.targets ?? [],
+        title: input.title,
+        body: input.body,
+        labels: input.labels ?? [],
+        milestone: input.milestone ?? null,
+      }),
+    listWorkItems: (workspace, viewer, filter = {}) =>
+      call("list_work_items", {
+        workspace,
+        viewer,
+        repo: filter.repo ?? null,
+        role: filter.role ?? null,
+        state: filter.state ?? null,
+        label: filter.label ?? null,
+        milestone: filter.milestone ?? null,
+        assignee: filter.assignee ?? null,
+      }),
+    getWorkItem: (workspace, number, viewer) => call("get_work_item", { workspace, number, viewer }),
+    updateWorkItem: (actor, workspace, number, input) =>
+      call("update_work_item", { actor, workspace, number, ...input }),
+    closeWorkItem: (actor, workspace, number, reason, by) =>
+      call("close_work_item", {
+        actor,
+        workspace,
+        number,
+        reason: reason ?? null,
+        ...(by ? { repo: by.repo, commit: by.commit } : {}),
+      }),
+    reopenWorkItem: (actor, workspace, number) => call("reopen_work_item", { actor, workspace, number }),
+    linkWorkItem: (actor, workspace, number, repo, role = "target") =>
+      call("link_work_item", { actor, workspace, number, repo, role }),
+    unlinkWorkItem: (actor, workspace, number, repo) => call("unlink_work_item", { actor, workspace, number, repo }),
+    resolveRef: (viewer, context, number) =>
+      call("resolve_ref", {
+        viewer,
+        number,
+        ...("repo" in context ? { repo: context.repo, workspace: "" } : { repo: null, workspace: context.workspace }),
+      }),
+    migrateWorkItems: () => call("migrate_work_items", {}),
     closedByCommit: (repo, commit, viewer) => call("closed_by_commit", { repo, commit, viewer }),
-    updateIssue: (actor, repo, number, input) =>
-      call("update_issue", { actor, repo, number, ...input }),
-    closeIssue: (actor, repo, number, reason) =>
-      call("close_issue", { actor, repo, number, reason }),
-    reopenIssue: (actor, repo, number) => call("reopen_issue", { actor, repo, number }),
-    listLabels: (repo, viewer) => call("list_labels", { repo, viewer }),
-    saveLabel: (actor, repo, label) => call("save_label", { actor, repo, ...label }),
-    deleteLabel: (actor, repo, name) => call("delete_label", { actor, repo, name }),
-    addDefaultLabels: (actor, repo) => call("add_default_labels", { actor, repo }),
-    setLabels: (actor, repo, number, labels, change = "set") =>
-      call("set_labels", { actor, repo, number, labels, change }),
-    listMilestones: (repo, viewer, state) => call("list_milestones", { repo, viewer, state }),
-    getMilestone: (repo, number, viewer) => call("get_milestone", { repo, number, viewer }),
-    saveMilestone: (actor, repo, milestone) => call("save_milestone", { actor, repo, ...milestone }),
-    deleteMilestone: (actor, repo, number) => call("delete_milestone", { actor, repo, number }),
+    listLabels: (workspace, viewer) => call("list_labels", { workspace, viewer }),
+    saveLabel: (actor, workspace, label) => call("save_label", { actor, workspace, ...label }),
+    deleteLabel: (actor, workspace, name) => call("delete_label", { actor, workspace, name }),
+    addDefaultLabels: (actor, workspace) => call("add_default_labels", { actor, workspace }),
+    setLabels: (actor, thread, labels, change = "set") =>
+      call("set_labels", { actor, ...threadArgs(thread), labels, change }),
+    listMilestones: (workspace, viewer, state) => call("list_milestones", { workspace, viewer, state }),
+    getMilestone: (workspace, number, viewer) => call("get_milestone", { workspace, number, viewer }),
+    saveMilestone: (actor, workspace, milestone) => call("save_milestone", { actor, workspace, ...milestone }),
+    deleteMilestone: (actor, workspace, number) => call("delete_milestone", { actor, workspace, number }),
     counts: (repo, viewer) => call("counts", { repo, viewer }),
-    addComment: (actor, repo, number, comment) =>
-      call("add_comment", { actor, repo, number, ...comment }),
-    editComment: (actor, repo, commentId, body) => call("edit_comment", { actor, repo, commentId, body }),
-    deleteComment: (actor, repo, commentId) => call("delete_comment", { actor, repo, commentId }),
-    react: (actor, repo, number, reaction) => call("react", { actor, repo, number, ...reaction }),
+    addComment: (actor, thread, comment) => call("add_comment", { actor, ...threadArgs(thread), ...comment }),
+    editComment: (actor, scope, commentId, body) =>
+      call("edit_comment", { actor, ...commentScope(scope), commentId, body }),
+    deleteComment: (actor, scope, commentId) => call("delete_comment", { actor, ...commentScope(scope), commentId }),
+    react: (actor, thread, reaction) => call("react", { actor, ...threadArgs(thread), ...reaction }),
     reportChecks: (runId, token, report) =>
       call("report_checks", { runId, token, ...report }),
     startMergecheck: (pullId) => call("start_mergecheck", { pullId }),
@@ -548,18 +591,24 @@ export function workClient(service: ServiceBinding): WorkApi {
       call("append_session", { actor, repo, number, entries }),
     readSession: (repo, number, viewer, afterSeq = 0) =>
       call("read_session", { repo, number, viewer, afterSeq }),
-    // Coordination: harness sessions, claims, an issue's whole context and
-    // decision records. Their arguments are snake_case, as the Rust service
-    // reads them; what comes back is camelCase.
-    getWork: (repo, number, viewer) => call("get_work", { repo, number, viewer }),
-    listClaims: (repo, viewer, filter = {}) =>
-      call("list_claims", { repo, viewer, state: filter.state ?? null, issue: filter.issue ?? null }),
+    // Coordination: harness sessions, claims, a work item's whole context
+    // and decision records. Their arguments are snake_case, as the Rust
+    // service reads them; what comes back is camelCase.
+    getWork: (workspace, number, viewer) => call("get_work", { workspace, number, viewer }),
+    listClaims: (workspace, viewer, filter = {}) =>
+      call("list_claims", {
+        workspace,
+        viewer,
+        repo: filter.repo ?? null,
+        state: filter.state ?? null,
+        item: filter.item ?? null,
+      }),
     listWorkSessions: (repo, viewer, filter = {}) =>
       call("list_work_sessions", {
         repo,
         viewer,
         state: filter.state ?? null,
-        issue: filter.issue ?? null,
+        item: filter.item ?? null,
         pull: filter.pull ?? null,
         path: filter.path ?? null,
         subagents: filter.subagents ?? false,
@@ -568,7 +617,7 @@ export function workClient(service: ServiceBinding): WorkApi {
       call("get_work_session", { repo, id, viewer, after_seq: afterSeq }),
     endWorkSession: (actor, repo, id) => call("end_session", { actor, repo, id, by_hand: true }),
     pullSessions: (repo, viewer, numbers) => call("pull_sessions", { repo, viewer, numbers }),
-    listDecisions: (repo, number, viewer) => call("list_decisions", { repo, number, viewer }),
+    listDecisions: (thread, viewer) => call("list_decisions", { ...threadArgs(thread), viewer }),
   };
 }
 
