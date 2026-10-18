@@ -1,20 +1,23 @@
 //! `github.event`: the webhook-shaped payload GitHub gives a workflow,
 //! built from g1t's own records so `github.event.pull_request.number`,
-//! `github.event.issue.labels.*.name` and the like read as they do there.
+//! `github.event.pull_request.labels.*.name` and the like read as they do
+//! there. g1t's `work_item` and `work_item_comment` events give
+//! `github.event.work_item`, shaped as GitHub's `issue` is, with the
+//! workspace and the repositories it is linked to.
 //!
 //! Ids are as GitHub's are: `id` a whole number, the same for an object
 //! wherever it appears ([`github_id`] of its g1t id, [`account_id`] of a
 //! person's or workspace's name), and `node_id` g1t's own id. What g1t's
 //! API addresses by its own id keeps that id as `id`, so a payload's id
 //! can be passed straight back to the API: a comment (`PATCH
-//! /repos/{owner}/{repo}/issues/comments/{comment_id}`), a release, a
+//! /workspaces/{workspace}/work/comments/{comment_id}`), a release, a
 //! deployment and its statuses, and a workflow run.
 
 use g1t_actions::events::{account_id, github_id};
 use g1t_contracts::{PrincipalKind, User};
 use g1t_contracts::repos::{Commit, Repo, RepoPath};
 use g1t_contracts::repos::FileStatus;
-use g1t_contracts::work::{Comment, DEFAULT_LABELS, Issue, Label, MilestoneRef, Pull, PullStatus, State, label_color_for};
+use g1t_contracts::work::{Comment, DEFAULT_LABELS, Label, MilestoneRef, Pull, PullStatus, State, WorkItem, label_color_for};
 use serde_json::{Value, json};
 
 use crate::{API, SITE};
@@ -139,13 +142,14 @@ fn labels(repo: &Repo, names: &[String]) -> Value {
     Value::Array(names.iter().map(|name| label(repo, name, None)).collect())
 }
 
-/// A label, by its name in `repo`. Its `color` is the one g1t gives a
-/// label of that name until [`color_labels`] sets the repository's own;
-/// `default` is whether it is one of the labels a repository starts with.
+/// A label, by its name in `repo`'s workspace, which keeps the labels of
+/// all its repositories. Its `color` is the one g1t gives a label of that
+/// name until [`color_labels`] sets the workspace's own; `default` is
+/// whether it is one of the labels a workspace starts with.
 fn label(repo: &Repo, name: &str, color: Option<&Value>) -> Value {
     json!({
-        "id": github_id(&format!("{}:label:{name}", repo.id)),
-        "node_id": format!("{}:label:{name}", repo.id),
+        "id": github_id(&format!("{}:label:{name}", repo.owner_id)),
+        "node_id": format!("{}:label:{name}", repo.owner_id),
         "name": name,
         "color": color.filter(|c| c.is_string()).cloned().unwrap_or_else(|| json!(label_color_for(name))),
         "description": DEFAULT_LABELS.iter().find(|(known, _, _)| *known == name).map(|(_, _, about)| *about),
@@ -154,7 +158,7 @@ fn label(repo: &Repo, name: &str, color: Option<&Value>) -> Value {
 }
 
 /// Gives every label in a payload (`labels[]` and `label`) the color and
-/// description the repository has for it (work's `list_labels`).
+/// description the workspace has for it (work's `list_labels`).
 pub fn color_labels(payload: &mut Value, known: &[Label]) {
     fn set(label: &mut Value, known: &[Label]) {
         let Some(found) = label["name"].as_str().and_then(|name| known.iter().find(|k| k.name == name)) else { return };
@@ -184,17 +188,18 @@ pub fn has_labels(payload: &Value) -> bool {
     }
 }
 
-/// A milestone as an issue or a pull request names it.
+/// A milestone as a work item or a pull request names it: one of the
+/// workspace's.
 fn milestone(repo: &Repo, milestone: Option<&MilestoneRef>) -> Value {
     milestone.map_or(Value::Null, |milestone| milestone_of(repo, milestone.number, &json!(milestone.title)))
 }
 
 fn milestone_of(repo: &Repo, number: u32, title: &Value) -> Value {
     json!({
-        "id": github_id(&format!("{}:milestone:{number}", repo.id)),
+        "id": github_id(&format!("{}:milestone:{number}", repo.owner_id)),
         "number": number,
         "title": title,
-        "html_url": format!("{SITE}/{}/{}/milestones/{number}", repo.namespace, repo.name),
+        "html_url": format!("{SITE}/{}/-/work/milestones/{number}", repo.namespace),
     })
 }
 
@@ -276,32 +281,88 @@ pub fn push(
     })
 }
 
-pub fn issue(repo: &Repo, issue: &Issue) -> Value {
-    let full_name = format!("{}/{}", repo.namespace, repo.name);
+/// Where a work item is on g1t.sh, and in the API.
+fn work_item_urls(workspace: &str, number: u32) -> (String, String) {
+    (format!("{SITE}/{workspace}/-/work/{number}"), format!("{API}/workspaces/{workspace}/work/{number}"))
+}
+
+/// A work item, as `github.event.work_item`: GitHub's `issue`, with g1t's
+/// own fields beside it: its `workspace`, the `repos` it is linked to (each
+/// with its role and whether the work landed there), what resolved it,
+/// and what it is blocked by. `repo` is the run's repository, which is one
+/// of them.
+pub fn work_item(repo: &Repo, item: &WorkItem) -> Value {
+    let (html_url, url) = work_item_urls(&item.workspace, item.number);
+    let repos: Vec<Value> = item
+        .repos
+        .iter()
+        .map(|linked| {
+            json!({
+                "id": github_id(&linked.repo_id),
+                "node_id": linked.repo_id,
+                "full_name": linked.path,
+                "role": linked.role.as_str(),
+                "legacy_number": linked.legacy_number,
+                "landed": linked.landed,
+            })
+        })
+        .collect();
+    let resolutions: Vec<Value> = item.resolutions.iter().map(resolution).collect();
     json!({
-        "id": github_id(&issue.id),
-        "node_id": issue.id,
-        "number": issue.number,
-        "title": issue.title,
-        "body": issue.body,
-        "state": if issue.state == State::Open { "open" } else { "closed" },
-        "state_reason": issue.reason,
+        "id": github_id(&item.id),
+        "node_id": item.id,
+        "number": item.number,
+        "title": item.title,
+        "body": item.body,
+        "state": if item.state == State::Open { "open" } else { "closed" },
+        "state_reason": item.reason,
         "locked": false,
-        "labels": labels(repo, &issue.labels),
-        "milestone": milestone(repo, issue.milestone.as_ref()),
-        "user": person(&issue.author),
-        // g1t's own field: for an issue its agent filed, who it worked for.
-        "requested_by": issue.requested_by.as_ref().map(person),
-        "assignee": issue.assignees.first().map(|a| user(a)),
-        "assignees": people(&issue.assignees),
-        "comments": issue.comment_count,
-        "created_at": issue.created_at,
-        "updated_at": issue.updated_at,
-        "closed_at": issue.closed_at,
-        "html_url": format!("{SITE}/{full_name}/issues/{}", issue.number),
-        "url": format!("{API}/repos/{full_name}/issues/{}", issue.number),
-        "repository_url": format!("{API}/repos/{full_name}"),
+        "labels": labels(repo, &item.labels),
+        "milestone": milestone(repo, item.milestone.as_ref()),
+        "user": person(&item.author),
+        // g1t's own field: for one its agent filed, who it worked for.
+        "requested_by": item.requested_by.as_ref().map(person),
+        "assignee": item.assignees.first().map(|a| user(a)),
+        "assignees": people(&item.assignees),
+        "comments": item.comment_count,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+        "closed_at": item.closed_at,
+        "html_url": html_url,
+        "url": url,
+        "workspace": item.workspace,
+        "workspace_url": format!("{API}/workspaces/{}", item.workspace),
+        "repos": repos,
+        "resolutions": resolutions,
+        "blocked_by": item.blocked_by,
+        "pull_count": item.pull_count,
     })
+}
+
+/// What resolved a work item in one repository, as the payload names it.
+fn resolution(resolution: &g1t_contracts::work::Resolution) -> Value {
+    json!({
+        "repository": resolution.repo,
+        "pull": resolution.pull,
+        "commit": resolution.commit,
+        "pushed_by": resolution.pushed_by.as_deref().map(user),
+    })
+}
+
+/// What a `work_item` event says besides the item: on `linked` and
+/// `unlinked`, the repository and its role (`link`); on `landed` and on a
+/// close a landing caused, what landed (`resolution`) and the targets it
+/// has still to land in (`missing`).
+pub fn work_item_changed(payload: &mut Value, data: &Value) {
+    if let Some(path) = data["repo"].as_str() {
+        payload["link"] = json!({ "repository": path, "role": data["role"] });
+    }
+    if let Ok(landed) = serde_json::from_value::<g1t_contracts::work::Resolution>(data["resolution"].clone()) {
+        payload["resolution"] = resolution(&landed);
+    }
+    if let Some(missing) = data.get("missing").filter(|missing| missing.is_array()) {
+        payload["missing"] = missing.clone();
+    }
 }
 
 /// A pull request, with its own labels. `base.sha` is the pull request's
@@ -372,7 +433,12 @@ pub fn pull(repo: &Repo, pull: &Pull) -> Value {
         "closed_at": closed_at,
         "html_url": format!("{SITE}/{full_name}/pull/{}", pull.number),
         "url": format!("{API}/repos/{full_name}/pulls/{}", pull.number),
-        "issue_url": format!("{API}/repos/{full_name}/issues/{}", pull.number),
+        // g1t's own: the work item it is for, by its number in the
+        // repository's workspace, and those it closes and is part of.
+        "item": pull.item,
+        "item_url": pull.item.map(|number| work_item_urls(&repo.namespace, number).1),
+        "closes": pull.closes,
+        "parts": pull.parts,
     })
 }
 
@@ -402,11 +468,40 @@ pub fn head_ref(pull: &Pull) -> String {
     pull.branch.clone().unwrap_or_else(|| format!("pull/{}", pull.number))
 }
 
+/// What a comment is on: a work item of a workspace, or a pull request of
+/// the run's repository.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Thread<'a> {
+    Item { workspace: &'a str },
+    Pull,
+}
+
+impl Thread<'_> {
+    /// Where the thread numbered `number` is on g1t.sh, and in the API.
+    fn urls(self, repo: &Repo, number: u32) -> (String, String) {
+        match self {
+            Thread::Item { workspace } => work_item_urls(workspace, number),
+            Thread::Pull => {
+                let full_name = format!("{}/{}", repo.namespace, repo.name);
+                (format!("{SITE}/{full_name}/pull/{number}"), format!("{API}/repos/{full_name}/pulls/{number}"))
+            }
+        }
+    }
+
+    /// Where the API edits and deletes a comment on it, by its id.
+    fn comment_url(self, repo: &Repo, id: &str) -> String {
+        let workspace = match self {
+            Thread::Item { workspace } => workspace,
+            Thread::Pull => &repo.namespace,
+        };
+        format!("{API}/workspaces/{workspace}/work/comments/{id}")
+    }
+}
+
 /// A comment. Its `id` is g1t's (`cmt_…`), as the API takes it back to
 /// edit or delete it.
-pub fn comment(repo: &Repo, number: u32, comment: &Comment, on_pull: bool) -> Value {
-    let full_name = format!("{}/{}", repo.namespace, repo.name);
-    let page = if on_pull { "pull" } else { "issues" };
+pub fn comment(repo: &Repo, number: u32, comment: &Comment, on: Thread) -> Value {
+    let (html_url, item_url) = on.urls(repo, number);
     json!({
         "id": comment.id,
         "node_id": comment.id,
@@ -416,9 +511,9 @@ pub fn comment(repo: &Repo, number: u32, comment: &Comment, on_pull: bool) -> Va
         "updated_at": comment.edited_at.as_deref().unwrap_or(&comment.created_at),
         "path": comment.path,
         "line": comment.line,
-        "html_url": format!("{SITE}/{full_name}/{page}/{number}#{}", comment.id),
-        "url": format!("{API}/repos/{full_name}/issues/comments/{}", comment.id),
-        "issue_url": format!("{API}/repos/{full_name}/issues/{number}"),
+        "html_url": format!("{html_url}#{}", comment.id),
+        "url": on.comment_url(repo, &comment.id),
+        "item_url": item_url,
     })
 }
 
@@ -442,13 +537,14 @@ pub fn review(repo: &Repo, pull: &Pull, review: Option<&Comment>) -> Value {
     })
 }
 
-/// An issue as `issue_comment` gives it for a pull request: the pull
-/// request's number and title, with `pull_request` set. Its id is not the
-/// pull request's, as on GitHub, where the two are different objects.
-pub fn pull_as_issue(repo: &Repo, pull: &Pull) -> Value {
+/// A pull request as `work_item_comment` gives it in `work_item`, as
+/// GitHub's `issue_comment` gives one in `issue`: the pull request's
+/// number and title, with `pull_request` set. Its id is not the pull
+/// request's, as on GitHub, where the two are different objects.
+pub fn pull_as_item(repo: &Repo, pull: &Pull) -> Value {
     let full_name = format!("{}/{}", repo.namespace, repo.name);
     json!({
-        "id": github_id(&format!("issue:{}", pull.id)),
+        "id": github_id(&format!("item:{}", pull.id)),
         "node_id": pull.id,
         "number": pull.number,
         "title": pull.title,
@@ -465,8 +561,9 @@ pub fn pull_as_issue(repo: &Repo, pull: &Pull) -> Value {
         "created_at": pull.created_at,
         "updated_at": pull.updated_at,
         "html_url": format!("{SITE}/{full_name}/pull/{}", pull.number),
-        "url": format!("{API}/repos/{full_name}/issues/{}", pull.number),
+        "url": format!("{API}/repos/{full_name}/pulls/{}", pull.number),
         "repository_url": format!("{API}/repos/{full_name}"),
+        "workspace": repo.namespace,
         "pull_request": {
             "url": format!("{API}/repos/{full_name}/pulls/{}", pull.number),
             "html_url": format!("{SITE}/{full_name}/pull/{}", pull.number),
@@ -477,9 +574,8 @@ pub fn pull_as_issue(repo: &Repo, pull: &Pull) -> Value {
 
 /// A comment as the event that deleted it kept it (`comment.deleted`'s
 /// `comment`), since it can no longer be read.
-pub fn deleted_comment(repo: &Repo, number: u32, kept: &Value, on_pull: bool) -> Value {
-    let full_name = format!("{}/{}", repo.namespace, repo.name);
-    let page = if on_pull { "pull" } else { "issues" };
+pub fn deleted_comment(repo: &Repo, number: u32, kept: &Value, on: Thread) -> Value {
+    let (html_url, item_url) = on.urls(repo, number);
     let id = kept["id"].as_str().unwrap_or_default();
     let login = kept["author"]["username"].as_str().unwrap_or_default();
     json!({
@@ -491,9 +587,9 @@ pub fn deleted_comment(repo: &Repo, number: u32, kept: &Value, on_pull: bool) ->
         "updated_at": kept["editedAt"].as_str().map_or(kept["createdAt"].clone(), |at| json!(at)),
         "path": kept["path"],
         "line": kept["line"],
-        "html_url": format!("{SITE}/{full_name}/{page}/{number}#{id}"),
-        "url": format!("{API}/repos/{full_name}/issues/comments/{id}"),
-        "issue_url": format!("{API}/repos/{full_name}/issues/{number}"),
+        "html_url": format!("{html_url}#{id}"),
+        "url": on.comment_url(repo, id),
+        "item_url": item_url,
     })
 }
 
@@ -702,7 +798,13 @@ mod github_shapes {
     const KNOWN: &[(&str, &str, &str)] = &[
         // The API addresses these by g1t's own id, so the payload gives
         // that id, to be passed straight back.
-        ("issue_comment", "comment.id", "string"),
+        ("work_item_comment", "comment.id", "string"),
+        // A work item belongs to a workspace, not to one repository: it
+        // has `workspace_url` and `repos`, and its comments `item_url`.
+        // A pull request has `item_url` for its work item.
+        ("work_item", "work_item.repository_url", "absent"),
+        ("work_item_comment", "comment.issue_url", "absent"),
+        ("pull_request", "pull_request.issue_url", "absent"),
         ("release", "release.id", "string"),
         ("workflow_run", "workflow_run.id", "string"),
         ("workflow_run", "workflow_run.workflow_id", "string"),
@@ -774,7 +876,7 @@ mod github_shapes {
 
     fn a_pull() -> Pull {
         serde_json::from_value(json!({
-            "id": "pr_01kq000000000000000000000a", "repoId": "rep_1", "number": 2, "issue": null,
+            "id": "pr_01kq000000000000000000000a", "repoId": "rep_1", "number": 2, "item": null,
             "title": "Update the README with new information.", "body": "A simple change.",
             "agent": "", "runtime": "external", "status": "open",
             "fork": null, "forkRepoId": null, "branch": "changes",
@@ -788,13 +890,18 @@ mod github_shapes {
         .unwrap()
     }
 
-    fn an_issue() -> Issue {
+    fn an_item() -> WorkItem {
         serde_json::from_value(json!({
-            "id": "iss_01kq000000000000000000000a", "repoId": "rep_1", "number": 1,
+            "id": "wki_01kq000000000000000000000a", "workspace": "acme", "number": 1,
             "title": "Spelling error in the README file", "body": "Two t's.", "labels": ["bug"], "state": "open",
-            "reason": null, "resolvedBy": null, "author": someone("usr_1", "ada"), "requestedBy": null,
+            "reason": null, "author": someone("usr_1", "ada"), "requestedBy": null,
             "createdAt": "2026-05-15T15:20:18Z", "updatedAt": "2026-05-15T15:20:18Z", "closedAt": null,
-            "pullCount": 0, "commentCount": 0, "assignees": ["bo"], "milestone": { "number": 1, "title": "v1.0" }
+            "pullCount": 0, "commentCount": 0, "assignees": ["bo"], "milestone": { "number": 1, "title": "v1.0" },
+            "repos": [
+                { "repoId": "rep_01kpw0aaaaaaaaaaaaaaaaaaaa", "path": "acme/web", "role": "origin", "legacyNumber": 7 },
+                { "repoId": "rep_2", "path": "acme/api", "role": "target", "landed": true }
+            ],
+            "resolutions": [{ "repo": "acme/api", "pull": 3, "pushedBy": "bo" }]
         }))
         .unwrap()
     }
@@ -822,7 +929,7 @@ mod github_shapes {
         let pull = a_pull();
         let mut push = push(&repo, "refs/heads/main", Some("6113728f27ae82c7b1a177c8d03f9e96e0adf246"), &a_commit().hash, &[a_commit()], "ada", Some("0d0efg+ada@users.noreply.g1t.sh"), false);
         push_changes(&mut push, &[("README.md".into(), FileStatus::Modified)]);
-        let known = [Label { name: "bug".into(), color: "d73a4a".into(), description: "Something isn't working".into(), issues: 1, pulls: 1 }];
+        let known = [Label { name: "bug".into(), color: "d73a4a".into(), description: "Something isn't working".into(), items: 1, pulls: 1 }];
         let mut pull_request = json!({
             "action": "opened", "number": 2, "pull_request": self::pull(&repo, &pull),
             "repository": repository(&repo), "sender": user("ada"),
@@ -832,17 +939,17 @@ mod github_shapes {
             "action": "submitted", "review": self::review(&repo, &pull, Some(&a_comment(Some(Verdict::Approve)))),
             "pull_request": self::pull(&repo, &pull), "repository": repository(&repo), "sender": user("cy"),
         });
-        let mut issues = json!({ "action": "labeled", "issue": issue(&repo, &an_issue()), "repository": repository(&repo), "sender": user("ada") });
-        changed(&repo, &mut issues, &json!({ "label": { "name": "bug", "color": "d73a4a" } }));
-        color_labels(&mut issues, &known);
+        let mut items = json!({ "action": "labeled", "work_item": work_item(&repo, &an_item()), "repository": repository(&repo), "sender": user("ada") });
+        changed(&repo, &mut items, &json!({ "label": { "name": "bug", "color": "d73a4a" } }));
+        color_labels(&mut items, &known);
         let mut on_pull = pull.clone();
         on_pull.labels.clear();
         on_pull.assignees.clear();
         on_pull.milestone = None;
         let mut comment = a_comment(None);
         comment.author = someone("usr_1", "ada");
-        let issue_comment = json!({
-            "action": "created", "issue": pull_as_issue(&repo, &on_pull), "comment": self::comment(&repo, 2, &comment, true),
+        let item_comment = json!({
+            "action": "created", "work_item": pull_as_item(&repo, &on_pull), "comment": self::comment(&repo, 2, &comment, Thread::Pull),
             "repository": repository(&repo), "sender": user("ada"),
         });
         let data = json!({
@@ -883,25 +990,32 @@ mod github_shapes {
             ("push", push),
             ("pull_request", pull_request),
             ("pull_request_review", review),
-            ("issues", issues),
-            ("issue_comment", issue_comment),
+            ("work_item", items),
+            ("work_item_comment", item_comment),
             ("workflow_run", workflow_run),
             ("release", release),
         ]
     }
 
+    /// GitHub's payload for an event, as g1t names it: `work_item` is
+    /// shaped as GitHub's `issues`, with `work_item` in place of `issue`,
+    /// and `work_item_comment` as its `issue_comment`.
     fn fixture(event: &str) -> Value {
         let text = match event {
             "push" => include_str!("../tests/fixtures/push.json"),
             "pull_request" => include_str!("../tests/fixtures/pull_request.json"),
             "pull_request_review" => include_str!("../tests/fixtures/pull_request_review.json"),
-            "issues" => include_str!("../tests/fixtures/issues.json"),
-            "issue_comment" => include_str!("../tests/fixtures/issue_comment.json"),
+            "work_item" => include_str!("../tests/fixtures/issues.json"),
+            "work_item_comment" => include_str!("../tests/fixtures/issue_comment.json"),
             "workflow_run" => include_str!("../tests/fixtures/workflow_run.json"),
             "release" => include_str!("../tests/fixtures/release.json"),
             other => panic!("no fixture for {other}"),
         };
-        serde_json::from_str(text).unwrap()
+        let mut payload: Value = serde_json::from_str(text).unwrap();
+        if let Some(issue) = payload.as_object_mut().and_then(|map| map.remove("issue")) {
+            payload["work_item"] = issue;
+        }
+        payload
     }
 
     #[test]
@@ -930,7 +1044,7 @@ mod github_shapes {
     fn the_same_object_has_the_same_number_everywhere() {
         let all = payloads();
         let by = |event: &str| all.iter().find(|(e, _)| *e == event).map(|(_, v)| v.clone()).unwrap();
-        let (pr, issues, run) = (by("pull_request"), by("issues"), by("workflow_run"));
+        let (pr, items, run) = (by("pull_request"), by("work_item"), by("workflow_run"));
         let repo_id = &pr["repository"]["id"];
         assert_eq!(repo_id, &json!(github_id(&repo().id)), "github.repository_id is the same number");
         assert_eq!(&pr["pull_request"]["base"]["repo"]["id"], repo_id);
@@ -941,9 +1055,9 @@ mod github_shapes {
         assert_eq!(pr["sender"]["id"], json!(account_id("ada")), "github.actor_id is the same number");
         assert_eq!(pr["repository"]["owner"]["id"], pr["pull_request"]["head"]["user"]["id"]);
         assert_eq!(pr["repository"]["owner"]["id"], json!(account_id("acme")));
-        assert_eq!(pr["pull_request"]["labels"][0]["id"], issues["label"]["id"]);
-        // A pull request's own id and its issue's are different objects.
-        assert_ne!(pull_as_issue(&repo(), &a_pull())["id"], pr["pull_request"]["id"]);
+        assert_eq!(pr["pull_request"]["labels"][0]["id"], items["label"]["id"]);
+        // A pull request's own id and its id as a thread are different objects.
+        assert_ne!(pull_as_item(&repo(), &a_pull())["id"], pr["pull_request"]["id"]);
         assert_eq!(pr["pull_request"]["node_id"], a_pull().id);
     }
 
@@ -999,19 +1113,55 @@ mod github_shapes {
     }
 
     #[test]
-    fn labels_have_the_repositorys_colors() {
+    fn a_work_item_names_its_workspace_and_repositories() {
         let repo = repo();
-        let mut event = json!({ "issue": issue(&repo, &an_issue()), "label": label(&repo, "bug", None) });
+        let item = work_item(&repo, &an_item());
+        assert_eq!(item["html_url"], "https://g1t.sh/acme/-/work/1");
+        assert_eq!(item["url"], format!("{API}/workspaces/acme/work/1"));
+        assert_eq!(item["workspace"], "acme");
+        assert_eq!(item["number"], 1);
+        assert_eq!(item["node_id"], "wki_01kq000000000000000000000a");
+        assert_eq!(item["repos"][0]["full_name"], "acme/web");
+        assert_eq!(item["repos"][0]["role"], "origin");
+        assert_eq!(item["repos"][0]["legacy_number"], 7);
+        assert_eq!(item["repos"][0]["id"], json!(github_id(&repo.id)), "the same number as the repository's");
+        assert_eq!(item["repos"][1]["role"], "target");
+        assert_eq!(item["repos"][1]["landed"], true);
+        assert_eq!(item["resolutions"][0]["repository"], "acme/api");
+        assert_eq!(item["resolutions"][0]["pull"], 3);
+        assert_eq!(item["resolutions"][0]["pushed_by"]["login"], "bo");
+        assert_eq!(item["milestone"]["html_url"], "https://g1t.sh/acme/-/work/milestones/1");
+        // A label is the workspace's: the same object on a pull request.
+        assert_eq!(item["labels"][0]["id"], pull(&repo, &a_pull())["labels"][0]["id"]);
+        // What a link, a landing and a close say.
+        let mut linked = json!({ "action": "linked" });
+        work_item_changed(&mut linked, &json!({ "repo": "acme/api", "role": "target" }));
+        assert_eq!(linked["link"], json!({ "repository": "acme/api", "role": "target" }));
+        let mut landed = json!({ "action": "landed" });
+        work_item_changed(&mut landed, &json!({ "resolution": { "repo": "acme/api", "commit": "abc" }, "missing": ["acme/web"] }));
+        assert_eq!(landed["resolution"]["commit"], "abc");
+        assert_eq!(landed["missing"], json!(["acme/web"]));
+        assert!(landed.get("link").is_none());
+        // A comment on it is addressed in its workspace.
+        let on_item = comment(&repo, 1, &a_comment(None), Thread::Item { workspace: "acme" });
+        assert_eq!(on_item["html_url"], "https://g1t.sh/acme/-/work/1#cmt_01kq000000000000000000000a");
+        assert_eq!(on_item["item_url"], format!("{API}/workspaces/acme/work/1"));
+    }
+
+    #[test]
+    fn labels_have_the_workspaces_colors() {
+        let repo = repo();
+        let mut event = json!({ "work_item": work_item(&repo, &an_item()), "label": label(&repo, "bug", None) });
         // Before the repository's are known, g1t's default for the name.
-        assert_eq!(event["issue"]["labels"][0]["color"], "d73a4a");
-        assert_eq!(event["issue"]["labels"][0]["default"], true);
+        assert_eq!(event["work_item"]["labels"][0]["color"], "d73a4a");
+        assert_eq!(event["work_item"]["labels"][0]["default"], true);
         assert!(has_labels(&event));
-        let known = [Label { name: "bug".into(), color: "123456".into(), description: String::new(), issues: 1, pulls: 0 }];
+        let known = [Label { name: "bug".into(), color: "123456".into(), description: String::new(), items: 1, pulls: 0 }];
         color_labels(&mut event, &known);
-        assert_eq!(event["issue"]["labels"][0]["color"], "123456");
-        assert_eq!(event["issue"]["labels"][0]["description"], Value::Null);
+        assert_eq!(event["work_item"]["labels"][0]["color"], "123456");
+        assert_eq!(event["work_item"]["labels"][0]["description"], Value::Null);
         assert_eq!(event["label"]["color"], "123456");
-        assert!(!has_labels(&json!({ "issue": { "labels": [] } })));
+        assert!(!has_labels(&json!({ "work_item": { "labels": [] } })));
     }
 
     #[test]

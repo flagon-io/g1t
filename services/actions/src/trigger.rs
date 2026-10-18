@@ -9,7 +9,7 @@ use g1t_contracts::actions::{DispatchArgs, RepositoryDispatchArgs, WorkflowRun};
 use g1t_contracts::events::{Event, caused_by_job};
 use g1t_contracts::identity::{AGENT_ID, AGENT_NAME, UsernamesArgs};
 use g1t_contracts::repos::{Commit, CompareArgs, Comparison, FileStatus, LogArgs, PullMergeRef, PullMergeRefArgs, Repo, RepoPath};
-use g1t_contracts::work::{IssueDetail, Label, PullDetail, ViewArgs};
+use g1t_contracts::work::{Label, PullDetail, ViewArgs, WorkItemDetail, WorkItemViewArgs, WorkspaceViewArgs};
 use g1t_contracts::{FailureCode, Outcome, User, new_id};
 use g1t_contracts::time::rfc3339;
 use g1t_kit::now_ms;
@@ -130,6 +130,24 @@ fn nobody_added(data: &Value) -> bool {
     data["added"].as_array().is_some_and(Vec::is_empty)
 }
 
+/// The repositories whose workflows an event may start: every repository a
+/// work item is linked to (`repoIds`, on its events and on comments on it),
+/// else the one the event is filed under.
+fn event_repos(event: &Event) -> Vec<String> {
+    let mut repos: Vec<String> = Vec::new();
+    for id in event.data["repoIds"].as_array().into_iter().flatten().filter_map(Value::as_str) {
+        if !id.is_empty() && !repos.iter().any(|known| known == id) {
+            repos.push(id.to_owned());
+        }
+    }
+    if repos.is_empty()
+        && let Some(id) = event.repo_id.as_deref().filter(|id| !id.is_empty())
+    {
+        repos.push(id.to_owned());
+    }
+    repos
+}
+
 /// Whether whoever a pull request is for is trusted without asking
 /// identity: someone whose role here is known to allow pushing.
 fn trusted_outright(owner: &User, repo: &Repo) -> bool {
@@ -247,12 +265,12 @@ impl Actions {
         Ok(compared.into_result().map(|c| c.files.into_iter().map(|f| (f.path, f.status)).collect()).unwrap_or_default())
     }
 
-    /// The repository's labels, for their colors, when `payload` has any.
+    /// The workspace's labels, for their colors, when `payload` has any.
     async fn label_colors(&self, repo: &Repo, ws: &User, payload: &mut Value) -> Result<()> {
         if !payload::has_labels(payload) {
             return Ok(());
         }
-        let args = ViewArgs { repo: Self::repo_path(repo), number: 0, viewer: Some(ws.clone()), after_seq: 0 };
+        let args = WorkspaceViewArgs { workspace: repo.namespace.clone(), viewer: Some(ws.clone()) };
         let labels: Outcome<Vec<Label>> = g1t_kit::call(&self.work, "list_labels", &args).await?;
         if let Outcome::Ok(labels) = labels {
             payload::color_labels(payload, &labels);
@@ -609,35 +627,44 @@ impl Actions {
                 subject.filter_ref = format!("refs/heads/{head_branch}");
                 Some(subject)
             }
-            "issues" | "issue_comment" => {
+            // A work item, or a comment on one or on a pull request: on the
+            // default branch, as GitHub's `issues` and `issue_comment` are.
+            "work_item" | "work_item_comment" => {
                 let Some(number) = data["number"].as_u64().map(|n| n as u32) else { return Ok(None) };
                 if action == Some("assigned") && nobody_added(data) {
                     return Ok(None);
                 }
+                let on_pull = event_name == "work_item_comment" && data["pullId"].is_string();
+                let workspace = data["workspace"].as_str().unwrap_or(&repo.namespace).to_owned();
                 let Some(sha) = self.default_head(repo).await? else { return Ok(None) };
-                let issue: Outcome<IssueDetail> = g1t_kit::call(&self.work, "get_issue", &view(number)).await?;
-                let (issue_json, comments, title, on_pull) = match issue {
-                    Outcome::Ok(detail) => (payload::issue(repo, &detail.issue), detail.comments, detail.issue.title.clone(), false),
-                    Outcome::Fail(_) => {
-                        let pull: Outcome<PullDetail> = g1t_kit::call(&self.work, "get_pull", &view(number)).await?;
-                        let Outcome::Ok(detail) = pull else { return Ok(None) };
-                        (payload::pull_as_issue(repo, &detail.pull), detail.comments, detail.pull.title.clone(), true)
-                    }
+                let (item_json, comments, title, thread) = if on_pull {
+                    let pull: Outcome<PullDetail> = g1t_kit::call(&self.work, "get_pull", &view(number)).await?;
+                    let Outcome::Ok(detail) = pull else { return Ok(None) };
+                    (payload::pull_as_item(repo, &detail.pull), detail.comments, detail.pull.title.clone(), payload::Thread::Pull)
+                } else {
+                    let args = WorkItemViewArgs { workspace: workspace.clone(), number, viewer: Some(ws.clone()) };
+                    let item: Outcome<WorkItemDetail> = g1t_kit::call(&self.work, "get_work_item", &args).await?;
+                    let Outcome::Ok(detail) = item else { return Ok(None) };
+                    let thread = payload::Thread::Item { workspace: &workspace };
+                    (payload::work_item(repo, &detail.item), detail.comments, detail.item.title.clone(), thread)
                 };
                 let mut payload = json!({
                     "action": action,
-                    "issue": issue_json,
+                    "work_item": item_json,
                     "repository": payload::repository(repo),
                     "sender": payload::user(sender),
                 });
                 payload::changed(repo, &mut payload, data);
+                if event_name == "work_item" {
+                    payload::work_item_changed(&mut payload, data);
+                }
                 self.label_colors(repo, ws, &mut payload).await?;
-                if event_name == "issue_comment" {
+                if event_name == "work_item_comment" {
                     let comment_id = data["commentId"].as_str();
                     if action == Some("deleted") {
                         // Gone by now: as the event kept it.
                         match data.get("comment").filter(|kept| kept.is_object()) {
-                            Some(kept) => payload["comment"] = payload::deleted_comment(repo, number, kept, on_pull),
+                            Some(kept) => payload["comment"] = payload::deleted_comment(repo, number, kept, thread),
                             None => return Ok(None),
                         }
                     } else {
@@ -645,7 +672,7 @@ impl Actions {
                         // A new comment is the newest; an edited one must be found.
                         let comment = if action == Some("created") { comment.or(comments.last()) } else { comment };
                         match comment {
-                            Some(comment) => payload["comment"] = payload::comment(repo, number, comment, on_pull),
+                            Some(comment) => payload["comment"] = payload::comment(repo, number, comment, thread),
                             None => return Ok(None),
                         }
                     }
@@ -762,7 +789,14 @@ impl Actions {
     pub async fn on_event(&self, event: &Event) -> Result<()> {
         // Each queued event reads repositories' settings afresh.
         self.actions_on.clear();
-        let Some(repo_id) = event.repo_id.as_deref() else { return Ok(()) };
+        for repo_id in event_repos(event) {
+            self.on_event_in(event, &repo_id).await?;
+        }
+        Ok(())
+    }
+
+    /// What `event` starts in one of the repositories it is about.
+    async fn on_event_in(&self, event: &Event, repo_id: &str) -> Result<()> {
         let mut mapped = github_events(&event.kind);
         // A new branch or tag is also `create`.
         if event.kind == "git.push" && event.data["before"].is_null() {
@@ -796,12 +830,12 @@ impl Actions {
         }
         let sender = self.username(event.actor.as_deref()).await?.unwrap_or_else(|| repo.namespace.clone());
         for (event_name, action) in mapped {
-            // Issues and comments start the default branch's workflows,
-            // which the synced table lists: when none listens, nothing is
-            // read from git. Agents make many of these events.
+            // Work items and comments start the default branch's
+            // workflows, which the synced table lists: when none listens,
+            // nothing is read from git. Agents make many of these events.
             // Deployments' statuses are as frequent (every g1t.page build
             // reports several), so they look there first too.
-            if matches!(event_name, "issues" | "issue_comment" | "deployment" | "deployment_status" | "delete")
+            if matches!(event_name, "work_item" | "work_item_comment" | "deployment" | "deployment_status" | "delete")
                 && self.listens(repo_id, event_name).await? == Some(false)
             {
                 continue;
@@ -1587,7 +1621,7 @@ mod tests {
 
     fn made_for(asker: User) -> Pull {
         serde_json::from_value(json!({
-            "id": "pr_1", "repoId": "rep_1", "number": 14, "issue": 12, "title": "Fix it", "body": null,
+            "id": "pr_1", "repoId": "rep_1", "number": 14, "item": 12, "title": "Fix it", "body": null,
             "agent": "g1t", "runtime": "hosted", "status": "open",
             "fork": { "namespace": "pulls", "name": "pr_1" }, "forkRepoId": "rep_f",
             "branch": null, "headCommit": "abc", "mergeBase": null, "mergedBy": null, "mergedAt": null,
@@ -1619,9 +1653,12 @@ mod tests {
         assert_eq!(event["user"]["type"], "Bot");
         assert_eq!(event["requested_by"]["login"], "syntaqx");
         assert_eq!(event["requested_by"]["type"], "User");
-        let as_issue = payload::pull_as_issue(&repo(), &pull);
-        assert_eq!(as_issue["user"]["login"], "g1t");
-        assert_eq!(as_issue["requested_by"]["login"], "syntaqx");
+        assert_eq!(event["item"], 12);
+        assert_eq!(event["item_url"], format!("{API}/workspaces/acme/work/12"));
+        let as_item = payload::pull_as_item(&repo(), &pull);
+        assert_eq!(as_item["user"]["login"], "g1t");
+        assert_eq!(as_item["requested_by"]["login"], "syntaqx");
+        assert!(as_item["pull_request"].is_object());
     }
 
     #[test]
@@ -1643,9 +1680,13 @@ mod tests {
         assert_eq!(status["environment"], "staging");
         assert_eq!(status["environment_url"], "https://s.example");
         assert_eq!(payload::deployment(&repo(), &deployment)["payload"], json!({}));
-        let gone = payload::deleted_comment(&repo(), 7, &json!({ "id": "cmt_1", "body": "hi", "author": { "id": "usr_1", "username": "bo" }, "createdAt": "t" }), true);
+        let gone = payload::deleted_comment(&repo(), 7, &json!({ "id": "cmt_1", "body": "hi", "author": { "id": "usr_1", "username": "bo" }, "createdAt": "t" }), payload::Thread::Pull);
         assert_eq!(gone["user"]["login"], "bo");
         assert_eq!(gone["html_url"], "https://g1t.sh/acme/web/pull/7#cmt_1");
+        let on_item = payload::deleted_comment(&repo(), 9, &json!({ "id": "cmt_2", "body": "hi", "author": { "username": "bo" } }), payload::Thread::Item { workspace: "acme" });
+        assert_eq!(on_item["html_url"], "https://g1t.sh/acme/-/work/9#cmt_2");
+        assert_eq!(on_item["item_url"], format!("{API}/workspaces/acme/work/9"));
+        assert_eq!(on_item["url"], format!("{API}/workspaces/acme/work/comments/cmt_2"));
         assert!(is_commit("0123456789abcdef0123456789abcdef01234567"));
         assert!(!is_commit("main"));
     }
@@ -1671,6 +1712,32 @@ mod tests {
         assert_eq!(assigned["assignee"]["login"], "bo");
         assert!(nobody_added(&serde_json::json!({ "assignees": ["ana"], "added": [] })));
         assert!(!nobody_added(&serde_json::json!({ "assignees": ["ana"], "added": ["ana"] })));
+    }
+
+    fn event(repo_id: Option<&str>, data: Value) -> Event {
+        Event {
+            id: "evt_1".into(),
+            kind: "work_item.opened".into(),
+            source: "work".into(),
+            time: "t".into(),
+            repo_id: repo_id.map(str::to_owned),
+            actor: None,
+            data,
+        }
+    }
+
+    #[test]
+    fn a_work_item_starts_runs_in_every_repository_it_is_linked_to() {
+        // Its origin first, each once.
+        let linked = event(Some("rep_1"), json!({ "itemId": "wki_1", "repoIds": ["rep_1", "rep_2", "rep_1"] }));
+        assert_eq!(event_repos(&linked), ["rep_1", "rep_2"]);
+        // One without an origin is filed under the first it is linked to.
+        assert_eq!(event_repos(&event(Some("rep_2"), json!({ "repoIds": ["rep_2", "rep_3"] }))), ["rep_2", "rep_3"]);
+        // Linked nowhere: no repository's workflows.
+        assert!(event_repos(&event(None, json!({ "repoIds": [] }))).is_empty());
+        // Anything else: the repository it is filed under.
+        assert_eq!(event_repos(&event(Some("rep_1"), json!({ "ref": "refs/heads/main" }))), ["rep_1"]);
+        assert!(event_repos(&event(None, json!({}))).is_empty());
     }
 
     fn dispatchable(yaml: &str) -> Trigger {
@@ -1753,5 +1820,72 @@ jobs:
         let trigger = workflow.trigger("delete").unwrap();
         assert!(trigger.wants_type(None));
         assert!(!workflow.notes.iter().any(|note| note.severity == workflow::Severity::Unsupported));
+    }
+}
+
+#[cfg(test)]
+mod work_item_runs {
+    use rusqlite::Connection;
+    use serde_json::{Value, json};
+
+    const MIGRATION: &str = "0024_work_items.sql";
+
+    /// The migrations before [`MIGRATION`], and [`MIGRATION`] itself.
+    fn migrations() -> (Vec<String>, String) {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
+        let mut names: Vec<String> = std::fs::read_dir(&dir).unwrap().map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        names.sort();
+        let read = |name: &str| std::fs::read_to_string(dir.join(name)).unwrap();
+        let before = names.iter().filter(|name| name.as_str() < MIGRATION).map(|name| read(name)).collect();
+        (before, read(MIGRATION))
+    }
+
+    fn run(db: &Connection, id: &str, event: &str, info: &Value) {
+        db.execute(
+            "INSERT INTO runs (id, workflow_id, repo_id, repo, path, name, title, number, event, action, git_ref, sha, status, source, info, event_key, created_at)
+             VALUES (?1, 'wfl_1', 'rep_1', 'acme/web', '.g1t/workflows/t.yml', 'T', 'T', 1, ?2, 'opened', 'refs/heads/main', 'abc', 'completed', '', ?3, ?1, 't')",
+            rusqlite::params![id, event, info.to_string()],
+        )
+        .unwrap();
+    }
+
+    fn row(db: &Connection, id: &str) -> (String, Value) {
+        db.query_row("SELECT event, info FROM runs WHERE id = ?1", [id], |row| {
+            Ok((row.get::<_, String>(0)?, serde_json::from_str(&row.get::<_, String>(1)?).unwrap()))
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn runs_issues_started_name_work_items() {
+        let db = Connection::open_in_memory().unwrap();
+        let (before, migration) = migrations();
+        for sql in before {
+            db.execute_batch(&sql).unwrap();
+        }
+        let issue = json!({ "number": 4, "labels": [{ "name": "bug" }] });
+        run(&db, "run_1", "issues", &json!({ "eventName": "issues", "event": { "action": "opened", "issue": issue } }));
+        run(&db, "run_2", "issue_comment", &json!({ "eventName": "issue_comment", "event": { "issue": issue, "comment": { "id": "cmt_1" } } }));
+        run(&db, "run_3", "push", &json!({ "eventName": "push", "event": { "ref": "refs/heads/main" } }));
+        run(&db, "run_4", "issues", &json!({ "eventName": "issues", "event": {} }));
+        db.execute_batch(&migration).unwrap();
+        let (event, info) = row(&db, "run_1");
+        assert_eq!(event, "work_item");
+        assert_eq!(info["eventName"], "work_item");
+        assert_eq!(info["event"]["work_item"], issue, "the item as an object, not text");
+        assert!(info["event"].get("issue").is_none());
+        assert_eq!(info["event"]["action"], "opened");
+        let (event, info) = row(&db, "run_2");
+        assert_eq!(event, "work_item_comment");
+        assert_eq!(info["eventName"], "work_item_comment");
+        assert_eq!(info["event"]["work_item"]["number"], 4);
+        assert_eq!(info["event"]["comment"]["id"], "cmt_1");
+        assert_eq!(row(&db, "run_3"), ("push".into(), json!({ "eventName": "push", "event": { "ref": "refs/heads/main" } })));
+        let (event, info) = row(&db, "run_4");
+        assert_eq!(event, "work_item");
+        assert!(info["event"].get("work_item").is_none(), "no item where there was no issue");
+        // Applied again, it changes nothing.
+        db.execute_batch(&migration).unwrap();
+        assert_eq!(row(&db, "run_1").0, "work_item");
     }
 }
