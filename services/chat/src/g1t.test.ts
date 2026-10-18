@@ -88,7 +88,7 @@ test("an earlier answer is read back with what it read in g1t, so it is not take
     { type: "sources", sources: [] },
   ];
   const rows = [
-    row("m1", ana, "Open issues in acme/rocket?"),
+    row("m1", ana, "Open work items in acme/rocket?"),
     row("m2", G1T_KEY, "There is no acme/rocket.", { answer: { state: "done", steps } }),
     row("m3", ana, "Did you check?"),
   ];
@@ -151,20 +151,21 @@ test("the conversation ends with the person and keeps within Ask's limits, newes
 });
 
 test("the page an answer is told is the newest question's, as sent from the top bar", () => {
-  const page = { path: "/acme/web/issues/12", repo: { namespace: "acme", name: "web" }, issue: 12, pull: null };
+  const page = { path: "/acme/-/work/12", repo: null, workspace: "acme", item: 12, pull: null };
   assert.deepEqual(latestPage([row("m1", ana, "Q", { page }), row("m2", G1T_KEY, "A", done)]), page);
   assert.equal(latestPage([row("m1", ana, "Q", { page }), row("m2", ana, "From chat")]), null);
-  assert.deepEqual(pageFrom({ path: "/acme/web", repo: { namespace: "acme", name: "web" }, issue: -1, extra: true }), {
+  assert.deepEqual(pageFrom({ path: "/acme/web", repo: { namespace: "acme", name: "web" }, item: -1, extra: true }), {
     path: "/acme/web",
     repo: { namespace: "acme", name: "web" },
-    issue: null,
+    workspace: null,
+    item: null,
     pull: null,
     time_zone: null,
   });
   // The browser's time zone is kept when it is one; anything else is dropped.
   assert.equal(pageFrom({ path: "/acme", time_zone: "America/Denver" })?.time_zone, "America/Denver");
   assert.equal(pageFrom({ path: "/acme", time_zone: "<script>" })?.time_zone, null);
-  assert.deepEqual(pageFrom({ time_zone: "Asia/Kolkata" }), { path: null, repo: null, issue: null, pull: null, time_zone: "Asia/Kolkata" });
+  assert.deepEqual(pageFrom({ time_zone: "Asia/Kolkata" }), { path: null, repo: null, workspace: null, item: null, pull: null, time_zone: "Asia/Kolkata" });
   assert.equal(pageFrom({ path: "https://elsewhere" }), null);
   assert.equal(pageFrom("nope"), null);
   assert.equal(metaColumn({}), null);
@@ -260,7 +261,7 @@ test("what a proposal's card did is kept on its answer, merged step by step", ()
   assert.deepEqual(made.state, { id: "proposal_1_0", starting_at: 5, repo_url: "/acme/hello", production_url: "https://hello-acme.g1t.page" });
   assert.equal(made.answer.steps!.length, 2);
   // A later step merges into the same one; unknown fields are dropped.
-  const started = withProposalState(made.answer, { id: "proposal_1_0", issue: 1, started: true, session_url: "/s", evil: "x" } as never)!;
+  const started = withProposalState(made.answer, { id: "proposal_1_0", item: 1, started: true, session_url: "/s", evil: "x" } as never)!;
   assert.equal(started.answer.steps!.length, 2);
   assert.deepEqual(started.answer.steps![1], {
     type: "proposal_state",
@@ -268,7 +269,7 @@ test("what a proposal's card did is kept on its answer, merged step by step", ()
     starting_at: 5,
     repo_url: "/acme/hello",
     production_url: "https://hello-acme.g1t.page",
-    issue: 1,
+    item: 1,
     started: true,
     session_url: "/s",
   });
