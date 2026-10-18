@@ -121,4 +121,4 @@ curl -X POST https://api.g1t.sh/workspaces/acme/labels \
 `PATCH /workspaces/{workspace}/work/{number}`, the `work_item` tool's
 `create` and `update`) and on `update_pull_request` set an item's labels,
 and `label` filters `list_work_items` and `list_pull_requests`. Managing
-labels needs a token with `work:write`.
+labels needs a token with `work:write`, and listing them `work:read`.

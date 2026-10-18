@@ -874,10 +874,10 @@ one.
 | `packages:read` | Pull container images and install private [packages](/guides/packages/). Public ones need no scope. |
 | `packages:write` | Push container images and publish packages; with the Admin role on a package, change its settings |
 | `packages:delete` | Delete and restore packages and their versions |
-| `work:read` | Read [work items](/guides/work-items/) and comments |
-| `work:write` | Open, edit, link, claim, close and comment on work items |
+| `work:read` | Read [work items](/guides/work-items/) and their comments, and the workspace's [labels](/guides/labels/) and [milestones](/guides/milestones/) |
+| `work:write` | Open, edit, link, claim, close, comment on and react to work items; manage labels and milestones |
 | `pull_requests:read` | Read pull requests, their changes, sessions and merge queues |
-| `pull_requests:write` | Open, review, close and merge pull requests |
+| `pull_requests:write` | Open, review, comment on, close and merge pull requests |
 | `workflows:read` | Read workflows, runs and logs |
 | `workflows:write` | Run, cancel, rerun and turn workflows on or off |
 | `workflow_files:write` | Add, change and delete [workflow files](#workflow-files) under `.g1t/workflows` and `.github/workflows`, with git or the API. Not in any preset. |

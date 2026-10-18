@@ -90,7 +90,7 @@ change a work item (`POST /workspaces/{workspace}/work`,
 `update_pull_request`; `null` or `0` takes it out. Work items and pull
 requests carry `milestone` as `{"number", "title"}`, and `milestone`
 filters `list_work_items` and `list_pull_requests`. Managing milestones
-needs a token with `work:write`.
+needs a token with `work:write`, and reading them `work:read`.
 
 [Dependency updates](/guides/dependency-updates/) put their pull requests
 in the milestone their entry's `milestone` names.

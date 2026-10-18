@@ -128,6 +128,12 @@ Filter it by state, label, milestone, assignee, repository and role (for
 example the items a repository is a target of). The address keeps the
 filters, so a filtered list can be shared.
 
+Work's sidebar has **Open**, **Assigned to you** and **Closed**, then
+**New work item**, **Labels** and **Milestones**. On a phone, the bar
+along the bottom is **Home**, **Work**, **Chat**, **Notifications** and
+**More**, with **Work** there for every member, Code access or not, and
+**Code** first in **More**. Tapping **Work** again opens that sidebar.
+
 A repository's **Work** tab is the same list, filtered to the work items
 linked to that repository: `g1t.sh/<workspace>/-/work?repo=<name>`.
 
@@ -143,9 +149,12 @@ workspace, with the repository as its origin:
 
 ```sh
 g1t work new --title "Sign-in times out on slow networks" --body "…"
+g1t work new --title "Rename the flag" --target acme/api --target acme/docs
 ```
 
-`--workspace` opens one in a workspace with no repository as its origin.
+`--target` names a repository it should land in; repeat it for more.
+`--workspace`, outside a repository of that workspace, opens one with no
+repository as its origin.
 
 ## Work on one
 
@@ -163,30 +172,40 @@ there when it merges.
 ## The CLI
 
 `g1t work` works on the current repository's workspace, or the one in
-`--workspace`. Every command takes `--json`.
+`--workspace` (or the `G1T_WORKSPACE` environment variable). `-R` (or
+`--repo`) `owner/name` names a repository instead of the current one:
+it filters `g1t work list`, and is the repository `g1t work link` and
+`g1t work unlink` act on. Every command takes `--json`.
 
 | Command | Does |
 | --- | --- |
-| `g1t work list` | Lists open work items. `--repo`, `--state`, `--label`, `--milestone`, `--assignee` narrow it. |
+| `g1t work list` | Lists open work items. `-R`, `--state`, `--label`, `--milestone`, `--assignee` and `--author` narrow it; with `-R`, `--role` keeps those linked to the repository in one role. |
 | `g1t work view N` | Shows the work item with everything about its work: its repositories and what landed, claims, sessions, pull requests, what blocks it, decisions. |
-| `g1t work new` | Opens a work item. |
+| `g1t work new` | Opens a work item; `--target` for each repository it should land in. `--attach FILE` adds an image to its description: uploaded to the repository it is filed from, or, filed in the workspace alone, to the work item once it is open. |
+| `g1t work comment N` | Comments on it. `--attach FILE` uploads an image to the work item and adds it to the comment. |
 | `g1t work edit N` | Changes its title, description, labels, assignees or milestone. |
-| `g1t work close N` | Closes it, as completed, or `--reason not_planned`. |
+| `g1t work close N` | Closes it, as completed, or `--reason not_planned`. `--commit SHA` names a commit on the default branch that did it, which lands it there. |
 | `g1t work reopen N` | Opens it again. |
-| `g1t work link N` | Links a repository in a role: `--role target` (the default), with the current repository or `--repo owner/name`. |
-| `g1t work unlink N` | Unlinks a repository. |
+| `g1t work link N` | Links a repository in a role: `--role target` (the default) or `touched`, the current repository or `-R owner/name`. |
+| `g1t work unlink N` | Unlinks a repository, never its origin. |
 | `g1t work claim N` | Says you are working on it. With `--title` instead of a number, opens a work item and claims it. |
 | `g1t work release N` | Lets go of your claim. |
 | `g1t work handoff N` | Hands it to someone else, or to anyone, with a note. |
 | `g1t work status` | The repository's active claims and sessions. |
+| `g1t work block N --by M` | Says it waits on work item M; `g1t work unblock N --by M` takes that back. |
+| `g1t work events` | The repository's events; `--follow` keeps printing them, `--item N` for one work item. |
+| `g1t work dispatch N` | Starts work on it in a session on your own Claude, or prints the Claude Code command for it. |
 
 [CLI commands](/reference/cli/#g1t-work) lists every flag.
 
 ## MCP and the API
 
 The MCP server's `work_item` tool takes an `action`: `list`, `get`,
-`create`, `update`, `close`, `reopen`, `link`, `unlink`, `comment`,
-`claim`, `release`, `handoff`, `work` and `import`, among others. It takes
+`create`, `update`, `close`, `reopen`, `links`, `link`, `unlink`, the
+label actions, `comment`, `react`, `attach`, `decisions`, `resolve`, `claim`,
+`release`, `handoff`, `work` and `import`, among others. A workspace's
+labels and milestones are on the `workspace` tool, and a repository's
+work list is the `repository` tool's `work`. It takes
 `workspace` and `number`; `repo` is optional, as the origin of a new work
 item, a filter, or to find the workspace. See [MCP tools](/reference/mcp/).
 
@@ -199,11 +218,19 @@ The REST API has the same under `/workspaces/{workspace}/work`:
 | Get one | `GET /workspaces/{workspace}/work/{number}` |
 | Change one | `PATCH /workspaces/{workspace}/work/{number}` |
 | Close or reopen it | `POST /workspaces/{workspace}/work/{number}/close`, `…/reopen` |
+| Its repositories | `GET /workspaces/{workspace}/work/{number}/links` |
 | Link or unlink a repository | `POST` or `DELETE /workspaces/{workspace}/work/{number}/links` |
-| Comment | `POST /workspaces/{workspace}/work/{number}/comments` |
+| Its labels | `GET`, `POST`, `PUT` or `DELETE /workspaces/{workspace}/work/{number}/labels` |
+| Comment | `POST /workspaces/{workspace}/work/{number}/comments`; `PATCH` or `DELETE /workspaces/{workspace}/work/comments/{id}` |
+| React | `POST /workspaces/{workspace}/work/{number}/reactions` |
+| Upload an image for it | [`POST /workspaces/{workspace}/work/{number}/attachments`](/reference/api/work-items/upload-work-item-attachment/), with `work:write`; anyone who may comment on it may |
+| Its decisions, with its pull requests' | `GET /workspaces/{workspace}/work/{number}/decisions` |
+| Watch it | `GET`, `PUT` or `DELETE /workspaces/{workspace}/work/{number}/subscription` |
 | Its work context | `GET /workspaces/{workspace}/work/{number}/work` |
 | Claim, release, hand off | `POST /workspaces/{workspace}/work/{number}/claim`, `…/release`, `…/handoff` |
 | A repository's work items | `GET /repos/{owner}/{name}/work` |
+| What `#N` names | `GET /repos/{owner}/{name}/refs/{number}`, or `GET /workspaces/{workspace}/refs/{number}` |
+| The workspace's labels and milestones | `/workspaces/{workspace}/labels`, `/workspaces/{workspace}/milestones` |
 
 ```sh
 curl -X POST https://api.g1t.sh/workspaces/acme/work \

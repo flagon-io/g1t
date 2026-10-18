@@ -200,7 +200,7 @@ belong to the workspace; these settings say how this repository takes part.
 | Setting | Field | Default | What it does |
 | --- | --- | --- | --- |
 | Work items | `has_work_items` | On; off for a [fork](/concepts/forks/) | Whether work items can be filed in it, as their origin. Off keeps existing ones readable. `null` goes back to the default. `work_items_enabled` says whether they can be filed now. |
-| Land work items with merged linked pull requests | `auto_close_work_items` | On | A pull request that merges into the default branch lands this repository on its work item and on those it names after a [closing keyword](/guides/pull-requests/#closing-work-items), and so does a commit pushed to the default branch whose message names them. A work item closes once every repository it targets has landed, or at the first landing when it has no target. |
+| Land work items with merged linked pull requests | `auto_close_items` | On | A pull request that merges into the default branch lands this repository on its work item and on those it names after a [closing keyword](/guides/pull-requests/#closing-work-items), and so does a commit pushed to the default branch whose message names them. A work item closes once every repository it targets has landed, or at the first landing when it has no target. |
 
 ```sh
 curl -X PATCH https://api.g1t.sh/repos/acme/rocket/settings \

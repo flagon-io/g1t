@@ -196,7 +196,8 @@ A repository you create is watched the way you choose in
 
 A repository's pages keep up with it while you are on them, without a
 reload and whatever you watch: new commits, pull requests, checks, runs
-and comments appear as they happen.
+and comments appear as they happen. So do a workspace's Work pages, for
+its members.
 
 | Page | Updates when |
 | --- | --- |
@@ -204,9 +205,10 @@ and comments appear as they happen.
 | **Commits** | Commits are pushed to the branch. They wait under a **3 new commits · Show** bar at the top instead of moving the list while you read; checks on the commits shown update in place. |
 | **Branches** | A branch is pushed, created, renamed or deleted. |
 | **Tags** | A tag is pushed or deleted, or a release is published. |
-| **Pull requests** and **Work** | One is opened, updated, reviewed, commented on, checked, merged or closed. |
+| **Pull requests** | One is opened, updated, reviewed, commented on, checked, merged or closed. |
+| **Work**, and a repository's **Work** tab | Any of the workspace's work items is opened, changed, labeled, linked, claimed, commented on, closed or reopened. |
 | A **pull request** | Commits are pushed to it, its checks report, someone reviews or comments, or it is merged or closed. New items join its timeline where you are reading; if you are at the end of the page, it follows them down. |
-| A **work item** | Someone comments on it or changes it, or a pull request linked to it moves. |
+| A **work item** | Someone comments on it or changes it, links a repository, claims it, or a pull request for it lands. If you are at the end of the page, it follows new items down. |
 | **Actions** and a **run** | A run starts, one of its jobs starts or finishes, or the run finishes. A running job's log streams on its own. |
 | **Security** | An alert is opened, fixed, dismissed or reopened. |
 | Your workspace's **Home** | Something lands, runs, deploys or comes to need you in its projects (the first 25). See [Home](/guides/home/#while-the-page-is-open). |
@@ -227,6 +229,15 @@ number, a commit. Never a title, a message or code. The page then reads
 itself again, with your access as it is now. Following lasts fifteen
 minutes and is renewed while the page stays open, so someone who loses
 access stops hearing of the repository within that time.
+
+A workspace's Work pages follow the workspace instead, since a work item
+may link many repositories or none: opening one asks to follow the
+workspace's work items, and g1t first checks you are a member. Each
+change sends a note naming only what kind of thing changed and the work
+item's number. The Work list reads itself again on any of them, a work
+item's page on its own. Following lasts fifteen minutes and is renewed
+the same way. Someone who is not a member, such as a reader of a public
+repository's work items, gets the fallback below.
 
 Signed out, on a public repository, or while the live connection is down,
 pages fall back to checking for themselves: when you come back to the tab
@@ -396,7 +407,10 @@ has both.
 
 `GET /repos/{owner}/{name}/notifications` and
 `PUT /repos/{owner}/{name}/notifications` list and mark one repository's
-threads. Every action of the `notifications` tool is in
+threads. A thread's `subject` is what it is about: `item` for a work
+item, `pull`, `run` or `deploy`. A work item's thread id is `item:` and the work
+item's id. Watching a repository at **Custom** takes the kinds
+`work_items`, `pulls`, `deployments` and `security`. Every action of the `notifications` tool is in
 [MCP tools](/reference/mcp/#notifications).
 
 For example, to list the reviews waiting on you:

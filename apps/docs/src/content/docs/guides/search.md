@@ -65,7 +65,7 @@ Put qualifiers anywhere in the query. Most can be left out with a leading
 | `org:acme` or `workspace:acme` | One workspace | Repositories, code, work items, pull requests |
 | `language:rust` | Code in a language, or repositories mostly written in it. `ts`, `js`, `py` and `cpp` are understood | Repositories, code |
 | `path:src/` | Code whose path contains `src/`. With `*`, a pattern: `path:*.rs`, `path:src/*/mod.rs` | Code |
-| `is:item`, `is:pr` | Only work items, or only pull requests | Work items, pull requests |
+| `is:item` (or `is:items`), `is:pr` | Only work items, or only pull requests | Work items, pull requests |
 | `is:open`, `is:closed` | Work items and pull requests by state | Work items, pull requests |
 | `is:merged`, `is:draft` | Pull requests that were merged, or are still drafts | Pull requests |
 | `is:public`, `is:private` | Results from public or private repositories | Repositories, code, work items, pull requests |

@@ -30,7 +30,10 @@ curl https://api.g1t.sh/
   "mcp_url": "https://mcp.g1t.sh",
   "current_user_url": "https://api.g1t.sh/user",
   "repository_url": "https://api.g1t.sh/repos/{owner}/{name}",
-  "work_url": "https://api.g1t.sh/workspaces/{workspace}/work{?state,label,repo}",
+  "work_url": "https://api.g1t.sh/workspaces/{workspace}/work{?state,label,milestone,assignee,repo,role}",
+  "work_item_url": "https://api.g1t.sh/workspaces/{workspace}/work/{number}",
+  "labels_url": "https://api.g1t.sh/workspaces/{workspace}/labels",
+  "milestones_url": "https://api.g1t.sh/workspaces/{workspace}/milestones{?state}",
   "pulls_url": "https://api.g1t.sh/repos/{owner}/{name}/pulls{?state}"
 }
 ```
@@ -270,6 +273,7 @@ Times are RFC 3339 in UTC, with milliseconds, such as
 | [Supply chain](/reference/api/supply-chain/list-vulnerability-alerts/) | Vulnerability alerts, the dependency graph, its SPDX SBOM, and comparing dependencies. See [supply chain](/guides/security/supply-chain/). |
 | [Security settings](/reference/api/security-settings/get-security-settings/) | When pull request checks fail, dependency review's policy, delegated bypass, validity checks and a workspace's overview. |
 | [Work items](/reference/api/work-items/list-work-items/) | What should change, in a workspace: the repositories each links, labels and comments, claims and hand-offs. See [work items](/guides/work-items/). |
+| [Labels and milestones](/reference/api/labels-and-milestones/list-labels/) | A workspace's labels and milestones, shared by its work items and pull requests. See [labels](/guides/labels/) and [milestones](/guides/milestones/). |
 | [Pull requests](/reference/api/pull-requests/list-pull-requests/) | Proposed changes: reviews, merging and the merge queue. |
 | [Sessions](/reference/api/sessions/read-session/) | The record of how a pull request was made, written by the coding agent that made it. See [sessions and why-blame](/guides/why-blame/). |
 | [Actions](/reference/api/actions/list-workflows/) | Workflows, their runs and their logs. |

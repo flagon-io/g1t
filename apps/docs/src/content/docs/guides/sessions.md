@@ -53,6 +53,8 @@ Everything here shows on g1t.sh as it happens, without reloading.
     what the merge queue found when it combined changes.
   - **Just landed**: the latest merges, each with a link to the session
     behind it.
+  - **Recorded on pull requests**: the latest sessions recorded on its pull
+    requests, each opening that pull request's session.
 
   With nothing going on, choose your client in the
   [connection instructions](/guides/bring-your-own-agent/), or run
@@ -67,8 +69,9 @@ Everything here shows on g1t.sh as it happens, without reloading.
   the latest combination that failed in the merge queue, and its
   [decision records](/guides/why-blame/#decision-records), each marked
   **Claimed**, **Tested** or **Approved**.
-- **A session's page**, `g1t.sh/<owner>/<repo>/sessions/<id>`,
-  opened from any of these: who ran it, in which harness and on which
+- **A session's page**, `g1t.sh/<owner>/<repo>/sessions/<id>` (the
+  `ses_…` id; a pull request's number there goes to that pull request's
+  recorded session, `…/pull/<number>/session`), opened from any of these: who ran it, in which harness and on which
   model, how long it has run, the work items and pull requests it and its
   subagents worked on (each says how it was tied), its subagents as a tree
   you open one at a time (each with its kind, the task it was given, what

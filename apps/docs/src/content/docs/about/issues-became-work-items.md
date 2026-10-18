@@ -31,12 +31,22 @@ sessions, pull requests and what it was blocked by.
 
 - `g1t.sh/<owner>/<repo>/issues/12` redirects to the work item that issue
   became, at `g1t.sh/<owner>/-/work/<number>`. **Issues**, **New issue**,
-  **Labels** and **Milestones** under a repository redirect to **Work**.
+  **Labels** and **Milestones** under a repository redirect to **Work**:
+  the repository's issue list to the Work list filtered to it, and its
+  labels and milestones to the workspace's. A milestone's own old address,
+  `…/milestones/3`, lands on the milestones list, since milestones were
+  renumbered.
+- A person's **Issues** tab is their **Work items** tab, at
+  `g1t.sh/u/<name>/items`.
 - `#12` and `owner/repo#12` in descriptions, comments and commit messages
   written before still link to that issue's work item.
 - `Closes #12` in history still points at the right work item.
 - A repository's old **Work** page, its claims and sessions, is now its
-  **Sessions** page, and the old address redirects there.
+  **Sessions** page, with the sessions recorded on its pull requests, and
+  the old address redirects there. A session's page is
+  `g1t.sh/<owner>/<repo>/sessions/<id>`; an old address with a pull
+  request's number in place of the id goes to that pull request's
+  session.
 
 ## Labels and milestones
 
@@ -55,7 +65,8 @@ name does:
 
 | Was | Now |
 | --- | --- |
-| `g1t issue …` | `g1t work …`: `list`, `view`, `new`, `edit`, `close`, `reopen` |
+| `g1t issue …` | `g1t work …`: `list`, `view`, `new`, `comment`, `edit`, `close`, `reopen` |
+| `g1t browse --issues` | `g1t browse --work` |
 | `g1t work context N` | `g1t work view N` |
 | `g1t work list` (claims and sessions) | `g1t work status` |
 | `--issue N` on `g1t pr create`, `g1t session …` and `g1t work events` | `--item N` |
@@ -64,6 +75,10 @@ name does:
 | `/repos/{owner}/{name}/issues…` | `/workspaces/{workspace}/work…` |
 | Repository labels and milestones routes | `/workspaces/{workspace}/labels` and `/workspaces/{workspace}/milestones` |
 | `issue.*` events and webhooks | `work_item.*`. Webhooks you had were moved over for you. |
+| `issue` and `other_issue` in event payloads | `item` and `other_item` |
+| Workflows `on: issues` and `on: issue_comment`, and `permissions: { issues: … }` | `on: work_item`, `on: work_item_comment` and `permissions: { work: … }`. The old names still read but start and grant nothing, and the workflow's page says so. |
+| The repository settings `has_issues` and `auto_close_issues` | `has_work_items` and `auto_close_items` |
+| Search `is:issue` and `type: issues` | `is:item` and `type: items` |
 | `issues:read`, `issues:write` scopes | `work:read`, `work:write` |
 | `/g1t:work-on-issue` in Claude Code | `/g1t:work-on-item`, with the plugin 0.3.0 and the CLI 0.4.0 or later |
 

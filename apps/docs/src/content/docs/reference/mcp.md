@@ -151,7 +151,9 @@ permissions allow:
   `This access token needs the work:write scope to use open_work_item.`
 
 For example, a token with only `work:write` sees `work_item` (its `list` and
-`get` too, since `write` includes `read`), and `account` with `whoami`. A token with the
+`get` too, since `write` includes `read`); `workspace` with its label and
+milestone actions; `repository` with its `work` list and commit comments;
+`search` with `ticket`; and `account` with `whoami`. A token with the
 [Read only preset](/guides/authentication/#presets) sees only the reading
 actions of each tool.
 
@@ -272,6 +274,7 @@ out.
 | [`rule_evaluations`](/reference/api/rules/list-rule-evaluations/) | How its rules judged pushes and merges, newest first, with 30 days of insights. Write role. | `repo` | `repo:read` |
 | [`codeowners`](/reference/api/repositories/get-codeowners-errors/) | Its [CODEOWNERS file](/guides/codeowners/) checked as a linter would, on `ref` (the default branch unless you say): its `path`, `rules`, `sections`, and `errors`, each with `line`, `kind`, `token` and `message`. Read role. | `repo` | `repo:read` |
 | [`list_events`](/reference/api/repositories/list-events/) | Its timeline, newest first; `before` pages back. To follow it, give `after` (an event id): the events written after it come oldest first, and the last one's `id` is the next `after`. With `wait` (seconds, at most 25) a call that finds nothing holds on until a matching event is written. `types` and `numbers` (arrays) narrow it, with `since` and `limit` (at most 200). | `repo` | `repo:read` |
+| [`work`](/reference/api/work-items/list-repo-work-items/) | The work items linked to it, in any role or in `role` (`origin`, `target` or `touched`), by `state`, `label`, `milestone` and `assignee`: the workspace's work list filtered to it. Read only: open one with `work_item` `create`. | `repo` | `work:read` |
 | [`languages`](/reference/api/repository-insights/get-languages/) | Its [languages](/guides/managing-repositories/#languages) by bytes, each with `color` and `percent`, for the default branch's `commit`; `pending` while it is first read. | `repo` | `repo:read` |
 | [`contributors`](/reference/api/repository-insights/list-contributors/) | Its [contributors](/guides/managing-repositories/#contributors): `kind` (`user`, `g1t` or `author`), `commits` and `weeks`, and the repository's commits by week. | `repo` | `repo:read` |
 | [`license`](/reference/api/repository-insights/get-license/) | The license its `LICENSE` file holds: `spdx_id`, `name`, `path`. | `repo` | `repo:read` |
@@ -320,7 +323,7 @@ the merge methods it allows (`allow_merge_commit`, `allow_squash_merge`,
 `merge_commit_message`, `squash_commit_message` and their templates,
 `suggest_updating_branches`, `allow_auto_merge`, `delete_branch_on_merge`,
 `require_web_commit_sign_off`, `allow_commit_comments`,
-`auto_close_work_items` and `has_work_items`.
+`auto_close_items` and `has_work_items`.
 `update` with `private`, `default_branch`, `allow_forking` or
 `max_ref_updates` also needs `repo:admin`.
 
@@ -337,10 +340,11 @@ starts in and lands in. Each action takes `workspace` and the item's
 in place of `workspace`, which is then the repository's. Before working on
 one, `work` gives everything about it, and `claim` says you are on it; see
 [sessions, claims and dependencies](/guides/sessions/). Work items and pull
-requests share numbers in a workspace, so `comment` and the label actions
-work on either; give `repo` for a pull request. `attach` uploads an image,
-such as a screenshot, and gives the Markdown that shows it in either's
-description or a comment.
+requests share numbers in a workspace; a pull request's comments, labels
+and reactions are on the [`pull_request`](#pull_request) tool. `resolve`
+says which of the two a `#N` names. `attach` uploads an image, such as a
+screenshot, and gives the Markdown that shows it in a description or a
+comment.
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
@@ -348,19 +352,23 @@ description or a comment.
 | [`get`](/reference/api/work-items/get-work-item/) | A work item: description (which may say what done means, under **Definition of done**), labels, comments, its `repos` with their roles and whether each `landed`, its `resolutions`, and every pull request made for it. | `workspace`, `number` | `work:read` |
 | [`create`](/reference/api/work-items/open-work-item/) | Open a work item, with `body`, `labels`, `milestone`, `repo` (its origin) and `targets` (the repositories it should land in). A label the workspace lacks is created for someone with the Write role. `checks` is deprecated: its commands are added to the body under **Definition of done**, and the result carries a `deprecation` note. | `workspace` or `repo`, `title` | `work:write` |
 | [`update`](/reference/api/work-items/update-work-item/) | Change its title, body, labels, milestone, assignees or `blocked_by` (the work items that must land first). Labels, assignees and `blocked_by` each replace the whole set; `milestone` `null` or `0` takes it out of its milestone. A `blocked_by` that names the work item itself, something not a work item of the workspace, or makes a cycle is refused. | `workspace`, `number` | `work:write` |
-| [`link`](/reference/api/work-items/link-work-item/) | Link a repository of the workspace in a `role`: `target` (the default) or `origin`. Triage role. | `workspace`, `number`, `repo` | `work:write` |
-| [`unlink`](/reference/api/work-items/unlink-work-item/) | Unlink a repository. Triage role. | `workspace`, `number`, `repo` | `work:write` |
-| [`labels`](/reference/api/work-items/list-item-labels/) | The labels a work item or pull request carries, with their colors. | `workspace`, `number` | `work:read` |
-| [`add_labels`](/reference/api/work-items/add-item-labels/) | Add `labels` to a work item or pull request, keeping the ones it has. | `workspace`, `number`, `labels` | `work:write` |
-| [`set_labels`](/reference/api/work-items/set-item-labels/) | Replace a work item's or pull request's labels with `labels`. | `workspace`, `number`, `labels` | `work:write` |
-| [`remove_labels`](/reference/api/work-items/remove-item-labels/) | Take `label`, or several `labels`, off a work item or pull request; with neither, all of them. | `workspace`, `number` | `work:write` |
-| [`close`](/reference/api/work-items/close-work-item/) | Close it as `completed` or `not_planned`. | `workspace`, `number` | `work:write` |
+| [`links`](/reference/api/work-items/list-work-item-links/) | The repositories it is linked to: its origin, then its targets, then those it touched, each with its `role`, its `legacy_number` (the issue number it had in its origin) and whether it `landed`; `missing` lists the targets it has not landed in yet. | `workspace`, `number` | `work:read` |
+| [`link`](/reference/api/work-items/link-work-item/) | Link a repository of the workspace in a `role`: `target` (the default) or `touched`; linking one already linked changes its role. An origin cannot be given. Triage role. | `workspace`, `number`, `repo` | `work:write` |
+| [`unlink`](/reference/api/work-items/unlink-work-item/) | Unlink a target or a touched repository. Its origin stays. Triage role. | `workspace`, `number`, `repo` | `work:write` |
+| [`labels`](/reference/api/work-items/list-work-item-labels/) | The labels a work item carries, with their colors. | `workspace`, `number` | `work:read` |
+| [`add_labels`](/reference/api/work-items/add-work-item-labels/) | Add `labels` to it, keeping the ones it has. | `workspace`, `number`, `labels` | `work:write` |
+| [`set_labels`](/reference/api/work-items/set-work-item-labels/) | Replace its labels with `labels`. | `workspace`, `number`, `labels` | `work:write` |
+| [`remove_labels`](/reference/api/work-items/remove-work-item-labels/) | Take `label`, or several `labels`, off it; with neither, all of them. | `workspace`, `number` | `work:write` |
+| [`close`](/reference/api/work-items/close-work-item/) | Close it as `completed` or `not_planned`; with `commit` and `repo`, a commit already on that repository's default branch that names it after a closing keyword lands it there, as its push would have. | `workspace`, `number` | `work:write` |
 | [`reopen`](/reference/api/work-items/reopen-work-item/) | Reopen a closed work item. Its resolutions are cleared. | `workspace`, `number` | `work:write` |
-| [`comment`](/reference/api/work-items/add-comment/) | Comment on a work item or a pull request; with `path` and `line`, on one line of a pull request's change. | `workspace`, `number`, `body` | `work:write` |
-| [`edit_comment`](/reference/api/work-items/edit-comment/) | Change a comment's text, by its id from `get`. Your own, or anyone's with the Maintain role or higher. Notes of what happened cannot be edited. | `workspace`, `comment_id`, `body` | `work:write` |
-| [`delete_comment`](/reference/api/work-items/delete-comment/) | Delete a comment, by its id. Your own, or anyone's with the Maintain role or higher. A review that approved or requested changes cannot be deleted. | `workspace`, `comment_id` | `work:write` |
-| [`attach`](/reference/api/work-items/upload-attachment/) | Upload an image to show in a description or a comment: `data` base64-encoded, `name` its file name. PNG, JPEG, GIF or WebP of at most 10 MB, by its bytes (`413` `too_large`, `415` `unsupported_type` otherwise). Returns `id`, `url`, `content_type`, `size` and `markdown` (`![name](url)`) to paste into a `body` or `summary`. The file travels in the tool call, so keep it small (a few hundred KB); `g1t attach FILE` sends one from disk. Anyone who may comment there may. | `workspace`, `name`, `data` | `work:write` |
+| [`comment`](/reference/api/work-items/add-work-item-comment/) | Comment on it, in Markdown. | `workspace`, `number`, `body` | `work:write` |
+| [`edit_comment`](/reference/api/work-items/edit-work-item-comment/) | Change a comment's text, by its id from `get`. Your own, or anyone's with the Maintain role or higher. Notes of what happened cannot be edited. | `workspace`, `comment_id`, `body` | `work:write` |
+| [`delete_comment`](/reference/api/work-items/delete-work-item-comment/) | Delete a comment, by its id. Your own, or anyone's with the Maintain role or higher. | `workspace`, `comment_id` | `work:write` |
+| [`react`](/reference/api/work-items/react-to-work-item/) | React with an emoji (`content`: `+1`, `-1`, `laugh`, `hooray`, `confused`, `heart`, `rocket` or `eyes`) to its description, or with `comment_id` to one of its comments; `remove` takes it back. | `workspace`, `number`, `content` | `work:write` |
+| [`decisions`](/reference/api/work-items/list-work-item-decisions/) | The [decision records](/guides/why-blame/#decision-records) on it and on each of its pull requests, in any repository, oldest first. | `workspace`, `number` | `work:read` |
+| [`attach`](/reference/api/work-items/upload-work-item-attachment/) | Upload an image to show in its description or in a comment on it, kept by the work item, so one filed with no repository takes images too: `data` base64-encoded, `name` its file name. PNG, JPEG, GIF or WebP of at most 10 MB, by its bytes (`413` `too_large`, `415` `unsupported_type` otherwise). Returns `id`, `url`, `content_type`, `size` and `markdown` (`![name](url)`) to paste into a `body`. The file travels in the tool call, so keep it small (a few hundred KB); `g1t work comment --attach FILE` sends one from disk. Anyone who may comment on it may. | `workspace`, `number`, `name`, `data` | `work:write` |
 | [`import`](/reference/api/work-items/import-work-items/) | Open a work item from a Jira, Linear or Sentry item, linked to it. | `workspace`, `reference` | `work:write` |
+| [`resolve`](/reference/api/work-items/resolve-ref/) | What `#number` names where it is written: in `repo`, a pull request of it, then a work item filed there under that old issue number, then the workspace's work item, then a pull request of another of its repositories; in a `workspace` alone ([`GET /workspaces/{workspace}/refs/{number}`](/reference/api/work-items/resolve-ref-for-workspace/)), its work item, else its pull request. Answers `kind` `work_item`, `pull` or `none`. | `workspace` or `repo`, `number` | `work:read` |
 | [`work`](/reference/api/work-items/get-work/) | Everything to pick a work item up: its definition of done and required checks, its repositories with what landed where and which targets are still missing, suggested targets (each with `why`), active claims, sessions, pull requests (checks, mergeability, overlaps, queue place), what it is blocked by and blocks, decisions, and its recent coordination events. | `workspace`, `number` | `work:read` |
 | [`claim`](/reference/api/work-items/claim-work-item/) | Say you are working on an open work item: advisory and expiring (`ttl_minutes`, 30 unless you say, at most 240), never a lock. Returns `others` already on it and what it is `blocked_by`. Claiming again, or a heartbeat of its `session_id`, renews it. With `title` (and `body`) instead of `number`, it [opens the work item first](/reference/api/work-items/claim-new-work-item/), claims it, attaches the `session_id` session to it, and returns it as `item`. | `workspace`, and `number` or `title` | `work:write` |
 | [`release`](/reference/api/work-items/release-claim/) | Give up your claim, with an optional `reason`. | `workspace`, `number` | `work:write` |
@@ -369,8 +377,8 @@ description or a comment.
 
 ## `pull_request`
 
-Pull requests: start a change for a work item, record your session, mark it
-ready, review, update its branch, and merge by a merge commit, a squash, a
+Pull requests: start a change for a work item, record your session,
+comment and react, attach images, mark it ready, review, update its branch, and merge by a merge commit, a squash, a
 rebase or a fast-forward, now or with auto-merge. Read `overlaps` and
 `behind` on `get` before going far.
 
@@ -384,7 +392,12 @@ rebase or a fast-forward, now or with auto-merge. Read `overlaps` and
 | [`record_session`](/reference/api/sessions/record-session/) | Append entries to a pull request's session. Each has `kind` and `text`, and `tool` for tool entries. | `repo`, `number`, `entries` | `pull_requests:write` |
 | [`read_session`](/reference/api/sessions/read-session/) | The recorded session, oldest first. `after` skips to entries after a sequence number. | `repo`, `number` | `pull_requests:read` |
 | [`record_decision`](/reference/api/decisions-and-why/record-decision/) | Record a decision on a pull request, kept as `claimed`: a `kind` (`proposal`, `claim`, `fix` or `note`), a `summary`, and optional `evidence` (an object) and `session_id`. | `repo`, `number`, `kind`, `summary` | `pull_requests:write` |
-| [`list_decisions`](/reference/api/decisions-and-why/list-decisions/) | The decision records on a pull request, or on a work item and its pull requests, oldest first, each with its `kind`, `confidence` (`claimed`, `tested` or `approved`), `summary` and `evidence`. | `repo`, `number` | `pull_requests:read` |
+| [`list_decisions`](/reference/api/decisions-and-why/list-decisions/) | The decision records on a pull request, oldest first, each with its `kind`, `confidence` (`claimed`, `tested` or `approved`), `summary` and `evidence`. A work item's, with its pull requests', are `work_item` `decisions`. | `repo`, `number` | `pull_requests:read` |
+| [`comment`](/reference/api/pull-requests/add-comment/) | Comment on it, in Markdown; with `path` and `line`, on one line of its change. | `repo`, `number`, `body` | `pull_requests:write` |
+| [`edit_comment`](/reference/api/pull-requests/edit-comment/) | Change a comment's text, by its id from `get`. Your own, or anyone's with the Maintain role or higher. Notes of what happened cannot be edited. | `repo`, `comment_id`, `body` | `pull_requests:write` |
+| [`delete_comment`](/reference/api/pull-requests/delete-comment/) | Delete a comment, by its id. Your own, or anyone's with the Maintain role or higher. A review that approved or requested changes cannot be deleted. | `repo`, `comment_id` | `pull_requests:write` |
+| [`react`](/reference/api/pull-requests/react/) | React with an emoji (`content`) to its description, or with `comment_id` to one of its comments; `remove` takes it back. | `repo`, `number`, `content` | `pull_requests:write` |
+| [`attach`](/reference/api/work-items/upload-attachment/) | Upload an image to show in a pull request's description, its summary or a comment, kept by the repository: `data` base64-encoded, `name` its file name. As the `work_item` tool's `attach` otherwise; `g1t attach FILE` sends one from disk. Anyone who may comment on the repository may. | `repo`, `name`, `data` | `work:write` |
 | [`ready`](/reference/api/pull-requests/mark-pull-request-ready/) | Mark a draft ready for review. The summary becomes its description. | `repo`, `number`, `summary` | `pull_requests:write` |
 | [`draft`](/reference/api/pull-requests/convert-pull-request-to-draft/) | Turn a pull request that is ready for review back into a draft. It leaves the merge queue. Its author, or the Triage role. | `repo`, `number` | `pull_requests:write` |
 | [`request_reviewers`](/reference/api/pull-requests/request-reviewers/) | Ask more people (`reviewers`, by username) or teams (`team_reviewers`, as `workspace/team` or a slug of the repository's workspace) to review it, added to whoever is asked already. Its author, or the Triage role. | `repo`, `number` | `pull_requests:write` |
@@ -530,7 +543,7 @@ only. See [Observability](/guides/observability/).
 | [`traces`](/reference/api/observability/list-traces/) | Traces, newest first, each its root span, duration, span and error counts; `q`, `errors_only`, `min_duration_ms`. | `workspace`, `project` | `observability:read` |
 | [`trace`](/reference/api/observability/get-trace/) | One trace: every span with its timing, status, attributes and events, and the logs written under it. | `workspace`, `project`, `trace_id` | `observability:read` |
 | [`errors`](/reference/api/observability/list-errors/) | Errors grouped by exception, most recently seen first, each with its count, the deployment that brought it in, its last request and trace, and its `state`; filter by `state`. | `workspace`, `project` | `observability:read` |
-| [`update_error`](/reference/api/observability/update-error/) | Resolve, ignore or reopen an error group (`state`), or link the work item made for it (`item`, null to unlink). Triage role. | `workspace`, `project`, `fingerprint` | `observability:write` |
+| [`update_error`](/reference/api/observability/update-error/) | Resolve, ignore or reopen an error group (`state`), or link the work item made for it (`item_number`, its number in the workspace; null to unlink). Triage role. | `workspace`, `project`, `fingerprint` | `observability:write` |
 | [`metrics`](/reference/api/observability/list-metrics/) | The metrics the project's software sends, with their kind, unit and services. | `workspace`, `project` | `observability:read` |
 | [`metric`](/reference/api/observability/get-metric/) | One metric over time: `aggregate` (`avg`, `sum`, `min`, `max`, `p50`, `p95`, `p99`), `group_by` an attribute, `step`. | `workspace`, `project`, `metric` | `observability:read` |
 
@@ -724,7 +737,7 @@ of its sidebar. See [workspaces](/guides/workspaces/).
 | [`update_integration`](/reference/api/integrations/update-integration/) | Change one: its `name`, its `config` (replaced whole) or its `secret` (write-only, never returned). Owners only. | `workspace`, `id` | `workspace:admin` |
 | [`disconnect_integration`](/reference/api/integrations/disconnect-integration/) | Remove it and its secrets. Owners only. | `workspace`, `id` | `workspace:admin` |
 | [`test_integration`](/reference/api/integrations/test-integration/) | Check its credentials against the system it connects to. Owners only. | `workspace`, `id` | `workspace:admin` |
-| [`activity`](/reference/api/workspaces/get-workspace-activity/) | What happened across its repositories you can read, newest first: pull requests merged, opened and closed, work items, releases, deployments, pushes (`default_branch` marks what landed without a pull request), reviews and packages, each with its `repo`, `actor`, `number`, `title` and `url` where it has them, and a `summary` of what shipped. `landed` lists the commits that reached default branches, with each author's `username` when known and `production` (`live`, `deploying`, `failed` or `not_deployed`, with the `deploy` that decided it) where the repository deploys: a project's production deployment, or a successful run of its deploy workflow on the default branch. `since` and `until` (RFC 3339; the last 24 hours by default, at most 31 days), `kinds` and `limit` (at most 200) narrow it; `complete` is false when more happened than was read. | `workspace` | `repo:read` |
+| [`activity`](/reference/api/workspaces/get-workspace-activity/) | What happened across its repositories you can read, newest first: pull requests merged, opened and closed, work items, releases, deployments, pushes (`default_branch` marks what landed without a pull request), reviews and packages, each with its `repo`, `actor`, `number`, `title` and `url` where it has them, and a `summary` of what shipped. `landed` lists the commits that reached default branches, with each author's `username` when known and `production` (`live`, `deploying`, `failed` or `not_deployed`, with the `deploy` that decided it) where the repository deploys: a project's production deployment, or a successful run of its deploy workflow on the default branch. `since` and `until` (RFC 3339; the last 24 hours by default, at most 31 days), `kinds` (`merged`, `pulls`, `work_items`, `releases`, `deployments`, `pushes`, `reviews`, `comments`, `packages`, `runs`; all but `comments` when left out) and `limit` (at most 200) narrow it; `complete` is false when more happened than was read. | `workspace` | `repo:read` |
 | [`list_labels`](/reference/api/labels-and-milestones/list-labels/) | Its labels by name, each with `color`, `description`, and how many work items (`items`) and pull requests (`pulls`) carry it. | `workspace` | `work:read` |
 | [`create_label`](/reference/api/labels-and-milestones/create-label/) | Create a label named `label`, with `color` (six hex digits; chosen from the name when left out) and `description`. Write role in the workspace. | `workspace`, `label` | `work:write` |
 | [`update_label`](/reference/api/labels-and-milestones/update-label/) | Change a label's `new_name`, `color` or `description`. Renaming renames it on everything that carries it. Write role in the workspace. | `workspace`, `label` | `work:write` |
