@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { ACTIVE, decayed, raised } from "./activity.ts";
+import { ACTIVE, activeRepos, decayed, raised } from "./activity.ts";
 
 const DAY = 24 * 60 * 60 * 1000;
 const at = (days: number) => new Date(Date.UTC(2026, 9, 1) + days * DAY).toISOString();
@@ -39,4 +39,13 @@ test("pushes, work and deployments count; housekeeping does not", () => {
   assert.ok(ACTIVE.has("git.push"));
   assert.ok(ACTIVE.has("pull.merged"));
   assert.ok(!ACTIVE.has("repo.created"));
+  assert.ok(ACTIVE.has("work_item.opened"));
+});
+
+test("a work item's activity counts for every repository it is linked to", () => {
+  assert.deepEqual(activeRepos("rep_1", { itemId: "wki_1", repoIds: ["rep_1", "rep_2"] }), ["rep_1", "rep_2"]);
+  // Filed in the workspace and linked nowhere: no project's.
+  assert.deepEqual(activeRepos(null, { itemId: "wki_2", repoIds: [] }), []);
+  assert.deepEqual(activeRepos(null, { repoId: "rep_3", number: 4 }), ["rep_3"]);
+  assert.deepEqual(activeRepos("rep_4", {}), ["rep_4"]);
 });
