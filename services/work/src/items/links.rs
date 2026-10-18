@@ -25,6 +25,15 @@ pub(crate) const REMEMBER_REPO: &str = "INSERT INTO repo_workspaces (repo_id, wo
 pub(crate) const PART_SQL: &str = "INSERT INTO work_item_repos (item_id, repo_id, role, added_at, added_by)
      VALUES (?1, ?2, 'touched', ?3, ?4) ON CONFLICT (item_id, repo_id) DO NOTHING RETURNING item_id AS value";
 
+/// Closes work item `?1` at `?2` once what landed for it is all it waits
+/// for: open, landed somewhere, and no target left to land in (one was
+/// just unlinked or made something else). One that never landed stays
+/// open: it has not been done anywhere.
+pub(crate) const CLOSE_IF_LANDED: &str = "UPDATE work_items SET state = 'closed', reason = 'completed', closed_at = ?2, updated_at = ?2
+     WHERE id = ?1 AND state = 'open' AND resolutions <> '[]'
+       AND NOT EXISTS (SELECT 1 FROM work_item_repos WHERE item_id = ?1 AND role = 'target' AND landed_at IS NULL)
+     RETURNING id AS value";
+
 impl Work {
     /// Records which workspace `repo` is in, its path and whether it is
     /// private, as repos just said.
@@ -154,6 +163,17 @@ impl Work {
             .bind(&[now.as_str().into(), held.item.id.as_str().into()])?
             .run()
             .await?;
+        // A target no longer one: what landed may be all it waited for.
+        let closed = if role == LinkRole::Target && (unlink || a.role != LinkRole::Target) {
+            self.db
+                .prepare(CLOSE_IF_LANDED)
+                .bind(&[held.item.id.as_str().into(), now.as_str().into()])?
+                .first::<ValueRow>(None)
+                .await?
+                .is_some()
+        } else {
+            false
+        };
         let Some(after) = self.item_by_id(&held.item.id).await? else {
             return Ok(no_item());
         };
@@ -164,6 +184,17 @@ impl Work {
         }
         self.publish_item(kind, &after, Some(&a.actor), WorkItemEvent { repo: Some(path), role: Some(role), ..event }).await?;
         self.note_item(&after.item.id, &a.actor, &text).await?;
+        if closed {
+            self.publish_item(
+                "work_item.closed",
+                &after,
+                Some(&a.actor),
+                WorkItemEvent { reason: Some(CloseReason::Completed.as_str()), missing: Some(Vec::new()), ..Self::item_event(&after) },
+            )
+            .await?;
+            self.note_item(&after.item.id, &a.actor, "closed this: it has landed in every target it has").await?;
+            self.item_resolved(&after, &a.actor, true, None).await;
+        }
         Ok(Outcome::Ok(after.shown(Some(&a.actor))))
     }
 }
