@@ -41,7 +41,7 @@ use crate::config::{CommitMessage, Config, Entry, glob, matches};
 use crate::deps::advisory_table;
 use crate::pull_text;
 use crate::ranges;
-use crate::store::{Activity, RepoRow, UpdateRow, VulnRow};
+use crate::store::{Activity, LinkedItem, RepoRow, UpdateRow, VulnRow};
 use crate::update_store::NewPull;
 use crate::version_updates::{Loaded, package_ecosystem};
 
@@ -270,11 +270,25 @@ impl Security {
         repo.namespace.to_lowercase()
     }
 
-    /// Closes a work item g1t opened for an update before it stopped
-    /// opening them, saying why. One already closed is left as it is.
-    pub(crate) async fn close_item_with(&self, repo: &RepoRow, number: u32, why: String) -> Result<()> {
-        let system = User::system(&repo.namespace);
+    /// The work item a row names, as g1t sees it: found in the workspace
+    /// it was kept with (the repository may have moved since), and only if
+    /// it is still the item of the id kept for it.
+    pub(crate) async fn linked(&self, repo: &RepoRow, linked: &LinkedItem) -> Result<Option<g1t_contracts::work::WorkItem>> {
         let workspace = Self::workspace_of(repo);
+        let found = self.item(&User::system(&repo.namespace), linked.workspace_or(&workspace), linked.number).await?;
+        Ok(found.filter(|item| linked.is(&item.id)))
+    }
+
+    /// Closes a work item g1t opened for an update before it stopped
+    /// opening them, saying why. One already closed is left as it is, and
+    /// one that is no longer the item kept for it is never touched.
+    pub(crate) async fn close_item_with(&self, repo: &RepoRow, linked: &LinkedItem, why: String) -> Result<()> {
+        if self.linked(repo, linked).await?.is_none() {
+            return Ok(());
+        }
+        let system = User::system(&repo.namespace);
+        let workspace = linked.workspace_or(&Self::workspace_of(repo)).to_owned();
+        let number = linked.number;
         let item = WorkItemActionArgs { actor: system.clone(), workspace: workspace.clone(), number, reason: Some(CloseReason::NotPlanned) };
         let closed: Outcome<Value> =
             g1t_kit::call(&self.work, "close_work_item", &CloseWorkItemArgs { item, repo: None, commit: None }).await?;
@@ -356,9 +370,9 @@ impl Security {
                 None => {
                     // An upgrade work item from before security updates,
                     // still open, is left to the agent on it.
-                    if let Some(existing) = self.store.upgrade(&repo.repo_id, &ecosystem, &package).await?
+                    if let Some(existing) = self.store.upgrade(&repo.repo_id, &ecosystem, &package).await?.and_then(|row| row.linked_item())
                         && self
-                            .item(&User::system(&repo.namespace), &Self::workspace_of(repo), existing.item as u32)
+                            .linked(repo, &existing)
                             .await?
                             .is_some_and(|item| item.state == g1t_contracts::work::State::Open)
                     {
@@ -664,10 +678,10 @@ impl Security {
         // make: the work item closes, and the update fails as one would now.
         for row in self.store.needs_code_updates(10).await? {
             let why = cannot_raise(&row.package, &row.target);
-            if let (Some(repo), Some(number)) = (self.store.repo(&row.repo_id).await?, row.item()) {
+            if let (Some(repo), Some(linked)) = (self.store.repo(&row.repo_id).await?, row.linked_item()) {
                 let path = Self::path_of(&repo);
                 let alerts = format!("/{}/{}/security/vulnerabilities", path.namespace, path.name);
-                self.close_item_with(&repo, number, format!(
+                self.close_item_with(&repo, &linked, format!(
                     "g1t no longer opens work items for upgrades it cannot make on its own. This one is on [its alert]({alerts}), \
                      which says why and is tried again later."
                 ))
