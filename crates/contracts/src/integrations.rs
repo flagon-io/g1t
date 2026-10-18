@@ -1,10 +1,10 @@
 //! The integrations service: a workspace's connections to systems outside
 //! g1t, and everything that crosses between them.
 //!
-//! - **Alerts.** Sentry, Datadog or any signed webhook opens an issue in a
-//!   repository, once per problem however often it fires.
+//! - **Alerts.** Sentry, Datadog or any signed webhook opens a work item
+//!   filed from a repository, once per problem however often it fires.
 //! - **Trackers.** A Jira or Linear key, such as `TECH-1234`, resolves to the
-//!   ticket: people and their tools read it, people import it as an issue,
+//!   ticket: people and their tools read it, people import it as a work item,
 //!   and when the work lands the ticket is told.
 //!
 //! A workspace's AI providers and Ask g1t are kept by the same service but
@@ -91,7 +91,7 @@ impl Provider {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
-    /// Problems that become issues.
+    /// Problems that become work items.
     Alerts,
     /// Tickets that people read and import.
     Tracker,
@@ -102,11 +102,12 @@ pub enum ProviderKind {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionConfig {
-    /// For alerts: the repository issues are opened in, `owner/name`. For a
-    /// tracker: where an imported ticket goes when no repository is named.
+    /// For alerts: the repository work items are filed from (their
+    /// origin), `owner/name`. For a tracker: the origin of an imported
+    /// ticket's work item when no repository is named.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repo: Option<String>,
-    /// For alerts: the label put on each issue opened. `bug` when unset.
+    /// For alerts: the label put on each work item opened. `bug` when unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
     /// Tell the outside system when the work lands: resolve the Sentry
@@ -182,8 +183,8 @@ pub struct Delivery {
     /// `opened`, `updated`, `reopened`, `ignored` or `refused`.
     pub outcome: String,
     pub detail: String,
-    /// The issue it opened or updated, `owner/name#number`.
-    pub issue: Option<String>,
+    /// The work item it opened or updated, `workspace#number`.
+    pub item: Option<String>,
 }
 
 /// Something outside g1t, fetched as it is now. Its text was written outside
@@ -204,7 +205,7 @@ pub struct ContextItem {
     pub fetched_at: String,
 }
 
-/// An issue's tie to something outside g1t.
+/// A work item's tie to something outside g1t.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Link {
@@ -326,29 +327,41 @@ pub struct ResolveArgs {
     pub reference: String,
 }
 
-/// `import`: opens an issue from a ticket. Returns `Outcome<Imported>`.
+/// `import`: opens a work item in `workspace` from a ticket, filed from
+/// `repo` when given (its origin; `workspace` may then be empty, meaning
+/// the repository's), with `targets` as where the work is meant to land.
+/// Members of the workspace only. Returns `Outcome<Imported>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ImportArgs {
     pub actor: User,
-    pub repo: RepoPath,
+    #[serde(default)]
+    pub workspace: String,
+    #[serde(default)]
+    pub repo: Option<RepoPath>,
+    #[serde(default)]
+    pub targets: Vec<RepoPath>,
     pub reference: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Imported {
+    /// The work item's workspace and number.
+    pub workspace: String,
     pub number: u32,
+    /// The ticket, as fetched.
     pub item: ContextItem,
     /// False when the ticket had been imported already, and `number` is
-    /// that issue.
+    /// that work item.
     pub created: bool,
 }
 
-/// `links`: what an issue is tied to outside g1t. Returns `Vec<Link>`.
-/// Callers must have checked the viewer may see the issue.
+/// `links`: what work item `number` of `workspace` is tied to outside
+/// g1t. Returns `Vec<Link>`. Callers must have checked the viewer may see
+/// the work item.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LinksArgs {
-    pub repo: RepoPath,
+    pub workspace: String,
     pub number: u32,
 }
 

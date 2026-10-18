@@ -808,8 +808,9 @@ export function integrationsClient(service: ServiceBinding): IntegrationsApi {
     test: (actor, workspace, id) => call("test", { actor, workspace, id }),
     deliveries: (workspace, viewer, id) => call("deliveries", { workspace, viewer, id }),
     resolve: (workspace, viewer, reference) => call("resolve", { workspace, viewer, reference }),
-    import: (actor, repo, reference) => call("import", { actor, repo, reference }),
-    links: (repo, number) => call("links", { repo, number }),
+    import: (actor, workspace, reference, options) =>
+      call("import", { actor, workspace, reference, repo: options?.repo ?? null, targets: options?.targets ?? [] }),
+    links: (workspace, number) => call("links", { workspace, number }),
   };
 }
 

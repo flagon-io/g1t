@@ -323,13 +323,18 @@ pub struct AskMessage {
 /// Where the person asking is in g1t, so the answer is about their work.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct AskPage {
-    /// The page's path, such as `/acme/web/issues/12`.
+    /// The page's path, such as `/acme/-/work/12`.
     #[serde(default)]
     pub path: Option<String>,
     #[serde(default)]
     pub repo: Option<RepoPath>,
+    /// The workspace of a page that is not a repository's, such as a work
+    /// item's. With `repo`, the repository's.
     #[serde(default)]
-    pub issue: Option<u32>,
+    pub workspace: Option<String>,
+    /// A work item, by number in the workspace.
+    #[serde(default)]
+    pub item: Option<u32>,
     #[serde(default)]
     pub pull: Option<u32>,
     /// The browser's IANA time zone, such as `America/Denver`: what
@@ -431,18 +436,19 @@ pub enum AskEvent {
     /// What the answer drew on, cited first. Sent once, before `done`.
     Sources { sources: Vec<AskSource> },
     /// Work Ask proposes to hand to a session in the person's own harness:
-    /// on an issue, or on a new one with `title` and `body`. Nothing has
-    /// started; the person starts it, or copies the command, from the card
-    /// the answer shows. `mode` is `plan`, `implement` or `review`.
+    /// on a work item (by number in `repo`'s workspace), or on a new one
+    /// with `title` and `body`. Nothing has started; the person starts it,
+    /// or copies the command, from the card the answer shows. `mode` is
+    /// `plan`, `implement` or `review`.
     ///
     /// With `new_repository`, `repo` does not exist yet: the card creates
     /// it (`private` or public), turns on its deployments when `deploy`,
-    /// then opens the issue and starts the session, which pushes the first
-    /// version to the default branch, and so deploys it.
+    /// then opens the work item and starts the session, which pushes the
+    /// first version to the default branch, and so deploys it.
     Proposal {
         id: String,
         repo: String,
-        issue: Option<u64>,
+        item: Option<u64>,
         title: Option<String>,
         body: Option<String>,
         mode: String,

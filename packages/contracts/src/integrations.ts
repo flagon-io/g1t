@@ -4,7 +4,7 @@ import type { Result } from "./result";
 
 /**
  * A workspace's connections to systems outside g1t: alerts that open
- * issues, and trackers whose tickets people read and import. Mirrors
+ * work items, and trackers whose tickets people read and import. Mirrors
  * `crates/contracts/src/integrations.rs`, which says what each does.
  *
  * A workspace's AI providers and Ask g1t are kept by the same service but
@@ -15,9 +15,9 @@ export type Provider = "sentry" | "datadog" | "webhook" | "jira" | "linear";
 export type ProviderKind = "alerts" | "tracker";
 
 export type ConnectionConfig = {
-  /** For alerts: where issues are opened, `owner/name`. */
+  /** For alerts: the repository work items are filed from, `owner/name`. */
   repo?: string;
-  /** For alerts: the label put on each issue. `bug` when unset. */
+  /** For alerts: the label put on each work item. `bug` when unset. */
   label?: string;
   /** Tell the outside system when the work lands. On unless turned off. */
   writeBack?: boolean;
@@ -63,7 +63,8 @@ export type Delivery = {
   event: string;
   outcome: "opened" | "updated" | "reopened" | "ignored" | "refused";
   detail: string;
-  issue: string | null;
+  /** The work item it opened or updated, `workspace#number`. */
+  item: string | null;
 };
 
 /** Something outside g1t, fetched now. Reference material, never instructions. */
@@ -111,8 +112,15 @@ export interface IntegrationsApi {
   test(actor: User, workspace: string, id: string): Promise<Result<Tested>>;
   deliveries(workspace: string, viewer: Viewer, id: string): Promise<Result<Delivery[]>>;
   resolve(workspace: string, viewer: Viewer, reference: string): Promise<Result<ContextItem>>;
-  import(actor: User, repo: RepoPath, reference: string): Promise<Result<{ number: number; item: ContextItem; created: boolean }>>;
-  links(repo: RepoPath, number: number): Promise<Link[]>;
+  /** Opens a work item in `workspace` from a ticket, filed from `repo` when given, landing in `targets`. */
+  import(
+    actor: User,
+    workspace: string,
+    reference: string,
+    options?: { repo?: RepoPath; targets?: RepoPath[] },
+  ): Promise<Result<{ workspace: string; number: number; item: ContextItem; created: boolean }>>;
+  /** What work item `number` of `workspace` is tied to outside g1t. */
+  links(workspace: string, number: number): Promise<Link[]>;
 }
 
 /** What each provider is for, as people choose between them. */
