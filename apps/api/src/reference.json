@@ -47,8 +47,8 @@
         "token_id": "tok_01kkntd3p2v8x6ym5r0c1q7a9e",
         "scopes": [
           "repo:read",
-          "issues:read",
-          "issues:write",
+          "work:read",
+          "work:write",
           "pull_requests:read",
           "pull_requests:write"
         ]
@@ -1018,8 +1018,8 @@
       "allow_ignoring_checks": true,
       "merge_queue": false,
       "require_code_owner_review": false,
-      "has_issues": null,
-      "issues_enabled": true,
+      "has_work_items": null,
+      "work_items_enabled": true,
       "allow_merge_commit": true,
       "allow_squash_merge": true,
       "allow_rebase_merge": true,
@@ -1034,7 +1034,7 @@
       "delete_branch_on_merge": false,
       "require_web_commit_sign_off": false,
       "allow_commit_comments": true,
-      "auto_close_issues": true,
+      "auto_close_items": true,
       "updated_by": null,
       "updated_at": null
     }
@@ -1066,8 +1066,8 @@
       "allow_ignoring_checks": true,
       "merge_queue": true,
       "require_code_owner_review": true,
-      "has_issues": null,
-      "issues_enabled": true,
+      "has_work_items": null,
+      "work_items_enabled": true,
       "allow_merge_commit": false,
       "allow_squash_merge": true,
       "allow_rebase_merge": true,
@@ -1082,11 +1082,11 @@
       "delete_branch_on_merge": true,
       "require_web_commit_sign_off": false,
       "allow_commit_comments": true,
-      "auto_close_issues": true,
+      "auto_close_items": true,
       "updated_by": "syntaqx",
       "updated_at": "2026-10-04T16:20:37.508Z"
     },
-    "notes": "`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](/reference/api/repositories/list-check-names/) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6. See [Required checks](/guides/checks/#required-checks). With `require_code_owner_review`, a pull request into the default branch merges only once the code owners of every file it changes have approved it, as many as each section of its CODEOWNERS file asks: see [Code owners](/guides/codeowners/). At least one of `allow_merge_commit`, `allow_squash_merge`, `allow_rebase_merge` and `allow_fast_forward` stays on, and `default_merge_method` must be one of them (`422` otherwise). `merge_commit_template` and `squash_commit_template` are used with `custom`: see [Commit messages](/guides/pull-requests/#commit-messages) for their placeholders. `has_issues` `null` goes back to the default: on for a repository, off for a fork. See [Repository settings](/guides/managing-repositories/#settings)."
+    "notes": "`required_checks` replaces the whole list: at most 20 names, each a workflow's name or another status's context, as [`list_check_names`](/reference/api/repositories/list-check-names/) gives them. A pull request merges only once each passes on its head; one nothing has reported holds it too. With the merge queue on, each must also pass on the queued state, so the workflows behind them need `merge_group` in their `on:`. `required_approvals` is at most 6. See [Required checks](/guides/checks/#required-checks). With `require_code_owner_review`, a pull request into the default branch merges only once the code owners of every file it changes have approved it, as many as each section of its CODEOWNERS file asks: see [Code owners](/guides/codeowners/). At least one of `allow_merge_commit`, `allow_squash_merge`, `allow_rebase_merge` and `allow_fast_forward` stays on, and `default_merge_method` must be one of them (`422` otherwise). `merge_commit_template` and `squash_commit_template` are used with `custom`: see [Commit messages](/guides/pull-requests/#commit-messages) for their placeholders. `has_work_items` `null` goes back to the default: on for a repository, off for a fork. See [Repository settings](/guides/managing-repositories/#settings)."
   },
   "list_check_names": {
     "response": [
@@ -1156,36 +1156,40 @@
           "pull_id": "pr_01m43smh3vexsr5pmp60qwv0vs",
           "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
           "number": 14,
-          "issue": 12,
+          "item": 12,
           "agent": "claude-code"
         }
       },
       {
         "id": "evt_01m43shrzpf2vt5rxbb02z0xjt",
-        "type": "issue.opened",
+        "type": "work_item.opened",
         "source": "work",
         "time": "2026-10-01T18:04:11.482Z",
         "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
         "actor": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "data": {
-          "issue_id": "iss_01m43shrzpfe49x74ga7sj1c6v",
-          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+          "item_id": "wki_01m43shrzpfe49x74ga7sj1c6v",
+          "workspace": "flagon-io",
           "number": 12,
+          "repo_ids": [
+            "rep_01m3m5q6p0e2qaw6mmjahk0qrr"
+          ],
           "title": "Greeting should name the caller"
         }
       }
     ],
-    "notes": "Returns 50 events a page, newest first. To page back, send the `id` of the last event you have as `before`. `actor` is a user id, and `data` depends on `type`.\n\nTo follow a repository without a webhook, send `after` instead: the events written after that event come oldest first, and the last one's `id` is your next `after`. Add `wait` (seconds, at most 25) and a call that finds nothing holds on until a matching event is written or the time is up, then returns what it has, which may be an empty list; call again with the same `after`. Events come in the order g1t wrote them, so none is skipped when two arrive close together.\n\n```sh\ncurl -H \"Authorization: Bearer $G1T_TOKEN\" \\\n  \"https://api.g1t.sh/repos/acme/rocket/events?after=evt_01m43smh3ve52vkcna207vqctf&types=work.claimed,integration.failed&numbers=12&wait=25\"\n```\n\n`types` and `numbers` are comma-separated lists in a query string, arrays in a body or an MCP call. `numbers` matches events about those issues and pull requests (`data.number`) and comments, reviews and links on them (`data.issue`). `since` is an RFC 3339 time. `after` and `before` cannot be given together."
+    "notes": "Returns 50 events a page, newest first. To page back, send the `id` of the last event you have as `before`. `actor` is a user id, and `data` depends on `type`.\n\nTo follow a repository without a webhook, send `after` instead: the events written after that event come oldest first, and the last one's `id` is your next `after`. Add `wait` (seconds, at most 25) and a call that finds nothing holds on until a matching event is written or the time is up, then returns what it has, which may be an empty list; call again with the same `after`. Events come in the order g1t wrote them, so none is skipped when two arrive close together.\n\n```sh\ncurl -H \"Authorization: Bearer $G1T_TOKEN\" \\\n  \"https://api.g1t.sh/repos/acme/rocket/events?after=evt_01m43smh3ve52vkcna207vqctf&types=work.claimed,integration.failed&numbers=12&wait=25\"\n```\n\n`types` and `numbers` are comma-separated lists in a query string, arrays in a body or an MCP call. `numbers` matches events about those work items and pull requests (`data.number`) and comments, reviews and links on them (`data.item`). `since` is an RFC 3339 time. `after` and `before` cannot be given together."
   },
-  "list_issues": {
+  "list_work_items": {
     "query": {
       "state": "open",
-      "label": "feature"
+      "label": "feature",
+      "repo": "flagon-io/hello"
     },
     "response": [
       {
-        "id": "iss_01m43shrzpfe49x74ga7sj1c6v",
-        "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+        "id": "wki_01m43shrzpfe49x74ga7sj1c6v",
+        "workspace": "flagon-io",
         "number": 12,
         "title": "Greeting should name the caller",
         "body": "Take a name from the first argument; fall back to world.",
@@ -1194,7 +1198,7 @@
         ],
         "state": "open",
         "reason": null,
-        "resolved_by": null,
+        "resolutions": [],
         "author": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
           "username": "syntaqx",
@@ -1212,22 +1216,35 @@
         "assignees": [],
         "blocked_by": [],
         "agent": "claude-code",
-        "milestone": null
+        "milestone": null,
+        "repos": [
+          {
+            "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+            "path": "flagon-io/hello",
+            "role": "origin",
+            "legacy_number": null,
+            "landed": false
+          }
+        ]
       }
     ],
-    "notes": "Returns at most 100 issues, newest first. `comment_count` counts comments, not events such as \"opened #14 for this\"."
+    "notes": "Returns at most 100 work items, newest first. Each lists the repositories it is linked to in `repos`, with its role in each. `comment_count` counts comments, not events such as \"opened #14 for this\"."
   },
-  "create_issue": {
+  "open_work_item": {
     "request": {
+      "repo": "flagon-io/hello",
       "title": "Greeting should name the caller",
       "body": "Take a name from the first argument; fall back to world.",
       "labels": [
         "feature"
+      ],
+      "targets": [
+        "flagon-io/docs"
       ]
     },
     "response": {
-      "id": "iss_01m43shrzpfe49x74ga7sj1c6v",
-      "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+      "id": "wki_01m43shrzpfe49x74ga7sj1c6v",
+      "workspace": "flagon-io",
       "number": 12,
       "title": "Greeting should name the caller",
       "body": "Take a name from the first argument; fall back to world.",
@@ -1236,7 +1253,7 @@
       ],
       "state": "open",
       "reason": null,
-      "resolved_by": null,
+      "resolutions": [],
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
@@ -1254,15 +1271,31 @@
       "assignees": [],
       "blocked_by": [],
       "agent": null,
-      "milestone": null
+      "milestone": null,
+      "repos": [
+        {
+          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+          "path": "flagon-io/hello",
+          "role": "origin",
+          "legacy_number": null,
+          "landed": false
+        },
+        {
+          "repo_id": "rep_01m3m5r8t2v4x6z8b0d2f4h6j8",
+          "path": "flagon-io/docs",
+          "role": "target",
+          "legacy_number": null,
+          "landed": false
+        }
+      ]
     },
     "notes": "Labels are lowercased. A label not used before is created."
   },
-  "get_issue": {
+  "get_work_item": {
     "response": {
-      "issue": {
-        "id": "iss_01m43shrzpfe49x74ga7sj1c6v",
-        "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+      "item": {
+        "id": "wki_01m43shrzpfe49x74ga7sj1c6v",
+        "workspace": "flagon-io",
         "number": 12,
         "title": "Greeting should name the caller",
         "body": "Take a name from the first argument; fall back to world.",
@@ -1271,9 +1304,14 @@
         ],
         "state": "closed",
         "reason": "completed",
-        "resolved_by": 14,
-        "resolved_commit": null,
-        "resolved_pushed_by": null,
+        "resolutions": [
+          {
+            "repo": "flagon-io/hello",
+            "pull": 14,
+            "commit": null,
+            "pushed_by": null
+          }
+        ],
         "author": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
           "username": "syntaqx",
@@ -1291,14 +1329,23 @@
         "assignees": [],
         "blocked_by": [],
         "agent": null,
-        "milestone": null
+        "milestone": null,
+        "repos": [
+          {
+            "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+            "path": "flagon-io/hello",
+            "role": "origin",
+            "legacy_number": null,
+            "landed": true
+          }
+        ]
       },
       "pulls": [
         {
           "id": "pr_01m43sjq8tcz5rbm2a7k4d9e6w",
           "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
           "number": 13,
-          "issue": 12,
+          "item": 12,
           "title": "Greeting should name the caller",
           "body": null,
           "agent": "claude-code",
@@ -1338,7 +1385,7 @@
           "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
           "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
           "number": 14,
-          "issue": 12,
+          "item": 12,
           "title": "Greeting should name the caller",
           "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
           "agent": "claude-code",
@@ -1403,9 +1450,9 @@
         }
       ]
     },
-    "notes": "A closed issue says how it was closed: `reason` is `completed` or `not_planned`, and `resolved_by` is the number of the pull request whose merge closed it, or `resolved_commit` the commit pushed to the default branch whose message closed it (`Fixes #12`), with `resolved_pushed_by` saying who pushed it. Each pull request made for it is listed; one closed because another was merged has `superseded_by` set."
+    "notes": "A closed work item says how it was closed: `reason` is `completed` or `not_planned`, and `resolutions` says what landed it in each repository: `pull`, the pull request whose merge did it, or `commit`, the commit pushed to the default branch whose message did (`Fixes #12`), with `pushed_by` saying who pushed it. `repos` lists the repositories it is linked to, with `landed` true where the work landed. Each pull request made for it is listed, in any repository; one closed because another was merged has `superseded_by` set."
   },
-  "update_issue": {
+  "update_work_item": {
     "request": {
       "labels": [
         "feature",
@@ -1415,11 +1462,13 @@
         "syntaqx"
       ],
       "milestone": 3,
-      "blocked_by": [9]
+      "blocked_by": [
+        9
+      ]
     },
     "response": {
-      "id": "iss_01m43shrzpfe49x74ga7sj1c6v",
-      "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+      "id": "wki_01m43shrzpfe49x74ga7sj1c6v",
+      "workspace": "flagon-io",
       "number": 12,
       "title": "Greeting should name the caller",
       "body": "Take a name from the first argument; fall back to world.",
@@ -1429,7 +1478,7 @@
       ],
       "state": "open",
       "reason": null,
-      "resolved_by": null,
+      "resolutions": [],
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
@@ -1447,21 +1496,32 @@
       "assignees": [
         "syntaqx"
       ],
-      "blocked_by": [9],
+      "blocked_by": [
+        9
+      ],
       "agent": null,
       "milestone": {
         "number": 3,
         "title": "Launch"
-      }
+      },
+      "repos": [
+        {
+          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+          "path": "flagon-io/hello",
+          "role": "origin",
+          "legacy_number": null,
+          "landed": false
+        }
+      ]
     }
   },
-  "close_issue": {
+  "close_work_item": {
     "request": {
       "reason": "not_planned"
     },
     "response": {
-      "id": "iss_01m43shrzpfe49x74ga7sj1c6v",
-      "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+      "id": "wki_01m43shrzpfe49x74ga7sj1c6v",
+      "workspace": "flagon-io",
       "number": 12,
       "title": "Greeting should name the caller",
       "body": "Take a name from the first argument; fall back to world.",
@@ -1470,7 +1530,7 @@
       ],
       "state": "closed",
       "reason": "not_planned",
-      "resolved_by": null,
+      "resolutions": [],
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
@@ -1488,14 +1548,23 @@
       "assignees": [],
       "blocked_by": [],
       "agent": null,
-      "milestone": null
+      "milestone": null,
+      "repos": [
+        {
+          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+          "path": "flagon-io/hello",
+          "role": "origin",
+          "legacy_number": null,
+          "landed": false
+        }
+      ]
     },
-    "notes": "With `commit`, a commit already on the default branch whose message names the issue after a closing keyword (`Fixes #12`), the issue closes as completed in that commit, as pushing it would have: `resolved_commit` is set, the event is `issue.closed` with `data.commit`, and the timeline says \"closed this in\" the commit, linked. Give `commit` as its full hash. A commit not on the default branch, or one whose message does not name the issue, is refused (`422`); an issue already closed is `409`, saying what closed it. See [Closing issues](/guides/pull-requests/#closing-issues)."
+    "notes": "With `commit` and `repo`, a commit already on that repository's default branch whose message names the work item after a closing keyword (`Fixes #12`), it lands there as pushing it would have: a resolution is recorded, the event is `work_item.landed` (and `work_item.closed` with `resolutions` once nothing else is left to land), and the timeline says \"landed this in\" the commit, linked. Give `commit` as its full hash. A commit not on the default branch, or one whose message does not name the work item, is refused (`422`); a work item already closed is `409`, saying what closed it. See [Closing work items](/guides/pull-requests/#closing-work-items)."
   },
-  "reopen_issue": {
+  "reopen_work_item": {
     "response": {
-      "id": "iss_01m43shrzpfe49x74ga7sj1c6v",
-      "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+      "id": "wki_01m43shrzpfe49x74ga7sj1c6v",
+      "workspace": "flagon-io",
       "number": 12,
       "title": "Greeting should name the caller",
       "body": "Take a name from the first argument; fall back to world.",
@@ -1504,7 +1573,7 @@
       ],
       "state": "open",
       "reason": null,
-      "resolved_by": null,
+      "resolutions": [],
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
@@ -1522,7 +1591,16 @@
       "assignees": [],
       "blocked_by": [],
       "agent": null,
-      "milestone": null
+      "milestone": null,
+      "repos": [
+        {
+          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+          "path": "flagon-io/hello",
+          "role": "origin",
+          "legacy_number": null,
+          "landed": false
+        }
+      ]
     }
   },
   "add_comment": {
@@ -1608,7 +1686,7 @@
       "content_type": "image/png",
       "size": 184213
     },
-    "notes": "`data` is the file base64-encoded: `base64 -w0 preview.png`. Paste `markdown` into the `body` of an issue, pull request or comment, or a pull request's `summary`. The type is read from the bytes; a file over 10 MB is refused with `413` (`too_large`), one that is not a PNG, JPEG, GIF or WebP with `415` (`unsupported_type`). From a shell, `g1t attach preview.png` does all of it and prints the markdown."
+    "notes": "`data` is the file base64-encoded: `base64 -w0 preview.png`. Paste `markdown` into the `body` of a work item, pull request or comment, or a pull request's `summary`. The type is read from the bytes; a file over 10 MB is refused with `413` (`too_large`), one that is not a PNG, JPEG, GIF or WebP with `415` (`unsupported_type`). From a shell, `g1t attach preview.png` does all of it and prints the markdown."
   },
   "react": {
     "params": {
@@ -1617,10 +1695,22 @@
       "content": "heart"
     },
     "response": [
-      { "content": "heart", "count": 1, "users": ["ana"] },
-      { "content": "eyes", "count": 1, "users": ["g1t"] }
+      {
+        "content": "heart",
+        "count": 1,
+        "users": [
+          "ana"
+        ]
+      },
+      {
+        "content": "eyes",
+        "count": 1,
+        "users": [
+          "g1t"
+        ]
+      }
     ],
-    "notes": "Reacting twice the same way is one reaction. Without comment_id it reacts to the issue's or pull request's description."
+    "notes": "Reacting twice the same way is one reaction. Without comment_id it reacts to the pull request's description."
   },
   "list_labels": {
     "response": [
@@ -1628,21 +1718,21 @@
         "name": "bug",
         "color": "d73a4a",
         "description": "Something isn't working",
-        "issues": 4,
+        "items": 4,
         "pulls": 1
       },
       {
         "name": "dependencies",
         "color": "0366d6",
         "description": "Updates a dependency",
-        "issues": 0,
+        "items": 0,
         "pulls": 6
       },
       {
         "name": "good first issue",
         "color": "7057ff",
         "description": "Good for newcomers",
-        "issues": 2,
+        "items": 2,
         "pulls": 0
       }
     ],
@@ -1657,7 +1747,7 @@
         "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
         "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
         "number": 14,
-        "issue": 12,
+        "item": 12,
         "title": "Greeting should name the caller",
         "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
         "agent": "claude-code",
@@ -1707,7 +1797,7 @@
   },
   "create_pull_request": {
     "request": {
-      "issue": 12,
+      "item": 12,
       "agent": "claude-code"
     },
     "response": {
@@ -1715,7 +1805,7 @@
         "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
         "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
         "number": 14,
-        "issue": 12,
+        "item": 12,
         "title": "Greeting should name the caller",
         "body": null,
         "agent": "claude-code",
@@ -1757,7 +1847,7 @@
         "password": "your g1t access token"
       }
     },
-    "notes": "`title` defaults to the issue's title, and is required when there is no `issue`. Push to `git.remote` with your username and an access token as the password.\n\nSend `branch` to open the pull request from a branch already pushed to the repository. No fork is made, `fork` is `null`, `git.remote` is the repository itself, and the pull request is `open` at once."
+    "notes": "`title` defaults to the work item's title, and is required when there is no `item`. Opening one for a work item links this repository to it as touched, unless it is a target already. Push to `git.remote` with your username and an access token as the password.\n\nSend `branch` to open the pull request from a branch already pushed to the repository. No fork is made, `fork` is `null`, `git.remote` is the repository itself, and the pull request is `open` at once."
   },
   "get_pull_request": {
     "response": {
@@ -1765,7 +1855,7 @@
         "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
         "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
         "number": 14,
-        "issue": 12,
+        "item": 12,
         "title": "Greeting should name the caller",
         "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
         "agent": "claude-code",
@@ -1812,9 +1902,9 @@
         "milestone": null,
         "base": "main"
       },
-      "issue": {
-        "id": "iss_01m43shrzpfe49x74ga7sj1c6v",
-        "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+      "item": {
+        "id": "wki_01m43shrzpfe49x74ga7sj1c6v",
+        "workspace": "flagon-io",
         "number": 12,
         "title": "Greeting should name the caller",
         "body": "Take a name from the first argument; fall back to world.",
@@ -1823,7 +1913,7 @@
         ],
         "state": "open",
         "reason": null,
-        "resolved_by": null,
+        "resolutions": [],
         "author": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
           "username": "syntaqx",
@@ -1841,7 +1931,16 @@
         "assignees": [],
         "blocked_by": [],
         "agent": "claude-code",
-        "milestone": null
+        "milestone": null,
+        "repos": [
+          {
+            "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+            "path": "flagon-io/hello",
+            "role": "origin",
+            "legacy_number": null,
+            "landed": false
+          }
+        ]
       },
       "comments": [
         {
@@ -1940,7 +2039,7 @@
         "errors": 0
       }
     },
-    "notes": "| Field | |\n| --- | --- |\n| `pull.files` | The files it changes, with lines added and removed. |\n| `statuses` | Its checks: what each workflow run (or another tool, such as a deployment) reported on its head, as `pending`, `success`, `failure` or `error`, with a link to the run. |\n| `required_checks` | Each check the default branch requires (see [`update_repo_settings`](/reference/api/repositories/update-repo-settings/)), as it stands on the head: `success`, `failure`, `pending`, or `expected` when nothing has reported it yet. It merges only once all are `success`. |\n| `checks` | Set when the merge queue took it out, with why in `error`. Older pull requests may show a run of commands from their issue here, from before checks were workflows. |\n| `overlaps` | Other pull requests in progress that change the same files. |\n| `behind` | Whether the default branch has moved since it was made. |\n| `landing` | Whether it is being brought up to date to land. |\n| `lifecycle` | For a pull request g1t is seeing through: its stage, such as `working`, `checking`, `reviewing` or `needs_you`. |\n| `comments` | Comments, reviews and events, with `path`, `line` and `verdict`. |\n| `messages` | Messages sent to the agent working on it. |\n| `pull.reviewers`, `pull.team_reviewers` | The people asked to review it, `g1t` among them when a g1t agent was, and the teams, as `workspace/team`. Change them with [`request_reviewers`](/reference/api/pull-requests/request-reviewers/). |\n| `code_owners` | Present when the branch it merges into has a CODEOWNERS file: its `path`, whether code owners' approval is `required` there, `reviews` (one per section and rule that owns a changed file: `section`, `line`, `pattern`, `owners`, `files`, `optional`, the approvals `required`, `approved_by`, `changes_requested_by` and `satisfied`), what is still `missing`, as the merge box says it, and how many `errors` the file has; [`get_codeowners_errors`](/reference/api/repositories/get-codeowners-errors/) lists them. |\n| `mergeable` | Whether it merges cleanly into its target: `clean`, `conflicting`, `checking` (being worked out) or `unknown`. Worked out ahead of time whenever it or its target moves. |\n| `conflicts` | When `mergeable` is `conflicting`, the files that conflict. Resolve them by merging the target in, or have g1t do it. |\n| `earlier_checks` | Earlier records like `checks`, newest first. |\n\nChecks are the repository's workflows: they run on `pull_request` events when it is opened, marked ready and pushed to. Read why one failed with [`get_workflow_run`](/reference/api/actions/get-workflow-run/) and [`get_job_logs`](/reference/api/actions/get-job-logs/)."
+    "notes": "| Field | |\n| --- | --- |\n| `pull.files` | The files it changes, with lines added and removed. |\n| `statuses` | Its checks: what each workflow run (or another tool, such as a deployment) reported on its head, as `pending`, `success`, `failure` or `error`, with a link to the run. |\n| `required_checks` | Each check the default branch requires (see [`update_repo_settings`](/reference/api/repositories/update-repo-settings/)), as it stands on the head: `success`, `failure`, `pending`, or `expected` when nothing has reported it yet. It merges only once all are `success`. |\n| `checks` | Set when the merge queue took it out, with why in `error`. Older pull requests may show a run of commands from their work item here, from before checks were workflows. |\n| `overlaps` | Other pull requests in progress that change the same files. |\n| `behind` | Whether the default branch has moved since it was made. |\n| `landing` | Whether it is being brought up to date to land. |\n| `lifecycle` | For a pull request g1t is seeing through: its stage, such as `working`, `checking`, `reviewing` or `needs_you`. |\n| `comments` | Comments, reviews and events, with `path`, `line` and `verdict`. |\n| `messages` | Messages sent to the agent working on it. |\n| `pull.reviewers`, `pull.team_reviewers` | The people asked to review it, `g1t` among them when a g1t agent was, and the teams, as `workspace/team`. Change them with [`request_reviewers`](/reference/api/pull-requests/request-reviewers/). |\n| `code_owners` | Present when the branch it merges into has a CODEOWNERS file: its `path`, whether code owners' approval is `required` there, `reviews` (one per section and rule that owns a changed file: `section`, `line`, `pattern`, `owners`, `files`, `optional`, the approvals `required`, `approved_by`, `changes_requested_by` and `satisfied`), what is still `missing`, as the merge box says it, and how many `errors` the file has; [`get_codeowners_errors`](/reference/api/repositories/get-codeowners-errors/) lists them. |\n| `mergeable` | Whether it merges cleanly into its target: `clean`, `conflicting`, `checking` (being worked out) or `unknown`. Worked out ahead of time whenever it or its target moves. |\n| `conflicts` | When `mergeable` is `conflicting`, the files that conflict. Resolve them by merging the target in, or have g1t do it. |\n| `earlier_checks` | Earlier records like `checks`, newest first. |\n\nChecks are the repository's workflows: they run on `pull_request` events when it is opened, marked ready and pushed to. Read why one failed with [`get_workflow_run`](/reference/api/actions/get-workflow-run/) and [`get_job_logs`](/reference/api/actions/get-job-logs/)."
   },
   "get_pull_request_changes": {
     "response": {
@@ -1997,7 +2096,7 @@
       "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
       "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
       "number": 14,
-      "issue": 12,
+      "item": 12,
       "title": "Greeting should name the caller",
       "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
       "agent": "claude-code",
@@ -2086,7 +2185,7 @@
       "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
       "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
       "number": 14,
-      "issue": 12,
+      "item": 12,
       "title": "Greeting should name the caller",
       "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
       "agent": "claude-code",
@@ -2151,7 +2250,7 @@
       "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
       "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
       "number": 14,
-      "issue": 12,
+      "item": 12,
       "title": "Greeting should name the caller",
       "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
       "agent": "claude-code",
@@ -2246,7 +2345,7 @@
       "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
       "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
       "number": 14,
-      "issue": 12,
+      "item": 12,
       "title": "Greeting should name the caller",
       "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
       "agent": "claude-code",
@@ -2295,7 +2394,7 @@
       "created_at": "2026-10-01T18:20:02.117Z",
       "updated_at": "2026-10-01T18:52:17.093Z"
     },
-    "notes": "A draft, or one whose checks have not passed, answers `409`. A pull request still `open` in the response has not landed yet: `landing` is true on it while it is brought up to date, and [get the merge queue](/reference/api/pull-requests/get-merge-queue/) shows it waiting in the [merge queue](/guides/merge-queue/). Merging records the pull request in the issue's `resolved_by`, closes the issues in `closes` (into the default branch, where `auto_close_issues` is on) and sets `superseded_by` on the pull requests it closes. A `merge_method` the repository or a rule for the base does not allow answers `422`, and a head that moved since `sha`, `409`. `merge_commit` is the commit the base is at afterwards: the merge or squash commit, the last rebased one, or the head for a fast-forward. See [Merging a pull request](/guides/pull-requests/#merging-a-pull-request)."
+    "notes": "A draft, or one whose checks have not passed, answers `409`. A pull request still `open` in the response has not landed yet: `landing` is true on it while it is brought up to date, and [get the merge queue](/reference/api/pull-requests/get-merge-queue/) shows it waiting in the [merge queue](/guides/merge-queue/). Merging lands the work items in `closes` in this repository and records it in their `resolutions` (into the default branch, where `auto_close_items` is on); each closes once it has landed in every target, and sets `superseded_by` on the pull requests it closes. A `merge_method` the repository or a rule for the base does not allow answers `422`, and a head that moved since `sha`, `409`. `merge_commit` is the commit the base is at afterwards: the merge or squash commit, the last rebased one, or the head for a fast-forward. See [Merging a pull request](/guides/pull-requests/#merging-a-pull-request)."
   },
   "update_pull_request_branch": {
     "request": {
@@ -2318,7 +2417,7 @@
       "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
       "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
       "number": 14,
-      "issue": 12,
+      "item": 12,
       "title": "Greeting should name the caller",
       "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
       "agent": "claude-code",
@@ -2379,7 +2478,7 @@
       "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
       "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
       "number": 14,
-      "issue": 12,
+      "item": 12,
       "title": "Greeting should name the caller",
       "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
       "agent": "claude-code",
@@ -2433,7 +2532,7 @@
       "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
       "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
       "number": 14,
-      "issue": 12,
+      "item": 12,
       "title": "Greeting should name the caller",
       "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
       "agent": "claude-code",
@@ -2487,7 +2586,7 @@
       "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
       "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
       "number": 14,
-      "issue": 12,
+      "item": 12,
       "title": "Greeting should name the caller",
       "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
       "agent": "claude-code",
@@ -2646,7 +2745,7 @@
       "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
       "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
       "number": 14,
-      "issue": 12,
+      "item": 12,
       "title": "Greeting should name the caller",
       "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
       "agent": "claude-code",
@@ -2694,7 +2793,7 @@
       "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
       "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
       "number": 14,
-      "issue": 12,
+      "item": 12,
       "title": "Greeting should name the caller",
       "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
       "agent": "claude-code",
@@ -2743,7 +2842,7 @@
       "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
       "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
       "number": 14,
-      "issue": 12,
+      "item": 12,
       "title": "Greeting should name the caller",
       "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
       "agent": "claude-code",
@@ -2843,7 +2942,7 @@
       {
         "seq": 1,
         "kind": "prompt",
-        "text": "Make the greeting name the caller (issue #12).",
+        "text": "Make the greeting name the caller (work item #12).",
         "tool": null,
         "commit": null,
         "at": "2026-10-01T18:21:00.004Z"
@@ -2881,14 +2980,14 @@
     "request": {
       "harness": "claude_code",
       "harness_session_id": "5b0c1f9e-3d2a-4e8b-9f61-0c7d2a9e4b13",
-      "issue": 12,
+      "item": 12,
       "branch": "greet-caller",
       "title": "Make the greeting name the caller"
     },
     "response": {
       "id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
       "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
-      "issue": 12,
+      "item": 12,
       "pull": null,
       "branch": "greet-caller",
       "actor": {
@@ -2909,16 +3008,16 @@
   },
   "start_agent_session": {
     "request": {
-      "issue": 12,
+      "item": 12,
       "mode": "implement",
       "instruction": "Keep the old greeting behind a flag."
     },
     "response": {
-      "issue": 12,
+      "item": 12,
       "session": {
         "id": "ses_01m4c9a8b7c6d5e4f3g2h1j0k9",
         "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
-        "issue": 12,
+        "item": 12,
         "pull": null,
         "branch": null,
         "actor": {
@@ -2948,7 +3047,7 @@
       "provider_session_url": "https://platform.claude.com/workspaces/default/sessions/sesn_011CZkZAtmR3yMPDzynEDxu7",
       "handoff": false,
       "command": null,
-      "prompt": "Work on issue #12 in syntaqx/hello: Make the greeting name the caller.\n\n…"
+      "prompt": "Work on work item #12 in syntaqx/hello: Make the greeting name the caller.\n\n…"
     },
     "notes": "Runs on the workspace's own Anthropic key: g1t runs no model and bills nothing for it. Without an Anthropic AI provider (or with `handoff: true`) nothing is started and `command` is a Claude Code command line to run with g1t's plugin. See [Sessions](/guides/sessions/#start-a-session-on-your-anthropic-account)."
   },
@@ -2960,7 +3059,7 @@
     "response": {
       "id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
       "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
-      "issue": 12,
+      "item": 12,
       "pull": 14,
       "branch": "greet-caller",
       "actor": {
@@ -2986,7 +3085,7 @@
     "response": {
       "id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
       "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
-      "issue": 12,
+      "item": 12,
       "pull": 14,
       "branch": "greet-caller",
       "actor": {
@@ -3012,7 +3111,7 @@
       "session": {
         "id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
         "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
-        "issue": 12,
+        "item": 12,
         "pull": 14,
         "branch": "greet-caller",
         "actor": {
@@ -3033,7 +3132,7 @@
         {
           "seq": 1,
           "kind": "prompt",
-          "text": "Make the greeting name the caller (issue #12).",
+          "text": "Make the greeting name the caller (work item #12).",
           "tool": null,
           "commit": null,
           "at": "2026-10-12T14:02:12.008Z"
@@ -3051,7 +3150,7 @@
         {
           "id": "ses_01m4b2d8x1y2z3a4b5c6d7e8f9",
           "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
-          "issue": 12,
+          "item": 12,
           "pull": null,
           "branch": "greet-caller",
           "actor": {
@@ -3096,22 +3195,33 @@
           "number": 14,
           "title": "Name the caller in the greeting",
           "state": "open",
-          "via": ["attached", "branch"],
-          "session_ids": ["ses_01m4b2c3d4e5f6g7h8j9k0m1n2"]
+          "via": [
+            "attached",
+            "branch"
+          ],
+          "session_ids": [
+            "ses_01m4b2c3d4e5f6g7h8j9k0m1n2"
+          ]
         },
         {
-          "kind": "issue",
+          "kind": "item",
           "number": 12,
           "title": "Make the greeting name the caller",
           "state": "open",
-          "via": ["attached", "claim"],
-          "session_ids": ["ses_01m4b2c3d4e5f6g7h8j9k0m1n2", "ses_01m4b2d8x1y2z3a4b5c6d7e8f9"]
+          "via": [
+            "attached",
+            "claim"
+          ],
+          "session_ids": [
+            "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
+            "ses_01m4b2d8x1y2z3a4b5c6d7e8f9"
+          ]
         }
       ],
       "skills": [
         {
           "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
-          "name": "work-on-issue",
+          "name": "work-on-item",
           "uses": 1
         }
       ],
@@ -3122,13 +3232,13 @@
   "list_sessions": {
     "query": {
       "state": "active",
-      "issue": 12
+      "item": 12
     },
     "response": [
       {
         "id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
         "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
-        "issue": 12,
+        "item": 12,
         "pull": 14,
         "branch": "greet-caller",
         "actor": {
@@ -3152,7 +3262,7 @@
       "entries": [
         {
           "kind": "prompt",
-          "text": "Make the greeting name the caller (issue #12).",
+          "text": "Make the greeting name the caller (work item #12).",
           "key": "prompt-1"
         },
         {
@@ -3163,13 +3273,19 @@
         },
         {
           "kind": "skill",
-          "text": "work-on-issue",
+          "text": "work-on-item",
           "key": "skill-3"
         }
       ],
       "touched": [
-        { "kind": "file", "value": "src/greet.rs" },
-        { "kind": "branch", "value": "greet-caller" }
+        {
+          "kind": "file",
+          "value": "src/greet.rs"
+        },
+        {
+          "kind": "branch",
+          "value": "greet-caller"
+        }
       ]
     },
     "response": {
@@ -3179,7 +3295,7 @@
     },
     "notes": "Up to 200 entries a request. An entry whose `key` the session recorded before is counted in `duplicates` and not recorded again. Entries of a session on a pull request show in that pull request's session too (read_session). `acknowledge` (up to 100 update IDs from get_session's `updates`) clears those updates for this session only; `acknowledged` counts the IDs that were this session's."
   },
-  "claim_issue": {
+  "claim_work_item": {
     "request": {
       "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
       "note": "Taking the argument parsing first.",
@@ -3189,7 +3305,8 @@
       "claim": {
         "id": "clm_01m4b3d5f7h9k1m3p5r7t9w1y3",
         "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
-        "issue": 12,
+        "workspace": "flagon-io",
+        "item": 12,
         "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
         "actor": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
@@ -3208,7 +3325,8 @@
         {
           "id": "clm_01m4b2a4c6e8g0j2l4n6q8s0u2",
           "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
-          "issue": 12,
+          "workspace": "flagon-io",
+          "item": 12,
           "session_id": null,
           "actor": {
             "id": "usr_01kkp2v7d4fh8m3q6t9w2z5c8e",
@@ -3233,7 +3351,8 @@
             {
               "id": "clm_01m4b2a4c6e8g0j2l4n6q8s0u2",
               "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
-              "issue": 9,
+              "workspace": "flagon-io",
+              "item": 9,
               "session_id": null,
               "actor": {
                 "id": "usr_01kkp2v7d4fh8m3q6t9w2z5c8e",
@@ -3259,7 +3378,7 @@
         }
       ]
     },
-    "notes": "A claim is advisory: it is made even when `others` lists someone already on the issue. Claiming an issue you hold renews your claim. Refused with `409` for a closed issue. See [Claims](/guides/sessions/#claims)."
+    "notes": "A claim is advisory: it is made even when `others` lists someone already on the work item. Claiming a work item you hold renews your claim. Refused with `409` for a closed work item. See [Claims](/guides/sessions/#claims)."
   },
   "release_claim": {
     "request": {
@@ -3268,7 +3387,8 @@
     "response": {
       "id": "clm_01m4b3d5f7h9k1m3p5r7t9w1y3",
       "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
-      "issue": 12,
+      "workspace": "flagon-io",
+      "item": 12,
       "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
       "actor": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
@@ -3284,7 +3404,7 @@
       "handoff_to": null
     }
   },
-  "hand_off_issue": {
+  "hand_off_work_item": {
     "request": {
       "to": "ana",
       "note": "Parsing is done and tested; the README still needs the new usage."
@@ -3292,7 +3412,8 @@
     "response": {
       "id": "clm_01m4b3d5f7h9k1m3p5r7t9w1y3",
       "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
-      "issue": 12,
+      "workspace": "flagon-io",
+      "item": 12,
       "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
       "actor": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
@@ -3316,7 +3437,8 @@
       {
         "id": "clm_01m4b3d5f7h9k1m3p5r7t9w1y3",
         "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
-        "issue": 12,
+        "workspace": "flagon-io",
+        "item": 12,
         "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
         "actor": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
@@ -3334,7 +3456,8 @@
       {
         "id": "clm_01m4b2a4c6e8g0j2l4n6q8s0u2",
         "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
-        "issue": 12,
+        "workspace": "flagon-io",
+        "item": 12,
         "session_id": null,
         "actor": {
           "id": "usr_01kkp2v7d4fh8m3q6t9w2z5c8e",
@@ -3353,9 +3476,9 @@
   },
   "get_work": {
     "response": {
-      "issue": {
-        "id": "iss_01m43shrzpfe49x74ga7sj1c6v",
-        "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+      "item": {
+        "id": "wki_01m43shrzpfe49x74ga7sj1c6v",
+        "workspace": "flagon-io",
         "number": 12,
         "title": "Greeting should name the caller",
         "body": "Take a name from the first argument; fall back to world.\n\n## Definition of done\n\n- `cargo test` passes.\n- The README shows the new usage.",
@@ -3365,7 +3488,7 @@
         ],
         "state": "open",
         "reason": null,
-        "resolved_by": null,
+        "resolutions": [],
         "author": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
           "username": "syntaqx",
@@ -3390,20 +3513,101 @@
         "milestone": {
           "number": 3,
           "title": "Launch"
-        }
+        },
+        "repos": [
+          {
+            "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+            "path": "flagon-io/hello",
+            "role": "origin",
+            "legacy_number": null,
+            "landed": false
+          },
+          {
+            "repo_id": "rep_01m3m5r8t2v4x6z8b0d2f4h6j8",
+            "path": "flagon-io/docs",
+            "role": "target",
+            "legacy_number": null,
+            "landed": false
+          }
+        ]
       },
       "definition_of_done": [
         "`cargo test` passes.",
         "The README shows the new usage."
       ],
-      "required_checks": [
-        "CI"
+      "repos": [
+        {
+          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+          "path": "flagon-io/hello",
+          "role": "origin",
+          "legacy_number": null,
+          "landed": false,
+          "required_checks": [
+            "CI"
+          ],
+          "pulls": [
+            {
+              "number": 14,
+              "title": "Greeting should name the caller",
+              "status": "draft",
+              "branch": "greet-caller",
+              "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+              "author": {
+                "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                "username": "syntaqx"
+              },
+              "check_status": null,
+              "required_checks": [
+                {
+                  "name": "CI",
+                  "state": "success",
+                  "description": "CI passed",
+                  "target_url": "https://g1t.sh/syntaqx/hello/actions/runs/run_01m43sw8e2g6j0m4q8t2x6a0c4"
+                }
+              ],
+              "mergeable": "clean",
+              "overlaps": [
+                {
+                  "number": 11,
+                  "title": "Parse arguments with clap",
+                  "item": 9,
+                  "paths": [
+                    "src/main.rs"
+                  ]
+                }
+              ],
+              "queue": null,
+              "repo": "flagon-io/hello"
+            }
+          ]
+        },
+        {
+          "repo_id": "rep_01m3m5r8t2v4x6z8b0d2f4h6j8",
+          "path": "flagon-io/docs",
+          "role": "target",
+          "legacy_number": null,
+          "landed": false,
+          "required_checks": [],
+          "pulls": []
+        }
+      ],
+      "missing": [
+        "flagon-io/docs"
+      ],
+      "suggested_targets": [
+        {
+          "repo_id": "rep_01m3m5s0w4y6a8c0e2g4j6l8n0",
+          "path": "flagon-io/cli",
+          "why": "Work items labeled feature that mention greeting landed there before.",
+          "score": 3
+        }
       ],
       "claims": [
         {
           "id": "clm_01m4b3d5f7h9k1m3p5r7t9w1y3",
           "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
-          "issue": 12,
+          "workspace": "flagon-io",
+          "item": 12,
           "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
           "actor": {
             "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
@@ -3423,7 +3627,7 @@
         {
           "id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
           "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
-          "issue": 12,
+          "item": 12,
           "pull": 14,
           "branch": "greet-caller",
           "actor": {
@@ -3441,40 +3645,6 @@
           "end_reason": null
         }
       ],
-      "pulls": [
-        {
-          "number": 14,
-          "title": "Greeting should name the caller",
-          "status": "draft",
-          "branch": "greet-caller",
-          "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
-          "author": {
-            "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
-            "username": "syntaqx"
-          },
-          "check_status": null,
-          "required_checks": [
-            {
-              "name": "CI",
-              "state": "success",
-              "description": "CI passed",
-              "target_url": "https://g1t.sh/syntaqx/hello/actions/runs/run_01m43sw8e2g6j0m4q8t2x6a0c4"
-            }
-          ],
-          "mergeable": "clean",
-          "overlaps": [
-            {
-              "number": 11,
-              "title": "Parse arguments with clap",
-              "issue": 9,
-              "paths": [
-                "src/main.rs"
-              ]
-            }
-          ],
-          "queue": null
-        }
-      ],
       "blocked_by": [
         {
           "number": 9,
@@ -3484,7 +3654,8 @@
             {
               "id": "clm_01m4b2a4c6e8g0j2l4n6q8s0u2",
               "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
-              "issue": 9,
+              "workspace": "flagon-io",
+              "item": 9,
               "session_id": null,
               "actor": {
                 "id": "usr_01kkp2v7d4fh8m3q6t9w2z5c8e",
@@ -3519,7 +3690,7 @@
       "decisions": [
         {
           "id": "dec_01m4b3e7g9j1l3n5q7s9u1w3y5",
-          "issue": 12,
+          "item": 12,
           "pull": 14,
           "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
           "actor": "syntaqx",
@@ -3544,11 +3715,12 @@
           "data": {
             "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
             "number": 12,
-            "issue": 12,
+            "item": 12,
             "claim": {
               "id": "clm_01m4b3d5f7h9k1m3p5r7t9w1y3",
               "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
-              "issue": 12,
+              "workspace": "flagon-io",
+              "item": 12,
               "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
               "actor": {
                 "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
@@ -3567,7 +3739,8 @@
               {
                 "id": "clm_01m4b2a4c6e8g0j2l4n6q8s0u2",
                 "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
-                "issue": 12,
+                "workspace": "flagon-io",
+                "item": 12,
                 "session_id": null,
                 "actor": {
                   "id": "usr_01kkp2v7d4fh8m3q6t9w2z5c8e",
@@ -3587,7 +3760,7 @@
         }
       ]
     },
-    "notes": "`pulls` are the issue's pull requests, oldest first; `required_checks`, `mergeable`, `overlaps` and `queue` (its `state` and `position` in the merge queue, 1 at the front) are filled in for those still open or draft. `recent` holds up to 20 coordination events about the issue or its pull requests, newest first. See [Picking up an issue](/guides/sessions/#picking-up-an-issue)."
+    "notes": "`repos` are the repositories it is linked to (origin, targets, touched), each with `landed`, the `required_checks` of its default branch and its `pulls` for the work item, oldest first; `required_checks`, `mergeable`, `overlaps` and `queue` (its `state` and `position` in the merge queue, 1 at the front) are filled in for those still open or draft. `missing` lists the targets it has not landed in yet, and `suggested_targets` the repositories of the workspace it may belong in, each with `why`: link one as a target with link_work_item. `recent` holds up to 20 coordination events about the work item or its pull requests, newest first. See [Picking up a work item](/guides/work-items/)."
   },
   "record_decision": {
     "request": {
@@ -3600,7 +3773,7 @@
     },
     "response": {
       "id": "dec_01kpz9a1b3c5d7e9f1g3h5j7kb",
-      "issue": 9,
+      "item": 9,
       "pull": 14,
       "session_id": "ses_01kpz7x9y1z3a5b7c9d1e3f5gh",
       "actor": "ana",
@@ -3618,7 +3791,7 @@
     "response": [
       {
         "id": "dec_01kpz8m2q4r6s8t0v2w4x6y8za",
-        "issue": 9,
+        "item": 9,
         "pull": 14,
         "session_id": null,
         "actor": null,
@@ -3651,7 +3824,7 @@
       },
       {
         "id": "dec_01kpz9a1b3c5d7e9f1g3h5j7kb",
-        "issue": 9,
+        "item": 9,
         "pull": 14,
         "session_id": "ses_01kpz7x9y1z3a5b7c9d1e3f5gh",
         "actor": "ana",
@@ -3664,7 +3837,7 @@
         "created_at": "2026-10-12T15:31:40.019Z"
       }
     ],
-    "notes": "`GET /repos/{owner}/{name}/issues/{number}/decisions` lists an issue's, with those on its pull requests."
+    "notes": "A work item's decisions, with those on its pull requests, are `GET /workspaces/{workspace}/work/{number}/decisions`."
   },
   "why": {
     "query": {
@@ -3695,7 +3868,8 @@
         "merged_by": "g1t",
         "merged_at": "2026-10-12T15:52:18.330Z"
       },
-      "issue": {
+      "item": {
+        "workspace": "flagon-io",
         "number": 9,
         "title": "Webhook deliveries are not retried",
         "state": "closed",
@@ -3704,7 +3878,7 @@
       "decisions": [
         {
           "id": "dec_01kpz8m2q4r6s8t0v2w4x6y8za",
-          "issue": 9,
+          "item": 9,
           "pull": 14,
           "session_id": null,
           "actor": null,
@@ -3737,7 +3911,7 @@
         },
         {
           "id": "dec_01kpz9a1b3c5d7e9f1g3h5j7kb",
-          "issue": 9,
+          "item": 9,
           "pull": 14,
           "session_id": "ses_01kpz7x9y1z3a5b7c9d1e3f5gh",
           "actor": "ana",
@@ -5497,11 +5671,13 @@
       "fetched_at": "2026-10-04T15:42:07.318Z"
     }
   },
-  "import_issue": {
+  "import_work_items": {
     "request": {
+      "repo": "flagon-io/hello",
       "reference": "TECH-1234"
     },
     "response": {
+      "workspace": "flagon-io",
       "number": 42,
       "item": {
         "provider": "jira",
@@ -5514,7 +5690,7 @@
       },
       "created": true
     },
-    "notes": "`created` is false when the ticket was imported before; `number` is then that issue."
+    "notes": "`created` is false when the ticket was imported before; `number` is then that work item."
   },
   "search": {
     "query": {
@@ -5527,7 +5703,7 @@
       "counts": {
         "repositories": 0,
         "code": 2,
-        "issues": 0,
+        "items": 0,
         "pulls": 0,
         "people": 0
       },
@@ -5596,7 +5772,7 @@
       ],
       "notes": []
     },
-    "notes": "`q` takes words, `\"exact phrases\"`, `-words` to leave out, and qualifiers: `repo:owner/name`, `org:` (or `workspace:`), `language:`, `path:` (a glob when it has `*`), `is:issue`, `is:pr`, `is:open`, `is:closed`, `is:merged`, `is:draft`, `is:public`, `is:private`, `author:` and `label:`; most can be left out with a leading `-`, as in `-label:wontfix`. `type` is `repositories`, `code`, `issues`, `pulls` or `people`; without it, `path:` means code, `is:pr` pull requests, `is:open`, `author:` or `label:` issues, and anything else repositories. `counts` says how many results each type has, up to 1,000. Each result's `snippet` (or, for code, each of its `lines`) is a list of parts, `highlight` true where the query matched. Code is searched on default branches and needs a word of three characters or more, unless the query names a `repo:`. Public content is returned to anyone, without a token; private content only to people who can read it (members of its workspace, and people given a role on the repository), checked when the search runs, so a repository made private, or a role taken away, stops appearing at once. A g1t agent's token can search too. An issue or pull request g1t opened has `author` `g1t` and `requested_by` the person it was for; `author:` matches the author."
+    "notes": "`q` takes words, `\"exact phrases\"`, `-words` to leave out, and qualifiers: `repo:owner/name`, `org:` (or `workspace:`), `language:`, `path:` (a glob when it has `*`), `is:item`, `is:pr`, `is:open`, `is:closed`, `is:merged`, `is:draft`, `is:public`, `is:private`, `author:` and `label:`; most can be left out with a leading `-`, as in `-label:wontfix`. `type` is `repositories`, `code`, `items`, `pulls` or `people`; without it, `path:` means code, `is:pr` pull requests, `is:item`, `is:open`, `author:` or `label:` work items, and anything else repositories. `counts` says how many results each type has, up to 1,000. Each result's `snippet` (or, for code, each of its `lines`) is a list of parts, `highlight` true where the query matched. Code is searched on default branches and needs a word of three characters or more, unless the query names a `repo:`. Public content is returned to anyone, without a token; private content only to people who can read it (members of its workspace, and people given a role on the repository), checked when the search runs, so a repository made private, or a role taken away, stops appearing at once. A g1t agent's token can search too. A work item or pull request g1t opened has `author` `g1t` and `requested_by` the person it was for; `author:` matches the author."
   },
   "list_collaborators": {
     "response": {
@@ -6428,7 +6604,7 @@
           "target": "4.17.21",
           "branch": "g1t/security/lodash-4.17.21",
           "pull": 42,
-          "issue": null,
+          "item": null,
           "error": null,
           "updated_at": "2026-10-01T12:20:00.000Z"
         },
@@ -6470,7 +6646,7 @@
         "target": "4.17.21",
         "branch": "g1t/security/lodash-4.17.21",
         "pull": 42,
-        "issue": null,
+        "item": null,
         "error": null,
         "updated_at": "2026-10-01T12:20:00.000Z"
       },
@@ -7132,10 +7308,9 @@
       "updated_at": "2026-10-07T10:04:00.000Z"
     }
   },
-  "get_issue_subscription": {
+  "get_work_item_subscription": {
     "params": {
-      "owner": "flagon-io",
-      "name": "hello",
+      "workspace": "flagon-io",
       "number": 14
     },
     "response": {
@@ -7147,10 +7322,9 @@
       "updated_at": null
     }
   },
-  "set_issue_subscription": {
+  "set_work_item_subscription": {
     "params": {
-      "owner": "flagon-io",
-      "name": "hello",
+      "workspace": "flagon-io",
       "number": 14
     },
     "request": {
@@ -7165,10 +7339,9 @@
       "updated_at": "2026-10-07T10:05:00.000Z"
     }
   },
-  "delete_issue_subscription": {
+  "delete_work_item_subscription": {
     "params": {
-      "owner": "flagon-io",
-      "name": "hello",
+      "workspace": "flagon-io",
       "number": 14
     },
     "response": {
@@ -7217,7 +7390,7 @@
       "ignored": false,
       "updated_at": "2026-10-07T10:06:00.000Z"
     },
-    "notes": "| `level` | You hear of |\n| --- | --- |\n| `participating` | What you take part in, or are mentioned in (the default) |\n| `all` | Every issue and pull request opened, commented on, closed or merged, and every deployment |\n| `custom` | What you take part in, and the kinds in `events`: `issues`, `pulls`, `deployments`, `security` |\n| `ignore` | Nothing, not even a mention |\n\nInstead of `level`, `{\"subscribed\": true}` is `all`, `{\"subscribed\": false}` is `participating` and `{\"ignored\": true}` is `ignore`."
+    "notes": "| `level` | You hear of |\n| --- | --- |\n| `participating` | What you take part in, or are mentioned in (the default) |\n| `all` | Every work item linked to it and pull request opened, commented on, closed or merged, and every deployment |\n| `custom` | What you take part in, and the kinds in `events`: `work_items`, `pulls`, `deployments`, `security` |\n| `ignore` | Nothing, not even a mention |\n\nInstead of `level`, `{\"subscribed\": true}` is `all`, `{\"subscribed\": false}` is `participating` and `{\"ignored\": true}` is `ignore`."
   },
   "delete_repo_subscription": {
     "params": {
@@ -7771,9 +7944,14 @@
         {
           "sha": "85c083a0e4b1d2c3f4a5b6c7d8e9f0a1b2c3d4e5",
           "message": "The runner's broker test reads the relayed answer's body as chunks.",
-          "author": { "name": "Chase Pierce", "username": "syntaqx" },
+          "author": {
+            "name": "Chase Pierce",
+            "username": "syntaqx"
+          },
           "authored_at": "2026-10-12T22:04:11Z",
-          "parents": ["75c6704f2b1a3c4d5e6f708192a3b4c5d6e7f809"],
+          "parents": [
+            "75c6704f2b1a3c4d5e6f708192a3b4c5d6e7f809"
+          ],
           "html_url": "https://g1t.sh/flagon-io/g1t/commit/85c083a0e4b1d2c3f4a5b6c7d8e9f0a1b2c3d4e5"
         }
       ],
@@ -7781,9 +7959,14 @@
       "last_changed": {
         "sha": "5d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e",
         "message": "Installs in cloud jobs retry when npm's download breaks off.",
-        "author": { "name": "Chase Pierce", "username": "syntaqx" },
+        "author": {
+          "name": "Chase Pierce",
+          "username": "syntaqx"
+        },
         "authored_at": "2026-10-13T01:12:40Z",
-        "parents": ["0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3"],
+        "parents": [
+          "0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3"
+        ],
         "html_url": "https://g1t.sh/flagon-io/g1t/commit/5d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e"
       }
     }
@@ -7829,7 +8012,12 @@
         "failed_deployments": 0,
         "default_branch_pushes": 0,
         "failed_runs": 0,
-        "shipped": { "live": 1, "deploying": 0, "failed": 0, "not_deployed": 0 }
+        "shipped": {
+          "live": 1,
+          "deploying": 0,
+          "failed": 0,
+          "not_deployed": 0
+        }
       },
       "landed": [
         {
@@ -7841,7 +8029,10 @@
           "url": "https://g1t.sh/flagon-io/g1t/commit/75c6704f2b1a3c4d5e6f708192a3b4c5d6e7f809",
           "username": "syntaqx",
           "production": "live",
-          "deploy": { "name": "g1t's production deployment", "url": "https://g1t.sh/flagon-io/g1t/deployments/dpl_01kkp3m8w2f6t9qh4c7d1r5n0x" }
+          "deploy": {
+            "name": "g1t's production deployment",
+            "url": "https://g1t.sh/flagon-io/g1t/deployments/dpl_01kkp3m8w2f6t9qh4c7d1r5n0x"
+          }
         }
       ],
       "events": [
@@ -7873,7 +8064,7 @@
           "number": 412,
           "title": "Ask g1t answers with the workspace's own AI provider",
           "url": "https://g1t.sh/flagon-io/g1t/pull/412",
-          "issue": 398
+          "item": 398
         }
       ],
       "complete": true
@@ -8816,7 +9007,7 @@
         "dismissed_reason": null,
         "dismissed_comment": null,
         "dismissed_at": null,
-        "issue": null
+        "item": null
       }
     ],
     "notes": "`severity` is the rule's security severity when it has one (from its `security-severity` score), else from the result's level: `error` high, `warning` medium, `note` low."
@@ -8866,7 +9057,7 @@
           "dismissed_reason": null,
           "dismissed_comment": null,
           "dismissed_at": null,
-          "issue": null
+          "item": null
         }
       }
     ]
@@ -8913,7 +9104,7 @@
         "dismissed_reason": null,
         "dismissed_comment": null,
         "dismissed_at": null,
-        "issue": null
+        "item": null
       },
       "activity": [],
       "analyses": [
@@ -8982,7 +9173,7 @@
       "dismissed_reason": "false_positive",
       "dismissed_comment": "The argument is a constant.",
       "dismissed_at": "2026-10-06T09:20:41.502Z",
-      "issue": null
+      "item": null
     }
   },
   "list_code_scanning_analyses": {
@@ -9073,7 +9264,7 @@
         "severity": "high",
         "fixed_version": "4.17.21",
         "status": "open",
-        "issue": null,
+        "item": null,
         "found_at": "2026-10-06T09:14:02.118Z",
         "fixed_at": null,
         "state": "open",
@@ -9108,7 +9299,7 @@
           "severity": "high",
           "fixed_version": "4.17.21",
           "status": "open",
-          "issue": null,
+          "item": null,
           "found_at": "2026-10-06T09:14:02.118Z",
           "fixed_at": null,
           "state": "open",
@@ -9140,7 +9331,7 @@
       "severity": "high",
       "fixed_version": "4.17.21",
       "status": "open",
-      "issue": null,
+      "item": null,
       "found_at": "2026-10-06T09:14:02.118Z",
       "fixed_at": null,
       "state": "open",
@@ -9175,7 +9366,7 @@
       "severity": "high",
       "fixed_version": "4.17.21",
       "status": "dismissed",
-      "issue": null,
+      "item": null,
       "found_at": "2026-10-06T09:14:02.118Z",
       "fixed_at": null,
       "state": "dismissed",
@@ -9899,12 +10090,13 @@
       "name": "area: cli",
       "color": "1d76db",
       "description": "The command-line tool",
-      "issues": 0,
+      "items": 0,
       "pulls": 0
     }
   },
   "update_label": {
     "params": {
+      "workspace": "flagon-io",
       "label": "area: cli"
     },
     "request": {
@@ -9915,13 +10107,14 @@
       "name": "cli",
       "color": "0052cc",
       "description": "The command-line tool",
-      "issues": 3,
+      "items": 3,
       "pulls": 1
     },
-    "notes": "Renaming a label renames it on every issue and pull request that carries it."
+    "notes": "Renaming a label renames it on every work item and pull request of the workspace that carries it."
   },
   "delete_label": {
     "params": {
+      "workspace": "flagon-io",
       "label": "wontfix"
     },
     "response": true
@@ -9932,38 +10125,38 @@
         "name": "bug",
         "color": "d73a4a",
         "description": "Something isn't working",
-        "issues": 4,
+        "items": 4,
         "pulls": 1
       },
       {
         "name": "documentation",
         "color": "0075ca",
         "description": "Improvements or additions to documentation",
-        "issues": 0,
+        "items": 0,
         "pulls": 0
       }
     ],
     "notes": "Every label the repository has afterwards, shortened here. Labels it already had are left as they were."
   },
-  "list_issue_labels": {
+  "list_work_item_labels": {
     "response": [
       {
         "name": "bug",
         "color": "d73a4a",
         "description": "Something isn't working",
-        "issues": 4,
+        "items": 4,
         "pulls": 1
       },
       {
         "name": "help wanted",
         "color": "008672",
         "description": "Extra attention is needed",
-        "issues": 1,
+        "items": 1,
         "pulls": 0
       }
     ]
   },
-  "add_issue_labels": {
+  "add_work_item_labels": {
     "request": {
       "labels": [
         "help wanted"
@@ -9975,7 +10168,7 @@
     ],
     "notes": "Returns its labels now, by name."
   },
-  "set_issue_labels": {
+  "set_work_item_labels": {
     "request": {
       "labels": [
         "bug"
@@ -9985,10 +10178,10 @@
       "bug"
     ]
   },
-  "remove_issue_labels": {
+  "remove_work_item_labels": {
     "response": []
   },
-  "remove_issue_label": {
+  "remove_work_item_label": {
     "params": {
       "label": "help wanted"
     },
@@ -10034,6 +10227,7 @@
   },
   "update_milestone": {
     "params": {
+      "workspace": "flagon-io",
       "milestone": 3
     },
     "request": {
@@ -10054,12 +10248,14 @@
   },
   "delete_milestone": {
     "params": {
+      "workspace": "flagon-io",
       "milestone": 3
     },
     "response": true
   },
   "get_milestone": {
     "params": {
+      "workspace": "flagon-io",
       "milestone": 3
     },
     "response": {
@@ -10075,10 +10271,10 @@
         "updated_at": "2026-10-06T16:12:40.118Z",
         "closed_at": null
       },
-      "issues": [
+      "items": [
         {
-          "id": "iss_01m43shrzpfe49x74ga7sj1c6v",
-          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+          "id": "wki_01m43shrzpfe49x74ga7sj1c6v",
+          "workspace": "flagon-io",
           "number": 12,
           "title": "Greeting should name the caller",
           "body": "Take a name from the first argument; fall back to world.",
@@ -10088,7 +10284,7 @@
           ],
           "state": "open",
           "reason": null,
-          "resolved_by": null,
+          "resolutions": [],
           "author": {
             "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
             "username": "syntaqx",
@@ -10111,7 +10307,16 @@
           "milestone": {
             "number": 3,
             "title": "Launch"
-          }
+          },
+          "repos": [
+            {
+              "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+              "path": "flagon-io/hello",
+              "role": "origin",
+              "legacy_number": null,
+              "landed": false
+            }
+          ]
         }
       ],
       "pulls": [
@@ -10119,7 +10324,7 @@
           "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
           "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
           "number": 14,
-          "issue": 12,
+          "item": 12,
           "title": "Greeting should name the caller",
           "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
           "agent": "claude-code",
@@ -10180,7 +10385,7 @@
       "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
       "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
       "number": 14,
-      "issue": 12,
+      "item": 12,
       "title": "Greeting should name the caller",
       "body": "Reads a name from the first argument. `hello ana` prints \"Hello, ana!\".",
       "agent": "claude-code",
@@ -12269,11 +12474,17 @@
     },
     "request": {
       "dismissed": true,
-      "skipped": ["people", "runner"]
+      "skipped": [
+        "people",
+        "runner"
+      ]
     },
     "response": {
       "dismissed_at": "2026-10-14T21:05:00.000Z",
-      "skipped": ["people", "runner"],
+      "skipped": [
+        "people",
+        "runner"
+      ],
       "updated_at": "2026-10-14T21:05:00.000Z"
     },
     "notes": "Dismissing it again keeps the first `dismissed_at`; `\"dismissed\": false` makes it open by itself again. A step that is not one of `ai`, `ask`, `code`, `harness`, `people` and `runner` is refused with `422`. Opening the guide again from the workspace's settings or its AI page changes nothing here."
@@ -12287,16 +12498,24 @@
         "id": "tok_01HZX3K2M9V7Q4N8B6D5C3A2E1",
         "name": "release-bot",
         "owner": "ada",
-                "description": "Publishes releases from CI",
+        "description": "Publishes releases from CI",
         "created_at": "2026-10-08T09:00:00.000Z",
         "created_by": null,
         "last_used_at": null,
         "expires_at": "2026-11-07T09:00:00.000Z",
-        "scopes": ["repo:read", "code:write"],
+        "scopes": [
+          "repo:read",
+          "code:write"
+        ],
         "workspace": "flagon-io",
         "repository_selection": "selected",
-        "repositories": ["flagon-io/hello"],
-        "permissions": { "code": "write", "repo": "read" },
+        "repositories": [
+          "flagon-io/hello"
+        ],
+        "permissions": {
+          "code": "write",
+          "repo": "read"
+        },
         "status": "pending",
         "review_reason": null,
         "reaches": false,
@@ -12313,16 +12532,24 @@
         "id": "tok_01HZX3K2M9V7Q4N8B6D5C3A2E1",
         "name": "release-bot",
         "owner": "ada",
-                "description": "Publishes releases from CI",
+        "description": "Publishes releases from CI",
         "created_at": "2026-10-08T09:00:00.000Z",
         "created_by": null,
         "last_used_at": null,
         "expires_at": "2026-11-07T09:00:00.000Z",
-        "scopes": ["repo:read", "code:write"],
+        "scopes": [
+          "repo:read",
+          "code:write"
+        ],
         "workspace": "flagon-io",
         "repository_selection": "selected",
-        "repositories": ["flagon-io/hello"],
-        "permissions": { "code": "write", "repo": "read" },
+        "repositories": [
+          "flagon-io/hello"
+        ],
+        "permissions": {
+          "code": "write",
+          "repo": "read"
+        },
         "status": "pending",
         "review_reason": null,
         "reaches": false,
@@ -12342,16 +12569,24 @@
       "id": "tok_01HZX3K2M9V7Q4N8B6D5C3A2E1",
       "name": "release-bot",
       "owner": "ada",
-            "description": "Publishes releases from CI",
+      "description": "Publishes releases from CI",
       "created_at": "2026-10-08T09:00:00.000Z",
       "created_by": null,
       "last_used_at": null,
       "expires_at": "2026-11-07T09:00:00.000Z",
-      "scopes": ["repo:read", "code:write"],
+      "scopes": [
+        "repo:read",
+        "code:write"
+      ],
       "workspace": "flagon-io",
       "repository_selection": "selected",
-      "repositories": ["flagon-io/hello"],
-      "permissions": { "code": "write", "repo": "read" },
+      "repositories": [
+        "flagon-io/hello"
+      ],
+      "permissions": {
+        "code": "write",
+        "repo": "read"
+      },
       "status": "active",
       "review_reason": null,
       "reaches": true,
@@ -14884,7 +15119,7 @@
         "last_request_id": "req_01kq9b7d9f1h3k5m7p9r1t3v5x",
         "last_trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
         "state": "open",
-        "issue_number": null
+        "item": null
       }
     ],
     "notes": "The same exception is one group: its name, its message with numbers and ids taken out, and the top frame of its stack. `first_deployment_id` is the deployment it was first seen on, what likely brought it in. At most 200 groups, most recently seen first."
@@ -14896,8 +15131,7 @@
       "fingerprint": "9f2c41d07ab3e815"
     },
     "request": {
-      "state": "resolved",
-      "issue_number": 418
+      "state": "resolved"
     },
     "response": {
       "fingerprint": "9f2c41d07ab3e815",
@@ -14913,9 +15147,9 @@
       "last_request_id": "req_01kq9b7d9f1h3k5m7p9r1t3v5x",
       "last_trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
       "state": "resolved",
-      "issue_number": 418
+      "item": null
     },
-    "notes": "A resolved group that happens again opens again. `issue_number` links the issue made for it, so an agent can take it; null unlinks it. Needs the Triage role or higher."
+    "notes": "A resolved group that happens again opens again. `item_number` links the work item made for it, so an agent can take it; null unlinks it. Needs the Triage role or higher."
   },
   "list_metrics": {
     "params": {
@@ -15329,5 +15563,394 @@
     "response": {
       "disabled": true
     }
+  },
+  "get_pull_request_subscription": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "number": 14
+    },
+    "response": {
+      "subscribed": true,
+      "ignored": false,
+      "reason": "author",
+      "repo": null,
+      "number": 14,
+      "updated_at": null
+    }
+  },
+  "set_pull_request_subscription": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "number": 14
+    },
+    "request": {
+      "subscribed": true
+    },
+    "response": {
+      "subscribed": true,
+      "ignored": false,
+      "reason": "manual",
+      "repo": null,
+      "number": 14,
+      "updated_at": "2026-10-07T10:05:00.000Z"
+    }
+  },
+  "delete_pull_request_subscription": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "number": 14
+    },
+    "response": {
+      "subscribed": false,
+      "ignored": false,
+      "reason": null,
+      "repo": null,
+      "number": 14,
+      "updated_at": "2026-10-07T10:05:30.000Z"
+    }
+  },
+  "list_repo_work_items": {
+    "query": {
+      "state": "open",
+      "role": "target"
+    },
+    "response": [
+      {
+        "id": "wki_01m43shrzpfe49x74ga7sj1c6v",
+        "workspace": "flagon-io",
+        "number": 12,
+        "title": "Greeting should name the caller",
+        "body": "Take a name from the first argument; fall back to world.",
+        "labels": [
+          "feature"
+        ],
+        "state": "open",
+        "reason": null,
+        "resolutions": [],
+        "author": {
+          "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+          "username": "syntaqx",
+          "display_username": "syntaqx",
+          "kind": "user",
+          "verified": false,
+          "workspaces": []
+        },
+        "requested_by": null,
+        "created_at": "2026-10-01T18:04:11.482Z",
+        "updated_at": "2026-10-01T18:04:11.482Z",
+        "closed_at": null,
+        "pull_count": 1,
+        "comment_count": 0,
+        "assignees": [],
+        "blocked_by": [],
+        "agent": "claude-code",
+        "milestone": null,
+        "repos": [
+          {
+            "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+            "path": "flagon-io/hello",
+            "role": "origin",
+            "legacy_number": null,
+            "landed": false
+          }
+        ]
+      }
+    ]
+  },
+  "link_work_item": {
+    "request": {
+      "repo": "flagon-io/docs",
+      "role": "target"
+    },
+    "response": {
+      "id": "wki_01m43shrzpfe49x74ga7sj1c6v",
+      "workspace": "flagon-io",
+      "number": 12,
+      "title": "Greeting should name the caller",
+      "body": "Take a name from the first argument; fall back to world.",
+      "labels": [
+        "feature"
+      ],
+      "state": "open",
+      "reason": null,
+      "resolutions": [],
+      "author": {
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+        "username": "syntaqx",
+        "display_username": "syntaqx",
+        "kind": "user",
+        "verified": false,
+        "workspaces": []
+      },
+      "requested_by": null,
+      "created_at": "2026-10-01T18:04:11.482Z",
+      "updated_at": "2026-10-01T19:41:52.830Z",
+      "closed_at": null,
+      "pull_count": 0,
+      "comment_count": 0,
+      "assignees": [],
+      "blocked_by": [],
+      "agent": null,
+      "milestone": null,
+      "repos": [
+        {
+          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+          "path": "flagon-io/hello",
+          "role": "origin",
+          "legacy_number": null,
+          "landed": false
+        },
+        {
+          "repo_id": "rep_01m3m5r8t2v4x6z8b0d2f4h6j8",
+          "path": "flagon-io/docs",
+          "role": "target",
+          "legacy_number": null,
+          "landed": false
+        }
+      ]
+    },
+    "notes": "A work item with targets closes once it has landed in every one of them. Linking a repository it is already linked to changes its role."
+  },
+  "unlink_work_item": {
+    "query": {
+      "repo": "flagon-io/docs"
+    },
+    "response": {
+      "id": "wki_01m43shrzpfe49x74ga7sj1c6v",
+      "workspace": "flagon-io",
+      "number": 12,
+      "title": "Greeting should name the caller",
+      "body": "Take a name from the first argument; fall back to world.",
+      "labels": [
+        "feature"
+      ],
+      "state": "open",
+      "reason": null,
+      "resolutions": [],
+      "author": {
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+        "username": "syntaqx",
+        "display_username": "syntaqx",
+        "kind": "user",
+        "verified": false,
+        "workspaces": []
+      },
+      "requested_by": null,
+      "created_at": "2026-10-01T18:04:11.482Z",
+      "updated_at": "2026-10-01T19:41:52.830Z",
+      "closed_at": null,
+      "pull_count": 0,
+      "comment_count": 0,
+      "assignees": [],
+      "blocked_by": [],
+      "agent": null,
+      "milestone": null,
+      "repos": [
+        {
+          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+          "path": "flagon-io/hello",
+          "role": "origin",
+          "legacy_number": null,
+          "landed": false
+        }
+      ]
+    }
+  },
+  "list_work_item_links": {
+    "response": {
+      "repos": [
+        {
+          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+          "path": "flagon-io/hello",
+          "role": "origin",
+          "legacy_number": null,
+          "landed": false
+        },
+        {
+          "repo_id": "rep_01m3m5r8t2v4x6z8b0d2f4h6j8",
+          "path": "flagon-io/docs",
+          "role": "target",
+          "legacy_number": null,
+          "landed": false
+        }
+      ],
+      "missing": [
+        "flagon-io/docs"
+      ]
+    },
+    "notes": "`missing` lists the targets it has not landed in yet; with none, whatever closes it closes it."
+  },
+  "resolve_ref": {
+    "params": {
+      "owner": "flagon-io",
+      "name": "hello",
+      "number": 12
+    },
+    "response": {
+      "kind": "work_item",
+      "workspace": "flagon-io",
+      "number": 31,
+      "item_id": "wki_01m43shrzpfe49x74ga7sj1c6v"
+    },
+    "notes": "`#12` read in flagon-io/hello: no pull request of the repository has that number, and its issue 12 became work item 31 of the workspace. A pull request answers `{ \"kind\": \"pull\", \"repo\": \"flagon-io/hello\", \"number\": 14 }`, and nothing you may see `{ \"kind\": \"none\" }`."
+  },
+  "resolve_ref_for_workspace": {
+    "params": {
+      "workspace": "flagon-io",
+      "number": 31
+    },
+    "response": {
+      "kind": "work_item",
+      "workspace": "flagon-io",
+      "number": 31,
+      "item_id": "wki_01m43shrzpfe49x74ga7sj1c6v"
+    }
+  },
+  "add_work_item_comment": {
+    "request": {
+      "body": "Should an empty name fall back to \"world\"?"
+    },
+    "response": {
+      "id": "cmt_01m43sv4c8e2g6j0m4q8t2x6a1",
+      "kind": "comment",
+      "author": {
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+        "username": "syntaqx",
+        "display_username": "syntaqx",
+        "kind": "user",
+        "verified": true,
+        "workspaces": [
+          {
+            "slug": "flagon-io",
+            "role": "owner"
+          }
+        ]
+      },
+      "body": "Should an empty name fall back to \"world\"?",
+      "path": null,
+      "line": null,
+      "verdict": null,
+      "created_at": "2026-10-01T18:12:30.551Z"
+    }
+  },
+  "edit_work_item_comment": {
+    "params": {
+      "workspace": "flagon-io",
+      "comment_id": "cmt_01m43sv4c8e2g6j0m4q8t2x6a1"
+    },
+    "request": {
+      "body": "Should an empty name fall back to \"world\", or print the usage?"
+    },
+    "response": {
+      "id": "cmt_01m43sv4c8e2g6j0m4q8t2x6a1",
+      "kind": "comment",
+      "author": {
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+        "username": "syntaqx",
+        "display_username": "syntaqx",
+        "kind": "user",
+        "verified": true,
+        "workspaces": [
+          {
+            "slug": "flagon-io",
+            "role": "owner"
+          }
+        ]
+      },
+      "body": "Should an empty name fall back to \"world\", or print the usage?",
+      "path": null,
+      "line": null,
+      "verdict": null,
+      "created_at": "2026-10-01T18:12:30.551Z",
+      "edited_at": "2026-10-01T18:30:04.210Z"
+    },
+    "notes": "Its author, or someone with the Maintain role or higher. A note of something that happened answers `409`."
+  },
+  "delete_work_item_comment": {
+    "params": {
+      "workspace": "flagon-io",
+      "comment_id": "cmt_01m43sv4c8e2g6j0m4q8t2x6a1"
+    },
+    "notes": "Answers `204` with no body. Its author, or someone with the Maintain role or higher. A review that approved or requested changes answers `409`: edit it instead."
+  },
+  "react_to_work_item": {
+    "params": {
+      "workspace": "flagon-io",
+      "number": 12,
+      "comment_id": "cmt_01m43sv4c8e2g6j0m4q8t2x6a1",
+      "content": "heart"
+    },
+    "response": [
+      {
+        "content": "heart",
+        "count": 1,
+        "users": [
+          "ana"
+        ]
+      },
+      {
+        "content": "eyes",
+        "count": 1,
+        "users": [
+          "g1t"
+        ]
+      }
+    ],
+    "notes": "Reacting twice the same way is one reaction. Without comment_id it reacts to the work item's description."
+  },
+  "list_work_item_decisions": {
+    "response": [
+      {
+        "id": "dec_01kpz8m2q4r6s8t0v2w4x6y8za",
+        "item": 9,
+        "pull": 14,
+        "session_id": null,
+        "actor": null,
+        "kind": "integration_failure",
+        "confidence": "tested",
+        "summary": "#14 failed in the merge queue together with #12: `CI / merge_group` failed when they were combined.",
+        "evidence": {
+          "commit": "4be1c0d9a2f3e4b5c6d7e8f90a1b2c3d4e5f6a7b",
+          "check": {
+            "name": "CI / merge_group",
+            "conclusion": "failure",
+            "url": "https://g1t.sh/acme/web/actions/runs/run_01kpz8k0"
+          },
+          "combination": [
+            11,
+            12,
+            14
+          ],
+          "other_pulls": [
+            11,
+            12
+          ],
+          "suspects": [
+            12
+          ],
+          "bisected": true,
+          "landed": []
+        },
+        "created_at": "2026-10-12T15:04:11.204Z"
+      },
+      {
+        "id": "dec_01kpz9a1b3c5d7e9f1g3h5j7kb",
+        "item": 9,
+        "pull": 14,
+        "session_id": "ses_01kpz7x9y1z3a5b7c9d1e3f5gh",
+        "actor": "ana",
+        "kind": "fix",
+        "confidence": "claimed",
+        "summary": "Renamed the config key #12 also introduced, so both read retry_limit.",
+        "evidence": {
+          "commit": "7d3e9a1c5b2f4e6a8c0d2e4f6a8b0c2d4e6f8a0b"
+        },
+        "created_at": "2026-10-12T15:31:40.019Z"
+      }
+    ],
+    "notes": "Those on the work item itself, and those on each of its pull requests, in any repository."
   }
 }

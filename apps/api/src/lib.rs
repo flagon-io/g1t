@@ -172,6 +172,7 @@ async fn authenticate(
 fn index(addresses: &addresses::Addresses) -> Value {
     let api = &addresses.api;
     let repo = format!("{api}/repos/{{owner}}/{{name}}");
+    let workspace = format!("{api}/workspaces/{{workspace}}");
     json!({
         "documentation_url": "https://docs.g1t.sh/reference/api/",
         "openapi_url": format!("{api}/openapi.json"),
@@ -182,10 +183,12 @@ fn index(addresses: &addresses::Addresses) -> Value {
         "search_url": format!("{api}/search{{?q,type,page,per_page}}"),
         "repository_url": repo,
         "repository_events_url": format!("{repo}/events{{?before}}"),
-        "labels_url": format!("{repo}/labels"),
-        "issues_url": format!("{repo}/issues{{?state,label}}"),
-        "issue_url": format!("{repo}/issues/{{number}}"),
-        "issue_comments_url": format!("{repo}/issues/{{number}}/comments"),
+        "repository_work_url": format!("{repo}/work{{?state,label,role}}"),
+        "work_url": format!("{workspace}/work{{?state,label,milestone,assignee,repo,role}}"),
+        "work_item_url": format!("{workspace}/work/{{number}}"),
+        "work_item_comments_url": format!("{workspace}/work/{{number}}/comments"),
+        "labels_url": format!("{workspace}/labels"),
+        "milestones_url": format!("{workspace}/milestones{{?state}}"),
         "pulls_url": format!("{repo}/pulls{{?state}}"),
         "pull_url": format!("{repo}/pulls/{{number}}"),
         "pull_changes_url": format!("{repo}/pulls/{{number}}/changes"),
@@ -197,7 +200,7 @@ fn index(addresses: &addresses::Addresses) -> Value {
         "git_url": format!("{}/{{owner}}/{{name}}.git", addresses.site),
         "integrations_url": format!("{api}/workspaces/{{workspace}}/integrations"),
         "context_url": format!("{repo}/context{{?reference}}"),
-        "import_issue_url": format!("{repo}/issues/import"),
+        "import_work_items_url": format!("{workspace}/work/import"),
         "hooks_url": format!("{api}/hooks/{{integration}}"),
     })
 }
@@ -297,7 +300,7 @@ async fn device_token(request: &mut Request, services: &Services) -> Result<Resp
     })
 }
 
-/// A sandbox reporting on a run of an issue's commands, from before a pull
+/// A sandbox reporting on a run of a work item's commands, from before a pull
 /// request's checks were the workflows run on it.
 /// The run's own token, in the body, is the credential: it was given to
 /// that sandbox and to nothing else.
@@ -838,8 +841,8 @@ mod tests {
     #[test]
     fn snake_case_wins_when_both_are_given() {
         assert_eq!(
-            snake_case_keys(json!({ "keep_issue_open": true, "keepIssueOpen": false })),
-            json!({ "keep_issue_open": true })
+            snake_case_keys(json!({ "keep_item_open": true, "keepItemOpen": false })),
+            json!({ "keep_item_open": true })
         );
     }
 }

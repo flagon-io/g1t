@@ -152,8 +152,8 @@ impl TelemetryOp {
             TelemetryOp::ListLogs => "Search a project's logs, newest first. q finds lines holding all of its words, or a phrase in quotes. level narrows to levels (trace, debug, info, warn, error, fatal, comma-separated); trace_id and request_id to one trace's or one request's lines; environment, service and deployment_id to where they ran; from and to to a period. Each line has its time_us, severity, body, attributes, trace_id, span_id and request_id. A page holds limit; pass next back as cursor for the next. Needs a role on the project's repository.",
             TelemetryOp::ListTraces => "A project's traces, newest first: each its root span's name, start_us, duration_us, span_count, error_count, the services it crossed and its HTTP status. Filter by words in q, errors_only, min_duration_ms, environment and service, between from and to. A page holds limit; pass next back as cursor for the next. Needs a role on the project's repository.",
             TelemetryOp::GetTrace => "One trace by its id (32 hex characters): every span, with its parent, kind, timing, status, attributes, resource, events and links, and the log lines written under it. Needs a role on the project's repository.",
-            TelemetryOp::ListErrors => "A project's errors, grouped: the same exception (its name, its message with numbers and ids taken out, and the top frame of its stack) is one group, with its count, first and last time seen, the deployment it was first seen on (what likely brought it in), its last request and trace, its state (open, resolved or ignored) and the issue made for it. Most recently seen first, at most 200. Filter by state, environment and service, between from and to. Needs a role on the project's repository.",
-            TelemetryOp::UpdateError => "Resolve, ignore or reopen an error group (state), or link it to the issue made for it (issue_number; null unlinks it). A resolved group that happens again opens again. Needs the Triage role or higher.",
+            TelemetryOp::ListErrors => "A project's errors, grouped: the same exception (its name, its message with numbers and ids taken out, and the top frame of its stack) is one group, with its count, first and last time seen, the deployment it was first seen on (what likely brought it in), its last request and trace, its state (open, resolved or ignored) and the work item made for it. Most recently seen first, at most 200. Filter by state, environment and service, between from and to. Needs a role on the project's repository.",
+            TelemetryOp::UpdateError => "Resolve, ignore or reopen an error group (state), or link it to the work item made for it (item_number; null unlinks it). A resolved group that happens again opens again. Needs the Triage role or higher.",
             TelemetryOp::ListMetrics => "The metrics a project's software has sent: each with its name, kind (gauge, sum, histogram or summary), unit, description, the services that send it and when it last did. Needs a role on the project's repository.",
             TelemetryOp::GetMetric => "One metric over time, one value per step: gauges averaged in each step (or min or max), sums added (a cumulative sum becomes its increase), histograms their mean or a percentile (p50, p95, p99) from their buckets. group_by splits it into a series per value of an attribute (or service). The last 24 hours unless from and to say. Needs a role on the project's repository.",
             TelemetryOp::GetSettings => "How long a project's requests, logs and spans are kept (retention_days; charts are kept longer, as per-minute counts) and whether its apps on g1t.page send telemetry (deployments). Needs the Admin role.",
@@ -275,7 +275,7 @@ impl TelemetryOp {
             TelemetryOp::UpdateError => {
                 add("fingerprint", text("The error group's fingerprint, as list_errors gives it."));
                 add("state", json!({ "type": "string", "enum": ERROR_STATES, "description": "Its state now: resolved, ignored, or open again." }));
-                add("issue_number", json!({ "type": ["integer", "null"], "description": "The issue made for it; null unlinks it." }));
+                add("item_number", json!({ "type": ["integer", "null"], "description": "The work item made for it, by its number in the workspace; null unlinks it." }));
                 required.push("fingerprint");
             }
             TelemetryOp::ListMetrics
@@ -509,18 +509,18 @@ pub(crate) fn args(op: TelemetryOp, input: &Value, actor: Option<&str>) -> std::
                 }
                 out.insert("state".into(), state.into());
             }
-            match input.get("issue_number") {
+            match input.get("item_number") {
                 None => {}
                 Some(Value::Null) => {
-                    out.insert("issue_number".into(), Value::Null);
+                    out.insert("item".into(), Value::Null);
                 }
                 Some(_) => {
-                    let issue = number(input, "issue_number")?.ok_or("issue_number must be a whole number, or null.")?;
-                    out.insert("issue_number".into(), issue.into());
+                    let item = number(input, "item_number")?.ok_or("item_number must be a whole number, or null.")?;
+                    out.insert("item".into(), item.into());
                 }
             }
-            if !out.contains_key("state") && !out.contains_key("issue_number") {
-                return Err("Give a state, or an issue_number.".to_owned());
+            if !out.contains_key("state") && !out.contains_key("item") {
+                return Err("Give a state, or an item_number.".to_owned());
             }
             "set_error"
         }
@@ -761,9 +761,9 @@ mod tests {
 
     #[test]
     fn changes_say_only_what_they_change() {
-        let (method, args) = super::args(TelemetryOp::UpdateError, &json!({ "fingerprint": "f1", "issue_number": null }), None).unwrap();
+        let (method, args) = super::args(TelemetryOp::UpdateError, &json!({ "fingerprint": "f1", "item_number": null }), None).unwrap();
         assert_eq!(method, "set_error");
-        assert_eq!(args.get("issue_number"), Some(&Value::Null), "null unlinks the issue");
+        assert_eq!(args.get("item"), Some(&Value::Null), "null unlinks the work item");
         assert!(!args.contains_key("state"));
         assert!(super::args(TelemetryOp::UpdateError, &json!({ "fingerprint": "f1" }), None).is_err());
         assert!(super::args(TelemetryOp::UpdateError, &json!({ "fingerprint": "f1", "state": "fixed" }), None).is_err());

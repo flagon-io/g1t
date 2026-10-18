@@ -1,5 +1,5 @@
 //! Notifications: a person's inbox, its threads, their subscriptions to
-//! issues and pull requests, and how they watch repositories. The events
+//! work items and pull requests, and how they watch repositories. The events
 //! service keeps all of it (`g1t_contracts::inbox`); this is its public
 //! shape, which follows the inbox's own: a thread is one item about one
 //! thing, brought back to the top as things happen to it.
@@ -11,6 +11,7 @@
 use g1t_contracts::inbox::*;
 use g1t_contracts::repos::{GetArgs, Repo, RepoPath};
 use g1t_contracts::time::{parse_rfc3339, rfc3339};
+use g1t_contracts::work::{WorkItemDetail, WorkItemViewArgs};
 use g1t_contracts::{FailureCode, Outcome, PrincipalKind, User, Viewer};
 use serde_json::{Value, json};
 use worker::Result;
@@ -26,7 +27,7 @@ fn ok<T: serde::Serialize>(value: &T) -> Result<Outcome<Value>> {
 }
 
 const NO_THREAD: &str = "No such notification thread.";
-const NO_SUBJECT: &str = "Name a thread by id, or an issue or pull request by repo and number.";
+const NO_SUBJECT: &str = "Name a thread by id, a pull request by repo and number, or a work item by workspace and number.";
 
 fn text(input: &Value, key: &str) -> Option<String> {
     input[key].as_str().map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned)
@@ -169,8 +170,10 @@ pub(crate) fn watch_level(input: &Value) -> std::result::Result<(WatchLevel, Vec
     })
 }
 
-/// Which issue or pull request a subscription call names: a thread's id,
-/// or a repository and number. Checks the viewer can read the repository.
+/// Which work item or pull request a subscription call names: a thread's
+/// id, a repository and a pull request's number, or a workspace and a work
+/// item's number. Checks the viewer can read the repository, or see the
+/// work item.
 async fn subscription_args(services: &Services, viewer: &Viewer, input: &Value) -> Result<Outcome<SubscriptionArgs>> {
     if let Some(id) = text(input, "id") {
         return Ok(Outcome::Ok(SubscriptionArgs {
@@ -178,6 +181,19 @@ async fn subscription_args(services: &Services, viewer: &Viewer, input: &Value) 
             id: Some(id),
             ..SubscriptionArgs::default()
         }));
+    }
+    if let (Some(workspace), None, Some(number)) = (text(input, "workspace"), text(input, "repo"), whole(input, "number")) {
+        let asked = WorkItemViewArgs { workspace: workspace.to_lowercase(), number, viewer: viewer.clone() };
+        let found: Outcome<WorkItemDetail> = g1t_kit::call(&services.work, "get_work_item", &asked).await?;
+        return Ok(match found {
+            Outcome::Ok(detail) => Outcome::Ok(SubscriptionArgs {
+                viewer: viewer.clone(),
+                item_id: Some(detail.item.id),
+                number: Some(number),
+                ..SubscriptionArgs::default()
+            }),
+            Outcome::Fail(failure) => Outcome::Fail(failure),
+        });
     }
     let (Some(found), Some(number)) = (readable_repo(services, viewer, input).await?, whole(input, "number")) else {
         return Ok(Outcome::fail(FailureCode::Invalid, NO_SUBJECT));
@@ -188,6 +204,7 @@ async fn subscription_args(services: &Services, viewer: &Viewer, input: &Value) 
             id: None,
             repo_id: Some(repo.id),
             number: Some(number),
+            item_id: None,
         }),
         Outcome::Fail(failure) => Outcome::Fail(failure),
     })
@@ -335,7 +352,7 @@ pub async fn run(op: Op, services: &Services, viewer: &Viewer, input: &Value) ->
             };
             match found {
                 Some(subscription) => ok(&subscription),
-                None => failed(FailureCode::NotFound, "No such issue or pull request, or it is a thread nobody subscribes to."),
+                None => failed(FailureCode::NotFound, "No such work item or pull request, or it is a thread nobody subscribes to."),
             }
         }
         Op::GetRepoSubscription | Op::SetRepoSubscription | Op::DeleteRepoSubscription => {
