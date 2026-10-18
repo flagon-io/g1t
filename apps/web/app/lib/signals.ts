@@ -12,6 +12,7 @@
  * Imports only types.
  */
 import type {
+  ProviderCosts,
   RepoPath,
   SignalAuthor,
   SignalDay,
@@ -1049,4 +1050,27 @@ export function waitingRows(waiting: WaitingPull[], repos: Record<string, RepoPa
     .filter((pull) => repos[pull.repoId])
     .slice(0, max)
     .map((pull) => ({ ...pull, repo: repos[pull.repoId]!, to: pullPath(repos[pull.repoId]!, pull.number) }));
+}
+
+// --- What providers reported ------------------------------------------------------
+
+export type ProviderQuarter = {
+  /** Providers connected, with what each reported since the quarter began, the most first. */
+  providers: { provider: string; micros: number }[];
+  total: number;
+  /** Every connection's last read worked and reaches back to the quarter. */
+  complete: boolean;
+};
+
+/**
+ * What the connected providers' cost reports say the organization spent
+ * since `quarter` began: their whole bill, agents' work g1t sees and
+ * everything else. Null when none is connected.
+ */
+export function providerQuarter(costs: ProviderCosts | null, quarter: string): ProviderQuarter | null {
+  if (!costs || costs.connections.length === 0) return null;
+  const by = new Map<string, number>(costs.connections.map((connection) => [connection.provider, 0]));
+  for (const day of costs.days) if (day.day >= quarter) by.set(day.provider, (by.get(day.provider) ?? 0) + day.micros);
+  const providers = [...by].map(([provider, micros]) => ({ provider, micros })).sort((a, b) => b.micros - a.micros);
+  return { providers, total: providers.reduce((sum, row) => sum + row.micros, 0), complete: costs.complete };
 }
