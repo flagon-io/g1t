@@ -56,6 +56,7 @@ function Navigation() {
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
         <Stack.Protected guard={signedIn}>
           <Stack.Screen name="(app)" />
+          <Stack.Screen name="ref" />
         </Stack.Protected>
         <Stack.Protected guard={!signedIn}>
           <Stack.Screen name="sign-in" />

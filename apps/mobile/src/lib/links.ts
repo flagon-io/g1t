@@ -1,9 +1,9 @@
 /**
  * Links into the app. A `g1t://` link names a site path, as on the desktop
  * (apps/desktop/src-tauri/src/links.rs): `g1t://acme/-/chat/dm/chn_1` is
- * the page `/acme/-/chat/dm/chn_1`. The app has screens for some of the
- * site's pages; `routeFor` says which screen shows a site path, and the
- * rest open on the site.
+ * the page `/acme/-/chat/dm/chn_1`, as `https://g1t.sh/acme/-/chat/dm/chn_1`
+ * is. The app has screens for some of the site's pages; `routeFor` says
+ * which screen shows a site path, and the rest open on the site.
  *
  * Kept free of React Native imports so `npm test` runs it under Node.
  */
@@ -19,6 +19,9 @@ const RETIRED = new Set(["agents", "customize", "marketplace"]);
 
 /** Path segments a workspace or account can never be named (the site's own pages). */
 const NOT_OWNERS = new Set(["settings", "notifications", "oauth", "device", "login", "register", "-"]);
+
+/** The filters a link to Work's list may carry, as the site's: `/acme/-/work?repo=web&label=bug`. */
+export const WORK_FILTERS = ["state", "label", "milestone", "assignee", "repo", "role"] as const;
 
 /**
  * The app's screen for a site path, or null when the app has none and the
@@ -44,18 +47,78 @@ export function routeFor(sitePath: string): string | null {
       if (fourth !== "browse" && fourth !== "dm" && !fifth) return `/chat/${encodeURIComponent(fourth)}?${workspace}`;
       return null;
     }
+    if (third === "work") {
+      if (!fourth) return `/work?${workspace}${filtersOf(query)}`;
+      if (fourth === "new" && !fifth) return `/work/new?${workspace}`;
+      if (isNumber(fourth) && !fifth) return `/work/${fourth}?${workspace}`;
+      // Labels and milestones stay on the site.
+      return null;
+    }
     if (third === "overview" && !fourth) return `/code?${workspace}`;
     if (third && RETIRED.has(third)) return `/home?${workspace}`;
     return null;
   }
 
-  // A repository's pages: /<owner>/<repo>[/pull/<n> | /issues/<n>].
+  // A repository's pages: /<owner>/<repo>[/pull/<n>].
   if (!second) return null;
   const repo = `/code/${encodeURIComponent(owner)}/${encodeURIComponent(second)}`;
   if (!third) return repo;
-  if (third === "pull" && fourth && /^\d+$/.test(fourth) && !fifth) return `${repo}/pull/${fourth}`;
-  if (third === "issues" && fourth && /^\d+$/.test(fourth) && !fifth) return `${repo}/issues/${fourth}`;
+  if (third === "pull" && isNumber(fourth) && !fifth) return `${repo}/pull/${fourth}`;
+  // Issues became the workspace's work items. An old issue's number is
+  // read in its repository, where it may name a pull request (they shared
+  // numbers then): the ref screen asks g1t which.
+  if (third === "issues") {
+    const name = `repo=${encodeURIComponent(second)}`;
+    if (!fourth) return `/work?${workspace}&${name}`;
+    if (fourth === "new" && !fifth) return `/work/new?${workspace}&${name}`;
+    if (isNumber(fourth) && !fifth) return refRoute({ repo: `${owner}/${second}` }, Number(fourth));
+    return null;
+  }
   return null;
+}
+
+/** Where `#N` is read: in a repository (`owner/name`), or in a workspace alone. */
+export type RefContext = { repo: string } | { workspace: string };
+
+/** The screen that asks g1t what `#N` names in a context, and opens it (app/ref.tsx). */
+export function refRoute(context: RefContext, number: number): string {
+  const where = "repo" in context ? `repo=${encodeURIComponent(context.repo)}` : `workspace=${encodeURIComponent(context.workspace)}`;
+  return `/ref?${where}&number=${number}`;
+}
+
+/**
+ * The context a reference in text is read in (crates/contracts/src/work/refs.rs):
+ * `owner/name#N` in that repository, `workspace#N` in that workspace, and
+ * `#N` where it was written.
+ */
+export function refContext(written: string | null, here: RefContext): RefContext {
+  if (!written) return here;
+  return written.includes("/") ? { repo: written } : { workspace: written };
+}
+
+/** What `#N` names, as the API answers (`RefTarget`, in snake_case). */
+export type RefTarget =
+  | { kind: "work_item"; workspace: string; number: number; item_id?: string }
+  | { kind: "pull"; repo: string; number: number }
+  | { kind: "none" };
+
+/** The app's screen for what a reference names, or null for nothing. */
+export function targetRoute(target: RefTarget): string | null {
+  if (target.kind === "work_item") return `/work/${target.number}?workspace=${encodeURIComponent(target.workspace)}`;
+  if (target.kind === "pull") {
+    const [owner, name] = target.repo.split("/", 2);
+    if (!owner || !name) return null;
+    return `/code/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pull/${target.number}`;
+  }
+  return null;
+}
+
+/**
+ * The site's page for a reference, for when the app cannot ask: the site
+ * reads it the same way and redirects.
+ */
+export function refSitePath(context: RefContext, number: number): string {
+  return "repo" in context ? `/${context.repo}/issues/${number}` : `/${context.workspace}/-/work/${number}`;
 }
 
 /**
@@ -67,6 +130,29 @@ export function sitePathOf(link: string): string | null {
   if (!match) return null;
   const path = `/${match[1].replace(/^\/+/, "")}`;
   return path + (match[2] ?? "");
+}
+
+/**
+ * The site path any link that opens the app names: a `g1t://` one, or an
+ * `https` one to the site (Android App Links, iOS Universal Links), as
+ * `https://g1t.sh/acme/-/work/12` is `/acme/-/work/12`. Null for others.
+ */
+export function linkPathOf(link: string): string | null {
+  const own = sitePathOf(link);
+  if (own) return own;
+  const web = /^https?:\/\/[^/?#]+(\/[^?#]*)?(\?[^#]*)?/i.exec(link);
+  return web ? (web[1] || "/") + (web[2] ?? "") : null;
+}
+
+function filtersOf(query: string): string {
+  const params = new URLSearchParams(query);
+  return WORK_FILTERS.filter((name) => params.get(name))
+    .map((name) => `&${name}=${encodeURIComponent(params.get(name)!)}`)
+    .join("");
+}
+
+function isNumber(part: string | undefined): part is string {
+  return Boolean(part && /^\d+$/.test(part));
 }
 
 function decodeURIComponentSafe(part: string): string {

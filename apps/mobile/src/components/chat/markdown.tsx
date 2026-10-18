@@ -1,10 +1,10 @@
 import { type Block, type Span, blocks } from "@g1t/contracts/chat-markdown";
 import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { Fragment, useMemo } from "react";
+import { Fragment, createContext, useContext, useMemo } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { routeFor } from "@/lib/links";
+import { type RefContext, refContext, refRoute, routeFor } from "@/lib/links";
 import { siteUrl } from "@/lib/server";
 import { useSignedIn } from "@/lib/session";
 import { fonts, radius, space, useColors } from "@/theme";
@@ -15,17 +15,25 @@ import { fonts, radius, space, useColors } from "@/theme";
  * message is HTML, links go only to the web, mail or a page on g1t, and
  * `@mentions`, `#channels` and `#123` references stand out. A link to a
  * page the app has opens there; any other opens in the browser.
+ *
+ * `#123` is read in `refs`, where the text was written: a repository for a
+ * pull request's, the workspace for Chat's and a work item's. g1t says
+ * what it names when it is tapped (app/ref.tsx).
  */
-export function Markdown({ text, muted }: { text: string; muted?: boolean }) {
+export function Markdown({ text, muted, refs }: { text: string; muted?: boolean; refs?: RefContext }) {
   const parsed = useMemo(() => blocks(text), [text]);
-  return (
+  const body = (
     <View style={{ gap: space.xs }}>
       {parsed.map((block, index) => (
         <BlockView key={index} block={block} muted={muted} />
       ))}
     </View>
   );
+  return refs ? <RefsHere.Provider value={refs}>{body}</RefsHere.Provider> : body;
 }
+
+/** Where `#123` in the text being drawn is read; the workspace you are in when nothing says. */
+const RefsHere = createContext<RefContext | null>(null);
 
 function useOpen() {
   const { server, workspace } = useSignedIn();
@@ -118,6 +126,8 @@ function Spans({ spans }: { spans: Span[] }) {
   const colors = useColors();
   const open = useOpen();
   const { workspace } = useSignedIn();
+  const given = useContext(RefsHere);
+  const here = given ?? (workspace ? { workspace: workspace.slug } : null);
   return (
     <>
       {spans.map((span, index) => {
@@ -168,7 +178,7 @@ function Spans({ spans }: { spans: Span[] }) {
             );
           case "ref":
             return (
-              <Text key={index} style={{ color: colors.accent }} onPress={() => span.repo && open(`/${span.repo}/issues/${span.number}`)}>
+              <Text key={index} style={{ color: colors.accent }} onPress={() => here && router.push(refRoute(refContext(span.repo, here), span.number) as never)}>
                 {span.repo ? `${span.repo}#${span.number}` : `#${span.number}`}
               </Text>
             );

@@ -1,6 +1,6 @@
 import * as Notifications from "expo-notifications";
 import { Tabs, router, useGlobalSearchParams, useSegments } from "expo-router";
-import { Bell, Code2, House, Menu, MessagesSquare } from "lucide-react-native";
+import { Bell, House, ListTodo, Menu, MessagesSquare } from "lucide-react-native";
 import type { LucideIcon } from "lucide-react-native";
 import { type ComponentType, useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
@@ -10,14 +10,14 @@ import { FeedProvider, useFeed } from "@/lib/feed";
 import { routeFor } from "@/lib/links";
 import { type PushData, registerForPush } from "@/lib/push";
 import { useSignedIn } from "@/lib/session";
-import { hasCodeAccess } from "@g1t/contracts";
 import { useColors } from "@/theme";
 
 /**
  * The signed-in app. Its bar is the site's phone bar
- * (apps/web/app/components/mobile.tsx): Home, Chat, Notifications, Code,
- * and More. Chat and Code have their screens; the others say so and open
- * the site. Your account is under More.
+ * (apps/web/app/components/mobile.tsx): Home, Work, Chat, Notifications
+ * and More. Work and Chat have their screens; Home and Notifications say
+ * so and open the site. Code is at the top of More, for those who use it,
+ * and your account is under it.
  */
 export default function AppLayout() {
   return (
@@ -38,7 +38,6 @@ function AppTabs() {
   useEffect(() => {
     if (linked && linked.toLowerCase() !== workspace?.slug.toLowerCase()) void selectWorkspace(linked);
   }, [linked, workspace?.slug, selectWorkspace]);
-  const code = !workspace || hasCodeAccess(workspace);
   // A conversation or a thread takes the whole screen, as on the site: the bar steps aside.
   const segments = useSegments() as string[];
   const inConversation = segments[1] === "chat" && (segments[2] === "[channel]" || segments[2] === "thread");
@@ -63,6 +62,7 @@ function AppTabs() {
     >
       <Tabs.Screen name="index" options={{ href: null }} />
       <Tabs.Screen name="home" options={{ title: "Home", tabBarIcon: (props) => <BarIcon icon={House} {...props} /> }} />
+      <Tabs.Screen name="work" options={{ title: "Work", tabBarIcon: (props) => <BarIcon icon={ListTodo} {...props} /> }} />
       <Tabs.Screen
         name="chat"
         options={{
@@ -73,7 +73,8 @@ function AppTabs() {
         }}
       />
       <Tabs.Screen name="notifications" options={{ title: "Notifications", tabBarIcon: (props) => <BarIcon icon={Bell} {...props} /> }} />
-      <Tabs.Screen name="code" options={{ title: "Code", href: code ? undefined : null, tabBarIcon: (props) => <BarIcon icon={Code2} {...props} /> }} />
+      {/* Code opens from More, so it has no place in the bar. */}
+      <Tabs.Screen name="code" options={{ title: "Code", href: null }} />
       <Tabs.Screen name="more" options={{ title: "More", tabBarIcon: (props) => <BarIcon icon={Menu} {...props} /> }} />
     </Tabs>
   );

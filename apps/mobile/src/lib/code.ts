@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useSignedIn } from "./session";
+import type { ApiWorkItem } from "./work";
 
 /**
  * Code, through the REST API (docs.g1t.sh/reference/api/). The API
@@ -22,27 +23,13 @@ export type ApiRepo = {
   archived_at?: string | null;
 };
 
-export type ApiIssue = {
-  id: string;
-  number: number;
-  title: string;
-  body: string;
-  labels: string[];
-  state: "open" | "closed";
-  reason: "completed" | "not_planned" | null;
-  author: ApiUser;
-  created_at: string;
-  updated_at: string;
-  comment_count: number;
-  pull_count: number;
-};
-
 export type CheckStatus = "queued" | "running" | "passed" | "failed" | "errored" | null;
 
 export type ApiPull = {
   id: string;
   number: number;
-  issue: number | null;
+  /** The work item it is for, by number in the workspace. */
+  item: number | null;
   title: string;
   body: string | null;
   /** The coding agent it was made with (`claude-code`, `codex`), from the session recorded on it; null when none was. */
@@ -129,20 +116,12 @@ export function usePulls(owner: string, name: string, state: "open" | "closed" |
   });
 }
 
-export function useIssues(owner: string, name: string, state: "open" | "closed" | "all") {
-  const { client } = useSignedIn();
-  return useQuery({
-    queryKey: ["code", "issues", owner, name, state],
-    queryFn: () => client.api<ApiIssue[]>(`${repoPath(owner, name)}/issues?state=${state}`),
-  });
-}
-
 export function usePull(owner: string, name: string, number: number) {
   const { client } = useSignedIn();
   return useQuery({
     queryKey: ["code", "pull", owner, name, number],
     queryFn: () =>
-      client.api<{ pull: ApiPull; issue: ApiIssue | null; comments: ApiComment[] }>(`${repoPath(owner, name)}/pulls/${number}`),
+      client.api<{ pull: ApiPull; item: ApiWorkItem | null; comments: ApiComment[] }>(`${repoPath(owner, name)}/pulls/${number}`),
   });
 }
 
@@ -152,26 +131,6 @@ export function usePullChanges(owner: string, name: string, number: number, enab
     queryKey: ["code", "pull-changes", owner, name, number],
     queryFn: () => client.api<ApiChanges>(`${repoPath(owner, name)}/pulls/${number}/changes`),
     enabled,
-  });
-}
-
-export function useIssue(owner: string, name: string, number: number) {
-  const { client } = useSignedIn();
-  return useQuery({
-    queryKey: ["code", "issue", owner, name, number],
-    queryFn: () =>
-      client.api<{ issue: ApiIssue; pulls: ApiPull[]; comments: ApiComment[] }>(`${repoPath(owner, name)}/issues/${number}`),
-  });
-}
-
-/** Comments on an issue (`POST /repos/{owner}/{name}/issues/{number}/comments`). */
-export function useComment(owner: string, name: string, number: number) {
-  const { client } = useSignedIn();
-  const queries = useQueryClient();
-  return useMutation({
-    mutationFn: (body: string) =>
-      client.api<ApiComment>(`${repoPath(owner, name)}/issues/${number}/comments`, { method: "POST", body: JSON.stringify({ body }) }),
-    onSuccess: () => queries.invalidateQueries({ queryKey: ["code", "issue", owner, name, number] }),
   });
 }
 

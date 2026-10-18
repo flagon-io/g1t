@@ -1,8 +1,10 @@
-import { CircleCheck, CircleDot, CircleX, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, Loader } from "lucide-react-native";
+import { CircleCheck, CircleX, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, Loader } from "lucide-react-native";
 import { ScrollView, StyleSheet, View } from "react-native";
 
+import { Markdown } from "@/components/chat/markdown";
 import { Badge, Text } from "@/components/ui";
-import type { ApiChanges, ApiComment, ApiIssue, ApiPull, CheckStatus } from "@/lib/code";
+import type { ApiChanges, ApiComment, ApiPull, CheckStatus } from "@/lib/code";
+import type { RefContext } from "@/lib/links";
 import { ago } from "@/lib/time";
 import { fonts, radius, space, useColors } from "@/theme";
 
@@ -13,12 +15,6 @@ export function PullIcon({ pull }: { pull: Pick<ApiPull, "status"> }) {
   if (pull.status === "closed") return <GitPullRequestClosed size={20} color={colors.danger} />;
   if (pull.status === "draft") return <GitPullRequestDraft size={20} color={colors.muted} />;
   return <GitPullRequest size={20} color={colors.success} />;
-}
-
-export function IssueIcon({ issue }: { issue: Pick<ApiIssue, "state" | "reason"> }) {
-  const colors = useColors();
-  if (issue.state === "open") return <CircleDot size={20} color={colors.success} />;
-  return issue.reason === "not_planned" ? <CircleX size={20} color={colors.muted} /> : <CircleCheck size={20} color={colors.merged} />;
 }
 
 export function Checks({ status }: { status: CheckStatus }) {
@@ -34,8 +30,8 @@ export function StateBadge({ pull }: { pull: Pick<ApiPull, "status"> }) {
   return <Badge label={pull.status[0].toUpperCase() + pull.status.slice(1)} tone={tone} />;
 }
 
-/** Markdown, shown as it was written until the app renders it. */
-export function Body({ text }: { text: string | null }) {
+/** A description in Markdown; `#123` in it is read in `refs`. */
+export function Body({ text, refs }: { text: string | null; refs: RefContext }) {
   const colors = useColors();
   if (!text?.trim()) {
     return (
@@ -46,13 +42,13 @@ export function Body({ text }: { text: string | null }) {
   }
   return (
     <View style={[styles.box, { borderColor: colors.line, backgroundColor: colors.surface }]}>
-      <Text selectable>{text}</Text>
+      <Markdown text={text} refs={refs} />
     </View>
   );
 }
 
-/** The conversation under an issue or pull request: comments, reviews and what happened. */
-export function Timeline({ comments }: { comments: ApiComment[] }) {
+/** The conversation under a work item or pull request: comments, reviews and what happened. */
+export function Timeline({ comments, refs }: { comments: ApiComment[]; refs: RefContext }) {
   const colors = useColors();
   if (comments.length === 0) return null;
   return (
@@ -78,7 +74,7 @@ export function Timeline({ comments }: { comments: ApiComment[] }) {
                 {comment.line ? `:${comment.line}` : ""}
               </Text>
             ) : null}
-            <Text selectable>{comment.body}</Text>
+            <Markdown text={comment.body} refs={refs} />
           </View>
         ),
       )}

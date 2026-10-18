@@ -1,4 +1,4 @@
-import { Stack, useLocalSearchParams } from "expo-router";
+import { Stack, router, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { Check, ExternalLink, MessageSquareWarning } from "lucide-react-native";
 import { useState } from "react";
@@ -6,7 +6,8 @@ import { View } from "react-native";
 
 import { Body, Checks, Diff, StateBadge, Timeline } from "@/components/code";
 import { Segments } from "@/components/segments";
-import { Button, ErrorView, Field, Loading, Screen, Text } from "@/components/ui";
+import { Button, ErrorView, Field, Loading, Row, Screen, Text } from "@/components/ui";
+import { ItemIcon, stateLabel } from "@/components/work";
 import { usePull, usePullChanges, useReview } from "@/lib/code";
 import { siteUrl } from "@/lib/server";
 import { useSignedIn } from "@/lib/session";
@@ -47,9 +48,10 @@ export default function PullRequest() {
     );
   }
 
-  const { pull: pr, comments } = pull.data;
+  const { pull: pr, item, comments } = pull.data;
   const by = pr.author.display_username ?? pr.author.username;
   const reviewable = pr.status === "open";
+  const refs = { repo: `${params.owner}/${params.repo}` };
 
   return (
     <Screen scroll>
@@ -66,6 +68,17 @@ export default function PullRequest() {
         </View>
       </View>
 
+      {item ? (
+        <View style={{ marginHorizontal: -space.lg }}>
+          <Row
+            leading={<ItemIcon item={item} />}
+            title={item.title}
+            subtitle={`For work item #${item.number} · ${stateLabel(item)}`}
+            onPress={() => router.push({ pathname: "/work/[number]", params: { number: String(item.number), workspace: item.workspace } })}
+          />
+        </View>
+      ) : null}
+
       <Segments
         value={tab}
         onChange={setTab}
@@ -77,8 +90,8 @@ export default function PullRequest() {
 
       {tab === "conversation" ? (
         <>
-          <Body text={pr.body} />
-          <Timeline comments={comments} />
+          <Body text={pr.body} refs={refs} />
+          <Timeline comments={comments} refs={refs} />
           {reviewable ? (
             <View style={{ gap: space.md }}>
               <Field label="Review" placeholder="Say what you think (optional to approve)" value={note} onChangeText={setNote} multiline />
