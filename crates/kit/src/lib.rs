@@ -632,3 +632,77 @@ pub mod deleted {
         Ok(true)
     }
 }
+
+/// Catching up on `work.migrated` (issues became work items, g1t #57).
+/// A service that rewrites what it kept by issue number when it hears
+/// `work.migrated` also pages through the work service's
+/// `legacy_item_map` on its cron, applying each page the same way, so a
+/// page that never arrived (one left in the dead-letter queue) is not lost.
+/// Where it got to is kept in the service's `work_catch_up` table (made by
+/// its migration, one row named `work.migrated`), and once the last page is
+/// applied it does nothing more. Every rewrite leaves what it already
+/// rewrote alone, so a page applied twice changes nothing.
+pub mod work_migrated {
+    use std::future::Future;
+
+    use g1t_contracts::events::WorkMigrated;
+    use g1t_contracts::time::rfc3339;
+    use g1t_contracts::work::{LegacyItemMapArgs, LegacyItemPage};
+    use serde::Deserialize;
+    use worker::wasm_bindgen::JsValue;
+    use worker::{D1Database, Fetcher, Result};
+
+    /// Moves asked for at a time, and pages applied in one run.
+    pub const PAGE: u32 = 250;
+    pub const PAGES_PER_RUN: u32 = 20;
+
+    #[derive(Deserialize)]
+    struct Row {
+        #[serde(default)]
+        cursor: Option<String>,
+        page: u32,
+        #[serde(default)]
+        done_at: Option<String>,
+    }
+
+    /// One more stretch of the catch-up: each page read is handed to
+    /// `apply` as the `work.migrated` it would have been. Whether it is done.
+    /// It waits while the work service is still moving issues.
+    pub async fn catch_up<F, Fut>(db: &D1Database, work: &Fetcher, mut apply: F) -> Result<bool>
+    where
+        F: FnMut(WorkMigrated) -> Fut,
+        Fut: Future<Output = Result<()>>,
+    {
+        let row = db
+            .prepare("SELECT cursor, page, done_at FROM work_catch_up WHERE name = 'work.migrated'")
+            .first::<Row>(None)
+            .await?;
+        let Some(row) = row else { return Ok(true) };
+        if row.done_at.is_some() {
+            return Ok(true);
+        }
+        let (mut cursor, mut page) = (row.cursor, row.page);
+        for _ in 0..PAGES_PER_RUN {
+            let found: LegacyItemPage =
+                crate::call(work, "legacy_item_map", &LegacyItemMapArgs { after: cursor.clone(), limit: PAGE }).await?;
+            if !found.moved {
+                return Ok(false);
+            }
+            page += 1;
+            let done = found.next.is_none();
+            if !found.items.is_empty() {
+                apply(WorkMigrated { page, items: found.items, done }).await?;
+            }
+            cursor = found.next;
+            let done_at = if done { JsValue::from(rfc3339(crate::now_ms())) } else { JsValue::NULL };
+            db.prepare("UPDATE work_catch_up SET cursor = ?1, page = ?2, done_at = ?3 WHERE name = 'work.migrated'")
+                .bind(&[cursor.as_deref().map_or(JsValue::NULL, JsValue::from), page.into(), done_at])?
+                .run()
+                .await?;
+            if done {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+}

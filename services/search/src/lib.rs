@@ -122,12 +122,16 @@ async fn queue(batch: MessageBatch<serde_json::Value>, env: Env, _ctx: Context) 
         if let Err(error) = search.ensure_backfill().await {
             worker::console_error!("search: could not start the backfill: {error}");
         }
-        // Pages parked while paused, looked for at most every few minutes.
+        // Pages parked while paused, looked for at most every few minutes,
+        // and pages of `work.migrated` that never arrived.
         if resume_due(g1t_kit::now_ms()) {
             match search.resume_parked().await {
                 Ok(0) => {}
                 Ok(found) => worker::console_log!("search: resumed {found} parked backfill pages"),
                 Err(error) => worker::console_error!("search: could not resume parked backfill pages: {error}"),
+            }
+            if let Err(error) = search.catch_up_on_moves().await {
+                worker::console_error!("search: catching up on work.migrated failed: {error}");
             }
         }
     }

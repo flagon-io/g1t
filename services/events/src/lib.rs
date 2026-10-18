@@ -388,9 +388,13 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
 /// any workspace keeps (`AUDIT_MAX_DAYS`, 400 days), then each workspace's
 /// entries older than its own plan keeps, as billing says (7 days free, 90
 /// on the plan, or what staff set). Workspaces with nothing older than the
-/// shortest (`AUDIT_MIN_DAYS`, 7) are left alone.
+/// shortest (`AUDIT_MIN_DAYS`, 7) are left alone. Each cron also catches up
+/// on pages of `work.migrated` that never arrived (work_items.rs).
 #[event(scheduled)]
 async fn scheduled(event: worker::ScheduledEvent, env: Env, _ctx: worker::ScheduleContext) {
+    if let (Ok(db), Ok(work)) = (env.d1("DB"), env.service("WORK")) {
+        work_items::catch_up(&db, &work).await;
+    }
     // The morning cron sends the security digests that are due, and nothing else.
     if event.cron() == security_digest::DIGEST_CRON {
         let (Ok(db), Ok(identity)) = (env.d1("DB"), env.service("IDENTITY")) else { return };

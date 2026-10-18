@@ -1126,12 +1126,14 @@ async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response>
 }
 
 /// Every minute: the sessions started on workspaces' Anthropic accounts
-/// that are still going are followed (agent_sessions.rs).
+/// that are still going are followed (agent_sessions.rs), and pages of
+/// `work.migrated` that never arrived are caught up on (work_migrated.rs).
 #[event(scheduled)]
 async fn scheduled(_event: worker::ScheduledEvent, env: Env, _ctx: worker::ScheduleContext) {
     if let Ok(service) = Integrations::new(&env) {
         agent_sessions::scheduled(&service).await;
         summon::forget_old(&service).await;
+        work_migrated::catch_up(&service.db, &service.work).await;
     }
 }
 
