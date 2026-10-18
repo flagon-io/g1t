@@ -19,6 +19,9 @@ use crate::{User, Viewer};
 mod insights;
 pub use insights::*;
 
+mod signals;
+pub use signals::*;
+
 mod coordination;
 pub use coordination::*;
 

@@ -1085,6 +1085,13 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
    */
   deliveryInsights(repoIds: string[], viewer: Viewer, from: string, until: string): Promise<DeliveryInsights>;
   /**
+   * What up to 100 of a workspace's repositories' work says over the last
+   * weeks, for Home's daily signal and the Workspace overview: each row is
+   * one repository's, so batches add up. Repositories the viewer cannot
+   * read are left out.
+   */
+  workspaceSignals(args: WorkspaceSignalsArgs, viewer: Viewer): Promise<WorkspaceSignals>;
+  /**
    * The newest `limit` open and closed pull requests of each repository,
    * in one call. Repositories the viewer cannot read, and forks, are left
    * out: ask those with `listPulls`.
@@ -1833,3 +1840,66 @@ export interface CoordinationApi {
 export type DeliveryMetrics = { repoId: string; opened: number; merged: number; active: number; unreviewed: number; checking: number; failed: number; queued: number; leadSeconds: number; reviewSeconds: number; reviewed: number };
 /** `checksUnavailable`: g1t Actions could not be read, so `checking` and `failed` are not known. */
 export type DeliveryInsights = { projects: DeliveryMetrics[]; days: { day: string; merged: number }[]; checksUnavailable: boolean };
+
+/**
+ * What a workspace's work says over the last weeks (crates/contracts
+ * work/signals.rs). A pull request is an agent's when g1t's agent opened
+ * it, it was opened as an agent's, or a harness session is tied to it; its
+ * owner is the person who asked for it, else its author.
+ */
+export type WorkspaceSignalsArgs = {
+  workspace: string;
+  repoIds: string[];
+  /** The last UTC day covered, `YYYY-MM-DD`. */
+  until: string;
+  /** Weeks of seven UTC days ending with `until`: 1 through 13. */
+  weeks: number;
+  /** UTC days ending with `until` for `days`: 1 through 28. */
+  days: number;
+  /** The first UTC day `pulls` reaches back to: at most 400 days before `until`. */
+  since: string;
+};
+/** One repository's week from UTC day `start`; empty weeks are left out. `stalled`: open when the week ended (now, for this week), and open over seven days by then. */
+export type SignalWeek = {
+  repoId: string;
+  start: string;
+  merged: number;
+  agentMerged: number;
+  /** Of `agentMerged`, the ones a person asked for changes on first. */
+  agentReworked: number;
+  agentDrafted: number;
+  agentDraftSeconds: number;
+  reviewed: number;
+  reviewSeconds: number;
+  stalled: number;
+};
+export type SignalDay = { repoId: string; day: string; opened: number; merged: number; agentMerged: number; reworked: number; reviews: number; sessions: number };
+/** An open pull request no one has reviewed, oldest first; `blocks`: the open work items waiting on its work item. */
+export type WaitingPull = { repoId: string; number: number; title: string; createdAt: string; agent: boolean; draftSeconds: number | null; item: number | null; blocks: number[] };
+export type SignalPull = {
+  repoId: string;
+  number: number;
+  title: string;
+  status: "draft" | "open" | "merged" | "closed";
+  agent: boolean;
+  ownerId: string;
+  ownerName: string;
+  createdAt: string;
+  mergedAt: string | null;
+  item: number | null;
+  milestone: number | null;
+};
+/** One person's merged pull requests in one repository over its history; `recent`: in the 90 days ending with `until`. */
+export type SignalAuthor = { repoId: string; ownerId: string; ownerName: string; firstMergedAt: string; lastMergedAt: string; merged: number; recent: number };
+export type SignalItem = { number: number; title: string; state: string; milestone: number | null };
+export type SignalMilestone = { number: number; title: string; state: string; dueOn: string | null; createdAt: string; closedAt: string | null };
+export type WorkspaceSignals = {
+  weeks: SignalWeek[];
+  days: SignalDay[];
+  waiting: WaitingPull[];
+  pulls: SignalPull[];
+  pullsCapped: boolean;
+  authors: SignalAuthor[];
+  items: SignalItem[];
+  milestones: SignalMilestone[];
+};
