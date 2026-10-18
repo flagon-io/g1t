@@ -50,8 +50,10 @@ pub struct SignalWeek {
     pub review_seconds: f64,
     /// Pull requests open when the week ended (now, for the current week),
     /// opened at least three days before, with no activity in the three
-    /// days before it ended: no push, comment, review, timeline event,
-    /// check or session entry.
+    /// days before it ended: no comment, review or timeline event, no push
+    /// (only its latest is known), no check or status on its head commit
+    /// (only its current head is known) or acceptance check, no session
+    /// entry, and no tied session (or its subagent) running.
     pub stalled: u32,
     /// What the harness sessions started in the week cost, as they
     /// reported it (estimated at list price from their token usage).
@@ -110,7 +112,9 @@ pub struct SignalPull {
     pub item: Option<u32>,
     pub milestone: Option<u32>,
     /// Its share of what the harness sessions tied to it cost: each
-    /// session's cost split evenly among the pull requests it is tied to.
+    /// session's cost split evenly among the pull requests it is tied to
+    /// (a subagent tied to none counts with its root session's). Unknown
+    /// costs count as nothing.
     pub session_cost_usd: f64,
 }
 
