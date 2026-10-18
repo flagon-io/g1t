@@ -13,7 +13,6 @@ import {
   ErrorText,
   Field,
   Input,
-  Textarea,
 } from "../../components/ui";
 import { Card } from "../../components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
@@ -21,6 +20,8 @@ import { accessFor } from "../../lib/access.server";
 import { repos, work } from "../../lib/services.server";
 import { assertSameOrigin, requireUser, unwrap } from "../../lib/session.server";
 import { Unavailable } from "../../components/boundary";
+import { AttachImages } from "../../components/attach-images";
+import { MentionTextarea } from "../../components/mention-textarea";
 import { type Failed, isFailed, part } from "../../lib/partial";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -249,8 +250,10 @@ export default function NewPull({ loaderData, actionData, params }: Route.Compon
       <Field label="Title">
         <Input name="title" required autoFocus maxLength={200} />
       </Field>
-      <Field label="Description" hint="What changed and why. Markdown works.">
-        <Textarea name="body" rows={8} />
+      <Field label="Description" htmlFor="pull-body" hint="What changed and why. Markdown works.">
+        <AttachImages to={{ repo: self }}>
+          <MentionTextarea id="pull-body" name="body" rows={8} />
+        </AttachImages>
       </Field>
       <Field
         label="Work item (optional)"

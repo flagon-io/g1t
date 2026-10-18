@@ -40,7 +40,10 @@ ones you had.
 
 On [Work](/work/), choose **New work item**:
 
-1. Give it a **title** (up to 200 characters) and a **description**.
+1. Give it a **title** (up to 200 characters) and a **description**. Paste
+   or drop images into the description, or select **Attach an image**
+   under it; see [images](/guides/pull-requests/#images). Comments take
+   them the same way.
 2. Under **Where it lands**, tick the repositories it should land in, its
    targets: none, one or several. It closes once what closes it has landed
    in every one, or, with none, once anything does.

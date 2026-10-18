@@ -16,6 +16,7 @@ import { DiffView } from "../../components/diff-view";
 import { CommitAvatars, CommitNames } from "../../components/commit-person";
 import { ErrorText, TimeAgo } from "../../components/ui";
 import { CommentForm, CommentList } from "../../components/work";
+import { AttachImages } from "../../components/attach-images";
 import { ItemIcon } from "../../components/work-icons";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -214,141 +215,143 @@ export default function CommitPage({ loaderData, actionData, params }: Route.Com
   const base = `/${params.owner}/${params.repo}`;
   const { subject, body, trailers } = parseCommitMessage(commit.message);
   return (
-    <div>
-      <Card asChild className="overflow-hidden">
-        <section>
-          <div className="p-5">
-            <p className="flex items-center gap-2 text-xs text-faint">
-              <GitCommitHorizontal size={14} />
-              <Link to={`${base}/commits`} className="hover:text-fg">
-                Commit
-              </Link>
-            </p>
-            <h2 className="mt-2 text-xl font-semibold tracking-tight text-balance">
-              <CommitText text={subject} base={base} />
-            </h2>
-            {body && (
-              <p className="mt-3 max-w-3xl text-sm whitespace-pre-wrap text-muted">
-                <CommitText text={body} base={base} />
+    <AttachImages to={viewer ? { repo: `${params.owner}/${params.repo}` } : null}>
+      <div>
+        <Card asChild className="overflow-hidden">
+          <section>
+            <div className="p-5">
+              <p className="flex items-center gap-2 text-xs text-faint">
+                <GitCommitHorizontal size={14} />
+                <Link to={`${base}/commits`} className="hover:text-fg">
+                  Commit
+                </Link>
               </p>
-            )}
-            {trailers.length > 0 && (
-              <dl className="mt-3 space-y-0.5 font-mono text-xs text-faint">
-                {trailers.map((trailer) => (
-                  <div key={`${trailer.key}:${trailer.value}`}>
-                    <dt className="inline">{trailer.key}:</dt> <dd className="inline text-muted">{trailer.value}</dd>
-                  </div>
-                ))}
-              </dl>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-line bg-bg/40 px-5 py-3 text-sm">
-            <span className="flex items-center gap-2">
-              <CommitAvatars commit={commit} size={20} />
-              <span className="font-medium">
-                <CommitNames commit={commit} all />
-              </span>
-              <span className="text-muted">
-                committed <TimeAgo at={commit.authoredAt} />
-              </span>
-            </span>
-            <span className="flex items-center gap-2 text-xs text-muted">
-              {commit.parents.length === 0 ? (
-                "The first commit"
-              ) : (
-                <>
-                  {commit.parents.length === 1 ? "Parent" : "Parents"}
-                  {commit.parents.map((parent) => (
-                    <Link
-                      key={parent}
-                      to={`${base}/commit/${parent}`}
-                      prefetch="intent"
-                      className="font-mono text-fg/80 hover:text-accent hover:underline"
-                    >
-                      {parent.slice(0, 7)}
-                    </Link>
-                  ))}
-                </>
+              <h2 className="mt-2 text-xl font-semibold tracking-tight text-balance">
+                <CommitText text={subject} base={base} />
+              </h2>
+              {body && (
+                <p className="mt-3 max-w-3xl text-sm whitespace-pre-wrap text-muted">
+                  <CommitText text={body} base={base} />
+                </p>
               )}
-            </span>
-            <span className="ml-auto flex items-center gap-2">
-              <CommitChecksBadge checks={checks} sha={commit.hash} />
-              <Link
-                to={`${base}/tree/${commit.hash}/`}
-                className="rounded-md px-2 py-1 text-xs text-muted hover:bg-raised hover:text-fg"
-              >
-                Browse files
-              </Link>
-              <CopyHash hash={commit.hash} />
-            </span>
-          </div>
-          <Suspense
-            fallback={
-              <div aria-busy="true" className="flex h-12 items-center gap-3 border-t border-line px-4">
-                <Skeleton className="size-4 rounded-full" />
-                <Skeleton className="h-3 w-64 max-w-[60%]" />
-              </div>
-            }
-          >
-            <Await resolve={pull}>
-              {(pull) =>
-                isFailed(pull) ? (
-                  <div className="border-t border-line px-5 py-3">
-                    <Unavailable what={pull.what} compact />
-                  </div>
-                ) : pull ? (
-                  <MergedIn base={base} pull={pull} />
-                ) : null
-              }
-            </Await>
-          </Suspense>
-          {isFailed(closed) ? (
-            <div className="border-t border-line px-5 py-3">
-              <Unavailable what={closed.what} compact />
+              {trailers.length > 0 && (
+                <dl className="mt-3 space-y-0.5 font-mono text-xs text-faint">
+                  {trailers.map((trailer) => (
+                    <div key={`${trailer.key}:${trailer.value}`}>
+                      <dt className="inline">{trailer.key}:</dt> <dd className="inline text-muted">{trailer.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
             </div>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-line bg-bg/40 px-5 py-3 text-sm">
+              <span className="flex items-center gap-2">
+                <CommitAvatars commit={commit} size={20} />
+                <span className="font-medium">
+                  <CommitNames commit={commit} all />
+                </span>
+                <span className="text-muted">
+                  committed <TimeAgo at={commit.authoredAt} />
+                </span>
+              </span>
+              <span className="flex items-center gap-2 text-xs text-muted">
+                {commit.parents.length === 0 ? (
+                  "The first commit"
+                ) : (
+                  <>
+                    {commit.parents.length === 1 ? "Parent" : "Parents"}
+                    {commit.parents.map((parent) => (
+                      <Link
+                        key={parent}
+                        to={`${base}/commit/${parent}`}
+                        prefetch="intent"
+                        className="font-mono text-fg/80 hover:text-accent hover:underline"
+                      >
+                        {parent.slice(0, 7)}
+                      </Link>
+                    ))}
+                  </>
+                )}
+              </span>
+              <span className="ml-auto flex items-center gap-2">
+                <CommitChecksBadge checks={checks} sha={commit.hash} />
+                <Link
+                  to={`${base}/tree/${commit.hash}/`}
+                  className="rounded-md px-2 py-1 text-xs text-muted hover:bg-raised hover:text-fg"
+                >
+                  Browse files
+                </Link>
+                <CopyHash hash={commit.hash} />
+              </span>
+            </div>
+            <Suspense
+              fallback={
+                <div aria-busy="true" className="flex h-12 items-center gap-3 border-t border-line px-4">
+                  <Skeleton className="size-4 rounded-full" />
+                  <Skeleton className="h-3 w-64 max-w-[60%]" />
+                </div>
+              }
+            >
+              <Await resolve={pull}>
+                {(pull) =>
+                  isFailed(pull) ? (
+                    <div className="border-t border-line px-5 py-3">
+                      <Unavailable what={pull.what} compact />
+                    </div>
+                  ) : pull ? (
+                    <MergedIn base={base} pull={pull} />
+                  ) : null
+                }
+              </Await>
+            </Suspense>
+            {isFailed(closed) ? (
+              <div className="border-t border-line px-5 py-3">
+                <Unavailable what={closed.what} compact />
+              </div>
+            ) : (
+              closed.map((item) => <ClosedItemRow key={`${item.workspace}#${item.number}`} item={item} />)
+            )}
+          </section>
+        </Card>
+        <div className="mt-6">
+          <DiffView
+            comparison={comparison}
+            repo={base}
+            empty="This commit changes no files."
+            fileBase={`${base}/blob/${commit.hash}`}
+            review={{ comments: said.filter((comment) => comment.path), canComment: viewer != null && commentsOn }}
+          />
+        </div>
+        <section aria-labelledby="commit-comments" className="mt-10 space-y-4">
+          <h3 id="commit-comments" className="flex items-center gap-2 text-sm font-medium">
+            <MessagesSquare size={15} className="text-faint" />
+            {general.length === 0 ? "Comments" : `${general.length} ${general.length === 1 ? "comment" : "comments"}`}
+            {said.length > general.length && (
+              <span className="font-normal text-faint">
+                · {said.length - general.length} on lines above
+              </span>
+            )}
+          </h3>
+          {isFailed(comments) && <Unavailable what={comments.what} />}
+          <CommentList
+            comments={general}
+            base={base}
+            // Commit comments name their author by username.
+            viewerId={viewer?.username ?? null}
+            canModerate={canModerate}
+            failed={actionData && "comment" in actionData ? { comment: String(actionData.comment), error: actionData.error } : null}
+          />
+          {commentsOn ? (
+            <CommentForm author={viewer?.username ?? null} resetKey={said.length} />
           ) : (
-            closed.map((item) => <ClosedItemRow key={`${item.workspace}#${item.number}`} item={item} />)
+            <Card className="flex items-center gap-2.5 px-4 py-3 text-sm text-muted">
+              <MessageSquareOff size={15} className="shrink-0 text-faint" />
+              Comments on commits are turned off in this repository.
+            </Card>
           )}
+          {actionData?.action === "comment" && <ErrorText>{actionData.error}</ErrorText>}
         </section>
-      </Card>
-      <div className="mt-6">
-        <DiffView
-          comparison={comparison}
-          repo={base}
-          empty="This commit changes no files."
-          fileBase={`${base}/blob/${commit.hash}`}
-          review={{ comments: said.filter((comment) => comment.path), canComment: viewer != null && commentsOn }}
-        />
       </div>
-      <section aria-labelledby="commit-comments" className="mt-10 space-y-4">
-        <h3 id="commit-comments" className="flex items-center gap-2 text-sm font-medium">
-          <MessagesSquare size={15} className="text-faint" />
-          {general.length === 0 ? "Comments" : `${general.length} ${general.length === 1 ? "comment" : "comments"}`}
-          {said.length > general.length && (
-            <span className="font-normal text-faint">
-              · {said.length - general.length} on lines above
-            </span>
-          )}
-        </h3>
-        {isFailed(comments) && <Unavailable what={comments.what} />}
-        <CommentList
-          comments={general}
-          base={base}
-          // Commit comments name their author by username.
-          viewerId={viewer?.username ?? null}
-          canModerate={canModerate}
-          failed={actionData && "comment" in actionData ? { comment: String(actionData.comment), error: actionData.error } : null}
-        />
-        {commentsOn ? (
-          <CommentForm author={viewer?.username ?? null} resetKey={said.length} />
-        ) : (
-          <Card className="flex items-center gap-2.5 px-4 py-3 text-sm text-muted">
-            <MessageSquareOff size={15} className="shrink-0 text-faint" />
-            Comments on commits are turned off in this repository.
-          </Card>
-        )}
-        {actionData?.action === "comment" && <ErrorText>{actionData.error}</ErrorText>}
-      </section>
-    </div>
+    </AttachImages>
   );
 }
