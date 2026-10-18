@@ -483,21 +483,36 @@ pub fn workspace_role(user: &User, workspace: &str) -> Option<RepoRole> {
 /// work items, anyone who can read a repository sees those filed there
 /// (on a public one, everyone), and one with no origin is for members
 /// only. `None` means they may not see it at all.
+///
+/// A work item stays in its workspace when its origin moves to another:
+/// there, reading it still follows the repository (public stays public;
+/// a private one's readers still read what was filed in it), but nothing
+/// more comes through the origin, whose roles are now another
+/// workspace's.
 pub fn item_role(viewer: Option<&User>, workspace: &str, origin: Option<RepoRef<'_>>) -> Option<RepoRole> {
     let member = viewer.and_then(|user| workspace_role(user, workspace));
-    let repo = origin.and_then(|origin| permission(viewer, origin));
+    let repo = origin.and_then(|origin| {
+        let role = permission(viewer, origin)?;
+        Some(if origin_is_in(origin, workspace) { role } else { role.min(RepoRole::Read) })
+    });
     member.max(repo)
+}
+
+/// Whether a work item's origin is still in the work item's workspace.
+fn origin_is_in(origin: RepoRef<'_>, workspace: &str) -> bool {
+    origin.namespace.eq_ignore_ascii_case(workspace)
 }
 
 /// Whether the viewer may do `capability` on a work item, by the same
 /// table as [`can`]: through their membership of the workspace, or their
-/// role on its origin as [`can`] reads it.
+/// role on its origin as [`can`] reads it (only Read, once the origin is
+/// in another workspace: see [`item_role`]).
 pub fn can_item(viewer: Option<&User>, workspace: &str, origin: Option<RepoRef<'_>>, capability: Capability) -> bool {
     let member = viewer.and_then(|user| workspace_role(user, workspace));
     if member.is_some_and(|role| allows(role, capability)) {
         return true;
     }
-    origin.is_some_and(|origin| can(viewer, origin, capability))
+    origin.is_some_and(|origin| (capability == Capability::Read || origin_is_in(origin, workspace)) && can(viewer, origin, capability))
 }
 
 /// `Ok` when the viewer may do `capability` on a work item; otherwise
@@ -879,6 +894,22 @@ mod item_tests {
         assert!(can_item(Some(&collaborator), "acme", origin(true), Capability::Triage));
         // With no origin, only members.
         assert_eq!(item_role(Some(&collaborator), "acme", None), None);
+    }
+
+    #[test]
+    fn an_origin_moved_to_another_workspace_still_reads_but_gives_nothing_more() {
+        // rep_1 moved from acme to globex; its work items stayed in acme.
+        let moved = |private| Some(RepoRef { id: "rep_1", namespace: "globex", private });
+        let globex_owner = person(&[("globex", Role::Owner, None)], &[]);
+        assert_eq!(item_role(Some(&globex_owner), "acme", moved(true)), Some(RepoRole::Read));
+        assert!(can_item(Some(&globex_owner), "acme", moved(true), Capability::Read));
+        assert!(!can_item(Some(&globex_owner), "acme", moved(true), Capability::Triage));
+        assert!(!can_item(Some(&globex_owner), "acme", moved(false), Capability::Participate));
+        // Public stays public.
+        assert_eq!(item_role(None, "acme", moved(false)), Some(RepoRole::Read));
+        // acme's members keep what their membership gives.
+        let acme_writer = person(&[("acme", Role::Member, Some(BasePermission::Write))], &[]);
+        assert!(can_item(Some(&acme_writer), "acme", moved(true), Capability::Triage));
     }
 
     #[test]
