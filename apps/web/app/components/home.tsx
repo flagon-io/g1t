@@ -1,7 +1,7 @@
 /**
- * Home's parts (routes/workspace/home.tsx): Where you're needed, Start
- * here, what happened in the span (what people did, what landed, builds,
- * spend) and Running now. Each takes what
+ * Home's parts (routes/workspace/home.tsx): Your move, Start here, what
+ * happened in the span (what people did, what landed, builds, spend) and
+ * Live (sessions, runs and builds going now). Each takes what
  * lib/home.ts worked out and only draws it; a row that arrived while the
  * page was open comes in (`animate-arrive`, lib/use-home-live.ts).
  */
@@ -27,6 +27,8 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
+
+import type { WorkspaceSession } from "@g1t/contracts";
 
 import {
   type Attention,
@@ -60,7 +62,9 @@ import { askG1t } from "../lib/ask";
 import { useArrived } from "../lib/use-home-live";
 import { cn } from "../lib/cn";
 import { money } from "../lib/money";
+import { repoName, runsIn, sessionHref, workspaceSessionTitle } from "../lib/sessions";
 import { CommitText } from "./commit-message";
+import { HarnessMark, StateDot } from "./sessions";
 import { Button } from "./ui/button";
 import { Hint } from "./ui/hint";
 import { ButtonLink } from "./ui";
@@ -842,14 +846,19 @@ const RUNNING_ICON: Record<RunningRow["kind"], ReactNode> = {
   deploy: <Rocket size={15} className="text-info" />,
 };
 
-export function RunningList({ rows, missing, now }: { rows: RunningRow[]; missing: string[]; now: number }) {
+export function RunningList({ rows, missing, now, sessions = 0 }: { rows: RunningRow[]; missing: string[]; now: number; sessions?: number }) {
   const arrived = useArrived(rows.map((row) => row.key));
   return (
     <>
       {rows.length === 0 ? (
-        <Quiet>
-          {missing.length > 0 ? "Nothing is running in what could be read." : "Nothing is running. Workflow runs and builds show here while they go."}
-        </Quiet>
+        // With sessions going above it, an empty list of runs says nothing.
+        sessions > 0 ? null : (
+          <Quiet>
+            {missing.length > 0
+              ? "Nothing is running in what could be read."
+              : "Nothing is running. Agents at work, workflow runs and builds show here while they go."}
+          </Quiet>
+        )
       ) : (
         <Folded
           items={rows}
@@ -876,5 +885,51 @@ export function RunningList({ rows, missing, now }: { rows: RunningRow[]; missin
       )}
       <Missing names={missing} what="everything running" />
     </>
+  );
+}
+
+/**
+ * The agents at work now, each with what it is on, who runs it, how long
+ * it has gone and what it has cost so far (list price, from its token
+ * usage). Only g1t sees these: they are its sessions.
+ */
+export function LiveSessions({ sessions, slug, now }: { sessions: WorkspaceSession[] | null; slug: string; now: number }) {
+  const arrived = useArrived((sessions ?? []).map((session) => session.id));
+  if (sessions == null) return <p className="px-5 pb-3 text-xs text-faint">Sessions couldn&apos;t be read just now.</p>;
+  if (sessions.length === 0) return null;
+  return (
+    <Folded
+      items={sessions}
+      render={(session) => {
+        const to = sessionHref(slug, session);
+        const cost = session.session?.costUsd;
+        const title = workspaceSessionTitle(session);
+        return (
+          <li key={session.id} className={cn(rowClass, "items-start px-4", arrived.has(session.id) && ARRIVED)}>
+            <span className="mt-1">
+              <StateDot state={session.state} />
+            </span>
+            <div className="min-w-0 grow">
+              {to ? (
+                <Link to={to} className="line-clamp-2 text-sm text-fg hover:underline">
+                  {title}
+                </Link>
+              ) : (
+                <p className="line-clamp-2 text-sm text-fg">{title}</p>
+              )}
+              <p className="flex min-w-0 items-center gap-1.5 truncate text-xs text-muted">
+                <HarnessMark session={session} size={12} />
+                <span className="truncate">{[session.actor, runsIn(session), repoName(session.repo, slug)].filter(Boolean).join(" · ")}</span>
+              </p>
+              <p className="mt-1 text-xs text-fg-soft tabular-nums" suppressHydrationWarning>
+                {waited(Date.parse(session.startedAt), now)}
+                {cost != null && Number.isFinite(cost) && <span className="text-faint"> · {money(Math.round(cost * 1_000_000))} so far</span>}
+                {session.subagents > 0 && <span className="text-faint"> · {plural(session.subagents, "subagent")}</span>}
+              </p>
+            </div>
+          </li>
+        );
+      }}
+    />
   );
 }

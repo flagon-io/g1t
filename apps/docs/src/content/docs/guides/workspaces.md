@@ -675,10 +675,10 @@ costs** opens [Usage](/guides/usage-and-billing/#the-usage-page) with the same p
 
 The workspace's **Overview**, `g1t.sh/<workspace>/-/workspace`, opens with
 what its work says, for members who can see Code. It is worked out the
-same way as [Home's daily signal](/guides/home/#the-daily-signal), and
+same way as [Home's week](/guides/home/#this-week), and
 each person sees only the projects they can read.
 
-1. **[The past week](/guides/home/#the-past-week)**: the same four
+1. **[The past week](/guides/home/#this-week)**: the same four
    figures as Home.
 2. **Spend, threaded to the work**: the quarter's work in four columns:
    each milestone, its work items, each work item's change set in each

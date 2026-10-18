@@ -1,16 +1,13 @@
 /**
- * The daily signal on Home (lib/signals.ts): the past week in four
- * figures, each against the week before and drawn over ten, and the
- * findings worth a look today, each a sentence with its evidence, where
- * to see it, and a way to ask g1t about it.
+ * The week's figures on the Workspace overview (lib/signals.ts), each
+ * against the week before and drawn over ten, and the trend line they and
+ * Home's week (components/home-week.tsx) draw with.
  */
-import { ChevronRight, MessageSquare, TriangleAlert } from "lucide-react";
-import { type ReactNode, useId, useState } from "react";
+import { useId, useState } from "react";
 import { Link } from "react-router";
 
-import { askG1t } from "../lib/ask";
 import { cn } from "../lib/cn";
-import type { DailySignal as DailySignalView, PulseTile, Signal } from "../lib/signals";
+import type { PulseTile } from "../lib/signals";
 import { Skeleton } from "./ui/skeleton";
 
 // --- A trend line -------------------------------------------------------------------
@@ -159,152 +156,5 @@ export function PulseSkeleton() {
         </div>
       ))}
     </div>
-  );
-}
-
-// --- The findings -------------------------------------------------------------------
-
-function Facts({ facts }: { facts: string[] }) {
-  return (
-    <p className="font-mono text-[0.75rem] leading-relaxed text-muted">
-      {facts.map((fact, i) => (
-        <span key={i}>
-          {i > 0 && <span className="px-1.5 text-faint">·</span>}
-          {fact}
-        </span>
-      ))}
-    </p>
-  );
-}
-
-function Actions({ signal }: { signal: Signal }) {
-  return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-      {signal.link && (
-        <Link to={signal.link.to} className="inline-flex items-center gap-0.5 text-sm font-medium text-accent hover:underline">
-          {signal.link.label}
-          <ChevronRight size={14} />
-        </Link>
-      )}
-      <button type="button" onClick={() => askG1t(signal.ask)} className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg">
-        <MessageSquare size={12} />
-        Ask g1t
-      </button>
-    </div>
-  );
-}
-
-function Trend({ trend }: { trend: NonNullable<Signal["trend"]> }) {
-  const [point, setPoint] = useState<number | null>(null);
-  return (
-    <figure className="space-y-1.5">
-      <TrendLine values={trend.values} points={trend.points} label={`${trend.caption}, ${trend.range}`} width={196} height={40} onPoint={setPoint} />
-      <figcaption>
-        <p className="text-xs text-fg-soft">{trend.caption}</p>
-        <p className="font-mono text-[0.6875rem] text-faint">{point != null ? trend.points[point] : trend.range}</p>
-      </figcaption>
-    </figure>
-  );
-}
-
-function Finding({ signal }: { signal: Signal }) {
-  return (
-    <li className={cn("grid gap-4 py-5 first:pt-0 last:pb-0", signal.trend && "md:grid-cols-[minmax(0,1fr)_12.5rem] md:gap-8")}>
-      <div className="min-w-0 space-y-2">
-        <h3 className="font-display text-lg leading-snug text-fg md:text-xl">{signal.headline}</h3>
-        <Facts facts={signal.facts} />
-        <Actions signal={signal} />
-      </div>
-      {signal.trend && (
-        <div className="md:pt-1">
-          <Trend trend={signal.trend} />
-        </div>
-      )}
-    </li>
-  );
-}
-
-/** Findings under the lead, before "and N more". */
-const SHOWN = 4;
-
-/**
- * The daily signal: the day, the finding that matters most as the page's
- * headline, and the others under it. A quiet week still gets a sentence.
- * Null `view`: the work service did not answer.
- */
-export function DailySignal({ date, view, line, footer }: { date: string; view: DailySignalView | null; line?: ReactNode; footer?: ReactNode }) {
-  const [more, setMore] = useState(false);
-  const lead = view?.findings[0] ?? null;
-  const rest = view?.findings.slice(1) ?? [];
-  const shown = more ? rest : rest.slice(0, SHOWN);
-  return (
-    <section aria-labelledby="daily-signal" className="rounded-2xl border border-line bg-surface px-5 py-6 md:px-8 md:py-8">
-      <p className="font-mono text-[0.6875rem] tracking-[0.16em] text-accent uppercase">Daily signal</p>
-      <p className="mt-2 font-display text-xl text-fg-soft md:text-2xl">{date}</p>
-      {view == null ? (
-        <>
-          <h1 id="daily-signal" className="mt-4 font-display text-3xl leading-tight tracking-tight text-fg md:text-[2.5rem]">
-            Here&apos;s your day.
-          </h1>
-          <p className="mt-3 flex items-center gap-1.5 text-sm text-muted">
-            <TriangleAlert size={13} className="shrink-0 text-warn" />
-            What the work says couldn&apos;t be read just now, so today&apos;s findings aren&apos;t here.
-          </p>
-        </>
-      ) : (
-        <>
-          <h1
-            id="daily-signal"
-            className="mt-4 max-w-3xl font-display text-3xl leading-[1.12] tracking-tight text-balance text-fg md:text-[2.25rem] xl:text-[2.5rem]"
-          >
-            {lead?.headline ?? view.quiet}
-          </h1>
-          {lead && (
-            <div className={cn("mt-4 grid gap-4", lead.trend && "md:grid-cols-[minmax(0,1fr)_12.5rem] md:gap-8")}>
-              <div className="space-y-2">
-                <Facts facts={lead.facts} />
-                <Actions signal={lead} />
-              </div>
-              {lead.trend && <Trend trend={lead.trend} />}
-            </div>
-          )}
-          {!view.complete && (
-            <p className="mt-3 flex items-center gap-1.5 text-xs text-faint">
-              <TriangleAlert size={12} className="shrink-0" />
-              Some projects didn&apos;t answer, so these findings leave them out.
-            </p>
-          )}
-        </>
-      )}
-      {line && <p className="mt-4 text-sm text-muted">{line}</p>}
-      {shown.length > 0 && (
-        <>
-          <hr className="my-7 border-line" />
-          <ul className="divide-y divide-line">
-            {shown.map((signal) => (
-              <Finding key={signal.key} signal={signal} />
-            ))}
-          </ul>
-          {rest.length > SHOWN && (
-            <button type="button" onClick={() => setMore(!more)} className="mt-5 text-xs text-muted hover:text-fg">
-              {more ? "Show fewer" : `${rest.length - SHOWN} more ${rest.length - SHOWN === 1 ? "finding" : "findings"}`}
-            </button>
-          )}
-        </>
-      )}
-      {footer && <div className="mt-8 border-t border-line pt-6">{footer}</div>}
-    </section>
-  );
-}
-
-export function DailySignalSkeleton({ date }: { date: string }) {
-  return (
-    <section className="rounded-2xl border border-line bg-surface px-5 py-6 md:px-8 md:py-8">
-      <p className="font-mono text-[0.6875rem] tracking-[0.16em] text-accent uppercase">Daily signal</p>
-      <p className="mt-2 font-display text-xl text-fg-soft md:text-2xl">{date}</p>
-      <Skeleton className="mt-5 h-9 w-full max-w-2xl" />
-      <Skeleton className="mt-2 h-9 w-2/3 max-w-xl" />
-      <Skeleton className="mt-5 h-3 w-64" />
-    </section>
   );
 }

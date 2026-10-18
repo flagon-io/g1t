@@ -8,6 +8,7 @@ import {
   type WeekTotals,
   agentStep,
   blockedSignal,
+  dayBars,
   dayList,
   emptySignals,
   findings,
@@ -18,7 +19,6 @@ import {
   pulse,
   quarterSpend,
   quarterStart,
-  quietHeadline,
   reviewSignal,
   reworkSignal,
   rhythm,
@@ -33,6 +33,7 @@ import {
   spreading,
   stalledSignal,
   weekStarts,
+  weekSummary,
   weekTotals,
   weeklySpend,
 } from "./signals.ts";
@@ -196,7 +197,7 @@ test("the change holding up the most work items leads, with what it holds up", (
     ],
   };
   const signal = blockedSignal(ctx({ signals }))!;
-  assert.equal(signal.headline, "Three work items are waiting on one unreviewed change.");
+  assert.equal(signal.headline, "tax#4821 holds up three work items, and no one has reviewed it yet.");
   assert.deepEqual(signal.facts, ["tax#4821 Nexus threshold configuration", "open 2 days", "holds up #8, #9, #10"]);
   assert.equal(signal.link!.to, "/acme/tax/pull/4821");
   assert.equal(blockedSignal(ctx()), null);
@@ -232,7 +233,7 @@ test("spend that concentrates in one milestone is a finding; spread-out spend is
     ],
   });
   const signal = spendSignal(ctx({ signals, quarterUsage }))!;
-  assert.equal(signal.headline, "More than half of this quarter's agent spend is going into the Checkout replatform.");
+  assert.equal(signal.headline, "The Checkout replatform took more than half of the agent spend this quarter.");
   assert.deepEqual(signal.facts, ["$28.3K of $52.4K", "quarter to date"]);
   const even = usage({ byPull: quarterUsage.byPull.map((slice) => ({ ...slice, micros: 1_000_000 })) });
   assert.equal(spendSignal(ctx({ signals, quarterUsage: even })), null);
@@ -251,7 +252,8 @@ test("a milestone closed this week says when against its due date, and what it t
     ],
   };
   const signal = shippedSignal(ctx({ signals }))!;
-  assert.equal(signal.headline, "Single sign-on shipped on Tuesday, three weeks ahead of schedule.");
+  assert.equal(signal.headline, "Single sign-on closed Tuesday, three weeks ahead of schedule.");
+  assert.equal(signal.day, "2026-10-13");
   assert.deepEqual(signal.facts, ["11 weeks in build", "2 changes", "2 projects"]);
   const old = { ...signals, milestones: [{ ...signals.milestones[0]!, closedAt: "2026-09-01T00:00:00Z" }] };
   assert.equal(shippedSignal(ctx({ signals: old })), null, "only the last week's");
@@ -298,7 +300,7 @@ test("who works where: new ground, one person carrying a project, and a first ag
   assert.equal(signal.headline, "bo is starting to work in web, which ana has carried almost alone.");
 });
 
-test("findings come highest first, and a quiet week still says something", () => {
+test("findings come highest first, and the week is said in a sentence that claims nothing about what needs anyone", () => {
   const signals = {
     ...emptySignals(),
     waiting: [{ repoId: "r1", number: 2, title: "Fix", createdAt: "2026-10-16T00:00:00Z", agent: false, draftSeconds: null, item: 1, blocks: [3, 4] }],
@@ -308,16 +310,10 @@ test("findings come highest first, and a quiet week still says something", () =>
     found.map((s) => s.key),
     ["blocked", "stalled"],
   );
-  assert.equal(quietHeadline(week("x")), "A quiet week: nothing has landed yet, and nothing is stuck.");
-  assert.equal(
-    quietHeadline(week("x", { merged: 4, agentMerged: 2 })),
-    "Four changes landed this week, 50% of them an agent's, and nothing needs a closer look.",
-  );
+  assert.equal(weekSummary(week("x")), "Nothing has landed this week yet.");
+  assert.equal(weekSummary(week("x", { merged: 4, agentMerged: 2 })), "Four changes landed this week, 50% of them by agents.");
   // A workspace that pushes straight to main: agents' direct commits are what landed.
-  assert.equal(
-    quietHeadline(week("x", { merged: 1, agentMerged: 0, agentCommits: 9 })),
-    "Ten changes landed this week, 90% of them an agent's, and nothing needs a closer look.",
-  );
+  assert.equal(weekSummary(week("x", { merged: 1, agentMerged: 0, agentCommits: 9 })), "Ten changes landed this week, 90% of them by agents.");
 });
 
 test("waits are said in words and in a few characters", () => {
@@ -441,9 +437,33 @@ test("a harness catching on: two or more people started this month, two weeks or
 test("agents' direct commits count as what they landed, and as what spend is spread over", () => {
   const weeks = [week("2026-10-05", { merged: 2, agentMerged: 1, agentCommits: 3 }), week("2026-10-12", { merged: 1, agentMerged: 1, agentCommits: 9 })];
   const [changes, spend] = pulse({ slug: "acme", weeks, spend: [4_000_000, 20_000_000] });
-  assert.equal(changes!.label, "Agent-authored changes");
+  assert.equal(changes!.label, "Landed by agents");
   assert.equal(changes!.value, "10");
   assert.deepEqual(changes!.delta, { text: "+6", tone: "good" });
   assert.equal(changes!.points[1], "Week of Oct 12: 1 merged, 9 pushed directly, of 10 changes");
   assert.equal(spend!.value, "$2.00", "$20 over ten agent changes");
+});
+
+test("the last two weeks day by day: every repository added up, agents' and people's, and empty days as zeros", () => {
+  const bars = dayBars(
+    [
+      { day: "2026-10-18", merged: 3, agentMerged: 2, agentCommits: 4, sessions: 5 },
+      { day: "2026-10-18", merged: 1, agentMerged: 0, agentCommits: 0, sessions: 1 },
+      { day: "2026-10-10", merged: 2, agentMerged: 2, agentCommits: 0, sessions: 0 },
+      // Outside the two weeks: left out.
+      { day: "2026-09-01", merged: 9, agentMerged: 9, agentCommits: 9, sessions: 9 },
+    ],
+    NOW,
+  );
+  assert.equal(bars.length, 14);
+  assert.equal(bars[0]!.day, "2026-10-05");
+  assert.deepEqual(bars.at(-1), { day: "2026-10-18", agent: 6, people: 2, sessions: 6 });
+  assert.deepEqual(
+    bars.find((bar) => bar.day === "2026-10-10"),
+    { day: "2026-10-10", agent: 2, people: 0, sessions: 0 },
+  );
+  assert.deepEqual(
+    bars.find((bar) => bar.day === "2026-10-11"),
+    { day: "2026-10-11", agent: 0, people: 0, sessions: 0 },
+  );
 });

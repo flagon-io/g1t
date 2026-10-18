@@ -1,12 +1,13 @@
 import { Suspense, useEffect, useState } from "react";
 import { Await, data } from "react-router";
 
-import { hasCodeAccess } from "@g1t/contracts";
+import { type WorkspaceSession, hasCodeAccess } from "@g1t/contracts";
 
 import type { Route } from "./+types/home";
 import {
   Card,
   LandedFeed,
+  LiveSessions,
   NeedsList,
   PeopleSummary,
   RowsSkeleton,
@@ -18,7 +19,7 @@ import {
   WindowSwitch,
 } from "../../components/home";
 import { HomeAsk, WhatChangedCard } from "../../components/home-ask";
-import { DailySignal, DailySignalSkeleton, PulseSkeleton, PulseStrip } from "../../components/signals";
+import { HomeWeek, HomeWeekSkeleton } from "../../components/home-week";
 import { Skeleton } from "../../components/ui/skeleton";
 import { sidebarOrNull } from "../../lib/chat.server";
 import {
@@ -66,14 +67,14 @@ import {
 } from "../../lib/home.server";
 import { HOME_WATCH_MAX, type HomeRepo } from "../../lib/home-live";
 import { readCookie } from "../../lib/mission";
-import { dailySignal, signalDate } from "../../lib/signals";
+import { dailySignal } from "../../lib/signals";
 import { loadSignalData } from "../../lib/signals.server";
 import { useHomeLive } from "../../lib/use-home-live";
 import { guideIsFor, loadOnboarding } from "../../lib/onboarding.server";
 import { GettingStartedButton, OnboardingOnPage } from "../../components/onboarding";
 import { loadMissionControl } from "../../lib/mission-control.server";
 import { page } from "../../lib/meta";
-import { inbox } from "../../lib/services.server";
+import { inbox, work } from "../../lib/services.server";
 import { requireUser, roleIn } from "../../lib/session.server";
 import { homePagePath } from "../../lib/workspace-nav";
 import { Boundary } from "../../components/boundary";
@@ -82,20 +83,23 @@ export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Home · ${params.owner} · g1t` });
 }
 
-/** Unread notifications read for Needs you. */
+/** Unread notifications read for Your move. */
 const NOTIFICATIONS_READ = 50;
+/** Live sessions read for Live. */
+const LIVE_READ = 12;
 
 /**
- * Home: the workspace's front page. First the past week in four figures
- * and the daily signal: what the workspace's work says today, the finding
- * that matters most as the page's headline, each with its evidence
- * (lib/signals.ts), and under them a box that asks g1t about any of it
+ * Home: the workspace's front page. First the box that asks g1t
  * (components/home-ask: What changed summarizes the span on the page, and
- * Explain on each change that landed asks about it); then where you're
- * needed now, with no time window; what happened since you were last here (or over the last 24
- * hours or 7 days, `?window=`): what people did, from the events
- * service's digest of the span and chat's, then what landed; what is
- * running; what the span cost. The last visit is kept by notify, per
+ * Explain on each change that landed asks about it). Then Your move:
+ * everything waiting on you, with no time window, beside Live: the agents
+ * at work, workflow runs and builds going now. Then the week's work
+ * (components/home-week, lib/signals.ts): four figures, the last two weeks
+ * day by day, and what is worth a look, each with its evidence and pinned
+ * to its day where it has one. Then what happened since you were last
+ * here (or over the last 24 hours or 7 days, `?window=`): what people
+ * did, from the events service's digest of the span and chat's, then what
+ * landed; beside it what the span cost and what settled by itself. The last visit is kept by notify, per
  * person and workspace, and marked by the page once it has been looked
  * at (routes/workspace/home-seen.ts), so a refresh never wipes it. Only
  * the last visit (for the span) is waited for; every section streams in
@@ -219,6 +223,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       missing: [...(code && (!workflows || !workflows.complete) ? ["Workflows"] : []), ...(code && !deploys ? ["Deployments"] : [])],
     }))
     .catch(() => ({ rows: [], missing: ["Workflows", "Deployments"] }));
+  // The agents at work now: harness and hosted sessions that are live.
+  const live: Promise<WorkspaceSession[] | null> = code
+    ? work
+        .listWorkspaceSessions(slug, viewer, { shown: "live", sessionsOnly: true, limit: LIVE_READ })
+        .then((result) => (result.ok ? result.value.sessions : null))
+        .catch(() => null)
+    : Promise.resolve([]);
   const spend = loadSpend(viewer, slug, span).catch(() => null);
   // What the workspace's work says: the pulse and the findings, for members who see Code.
   const signal = code
@@ -247,11 +258,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     attention: waiting,
     away,
     running: runningNow,
-    /** The sentence under the heading needs the digest, what landed and what waits. */
-    head: Promise.all([digest, happened, waiting]),
+    live,
+    /** The sentence about the span needs the digest and what landed. */
+    head: Promise.all([digest, happened]),
     spend,
     signal,
-    date: signalDate(now, tz),
     watch,
     onboarding,
     setupAsked,
@@ -316,146 +327,78 @@ function useMarkSeen(slug: string, loadedAt: number) {
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { slug, now, tz, span, digest, happened, attention: waiting, away, running: runningNow, head, spend, signal } = loaderData;
+  const { slug, now, tz, span, digest, happened, attention: waiting, away, running: runningNow, live, head, spend, signal } = loaderData;
   useMarkSeen(slug, now);
   useHomeLive(slug, useWatched(loaderData.watch));
   return (
-    <div className="mx-auto w-full max-w-260 space-y-5 px-4 py-5 md:px-10 md:py-8">
+    <div className="mx-auto w-full max-w-360 space-y-5 px-4 py-5 md:px-10 md:py-8">
       <OnboardingOnPage slug={slug} view={loaderData.onboarding} asked={loaderData.setupAsked} />
       {loaderData.guide && (
         <div className="flex justify-end">
           <GettingStartedButton slug={slug} variant="soft" />
         </div>
       )}
-      {/* 0. The past week, against the week before, for members who see Code. */}
-      {signal && (
-        <Suspense fallback={<PulseSkeleton />}>
-          <Await resolve={signal}>
-            {(value) =>
-              value && (
-                <Boundary what="The past week">
-                  <PulseStrip tiles={value.tiles} />
-                </Boundary>
-              )
+      {/* 0. The box that asks g1t leads the page, above everything it can be asked about. */}
+      <HomeAsk span={span} />
+      {/*
+        What needs you and what is going on now, side by side; on a phone,
+        one after the other. Then the week's work, then what happened since
+        you were last here beside what it cost.
+      */}
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_24rem]">
+        {/* 1. Your move: everything waiting on you, the one to start with on top, with no time window. */}
+        <div id="needed" className="scroll-mt-4">
+          <Suspense
+            fallback={
+              <Card title="Your move">
+                <RowsSkeleton rows={4} />
+              </Card>
             }
+          >
+            {/* Each section's data says what did not answer; a section that fails to draw keeps that to itself. */}
+            <Await resolve={waiting}>
+              {(att) => (
+                <Card title="Your move" hint={waitingSentence(att.rows.length)} link={{ label: "Notifications", to: "/notifications" }}>
+                  <Boundary what="Your move">
+                    <NeedsList attention={att} now={now} />
+                  </Boundary>
+                </Card>
+              )}
+            </Await>
+          </Suspense>
+        </div>
+
+        {/* 2. Live: agents at work, then workflow runs and builds, as they go. */}
+        <Card title="Live" hint="Agents, runs and builds going now">
+          <Suspense fallback={<RowsSkeleton rows={2} />}>
+            <Await resolve={Promise.all([live, runningNow])}>
+              {([sessions, value]) => (
+                <Boundary what="Live">
+                  <LiveSessions sessions={sessions} slug={slug} now={now} />
+                  <RunningList rows={value.rows} missing={value.missing} now={now} sessions={sessions?.length ?? 0} />
+                </Boundary>
+              )}
+            </Await>
+          </Suspense>
+        </Card>
+      </div>
+
+      {/* 3. The week's work, for members who see Code: its figures, its days, and what is worth a look. */}
+      {signal && (
+        <Suspense fallback={<HomeWeekSkeleton />}>
+          <Await resolve={signal}>
+            {(value) => (
+              <Boundary what="This week">
+                <HomeWeek view={value} />
+              </Boundary>
+            )}
           </Await>
         </Suspense>
       )}
-      {/*
-        Two columns on wide screens: what to do and what happened on the
-        left, read top to bottom; what is going on now and what it costs on
-        the right, kept in view. On a phone it is one column: Where you're
-        needed, Running now, what happened, then Spent and Settled (the side
-        column's cards join it, `contents`, each in its place by `order`).
-      */}
-      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        {/* 1. Where you're needed now, with the one to start with on top: no window. */}
-        <div className="order-1 space-y-5 lg:col-start-1 lg:row-start-1">
-          {/* 1. The daily signal, then a box that asks g1t about any of it; the line under it is yours. */}
-          {(() => {
-            const line = (
-              <Suspense fallback={<Skeleton className="inline-block h-3.5 w-72 align-middle" />}>
-                <Await resolve={head}>
-                  {([digest, happened, att]) => (
-                    <>
-                      <span className="text-fg-soft">{waitingSentence(att.rows.length)}</span> {spanSentence(span, digest, happened?.landed?.length ?? null)}
-                    </>
-                  )}
-                </Await>
-              </Suspense>
-            );
-            const ask = <HomeAsk span={span} compact />;
-            // Without Code there is no work to read: the box leads, as it always has.
-            if (!signal)
-              return (
-                <header className="space-y-3">
-                  <HomeAsk span={span} />
-                  <p className="mx-auto max-w-2xl text-center text-sm leading-relaxed text-muted">{line}</p>
-                </header>
-              );
-            return (
-              <Suspense fallback={<DailySignalSkeleton date={loaderData.date} />}>
-                <Await resolve={signal}>
-                  {(value) => (
-                    <Boundary what="The daily signal">
-                      <DailySignal date={loaderData.date} view={value} line={line} footer={ask} />
-                    </Boundary>
-                  )}
-                </Await>
-              </Suspense>
-            );
-          })()}
-          <div id="needed" className="scroll-mt-4">
-            <Card
-              title="Where you're needed"
-              hint="Everything waiting on you, however long ago it started"
-              link={{ label: "Notifications", to: "/notifications" }}
-            >
-              <Suspense fallback={<RowsSkeleton rows={4} />}>
-                {/* Each section's data says what did not answer; a section that fails to draw keeps that to itself. */}
-                <Await resolve={waiting}>
-                  {(att) => (
-                    <Boundary what="Where you're needed">
-                      <NeedsList attention={att} now={now} />
-                    </Boundary>
-                  )}
-                </Await>
-              </Suspense>
-            </Card>
-          </div>
-        </div>
 
-        {/* 2. Now: what is running, what it cost, what settled by itself. */}
-        <aside aria-label="Now" className="contents lg:sticky lg:top-4 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:block lg:space-y-5">
-          <Card title="Running now" className="order-2">
-            <Suspense fallback={<RowsSkeleton rows={2} />}>
-              <Await resolve={runningNow}>
-                {(value) => (
-                  <Boundary what="Running now">
-                    <RunningList rows={value.rows} missing={value.missing} now={now} />
-                  </Boundary>
-                )}
-              </Await>
-            </Suspense>
-          </Card>
-          <div className="order-4">
-            <Suspense
-              fallback={
-                <Card title="Spent">
-                  <SpendSkeleton />
-                </Card>
-              }
-            >
-              <Await resolve={spend}>
-                {(value) => (
-                  <Boundary what="Spent">
-                    <SpendCard spend={value} slug={slug} span={span} />
-                  </Boundary>
-                )}
-              </Await>
-            </Suspense>
-          </div>
-          <div className="order-5">
-            <Suspense
-              fallback={
-                <Card title="Settled for you">
-                  <RowsSkeleton rows={1} />
-                </Card>
-              }
-            >
-              <Await resolve={away}>
-                {(value) => (
-                  <Boundary what="Settled for you">
-                    <SettledCard away={value} now={now} />
-                  </Boundary>
-                )}
-              </Await>
-            </Suspense>
-          </div>
-        </aside>
-
-        {/* 3. What happened in the span: what changed in plain English first, then who did what, then what landed. */}
-        <section aria-labelledby="since" className="order-3 rounded-2xl border border-line bg-surface lg:col-start-1 lg:row-start-2">
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_24rem]">
+        {/* 4. What happened in the span: in a sentence, then in plain English, then who did what, then what landed. */}
+        <section aria-labelledby="since" className="rounded-2xl border border-line bg-surface">
           <header className="flex flex-wrap items-center gap-x-3 gap-y-2 px-5 pt-4">
             <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
               <h2 id="since" className="text-base font-semibold tracking-tight text-fg">
@@ -467,6 +410,11 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               <WindowSwitch span={span} />
             </div>
           </header>
+          <p className="px-5 pt-2 text-sm text-muted">
+            <Suspense fallback={<Skeleton className="inline-block h-3.5 w-72 align-middle" />}>
+              <Await resolve={head}>{([digest, happened]) => spanSentence(span, digest, happened?.landed?.length ?? null)}</Await>
+            </Suspense>
+          </p>
           {/* Summarize leads: the plain-English account is what most people come for. */}
           <div className="mt-4">
             <WhatChangedCard key={span.key} slug={slug} span={span} tz={tz} />
@@ -506,6 +454,40 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             </Await>
           </Suspense>
         </section>
+
+        {/* 5. What the span cost, and what settled by itself: kept in view beside it. */}
+        <aside aria-label="Cost and settled" className="space-y-5 lg:sticky lg:top-4">
+          <Suspense
+            fallback={
+              <Card title="Spent">
+                <SpendSkeleton />
+              </Card>
+            }
+          >
+            <Await resolve={spend}>
+              {(value) => (
+                <Boundary what="Spent">
+                  <SpendCard spend={value} slug={slug} span={span} />
+                </Boundary>
+              )}
+            </Await>
+          </Suspense>
+          <Suspense
+            fallback={
+              <Card title="Settled for you">
+                <RowsSkeleton rows={1} />
+              </Card>
+            }
+          >
+            <Await resolve={away}>
+              {(value) => (
+                <Boundary what="Settled for you">
+                  <SettledCard away={value} now={now} />
+                </Boundary>
+              )}
+            </Await>
+          </Suspense>
+        </aside>
       </div>
     </div>
   );
