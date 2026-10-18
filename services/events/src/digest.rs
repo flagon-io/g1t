@@ -17,7 +17,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use g1t_contracts::events::{
     ActivityDigest, ActivityDigestArgs, ActorCount, DefaultBranchPushes, DeploymentDigest, Event,
-    FolioDigest, FolioEdited, IssueDigest, MAX_DIGEST_EVENTS, MAX_DIGEST_LISTED, MAX_DIGEST_REPOS,
+    FolioDigest, FolioEdited, ItemDigest, MAX_DIGEST_EVENTS, MAX_DIGEST_LISTED, MAX_DIGEST_REPOS,
     PackageDigest, PullDigest, PushDigest, PushesBy, ReleaseDigest, RepoDigest,
 };
 use g1t_contracts::id_floor;
@@ -27,14 +27,15 @@ use worker::{D1Database, Error, Result};
 
 use crate::EventRow;
 
-/// The repository events a digest counts.
+/// The repository events a digest counts. A work item's count in its
+/// origin's, the repository its events carry; one with no origin in none.
 const REPO_TYPES: [&str; 12] = [
     "git.push",
     "pull.opened",
     "pull.merged",
     "pull.closed",
-    "issue.opened",
-    "issue.closed",
+    "work_item.opened",
+    "work_item.closed",
     "review.completed",
     "comment.created",
     "deployment.succeeded",
@@ -237,8 +238,8 @@ struct Counting {
     pulls_opened: Tally,
     pulls_merged: Tally,
     pulls_closed: Tally,
-    issues_opened: Tally,
-    issues_closed: Tally,
+    items_opened: Tally,
+    items_closed: Tally,
     reviews: Tally,
     comments: Tally,
     deploys_succeeded: Tally,
@@ -279,8 +280,8 @@ impl Counting {
             "pull.opened" => self.pulls_opened.add(actor),
             "pull.merged" => self.pulls_merged.add(actor),
             "pull.closed" => self.pulls_closed.add(actor),
-            "issue.opened" => self.issues_opened.add(actor),
-            "issue.closed" => self.issues_closed.add(actor),
+            "work_item.opened" => self.items_opened.add(actor),
+            "work_item.closed" => self.items_closed.add(actor),
             "review.completed" => self.reviews.add(actor),
             "comment.created" => {
                 // One of the workspace's agents, as itself: the event's actor
@@ -356,9 +357,9 @@ impl Counting {
                 merged: self.pulls_merged.into_counts(),
                 closed: self.pulls_closed.into_counts(),
             },
-            issues: IssueDigest {
-                opened: self.issues_opened.into_counts(),
-                closed: self.issues_closed.into_counts(),
+            items: ItemDigest {
+                opened: self.items_opened.into_counts(),
+                closed: self.items_closed.into_counts(),
             },
             reviews: self.reviews.into_counts(),
             comments: self.comments.into_counts(),
@@ -582,14 +583,14 @@ mod tests {
             ),
             event(
                 "evt_5",
-                "issue.opened",
+                "work_item.opened",
                 Some("rep_2"),
                 Some("usr_bo"),
                 json!({ "number": 4 }),
             ),
             event(
                 "evt_6",
-                "issue.closed",
+                "work_item.closed",
                 Some("rep_2"),
                 g1t,
                 json!({ "number": 4 }),
@@ -755,14 +756,14 @@ mod tests {
             }]
         );
         assert_eq!(
-            api.issues.opened,
+            api.items.opened,
             vec![ActorCount {
                 actor: "user:usr_bo".into(),
                 count: 1
             }]
         );
         assert_eq!(
-            api.issues.closed,
+            api.items.closed,
             vec![ActorCount {
                 actor: "user:usr_g1t_agent".into(),
                 count: 1

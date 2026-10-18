@@ -26,8 +26,11 @@ mod digest;
 mod fanout;
 mod inbox;
 mod live;
+#[cfg(test)]
+mod schema;
 mod security_digest;
 mod subscriptions;
+mod work_items;
 
 use g1t_contracts::events::{Event, ListArgs, MAX_LIST_REPOS, PublishArgs};
 use g1t_contracts::new_id;
@@ -497,11 +500,11 @@ fn list_filter(a: &ListArgs) -> (String, Vec<Bind>) {
         values.push(Bind::Text(actor.clone()));
     }
     if !a.numbers.is_empty() {
-        // An issue or pull request's own events name it as `number`; a
-        // comment, review or link on it names it as `issue`.
+        // A work item's or pull request's own events name it as `number`; a
+        // comment, review or link on it names it as `item`.
         let marks = vec!["?"; a.numbers.len()].join(", ");
         conditions.push(format!(
-            "(json_extract(data, '$.number') IN ({marks}) OR json_extract(data, '$.issue') IN ({marks}))"
+            "(json_extract(data, '$.number') IN ({marks}) OR json_extract(data, '$.item') IN ({marks}))"
         ));
         for _ in 0..2 {
             values.extend(a.numbers.iter().map(|number| Bind::Number(f64::from(*number))));
@@ -564,7 +567,7 @@ mod tests {
     fn numbers_match_an_item_or_what_is_said_on_it_since_a_time() {
         let (filter, binds) = list_filter(&ListArgs {
             repo_id: Some("rep_1".into()),
-            types: vec!["issue.opened".into()],
+            types: vec!["work_item.opened".into()],
             numbers: vec![4, 9],
             since: Some("2026-10-01T00:00:00Z".into()),
             actor: Some("usr_g1t_agent".into()),
@@ -573,13 +576,13 @@ mod tests {
         assert_eq!(
             filter,
             "WHERE repo_id = ? AND type IN (?) AND actor = ? AND \
-             (json_extract(data, '$.number') IN (?, ?) OR json_extract(data, '$.issue') IN (?, ?)) AND time >= ?"
+             (json_extract(data, '$.number') IN (?, ?) OR json_extract(data, '$.item') IN (?, ?)) AND time >= ?"
         );
         assert_eq!(
             binds,
             vec![
                 Bind::Text("rep_1".into()),
-                Bind::Text("issue.opened".into()),
+                Bind::Text("work_item.opened".into()),
                 Bind::Text("usr_g1t_agent".into()),
                 Bind::Number(4.0),
                 Bind::Number(9.0),
@@ -604,7 +607,7 @@ mod tests {
             filter,
             format!(
                 "WHERE repo_id = ? AND type IN (?, ?) AND \
-                 (json_extract(data, '$.number') IN (?) OR json_extract(data, '$.issue') IN (?)) AND time >= ? AND {AFTER}"
+                 (json_extract(data, '$.number') IN (?) OR json_extract(data, '$.item') IN (?)) AND time >= ? AND {AFTER}"
             )
         );
         // The cursor's id is bound once to find its place, and once for a

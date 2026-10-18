@@ -15,6 +15,9 @@ serde.workspace = true
 serde_json.workspace = true
 worker.workspace = true
 
+[dev-dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
+
 # wasm-opt at -O1: about the same gzipped size as -O in a tenth of the
 # time.
 [package.metadata.wasm-pack.profile.release]

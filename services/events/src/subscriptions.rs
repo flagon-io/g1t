@@ -1,15 +1,15 @@
-//! Who follows what, for the inbox (inbox.rs): subscriptions to issues and
+//! Who follows what, for the inbox (inbox.rs): subscriptions to work items and
 //! pull requests, how people watch repositories, and what each person
 //! chose about being told. See `g1t_contracts::inbox`.
 //!
-//! An issue's or pull request's author (or whoever asked g1t for it), its
+//! A work item's or pull request's author (or whoever asked g1t for it), its
 //! assignees and its reviewers are subscribed without a row. A row records
 //! the rest: someone who commented or was mentioned (subscribed as they
 //! did), or who subscribed, unsubscribed or ignored it by hand. Commenting
 //! or being mentioned subscribes again someone who unsubscribed; nothing
 //! but their own choice undoes ignoring.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use g1t_contracts::events::Event;
 use g1t_contracts::inbox::*;
@@ -19,7 +19,7 @@ use serde::Deserialize;
 use worker::wasm_bindgen::JsValue;
 use worker::{D1Database, D1PreparedStatement, Fetcher, Result};
 
-use crate::inbox::{is_g1t, is_g1t_id, numbered_thread};
+use crate::inbox::{ITEM_THREAD, is_g1t, is_g1t_id, item_thread, numbered_thread, subscribable};
 
 /// The most watchers read for one repository's event.
 const MAX_WATCHERS: u32 = 5000;
@@ -97,7 +97,7 @@ impl Audience {
             .map(|row| (row.username.clone(), row.reason.unwrap_or(Reason::Manual)))
     }
 
-    /// Everyone watching the repository for `kind` of activity: `issues`,
+    /// Everyone watching the repository for `kind` of activity: `work_items`,
     /// `pulls`, `deployments` or `security`.
     pub fn watching<'a>(&'a self, kind: &'a str) -> impl Iterator<Item = String> + 'a {
         self.watchers
@@ -129,7 +129,7 @@ impl SubscriptionRow {
     }
 }
 
-/// An issue's or pull request's subscription rows.
+/// A work item's or pull request's subscription rows.
 pub async fn of_thread(db: &D1Database, thread: &str) -> Result<Vec<Subscription>> {
     Ok(db
         .prepare("SELECT username, state, reason, chosen_at FROM inbox_subscriptions WHERE thread = ?")
@@ -186,17 +186,35 @@ pub async fn watchers(db: &D1Database, repo_id: &str) -> Result<Vec<Watcher>> {
         .collect())
 }
 
-/// Subscribes the people an event names to its issue or pull request:
+/// The watchers of a work item: its origin's (`own`) as they watch it,
+/// then those of the other repositories it is linked to who do not watch
+/// the origin, each once; ignoring another repository says nothing about
+/// it. Also who was found only through another repository.
+pub fn linked_watchers(own: Vec<Watcher>, others: &[Vec<Watcher>]) -> (Vec<Watcher>, HashSet<String>) {
+    let mut watchers = own;
+    let mut elsewhere = HashSet::new();
+    for watcher in others.iter().flatten() {
+        if watcher.level == WatchLevel::Ignore || watchers.iter().any(|had| had.username.eq_ignore_ascii_case(&watcher.username)) {
+            continue;
+        }
+        elsewhere.insert(watcher.username.to_lowercase());
+        watchers.push(watcher.clone());
+    }
+    (watchers, elsewhere)
+}
+
+/// Subscribes the people an event names to its work item or pull request:
 /// anyone without a row, and anyone who had unsubscribed. Someone who
-/// ignores it stays ignoring it.
+/// ignores it stays ignoring it. `repo_id` is the pull request's
+/// repository, or the work item's origin.
 pub fn auto_subscribe(
     db: &D1Database,
     thread: &str,
-    repo_id: &str,
+    repo_id: Option<&str>,
     people: &[(String, Reason)],
     at: &str,
 ) -> Result<Vec<D1PreparedStatement>> {
-    if !thread.contains('#') {
+    if !subscribable(thread) {
         return Ok(Vec::new());
     }
     people
@@ -211,7 +229,7 @@ pub fn auto_subscribe(
             .bind(&[
                 username.as_str().into(),
                 thread.into(),
-                repo_id.into(),
+                repo_id.map_or(JsValue::NULL, JsValue::from),
                 reason.as_str().into(),
                 at.into(),
             ])
@@ -260,37 +278,70 @@ struct ItemRow {
     thread: Option<String>,
     repo_id: Option<String>,
     repo: Option<String>,
+    workspace: Option<String>,
     number: Option<f64>,
     subject: Option<String>,
 }
 
-/// The issue or pull request asked about: its thread, repository and
-/// number, and its `owner/name` when known.
+/// The work item or pull request asked about: its thread, its repository
+/// (a work item's origin), its id when a work item, its number, and where
+/// it is (`owner/name`, or a work item's workspace) when known.
 struct Target {
     thread: String,
-    repo_id: String,
+    repo_id: Option<String>,
+    item_id: Option<String>,
     number: u32,
     repo: Option<String>,
+}
+
+impl Target {
+    /// What the work service is asked, to know it is there and who takes part.
+    fn subject_args(&self) -> InboxSubjectArgs {
+        InboxSubjectArgs {
+            repo_id: self.repo_id.clone(),
+            number: self.number,
+            item_id: self.item_id.clone(),
+            comment_id: None,
+        }
+    }
 }
 
 async fn target(db: &D1Database, username: &str, a: &SubscriptionArgs) -> Result<Option<Target>> {
     if let Some(id) = &a.id {
         let row = db
-            .prepare("SELECT thread, repo_id, repo, number, subject FROM inbox_items WHERE id = ? AND username = ?")
+            .prepare("SELECT thread, repo_id, repo, workspace, number, subject FROM inbox_items WHERE id = ? AND username = ?")
             .bind(&[id.as_str().into(), username.into()])?
             .first::<ItemRow>(None)
             .await?;
         return Ok(row.and_then(|row| {
-            let kind = row.subject.as_deref().and_then(SubjectKind::parse);
-            if !matches!(kind, Some(SubjectKind::Issue | SubjectKind::Pull)) {
-                return None;
+            let thread = row.thread?;
+            let number = row.number? as u32;
+            match row.subject.as_deref().and_then(SubjectKind::parse) {
+                Some(SubjectKind::Item) => Some(Target {
+                    item_id: Some(thread.strip_prefix(ITEM_THREAD)?.to_owned()),
+                    thread,
+                    repo_id: row.repo_id,
+                    number,
+                    repo: row.workspace,
+                }),
+                Some(SubjectKind::Pull) => Some(Target {
+                    thread,
+                    repo_id: Some(row.repo_id?),
+                    item_id: None,
+                    number,
+                    repo: row.repo,
+                }),
+                _ => None,
             }
-            Some(Target {
-                thread: row.thread?,
-                repo_id: row.repo_id?,
-                number: row.number? as u32,
-                repo: row.repo,
-            })
+        }));
+    }
+    if let (Some(item_id), Some(number)) = (&a.item_id, a.number) {
+        return Ok(Some(Target {
+            thread: item_thread(item_id),
+            repo_id: None,
+            item_id: Some(item_id.clone()),
+            number,
+            repo: None,
         }));
     }
     let (Some(repo_id), Some(number)) = (&a.repo_id, a.number) else {
@@ -298,7 +349,8 @@ async fn target(db: &D1Database, username: &str, a: &SubscriptionArgs) -> Result
     };
     Ok(Some(Target {
         thread: numbered_thread(repo_id, number),
-        repo_id: repo_id.clone(),
+        repo_id: Some(repo_id.clone()),
+        item_id: None,
         number,
         repo: None,
     }))
@@ -329,8 +381,8 @@ fn standing(row: Option<&SubscriptionRow>, implicit: Option<Reason>) -> (bool, b
     }
 }
 
-/// The person's subscription to an issue or pull request. None when there
-/// is no such issue or pull request, or it is a thread nobody subscribes to.
+/// The person's subscription to a work item or pull request. None when there
+/// is no such work item or pull request, or it is a thread nobody subscribes to.
 pub async fn subscription(db: &D1Database, work: &Fetcher, a: SubscriptionArgs) -> Result<Option<ThreadSubscription>> {
     let Some(viewer) = &a.viewer else {
         return Ok(None);
@@ -344,18 +396,9 @@ pub async fn subscription(db: &D1Database, work: &Fetcher, a: SubscriptionArgs) 
         .bind(&[target.thread.as_str().into(), username.as_str().into()])?
         .first::<SubscriptionRow>(None)
         .await?;
-    // Without a row, whether they take part is the issue's to say; and an
-    // issue that is not there has no subscription.
-    let subject: Option<InboxSubject> = g1t_kit::call(
-        work,
-        "inbox_subject",
-        &InboxSubjectArgs {
-            repo_id: target.repo_id.clone(),
-            number: target.number,
-            comment_id: None,
-        },
-    )
-    .await?;
+    // Without a row, whether they take part is the work item's or pull
+    // request's to say; and one that is not there has no subscription.
+    let subject: Option<InboxSubject> = g1t_kit::call(work, "inbox_subject", &target.subject_args()).await?;
     let Some(subject) = subject else {
         return Ok(None);
     };
@@ -383,17 +426,8 @@ pub async fn subscribe(db: &D1Database, work: &Fetcher, a: SubscribeArgs) -> Res
     let Some(target) = target(db, &username, &a.on).await? else {
         return Ok(None);
     };
-    // Only an issue or pull request that is there.
-    let found: Option<InboxSubject> = g1t_kit::call(
-        work,
-        "inbox_subject",
-        &InboxSubjectArgs {
-            repo_id: target.repo_id.clone(),
-            number: target.number,
-            comment_id: None,
-        },
-    )
-    .await?;
+    // Only a work item or pull request that is there.
+    let found: Option<InboxSubject> = g1t_kit::call(work, "inbox_subject", &target.subject_args()).await?;
     if found.is_none() {
         return Ok(None);
     }
@@ -424,7 +458,7 @@ pub async fn subscribe(db: &D1Database, work: &Fetcher, a: SubscribeArgs) -> Res
             .bind(&[
                 username.as_str().into(),
                 target.thread.as_str().into(),
-                target.repo_id.as_str().into(),
+                target.repo_id.as_deref().map_or(JsValue::NULL, JsValue::from),
                 state.as_str().into(),
                 if state == State::Subscribed { Reason::Manual.as_str().into() } else { JsValue::NULL },
                 now.as_str().into(),
@@ -693,12 +727,12 @@ mod tests {
             vec![("cy".to_owned(), Reason::Mention), ("dee".to_owned(), Reason::Manual)]
         );
         assert_eq!(audience.watching("deployments").collect::<Vec<_>>(), vec!["fay", "gus"]);
-        assert_eq!(audience.watching("issues").collect::<Vec<_>>(), vec!["gus"]);
+        assert_eq!(audience.watching("work_items").collect::<Vec<_>>(), vec!["gus"]);
     }
 
     #[test]
     fn choices_keep_only_what_is_known() {
-        assert_eq!(custom_events(&["Pulls".into(), "releases".into(), "issues".into(), "pulls".into()]), vec!["issues", "pulls"]);
+        assert_eq!(custom_events(&["Pulls".into(), "releases".into(), "issues".into(), "work_items".into(), "pulls".into()]), vec!["work_items", "pulls"]);
         assert_eq!(email_reasons(&["mention".into(), "nope".into(), "agent".into()]), vec![Reason::Agent, Reason::Mention]);
         let settings = SettingsRow { username: "ana".into(), email: None, default_watch: Some("participating".into()), security_alerts: None, security_digest: None }.into_settings();
         assert_eq!(settings.email, DEFAULT_EMAIL.to_vec());
