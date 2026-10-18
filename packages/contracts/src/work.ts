@@ -1400,7 +1400,7 @@ export type SessionRef = { id: string; harness: Harness };
 /** The sessions tied to one pull request (`pullSessions`). */
 export type PullSessions = { number: number; sessions: SessionRef[] };
 
-/** Active: heard from in 15 minutes; idle: not since; ended: ended, or quiet for 2 hours. */
+/** Active: heard from in 15 minutes; idle: not since; ended: ended, or quiet for 30 minutes. */
 export type SessionState = "active" | "idle" | "ended";
 
 /** One run of someone's own harness on a repository. */

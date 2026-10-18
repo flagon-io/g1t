@@ -6,7 +6,8 @@ import { KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, TextInput, Vie
 
 import { Button, Text } from "@/components/ui";
 import { Chip } from "@/components/work";
-import { useRepos } from "@/lib/code";
+import { useWorkspaceRepos } from "@/lib/code";
+import { originOf } from "@/lib/new-item";
 import { useSignedIn } from "@/lib/session";
 import { useLabels, useOpenWorkItem } from "@/lib/work";
 import { radius, space, useColors } from "@/theme";
@@ -14,7 +15,9 @@ import { radius, space, useColors } from "@/theme";
 /**
  * A new work item: a title, what it is about, its labels, and the
  * repositories where it is meant to land (none is fine: it can be linked
- * later). Opened from a repository's Work, that repository is its origin.
+ * later): its own workspace's, whichever the app is in. Opened from a
+ * repository (`repo`), that repository is its origin, and a target to
+ * start with.
  * Made for the on-screen keyboard: the title's return goes on to the
  * description, and Create stays in the header above the keyboard.
  */
@@ -22,16 +25,17 @@ export default function NewWorkItem() {
   const params = useLocalSearchParams<{ workspace?: string; repo?: string }>();
   const { workspace: current } = useSignedIn();
   const workspace = params.workspace ?? current?.slug ?? "";
-  const origin = params.repo ? `${workspace}/${params.repo}` : undefined;
+  const origin = originOf(workspace, params.repo) ?? undefined;
   const colors = useColors();
   const headerHeight = useHeaderHeight();
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [labels, setLabels] = useState<string[]>([]);
-  const [targets, setTargets] = useState<string[]>([]);
+  // Filed from a repository, it starts as a target too, as on the site; untick it to leave it the origin only.
+  const [targets, setTargets] = useState<string[]>(origin ? [origin] : []);
   const bodyField = useRef<TextInput>(null);
   const known = useLabels(workspace);
-  const repos = useRepos("");
+  const repos = useWorkspaceRepos(workspace);
   const open = useOpenWorkItem(workspace);
   const ready = title.trim().length > 0 && !open.isPending;
 
@@ -60,7 +64,7 @@ export default function NewWorkItem() {
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
           {origin ? (
             <Text size="small" tone="muted">
-              Filed from {params.repo}, in {workspace}
+              Filed from {origin}
             </Text>
           ) : (
             <Text size="small" tone="muted">
@@ -106,16 +110,15 @@ export default function NewWorkItem() {
             hint="The repositories the work is meant to land in. It closes once it has landed in each. Leave them out to pick later."
             empty={repos.isPending ? "…" : "No repositories you can see."}
           >
-            {(repos.data ?? []).map((repo) => {
-              const path = `${repo.namespace}/${repo.name}`;
-              const on = targets.includes(path);
+            {(repos.data ?? []).map((path) => {
+              const on = targets.some((one) => one.toLowerCase() === path.toLowerCase());
               return (
                 <Chip
-                  key={repo.id}
-                  label={repo.name}
+                  key={path}
+                  label={path.split("/")[1] ?? path}
                   tone={on ? "accent" : "neutral"}
                   leading={on ? <Check size={12} color={colors.accent} /> : null}
-                  onPress={() => setTargets(toggle(targets, path))}
+                  onPress={() => setTargets(on ? targets.filter((one) => one.toLowerCase() !== path.toLowerCase()) : [...targets, path])}
                 />
               );
             })}

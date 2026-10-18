@@ -194,7 +194,7 @@ On **Settings → Repository**, under **Archives**.
 
 ### Work items
 
-On **Settings → Repository**, under **Features**. [Work items](/guides/work-items/)
+On **Settings → Repository**, under **Features**. [Work items](/work/work-items/)
 belong to the workspace; these settings say how this repository takes part.
 
 | Setting | Field | Default | What it does |
@@ -347,7 +347,7 @@ repository in the workspace may have it, including one that was
 
 Everything stays with the repository: its git data, pull requests,
 workflow runs, deployments, settings, secrets and webhooks, and the
-[work items](/guides/work-items/) linked to it stay linked. Its old address
+[work items](/work/work-items/) linked to it stay linked. Its old address
 keeps working, the same way as after a
 [transfer](/guides/transferring-repositories/#old-addresses):
 

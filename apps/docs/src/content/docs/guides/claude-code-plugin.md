@@ -93,7 +93,7 @@ looks like a credential (`[redacted]`) from command lines, prompts,
 titles, and what subagents were asked and reported; g1t does it again as
 it records. Your prompts show only to you; the workspace's members see the
 rest, and anyone else who can read the repository sees only that the
-session runs ([Who sees what](/guides/sessions/#who-sees-what)).
+session runs ([Who sees what](/work/sessions/#who-sees-what)).
 
 | When | The hook runs | What g1t receives |
 | --- | --- | --- |
@@ -185,12 +185,12 @@ most never need one. The session is the record of that work:
    name the whole job: g1t keeps that title, unless the session goes on to
    other work items or pull requests, when it is named again as it ends.
    Rename a session on its page to pin your own title: g1t and Claude never
-   replace it. See [Session titles](/guides/sessions/#session-titles).
+   replace it. See [Session titles](/work/session-titles/).
 2. **It shows to the team.** The project's overview lists it in **Live
    now** under its pull request, else its branch, else under **No branch
    yet**, with who it is for, Claude Code, its state, when it was last
    heard from and its branch; the workspace's
-   [Sessions](/guides/sessions/#the-sessions-page) lists it with the rest.
+   [Sessions](/work/sessions/) lists it with the rest.
 3. **It gets a work item when it becomes a change** others should know
    about: a branch to push, a pull request. Claude is told to look for a
    work item first (`g1t work list`) and claim it with `g1t work claim N`,
@@ -289,7 +289,7 @@ which you have. A CLI that refuses a command the hooks send is taken as
 out of date, and said the same way.
 
 A CLI older than 0.3.3 records sessions but cannot acknowledge
-[coordination updates](/guides/sessions/#pending-coordination-updates). The hooks then show
+[coordination updates](/work/claims-and-dependencies/#coordination-updates). The hooks then show
 pending updates only when they change, not before every prompt, and ask
 Claude to tell you once to update the CLI.
 
@@ -317,7 +317,7 @@ settings, for example in `~/.claude/settings.json`:
 
 A recorded session can be read on its own page, linked from the work item, the
 pull request's **Session** tab and the workspace's
-[Sessions](/guides/sessions/#the-sessions-page): who ran
+[Sessions](/work/sessions/): who ran
 it, its subagents as a tree, the skills used, what it touched, and the
 work items and pull requests it worked on.
 

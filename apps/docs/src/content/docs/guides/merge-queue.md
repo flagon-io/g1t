@@ -268,7 +268,7 @@ failure before choosing a repair.
 4. A [decision record](/guides/why-blame/#decision-records) of kind
    `integration_failure`, confidence `tested`, keeps it, with the
    combination, the check, the suspects, `bisected` and `landed` as
-   evidence. [`get_work`](/guides/sessions/)'s `last_integration_failure`
+   evidence. [`get_work`](/work/agents/#pick-up-a-work-item)'s `last_integration_failure`
    is the latest of these.
 5. The `integration.failed` [event](/guides/webhooks/#events) carries the
    same to webhooks and to anyone following the repository's events:
@@ -287,7 +287,7 @@ passes in the queue or merges: the pull requests tested together, with the
 one that answers for it marked, the check that failed (linked to its run),
 what it fails with, and the fix once one is recorded. Its work item shows the
 same under its pull requests, and the workspace's
-[Sessions](/guides/sessions/#the-sessions-page) lists it under **What
+[Sessions](/work/sessions/) lists it under **What
 happened**.
 
 ### Getting back in the queue

@@ -512,8 +512,8 @@ says otherwise, g1t acts on every option.
 | `reviewers` | Usernames whose review is asked for when the pull request opens. A team (`org/team`) is skipped. Also applies to security updates. | |
 | `registries` | The [registries](#private-registries) the entry uses: a list of names, or `"*"` for all of them. | |
 | `target-branch` | The branch updates start from and merge into. Its manifests are read, each update is made from it, and its pull request's [base](/guides/base-branches/) is that branch. The default branch's protection does not cover it. | The default branch |
-| `labels` | The [labels](/guides/labels/) put on each pull request. A label the repository lacks is created. `labels: []` puts none on. | `dependencies` and the ecosystem's label |
-| `milestone` | The number of a [milestone](/guides/milestones/) to put each pull request in. A number the repository has no milestone for is skipped. | |
+| `labels` | The [labels](/work/labels/) put on each pull request. A label the repository lacks is created. `labels: []` puts none on. | `dependencies` and the ecosystem's label |
+| `milestone` | The number of a [milestone](/work/milestones/) to put each pull request in. A number the repository has no milestone for is skipped. | |
 | `vendor` | Read. Vendored copies of dependencies are not updated. | `false` |
 | `insecure-external-code-execution` | Read. g1t never runs a manifest's code while updating it. | |
 | `name` | A name for the entry, 3 to 100 characters, shown in the footer of its pull requests. | |

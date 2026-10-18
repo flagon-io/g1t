@@ -690,13 +690,13 @@ profile and **Stars**. In one of their public projects, the sidebar is
 that project's own list, as in Code, with **Projects** at its top to go
 back to the rest of theirs. A project shared with you stays in Code, under
 **Shared with you**. On a phone, the button at the top left opens the same
-sidebar, and **More** has **Explore**.
+sidebar, and **More** starts with **Explore**.
 
 Each page has three parts:
 
 | Part | Where | What it holds |
 | --- | --- | --- |
-| **The rail** | A narrow column of icons down the left edge | g1t's mark, which goes to [Home](/guides/home/); the built-in apps, with **Explore** after **Work** and **Sessions**; the apps you pinned; and at its foot **Apps**, **People**, **Workspace** and your account. Hold the pointer over an icon for its name. |
+| **The rail** | A narrow column of icons down the left edge | g1t's mark, which goes to [Home](/guides/home/); the built-in apps, **Home**, **Explore**, **Work**, **Chat**, **Code**, **Artifacts** and **Routines**; the apps you pinned; and at its foot **Apps**, **People**, **Workspace** and your account. Hold the pointer over an icon for its name. |
 | **The sidebar** | Flush against the rail | The workspace and its switcher at the top, **Search or jump to**, then the lists of the app you are in, in named groups. Home has none. |
 | **The page** | The rest of the window, flat against the sidebar | Its header: the button that shows or hides the sidebar, where you are, **Search or jump to** (<kbd>Ctrl</kbd> <kbd>K</kbd>, or <kbd>⌘</kbd> <kbd>K</kbd> on a Mac) when the sidebar is hidden or has a search of its own, the [notifications](/guides/notifications/) bell and **Create new**. Then the page itself. |
 
@@ -708,9 +708,8 @@ each an icon with what is unread on it:
 | App | Opens |
 | --- | --- |
 | **Home** | Where you're needed across the workspace, and what happened while you were away. See [Home](/guides/home/). |
-| **Work** | The workspace's work items, their [Board](/guides/work-items/#the-board), and its labels and milestones, at `g1t.sh/<workspace>/-/work`. Every member has it, with Code access or not. See [work items](/guides/work-items/). |
-| **Sessions** | What is cooking across the workspace: the sessions live now in every repository you can read, the merge queues, what just landed and what happened, at `g1t.sh/<workspace>/-/sessions`. See [the Sessions page](/guides/sessions/#the-sessions-page). |
 | **Explore** | g1t beyond your workspaces: public projects, people and other workspaces. |
+| **Work** | The workspace's work items, their [Board](/work/board/), and its labels and milestones, at `g1t.sh/<workspace>/-/work`; and its **Sessions**, what is cooking across the workspace (the sessions live now in every repository you can read, the merge queues, what just landed and what happened), at `g1t.sh/<workspace>/-/work/sessions`. Every member has it, with Code access or not. See [work items](/work/work-items/) and [the Sessions page](/work/sessions/). |
 | **Chat** | Channels and messages. See [Chat](/guides/chat/). |
 | **Code** | Projects, pull requests and checks. Not shown to a member without Code access. |
 | **Artifacts** | Documents, decks and pages. See [artifacts](/guides/artifacts/). |
@@ -879,9 +878,9 @@ them within reach of your thumb:
 | | What it does |
 | --- | --- |
 | **The bar along the bottom** | **Home**, **Work**, **Chat** and **Notifications**, each with what is unread, and **More**. Work is there for every member, with Code access or not. It runs flat along the bottom edge, as the rail stands beside the page on a computer, and the page fills the screen above it. The app you are in is marked as on the rail. It steps aside while the keyboard is up and inside a conversation. |
-| **More** | A panel above the bar with **Sessions** first, then **Code** (for members with Code access), **All apps** and the apps you pinned, **Artifacts**, **Routines**, **People**, **Workspace**, **Explore**, and **You and help**: your status, profile and settings, [appearance](#appearance), the documentation, support, status, the keyboard's shortcuts and signing out. |
+| **More** | A panel above the bar with **Explore** first, then **Code** (for members with Code access), **All apps** and the apps you pinned, **Artifacts**, **Routines**, **People**, **Workspace**, and **You and help**: your status, profile and settings, [appearance](#appearance), the documentation, support, status, the keyboard's shortcuts and signing out. |
 | **The sidebar button**, at the left of the page's header | Opens the sidebar of the app you are in from the left, most of the screen wide: the same lists and links as on a computer. Tap outside it, or open a page, and it closes. |
-| **The tab you are already on** | Tap it again to open that app's sidebar too: for **Work**, **Open**, **Assigned to you**, **Closed**, **Board**, **Sessions**, **New work item**, **Labels** and **Milestones**. |
+| **The tab you are already on** | Tap it again to open that app's sidebar too: for **Work**, its two sections: **Work items** (**Open**, **Assigned to you**, **Closed**, **Board**, **New work item**, **Labels** and **Milestones**) and **Sessions** (**Live now**, **Recent**, **Yours** and each kind). |
 | **The workspace's name** in the page's header | Switches workspace, or opens your profile or settings. |
 
 Inside a [project](/guides/projects/), its pages (**Overview**, **Code**,
@@ -914,7 +913,7 @@ Signed in, `g1t.sh` itself opens [Home](/guides/home/) in the workspace
 you are in.
 
 **Review N that need you** jumps to the list, and **New work item** opens
-a new [work item](/guides/work-items/) of the workspace, filed in the
+a new [work item](/work/work-items/) of the workspace, filed in the
 project you pick.
 
 | Tab | What it lists |

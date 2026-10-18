@@ -252,7 +252,7 @@ g1t work close 12 --reason not_planned
 g1t work reopen 12
 ```
 
-[Work items](/guides/work-items/) belong to the workspace, and `g1t work`
+[Work items](/work/work-items/) belong to the workspace, and `g1t work`
 works on the current repository's workspace, or the one in `--workspace`
 (or `G1T_WORKSPACE`). `-R` filters `g1t work list` to the work items
 linked to that repository, and names the repository `g1t work link` and
@@ -465,7 +465,7 @@ g1t session end --reason done
 | `g1t session updates [ID]` | What other sessions did that concerns this one (claims, overlaps, dependency changes, decisions, merge queue results), oldest first, up to 100. Reading never clears them. It first says which files the working copy changed, so overlapping edits are noticed (`G1T_TOUCH=0` turns that off). |
 | `g1t session acknowledge ID... --note TEXT` | Records your decision about those updates (what changes in your plan, or why nothing does) and clears exactly the IDs given, for this session only; `--session` names another of yours. Saying the same again does nothing. |
 | `g1t session end` | Ends it, with an optional `--reason` and `--result` (what it reported; `-` reads it from stdin), and forgets it. Its subagents still going end with it. |
-| `g1t session list` | The repository's sessions; `--state active`, `--item`, `--pull` (any session tied to it), `--path` (those that touched a file, or a folder ending in `/`), `--subagents` to list subagents under the sessions that started them. `--workspace` (this repository's workspace) or `--workspace SLUG` lists the sessions of every repository of a workspace instead, narrowed by `--harness`, `--person`, `--in NAME` (a repository of it), `--state`, `--item` and `--subagents`; see [the Sessions page](/guides/sessions/#the-sessions-page). |
+| `g1t session list` | The repository's sessions; `--state active`, `--item`, `--pull` (any session tied to it), `--path` (those that touched a file, or a folder ending in `/`), `--subagents` to list subagents under the sessions that started them. `--workspace` (this repository's workspace) or `--workspace SLUG` lists the sessions of every repository of a workspace instead, narrowed by `--harness`, `--person`, `--in NAME` (a repository of it), `--state`, `--item` and `--subagents`; see [the Sessions page](/work/sessions/). |
 | `g1t session view [ID]` | A session and what it recorded, its subagents and their results, the work items and pull requests it worked on, and the skills used; the current one without an id. |
 
 The id is kept in `.git/g1t/session`, in the working copy's own git

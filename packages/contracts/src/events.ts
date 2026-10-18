@@ -491,7 +491,7 @@ export type EventPayloads = {
   "session.appended": { pullId: string; repoId: string; number: number; count: number };
   /** A harness session started on the repository (not on an idempotent re-start). */
   "session.started": SessionEventData;
-  /** A session ended, or timed out after 2 hours without a heartbeat. */
+  /** A session ended, or timed out after 30 minutes without a heartbeat. */
   "session.ended": SessionEventData;
   /** A session (or a subagent of it) recorded more: at most every few seconds each, for the pages showing it. */
   "session.progressed": SessionProgressedData;

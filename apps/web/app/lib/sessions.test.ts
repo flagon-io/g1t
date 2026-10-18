@@ -35,8 +35,8 @@ const own = (more: Partial<WorkSession> = {}): WorkSession =>
   ({ id: "ses_1", repoId: "rep_1", item: null, pull: null, branch: "fix-it", actor: { id: "u", username: "ana" }, harness: "codex", harnessSessionId: null, title: null, state: "active", headCommit: null, startedAt: "", lastSeenAt: "", endedAt: null, endReason: null, ...more }) as WorkSession;
 
 test("every kind of session opens where it is shown", () => {
-  assert.equal(sessionHref("Acme", listed("ses_1")), "/acme/-/sessions/ses_1");
-  assert.equal(sessionHref("acme", listed("ses_2", { kind: "hosted", harness: "claude_managed_agents" })), "/acme/-/sessions/ses_2");
+  assert.equal(sessionHref("Acme", listed("ses_1")), "/acme/-/work/sessions/ses_1");
+  assert.equal(sessionHref("acme", listed("ses_2", { kind: "hosted", harness: "claude_managed_agents" })), "/acme/-/work/sessions/ses_2");
   // g1t's agent and a recorded session are their pull request's Session tab.
   assert.equal(sessionHref("acme", listed("run_1", { kind: "agent", repo: "acme/api", pull: 8 })), "/acme/api/pull/8/session");
   assert.equal(sessionHref("acme", listed("pr_1", { kind: "recorded", pull: 7 })), "/acme/web/pull/7/session");
@@ -56,11 +56,19 @@ test("a session is named by its title, its subagent task, its pull request, neve
 
 test("Sessions keeps its filters in the address and drops what it does not know", () => {
   const filters = sessionsFilters(new URLSearchParams("repo=web&person=@bo&harness=codex&kind=bogus&state=recent"));
-  assert.deepEqual(filters, { state: "recent", repo: "web", person: "bo", harness: "codex", kind: null });
+  assert.deepEqual(filters, { state: "recent", repo: "web", person: "bo", harness: "codex", kind: null, item: null });
   assert.equal(sessionsQuery(filters), "?state=recent&repo=web&person=bo&harness=codex");
   assert.equal(sessionsQuery({ state: "live" }), "");
   assert.equal(narrowed(filters), true);
   assert.equal(narrowed(sessionsFilters(new URLSearchParams("state=recent"))), false);
+});
+
+test("Sessions can be a work item's own: ?item=12", () => {
+  const filters = sessionsFilters(new URLSearchParams("state=recent&item=12"));
+  assert.equal(filters.item, 12);
+  assert.equal(narrowed(filters), true);
+  assert.equal(sessionsQuery(filters), "?state=recent&item=12");
+  for (const bad of ["0", "-3", "x", "1.5"]) assert.equal(sessionsFilters(new URLSearchParams(`item=${bad}`)).item, null, bad);
 });
 
 test("live sessions come apart from those that ended, most recently heard from first", () => {

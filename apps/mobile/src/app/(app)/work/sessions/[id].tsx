@@ -39,7 +39,7 @@ export default function SessionScreen() {
   );
   const query = useWorkspaceSession(workspace, params.id, focused);
   const [allFiles, setAllFiles] = useState(false);
-  const sitePath = `/${workspace}/-/sessions/${params.id}`;
+  const sitePath = `/${workspace}/-/work/sessions/${params.id}`;
 
   const title = (
     <Stack.Screen

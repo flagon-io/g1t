@@ -229,20 +229,20 @@ export default [
       // Work: the workspace's work items, for every member. The list (its
       // filters in the address), the board of them as they move, a new one,
       // the labels and milestones they share with pull requests, `#12` read
-      // in the workspace, and each item.
+      // in the workspace, and each item. Sessions are Work's too: what is
+      // cooking across the workspace, in every repository of it the viewer
+      // may read (live sessions of every kind, the merge queues, what landed
+      // and what happened), and one session's page.
       route("-/work", "routes/workspace/work/list.tsx"),
       route("-/work/board", "routes/workspace/work/board.tsx"),
+      route("-/work/sessions", "routes/workspace/work/sessions/list.tsx"),
+      route("-/work/sessions/:id", "routes/workspace/work/sessions/session.tsx"),
       route("-/work/new", "routes/workspace/work/new.tsx"),
       route("-/work/labels", "routes/workspace/work/labels.tsx"),
       route("-/work/milestones", "routes/workspace/work/milestones.tsx"),
       route("-/work/milestones/:number", "routes/workspace/work/milestone.tsx"),
       route("-/work/ref/:number", "routes/workspace/work/ref.ts"),
       route("-/work/:number", "routes/workspace/work/item.tsx"),
-      // Sessions: what is cooking across the workspace, in every repository
-      // of it the viewer may read (live sessions of every kind, the merge
-      // queues, what landed and what happened), and one session's page.
-      route("-/sessions", "routes/workspace/sessions/list.tsx"),
-      route("-/sessions/:id", "routes/workspace/sessions/session.tsx"),
       route("-/today", "routes/workspace/moved.ts", { id: "routes/workspace/moved-today" }),
       route("-/apps", "routes/workspace/apps.tsx"),
       // Routines: standing work for @g1t, on a schedule or when something

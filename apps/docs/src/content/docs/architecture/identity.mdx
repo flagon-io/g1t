@@ -22,7 +22,7 @@ who is asking from the viewer it is handed.
 | Access token | `g1t_…`, personal or a workspace's, with scopes | The API, MCP, git, the CLI | `user_for_access_token` |
 | OAuth access token | Issued by `POST /oauth/token`, refreshed with `g1r_…` | MCP clients, the phone app, apps you authorise | `user_for_access_token` |
 | Job token | `G1T_TOKEN` in a workflow job | Actions, for that job alone | `user_for_access_token` |
-| Run credential | Made per sandbox run, up to 6 hours, or per [session](/guides/sessions/) g1t starts on Claude Managed Agents, up to 12 | Sandboxes; a session's agent, for the API, MCP, git and the CLI | `user_for_access_token` |
+| Run credential | Made per sandbox run, up to 6 hours, or per [session](/guides/sessions/#start-a-session-on-your-anthropic-account) g1t starts on Claude Managed Agents, up to 12 | Sandboxes; a session's agent, for the API, MCP, git and the CLI | `user_for_access_token` |
 | git password | Your account's password | git, only without two-factor authentication | `user_for_git_credentials` |
 
 The CLI signs in with the device flow of RFC 8628 (`/device/code`, then
@@ -67,7 +67,7 @@ that owns the data, next to it.
 | Repository | Read, Triage, Write, Maintain and Admin, given to a person, a team, or everyone in the workspace as its base permission |
 | Outside collaborators | A repository role for someone who is not a member |
 
-A [work item](/guides/work-items/) belongs to the workspace, so it has no
+A [work item](/work/work-items/) belongs to the workspace, so it has no
 repository role of its own. `item_role` gives the viewer the higher of
 their role through workspace membership and their permission on the work
 item's origin repository, if it has one. `can_item` and `check_item` judge

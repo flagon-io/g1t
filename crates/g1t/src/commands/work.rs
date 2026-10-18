@@ -180,9 +180,17 @@ fn list(ctx: &Ctx, workspace: Option<&str>, args: WorkListArgs) -> Result<()> {
     print_list(&ctx.out, &items)
 }
 
+/// What a linked repository that is gone, with no path kept, is called (the web's `DELETED_REPO`).
+const DELETED_REPO: &str = "deleted repository";
+
+/// A linked repository's path, or "deleted repository" when it was deleted before work items and kept none.
+fn repo_path(repo: &Value) -> &str {
+    repo["path"].as_str().filter(|path| !path.is_empty()).unwrap_or(DELETED_REPO)
+}
+
 /// A work item's repositories, short: the first, and `+2` for the rest.
 fn repos_cell(item: &Value) -> String {
-    let paths: Vec<&str> = item["repos"].as_array().into_iter().flatten().filter_map(|r| r["path"].as_str()).collect();
+    let paths: Vec<&str> = item["repos"].as_array().into_iter().flatten().map(repo_path).collect();
     match paths.as_slice() {
         [] => String::new(),
         [one] => (*one).to_owned(),
@@ -349,7 +357,7 @@ fn missing(item: &Value) -> Vec<String> {
         .into_iter()
         .flatten()
         .filter(|r| r["role"] == "target" && r["landed"] != true)
-        .filter_map(|r| r["path"].as_str().map(str::to_owned))
+        .map(|r| repo_path(r).to_owned())
         .collect()
 }
 
@@ -541,7 +549,9 @@ pub fn print_context(out: &Output, name: &str, work: &Value) {
     for repo in repos {
         let landed = if repo["landed"] == true { format!(" {}", out.green("landed")) } else { String::new() };
         let legacy = repo["legacy_number"].as_u64().map(|n| out.dim(&format!(" (was #{n} there)"))).unwrap_or_default();
-        println!("  {} {}{landed}{legacy}", s(repo, "path"), out.dim(s(repo, "role")));
+        let path = repo_path(repo);
+        let path = if path == DELETED_REPO { out.dim(path) } else { path.to_owned() };
+        println!("  {path} {}{landed}{legacy}", out.dim(s(repo, "role")));
         for pull in list_of(repo, "pulls") {
             println!("    {}", pull_line(out, pull));
             for overlap in list_of(pull, "overlaps") {
@@ -1200,6 +1210,16 @@ mod tests {
         let item = json!({ "repos": [{ "path": "acme/web", "role": "origin" }, { "path": "acme/api", "role": "target", "landed": true }, { "path": "acme/docs", "role": "target" }] });
         assert_eq!(repos_cell(&item), "acme/web +2");
         assert_eq!(missing(&item), vec!["acme/docs".to_owned()]);
+    }
+
+    #[test]
+    fn a_repository_deleted_before_work_items_is_named_so() {
+        // Its link kept no path: the column says what it was, not nothing.
+        let item = json!({ "repos": [{ "path": "", "role": "origin" }] });
+        assert_eq!(repos_cell(&item), "deleted repository");
+        let item = json!({ "repos": [{ "path": null, "role": "origin" }, { "path": "acme/api", "role": "target" }] });
+        assert_eq!(repos_cell(&item), "deleted repository +1");
+        assert_eq!(repo_path(&json!({ "path": "acme/web" })), "acme/web");
     }
 
     #[test]

@@ -192,7 +192,7 @@ period, so clients set up with them keep working. Move to the resource
 tool and its action: the tables below give each, and each page of the
 [API reference](/reference/api/) names the tool and action for its
 operation. `get_issue` went with issues: use `work_item` with
-`"action": "get"` (see [issues became work items](/about/issues-became-work-items/)).
+`"action": "get"` (see [issues became work items](/work/from-issues/)).
 
 | Earlier name | Now |
 | --- | --- |
@@ -333,13 +333,13 @@ of these changes, and what refuses it, and
 
 ## `work_item`
 
-[Work items](/guides/work-items/): what should change, a feature, a bug or
+[Work items](/work/work-items/): what should change, a feature, a bug or
 a chore. A work item belongs to a workspace and links the repositories it
 starts in and lands in. Each action takes `workspace` and the item's
 `number`; `repo` is optional: the origin of a new work item, a filter, or
 in place of `workspace`, which is then the repository's. Before working on
 one, `work` gives everything about it, and `claim` says you are on it; see
-[sessions, claims and dependencies](/guides/sessions/). Work items and pull
+[claims and dependencies](/work/claims-and-dependencies/). Work items and pull
 requests share numbers in a workspace; a pull request's comments, labels
 and reactions are on the [`pull_request`](#pull_request) tool. `resolve`
 says which of the two a `#N` names. `attach` uploads an image, such as a
@@ -350,7 +350,7 @@ comment.
 | --- | --- | --- | --- |
 | [`list`](/reference/api/work-items/list-work-items/) | Work items, newest first, by `state`, `label`, `milestone` (its number), `assignee`, and `repo` (the items linked to it, in any role). | `workspace` or `repo` | `work:read` |
 | [`get`](/reference/api/work-items/get-work-item/) | A work item: description (which may say what done means, under **Definition of done**), labels, comments, its `repos` with their roles and whether each `landed`, its `resolutions`, and every pull request made for it. | `workspace`, `number` | `work:read` |
-| [`create`](/reference/api/work-items/open-work-item/) | Open a work item, with `body`, `labels`, `milestone`, `repo` (its origin) and `targets` (the repositories it should land in). A label the workspace lacks is created for someone with the Write role. `checks` is deprecated: its commands are added to the body under **Definition of done**, and the result carries a `deprecation` note. | `workspace` or `repo`, `title` | `work:write` |
+| [`create`](/reference/api/work-items/open-work-item/) | Open a work item, with `body`, `labels`, `milestone`, `repo` (its origin) and `targets` (the repositories it should land in). A label the workspace lacks is created for someone with the Write role. Say what done means in `body`, under a **Definition of done** heading. | `workspace` or `repo`, `title` | `work:write` |
 | [`update`](/reference/api/work-items/update-work-item/) | Change its title, body, labels, milestone, assignees or `blocked_by` (the work items that must land first). Labels, assignees and `blocked_by` each replace the whole set; `milestone` `null` or `0` takes it out of its milestone. A `blocked_by` that names the work item itself, something not a work item of the workspace, or makes a cycle is refused. | `workspace`, `number` | `work:write` |
 | [`links`](/reference/api/work-items/list-work-item-links/) | The repositories it is linked to: its origin, then its targets, then those it touched, each with its `role`, its `legacy_number` (the issue number it had in its origin) and whether it `landed`; `missing` lists the targets it has not landed in yet. | `workspace`, `number` | `work:read` |
 | [`link`](/reference/api/work-items/link-work-item/) | Link a repository of the workspace in a `role`: `target` (the default) or `touched`; linking one already linked changes its role. An origin cannot be given. Triage role. | `workspace`, `number`, `repo` | `work:write` |
@@ -369,7 +369,7 @@ comment.
 | [`attach`](/reference/api/work-items/upload-work-item-attachment/) | Upload an image to show in its description or in a comment on it, kept by the work item, so one filed with no repository takes images too: `data` base64-encoded, `name` its file name. PNG, JPEG, GIF or WebP of at most 10 MB, by its bytes (`413` `too_large`, `415` `unsupported_type` otherwise). Returns `id`, `url`, `content_type`, `size` and `markdown` (`![name](url)`) to paste into a `body`. The file travels in the tool call, so keep it small (a few hundred KB); `g1t work comment --attach FILE` sends one from disk. Anyone who may comment on it may. | `workspace`, `number`, `name`, `data` | `work:write` |
 | [`import`](/reference/api/work-items/import-work-items/) | Open a work item from a Jira, Linear or Sentry item, linked to it. | `workspace`, `reference` | `work:write` |
 | [`resolve`](/reference/api/work-items/resolve-ref/) | What `#number` names where it is written: in `repo`, a pull request of it, then a work item filed there under that old issue number, then the workspace's work item, then a pull request of another of its repositories; in a `workspace` alone ([`GET /workspaces/{workspace}/refs/{number}`](/reference/api/work-items/resolve-ref-for-workspace/)), its work item, else its pull request. Answers `kind` `work_item`, `pull` or `none`. | `workspace` or `repo`, `number` | `work:read` |
-| [`work`](/reference/api/work-items/get-work/) | Everything to pick a work item up: its definition of done and required checks, its repositories with what landed where and which targets are still missing, suggested targets (each with `why`), active claims, sessions, pull requests (checks, mergeability, overlaps, queue place), what it is blocked by and blocks, decisions, and its recent coordination events. | `workspace`, `number` | `work:read` |
+| [`work`](/reference/api/work-items/get-work/) | Everything to pick a work item up: its definition of done, each repository with its required checks, its repositories with what landed where and which targets are still missing, suggested targets (each with `why`), active claims, sessions, pull requests (checks, mergeability, overlaps, queue place), what it is blocked by and blocks, decisions, and its recent coordination events. | `workspace`, `number` | `work:read` |
 | [`claim`](/reference/api/work-items/claim-work-item/) | Say you are working on an open work item: advisory and expiring (`ttl_minutes`, 30 unless you say, at most 240), never a lock. Returns `others` already on it and what it is `blocked_by`. Claiming again, or a heartbeat of its `session_id`, renews it. With `title` (and `body`) instead of `number`, it [opens the work item first](/reference/api/work-items/claim-new-work-item/), claims it, attaches the `session_id` session to it, and returns it as `item`. | `workspace`, and `number` or `title` | `work:write` |
 | [`release`](/reference/api/work-items/release-claim/) | Give up your claim, with an optional `reason`. | `workspace`, `number` | `work:write` |
 | [`handoff`](/reference/api/work-items/hand-off-work-item/) | End your claim as handed off, `to` someone or anyone, with a `note` on where the work stands. | `workspace`, `number`, `note` | `work:write` |
@@ -425,7 +425,7 @@ tool entries. See [sessions and why-blame](/guides/why-blame/) and the
 
 Your harness's session on a repository, so others see who is working on
 what. Start one per run of your harness, heartbeat it, record what it does,
-and end it. See [sessions](/guides/sessions/#sessions).
+and end it. See [sessions](/guides/sessions/#record-a-session).
 
 | Action | What it does | Required | Scope |
 | --- | --- | --- | --- |
@@ -434,7 +434,7 @@ and end it. See [sessions](/guides/sessions/#sessions).
 | [`record`](/reference/api/sessions/record-session-entries/) | Record up to 200 `entries`, each with `kind` and `text` (`skill` for a skill used, by name), `tool` for tools, and a `key` that makes recording it again a no-op; and `touched`, what it touched (`file`, `commit`, `branch`, `pull`, `item`), which ties it to pull requests and work items and tells sessions on the same files of each other. | `repo`, `id` | `pull_requests:write` |
 | [`end`](/reference/api/sessions/end-session/) | End it, with an optional `reason` and `result` (what it reported). Its subagents still going end with it. | `repo`, `id` | `pull_requests:write` |
 | [`get`](/reference/api/sessions/get-session/) | A session and its entries (`after` pages through them), its subagents (`children`), what they touched, the work items and pull requests they worked on (`links`) and the skills used. With [`workspace`](/reference/api/sessions/get-workspace-session/) and `id` instead of `repo`, a session of any of the workspace's repositories, with its `repo`. | `repo` or `workspace`, `id` | `pull_requests:read` |
-| [`list`](/reference/api/sessions/list-sessions/) | A repository's sessions, most recently heard from first, by `state` (`active`, `idle`, `ended`), `item` or `pull` (any session tied to it), or `path` (a file touched); `subagents` lists each tree whole. With [`workspace`](/reference/api/sessions/list-workspace-sessions/) instead of `repo`, the sessions of every repository of the workspace you can read, as [Sessions](/guides/sessions/#the-sessions-page) shows them: by `state` (`live`, `recent`, `ended`), `kind` (`harness`, `hosted`, `agent`, `recorded`), `harness`, `person`, `repo`, `item`, `subagents` and `limit`, with each repository's merge `queue`, what `landed` and the `repos` covered. | `repo` or `workspace` | `pull_requests:read` |
+| [`list`](/reference/api/sessions/list-sessions/) | A repository's sessions, most recently heard from first, by `state` (`active`, `idle`, `ended`), `item` or `pull` (any session tied to it), or `path` (a file touched); `subagents` lists each tree whole. With [`workspace`](/reference/api/sessions/list-workspace-sessions/) instead of `repo`, the sessions of every repository of the workspace you can read, as [Sessions](/work/sessions/) shows them: by `state` (`live`, `recent`, `ended`), `kind` (`harness`, `hosted`, `agent`, `recorded`), `harness`, `person`, `repo`, `item`, `subagents` and `limit`, with each repository's merge `queue`, what `landed` and the `repos` covered. | `repo` or `workspace` | `pull_requests:read` |
 | [`dispatch`](/reference/api/sessions/start-agent-session/) | Start work on an `item` (or a new work item from `title` and `body`) in a session on the person's own Claude: a Claude Managed Agents session on the workspace's Anthropic account, recorded here, or with `handoff` a Claude Code command line to run. `mode` is `plan`, `implement` or `review`; `instruction` adds to it. | `repo` | `pull_requests:write` |
 
 ## `workflow`
@@ -711,7 +711,7 @@ what merged, shipped and deployed, by whom), create, update or delete one,
 invite members,
 manage its members and owners,
 connect [integrations](/guides/integrations/), manage the
-[labels](/guides/labels/) and [milestones](/guides/milestones/) its work
+[labels](/work/labels/) and [milestones](/work/milestones/) its work
 items and pull requests share, read and
 change its [projects](/guides/projects/) (what each is, where it runs, its
 links), and keep your own

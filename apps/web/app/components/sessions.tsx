@@ -286,8 +286,15 @@ const KINDS = Object.keys(KIND_NAMES) as SessionKind[];
 export function SessionsFiltersBar({ workspace, filters, repos, people, me }: { workspace: string; filters: SessionsFilters; repos: string[]; people: string[]; me: string | null }) {
   const [open, setOpen] = useState(false);
   const to = (change: Partial<SessionsFilters>) => `${sessionsPath(workspace)}${sessionsQuery({ ...filters, ...change })}`;
-  const count = [filters.repo, filters.person, filters.harness, filters.kind].filter(Boolean).length;
-  const clear = to({ repo: null, person: null, harness: null, kind: null });
+  const count = [filters.repo, filters.person, filters.harness, filters.kind, filters.item].filter(Boolean).length;
+  const clear = to({ repo: null, person: null, harness: null, kind: null, item: null });
+  // A work item's own sessions (`?item=12`, from its page): said, with the way back to all of them.
+  const onItem = filters.item ? (
+    <Link to={to({ item: null })} className="inline-flex h-8 items-center gap-1 rounded-md border border-line px-2.5 text-xs text-fg-soft hover:text-fg" aria-label={`On #${filters.item}: show sessions on every work item`}>
+      On #{filters.item}
+      <X size={12} />
+    </Link>
+  ) : null;
   const everyone = me ? [me, ...people.filter((name) => name !== me)] : people;
   const menus: { title: string; active: string | null; any: string; field: keyof SessionsFilters; options: { key: string; label: ReactNode }[] }[] = [
     { title: "Repository", active: filters.repo, any: "Any repository", field: "repo", options: repos.map((name) => ({ key: name, label: <span className="font-mono text-[0.8125rem]">{name}</span> })) },
@@ -298,6 +305,7 @@ export function SessionsFiltersBar({ workspace, filters, repos, people, me }: { 
   return (
     <>
       <div className="hidden flex-wrap items-center gap-2 sm:flex">
+        {onItem}
         {menus.map((menu) => (
           <FilterMenu
             key={menu.title}
@@ -327,6 +335,7 @@ export function SessionsFiltersBar({ workspace, filters, repos, people, me }: { 
           Filters
           {count > 0 && <span className="rounded-full bg-accent px-1.5 text-[0.6875rem] leading-4.5 font-bold text-bg tabular-nums">{count}</span>}
         </Button>
+        {onItem}
         {filters.repo && <span className="min-w-0 truncate font-mono text-xs text-muted">{filters.repo}</span>}
       </div>
       <BottomSheet open={open} onOpenChange={setOpen} title="Filters">

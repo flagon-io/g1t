@@ -5,7 +5,7 @@ description: g1t on Android and iOS, built with Expo. Highly experimental and ba
 
 The phone app is meant to be g1t on Android and iOS, with its own
 screens for what you do away from a desk: triaging and discussing
-[work items](/guides/work-items/) in Work, talking with your team in
+[work items](/work/work-items/) in Work, talking with your team in
 Chat, with notifications on your phone, and reviewing pull requests in
 Code. Everything else opens on the site, in your phone's browser.
 
@@ -51,10 +51,10 @@ The bar along the bottom is the site's phone bar:
 | Tab | What is on it |
 | --- | --- |
 | **Home** | Coming. Opens Home on the site meanwhile. |
-| **Work** | The workspace's work items and their Board, for every member, Code access or not. **Sessions** opens from the icon in its header. See [Work](#work). |
+| **Work** | The workspace's work items, their Board and the sessions working on them: **Items**, **Board** and **Sessions** at its top. For every member, Code access or not. See [Work](#work) and [Sessions](#sessions). |
 | **Chat** | Your starred conversations, channels and direct messages, with what is unread, moving live. See [Chat](#chat). |
 | **Notifications** | Coming. Opens your notifications on the site meanwhile; messages to you already arrive [on the phone](#notifications). |
-| **More** | **Sessions** first (see [Sessions](#sessions)), then **Code**, for members with Code access; whether this phone gets notifications, your workspaces, how you signed in, and **Sign out**. |
+| **More** | **Explore** first, which opens on the site, then **Code**, for members with Code access; whether this phone gets notifications, your workspaces, how you signed in, and **Sign out**. |
 
 **Code**, under **More**, is the workspace's repositories, each with its
 pull requests and its **Work**: the work items linked to it. A pull
@@ -63,14 +63,15 @@ and you can approve it or ask for changes.
 
 ## Work
 
-Work on the phone is the site's [Work](/guides/work-items/), laid out for
-one hand. A switch at its top, **Items | Board**, chooses between the
-list and the Board.
+Work on the phone is the site's [Work](/work/), laid out for one hand. A
+switch at its top, **Items | Board | Sessions**, chooses between the list,
+the Board and [Sessions](#sessions).
 
-- **The list** shows the workspace's open work items, newest first: each
-  with its number, title, state, labels and the repositories it is linked
-  to, which fold into "+2" past the first few. Pull down to read it
-  again; it loads more as you near its end.
+- **The list** shows the workspace's work items, newest first, with
+  **Open**, **Closed** and **All** under the switch: each with its number,
+  title, state, labels and the repositories it is linked to, which fold
+  into "+2" past the first few. Pull down to read it again; it loads more
+  as you near its end.
 - **Filters** are in a sheet: tap the filter button in the header, a
   filter's chip above the list, or **Work** in the bar again. Choose the
   state, **Assigned to me**, a label, a milestone, a repository and its role.
@@ -84,23 +85,26 @@ list and the Board.
   done, or as not planned), reopens it, links a repository as a target,
   copies its link, or opens it on the site. Tap a repository to open it or
   unlink it.
-- **New work item** (the **+** on Work) takes a title, a description,
+- **New work item** (**+ New** on Work) takes a title, a description,
   labels and the repositories it should land in; none is fine. Opened from
-  a repository's Work, that repository is its origin.
-- **The Board** is the site's [Board](/guides/work-items/#the-board):
+  the list filtered to a repository, that repository is its origin, and
+  starts as a target too.
+- **The Board** is the site's [Board](/work/board/):
   **Backlog**, **In progress**, **In review**, **Landing** and **Done**,
-  each card a work item with who or which session is on it. Tap a card to
-  open the work item.
+  one under another, with a chip for each to show one alone. Each card is
+  a work item with who or which session is on it. Tap a card to open the
+  work item.
 
 ## Sessions
 
-**Sessions** is the site's [Sessions](/guides/sessions/#the-sessions-page):
-the sessions at work across the workspace. Open it from the icon in
-Work's header, or first in **More**.
+**Sessions** is the site's [Sessions](/work/sessions/),
+a section of Work: the sessions at work across the workspace. Choose
+**Sessions** at the top of **Work**, beside **Items** and **Board**.
 
 - **Everything**, **Live** and **Recent** at the top choose what it
   lists. Pull down to read it again.
-- **Filters** are in a sheet: **Started by me**, and a repository.
+- **Filters** are in a sheet: **Started by me**, and a repository. Tap
+  **Work** in the bar again to open it.
 - **A session** shows its facts (who, harness, repository, branch, state,
   when it was last heard from), what it is working on (its work item and
   pull request), its subagents as a tree, the files it touched, and its
@@ -183,8 +187,8 @@ pages it has screens for:
 | `g1t://<workspace>/-/work/<number>` | The work item |
 | `g1t://<workspace>/-/work/new` | A new work item |
 | `g1t://<workspace>/-/work/board` | Work, on the Board |
-| `g1t://<workspace>/-/sessions` | Sessions |
-| `g1t://<workspace>/-/sessions/<id>` | The session |
+| `g1t://<workspace>/-/work/sessions`, with its filters (`?state=live&repo=web`) | Work, on Sessions |
+| `g1t://<workspace>/-/work/sessions/<id>` | The session |
 | `g1t://<workspace>/-/chat`, `…/-/chat/<channel>`, `…/-/chat/dm/<id>` | Chat, or the conversation, in that workspace |
 | `g1t://<owner>/<repo>` | The repository |
 | `g1t://<owner>/<repo>/pull/<number>` | The pull request |
@@ -192,7 +196,7 @@ pages it has screens for:
 
 The same paths as `https://g1t.sh/…` links, such as
 `https://g1t.sh/<workspace>/-/work/<number>` or
-`https://g1t.sh/<workspace>/-/sessions/<id>`, open these screens once
+`https://g1t.sh/<workspace>/-/work/sessions/<id>`, open these screens once
 g1t.sh publishes the files Android and iOS check first (see
 [below](#whats-not-there-yet)). The workspace's labels and milestones open
 on the site.

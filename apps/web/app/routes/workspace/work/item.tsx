@@ -42,7 +42,7 @@ import { agentSessions, identity, inbox, integrations, repos, work } from "../..
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../../lib/session.server";
 import { useRefreshWhile } from "../../../lib/refresh";
 import { isFailed, part } from "../../../lib/partial";
-import { parseBlockedBy, resolutionOf } from "../../../lib/coordination";
+import { parseBlockedBy, pullHrefs, resolutionOf } from "../../../lib/coordination";
 import { refPath } from "../../../lib/refs.server";
 import { itemAbilities } from "../../../lib/work-access";
 import { LINK_ROLES, ROLE_LABELS, itemPath, originOf, repoFilter, sessionPath, shortPath, workPath } from "../../../lib/work-items";
@@ -530,7 +530,9 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
   const decisions = coordination ? [...coordination.decisions].reverse() : [];
   const failure = coordination?.lastIntegrationFailure ?? null;
   const resolution = failure ? resolutionOf(coordination!.decisions, failure) : null;
-  const failureBase = failure ? `/${item.repos[0]?.path ?? workspace}` : "";
+  // A decision or the merge queue names a pull request by number: link it in the repository that has it, or not at all.
+  const pullHref = pullHrefs(repoRows.map(({ repo, pulls: repoPulls }) => ({ path: repo.path, pulls: repoPulls })));
+  const failureBase = `/${originOf(item.repos)?.path || workspace}`;
   // Where a pull request or a session would be opened: a target still missing, else where it was filed.
   const workIn = missing[0] ?? item.repos.find((repo) => repo.role === "target")?.path ?? originOf(item.repos)?.path ?? null;
   const linkError = actionData && "action" in actionData && actionData.action === "link" ? actionData.error : null;
@@ -667,7 +669,7 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
           </div>
         )}
 
-        {failure && <IntegrationFailure className="mt-4" failure={failure} base={failureBase} fixed={resolution?.passed ?? resolution?.fix} />}
+        {failure && <IntegrationFailure className="mt-4" failure={failure} base={failureBase} pullHref={pullHref} fixed={resolution?.passed ?? resolution?.fix} />}
 
         {isFailed(loaderData.coordination) ? (
           <>
@@ -684,7 +686,7 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
                 <p className="text-sm text-muted">Why the work is the way it is, and how sure that is</p>
               </div>
               <div className="mt-3">
-                <DecisionList decisions={decisions} base={failureBase || `/${item.repos[0]?.path ?? workspace}`} />
+                <DecisionList decisions={decisions} base={failureBase} pullHref={pullHref} />
               </div>
             </>
           )
