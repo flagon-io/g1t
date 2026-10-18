@@ -120,7 +120,7 @@ test("the client calls exactly the artifacts service's folio methods", async () 
     client.thread(ws, viewer, f, { op: "resolve", thread_id: "thr_1" }),
     client.threads(ws, viewer, f),
     client.queryTile(ws, viewer, f, "t1"),
-    client.queryDataset(ws, viewer, { dataset: "issues", measure: { op: "count" } }),
+    client.queryDataset(ws, viewer, { dataset: "work_items", measure: { op: "count" } }),
     client.markCurrent(ws, viewer, f),
     client.reindex(ws, viewer),
   ]);

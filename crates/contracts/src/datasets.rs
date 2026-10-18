@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DatasetId {
-    Issues,
+    WorkItems,
     PullRequests,
     WorkflowRuns,
     Deployments,
@@ -25,7 +25,7 @@ pub enum DatasetId {
 
 impl DatasetId {
     pub const ALL: [DatasetId; 6] = [
-        DatasetId::Issues,
+        DatasetId::WorkItems,
         DatasetId::PullRequests,
         DatasetId::WorkflowRuns,
         DatasetId::Deployments,
@@ -35,7 +35,7 @@ impl DatasetId {
 
     pub fn as_str(self) -> &'static str {
         match self {
-            DatasetId::Issues => "issues",
+            DatasetId::WorkItems => "work_items",
             DatasetId::PullRequests => "pull_requests",
             DatasetId::WorkflowRuns => "workflow_runs",
             DatasetId::Deployments => "deployments",
@@ -267,8 +267,8 @@ pub struct DatasetSpec {
 /// The catalog.
 pub const DATASETS: [DatasetSpec; 6] = [
     DatasetSpec {
-        id: DatasetId::Issues,
-        label: "Issues",
+        id: DatasetId::WorkItems,
+        label: "Work items",
         service: DatasetService::Work,
         needs: DatasetNeeds::Member,
         times: &["created_at", "closed_at"],

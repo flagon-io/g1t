@@ -15,9 +15,9 @@
  * Wire shapes are snake_case.
  */
 
-export type DatasetId = "issues" | "pull_requests" | "workflow_runs" | "deployments" | "spend" | "agent_sessions";
+export type DatasetId = "work_items" | "pull_requests" | "workflow_runs" | "deployments" | "spend" | "agent_sessions";
 
-export const DATASET_IDS: readonly DatasetId[] = ["issues", "pull_requests", "workflow_runs", "deployments", "spend", "agent_sessions"];
+export const DATASET_IDS: readonly DatasetId[] = ["work_items", "pull_requests", "workflow_runs", "deployments", "spend", "agent_sessions"];
 
 /** How rows are summed up. `count` takes no field; `rate` takes a rate field; the rest a measure field. */
 export type DatasetMeasureOp = "count" | "sum" | "avg" | "p50" | "p95" | "rate";
@@ -97,7 +97,7 @@ export type DatasetSpec = {
 
 /** The catalog. One dataset per line: the Rust mirror test reads it that way. */
 export const DATASETS: Record<DatasetId, DatasetSpec> = {
-  issues: { label: "Issues", service: "work", needs: "member", times: ["created_at", "closed_at"], dimensions: ["repo", "label", "state", "author_kind", "assignee_kind", "milestone"], measures: ["time_to_close_hours", "comments"], rates: ["closed"] },
+  work_items: { label: "Work items", service: "work", needs: "member", times: ["created_at", "closed_at"], dimensions: ["repo", "label", "state", "author_kind", "assignee_kind", "milestone"], measures: ["time_to_close_hours", "comments"], rates: ["closed"] },
   pull_requests: { label: "Pull requests", service: "work", needs: "member", times: ["created_at", "merged_at", "closed_at"], dimensions: ["repo", "label", "state", "author_kind", "base_branch"], measures: ["cycle_time_hours", "time_to_first_review_hours", "review_count", "additions", "deletions", "changed_files"], rates: ["merged"] },
   workflow_runs: { label: "Workflow runs", service: "actions", needs: "member", times: ["started_at", "completed_at"], dimensions: ["repo", "workflow", "branch", "event", "conclusion", "runner_kind"], measures: ["duration_seconds", "queue_seconds"], rates: ["succeeded"] },
   deployments: { label: "Deployments", service: "deployments", needs: "member", times: ["created_at"], dimensions: ["repo", "project", "environment", "state"], measures: ["duration_seconds", "time_to_restore_hours"], rates: ["failed"] },
