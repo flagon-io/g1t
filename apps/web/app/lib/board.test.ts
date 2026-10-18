@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { Claim, ItemRepo, WorkItem, WorkspaceSession } from "@g1t/contracts";
 
-import { boardOf, pullsByItem, shownStage, stageOf } from "./board.ts";
+import { boardOf, pullRepos, pullsByItem, shownStage, stageOf } from "./board.ts";
 
 const NOW = Date.parse("2026-10-17T12:00:00Z");
 const DAY = 86_400_000;
@@ -114,4 +114,19 @@ test("a phone shows the stage asked for, else the first with something in it", (
   assert.equal(shownStage("review", board), "review");
   assert.equal(shownStage("nonsense", board), "progress");
   assert.equal(shownStage(null, boardOf([], {}, NOW)), "backlog");
+});
+
+test("the board reads open pull requests in every repository an open work item is linked to, each once", () => {
+  const items = [
+    { state: "open", repos: [{ path: "acme/web" }, { path: "acme/api" }] },
+    { state: "open", repos: [{ path: "Acme/Web" }, { path: "acme/repo-21" }] },
+    // A closed item's repositories are not read: Done does not need its pull requests.
+    { state: "closed", repos: [{ path: "acme/old" }] },
+    // A repository deleted before work items kept no path.
+    { state: "open", repos: [{ path: "" }] },
+  ];
+  assert.deepEqual(pullRepos(items), ["acme/web", "acme/api", "acme/repo-21"]);
+  // However many there are: none is left out past a limit.
+  const many = Array.from({ length: 30 }, (_, index) => ({ state: "open", repos: [{ path: `acme/r${index}` }] }));
+  assert.equal(pullRepos(many).length, 30);
 });
