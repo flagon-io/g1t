@@ -923,6 +923,17 @@ export type RepoPulls = {
 /** Where a comment is kept, for changing it: a repository's pull requests, or a workspace's work items. */
 export type CommentScope = { repo: RepoPath } | { workspace: string };
 
+/**
+ * Where an image put in Markdown is kept (`upload_attachment`): a
+ * repository, for its pull requests, commits and the work items filed
+ * from it, or a work item, which keeps its own (one filed with no
+ * repository takes images too, once it is open).
+ */
+export type AttachmentScope = { repo: RepoPath } | { workspace: string; number: number };
+
+/** An image kept for Markdown: `path` is under the usercontent origin (`/attachments/<id>`). */
+export type Attachment = { id: string; name: string; content_type: string; size: number; path: string };
+
 /** Work items, pull requests, comments and sessions. */
 export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
   /**
@@ -1008,6 +1019,13 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
    * higher. A review that gave a verdict cannot be deleted, only edited.
    */
   deleteComment(actor: User, scope: CommentScope, commentId: string): Promise<Result<boolean>>;
+  /**
+   * Keeps an image to show in Markdown there, for anyone who may comment
+   * on the repository or take part in the work item. `data` is the file in
+   * base64; its type is read from its bytes. PNG, JPEG, GIF or WebP of at
+   * most 10 MB: larger is `too_large`, another type `unsupported_type`.
+   */
+  uploadAttachment(actor: User, scope: AttachmentScope, file: { name: string; contentType?: string; data: string }): Promise<Result<Attachment>>;
   /**
    * Reacts to comment `commentId` on a work item or pull request, or to its
    * description without one; with `remove`, takes it back. Anyone who can

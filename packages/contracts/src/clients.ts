@@ -532,6 +532,14 @@ export function workClient(service: ServiceBinding): WorkApi {
     editComment: (actor, scope, commentId, body) =>
       call("edit_comment", { actor, ...commentScope(scope), commentId, body }),
     deleteComment: (actor, scope, commentId) => call("delete_comment", { actor, ...commentScope(scope), commentId }),
+    uploadAttachment: (actor, scope, file) =>
+      call("upload_attachment", {
+        actor,
+        ...("repo" in scope ? { repo: scope.repo } : { workspace: scope.workspace, number: scope.number }),
+        name: file.name,
+        content_type: file.contentType,
+        data: file.data,
+      }),
     react: (actor, thread, reaction) => call("react", { actor, ...threadArgs(thread), ...reaction }),
     reportChecks: (runId, token, report) =>
       call("report_checks", { runId, token, ...report }),
