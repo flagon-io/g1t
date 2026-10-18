@@ -229,7 +229,8 @@ export default function WorkList() {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="New work item"
-        onPress={() => router.push({ pathname: "/work/new", params: { workspace: slug } })}
+        // Filtered to a repository, a new item is filed from it.
+        onPress={() => router.push({ pathname: "/work/new", params: { workspace: slug, ...(filter.repo ? { repo: filter.repo } : {}) } })}
         style={({ pressed }) => [styles.fab, { backgroundColor: colors.accent, opacity: pressed ? 0.85 : 1 }]}
       >
         <Plus size={20} color={colors.onAccent} strokeWidth={2.5} />
