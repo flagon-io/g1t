@@ -2,7 +2,7 @@
 //!
 //! A repository's `.g1t/workflows/*.yml`, in GitHub's format, are read
 //! from the commit an
-//! event is about (the default branch for issues, schedules and manual
+//! event is about (the default branch for work items, schedules and manual
 //! runs). Each workflow an event starts becomes a run; each job of the run
 //! (one per matrix combination) runs in a sandbox once the jobs it needs
 //! have finished. Jobs report their steps and logs back as they go, and a

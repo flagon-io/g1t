@@ -590,6 +590,8 @@ const STATUS_EVENTS = new Set([
   "release",
   "issues",
   "issue_comment",
+  "work_item",
+  "work_item_comment",
   "repository_dispatch",
 ]);
 

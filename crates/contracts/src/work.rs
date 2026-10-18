@@ -1091,6 +1091,8 @@ const STATUS_EVENTS: &[&str] = &[
     "release",
     "issues",
     "issue_comment",
+    "work_item",
+    "work_item_comment",
     "repository_dispatch",
 ];
 
@@ -2561,6 +2563,7 @@ mod required_tests {
     fn a_context_names_its_check_and_event() {
         assert_eq!(check_name("CI / pull_request"), ("CI", Some("pull_request")));
         assert_eq!(check_name("Build and test / merge_group"), ("Build and test", Some("merge_group")));
+        assert_eq!(check_name("Triage / work_item"), ("Triage", Some("work_item")));
         assert_eq!(check_name("g1t / deploy"), ("g1t / deploy", None));
         assert_eq!(check_name("g1t / deploy (docs)"), ("g1t / deploy (docs)", None));
         assert_eq!(check_name("lint"), ("lint", None));
