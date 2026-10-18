@@ -285,11 +285,12 @@ mod tests {
 
     #[test]
     fn a_synced_workflow_starts_on_the_events_it_lists_or_when_broken() {
-        assert!(could_start(r#"["push","issues"]"#, None, "issues"));
-        assert!(!could_start(r#"["push","pull_request"]"#, None, "issue_comment"));
+        assert!(could_start(r#"["push","work_item"]"#, None, "work_item"));
+        assert!(!could_start(r#"["push","pull_request"]"#, None, "work_item_comment"));
+        assert!(!could_start(r#"["push","issues"]"#, None, "work_item"));
         // A file that does not parse is read again, so its error shows.
-        assert!(could_start("[]", Some("bad yaml"), "issues"));
+        assert!(could_start("[]", Some("bad yaml"), "work_item"));
         // A file gone from the branch starts nothing.
-        assert!(!could_start("[]", Some(GONE), "issues"));
+        assert!(!could_start("[]", Some(GONE), "work_item"));
     }
 }

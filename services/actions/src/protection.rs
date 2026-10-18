@@ -1413,7 +1413,7 @@ mod tests {
         let restricted = token(&Permissions::default_for(TokenDefault::Restricted));
         assert!(restricted.allows(Scope::CodeRead));
         assert!(!restricted.allows(Scope::CodeWrite));
-        assert!(!restricted.allows(Scope::IssuesWrite));
+        assert!(!restricted.allows(Scope::PullRequestsWrite));
         // A pull request from outside reads, whatever it asks for.
         let outside = token(&Permissions::all(Access::Write).read_only());
         assert!(Scope::ALL.iter().filter(|scope| outside.allows(**scope)).all(|scope| scope.level() == Level::Read));
