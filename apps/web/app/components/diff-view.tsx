@@ -30,7 +30,8 @@ import {
   withHtml,
 } from "../lib/diff";
 import { Markdown } from "./markdown";
-import { EmptyState, SubmitButton, Textarea, TimeAgo } from "./ui";
+import { MentionTextarea } from "./mention-textarea";
+import { EmptyState, SubmitButton, TimeAgo } from "./ui";
 import { Avatar } from "./ui/avatar";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -177,7 +178,7 @@ function Thread({
           <input type="hidden" name="action" value="comment" />
           <input type="hidden" name="path" value={path} />
           <input type="hidden" name="line" value={line} />
-          <Textarea name="body" rows={3} required autoFocus placeholder={`Comment on line ${line}`} />
+          <MentionTextarea name="body" rows={3} required autoFocus placeholder={`Comment on line ${line}`} />
           <div className="flex gap-2">
             <SubmitButton match={{ action: "comment", path, line: String(line) }} pending="Commenting…">
               Comment

@@ -62,9 +62,10 @@ import {
   EmptyState,
   ErrorText,
   SubmitButton,
-  Textarea,
   TimeAgo,
 } from "../../components/ui";
+import { AttachImages } from "../../components/attach-images";
+import { MentionTextarea } from "../../components/mention-textarea";
 import { Avatar } from "../../components/ui/avatar";
 import { Card } from "../../components/ui/card";
 import { CheckboxOption } from "../../components/ui/checkbox";
@@ -951,895 +952,897 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
 
   return (
     // The changes get the whole width; people and settings are a tab away.
-    <div>
-      {/* The title and the tabs run the full width; what is happening on
-          the pull request sits at the top of Conversation. */}
-      <header>
-        <h2 className="text-xl font-semibold tracking-tight text-balance wrap-break-word sm:text-2xl">
-          {pull.title} <span className="font-normal text-faint">#{pull.number}</span>
-        </h2>
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted">
-          <PullState status={pull.status} />
-          <span className="flex items-center gap-2">
-            <Avatar
-              name={(pull.status === "merged" && pull.mergedBy) || opener.name}
-              size={18}
-            />
-            <span>
-              <PersonLink
+    <AttachImages to={viewer ? { repo: `${params.owner}/${params.repo}` } : null}>
+      <div>
+        {/* The title and the tabs run the full width; what is happening on
+            the pull request sits at the top of Conversation. */}
+        <header>
+          <h2 className="text-xl font-semibold tracking-tight text-balance wrap-break-word sm:text-2xl">
+            {pull.title} <span className="font-normal text-faint">#{pull.number}</span>
+          </h2>
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted">
+            <PullState status={pull.status} />
+            <span className="flex items-center gap-2">
+              <Avatar
                 name={(pull.status === "merged" && pull.mergedBy) || opener.name}
-                className="font-medium text-fg hover:underline"
-              />{" "}
-              {pull.status === "merged" ? "merged" : "wants to merge"}
-              {pull.branch && (
-                <>
-                  {" "}
-                  {headRepo ? (
-                    <Link
-                      to={`/${headRepo.namespace}/${headRepo.name}/tree/${encodeURIComponent(pull.branch)}`}
-                      className="font-mono text-fg hover:underline"
-                    >
-                      {headRepo.namespace}/{headRepo.name}:{pull.branch}
-                    </Link>
-                  ) : (
-                    <span className="font-mono text-fg">{pull.branch}</span>
-                  )}
-                </>
-              )}{" "}
-              into{" "}
-              <BaseBranch
-                base={defaultBranch}
-                head={pull.fork || headRepo ? null : pull.branch}
-                canChange={loaderData.canChangeBase && active}
-                branchesUrl={`${base}/branches.json`}
+                size={18}
               />
-            </span>
-          </span>
-          {(pull.labels ?? []).map((name) => (
-            <LabelChip key={name} name={name} color={isFailed(loaderData.labels) ? undefined : loaderData.labels.find((label) => label.name === name)?.color} />
-          ))}
-          {opener.requestedBy && (
-            <span className="text-xs">
-              requested by{" "}
-              <PersonLink name={opener.requestedBy} className="font-medium text-fg-soft hover:underline" />
-            </span>
-          )}
-          {/* A pull request from a branch was made by its author, not an agent;
-              one g1t made already says so. */}
-          {!pull.branch && !opener.requestedBy && (
-            <span className="flex items-center gap-1.5 font-mono text-xs">
-              <Bot size={14} />
-              {pull.agent}
-              {pull.runtime === "hosted" && <span className="text-faint">on g1t</span>}
-            </span>
-          )}
-        </div>
-
-        {reviews.length > 0 && (
-          <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-            {reviews.map(({ reviewer, verdict }) => (
-              <span
-                key={reviewer}
-                className={`flex items-center gap-1.5 ${
-                  verdict === "approve" ? "text-success" : "text-danger"
-                }`}
-              >
-                {verdict === "approve" ? <CircleCheck size={15} /> : <CircleSlash size={15} />}
-                {verdict === "approve" ? "Approved by" : "Changes requested by"}{" "}
-                <span className="font-medium">{reviewer}</span>
+              <span>
+                <PersonLink
+                  name={(pull.status === "merged" && pull.mergedBy) || opener.name}
+                  className="font-medium text-fg hover:underline"
+                />{" "}
+                {pull.status === "merged" ? "merged" : "wants to merge"}
+                {pull.branch && (
+                  <>
+                    {" "}
+                    {headRepo ? (
+                      <Link
+                        to={`/${headRepo.namespace}/${headRepo.name}/tree/${encodeURIComponent(pull.branch)}`}
+                        className="font-mono text-fg hover:underline"
+                      >
+                        {headRepo.namespace}/{headRepo.name}:{pull.branch}
+                      </Link>
+                    ) : (
+                      <span className="font-mono text-fg">{pull.branch}</span>
+                    )}
+                  </>
+                )}{" "}
+                into{" "}
+                <BaseBranch
+                  base={defaultBranch}
+                  head={pull.fork || headRepo ? null : pull.branch}
+                  canChange={loaderData.canChangeBase && active}
+                  branchesUrl={`${base}/branches.json`}
+                />
               </span>
-            ))}
-          </p>
-        )}
-
-        <TabStrip label="Pull request" className="mt-6 items-end gap-1 border-b border-line">
-          <TabLink to={here} active={tab === "conversation"}>
-            <MessageSquare size={15} />
-            Conversation
-            <TabCount n={comments.length} />
-          </TabLink>
-          <TabLink to={pullPath(base, pull.number, "session")} active={tab === "session"}>
-            <MessagesSquare size={15} />
-            Session
-          </TabLink>
-          <TabLink to={pullPath(base, pull.number, "changes")} active={tab === "changes"}>
-            <FileDiff size={15} />
-            Files changed
-            <TabCount n={pull.files.length} />
-          </TabLink>
-          {pull.files.length > 0 && (
-            <span className="ml-auto hidden pb-2.5 font-mono text-xs sm:inline">
-              <span className="text-success">+{pull.files.reduce((sum, file) => sum + file.additions, 0).toLocaleString("en-US")}</span>{" "}
-              <span className="text-danger">−{pull.files.reduce((sum, file) => sum + file.deletions, 0).toLocaleString("en-US")}</span>
             </span>
-          )}
-        </TabStrip>
-      </header>
-      <div className={`mt-6 grid gap-6 lg:gap-8 ${tab === "changes" ? "" : "lg:grid-cols-[1fr_19rem]"}`}>
-        <div className="min-w-0">
-          {/* What is happening on it now: its work item, how it ended, the other
-              attempts at it, and what else touches the same files. On the
-              conversation, so the tabs sit right under the title. */}
-          {tab === "conversation" && (
-            <div>
-              {item && (
-                <Link
-                  to={itemPath(item.workspace, item.number)}
-                  className="mt-4 flex items-center gap-2.5 rounded-xl border border-line bg-surface px-4 py-2.5 text-sm transition-colors hover:border-line-strong"
-                >
-                  <ItemIcon item={item} />
-                  <span className="shrink-0 text-muted">
-                    {pull.status === "merged" && item.resolutions.some((landed) => landed.pull === pull.number && landed.repo.toLowerCase() === `${params.owner}/${params.repo}`.toLowerCase())
-                      ? "Landed"
-                      : "For work item"}
-                  </span>
-                  <span className="truncate font-medium">{item.title}</span>
-                  <span className="text-faint">#{item.number}</span>
-                  {item.pullCount > 1 && (
-                    <span className="ml-auto shrink-0 text-xs text-faint max-sm:hidden">
-                      1 of {item.pullCount} pull requests
-                    </span>
-                  )}
-                </Link>
-              )}
-              <ItemRefs pull={pull} workspace={params.owner.toLowerCase()} />
-              {pull.status === "merged" && (
-                <p className="mt-4 flex items-center gap-2.5 rounded-xl border border-merged/40 bg-merged/5 px-4 py-2.5 text-sm">
-                  <GitMerge size={16} className="shrink-0 text-merged" />
-                  <span>
-                    Merged into <span className="font-mono">{defaultBranch}</span> by{" "}
-                    <PersonLink name={pull.mergedBy ?? "g1t"} className="font-medium hover:underline" />{" "}
-                    {/* Not an account: the repository's settings said to merge it. */}
-                    {pull.mergedBy === "g1t" && "automatically, once it was ready, "}
-                    {pull.mergeMethod && <>via {METHOD_INFO[pull.mergeMethod].past} </>}
-                    {(pull.mergeCommit ?? pull.headCommit) && (
-                      <>
-                        in{" "}
-                        <Link
-                          to={`${base}/commit/${pull.mergeCommit ?? pull.headCommit}`}
-                          className="font-mono text-fg hover:text-accent hover:underline"
-                        >
-                          {(pull.mergeCommit ?? pull.headCommit)!.slice(0, 7)}
-                        </Link>{" "}
-                      </>
-                    )}
-                    {pull.mergedAt && <TimeAgo at={pull.mergedAt} />}
-                  </span>
-                </p>
-              )}
-              {pull.supersededBy != null && (
-                <Card asChild className="mt-4 px-4 py-2.5 text-sm text-muted">
-                  <p>
-                    Closed because{" "}
-                    <Link
-                      to={`${base}/pull/${pull.supersededBy}`}
-                      className="font-medium text-fg hover:underline"
-                    >
-                      #{pull.supersededBy}
-                    </Link>{" "}
-                    was merged for this work item instead.
-                  </p>
-                </Card>
-              )}
-              {attempts && pull.item != null && <AttemptsBox attempts={attempts} item={pull.item} base={base} />}
-              {collisions.length > 0 && active && (
-                <Card className="mt-4 px-4 py-3 text-sm">
-                  <p className="flex items-center gap-2.5 font-medium">
-                    <Radar size={16} className="shrink-0 text-info" />
-                    Other work is changing the same files
-                  </p>
-                  <ul className="mt-2 space-y-1.5">
-                    {collisions.map((other) => (
-                      <li key={other.number} className="flex flex-wrap items-baseline gap-x-2 text-muted">
-                        <Link
-                          to={`${base}/pull/${other.number}`}
-                          className="font-medium text-fg hover:underline"
-                        >
-                          {other.title} <span className="font-normal text-faint">#{other.number}</span>
-                        </Link>
-                        <span className="font-mono text-xs">{other.paths.join(", ")}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="mt-2 text-xs text-faint">
-                    Whichever merges second will have to catch up, and may conflict.
-                  </p>
-                </Card>
-              )}
-            </div>
-          )}
-          <div className="mt-5">
-            {comparison ? (
-              isFailed(comparison) ? (
-                <Unavailable what={comparison.what} />
-              ) : (
-                <DiffView
-                  comparison={comparison}
-                  repo={base}
-                  review={{
-                    comments: comments.filter((comment) => comment.path),
-                    canComment: Boolean(viewer),
-                  }}
-                />
-              )
-            ) : tab === "session" ? (
-              <div className="space-y-8">
-                {isFailed(harnessPart) && (
-                  <section aria-label="Harness sessions">
-                    <h3 className="text-sm font-medium">Sessions on it</h3>
-                    <div className="mt-3">
-                      <Unavailable what="Its sessions" />
-                    </div>
-                  </section>
-                )}
-                {isFailed(decisionsPart) && (
-                  <section aria-label="Decisions">
-                    <h3 className="text-sm font-medium">Decisions</h3>
-                    <div className="mt-3">
-                      <Unavailable what="Its decisions" />
-                    </div>
-                  </section>
-                )}
-                {harnessSessions.length > 0 && (
-                  <section aria-label="Harness sessions">
-                    <h3 className="text-sm font-medium">Sessions on it</h3>
-                    <Card className="mt-3 p-4">
-                      <SessionTreeList nodes={sessionTree(harnessSessions)} base={base} showWhere={false} className="space-y-4" />
-                    </Card>
-                  </section>
-                )}
-                {decisions.length > 0 && (
-                  <section aria-label="Decisions">
-                    <h3 className="text-sm font-medium">Decisions</h3>
-                    <p className="mt-1 text-xs text-muted">
-                      Why it is the way it is, each with how sure it is: claimed by whoever recorded it, tested by a check or the merge queue, approved by a person.
-                    </p>
-                    <div className="mt-3">
-                      <DecisionList decisions={decisions} base={base} />
-                    </div>
-                  </section>
-                )}
-                <section aria-label="What happened">
-                  {(harnessSessions.length > 0 || decisions.length > 0 || isFailed(harnessPart) || isFailed(decisionsPart)) && (
-                    <h3 className="mb-3 text-sm font-medium">What happened</h3>
-                  )}
-                  {isFailed(sessionPart) ? (
-                    <Unavailable what={sessionPart.what} />
-                  ) : session.length === 0 ? (
-                    <EmptyState title="Nothing recorded yet">
-                      A coding agent's prompts, reasoning and tool calls appear here once
-                      it records them, through the g1t plugin, a harness session or record_session.
-                    </EmptyState>
-                  ) : (
-                    <ol className="relative space-y-5 before:absolute before:top-2 before:bottom-2 before:left-3.25 before:w-px before:bg-line">
-                      {session.map((entry) => (
-                        <Entry key={entry.seq} entry={entry} agent={pull.agent} />
-                      ))}
-                    </ol>
-                  )}
-                </section>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <TimelineItem
-                  author={opener.name}
-                  at={pull.createdAt}
-                  action={
-                    <span>
-                      opened this pull request
-                      {opener.requestedBy ? (
-                        <>
-                          {" "}
-                          for{" "}
-                          <PersonLink name={opener.requestedBy} className="font-medium text-fg-soft hover:underline" />
-                        </>
-                      ) : !pull.branch && (
-                        <>
-                          {" "}
-                          with <span className="font-mono text-xs">{pull.agent}</span>
-                        </>
-                      )}
-                    </span>
-                  }
-                >
-                  {pull.body ? (
-                    <>
-                      <Markdown source={pull.body} repo={{ namespace: params.owner, name: params.repo }} />
-                      <Reactions reactions={loaderData.reactions} viewer={viewer?.username ?? null} className="mt-3" />
-                    </>
-                  ) : (
-                    <p className="text-sm text-muted">
-                      {working
-                        ? "No description yet. It is written when the pull request is marked ready for review."
-                        : "No description."}
-                    </p>
-                  )}
-                  {canManage && pull.status === "open" && (
-                    <details className="mt-3 border-t border-line pt-3 text-sm">
-                      <summary className="cursor-pointer text-xs text-faint hover:text-fg">
-                        Edit description
-                      </summary>
-                      <Form method="post" className="mt-3 space-y-2">
-                        <input type="hidden" name="action" value="describe" />
-                        <Textarea
-                          name="summary"
-                          rows={6}
-                          placeholder="What changed and why"
-                          defaultValue={pull.body ?? ""}
-                        />
-                        <SubmitButton match={{ action: "describe" }} pending="Saving…">
-                          Save
-                        </SubmitButton>
-                      </Form>
-                    </details>
-                  )}
-                </TimelineItem>
-
-                <CommentList
-                  comments={comments}
-                  review={review}
-                  base={base}
-                  viewerId={viewer?.id ?? null}
-                  viewerName={viewer?.username ?? null}
-                  extra={harnessSessions
-                    .filter((session) => !session.parentId)
-                    .map((session) => ({ id: session.id, at: session.startedAt, node: <TimelineSession session={session} base={base} /> }))}
-                  canModerate={canModerate}
-                  failed={actionData && "comment" in actionData ? { comment: String(actionData.comment), error: actionData.error } : null}
-                />
-                {/* The sessions on it go between the comments; when they could not be read, it says so once. */}
-                {isFailed(harnessPart) && <Unavailable what="Its sessions" compact />}
-
-                {previewFailed ? (
-                  <Unavailable what={previewFailed.what} />
-                ) : (
-                  (preview || build) && (
-                    <Boundary what="Its preview">
-                      <DeploymentCard preview={preview} build={build} base={base} />
-                    </Boundary>
-                  )
-                )}
-
-                {pull.status === "draft" && (
-                  <StatusBox>
-                    <StatusRow icon={<Loader size={16} className="text-faint" />} title="This is a draft">
-                      It is still being worked on. It can be reviewed and merged once it is
-                      marked ready.
-                    </StatusRow>
-                    {canManage && (
-                      <Form method="post" className="space-y-2 px-4 py-3">
-                        <input type="hidden" name="action" value="ready" />
-                        <Textarea name="summary" rows={3} placeholder="What changed and why" />
-                        <SubmitButton match={{ action: "ready" }} pending="Marking ready…">
-                          Mark ready for review
-                        </SubmitButton>
-                      </Form>
-                    )}
-                  </StatusBox>
-                )}
-
-                {codeOwners && active && (
-                  <div className="flex gap-3">
-                    <span className="hidden w-8 shrink-0 sm:block" />
-                    <div className="min-w-0 grow">
-                      <PullCodeOwnersPanel
-                        owners={codeOwners}
-                        base={base}
-                        branch={defaultBranch}
-                        errorsHref={canProtect ? `${base}/settings/branches#codeowners` : `${base}/blob/${encodeURIComponent(defaultBranch)}/${codeOwners.path}`}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {(pull.status === "merged" || pull.status === "closed") && (statuses.length > 0 || (pull.branch && !pull.fork)) && (
-                  <StatusBox>
-                    {statuses.length > 0 && (
-                      <Suspense fallback={settledChecks({}, true)}>
-                        <Await resolve={workflowJobs}>{(jobs) => settledChecks(jobs)}</Await>
-                      </Suspense>
-                    )}
-                    <BranchAfterwards
-                      pull={pull}
-                      merged={pull.status === "merged"}
-                      canChange={canChangeBranch}
-                      error={actionData?.action === "delete-branch" || actionData?.action === "restore-branch" ? actionData.error : null}
-                    />
-                  </StatusBox>
-                )}
-
-                {failure && (
-                  <div className="flex gap-3">
-                    <span className="hidden w-8 shrink-0 sm:block" />
-                    <IntegrationFailure className="min-w-0 grow" failure={failure} base={base} branch={defaultBranch} fixed={answered} />
-                  </div>
-                )}
-                {/* Without its decisions, whether the merge queue found it failing with others is not known. */}
-                {active && isFailed(decisionsPart) && (
-                  <div className="flex gap-3">
-                    <span className="hidden w-8 shrink-0 sm:block" />
-                    <div className="min-w-0 grow">
-                      <Unavailable what="What the merge queue found" compact />
-                    </div>
-                  </div>
-                )}
-
-                {pull.status === "open" && (
-                  <StatusBox>
-                    {/* Checks by status at once; job by job when the runs are read. */}
-                    <Suspense fallback={checksSection({}, true)}>
-                      <Await resolve={workflowJobs}>{(jobs) => checksSection(jobs)}</Await>
-                    </Suspense>
-                    {noChecks && <AddCiPrompt owner={params.owner} repo={params.repo} canAdd={canAddCi} compact />}
-                    <StatusRow
-                      icon={
-                        reviews.some(({ verdict }) => verdict === "request_changes") ? (
-                          <CircleSlash size={16} className="text-danger" />
-                        ) : reviews.length > 0 ? (
-                          <CircleCheck size={16} className="text-success" />
-                        ) : (
-                          <MessageSquare size={16} className="text-faint" />
-                        )
-                      }
-                      title={
-                        reviews.length === 0
-                          ? "No reviews yet"
-                          : reviews
-                              .map(
-                                ({ reviewer, verdict }) =>
-                                  `${verdict === "approve" ? "Approved by" : "Changes requested by"} ${reviewer}`,
-                              )
-                              .join(" · ")
-                      }
-                    >
-                      {requiredApprovals > 0 &&
-                        `This repository requires ${requiredApprovals} approving ${
-                          requiredApprovals === 1 ? "review" : "reviews"
-                        } before merging.`}
-                    </StatusRow>
-                    {codeOwners?.required && (
-                      <StatusRow
-                        icon={
-                          ownersMissing ? (
-                            <CircleSlash size={16} className="text-warn" />
-                          ) : (
-                            <CircleCheck size={16} className="text-success" />
-                          )
-                        }
-                        title={ownersMissing ? "Waiting for code owners" : "Code owners approved"}
-                      >
-                        {ownersMissing ?? `Every file it changes has its owners' approval.`}{" "}
-                        {ownersMissing && "This repository requires their review before merging."}
-                      </StatusRow>
-                    )}
-                    {landing ? (
-                      // Brought up to date first, then landed once the
-                      // required checks pass on that new commit.
-                      <StatusRow
-                        icon={<Loader size={16} className="animate-spin text-accent" />}
-                        title={!behind && unchecked ? "Merging once checks pass" : "Merging"}
-                      >
-                        {behind
-                          ? `${defaultBranch} has moved, so it is being brought up to date first. ${
-                              requiredChecks.length > 0
-                                ? "It lands once the required checks pass on that commit."
-                                : "It lands as soon as that is done."
-                            }`
-                          : unchecked
-                            ? `Brought up to date with ${defaultBranch}. It lands once ${awaitedChecks(requiredChecks)} on that commit.`
-                            : `Brought up to date with ${defaultBranch}. Landing now.`}
-                      </StatusRow>
-                    ) : conflicting ? (
-                      <ConflictsSection
-                        conflicts={conflicts}
-                        pull={pull}
-                        owner={params.owner}
-                        repo={params.repo}
-                        defaultBranch={defaultBranch}
-                        changesUrl={pullPath(base, pull.number, "changes")}
-                        error={catchUp && "error" in catchUp ? catchUp.error : null}
-                      />
-                    ) : probing ? (
-                      <MergeabilityRow mergeable={mergeable} defaultBranch={defaultBranch} />
-                    ) : behind ? (
-                      <StatusRow
-                        icon={<GitPullRequestArrow size={16} className="text-info" />}
-                        title="This branch is out-of-date with the base branch"
-                      >
-                        {mergeable === "clean" && `It has no conflicts with ${defaultBranch}. `}
-                        {requireUpToDate
-                          ? `The rules for ${defaultBranch} require pull requests to be up to date, so it has to be updated before it can merge.`
-                          : "That does not stop it merging: it is brought up to date as part of the merge."}
-                        {canUpdate && (requireUpToDate || choices.suggestUpdate) && (
-                          <UpdateBranchButton head={pull.headCommit} base={defaultBranch} />
-                        )}
-                        {catchUp && "error" in catchUp && <ErrorText>{catchUp.error}</ErrorText>}
-                      </StatusRow>
-                    ) : (
-                      (pull.headCommit || (catchUp && "error" in catchUp)) && (
-                        <StatusRow
-                          icon={<CircleCheck size={16} className="text-success" />}
-                          title={
-                            caughtUp && !caughtUp.already
-                              ? `Brought up to date with ${defaultBranch}`
-                              : `Up to date with ${defaultBranch}`
-                          }
-                        >
-                          {caughtUp && !caughtUp.already && (
-                            <>
-                              Merged <span className="font-mono">{defaultBranch}</span> in as{" "}
-                              <span className="font-mono text-fg">{caughtUp.commit.slice(0, 7)}</span>. Its checks run
-                              again on the new commit.
-                            </>
-                          )}
-                          {/* A catch-up refused or failed after the pull request stopped being behind. */}
-                          {catchUp && "error" in catchUp && <ErrorText>{catchUp.error}</ErrorText>}
-                        </StatusRow>
-                      )
-                    )}
-                    {active && rules && (rulesUnmet.length > 0 || rulesBypassable.length > 0 || rules.evaluate.length > 0) && (
-                      <StatusRow
-                        icon={
-                          <Scale
-                            size={16}
-                            className={rulesUnmet.length > 0 ? "text-danger" : rulesBypassable.length > 0 ? "text-warn" : "text-info"}
-                          />
-                        }
-                        title={
-                          rulesUnmet.length > 0
-                            ? `Rules for ${defaultBranch} are not met yet`
-                            : rulesBypassable.length > 0
-                              ? `You may bypass the rules for ${defaultBranch}`
-                              : "Rulesets being evaluated would refuse this merge"
-                        }
-                      >
-                        <div className="mt-2 space-y-3">
-                          {rulesUnmet.length > 0 && <ViolationList violations={rulesUnmet} />}
-                          {rulesBypassable.length > 0 && (
-                            <div>
-                              <p className="mb-1.5 text-xs text-muted">Not met, but a ruleset lets you bypass it:</p>
-                              <ViolationList violations={rulesBypassable} tone="warn" />
-                            </div>
-                          )}
-                          {rules.evaluate.length > 0 && (
-                            <div>
-                              <p className="mb-1.5 text-xs text-muted">Rulesets in evaluate would refuse it for this; nothing is held up:</p>
-                              <ViolationList violations={rules.evaluate} tone="info" />
-                            </div>
-                          )}
-                          {canProtect && (
-                            <Link
-                              to={`${base}/settings/rules?branch=${encodeURIComponent(defaultBranch)}`}
-                              className="inline-block text-xs text-muted underline underline-offset-2 hover:text-fg"
-                            >
-                              See every rule for {defaultBranch}
-                            </Link>
-                          )}
-                        </div>
-                      </StatusRow>
-                    )}
-                    {stalled && !lifecycle && (
-                      <StatusRow icon={<Hand size={16} className="text-warn" />} title="Needs you">
-                        {stalled}
-                      </StatusRow>
-                    )}
-                    {canMerge && lifecycle?.stage === "queued" && (
-                      <Form method="post" className="flex flex-wrap items-center gap-3 px-4 py-3">
-                        <ButtonLink to={`${base}/queue`}>
-                          <Layers size={15} />
-                          See the queue
-                        </ButtonLink>
-                        <SubmitButton variant="outline" name="action" value="unqueue" pending="Removing…">
-                          Remove from the queue
-                        </SubmitButton>
-                      </Form>
-                    )}
-                    {pull.autoMerge && <AutoMergeBanner auto={pull.autoMerge} canChange={canStopAutoMerge} />}
-                    {(canMerge || canStopAutoMerge) && !landing && lifecycle?.stage !== "queued" && !(pull.autoMerge && !canMerge) && (
-                      <Form method="post" className="px-4 py-3">
-                        <MergeButton
-                          repo={`${params.owner}/${params.repo}`}
-                          pull={pull}
-                          choices={choices}
-                          base={defaultBranch}
-                          blocked={canMerge ? mergeBlocked : `Merging needs the Write role.`}
-                          queue={mergeQueue && canMerge}
-                          canAutoMerge={canAutoMerge}
-                          item={item?.state === "open" ? { number: item.number } : null}
-                          error={
-                            actionData?.action === "merge" || actionData?.action === "auto-merge-on" || actionData?.action === "auto-merge-off"
-                              ? actionData.error
-                              : null
-                          }
-                          options={
-                            (unchecked && canIgnoreChecks) || (rulesBypassable.length > 0 && rulesUnmet.length === 0) ? (
-                              <div className="space-y-2">
-                                {unchecked && canIgnoreChecks && (
-                                  <CheckboxOption
-                                    name="ignoreChecks"
-                                    label={`Bypass the required checks: merge although ${requiredFailed ? "one failed" : "they have not all passed"}.`}
-                                    labelClassName="text-xs text-muted"
-                                  />
-                                )}
-                                {rulesBypassable.length > 0 && rulesUnmet.length === 0 && (
-                                  <CheckboxOption
-                                    name="bypassRules"
-                                    checked={bypassing}
-                                    onCheckedChange={(checked) => setBypassing(checked === true)}
-                                    label={`Bypass the rules for ${defaultBranch}: merge although they are not met. It is recorded.`}
-                                    labelClassName="text-xs text-muted"
-                                  />
-                                )}
-                              </div>
-                            ) : null
-                          }
-                        />
-                      </Form>
-                    )}
-                  </StatusBox>
-                )}
-
-                <CommentForm
-                  author={viewer?.username ?? null}
-                  resetKey={comments.length}
-                  review={review}
-                  handles={teams.map((team) => `@${team.ref}`)}
-                />
-                {canManage && (active || pull.status === "closed") && (
-                  <Form method="post" className="flex flex-wrap justify-end gap-2">
-                    {pull.status === "open" && (
-                      <SubmitButton variant="outline" name="action" value="draft" pending="Converting…">
-                        Convert to draft
-                      </SubmitButton>
-                    )}
-                    {active ? (
-                      <SubmitButton variant="outline" name="action" value="close" pending="Closing…">
-                        Close pull request
-                      </SubmitButton>
-                    ) : (
-                      <SubmitButton variant="outline" name="action" value="reopen" pending="Reopening…">
-                        Reopen pull request
-                      </SubmitButton>
-                    )}
-                  </Form>
-                )}
-                {actionData &&
-                  !["merge", "comment", "rerun-failed", "rerun-workflow", "rerun-dependency-review", "update", "reviewers", "assign", "edit-comment", "delete-comment", "auto-merge-on", "auto-merge-off", "delete-branch", "restore-branch"].includes(
-                    String(actionData.action),
-                  ) && <ErrorText>{actionData.error}</ErrorText>}
-              </div>
+            {(pull.labels ?? []).map((name) => (
+              <LabelChip key={name} name={name} color={isFailed(loaderData.labels) ? undefined : loaderData.labels.find((label) => label.name === name)?.color} />
+            ))}
+            {opener.requestedBy && (
+              <span className="text-xs">
+                requested by{" "}
+                <PersonLink name={opener.requestedBy} className="font-medium text-fg-soft hover:underline" />
+              </span>
             )}
-            {actionData?.action === "comment" && (
-              <div className="mt-2">
-                <ErrorText>{actionData.error}</ErrorText>
-              </div>
+            {/* A pull request from a branch was made by its author, not an agent;
+                one g1t made already says so. */}
+            {!pull.branch && !opener.requestedBy && (
+              <span className="flex items-center gap-1.5 font-mono text-xs">
+                <Bot size={14} />
+                {pull.agent}
+                {pull.runtime === "hosted" && <span className="text-faint">on g1t</span>}
+              </span>
             )}
           </div>
-        </div>
 
-        <DetailsDisclosure
-          className={tab === "changes" ? "hidden" : "order-first lg:order-0"}
-          summary={detailsSummary([
-            [reviewerNames.length + teamReviewers.length, "reviewer", "reviewers"],
-            [pull.assignees.length, "assignee", "assignees"],
-            [(pull.labels ?? []).length, "label", "labels"],
-          ])}
-        >
-          {/* Other than a draft, a pull request shows its checks in full in the conversation. */}
-          {pull.status === "draft" && <WorkflowStatuses statuses={statuses} />}
-          <section>
-            <h3 className="text-sm font-medium">Reviewers</h3>
-            <ul className="mt-2 space-y-1.5 text-sm">
-              {reviewerNames.map((name) => {
-                const verdict = reviews.find(({ reviewer }) => reviewer === name)?.verdict;
-                return (
+          {reviews.length > 0 && (
+            <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+              {reviews.map(({ reviewer, verdict }) => (
+                <span
+                  key={reviewer}
+                  className={`flex items-center gap-1.5 ${
+                    verdict === "approve" ? "text-success" : "text-danger"
+                  }`}
+                >
+                  {verdict === "approve" ? <CircleCheck size={15} /> : <CircleSlash size={15} />}
+                  {verdict === "approve" ? "Approved by" : "Changes requested by"}{" "}
+                  <span className="font-medium">{reviewer}</span>
+                </span>
+              ))}
+            </p>
+          )}
+
+          <TabStrip label="Pull request" className="mt-6 items-end gap-1 border-b border-line">
+            <TabLink to={here} active={tab === "conversation"}>
+              <MessageSquare size={15} />
+              Conversation
+              <TabCount n={comments.length} />
+            </TabLink>
+            <TabLink to={pullPath(base, pull.number, "session")} active={tab === "session"}>
+              <MessagesSquare size={15} />
+              Session
+            </TabLink>
+            <TabLink to={pullPath(base, pull.number, "changes")} active={tab === "changes"}>
+              <FileDiff size={15} />
+              Files changed
+              <TabCount n={pull.files.length} />
+            </TabLink>
+            {pull.files.length > 0 && (
+              <span className="ml-auto hidden pb-2.5 font-mono text-xs sm:inline">
+                <span className="text-success">+{pull.files.reduce((sum, file) => sum + file.additions, 0).toLocaleString("en-US")}</span>{" "}
+                <span className="text-danger">−{pull.files.reduce((sum, file) => sum + file.deletions, 0).toLocaleString("en-US")}</span>
+              </span>
+            )}
+          </TabStrip>
+        </header>
+        <div className={`mt-6 grid gap-6 lg:gap-8 ${tab === "changes" ? "" : "lg:grid-cols-[1fr_19rem]"}`}>
+          <div className="min-w-0">
+            {/* What is happening on it now: its work item, how it ended, the other
+                attempts at it, and what else touches the same files. On the
+                conversation, so the tabs sit right under the title. */}
+            {tab === "conversation" && (
+              <div>
+                {item && (
+                  <Link
+                    to={itemPath(item.workspace, item.number)}
+                    className="mt-4 flex items-center gap-2.5 rounded-xl border border-line bg-surface px-4 py-2.5 text-sm transition-colors hover:border-line-strong"
+                  >
+                    <ItemIcon item={item} />
+                    <span className="shrink-0 text-muted">
+                      {pull.status === "merged" && item.resolutions.some((landed) => landed.pull === pull.number && landed.repo.toLowerCase() === `${params.owner}/${params.repo}`.toLowerCase())
+                        ? "Landed"
+                        : "For work item"}
+                    </span>
+                    <span className="truncate font-medium">{item.title}</span>
+                    <span className="text-faint">#{item.number}</span>
+                    {item.pullCount > 1 && (
+                      <span className="ml-auto shrink-0 text-xs text-faint max-sm:hidden">
+                        1 of {item.pullCount} pull requests
+                      </span>
+                    )}
+                  </Link>
+                )}
+                <ItemRefs pull={pull} workspace={params.owner.toLowerCase()} />
+                {pull.status === "merged" && (
+                  <p className="mt-4 flex items-center gap-2.5 rounded-xl border border-merged/40 bg-merged/5 px-4 py-2.5 text-sm">
+                    <GitMerge size={16} className="shrink-0 text-merged" />
+                    <span>
+                      Merged into <span className="font-mono">{defaultBranch}</span> by{" "}
+                      <PersonLink name={pull.mergedBy ?? "g1t"} className="font-medium hover:underline" />{" "}
+                      {/* Not an account: the repository's settings said to merge it. */}
+                      {pull.mergedBy === "g1t" && "automatically, once it was ready, "}
+                      {pull.mergeMethod && <>via {METHOD_INFO[pull.mergeMethod].past} </>}
+                      {(pull.mergeCommit ?? pull.headCommit) && (
+                        <>
+                          in{" "}
+                          <Link
+                            to={`${base}/commit/${pull.mergeCommit ?? pull.headCommit}`}
+                            className="font-mono text-fg hover:text-accent hover:underline"
+                          >
+                            {(pull.mergeCommit ?? pull.headCommit)!.slice(0, 7)}
+                          </Link>{" "}
+                        </>
+                      )}
+                      {pull.mergedAt && <TimeAgo at={pull.mergedAt} />}
+                    </span>
+                  </p>
+                )}
+                {pull.supersededBy != null && (
+                  <Card asChild className="mt-4 px-4 py-2.5 text-sm text-muted">
+                    <p>
+                      Closed because{" "}
+                      <Link
+                        to={`${base}/pull/${pull.supersededBy}`}
+                        className="font-medium text-fg hover:underline"
+                      >
+                        #{pull.supersededBy}
+                      </Link>{" "}
+                      was merged for this work item instead.
+                    </p>
+                  </Card>
+                )}
+                {attempts && pull.item != null && <AttemptsBox attempts={attempts} item={pull.item} base={base} />}
+                {collisions.length > 0 && active && (
+                  <Card className="mt-4 px-4 py-3 text-sm">
+                    <p className="flex items-center gap-2.5 font-medium">
+                      <Radar size={16} className="shrink-0 text-info" />
+                      Other work is changing the same files
+                    </p>
+                    <ul className="mt-2 space-y-1.5">
+                      {collisions.map((other) => (
+                        <li key={other.number} className="flex flex-wrap items-baseline gap-x-2 text-muted">
+                          <Link
+                            to={`${base}/pull/${other.number}`}
+                            className="font-medium text-fg hover:underline"
+                          >
+                            {other.title} <span className="font-normal text-faint">#{other.number}</span>
+                          </Link>
+                          <span className="font-mono text-xs">{other.paths.join(", ")}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-2 text-xs text-faint">
+                      Whichever merges second will have to catch up, and may conflict.
+                    </p>
+                  </Card>
+                )}
+              </div>
+            )}
+            <div className="mt-5">
+              {comparison ? (
+                isFailed(comparison) ? (
+                  <Unavailable what={comparison.what} />
+                ) : (
+                  <DiffView
+                    comparison={comparison}
+                    repo={base}
+                    review={{
+                      comments: comments.filter((comment) => comment.path),
+                      canComment: Boolean(viewer),
+                    }}
+                  />
+                )
+              ) : tab === "session" ? (
+                <div className="space-y-8">
+                  {isFailed(harnessPart) && (
+                    <section aria-label="Harness sessions">
+                      <h3 className="text-sm font-medium">Sessions on it</h3>
+                      <div className="mt-3">
+                        <Unavailable what="Its sessions" />
+                      </div>
+                    </section>
+                  )}
+                  {isFailed(decisionsPart) && (
+                    <section aria-label="Decisions">
+                      <h3 className="text-sm font-medium">Decisions</h3>
+                      <div className="mt-3">
+                        <Unavailable what="Its decisions" />
+                      </div>
+                    </section>
+                  )}
+                  {harnessSessions.length > 0 && (
+                    <section aria-label="Harness sessions">
+                      <h3 className="text-sm font-medium">Sessions on it</h3>
+                      <Card className="mt-3 p-4">
+                        <SessionTreeList nodes={sessionTree(harnessSessions)} base={base} showWhere={false} className="space-y-4" />
+                      </Card>
+                    </section>
+                  )}
+                  {decisions.length > 0 && (
+                    <section aria-label="Decisions">
+                      <h3 className="text-sm font-medium">Decisions</h3>
+                      <p className="mt-1 text-xs text-muted">
+                        Why it is the way it is, each with how sure it is: claimed by whoever recorded it, tested by a check or the merge queue, approved by a person.
+                      </p>
+                      <div className="mt-3">
+                        <DecisionList decisions={decisions} base={base} />
+                      </div>
+                    </section>
+                  )}
+                  <section aria-label="What happened">
+                    {(harnessSessions.length > 0 || decisions.length > 0 || isFailed(harnessPart) || isFailed(decisionsPart)) && (
+                      <h3 className="mb-3 text-sm font-medium">What happened</h3>
+                    )}
+                    {isFailed(sessionPart) ? (
+                      <Unavailable what={sessionPart.what} />
+                    ) : session.length === 0 ? (
+                      <EmptyState title="Nothing recorded yet">
+                        A coding agent's prompts, reasoning and tool calls appear here once
+                        it records them, through the g1t plugin, a harness session or record_session.
+                      </EmptyState>
+                    ) : (
+                      <ol className="relative space-y-5 before:absolute before:top-2 before:bottom-2 before:left-3.25 before:w-px before:bg-line">
+                        {session.map((entry) => (
+                          <Entry key={entry.seq} entry={entry} agent={pull.agent} />
+                        ))}
+                      </ol>
+                    )}
+                  </section>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <TimelineItem
+                    author={opener.name}
+                    at={pull.createdAt}
+                    action={
+                      <span>
+                        opened this pull request
+                        {opener.requestedBy ? (
+                          <>
+                            {" "}
+                            for{" "}
+                            <PersonLink name={opener.requestedBy} className="font-medium text-fg-soft hover:underline" />
+                          </>
+                        ) : !pull.branch && (
+                          <>
+                            {" "}
+                            with <span className="font-mono text-xs">{pull.agent}</span>
+                          </>
+                        )}
+                      </span>
+                    }
+                  >
+                    {pull.body ? (
+                      <>
+                        <Markdown source={pull.body} repo={{ namespace: params.owner, name: params.repo }} />
+                        <Reactions reactions={loaderData.reactions} viewer={viewer?.username ?? null} className="mt-3" />
+                      </>
+                    ) : (
+                      <p className="text-sm text-muted">
+                        {working
+                          ? "No description yet. It is written when the pull request is marked ready for review."
+                          : "No description."}
+                      </p>
+                    )}
+                    {canManage && pull.status === "open" && (
+                      <details className="mt-3 border-t border-line pt-3 text-sm">
+                        <summary className="cursor-pointer text-xs text-faint hover:text-fg">
+                          Edit description
+                        </summary>
+                        <Form method="post" className="mt-3 space-y-2">
+                          <input type="hidden" name="action" value="describe" />
+                          <MentionTextarea
+                            name="summary"
+                            rows={6}
+                            placeholder="What changed and why"
+                            defaultValue={pull.body ?? ""}
+                          />
+                          <SubmitButton match={{ action: "describe" }} pending="Saving…">
+                            Save
+                          </SubmitButton>
+                        </Form>
+                      </details>
+                    )}
+                  </TimelineItem>
+
+                  <CommentList
+                    comments={comments}
+                    review={review}
+                    base={base}
+                    viewerId={viewer?.id ?? null}
+                    viewerName={viewer?.username ?? null}
+                    extra={harnessSessions
+                      .filter((session) => !session.parentId)
+                      .map((session) => ({ id: session.id, at: session.startedAt, node: <TimelineSession session={session} base={base} /> }))}
+                    canModerate={canModerate}
+                    failed={actionData && "comment" in actionData ? { comment: String(actionData.comment), error: actionData.error } : null}
+                  />
+                  {/* The sessions on it go between the comments; when they could not be read, it says so once. */}
+                  {isFailed(harnessPart) && <Unavailable what="Its sessions" compact />}
+
+                  {previewFailed ? (
+                    <Unavailable what={previewFailed.what} />
+                  ) : (
+                    (preview || build) && (
+                      <Boundary what="Its preview">
+                        <DeploymentCard preview={preview} build={build} base={base} />
+                      </Boundary>
+                    )
+                  )}
+
+                  {pull.status === "draft" && (
+                    <StatusBox>
+                      <StatusRow icon={<Loader size={16} className="text-faint" />} title="This is a draft">
+                        It is still being worked on. It can be reviewed and merged once it is
+                        marked ready.
+                      </StatusRow>
+                      {canManage && (
+                        <Form method="post" className="space-y-2 px-4 py-3">
+                          <input type="hidden" name="action" value="ready" />
+                          <MentionTextarea name="summary" rows={3} placeholder="What changed and why" />
+                          <SubmitButton match={{ action: "ready" }} pending="Marking ready…">
+                            Mark ready for review
+                          </SubmitButton>
+                        </Form>
+                      )}
+                    </StatusBox>
+                  )}
+
+                  {codeOwners && active && (
+                    <div className="flex gap-3">
+                      <span className="hidden w-8 shrink-0 sm:block" />
+                      <div className="min-w-0 grow">
+                        <PullCodeOwnersPanel
+                          owners={codeOwners}
+                          base={base}
+                          branch={defaultBranch}
+                          errorsHref={canProtect ? `${base}/settings/branches#codeowners` : `${base}/blob/${encodeURIComponent(defaultBranch)}/${codeOwners.path}`}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {(pull.status === "merged" || pull.status === "closed") && (statuses.length > 0 || (pull.branch && !pull.fork)) && (
+                    <StatusBox>
+                      {statuses.length > 0 && (
+                        <Suspense fallback={settledChecks({}, true)}>
+                          <Await resolve={workflowJobs}>{(jobs) => settledChecks(jobs)}</Await>
+                        </Suspense>
+                      )}
+                      <BranchAfterwards
+                        pull={pull}
+                        merged={pull.status === "merged"}
+                        canChange={canChangeBranch}
+                        error={actionData?.action === "delete-branch" || actionData?.action === "restore-branch" ? actionData.error : null}
+                      />
+                    </StatusBox>
+                  )}
+
+                  {failure && (
+                    <div className="flex gap-3">
+                      <span className="hidden w-8 shrink-0 sm:block" />
+                      <IntegrationFailure className="min-w-0 grow" failure={failure} base={base} branch={defaultBranch} fixed={answered} />
+                    </div>
+                  )}
+                  {/* Without its decisions, whether the merge queue found it failing with others is not known. */}
+                  {active && isFailed(decisionsPart) && (
+                    <div className="flex gap-3">
+                      <span className="hidden w-8 shrink-0 sm:block" />
+                      <div className="min-w-0 grow">
+                        <Unavailable what="What the merge queue found" compact />
+                      </div>
+                    </div>
+                  )}
+
+                  {pull.status === "open" && (
+                    <StatusBox>
+                      {/* Checks by status at once; job by job when the runs are read. */}
+                      <Suspense fallback={checksSection({}, true)}>
+                        <Await resolve={workflowJobs}>{(jobs) => checksSection(jobs)}</Await>
+                      </Suspense>
+                      {noChecks && <AddCiPrompt owner={params.owner} repo={params.repo} canAdd={canAddCi} compact />}
+                      <StatusRow
+                        icon={
+                          reviews.some(({ verdict }) => verdict === "request_changes") ? (
+                            <CircleSlash size={16} className="text-danger" />
+                          ) : reviews.length > 0 ? (
+                            <CircleCheck size={16} className="text-success" />
+                          ) : (
+                            <MessageSquare size={16} className="text-faint" />
+                          )
+                        }
+                        title={
+                          reviews.length === 0
+                            ? "No reviews yet"
+                            : reviews
+                                .map(
+                                  ({ reviewer, verdict }) =>
+                                    `${verdict === "approve" ? "Approved by" : "Changes requested by"} ${reviewer}`,
+                                )
+                                .join(" · ")
+                        }
+                      >
+                        {requiredApprovals > 0 &&
+                          `This repository requires ${requiredApprovals} approving ${
+                            requiredApprovals === 1 ? "review" : "reviews"
+                          } before merging.`}
+                      </StatusRow>
+                      {codeOwners?.required && (
+                        <StatusRow
+                          icon={
+                            ownersMissing ? (
+                              <CircleSlash size={16} className="text-warn" />
+                            ) : (
+                              <CircleCheck size={16} className="text-success" />
+                            )
+                          }
+                          title={ownersMissing ? "Waiting for code owners" : "Code owners approved"}
+                        >
+                          {ownersMissing ?? `Every file it changes has its owners' approval.`}{" "}
+                          {ownersMissing && "This repository requires their review before merging."}
+                        </StatusRow>
+                      )}
+                      {landing ? (
+                        // Brought up to date first, then landed once the
+                        // required checks pass on that new commit.
+                        <StatusRow
+                          icon={<Loader size={16} className="animate-spin text-accent" />}
+                          title={!behind && unchecked ? "Merging once checks pass" : "Merging"}
+                        >
+                          {behind
+                            ? `${defaultBranch} has moved, so it is being brought up to date first. ${
+                                requiredChecks.length > 0
+                                  ? "It lands once the required checks pass on that commit."
+                                  : "It lands as soon as that is done."
+                              }`
+                            : unchecked
+                              ? `Brought up to date with ${defaultBranch}. It lands once ${awaitedChecks(requiredChecks)} on that commit.`
+                              : `Brought up to date with ${defaultBranch}. Landing now.`}
+                        </StatusRow>
+                      ) : conflicting ? (
+                        <ConflictsSection
+                          conflicts={conflicts}
+                          pull={pull}
+                          owner={params.owner}
+                          repo={params.repo}
+                          defaultBranch={defaultBranch}
+                          changesUrl={pullPath(base, pull.number, "changes")}
+                          error={catchUp && "error" in catchUp ? catchUp.error : null}
+                        />
+                      ) : probing ? (
+                        <MergeabilityRow mergeable={mergeable} defaultBranch={defaultBranch} />
+                      ) : behind ? (
+                        <StatusRow
+                          icon={<GitPullRequestArrow size={16} className="text-info" />}
+                          title="This branch is out-of-date with the base branch"
+                        >
+                          {mergeable === "clean" && `It has no conflicts with ${defaultBranch}. `}
+                          {requireUpToDate
+                            ? `The rules for ${defaultBranch} require pull requests to be up to date, so it has to be updated before it can merge.`
+                            : "That does not stop it merging: it is brought up to date as part of the merge."}
+                          {canUpdate && (requireUpToDate || choices.suggestUpdate) && (
+                            <UpdateBranchButton head={pull.headCommit} base={defaultBranch} />
+                          )}
+                          {catchUp && "error" in catchUp && <ErrorText>{catchUp.error}</ErrorText>}
+                        </StatusRow>
+                      ) : (
+                        (pull.headCommit || (catchUp && "error" in catchUp)) && (
+                          <StatusRow
+                            icon={<CircleCheck size={16} className="text-success" />}
+                            title={
+                              caughtUp && !caughtUp.already
+                                ? `Brought up to date with ${defaultBranch}`
+                                : `Up to date with ${defaultBranch}`
+                            }
+                          >
+                            {caughtUp && !caughtUp.already && (
+                              <>
+                                Merged <span className="font-mono">{defaultBranch}</span> in as{" "}
+                                <span className="font-mono text-fg">{caughtUp.commit.slice(0, 7)}</span>. Its checks run
+                                again on the new commit.
+                              </>
+                            )}
+                            {/* A catch-up refused or failed after the pull request stopped being behind. */}
+                            {catchUp && "error" in catchUp && <ErrorText>{catchUp.error}</ErrorText>}
+                          </StatusRow>
+                        )
+                      )}
+                      {active && rules && (rulesUnmet.length > 0 || rulesBypassable.length > 0 || rules.evaluate.length > 0) && (
+                        <StatusRow
+                          icon={
+                            <Scale
+                              size={16}
+                              className={rulesUnmet.length > 0 ? "text-danger" : rulesBypassable.length > 0 ? "text-warn" : "text-info"}
+                            />
+                          }
+                          title={
+                            rulesUnmet.length > 0
+                              ? `Rules for ${defaultBranch} are not met yet`
+                              : rulesBypassable.length > 0
+                                ? `You may bypass the rules for ${defaultBranch}`
+                                : "Rulesets being evaluated would refuse this merge"
+                          }
+                        >
+                          <div className="mt-2 space-y-3">
+                            {rulesUnmet.length > 0 && <ViolationList violations={rulesUnmet} />}
+                            {rulesBypassable.length > 0 && (
+                              <div>
+                                <p className="mb-1.5 text-xs text-muted">Not met, but a ruleset lets you bypass it:</p>
+                                <ViolationList violations={rulesBypassable} tone="warn" />
+                              </div>
+                            )}
+                            {rules.evaluate.length > 0 && (
+                              <div>
+                                <p className="mb-1.5 text-xs text-muted">Rulesets in evaluate would refuse it for this; nothing is held up:</p>
+                                <ViolationList violations={rules.evaluate} tone="info" />
+                              </div>
+                            )}
+                            {canProtect && (
+                              <Link
+                                to={`${base}/settings/rules?branch=${encodeURIComponent(defaultBranch)}`}
+                                className="inline-block text-xs text-muted underline underline-offset-2 hover:text-fg"
+                              >
+                                See every rule for {defaultBranch}
+                              </Link>
+                            )}
+                          </div>
+                        </StatusRow>
+                      )}
+                      {stalled && !lifecycle && (
+                        <StatusRow icon={<Hand size={16} className="text-warn" />} title="Needs you">
+                          {stalled}
+                        </StatusRow>
+                      )}
+                      {canMerge && lifecycle?.stage === "queued" && (
+                        <Form method="post" className="flex flex-wrap items-center gap-3 px-4 py-3">
+                          <ButtonLink to={`${base}/queue`}>
+                            <Layers size={15} />
+                            See the queue
+                          </ButtonLink>
+                          <SubmitButton variant="outline" name="action" value="unqueue" pending="Removing…">
+                            Remove from the queue
+                          </SubmitButton>
+                        </Form>
+                      )}
+                      {pull.autoMerge && <AutoMergeBanner auto={pull.autoMerge} canChange={canStopAutoMerge} />}
+                      {(canMerge || canStopAutoMerge) && !landing && lifecycle?.stage !== "queued" && !(pull.autoMerge && !canMerge) && (
+                        <Form method="post" className="px-4 py-3">
+                          <MergeButton
+                            repo={`${params.owner}/${params.repo}`}
+                            pull={pull}
+                            choices={choices}
+                            base={defaultBranch}
+                            blocked={canMerge ? mergeBlocked : `Merging needs the Write role.`}
+                            queue={mergeQueue && canMerge}
+                            canAutoMerge={canAutoMerge}
+                            item={item?.state === "open" ? { number: item.number } : null}
+                            error={
+                              actionData?.action === "merge" || actionData?.action === "auto-merge-on" || actionData?.action === "auto-merge-off"
+                                ? actionData.error
+                                : null
+                            }
+                            options={
+                              (unchecked && canIgnoreChecks) || (rulesBypassable.length > 0 && rulesUnmet.length === 0) ? (
+                                <div className="space-y-2">
+                                  {unchecked && canIgnoreChecks && (
+                                    <CheckboxOption
+                                      name="ignoreChecks"
+                                      label={`Bypass the required checks: merge although ${requiredFailed ? "one failed" : "they have not all passed"}.`}
+                                      labelClassName="text-xs text-muted"
+                                    />
+                                  )}
+                                  {rulesBypassable.length > 0 && rulesUnmet.length === 0 && (
+                                    <CheckboxOption
+                                      name="bypassRules"
+                                      checked={bypassing}
+                                      onCheckedChange={(checked) => setBypassing(checked === true)}
+                                      label={`Bypass the rules for ${defaultBranch}: merge although they are not met. It is recorded.`}
+                                      labelClassName="text-xs text-muted"
+                                    />
+                                  )}
+                                </div>
+                              ) : null
+                            }
+                          />
+                        </Form>
+                      )}
+                    </StatusBox>
+                  )}
+
+                  <CommentForm
+                    author={viewer?.username ?? null}
+                    resetKey={comments.length}
+                    review={review}
+                    handles={teams.map((team) => `@${team.ref}`)}
+                  />
+                  {canManage && (active || pull.status === "closed") && (
+                    <Form method="post" className="flex flex-wrap justify-end gap-2">
+                      {pull.status === "open" && (
+                        <SubmitButton variant="outline" name="action" value="draft" pending="Converting…">
+                          Convert to draft
+                        </SubmitButton>
+                      )}
+                      {active ? (
+                        <SubmitButton variant="outline" name="action" value="close" pending="Closing…">
+                          Close pull request
+                        </SubmitButton>
+                      ) : (
+                        <SubmitButton variant="outline" name="action" value="reopen" pending="Reopening…">
+                          Reopen pull request
+                        </SubmitButton>
+                      )}
+                    </Form>
+                  )}
+                  {actionData &&
+                    !["merge", "comment", "rerun-failed", "rerun-workflow", "rerun-dependency-review", "update", "reviewers", "assign", "edit-comment", "delete-comment", "auto-merge-on", "auto-merge-off", "delete-branch", "restore-branch"].includes(
+                      String(actionData.action),
+                    ) && <ErrorText>{actionData.error}</ErrorText>}
+                </div>
+              )}
+              {actionData?.action === "comment" && (
+                <div className="mt-2">
+                  <ErrorText>{actionData.error}</ErrorText>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DetailsDisclosure
+            className={tab === "changes" ? "hidden" : "order-first lg:order-0"}
+            summary={detailsSummary([
+              [reviewerNames.length + teamReviewers.length, "reviewer", "reviewers"],
+              [pull.assignees.length, "assignee", "assignees"],
+              [(pull.labels ?? []).length, "label", "labels"],
+            ])}
+          >
+            {/* Other than a draft, a pull request shows its checks in full in the conversation. */}
+            {pull.status === "draft" && <WorkflowStatuses statuses={statuses} />}
+            <section>
+              <h3 className="text-sm font-medium">Reviewers</h3>
+              <ul className="mt-2 space-y-1.5 text-sm">
+                {reviewerNames.map((name) => {
+                  const verdict = reviews.find(({ reviewer }) => reviewer === name)?.verdict;
+                  return (
+                    <li key={name} className="flex items-center gap-2 px-1">
+                      <Avatar name={name} size={20} />
+                      <span className="grow truncate font-mono text-xs">
+                        <PersonLink name={name} className="hover:underline" />
+                      </span>
+                      {verdict === "approve" ? (
+                        <span className="flex items-center gap-1 text-xs text-success">
+                          <CircleCheck size={13} /> Approved
+                        </span>
+                      ) : verdict === "request_changes" ? (
+                        <span className="flex items-center gap-1 text-xs text-danger">
+                          <CircleSlash size={13} /> Changes requested
+                        </span>
+                      ) : (
+                        <span className="text-xs text-faint">Review requested</span>
+                      )}
+                    </li>
+                  );
+                })}
+                {teamReviewers.map((team) => (
+                  <TeamReviewer key={team} team={team} />
+                ))}
+                {reviewerNames.length === 0 && teamReviewers.length === 0 && (
+                  <li className="px-1 text-xs text-faint">No reviews requested yet.</li>
+                )}
+              </ul>
+              {pull.status === "open" && canManage && (
+                <div className="mt-3 space-y-2">
+                  <details>
+                    <summary className="cursor-pointer text-xs text-faint hover:text-fg">
+                      {teamChoices.length > 0 ? "Request review from people or teams" : "Request review from people"}
+                    </summary>
+                    <Form method="post" className="mt-2 space-y-2" key={[...pull.reviewers, ...teamReviewers].join()}>
+                      <input type="hidden" name="action" value="reviewers" />
+                      <PeoplePicker
+                        name="reviewer"
+                        members={members.filter((name) => name !== workOwner(pull).username)}
+                        chosen={pull.reviewers}
+                        placeholder="Other usernames or teams (acme/backend)"
+                      />
+                      {/* Names can still be typed when the lists to pick from could not be read. */}
+                      {isFailed(membersPart) && <Unavailable what={membersPart.what} compact />}
+                      {isFailed(teamsPart) && <Unavailable what={teamsPart.what} compact />}
+                      {teamChoices.length > 0 && (
+                        <div className="space-y-1.5 border-t border-line pt-2">
+                          <p className="text-xs text-faint">Teams</p>
+                          {teamChoices.map((team) => (
+                            <CheckboxOption
+                              key={team.ref}
+                              name="reviewer"
+                              value={team.ref}
+                              defaultChecked={teamReviewers.includes(team.ref)}
+                              className="items-center"
+                              labelClassName="flex min-w-0 items-center gap-2"
+                              label={
+                                <>
+                                  <Users size={14} className="shrink-0 text-faint" />
+                                  <span className="truncate font-mono text-xs">@{team.ref}</span>
+                                </>
+                              }
+                            />
+                          ))}
+                        </div>
+                      )}
+                      <SubmitButton variant="outline" match={{ action: "reviewers" }} pending="Saving…">
+                        Save reviewers
+                      </SubmitButton>
+                    </Form>
+                  </details>
+                </div>
+              )}
+              {actionData?.action === "reviewers" && (
+                <ErrorText>{actionData?.error}</ErrorText>
+              )}
+            </section>
+
+            <section>
+              <h3 className="text-sm font-medium">Assignees</h3>
+              <ul className="mt-2 space-y-1.5 text-sm">
+                {pull.assignees.map((name) => (
                   <li key={name} className="flex items-center gap-2 px-1">
                     <Avatar name={name} size={20} />
                     <span className="grow truncate font-mono text-xs">
                       <PersonLink name={name} className="hover:underline" />
                     </span>
-                    {verdict === "approve" ? (
-                      <span className="flex items-center gap-1 text-xs text-success">
-                        <CircleCheck size={13} /> Approved
-                      </span>
-                    ) : verdict === "request_changes" ? (
-                      <span className="flex items-center gap-1 text-xs text-danger">
-                        <CircleSlash size={13} /> Changes requested
-                      </span>
-                    ) : (
-                      <span className="text-xs text-faint">Review requested</span>
-                    )}
                   </li>
-                );
-              })}
-              {teamReviewers.map((team) => (
-                <TeamReviewer key={team} team={team} />
-              ))}
-              {reviewerNames.length === 0 && teamReviewers.length === 0 && (
-                <li className="px-1 text-xs text-faint">No reviews requested yet.</li>
-              )}
-            </ul>
-            {pull.status === "open" && canManage && (
-              <div className="mt-3 space-y-2">
-                <details>
-                  <summary className="cursor-pointer text-xs text-faint hover:text-fg">
-                    {teamChoices.length > 0 ? "Request review from people or teams" : "Request review from people"}
-                  </summary>
-                  <Form method="post" className="mt-2 space-y-2" key={[...pull.reviewers, ...teamReviewers].join()}>
-                    <input type="hidden" name="action" value="reviewers" />
-                    <PeoplePicker
-                      name="reviewer"
-                      members={members.filter((name) => name !== workOwner(pull).username)}
-                      chosen={pull.reviewers}
-                      placeholder="Other usernames or teams (acme/backend)"
-                    />
-                    {/* Names can still be typed when the lists to pick from could not be read. */}
-                    {isFailed(membersPart) && <Unavailable what={membersPart.what} compact />}
-                    {isFailed(teamsPart) && <Unavailable what={teamsPart.what} compact />}
-                    {teamChoices.length > 0 && (
-                      <div className="space-y-1.5 border-t border-line pt-2">
-                        <p className="text-xs text-faint">Teams</p>
-                        {teamChoices.map((team) => (
-                          <CheckboxOption
-                            key={team.ref}
-                            name="reviewer"
-                            value={team.ref}
-                            defaultChecked={teamReviewers.includes(team.ref)}
-                            className="items-center"
-                            labelClassName="flex min-w-0 items-center gap-2"
-                            label={
-                              <>
-                                <Users size={14} className="shrink-0 text-faint" />
-                                <span className="truncate font-mono text-xs">@{team.ref}</span>
-                              </>
-                            }
-                          />
-                        ))}
-                      </div>
-                    )}
-                    <SubmitButton variant="outline" match={{ action: "reviewers" }} pending="Saving…">
-                      Save reviewers
-                    </SubmitButton>
-                  </Form>
-                </details>
-              </div>
-            )}
-            {actionData?.action === "reviewers" && (
-              <ErrorText>{actionData?.error}</ErrorText>
-            )}
-          </section>
-
-          <section>
-            <h3 className="text-sm font-medium">Assignees</h3>
-            <ul className="mt-2 space-y-1.5 text-sm">
-              {pull.assignees.map((name) => (
-                <li key={name} className="flex items-center gap-2 px-1">
-                  <Avatar name={name} size={20} />
-                  <span className="grow truncate font-mono text-xs">
-                    <PersonLink name={name} className="hover:underline" />
-                  </span>
-                </li>
-              ))}
-              {pull.assignees.length === 0 && (
-                <li className="px-1 text-xs text-faint">No one yet.</li>
-              )}
-            </ul>
-            {viewer && canManage && active && (
-              <div className="mt-3 space-y-2">
-                {!pull.assignees.includes(viewer.username) && (
-                  <Form method="post">
-                    <input type="hidden" name="action" value="assign" />
-                    {pull.assignees.map((name) => (
-                      <input key={name} type="hidden" name="assignee" value={name} />
-                    ))}
-                    <input type="hidden" name="assignee" value={viewer.username} />
-                    <div className="*:w-full">
-                      <SubmitButton variant="outline" name="who" value="self" pending="Assigning…">
-                        Assign yourself
-                      </SubmitButton>
-                    </div>
-                  </Form>
+                ))}
+                {pull.assignees.length === 0 && (
+                  <li className="px-1 text-xs text-faint">No one yet.</li>
                 )}
-                <details>
-                  <summary className="cursor-pointer text-xs text-faint hover:text-fg">
-                    Assign people
-                  </summary>
-                  <Form method="post" className="mt-2 space-y-2" key={pull.assignees.join()}>
-                    <input type="hidden" name="action" value="assign" />
-                    <PeoplePicker name="assignee" members={members} chosen={pull.assignees} />
-                    {isFailed(membersPart) && <Unavailable what={membersPart.what} compact />}
-                    <SubmitButton variant="outline" name="who" value="picked" pending="Saving…">
-                      Save assignees
-                    </SubmitButton>
-                  </Form>
-                </details>
-              </div>
-            )}
-            {actionData?.action === "assign" && <ErrorText>{actionData.error}</ErrorText>}
-          </section>
-
-          {isFailed(loaderData.labels) ? (
-            <SidebarUnavailable title="Labels" what={loaderData.labels.what} />
-          ) : (
-            <Boundary what="Labels">
-              <LabelsBox
-                labels={loaderData.labels}
-                chosen={pull.labels ?? []}
-                canEdit={canManage && active}
-                canCreate={loaderData.canMakeLabels}
-                manageUrl={loaderData.canMakeLabels ? `${base}/labels` : undefined}
-              />
-            </Boundary>
-          )}
-          {isFailed(loaderData.milestones) ? (
-            <SidebarUnavailable title="Milestone" what={loaderData.milestones.what} />
-          ) : (
-            <Boundary what="Milestone">
-              <MilestoneBox
-                milestones={loaderData.milestones}
-                current={pull.milestone}
-                canEdit={loaderData.canTriage}
-                base={base}
-              />
-            </Boundary>
-          )}
-
-          <section>
-            <h3 className="text-sm font-medium">Working copy</h3>
-            {pull.branch ? (
-              <>
-                <p className="mt-1 text-xs text-muted">
-                  <GitBranch size={13} className="mr-1 inline align-[-2px]" />
-                  Branch <span className="font-mono text-fg">{pull.branch}</span> of{" "}
-                  {headRepo ? (
-                    <>
-                      <Link to={`/${headRepo.namespace}/${headRepo.name}`} className="font-mono text-fg hover:underline">
-                        {headRepo.namespace}/{headRepo.name}
-                      </Link>
-                      , a fork of this repository
-                    </>
-                  ) : (
-                    "this repository"
+              </ul>
+              {viewer && canManage && active && (
+                <div className="mt-3 space-y-2">
+                  {!pull.assignees.includes(viewer.username) && (
+                    <Form method="post">
+                      <input type="hidden" name="action" value="assign" />
+                      {pull.assignees.map((name) => (
+                        <input key={name} type="hidden" name="assignee" value={name} />
+                      ))}
+                      <input type="hidden" name="assignee" value={viewer.username} />
+                      <div className="*:w-full">
+                        <SubmitButton variant="outline" name="who" value="self" pending="Assigning…">
+                          Assign yourself
+                        </SubmitButton>
+                      </div>
+                    </Form>
                   )}
-                  . Pushes to it show up here.
-                </p>
-                <div className="mt-2">
-                  <CopyLine text={`git clone -b ${pull.branch} ${remote}`} />
+                  <details>
+                    <summary className="cursor-pointer text-xs text-faint hover:text-fg">
+                      Assign people
+                    </summary>
+                    <Form method="post" className="mt-2 space-y-2" key={pull.assignees.join()}>
+                      <input type="hidden" name="action" value="assign" />
+                      <PeoplePicker name="assignee" members={members} chosen={pull.assignees} />
+                      {isFailed(membersPart) && <Unavailable what={membersPart.what} compact />}
+                      <SubmitButton variant="outline" name="who" value="picked" pending="Saving…">
+                        Save assignees
+                      </SubmitButton>
+                    </Form>
+                  </details>
                 </div>
-              </>
-            ) : (
-              <>
-                <p className="mt-1 text-xs text-muted">
-                  This fork belongs to the pull request. Pushes to it show up here.
-                </p>
-                <div className="mt-2">
-                  <CopyLine text={`git clone ${remote}`} />
-                </div>
-              </>
-            )}
-            <p className="mt-3 flex items-center gap-1.5 font-mono text-xs text-faint">
-              <GitCommitHorizontal size={13} />
-              {pull.headCommit ? (
-                <Link to={`${base}/commit/${pull.headCommit}`} className="hover:text-fg">
-                  {pull.headCommit.slice(0, 12)}
-                </Link>
-              ) : (
-                "no commits pushed yet"
               )}
-              {pull.headCommit && <CommitChecksBadge checks={loaderData.headChecks} sha={pull.headCommit} className="size-5" />}
-            </p>
-          </section>
-          {loaderData.viewer &&
-            (isFailed(loaderData.subscription) ? (
-              <SidebarUnavailable title="Notifications" what={loaderData.subscription.what} />
+              {actionData?.action === "assign" && <ErrorText>{actionData.error}</ErrorText>}
+            </section>
+
+            {isFailed(loaderData.labels) ? (
+              <SidebarUnavailable title="Labels" what={loaderData.labels.what} />
             ) : (
-              <Boundary what="Notifications">
-                <SubscriptionBox action={`${base}/notifications`} number={pull.number} kind="pull" subscription={loaderData.subscription} />
+              <Boundary what="Labels">
+                <LabelsBox
+                  labels={loaderData.labels}
+                  chosen={pull.labels ?? []}
+                  canEdit={canManage && active}
+                  canCreate={loaderData.canMakeLabels}
+                  manageUrl={loaderData.canMakeLabels ? `${base}/labels` : undefined}
+                />
               </Boundary>
-            ))}
-        </DetailsDisclosure>
+            )}
+            {isFailed(loaderData.milestones) ? (
+              <SidebarUnavailable title="Milestone" what={loaderData.milestones.what} />
+            ) : (
+              <Boundary what="Milestone">
+                <MilestoneBox
+                  milestones={loaderData.milestones}
+                  current={pull.milestone}
+                  canEdit={loaderData.canTriage}
+                  base={base}
+                />
+              </Boundary>
+            )}
+
+            <section>
+              <h3 className="text-sm font-medium">Working copy</h3>
+              {pull.branch ? (
+                <>
+                  <p className="mt-1 text-xs text-muted">
+                    <GitBranch size={13} className="mr-1 inline align-[-2px]" />
+                    Branch <span className="font-mono text-fg">{pull.branch}</span> of{" "}
+                    {headRepo ? (
+                      <>
+                        <Link to={`/${headRepo.namespace}/${headRepo.name}`} className="font-mono text-fg hover:underline">
+                          {headRepo.namespace}/{headRepo.name}
+                        </Link>
+                        , a fork of this repository
+                      </>
+                    ) : (
+                      "this repository"
+                    )}
+                    . Pushes to it show up here.
+                  </p>
+                  <div className="mt-2">
+                    <CopyLine text={`git clone -b ${pull.branch} ${remote}`} />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="mt-1 text-xs text-muted">
+                    This fork belongs to the pull request. Pushes to it show up here.
+                  </p>
+                  <div className="mt-2">
+                    <CopyLine text={`git clone ${remote}`} />
+                  </div>
+                </>
+              )}
+              <p className="mt-3 flex items-center gap-1.5 font-mono text-xs text-faint">
+                <GitCommitHorizontal size={13} />
+                {pull.headCommit ? (
+                  <Link to={`${base}/commit/${pull.headCommit}`} className="hover:text-fg">
+                    {pull.headCommit.slice(0, 12)}
+                  </Link>
+                ) : (
+                  "no commits pushed yet"
+                )}
+                {pull.headCommit && <CommitChecksBadge checks={loaderData.headChecks} sha={pull.headCommit} className="size-5" />}
+              </p>
+            </section>
+            {loaderData.viewer &&
+              (isFailed(loaderData.subscription) ? (
+                <SidebarUnavailable title="Notifications" what={loaderData.subscription.what} />
+              ) : (
+                <Boundary what="Notifications">
+                  <SubscriptionBox action={`${base}/notifications`} number={pull.number} kind="pull" subscription={loaderData.subscription} />
+                </Boundary>
+              ))}
+          </DetailsDisclosure>
+        </div>
       </div>
-    </div>
+    </AttachImages>
   );
 }
 
