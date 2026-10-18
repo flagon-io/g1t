@@ -6,7 +6,7 @@ description: From the team at Flagon, Inc. building g1t, a git platform that run
 Dear Cloudflare,
 
 We're the small team at Flagon, Inc. building g1t, a git platform where
-people and coding agents work in the same issues, pull requests and merge
+people and coding agents work in the same work items, pull requests and merge
 queue. Every part of it runs on you: more than twenty-five Workers, a D1 database for
 each service that keeps data, Artifacts for every repository and every pull
 request's fork, Containers for agents and CI, R2, KV, Queues, and Cloudflare
@@ -33,7 +33,7 @@ every page we render, blame, mergeability and search, without a git client
 anywhere.
 
 The rest of the platform held up too. Rust compiled to WebAssembly runs our
-core (repositories, issues and pull requests, the API, security and
+core (repositories, work items and pull requests, the API, security and
 billing), and TypeScript the rest. D1's read replication is free and good. Containers gave us
 sandboxes in three sizes. With a cached credential and ref listing, a
 `git fetch` with nothing new answers in under half a second, and most of

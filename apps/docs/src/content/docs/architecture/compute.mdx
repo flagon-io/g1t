@@ -28,7 +28,7 @@ differently.
 1. **Trigger.** `actions` reads its event queue, `g1t-events-actions`, ten
    at a time (step 1), and matches each event to the workflows in
    `.g1t/workflows` at the commit the event is about (the default branch
-   for schedules, issues and manual runs; `services/actions/src/sync.rs`).
+   for schedules, work items and manual runs; `services/actions/src/sync.rs`).
    g1t never reads `.github/workflows`. The files are GitHub Actions
    syntax, unchanged; [GitHub
    Actions](/guides/actions/) lists what is supported.

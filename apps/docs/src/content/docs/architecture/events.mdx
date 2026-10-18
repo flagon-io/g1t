@@ -6,7 +6,7 @@ description: How a state change in one service reaches every other that cares, t
 import Aside from '../../../components/Aside.astro';
 import Diagram from '../../../components/Diagram.astro';
 
-Every state change in g1t is published as an event: a push, an issue
+Every state change in g1t is published as an event: a push, a work item
 opened, a pull request merged, a workflow finished, a workspace renamed.
 Services do not call each other to announce what happened. They publish,
 and the `events` service (`services/events`, Rust) delivers.
@@ -31,6 +31,12 @@ and ending, claims, hand-offs, dependencies, overlaps, and the merge
 queue's verdicts (`integration.failed`, `integration.passed`,
 `decision.recorded`). They reach webhooks and followers like any other
 ([Work and the merge queue](/architecture/work/#coordination)).
+
+A work item belongs to a workspace, not a repository, so its events
+(`work_item.opened`, `work_item.closed` and the rest) carry `workspace`,
+`number`, `item_id` and `repo_ids`, every repository linked to it, in
+`data`. Each of those repositories' webhooks gets them, and the
+workspace's webhooks get them all.
 
 Two fields in `data` matter everywhere:
 
@@ -72,16 +78,16 @@ which every subscriber gets.
 | Queue | Read by | Gets |
 | --- | --- | --- |
 | `g1t-events-work` | `work` | `git.push`, `branch.renamed`, `repo.created`, `repo.archived`, `repo.default_branch_changed`, `pull.merged`, `comment.created` |
-| `g1t-events-runner` | `runner` | Pull request changes, `checks.completed`, `queue.changed`, `comment.created`, issue changes, `repo.archived` |
-| `g1t-events-actions` | `actions` | `git.push`, `git.deleted`, `pull.*`, `issue.*`, `comment.*`, `release.*`, deployments, `workflow.completed`, `repo.archived` |
+| `g1t-events-runner` | `runner` | Pull request changes, `checks.completed`, `queue.changed`, `comment.created`, work item changes, `repo.archived` |
+| `g1t-events-actions` | `actions` | `git.push`, `git.deleted`, `pull.*`, `work_item.*`, `comment.*`, `release.*`, deployments, `workflow.completed`, `repo.archived` |
 | `g1t-events-webhooks` | `webhooks` | Everything |
 | `g1t-events-security` | `security` | `git.push`, pull request changes, `comment.created`, `repo.created`, `repo.visibility_changed` |
-| `g1t-events-search` | `search` | `git.push`, `repo.*`, `issue.*`, `pull.*`, `user.*`, `workspace.*` |
+| `g1t-events-search` | `search` | `git.push`, `repo.*`, `work_item.*`, `pull.*`, `user.*`, `workspace.*` |
 | `g1t-events-deployments` | `deployments` | Pushes, the pull request lifecycle, workspace deletion and restore, and deployment statuses (what each production deployment shipped) |
 | `g1t-events-projects` | `projects` | Repositories, packages and deployments |
 | `g1t-events-repos` | `repos` | `pull.merged`, `pull.closed`, `pull.reopened`, deletions and restores |
 | `g1t-events-packages` | `packages` | `git.push`, `repo.visibility_changed`, workspace and team changes |
-| `g1t-events-integrations` | `integrations` | `issue.closed`, `pull.opened` |
+| `g1t-events-integrations` | `integrations` | `work_item.closed`, `pull.opened` |
 | `g1t-events-billing` | `billing` | Lifecycle events only |
 | `g1t-events-docs` | `artifacts` | `git.push`, `pull.merged` |
 

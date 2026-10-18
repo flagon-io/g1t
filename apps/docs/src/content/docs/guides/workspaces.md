@@ -161,7 +161,7 @@ workspace.
    confirm, and choose **Change address** again.
 
 You land on the workspace's settings at its new address. Repositories,
-issues and the rest move with it within a few seconds.
+work items and the rest move with it within a few seconds.
 
 ### What changes
 
@@ -176,7 +176,7 @@ issues and the rest move with it within a few seconds.
 
 These stay the same: the display name, description and icon, members and
 roles, access tokens, secrets and variables, integrations, webhooks,
-issues and pull requests, and billing, plans and credit.
+work items and pull requests, and billing, plans and credit.
 
 ### What redirects, and for how long
 
@@ -267,7 +267,7 @@ and settings, and pushes to it wait a few minutes while it happens.
 
 Data residency covers the git data: commits, branches, tags and files,
 including pull requests' working copies, which are stored with their
-repository. Issues, pull requests, comments and settings are not affected.
+repository. Work items, pull requests, comments and settings are not affected.
 A repository [transferred](/guides/transferring-repositories/) to another
 workspace stays where it is stored.
 
@@ -637,7 +637,7 @@ The Projects page, `g1t.sh/<workspace>/-/projects`, is made for workspaces with 
   holds.
 - **Sort** by recently updated (its settings or its last push, whichever is
   later), recently pushed, most active, or name. Most active counts each
-  push, issue or pull request opened or closed, review, comment and
+  push, work item or pull request opened or closed, review, comment and
   deployment, and what happened a week ago counts half as much.
 - **List** or **grid**, 30 projects to a page.
 - The arrow keys (or <kbd>j</kbd> and <kbd>k</kbd>) move between projects,
@@ -708,6 +708,7 @@ unread on it:
 | App | Opens |
 | --- | --- |
 | **Home** | Where you're needed across the workspace, and what happened while you were away. See [Home](/guides/home/). |
+| **Work** | The workspace's work items, with its labels and milestones, at `g1t.sh/<workspace>/-/work`. See [work items](/guides/work-items/). |
 | **Chat** | Channels and messages. See [Chat](/guides/chat/). |
 | **Notifications** | Reviews, mentions and failures. See [notifications](/guides/notifications/). |
 | **Code** | Projects, pull requests and checks. Not shown to a member without Code access. |
@@ -762,7 +763,7 @@ on, a page that fails shows the error itself: its message and stack, the
 address, the time, the routes the page was drawn from, the site's build
 and your browser (and the desktop app's version, inside it). **Copy
 details** copies all of it as one report, ready to paste into a support
-request or an issue.
+request or a bug report.
 
 Signed in, errors from g1t's side come through in full too, where
 otherwise they read *Unexpected Server Error*. They are only ever about
@@ -874,10 +875,10 @@ them within reach of your thumb:
 | **The workspace's name** in the page's header | Switches workspace, or opens your profile or settings. |
 
 Inside a [project](/guides/projects/), its pages (**Overview**, **Code**,
-**Issues**, **Pull requests**, **Workflows**, **Deployments**,
+**Work**, **Pull requests**, **Workflows**, **Deployments**,
 **Insights** and, for the roles that see them, **Security** and
 **Settings**) run in a row under its name that scrolls sideways, with the
-page you are on kept in view, so issues and pull requests are one tap
+page you are on kept in view, so work items and pull requests are one tap
 away. Pages with more than one view, such as **Files**, **Commits** and
 **Branches**, show those as a second row of tabs.
 
@@ -902,8 +903,9 @@ It shows where you are needed in the workspace's code and what landed.
 Signed in, `g1t.sh` itself opens [Home](/guides/home/) in the workspace
 you are in.
 
-**Review N that need you** jumps to the list, and **New issue** opens a
-new issue in the project you pick.
+**Review N that need you** jumps to the list, and **New work item** opens
+a new [work item](/guides/work-items/) of the workspace, filed in the
+project you pick.
 
 | Tab | What it lists |
 | --- | --- |
@@ -964,15 +966,15 @@ Which of your members' own personal tokens reach the workspace is set under
 ## Profiles
 
 Every person has a profile at `g1t.sh/u/<username>`, apart from the
-workspaces at `g1t.sh/<workspace>`. Author names on issues and pull
+workspaces at `g1t.sh/<workspace>`. Author names on work items and pull
 requests link to it.
 
 **What it shows.** Your picture, name, username, pronouns, bio, location,
 website and when you joined; then your work in three tabs:
 
 - **Overview:** your contribution calendar, then pull requests merged,
-  open pull requests and issues opened, and your most recent activity.
-- **Pull requests** and **Issues:** everything you opened, and what g1t
+  open pull requests and work items opened, and your most recent activity.
+- **Pull requests** and **Work items:** everything you opened, and what g1t
   opened for you, newest first,
   with filters beside the list for state (open, closed, merged), type,
   repository and sort order. Each tab has its own address, such as `g1t.sh/u/<username>/pulls`;
@@ -982,7 +984,7 @@ website and when you joined; then your work in three tabs:
 **The contribution calendar.** The last year as a square a day, a column a
 week, shaded more strongly the more you did that day, with the total
 above it ("128 contributions in the last year"). A contribution is a
-commit you pushed, an issue or pull request you opened (or g1t opened for
+commit you pushed, a work item or pull request you opened (or g1t opened for
 you), and a review you gave. Days are counted in UTC. Hover over a square,
 or tap it, to see its day, its count and how many were commits ("5
 contributions on Oct 4, 2026, 3 of them commits"). On a narrow screen the
@@ -1020,7 +1022,8 @@ are filtered for whoever is looking:
 
 | On the profile | Shown to a visitor when |
 | --- | --- |
-| An issue or pull request, and its title | They can read its repository: it is public, or they are a member of its workspace |
+| A pull request, and its title | They can read its repository: it is public, or they are a member of its workspace |
+| A work item, and its title | They are a member of its workspace, or can read the repository it was filed in |
 | The counts, and the contribution calendar | Only what they could see is counted |
 | A workspace | They are a member of it too, or you made a public project in it, whose page shows that already |
 

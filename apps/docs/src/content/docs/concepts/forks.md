@@ -20,7 +20,7 @@ This page explains both. To fork a repository, see
 ## Forks
 
 A fork is an ordinary repository of the workspace it is in. It has its own
-access, settings, rules, issues, pull requests, workflows and project. What
+access, settings, rules, pull requests, workflows and project. What
 it shares with its parent is where it came from: it can be synced from the
 parent and can open pull requests into it.
 
@@ -28,7 +28,7 @@ parent and can open pull requests into it.
 
 Forking copies the parent's **code** (its default branch, or every branch
 and tag), and the fork's project starts with the **description** of the
-parent's project. Nothing else comes with it: no issues or
+parent's project. Nothing else comes with it: no work items or
 pull requests, settings, rulesets, secrets, variables, webhooks,
 environments, deployments or releases. The fork starts with its own
 defaults, and with two things off:
@@ -37,9 +37,10 @@ defaults, and with two things off:
   who manages its settings turns them on in **Settings → Actions**. Code you
   copied should not start running on your account, with your secrets and
   your minutes, just because you copied it.
-- **Issues.** A fork usually exists to change code and propose it back;
-  the conversation stays on the parent. Turn them on in the fork's settings
-  if it becomes a project of its own.
+- **Work items** filed in it. A fork usually exists to change code and
+  propose it back; the conversation stays on the parent's
+  [work items](/guides/work-items/). Turn them on in the
+  fork's settings if it becomes a project of its own.
 
 Deployments stay off until the fork's own project is set up.
 
@@ -108,7 +109,7 @@ they run. The fork's own settings do not change any of that.
 | Is archived | Stay forks; syncing from it still works. |
 
 A detached fork keeps its code, settings and pull requests, and its
-workflows and issues stay off unless someone had turned them on. It can no longer be
+workflows and work items stay off unless someone had turned them on. It can no longer be
 synced, and it cannot be attached again.
 
 ## Working copies for pull requests
@@ -205,7 +206,7 @@ pick it. Or from the API, send `branch` when creating the pull request:
 git push origin my-change
 curl -X POST https://api.g1t.sh/repos/<workspace>/<repo>/pulls \
   -H "Authorization: Bearer $G1T_TOKEN" -H "Content-Type: application/json" \
-  -d '{"branch": "my-change", "title": "My change", "issue": 12}'
+  -d '{"branch": "my-change", "title": "My change", "item": 12}'
 ```
 
 A branch can have one open pull request at a time. Pushing to the branch

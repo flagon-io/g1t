@@ -102,7 +102,7 @@ function main() {
   if (args[0] === "session" && args[1] === "heartbeat" && args.includes("--json")) {
     process.stdout.write(JSON.stringify({ id: process.env.G1T_SESSION, state: "active", title: process.env.FAKE_G1T_TITLE || null }));
   }
-  if (args[0] === "work" && args[1] === "context") process.stdout.write(`#${args[2]} The issue's title\nDefinition of done: it works.\n`);
+  if (args[0] === "work" && args[1] === "view") process.stdout.write(`#${args[2]} The work item's title\nDefinition of done: it works.\n`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

@@ -11,7 +11,7 @@ import Card from '../../components/Card.astro';
 import LinkCard from '../../components/LinkCard.astro';
 import Status from '../../components/Status.astro';
 
-**Code** holds your repositories, issues and pull requests, with required
+**Code** holds your repositories, work items and pull requests, with required
 checks, the merge queue and Actions. **Deployments** puts every pull
 request live on a preview and ships production on merge.
 
@@ -20,10 +20,10 @@ free on every plan. **Home** shows where you're needed and what happened
 while you were away, and **Artifacts** holds the docs you write together.
 
 **Your coding agents** work here as you. Claude Code, Codex, Cursor,
-OpenCode or any MCP client connects once, then picks up issues, opens pull
+OpenCode or any MCP client connects once, then picks up work items, opens pull
 requests, waits on your checks and records how it made each change. g1t
 runs no agents of its own: the work runs in your harness, on your account.
-With an Anthropic key in the workspace, assigning an issue to `g1t` starts
+With an Anthropic key in the workspace, assigning a work item to `g1t` starts
 a session on that account for you.
 
 g1t is MIT-licensed, and its source is at
@@ -75,7 +75,7 @@ stands:
 | Feature | What it does | Status |
 | --- | --- | --- |
 | [Repositories](/guides/managing-repositories/) and [git](/guides/git/) | Public and private repositories over HTTPS. Pushing to a repository that does not exist creates it, private. | <Status is="live" /> |
-| [Issues and pull requests](/guides/pull-requests/) | Issues, pull requests, line comments, reviews, merge methods and auto-merge. | <Status is="live" /> |
+| [Work items](/guides/work-items/) and [pull requests](/guides/pull-requests/) | Work items for the whole workspace, linked to the repositories they land in; pull requests, line comments, reviews, merge methods and auto-merge. | <Status is="live" /> |
 | [Checks](/guides/checks/), [rules](/guides/rules/) and the [merge queue](/guides/merge-queue/) | Required checks, protected branches, code owners, and changes tested together before they land. | <Status is="live" /> |
 | [Workflows](/guides/actions/) | Workflows from `.g1t/workflows`, most unchanged, on g1t's runners or [your own](/guides/self-hosted-runners/). | <Status is="live" /> |
 | [Forks](/guides/forking-repositories/) | Fork a repository into your workspace, keep it in sync, and propose changes back. | <Status is="live" /> |
@@ -84,7 +84,7 @@ stands:
 | [Deployments](/guides/deployments/) | A live preview of every pull request on g1t.page, production on merge, and custom domains. | <Status is="live" /> |
 | [Docker deployments](/guides/deployments/#docker-deployments) | Any app with a Dockerfile, or a Node.js, Python, Go, Ruby or PHP server, runs as a container that sleeps when no one visits. | <Status is="live" /> |
 | [Observability](/guides/observability/) | Requests, logs, traces, metrics and grouped errors, by deployment: from apps on g1t.page with nothing to set up, and from anywhere else over OpenTelemetry. | <Status is="live" /> |
-| [GitHub](/guides/github/) | Import repositories with every branch and tag, and their issues. | <Status is="live" /> |
+| [GitHub](/guides/github/) | Import repositories with every branch and tag, and their issues as work items. | <Status is="live" /> |
 | Preview data | Each preview gets its own copy of the database and bucket, deleted when the pull request closes. | <Status is="coming" /> |
 | Rollback and always on | One click back to any deploy, and container apps kept warm. | <Status is="coming" /> |
 | Git over SSH | `git@g1t.sh` remotes. Use HTTPS until then. | <Status is="coming" /> |
@@ -94,11 +94,11 @@ stands:
 | Feature | What it does | Status |
 | --- | --- | --- |
 | [Connect an AI client](/guides/bring-your-own-agent/) | Coding agents and MCP chat apps sign in and work on g1t as you, with the access you give them. | <Status is="live" /> |
-| [The Claude Code plugin](/guides/claude-code-plugin/) | Records every Claude Code session in a g1t repository, gives Claude the issue's context, and adds g1t's MCP server, skills and commands. | <Status is="live" /> |
-| [The g1t CLI](/guides/cli/) | Issues, pull requests, checks, runs, workflows, secrets and logs from a terminal, a script or an agent's shell. | <Status is="live" /> |
-| [Sessions and claims](/guides/sessions/) | Who is working on what, right now: each agent's session, the issue it claimed, and the files it shares with others. | <Status is="live" /> |
-| [Assign g1t](/guides/sessions/#assign-g1t-or-ask-it-in-the-thread) | Assign an issue to `g1t`, or mention `@g1t` in a thread, to start a session on the workspace's own Anthropic account. | <Status is="live" /> |
-| [Why-blame](/guides/why-blame/) | Any line traced to its commit, pull request, issue, and the agent's own account of why it changed. | <Status is="live" /> |
+| [The Claude Code plugin](/guides/claude-code-plugin/) | Records every Claude Code session in a g1t repository, gives Claude the work item's context, and adds g1t's MCP server, skills and commands. | <Status is="live" /> |
+| [The g1t CLI](/guides/cli/) | Work items, pull requests, checks, runs, workflows, secrets and logs from a terminal, a script or an agent's shell. | <Status is="live" /> |
+| [Sessions and claims](/guides/sessions/) | Who is working on what, right now: each agent's session, the work item it claimed, and the files it shares with others. | <Status is="live" /> |
+| [Assign g1t](/guides/sessions/#assign-g1t-or-ask-it-in-the-thread) | Assign a work item to `g1t`, or mention `@g1t` in a thread, to start a session on the workspace's own Anthropic account. | <Status is="live" /> |
+| [Why-blame](/guides/why-blame/) | Any line traced to its commit, pull request, work item, and the agent's own account of why it changed. | <Status is="live" /> |
 
 ## The workspace
 
@@ -179,7 +179,7 @@ a phone it is a bar along the bottom.
 	/>
 	<LinkCard
 		title="Labels and milestones"
-		description="Say what issues and pull requests are with colored labels, and gather them under milestones with due dates."
+		description="Say what work items and pull requests are with the workspace's colored labels, and gather them under milestones with due dates."
 		href="/guides/labels/"
 	/>
 	<LinkCard

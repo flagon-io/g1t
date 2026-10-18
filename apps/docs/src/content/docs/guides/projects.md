@@ -10,7 +10,7 @@ and everything about running it belongs to the project:
 | Belongs to the project | Belongs to its repository |
 | --- | --- |
 | [Deployments](/guides/deployments/): production and previews | Branches and commits |
-| Its address on g1t.page | Issues and pull requests |
+| Its address on g1t.page | Work items and pull requests |
 | [Secrets and variables](/guides/secrets-and-variables/) | Review, merge rules and the [merge queue](/guides/merge-queue/) |
 | Its name, description and root directory | Webhooks |
 
@@ -26,7 +26,7 @@ first time their workspace was opened.
 
 A workspace's page, `g1t.sh/<workspace>`, shows your pinned projects and
 its most active ones, each with where it is deployed, its latest build, and
-its open issues and pull requests. **All projects** in the sidebar lists
+its open work items and pull requests. **All projects** in the sidebar lists
 every one, with search, filters and sorting; see
 [the Projects page](/guides/workspaces/#the-projects-page). The sidebar keeps
 your [pinned and recent projects](/guides/workspaces/#pinned-and-recent-projects).
@@ -37,7 +37,8 @@ your [pinned and recent projects](/guides/workspaces/#pinned-and-recent-projects
 | --- | --- | --- |
 | **Overview** | `g1t.sh/<workspace>/<project>` | What it is and its links; production wherever it is deployed, or for a library its packages; what is in progress, active branches, the latest commits, and its About. See [the overview](#the-overview). |
 | **Code** | `…/code` | The repository's files, commits and branches. |
-| **Issues**, **Pull requests**, **Merge queue** | `…/issues` and so on | As they always were. |
+| **Work** | `g1t.sh/<workspace>/-/work?repo=<name>` | The workspace's [work items](/guides/work-items/) linked to the repository. |
+| **Pull requests**, **Merge queue** | `…/pulls` and so on | As they always were. |
 | **Actions** | `…/actions` | [GitHub Actions workflows](/guides/actions/). |
 | **Deployments** | `…/deployments` | What is up now and every build. |
 | **Settings** | `…/settings` | See below. |
@@ -71,12 +72,12 @@ rollback** is marked **Soon** and disabled; it does not change production.
 | **Facts** | Under production: its latest release (or, where the card does not already say it, production's state), how often checks pass, and either how many changes pass on the first try and what is open, or, for people with a role when [Observability](/guides/observability/) has data, requests and the error rate over the last day with how many errors are open. |
 | **Code** | One line to the repository: its name, default branch and when it was last pushed to, linking to **Code**. |
 | **Needs you** | For someone signed in: what is waiting on them, such as a failed production build or a pull request to merge or review. |
-| **Live now** | The people and coding agents working on it: each issue with its [claims and sessions](/guides/sessions/), the harness each came from and who it acts for, and sessions on no issue yet. **Work** has everything. With nobody working, people with a role see how to [connect a coding agent](/guides/bring-your-own-agent/). |
+| **Live now** | The people and coding agents working on it: each work item with its [claims and sessions](/guides/sessions/), the harness each came from and who it acts for, and sessions on no work item yet. **Sessions** has everything. With nobody working, people with a role see how to [connect a coding agent](/guides/bring-your-own-agent/). |
 | **Previews** | For people with a role: the pull requests' previews that are up. |
 | **Deployments** | Each environment's latest deployment and when. |
 | **Observability** | For people with a role, when there is data: the last day's requests, an hour a bar, latency, and the newest open errors. |
 | **About** | Its description, its [links](#links), what it is, and its latest release (its newest tag). People who can change its settings edit the description and links from here. |
-| **Health** | For people with a role, its recent builds; and its open issues by age. |
+| **Health** | For people with a role, its recent builds; and its open work items by age. |
 
 ### Production's picture
 
@@ -270,7 +271,7 @@ Someone without the role does not see the tab.
      history).
    - **Import from GitHub**: import repositories you can reach on GitHub,
      private ones too, with every branch and tag and, if you like, their
-     issues. See [GitHub](/guides/github/).
+     issues, as work items. See [GitHub](/guides/github/).
 3. Give it a name and say who can see it, then choose **Create project**.
 
 Pushing a repository that does not exist yet makes one, and with it a

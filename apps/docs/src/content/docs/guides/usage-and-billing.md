@@ -3,7 +3,7 @@ title: Usage and billing
 description: What is free on g1t, what the g1t plan costs and includes, how compute is paid for, the limits that keep spend in check, and enterprise billing.
 ---
 
-The forge is free: repositories, git, issues, pull requests and review cost
+The forge is free: repositories, git, work items, pull requests and review cost
 nothing, for public and private work. What costs money is compute, the
 things g1t runs for you: the sandboxes your workflows and checks run in,
 deployed apps, and, on the plan, storage and git traffic past the free
@@ -25,7 +25,7 @@ the whole forge:
 
 - Channels, direct messages, threads, mentions and live delivery, with no
   limit on history. People chatting is never charged.
-- Public and private repositories, git, issues, pull requests and reviews.
+- Public and private repositories, git, work items, pull requests and reviews.
 - Protected branches, code owners and secret push protection.
 - [Security scans](#storage-search-embeddings-and-scans) of history and
   dependencies, which g1t pays for on a free workspace.
@@ -283,7 +283,7 @@ pool**.
 | [Git operations](#git-operations) | Past the free 50,000 a month, on the plan only |
 | [Search embeddings](#storage-search-embeddings-and-scans) | For private text, on the plan only |
 | [Security scans](#storage-search-embeddings-and-scans) | On the plan only |
-| Repositories, issues, pull requests, review, search, the API and MCP | No |
+| Repositories, work items, pull requests, review, search, the API and MCP | No |
 
 The charge goes to the workspace that owns the repository, whoever
 started the work.
@@ -456,7 +456,7 @@ toward the limit and never use the trial.
 | | What it costs g1t | What is counted |
 | --- | --- | --- |
 | Private repository storage | $0.50 a GB-month (Cloudflare Artifacts) | On the plan, each day, what the workspace's private repositories hold past the free 1 GB. A month's GB-months are those days added up, divided by the days in the month. |
-| Search embeddings | $0.067 per million tokens (Workers AI) | The text of private repositories, issues and pull requests put in the search index. Public text and searches are not charged. |
+| Search embeddings | $0.067 per million tokens (Workers AI) | The text of private repositories, work items and pull requests put in the search index. Public text and searches are not charged. |
 | Security scans | $0.02 per million CPU milliseconds and $1.00 per million rows written (Workers and D1) | The CPU each history scan and dependency check takes and the rows it writes. |
 
 ### Actions cache

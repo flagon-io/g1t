@@ -104,7 +104,7 @@ you merge it." When others in its tier are waiting too, it adds that this
 one has waited longest. Beside its button are what is at stake, how long
 it has waited, and who is on it.
 
-Its title links to what it picked: the pull request, issue or build. The
+Its title links to what it picked: the pull request, work item or build. The
 button opens the same place. For a pull request (one ready to
 merge, a review asked of you, or yours that is stuck) it says **Open pull
 request**; you merge or review there. For anything else it names the
@@ -185,8 +185,8 @@ owner.
 
 Under What changed, **People** shows what people did in the span, one line
 per kind of thing with its count, and each line opens the place that lists
-them: a project's Activity tab for pushes, its pull requests or issues,
-Artifacts, Chat. Beside the heading are the faces of the five most active,
+them: a project's Activity tab for pushes, its pull requests, **Work** for
+work items, Artifacts, Chat. Beside the heading are the faces of the five most active,
 and how many more there were.
 
 | Line | What counts | From |
@@ -194,7 +194,7 @@ and how many more there were.
 | *3 people pushed 41 commits to 4 projects* | Every push to a branch of one of the workspace's repositories (`git.push`; tags are not pushes). The commits are the ones each push brought to its branch, along the branch's first-parent line from where it is now back to where it was, at most 50, and one for a new branch. A push recorded before commits were counted counts as one commit. | Events |
 | *opened 2 pull requests, merged 5, closed 1 without merging* | `pull.opened`, `pull.merged`, `pull.closed` | Events |
 | *reviewed 3 pull requests* | A review is a comment with a verdict | Events |
-| *opened 4 issues, closed 6* | `issue.opened`, `issue.closed` | Events |
+| *opened 4 work items, closed 6* | `work_item.opened`, `work_item.closed` | Events |
 | *left 9 comments* | `comment.created` without a verdict | Events |
 | *2 deploys went out, 1 failed* | `deployment.succeeded` and `deployment.failed`, by who set the build off | Events |
 | *published 1 release*, *published 2 package versions* | `release.published`, `package.published` | Events |
@@ -321,7 +321,7 @@ now.
 | Home updates when | From |
 | --- | --- |
 | Commits are pushed to a project's default branch, or a tag is pushed | The workspace's projects (the first 25) |
-| A pull request is opened, reviewed, merged or closed, or an issue or comment changes | The same projects |
+| A pull request is opened, reviewed, merged or closed, a comment changes, or a work item linked to one of them changes | The same projects |
 | A workflow run or a job in it starts or finishes, a build or deployment moves, or a release or package is published | The same projects |
 | A [session](/guides/sessions/) starts or ends | The same projects |
 | Something comes to need you, or you deal with it elsewhere | Your notifications |
@@ -394,8 +394,8 @@ Home's counts come from two methods other services can call too.
 viewer may read each repository) returns, per repository that had any
 event: `pushes` (`count`, `commits`, `branches`, `by` with each actor's
 pushes and commits, and `default_branch` with the same for pushes straight
-to it and `last_at`), `pulls` (`opened`, `merged`, `closed`), `issues`
-(`opened`, `closed`), `reviews`, `comments`, `deployments` (`succeeded`,
+to it and `last_at`), `pulls` (`opened`, `merged`, `closed`), `work_items`
+(`opened`, `closed`, for the work items linked to it), `reviews`, `comments`, `deployments` (`succeeded`,
 `failed`, `production`), `releases` and `packages` (newest first, at most
 50 each); and for the workspace named, `folios` (`created`, `edited` with
 each folio's authors, `edited_count`). Every count by actor is a list of

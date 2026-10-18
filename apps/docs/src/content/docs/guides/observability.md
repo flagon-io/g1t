@@ -34,7 +34,7 @@ the API it called elsewhere are one trace.
 | **Requests** | Every request, newest first: status, method and address, duration, CPU time, region and deployment. Narrow by status, failed only, a route, or search |
 | **Logs** | Every line, newest first. Search words, a level or an attribute; follow it live |
 | **Traces** | Each trace, with the services it touched, its spans and errors. A trace opens as a waterfall, with each span's attributes and events, and the logs written under it |
-| **Errors** | Exceptions grouped by what they are and where they were thrown, with how often and since which deployment. Each can become an issue |
+| **Errors** | Exceptions grouped by what they are and where they were thrown, with how often and since which deployment. Each can become a work item |
 | **Metrics** | Every metric sent over OpenTelemetry, over time, averaged, summed or as a percentile, and grouped by service or any attribute |
 | **Settings** | Ingest tokens, exports, retention, and what the project used this month |
 
@@ -64,7 +64,7 @@ requests in the period, newest first, with its requests, error rate and
 before it shows in red. Choosing a deployment narrows every page to it.
 Each error group also says which deployment it was first seen on.
 
-### Errors become issues
+### Errors become work items
 
 An error is grouped with others like it: the same name, the same message
 once numbers, ids and quoted values are taken out, and the same place in
@@ -72,7 +72,7 @@ the code it was thrown from (its file and function, not its line, which
 moves with every change). A thousand `TypeError: Cannot read 'name' of
 user 41`, `… of user 977` are one group with a count.
 
-**Make an issue** opens an issue with the error, its stack, how often it
+**Make a work item** opens a work item with the error, its stack, how often it
 happened, the deployment it began with, and links to its latest request
 and trace. An error
 marked **Resolve** opens again if it happens again; **Ignore** keeps it
@@ -259,7 +259,7 @@ address; see [rate limits](/reference/rate-limits/).
 | --- | --- |
 | See the pages | People with a role on the project's repository, even when its code is public: logs and addresses can hold what only the people running it should read |
 | Resolve, ignore or reopen errors | Triage and up |
-| Make an issue of an error | Anyone who can open issues |
+| Make a work item of an error | Anyone who can open work items in the project's repository |
 | Tokens, exports, retention and the g1t.page switch | Admin |
 
 ## The API and MCP

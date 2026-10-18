@@ -211,7 +211,7 @@ from the team.
 ## Mentions
 
 Write `@<workspace>/<team>`, such as `@acme/backend`, in a comment, or in
-the description of an issue or pull request when you open it, and the
+the description of a work item or pull request when you open it, and the
 people of that team and its child teams are told in their
 [notifications](/guides/notifications/), with the reason `team_mention`:
 
@@ -226,7 +226,7 @@ Comment boxes suggest teams as you type `@acme/`.
 | Who is told | Everyone in the team and its child teams, but not whoever wrote it. |
 | When | The team's **Notify the team when it is mentioned** setting is on (the default), and the writer can see the team: a member of its workspace, and for a secret team, in it or an owner. Otherwise nobody is told. |
 | Not a mention | `@acme/backend` in code, in a quoted line (`>`), inside an address or a path such as `ops@acme/backend` or `@acme/backend/src`, or in a package name such as `@acme/backend@1`. |
-| Subscribes them | Yes. Each person told is subscribed to the issue or pull request, as with a mention by name. |
+| Subscribes them | Yes. Each person told is subscribed to the work item or pull request, as with a mention by name. |
 
 Someone mentioned by name and through a team is told once, as `mention`.
 People only see what is about repositories they can read.

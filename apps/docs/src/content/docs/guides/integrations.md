@@ -34,13 +34,13 @@ the other side exists.
 Both pages are the same directory:
 
 - **Categories** down the side (along the top on a phone): Code & CI,
-  Issues & projects, Chat & meetings, Calendar & email, Docs & knowledge,
+  Work & projects, Chat & meetings, Calendar & email, Docs & knowledge,
   Monitoring & incidents, Cloud & deploy, AI & agents, Data & analytics, CRM & support,
   Design, Security & identity, and Files & storage. Each shows how many
   integrations it has. A link can open on one, with `?category=code` and
   so on.
 - **Search** finds an integration by name, by what it does ("in a meeting",
-  "opens issues"), or by a tag, across every category.
+  "opens work items"), or by a tag, across every category.
 - **Connected** comes first: what is set up here, with a line about each
   (the account, how many connections) and **Needs attention** when
   something is wrong, such as a key that stopped working or a GitHub
@@ -49,7 +49,7 @@ Both pages are the same directory:
 - **Soon** is being built. Each says what it will do, and **Ask for this**
   tells g1t you want it (below).
 
-The tags on a card say what an integration lets g1t do: **Opens issues**,
+The tags on a card say what an integration lets g1t do: **Opens work items**,
 **Writes back** (the other system hears when work lands), **Imports
 repositories**, **Sets your status**, and so on.
 
@@ -58,7 +58,7 @@ repositories**, **Sets your status**, and so on.
 | Category | Workspace | Personal |
 | --- | --- | --- |
 | Code & CI | [GitHub](/guides/github/) import, [webhooks](/guides/webhooks/) | [Signing in with GitHub](/guides/github/#link-and-unlink-github); [MCP clients](/guides/authentication/#signing-in-with-oauth): your [coding agent](/guides/bring-your-own-agent/), connected to g1t as you; [Claude Code plugin](/guides/claude-code-plugin/) |
-| Issues & projects | [Jira and Linear](#trackers) | |
+| Work & projects | [Jira and Linear](#trackers) | |
 | Monitoring & incidents | [Sentry, Datadog, and any system that sends a webhook](#alerts) | |
 
 Alerts and trackers each have a setup page under the directory:
@@ -92,19 +92,19 @@ what is built next.
 
 ## Alerts
 
-An alert source opens issues in one repository. Each problem it reports is
-one issue:
+An alert source opens [work items](/guides/work-items/) filed in one
+repository, their origin. Each problem it reports is one work item:
 
-- **The first alert** opens an issue labelled `bug` (or the label you set)
+- **The first alert** opens a work item labelled `bug` (or the label you set)
   and the provider's name, with what the provider said about the problem.
-- **The same problem again** updates that issue instead of opening another.
-  The issue says so when the count passes 10, 100, 1,000 and so on.
-- **The same problem after its issue was closed** reopens it, with a comment
+- **The same problem again** updates that work item instead of opening another.
+  The work item says so when the count passes 10, 100, 1,000 and so on.
+- **The same problem after its work item was closed** reopens it, with a comment
   linking the new occurrence.
-- **A recovery** (Datadog) is noted on the issue.
+- **A recovery** (Datadog) is noted on the work item.
 
 Text in an alert can include what your users typed, such as an error
-message built from a request. Issues opened from alerts say so.
+message built from a request. Work items opened from alerts say so.
 
 Each alert connection shows its last five deliveries: what arrived, and
 whether g1t opened, updated, reopened, ignored or refused it.
@@ -112,7 +112,7 @@ whether g1t opened, updated, reopened, ignored or refused it.
 ### Sentry
 
 1. On the **Integrations** page, choose **Sentry**. Give your organization's
-   slug and the repository issues go to, then **Connect**.
+   slug and the repository its work items are filed in, then **Connect**.
 2. In Sentry, open **Settings → Developer Settings → Custom Integrations**
    and create an **internal integration**:
    - **Webhook URL**: the address g1t shows on the connection,
@@ -124,12 +124,12 @@ whether g1t opened, updated, reopened, ignored or refused it.
 
 Then:
 
-- New Sentry issues open g1t issues. So does any alert rule whose action
+- New Sentry issues open g1t work items. So does any alert rule whose action
   sends a notification to the integration.
 - With the token, g1t adds the latest event's stack trace, in-app frames
   first, so whoever picks it up starts at the failing line.
 - When the fix merges, g1t resolves the Sentry issue and comments with the
-  pull request. If Sentry sees it again, the g1t issue reopens.
+  pull request. If Sentry sees it again, the g1t work item reopens.
 
 Requests without a valid `Sentry-Hook-Signature` are refused.
 
@@ -155,9 +155,9 @@ Requests without a valid `Sentry-Hook-Signature` are refused.
      ```
 
 3. Mention `@webhook-g1t` in the message of any monitor that should open
-   issues.
+   work items.
 
-A monitor that triggers opens an issue; `Recovered` is noted on it.
+A monitor that triggers opens a work item; `Recovered` is noted on it.
 
 ### Any other system
 
@@ -183,7 +183,7 @@ g1t reads these fields, taking the first name present:
 | Field | Names | Notes |
 | --- | --- | --- |
 | Title | `title`, `event_title`, `summary`, `name` | Required. |
-| Id | `id`, `alert_id`, `aggregate`, `incident_key`, `dedup_key` | Alerts with the same id are one issue. The title if missing. |
+| Id | `id`, `alert_id`, `aggregate`, `incident_key`, `dedup_key` | Alerts with the same id are one work item. The title if missing. |
 | Description | `body`, `message`, `event_msg`, `text`, `description` | Markdown. |
 | Link | `url`, `link`, `html_url` | |
 | State | `status`, `transition`, `alert_transition`, `state` | `recovered`, `resolved`, `ok` or `closed` means it stopped. |
@@ -213,27 +213,28 @@ curl "https://api.g1t.sh/repos/acme/web/context?reference=TECH-1234" \
   -H "Authorization: Bearer $G1T_TOKEN"
 ```
 
-### Import a ticket as an issue
+### Import a ticket as a work item
 
-On a repository's **New issue** page, give a key or paste an address under
-**Bring one in**. g1t opens an issue with the ticket's title and
-description, linked to it. Importing the same ticket again opens the issue already made.
+On the **New work item** page under **Work**, give a key or paste an
+address under **Bring one in**. g1t opens a work item in the workspace
+with the ticket's title and description, linked to it. Importing the same
+ticket again opens the work item already made.
 
 From the API or MCP:
 
 ```sh
-curl -X POST https://api.g1t.sh/repos/acme/web/issues/import \
+curl -X POST https://api.g1t.sh/workspaces/acme/work/import \
   -H "Authorization: Bearer $G1T_TOKEN" -H "Content-Type: application/json" \
   -d '{"reference": "TECH-1234"}'
 ```
 
-An issue tied to something outside g1t shows it under **From outside g1t**,
+A work item tied to something outside g1t shows it under **From outside g1t**,
 with a link to the original.
 
 ### Tickets hear back
 
 Unless you turn it off, g1t comments on the ticket when a pull request
-opens for its issue, and again when the issue closes as done, with a link
+opens for its work item, and again when the work item closes as done, with a link
 to what merged. For Sentry, closing as done resolves the Sentry issue.
 
 ### Jira
@@ -268,7 +269,7 @@ token (a workspace token cannot):
 | `workspace` `test_integration` | `POST /workspaces/{workspace}/integrations/{id}/test` |
 | `workspace` `disconnect_integration` | `DELETE /workspaces/{workspace}/integrations/{id}` |
 | `search` `ticket` | `GET /repos/{owner}/{name}/context?reference=` |
-| `issue` `import` | `POST /repos/{owner}/{name}/issues/import` |
+| `work_item` `import` | `POST /workspaces/{workspace}/work/import` |
 
 ```sh
 curl -X POST https://api.g1t.sh/workspaces/acme/integrations \

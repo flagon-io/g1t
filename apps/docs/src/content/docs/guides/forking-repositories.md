@@ -10,7 +10,7 @@ is untouched until you open a pull request into it and someone there merges
 it.
 
 Fork a repository to contribute to one you cannot push to, or to start your
-own line of work from someone else's code. To work on an issue in a
+own line of work from someone else's code. To work on a work item in a
 repository you can already write to, you do not need a fork: open a pull
 request from a branch, or let it [make a working copy](/concepts/forks/#working-copies-for-pull-requests).
 
@@ -69,13 +69,13 @@ action.
 
 | Copied | Not copied |
 | --- | --- |
-| The default branch, or every branch and tag | Issues, pull requests, comments and labels |
+| The default branch, or every branch and tag | Work items, pull requests and comments |
 | Its project's description, to the fork's project | Settings, rulesets and branch protection |
 | | Secrets, variables and webhooks |
 | | Environments, projects, deployments and custom domains |
 | | Releases, packages and stars |
 
-Issues are off in a new fork, and so are its workflows: a fork runs none of
+Filing work items is off in a new fork, and so are its workflows: a fork runs none of
 the workflows it copied until someone turns them on (see
 [Turn on workflows](#turn-on-workflows)). Deployments stay off until you set
 up the fork's own project.
@@ -227,5 +227,5 @@ It needs the Admin role on the fork.
 
 A detached fork keeps its code, settings and the pull requests it already
 opened into the parent, which stay open there. It can no longer be synced or
-open new pull requests into the parent, and its workflows and issues stay
+open new pull requests into the parent, and its workflows and work items stay
 off unless someone had turned them on. It cannot be attached again.

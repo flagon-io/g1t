@@ -1,6 +1,6 @@
 ---
 title: AI providers
-description: Choose the models g1t works with in your workspace. Use a frontier lab or a model platform, or a model you host yourself, on your own keys. Ask, @g1t in Chat and sessions on issues answer with them.
+description: Choose the models g1t works with in your workspace. Use a frontier lab or a model platform, or a model you host yourself, on your own keys. Ask, @g1t in Chat and sessions on work items answer with them.
 ---
 
 **AI**, at `g1t.sh/<workspace>/-/ai`, is where a workspace chooses the
@@ -17,7 +17,7 @@ What uses it:
 
 - **[Ask g1t](/guides/ask/)**, in the top bar, and **@g1t in Chat**
   answer with the provider and model chosen under **Ask g1t**.
-- **Sessions on issues** start on the workspace's Anthropic provider. See
+- **Sessions on work items** start on the workspace's Anthropic provider. See
   [Start a session on your Anthropic account](/guides/sessions/#start-a-session-on-your-anthropic-account).
 
 Only workspace owners add, test, change and remove providers, and choose
@@ -88,7 +88,7 @@ not include it.
 
 ### Anthropic Console workspace
 
-Sessions on issues run on the Anthropic provider's account, and the
+Sessions on work items run on the Anthropic provider's account, and the
 Anthropic Console shows each one in the Console workspace its key belongs
 to. A session does not say which workspace that is, so if the key is not
 in the account's Default workspace, tell g1t: paste any Console address
