@@ -1,0 +1,14 @@
+name: Triage
+on:
+  work_item:
+    types: [opened, labeled, landed]
+  work_item_comment:
+    types: [created]
+permissions:
+  work: write
+jobs:
+  triage:
+    if: ${{ contains(github.event.work_item.labels.*.name, 'bug') && !github.event.work_item.pull_request }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "${{ github.event.work_item.html_url }} in ${{ github.event.work_item.workspace }}"

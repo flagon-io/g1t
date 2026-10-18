@@ -1179,7 +1179,7 @@ mod tests {
                         "head": { "ref": "feature/x" },
                         "labels": [{ "name": "bug" }, { "name": "Enhancement" }]
                     },
-                    "issues": [
+                    "items": [
                         { "labels": [{ "name": "a" }, { "name": "b" }] },
                         { "labels": [{ "name": "c" }] }
                     ],
@@ -1291,7 +1291,7 @@ mod tests {
     #[test]
     fn nested_object_filters_flatten() {
         assert_eq!(
-            ev("github.event.issues.*.labels.*.name"),
+            ev("github.event.items.*.labels.*.name"),
             json!(["a", "b", "c"])
         );
         assert_eq!(

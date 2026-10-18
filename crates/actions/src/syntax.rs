@@ -1,8 +1,11 @@
 //! GitHub's workflow syntax: the keys each mapping in a workflow may have,
 //! as GitHub's own schema lists them (`schema/workflow-v1.0.json`, from
 //! actions/languageservices; the tests below check these lists against
-//! it). [`crate::workflow::parse`] refuses any other key, as GitHub does,
-//! except `g1t`, g1t's own settings, on the workflow, a job and a step.
+//! it), with g1t's own beside them: the `work_item` and
+//! `work_item_comment` events ([`OWN_EVENTS`]) and the `work` permission
+//! ([`OWN_PERMISSIONS`]). [`crate::workflow::parse`] refuses any other
+//! key, as GitHub does, except `g1t`, g1t's own settings, on the workflow,
+//! a job and a step.
 
 /// g1t's own key, allowed on the workflow, each job and each step.
 pub const EXTENSION: &str = "g1t";
@@ -74,7 +77,7 @@ pub const DEFAULTS: &[&str] = &["run"];
 /// `defaults.run` (`workflow-defaults-run`, `job-defaults-run`).
 pub const DEFAULTS_RUN: &[&str] = &["shell", "working-directory"];
 
-/// `permissions` as a mapping (`permissions-mapping`).
+/// `permissions` as a mapping (`permissions-mapping`), and g1t's own.
 pub const PERMISSIONS: &[&str] = &[
     "actions",
     "artifact-metadata",
@@ -96,7 +99,11 @@ pub const PERMISSIONS: &[&str] = &[
     "security-events",
     "statuses",
     "vulnerability-alerts",
+    "work",
 ];
+
+/// Permissions g1t has that GitHub does not: `work`, for work items.
+pub const OWN_PERMISSIONS: &[&str] = &["work"];
 
 /// Each entry of `on.schedule` (`cron-mapping`).
 pub const CRON: &[&str] = &["cron", "timezone"];
@@ -133,7 +140,8 @@ pub enum EventSpec {
 const TYPES: EventSpec = EventSpec::Filters(&["types"]);
 const PULL_REQUEST: EventSpec = EventSpec::Filters(&["types", "branches", "branches-ignore", "paths", "paths-ignore"]);
 
-/// Every event GitHub has, and what each takes (`on-mapping-strict`).
+/// Every event GitHub has, and what each takes (`on-mapping-strict`),
+/// and g1t's own.
 pub const EVENTS: &[(&str, EventSpec)] = &[
     ("branch_protection_rule", TYPES),
     ("check_run", TYPES),
@@ -172,7 +180,13 @@ pub const EVENTS: &[(&str, EventSpec)] = &[
     ("workflow_call", EventSpec::Filters(WORKFLOW_CALL)),
     ("workflow_dispatch", EventSpec::Filters(WORKFLOW_DISPATCH)),
     ("workflow_run", EventSpec::Filters(&["types", "branches", "branches-ignore", "workflows"])),
+    ("work_item", TYPES),
+    ("work_item_comment", TYPES),
 ];
+
+/// Events g1t has that GitHub does not: a work item changed, and a comment
+/// on a work item or a pull request.
+pub const OWN_EVENTS: &[&str] = &["work_item", "work_item_comment"];
 
 /// What `event` takes, if GitHub has it.
 pub fn event(event: &str) -> Option<EventSpec> {
@@ -212,6 +226,11 @@ mod tests {
         list.iter().map(|key| (*key).to_owned()).collect()
     }
 
+    /// GitHub's part of a list: without g1t's own.
+    fn upstream(list: &[&str], own: &[&str]) -> BTreeSet<String> {
+        list.iter().filter(|key| !own.contains(key)).map(|key| (*key).to_owned()).collect()
+    }
+
     #[test]
     fn the_lists_are_githubs() {
         let schema = schema();
@@ -241,7 +260,10 @@ mod tests {
             (CALL_OUTPUT, "workflow-call-output-definition"),
             (CALL_SECRET, "workflow-call-secret-mapping-definition"),
         ] {
-            assert_eq!(set(list), keys(&schema, name), "{name}");
+            assert_eq!(upstream(list, OWN_PERMISSIONS), keys(&schema, name), "{name}");
+        }
+        for own in OWN_PERMISSIONS {
+            assert!(PERMISSIONS.contains(own) && !keys(&schema, "permissions-mapping").contains(*own), "{own}");
         }
         // The background steps' own keys.
         let mut background = BTreeSet::from(["background".to_owned()]);
@@ -261,7 +283,12 @@ mod tests {
         let schema = schema();
         let definitions = &schema["definitions"];
         let events = definitions["on-mapping-strict"]["mapping"]["properties"].as_object().unwrap();
-        assert_eq!(events.keys().cloned().collect::<BTreeSet<_>>(), EVENTS.iter().map(|(name, _)| (*name).to_owned()).collect());
+        let names: Vec<&str> = EVENTS.iter().map(|(name, _)| *name).collect();
+        assert_eq!(events.keys().cloned().collect::<BTreeSet<_>>(), upstream(&names, OWN_EVENTS));
+        for own in OWN_EVENTS {
+            assert!(!events.contains_key(*own), "{own}");
+            assert_eq!(event(own), Some(TYPES), "{own}");
+        }
         for (name, kind) in events {
             let kind = kind.as_str().or_else(|| kind["type"].as_str()).unwrap();
             let definition = &definitions[kind];

@@ -20,8 +20,8 @@ pub const SUPPORTED_EVENTS: &[&str] = &[
     "pull_request",
     "pull_request_target",
     "pull_request_review",
-    "issues",
-    "issue_comment",
+    "work_item",
+    "work_item_comment",
     "schedule",
     "workflow_dispatch",
     "repository_dispatch",
@@ -37,10 +37,20 @@ pub const SUPPORTED_EVENTS: &[&str] = &[
 
 /// Events GitHub has that g1t knows of but never sends: a workflow on one
 /// of them is told so, rather than waiting for a run that never comes.
-pub const UNSENT_EVENTS: &[(&str, &str)] = &[(
-    "label",
-    "g1t does not start runs when a label is created, edited or deleted yet, so the `label` trigger never starts it. Putting a label on an issue or a pull request starts `issues` and `pull_request` workflows with the `labeled` type.",
-)];
+pub const UNSENT_EVENTS: &[(&str, &str)] = &[
+    (
+        "label",
+        "g1t does not start runs when a label is created, edited or deleted yet, so the `label` trigger never starts it. Putting a label on a work item or a pull request starts `work_item` and `pull_request` workflows with the `labeled` type.",
+    ),
+    (
+        "issues",
+        "g1t has work items, not issues, so the `issues` trigger never starts it. Write `work_item`: it has the same activity types, and `github.event.work_item` in place of `github.event.issue`.",
+    ),
+    (
+        "issue_comment",
+        "g1t has work items, not issues, so the `issue_comment` trigger never starts it. Write `work_item_comment`: it runs for comments on work items and pull requests, with `github.event.work_item` in place of `github.event.issue`.",
+    ),
+];
 
 /// The `types` each event has when a workflow gives none, as on GitHub.
 pub fn default_types(event: &str) -> &'static [&'static str] {
@@ -864,7 +874,12 @@ pub const DEFAULT_TIMEOUT_MINUTES: u32 = 360;
 /// nothing behind.
 fn permission_notes(unknown: &[String], job: Option<&str>, note: &mut impl FnMut(Severity, Option<&str>, String)) {
     for name in unknown {
-        note(Severity::Warning, job, format!("`permissions.{name}`: g1t's token has nothing behind that permission yet, so it grants nothing."));
+        let message = if name == "issues" {
+            "`permissions.issues`: g1t has work items, not issues, so it grants nothing. Write `work` for the token to read or change work items.".to_owned()
+        } else {
+            format!("`permissions.{name}`: g1t's token has nothing behind that permission yet, so it grants nothing.")
+        };
+        note(Severity::Warning, job, message);
     }
 }
 
@@ -1069,8 +1084,8 @@ jobs:
         // Without any, the repository's default.
         let bare = parse("on: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps: [{ run: 'true' }]").unwrap();
         assert_eq!(bare.jobs[0].permissions(&bare, TokenDefault::Restricted).get("contents"), Access::Read);
-        assert_eq!(bare.jobs[0].permissions(&bare, TokenDefault::Restricted).get("issues"), Access::None);
-        assert_eq!(bare.jobs[0].permissions(&bare, TokenDefault::Permissive).get("issues"), Access::Write);
+        assert_eq!(bare.jobs[0].permissions(&bare, TokenDefault::Restricted).get("work"), Access::None);
+        assert_eq!(bare.jobs[0].permissions(&bare, TokenDefault::Permissive).get("work"), Access::Write);
         // What reads but grants nothing is said.
         let odd = parse("on: push\npermissions: { id-token: write, artifact-metadata: read }\njobs:\n  a:\n    runs-on: x\n    steps: [{ run: 'true' }]").unwrap();
         assert!(!odd.notes.iter().any(|n| n.message.contains("id-token")), "OIDC tokens are issued");
@@ -1175,6 +1190,37 @@ jobs:
         assert!(!records_deployment(&serde_json::json!({ "environment": { "name": "p", "deployment": false } })));
         assert!(records_deployment(&serde_json::json!({ "environment": { "name": "p", "deployment": true } })));
         assert!(records_deployment(&serde_json::json!({ "environment": "p" })));
+    }
+
+    #[test]
+    fn work_items_start_workflows_and_issues_do_not() {
+        use crate::permissions::{Access, TokenDefault};
+        let workflow = parse(
+            "on:
+  work_item: { types: [opened, landed] }
+  work_item_comment:
+permissions: { work: write }
+jobs:
+  a:
+    runs-on: x
+    steps: [{ run: 'true' }]",
+        )
+        .unwrap();
+        assert!(workflow.notes.is_empty(), "{:?}", workflow.notes);
+        let item = workflow.trigger("work_item").unwrap();
+        assert!(item.wants_type(Some("landed")));
+        assert!(!item.wants_type(Some("closed")));
+        assert!(workflow.trigger("work_item_comment").unwrap().wants_type(Some("created")));
+        assert_eq!(workflow.jobs[0].permissions(&workflow, TokenDefault::Restricted).get("work"), Access::Write);
+        // GitHub's names still read, as GitHub workflows do, but start
+        // nothing and grant nothing, and say what to write instead.
+        let github = parse("on: [issues, issue_comment]\npermissions: { issues: write }\njobs:\n  a:\n    runs-on: x\n    steps: [{ run: 'true' }]").unwrap();
+        assert!(github.trigger("work_item").is_none());
+        let said: Vec<&str> = github.notes.iter().map(|note| note.message.as_str()).collect();
+        assert!(said.iter().any(|note| note.contains("Write `work_item`")), "{said:?}");
+        assert!(said.iter().any(|note| note.contains("Write `work_item_comment`")), "{said:?}");
+        assert!(said.iter().any(|note| note.contains("Write `work`")), "{said:?}");
+        assert_eq!(github.jobs[0].permissions(&github, TokenDefault::Restricted).scopes(), ["repo:read"]);
     }
 
     #[test]

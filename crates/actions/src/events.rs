@@ -28,18 +28,21 @@ pub fn github_events(kind: &str) -> Vec<(&'static str, Option<&'static str>)> {
         "pull.milestoned" => pull("milestoned"),
         "pull.demilestoned" => pull("demilestoned"),
         "pull.base_changed" => pull("edited"),
-        "issue.opened" => vec![("issues", Some("opened"))],
-        "issue.updated" => vec![("issues", Some("edited"))],
-        "issue.closed" => vec![("issues", Some("closed"))],
-        "issue.reopened" => vec![("issues", Some("reopened"))],
-        "issue.assigned" => vec![("issues", Some("assigned"))],
-        "issue.labeled" => vec![("issues", Some("labeled"))],
-        "issue.unlabeled" => vec![("issues", Some("unlabeled"))],
-        "issue.milestoned" => vec![("issues", Some("milestoned"))],
-        "issue.demilestoned" => vec![("issues", Some("demilestoned"))],
-        "comment.created" => vec![("issue_comment", Some("created"))],
-        "comment.edited" => vec![("issue_comment", Some("edited"))],
-        "comment.deleted" => vec![("issue_comment", Some("deleted"))],
+        "work_item.opened" => vec![("work_item", Some("opened"))],
+        "work_item.updated" => vec![("work_item", Some("edited"))],
+        "work_item.closed" => vec![("work_item", Some("closed"))],
+        "work_item.reopened" => vec![("work_item", Some("reopened"))],
+        "work_item.assigned" => vec![("work_item", Some("assigned"))],
+        "work_item.labeled" => vec![("work_item", Some("labeled"))],
+        "work_item.unlabeled" => vec![("work_item", Some("unlabeled"))],
+        "work_item.milestoned" => vec![("work_item", Some("milestoned"))],
+        "work_item.demilestoned" => vec![("work_item", Some("demilestoned"))],
+        "work_item.linked" => vec![("work_item", Some("linked"))],
+        "work_item.unlinked" => vec![("work_item", Some("unlinked"))],
+        "work_item.landed" => vec![("work_item", Some("landed"))],
+        "comment.created" => vec![("work_item_comment", Some("created"))],
+        "comment.edited" => vec![("work_item_comment", Some("edited"))],
+        "comment.deleted" => vec![("work_item_comment", Some("deleted"))],
         "release.created" => vec![("release", Some("created"))],
         "release.published" => vec![("release", Some("published"))],
         "release.released" => vec![("release", Some("released"))],
@@ -308,19 +311,23 @@ mod tests {
         assert_eq!(github_events("git.deleted"), [("delete", None)]);
         assert_eq!(github_events("pull.labeled")[1], ("pull_request_target", Some("labeled")));
         assert_eq!(github_events("pull.assigned")[0], ("pull_request", Some("assigned")));
-        assert_eq!(github_events("issue.unlabeled"), [("issues", Some("unlabeled"))]);
-        assert_eq!(github_events("issue.assigned"), [("issues", Some("assigned"))]);
+        assert_eq!(github_events("work_item.unlabeled"), [("work_item", Some("unlabeled"))]);
+        assert_eq!(github_events("work_item.assigned"), [("work_item", Some("assigned"))]);
+        assert_eq!(github_events("work_item.updated"), [("work_item", Some("edited"))]);
+        assert_eq!(github_events("work_item.linked"), [("work_item", Some("linked"))]);
+        assert_eq!(github_events("work_item.landed"), [("work_item", Some("landed"))]);
+        assert!(github_events("issue.opened").is_empty());
         assert_eq!(github_events("pull.updated")[0], ("pull_request", Some("synchronize")));
         assert_eq!(github_events("pull.merged")[1], ("pull_request_target", Some("closed")));
-        assert_eq!(github_events("comment.created"), [("issue_comment", Some("created"))]);
-        assert_eq!(github_events("issue.labeled"), [("issues", Some("labeled"))]);
+        assert_eq!(github_events("comment.created"), [("work_item_comment", Some("created"))]);
+        assert_eq!(github_events("work_item.labeled"), [("work_item", Some("labeled"))]);
         assert_eq!(github_events("pull.unlabeled")[0], ("pull_request", Some("unlabeled")));
         assert_eq!(github_events("pull.milestoned")[1], ("pull_request_target", Some("milestoned")));
         assert_eq!(github_events("pull.base_changed")[0], ("pull_request", Some("edited")));
         assert_eq!(github_events("pull.reopened")[0], ("pull_request", Some("reopened")));
         assert_eq!(github_events("pull.converted_to_draft")[1], ("pull_request_target", Some("converted_to_draft")));
-        assert_eq!(github_events("comment.edited"), [("issue_comment", Some("edited"))]);
-        assert_eq!(github_events("comment.deleted"), [("issue_comment", Some("deleted"))]);
+        assert_eq!(github_events("comment.edited"), [("work_item_comment", Some("edited"))]);
+        assert_eq!(github_events("comment.deleted"), [("work_item_comment", Some("deleted"))]);
         assert_eq!(github_events("release.published"), [("release", Some("published"))]);
         assert_eq!(github_events("release.prereleased"), [("release", Some("prereleased"))]);
         assert_eq!(github_events("deployment_status.created"), [("deployment_status", Some("created"))]);
