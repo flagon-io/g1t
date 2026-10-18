@@ -135,6 +135,17 @@ function roleOf(value: string | null | undefined): LinkRole | null {
   return LINK_ROLES.find((role) => role === value) ?? null;
 }
 
+/**
+ * What an empty Work list says: the repository it is filtered to, when
+ * that is its only filter; that nothing matches, for any other; else that
+ * there are none in this state.
+ */
+export function emptyListTitle(filters: WorkFilters, repoName: string | null): string {
+  if (repoName && !filters.label && !filters.milestone && !filters.assignee) return `No ${filters.state} work items linked to ${repoName}`;
+  if (filtered(filters)) return `No ${filters.state} work items match these filters`;
+  return filters.state === "open" ? "No open work items" : "No closed work items";
+}
+
 /** Whether any filter but the state is set. */
 export function filtered(filters: WorkFilters): boolean {
   return Boolean(filters.label || filters.milestone || filters.assignee || filters.repo);
