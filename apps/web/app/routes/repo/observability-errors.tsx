@@ -119,12 +119,12 @@ export default function Errors({ loaderData, actionData, params }: Route.Compone
                           {g.service || "app"}
                         </Badge>
                         {g.environment && <Badge tone="neutral">{g.environment}</Badge>}
-                        {(g.item ?? g.legacy_issue) != null && (
+                        {(g.item ?? g.legacy_number) != null && (
                           <Link
-                            to={g.item != null ? itemPath(params.owner, g.item) : `${base}/ref/${g.legacy_issue}`}
+                            to={g.item != null ? itemPath(params.owner, g.item) : `${base}/ref/${g.legacy_number}`}
                             className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
                           >
-                            <CircleDot size={12} />#{g.item ?? g.legacy_issue}
+                            <CircleDot size={12} />#{g.item ?? g.legacy_number}
                           </Link>
                         )}
                       </p>
@@ -162,9 +162,9 @@ export default function Errors({ loaderData, actionData, params }: Route.Compone
                       <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-line bg-bg p-3 font-mono text-xs whitespace-pre">{g.stack}</pre>
                     </details>
                   )}
-                  {(can.triage || (can.item && g.item == null && g.legacy_issue == null)) && (
+                  {(can.triage || (can.item && g.item == null && g.legacy_number == null)) && (
                     <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
-                      {can.item && g.item == null && g.legacy_issue == null && (
+                      {can.item && g.item == null && g.legacy_number == null && (
                         <Form method="post" className="flex flex-wrap items-center gap-2">
                           <input type="hidden" name="fingerprint" value={g.fingerprint} />
                           <SubmitButton name="intent" value="item" size="sm" variant="outline">

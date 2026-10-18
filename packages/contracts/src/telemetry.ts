@@ -227,7 +227,7 @@ export type ErrorGroup = {
    * project's repository, whose address (`/<owner>/<repo>/issues/<n>`)
    * still leads to the work item. Null once `item` is set.
    */
-  legacy_issue: number | null;
+  legacy_number: number | null;
 };
 
 /** What every list query can narrow by. */
