@@ -192,8 +192,8 @@ mod tests {
     fn words_split_like_a_shell() {
         assert_eq!(split("pr checkout").unwrap(), v(&["pr", "checkout"]));
         assert_eq!(
-            split(r#"issue list --label "good first issue""#).unwrap(),
-            v(&["issue", "list", "--label", "good first issue"])
+            split(r#"work list --label "good first issue""#).unwrap(),
+            v(&["work", "list", "--label", "good first issue"])
         );
         assert_eq!(
             split("api '/repos/{owner}/{name}'").unwrap(),
@@ -212,10 +212,10 @@ mod tests {
         );
         assert_eq!(
             substitute(
-                &v(&["issue", "list", "--label", "$1"]),
+                &v(&["work", "list", "--label", "$1"]),
                 &v(&["bug", "-L", "5"])
             ),
-            v(&["issue", "list", "--label", "bug", "-L", "5"])
+            v(&["work", "list", "--label", "bug", "-L", "5"])
         );
     }
 

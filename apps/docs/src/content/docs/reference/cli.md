@@ -243,138 +243,6 @@ g1t repo detach [OPTIONS] [REPOSITORY]
 
 Calls [`detach_fork`](/reference/api/repositories/detach-fork/).
 
-## g1t issue
-
-Issues: list, view, create, comment, close, reopen, edit.
-
-### g1t issue list
-
-List issues.
-
-```text
-g1t issue list [OPTIONS]
-```
-
-| Argument or flag | |
-| --- | --- |
-| `-s, --state <STATE>` | One of `open`, `closed`, `all`. Default: `open`. |
-| `-l, --label <LABEL>` | Only issues with this label. |
-| `-m, --milestone <MILESTONE>` | Only issues in the milestone of this number. |
-| `-a, --assignee <ASSIGNEE>` | Only issues assigned to this person (@me for you). |
-| `-A, --author <AUTHOR>` | Only issues opened by this person (@me for you). |
-| `-L, --limit <LIMIT>` | Default: `20`. |
-
-Calls [`list_issues`](/reference/api/issues/list-issues/).
-
-### g1t issue view
-
-Show an issue, with its comments.
-
-```text
-g1t issue view [OPTIONS] <NUMBER>
-```
-
-| Argument or flag | |
-| --- | --- |
-| `<NUMBER>` | The issue's number. |
-| `-c, --comments` | Show its comments too. |
-| `-w, --web` | Open it in the browser. |
-
-Calls [`get_issue`](/reference/api/issues/get-issue/).
-
-### g1t issue create
-
-Open an issue.
-
-```text
-g1t issue create [OPTIONS]
-```
-
-| Argument or flag | |
-| --- | --- |
-| `-t, --title <TITLE>` |  |
-| `-b, --body <BODY>` | The text. Markdown. |
-| `-F, --body-file <FILE>` | Read the text from a file, or - for stdin. |
-| `--attach <FILE>` | An image to show after the text (PNG, JPEG, GIF or WebP, at most 10 MB): uploaded, and its Markdown added. Repeat for more. |
-| `-l, --label <LABEL>` | A label; repeat for more. |
-| `-a, --assignee <ASSIGNEE>` | Someone to assign; repeat for more (@me for you). |
-| `-m, --milestone <MILESTONE>` | A milestone's number. |
-| `-w, --web` | Open the new-issue page in the browser instead. |
-
-Calls [`create_issue`](/reference/api/issues/create-issue/), [`update_issue`](/reference/api/issues/update-issue/), [`upload_attachment`](/reference/api/issues/upload-attachment/).
-
-### g1t issue comment
-
-Comment on an issue.
-
-```text
-g1t issue comment [OPTIONS] [NUMBER]
-```
-
-| Argument or flag | |
-| --- | --- |
-| `[NUMBER]` | The number; for a pull request, the current branch's when left out. |
-| `-b, --body <BODY>` | The text. Markdown. |
-| `-F, --body-file <FILE>` | Read the text from a file, or - for stdin. |
-| `--attach <FILE>` | An image to show after the text (PNG, JPEG, GIF or WebP, at most 10 MB): uploaded, and its Markdown added. Repeat for more. |
-
-Calls [`add_comment`](/reference/api/issues/add-comment/), [`upload_attachment`](/reference/api/issues/upload-attachment/).
-
-### g1t issue close
-
-Close an issue.
-
-```text
-g1t issue close [OPTIONS] <NUMBER>
-```
-
-| Argument or flag | |
-| --- | --- |
-| `<NUMBER>` |  |
-| `-r, --reason <REASON>` | One of `completed`, `not_planned`. |
-| `-c, --comment <COMMENT>` | Leave a comment as it closes. |
-| `--commit <COMMIT>` | The commit on the default branch that closed it: its message names the issue after a closing keyword (Fixes #12). Its full hash. |
-
-Calls [`close_issue`](/reference/api/issues/close-issue/), [`add_comment`](/reference/api/issues/add-comment/).
-
-### g1t issue reopen
-
-Reopen an issue.
-
-```text
-g1t issue reopen [OPTIONS] <NUMBER>
-```
-
-| Argument or flag | |
-| --- | --- |
-| `<NUMBER>` |  |
-| `-c, --comment <COMMENT>` | Leave a comment as it reopens. |
-
-Calls [`reopen_issue`](/reference/api/issues/reopen-issue/), [`add_comment`](/reference/api/issues/add-comment/).
-
-### g1t issue edit
-
-Change an issue's title, body, labels, assignees or milestone.
-
-```text
-g1t issue edit [OPTIONS] <NUMBER>
-```
-
-| Argument or flag | |
-| --- | --- |
-| `<NUMBER>` |  |
-| `-t, --title <TITLE>` |  |
-| `-b, --body <BODY>` | The text. Markdown. |
-| `-F, --body-file <FILE>` | Read the text from a file, or - for stdin. |
-| `--add-label <LABEL>` |  |
-| `--remove-label <LABEL>` |  |
-| `--add-assignee <LOGIN>` |  |
-| `--remove-assignee <LOGIN>` |  |
-| `-m, --milestone <MILESTONE>` | A milestone's number. |
-| `--remove-milestone` | Take it out of its milestone. |
-
-Calls [`update_issue`](/reference/api/issues/update-issue/), [`get_issue`](/reference/api/issues/get-issue/).
-
 ## g1t pr
 
 Pull requests: list, view, create, check out, diff, checks, review, merge.
@@ -416,7 +284,7 @@ Calls [`get_pull_request`](/reference/api/pull-requests/get-pull-request/), [`li
 
 ### g1t pr create
 
-Open a pull request from a branch, or start one for an issue.
+Open a pull request from a branch, or start one for a work item.
 
 ```text
 g1t pr create [OPTIONS]
@@ -430,13 +298,13 @@ g1t pr create [OPTIONS]
 | `--attach <FILE>` | An image to show after the text (PNG, JPEG, GIF or WebP, at most 10 MB): uploaded, and its Markdown added. Repeat for more. |
 | `-B, --base <BASE>` | The branch to merge into; the default branch when left out. |
 | `-H, --head <HEAD>` | The branch with the changes; the current one when left out. |
-| `-i, --issue <ISSUE>` | The issue it is for. Without a branch, starts a draft in a working copy of its own. |
+| `-i, --item <ITEM>` | The work item it is for, by its number in the workspace. Without a branch, starts a draft in a working copy of its own. |
 | `-f, --fill` | Take the title and body from the branch's commits. |
 | `-d, --draft` | Open it as a draft. |
 | `--no-push` | Do not push the branch first. |
 | `--head-repo <OWNER/NAME>` | The fork, OWNER/NAME, that holds the branch. In a clone of your fork (origin) whose upstream is the repository, origin when left out. |
 
-Calls [`create_pull_request`](/reference/api/pull-requests/create-pull-request/), [`get_repo`](/reference/api/repositories/get-repo/), [`convert_pull_request_to_draft`](/reference/api/pull-requests/convert-pull-request-to-draft/), [`upload_attachment`](/reference/api/issues/upload-attachment/).
+Calls [`create_pull_request`](/reference/api/pull-requests/create-pull-request/), [`get_repo`](/reference/api/repositories/get-repo/), [`convert_pull_request_to_draft`](/reference/api/pull-requests/convert-pull-request-to-draft/), [`upload_attachment`](/reference/api/work-items/upload-attachment/).
 
 ### g1t pr checkout
 
@@ -504,7 +372,7 @@ g1t pr review [OPTIONS] <--approve|--request-changes|--comment> [NUMBER]
 | `-b, --body <BODY>` | The text. Markdown. |
 | `-F, --body-file <FILE>` | Read the text from a file, or - for stdin. |
 
-Calls [`review_pull_request`](/reference/api/pull-requests/review-pull-request/), [`add_comment`](/reference/api/issues/add-comment/).
+Calls [`review_pull_request`](/reference/api/pull-requests/review-pull-request/), [`add_comment`](/reference/api/pull-requests/add-comment/).
 
 ### g1t pr merge
 
@@ -526,7 +394,7 @@ g1t pr merge [OPTIONS] [NUMBER]
 | `-F, --body-file <FILE>` | Read the text from a file, or - for stdin. |
 | `--auto` | Merge on its own once its checks, reviews and rules allow. |
 | `--disable-auto` | Turn its auto-merge off. |
-| `--keep-issue-open` | Leave the issue it is for open. |
+| `--keep-item-open` | Do not land the work item it is for: it is only part of the work. |
 | `--admin` | Merge past failing required checks and rules (needs the Admin role). |
 | `-d, --delete-branch` | Delete its branch once merged, and the local branch. The repository's setting when left out. |
 | `--keep-branch` | Keep its branch, whatever the repository's setting. |
@@ -564,7 +432,7 @@ g1t pr ready [OPTIONS] [NUMBER]
 | `--attach <FILE>` | An image to show after the summary (PNG, JPEG, GIF or WebP, at most 10 MB): uploaded, and its Markdown added. Repeat for more. |
 | `--undo` | Turn it back into a draft. |
 
-Calls [`mark_pull_request_ready`](/reference/api/pull-requests/mark-pull-request-ready/), [`convert_pull_request_to_draft`](/reference/api/pull-requests/convert-pull-request-to-draft/), [`upload_attachment`](/reference/api/issues/upload-attachment/).
+Calls [`mark_pull_request_ready`](/reference/api/pull-requests/mark-pull-request-ready/), [`convert_pull_request_to_draft`](/reference/api/pull-requests/convert-pull-request-to-draft/), [`upload_attachment`](/reference/api/work-items/upload-attachment/).
 
 ### g1t pr comment
 
@@ -576,12 +444,12 @@ g1t pr comment [OPTIONS] [NUMBER]
 
 | Argument or flag | |
 | --- | --- |
-| `[NUMBER]` | The number; for a pull request, the current branch's when left out. |
+| `[NUMBER]` | The pull request's number; the current branch's when left out. |
 | `-b, --body <BODY>` | The text. Markdown. |
 | `-F, --body-file <FILE>` | Read the text from a file, or - for stdin. |
 | `--attach <FILE>` | An image to show after the text (PNG, JPEG, GIF or WebP, at most 10 MB): uploaded, and its Markdown added. Repeat for more. |
 
-Calls [`add_comment`](/reference/api/issues/add-comment/), [`upload_attachment`](/reference/api/issues/upload-attachment/).
+Calls [`add_comment`](/reference/api/pull-requests/add-comment/), [`upload_attachment`](/reference/api/work-items/upload-attachment/).
 
 ### g1t pr close
 
@@ -1021,13 +889,13 @@ Calls [`list_logs`](/reference/api/observability/list-logs/), [`list_errors`](/r
 
 ## g1t status
 
-What needs you: your pull requests, reviews asked of you, your issues, failing checks, and your sessions and claims here.
+What needs you: your pull requests, reviews asked of you, failing checks, and your sessions and claims here.
 
 ```text
 g1t status [OPTIONS]
 ```
 
-Calls [`search`](/reference/api/search/search/), [`list_notifications`](/reference/api/notifications/list-notifications/), [`get_pull_request`](/reference/api/pull-requests/get-pull-request/), [`list_sessions`](/reference/api/sessions/list-sessions/), [`list_claims`](/reference/api/claims-and-work/list-claims/).
+Calls [`search`](/reference/api/search/search/), [`list_notifications`](/reference/api/notifications/list-notifications/), [`get_pull_request`](/reference/api/pull-requests/get-pull-request/), [`list_sessions`](/reference/api/sessions/list-sessions/), [`list_claims`](/reference/api/work-items/list-claims/).
 
 ## g1t session
 
@@ -1043,7 +911,7 @@ g1t session start [OPTIONS]
 
 | Argument or flag | |
 | --- | --- |
-| `-i, --issue <ISSUE>` | The issue it works on. |
+| `-i, --item <ITEM>` | The work item it works on, by its number in the workspace. |
 | `-p, --pull <PULL>` | The pull request it works on. |
 | `--harness <HARNESS>` | The harness running it. One of `claude_code`, `codex`, `cursor`, `copilot`, `other`. Default: `other`. |
 | `--harness-session-id <ID>` | The harness's own id for the run, which makes starting again return the same session. |
@@ -1092,15 +960,15 @@ Calls [`record_session_entries`](/reference/api/sessions/record-session-entries/
 
 ### g1t session attach
 
-Attach the current session to an issue, a pull request or a branch, or give it a title.
+Attach the current session to a work item, a pull request or a branch, or give it a title.
 
 ```text
-g1t session attach [OPTIONS] <--issue <ISSUE>|--pull <PULL>|--branch <BRANCH>|--head-commit <SHA>|--title <TITLE>>
+g1t session attach [OPTIONS] <--item <ITEM>|--pull <PULL>|--branch <BRANCH>|--head-commit <SHA>|--title <TITLE>>
 ```
 
 | Argument or flag | |
 | --- | --- |
-| `-i, --issue <ISSUE>` |  |
+| `-i, --item <ITEM>` | A work item, by its number in the workspace. |
 | `-p, --pull <PULL>` |  |
 | `-b, --branch <BRANCH>` |  |
 | `--head-commit <SHA>` | The commit it pushed last. |
@@ -1134,7 +1002,7 @@ g1t session list [OPTIONS]
 | Argument or flag | |
 | --- | --- |
 | `-s, --state <STATE>` | Only sessions in this state. One of `active`, `idle`, `ended`. |
-| `-i, --issue <ISSUE>` |  |
+| `-i, --item <ITEM>` | Only sessions on this work item. |
 | `-p, --pull <PULL>` |  |
 | `-L, --limit <LIMIT>` | Default: `20`. |
 | `--path <PATH>` | Only sessions that touched this file, or any under it when it ends in /. |
@@ -1194,10 +1062,10 @@ Calls [`record_session_entries`](/reference/api/sessions/record-session-entries/
 
 ### g1t session touch
 
-Say what the current session touched: files, commits, branches, pull requests, issues.
+Say what the current session touched: files, commits, branches, pull requests, work items.
 
 ```text
-g1t session touch [OPTIONS] <--file <FILE>|--commit <COMMIT>|--branch <BRANCH>|--pull <PULL>|--issue <ISSUE>>
+g1t session touch [OPTIONS] <--file <FILE>|--commit <COMMIT>|--branch <BRANCH>|--pull <PULL>|--item <ITEM>>
 ```
 
 | Argument or flag | |
@@ -1206,36 +1074,198 @@ g1t session touch [OPTIONS] <--file <FILE>|--commit <COMMIT>|--branch <BRANCH>|-
 | `--commit <COMMIT>` | A commit it made. |
 | `--branch <BRANCH>` | A branch it pushed. |
 | `--pull <PULL>` | A pull request it opened. |
-| `--issue <ISSUE>` | An issue it named. |
+| `--item <ITEM>` | A work item it named, by its number in the workspace. |
 
 ```text
 Each is kept once. A file another active session touched too (a sibling subagent's included)
-is an overlap.detected event for both. Pull requests and issues tie the session to them.
+is an overlap.detected event for both. Pull requests and work items tie the session to them.
 ```
 
 Calls [`record_session_entries`](/reference/api/sessions/record-session-entries/).
 
 ## g1t work
 
-Coordinate work on issues: context, claims, hand-offs, dependencies, events.
+Work items: list, view, open, edit, link, close; claims, hand-offs, dependencies, events.
 
-### g1t work context
+### g1t work list
 
-Everything about an issue's work: claims, sessions, pull requests, dependencies, decisions.
+List the workspace's work items; with --repo, those linked to that repository.
 
 ```text
-g1t work context [OPTIONS] <NUMBER>
+g1t work list [OPTIONS]
 ```
 
 | Argument or flag | |
 | --- | --- |
-| `<NUMBER>` | The issue's number. |
+| `-s, --state <STATE>` | One of `open`, `closed`, `all`. Default: `open`. |
+| `-l, --label <LABEL>` | Only work items with this label. |
+| `-m, --milestone <MILESTONE>` | Only work items in the workspace milestone of this number. |
+| `-a, --assignee <ASSIGNEE>` | Only work items assigned to this person (@me for you). |
+| `-A, --author <AUTHOR>` | Only work items opened by this person (@me for you). |
+| `--role <ROLE>` | With --repo: only those linked to it this way. One of `origin`, `target`, `touched`. |
+| `-L, --limit <LIMIT>` | Default: `20`. |
 
-Calls [`get_work`](/reference/api/claims-and-work/get-work/).
+Calls [`list_work_items`](/reference/api/work-items/list-work-items/).
+
+### g1t work view
+
+Show a work item with everything about its work: repositories and what landed, claims, sessions, pull requests, what it waits on, decisions.
+
+```text
+g1t work view [OPTIONS] <NUMBER>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<NUMBER>` | The work item's number. |
+| `-c, --comments` | Show its comments too. |
+| `-w, --web` | Open it in the browser. |
+
+Calls [`get_work`](/reference/api/work-items/get-work/), [`get_work_item`](/reference/api/work-items/get-work-item/).
+
+### g1t work new
+
+Open a work item, with the current repository as its origin.
+
+```text
+g1t work new [OPTIONS]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `-t, --title <TITLE>` |  |
+| `-b, --body <BODY>` | The text. Markdown. |
+| `-F, --body-file <FILE>` | Read the text from a file, or - for stdin. |
+| `--attach <FILE>` | An image to show after the text (PNG, JPEG, GIF or WebP, at most 10 MB): uploaded, and its Markdown added. Repeat for more. |
+| `--target <OWNER/NAME>` | A repository of the workspace where the work is meant to land, OWNER/NAME; repeat for more. |
+| `-l, --label <LABEL>` | A label; repeat for more. |
+| `-a, --assignee <ASSIGNEE>` | Someone to assign; repeat for more (@me for you). |
+| `-m, --milestone <MILESTONE>` | A workspace milestone's number. |
+| `-w, --web` | Open the new work item page in the browser instead. |
+
+```text
+In a repository, the work item is filed from it (its origin). With --workspace and no
+repository of that workspace here, it is filed in the workspace alone. --target names a repository
+where the work is meant to land; repeat it for more.
+Examples:
+  g1t work new --title "Sign-in times out on slow networks" --body "..."
+  g1t work new --title "Rename the flag" --target acme/api --target acme/docs
+```
+
+Calls [`open_work_item`](/reference/api/work-items/open-work-item/), [`update_work_item`](/reference/api/work-items/update-work-item/), [`upload_attachment`](/reference/api/work-items/upload-attachment/).
+
+### g1t work comment
+
+Comment on a work item.
+
+```text
+g1t work comment [OPTIONS] <NUMBER>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<NUMBER>` | The work item's number. |
+| `-b, --body <BODY>` | The text. Markdown. |
+| `-F, --body-file <FILE>` | Read the text from a file, or - for stdin. |
+| `--attach <FILE>` | An image to show after the text (PNG, JPEG, GIF or WebP, at most 10 MB): uploaded, and its Markdown added. Repeat for more. |
+
+Calls [`add_work_item_comment`](/reference/api/work-items/add-work-item-comment/), [`upload_attachment`](/reference/api/work-items/upload-attachment/).
+
+### g1t work edit
+
+Change a work item's title, body, labels, assignees or milestone.
+
+```text
+g1t work edit [OPTIONS] <NUMBER>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<NUMBER>` |  |
+| `-t, --title <TITLE>` |  |
+| `-b, --body <BODY>` | The text. Markdown. |
+| `-F, --body-file <FILE>` | Read the text from a file, or - for stdin. |
+| `--add-label <LABEL>` |  |
+| `--remove-label <LABEL>` |  |
+| `--add-assignee <LOGIN>` |  |
+| `--remove-assignee <LOGIN>` |  |
+| `-m, --milestone <MILESTONE>` | A workspace milestone's number. |
+| `--remove-milestone` | Take it out of its milestone. |
+
+Calls [`update_work_item`](/reference/api/work-items/update-work-item/), [`get_work_item`](/reference/api/work-items/get-work-item/).
+
+### g1t work close
+
+Close a work item.
+
+```text
+g1t work close [OPTIONS] <NUMBER>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<NUMBER>` |  |
+| `-r, --reason <REASON>` | One of `completed`, `not_planned`. |
+| `-c, --comment <COMMENT>` | Leave a comment as it closes. |
+| `--commit <COMMIT>` | The commit on the repository's default branch that did it: its message names the work item after a closing keyword (Fixes #12). Its full hash. It lands there; the work item closes when nothing else is left to land. |
+
+Calls [`close_work_item`](/reference/api/work-items/close-work-item/), [`add_work_item_comment`](/reference/api/work-items/add-work-item-comment/).
+
+### g1t work reopen
+
+Reopen a work item.
+
+```text
+g1t work reopen [OPTIONS] <NUMBER>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<NUMBER>` |  |
+| `-c, --comment <COMMENT>` | Leave a comment as it reopens. |
+
+Calls [`reopen_work_item`](/reference/api/work-items/reopen-work-item/), [`add_work_item_comment`](/reference/api/work-items/add-work-item-comment/).
+
+### g1t work link
+
+Link a repository to a work item: where the work must land (target), or touched.
+
+```text
+g1t work link [OPTIONS] <NUMBER>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<NUMBER>` | The work item's number. |
+| `--role <ROLE>` | How the repository is linked. One of `target`, `touched`. Default: `target`. |
+
+```text
+The repository is the current one, or --repo OWNER/NAME. A work item with targets closes once it
+has landed in every one.
+Examples:
+  g1t work link 12 --repo acme/api
+  g1t work link 12 --role touched
+```
+
+Calls [`link_work_item`](/reference/api/work-items/link-work-item/).
+
+### g1t work unlink
+
+Unlink a repository from a work item (never its origin).
+
+```text
+g1t work unlink [OPTIONS] <NUMBER>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<NUMBER>` | The work item's number. |
+
+Calls [`unlink_work_item`](/reference/api/work-items/unlink-work-item/).
 
 ### g1t work claim
 
-Claim an issue: say you are working on it. Others are told, never stopped.
+Claim a work item: say you are working on it. Others are told, never stopped.
 
 ```text
 g1t work claim [OPTIONS] <NUMBER|--title <TITLE>>
@@ -1243,25 +1273,26 @@ g1t work claim [OPTIONS] <NUMBER|--title <TITLE>>
 
 | Argument or flag | |
 | --- | --- |
-| `[NUMBER]` | The issue's number. |
-| `--title <TITLE>` | Open a new issue with this title and claim it; the current session is attached to it. |
-| `--body <BODY>` | The new issue's description. |
+| `[NUMBER]` | The work item's number. |
+| `--title <TITLE>` | Open a new work item with this title and claim it; the current session is attached to it. |
+| `--body <BODY>` | The new work item's description. |
 | `-n, --note <NOTE>` | What you are doing about it. |
 | `--ttl <DURATION>` | How long the claim lasts unless renewed: 30m, 2h (at most 4h). |
 
 ```text
-With --title instead of a number, a new issue is opened and claimed in one step, and the
-current session is attached to it: for work that became a change others should know about.
+With --title instead of a number, a new work item is opened (filed from the current repository)
+and claimed in one step, and the current session is attached to it: for work that became a change
+others should know about.
 Examples:
   g1t work claim 12 --note "Rewriting the retry loop"
   g1t work claim --title "Preview builds time out on large repositories"
 ```
 
-Calls [`claim_issue`](/reference/api/claims-and-work/claim-issue/), [`claim_new_issue`](/reference/api/claims-and-work/claim-new-issue/).
+Calls [`claim_work_item`](/reference/api/work-items/claim-work-item/), [`claim_new_work_item`](/reference/api/work-items/claim-new-work-item/).
 
 ### g1t work release
 
-Release your claim on an issue.
+Release your claim on a work item.
 
 ```text
 g1t work release [OPTIONS] <NUMBER>
@@ -1272,11 +1303,11 @@ g1t work release [OPTIONS] <NUMBER>
 | `<NUMBER>` |  |
 | `-r, --reason <REASON>` | Why: done, blocked, abandoned... |
 
-Calls [`release_claim`](/reference/api/claims-and-work/release-claim/).
+Calls [`release_claim`](/reference/api/work-items/release-claim/).
 
 ### g1t work handoff
 
-Hand an issue over to someone else, or to anyone.
+Hand a work item over to someone else, or to anyone.
 
 ```text
 g1t work handoff [OPTIONS] --note <NOTE> <NUMBER>
@@ -1288,21 +1319,21 @@ g1t work handoff [OPTIONS] --note <NOTE> <NUMBER>
 | `--to <LOGIN>` | Who takes it over; anyone when left out. |
 | `-n, --note <NOTE>` | Where it stands and what is left, for whoever takes it. |
 
-Calls [`hand_off_issue`](/reference/api/claims-and-work/hand-off-issue/).
+Calls [`hand_off_work_item`](/reference/api/work-items/hand-off-work-item/).
 
-### g1t work list
+### g1t work status
 
 Active claims and sessions in the repository.
 
 ```text
-g1t work list [OPTIONS]
+g1t work status [OPTIONS]
 ```
 
-Calls [`list_claims`](/reference/api/claims-and-work/list-claims/), [`list_sessions`](/reference/api/sessions/list-sessions/).
+Calls [`list_claims`](/reference/api/work-items/list-claims/), [`list_sessions`](/reference/api/sessions/list-sessions/).
 
 ### g1t work block
 
-Say an issue waits on others: it is blocked by them.
+Say a work item waits on others: it is blocked by them.
 
 ```text
 g1t work block [OPTIONS] --by <NUMBER> <NUMBER>
@@ -1310,14 +1341,14 @@ g1t work block [OPTIONS] --by <NUMBER> <NUMBER>
 
 | Argument or flag | |
 | --- | --- |
-| `<NUMBER>` | The issue that waits. |
-| `--by <NUMBER>` | The issue it waits on; repeat for more. |
+| `<NUMBER>` | The work item that waits. |
+| `--by <NUMBER>` | The work item it waits on; repeat for more. |
 
-Calls [`get_issue`](/reference/api/issues/get-issue/), [`update_issue`](/reference/api/issues/update-issue/).
+Calls [`get_work_item`](/reference/api/work-items/get-work-item/), [`update_work_item`](/reference/api/work-items/update-work-item/).
 
 ### g1t work unblock
 
-Say an issue no longer waits on others.
+Say a work item no longer waits on others.
 
 ```text
 g1t work unblock [OPTIONS] --by <NUMBER> <NUMBER>
@@ -1325,10 +1356,10 @@ g1t work unblock [OPTIONS] --by <NUMBER> <NUMBER>
 
 | Argument or flag | |
 | --- | --- |
-| `<NUMBER>` | The issue that waits. |
-| `--by <NUMBER>` | The issue it waits on; repeat for more. |
+| `<NUMBER>` | The work item that waits. |
+| `--by <NUMBER>` | The work item it waits on; repeat for more. |
 
-Calls [`get_issue`](/reference/api/issues/get-issue/), [`update_issue`](/reference/api/issues/update-issue/).
+Calls [`get_work_item`](/reference/api/work-items/get-work-item/), [`update_work_item`](/reference/api/work-items/update-work-item/).
 
 ### g1t work events
 
@@ -1342,14 +1373,14 @@ g1t work events [OPTIONS]
 | --- | --- |
 | `-f, --follow` | Keep printing events as they happen, until stopped. |
 | `-t, --type <TYPE>` | Only events of this type; repeat for more. |
-| `-i, --issue <NUMBER>` | Only events about this issue or pull request; repeat for more. |
+| `-i, --item <NUMBER>` | Only events about this work item or pull request; repeat for more. |
 | `-s, --since <SINCE>` | Only events since then: 15m, 2h, 1d, or a time like 2026-10-12T09:00:00Z. |
 | `--after <EVENT_ID>` | Start after this event id, as a follow that stopped would resume. |
 | `-L, --limit <LIMIT>` | How many past events to show first. Default: `20`. |
 
 ```text
 Examples:
-  g1t work events --follow --issue 12
+  g1t work events --follow --item 12
   g1t work events --follow --type integration.failed --type overlap.detected --json
 With --json, each event is one JSON object on a line of its own.
 ```
@@ -1358,7 +1389,7 @@ Calls [`list_events`](/reference/api/repositories/list-events/).
 
 ### g1t work dispatch
 
-Start work on an issue in a session on your own Claude, or print the Claude Code command for it.
+Start work on a work item in a session on your own Claude, or print the Claude Code command for it.
 
 ```text
 g1t work dispatch [OPTIONS] <NUMBER|--title <TITLE>>
@@ -1366,10 +1397,10 @@ g1t work dispatch [OPTIONS] <NUMBER|--title <TITLE>>
 
 | Argument or flag | |
 | --- | --- |
-| `[NUMBER]` | The issue's number. |
-| `--title <TITLE>` | Open a new issue with this title and work on it. |
-| `--body <BODY>` | The new issue's description. |
-| `-i, --instruction <INSTRUCTION>` | What to do beyond what the issue says. |
+| `[NUMBER]` | The work item's number. |
+| `--title <TITLE>` | Open a new work item with this title and work on it. |
+| `--body <BODY>` | The new work item's description. |
+| `-i, --instruction <INSTRUCTION>` | What to do beyond what the work item says. |
 | `-m, --mode <MODE>` | What kind of work. One of `plan`, `implement`, `review`. |
 | `--handoff` | Print the Claude Code command to run yourself; start nothing. |
 | `--managed` | Start it on the workspace's Anthropic account, or fail. |
@@ -1377,7 +1408,7 @@ g1t work dispatch [OPTIONS] <NUMBER|--title <TITLE>>
 ```text
 With the workspace's Anthropic AI provider, a Claude Managed Agents session starts on that
 account and is recorded on g1t; otherwise (or with --handoff) this prints a `claude` command
-to run with g1t's plugin, whose session attaches to the issue as it starts.
+to run with g1t's plugin, whose session attaches to the work item as it starts.
 Examples:
   g1t work dispatch 12
   g1t work dispatch 12 --mode plan --instruction "Keep the old flag"
@@ -1388,7 +1419,7 @@ Calls [`start_agent_session`](/reference/api/sessions/start-agent-session/).
 
 ## g1t why
 
-Why a file or line is as it is: its commit, pull request, issue, decisions and sessions.
+Why a file or line is as it is: its commit, pull request, work item, decisions and sessions.
 
 ```text
 g1t why [OPTIONS] <TARGET>
@@ -1403,7 +1434,7 @@ Calls [`why`](/reference/api/decisions-and-why/why/).
 
 ## g1t attach
 
-Upload images, such as a screenshot, to show in an issue, a pull request or a comment; prints their Markdown.
+Upload images, such as a screenshot, to show in a work item, a pull request or a comment; prints their Markdown.
 
 ```text
 g1t attach [OPTIONS] <FILE>...
@@ -1417,13 +1448,13 @@ g1t attach [OPTIONS] <FILE>...
 Prints each image's Markdown, ![name](url), to paste into a description or a comment; --json prints
 { id, name, url, markdown, content_type, size } (a list for several files). The image is served from
 g1t's usercontent address, and anyone given that address can see it, even from a private repository.
---attach FILE on g1t issue create, g1t issue comment, g1t pr create, g1t pr comment and g1t pr ready
+--attach FILE on g1t work new, g1t work comment, g1t pr create, g1t pr comment and g1t pr ready
 uploads and adds the Markdown for you:
   g1t attach preview.png
   g1t pr comment --body 'The preview, after the fix:' --attach preview.png
 ```
 
-Calls [`upload_attachment`](/reference/api/issues/upload-attachment/).
+Calls [`upload_attachment`](/reference/api/work-items/upload-attachment/).
 
 ## g1t api
 
@@ -1448,21 +1479,21 @@ g1t api [OPTIONS] [ENDPOINT]
 | `--silent` | Print nothing on success. |
 
 ```text
-ENDPOINT is an operation's name (list_issues) or a path (/repos/{owner}/{name}/issues).
+ENDPOINT is an operation's name (list_work_items) or a path (/workspaces/{workspace}/work).
 {owner}, {name}, {repo} and {workspace} are filled in from the current repository,
 and an operation's other path parameters from -f/-F fields of the same name.
 
 Examples:
-  g1t api list_issues -f state=closed
+  g1t api list_work_items -f state=closed
   g1t api /user --jq .username
-  g1t api create_issue -f title='Broken link' -f labels[]=docs
+  g1t api open_work_item -f title='Broken link' -f labels[]=docs
   g1t api list_workflow_runs --paginate --jq '.[].conclusion'
-  g1t api --list issue
+  g1t api --list work
 ```
 
 ## g1t browse
 
-Open the repository, an issue or a pull request in the browser.
+Open the repository, a work item or a pull request in the browser.
 
 ```text
 g1t browse [OPTIONS] [TARGET]
@@ -1470,13 +1501,15 @@ g1t browse [OPTIONS] [TARGET]
 
 | Argument or flag | |
 | --- | --- |
-| `[TARGET]` | An issue or pull request number, a file path (path:line), or a commit. |
+| `[TARGET]` | A work item or pull request number, a file path (path:line), or a commit. |
 | `-b, --branch <BRANCH>` | The branch to show files on. |
 | `-s, --settings` |  |
-| `--issues` |  |
+| `--work` | The repository's work items: the workspace's Work list, filtered to it. |
 | `--pulls` |  |
 | `--actions` |  |
 | `-n, --no-browser` | Print the address instead of opening it. |
+
+Calls [`resolve_ref`](/reference/api/work-items/resolve-ref/).
 
 ## g1t alias
 

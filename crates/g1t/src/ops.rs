@@ -290,7 +290,7 @@ mod tests {
                 assert!(op.path.contains(&format!("{{{}}}", p.name)), "{}: {}", op.id, p.name);
             }
         }
-        assert_eq!(find("get_work").unwrap().path, "/repos/{owner}/{name}/issues/{number}/work");
+        assert_eq!(find("get_work").unwrap().path, "/workspaces/{workspace}/work/{number}/work");
         assert!(find("list_events").is_some());
     }
 

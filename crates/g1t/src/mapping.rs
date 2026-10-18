@@ -80,34 +80,6 @@ pub static COMMANDS: &[Mapping] = &[
         ops: &["detach_fork"],
     },
     Mapping {
-        command: "issue list",
-        ops: &["list_issues"],
-    },
-    Mapping {
-        command: "issue view",
-        ops: &["get_issue"],
-    },
-    Mapping {
-        command: "issue create",
-        ops: &["create_issue", "update_issue", "upload_attachment"],
-    },
-    Mapping {
-        command: "issue comment",
-        ops: &["add_comment", "upload_attachment"],
-    },
-    Mapping {
-        command: "issue close",
-        ops: &["close_issue", "add_comment"],
-    },
-    Mapping {
-        command: "issue reopen",
-        ops: &["reopen_issue", "add_comment"],
-    },
-    Mapping {
-        command: "issue edit",
-        ops: &["update_issue", "get_issue"],
-    },
-    Mapping {
         command: "pr list",
         ops: &["list_pull_requests"],
     },
@@ -288,13 +260,21 @@ pub static COMMANDS: &[Mapping] = &[
     Mapping { command: "session updates", ops: &["get_session"] },
     Mapping { command: "session acknowledge", ops: &["record_session_entries"] },
     Mapping { command: "session touch", ops: &["record_session_entries"] },
-    Mapping { command: "work context", ops: &["get_work"] },
-    Mapping { command: "work claim", ops: &["claim_issue", "claim_new_issue"] },
+    Mapping { command: "work list", ops: &["list_work_items"] },
+    Mapping { command: "work view", ops: &["get_work", "get_work_item"] },
+    Mapping { command: "work new", ops: &["open_work_item", "update_work_item", "upload_attachment"] },
+    Mapping { command: "work comment", ops: &["add_work_item_comment", "upload_attachment"] },
+    Mapping { command: "work edit", ops: &["update_work_item", "get_work_item"] },
+    Mapping { command: "work close", ops: &["close_work_item", "add_work_item_comment"] },
+    Mapping { command: "work reopen", ops: &["reopen_work_item", "add_work_item_comment"] },
+    Mapping { command: "work link", ops: &["link_work_item"] },
+    Mapping { command: "work unlink", ops: &["unlink_work_item"] },
+    Mapping { command: "work claim", ops: &["claim_work_item", "claim_new_work_item"] },
     Mapping { command: "work release", ops: &["release_claim"] },
-    Mapping { command: "work handoff", ops: &["hand_off_issue"] },
-    Mapping { command: "work list", ops: &["list_claims", "list_sessions"] },
-    Mapping { command: "work block", ops: &["get_issue", "update_issue"] },
-    Mapping { command: "work unblock", ops: &["get_issue", "update_issue"] },
+    Mapping { command: "work handoff", ops: &["hand_off_work_item"] },
+    Mapping { command: "work status", ops: &["list_claims", "list_sessions"] },
+    Mapping { command: "work block", ops: &["get_work_item", "update_work_item"] },
+    Mapping { command: "work unblock", ops: &["get_work_item", "update_work_item"] },
     Mapping { command: "work events", ops: &["list_events"] },
     Mapping { command: "work dispatch", ops: &["start_agent_session"] },
     Mapping { command: "why", ops: &["why"] },
@@ -306,7 +286,7 @@ pub static COMMANDS: &[Mapping] = &[
     },
     Mapping {
         command: "browse",
-        ops: &[],
+        ops: &["resolve_ref"],
     },
     Mapping {
         command: "alias set",
@@ -412,7 +392,6 @@ mod tests {
         let sources: &[(&str, &str)] = &[
             ("auth", include_str!("commands/auth.rs")),
             ("repo", include_str!("commands/repo.rs")),
-            ("issue", include_str!("commands/issue.rs")),
             ("pr", include_str!("commands/pr.rs")),
             ("run", include_str!("commands/run.rs")),
             ("workflow", include_str!("commands/workflow.rs")),
@@ -425,6 +404,7 @@ mod tests {
             ("work", include_str!("commands/work.rs")),
             ("why", include_str!("commands/why.rs")),
             ("attach", include_str!("commands/attach.rs")),
+            ("browse", include_str!("commands/browse.rs")),
         ];
         // What context.rs calls on every command's behalf, and what
         // attach.rs uploads for --attach.

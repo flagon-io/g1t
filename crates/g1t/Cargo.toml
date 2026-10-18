@@ -1,10 +1,10 @@
 [package]
 name = "g1t"
-version = "0.3.7"
+version = "0.4.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "The g1t command line: repositories, issues, pull requests, workflow runs, deployments, secrets and logs on g1t, from a terminal or an agent's shell."
+description = "The g1t command line: repositories, work items, pull requests, workflow runs, deployments, secrets and logs on g1t, from a terminal or an agent's shell."
 
 [[bin]]
 name = "g1t"

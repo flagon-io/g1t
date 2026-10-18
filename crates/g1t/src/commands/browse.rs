@@ -3,6 +3,7 @@
 use crate::cli::BrowseArgs;
 use crate::context::Ctx;
 use crate::error::Result;
+use crate::output::s;
 use crate::repo::Repo;
 
 /// Opens `url` in the browser at a terminal; prints it otherwise.
@@ -21,8 +22,8 @@ pub fn address(site: &str, repo: &Repo, args: &BrowseArgs, branch: Option<&str>)
     if args.settings {
         return format!("{base}/settings");
     }
-    if args.issues {
-        return format!("{base}/issues");
+    if args.work {
+        return format!("{site}/{}/-/work?repo={}", repo.owner, repo.name);
     }
     if args.pulls {
         return format!("{base}/pulls");
@@ -38,9 +39,9 @@ pub fn address(site: &str, repo: &Repo, args: &BrowseArgs, branch: Option<&str>)
     };
     let target = target.trim_start_matches('#');
     if target.chars().all(|c| c.is_ascii_digit()) {
-        // Issues and pull requests share numbers; the issue page sends a
-        // pull request's number on to it.
-        return format!("{base}/issues/{target}");
+        // What the number names is found first (`run`); this is a pull
+        // request of the repository.
+        return format!("{base}/pull/{target}");
     }
     if target.len() >= 7
         && target.len() <= 40
@@ -74,7 +75,18 @@ pub fn run(ctx: &Ctx, args: BrowseArgs) -> Result<()> {
     } else {
         None
     };
-    let url = address(&client.host.site, &repo, &args, branch.as_deref());
+    let mut url = address(&client.host.site, &repo, &args, branch.as_deref());
+    // `#N` here: a pull request of the repository, or a work item of its
+    // workspace (an old issue number of the repository included).
+    if let Some(number) = args.target.as_deref().map(|t| t.trim_start_matches('#')).filter(|t| !t.is_empty() && t.chars().all(|c| c.is_ascii_digit()))
+        && let Ok(found) = client.op("resolve_ref").repo(&repo).arg("number", number).send()
+    {
+        url = match found["kind"].as_str() {
+            Some("work_item") => format!("{}/{}/-/work/{}", client.host.site, s(&found, "workspace"), found["number"]),
+            Some("pull") => format!("{}/{}/pull/{}", client.host.site, s(&found, "repo"), found["number"]),
+            _ => url,
+        };
+    }
     if args.no_browser {
         println!("{url}");
         return Ok(());
@@ -91,7 +103,7 @@ mod tests {
             target: target.map(str::to_owned),
             branch: None,
             settings: false,
-            issues: false,
+            work: false,
             pulls: false,
             actions: false,
             no_browser: true,
@@ -112,7 +124,7 @@ mod tests {
         );
         assert_eq!(
             address(site, &repo, &args(Some("12")), None),
-            "https://g1t.sh/acme/web/issues/12"
+            "https://g1t.sh/acme/web/pull/12"
         );
         assert_eq!(
             address(site, &repo, &args(Some("src/main.rs:41")), Some("dev")),
@@ -122,6 +134,9 @@ mod tests {
             address(site, &repo, &args(Some("9f2c4e1")), None),
             "https://g1t.sh/acme/web/commit/9f2c4e1"
         );
+        let mut work = args(None);
+        work.work = true;
+        assert_eq!(address(site, &repo, &work, None), "https://g1t.sh/acme/-/work?repo=web");
         let mut settings = args(None);
         settings.settings = true;
         assert_eq!(

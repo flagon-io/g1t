@@ -354,7 +354,9 @@ mod tests {
             owner: "acme".into(),
             name: "web".into(),
         };
-        let call = client.op("get_issue").repo(&repo).arg("number", 12);
-        assert_eq!(call.path(), "/repos/acme/web/issues/12");
+        let call = client.op("get_pull_request").repo(&repo).arg("number", 12);
+        assert_eq!(call.path(), "/repos/acme/web/pulls/12");
+        let call = client.op("get_work_item").arg("workspace", "acme").arg("number", 12);
+        assert_eq!(call.path(), "/workspaces/acme/work/12");
     }
 }

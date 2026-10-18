@@ -342,7 +342,7 @@ fn detach(ctx: &Ctx, args: RepoDetachArgs) -> Result<()> {
         }
     }
     let detached = client.op("detach_fork").repo(&fork).send()?;
-    super::issue::done(
+    super::done(
         ctx,
         &detached,
         &format!("Detached {fork}: it is no longer a fork"),

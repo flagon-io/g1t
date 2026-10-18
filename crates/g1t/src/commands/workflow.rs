@@ -556,7 +556,7 @@ fn switch(ctx: &Ctx, args: WorkflowSelect, on: bool) -> Result<()> {
     } else {
         workflow.clone()
     };
-    super::issue::done(
+    super::done(
         ctx,
         &shown,
         &format!(

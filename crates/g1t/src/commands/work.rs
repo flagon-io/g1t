@@ -1,19 +1,25 @@
-//! `g1t work`: coordinating work on issues. Who is on an issue (claims and
-//! sessions), what it waits on, handing it over, and following what happens
-//! in the repository as it happens.
+//! `g1t work`: a workspace's work items, and coordinating work on them.
+//! Listing, viewing, opening, editing, linking and closing work items; who
+//! is on one (claims and sessions), what it waits on, handing it over, and
+//! following what happens in the repository as it happens.
+//!
+//! A work item is its workspace's: `--workspace`, or the current
+//! repository's. Its page is `{site}/{workspace}/-/work/{number}`.
 
 use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashSet, VecDeque};
 use std::time::{Duration, Instant};
 
 use crate::cli::{
-    WorkBlockArgs, WorkClaimArgs, WorkCommand, WorkDispatchArgs, WorkEventsArgs, WorkHandoffArgs,
-    WorkNumber, WorkReleaseArgs,
+    CloseReason, ItemState, ReopenArgs, WorkArgs, WorkBlockArgs, WorkClaimArgs, WorkCloseArgs, WorkCommand,
+    WorkCommentArgs, WorkDispatchArgs, WorkEditArgs, WorkEventsArgs, WorkHandoffArgs, WorkLinkArgs, WorkListArgs,
+    WorkNewArgs, WorkNumber, WorkReleaseArgs, WorkViewArgs,
 };
-use crate::client::Client;
+use crate::client::{Call, Client};
 use crate::context::Ctx;
 use crate::error::{Error, Kind, Result};
-use crate::output::{Output, ago, now, parse_time, s};
+use crate::output::{Cell, Output, ago, now, parse_time, s};
+use crate::prompt;
 use crate::repo::Repo;
 
 /// How long a follow asks the API to hold each call, in seconds.
@@ -23,20 +29,403 @@ const MAX_BACKOFF_SECONDS: u64 = 30;
 /// How many event ids a follow remembers, to print none twice.
 const REMEMBERED: usize = 1_000;
 
-pub fn run(ctx: &Ctx, command: WorkCommand) -> Result<()> {
-    match command {
-        WorkCommand::Context(args) => context(ctx, args),
-        WorkCommand::Claim(args) => claim(ctx, args),
-        WorkCommand::Release(args) => release(ctx, args),
-        WorkCommand::Handoff(args) => handoff(ctx, args),
-        WorkCommand::List => list(ctx),
-        WorkCommand::Block(args) => block(ctx, args, true),
-        WorkCommand::Unblock(args) => block(ctx, args, false),
+pub fn run(ctx: &Ctx, args: WorkArgs) -> Result<()> {
+    let workspace = args.workspace.as_deref();
+    match args.command {
+        WorkCommand::List(args) => list(ctx, workspace, args),
+        WorkCommand::View(args) => view(ctx, workspace, args),
+        WorkCommand::New(args) => new(ctx, workspace, args),
+        WorkCommand::Comment(args) => comment(ctx, workspace, args),
+        WorkCommand::Edit(args) => edit(ctx, workspace, args),
+        WorkCommand::Close(args) => close(ctx, workspace, args),
+        WorkCommand::Reopen(args) => reopen(ctx, workspace, args),
+        WorkCommand::Link(args) => link(ctx, workspace, args),
+        WorkCommand::Unlink(args) => unlink(ctx, workspace, args),
+        WorkCommand::Claim(args) => claim(ctx, workspace, args),
+        WorkCommand::Release(args) => release(ctx, workspace, args),
+        WorkCommand::Handoff(args) => handoff(ctx, workspace, args),
+        WorkCommand::Status => status(ctx),
+        WorkCommand::Block(args) => block(ctx, workspace, args, true),
+        WorkCommand::Unblock(args) => block(ctx, workspace, args, false),
         WorkCommand::Events(args) => events(ctx, args),
         WorkCommand::Dispatch(args) => dispatch(ctx, args),
     }
 }
 
+// --- where -------------------------------------------------------------
+
+/// Where `g1t work` works: a workspace, the repository here when it is one
+/// of that workspace's, and a client for the host.
+pub struct Place {
+    pub workspace: String,
+    pub repo: Option<Repo>,
+    pub client: Client,
+}
+
+impl Place {
+    /// A work item's page.
+    pub fn url(&self, number: u64) -> String {
+        item_url(&self.client.host.site, &self.workspace, number)
+    }
+
+    /// `workspace#12`, as a work item is named outside its workspace.
+    pub fn name(&self, number: u64) -> String {
+        format!("{}#{number}", self.workspace)
+    }
+
+    /// The repository here, or why there is none.
+    fn here(&self, what: &str) -> Result<&Repo> {
+        self.repo.as_ref().ok_or_else(|| {
+            Error::usage(format!("{what} needs a repository of the {} workspace: run it in one, or pass --repo OWNER/NAME.", self.workspace))
+        })
+    }
+
+    /// A call to a work item operation of the workspace.
+    fn op(&self, id: &str) -> Call<'_> {
+        self.client.op(id).arg("workspace", &self.workspace)
+    }
+}
+
+/// A work item's page on the site.
+pub fn item_url(site: &str, workspace: &str, number: u64) -> String {
+    format!("{site}/{workspace}/-/work/{number}")
+}
+
+/// The workspace a repository is in: its owner's.
+pub fn workspace_of(repo: &Repo) -> String {
+    repo.owner.to_lowercase()
+}
+
+/// `--workspace`, else the current repository's. With a workspace named,
+/// the repository here counts only when it is one of that workspace's.
+pub fn place(ctx: &Ctx, workspace: Option<&str>) -> Result<Place> {
+    match workspace.map(str::trim).filter(|w| !w.is_empty()) {
+        Some(workspace) => {
+            let workspace = workspace.to_lowercase();
+            let here = ctx.repo_client().ok().filter(|(repo, _)| workspace_of(repo) == workspace);
+            let (repo, client) = match here {
+                Some((repo, client)) => (Some(repo), client),
+                None => (None, ctx.client()?),
+            };
+            Ok(Place { workspace, repo, client })
+        }
+        None => {
+            let (repo, client) = ctx.repo_client().map_err(|_| {
+                Error::usage("Not in a repository: say which workspace with --workspace SLUG, or which repository with --repo OWNER/NAME.")
+            })?;
+            Ok(Place { workspace: workspace_of(&repo), repo: Some(repo), client })
+        }
+    }
+}
+
+/// [`place`] for the coordination commands, which agents' hooks run in
+/// the background: signed in, or failing at once, and quick to give up.
+fn coordination_place(ctx: &Ctx, workspace: Option<&str>, read: Duration) -> Result<Place> {
+    let mut place = place(ctx, workspace)?;
+    if !place.client.has_token() {
+        return Err(crate::context::not_signed_in(&place.client.host));
+    }
+    place.client = place.client.with_timeouts(Duration::from_secs(5), read);
+    Ok(place)
+}
+
+/// Whether a repository was named with --repo (or G1T_REPO), rather than
+/// found from the git remote.
+fn repo_named(ctx: &Ctx) -> bool {
+    ctx.global.repo.as_deref().is_some_and(|r| !r.trim().is_empty())
+}
+
+// --- work items ------------------------------------------------------------
+
+fn list(ctx: &Ctx, workspace: Option<&str>, args: WorkListArgs) -> Result<()> {
+    let place = place(ctx, workspace)?;
+    let state = match args.state {
+        ItemState::Open => Some("open"),
+        ItemState::Closed => Some("closed"),
+        ItemState::All => None,
+    };
+    // --repo narrows it to the work items linked to that repository; the
+    // repository a checkout is in does not.
+    let filter = place.repo.as_ref().filter(|_| repo_named(ctx));
+    if args.role.is_some() && filter.is_none() {
+        return Err(Error::usage("--role goes with --repo OWNER/NAME: how the work items are linked to it."));
+    }
+    let assignee = match &args.assignee {
+        Some(a) => Some(super::who(ctx, &place.client, a)?),
+        None => None,
+    };
+    let found = place
+        .op("list_work_items")
+        .query_opt("state", state)
+        .query_opt("label", args.label.clone())
+        .query_opt("milestone", args.milestone)
+        .query_opt("assignee", assignee)
+        .query_opt("repo", filter.map(Repo::to_string))
+        .query_opt("role", args.role.map(|role| role.name()))
+        .send()?;
+    let mut items = super::items(found, "items");
+    if let Some(a) = &args.author {
+        let who = super::who(ctx, &place.client, a)?;
+        items.retain(|i| i["author"]["username"].as_str().is_some_and(|n| n.eq_ignore_ascii_case(&who)));
+    }
+    items.truncate(args.limit);
+    if ctx.out.structured() {
+        return ctx.out.emit(&Value::Array(items));
+    }
+    if items.is_empty() {
+        let in_what = filter.map(Repo::to_string).unwrap_or_else(|| place.workspace.clone());
+        eprintln!("No {} work items in {in_what}.", state.unwrap_or("matching"));
+        return Ok(());
+    }
+    print_list(&ctx.out, &items)
+}
+
+/// A work item's repositories, short: the first, and `+2` for the rest.
+fn repos_cell(item: &Value) -> String {
+    let paths: Vec<&str> = item["repos"].as_array().into_iter().flatten().filter_map(|r| r["path"].as_str()).collect();
+    match paths.as_slice() {
+        [] => String::new(),
+        [one] => (*one).to_owned(),
+        [first, rest @ ..] => format!("{first} +{}", rest.len()),
+    }
+}
+
+pub fn print_list(out: &Output, items: &[Value]) -> Result<()> {
+    let rows: Vec<Vec<Cell>> = items
+        .iter()
+        .map(|i| {
+            let number = format!("#{}", i["number"]);
+            let state = s(i, "state");
+            let labels = super::names(&i["labels"]).join(", ");
+            let repos = repos_cell(i);
+            vec![
+                Cell::styled(number.clone(), if state == "open" { out.green(&number) } else { out.dim(&number) }),
+                Cell::new(s(i, "title")),
+                Cell::styled(repos.clone(), out.dim(&repos)),
+                Cell::styled(labels.clone(), out.dim(&labels)),
+                Cell::styled(ago(s(i, "updated_at")), out.dim(&ago(s(i, "updated_at")))),
+            ]
+        })
+        .collect();
+    out.table(&["number", "title", "repos", "labels", "updated"], &rows)
+}
+
+fn view(ctx: &Ctx, workspace: Option<&str>, args: WorkViewArgs) -> Result<()> {
+    let place = coordination_place(ctx, workspace, super::QUICK)?;
+    if args.web {
+        return super::browse::open(ctx, &place.url(args.number));
+    }
+    let mut work = place.op("get_work").arg("number", args.number).send()?;
+    if args.comments {
+        let detail = place.op("get_work_item").arg("number", args.number).send()?;
+        work["comments"] = detail.get("comments").cloned().unwrap_or(json!([]));
+    }
+    work["url"] = Value::String(place.url(args.number));
+    if ctx.out.structured() {
+        return ctx.out.emit(&work);
+    }
+    print_context(&ctx.out, &place.name(args.number), &work);
+    if args.comments {
+        super::print_comments(&ctx.out, &work["comments"]);
+    } else if let Some(count) = work["item"]["comment_count"].as_u64().filter(|n| *n > 0) {
+        println!();
+        println!("{}", ctx.out.dim(&format!("{count} comment(s): g1t work view {} --comments", args.number)));
+    }
+    println!();
+    println!("{}", ctx.out.dim(s(&work, "url")));
+    Ok(())
+}
+
+/// The repository a new work item is filed from, when there is one here.
+fn origin(place: &Place) -> Option<String> {
+    place.repo.as_ref().map(Repo::to_string)
+}
+
+fn new(ctx: &Ctx, workspace: Option<&str>, args: WorkNewArgs) -> Result<()> {
+    let place = place(ctx, workspace)?;
+    if args.web {
+        let url = match &place.repo {
+            Some(repo) => format!("{}/{}/-/work/new?repo={}", place.client.host.site, place.workspace, repo.name),
+            None => format!("{}/{}/-/work/new", place.client.host.site, place.workspace),
+        };
+        return super::browse::open(ctx, &url);
+    }
+    let title = match args.title {
+        Some(t) => t,
+        None if prompt::interactive() => prompt::input("Title:", None)?,
+        None => return Err(prompt::needed("A title", "--title")),
+    };
+    if title.trim().is_empty() {
+        return Err(Error::usage("The title is empty."));
+    }
+    let body = prompt::body(
+        args.body.body,
+        args.body.body_file.as_deref(),
+        args.body.body_file.is_none() && args.attach.is_empty() && prompt::interactive() && !ctx.out.structured(),
+    )?;
+    let body = if args.attach.is_empty() {
+        body
+    } else {
+        super::attach::with_attachments(&place.client, place.here("--attach")?, body, &args.attach)?
+    };
+    let labels: Vec<Value> = args.label.iter().map(|l| Value::String(l.clone())).collect();
+    let targets: Vec<Value> = args.target.iter().map(|t| Value::String(t.trim().to_owned())).collect();
+    let made = place
+        .op("open_work_item")
+        .field("title", title)
+        .field_opt("body", body)
+        .field_opt("repo", origin(&place))
+        .field_opt("targets", (!targets.is_empty()).then_some(Value::Array(targets)))
+        .field_opt("labels", (!labels.is_empty()).then_some(Value::Array(labels)))
+        .field_opt("milestone", args.milestone)
+        .send()?;
+    let number = made["number"].as_u64().unwrap_or_default();
+    let made = if args.assignee.is_empty() {
+        made
+    } else {
+        let who: Vec<Value> = args
+            .assignee
+            .iter()
+            .map(|a| super::who(ctx, &place.client, a).map(Value::String))
+            .collect::<Result<_>>()?;
+        place.op("update_work_item").arg("number", number).field("assignees", Value::Array(who)).send()?
+    };
+    super::done(ctx, &made, &format!("Opened {}", place.name(number)), &place.url(number))
+}
+
+fn comment(ctx: &Ctx, workspace: Option<&str>, args: WorkCommentArgs) -> Result<()> {
+    let place = place(ctx, workspace)?;
+    // Images alone make a comment; without any, the text is asked for.
+    let body = prompt::body(args.body.body, args.body.body_file.as_deref(), args.attach.is_empty())?;
+    let body = if args.attach.is_empty() {
+        body
+    } else {
+        super::attach::with_attachments(&place.client, place.here("--attach")?, body, &args.attach)?
+    };
+    let body = body
+        .filter(|b| !b.trim().is_empty())
+        .ok_or_else(|| prompt::needed("The comment", "--body, --body-file or --attach"))?;
+    let made = place.op("add_work_item_comment").arg("number", args.number).field("body", body).send()?;
+    let id = s(&made, "id").to_owned();
+    super::done(ctx, &made, &format!("Commented on {}", place.name(args.number)), &format!("{}#{id}", place.url(args.number)))
+}
+
+fn close(ctx: &Ctx, workspace: Option<&str>, args: WorkCloseArgs) -> Result<()> {
+    let place = place(ctx, workspace)?;
+    // A commit is on a repository's default branch: this one's.
+    let repo = match &args.commit {
+        Some(_) => Some(place.here("--commit")?.to_string()),
+        None => None,
+    };
+    if let Some(text) = args.comment {
+        place.op("add_work_item_comment").arg("number", args.number).field("body", text).send()?;
+    }
+    let reason = args.reason.map(|r| match r {
+        CloseReason::Completed => "completed",
+        CloseReason::NotPlanned => "not_planned",
+    });
+    let closed = place
+        .op("close_work_item")
+        .arg("number", args.number)
+        .field_opt("reason", reason)
+        .field_opt("commit", args.commit.as_deref())
+        .field_opt("repo", repo)
+        .send()?;
+    let said = if closed["state"] == "closed" {
+        format!("Closed {}", place.name(args.number))
+    } else {
+        format!("Landed {} in this repository; it waits on {}", place.name(args.number), missing(&closed).join(", "))
+    };
+    super::done(ctx, &closed, &said, &place.url(args.number))
+}
+
+/// The targets a work item has not landed in yet.
+fn missing(item: &Value) -> Vec<String> {
+    item["repos"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|r| r["role"] == "target" && r["landed"] != true)
+        .filter_map(|r| r["path"].as_str().map(str::to_owned))
+        .collect()
+}
+
+fn reopen(ctx: &Ctx, workspace: Option<&str>, args: ReopenArgs) -> Result<()> {
+    let place = place(ctx, workspace)?;
+    if let Some(text) = args.comment {
+        place.op("add_work_item_comment").arg("number", args.number).field("body", text).send()?;
+    }
+    let opened = place.op("reopen_work_item").arg("number", args.number).send()?;
+    super::done(ctx, &opened, &format!("Reopened {}", place.name(args.number)), &place.url(args.number))
+}
+
+fn edit(ctx: &Ctx, workspace: Option<&str>, args: WorkEditArgs) -> Result<()> {
+    let place = place(ctx, workspace)?;
+    let body = prompt::body(args.body.body, args.body.body_file.as_deref(), false)?;
+    let mut call = place.op("update_work_item").arg("number", args.number);
+    let mut changed = false;
+    if let Some(t) = args.title {
+        call = call.field("title", t);
+        changed = true;
+    }
+    if let Some(b) = body {
+        call = call.field("body", b);
+        changed = true;
+    }
+    let touches_lists = !(args.add_label.is_empty()
+        && args.remove_label.is_empty()
+        && args.add_assignee.is_empty()
+        && args.remove_assignee.is_empty());
+    if touches_lists {
+        let found = place.op("get_work_item").arg("number", args.number).send()?;
+        let item = found.get("item").unwrap_or(&found);
+        if !(args.add_label.is_empty() && args.remove_label.is_empty()) {
+            let labels = super::adjust(super::names(&item["labels"]), &args.add_label, &args.remove_label);
+            call = call.field("labels", json!(labels));
+        }
+        if !(args.add_assignee.is_empty() && args.remove_assignee.is_empty()) {
+            let add: Vec<String> = args.add_assignee.iter().map(|a| super::who(ctx, &place.client, a)).collect::<Result<_>>()?;
+            let remove: Vec<String> =
+                args.remove_assignee.iter().map(|a| super::who(ctx, &place.client, a)).collect::<Result<_>>()?;
+            call = call.field("assignees", json!(super::adjust(super::names(&item["assignees"]), &add, &remove)));
+        }
+        changed = true;
+    }
+    if let Some(m) = args.milestone {
+        call = call.field("milestone", m);
+        changed = true;
+    }
+    if args.remove_milestone {
+        call = call.field("milestone", Value::Null);
+        changed = true;
+    }
+    if !changed {
+        return Err(Error::usage("Nothing to change: pass --title, --body, --add-label, --add-assignee or --milestone."));
+    }
+    let updated = call.send()?;
+    super::done(ctx, &updated, &format!("Edited {}", place.name(args.number)), &place.url(args.number))
+}
+
+fn link(ctx: &Ctx, workspace: Option<&str>, args: WorkLinkArgs) -> Result<()> {
+    let place = place(ctx, workspace)?;
+    let repo = place.here("Linking")?.to_string();
+    let linked = place
+        .op("link_work_item")
+        .arg("number", args.number)
+        .field("repo", repo.as_str())
+        .field("role", args.role.name())
+        .send()?;
+    super::done(ctx, &linked, &format!("Linked {repo} to {} as {}", place.name(args.number), args.role.name()), &place.url(args.number))
+}
+
+fn unlink(ctx: &Ctx, workspace: Option<&str>, args: WorkNumber) -> Result<()> {
+    let place = place(ctx, workspace)?;
+    let repo = place.here("Unlinking")?.to_string();
+    let unlinked = place.op("unlink_work_item").arg("number", args.number).query("repo", &repo).send()?;
+    super::done(ctx, &unlinked, &format!("Unlinked {repo} from {}", place.name(args.number)), &place.url(args.number))
+}
+
+// --- coordination ------------------------------------------------------------
 /// `in 27m`, `in 2h5m`, or `expired` for a time still to come.
 pub fn until(text: &str) -> String {
     match parse_time(text) {
@@ -53,8 +442,8 @@ pub fn claim_line(out: &Output, claim: &Value) -> String {
     if let Some(harness) = claim["harness"].as_str().filter(|h| !h.is_empty()) {
         line.push_str(&out.dim(&format!(" ({harness})")));
     }
-    if let Some(issue) = claim["issue"].as_u64() {
-        line.push_str(&format!(" on #{issue}"));
+    if let Some(item) = claim["item"].as_u64() {
+        line.push_str(&format!(" on #{item}"));
     }
     let state = s(claim, "state");
     if !state.is_empty() && state != "active" {
@@ -75,7 +464,7 @@ pub fn claim_line(out: &Output, claim: &Value) -> String {
     line
 }
 
-/// An issue another one waits on, as a line.
+/// A work item another one waits on, as a line.
 fn blocker_line(out: &Output, blocker: &Value) -> String {
     let mut line = format!("#{} {} {}", blocker["number"], s(blocker, "title"), out.state(s(blocker, "state")));
     let claims = blocker["claims"].as_array().map(Vec::as_slice).unwrap_or_default();
@@ -103,25 +492,15 @@ fn heading(out: &Output, title: &str) {
     println!("{}", out.bold(title));
 }
 
-fn context(ctx: &Ctx, args: WorkNumber) -> Result<()> {
-    let (repo, client) = super::coordination_client(ctx, super::QUICK)?;
-    let work = client.op("get_work").repo(&repo).arg("number", args.number).send()?;
-    if ctx.out.structured() {
-        return ctx.out.emit(&work);
-    }
-    print_context(&ctx.out, &repo, args.number, &work);
-    Ok(())
-}
-
 fn list_of<'a>(value: &'a Value, key: &str) -> &'a [Value] {
     value[key].as_array().map(Vec::as_slice).unwrap_or_default()
 }
 
-pub fn print_context(out: &Output, repo: &Repo, number: u64, work: &Value) {
-    let issue = &work["issue"];
-    println!("{} {}", out.bold(s(issue, "title")), out.dim(&format!("{repo}#{number}")));
-    let mut facts = vec![out.state(s(issue, "state"))];
-    let assignees: Vec<String> = issue["assignees"]
+pub fn print_context(out: &Output, name: &str, work: &Value) {
+    let item = &work["item"];
+    println!("{} {}", out.bold(s(item, "title")), out.dim(name));
+    let mut facts = vec![out.state(s(item, "state"))];
+    let assignees: Vec<String> = item["assignees"]
         .as_array()
         .into_iter()
         .flatten()
@@ -130,19 +509,62 @@ pub fn print_context(out: &Output, repo: &Repo, number: u64, work: &Value) {
     if !assignees.is_empty() {
         facts.push(format!("assigned to {}", assignees.join(", ")));
     }
+    let labels = super::names(&item["labels"]);
+    if !labels.is_empty() {
+        facts.push(format!("labels {}", labels.join(", ")));
+    }
+    if let Some(milestone) = item["milestone"]["title"].as_str() {
+        facts.push(format!("milestone {milestone}"));
+    }
     println!("{}", facts.join(" · "));
-    // get_work gives the items under the issue's "Definition of done".
-    let items: Vec<&str> = list_of(work, "definition_of_done").iter().filter_map(Value::as_str).collect();
-    if !items.is_empty() {
+    println!();
+    match item["body"].as_str().filter(|b| !b.trim().is_empty()) {
+        Some(body) => println!("{}", body.trim_end()),
+        None => println!("{}", out.dim("No description.")),
+    }
+    // get_work gives the items under its "Definition of done".
+    let done: Vec<&str> = list_of(work, "definition_of_done").iter().filter_map(Value::as_str).collect();
+    if !done.is_empty() {
         heading(out, "Definition of done");
-        for item in items {
-            println!("  - {item}");
+        for line in done {
+            println!("  - {line}");
         }
-    } else if let Some(done) = issue["definition_of_done"].as_str().filter(|d| !d.trim().is_empty()) {
-        heading(out, "Definition of done");
-        for line in done.trim().lines() {
-            println!("  {line}");
+    }
+    heading(out, "Repositories");
+    let repos = list_of(work, "repos");
+    if repos.is_empty() {
+        println!("  {}", out.dim("None linked yet."));
+    }
+    for repo in repos {
+        let landed = if repo["landed"] == true { format!(" {}", out.green("landed")) } else { String::new() };
+        let legacy = repo["legacy_number"].as_u64().map(|n| out.dim(&format!(" (was #{n} there)"))).unwrap_or_default();
+        println!("  {} {}{landed}{legacy}", s(repo, "path"), out.dim(s(repo, "role")));
+        for pull in list_of(repo, "pulls") {
+            println!("    {}", pull_line(out, pull));
+            for overlap in list_of(pull, "overlaps") {
+                let other = overlap["pull"].as_u64().or_else(|| overlap["number"].as_u64()).unwrap_or(0);
+                let files: Vec<&str> =
+                    list_of(overlap, "paths").iter().chain(list_of(overlap, "files")).filter_map(Value::as_str).collect();
+                println!(
+                    "      {} #{other}{}",
+                    out.yellow("overlaps"),
+                    if files.is_empty() { String::new() } else { format!(": {}", files.join(", ")) }
+                );
+            }
         }
+    }
+    let missing: Vec<&str> = list_of(work, "missing").iter().filter_map(Value::as_str).collect();
+    if !missing.is_empty() {
+        println!("  {} {}", out.yellow("Still to land in:"), missing.join(", "));
+    }
+    let suggested = list_of(work, "suggested_targets");
+    if !suggested.is_empty() {
+        heading(out, "Suggested targets");
+        for target in suggested {
+            let target: Suggested = serde_json::from_value(target.clone()).unwrap_or_default();
+            println!("  {} {}", target.path, out.dim(&target.why));
+        }
+        println!("  {}", out.dim("Link one: g1t work link N --repo OWNER/NAME"));
     }
     heading(out, "Claims");
     let claims = list_of(work, "claims");
@@ -172,35 +594,6 @@ pub fn print_context(out: &Output, repo: &Repo, number: u64, work: &Value) {
                 line.push_str(&out.dim(&format!(", last seen {}", ago(seen))));
             }
             println!("  {line}");
-        }
-    }
-    let pulls = list_of(work, "pulls");
-    heading(out, "Pull requests");
-    if pulls.is_empty() {
-        println!("  {}", out.dim("None yet."));
-    }
-    for pull in pulls {
-        let status = pull["status"].as_str().or_else(|| pull["state"].as_str()).unwrap_or("");
-        let mut line = format!("#{} {} {}", pull["number"], s(pull, "title"), out.state(status));
-        let checks = pull["checks"]["status"]
-            .as_str()
-            .or_else(|| pull["checks"].as_str())
-            .or_else(|| pull["check_status"].as_str());
-        if let Some(checks) = checks {
-            line.push_str(&format!(", checks {}", out.state(checks)));
-        }
-        if let Some(position) = pull["queue_position"].as_u64().or_else(|| pull["queue"]["position"].as_u64()) {
-            line.push_str(&format!(", queued {position}"));
-        }
-        println!("  {line}");
-        for overlap in list_of(pull, "overlaps") {
-            let other = overlap["pull"].as_u64().or_else(|| overlap["number"].as_u64()).unwrap_or(0);
-            let files: Vec<&str> = list_of(overlap, "files").iter().filter_map(Value::as_str).collect();
-            println!(
-                "    {} #{other}{}",
-                out.yellow("overlaps"),
-                if files.is_empty() { String::new() } else { format!(": {}", files.join(", ")) }
-            );
         }
     }
     let blocked_by = list_of(work, "blocked_by");
@@ -238,6 +631,29 @@ pub fn print_context(out: &Output, repo: &Repo, number: u64, work: &Value) {
     }
 }
 
+/// A repository a work item may belong in, and why.
+#[derive(Default, serde::Deserialize)]
+#[serde(default)]
+struct Suggested {
+    path: String,
+    why: String,
+}
+
+/// One of a work item's pull requests as a line: its number, title,
+/// status, checks and place in the merge queue.
+fn pull_line(out: &Output, pull: &Value) -> String {
+    let status = pull["status"].as_str().or_else(|| pull["state"].as_str()).unwrap_or("");
+    let mut line = format!("#{} {} {}", pull["number"], s(pull, "title"), out.state(status));
+    let checks = pull["checks"]["status"].as_str().or_else(|| pull["checks"].as_str()).or_else(|| pull["check_status"].as_str());
+    if let Some(checks) = checks {
+        line.push_str(&format!(", checks {}", out.state(checks)));
+    }
+    if let Some(position) = pull["queue_position"].as_u64().or_else(|| pull["queue"]["position"].as_u64()) {
+        line.push_str(&format!(", queued {position}"));
+    }
+    line
+}
+
 /// A decision as a line: how sure, what kind, what it says, who and when.
 pub fn decision_line(out: &Output, decision: &Value) -> String {
     let confidence = s(decision, "confidence");
@@ -256,22 +672,20 @@ pub fn decision_line(out: &Output, decision: &Value) -> String {
     line
 }
 
-fn claim(ctx: &Ctx, args: WorkClaimArgs) -> Result<()> {
+fn claim(ctx: &Ctx, workspace: Option<&str>, args: WorkClaimArgs) -> Result<()> {
     if args.number.is_some() && args.body.is_some() {
-        return Err(Error::usage("--body is the new issue's description: give it with --title, not a number."));
+        return Err(Error::usage("--body is the new work item's description: give it with --title, not a number."));
     }
-    let (repo, client) = super::coordination_client(ctx, super::QUICK)?;
-    // A number claims that issue; a title opens one and claims it.
+    let place = coordination_place(ctx, workspace, super::QUICK)?;
+    // A number claims that work item; a title opens one and claims it.
     let request = match (args.number, &args.title) {
-        (Some(number), _) => client.op("claim_issue").repo(&repo).arg("number", number),
-        (None, Some(title)) => client
-            .op("claim_new_issue")
-            .repo(&repo)
-            .field("title", title.as_str())
-            .field_opt("body", args.body.clone()),
-        (None, None) => return Err(Error::usage("Name the issue by its number, or give --title to open one.")),
+        (Some(number), _) => place.op("claim_work_item").arg("number", number),
+        (None, Some(title)) => place.op("claim_new_work_item").field("title", title.as_str()).field_opt("body", args.body.clone()),
+        (None, None) => return Err(Error::usage("Name the work item by its number, or give --title to open one.")),
     };
+    // The checkout it is claimed from, which a new work item is filed from.
     let found = request
+        .field_opt("repo", origin(&place))
         .field_opt("session_id", super::session::current())
         .field_opt("note", args.note.clone())
         .field_opt("ttl_minutes", args.ttl)
@@ -283,7 +697,7 @@ fn claim(ctx: &Ctx, args: WorkClaimArgs) -> Result<()> {
     let claim = &found["claim"];
     let number = claimed_number(args.number, &found);
     if args.number.is_none() {
-        println!("Opened #{number} {}.", s(&found["issue"], "title"));
+        println!("Opened {} {}.", place.name(number), s(&found["item"], "title"));
     }
     match claim["expires_at"].as_str() {
         Some(expires) => println!("Claimed #{number}; it expires {} unless renewed.", until(expires)),
@@ -309,11 +723,11 @@ fn claim(ctx: &Ctx, args: WorkClaimArgs) -> Result<()> {
     Ok(())
 }
 
-/// The issue a claim is on: the number given, or the one it opened.
+/// The work item a claim is on: the number given, or the one it opened.
 fn claimed_number(given: Option<u64>, found: &Value) -> u64 {
     given
-        .or_else(|| found["claim"]["issue"].as_u64())
-        .or_else(|| found["issue"]["number"].as_u64())
+        .or_else(|| found["claim"]["item"].as_u64())
+        .or_else(|| found["item"]["number"].as_u64())
         .unwrap_or_default()
 }
 
@@ -333,7 +747,7 @@ fn dispatch(ctx: &Ctx, args: WorkDispatchArgs) -> Result<()> {
     let found = client
         .op("start_agent_session")
         .repo(&repo)
-        .field_opt("issue", args.number)
+        .field_opt("item", args.number)
         .field_opt("title", args.title.clone())
         .field_opt("body", args.body.clone())
         .field_opt("instruction", args.instruction.clone())
@@ -343,16 +757,16 @@ fn dispatch(ctx: &Ctx, args: WorkDispatchArgs) -> Result<()> {
     if ctx.out.structured() {
         return ctx.out.emit(&found);
     }
-    let issue = found["issue"].as_u64().unwrap_or_default();
+    let item = found["item"].as_u64().unwrap_or_default();
     if found["handoff"].as_bool() == Some(true) {
-        eprintln!("Run this where the repository is checked out, with g1t's Claude Code plugin, to work on #{issue}:");
+        eprintln!("Run this where the repository is checked out, with g1t's Claude Code plugin, to work on #{item}:");
         println!("{}", s(&found, "command"));
         return Ok(());
     }
     let out = &ctx.out;
     println!("{}", s(&found, "session_url"));
     eprintln!(
-        "Started {} on #{issue} on the workspace's Anthropic account.",
+        "Started {} on #{item} on the workspace's Anthropic account.",
         found["session"]["id"].as_str().unwrap_or("a session")
     );
     if let Some(url) = found["provider_session_url"].as_str() {
@@ -361,11 +775,10 @@ fn dispatch(ctx: &Ctx, args: WorkDispatchArgs) -> Result<()> {
     Ok(())
 }
 
-fn release(ctx: &Ctx, args: WorkReleaseArgs) -> Result<()> {
-    let (repo, client) = super::coordination_client(ctx, super::QUICK)?;
-    let found = client
+fn release(ctx: &Ctx, workspace: Option<&str>, args: WorkReleaseArgs) -> Result<()> {
+    let place = coordination_place(ctx, workspace, super::QUICK)?;
+    let found = place
         .op("release_claim")
-        .repo(&repo)
         .arg("number", args.number)
         .field_opt("reason", args.reason.clone())
         .field_opt("session_id", super::session::current())
@@ -377,18 +790,17 @@ fn release(ctx: &Ctx, args: WorkReleaseArgs) -> Result<()> {
     Ok(())
 }
 
-fn handoff(ctx: &Ctx, args: WorkHandoffArgs) -> Result<()> {
+fn handoff(ctx: &Ctx, workspace: Option<&str>, args: WorkHandoffArgs) -> Result<()> {
     if args.note.trim().is_empty() {
         return Err(Error::usage("Say where it stands with --note."));
     }
-    let (repo, client) = super::coordination_client(ctx, super::QUICK)?;
+    let place = coordination_place(ctx, workspace, super::QUICK)?;
     let to = match &args.to {
-        Some(login) => Some(super::who(ctx, &client, login)?),
+        Some(login) => Some(super::who(ctx, &place.client, login)?),
         None => None,
     };
-    let found = client
-        .op("hand_off_issue")
-        .repo(&repo)
+    let found = place
+        .op("hand_off_work_item")
         .arg("number", args.number)
         .field_opt("to", to.clone())
         .field("note", args.note.trim())
@@ -404,12 +816,19 @@ fn handoff(ctx: &Ctx, args: WorkHandoffArgs) -> Result<()> {
     Ok(())
 }
 
+/// The active claims made from a repository's checkouts, or on work items
+/// linked to it.
 pub fn active_claims(client: &Client, repo: &Repo) -> Result<Vec<Value>> {
-    let found = client.op("list_claims").repo(repo).query("state", "active").send()?;
+    let found = client
+        .op("list_claims")
+        .arg("workspace", workspace_of(repo))
+        .query("repo", repo)
+        .query("state", "active")
+        .send()?;
     Ok(super::items(found, "claims"))
 }
 
-fn list(ctx: &Ctx) -> Result<()> {
+fn status(ctx: &Ctx) -> Result<()> {
     let (repo, client) = super::coordination_client(ctx, super::QUICK)?;
     let (claims, sessions) = std::thread::scope(|scope| {
         let claims = scope.spawn(|| active_claims(&client, &repo));
@@ -442,7 +861,7 @@ fn list(ctx: &Ctx) -> Result<()> {
     super::session::print_list(out, &sessions, super::session::current().as_deref())
 }
 
-/// The issues `number` waits on once `by` is added to `current`
+/// The work items `number` waits on once `by` is added to `current`
 /// (`add`) or taken from it.
 pub fn blocked_set(number: u64, current: &[u64], by: &[u64], add: bool) -> Result<Vec<u64>> {
     if add && by.contains(&number) {
@@ -459,25 +878,20 @@ pub fn blocked_set(number: u64, current: &[u64], by: &[u64], add: bool) -> Resul
     Ok(set.into_iter().collect())
 }
 
-fn block(ctx: &Ctx, args: WorkBlockArgs, add: bool) -> Result<()> {
-    let (repo, client) = super::coordination_client(ctx, super::QUICK)?;
-    let found = client.op("get_issue").repo(&repo).arg("number", args.number).send()?;
-    let issue = super::unwrap_key(found, "issue");
-    let current: Vec<u64> = issue["blocked_by"]
+fn block(ctx: &Ctx, workspace: Option<&str>, args: WorkBlockArgs, add: bool) -> Result<()> {
+    let place = coordination_place(ctx, workspace, super::QUICK)?;
+    let found = place.op("get_work_item").arg("number", args.number).send()?;
+    let item = super::unwrap_key(found, "item");
+    let current: Vec<u64> = item["blocked_by"]
         .as_array()
         .into_iter()
         .flatten()
         .filter_map(|n| n.as_u64().or_else(|| n["number"].as_u64()))
         .collect();
     let wanted = blocked_set(args.number, &current, &args.by, add)?;
-    let updated = client
-        .op("update_issue")
-        .repo(&repo)
-        .arg("number", args.number)
-        .field("blocked_by", json!(wanted))
-        .send()?;
+    let updated = place.op("update_work_item").arg("number", args.number).field("blocked_by", json!(wanted)).send()?;
     if ctx.out.structured() {
-        return ctx.out.emit(&super::unwrap_key(updated, "issue"));
+        return ctx.out.emit(&super::unwrap_key(updated, "item"));
     }
     let list: Vec<String> = wanted.iter().map(|n| format!("#{n}")).collect();
     if list.is_empty() {
@@ -502,15 +916,15 @@ pub fn since_time(text: &str, now_secs: i64) -> String {
     }
 }
 
-/// The issue or pull request an event is about.
+/// The work item or pull request an event is about.
 fn event_number(data: &Value) -> Option<u64> {
     data["number"]
         .as_u64()
-        .or_else(|| data["issue"].as_u64())
+        .or_else(|| data["item"].as_u64())
         .or_else(|| data["pull"].as_u64())
-        .or_else(|| data["issue"]["number"].as_u64())
+        .or_else(|| data["item"]["number"].as_u64())
         .or_else(|| data["pull"]["number"].as_u64())
-        .or_else(|| data["claim"]["issue"].as_u64())
+        .or_else(|| data["claim"]["item"].as_u64())
 }
 
 /// What an event says, in a few words.
@@ -670,7 +1084,7 @@ fn events(ctx: &Ctx, args: WorkEventsArgs) -> Result<()> {
         client: &client,
         repo: &repo,
         types: args.types.iter().map(|t| t.trim()).filter(|t| !t.is_empty()).collect::<Vec<_>>().join(","),
-        numbers: args.issues.iter().map(u64::to_string).collect::<Vec<_>>().join(","),
+        numbers: args.items.iter().map(u64::to_string).collect::<Vec<_>>().join(","),
         since: args.since.as_deref().map(|t| since_time(t, now())),
     };
     let out = &ctx.out;
@@ -768,11 +1182,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_claim_says_which_issue_it_is_on() {
-        assert_eq!(claimed_number(Some(12), &json!({ "claim": { "issue": 12 } })), 12);
-        // Opened for it: the claim names it, and so does the issue opened.
-        assert_eq!(claimed_number(None, &json!({ "claim": { "issue": 31 }, "issue": { "number": 31 } })), 31);
-        assert_eq!(claimed_number(None, &json!({ "issue": { "number": 31 } })), 31);
+    fn a_claim_says_which_work_item_it_is_on() {
+        assert_eq!(claimed_number(Some(12), &json!({ "claim": { "item": 12 } })), 12);
+        // Opened for it: the claim names it, and so does the work item opened.
+        assert_eq!(claimed_number(None, &json!({ "claim": { "item": 31 }, "item": { "number": 31 } })), 31);
+        assert_eq!(claimed_number(None, &json!({ "item": { "number": 31 } })), 31);
+    }
+
+    #[test]
+    fn a_work_item_has_its_page_in_its_workspace() {
+        assert_eq!(item_url("https://g1t.sh", "acme", 12), "https://g1t.sh/acme/-/work/12");
+        let repo = Repo { host: "g1t.sh".into(), owner: "Acme".into(), name: "web".into() };
+        assert_eq!(workspace_of(&repo), "acme");
+        let item = json!({ "repos": [{ "path": "acme/web", "role": "origin" }, { "path": "acme/api", "role": "target", "landed": true }, { "path": "acme/docs", "role": "target" }] });
+        assert_eq!(repos_cell(&item), "acme/web +2");
+        assert_eq!(missing(&item), vec!["acme/docs".to_owned()]);
     }
 
     #[test]
@@ -788,7 +1212,7 @@ mod tests {
         let out = Output::default();
         let failed = json!({
             "id": "evt_2", "type": "integration.failed", "time": "2026-10-12T09:01:02.345Z",
-            "data": { "number": 14, "issue": 12, "check": { "name": "test", "conclusion": "failure" }, "combination": [14, 15] },
+            "data": { "number": 14, "item": 12, "check": { "name": "test", "conclusion": "failure" }, "combination": [14, 15] },
         });
         assert_eq!(
             event_line(&out, &failed),
@@ -796,7 +1220,7 @@ mod tests {
         );
         let claimed = json!({
             "id": "evt_3", "type": "work.claimed", "time": "2026-10-12T09:02:00Z",
-            "data": { "number": 12, "claim": { "issue": 12, "note": "taking the parser" } },
+            "data": { "number": 12, "claim": { "item": 12, "note": "taking the parser" } },
         });
         assert_eq!(event_cells(&claimed)[3], "taking the parser");
         let overlap = json!({ "type": "overlap.detected", "data": { "pull": 14, "other_pull": 15, "files": ["src/a.rs"] } });
@@ -846,7 +1270,7 @@ mod tests {
     #[test]
     fn claims_say_who_until_when_and_why() {
         let out = Output::default();
-        let line = claim_line(&out, &json!({ "actor": "ana", "harness": "claude_code", "issue": 12, "state": "active", "note": "parser" }));
+        let line = claim_line(&out, &json!({ "actor": "ana", "harness": "claude_code", "item": 12, "state": "active", "note": "parser" }));
         assert_eq!(line, "ana (claude_code) on #12: parser");
         assert_eq!(until("2000-01-01T00:00:00Z"), "expired");
     }
