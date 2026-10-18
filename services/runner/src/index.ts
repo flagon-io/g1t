@@ -115,7 +115,7 @@ export interface RunnerEnv {
 }
 
 /**
- * What a sandbox is doing. Runs of an issue's commands (`checks`) are from
+ * What a sandbox is doing. Runs of a work item's commands (`checks`) are from
  * before checks were workflows; a sandbox that was started for work g1t no
  * longer does is told apart by its kind and only cleaned up.
  */

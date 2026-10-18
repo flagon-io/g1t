@@ -18,7 +18,7 @@
 //!   branch, commit}]`, the entry being tested last.
 //! - `CHECKS`: commands to run on the state, as a JSON array. g1t sends
 //!   none now: the state is checked by its `merge_group` workflows.
-//! - `CONTRACT_CHECKS`: the checks of issues already completed, which the
+//! - `CONTRACT_CHECKS`: the checks of work items already completed, which the
 //!   default branch has to keep passing. One that fails is run again on the
 //!   base alone; if it fails there too, it was broken already and is not
 //!   held against the stack.

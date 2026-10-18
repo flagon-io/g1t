@@ -1,6 +1,6 @@
 //! `pushed`: what a push to a branch brought into it. Work asks after each
 //! push, to mark merged the pull requests whose heads it brought in, as a
-//! merge from the site would, and to close the issues its commits' messages
+//! merge from the site would, and to land the work items its commits' messages
 //! name after a closing keyword (work's pushed.rs).
 //!
 //! One walk from the new head, every parent followed, stopping at what the

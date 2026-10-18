@@ -1,7 +1,7 @@
 //! Forks people make into their workspaces: a fork network.
 //!
 //! A fork is an ordinary repository of the workspace it goes in, with its
-//! own access, settings, rules, issues and pull requests, that remembers the
+//! own access, settings, rules and pull requests, that remembers the
 //! repository it came from (`parent_id`). That is all it shares: it can be
 //! synced from its parent and can open pull requests into it. It is not a
 //! pull request's working copy (`fork_of`, namespace `pulls`, forks.rs),
