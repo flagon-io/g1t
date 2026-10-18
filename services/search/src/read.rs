@@ -94,6 +94,8 @@ struct PieceRow {
 #[derive(Deserialize)]
 struct ItemRow {
     kind: String,
+    #[serde(default)]
+    workspace: Option<String>,
     number: u32,
     title: String,
     state: String,
@@ -103,10 +105,15 @@ struct ItemRow {
     requested_by: Option<String>,
     labels: String,
     updated_at: String,
-    repo_id: String,
-    namespace: String,
-    name: String,
-    private: u8,
+    // A work item's origin, if it has one, as the index holds it.
+    #[serde(default)]
+    repo_id: Option<String>,
+    #[serde(default)]
+    namespace: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    private: Option<u8>,
     body: Option<String>,
 }
 
@@ -119,10 +126,27 @@ struct PersonRow {
     avatar: Option<String>,
 }
 
-/// A result, and the repository whose visibility decides whether it is shown.
+/// A result, and what decides whether it is shown: the repository whose
+/// visibility it has, and for a work item its workspace, whose members see
+/// it whatever its repository (with none, only they do).
 struct Found {
     hit: Hit,
     repo: Option<Indexed>,
+    workspace: Option<String>,
+}
+
+impl Found {
+    fn shown(&self, reader: &Reader, keep: &HashSet<String>) -> bool {
+        if let Some(workspace) = &self.workspace
+            && reader.member_of(workspace)
+        {
+            return true;
+        }
+        match &self.repo {
+            Some(repo) => keep.contains(&repo.repo_id),
+            None => self.workspace.is_none(),
+        }
+    }
 }
 
 fn repo_hit(row: RepoRow, terms: &[String]) -> Found {
@@ -146,16 +170,30 @@ fn repo_hit(row: RepoRow, terms: &[String]) -> Found {
             namespace: row.namespace,
             private: row.private != 0,
         }),
+        workspace: None,
     }
 }
 
-fn item_hit(row: ItemRow, terms: &[String]) -> Found {
+fn item_hit(row: ItemRow, terms: &[String]) -> Option<Found> {
     let pull = row.kind == "pull";
-    let full = format!("{}/{}", row.namespace, row.name);
-    let url = format!("/{full}/{}/{}", if pull { "pull" } else { "issues" }, row.number);
-    let mut hit = Hit::new(if pull { HitKind::Pull } else { HitKind::Issue }, row.title, url);
-    hit.repo = Some(full);
-    hit.private = row.private != 0;
+    let repo = match (row.repo_id, row.namespace, row.name) {
+        (Some(repo_id), Some(namespace), Some(name)) => {
+            Some((Indexed { repo_id, namespace, private: row.private.unwrap_or(1) != 0 }, name))
+        }
+        _ => None,
+    };
+    let full = repo.as_ref().map(|(repo, name)| format!("{}/{name}", repo.namespace));
+    let (kind, url, workspace) = if pull {
+        (HitKind::Pull, format!("/{}/pull/{}", full.as_deref()?, row.number), None)
+    } else {
+        let workspace = row.workspace?;
+        (HitKind::Item, format!("/{workspace}/-/work/{}", row.number), Some(workspace))
+    };
+    let mut hit = Hit::new(kind, row.title, url);
+    hit.repo = full;
+    hit.workspace = workspace.clone();
+    // A work item filed in no repository is for its workspace's members.
+    hit.private = repo.as_ref().is_none_or(|(repo, _)| repo.private);
     hit.snippet = snippet::prose(row.body.as_deref().unwrap_or_default(), terms);
     hit.number = Some(row.number);
     hit.state = Some(if pull { row.status } else { row.state });
@@ -163,14 +201,7 @@ fn item_hit(row: ItemRow, terms: &[String]) -> Found {
     hit.requested_by = row.requested_by;
     hit.labels = split_labels(&row.labels);
     hit.updated_at = Some(row.updated_at);
-    Found {
-        hit,
-        repo: Some(Indexed {
-            repo_id: row.repo_id,
-            namespace: row.namespace,
-            private: row.private != 0,
-        }),
-    }
+    Some(Found { hit, repo: repo.map(|(repo, _)| repo), workspace })
 }
 
 fn person_hit(row: PersonRow, terms: &[String]) -> Found {
@@ -182,7 +213,7 @@ fn person_hit(row: PersonRow, terms: &[String]) -> Found {
     hit.snippet = row.bio.as_deref().map(|bio| snippet::prose(bio, terms)).unwrap_or_default();
     hit.description = row.bio;
     hit.avatar = row.avatar;
-    Found { hit, repo: None }
+    Found { hit, repo: None, workspace: None }
 }
 
 impl Search {
@@ -240,9 +271,10 @@ impl Search {
     async fn admit(&self, viewer: &Viewer, found: Vec<Found>) -> Vec<Hit> {
         let indexed: Vec<Indexed> = found.iter().filter_map(|f| f.repo.clone()).collect();
         let (keep, _) = self.readable(viewer, &indexed).await;
+        let reader = Reader::of(viewer);
         found
             .into_iter()
-            .filter(|f| f.repo.as_ref().is_none_or(|repo| keep.contains(&repo.repo_id)))
+            .filter(|f| f.shown(&reader, &keep))
             .map(|f| f.hit)
             .collect()
     }
@@ -254,7 +286,7 @@ impl Search {
         let sql = match kind {
             SearchType::Repositories => Some(sql::repos_count(query, reader)),
             SearchType::Code => sql::code_plan(query).ok().map(|plan| sql::code_count(&plan, query, reader)),
-            SearchType::Issues => Some(sql::items_count(query, reader, ItemKind::Issue)),
+            SearchType::Items => Some(sql::items_count(query, reader, ItemKind::Item)),
             SearchType::Pulls => Some(sql::items_count(query, reader, ItemKind::Pull)),
             SearchType::People => sql::people_select(query).map(|select| sql::count(&select)),
         };
@@ -316,6 +348,7 @@ impl Search {
                     namespace: file.namespace.clone(),
                     private: file.private != 0,
                 }),
+                workspace: None,
             });
         }
         Ok(found)
@@ -335,12 +368,12 @@ impl Search {
                 Ok(plan) => self.code_hits(&plan, query, reader, page, terms).await?,
                 Err(_) => Vec::new(),
             },
-            SearchType::Issues | SearchType::Pulls => {
-                let item = if kind == SearchType::Issues { ItemKind::Issue } else { ItemKind::Pull };
+            SearchType::Items | SearchType::Pulls => {
+                let item = if kind == SearchType::Items { ItemKind::Item } else { ItemKind::Pull };
                 store::all::<ItemRow>(&self.db, &sql::items_page(query, reader, item, page))
                     .await?
                     .into_iter()
-                    .map(|row| item_hit(row, terms))
+                    .filter_map(|row| item_hit(row, terms))
                     .collect()
             }
             SearchType::People => match sql::people_page(query, page) {
@@ -412,7 +445,7 @@ impl Search {
         Ok(Outcome::Ok(results))
     }
 
-    /// A few repositories, issues, pull requests and people, for the
+    /// A few repositories, work items, pull requests and people, for the
     /// command palette. Never code: that is a full search away.
     pub async fn suggest(&self, a: SuggestArgs) -> Result<Vec<Hit>> {
         let query = Query::parse(&a.query);
@@ -423,7 +456,7 @@ impl Search {
         let page = Page { limit: SUGGEST_EACH, offset: 0 };
         let terms = query.highlights();
         let mut found = Vec::new();
-        for kind in [SearchType::Repositories, SearchType::Issues, SearchType::Pulls, SearchType::People] {
+        for kind in [SearchType::Repositories, SearchType::Items, SearchType::Pulls, SearchType::People] {
             match self.page_of(kind, &query, &reader, page, &terms).await {
                 Ok(more) => found.extend(more),
                 Err(error) => worker::console_error!("search: suggesting {} failed: {error}", kind.as_str()),
@@ -483,6 +516,58 @@ mod tests {
         assert_eq!(encode_path("src/main.rs"), "src/main.rs");
         assert_eq!(encode_path("docs/a b#c?.md"), "docs/a%20b%23c%3F.md");
         assert_eq!(encode_path("src/ünï.rs"), "src/%C3%BCn%C3%AF.rs");
+    }
+
+    fn row(kind: &str, workspace: Option<&str>, origin: Option<(&str, &str, bool)>) -> ItemRow {
+        ItemRow {
+            kind: kind.into(),
+            workspace: workspace.map(str::to_owned),
+            number: 12,
+            title: "Fix it".into(),
+            state: "open".into(),
+            status: "open".into(),
+            author: "ana".into(),
+            requested_by: None,
+            labels: "|bug|".into(),
+            updated_at: String::new(),
+            repo_id: origin.map(|_| "rep_1".to_owned()),
+            namespace: origin.map(|(namespace, _, _)| namespace.to_owned()),
+            name: origin.map(|(_, name, _)| name.to_owned()),
+            private: origin.map(|(_, _, private)| u8::from(private)),
+            body: None,
+        }
+    }
+
+    #[test]
+    fn work_items_are_at_their_workspace() {
+        let found = item_hit(row("item", Some("acme"), Some(("acme", "web", false))), &[]).unwrap();
+        assert_eq!(found.hit.kind, HitKind::Item);
+        assert_eq!(found.hit.url, "/acme/-/work/12");
+        assert_eq!(found.hit.repo.as_deref(), Some("acme/web"));
+        assert_eq!(found.hit.workspace.as_deref(), Some("acme"));
+        assert!(!found.hit.private);
+        // Filed in no repository: for members only.
+        let found = item_hit(row("item", Some("acme"), None), &[]).unwrap();
+        assert_eq!(found.hit.repo, None);
+        assert!(found.hit.private);
+        let pull = item_hit(row("pull", None, Some(("acme", "web", false))), &[]).unwrap();
+        assert_eq!(pull.hit.url, "/acme/web/pull/12");
+    }
+
+    #[test]
+    fn the_second_check_lets_members_see_their_work_items() {
+        use g1t_contracts::{Membership, User};
+        let member = Reader::of(&Some(User { workspaces: vec![Membership::member("acme")], ..User::default() }));
+        let none = HashSet::new();
+        let readable = HashSet::from(["rep_1".to_owned()]);
+        let filed = item_hit(row("item", Some("acme"), Some(("acme", "web", true))), &[]).unwrap();
+        let loose = item_hit(row("item", Some("acme"), None), &[]).unwrap();
+        assert!(filed.shown(&member, &none) && loose.shown(&member, &none));
+        // Others, only where the repos service says they read its origin.
+        let outsider = Reader::default();
+        assert!(!filed.shown(&outsider, &none));
+        assert!(filed.shown(&outsider, &readable));
+        assert!(!loose.shown(&outsider, &readable));
     }
 
     #[test]

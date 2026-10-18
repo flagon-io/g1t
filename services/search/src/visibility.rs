@@ -4,7 +4,9 @@
 //!    row is read if its repository is public, as the index last heard,
 //!    in a workspace whose private repositories the viewer reads (an
 //!    owner, or a member whose base permission gives a role), or one they
-//!    were given a role on directly.
+//!    were given a role on directly. A work item is read by every member
+//!    of its workspace, and by anyone who reads the repository it was filed
+//!    in (`access::item_role`); one filed in no repository, by members only.
 //! 2. On the page about to be returned, against the repos service, which
 //!    owns visibility: anything it does not say the viewer may read now is
 //!    dropped, and the index is corrected. A repository made private a
@@ -30,6 +32,9 @@ pub struct Reader {
     /// Repositories the reader was given a role on directly, by id: an
     /// outside collaborator's, or a member's beyond the base permission.
     pub granted: Vec<String>,
+    /// Workspaces, by slug, the reader is a member of, so sees every work
+    /// item of (`access::workspace_role`).
+    pub members_of: Vec<String>,
 }
 
 impl Reader {
@@ -47,6 +52,12 @@ impl Reader {
                 .filter(|slug| access::granted(user, RepoRef { id: "", namespace: slug, private: true }).is_some())
                 .collect(),
             granted: user.grants.iter().map(|grant| grant.repo_id.clone()).collect(),
+            members_of: user
+                .workspaces
+                .iter()
+                .map(|membership| membership.slug.to_lowercase())
+                .filter(|slug| access::workspace_role(user, slug).is_some())
+                .collect(),
         }
     }
 
@@ -76,6 +87,16 @@ impl Reader {
     pub fn granted_json(&self) -> String {
         serde_json::to_string(&self.granted).unwrap_or_else(|_| "[]".into())
     }
+
+    /// Whether the reader sees every work item of `workspace`.
+    pub fn member_of(&self, workspace: &str) -> bool {
+        self.members_of.iter().any(|slug| slug.eq_ignore_ascii_case(workspace))
+    }
+
+    /// [`Reader::members_of`] as JSON, likewise.
+    pub fn members_json(&self) -> String {
+        serde_json::to_string(&self.members_of).unwrap_or_else(|_| "[]".into())
+    }
 }
 
 /// The SQL the first check adds to every query, given the repository's
@@ -84,6 +105,18 @@ impl Reader {
 pub fn clause(alias: &str) -> String {
     format!(
         "({alias}.private = 0 OR {alias}.namespace IN (SELECT value FROM json_each(?)) OR {alias}.repo_id IN (SELECT value FROM json_each(?)))"
+    )
+}
+
+/// The first check for work items, given the item's and its origin's table
+/// aliases: a member of its workspace, or a reader of its origin, which is
+/// joined with a `LEFT JOIN` (none: no origin, members only). Its three
+/// parameters are [`Reader::members_json`], [`Reader::namespaces_json`] and
+/// [`Reader::granted_json`], in that order.
+pub fn item_clause(item: &str, origin: &str) -> String {
+    format!(
+        "({item}.workspace IN (SELECT value FROM json_each(?)) OR (({origin}.repo_id IS NOT NULL) AND {}))",
+        clause(origin)
     )
 }
 
@@ -344,6 +377,22 @@ mod tests {
         let verdict = check(&reader, &[row("rep_1", "acme", true), row("rep_2", "public-co", false)], None);
         assert_eq!(verdict.keep, HashSet::from(["rep_1".to_owned()]));
         assert!(verdict.corrections.is_empty());
+    }
+
+    #[test]
+    fn members_see_every_work_item_of_their_workspace() {
+        // A member whose base permission gives no role on its repositories
+        // still sees its work items.
+        let reader = Reader::of(&member_with(BasePermission::None, &[]));
+        assert!(reader.member_of("ACME"));
+        assert_eq!(reader.members_json(), r#"["acme"]"#);
+        assert_eq!(reader.namespaces_json(), "[]");
+        assert!(!Reader::of(&None).member_of("acme"));
+        assert!(!Reader::of(&viewer(&["other"])).member_of("acme"));
+        assert_eq!(
+            item_clause("i", "r"),
+            "(i.workspace IN (SELECT value FROM json_each(?)) OR ((r.repo_id IS NOT NULL) AND (r.private = 0 OR r.namespace IN (SELECT value FROM json_each(?)) OR r.repo_id IN (SELECT value FROM json_each(?)))))"
+        );
     }
 
     #[test]

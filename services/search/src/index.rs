@@ -11,7 +11,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use g1t_contracts::events::{Event, ProjectUpdated};
+use g1t_contracts::events::{Event, ProjectUpdated, WorkMigrated};
 use g1t_contracts::identity::{DirectoryArgs, DirectoryEntry, DirectoryPage, Profile, SlugArgs, UsernameArgs, Workspace};
 use g1t_contracts::repos::{
     AllIdsArgs, BlobText, ChangedFilesArgs, FileList, IdPage, ListFilesArgs, PathByIdArgs, ReadBlobsArgs, RepoPath, TreeArgs,
@@ -19,7 +19,7 @@ use g1t_contracts::repos::{
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::{
-    Issue, IssueDetail, ListIssuesArgs, ListPullsArgs, Pull, PullDetail, State, ViewArgs,
+    ListPullsArgs, ListWorkItemsArgs, Pull, PullDetail, State, ViewArgs, WorkItem, WorkItemDetail, WorkItemViewArgs,
 };
 use g1t_contracts::{Membership, Outcome, PrincipalKind, User};
 use g1t_kit::now_ms;
@@ -44,7 +44,7 @@ pub const DRAIN_BYTES: u64 = 3 * 1024 * 1024;
 const READ_GROUP: usize = 20;
 /// Pieces of a file written in one statement.
 const PIECES_PER_STATEMENT: usize = 8;
-/// The most of an issue's or pull request's body indexed.
+/// The most of a work item's or pull request's body indexed.
 const BODY_CHARS: usize = 32 * 1024;
 /// The most of a README indexed.
 const README_CHARS: usize = 4000;
@@ -52,6 +52,17 @@ const README_CHARS: usize = 4000;
 const BACKFILL_PAGE: u32 = 100;
 /// Accounts or workspaces per directory job.
 const DIRECTORY_PAGE: u32 = 200;
+/// Work items read one at a time in one job, at most.
+const ITEMS_PER_JOB: usize = 20;
+
+/// Stores a work item or pull request by its key, as it is now.
+pub const UPSERT_ITEM: &str = "INSERT INTO items (kind, key, repo_id, workspace, number, repos, title, body, state, status,
+       author, requested_by, labels, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (key) DO UPDATE SET repo_id = excluded.repo_id, workspace = excluded.workspace,
+       number = excluded.number, repos = excluded.repos, title = excluded.title, body = excluded.body,
+       state = excluded.state, status = excluded.status, author = excluded.author,
+       requested_by = excluded.requested_by, labels = excluded.labels, updated_at = excluded.updated_at";
 
 /// Where `park` keeps a backfill page in `meta`, by its key's prefix.
 const PARKED: &str = "parked_job:";
@@ -76,7 +87,7 @@ pub enum Job {
         after: Option<String>,
     },
     /// Compares a repository's default branch with the index, whole, and
-    /// indexes its issues and pull requests.
+    /// indexes its pull requests.
     Repo { repo_id: String },
     /// Indexes what a push to the default branch changed.
     Push {
@@ -93,6 +104,10 @@ pub enum Job {
         #[serde(default)]
         after: Option<String>,
     },
+    /// Indexes a workspace's work items, as many as one list returns.
+    Workspace { workspace: String },
+    /// Indexes these work items of a workspace, one at a time.
+    Items { workspace: String, numbers: Vec<u32> },
 }
 
 /// What this service reads of the events it handles.
@@ -117,6 +132,14 @@ struct PushEvent {
 #[serde(rename_all = "camelCase")]
 struct NumberEvent {
     repo_id: String,
+    number: u32,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ItemEvent {
+    item_id: String,
+    workspace: String,
     number: u32,
 }
 
@@ -147,6 +170,30 @@ struct RepoState {
     state: String,
 }
 
+/// Where a row of `items` belongs and what it is linked to.
+struct Row<'a> {
+    kind: &'a str,
+    key: &'a str,
+    repo_id: Option<&'a str>,
+    workspace: Option<&'a str>,
+    number: u32,
+    repos: &'a str,
+}
+
+/// What a row of `items` says.
+struct Text<'a> {
+    title: &'a str,
+    body: &'a str,
+    state: &'a str,
+    status: &'a str,
+    /// Who opened it, and for g1t's work, who asked for it.
+    author: &'a str,
+    requested_by: Option<&'a str>,
+    labels: &'a [String],
+    created_at: &'a str,
+    updated_at: &'a str,
+}
+
 fn now() -> String {
     rfc3339(now_ms())
 }
@@ -171,6 +218,41 @@ fn labels_of(labels: &[String]) -> String {
 
 fn clip(text: &str, max: usize) -> String {
     text.chars().take(max).collect()
+}
+
+/// Repository ids between bars, as `items.repos` keeps them: `|rep_1|rep_2|`.
+fn repos_of(ids: &[&str]) -> String {
+    let mut out = String::from("|");
+    for id in ids {
+        out.push_str(id);
+        out.push('|');
+    }
+    out
+}
+
+/// A pull request's key in `items`.
+fn pull_key(repo_id: &str, number: u32) -> String {
+    format!("{repo_id}/{number}")
+}
+
+/// The jobs that index the work items `work.migrated` announces: grouped
+/// by workspace, a few to a job.
+fn migrated_jobs(migrated: &WorkMigrated) -> Vec<Job> {
+    let mut by_workspace: Vec<(String, Vec<u32>)> = Vec::new();
+    for item in &migrated.items {
+        let workspace = item.workspace.to_lowercase();
+        match by_workspace.iter_mut().find(|(slug, _)| *slug == workspace) {
+            Some((_, numbers)) => numbers.push(item.number),
+            None => by_workspace.push((workspace, vec![item.number])),
+        }
+    }
+    let mut jobs = Vec::new();
+    for (workspace, numbers) in by_workspace {
+        for group in numbers.chunks(ITEMS_PER_JOB) {
+            jobs.push(Job::Items { workspace: workspace.clone(), numbers: group.to_vec() });
+        }
+    }
+    jobs
 }
 
 impl Search {
@@ -272,7 +354,9 @@ impl Search {
                 store::prepare(&self.db, "DELETE FROM chunks WHERE fid IN (SELECT fid FROM files WHERE repo_id = ?)", id())?,
                 store::prepare(&self.db, "DELETE FROM files WHERE repo_id = ?", id())?,
                 store::prepare(&self.db, "DELETE FROM pending WHERE repo_id = ?", id())?,
-                store::prepare(&self.db, "DELETE FROM items WHERE repo_id = ?", id())?,
+                // Its work items stay: they are their workspace's, now for
+                // its members only.
+                store::prepare(&self.db, "DELETE FROM items WHERE kind = 'pull' AND repo_id = ?", id())?,
                 store::prepare(&self.db, "DELETE FROM repo_topics WHERE repo_id = ?", id())?,
                 store::prepare(&self.db, "DELETE FROM repos WHERE repo_id = ?", id())?,
             ],
@@ -517,147 +601,193 @@ impl Search {
         Ok(statements)
     }
 
-    // ---- Issues and pull requests ------------------------------------------
+    // ---- Work items and pull requests -------------------------------------
 
-    fn issue_row(&self, repo_id: &str, issue: &Issue) -> Result<worker::D1PreparedStatement> {
-        let status = match issue.state {
+    fn work_item_row(&self, item: &WorkItem) -> Result<worker::D1PreparedStatement> {
+        let status = match item.state {
             State::Open => "open",
-            State::Closed => issue.reason.map_or("completed", |reason| reason.as_str()),
+            State::Closed => item.reason.map_or("completed", |reason| reason.as_str()),
         };
+        let linked: Vec<&str> = item.repos.iter().map(|repo| repo.repo_id.as_str()).collect();
         self.item_row(
-            repo_id,
-            "issue",
-            issue.number,
-            &issue.title,
-            &issue.body,
-            if issue.state == State::Open { "open" } else { "closed" },
-            status,
-            (&issue.author.username, issue.requested_by.as_ref().map(|user| user.username.as_str())),
-            &issue.labels,
-            &issue.created_at,
-            &issue.updated_at,
+            Row {
+                kind: "item",
+                key: &item.id,
+                repo_id: item.origin().map(|repo| repo.repo_id.as_str()),
+                workspace: Some(&item.workspace.to_lowercase()),
+                number: item.number,
+                repos: &repos_of(&linked),
+            },
+            Text {
+                title: &item.title,
+                body: &item.body,
+                state: if item.state == State::Open { "open" } else { "closed" },
+                status,
+                author: &item.author.username,
+                requested_by: item.requested_by.as_ref().map(|user| user.username.as_str()),
+                labels: &item.labels,
+                created_at: &item.created_at,
+                updated_at: &item.updated_at,
+            },
         )
     }
 
-    fn pull_row(&self, repo_id: &str, pull: &Pull, labels: &[String]) -> Result<worker::D1PreparedStatement> {
+    fn pull_row(&self, repo_id: &str, pull: &Pull) -> Result<worker::D1PreparedStatement> {
         self.item_row(
-            repo_id,
-            "pull",
-            pull.number,
-            &pull.title,
-            pull.body.as_deref().unwrap_or_default(),
-            if pull.status.is_active() { "open" } else { "closed" },
-            pull.status.as_str(),
-            (&pull.author.username, pull.requested_by.as_ref().map(|user| user.username.as_str())),
-            labels,
-            &pull.created_at,
-            &pull.updated_at,
+            Row {
+                kind: "pull",
+                key: &pull_key(repo_id, pull.number),
+                repo_id: Some(repo_id),
+                workspace: None,
+                number: pull.number,
+                repos: "|",
+            },
+            Text {
+                title: &pull.title,
+                body: pull.body.as_deref().unwrap_or_default(),
+                state: if pull.status.is_active() { "open" } else { "closed" },
+                status: pull.status.as_str(),
+                author: &pull.author.username,
+                requested_by: pull.requested_by.as_ref().map(|user| user.username.as_str()),
+                labels: &pull.labels,
+                created_at: &pull.created_at,
+                updated_at: &pull.updated_at,
+            },
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn item_row(
-        &self,
-        repo_id: &str,
-        kind: &str,
-        number: u32,
-        title: &str,
-        body: &str,
-        state: &str,
-        status: &str,
-        // Who opened it, and for g1t's work, who asked for it.
-        (author, requested_by): (&str, Option<&str>),
-        labels: &[String],
-        created_at: &str,
-        updated_at: &str,
-    ) -> Result<worker::D1PreparedStatement> {
+    fn item_row(&self, row: Row<'_>, text: Text<'_>) -> Result<worker::D1PreparedStatement> {
         store::prepare(
             &self.db,
-            "INSERT INTO items (repo_id, kind, number, title, body, state, status, author, requested_by, labels, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT (repo_id, kind, number) DO UPDATE SET title = excluded.title, body = excluded.body,
-               state = excluded.state, status = excluded.status, author = excluded.author,
-               requested_by = excluded.requested_by, labels = excluded.labels, updated_at = excluded.updated_at",
+            UPSERT_ITEM,
             vec![
-                p(repo_id),
-                p(kind),
-                Param::Int(i64::from(number)),
-                p(title),
-                p(&clip(body, BODY_CHARS)),
-                p(state),
-                p(status),
-                p(&author.to_lowercase()),
-                requested_by.map_or(Param::Null, |name| p(&name.to_lowercase())),
-                p(&labels_of(labels)),
-                p(created_at),
-                p(updated_at),
+                p(row.kind),
+                p(row.key),
+                Param::opt(row.repo_id),
+                Param::opt(row.workspace),
+                Param::Int(i64::from(row.number)),
+                p(row.repos),
+                p(text.title),
+                p(&clip(text.body, BODY_CHARS)),
+                p(text.state),
+                p(text.status),
+                p(&text.author.to_lowercase()),
+                text.requested_by.map_or(Param::Null, |name| p(&name.to_lowercase())),
+                p(&labels_of(text.labels)),
+                p(text.created_at),
+                p(text.updated_at),
             ],
         )
     }
 
-    /// Indexes one issue or pull request as it is now.
-    async fn index_item(&self, pull: bool, repo_id: &str, number: u32) -> Result<()> {
+    async fn known(&self, repo_id: &str) -> Result<bool> {
+        let found = store::count(
+            &self.db,
+            &Sql { text: "SELECT count(*) AS n FROM repos WHERE repo_id = ?".into(), params: vec![p(repo_id)] },
+        )
+        .await?;
+        Ok(found > 0)
+    }
+
+    /// Indexes one pull request as it is now.
+    async fn index_pull(&self, repo_id: &str, number: u32) -> Result<()> {
         let Some(path) = self.path_of(repo_id).await? else {
             return Ok(());
         };
         let Some(actor) = self.actor(&path.namespace).await? else {
             return Ok(());
         };
-        // An issue on a repository not yet indexed brings the repository in.
-        let known = store::count(
-            &self.db,
-            &Sql { text: "SELECT count(*) AS n FROM repos WHERE repo_id = ?".into(), params: vec![p(repo_id)] },
-        )
-        .await?;
-        if known == 0 && self.refresh_repo(repo_id).await?.is_none() {
+        // A pull request on a repository not yet indexed brings the repository in.
+        if !self.known(repo_id).await? && self.refresh_repo(repo_id).await?.is_none() {
             return Ok(());
         }
         let view = ViewArgs { repo: path, number, viewer: Some(actor), after_seq: 0 };
-        let statement = if pull {
-            let found: Outcome<PullDetail> = g1t_kit::call(&self.work, "get_pull", &view).await?;
-            let Outcome::Ok(detail) = found else { return Ok(()) };
-            let labels = detail.issue.as_ref().map(|issue| issue.labels.clone()).unwrap_or_default();
-            self.pull_row(repo_id, &detail.pull, &labels)?
-        } else {
-            let found: Outcome<IssueDetail> = g1t_kit::call(&self.work, "get_issue", &view).await?;
-            let Outcome::Ok(detail) = found else { return Ok(()) };
-            self.issue_row(repo_id, &detail.issue)?
+        let found: Outcome<PullDetail> = g1t_kit::call(&self.work, "get_pull", &view).await?;
+        let Outcome::Ok(detail) = found else { return Ok(()) };
+        store::run_all(&self.db, vec![self.pull_row(repo_id, &detail.pull)?]).await
+    }
+
+    /// Brings in the repository a work item was filed in, if the index
+    /// does not have it yet: who may read the item follows it.
+    async fn ensure_origin(&self, item: &WorkItem) -> Result<()> {
+        if let Some(origin) = item.origin()
+            && !self.known(&origin.repo_id).await?
+        {
+            self.refresh_repo(&origin.repo_id).await?;
+        }
+        Ok(())
+    }
+
+    /// Indexes one work item as it is now. One no longer found is
+    /// forgotten, when its id is known.
+    async fn index_work_item(&self, workspace: &str, number: u32, item_id: Option<&str>) -> Result<()> {
+        if workspace.is_empty() || number == 0 {
+            return Ok(());
+        }
+        let Some(actor) = self.actor(workspace).await? else {
+            return Ok(());
+        };
+        let view = WorkItemViewArgs { workspace: workspace.to_lowercase(), number, viewer: Some(actor) };
+        let found: Outcome<WorkItemDetail> = g1t_kit::call(&self.work, "get_work_item", &view).await?;
+        let statement = match found {
+            Outcome::Ok(detail) => {
+                self.ensure_origin(&detail.item).await?;
+                self.work_item_row(&detail.item)?
+            }
+            Outcome::Fail(_) => match item_id {
+                Some(id) => store::prepare(&self.db, "DELETE FROM items WHERE kind = 'item' AND key = ?", vec![p(id)])?,
+                None => return Ok(()),
+            },
         };
         store::run_all(&self.db, vec![statement]).await
     }
 
-    /// Indexes a repository's issues and pull requests, newest first, as
-    /// many as one list returns.
-    async fn index_items(&self, repo_id: &str, path: &RepoPath) -> Result<()> {
+    /// Indexes a workspace's work items, newest first, as many as one list
+    /// returns.
+    async fn index_work_items(&self, workspace: &str) -> Result<()> {
+        let Some(actor) = self.actor(workspace).await? else {
+            return Ok(());
+        };
+        let items: Outcome<Vec<WorkItem>> = g1t_kit::call(
+            &self.work,
+            "list_work_items",
+            &ListWorkItemsArgs {
+                workspace: workspace.to_lowercase(),
+                viewer: Some(actor),
+                repo: None,
+                role: None,
+                state: None,
+                label: None,
+                milestone: None,
+                assignee: None,
+            },
+        )
+        .await?;
+        let Outcome::Ok(items) = items else { return Ok(()) };
+        let mut statements = Vec::new();
+        for item in items.iter().filter(|item| item.number > 0) {
+            self.ensure_origin(item).await?;
+            statements.push(self.work_item_row(item)?);
+        }
+        store::run_all(&self.db, statements).await
+    }
+
+    /// Indexes a repository's pull requests, newest first, as many as one
+    /// list returns.
+    async fn index_pulls(&self, repo_id: &str, path: &RepoPath) -> Result<()> {
         let Some(actor) = self.actor(&path.namespace).await? else {
             return Ok(());
         };
-        let issues: Outcome<Vec<Issue>> = g1t_kit::call(
-            &self.work,
-            "list_issues",
-            &ListIssuesArgs { repo: path.clone(), viewer: Some(actor.clone()), state: None, label: None, milestone: None },
-        )
-        .await?;
         let pulls: Outcome<Vec<Pull>> = g1t_kit::call(
             &self.work,
             "list_pulls",
             &ListPullsArgs { repo: path.clone(), viewer: Some(actor), state: None, label: None, milestone: None, base: None },
         )
         .await?;
-        let issues = match issues {
-            Outcome::Ok(issues) => issues,
-            Outcome::Fail(_) => Vec::new(),
-        };
-        let labels: HashMap<u32, &Vec<String>> = issues.iter().map(|issue| (issue.number, &issue.labels)).collect();
+        let Outcome::Ok(pulls) = pulls else { return Ok(()) };
         let mut statements = Vec::new();
-        for issue in &issues {
-            statements.push(self.issue_row(repo_id, issue)?);
-        }
-        if let Outcome::Ok(pulls) = pulls {
-            for pull in &pulls {
-                let labels = pull.issue.and_then(|number| labels.get(&number)).map(|l| l.as_slice()).unwrap_or_default();
-                statements.push(self.pull_row(repo_id, pull, labels)?);
-            }
+        for pull in &pulls {
+            statements.push(self.pull_row(repo_id, pull)?);
         }
         store::run_all(&self.db, statements).await
     }
@@ -794,7 +924,7 @@ impl Search {
                 }
             }
             // A transfer changes the repository's path; refreshing reads it
-            // again by id, issues and pull requests with it.
+            // again by id.
             // Archiving changes nothing searched, but the details are read again.
             "repo.created"
             | "repo.updated"
@@ -824,22 +954,32 @@ impl Search {
                     self.purge(&repo.repo_id).await?;
                 }
             }
-            // A restored one is indexed again, whole: its code, issues and
-            // pull requests.
+            // A restored one is indexed again, whole: its code and pull
+            // requests.
             "repo.restored" => {
                 if let Ok(repo) = serde_json::from_value::<RepoEvent>(data.clone()) {
                     self.enqueue(vec![Job::Repo { repo_id: repo.repo_id }]).await?;
                 }
             }
-            "issue.opened" | "issue.updated" | "issue.closed" | "issue.reopened" | "issue.assigned" => {
-                if let Ok(item) = serde_json::from_value::<NumberEvent>(data.clone()) {
-                    self.index_item(false, &item.repo_id, item.number).await?;
+            // Every change to a work item: its text, state, labels and the
+            // repositories it is linked to are all indexed.
+            kind if kind.starts_with("work_item.") => {
+                if let Ok(item) = serde_json::from_value::<ItemEvent>(data.clone()) {
+                    self.index_work_item(&item.workspace, item.number, Some(&item.item_id)).await?;
+                }
+            }
+            // Issues moved into work items keep their ids: each is read
+            // again with its workspace and new number. The SQL migration
+            // dropped what was kept of them as issues.
+            "work.migrated" => {
+                if let Ok(migrated) = serde_json::from_value::<WorkMigrated>(data.clone()) {
+                    self.enqueue(migrated_jobs(&migrated)).await?;
                 }
             }
             "pull.opened" | "pull.ready" | "pull.updated" | "pull.closed" | "pull.reopened"
-            | "pull.converted_to_draft" | "pull.merged" => {
-                if let Ok(item) = serde_json::from_value::<NumberEvent>(data.clone()) {
-                    self.index_item(true, &item.repo_id, item.number).await?;
+            | "pull.converted_to_draft" | "pull.merged" | "pull.labeled" | "pull.unlabeled" => {
+                if let Ok(pull) = serde_json::from_value::<NumberEvent>(data.clone()) {
+                    self.index_pull(&pull.repo_id, pull.number).await?;
                 }
             }
             // A deleted account's profile is not found, so indexing it
@@ -886,6 +1026,7 @@ impl Search {
                     event,
                     &[
                         "UPDATE repos SET namespace = ?1 WHERE namespace = ?2",
+                        "UPDATE items SET workspace = ?1 WHERE workspace = ?2",
                         "UPDATE people SET slug = ?1 WHERE kind = 'workspace' AND slug = ?2",
                     ],
                 )
@@ -920,7 +1061,7 @@ impl Search {
                     )
                     .await?;
                 }
-                self.index_items(&repo_id, &path).await?;
+                self.index_pulls(&repo_id, &path).await?;
                 self.reconcile(&repo_id).await
             }
             Job::Push { repo_id, before, after } => {
@@ -976,8 +1117,21 @@ impl Search {
                     statements.push(self.person_row(&kind, &reference, entry)?);
                 }
                 store::run_all(&self.db, statements).await?;
+                // Each workspace's work items, a job each.
+                let mut jobs: Vec<Job> = if kind == "workspace" {
+                    page.entries.iter().map(|entry| Job::Workspace { workspace: entry.slug.to_lowercase() }).collect()
+                } else {
+                    Vec::new()
+                };
                 if let Some(next) = page.next {
-                    self.enqueue(vec![Job::Directory { kind, after: Some(next) }]).await?;
+                    jobs.push(Job::Directory { kind, after: Some(next) });
+                }
+                self.enqueue(jobs).await
+            }
+            Job::Workspace { workspace } => self.index_work_items(&workspace).await,
+            Job::Items { workspace, numbers } => {
+                for number in numbers {
+                    self.index_work_item(&workspace, number, None).await?;
                 }
                 Ok(())
             }
@@ -1020,6 +1174,34 @@ mod tests {
     fn labels_are_kept_between_bars() {
         assert_eq!(labels_of(&["Bug".into(), "good first issue".into()]), "|bug|good first issue|");
         assert_eq!(labels_of(&[]), "|");
+    }
+
+    #[test]
+    fn migrated_items_are_read_again_by_workspace_a_few_at_a_time() {
+        use g1t_contracts::work::MigratedItem;
+        let moved = |workspace: &str, number: u32| MigratedItem {
+            repo_id: "rep_1".into(),
+            legacy_number: number,
+            workspace: workspace.into(),
+            number: number + 100,
+            item_id: format!("iss_{number}"),
+        };
+        let mut items: Vec<MigratedItem> = (1..=25).map(|n| moved("acme", n)).collect();
+        items.insert(3, moved("Beta", 7));
+        let jobs = migrated_jobs(&WorkMigrated { page: 1, items, done: false });
+        assert_eq!(jobs.len(), 3);
+        assert_eq!(jobs[0], Job::Items { workspace: "acme".into(), numbers: (101..=120).collect() });
+        assert_eq!(jobs[1], Job::Items { workspace: "acme".into(), numbers: (121..=125).collect() });
+        assert_eq!(jobs[2], Job::Items { workspace: "beta".into(), numbers: vec![107] });
+        let value = serde_json::to_value(&jobs[2]).unwrap();
+        assert_eq!(value, serde_json::json!({ "type": "items", "workspace": "beta", "numbers": [107] }));
+    }
+
+    #[test]
+    fn keys_and_linked_repositories() {
+        assert_eq!(pull_key("rep_1", 12), "rep_1/12");
+        assert_eq!(repos_of(&["rep_1", "rep_2"]), "|rep_1|rep_2|");
+        assert_eq!(repos_of(&[]), "|");
     }
 
     #[test]

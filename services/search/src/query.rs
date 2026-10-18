@@ -38,7 +38,7 @@ impl Filter {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ItemKind {
-    Issue,
+    Item,
     Pull,
 }
 
@@ -201,7 +201,7 @@ impl Query {
             return;
         }
         match lower {
-            "issue" | "issues" => self.kind = Some(ItemKind::Issue),
+            "item" | "items" => self.kind = Some(ItemKind::Item),
             "pr" | "pull" | "pulls" | "pull-request" => self.kind = Some(ItemKind::Pull),
             "open" => self.state = Some(ItemState::Open),
             "closed" => self.state = Some(ItemState::Closed),
@@ -244,47 +244,48 @@ impl Query {
     }
 
     /// The tab a query is about when none is named: `type:` if given, then
-    /// pull requests for `is:pr`, issues for `is:issue` or anything only
-    /// issues have, code for `path:`, else repositories.
+    /// pull requests for `is:pr`, work items for `is:item` or anything only
+    /// work items and pull requests have, code for `path:`, else
+    /// repositories.
     pub fn default_type(&self) -> SearchType {
         if let Some(kind) = self.type_hint {
             return kind;
         }
         match self.kind {
             Some(ItemKind::Pull) => return SearchType::Pulls,
-            Some(ItemKind::Issue) => return SearchType::Issues,
+            Some(ItemKind::Item) => return SearchType::Items,
             None => {}
         }
         if !self.paths.is_empty() {
             return SearchType::Code;
         }
         if self.state.is_some() || !self.authors.is_empty() || !self.labels.is_empty() {
-            return SearchType::Issues;
+            return SearchType::Items;
         }
         SearchType::Repositories
     }
 
     /// Whether the query can have results of `kind`: qualifiers only one
     /// kind has rule the others out (`path:` is only code, `label:` only
-    /// issues and pull requests).
+    /// work items and pull requests).
     pub fn applies_to(&self, kind: SearchType) -> bool {
         let item_only = self.state.is_some() || !self.authors.is_empty() || !self.labels.is_empty();
         let repo_scoped = !self.repos.is_empty() || !self.owners.is_empty() || self.visibility.is_some();
         match kind {
             SearchType::Repositories => self.paths.is_empty() && self.kind.is_none() && !item_only,
             SearchType::Code => self.kind.is_none() && !item_only,
-            SearchType::Issues => {
+            SearchType::Items => {
                 self.paths.is_empty() && self.languages.is_empty() && self.kind != Some(ItemKind::Pull)
                     && !matches!(self.state, Some(ItemState::Merged | ItemState::Draft))
             }
-            SearchType::Pulls => self.paths.is_empty() && self.languages.is_empty() && self.kind != Some(ItemKind::Issue),
+            SearchType::Pulls => self.paths.is_empty() && self.languages.is_empty() && self.kind != Some(ItemKind::Item),
             SearchType::People => {
                 self.paths.is_empty() && self.languages.is_empty() && self.kind.is_none() && !item_only && !repo_scoped
             }
         }
     }
 
-    /// The full-text expression for prose (repositories, issues, people):
+    /// The full-text expression for prose (repositories, work items, people):
     /// every word, each a prefix as people type it, phrases exact, `-`
     /// words left out. `None` when there are no words to match.
     pub fn prose_match(&self) -> Option<String> {
@@ -358,7 +359,7 @@ impl Query {
         qualifier("author", &self.authors);
         qualifier("label", &self.labels);
         match self.kind {
-            Some(ItemKind::Issue) => out.push("is:issue".into()),
+            Some(ItemKind::Item) => out.push("is:item".into()),
             Some(ItemKind::Pull) if !matches!(self.state, Some(ItemState::Merged | ItemState::Draft)) => out.push("is:pr".into()),
             _ => {}
         }
@@ -463,6 +464,16 @@ mod tests {
     }
 
     #[test]
+    fn work_items_are_items() {
+        assert_eq!(Query::parse("is:item").kind, Some(ItemKind::Item));
+        // The old names are not kept.
+        let old = Query::parse("is:issue type:issues");
+        assert_eq!(old.kind, None);
+        assert_eq!(old.type_hint, None);
+        assert_eq!(old.notes.len(), 2);
+    }
+
+    #[test]
     fn mistakes_are_said() {
         let query = Query::parse("repo:acme is:spaceship label:");
         assert_eq!(query.notes.len(), 3);
@@ -474,8 +485,10 @@ mod tests {
         assert_eq!(Query::parse("router").default_type(), SearchType::Repositories);
         assert_eq!(Query::parse("router path:src").default_type(), SearchType::Code);
         assert_eq!(Query::parse("crash is:pr").default_type(), SearchType::Pulls);
-        assert_eq!(Query::parse("crash is:open").default_type(), SearchType::Issues);
-        assert_eq!(Query::parse("crash label:bug").default_type(), SearchType::Issues);
+        assert_eq!(Query::parse("crash is:open").default_type(), SearchType::Items);
+        assert_eq!(Query::parse("crash is:item").default_type(), SearchType::Items);
+        assert_eq!(Query::parse("crash type:items").default_type(), SearchType::Items);
+        assert_eq!(Query::parse("crash label:bug").default_type(), SearchType::Items);
         assert_eq!(Query::parse("crash type:code").default_type(), SearchType::Code);
     }
 
@@ -484,12 +497,12 @@ mod tests {
         let code = Query::parse("x path:src");
         assert!(code.applies_to(SearchType::Code));
         assert!(!code.applies_to(SearchType::Repositories));
-        assert!(!code.applies_to(SearchType::Issues));
-        let issues = Query::parse("x label:bug");
-        assert!(issues.applies_to(SearchType::Issues) && issues.applies_to(SearchType::Pulls));
-        assert!(!issues.applies_to(SearchType::Code) && !issues.applies_to(SearchType::People));
+        assert!(!code.applies_to(SearchType::Items));
+        let items = Query::parse("x label:bug");
+        assert!(items.applies_to(SearchType::Items) && items.applies_to(SearchType::Pulls));
+        assert!(!items.applies_to(SearchType::Code) && !items.applies_to(SearchType::People));
         let merged = Query::parse("x is:merged");
-        assert!(merged.applies_to(SearchType::Pulls) && !merged.applies_to(SearchType::Issues));
+        assert!(merged.applies_to(SearchType::Pulls) && !merged.applies_to(SearchType::Items));
         let scoped = Query::parse("x repo:a/b");
         assert!(!scoped.applies_to(SearchType::People));
         assert!(Query::parse("ana").applies_to(SearchType::People));
@@ -528,8 +541,8 @@ mod tests {
 
     #[test]
     fn the_query_is_written_back_tidied() {
-        let query = Query::parse("  Parse  REPO:acme/web \"two words\" is:issue ");
-        assert_eq!(query.display(), "Parse \"two words\" repo:acme/web is:issue");
+        let query = Query::parse("  Parse  REPO:acme/web \"two words\" is:item ");
+        assert_eq!(query.display(), "Parse \"two words\" repo:acme/web is:item");
     }
 
     #[test]
