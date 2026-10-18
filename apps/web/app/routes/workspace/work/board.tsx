@@ -1,7 +1,7 @@
-import { Bot, Columns3, Plus } from "lucide-react";
+import { Bot, Columns3, GitMerge, Plus } from "lucide-react";
 import { Link } from "react-router";
 
-import type { Pull } from "@g1t/contracts";
+import { LIST_PAGE } from "@g1t/contracts";
 
 import type { Route } from "./+types/board";
 import { HarnessMark, StateDot } from "../../../components/sessions";
@@ -11,7 +11,23 @@ import { Card } from "../../../components/ui/card";
 import { Hint } from "../../../components/ui/hint";
 import { RepoChips } from "../../../components/work-items";
 import { ItemIcon } from "../../../components/work-icons";
-import { type Board, type BoardCard, STAGES, STAGE_INFO, type Stage, boardOf, pullRepos, pullsByItem, shownStage } from "../../../lib/board";
+import {
+  type Board,
+  type BoardCard,
+  DONE_DAYS,
+  ITEM_PAGES,
+  PULL_PAGES,
+  type ReadPull,
+  STAGES,
+  STAGE_INFO,
+  type Stage,
+  boardOf,
+  cappedNotes,
+  pullRepos,
+  pullsByItem,
+  readPages,
+  shownStage,
+} from "../../../lib/board";
 import { cn } from "../../../lib/cn";
 import { page } from "../../../lib/meta";
 import { isFailed, part } from "../../../lib/partial";
@@ -19,7 +35,7 @@ import { useRefreshWhile } from "../../../lib/refresh";
 import { workPages } from "../../../lib/repo-live";
 import { work } from "../../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../../lib/session.server";
-import { runsIn, sessionHref, workspaceSessionTitle } from "../../../lib/sessions";
+import { onItemSessionTitle, runsIn, sessionHref } from "../../../lib/sessions";
 import { useWorkspaceLive } from "../../../lib/use-repo-live";
 import { itemPath, newItemPath, repoFilter, shortPath, workPath } from "../../../lib/work-items";
 
@@ -35,32 +51,42 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const repoName = query.get("repo")?.trim() || null;
   const repo = repoName ? repoFilter(workspace, repoName) : null;
   const member = roleIn(viewer, workspace) != null;
-  // The work items are what the board is; what says where each stands, a part each.
+  const now = Date.now();
+  const since = new Date(now - DONE_DAYS * 86_400_000).toISOString();
+  // The open work items are what the board is, every page of them; what says where each stands, a part each.
   const [open, closed, claims, live] = await Promise.all([
-    work.listWorkItems(workspace, viewer, { state: "open", repo: repo ?? undefined }),
-    part(work.listWorkItems(workspace, viewer, { state: "closed", repo: repo ?? undefined }), "Done"),
+    readPages((before) => work.listWorkItems(workspace, viewer, { state: "open", repo: repo ?? undefined, before }).then(unwrap), LIST_PAGE, ITEM_PAGES),
+    part(work.listWorkItems(workspace, viewer, { state: "closed", repo: repo ?? undefined, closedSince: since }), "Done"),
     part(work.listClaims(workspace, viewer, { state: "active", repo: repo ?? undefined }), "Claims"),
     part(work.listWorkspaceSessions(workspace, viewer, { shown: "live", sessionsOnly: true, repo: repoName ?? undefined, limit: 200 }), "Live sessions"),
   ]);
   const sessions = isFailed(live) || !live.ok ? [] : live.value.sessions;
-  // The open pull requests that name their work items, in every repository an open item is linked to.
-  const openItems = unwrap(open);
-  const repos = pullRepos(openItems);
-  const pulls = await Promise.all(
-    repos.map((path) => {
-      const [namespace = "", name = ""] = path.split("/");
-      return work.listPulls({ namespace, name }, viewer, "open").catch(() => null);
-    }),
-  );
-  const openPulls: Pull[] = pulls.flatMap((found) => (found?.ok ? found.value : []));
-  // A repository whose pull requests could not be read: its items may stand a column early, and the board says so.
-  const unread = repos.filter((_, index) => !pulls[index]?.ok);
-  const now = Date.now();
-  const board = boardOf(
-    [...openItems, ...(isFailed(closed) || !closed.ok ? [] : closed.value)],
-    { claims: isFailed(claims) || !claims.ok ? [] : claims.value, sessions, pulls: pullsByItem(openPulls) },
-    now,
-  );
+  // The open and recently merged pull requests in every repository an open item is linked to.
+  const repos = pullRepos(open.rows);
+  const read = (path: string, state: "open" | "closed") => {
+    const [namespace = "", name = ""] = path.split("/");
+    // Not found or refused is an answer: none the viewer can see there.
+    const page = (before: number | undefined) =>
+      work
+        .listPulls({ namespace, name }, viewer, state, { before, mergedSince: state === "closed" ? since : undefined })
+        .then((found) => (found.ok ? found.value : []));
+    return part(readPages(page, LIST_PAGE, PULL_PAGES), `Pull requests in ${path}`);
+  };
+  const pulls = await Promise.all(repos.map((path) => Promise.all([read(path, "open"), read(path, "closed")])));
+  const readPulls: ReadPull[] = [];
+  const unread: string[] = [];
+  const capped: string[] = [];
+  repos.forEach((path, index) => {
+    const both = pulls[index]!;
+    if (both.some(isFailed)) unread.push(path);
+    for (const found of both) {
+      if (isFailed(found)) continue;
+      if (found.capped) capped.push(path);
+      readPulls.push(...found.rows.map((pull) => ({ ...pull, repo: path })));
+    }
+  });
+  const done = isFailed(closed) || !closed.ok ? [] : closed.value;
+  const board = boardOf([...open.rows, ...done], { claims: isFailed(claims) || !claims.ok ? [] : claims.value, sessions, pulls: pullsByItem(readPulls) }, now);
   return {
     workspace,
     member,
@@ -68,10 +94,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     repo: repoName,
     board,
     stage: shownStage(query.get("stage"), board),
+    // A part that could not be read: its items may be missing, or stand a column early, and the board says so.
     unavailable: [
       ...[closed, claims, live].filter(isFailed).map((failed) => failed.what),
       ...(unread.length === 0 ? [] : [unread.length === 1 ? `Pull requests in ${unread[0]}` : `Pull requests in ${unread.length} repositories`]),
     ],
+    // What was read only in part, said plainly rather than left out silently.
+    capped: cappedNotes({ items: open.capped ? open.rows.length : null, done: done.length >= LIST_PAGE ? LIST_PAGE : null, pulls: [...new Set(capped)] }),
     live: sessions.length,
   };
 }
@@ -93,6 +122,7 @@ function OnIt({ card, workspace }: { card: BoardCard; workspace: string }) {
           </span>
         </Hint>
       )}
+      {people.length > 3 && <span className="text-[0.6875rem] text-faint">+{people.length - 3}</span>}
       {sessions.slice(0, 2).map((session) => {
         const to = sessionHref(workspace, session);
         const label = (
@@ -103,7 +133,7 @@ function OnIt({ card, workspace }: { card: BoardCard; workspace: string }) {
           </span>
         );
         return (
-          <Hint key={session.id} label={`${workspaceSessionTitle(session)} · ${runsIn(session)}`}>
+          <Hint key={session.id} label={`${onItemSessionTitle(session)} · ${runsIn(session)}`}>
             {to ? (
               <Link to={to} className="min-w-0 hover:text-fg">
                 {label}
@@ -136,7 +166,19 @@ function ItemCard({ card, workspace }: { card: BoardCard; workspace: string }) {
             {item.title} <span className="font-normal text-faint">#{item.number}</span>
           </span>
         </Link>
-        <RepoChips repos={item.repos} workspace={workspace} />
+        {(item.repos.length > 0 || card.merged > 0) && (
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <RepoChips repos={item.repos} workspace={workspace} />
+            {card.merged > 0 && (
+              <Hint label={`${card.merged === 1 ? "A pull request" : `${card.merged} pull requests`} for it merged in the last ${DONE_DAYS} days`}>
+                <span className="inline-flex shrink-0 items-center gap-1 text-[0.6875rem] text-merged">
+                  <GitMerge size={11} />
+                  {card.merged} merged
+                </span>
+              </Hint>
+            )}
+          </div>
+        )}
         <OnIt card={card} workspace={workspace} />
       </Card>
     </li>
@@ -172,7 +214,7 @@ function Column({ stage, board, workspace }: { stage: Stage; board: Board; works
  * stages that wraps rather than scrolling sideways.
  */
 export default function BoardPage({ loaderData }: Route.ComponentProps) {
-  const { workspace, board, stage, repo, member, signedIn, unavailable, live } = loaderData;
+  const { workspace, board, stage, repo, member, signedIn, unavailable, capped, live } = loaderData;
   const total = STAGES.reduce((sum, one) => sum + board[one].length, 0);
   const query = (more: Record<string, string>) => `?${new URLSearchParams({ ...(repo ? { repo } : {}), ...more }).toString()}`;
   useWorkspaceLive({ workspace, member, match: workPages.list() });
@@ -197,6 +239,7 @@ export default function BoardPage({ loaderData }: Route.ComponentProps) {
         )}
       </div>
       {unavailable.length > 0 && <p className="mt-3 text-xs text-warn">{unavailable.join(", ")} could not be loaded just now, so this board is partial: some work items may be missing, or stand a column early.</p>}
+      {capped.length > 0 && <p className="mt-2 text-xs text-muted">{capped.join(" ")}</p>}
 
       {total === 0 ? (
         <div className="mt-5">

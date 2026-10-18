@@ -61,6 +61,10 @@ pub struct ItemRepo {
     /// A pull request or commit that closes it landed in this repository.
     #[serde(default)]
     pub landed: bool,
+    /// The repository is deleted, and can still be restored until it is
+    /// purged: `path` is where it was. It has nothing to open or read.
+    #[serde(default)]
+    pub deleted: bool,
 }
 
 /// What resolved a work item in one repository: a pull request merged, or
@@ -247,8 +251,8 @@ pub struct OpenWorkItemArgs {
     pub milestone: Option<u32>,
 }
 
-/// `list_work_items`, newest first: a workspace's work items the viewer
-/// may see. With `repo` (then `workspace` may be empty, meaning the
+/// `list_work_items`, newest first, at most 100 (`before` pages on): a
+/// workspace's work items the viewer may see. With `repo` (then `workspace` may be empty, meaning the
 /// repository's), only those linked to it, in any role or in `role`.
 /// Returns `Outcome<Vec<WorkItem>>`.
 #[derive(Debug, Serialize, Deserialize)]
@@ -272,6 +276,14 @@ pub struct ListWorkItemsArgs {
     /// Only those assigned to this username.
     #[serde(default)]
     pub assignee: Option<String>,
+    /// Only those closed at or after this time (RFC 3339), the most
+    /// recently closed first instead of the newest.
+    #[serde(default)]
+    pub closed_since: Option<String>,
+    /// Only those numbered below this: the next page, after one whose
+    /// lowest number this is.
+    #[serde(default)]
+    pub before: Option<u32>,
 }
 
 /// `get_work_item` (`Outcome<WorkItemDetail>`), `get_work`
@@ -450,7 +462,7 @@ mod tests {
     use super::*;
 
     fn link(path: &str, role: LinkRole, landed: bool) -> ItemRepo {
-        ItemRepo { repo_id: format!("rep_{path}"), path: path.into(), role, legacy_number: None, landed }
+        ItemRepo { repo_id: format!("rep_{path}"), path: path.into(), role, legacy_number: None, landed, deleted: false }
     }
 
     #[test]

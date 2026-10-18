@@ -445,7 +445,7 @@ mod tests {
     fn a_repository_already_linked_is_not_suggested() {
         let candidates = vec![("rep_web".to_owned(), "acme/web".to_owned())];
         for role in LinkRole::ALL {
-            let linked = ItemRepo { repo_id: "rep_web".into(), path: "acme/web".into(), role, legacy_number: None, landed: false };
+            let linked = ItemRepo { repo_id: "rep_web".into(), path: "acme/web".into(), role, legacy_number: None, landed: false, deleted: false };
             let item = item("Fix web", "", &[], vec![linked]);
             assert!(suggest_targets(&item, &candidates, &[], &[]).is_empty(), "{role:?}");
         }

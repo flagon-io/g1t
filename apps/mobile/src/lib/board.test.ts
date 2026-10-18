@@ -57,6 +57,8 @@ test("an item closed in the last two weeks is done, and older ones are left out"
   assert.equal(stageOf(item(1, { state: "closed", closed_at: new Date(NOW - 3 * DAY).toISOString() }), none), "done");
   assert.equal(stageOf(item(1, { state: "closed", closed_at: new Date(NOW - 15 * DAY).toISOString() }), none), null);
   assert.equal(stageOf(item(1, { state: "closed", closed_at: null }), none), null);
+  // Closed as not planned did not ship.
+  assert.equal(stageOf(item(1, { state: "closed", reason: "not_planned", closed_at: new Date(NOW - DAY).toISOString() }), none), null);
   // Done wins over everything else.
   const repos = [target("acme/web", true), target("acme/api", false)];
   assert.equal(stageOf(item(1, { state: "closed", repos, closed_at: new Date(NOW - DAY).toISOString() }), { ...none, pulls: [{ item: 1, status: "open" }] }), "done");

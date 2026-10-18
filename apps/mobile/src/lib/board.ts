@@ -3,8 +3,8 @@ import type { ApiWorkItem } from "./work";
 
 /**
  * Work's board: where each work item stands as it moves, read from the
- * item, its pull requests and the sessions on it. Done is closed in the
- * last two weeks; Landing has landed in some targets but not all; In
+ * item, its pull requests and the sessions on it. Done is closed as
+ * completed in the last two weeks (not planned is left out); Landing has landed in some targets but not all; In
  * review has an open pull request; In progress has someone on it (an
  * assignee, a claim, a live session) or a draft; Backlog has nobody.
  * The first that holds, in that order, is its stage.
@@ -32,10 +32,11 @@ export function stageName(stage: Stage): string {
 /** How long a closed item stays in Done. */
 export const DONE_DAYS = 14;
 
-export type BoardItem = Pick<ApiWorkItem, "number" | "state" | "assignees" | "repos" | "closed_at"> & {
-  /** Someone has claimed it. */
-  claimed?: boolean;
-};
+export type BoardItem = Pick<ApiWorkItem, "number" | "state" | "assignees" | "repos" | "closed_at"> &
+  Partial<Pick<ApiWorkItem, "reason">> & {
+    /** Someone has claimed it. */
+    claimed?: boolean;
+  };
 
 /** A pull request for a work item, by the item's number in the workspace. */
 export type BoardPull = { item: number | null; status: PullStatus };
@@ -57,6 +58,8 @@ export type Card<T extends BoardItem> = { item: T; stage: Stage; people: OnIt[] 
 export function stageOf(item: BoardItem, context: BoardContext): Stage | null {
   const now = context.now ?? Date.now();
   if (item.state === "closed") {
+    // Closed as not planned (a duplicate, say) did not ship: not Done.
+    if (item.reason === "not_planned") return null;
     const closed = item.closed_at ? Date.parse(item.closed_at) : NaN;
     return !Number.isNaN(closed) && now - closed <= DONE_DAYS * 86_400_000 ? "done" : null;
   }

@@ -26,6 +26,16 @@ export function workspaceSessionTitle(session: WorkspaceSession): string {
   return session.title?.trim() || session.pullTitle?.trim() || (session.pull != null ? `Pull request #${session.pull}` : "Untitled session");
 }
 
+/**
+ * What a session is called on a work item's card: its own title, else
+ * what it is doing there. Never a bare "Pull request #N", whose number
+ * would read as the work item's.
+ */
+export function onItemSessionTitle(session: WorkspaceSession): string {
+  if (session.session || session.title?.trim() || session.pullTitle?.trim()) return workspaceSessionTitle(session);
+  return session.pull != null ? `On pull request #${session.pull}` : "Working on it";
+}
+
 /** What runs it, in a few words: the harness, g1t's agent, or the agent that recorded it. */
 export function runsIn(session: Pick<WorkspaceSession, "kind" | "harness" | "agent">): string {
   if (session.kind === "agent") return "g1t's agent";

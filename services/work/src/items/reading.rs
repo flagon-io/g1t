@@ -16,7 +16,8 @@ use crate::{LIST_PAGE, Work, optional, optional_number, state_name};
 /// What `list_work_items` reads: `?1` the workspace, then the filters, and
 /// `?8` whether the viewer is a member (else only work items filed in a
 /// public repository or one in `?9`, the repositories they were given a
-/// role on).
+/// role on), at most `?10`. With `?11`, only those closed since then, the
+/// most recently closed first; with `?12`, only those numbered below it.
 const LIST_SQL: &str = "SELECT {ITEM_COLUMNS} FROM work_items
      WHERE workspace = ?1 AND (?2 IS NULL OR state = ?2)
        AND (?3 IS NULL OR EXISTS (SELECT 1 FROM json_each(work_items.labels) WHERE json_each.value = ?3))
@@ -27,7 +28,9 @@ const LIST_SQL: &str = "SELECT {ITEM_COLUMNS} FROM work_items
        AND (?8 = 1 OR EXISTS (SELECT 1 FROM work_item_repos o JOIN repo_workspaces rw ON rw.repo_id = o.repo_id
              WHERE o.item_id = work_items.id AND o.role = 'origin'
                AND (rw.private = 0 OR o.repo_id IN (SELECT value FROM json_each(?9)))))
-     ORDER BY number DESC LIMIT ?10";
+       AND (?11 IS NULL OR closed_at >= ?11)
+       AND (?12 IS NULL OR number < ?12)
+     ORDER BY CASE WHEN ?11 IS NULL THEN NULL ELSE closed_at END DESC, number DESC LIMIT ?10";
 
 /// The work items matching `condition` (on `work_items`), with everything
 /// they are read with.
@@ -216,6 +219,8 @@ impl Work {
                 u32::from(member).into(),
                 serde_json::to_string(&granted)?.into(),
                 LIST_PAGE.into(),
+                optional(&a.closed_since.map(|at| at.trim().to_owned()).filter(|at| !at.is_empty())),
+                optional_number(a.before),
             ])?;
         let rows = self.timing.db(1, query.all()).await?.results::<ItemRow>()?;
         Ok(Outcome::Ok(
@@ -307,7 +312,90 @@ impl Work {
 
 #[cfg(test)]
 mod tests {
-    use super::redact_paths;
+    use rusqlite::{Connection, ToSql};
+
+    use super::super::links::{MARK_DELETED, REMEMBER_REPO};
+    use super::super::rows::ITEM_COLUMNS;
+    use super::{LIST_SQL, redact_paths};
+    use crate::migrated::database;
+
+    /// acme's work items 1 to 5, linked to acme/web; 3, 4 and 5 closed,
+    /// in the order 4, 5, 3; 2 also to acme/hello.
+    fn acme() -> Connection {
+        let db = database();
+        db.execute_batch(
+            "INSERT INTO repo_workspaces (repo_id, workspace, path, private)
+             VALUES ('rep_web', 'acme', 'acme/web', 0), ('rep_hello', 'acme', 'acme/hello', 0);
+             INSERT INTO work_items (id, workspace, number, title, body, labels, author_id, author_name, created_at, updated_at,
+                                     state, closed_at)
+             VALUES ('wki_1', 'acme', 1, 'One', '', '[]', 'usr_1', 'ana', '', '', 'open', NULL),
+                    ('wki_2', 'acme', 2, 'Two', '', '[]', 'usr_1', 'ana', '', '', 'open', NULL),
+                    ('wki_3', 'acme', 3, 'Three', '', '[]', 'usr_1', 'ana', '', '', 'closed', '2026-10-17T00:00:00Z'),
+                    ('wki_4', 'acme', 4, 'Four', '', '[]', 'usr_1', 'ana', '', '', 'closed', '2026-10-01T00:00:00Z'),
+                    ('wki_5', 'acme', 5, 'Five', '', '[]', 'usr_1', 'ana', '', '', 'closed', '2026-10-10T00:00:00Z');
+             INSERT INTO work_item_repos (item_id, repo_id, role, path, added_at)
+             VALUES ('wki_1', 'rep_web', 'origin', 'acme/web', ''), ('wki_2', 'rep_hello', 'origin', 'acme/hello', ''),
+                    ('wki_2', 'rep_web', 'target', 'acme/web', ''), ('wki_3', 'rep_web', 'origin', 'acme/web', ''),
+                    ('wki_4', 'rep_web', 'origin', 'acme/web', ''), ('wki_5', 'rep_web', 'origin', 'acme/web', '');",
+        )
+        .unwrap();
+        db
+    }
+
+    /// The numbers `list_work_items` reads for acme as a member, in its order.
+    fn listed(db: &Connection, state: Option<&str>, limit: u32, closed_since: Option<&str>, before: Option<u32>) -> Vec<u32> {
+        let sql = LIST_SQL.replace("{ITEM_COLUMNS}", ITEM_COLUMNS);
+        let values: [&dyn ToSql; 12] = [&"acme", &state, &None::<String>, &None::<u32>, &None::<String>, &None::<String>, &None::<String>, &1, &"[]", &limit, &closed_since, &before];
+        let mut statement = db.prepare(&sql).unwrap();
+        let numbers = statement.query_map(&values[..], |row| row.get::<_, u32>("number")).unwrap();
+        numbers.map(Result::unwrap).collect()
+    }
+
+    #[test]
+    fn work_items_page_on_by_number_and_closed_ones_come_by_when_they_closed() {
+        let db = acme();
+        assert_eq!(listed(&db, None, 100, None, None), [5, 4, 3, 2, 1]);
+        // A page, then the next from below its lowest number.
+        assert_eq!(listed(&db, None, 2, None, None), [5, 4]);
+        assert_eq!(listed(&db, None, 2, None, Some(4)), [3, 2]);
+        assert_eq!(listed(&db, None, 2, None, Some(2)), [1]);
+        // Closed since a time: the most recently closed first, older ones left out.
+        assert_eq!(listed(&db, Some("closed"), 100, Some("2026-10-04T00:00:00Z"), None), [3, 5]);
+    }
+
+    /// Whether each of work item 2's links says its repository is deleted, by path.
+    fn deleted_links(db: &Connection) -> Vec<(String, bool)> {
+        let links: String = db
+            .query_row(&format!("SELECT links FROM (SELECT {ITEM_COLUMNS} FROM work_items WHERE id = 'wki_2')"), [], |row| row.get(0))
+            .unwrap();
+        let mut links: Vec<(String, bool)> = serde_json::from_str::<Vec<serde_json::Value>>(&links)
+            .unwrap()
+            .into_iter()
+            .map(|link| (link["path"].as_str().unwrap().to_owned(), link["deleted"].as_i64() == Some(1)))
+            .collect();
+        links.sort();
+        links
+    }
+
+    #[test]
+    fn a_deleted_repository_is_marked_on_its_links_until_it_is_restored() {
+        let db = acme();
+        assert_eq!(deleted_links(&db), [("acme/hello".to_owned(), false), ("acme/web".to_owned(), false)]);
+        // repo.deleted: its path is kept, and its links say it is deleted.
+        db.execute(MARK_DELETED, rusqlite::params!["rep_hello", "2026-10-15T00:00:00Z"]).unwrap();
+        assert_eq!(deleted_links(&db), [("acme/hello".to_owned(), true), ("acme/web".to_owned(), false)]);
+        // Marked again (the job for those deleted before), it keeps when.
+        db.execute(MARK_DELETED, rusqlite::params!["rep_hello", "2026-10-18T00:00:00Z"]).unwrap();
+        let at: String = db.query_row("SELECT deleted_at FROM repo_workspaces WHERE repo_id = 'rep_hello'", [], |row| row.get(0)).unwrap();
+        assert_eq!(at, "2026-10-15T00:00:00Z");
+        // repo.restored records it where it is: no longer deleted.
+        db.execute(REMEMBER_REPO, rusqlite::params!["rep_hello", "acme", "acme/hello", 0]).unwrap();
+        assert_eq!(deleted_links(&db), [("acme/hello".to_owned(), false), ("acme/web".to_owned(), false)]);
+        // repo.purged drops its row: the link keeps its path, and is not marked.
+        db.execute(MARK_DELETED, rusqlite::params!["rep_hello", "2026-10-18T00:00:00Z"]).unwrap();
+        db.execute("DELETE FROM repo_workspaces WHERE repo_id = ?1", ["rep_hello"]).unwrap();
+        assert_eq!(deleted_links(&db), [("acme/hello".to_owned(), false), ("acme/web".to_owned(), false)]);
+    }
 
     #[test]
     fn notes_do_not_name_repositories_the_reader_may_not_read() {

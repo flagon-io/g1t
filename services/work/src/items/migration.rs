@@ -28,6 +28,7 @@ use g1t_contracts::work::*;
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
+use worker::wasm_bindgen::JsValue;
 
 use crate::Work;
 use crate::optional;
@@ -173,6 +174,12 @@ pub(crate) fn place_sql() -> Vec<String> {
 /// labels and old numbers unmerged.
 pub(crate) const DELETED_REPOS_JOB: &str = "deleted_repos";
 
+/// The job after that ([`Work::mark_deleted_repos`]): marks each
+/// repository deleted but not purged as deleted in `repo_workspaces`
+/// ([`super::links::MARK_DELETED`]), for those deleted before that was
+/// kept. Run again, it changes nothing.
+pub(crate) const DELETED_MARKS_JOB: &str = "deleted_marks";
+
 /// Every label a workspace's work items or pull requests carry that the
 /// workspace does not have, as a label (gray, no description) made at
 /// `?1`: one a repository had that was never merged. Run again, it adds
@@ -298,7 +305,11 @@ impl Work {
             return Ok(WorkMigration { done: true, ..WorkMigration::default() });
         };
         if job.done_at.is_some() {
-            return self.migrate_deleted_repos().await;
+            let deleted = self.migrate_deleted_repos().await?;
+            if !deleted.done {
+                return Ok(deleted);
+            }
+            return self.mark_deleted_repos().await;
         }
         let mut cursor = job.cursor;
         let mut recorded = 0;
@@ -347,6 +358,8 @@ impl Work {
                 .map(|repo| (repo.id.clone(), repo.namespace.clone(), repo.name.clone(), repo.is_private))
                 .collect();
             recorded += self.record_repos(&repos).await?;
+            // Recording one says it is there; these are deleted.
+            self.mark_deleted(&page).await?;
             match page.next {
                 Some(next) => {
                     self.db
@@ -368,6 +381,58 @@ impl Work {
             }
         }
         Ok(WorkMigration { done: false, repos: recorded, ..WorkMigration::default() })
+    }
+
+    /// The job after [`Self::migrate_deleted_repos`] ([`DELETED_MARKS_JOB`]):
+    /// marks each repository deleted but not purged as deleted, a few
+    /// pages a run. Done once; run again, it changes nothing.
+    async fn mark_deleted_repos(&self) -> Result<WorkMigration> {
+        let job = self
+            .db
+            .prepare("SELECT cursor, done_at FROM work_jobs WHERE name = ?")
+            .bind(&[DELETED_MARKS_JOB.into()])?
+            .first::<JobRow>(None)
+            .await?;
+        let Some(job) = job.filter(|job| job.done_at.is_none()) else {
+            return Ok(WorkMigration { done: true, ..WorkMigration::default() });
+        };
+        let mut cursor = job.cursor;
+        let mut marked = 0;
+        for _ in 0..PAGES_PER_RUN {
+            let page: DeletedRepoPage =
+                g1t_kit::call(&self.repos, "deleted_repos", &AllIdsArgs { after: cursor.clone(), limit: PAGE }).await?;
+            marked += self.mark_deleted(&page).await?;
+            let done = page.next.is_none();
+            self.db
+                .prepare("UPDATE work_jobs SET cursor = ?, done_at = ? WHERE name = ? AND done_at IS NULL")
+                .bind(&[
+                    optional(&page.next),
+                    if done { rfc3339(now_ms()).into() } else { JsValue::NULL },
+                    DELETED_MARKS_JOB.into(),
+                ])?
+                .run()
+                .await?;
+            if done {
+                return Ok(WorkMigration { done: true, repos: marked, ..WorkMigration::default() });
+            }
+            cursor = page.next;
+        }
+        Ok(WorkMigration { done: false, repos: marked, ..WorkMigration::default() })
+    }
+
+    /// Marks a page of deleted repositories as deleted where they are recorded.
+    async fn mark_deleted(&self, page: &DeletedRepoPage) -> Result<u32> {
+        if page.repos.is_empty() {
+            return Ok(0);
+        }
+        let now = rfc3339(now_ms());
+        let statements = page
+            .repos
+            .iter()
+            .map(|repo| self.db.prepare(super::links::MARK_DELETED).bind(&[repo.id.as_str().into(), now.as_str().into()]))
+            .collect::<Result<Vec<_>>>()?;
+        self.db.batch(statements).await?;
+        Ok(page.repos.len() as u32)
     }
 
     /// Records repositories (id, workspace, name, private) where they are.

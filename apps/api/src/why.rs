@@ -161,6 +161,8 @@ pub(crate) async fn why(
             label: None,
             milestone: None,
             base: None,
+            before: None,
+            merged_since: None,
         },
     )
     .await?;

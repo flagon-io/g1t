@@ -1679,7 +1679,8 @@ pub struct ManagedPullsArgs {
     pub repo_id: Option<String>,
 }
 
-/// `list_pulls`, newest first. Returns `Outcome<Vec<Pull>>`.
+/// `list_pulls`, newest first, at most 100 (`before` pages on). Returns
+/// `Outcome<Vec<Pull>>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ListPullsArgs {
     pub repo: RepoPath,
@@ -1695,6 +1696,13 @@ pub struct ListPullsArgs {
     /// Only pull requests into this branch.
     #[serde(default)]
     pub base: Option<String>,
+    /// Only pull requests numbered below this: the next page, after one
+    /// whose lowest number this is.
+    #[serde(default)]
+    pub before: Option<u32>,
+    /// Only pull requests merged at or after this time (RFC 3339).
+    #[serde(default)]
+    pub merged_since: Option<String>,
 }
 
 /// `pulls_for_repos`: the newest open and the newest closed pull requests

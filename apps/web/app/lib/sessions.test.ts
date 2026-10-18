@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { WorkSession, WorkspaceSession } from "@g1t/contracts";
 
-import { narrowed, peopleIn, repoName, runsIn, sessionCost, sessionHref, sessionsFilters, sessionsQuery, splitLive, workspaceSessionTitle } from "./sessions.ts";
+import { narrowed, onItemSessionTitle, peopleIn, repoName, runsIn, sessionCost, sessionHref, sessionsFilters, sessionsQuery, splitLive, workspaceSessionTitle } from "./sessions.ts";
 
 function listed(id: string, more: Partial<WorkspaceSession> = {}): WorkspaceSession {
   return {
@@ -52,6 +52,13 @@ test("a session is named by its title, its subagent task, its pull request, neve
   assert.equal(runsIn(listed("f")), "Claude Code");
   assert.equal(runsIn(listed("g", { kind: "agent", harness: null, agent: "g1t" })), "g1t's agent");
   assert.equal(runsIn(listed("h", { kind: "recorded", harness: null, agent: "cursor" })), "cursor, recorded");
+});
+
+test("on a work item's card, a session with no title says what it is on, never a bare pull request number", () => {
+  assert.equal(onItemSessionTitle(listed("a", { session: own({ title: "Fix login" }) })), "Fix login");
+  assert.equal(onItemSessionTitle(listed("d", { kind: "recorded", pull: 7, pullTitle: "Retry hooks" })), "Retry hooks");
+  assert.equal(onItemSessionTitle(listed("e", { kind: "agent", pull: 158 })), "On pull request #158");
+  assert.equal(onItemSessionTitle(listed("f", { kind: "agent", pull: null })), "Working on it");
 });
 
 test("Sessions keeps its filters in the address and drops what it does not know", () => {
