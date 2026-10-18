@@ -76,6 +76,9 @@ cd apps/docs && npm run build
 - `cargo test` in the crate or service you changed.
 - `npx tsc -b --force` in `apps/web` (the incremental build misses changes
   in `packages/contracts`).
+- `npm run format -- <files>` on the TypeScript files you added
+  (`.prettierrc.json`). Older files are not formatted yet, so format a file
+  you only edited in a change of its own, not in the middle of a feature.
 - Look at what you changed in a browser. Screenshots catch what type
   checks do not.
 
