@@ -16,8 +16,9 @@ import { useColors } from "@/theme";
  * The signed-in app. Its bar is the site's phone bar
  * (apps/web/app/components/mobile.tsx): Home, Work, Chat, Notifications
  * and More. Work and Chat have their screens; Home and Notifications say
- * so and open the site. Sessions is at the top of More (and in Work's
- * header), then Code, for those who use it, and your account is under it.
+ * so and open the site. Sessions are Work's (Items, Board, Sessions at
+ * its top, as on the site). More starts with Explore, which opens on the
+ * site, then Code, for those who use it, and your account is under it.
  */
 export default function AppLayout() {
   return (
