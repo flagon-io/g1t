@@ -106,7 +106,7 @@ export type InboxActivity = {
   createdAt: string;
 };
 
-/** A person's subscription to an issue or pull request. */
+/** A person's subscription to a work item or pull request. */
 export type ThreadSubscription = {
   /** Whether they hear of what happens on it. */
   subscribed: boolean;
@@ -132,9 +132,9 @@ export type WatchLevel = "participating" | "all" | "ignore" | "custom";
 export const WATCH_LEVELS: WatchLevel[] = ["participating", "all", "ignore", "custom"];
 
 /** The kinds of activity a custom watch can follow. */
-export type WatchEvent = "issues" | "pulls" | "deployments" | "security";
+export type WatchEvent = "work_items" | "pulls" | "deployments" | "security";
 
-export const WATCH_EVENTS: WatchEvent[] = ["issues", "pulls", "deployments", "security"];
+export const WATCH_EVENTS: WatchEvent[] = ["work_items", "pulls", "deployments", "security"];
 
 export type Watching = {
   repoId: string;
@@ -213,8 +213,11 @@ export type InboxMarkArgs = {
   until?: string | null;
 };
 
-/** Which issue or pull request: a thread's id, or a repository and number. */
-export type SubscriptionTarget = { id: string } | { repoId: string; number: number };
+/**
+ * Which work item or pull request: a thread's id, a work item's id (with its
+ * number, to say back), or a pull request's repository and number.
+ */
+export type SubscriptionTarget = { id: string } | { itemId: string; number: number } | { repoId: string; number: number };
 
 export interface InboxApi {
   /**
@@ -227,7 +230,7 @@ export interface InboxApi {
   mark(username: string, args: InboxMarkArgs): Promise<number>;
   /** One of the viewer's threads with its history, or null. */
   thread(viewer: User, id: string): Promise<InboxThread | null>;
-  /** The viewer's subscription to an issue or pull request; null when there is none to have. */
+  /** The viewer's subscription to a work item or pull request; null when there is none to have. */
   subscription(viewer: User, target: SubscriptionTarget): Promise<ThreadSubscription | null>;
   /**
    * Subscribes (`true`), unsubscribes (`false`), ignores, or goes back to

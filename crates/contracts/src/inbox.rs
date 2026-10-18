@@ -459,7 +459,8 @@ pub struct ThreadSubscription {
     pub updated_at: Option<String>,
 }
 
-/// Which work item or pull request: by a thread's id, or by its repository and
+/// Which work item or pull request: by a thread's id, by a work item's id
+/// (with its number, to say back), or by a pull request's repository and
 /// number.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -467,6 +468,8 @@ pub struct SubscriptionArgs {
     pub viewer: Viewer,
     #[serde(default)]
     pub id: Option<String>,
+    #[serde(default)]
+    pub item_id: Option<String>,
     #[serde(default)]
     pub repo_id: Option<String>,
     #[serde(default)]
@@ -522,7 +525,7 @@ impl WatchLevel {
 }
 
 /// The kinds of activity a custom watch can follow.
-pub const WATCH_EVENTS: [&str; 4] = ["issues", "pulls", "deployments", "security"];
+pub const WATCH_EVENTS: [&str; 4] = ["work_items", "pulls", "deployments", "security"];
 
 /// How a person watches one repository.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
