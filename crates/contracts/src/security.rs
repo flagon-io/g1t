@@ -396,7 +396,7 @@ pub enum UpdateState {
     /// A newer security update replaced it, or the package is no longer
     /// vulnerable; g1t closed it.
     Superseded,
-    /// An earlier update g1t opened an issue for, when the version could
+    /// An earlier update g1t opened a work item for, when the version could
     /// not be raised without changing code. New updates no longer reach it:
     /// they fail with why, or their pull request stays open.
     NeedsCode,
@@ -448,8 +448,9 @@ pub struct SecurityUpdate {
     pub branch: Option<String>,
     /// The pull request g1t opened.
     pub pull: Option<u32>,
-    /// The issue opened for g1t, when the upgrade needs code changes.
-    pub issue: Option<u32>,
+    /// The work item opened for g1t, by number in the workspace, when the
+    /// upgrade needs code changes.
+    pub item: Option<u32>,
     /// Why it failed, when it did.
     pub error: Option<String>,
     /// RFC 3339.
@@ -495,9 +496,10 @@ pub struct Vulnerability {
     pub severity: String,
     pub fixed_version: Option<String>,
     pub status: VulnStatus,
-    /// The issue opened to upgrade the package, when g1t was put on
-    /// it: the upgrade needs code changes, or predates security updates.
-    pub issue: Option<u32>,
+    /// The work item opened to upgrade the package, by number in the
+    /// workspace, when g1t was put on it: the upgrade needs code changes,
+    /// or predates security updates.
+    pub item: Option<u32>,
     /// RFC 3339.
     pub found_at: String,
     pub fixed_at: Option<String>,
@@ -573,7 +575,7 @@ pub struct AlertActivity {
     pub actor: Option<String>,
     pub reason: Option<DismissReason>,
     pub comment: Option<String>,
-    /// The pull request or issue it concerns.
+    /// The pull request or work item it concerns.
     pub number: Option<u32>,
     /// RFC 3339.
     pub at: String,

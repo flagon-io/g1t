@@ -187,7 +187,8 @@ export type CodeAlert = {
   dismissedReason: DismissReason | null;
   dismissedComment: string | null;
   dismissedAt: string | null;
-  issue: number | null;
+  /** The work item g1t was put on to fix it, by number in the workspace. */
+  item: number | null;
 };
 
 export const CODE_DISMISS_REASONS: { reason: DismissReason; label: string; about: string }[] = [

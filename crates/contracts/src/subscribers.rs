@@ -149,7 +149,8 @@ pub const ROUTES: &[(&str, &[&str])] = &[
     // Usage rows that follow a renamed workspace or repository.
     ("SUBSCRIBER_BILLING", &[]),
     // Secret and dependency scans, and version update pull requests
-    // (security/src/lib.rs on_event).
+    // (security/src/lib.rs on_event). `work.migrated` rewrites the work
+    // items kept by their old issue numbers.
     (
         "SUBSCRIBER_SECURITY",
         &[
@@ -162,6 +163,7 @@ pub const ROUTES: &[(&str, &[&str])] = &[
             "comment.created",
             "repo.created",
             "repo.visibility_changed",
+            "work.migrated",
         ],
     ),
     // The site-wide search index (search/src/index.rs).

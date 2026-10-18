@@ -8,7 +8,7 @@ export * from "./updates";
 
 /**
  * The security service: secrets found in pushes and in history, vulnerable
- * dependencies, and the upgrade issues g1t opens for them. Members of a
+ * dependencies, and the updates g1t opens for them. Members of a
  * workspace see its findings; nobody else does. Mirrors
  * `g1t_contracts::security`.
  */
@@ -130,8 +130,11 @@ export type Vulnerability = {
   severity: Severity;
   fixedVersion: string | null;
   status: "open" | "fixed" | "dismissed";
-  /** The issue opened for g1t, when upgrading needs code changes. */
-  issue: number | null;
+  /**
+   * The work item opened for g1t, by number in the workspace, when upgrading
+   * needs code changes.
+   */
+  item: number | null;
   foundAt: string;
   fixedAt: string | null;
   state: AlertState;
@@ -147,7 +150,7 @@ export type Vulnerability = {
  * Where a security update stands. `requested`: a sandbox is making the
  * change. `open`: its pull request is going through the required checks.
  * `superseded`: a newer update replaced it, or the package is no longer
- * vulnerable. `needs_code`: an earlier update g1t opened an issue for; new
+ * vulnerable. `needs_code`: an earlier update g1t opened a work item for; new
  * updates no longer reach it. `failed`: see `error`.
  */
 export type UpdateState = "requested" | "open" | "merged" | "closed" | "superseded" | "needs_code" | "failed";
@@ -160,7 +163,8 @@ export type SecurityUpdate = {
   /** `g1t/security/<package>-<version>`. */
   branch: string | null;
   pull: number | null;
-  issue: number | null;
+  /** The work item opened for g1t, by number in the workspace. */
+  item: number | null;
   error: string | null;
   updatedAt: string;
 };
@@ -191,7 +195,7 @@ export type AlertActivity = {
   actor: string | null;
   reason: DismissReason | null;
   comment: string | null;
-  /** The pull request or issue it concerns. */
+  /** The pull request or work item it concerns. */
   number: number | null;
   at: string;
 };
