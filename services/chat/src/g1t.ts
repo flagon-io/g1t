@@ -69,7 +69,7 @@ export function withProposalState(answer: ChatAnswer, change: ProposalState): { 
   }
   if (typeof change.repo_url === "string") state.repo_url = change.repo_url.slice(0, 500);
   if (typeof change.default_branch === "string") state.default_branch = change.default_branch.slice(0, 200);
-  if (Number.isInteger(change.issue) && change.issue! > 0) state.issue = change.issue;
+  if (Number.isInteger(change.item) && change.item! > 0) state.item = change.item;
   if (typeof change.starting_at === "number") state.starting_at = change.starting_at;
   if (change.started === true) state.started = true;
   const step = { type: "proposal_state", ...state } as Record<string, unknown>;
@@ -225,11 +225,12 @@ export function pageFrom(value: unknown): AskPage | null {
       repo && typeof repo.namespace === "string" && typeof repo.name === "string" && repo.namespace && repo.name
         ? { namespace: repo.namespace.slice(0, 100), name: repo.name.slice(0, 100) }
         : null,
-    issue: number(sent.issue),
+    workspace: typeof sent.workspace === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(sent.workspace) ? sent.workspace : null,
+    item: number(sent.item),
     pull: number(sent.pull),
     time_zone: typeof sent.time_zone === "string" && /^[A-Za-z][A-Za-z0-9_+\-]*(\/[A-Za-z0-9_+\-]+){0,2}$/.test(sent.time_zone) && sent.time_zone.length <= 64 ? sent.time_zone : null,
   };
-  return page.path || page.repo || page.time_zone ? page : null;
+  return page.path || page.repo || page.workspace || page.time_zone ? page : null;
 }
 
 /** What g1t says when nobody chose an AI provider for Ask yet: once, and where to choose one. */
