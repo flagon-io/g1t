@@ -102,7 +102,8 @@ part of the price.
 - **$10 of usage each month**, used first: everything g1t runs, at the
   [prices below](#what-it-costs) (runner minutes at their flat rate per
   machine, everything else at cost plus 20%). That is 2,500 runner minutes on the standard machine, or
-  about 1,428 on `g1t-4core`.
+  about 1,428 on `g1t-4core` (which `ubuntu-latest` gets in a public
+  repository).
 - **Everyone in the workspace** at one price, never per person.
 - **Unlimited** projects, previews and repositories.
 - Workflows, the merge queue,
@@ -244,7 +245,8 @@ The card check unlocks:
 
 Once its card is checked, a workspace gets **$5 of trial credit**, once. It
 pays for usage at the plan's prices: runner minutes for checks, workflows
-and the merge queue (1,250 on the standard machine), and semantic search. It never pays for deployments.
+and the merge queue (1,250 on the standard machine, about 714 on the
+4-core one), and semantic search. It never pays for deployments.
 
 - Each card gets one trial, whichever workspace it is checked in. Prepaid
   cards start none.
@@ -261,8 +263,10 @@ by g1t**. When the trial is used up, new compute waits for the plan.
 ## The open-source pool
 
 g1t sets aside **$25 a month** for public repositories, at most **$2 a
-month** for any one repository: 6,250 and 500 runner minutes on the
-standard machine. It pays for **checks, workflows and the merge queue on
+month** for any one repository: about 3,571 and 285 minutes of
+workflow jobs, which run on the 4-core machine in a public repository,
+or 6,250 and 500 minutes of checks and merge queue runs on the standard
+machine. It pays for **checks, workflows and the merge queue on
 public repositories**, after a card check. It does not pay
 for deployments, storage or embeddings.
 
@@ -362,12 +366,14 @@ Every job g1t runs on its own machines (a workflow job, a check, a merge
 queue run) is charged by the minute, at a fixed rate for the machine it
 ran on:
 
-| `runs-on`                                              | Machine             | vCPUs | Memory | Disk  | A minute |
-| ------------------------------------------------------ | ------------------- | ----- | ------ | ----- | -------- |
-| `ubuntu-latest`, any other Linux label, or `g1t-2core` | Standard (`2-core`) | 2     | 8 GiB  | 16 GB | $0.004   |
-| `g1t-4core`                                            | `4-core`            | 4     | 12 GiB | 20 GB | $0.007   |
+| `runs-on`                                                                        | Machine             | vCPUs | Memory | Disk  | A minute |
+| -------------------------------------------------------------------------------- | ------------------- | ----- | ------ | ----- | -------- |
+| `ubuntu-latest` or any other Linux label in a private repository, or `g1t-2core` | Standard (`2-core`) | 2     | 8 GiB  | 16 GB | $0.004   |
+| `ubuntu-latest` or any other Linux label in a public repository, or `g1t-4core`  | `4-core`            | 4     | 12 GiB | 20 GB | $0.007   |
 
-Checks and the merge queue run on the standard machine. `g1t-2core` is
+`ubuntu-latest` gets what it gets on GitHub: 4 vCPUs in a public
+repository, 2 in a private one. A job is charged as the machine it ran
+on. Checks and the merge queue run on the standard machine. `g1t-2core` is
 kept as a name of the standard machine, so workflows that ask for it keep
 working, at its rate.
 

@@ -156,9 +156,8 @@ jobs:
     # Runs when nothing before it failed: a migrate job skipped for having
     # nothing to apply is not a failure.
     if: ${{ !failure() && !cancelled() && needs.plan.outputs.has_core == 'true' && inputs.dry_run != true }}
-    # Rust builds and the runner's image get 4 vCPUs; everything else the
-    # standard machine.
-    runs-on: ${{ (matrix.rust || matrix.image) && 'g1t-4core' || 'ubuntu-latest' }}
+    # ubuntu-latest: 4 vCPU in this public repository, as on GitHub.
+    runs-on: ubuntu-latest
     environment:
       name: production
       url: https://g1t.sh
@@ -306,7 +305,7 @@ jobs:
     name: edge (${{ matrix.group }})
     needs: [check, plan, migrate, core]
     if: ${{ !failure() && !cancelled() && needs.plan.outputs.has_edge == 'true' && inputs.dry_run != true }}
-    runs-on: ${{ (matrix.rust || matrix.image) && 'g1t-4core' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     environment:
       name: production
       url: https://g1t.sh
@@ -321,7 +320,7 @@ jobs:
     name: front (${{ matrix.group }})
     needs: [check, plan, migrate, core, edge]
     if: ${{ !failure() && !cancelled() && needs.plan.outputs.has_front == 'true' && inputs.dry_run != true }}
-    runs-on: ${{ (matrix.rust || matrix.image) && 'g1t-4core' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     environment:
       name: production
       url: https://g1t.sh

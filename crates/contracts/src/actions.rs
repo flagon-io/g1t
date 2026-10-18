@@ -1089,7 +1089,8 @@ pub struct StartJobArgs {
     /// Minutes before the job is stopped.
     pub timeout_minutes: u32,
     /// The machine its `runs-on` asked for, by label (`instance_for`):
-    /// `g1t-2core` or `g1t-4core`; absent, the standard one.
+    /// `g1t-2core` or `g1t-4core`, which is also what `ubuntu-latest`
+    /// gets in a public repository; absent, the standard one.
     #[serde(default)]
     pub instance: Option<String>,
     /// Whether the job may be given brokered secrets, so the runner sends
@@ -1116,6 +1117,12 @@ pub struct StartJobArgs {
 /// 16 GB of disk), `g1t-2core` is kept as a name of it so workflows that
 /// ask for it keep working, and `g1t-4core` is standard-4 (4 vCPU, 12 GiB,
 /// 20 GB).
+///
+/// `ubuntu-latest` and every other label not named here follow GitHub's
+/// hosted runners ([`instance_for`]): in a public repository the 4-core
+/// machine (GitHub's is 4 vCPU and 16 GB; 12 GiB is the most a Containers
+/// instance has without a raised limit), in a private one the standard
+/// machine (GitHub's is 2 vCPU and 8 GB).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct InstanceType {
     /// The `runs-on` label, or `standard` for the default.
@@ -1154,7 +1161,9 @@ impl InstanceType {
     }
 }
 
-/// The default: what `ubuntu-latest` and every other hosted label get.
+/// The default in a private repository: what `ubuntu-latest` and every
+/// other hosted label get there, as on GitHub. Checks and the merge queue
+/// run on it too.
 pub const STANDARD_INSTANCE: InstanceType = InstanceType {
     label: "standard",
     machine: "2-core",
@@ -1207,16 +1216,22 @@ pub fn runner_minutes(seconds: i64) -> i64 {
     if seconds <= 0 { 0 } else { (seconds + 59) / 60 }
 }
 
+/// The label of the machine `ubuntu-latest` gets in a public repository:
+/// GitHub gives public repositories 4 vCPU.
+pub const PUBLIC_DEFAULT_LABEL: &str = "g1t-4core";
+
 /// The machine a job's `runs-on` labels ask for: the dearest named (the
-/// later row when two cost the same), or the standard one. Labels compare
-/// without regard to case.
-pub fn instance_for(labels: &[String]) -> InstanceType {
+/// later row when two cost the same). With none named (`ubuntu-latest`,
+/// say), what GitHub gives: the 4-core machine in a public repository,
+/// the standard one in a private one. Labels compare without regard to
+/// case.
+pub fn instance_for(labels: &[String], public: bool) -> InstanceType {
     INSTANCE_TYPES
         .iter()
         .filter(|instance| instance.label != STANDARD_INSTANCE.label && labels.iter().any(|label| label.trim().eq_ignore_ascii_case(instance.label)))
         .max_by_key(|instance| instance.micros_per_minute)
         .copied()
-        .unwrap_or(STANDARD_INSTANCE)
+        .unwrap_or_else(|| if public { instance_named(PUBLIC_DEFAULT_LABEL).unwrap_or(STANDARD_INSTANCE) } else { STANDARD_INSTANCE })
 }
 
 /// An instance type by its label, if it is one.
@@ -1717,12 +1732,18 @@ mod instance_tests {
 
     #[test]
     fn runs_on_picks_the_machine() {
-        assert_eq!(instance_for(&labels(&["ubuntu-latest"])), STANDARD_INSTANCE);
-        assert_eq!(instance_for(&labels(&[])).label, "standard");
-        assert_eq!(instance_for(&labels(&["g1t-4core"])).label, "g1t-4core");
-        assert_eq!(instance_for(&labels(&["ubuntu-latest", "G1T-2Core"])).label, "g1t-2core");
+        // As on GitHub: ubuntu-latest is 2 vCPU in a private repository, 4 in a public one.
+        assert_eq!(instance_for(&labels(&["ubuntu-latest"]), false), STANDARD_INSTANCE);
+        assert_eq!(instance_for(&labels(&["ubuntu-latest"]), true).machine, "4-core");
+        assert_eq!(instance_for(&labels(&["ubuntu-24.04"]), true).vcpu, 4.0);
+        assert_eq!(instance_for(&labels(&[]), false).label, "standard");
+        assert_eq!(instance_for(&labels(&[]), true).label, PUBLIC_DEFAULT_LABEL);
+        // A machine asked for by name is that machine, public or not.
+        assert_eq!(instance_for(&labels(&["g1t-4core"]), false).label, "g1t-4core");
+        assert_eq!(instance_for(&labels(&["ubuntu-latest", "G1T-2Core"]), false).label, "g1t-2core");
+        assert_eq!(instance_for(&labels(&["ubuntu-latest", "g1t-2core"]), true).machine, "2-core");
         // Both named: the later one.
-        assert_eq!(instance_for(&labels(&["g1t-2core", "g1t-4core"])).label, "g1t-4core");
+        assert_eq!(instance_for(&labels(&["g1t-2core", "g1t-4core"]), false).label, "g1t-4core");
         assert_eq!(instance_named("g1t-2core").map(|i| i.vcpu), Some(2.0));
         assert_eq!(instance_named("g1t-4core").map(|i| i.vcpu), Some(4.0));
         assert_eq!(instance_named("standard"), Some(STANDARD_INSTANCE));

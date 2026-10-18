@@ -41,7 +41,7 @@ export const INSTANCE_TYPES: readonly InstanceType[] = [
   { label: "g1t-4core", machine: "4-core", sandboxClass: "Sandbox4Core", container: "standard-4", vcpu: 4, memoryGib: 12, diskGb: 20, microsPerMinute: 7000 },
 ];
 
-/** The default: what `ubuntu-latest` and every other hosted label get. */
+/** The default in a private repository: what `ubuntu-latest` and every other hosted label get there, as on GitHub (`instance_for` in crates/contracts/src/actions.rs gives a public repository `g1t-4core`). */
 export const STANDARD_INSTANCE: InstanceType = INSTANCE_TYPES[0]!;
 
 /** An instance type by its label; the standard one for anything else. */

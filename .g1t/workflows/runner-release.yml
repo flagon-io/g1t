@@ -11,7 +11,7 @@
 # to make the release key the first time; CONTRIBUTING.md ("Deploying")
 # says how a release is made.
 #
-# The image jobs run on g1t's own machines (g1t-4core), whose jobs have a
+# The image jobs run on g1t's own machines (ubuntu-latest, 4 vCPU here), whose jobs have a
 # Docker Engine of their own (crates/runner/src/docker/engine.rs). arm64
 # images need QEMU's emulators registered with the kernel; each image job
 # tries that, and when the machine does not allow it, builds amd64 alone
@@ -126,7 +126,7 @@ jobs:
   image:
     name: Container image
     needs: binaries
-    runs-on: g1t-4core
+    runs-on: ubuntu-latest
     # Production's secrets, without a deployment: a release is not a deploy of
     # g1t.sh, and would otherwise show on its card as one in progress.
     environment:
@@ -183,7 +183,7 @@ jobs:
   sandbox:
     name: Sandbox images
     needs: [binaries, image]
-    runs-on: g1t-4core
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
