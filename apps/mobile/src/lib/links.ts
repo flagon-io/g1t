@@ -23,6 +23,9 @@ const NOT_OWNERS = new Set(["settings", "notifications", "oauth", "device", "log
 /** The filters a link to Work's list may carry, as the site's: `/acme/-/work?repo=web&label=bug`. */
 export const WORK_FILTERS = ["state", "label", "milestone", "assignee", "repo", "role"] as const;
 
+/** The filters a link to Sessions may carry: `/acme/-/sessions?state=live&repo=web`. */
+export const SESSION_FILTERS = ["state", "person", "repo", "item"] as const;
+
 /**
  * The app's screen for a site path, or null when the app has none and the
  * page should open on the site.
@@ -48,10 +51,16 @@ export function routeFor(sitePath: string): string | null {
       return null;
     }
     if (third === "work") {
-      if (!fourth) return `/work?${workspace}${filtersOf(query)}`;
+      if (!fourth) return `/work?${workspace}${filtersOf(query, WORK_FILTERS)}`;
       if (fourth === "new" && !fifth) return `/work/new?${workspace}`;
+      if (fourth === "board" && !fifth) return `/work?${workspace}&view=board`;
       if (isNumber(fourth) && !fifth) return `/work/${fourth}?${workspace}`;
       // Labels and milestones stay on the site.
+      return null;
+    }
+    if (third === "sessions") {
+      if (!fourth) return `/work/sessions?${workspace}${filtersOf(query, SESSION_FILTERS)}`;
+      if (!fifth) return `/work/sessions/${encodeURIComponent(fourth)}?${workspace}`;
       return null;
     }
     if (third === "overview" && !fourth) return `/code?${workspace}`;
@@ -121,6 +130,25 @@ export function refSitePath(context: RefContext, number: number): string {
   return "repo" in context ? `/${context.repo}/issues/${number}` : `/${context.workspace}/-/work/${number}`;
 }
 
+/** A session in a list: what kind it is, its repository (`owner/name`) and pull request. */
+export type SessionTarget = { kind: "harness" | "hosted" | "agent" | "recorded"; id: string; repo: string; pull: number | null };
+
+/**
+ * Where tapping a session goes. Someone's harness and hosted ones have a
+ * page of their own; g1t's agent and a recorded one are their pull
+ * request's: its screen in Code, or its session on the site for someone
+ * without Code. Null when there is nowhere to go.
+ */
+export function sessionRoute(session: SessionTarget, workspace: string, code: boolean): string | null {
+  if (session.kind === "harness" || session.kind === "hosted") {
+    return `/work/sessions/${encodeURIComponent(session.id)}?workspace=${encodeURIComponent(workspace)}`;
+  }
+  const [owner, name] = session.repo.split("/", 2);
+  if (!session.pull || !owner || !name) return null;
+  if (code) return `/code/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pull/${session.pull}`;
+  return `/open?path=${encodeURIComponent(`/${owner}/${name}/pull/${session.pull}/session`)}`;
+}
+
 /**
  * The site path a `g1t://` link names, or null for any other link.
  * `g1t://acme/-/chat?x` is `/acme/-/chat?x`.
@@ -144,9 +172,9 @@ export function linkPathOf(link: string): string | null {
   return web ? (web[1] || "/") + (web[2] ?? "") : null;
 }
 
-function filtersOf(query: string): string {
+function filtersOf(query: string, names: readonly string[]): string {
   const params = new URLSearchParams(query);
-  return WORK_FILTERS.filter((name) => params.get(name))
+  return names.filter((name) => params.get(name))
     .map((name) => `&${name}=${encodeURIComponent(params.get(name)!)}`)
     .join("");
 }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { linkPathOf, refContext, refRoute, refSitePath, routeFor, sitePathOf, targetRoute } from "./links.ts";
+import { linkPathOf, refContext, refRoute, refSitePath, routeFor, sessionRoute, sitePathOf, targetRoute } from "./links.ts";
 
 test("a g1t:// link names a site path, as on the desktop", () => {
   assert.equal(sitePathOf("g1t://acme/-/chat/dm/chn_1"), "/acme/-/chat/dm/chn_1");
@@ -35,6 +35,30 @@ test("Work's pages open the app's Work", () => {
   assert.equal(routeFor("/acme/-/work/labels"), null);
   assert.equal(routeFor("/acme/-/work/milestones/2"), null);
   assert.equal(routeFor("/acme/-/work/12/edit"), null);
+});
+
+test("Work's board opens Work on its board", () => {
+  assert.equal(routeFor("/acme/-/work/board"), "/work?workspace=acme&view=board");
+  assert.equal(routeFor(linkPathOf("g1t://acme/-/work/board")!), "/work?workspace=acme&view=board");
+  assert.equal(routeFor("/acme/-/work/board/x"), null);
+});
+
+test("Sessions and a session open the app's Sessions", () => {
+  assert.equal(routeFor(linkPathOf("g1t://acme/-/sessions")!), "/work/sessions?workspace=acme");
+  assert.equal(routeFor(linkPathOf("https://g1t.sh/acme/-/sessions")!), "/work/sessions?workspace=acme");
+  assert.equal(routeFor(linkPathOf("g1t://acme/-/sessions/ses_01abc")!), "/work/sessions/ses_01abc?workspace=acme");
+  assert.equal(routeFor(linkPathOf("https://g1t.sh/acme/-/sessions/ses_01abc")!), "/work/sessions/ses_01abc?workspace=acme");
+  // The list keeps the filters the site's does, and drops anything else.
+  assert.equal(routeFor("/acme/-/sessions?state=live&repo=web&page=2"), "/work/sessions?workspace=acme&state=live&repo=web");
+  assert.equal(routeFor("/acme/-/sessions/ses_1/entries"), null);
+});
+
+test("a session opens its page, or its pull request's for g1t's agent and a recorded one", () => {
+  assert.equal(sessionRoute({ kind: "harness", id: "ses_1", repo: "acme/web", pull: 3 }, "acme", true), "/work/sessions/ses_1?workspace=acme");
+  assert.equal(sessionRoute({ kind: "hosted", id: "ses_2", repo: "acme/web", pull: null }, "acme", false), "/work/sessions/ses_2?workspace=acme");
+  assert.equal(sessionRoute({ kind: "agent", id: "run_1", repo: "acme/web", pull: 3 }, "acme", true), "/code/acme/web/pull/3");
+  assert.equal(sessionRoute({ kind: "recorded", id: "pr_1", repo: "acme/web", pull: 3 }, "acme", false), "/open?path=%2Facme%2Fweb%2Fpull%2F3%2Fsession");
+  assert.equal(sessionRoute({ kind: "recorded", id: "pr_1", repo: "acme/web", pull: null }, "acme", true), null);
 });
 
 test("an old link to an issue asks g1t what its number names in its repository", () => {
