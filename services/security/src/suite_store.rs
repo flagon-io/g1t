@@ -204,7 +204,7 @@ pub struct CodeRow {
     pub dismiss_comment: Option<String>,
     pub dismissed_by: Option<String>,
     pub dismissed_at: Option<String>,
-    pub issue: Option<i64>,
+    pub item: Option<i64>,
 }
 
 fn small(value: Option<i64>) -> Option<u32> {
@@ -247,7 +247,7 @@ impl From<CodeRow> for CodeAlert {
             dismissed_reason: row.dismiss_reason.as_deref().and_then(DismissReason::parse).filter(|_| dismissed),
             dismissed_comment: row.dismiss_comment.filter(|_| dismissed),
             dismissed_at: row.dismissed_at.filter(|_| dismissed),
-            issue: small(row.issue),
+            item: small(row.item),
         }
     }
 }

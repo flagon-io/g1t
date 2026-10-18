@@ -113,6 +113,34 @@ struct SecretRow {
 }
 
 /// Secrets with how many places each was found.
+/// Rewrites the work items kept by the old issue numbers of their
+/// repositories to their numbers in the workspace, `?1` a page of
+/// `work.migrated`'s items as JSON. Each new number is above every old one
+/// of its workspace, so a page heard twice changes nothing more.
+pub const WORK_MIGRATED: [&str; 6] = [
+    "UPDATE updates SET item = m.number FROM moved_items m WHERE updates.repo_id = m.repo_id AND updates.item = m.legacy",
+    "UPDATE update_pulls SET item = m.number FROM moved_items m WHERE update_pulls.repo_id = m.repo_id AND update_pulls.item = m.legacy",
+    "UPDATE upgrades SET item = m.number FROM moved_items m WHERE upgrades.repo_id = m.repo_id AND upgrades.item = m.legacy",
+    "UPDATE code_alerts SET item = m.number FROM moved_items m WHERE code_alerts.repo_id = m.repo_id AND code_alerts.item = m.legacy",
+    "UPDATE alert_fixes SET item = m.number FROM moved_items m WHERE alert_fixes.repo_id = m.repo_id AND alert_fixes.item = m.legacy",
+    // Only an update that needed code changes named a work item; the
+    // other steps name pull requests, which kept their numbers.
+    "UPDATE alert_activity SET number = m.number FROM moved_items m
+     WHERE alert_activity.repo_id = m.repo_id AND alert_activity.number = m.legacy AND alert_activity.action = 'update_needs_code'",
+];
+
+/// `work.migrated`'s items (`?1`), as the rows [`WORK_MIGRATED`] reads.
+const MOVED_ITEMS: &str = "WITH moved_items AS (
+    SELECT json_extract(value, '$.repoId') AS repo_id, json_extract(value, '$.legacyNumber') AS legacy,
+           json_extract(value, '$.number') AS number
+    FROM json_each(?1))";
+
+/// One of [`WORK_MIGRATED`], ready to run.
+pub fn work_migrated_sql(statement: &str) -> String {
+    format!("{MOVED_ITEMS}
+{statement}")
+}
+
 const SECRET_SELECT: &str =
     "SELECT s.*, (SELECT count(*) FROM secret_locations l WHERE l.secret_id = s.id) AS location_count FROM secrets s";
 
@@ -174,7 +202,7 @@ pub struct VulnRow {
     pub status: String,
     pub found_at: String,
     pub fixed_at: Option<String>,
-    pub number: Option<i64>,
+    pub item: Option<i64>,
     #[serde(default)]
     pub dismiss_reason: Option<String>,
     #[serde(default)]
@@ -202,7 +230,7 @@ impl From<VulnRow> for Vulnerability {
             severity: row.severity,
             fixed_version: row.fixed_version,
             status,
-            issue: row.number.map(|number| number as u32),
+            item: row.item.map(|number| number as u32),
             found_at: row.found_at,
             fixed_at: row.fixed_at,
             state: status.state(),
@@ -225,7 +253,7 @@ pub struct UpdateRow {
     pub state: String,
     pub branch: Option<String>,
     pub pull: Option<i64>,
-    pub issue: Option<i64>,
+    pub item: Option<i64>,
     pub error: Option<String>,
     pub updated_at: String,
 }
@@ -239,8 +267,8 @@ impl UpdateRow {
         self.pull.map(|n| n.max(0) as u32)
     }
 
-    pub fn issue(&self) -> Option<u32> {
-        self.issue.map(|n| n.max(0) as u32)
+    pub fn item(&self) -> Option<u32> {
+        self.item.map(|n| n.max(0) as u32)
     }
 
     pub fn to_contract(&self) -> SecurityUpdate {
@@ -249,7 +277,7 @@ impl UpdateRow {
             target: self.target.clone(),
             branch: self.branch.clone(),
             pull: self.pull(),
-            issue: self.issue(),
+            item: self.item(),
             error: self.error.clone(),
             updated_at: self.updated_at.clone(),
         }
@@ -308,7 +336,7 @@ pub struct Activity<'a> {
 
 #[derive(Deserialize)]
 pub struct UpgradeRow {
-    pub number: i64,
+    pub item: i64,
 }
 
 #[derive(Deserialize)]
@@ -348,9 +376,9 @@ pub struct Store {
 
 const VULN_COLUMNS: &str = "v.id, v.repo_id, v.ecosystem, v.package, v.version, v.manifest, v.osv_id, v.advisory,
     v.summary, v.severity, v.fixed_version, v.status, v.found_at, v.fixed_at, v.dismiss_reason, v.dismiss_comment,
-    v.dismissed_by, v.dismissed_at, COALESCE(n.issue, u.number) AS number";
+    v.dismissed_by, v.dismissed_at, COALESCE(n.item, u.item) AS item";
 
-/// The issue an upgrade has: the security update's, when it went to
+/// The work item an upgrade has: the security update's, when it went to
 /// g1t, or one opened before security updates.
 const VULN_JOINS: &str = "LEFT JOIN upgrades u ON u.repo_id = v.repo_id AND u.ecosystem = v.ecosystem AND u.package = v.package
     LEFT JOIN updates n ON n.repo_id = v.repo_id AND n.ecosystem = v.ecosystem AND n.package = v.package";
@@ -415,6 +443,21 @@ impl Store {
         let mut batch = Vec::with_capacity(PURGED.len());
         for sql in PURGED.iter().chain(crate::update_store::PURGED) {
             batch.push(self.db.prepare(*sql).bind(&[repo_id.into()])?);
+        }
+        self.db.batch(batch).await?;
+        Ok(())
+    }
+
+    /// `work.migrated`: what was kept by old issue numbers names the work
+    /// items they became.
+    pub async fn work_migrated(&self, items: &[g1t_contracts::work::MigratedItem]) -> Result<()> {
+        if items.is_empty() {
+            return Ok(());
+        }
+        let page = serde_json::to_string(items)?;
+        let mut batch = Vec::with_capacity(WORK_MIGRATED.len());
+        for sql in WORK_MIGRATED {
+            batch.push(self.db.prepare(work_migrated_sql(sql)).bind(&[page.as_str().into()])?);
         }
         self.db.batch(batch).await?;
         Ok(())
@@ -984,7 +1027,7 @@ impl Store {
     }
 
     /// Updates asked of a sandbox before `before` that never pushed.
-    /// Updates left in `needs_code`, which g1t opened an issue for before
+    /// Updates left in `needs_code`, which g1t opened a work item for before
     /// it stopped doing that.
     pub async fn needs_code_updates(&self, limit: u32) -> Result<Vec<UpdateRow>> {
         self.db
@@ -1014,7 +1057,7 @@ impl Store {
                 "INSERT INTO updates (repo_id, ecosystem, package, target, state, branch, requested_at, updated_at)
                  VALUES (?1, ?2, ?3, ?4, 'requested', ?5, ?6, ?6)
                  ON CONFLICT (repo_id, ecosystem, package) DO UPDATE SET
-                   target = ?4, state = 'requested', branch = ?5, error = NULL, issue = NULL,
+                   target = ?4, state = 'requested', branch = ?5, error = NULL, item = NULL,
                    pull = CASE WHEN updates.state = 'open' THEN updates.pull ELSE NULL END,
                    requested_at = ?6, updated_at = ?6",
             )
@@ -1029,18 +1072,18 @@ impl Store {
         row: &UpdateRow,
         state: UpdateState,
         pull: Option<u32>,
-        issue: Option<u32>,
+        item: Option<u32>,
         error: Option<&str>,
     ) -> Result<()> {
         self.db
             .prepare(
-                "UPDATE updates SET state = ?, pull = ?, issue = ?, error = ?, updated_at = ?
+                "UPDATE updates SET state = ?, pull = ?, item = ?, error = ?, updated_at = ?
                  WHERE repo_id = ? AND ecosystem = ? AND package = ?",
             )
             .bind(&[
                 state.as_str().into(),
                 pull.map_or(JsValue::NULL, JsValue::from),
-                issue.map_or(JsValue::NULL, JsValue::from),
+                item.map_or(JsValue::NULL, JsValue::from),
                 optional(error),
                 now().into(),
                 row.repo_id.as_str().into(),
@@ -1108,10 +1151,10 @@ impl Store {
 
     // --- Upgrades -----------------------------------------------------------
 
-    /// The issue opened for a package before security updates, if any.
+    /// The work item opened for a package before security updates, if any.
     pub async fn upgrade(&self, repo_id: &str, ecosystem: &str, package: &str) -> Result<Option<UpgradeRow>> {
         self.db
-            .prepare("SELECT number FROM upgrades WHERE repo_id = ? AND ecosystem = ? AND package = ?")
+            .prepare("SELECT item FROM upgrades WHERE repo_id = ? AND ecosystem = ? AND package = ?")
             .bind(&[repo_id.into(), ecosystem.into(), package.into()])?
             .first::<UpgradeRow>(None)
             .await
@@ -1197,6 +1240,54 @@ pub fn secret_counts<'a>(rows: impl Iterator<Item = (&'a str, bool, u32)>) -> Se
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The migrations, in order, from `migrations/`.
+    fn migrations() -> Vec<(String, String)> {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
+        let mut names: Vec<String> =
+            std::fs::read_dir(&dir).unwrap().map(|entry| entry.unwrap().file_name().into_string().unwrap()).collect();
+        names.sort();
+        names.into_iter().map(|name| (name.clone(), std::fs::read_to_string(dir.join(&name)).unwrap())).collect()
+    }
+
+    #[test]
+    fn old_issue_numbers_become_their_work_items_numbers() {
+        let db = rusqlite::Connection::open_in_memory().unwrap();
+        let (before, after): (Vec<_>, Vec<_>) = migrations().into_iter().partition(|(name, _)| name.as_str() < "0007");
+        for (name, sql) in &before {
+            db.execute_batch(sql).unwrap_or_else(|error| panic!("{name}: {error}"));
+        }
+        db.execute_batch(
+            "INSERT INTO updates (repo_id, ecosystem, package, target, state, pull, issue, requested_at, updated_at)
+               VALUES ('rep_1', 'npm', 'a', '2', 'needs_code', NULL, 5, '', ''), ('rep_2', 'npm', 'a', '2', 'needs_code', NULL, 5, '', '');
+             INSERT INTO upgrades (repo_id, ecosystem, package, number, target, opened_at) VALUES ('rep_1', 'npm', 'b', 3, '2', '');
+             INSERT INTO alert_activity (id, repo_id, alert_id, action, number, at)
+               VALUES ('a1', 'rep_1', 'vul_1', 'update_needs_code', 5, ''), ('a2', 'rep_1', 'vul_1', 'update_opened', 5, '');",
+        )
+        .unwrap();
+        for (name, sql) in &after {
+            db.execute_batch(sql).unwrap_or_else(|error| panic!("{name}: {error}"));
+        }
+        let page = serde_json::json!([
+            { "repoId": "rep_1", "legacyNumber": 5, "workspace": "acme", "number": 41, "itemId": "iss_5" },
+            { "repoId": "rep_1", "legacyNumber": 3, "workspace": "acme", "number": 40, "itemId": "iss_3" },
+        ])
+        .to_string();
+        // Heard twice, as a queue may deliver it.
+        for _ in 0..2 {
+            for statement in WORK_MIGRATED {
+                db.execute(&work_migrated_sql(statement), [&page]).unwrap();
+            }
+        }
+        let item = |sql: &str| db.query_row(sql, [], |row| row.get::<_, Option<i64>>(0)).unwrap();
+        assert_eq!(item("SELECT item FROM updates WHERE repo_id = 'rep_1'"), Some(41));
+        // Another repository's number 5 was another issue.
+        assert_eq!(item("SELECT item FROM updates WHERE repo_id = 'rep_2'"), Some(5));
+        assert_eq!(item("SELECT item FROM upgrades WHERE repo_id = 'rep_1'"), Some(40));
+        assert_eq!(item("SELECT number FROM alert_activity WHERE id = 'a1'"), Some(41));
+        // A pull request kept its number.
+        assert_eq!(item("SELECT number FROM alert_activity WHERE id = 'a2'"), Some(5));
+    }
 
     #[test]
     fn only_real_secrets_in_history_are_open() {

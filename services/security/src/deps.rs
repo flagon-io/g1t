@@ -9,7 +9,7 @@ use g1t_contracts::repos::{BlobArgs, BlobView};
 use g1t_contracts::security::{AlertState, FindLockfilesArgs, Lockfiles, VersionUpdatesState, VulnStatus, Vulnerability};
 use g1t_contracts::updates::DEPENDABOT_PATHS;
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::work::{AddCommentArgs, Issue, IssueDetail, ViewArgs};
+use g1t_contracts::work::{AddCommentArgs, WorkItem, WorkItemDetail, WorkItemViewArgs};
 use g1t_contracts::{Outcome, User};
 use g1t_kit::now_ms;
 use g1t_scan::lockfiles::{Lockfile, Package};
@@ -271,23 +271,32 @@ impl Security {
         Ok(config.map(|(config, file)| Loaded { config, file, default_branch: default_branch.unwrap_or_default() }))
     }
 
-    pub(crate) async fn issue(&self, actor: &User, repo: &RepoPath, number: u32) -> Result<Option<Issue>> {
-        let found: Outcome<IssueDetail> = g1t_kit::call(
+    /// A work item of `workspace`, as `actor` sees it.
+    pub(crate) async fn item(&self, actor: &User, workspace: &str, number: u32) -> Result<Option<WorkItem>> {
+        let found: Outcome<WorkItemDetail> = g1t_kit::call(
             &self.work,
-            "get_issue",
-            &ViewArgs { repo: repo.clone(), number, viewer: Some(actor.clone()), after_seq: 0 },
+            "get_work_item",
+            &WorkItemViewArgs { workspace: workspace.to_owned(), number, viewer: Some(actor.clone()) },
         )
         .await?;
-        Ok(found.into_result().ok().map(|detail| detail.issue))
+        Ok(found.into_result().ok().map(|detail| detail.item))
     }
 
+    /// Comments on pull request `number` of `repo`.
     pub(crate) async fn comment(&self, actor: &User, repo: &RepoPath, number: u32, body: String) -> Result<()> {
+        self.comment_on(actor, Some(repo), "", number, body).await
+    }
+
+    /// Comments on a thread: with `repo`, its pull request `number`;
+    /// without, the work item `number` of `workspace`.
+    pub(crate) async fn comment_on(&self, actor: &User, repo: Option<&RepoPath>, workspace: &str, number: u32, body: String) -> Result<()> {
         let _: Outcome<Value> = g1t_kit::call(
             &self.work,
             "add_comment",
             &AddCommentArgs {
                 actor: actor.clone(),
-                repo: repo.clone(),
+                repo: repo.cloned(),
+                workspace: workspace.to_owned(),
                 number,
                 body,
                 path: None,
@@ -363,7 +372,7 @@ fn vulnerability(repo_id: &str, item: &Located, advisory: &Advisory) -> Vulnerab
         severity: advisory.severity.as_str().to_owned(),
         fixed_version: advisory.fixed.clone(),
         status: VulnStatus::Open,
-        issue: None,
+        item: None,
         found_at: String::new(),
         fixed_at: None,
         state: AlertState::Open,
@@ -443,7 +452,7 @@ mod tests {
             status: "open".into(),
             found_at: "2026-10-04T00:00:00Z".into(),
             fixed_at: None,
-            number: None,
+            item: None,
             dismiss_reason: None,
             dismiss_comment: None,
             dismissed_by: None,

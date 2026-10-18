@@ -1681,6 +1681,7 @@ dependencies = [
  "g1t-kit",
  "g1t-scan",
  "getrandom 0.2.17",
+ "rusqlite",
  "serde",
  "serde_json",
  "serde_yaml",

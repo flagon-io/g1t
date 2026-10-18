@@ -371,11 +371,21 @@ impl Security {
         let done: Result<Outcome<Value>> = match comment_plan(our_comment(comments), &body, changes) {
             CommentPlan::Leave => return,
             CommentPlan::Edit(comment_id) => {
-                g1t_kit::call(&self.work, "edit_comment", &CommentActionArgs { actor, repo: path, comment_id, body }).await
+                g1t_kit::call(&self.work, "edit_comment", &CommentActionArgs { actor, repo: Some(path), workspace: String::new(), comment_id, body }).await
             }
             CommentPlan::Add => {
-                g1t_kit::call(&self.work, "add_comment", &AddCommentArgs { actor, repo: path, number, body, path: None, line: None, verdict: None })
-                    .await
+                g1t_kit::call(&self.work, "add_comment", &AddCommentArgs {
+                    actor,
+                    repo: Some(path),
+                    workspace: String::new(),
+                    number,
+                    body,
+                    path: None,
+                    line: None,
+                    verdict: None,
+                },
+            )
+            .await
             }
         };
         match done {

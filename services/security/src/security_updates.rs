@@ -8,7 +8,7 @@
 //!    (`User::system`). It lands through the branch's required checks like
 //!    any other. An older one for the same package is closed as superseded.
 //! 3. When its checks fail because code has to change, or the sandbox
-//!    never pushed, the pull request is closed and an issue is opened for
+//!    never pushed, the pull request is closed and a work item is opened for
 //!    g1t to work on, started by g1t. That is the only time an agent is
 //!    used.
 //! 4. Once none of the alerts it fixes is open (fixed on the default
@@ -22,7 +22,9 @@ use std::collections::BTreeMap;
 use g1t_contracts::repos::RepoPath;
 use g1t_contracts::security::{BumpArgs, UpdateState, update_branch};
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::work::{IssueActionArgs, IssueReason, OpenPullArgs, Pull, PullActionArgs, PullDetail, PullStatus, Runtime, ViewArgs};
+use g1t_contracts::work::{
+    CloseReason, CloseWorkItemArgs, OpenPullArgs, Pull, PullActionArgs, PullDetail, PullStatus, Runtime, ViewArgs, WorkItemActionArgs,
+};
 use g1t_contracts::{Outcome, User};
 use g1t_kit::now_ms;
 use g1t_scan::osv::{self, Severity};
@@ -105,7 +107,7 @@ pub fn pull_text(ecosystem: &str, package: &str, target: &str, vulns: &[&VulnRow
     body.push_str(&format!(
         "\nLockfiles changed: {}.\n\n\
          Only the version changes. This pull request lands through this branch's required checks like any other. \
-         If they fail because code has to change, g1t closes it and puts g1t on an issue to make the change.\n\n\
+         If they fail because code has to change, g1t closes it and puts g1t on a work item to make the change.\n\n\
          ---\n_Opened by g1t's security updates. Turn them off for this project on its Security page._",
         lockfiles.iter().map(|path| format!("`{path}`")).collect::<Vec<_>>().join(", ")
     ));
@@ -210,7 +212,7 @@ pub fn group_text(group: &str, members: &[GroupMember], vulns: &[&VulnRow], file
     body.push_str(&advisory_table(vulns));
     body.push_str(&format!(
         "\nOnly the versions change. This pull request lands through this branch's required checks like any other. \
-         If they fail because code has to change, g1t closes it and puts g1t on an issue to make the change.\n\n{}\n\n---\n\
+         If they fail because code has to change, g1t closes it and puts g1t on a work item to make the change.\n\n{}\n\n---\n\
          _Opened by g1t's security updates, grouped as `{file}` asks. Turn them off for this project on its Security page._",
         pull_text::COMMANDS
     ));
@@ -245,7 +247,7 @@ impl Security {
                 repo: Self::path_of(repo),
                 number,
                 summary: String::new(),
-                keep_issue_open: false,
+                keep_item_open: false,
                 ignore_checks: false,
                 bypass_rules: false,
                 merge_method: None,
@@ -263,19 +265,21 @@ impl Security {
         Ok(matches!(closed, Outcome::Ok(_)))
     }
 
-    /// Closes an issue g1t opened for an update before it stopped opening
-    /// them, saying why. One already closed is left as it is.
-    pub(crate) async fn close_issue_with(&self, repo: &RepoRow, number: u32, why: String) -> Result<()> {
+    /// The slug of the workspace a repository is in.
+    pub(crate) fn workspace_of(repo: &RepoRow) -> String {
+        repo.namespace.to_lowercase()
+    }
+
+    /// Closes a work item g1t opened for an update before it stopped
+    /// opening them, saying why. One already closed is left as it is.
+    pub(crate) async fn close_item_with(&self, repo: &RepoRow, number: u32, why: String) -> Result<()> {
         let system = User::system(&repo.namespace);
-        let path = Self::path_of(repo);
-        let closed: Outcome<Value> = g1t_kit::call(
-            &self.work,
-            "close_issue",
-            &IssueActionArgs { actor: system.clone(), repo: path.clone(), number, reason: Some(IssueReason::NotPlanned) },
-        )
-        .await?;
+        let workspace = Self::workspace_of(repo);
+        let item = WorkItemActionArgs { actor: system.clone(), workspace: workspace.clone(), number, reason: Some(CloseReason::NotPlanned) };
+        let closed: Outcome<Value> =
+            g1t_kit::call(&self.work, "close_work_item", &CloseWorkItemArgs { item, repo: None, commit: None }).await?;
         if matches!(closed, Outcome::Ok(_)) {
-            self.comment(&system, &path, number, why).await?;
+            self.comment_on(&system, None, &workspace, number, why).await?;
         }
         Ok(())
     }
@@ -350,13 +354,13 @@ impl Security {
                     }
                 }
                 None => {
-                    // An upgrade issue from before security updates, still
-                    // open, is left to the agent on it.
+                    // An upgrade work item from before security updates,
+                    // still open, is left to the agent on it.
                     if let Some(existing) = self.store.upgrade(&repo.repo_id, &ecosystem, &package).await?
                         && self
-                            .issue(&User::system(&repo.namespace), &Self::path_of(repo), existing.number as u32)
+                            .item(&User::system(&repo.namespace), &Self::workspace_of(repo), existing.item as u32)
                             .await?
-                            .is_some_and(|issue| issue.state == g1t_contracts::work::State::Open)
+                            .is_some_and(|item| item.state == g1t_contracts::work::State::Open)
                     {
                         continue;
                     }
@@ -539,7 +543,7 @@ impl Security {
             &OpenPullArgs {
                 actor: system.clone(),
                 repo: Self::path_of(&repo),
-                issue: None,
+                item: None,
                 title: prefixed(&prefix, pull_title(&row.package, &row.target)),
                 body: pull_text(&row.ecosystem, &row.package, &row.target, &vulns),
                 branch: Some(branch.to_owned()),
@@ -656,15 +660,15 @@ impl Security {
             self.store.set_update(&row, UpdateState::Failed, row.pull(), None, Some(&why)).await?;
             self.note(&row, "update_failed", Some(g1t_contracts::system::USERNAME), None, Some(&why)).await?;
         }
-        // Left from when g1t opened an issue for an upgrade it could not
-        // make: the issue closes, and the update fails as one would now.
+        // Left from when g1t opened a work item for an upgrade it could not
+        // make: the work item closes, and the update fails as one would now.
         for row in self.store.needs_code_updates(10).await? {
             let why = cannot_raise(&row.package, &row.target);
-            if let (Some(repo), Some(number)) = (self.store.repo(&row.repo_id).await?, row.issue()) {
+            if let (Some(repo), Some(number)) = (self.store.repo(&row.repo_id).await?, row.item()) {
                 let path = Self::path_of(&repo);
                 let alerts = format!("/{}/{}/security/vulnerabilities", path.namespace, path.name);
-                self.close_issue_with(&repo, number, format!(
-                    "g1t no longer opens issues for upgrades it cannot make on its own. This one is on [its alert]({alerts}), \
+                self.close_item_with(&repo, number, format!(
+                    "g1t no longer opens work items for upgrades it cannot make on its own. This one is on [its alert]({alerts}), \
                      which says why and is tried again later."
                 ))
                 .await?;
@@ -742,7 +746,7 @@ mod tests {
             status: "open".into(),
             found_at: "2026-10-04T00:00:00Z".into(),
             fixed_at: None,
-            number: None,
+            item: None,
             dismiss_reason: None,
             dismiss_comment: None,
             dismissed_by: None,

@@ -42,9 +42,9 @@ pub struct PullRow {
     pub reviewers: String,
     pub state: String,
     pub pull: Option<i64>,
-    /// The issue g1t opened for it, from before it stopped doing that.
+    /// The work item g1t opened for it, from before it stopped doing that.
     #[serde(default)]
-    pub issue: Option<i64>,
+    pub item: Option<i64>,
     pub head: Option<String>,
     pub merge_by: Option<String>,
     pub error: Option<String>,
@@ -60,8 +60,8 @@ impl PullRow {
         self.pull.map(|n| n.max(0) as u32)
     }
 
-    pub fn issue(&self) -> Option<u32> {
-        self.issue.map(|n| n.max(0) as u32)
+    pub fn item(&self) -> Option<u32> {
+        self.item.map(|n| n.max(0) as u32)
     }
 
     pub fn dependencies(&self) -> Vec<UpdatedDependency> {
@@ -259,7 +259,7 @@ impl Store {
     }
 
     /// Update pull requests asked of a sandbox before `before` that never pushed.
-    /// Version updates left in `needs_code`, which g1t opened an issue for
+    /// Version updates left in `needs_code`, which g1t opened a work item for
     /// before it stopped doing that.
     pub async fn needs_code_update_pulls(&self, limit: u32) -> Result<Vec<PullRow>> {
         self.db
@@ -311,13 +311,13 @@ impl Store {
         Ok(id)
     }
 
-    pub async fn set_update_pull(&self, id: &str, state: UpdateState, pull: Option<u32>, issue: Option<u32>, error: Option<&str>) -> Result<()> {
+    pub async fn set_update_pull(&self, id: &str, state: UpdateState, pull: Option<u32>, item: Option<u32>, error: Option<&str>) -> Result<()> {
         self.db
-            .prepare("UPDATE update_pulls SET state = ?, pull = ?, issue = ?, error = ?, updated_at = ? WHERE id = ?")
+            .prepare("UPDATE update_pulls SET state = ?, pull = ?, item = ?, error = ?, updated_at = ? WHERE id = ?")
             .bind(&[
                 state.as_str().into(),
                 pull.map_or(JsValue::NULL, JsValue::from),
-                issue.map_or(JsValue::NULL, JsValue::from),
+                item.map_or(JsValue::NULL, JsValue::from),
                 optional(error),
                 now().into(),
                 id.into(),

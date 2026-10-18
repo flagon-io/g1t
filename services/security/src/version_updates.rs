@@ -16,7 +16,7 @@
 //!    asked as the file says. An older one for the same dependency or group
 //!    is closed as superseded.
 //! 4. The sweep watches open ones: a failing required check closes it and
-//!    puts g1t on an issue to make the code changes, as security updates
+//!    puts g1t on a work item to make the code changes, as security updates
 //!    do; one asked to merge (`@g1t merge`) merges once its checks pass;
 //!    one in conflict is made again from its base (`rebase-strategy`).
 //! 5. `@g1t` comments on these pull requests are commands
@@ -399,14 +399,14 @@ impl Security {
             let error = "The update could not be made in a sandbox: its packages may need code changes to move, or a registry could not be reached.";
             self.store.set_update_pull(&row.id, UpdateState::Failed, row.pull(), None, Some(error)).await?;
         }
-        // Left from when g1t opened an issue for an update whose checks
-        // failed: the issue closes, and the next run opens the update again
+        // Left from when g1t opened a work item for an update whose checks
+        // failed: the work item closes, and the next run opens the update again
         // as a pull request that stays open with its failing checks.
         for row in self.store.needs_code_update_pulls(10).await? {
-            if let (Some(repo), Some(number)) = (self.store.repo(&row.repo_id).await?, row.issue()) {
-                let why = "g1t no longer opens issues for updates whose checks fail. The entry's next run opens this update again \
+            if let (Some(repo), Some(number)) = (self.store.repo(&row.repo_id).await?, row.item()) {
+                let why = "g1t no longer opens work items for updates whose checks fail. The entry's next run opens this update again \
                            as a pull request, which stays open with its checks for you to decide on.";
-                self.close_issue_with(&repo, number, why.to_owned()).await?;
+                self.close_item_with(&repo, number, why.to_owned()).await?;
             }
             let error = "Raising the versions failed this branch's required checks.";
             self.store.set_update_pull(&row.id, UpdateState::Failed, row.pull(), None, Some(error)).await?;
@@ -931,7 +931,7 @@ impl Security {
             &OpenPullArgs {
                 actor: system.clone(),
                 repo: Self::repo_path(repo),
-                issue: None,
+                item: None,
                 title: row.title.clone(),
                 body: row.body.clone(),
                 branch: Some(row.branch.clone()),
@@ -1073,7 +1073,7 @@ impl Security {
                         repo: Self::repo_path(&repo),
                         number,
                         summary: String::new(),
-                        keep_issue_open: false,
+                        keep_item_open: false,
                         ignore_checks: false,
                         bypass_rules: false,
                         merge_method: None,
@@ -1376,7 +1376,7 @@ impl Security {
                     let merged: Outcome<Pull> = g1t_kit::call(
                         &self.work,
                         "merge_pull",
-                        &PullActionArgs { actor: system.clone(), repo: path.clone(), number, summary: String::new(), keep_issue_open: false, ignore_checks: false, bypass_rules: false, merge_method: matches!(command, UpdateCommand::SquashAndMerge).then_some(g1t_contracts::rules::MergeMethod::Squash), commit_title: None, commit_message: None, expected_head: None, delete_branch: None, update_method: None },
+                        &PullActionArgs { actor: system.clone(), repo: path.clone(), number, summary: String::new(), keep_item_open: false, ignore_checks: false, bypass_rules: false, merge_method: matches!(command, UpdateCommand::SquashAndMerge).then_some(g1t_contracts::rules::MergeMethod::Squash), commit_title: None, commit_message: None, expected_head: None, delete_branch: None, update_method: None },
                     )
                     .await?;
                     match merged {
@@ -1586,7 +1586,7 @@ mod tests {
             reviewers: "[]".into(),
             state: state.into(),
             pull: Some(3),
-            issue: None,
+            item: None,
             head: None,
             merge_by: None,
             error: None,
@@ -1636,11 +1636,11 @@ mod tests {
         let status = |state: &str| CommitStatus { context: "CI / push".into(), state: state.into(), description: None, target_url: None, updated_at: String::new(), source: None, check_run_id: None };
         let detail = |required: Vec<RequiredCheck>, statuses: Vec<CommitStatus>| {
             let mut detail: PullDetail = serde_json::from_value(json!({
-                "pull": {"id": "pul_1", "repoId": "rep_1", "number": 1, "issue": null, "title": "t", "body": null, "agent": "", "runtime": "external",
+                "pull": {"id": "pul_1", "repoId": "rep_1", "number": 1, "item": null, "title": "t", "body": null, "agent": "", "runtime": "external",
                          "status": "open", "fork": null, "forkRepoId": null, "branch": "b", "headCommit": "c", "mergeBase": null, "mergedBy": null,
                          "mergedAt": null, "supersededBy": null, "checkStatus": null,
                          "author": {"id": "g1t", "username": "g1t", "kind": "system"}, "createdAt": "", "updatedAt": ""},
-                "issue": null, "comments": [], "checks": null
+                "item": null, "comments": [], "checks": null
             }))
             .unwrap();
             detail.required_checks = required;
