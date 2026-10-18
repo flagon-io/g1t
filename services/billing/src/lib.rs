@@ -1483,6 +1483,8 @@ mod tests {
         include_str!("../migrations/0063_enterprise_attempts.sql"),
         include_str!("../migrations/0064_complimentary.sql"),
         include_str!("../migrations/0065_free_except_flagon.sql"),
+        include_str!("../migrations/0066_drop_issue_caps.sql"),
+        include_str!("../migrations/0067_provider_costs.sql"),
     ];
 
     /// The columns of `table` after the migrations: each with whether an
