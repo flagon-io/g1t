@@ -1089,7 +1089,7 @@ Calls [`record_session_entries`](/reference/api/sessions/record-session-entries/
 
 ## g1t work
 
-Work items: list, view, open, edit, link, close; claims, hand-offs, dependencies, events.
+Work items: list, view, new, edit, link, close; claims, hand-offs, dependencies, events.
 
 Flags every `g1t work` command takes:
 

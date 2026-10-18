@@ -108,7 +108,7 @@ pub enum Command {
     /// Sessions: one run of an agent's harness, recorded as it works.
     #[command(subcommand)]
     Session(SessionCommand),
-    /// Work items: list, view, open, edit, link, close; claims, hand-offs, dependencies, events.
+    /// Work items: list, view, new, edit, link, close; claims, hand-offs, dependencies, events.
     Work(WorkArgs),
     /// Why a file or line is as it is: its commit, pull request, work item, decisions and sessions.
     Why(WhyArgs),
