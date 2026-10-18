@@ -23,6 +23,9 @@ import {
   oldNode,
   older,
   typedSkill,
+  transcriptUsage,
+  USAGE_CLI,
+  LONG_PROMPT_TOKENS,
   isG1tRemote,
   isGitCommit,
   isGitPush,
@@ -47,6 +50,11 @@ const SCRIPT = join(HERE, "..", "hooks", "g1t.mjs");
 const FAKE = join(HERE, "fake-g1t.mjs");
 
 const base = { session_id: "abc-123", cwd: "/work/repo", transcript_path: "/t.jsonl", permission_mode: "default" };
+
+/** An assistant line of a transcript, as Claude Code writes one for each part of an API response. */
+function assistant(id, model, usage, requestId = `req_${id}`) {
+  return JSON.stringify({ type: "assistant", requestId, message: { id, model, role: "assistant", content: [{ type: "text", text: "the secret plan" }], usage } });
+}
 
 describe("plan", () => {
   test("SessionStart starts the session", () => {
@@ -112,10 +120,15 @@ describe("plan", () => {
     assert.equal(job.item, 42);
   });
 
-  test("Stop sends a heartbeat and SessionEnd ends the session with its reason", () => {
-    assert.deepEqual(plan({ ...base, hook_event_name: "Stop", stop_hook_active: false }, {}).steps, [{ args: ["session", "heartbeat"] }]);
+  test("Stop sends a heartbeat with the transcript's usage, and SessionEnd reports it and ends the session with its reason", () => {
+    assert.deepEqual(plan({ ...base, hook_event_name: "Stop", stop_hook_active: false }, {}).steps, [{ args: ["session", "heartbeat"], usage: "/t.jsonl" }]);
+    const { transcript_path, ...untracked } = base;
+    assert.deepEqual(plan({ ...untracked, hook_event_name: "Stop" }, {}).steps, [{ args: ["session", "heartbeat"] }]);
     const end = plan({ ...base, hook_event_name: "SessionEnd", reason: "prompt_input_exit" }, {});
-    assert.deepEqual(end.steps, [{ args: ["session", "end", "--reason", "prompt_input_exit"] }]);
+    assert.deepEqual(end.steps, [
+      { args: ["session", "heartbeat"], usage: "/t.jsonl", only: true },
+      { args: ["session", "end", "--reason", "prompt_input_exit"] },
+    ]);
     assert.equal(end.end, true);
   });
 
@@ -194,15 +207,21 @@ describe("subagents", () => {
     assert.equal(subagentHarnessId("abc-123", "def456"), "abc-123/agent/def456", "the Agent tool's id names the same subagent");
   });
 
-  test("SubagentStop ends it with its final message, cut to the limit", () => {
+  test("SubagentStop reports its own transcript's usage and ends it with its final message, cut to the limit", () => {
     const job = plan(fixtures.subagentStop, {});
     assert.deepEqual(job.agent, { id: "def456", type: "Explore" });
-    assert.deepEqual(job.steps, [{ args: ["session", "end", "--reason", "done", "--result=Analysis complete. Found 3 potential issues..."] }]);
+    assert.deepEqual(job.steps, [
+      { args: ["session", "heartbeat"], usage: "/t/abc-123/subagents/agent-def456.jsonl", only: true },
+      { args: ["session", "end", "--reason", "done", "--result=Analysis complete. Found 3 potential issues..."] },
+    ]);
+    // Without agent_transcript_path, its own beside its parent's.
+    const { agent_transcript_path, ...noPath } = fixtures.subagentStop;
+    assert.equal(plan(noPath, {}).steps[0].usage, join("/t", "subagents", "agent-def456.jsonl"));
     const long = plan({ ...fixtures.subagentStop, last_assistant_message: "z".repeat(RESULT_LIMIT * 2) }, {});
-    assert.equal(long.steps[0].args.at(-1).length, "--result=".length + RESULT_LIMIT);
+    assert.equal(long.steps.at(-1).args.at(-1).length, "--result=".length + RESULT_LIMIT);
     const dash = plan({ ...fixtures.subagentStop, last_assistant_message: "- Found 3 issues" }, {});
-    assert.equal(dash.steps[0].args.at(-1), "--result=- Found 3 issues", "a message that starts with a dash is still a value");
-    assert.equal(refusal(dash.steps[0].args), null);
+    assert.equal(dash.steps.at(-1).args.at(-1), "--result=- Found 3 issues", "a message that starts with a dash is still a value");
+    assert.equal(refusal(dash.steps.at(-1).args), null);
   });
 
   test("an Agent call gives its subagent the task, and once finished its final message, and nothing else of its answer", () => {
@@ -741,6 +760,39 @@ describe("with a working copy", () => {
     assert.match(refusal(["work", "view", "abc"]), /not abc/);
     assert.match(refusal(["session", "pause"]), /takes 0 argument/);
     assert.equal(refusal(["api", "update_session", "-f", "id=ses_1", "-f", "head_commit=abc", "--silent"]), null);
+    // --usage-json is newer than the oldest CLI the hooks take: only a CLI that has it is given it.
+    const usage = ["session", "heartbeat", '--usage-json=[{"model":"claude-opus-5-5","input_tokens":1}]'];
+    assert.equal(refusal(usage, CONTRACT, USAGE_CLI), null);
+    assert.match(refusal(usage, CONTRACT, MIN_CLI), /takes no --usage-json/);
+    assert.equal(CONTRACT.commands.find((c) => c.command.join(" ") === "session heartbeat").since["--usage-json"], USAGE_CLI);
+  });
+
+  test("a session's usage is reported from its own transcript, to a CLI that takes it, and only the counts", () => {
+    const transcript = join(dir, "t.jsonl");
+    writeFileSync(transcript, `${JSON.stringify({ type: "user", message: { role: "user", content: "the secret plan" } })}\n${assistant("msg_1", "claude-opus-5-5", { input_tokens: 10, output_tokens: 20 })}\n`);
+    const subagent = join(dir, "agent-def456.jsonl");
+    writeFileSync(subagent, `${assistant("msg_2", "claude-haiku-4-5", { input_tokens: 7 })}\n`);
+    const newer = { ...env, FAKE_G1T_VERSION: USAGE_CLI };
+    hook({ ...base, cwd: dir, hook_event_name: "SessionStart" }, newer);
+    work({ cwd: dir, sid: base.session_id, start: true, steps: [] }, newer);
+    work(hook({ ...base, transcript_path: transcript, cwd: dir, hook_event_name: "Stop" }, newer).job, newer);
+    work(hook({ ...fixtures.subagentStop, transcript_path: transcript, agent_transcript_path: subagent, cwd: dir }, newer).job, newer);
+    const heartbeats = calls().filter((c) => c.args[1] === "heartbeat");
+    const usage = (call) => JSON.parse(call.args.find((a) => a.startsWith("--usage-json=")).slice("--usage-json=".length));
+    assert.equal(heartbeats[0].session, "ses_fake01");
+    assert.deepEqual(usage(heartbeats[0]), [{ model: "claude-opus-5-5", input_tokens: 10, output_tokens: 20, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, cache_read_tokens: 0 }]);
+    // The subagent's own, to its own session, before it ends; never its parent's.
+    assert.equal(heartbeats[1].session, "ses_sub_def456");
+    assert.deepEqual(usage(heartbeats[1]).map((row) => [row.model, row.input_tokens]), [["claude-haiku-4-5", 7]]);
+    const order = calls().filter((c) => c.session === "ses_sub_def456").map((c) => c.args[1]);
+    assert.ok(order.indexOf("heartbeat") < order.indexOf("end"), String(order));
+    assert.ok(!allCalls().some((c) => c.args.join(" ").includes("secret plan")), "nothing of what the transcript says is sent");
+    // A CLI without --usage-json gets a plain heartbeat, and no extra one before a subagent ends.
+    rmSync(log, { force: true });
+    rmSync(join(env.CLAUDE_PLUGIN_DATA, "cli.json"), { force: true });
+    work(hook({ ...base, transcript_path: transcript, cwd: dir, hook_event_name: "Stop" }, env).job, env);
+    work(hook({ ...fixtures.subagentStop, transcript_path: transcript, agent_transcript_path: subagent, cwd: dir }, env).job, env);
+    assert.deepEqual(calls().filter((c) => c.args[1] === "heartbeat").map((c) => c.args), [["session", "heartbeat"]]);
   });
 
   test("PowerShell commands are read as Bash ones are, and a subagent's act as its session", () => {
@@ -920,4 +972,62 @@ test("an acknowledgement refreshes the inbox at once, from the shell or MCP", ()
     const other = plan({ ...base, tool_name: "Bash", tool_input: { command: "git status" } }, env);
     assert.equal(other.refreshUpdates, undefined);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+describe("a transcript's usage", () => {
+  let dir;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "g1t-usage-"));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  const lines = [
+    JSON.stringify({ type: "user", message: { role: "user", content: "hi" } }),
+    // One response written as three lines, the last with its final output count.
+    assistant("msg_1", "claude-opus-5-5", { input_tokens: 2, output_tokens: 6, cache_read_input_tokens: 100, cache_creation_input_tokens: 50, cache_creation: { ephemeral_5m_input_tokens: 30, ephemeral_1h_input_tokens: 20 } }),
+    assistant("msg_1", "claude-opus-5-5", { input_tokens: 2, output_tokens: 6, cache_read_input_tokens: 100, cache_creation_input_tokens: 50, cache_creation: { ephemeral_5m_input_tokens: 30, ephemeral_1h_input_tokens: 20 } }),
+    assistant("msg_1", "claude-opus-5-5", { input_tokens: 2, output_tokens: 40, cache_read_input_tokens: 100, cache_creation_input_tokens: 50, cache_creation: { ephemeral_5m_input_tokens: 30, ephemeral_1h_input_tokens: 20 } }),
+    // Without the split, a cache write is the 5-minute kind.
+    assistant("msg_2", "claude-opus-5-5", { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 9 }),
+    // The same message id from another request is another response.
+    assistant("msg_2", "claude-opus-5-5", { input_tokens: 1, output_tokens: 1 }, "req_other"),
+    // A claude-haiku-5-5 prompt over 100,000 tokens is its long tier; one under is not.
+    assistant("msg_3", "claude-haiku-5-5-20260101", { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: LONG_PROMPT_TOKENS }),
+    assistant("msg_4", "claude-haiku-5-5-20260101", { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 99_000 }),
+    JSON.stringify({ type: "assistant", message: { id: "msg_5", model: "<synthetic>", usage: { input_tokens: 0, output_tokens: 0 } } }),
+    "not json",
+  ];
+
+  test("counts each response once, per model and tier", () => {
+    const path = join(dir, "t.jsonl");
+    writeFileSync(path, `${lines.join("\n")}\n`);
+    const usage = transcriptUsage(path, null);
+    assert.deepEqual(usage, [
+      { model: "claude-opus-5-5", input_tokens: 4, output_tokens: 42, cache_write_5m_tokens: 39, cache_write_1h_tokens: 20, cache_read_tokens: 100 },
+      { model: "claude-haiku-5-5-20260101", tier: "long", input_tokens: 10, output_tokens: 5, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, cache_read_tokens: LONG_PROMPT_TOKENS },
+      { model: "claude-haiku-5-5-20260101", input_tokens: 10, output_tokens: 5, cache_write_5m_tokens: 0, cache_write_1h_tokens: 0, cache_read_tokens: 99_000 },
+    ]);
+  });
+
+  test("reads on from where it stopped, a line written in half counted once it is whole", () => {
+    const path = join(dir, "t.jsonl");
+    const state = join(dir, "state.json");
+    const whole = `${lines.join("\n")}\n`;
+    const cut = whole.indexOf("msg_2") + 10;
+    writeFileSync(path, whole.slice(0, cut));
+    const first = transcriptUsage(path, state);
+    assert.equal(first.find((row) => row.model === "claude-opus-5-5").output_tokens, 40);
+    writeFileSync(path, whole);
+    assert.deepEqual(transcriptUsage(path, state), transcriptUsage(path, null));
+    // A transcript written again from the top is counted again.
+    writeFileSync(path, `${lines[4]}\n`);
+    assert.deepEqual(transcriptUsage(path, state).map((row) => row.input_tokens), [1]);
+  });
+
+  test("a transcript that cannot be read gives nothing, and never throws", () => {
+    assert.equal(transcriptUsage(join(dir, "missing.jsonl"), join(dir, "state.json")), null);
+    const path = join(dir, "empty.jsonl");
+    writeFileSync(path, "");
+    assert.deepEqual(transcriptUsage(path, null), []);
+  });
 });
