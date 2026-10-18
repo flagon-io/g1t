@@ -128,7 +128,7 @@ g1t's plugin marketplace for Claude Code and Codex. Choose your client below.
 ## Claude Code
 
 The Claude Code plugin, \`g1t\` (${version}),
-records your Claude Code sessions on g1t, gives Claude the issue it is
+records your Claude Code sessions on g1t, gives Claude the work item it is
 working on, claims and hands off work, and adds g1t's MCP server, skills
 and commands.
 
@@ -222,7 +222,7 @@ codex plugin add g1t@g1t
 In the ChatGPT desktop app's Plugins directory, choose the g1t marketplace,
 install g1t and authorize its MCP connection. Restart the app if needed.
 The Codex plugin (${codexManifest(root).version}) bundles the remote MCP server and
-an issue/session workflow skill. It records sessions through MCP calls, not
+a work item/session workflow skill. It records sessions through MCP calls, not
 Claude Code hooks. Disable a duplicate standalone g1t MCP connection if installed.
 Direct MCP setup and ChatGPT instructions: https://docs.g1t.sh/guides/bring-your-own-agent/
 `);

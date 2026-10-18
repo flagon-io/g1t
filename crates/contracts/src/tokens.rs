@@ -4,7 +4,7 @@
 //! There is one kind of access token. It belongs to a person (and acts as
 //! them) or to a workspace (and acts as it), and it has:
 //!
-//! - **permissions**: a level for each resource, such as issues: write or
+//! - **permissions**: a level for each resource, such as work: write or
 //!   repositories: read ([`crate::scopes::resolve_permissions`]). They are
 //!   stored as scopes, the highest of each resource, and every check (the
 //!   API, the MCP server, git, the registries) reads those scopes.
@@ -107,7 +107,7 @@ pub struct CreateTokenArgs {
     /// workspace. At most [`MAX_SELECTED_REPOSITORIES`].
     #[serde(default)]
     pub repositories: Vec<String>,
-    /// Each resource's level by name, such as `{"issues": "write"}`; left
+    /// Each resource's level by name, such as `{"work": "write"}`; left
     /// out or `none` is no access. See [`crate::scopes::resolve_permissions`].
     #[serde(default)]
     pub permissions: BTreeMap<String, String>,

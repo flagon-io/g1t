@@ -16,7 +16,7 @@ test("Homebrew pins all four platforms to versioned, checksummed downloads", () 
   }
   assert.ok(!formula.includes("/latest/"));
   assert.match(formula, /bin.install .* => "g1t"/);
-  assert.match(formula, /g1t issue --help/);
+  assert.match(formula, /g1t work --help/);
 });
 
 test("reject incomplete manifests and unsafe Ruby interpolations", () => {

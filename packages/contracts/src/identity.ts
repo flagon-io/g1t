@@ -117,7 +117,7 @@ export type Membership = {
   /** What the workspace lets its members do. Absent means the defaults. */
   privileges?: MemberPrivileges;
   /**
-   * Whether this member uses Code: repositories, issues, pull requests,
+   * Whether this member uses Code: repositories, pull requests,
    * checks, deploys. False for people who only use Chat, Docs and agents
    * (support, sales, finance): they see no repository, whatever the base
    * permission, and agents treat them as unable to change code. Absent

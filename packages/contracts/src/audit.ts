@@ -93,7 +93,7 @@ export type AuditEntry = {
   runId: string | null;
   runKind: string | null;
   credentialId: string | null;
-  /** An operation such as `create_issue`, or `git.push` and `git.fetch`. */
+  /** An operation such as `open_work_item`, or `git.push` and `git.fetch`. */
   action: string;
   surface: AuditSurface;
   workspace: string;

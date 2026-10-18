@@ -65,7 +65,7 @@ export type Project = {
   /** RFC 3339: when its repository was last pushed to; null until it is, after projects began keeping it. */
   pushedAt: string | null;
   /**
-   * How active it is lately: each push, issue or pull request opened or
+   * How active it is lately: each push, work item or pull request opened or
    * closed, review, comment and deployment counts one, halving every week.
    * 0 for none.
    */

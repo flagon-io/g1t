@@ -23,7 +23,7 @@ use crate::{User, Viewer};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunKind {
-    /// Making the change an issue asks for.
+    /// Making the change a work item asks for.
     Implement,
     /// Addressing failed checks or a review on its own pull request.
     Revise,
@@ -33,9 +33,9 @@ pub enum RunKind {
     Answer,
     /// Merging in the branch a pull request will land on.
     Update,
-    /// Turning an outcome into a plan of issues.
+    /// Turning an outcome into a plan of work items.
     Plan,
-    /// Running an issue's acceptance checks. Not an agent: a sandbox.
+    /// Running a work item's acceptance checks. Not an agent: a sandbox.
     Checks,
     /// Building and checking a state of the merge queue. Not an agent.
     Queue,

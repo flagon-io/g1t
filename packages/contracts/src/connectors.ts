@@ -42,7 +42,7 @@ export type ConnectorCategory =
 export type ConnectorCapability =
   | "Agents can read"
   | "Agents can act"
-  | "Opens issues"
+  | "Opens work items"
   | "Writes back"
   | "Imports repositories"
   | "Signs you in"
@@ -166,7 +166,7 @@ export const CONNECTORS: Connector[] = [
     id: "linear",
     name: "Linear",
     category: "issues",
-    description: "Agents read ENG-42 when work mentions it; import issues, and they hear back when the work lands.",
+    description: "Agents read ENG-42 when work mentions it; import them as work items, and they hear back when the work lands.",
     scopes: BOTH,
     status: "available",
     href: { workspace: "/:workspace/-/integrations/trackers?add=linear#add" },
@@ -193,7 +193,7 @@ export const CONNECTORS: Connector[] = [
   },
   soon("shortcut", "Shortcut", "issues", W, "Stories agents read when work mentions them, updated when the work lands.", ["Agents can read", "Writes back"]),
   soon("clickup", "ClickUp", "issues", W, "Tasks agents can read and import, kept in step with their pull requests.", ["Agents can read", "Writes back"]),
-  soon("trello", "Trello", "issues", W, "Cards become issues, and move along their board as the work does.", ["Opens issues", "Writes back"]),
+  soon("trello", "Trello", "issues", W, "Cards become work items, and move along their board as the work does.", ["Opens work items", "Writes back"]),
 
   // Chat & meetings -------------------------------------------------------
   soon("slack", "Slack", "chat", BOTH, "Alerts and updates in the channels your team already reads.", ["Alerts into chat"], {
@@ -214,26 +214,26 @@ export const CONNECTORS: Connector[] = [
   // Calendar & email ------------------------------------------------------
   soon("google-calendar", "Google Calendar", "calendar", P, "Sets your status to In a meeting while you are in one.", ["Sets your status"]),
   soon("outlook-calendar", "Outlook Calendar", "calendar", P, "Sets your status to In a meeting while you are in one.", ["Sets your status"]),
-  soon("gmail", "Gmail", "calendar", P, "Turn an email into an issue, from your own inbox.", ["Opens issues"]),
-  soon("outlook-mail", "Outlook Mail", "calendar", P, "Turn an email into an issue, from your own inbox.", ["Opens issues"]),
+  soon("gmail", "Gmail", "calendar", P, "Turn an email into a work item, from your own inbox.", ["Opens work items"]),
+  soon("outlook-mail", "Outlook Mail", "calendar", P, "Turn an email into a work item, from your own inbox.", ["Opens work items"]),
 
   // Docs & knowledge ------------------------------------------------------
-  soon("google-docs", "Google Docs", "docs", BOTH, "Agents read the specs and plans linked from issues and chat.", ["Agents can read"], {
+  soon("google-docs", "Google Docs", "docs", BOTH, "Agents read the specs and plans linked from work items and chat.", ["Agents can read"], {
     description: "Docs you share in chat open for agents as well as people.",
     capabilities: ["Agents can read"],
   }),
-  soon("coda", "Coda", "docs", W, "Agents read the docs and tables linked from issues and chat.", ["Agents can read"]),
+  soon("coda", "Coda", "docs", W, "Agents read the docs and tables linked from work items and chat.", ["Agents can read"]),
 
   // Monitoring & incidents ------------------------------------------------
   {
     id: "sentry",
     name: "Sentry",
     category: "monitoring",
-    description: "New errors open issues with the stack trace, and resolve in Sentry when the fix merges.",
+    description: "New errors open work items with the stack trace, and resolve in Sentry when the fix merges.",
     scopes: W,
     status: "available",
     href: { workspace: "/:workspace/-/integrations/alerts?add=sentry#add" },
-    capabilities: ["Opens issues", "Agents can read", "Writes back"],
+    capabilities: ["Opens work items", "Agents can read", "Writes back"],
     provider: "sentry",
     keywords: ["errors", "alerts", "exceptions"],
   },
@@ -241,11 +241,11 @@ export const CONNECTORS: Connector[] = [
     id: "datadog",
     name: "Datadog",
     category: "monitoring",
-    description: "Monitors that trigger open issues, and recoveries are noted on them.",
+    description: "Monitors that trigger open work items, and recoveries are noted on them.",
     scopes: W,
     status: "available",
     href: { workspace: "/:workspace/-/integrations/alerts?add=datadog#add" },
-    capabilities: ["Opens issues"],
+    capabilities: ["Opens work items"],
     provider: "datadog",
     keywords: ["monitors", "alerts", "apm"],
   },
@@ -253,24 +253,24 @@ export const CONNECTORS: Connector[] = [
     id: "alerts-webhook",
     name: "Alerts webhook",
     category: "monitoring",
-    description: "Anything that can send signed JSON opens issues: your own scripts, or any monitoring tool.",
+    description: "Anything that can send signed JSON opens work items: your own scripts, or any monitoring tool.",
     scopes: W,
     status: "available",
     href: { workspace: "/:workspace/-/integrations/alerts?add=webhook#add" },
-    capabilities: ["Opens issues"],
+    capabilities: ["Opens work items"],
     provider: "webhook",
     keywords: ["incoming", "http", "alerts", "pagerduty", "grafana"],
   },
-  soon("pagerduty", "PagerDuty", "monitoring", BOTH, "Incidents open issues, and resolve when the fix lands.", ["Opens issues", "Writes back"], {
+  soon("pagerduty", "PagerDuty", "monitoring", BOTH, "Incidents open work items, and resolve when the fix lands.", ["Opens work items", "Writes back"], {
     description: "Sets your status to On call while you are on call.",
     capabilities: ["Sets your status"],
   }),
-  soon("opsgenie", "Opsgenie", "monitoring", W, "Alerts open issues, and close when the fix lands.", ["Opens issues", "Writes back"]),
-  soon("incident-io", "incident.io", "monitoring", W, "Incidents get a channel in g1t, with what changed alongside.", ["Opens issues", "Alerts into chat"]),
-  soon("grafana", "Grafana", "monitoring", W, "Alert rules open issues, and agents read the dashboards they link to.", ["Opens issues", "Agents can read"]),
-  soon("new-relic", "New Relic", "monitoring", W, "Alerts open issues, with the traces agents need to find the cause.", ["Opens issues", "Agents can read"]),
-  soon("honeycomb", "Honeycomb", "monitoring", W, "Triggers open issues, and agents query traces while they work.", ["Opens issues", "Agents can read"]),
-  soon("better-stack", "Better Stack", "monitoring", W, "Uptime incidents and log alerts open issues.", ["Opens issues"]),
+  soon("opsgenie", "Opsgenie", "monitoring", W, "Alerts open work items, and close when the fix lands.", ["Opens work items", "Writes back"]),
+  soon("incident-io", "incident.io", "monitoring", W, "Incidents get a channel in g1t, with what changed alongside.", ["Opens work items", "Alerts into chat"]),
+  soon("grafana", "Grafana", "monitoring", W, "Alert rules open work items, and agents read the dashboards they link to.", ["Opens work items", "Agents can read"]),
+  soon("new-relic", "New Relic", "monitoring", W, "Alerts open work items, with the traces agents need to find the cause.", ["Opens work items", "Agents can read"]),
+  soon("honeycomb", "Honeycomb", "monitoring", W, "Triggers open work items, and agents query traces while they work.", ["Opens work items", "Agents can read"]),
+  soon("better-stack", "Better Stack", "monitoring", W, "Uptime incidents and log alerts open work items.", ["Opens work items"]),
 
   // Cloud & deploy --------------------------------------------------------
   soon("aws", "Amazon Web Services", "cloud", W, "Workflows and deployments reach AWS with short-lived credentials, no stored keys.", ["Deploys"]),
@@ -302,11 +302,11 @@ export const CONNECTORS: Connector[] = [
   soon("segment", "Segment", "data", W, "Agents read your tracking plan, and check new events against it.", ["Agents can read"]),
 
   // CRM & support ---------------------------------------------------------
-  soon("zendesk", "Zendesk", "crm", W, "Turn a ticket into an issue, and tell the customer when the fix ships.", ["Opens issues", "Writes back"]),
+  soon("zendesk", "Zendesk", "crm", W, "Turn a ticket into a work item, and tell the customer when the fix ships.", ["Opens work items", "Writes back"]),
   soon("salesforce", "Salesforce", "crm", W, "Agents read the account and case behind a request.", ["Agents can read"]),
 
   // Design ----------------------------------------------------------------
-  soon("miro", "Miro", "design", W, "Agents read the boards linked from issues and chat.", ["Agents can read"]),
+  soon("miro", "Miro", "design", W, "Agents read the boards linked from work items and chat.", ["Agents can read"]),
   soon("storybook", "Storybook", "design", W, "Each pull request's stories as a check, with what changed.", ["Agents can read"]),
 
   // Security & identity ---------------------------------------------------
@@ -317,22 +317,22 @@ export const CONNECTORS: Connector[] = [
     capabilities: ["Signs you in"],
   }),
   soon("1password", "1Password", "security", W, "Secrets from a vault, read by workflows and deployments when they run.", ["Deploys"]),
-  soon("snyk", "Snyk", "security", W, "Findings open issues, and an agent opens the fix.", ["Opens issues"]),
+  soon("snyk", "Snyk", "security", W, "Findings open work items, and an agent opens the fix.", ["Opens work items"]),
 
   // Files & storage -------------------------------------------------------
-  soon("google-drive", "Google Drive", "files", BOTH, "Agents read the files linked from issues and chat.", ["Agents can read"], {
+  soon("google-drive", "Google Drive", "files", BOTH, "Agents read the files linked from work items and chat.", ["Agents can read"], {
     description: "Attach files from your Drive in chat, without downloading them first.",
     capabilities: ["Agents can read"],
   }),
-  soon("dropbox", "Dropbox", "files", BOTH, "Agents read the files linked from issues and chat.", ["Agents can read"], {
+  soon("dropbox", "Dropbox", "files", BOTH, "Agents read the files linked from work items and chat.", ["Agents can read"], {
     description: "Attach files from your Dropbox in chat.",
     capabilities: ["Agents can read"],
   }),
-  soon("onedrive", "OneDrive and SharePoint", "files", BOTH, "Agents read the files linked from issues and chat.", ["Agents can read"], {
+  soon("onedrive", "OneDrive and SharePoint", "files", BOTH, "Agents read the files linked from work items and chat.", ["Agents can read"], {
     description: "Attach files from your OneDrive in chat.",
     capabilities: ["Agents can read"],
   }),
-  soon("box", "Box", "files", W, "Agents read the files linked from issues and chat.", ["Agents can read"]),
+  soon("box", "Box", "files", W, "Agents read the files linked from work items and chat.", ["Agents can read"]),
 ];
 
 /** The connector by its id. */
