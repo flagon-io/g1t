@@ -340,7 +340,7 @@ const ids = (units, files) => units.filter((u) => touches(u, files)).map((u) => 
 
 test("a shared crate's change reaches every unit built from it, and no other", () => {
   assert.deepEqual(ids(stack.units, ["crates/scan/src/lib.rs"]), ["repos", "work", "security", "runner"]);
-  assert.deepEqual(ids(stack.units, ["crates/secrets/src/lib.rs"]), ["identity", "repos", "integrations", "webhooks", "actions"]);
+  assert.deepEqual(ids(stack.units, ["crates/secrets/src/lib.rs"]), ["identity", "repos", "billing", "integrations", "webhooks", "actions"]);
   const kit = ids(stack.units, ["crates/kit/src/lib.rs"]);
   assert.deepEqual(kit, stack.units.filter((u) => u.kind === "rust-worker").map((u) => u.id));
   assert.deepEqual(ids(stack.units, ["crates/runner/src/main.rs"]), ["runner"]);

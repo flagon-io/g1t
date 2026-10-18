@@ -1289,6 +1289,7 @@ impl Integrations {
             prompt: None,
             model: None,
             result: None,
+            usage: None,
         }
     }
 

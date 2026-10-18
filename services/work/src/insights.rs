@@ -206,7 +206,7 @@ fn head_state(states: &[String]) -> Option<HeadState> {
     }
 }
 
-fn valid_day(value: &str) -> bool {
+pub(crate) fn valid_day(value: &str) -> bool {
     let bytes = value.as_bytes();
     if bytes.len() != 10
         || bytes[4] != b'-'

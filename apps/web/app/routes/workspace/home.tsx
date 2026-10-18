@@ -18,6 +18,7 @@ import {
   WindowSwitch,
 } from "../../components/home";
 import { HomeAsk, WhatChangedCard } from "../../components/home-ask";
+import { DailySignal, DailySignalSkeleton, PulseSkeleton, PulseStrip } from "../../components/signals";
 import { Skeleton } from "../../components/ui/skeleton";
 import { sidebarOrNull } from "../../lib/chat.server";
 import {
@@ -65,6 +66,8 @@ import {
 } from "../../lib/home.server";
 import { HOME_WATCH_MAX, type HomeRepo } from "../../lib/home-live";
 import { readCookie } from "../../lib/mission";
+import { dailySignal, signalDate } from "../../lib/signals";
+import { loadSignalData } from "../../lib/signals.server";
 import { useHomeLive } from "../../lib/use-home-live";
 import { guideIsFor, loadOnboarding } from "../../lib/onboarding.server";
 import { GettingStartedButton, OnboardingOnPage } from "../../components/onboarding";
@@ -83,7 +86,10 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 const NOTIFICATIONS_READ = 50;
 
 /**
- * Home: the workspace's front page. First a box that asks g1t
+ * Home: the workspace's front page. First the past week in four figures
+ * and the daily signal: what the workspace's work says today, the finding
+ * that matters most as the page's headline, each with its evidence
+ * (lib/signals.ts), and under them a box that asks g1t about any of it
  * (components/home-ask: What changed summarizes the span on the page, and
  * Explain on each change that landed asks about it); then where you're
  * needed now, with no time window; what happened since you were last here (or over the last 24
@@ -187,6 +193,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     }))
     .catch(() => ({ rows: [], missing: ["Workflows", "Deployments"] }));
   const spend = loadSpend(viewer, slug, span).catch(() => null);
+  // What the workspace's work says: the pulse and the findings, for members who see Code.
+  const signal = code ? reposP.then((owned) => loadSignalData(viewer, slug, now, owned)).then((value) => (value ? dailySignal(value) : null)).catch(() => null) : null;
   // The projects the page watches, so it refreshes as they move (lib/home-live.ts).
   const watch: Promise<HomeRepo[]> = reposP
     .then((owned) => (owned ?? []).slice(0, HOME_WATCH_MAX).map((repo) => ({ id: repo.id, path: `${repo.namespace}/${repo.name}`, defaultBranch: repo.defaultBranch || null })))
@@ -206,6 +214,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     /** The sentence under the heading needs the digest, what landed and what waits. */
     head: Promise.all([digest, happened, waiting]),
     spend,
+    signal,
+    date: signalDate(now, tz),
     watch,
     onboarding,
     setupAsked,
@@ -270,33 +280,31 @@ function useMarkSeen(slug: string, loadedAt: number) {
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { slug, now, tz, span, digest, happened, attention: waiting, away, running: runningNow, head, spend } = loaderData;
+  const { slug, now, tz, span, digest, happened, attention: waiting, away, running: runningNow, head, spend, signal } = loaderData;
   useMarkSeen(slug, now);
   useHomeLive(slug, useWatched(loaderData.watch));
   return (
     <div className="mx-auto w-full max-w-260 space-y-5 px-4 py-5 md:px-10 md:py-8">
       <OnboardingOnPage slug={slug} view={loaderData.onboarding} asked={loaderData.setupAsked} />
-      {/* 0. Ask g1t anything: the answer opens in the top bar's Ask panel. */}
-      <header className="space-y-3">
-        {loaderData.guide && (
-          <div className="flex justify-end">
-            <GettingStartedButton slug={slug} variant="soft" />
-          </div>
-        )}
-        <HomeAsk span={span} />
-        <p className="mx-auto max-w-2xl text-center text-sm leading-relaxed text-muted">
-          <Suspense fallback={<Skeleton className="inline-block h-3.5 w-72 align-middle" />}>
-            <Await resolve={head}>
-              {([digest, happened, att]) => (
-                <>
-                  <span className="text-fg-soft">{waitingSentence(att.rows.length)}</span> {spanSentence(span, digest, happened?.landed?.length ?? null)}
-                </>
-              )}
-            </Await>
-          </Suspense>
-        </p>
-      </header>
-
+      {loaderData.guide && (
+        <div className="flex justify-end">
+          <GettingStartedButton slug={slug} variant="soft" />
+        </div>
+      )}
+      {/* 0. The past week, against the week before, for members who see Code. */}
+      {signal && (
+        <Suspense fallback={<PulseSkeleton />}>
+          <Await resolve={signal}>
+            {(value) =>
+              value && (
+                <Boundary what="The past week">
+                  <PulseStrip tiles={value.tiles} />
+                </Boundary>
+              )
+            }
+          </Await>
+        </Suspense>
+      )}
       {/*
         Two columns on wide screens: what to do and what happened on the
         left, read top to bottom; what is going on now and what it costs on
@@ -306,7 +314,42 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       */}
       <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
         {/* 1. Where you're needed now, with the one to start with on top: no window. */}
-        <div id="needed" className="order-1 scroll-mt-4 lg:col-start-1 lg:row-start-1">
+        <div className="order-1 space-y-5 lg:col-start-1 lg:row-start-1">
+        {/* 1. The daily signal, then a box that asks g1t about any of it; the line under it is yours. */}
+        {(() => {
+          const line = (
+            <Suspense fallback={<Skeleton className="inline-block h-3.5 w-72 align-middle" />}>
+              <Await resolve={head}>
+                {([digest, happened, att]) => (
+                  <>
+                    <span className="text-fg-soft">{waitingSentence(att.rows.length)}</span> {spanSentence(span, digest, happened?.landed?.length ?? null)}
+                  </>
+                )}
+              </Await>
+            </Suspense>
+          );
+          const ask = <HomeAsk span={span} compact />;
+          // Without Code there is no work to read: the box leads, as it always has.
+          if (!signal)
+            return (
+              <header className="space-y-3">
+                <HomeAsk span={span} />
+                <p className="mx-auto max-w-2xl text-center text-sm leading-relaxed text-muted">{line}</p>
+              </header>
+            );
+          return (
+            <Suspense fallback={<DailySignalSkeleton date={loaderData.date} />}>
+              <Await resolve={signal}>
+                {(value) => (
+                  <Boundary what="The daily signal">
+                    <DailySignal date={loaderData.date} view={value} line={line} footer={ask} />
+                  </Boundary>
+                )}
+              </Await>
+            </Suspense>
+          );
+        })()}
+        <div id="needed" className="scroll-mt-4">
           <Card
             title="Where you're needed"
             hint="Everything waiting on you, however long ago it started"
@@ -323,6 +366,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               </Await>
             </Suspense>
           </Card>
+        </div>
         </div>
 
         {/* 2. Now: what is running, what it cost, what settled by itself. */}

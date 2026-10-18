@@ -160,6 +160,9 @@ export default [
       route("-/personal-access-tokens", "routes/workspace/personal-access-tokens.tsx"),
       route("-/usage", "routes/workspace/usage.tsx"),
       route("-/billing", "routes/workspace/billing.tsx"),
+      // What the workspace's AI providers say its organization spent, from
+      // their own cost reports (services/billing/src/provider_costs.rs).
+      route("-/provider-costs", "routes/workspace/provider-costs.tsx"),
       route("-/billing/entries", "routes/workspace/statement-entries.ts"),
       route("-/billing/statement.csv", "routes/workspace/statement-csv.ts"),
       // The workspace's AI: its AI providers, managed or self-hosted, and
