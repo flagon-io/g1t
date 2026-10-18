@@ -444,6 +444,26 @@ fn a_work_item_closes_once_every_target_has_landed() {
 }
 
 #[test]
+fn unlinking_the_last_target_left_to_land_closes_what_landed_everywhere_else() {
+    let db = database();
+    two_targets(&db);
+    let close = |item: &str| -> bool {
+        db.query_row(super::links::CLOSE_IF_LANDED, params![item, "2026-10-18"], |row| row.get::<_, String>(0)).optional().unwrap().is_some()
+    };
+    // Nothing landed yet: unlinking targets does not close it.
+    db.execute("DELETE FROM work_item_repos WHERE item_id = 'wki_2' AND role = 'target'", []).unwrap();
+    assert!(!close("wki_2"));
+    // Landed in web2, still to land in api.
+    assert!(!land(&db, "wki_1", "rep_web2", Some(3), None));
+    assert!(!close("wki_1"), "api is still to land");
+    // api is unlinked (or made touched): every target left has landed.
+    db.execute("UPDATE work_item_repos SET role = 'touched' WHERE item_id = 'wki_1' AND repo_id = 'rep_api'", []).unwrap();
+    assert!(close("wki_1"));
+    assert_eq!(strings(&db, "SELECT state || ' ' || reason FROM work_items WHERE id = 'wki_1'"), ["closed completed"]);
+    assert!(!close("wki_1"), "once");
+}
+
+#[test]
 fn with_no_targets_what_closes_it_closes_it_and_another_repository_is_touched() {
     let db = database();
     two_targets(&db);
