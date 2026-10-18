@@ -1202,7 +1202,7 @@ impl Integrations {
         Ok(Outcome::Ok(AgentSessionStarted {
             item: subject.number,
             pull: pull_number,
-            session_url: Some(format!("{}/{}/-/sessions/{}", self.site_url.trim_end_matches('/'), repo.namespace.to_lowercase(), session.id)),
+            session_url: Some(format!("{}/{}/-/work/sessions/{}", self.site_url.trim_end_matches('/'), repo.namespace.to_lowercase(), session.id)),
             session: Some(session),
             provider: Some("anthropic".to_owned()),
             provider_session_url: Some(console_url(row.config().console_workspace.as_deref(), &provider_session)),

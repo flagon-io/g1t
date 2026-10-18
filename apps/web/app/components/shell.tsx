@@ -1417,25 +1417,28 @@ export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean
 }
 
 /**
- * Work's sidebar, and its menu on a phone (the Work tab tapped again):
- * the views people keep coming back to, saved in the address (open, yours,
- * closed), the board of them as they move, then the workspace's labels and
- * milestones, which Work holds. On a phone the menu also leads to
- * Sessions, which has no tab of its own there.
+ * Work's sidebar, and its menu on a phone (the Work tab tapped again), in
+ * two sections. Work items: the views people keep coming back to, saved
+ * in the address (open, yours, closed), the board of them as they move, a
+ * new one, and the workspace's labels and milestones. Sessions, the work
+ * being done on them: what is going now, what just ended, your own, and
+ * each kind, kept in the address as well.
  */
 function WorkSidebar({ slug, username }: { slug: string; username: string }) {
   const { pathname: path, search } = useSidebarLocation();
   const list = workPath(slug);
+  const sessions = sessionsPath(slug);
   const query = new URLSearchParams(search);
-  const onList = path === list;
-  const view = (want: Record<string, string>) =>
-    onList && [...query.keys()].every((key) => key in want) && Object.entries(want).every(([key, value]) => query.get(key) === value);
+  const viewOf = (page: string) => (want: Record<string, string>) =>
+    path === page && [...query.keys()].every((key) => key in want) && Object.entries(want).every(([key, value]) => query.get(key) === value);
+  const view = viewOf(list);
+  const sessionView = viewOf(sessions);
   const at = (page: string) => path === workPath(slug, page) || path.startsWith(`${workPath(slug, page)}/`);
   return (
     <div className="flex h-full flex-col">
       <ModeHeader title="Work" />
       <nav aria-label="Work" className={PANEL}>
-        <NavRows>
+        <NavGroup title="Work items">
           <SidebarLink to={list} icon={<ListTodo size={15} />} current={view({})}>
             Open
           </SidebarLink>
@@ -1448,76 +1451,40 @@ function WorkSidebar({ slug, username }: { slug: string; username: string }) {
           <SidebarLink to={workPath(slug, "board")} icon={<Columns3 size={15} />} current={at("board")}>
             Board
           </SidebarLink>
-          <div className="md:hidden">
-            <SidebarLink to={sessionsPath(slug)} icon={<Activity size={15} />}>
-              Sessions
-            </SidebarLink>
-          </div>
           <SidebarLink to={newItemPath(slug)} icon={<Plus size={15} />} current={at("new")}>
             New work item
           </SidebarLink>
-        </NavRows>
-        <Rule />
-        <NavRows>
           <SidebarLink to={workPath(slug, "labels")} icon={<Ticket size={15} />} current={at("labels")}>
             Labels
           </SidebarLink>
           <SidebarLink to={workPath(slug, "milestones")} icon={<Flag size={15} />} current={at("milestones")}>
             Milestones
           </SidebarLink>
-        </NavRows>
-      </nav>
-    </div>
-  );
-}
-
-/**
- * Sessions' sidebar, and its menu on a phone: what is going now, every
- * session, your own, and each kind, kept in the address.
- */
-function SessionsSidebar({ slug, username }: { slug: string; username: string }) {
-  const { pathname: path, search } = useSidebarLocation();
-  const list = sessionsPath(slug);
-  const query = new URLSearchParams(search);
-  const onList = path === list;
-  const view = (want: Record<string, string>) =>
-    onList && [...query.keys()].every((key) => key in want) && Object.entries(want).every(([key, value]) => query.get(key) === value);
-  return (
-    <div className="flex h-full flex-col">
-      <ModeHeader title="Sessions" />
-      <nav aria-label="Sessions" className={PANEL}>
-        <NavRows>
-          <SidebarLink to={list} icon={<Radio size={15} />} current={view({})}>
+        </NavGroup>
+        <Rule />
+        <NavGroup title="Sessions">
+          <SidebarLink to={sessions} icon={<Radio size={15} />} current={sessionView({})}>
             Live now
           </SidebarLink>
-          <SidebarLink to={sessionsPath(slug, { state: "recent" })} icon={<History size={15} />} current={view({ state: "recent" })}>
+          <SidebarLink to={sessionsPath(slug, { state: "recent" })} icon={<History size={15} />} current={sessionView({ state: "recent" })}>
             Recent
           </SidebarLink>
-          <SidebarLink to={sessionsPath(slug, { person: username })} icon={<CircleUserRound size={15} />} current={view({ person: username })}>
+          <SidebarLink to={sessionsPath(slug, { person: username })} icon={<CircleUserRound size={15} />} current={sessionView({ person: username })}>
             Yours
           </SidebarLink>
-        </NavRows>
-        <Rule />
-        <NavRows>
-          <SidebarLink to={sessionsPath(slug, { kind: "harness" })} icon={<Bot size={15} />} current={view({ kind: "harness" })}>
+          <SidebarLink to={sessionsPath(slug, { kind: "harness" })} icon={<Bot size={15} />} current={sessionView({ kind: "harness" })}>
             People's harnesses
           </SidebarLink>
-          <SidebarLink to={sessionsPath(slug, { kind: "hosted" })} icon={<Sparkles size={15} />} current={view({ kind: "hosted" })}>
+          <SidebarLink to={sessionsPath(slug, { kind: "hosted" })} icon={<Sparkles size={15} />} current={sessionView({ kind: "hosted" })}>
             Started on g1t
           </SidebarLink>
-          <SidebarLink to={sessionsPath(slug, { kind: "agent" })} icon={<Cpu size={15} />} current={view({ kind: "agent" })}>
+          <SidebarLink to={sessionsPath(slug, { kind: "agent" })} icon={<Cpu size={15} />} current={sessionView({ kind: "agent" })}>
             g1t's agent
           </SidebarLink>
-          <SidebarLink to={sessionsPath(slug, { kind: "recorded" })} icon={<ScrollText size={15} />} current={view({ kind: "recorded" })}>
+          <SidebarLink to={sessionsPath(slug, { kind: "recorded" })} icon={<ScrollText size={15} />} current={sessionView({ kind: "recorded" })}>
             Recorded on pull requests
           </SidebarLink>
-        </NavRows>
-        <Rule />
-        <NavRows>
-          <SidebarLink to={workPath(slug, "board")} icon={<Columns3 size={15} />}>
-            Board
-          </SidebarLink>
-        </NavRows>
+        </NavGroup>
       </nav>
     </div>
   );
@@ -1658,7 +1625,6 @@ const SECTIONS: Record<string, string> = {
   workflows: "Workflows",
   observability: "Observability",
   insights: "Insights",
-  sessions: "Sessions",
   work: "Work",
   chat: "Chat",
   artifacts: "Artifacts",
@@ -1727,17 +1693,14 @@ function Breadcrumbs({
       // Chat settings is a page of its own, not one of General's.
       trail.push({ label: "Chat settings", to: `${page}/chat` });
     } else if (third === "work") {
-      // Work: Work / #12, Work / Labels, Work / Milestones / #3.
+      // Work: Work / #12, Work / Labels, Work / Milestones / #3, Work / Sessions / Session.
       trail.push({ label: "Work", to: page });
-      const words: Record<string, string> = { new: "New work item", board: "Board", labels: "Labels", milestones: "Milestones" };
+      const words: Record<string, string> = { new: "New work item", board: "Board", labels: "Labels", milestones: "Milestones", sessions: "Sessions" };
       if (fourth && /^\d+$/.test(fourth)) trail.push({ label: `Work item #${fourth}`, short: `#${fourth}`, to: `${page}/${fourth}` });
       else if (fourth && words[fourth]) trail.push({ label: words[fourth]!, to: `${page}/${fourth}` });
       const fifth = parts[4];
       if (fourth === "milestones" && fifth) trail.push({ label: `#${fifth}`, to: `${page}/milestones/${fifth}` });
-    } else if (third === "sessions") {
-      // Sessions: Sessions / one session.
-      trail.push({ label: "Sessions", to: page });
-      if (fourth) trail.push({ label: "Session", to: `${page}/${fourth}` });
+      if (fourth === "sessions" && fifth) trail.push({ label: "Session", to: `${page}/sessions/${fifth}` });
     } else if (third) {
       // The workspace's settings pages each stand alone: General, Members, Permissions.
       trail.push({ label: third === "settings" ? "General" : (SECTIONS[third] ?? third), to: page });
@@ -1873,7 +1836,7 @@ function commandsFor(user: User, shell: ShellData): Command[] {
           { label: "Work", hint: "The workspace's work items", to: workPath(ws.slug), icon: <ListTodo size={15} /> },
           { label: "New work item", to: newItemPath(ws.slug), icon: <Plus size={15} /> },
           { label: "Board", hint: "Work items as they move", to: workPath(ws.slug, "board"), icon: <Columns3 size={15} /> },
-          { label: "Sessions", hint: "What is cooking across the workspace", to: sessionsPath(ws.slug), icon: <Activity size={15} /> },
+          { label: "Sessions", hint: "Work: what is cooking across the workspace", to: sessionsPath(ws.slug), icon: <Activity size={15} /> },
           { label: "Labels", hint: "Work", to: workPath(ws.slug, "labels"), icon: <ListTodo size={15} /> },
           { label: "Milestones", hint: "Work", to: workPath(ws.slug, "milestones"), icon: <ListTodo size={15} /> },
           { label: "Chat", to: `/${ws.slug}/-/chat`, icon: <MessagesSquare size={15} /> },
@@ -2018,13 +1981,12 @@ function sidebarFor(mode: ModeKey, workspace: boolean): Panel | null {
 }
 
 /** The sidebars that sit beside the page, one per mode that has one. */
-type Panel = "work" | "sessions" | "chat" | "artifacts" | "code" | "notifications" | "people" | "workspace" | "account" | "browse";
+type Panel = "work" | "chat" | "artifacts" | "code" | "notifications" | "people" | "workspace" | "account" | "browse";
 
 /** Each sidebar's name, for the button that opens it on a phone. */
 const MODE_MENU: Record<Panel, string> = {
   browse: "Explore",
   work: "Work",
-  sessions: "Sessions",
   chat: "Chat",
   artifacts: "Artifacts",
   code: "Code",
@@ -2184,8 +2146,6 @@ export function AppShell({
         return <CodeSidebar user={user} shell={shell} missing={missing} browsing={browsing} />;
       case "work":
         return <WorkSidebar slug={ws.slug} username={user.username} />;
-      case "sessions":
-        return <SessionsSidebar slug={ws.slug} username={user.username} />;
       case "chat":
         return <ChatSidebar slug={ws.slug} />;
       case "artifacts":

@@ -5,20 +5,20 @@ import { Form, Link } from "react-router";
 import type { Pull, SessionLink, SessionTouch, State, TouchKind, WorkSession } from "@g1t/contracts";
 
 import type { Route } from "./+types/session";
-import { page } from "../../../lib/meta";
-import { Actor, CoordinationFeed, EndSessionDialog, HarnessBadge, SessionStateBadge } from "../../../components/coordination";
-import { SessionEntries } from "../../../components/session-entries";
-import { EmptyState, Input, SubmitButton, TimeAgo } from "../../../components/ui";
-import { Alert } from "../../../components/ui/alert";
-import { Badge } from "../../../components/ui/badge";
-import { Button } from "../../../components/ui/button";
-import { Card } from "../../../components/ui/card";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../../components/ui/collapsible";
-import { Hint } from "../../../components/ui/hint";
-import { PersonLink } from "../../../components/work";
-import { ItemIcon, PullIcon } from "../../../components/work-icons";
-import { itemPath } from "../../../lib/refs";
-import { accessTo } from "../../../lib/access.server";
+import { page } from "../../../../lib/meta";
+import { Actor, CoordinationFeed, EndSessionDialog, HarnessBadge, SessionStateBadge } from "../../../../components/coordination";
+import { SessionEntries } from "../../../../components/session-entries";
+import { EmptyState, Input, SubmitButton, TimeAgo } from "../../../../components/ui";
+import { Alert } from "../../../../components/ui/alert";
+import { Badge } from "../../../../components/ui/badge";
+import { Button } from "../../../../components/ui/button";
+import { Card } from "../../../../components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../../../components/ui/collapsible";
+import { Hint } from "../../../../components/ui/hint";
+import { PersonLink } from "../../../../components/work";
+import { ItemIcon, PullIcon } from "../../../../components/work-icons";
+import { itemPath } from "../../../../lib/refs";
+import { accessTo } from "../../../../lib/access.server";
 import {
   type SessionNode,
   TOUCH_KINDS,
@@ -33,13 +33,13 @@ import {
   titleIsProvisional,
   touchedByKind,
   viaLabel,
-} from "../../../lib/coordination";
-import { notFound } from "../../../lib/not-found.server";
-import { repoPages } from "../../../lib/repo-live";
-import { agentSessions, work } from "../../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser } from "../../../lib/session.server";
-import { useLive } from "../../../lib/use-repo-live";
-import { sessionPath, sessionsPath } from "../../../lib/work-items";
+} from "../../../../lib/coordination";
+import { notFound } from "../../../../lib/not-found.server";
+import { repoPages } from "../../../../lib/repo-live";
+import { agentSessions, work } from "../../../../lib/services.server";
+import { assertSameOrigin, getViewer, requireUser } from "../../../../lib/session.server";
+import { useLive } from "../../../../lib/use-repo-live";
+import { sessionPath, sessionsPath } from "../../../../lib/work-items";
 
 const MANAGED = "claude_managed_agents";
 
