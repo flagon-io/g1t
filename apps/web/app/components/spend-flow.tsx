@@ -141,17 +141,21 @@ const HEADS = ["Milestone", "Work item", "Change set", "Pull requests"];
 export function SpendFlow({ flow, sized }: { flow: FlowNode[]; sized: "spend" | "pulls" }) {
   const [path, setPath] = useState<string[]>([]);
   const weight = weightOf(sized);
+  // A workspace with no milestones starts at its work items: one "No milestone" box tells nothing.
+  const skip = flow.length === 1 && flow[0]!.key === "m-";
+  const depth = skip ? 2 : 3;
+  const heads = HEADS.slice(3 - depth);
   // The chosen node at each level: the one asked for, else the biggest.
-  const columns: FlowNode[][] = [flow];
+  const columns: FlowNode[][] = [skip ? flow[0]!.children : flow];
   const chosen: FlowNode[] = [];
-  for (let level = 0; level < 3; level++) {
+  for (let level = 0; level < depth; level++) {
     const nodes = columns[level] ?? [];
     const pick = nodes.find((node) => node.key === path[level]) ?? nodes[0];
     if (!pick) break;
     chosen.push(pick);
-    if (level < 2) columns.push(pick.children);
+    if (level < depth - 1) columns.push(pick.children);
   }
-  const pulls = chosen[2]?.list ?? [];
+  const pulls = chosen[depth - 1]?.list ?? [];
   const choose = (level: number, key: string) => setPath([...chosen.slice(0, level).map((node) => node.key), key]);
   const boxes = columns.map((nodes) => stack(nodes.map(weight)));
   const rowHeight = pulls.length > 0 ? HEIGHT / Math.max(pulls.length, 5) : 0;
@@ -162,10 +166,10 @@ export function SpendFlow({ flow, sized }: { flow: FlowNode[]; sized: "spend" | 
   return (
     <div className="space-y-4">
       <Legend />
-      {/* Wide: the four columns, joined. */}
+      {/* Wide: the columns, joined. */}
       <div className="hidden md:block">
         <div className="relative h-7">
-          {HEADS.map((head, column) => (
+          {heads.map((head, column) => (
             <p key={head} className="absolute top-0 font-mono text-[0.6875rem] tracking-[0.14em] text-muted uppercase" style={{ left: `${left(column)}%` }}>
               {head}
             </p>
@@ -176,7 +180,7 @@ export function SpendFlow({ flow, sized }: { flow: FlowNode[]; sized: "spend" | 
             {chosen.map((node, level) => {
               const index = columns[level]!.indexOf(node);
               const from = boxes[level]![index]!;
-              if (level < 2) {
+              if (level < depth - 1) {
                 const children = columns[level + 1]!;
                 return slices(from, children.map(weight)).map((slice, i) => (
                   <path key={`${level}-${i}`} d={band(level, slice, boxes[level + 1]![i]!)} className="fill-line-strong" opacity={0.45} />
@@ -209,7 +213,7 @@ export function SpendFlow({ flow, sized }: { flow: FlowNode[]; sized: "spend" | 
           )}
           <div
             className="absolute rounded-xl border border-line bg-surface"
-            style={{ left: `${left(3)}%`, width: `${100 - left(3)}%`, top: 0, height: pulls.length * rowHeight || MIN_BOX }}
+            style={{ left: `${left(depth)}%`, width: `${100 - left(depth)}%`, top: 0, height: pulls.length * rowHeight || MIN_BOX }}
           >
             {pulls.length === 0 ? (
               <p className="px-3 py-4 text-sm text-muted">No pull requests here.</p>
@@ -223,7 +227,7 @@ export function SpendFlow({ flow, sized }: { flow: FlowNode[]; sized: "spend" | 
       <div className="space-y-5 md:hidden">
         {columns.map((nodes, level) => (
           <div key={level} className="space-y-2">
-            <p className="font-mono text-[0.6875rem] tracking-[0.14em] text-muted uppercase">{HEADS[level]}</p>
+            <p className="font-mono text-[0.6875rem] tracking-[0.14em] text-muted uppercase">{heads[level]}</p>
             <div className="grid gap-2">
               {nodes.map((node) => (
                 <NodeBox key={node.key} node={node} sized={sized} chosen={chosen[level]?.key === node.key} onChoose={() => choose(level, node.key)} />
@@ -232,7 +236,7 @@ export function SpendFlow({ flow, sized }: { flow: FlowNode[]; sized: "spend" | 
           </div>
         ))}
         <div className="space-y-2">
-          <p className="font-mono text-[0.6875rem] tracking-[0.14em] text-muted uppercase">{HEADS[3]}</p>
+          <p className="font-mono text-[0.6875rem] tracking-[0.14em] text-muted uppercase">{heads[depth]}</p>
           <div className="rounded-xl border border-line bg-surface">
             {pulls.map((pull) => (
               <PullRow key={pull.key} pull={pull} style={{ height: 48 }} />

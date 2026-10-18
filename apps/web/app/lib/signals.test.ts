@@ -277,11 +277,13 @@ test("who works where: new ground, one person carrying a project, and a first ag
     author({ ownerId: "u1", ownerName: "ana", repoId: "r1", recent: 9, merged: 40 }),
     author({ ownerId: "u2", ownerName: "bo", repoId: "r1", firstMergedAt: recent, recent: 1, merged: 1 }),
     author({ ownerId: "u2", ownerName: "bo", repoId: "r2", firstMergedAt: "2026-02-01T00:00:00Z", merged: 12, recent: 2 }),
+    author({ ownerId: "u3", ownerName: "cy", repoId: "r2", firstMergedAt: "2026-03-01T00:00:00Z", merged: 5, recent: 1 }),
   ];
   assert.deepEqual(
     newGround(authors, NOW).map((row) => [row.name, row.repoId, row.elsewhere]),
     [["bo", "r1", 12]],
   );
+  assert.deepEqual(silos(authors.slice(0, 3), NOW), [], "two people: every project rests on one of them, which says nothing");
   const [silo] = silos(authors, NOW);
   assert.equal(silo!.name, "ana");
   assert.equal(silo!.share, 0.9);
@@ -306,10 +308,15 @@ test("findings come highest first, and a quiet week still says something", () =>
     found.map((s) => s.key),
     ["blocked", "stalled"],
   );
-  assert.equal(quietHeadline(week("x")), "A quiet week: nothing has merged yet, and nothing is stuck.");
+  assert.equal(quietHeadline(week("x")), "A quiet week: nothing has landed yet, and nothing is stuck.");
   assert.equal(
     quietHeadline(week("x", { merged: 4, agentMerged: 2 })),
-    "Four changes merged this week, 50% of them an agent's, and nothing needs a closer look.",
+    "Four changes landed this week, 50% of them an agent's, and nothing needs a closer look.",
+  );
+  // A workspace that pushes straight to main: agents' direct commits are what landed.
+  assert.equal(
+    quietHeadline(week("x", { merged: 1, agentMerged: 0, agentCommits: 9 })),
+    "Ten changes landed this week, 90% of them an agent's, and nothing needs a closer look.",
   );
 });
 
@@ -429,4 +436,14 @@ test("a harness catching on: two or more people started this month, two weeks or
     "Codex is catching on: bo and cy started using it this month, after ana.",
   );
   assert.equal(namesWords(["a", "b", "c", "d"]), "a, b and 2 others");
+});
+
+test("agents' direct commits count as what they landed, and as what spend is spread over", () => {
+  const weeks = [week("2026-10-05", { merged: 2, agentMerged: 1, agentCommits: 3 }), week("2026-10-12", { merged: 1, agentMerged: 1, agentCommits: 9 })];
+  const [changes, spend] = pulse({ slug: "acme", weeks, spend: [4_000_000, 20_000_000] });
+  assert.equal(changes!.label, "Agent-authored changes");
+  assert.equal(changes!.value, "10");
+  assert.deepEqual(changes!.delta, { text: "+6", tone: "good" });
+  assert.equal(changes!.points[1], "Week of Oct 12: 1 merged, 9 pushed directly, of 10 changes");
+  assert.equal(spend!.value, "$2.00", "$20 over ten agent changes");
 });

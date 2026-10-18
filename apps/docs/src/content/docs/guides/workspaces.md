@@ -682,7 +682,8 @@ each person sees only the projects they can read.
    figures as Home.
 2. **Spend, threaded to the work**: the quarter's work in four columns:
    each milestone, its work items, each work item's change set in each
-   project, and that change set's pull requests. Each box is sized by
+   project, and that change set's pull requests (with no milestones in
+   the workspace, it starts at the work items). Each box is sized by
    what agents cost on its pull requests (g1t's metered usage, and each
    pull request's share of its sessions' cost estimated at list price),
    and shaded by how many were an agent's (**Agent use**, less to more). Choose a box to
@@ -694,8 +695,9 @@ each person sees only the projects they can read.
    organization ran, so it is never added to g1t's.
 3. **What's moving and what's waiting**: each team's last two weeks, day
    by day, by the projects the team works on (each project, when the
-   workspace has no teams). Above the line are pull requests opened and
-   merged, and agent sessions started; below it, reviews and comments and
+   workspace has no teams). Above the line are changes (pull requests
+   opened and merged, and commits agents pushed outside one) and agent
+   sessions started; below it, reviews and comments and
    requests for changes. Turn each layer on or off above the rows, point
    at a day for its numbers, or open **The numbers, as a table**. Each
    row is drawn to its own scale. Beside it, **Waiting on a first
@@ -703,7 +705,8 @@ each person sees only the projects they can read.
 4. **Quiet changes**: places to look, not verdicts.
    - **Knowledge silos**: projects where one person merged three quarters
      or more of the last 90 days' changes (six or more), and whoever has
-     started there this month.
+     started there this month. Only in a workspace where three people or
+     more merged lately: with fewer, every project rests on someone.
    - **New ground**: people who merged to a project for the first time in
      the last two weeks, after three or more merges elsewhere.
    - **Spreading**: a harness two or more people in a team started using

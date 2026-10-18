@@ -48,10 +48,10 @@ arrow keys, to read any week. Each figure opens the page behind it.
 
 | Figure | What it counts |
 | --- | --- |
-| **Agent-authored merges** | Pull requests that merged in the week and were an [agent's](#whose-work-is-an-agents). |
-| **Spend per agent merge** | The week's agent [usage](/guides/usage-and-billing/#the-usage-page) at price, plus what the [sessions](/guides/sessions/) started in it cost (estimated at list price from their token usage), divided by the agent pull requests that merged in it: an average, not what any one cost. A dash when usage can't be read or nothing an agent made merged. |
+| **Agent-authored changes** | Pull requests that merged in the week and were an [agent's](#whose-work-is-an-agents), and the commits agent sessions pushed outside any pull request (to the default branch, most of all), each once. A workspace that pushes straight to main lands most of its work the second way. |
+| **Spend per agent change** | The week's agent [usage](/guides/usage-and-billing/#the-usage-page) at price, plus what the [sessions](/guides/sessions/) started in it cost (estimated at list price from their token usage), divided by the agent changes that landed in it: an average, not what any one cost. A dash when usage can't be read or no agent change landed. |
 | **Stalled changes** | Pull requests open at the end of each week (now, for this one), opened three days or more before, with nothing in the three days before: no push, comment, review, timeline event, check or session. Drafts count. |
-| **Agent rework rate** | Of the agent pull requests that merged in the week, the share a person asked for changes on before they merged. |
+| **Agent rework rate** | Of the agent pull requests that merged in the week (direct commits get no review, so they're not counted here), the share a person asked for changes on before they merged. |
 
 ### Whose work is an agent's
 
@@ -78,7 +78,7 @@ beside it. When nothing stands out, the headline says what the week did.
 | **Stalled changes rising** | At least three more stalled changes than last week, and a quarter more. |
 | **Agent rework moving** | People asked for changes on agents' merged work at least 8 points more, or less, often than over the four weeks before (with five agent merges or more). |
 | **A practice catching on** | Two or more people started using a harness (Claude Code, Codex, Cursor and so on) this month, at least two weeks after the first person did. |
-| **Who works where** | Someone started merging to a project one person has carried (three quarters of its last 90 days' merges), or merged to a project for the first time this week after work elsewhere. |
+| **Who works where** | In a workspace where three people or more merged lately, someone started merging to a project one person has carried (three quarters of its last 90 days' merges); or merged to a project for the first time this week after work elsewhere. |
 
 Findings are ordered by how much they hold up: blocked work first, then
 waits, then what shipped and where spend went. Up to five show, and the

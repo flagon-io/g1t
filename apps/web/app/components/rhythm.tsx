@@ -1,7 +1,8 @@
 /**
  * What is moving and what is waiting (lib/signals.ts rhythm): each team's
  * last two weeks, day by day. Above the line, pull requests opened and
- * merged (bars) and agent sessions started (a wash); below it, reviews and
+ * merged and commits agents pushed outside one (bars), and agent sessions
+ * started (a wash); below it, reviews and
  * comments (a wash) and requests for changes (bars). Each row is drawn to
  * its own scale, so a small team's week is as legible as a big one's; the
  * numbers are in the readout and the table. Layers turn on and off above
@@ -16,7 +17,7 @@ import { type RhythmDay, type RhythmRow, rhythmLine, rhythmSum } from "../lib/si
 type Layer = "prs" | "rework" | "agent" | "reviews";
 
 const LAYERS: { key: Layer; label: string; swatch: string }[] = [
-  { key: "prs", label: "PR activity", swatch: "bg-fg-soft" },
+  { key: "prs", label: "Changes", swatch: "bg-fg-soft" },
   { key: "rework", label: "Rework", swatch: "bg-faint" },
   { key: "agent", label: "Agent activity", swatch: "bg-series-1" },
   { key: "reviews", label: "Reviews & comments", swatch: "bg-series-4" },
@@ -54,7 +55,7 @@ function Readout({ row, day }: { row: RhythmRow; day: RhythmDay | null }) {
       <ul className="mt-2 space-y-1 text-fg">
         <li className="flex items-center gap-2">
           <span className="size-2 rounded-full bg-fg-soft" />
-          {sum.opened} opened · {sum.merged} merged
+          {sum.opened} opened · {sum.merged} merged{sum.commits > 0 && ` · ${sum.commits} pushed by agents`}
         </li>
         <li className="flex items-center gap-2">
           <span className="size-2 rounded-full bg-faint" />
@@ -89,7 +90,7 @@ function Row({
   const n = row.days.length;
   const slot = WIDTH / n;
   const x = (i: number) => slot * i + slot / 2;
-  const up = Math.max(1, ...row.days.map((day) => Math.max(on.has("prs") ? day.opened + day.merged : 0, on.has("agent") ? day.sessions : 0)));
+  const up = Math.max(1, ...row.days.map((day) => Math.max(on.has("prs") ? day.opened + day.merged + day.commits : 0, on.has("agent") ? day.sessions : 0)));
   const down = Math.max(1, ...row.days.map((day) => Math.max(on.has("rework") ? day.reworked : 0, on.has("reviews") ? day.reviews : 0)));
   const above = (value: number) => MID - (value / up) * (MID - 6);
   const below = (value: number) => MID + (value / down) * (MID - 6);
@@ -133,13 +134,13 @@ function Row({
           <line x1={0} x2={WIDTH} y1={MID} y2={MID} className="stroke-line-strong" strokeWidth={1} vectorEffect="non-scaling-stroke" />
           {on.has("prs") &&
             row.days.map((d, i) =>
-              d.opened + d.merged > 0 ? (
+              d.opened + d.merged + d.commits > 0 ? (
                 <rect
                   key={`p${i}`}
                   x={x(i) - BAR / 2}
-                  y={above(d.opened + d.merged)}
+                  y={above(d.opened + d.merged + d.commits)}
                   width={BAR}
-                  height={MID - above(d.opened + d.merged)}
+                  height={MID - above(d.opened + d.merged + d.commits)}
                   rx={1.5}
                   className="fill-fg-soft"
                 />
@@ -224,6 +225,7 @@ export function Rhythm({ rows, by }: { rows: RhythmRow[]; by: "team" | "project"
               <th className="py-1 font-normal">{by === "team" ? "Team" : "Project"}</th>
               <th className="py-1 font-normal">Opened</th>
               <th className="py-1 font-normal">Merged</th>
+              <th className="py-1 font-normal">Pushed by agents</th>
               <th className="py-1 font-normal">Rework</th>
               <th className="py-1 font-normal">Reviews &amp; comments</th>
               <th className="py-1 font-normal">Agent sessions</th>
@@ -240,6 +242,7 @@ export function Rhythm({ rows, by }: { rows: RhythmRow[]; by: "team" | "project"
                   <td className="py-1.5 text-fg">{row.label}</td>
                   <td>{cell(last.opened, now.opened)}</td>
                   <td>{cell(last.merged, now.merged)}</td>
+                  <td>{cell(last.commits, now.commits)}</td>
                   <td>{cell(last.reworked, now.reworked)}</td>
                   <td>{cell(last.reviews, now.reviews)}</td>
                   <td>{cell(last.sessions, now.sessions)}</td>

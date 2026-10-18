@@ -27,7 +27,7 @@ fn schema() -> Connection {
          CREATE TABLE commit_statuses (repo_id TEXT, sha TEXT, context TEXT, updated_at TEXT);
          CREATE TABLE commit_check_runs (id TEXT, repo_id TEXT, head_sha TEXT, created_at TEXT, updated_at TEXT);
          CREATE TABLE session_links (session_id TEXT, repo_id TEXT, kind TEXT, number INTEGER);
-         CREATE TABLE session_touches (session_id TEXT, repo_id TEXT, kind TEXT, value TEXT);
+         CREATE TABLE session_touches (session_id TEXT, repo_id TEXT, kind TEXT, value TEXT, at TEXT);
          CREATE TABLE work_items (id TEXT, workspace TEXT, number INTEGER, title TEXT, state TEXT,
            blocked_by TEXT DEFAULT '[]', milestone INTEGER);
          CREATE TABLE milestones (workspace TEXT, number INTEGER, title TEXT, state TEXT, due_on TEXT,
@@ -195,12 +195,12 @@ fn an_agents_pull_request_is_one_a_session_is_tied_to() {
          INSERT INTO sessions (id, repo_id, pull, started_at) VALUES ('ses_4', 'a', 4, '2026-10-06T13:00:00Z');
          INSERT INTO sessions (id, repo_id, pull, started_at) VALUES ('ses_5', 'a', NULL, '2026-10-06T11:30:00Z');
          INSERT INTO sessions (id, repo_id, pull, started_at) VALUES ('ses_5b', 'a', NULL, '2026-10-06T10:00:00.500Z');
-         INSERT INTO session_touches VALUES ('ses_5', 'a', 'branch', 'branch-5');
-         INSERT INTO session_touches VALUES ('ses_5b', 'a', 'branch', 'branch-5');
+         INSERT INTO session_touches (session_id, repo_id, kind, value) VALUES ('ses_5', 'a', 'branch', 'branch-5');
+         INSERT INTO session_touches (session_id, repo_id, kind, value) VALUES ('ses_5b', 'a', 'branch', 'branch-5');
          -- 6's branch is on a fork: a push to the same name is not its.
          UPDATE pulls SET fork_repo_id = 'fork' WHERE number = 6;
          INSERT INTO sessions (id, repo_id, pull, started_at) VALUES ('ses_6', 'a', NULL, '2026-10-06T11:00:00Z');
-         INSERT INTO session_touches VALUES ('ses_6', 'a', 'branch', 'branch-6');
+         INSERT INTO session_touches (session_id, repo_id, kind, value) VALUES ('ses_6', 'a', 'branch', 'branch-6');
          -- A session of another repository with the same number is not its.
          INSERT INTO sessions (id, repo_id, pull, started_at) VALUES ('ses_x', 'b', 6, '2026-10-06T11:00:00Z');",
     )
@@ -735,7 +735,7 @@ fn a_pull_requests_session_cost_is_its_share() {
          -- A subagent tied itself, by a push to 3's branch, counts with that.
          INSERT INTO sessions (id, repo_id, parent_id, started_at, cost_usd)
            VALUES ('ses_b', 'a', 'ses_r', '2026-10-06T00:00:00Z', 3);
-         INSERT INTO session_touches VALUES ('ses_b', 'a', 'branch', 'branch-3');
+         INSERT INTO session_touches (session_id, repo_id, kind, value) VALUES ('ses_b', 'a', 'branch', 'branch-3');
          -- A session whose cost is not known.
          INSERT INTO sessions (id, repo_id, pull, started_at, cost_usd) VALUES ('ses_n', 'a', 3, '2026-10-06T00:00:00Z', NULL);
          -- A session tied to nothing counts with nothing.
@@ -791,5 +791,39 @@ fn harnesses_are_peoples_root_sessions() {
             ("a", "usr_ana", "ana-new", "claude_code", "2026-01-01T00:00:00Z", 2),
             ("a", "usr_ana", "ana-new", "codex", "2026-03-01T00:00:00Z", 1)
         ]
+    );
+}
+
+#[test]
+fn agent_commits_are_a_sessions_own_outside_any_pull_request() {
+    let db = schema();
+    pull(&db, 1, "open", "2026-10-06T00:00:00Z", None, "2026-10-06T00:00:00Z");
+    db.execute_batch(
+        "UPDATE pulls SET source_branch = 'feature' WHERE number = 1;
+         INSERT INTO sessions (id, repo_id, started_at) VALUES ('ses_main', 'a', '2026-10-06T00:00:00Z');
+         INSERT INTO sessions (id, repo_id, started_at) VALUES ('ses_pr', 'a', '2026-10-06T00:00:00Z');
+         INSERT INTO session_touches VALUES ('ses_main', 'a', 'commit', 'c1', '2026-10-06T10:00:00Z');
+         INSERT INTO session_touches VALUES ('ses_main', 'a', 'commit', 'c1', '2026-10-06T10:00:01Z');
+         INSERT INTO session_touches VALUES ('ses_main', 'a', 'commit', 'c2', '2026-10-01T10:00:00Z');
+         INSERT INTO session_touches VALUES ('ses_main', 'b', 'commit', 'c9', '2026-10-06T10:00:00Z');
+         INSERT INTO session_touches VALUES ('ses_pr', 'a', 'branch', 'feature', '2026-10-06T09:00:00Z');
+         INSERT INTO session_touches VALUES ('ses_pr', 'a', 'commit', 'c3', '2026-10-06T10:00:00Z');",
+    )
+    .unwrap();
+    let found = weeks(&db, "2026-10-18T00:00:00Z");
+    // c1 once, in its week; c2 in the week before; c3 belongs to a pull request's session; c9 to another repository.
+    assert_eq!(in_week(&found, "2026-10-05").agent_commits, 1);
+    assert_eq!(in_week(&found, "2026-09-28").agent_commits, 1);
+    let window = window("2026-10-18T00:00:00Z");
+    let days: Vec<SignalDay> = rows(&db, DAYS, &[&IDS, &window.days_from, &window.end]);
+    let commits: Vec<(&str, u32)> = days
+        .iter()
+        .filter(|d| d.agent_commits > 0)
+        .map(|d| (d.day.as_str(), d.agent_commits))
+        .collect();
+    assert_eq!(
+        commits,
+        [("2026-10-06", 1)],
+        "the days read are the last two weeks; c2 is before them"
     );
 }
