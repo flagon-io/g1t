@@ -65,8 +65,9 @@ pub const RUNNING_PER_WORKSPACE: u32 = 4;
 /// The most one workspace may run at once while the pool has room to spare.
 pub const BURST_PER_WORKSPACE: u32 = 12;
 /// Sandboxes g1t's own machines have between them (services/runner's
-/// wrangler.jsonc: 20 standard, 10 g1t-2core, 10 g1t-4core).
-pub const HOSTED_POOL: u32 = 40;
+/// wrangler.jsonc: 20 standard, 10 g1t-2core, 30 g1t-4core, which every
+/// public repository's ubuntu-latest jobs run on).
+pub const HOSTED_POOL: u32 = 60;
 /// Kept free while workspaces run past their share, so another workspace's
 /// first jobs still start at once.
 pub const POOL_HEADROOM: u32 = 8;
