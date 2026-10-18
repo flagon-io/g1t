@@ -10,8 +10,8 @@
 //!    (`TRIAL_WORKSPACE_MICROS`, $5), made once its card is checked (see
 //!    `cards`), out of a pool for everyone that resets each calendar month
 //!    (`TRIAL_MONTHLY_POOL_MICROS`, $100). Never for deployments.
-//! 3. **g1t's open-source pool** (`OSS_POOL_MICROS` a month, $25, at most
-//!    `OSS_REPO_MICROS`, $2, for any one repository): checks, workflows and
+//! 3. **g1t's open-source pool** (`OSS_POOL_MICROS` a month, $50, at most
+//!    `OSS_REPO_MICROS`, $4, for any one repository): checks, workflows and
 //!    the merge queue on a public repository.
 //!
 //! Whatever is left is charged: from what was paid in advance first, since
@@ -95,8 +95,8 @@ impl Default for Config {
         Config {
             plan_monthly_cents: 2_100,
             plan_included_micros: 10_000_000,
-            oss_pool_micros: 25_000_000,
-            oss_repo_micros: 2_000_000,
+            oss_pool_micros: 50_000_000,
+            oss_repo_micros: 4_000_000,
             trial_workspace_micros: 5_000_000,
             trial_monthly_pool_micros: 100_000_000,
             min_charge_micros: 5_000_000,
@@ -697,8 +697,8 @@ mod tests {
         let c = Config::default();
         assert_eq!(c.plan_monthly_cents, 2_100);
         assert_eq!(c.plan_included_micros, 10_000_000);
-        assert_eq!(c.oss_pool_micros, 25_000_000);
-        assert_eq!(c.oss_repo_micros, 2_000_000);
+        assert_eq!(c.oss_pool_micros, 50_000_000);
+        assert_eq!(c.oss_repo_micros, 4_000_000);
         assert_eq!(c.trial_workspace_micros, 5_000_000);
         assert_eq!(c.trial_monthly_pool_micros, 100_000_000);
         assert_eq!(c.min_charge_micros, 5_000_000);

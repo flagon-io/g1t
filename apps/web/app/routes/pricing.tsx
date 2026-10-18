@@ -95,8 +95,8 @@ function retired(meter: string): boolean {
 const DEFAULT_FREE: Required<FreeTier> = {
   trialWorkspaceMicros: 5_000_000,
   trialMonthlyPoolMicros: 100_000_000,
-  ossPoolMicros: 25_000_000,
-  ossRepoMicros: 2_000_000,
+  ossPoolMicros: 50_000_000,
+  ossRepoMicros: 4_000_000,
   freePrivateStorageBytes: 1_000_000_000,
   auditRetentionDays: 7,
   planAuditRetentionDays: 90,

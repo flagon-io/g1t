@@ -262,11 +262,11 @@ by g1t**. When the trial is used up, new compute waits for the plan.
 
 ## The open-source pool
 
-g1t sets aside **$25 a month** for public repositories, at most **$2 a
-month** for any one repository: about 3,571 and 285 minutes of
+g1t sets aside **$50 a month** for public repositories, at most **$4 a
+month** for any one repository: about 7,142 and 571 minutes of
 workflow jobs, which run on the 4-core machine in a public repository,
-or 6,250 and 500 minutes of checks and merge queue runs on the standard
-machine. It pays for **checks, workflows and the merge queue on
+or 12,500 and 1,000 minutes of checks and merge queue runs on the
+standard machine. It pays for **checks, workflows and the merge queue on
 public repositories**, after a card check. It does not pay
 for deployments, storage or embeddings.
 

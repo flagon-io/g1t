@@ -84,10 +84,11 @@
     "TRIAL_WORKSPACE_MICROS": "5000000",
     "TRIAL_MONTHLY_POOL_MICROS": "100000000",
     // g1t's open-source pool: checks, workflows and the merge queue on
-    // public repositories, for any workspace with a card check, up to $25
-    // a month in all and $2 a month for any one repository.
-    "OSS_POOL_MICROS": "25000000",
-    "OSS_REPO_MICROS": "2000000",
+    // public repositories, for any workspace with a card check, up to $50
+    // a month in all and $4 a month for any one repository: about 571
+    // minutes of ubuntu-latest a repository, which is 4-core there.
+    "OSS_POOL_MICROS": "50000000",
+    "OSS_REPO_MICROS": "4000000",
     // Ceilings on usage not yet paid for (src/limits.rs): $3 for a free
     // workspace (it has no on-demand compute), $100 for a paid one's first
     // month, then twice what it has paid as payments clear, between the
