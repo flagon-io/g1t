@@ -19,7 +19,7 @@
 //! length or format is assumed.
 //!
 //! A repository comes across once: every branch and tag is copied, and
-//! its issues too when asked for. The g1t repository is then its own, and
+//! its GitHub issues too when asked for, as work items filed from it. The g1t repository is then its own, and
 //! the project built from it is hosted on g1t like any other.
 //!
 //! The webhook, `https://api.g1t.sh/hooks/github`, is checked against
@@ -33,7 +33,7 @@ use g1t_contracts::github::*;
 use g1t_contracts::integrations::Received;
 use g1t_contracts::repos::{CreateArgs, Repo, RepoPath};
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::work::{Issue, IssueActionArgs, IssueReason, OpenIssueArgs};
+use g1t_contracts::work::{CloseReason, CloseWorkItemArgs, OpenWorkItemArgs, WorkItem, WorkItemActionArgs};
 use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Role, User, is_valid_repo_name};
 use g1t_kit::{args, now_ms, reply};
 use g1t_secrets::{self as crypto, Sealer};
@@ -48,7 +48,7 @@ use crate::http::{self, Answer};
 const API: &str = "https://api.github.com";
 /// An installation token is used until this close to its expiry.
 const TOKEN_MARGIN_MS: u64 = 5 * 60 * 1000;
-/// The most issues copied in one import, and per page asked of GitHub.
+/// The most GitHub issues copied in one import, and per page asked of GitHub.
 const MAX_ISSUES: usize = 200;
 const PER_PAGE: u32 = 50;
 /// How long a delivery id is remembered, to drop GitHub's retries.
@@ -152,8 +152,8 @@ pub fn labels_of(issue: &Value) -> Vec<String> {
     labels
 }
 
-/// The opening of an imported issue's body: where it came from and who
-/// wrote it, by their g1t name when their GitHub account is linked.
+/// The opening of an imported GitHub issue's body: where it came from and
+/// who wrote it, by their g1t name when their GitHub account is linked.
 pub fn imported_header(issue: &Value, full_name: &str, g1t_name: Option<&str>) -> String {
     let login = issue["user"]["login"].as_str().unwrap_or("ghost");
     let author = match g1t_name {
@@ -229,7 +229,7 @@ impl From<LinkRow> for GithubRepoLink {
     }
 }
 
-/// Issues to copy after an import has answered.
+/// GitHub issues to copy, as work items, after an import has answered.
 pub struct IssueJob {
     actor: User,
     repo: RepoPath,
@@ -650,7 +650,7 @@ impl GithubApp {
         }))
     }
 
-    /// Brings one GitHub repository across. Returns the issues still to
+    /// Brings one GitHub repository across. Returns the GitHub issues still to
     /// copy, which the caller does after answering.
     pub async fn import(&self, a: GithubImportArgs) -> Result<(Outcome<GithubRepoLink>, Option<IssueJob>)> {
         let workspace = a.workspace.to_lowercase();
@@ -757,13 +757,13 @@ impl GithubApp {
         Ok((link.map_or_else(|| fail(FailureCode::NotFound, "The link was not kept."), Outcome::Ok), job))
     }
 
-    /// Copies a repository's issues, oldest first, with their labels,
-    /// milestone and state. Pull requests are left: their branches came
-    /// with the git data.
+    /// Copies a repository's GitHub issues, oldest first, as work items
+    /// filed from the g1t repository, with their labels and state. Pull
+    /// requests are left: their branches came with the git data.
     pub async fn copy_issues(&self, job: IssueJob) -> Result<()> {
         let token = match self.installation_token(job.installation_id).await? {
             Ok(token) => token,
-            Err(reason) => return self.note(&job.repo_id, Some(&format!("Issues were not copied: {reason}"))).await,
+            Err(reason) => return self.note(&job.repo_id, Some(&format!("GitHub issues were not copied: {reason}"))).await,
         };
         let mut issues: Vec<Value> = Vec::new();
         let mut more = false;
@@ -777,7 +777,7 @@ impl GithubApp {
                 )
                 .await?;
             if !answer.ok() {
-                return self.note(&job.repo_id, Some(&format!("Issues were not copied: {}", answer.problem("GitHub")))).await;
+                return self.note(&job.repo_id, Some(&format!("GitHub issues were not copied: {}", answer.problem("GitHub")))).await;
             }
             let listed = answer.json().as_array().cloned().unwrap_or_default();
             let full = listed.len() == 100;
@@ -809,16 +809,17 @@ impl GithubApp {
                 body.push_str("\n\n");
                 body.push_str(&http::shorten(text.trim(), 60_000));
             }
-            let opened: Outcome<Issue> = g1t_kit::call(
+            let opened: Outcome<WorkItem> = g1t_kit::call(
                 &self.work,
-                "open_issue",
-                &OpenIssueArgs {
+                "open_work_item",
+                &OpenWorkItemArgs {
                     actor: job.actor.clone(),
-                    repo: job.repo.clone(),
+                    workspace: job.repo.namespace.to_lowercase(),
+                    repo: Some(job.repo.clone()),
+                    targets: Vec::new(),
                     title: issue["title"].as_str().unwrap_or("Untitled").chars().take(200).collect(),
                     body,
                     labels: labels_of(issue),
-                    checks: Vec::new(),
                     milestone: None,
                 },
             )
@@ -826,18 +827,22 @@ impl GithubApp {
             let Outcome::Ok(opened) = opened else { continue };
             if issue["state"].as_str() == Some("closed") {
                 let reason = if issue["state_reason"].as_str() == Some("not_planned") {
-                    IssueReason::NotPlanned
+                    CloseReason::NotPlanned
                 } else {
-                    IssueReason::Completed
+                    CloseReason::Completed
                 };
                 let _: Outcome<Value> = g1t_kit::call(
                     &self.work,
-                    "close_issue",
-                    &IssueActionArgs {
-                        actor: job.actor.clone(),
-                        repo: job.repo.clone(),
-                        number: opened.number,
-                        reason: Some(reason),
+                    "close_work_item",
+                    &CloseWorkItemArgs {
+                        item: WorkItemActionArgs {
+                            actor: job.actor.clone(),
+                            workspace: opened.workspace.clone(),
+                            number: opened.number,
+                            reason: Some(reason),
+                        },
+                        repo: None,
+                        commit: None,
                     },
                 )
                 .await?;
@@ -850,7 +855,7 @@ impl GithubApp {
             .run()
             .await?;
         if more {
-            self.note(&job.repo_id, Some(&format!("Copied the first {MAX_ISSUES} issues; the rest stay on GitHub.")))
+            self.note(&job.repo_id, Some(&format!("Copied the first {MAX_ISSUES} GitHub issues as work items; the rest stay on GitHub.")))
                 .await?;
         }
         Ok(())
@@ -1020,7 +1025,7 @@ async fn handle(method: &str, body: Value, env: &Env, ctx: &Context) -> Result<R
                 ctx.wait_until(async move {
                     let Ok(app) = GithubApp::new(&env) else { return };
                     if let Err(error) = app.copy_issues(job).await {
-                        worker::console_error!("github: copying issues failed: {error}");
+                        worker::console_error!("github: copying GitHub issues failed: {error}");
                     }
                 });
             }

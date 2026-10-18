@@ -1,4 +1,4 @@
-//! Sentry: issues it reports become g1t issues, the latest event's stack
+//! Sentry: issues it reports become g1t work items, the latest event's stack
 //! trace goes with them, and the Sentry issue is resolved when the fix
 //! lands.
 //!
