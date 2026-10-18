@@ -5316,6 +5316,8 @@ impl Op {
                         label: optional_text(input, "label"),
                         milestone: integer(input, "milestone"),
                         assignee: optional_text(input, "assignee"),
+                        before: None,
+                        closed_since: None,
                     },
                 )
                 .await
@@ -5662,6 +5664,8 @@ impl Op {
                         label: optional_text(input, "label"),
                         milestone: integer(input, "milestone"),
                         base: optional_text(input, "base"),
+                        before: None,
+                        merged_since: None,
                     },
                 )
                 .await
