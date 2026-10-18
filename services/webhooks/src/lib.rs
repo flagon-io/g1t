@@ -53,6 +53,8 @@ struct HookRow {
     id: String,
     scope: String,
     workspace: String,
+    #[serde(default)]
+    repo_id: Option<String>,
     repo: Option<String>,
     url: String,
     events: String,
@@ -580,6 +582,9 @@ impl Webhooks {
         {
             self.remember(id, namespace, name).await?;
         }
+        if let Some((workspace, repo_ids)) = deliver::item_scoped(event) {
+            return self.on_item_event(event, &workspace, &repo_ids).await;
+        }
         let Some(repo_id) = event.repo_id.as_deref().or_else(|| event.data["repoId"].as_str()) else {
             // About no repository: a workspace's own package, for its
             // workspace's webhooks.
@@ -633,8 +638,35 @@ impl Webhooks {
         self.send_all(event, hooks, Some((repo_id, name.as_ref()))).await
     }
 
+    /// An event about a work item: to its workspace's webhooks, and to
+    /// those of every repository it is linked to. Each repository's
+    /// webhooks are told of their own repository; the workspace's, of
+    /// where it was filed, when it was filed in one.
+    async fn on_item_event(&self, event: &Event, workspace: &str, repo_ids: &[String]) -> Result<()> {
+        let hooks = self
+            .db
+            .prepare(
+                "SELECT * FROM hooks WHERE active = 1
+                 AND ((scope = 'workspace' AND workspace = ?1) OR (scope = 'repo' AND repo_id IN (SELECT value FROM json_each(?2))))",
+            )
+            .bind(&[workspace.into(), serde_json::to_string(repo_ids)?.into()])?
+            .all()
+            .await?
+            .results::<HookRow>()?;
+        if hooks.is_empty() {
+            return Ok(());
+        }
+        let origin = event.repo_id.as_deref().filter(|id| repo_ids.iter().any(|linked| linked == id));
+        let name = match origin {
+            Some(id) => self.repo_name(id, &[workspace.to_owned()]).await?,
+            None => None,
+        };
+        self.send_all(event, hooks, origin.map(|id| (id, name.as_ref()))).await
+    }
+
     /// Sends `event` to each of `hooks` that wants it. `repo` is the
-    /// repository it is about, and its name when known.
+    /// repository it is about, and its name when known; a repository's
+    /// webhook is told of its own.
     async fn send_all(&self, event: &Event, hooks: Vec<HookRow>, repo: Option<(&str, Option<&NameRow>)>) -> Result<()> {
         let wanted: Vec<&HookRow> = hooks.iter().filter(|hook| deliver::wants(&hook.events(), &event.kind)).collect();
         if wanted.is_empty() {
@@ -650,6 +682,8 @@ impl Webhooks {
             None => None,
         };
         for hook in wanted {
+            let own = hook.repo_id.as_deref().filter(|_| hook.scope == "repo").map(|id| (id, None));
+            let repo = own.or(repo);
             let full_name = repo.map(|(_, name)| {
                 hook.repo
                     .clone()

@@ -90,6 +90,23 @@ pub fn workspace_scoped(event: &Event) -> Option<String> {
         .filter(|slug| !slug.is_empty())
 }
 
+/// For an event about a work item (`work_item.*`, or a comment on one):
+/// its workspace, and every repository it is linked to. It goes to the
+/// workspace's webhooks and to those of each of those repositories.
+pub fn item_scoped(event: &Event) -> Option<(String, Vec<String>)> {
+    let about_item = event.kind.starts_with("work_item.")
+        || (event.kind.starts_with("comment.") && event.data["itemId"].as_str().is_some_and(|id| !id.is_empty()));
+    if !about_item {
+        return None;
+    }
+    let workspace = event.data["workspace"].as_str().map(|slug| slug.trim().to_lowercase()).filter(|slug| !slug.is_empty())?;
+    let repo_ids = event.data["repoIds"]
+        .as_array()
+        .map(|ids| ids.iter().filter_map(Value::as_str).filter(|id| !id.is_empty()).map(str::to_owned).collect())
+        .unwrap_or_default();
+    Some((workspace, repo_ids))
+}
+
 /// What is sent to check a webhook works.
 pub fn ping(hook_id: &str, url: &str, events: &[String], time: &str) -> Value {
     json!({
@@ -163,8 +180,10 @@ mod tests {
         let old = vec!["agent.asked".to_owned(), "pull.merged".to_owned(), "review.completed".to_owned()];
         assert_eq!(tidy_events(&old).unwrap(), vec!["pull.merged"]);
         assert!(tidy_events(&["agent.asked".to_owned()]).is_err());
-        assert!(wants(&["*".to_owned()], "issue.opened"));
-        assert!(!wants(&["git.push".to_owned()], "issue.opened"));
+        assert!(wants(&["*".to_owned()], "work_item.opened"));
+        assert!(!wants(&["git.push".to_owned()], "work_item.opened"));
+        // Issues became work items: their old names are no events.
+        assert!(tidy_events(&["issue.opened".to_owned()]).is_err());
     }
 
     #[test]
@@ -273,7 +292,7 @@ mod tests {
         assert_eq!(workspace_scoped(&joined).as_deref(), Some("acme"));
         assert_eq!(payload(&joined, "acme", None, Some("ada"))["data"]["user_id"], "usr_1", "snake_case as everything sent");
         // Other events without a repository are not workspace events.
-        let mut other = repo_event("issue.opened", json!({ "workspace": "acme" }));
+        let mut other = repo_event("pull.opened", json!({ "workspace": "acme" }));
         other.repo_id = None;
         assert_eq!(workspace_scoped(&other), None);
         let mut nameless = repo_event("package.deleted", json!({ "workspace": "" }));
@@ -289,7 +308,30 @@ mod tests {
         assert_eq!(named("repo.transferred", json!({ "name": "web", "from": "a", "to": "b" })), at("b", "web"));
         assert_eq!(named("repo.purged", json!({ "repoId": "rep_1", "namespace": "acme", "name": "web" })), at("acme", "web"));
         assert_eq!(named("repo.deleted", json!({ "repoId": "rep_1", "namespace": "", "name": "web" })), None);
-        assert_eq!(named("issue.opened", json!({ "namespace": "acme", "name": "web" })), None);
+        assert_eq!(named("work_item.opened", json!({ "namespace": "acme", "name": "web" })), None);
+    }
+
+    #[test]
+    fn work_item_events_go_to_its_workspace_and_every_linked_repository() {
+        let opened = repo_event(
+            "work_item.opened",
+            json!({ "itemId": "wki_1", "workspace": "Acme", "number": 12, "repoIds": ["rep_1", "rep_2"] }),
+        );
+        assert_eq!(item_scoped(&opened), Some(("acme".to_owned(), vec!["rep_1".to_owned(), "rep_2".to_owned()])));
+        // Filed in the workspace, linked nowhere yet.
+        let mut alone = repo_event("work_item.opened", json!({ "itemId": "wki_2", "workspace": "acme", "number": 13 }));
+        alone.repo_id = None;
+        assert_eq!(item_scoped(&alone), Some(("acme".to_owned(), vec![])));
+        // A comment on a work item goes as the work item does; one on a
+        // pull request goes by its repository.
+        let commented = repo_event(
+            "comment.created",
+            json!({ "commentId": "cmt_1", "number": 12, "itemId": "wki_1", "workspace": "acme", "repoIds": ["rep_2"] }),
+        );
+        assert_eq!(item_scoped(&commented), Some(("acme".to_owned(), vec!["rep_2".to_owned()])));
+        let on_pull = repo_event("comment.created", json!({ "commentId": "cmt_2", "repoId": "rep_1", "number": 3, "pullId": "pul_1" }));
+        assert_eq!(item_scoped(&on_pull), None);
+        assert_eq!(item_scoped(&repo_event("pull.opened", json!({ "workspace": "acme" }))), None);
     }
 
     #[test]
