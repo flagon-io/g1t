@@ -1,4 +1,4 @@
-import { Database, Activity, BarChart3, Bot, Cpu, Columns3, Radio, ScrollText, BrickWall, Building2, ChartLine, Flag, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTodo, Lock, LogOut, Mail, MonitorCog, MonitorDown, Package, PlayCircle, Plug, Plus, Repeat, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Star, House, Ticket, TrendingUp, UserPlus, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
+import { Database, Activity, BarChart3, Bot, Cpu, Columns3, Radio, ScrollText, BrickWall, Building2, ChartLine, Flag, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTodo, Lock, LogOut, Mail, MonitorCog, MonitorDown, Package, PlayCircle, Plug, Plus, ReceiptText, Repeat, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Star, House, Ticket, TrendingUp, UserPlus, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -1329,6 +1329,7 @@ const WORKSPACE_PAGE_ICONS: Record<string, ReactNode> = {
   "personal-access-tokens": <UserRoundKey size={15} />,
   usage: <BarChart3 size={15} />,
   billing: <CreditCard size={15} />,
+  "provider-costs": <ReceiptText size={15} />,
   runners: <ServerCog size={15} />,
   repositories: <BookMarked size={15} />,
   actions: <PlayCircle size={15} />,
@@ -1609,6 +1610,7 @@ const SECTIONS: Record<string, string> = {
   "personal-access-tokens": "Personal access tokens",
   usage: "Usage",
   billing: "Billing and plans",
+  "provider-costs": "Provider costs",
   integrations: "Integrations",
   ai: "AI",
   webhooks: "Webhooks",
