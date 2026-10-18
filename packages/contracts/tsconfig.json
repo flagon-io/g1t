@@ -1,5 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // agent-setup.ts keeps the page's choice of agent in the browser (window, localStorage, document).
+    "lib": ["ES2022", "ESNext.Disposable", "DOM"]
+  },
   "include": ["src/**/*"],
   // Node runs the tests on the files as they are (`npm test`).
   "exclude": ["src/**/*.test.ts"]
