@@ -127,13 +127,6 @@ export type RefTarget =
  */
 export type Thread = { repo: RepoPath; number: number } | { workspace: string; number: number };
 
-/** The thread's fields as the work service reads them. */
-export function threadArgs(thread: Thread): { repo: RepoPath | null; workspace: string; number: number } {
-  return "repo" in thread
-    ? { repo: thread.repo, workspace: "", number: thread.number }
-    : { repo: null, workspace: thread.workspace, number: thread.number };
-}
-
 /**
  * A label of a workspace: a name, a color and what it means. Work items and
  * the pull requests of its repositories carry labels by name; names are

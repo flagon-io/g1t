@@ -9,7 +9,7 @@ import type { IntegrationsApi } from "./integrations";
 import type { PackagesApi } from "./packages";
 import type { WebhooksApi } from "./webhooks";
 import type { RepoPath, ReposApi } from "./repos";
-import { threadArgs, type CommentScope, type PullDetail, type WorkApi } from "./work";
+import type { CommentScope, PullDetail, Thread, WorkApi } from "./work";
 import type { Result } from "./result";
 import type { RunnersAdminApi, RunnersApi } from "./runners";
 
@@ -37,6 +37,13 @@ async function rpc<T>(
     throw new Error(`${method} failed with status ${response.status}`);
   }
   return (await response.json()) as T;
+}
+
+/** The thread's fields as the work service reads them. */
+function threadArgs(thread: Thread): { repo: RepoPath | null; workspace: string; number: number } {
+  return "repo" in thread
+    ? { repo: thread.repo, workspace: "", number: thread.number }
+    : { repo: null, workspace: thread.workspace, number: thread.number };
 }
 
 export function identityClient(service: ServiceBinding): IdentityApi {
