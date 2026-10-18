@@ -32,6 +32,7 @@ mod detach;
 mod margin;
 mod platform;
 mod pricing;
+mod provider_costs;
 mod report;
 mod details;
 mod credits;
@@ -252,6 +253,10 @@ struct Billing {
     ceilings: limits::Ceilings,
     /// The caps on what g1t pays for itself; see `budget`.
     caps: budget::Caps,
+    /// What seals the AI providers' admin keys a workspace connects for
+    /// their cost reports (`BILLING_KEY`); without it none can be
+    /// connected. See `provider_costs`.
+    sealer: Option<g1t_secrets::Sealer>,
     /// The worker's bindings, for emailing staff (`EMAIL`).
     env: Env,
 }
@@ -1059,6 +1064,7 @@ impl Billing {
             packages: env.service("PACKAGES").ok(),
             identity: env.service("IDENTITY").ok(),
             caps: budget::Caps::from_env(env),
+            sealer: env.secret("BILLING_KEY").ok().and_then(|key| g1t_secrets::Sealer::new(&key.to_string())),
             env: env.clone(),
         })
     }
@@ -1203,6 +1209,12 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
         if let Err(error) = billing.sweep_reservations().await {
             worker::console_error!("clearing reservations failed: {error}");
         }
+        // What each connected AI provider says its organization spent
+        // (provider_costs.rs): the last days again, each provider on its own.
+        match billing.sync_provider_costs().await {
+            Ok((read, failed)) => worker::console_log!("provider costs: {read} read, {failed} failed"),
+            Err(error) => worker::console_error!("reading provider costs failed: {error}"),
+        }
         // The AI Gateway's request log, from when there was one, still
         // keeps only its last 30 days until it is empty.
         let cutoff = rfc3339(now_ms().saturating_sub(30 * 24 * 60 * 60 * 1000));
@@ -1257,6 +1269,11 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "set_budget" => reply(&billing.set_budget(args(body)?).await?),
         "billing_details" => reply(&billing.billing_details(args(body)?).await?),
         "set_billing_details" => reply(&billing.set_billing_details(args(body)?).await?),
+        // Provider cost reports (provider_costs.rs).
+        "provider_connections" => reply(&billing.provider_connections(args(body)?).await?),
+        "connect_provider" => reply(&billing.connect_provider(args(body)?).await?),
+        "disconnect_provider" => reply(&billing.disconnect_provider(args(body)?).await?),
+        "provider_costs" => reply(&billing.provider_costs(args(body)?).await?),
         "checkout" => reply(&billing.checkout(args(body)?).await?),
         "confirm" => reply(&billing.confirm(args(body)?).await?),
         "trial" => reply(&billing.trial(args(body)?).await?),
