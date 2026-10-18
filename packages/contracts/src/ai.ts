@@ -183,7 +183,10 @@ export type AskMessage = { role: AskRole; content: string };
 export type AskPage = {
   path?: string | null;
   repo?: RepoPath | null;
-  issue?: number | null;
+  /** The workspace of a page that is not a repository's, such as a work item's. */
+  workspace?: string | null;
+  /** A work item, by number in the workspace. */
+  item?: number | null;
   pull?: number | null;
   /** The browser's IANA time zone, such as `America/Denver`: what "today" means when their profile names none. */
   time_zone?: string | null;
@@ -235,13 +238,14 @@ export type AskEvent =
   | {
       /**
        * Work Ask proposes to hand to a session in the person's own harness:
-       * on an issue, or a new one with `title` and `body`. Nothing has
-       * started; the person starts it from the card the answer shows.
+       * on a work item (by number in `repo`'s workspace), or a new one with
+       * `title` and `body`. Nothing has started; the person starts it from
+       * the card the answer shows.
        */
       type: "proposal";
       id: string;
       repo: string;
-      issue: number | null;
+      item: number | null;
       title: string | null;
       body: string | null;
       mode: "plan" | "implement" | "review";
@@ -249,7 +253,7 @@ export type AskEvent =
       /**
        * `repo` does not exist yet: the card creates it (`private` or
        * public), turns on its deployments when `deploy`, then opens the
-       * issue and starts the session, which pushes the first version to
+       * work item and starts the session, which pushes the first version to
        * the default branch, and so deploys it.
        */
       new_repository?: boolean;

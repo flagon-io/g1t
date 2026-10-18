@@ -248,8 +248,8 @@ export type AskProposalState = {
   default_branch?: string;
   production_url?: string | null;
   deploy_error?: string | null;
-  /** The issue it opened or worked on. */
-  issue?: number;
+  /** The work item it opened or worked on, by number in the workspace. */
+  item?: number;
   /** The session it started on the workspace's Anthropic account. */
   started?: boolean;
   session_url?: string | null;
