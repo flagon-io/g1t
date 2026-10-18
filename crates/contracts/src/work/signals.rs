@@ -48,9 +48,14 @@ pub struct SignalWeek {
     /// changes, as Insights counts them), and the seconds each waited.
     pub reviewed: u32,
     pub review_seconds: f64,
-    /// Pull requests open when the week ended (now, for the current week)
-    /// that had been open over seven days by then.
+    /// Pull requests open when the week ended (now, for the current week),
+    /// opened at least three days before, with no activity in the three
+    /// days before it ended: no push, comment, review, timeline event,
+    /// check or session entry.
     pub stalled: u32,
+    /// What the harness sessions started in the week cost, as they
+    /// reported it (estimated at list price from their token usage).
+    pub session_cost_usd: f64,
 }
 
 /// One repository's UTC day. Days with nothing in them are left out.
@@ -104,6 +109,23 @@ pub struct SignalPull {
     /// The work item it is for, and that item's milestone.
     pub item: Option<u32>,
     pub milestone: Option<u32>,
+    /// Its share of what the harness sessions tied to it cost: each
+    /// session's cost split evenly among the pull requests it is tied to.
+    pub session_cost_usd: f64,
+}
+
+/// One person's use of one harness in one repository: when they first
+/// started a session with it there, and how many they have started.
+#[derive(Clone, Default, Deserialize, Serialize)]
+#[serde(default, rename_all(serialize = "camelCase"))]
+pub struct SignalHarness {
+    pub repo_id: String,
+    pub owner_id: String,
+    pub owner_name: String,
+    /// claude_code, codex, cursor, copilot or other.
+    pub harness: String,
+    pub first_at: String,
+    pub sessions: u32,
 }
 
 /// One person's merged pull requests in one repository, over its whole history.
@@ -153,6 +175,8 @@ pub struct WorkspaceSignals {
     pub pulls: Vec<SignalPull>,
     pub pulls_capped: bool,
     pub authors: Vec<SignalAuthor>,
+    /// People's harnesses, root sessions only (a subagent is its parent's).
+    pub harnesses: Vec<SignalHarness>,
     pub items: Vec<SignalItem>,
     pub milestones: Vec<SignalMilestone>,
 }

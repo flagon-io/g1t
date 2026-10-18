@@ -72,7 +72,7 @@ export function signalsRange(now: number): { until: string; since: string; weeks
 // --- Adding up batches ------------------------------------------------------------
 
 export function emptySignals(): WorkspaceSignals {
-  return { weeks: [], days: [], waiting: [], pulls: [], pullsCapped: false, authors: [], items: [], milestones: [] };
+  return { weeks: [], days: [], waiting: [], pulls: [], pullsCapped: false, authors: [], harnesses: [], items: [], milestones: [] };
 }
 
 /** The batches' answers as one: rows are per repository, so they add; items and milestones once each. */
@@ -86,6 +86,7 @@ export function mergeSignals(batches: WorkspaceSignals[]): WorkspaceSignals {
     all.waiting.push(...batch.waiting);
     all.pulls.push(...batch.pulls);
     all.authors.push(...batch.authors);
+    all.harnesses.push(...(batch.harnesses ?? []));
     all.pullsCapped ||= batch.pullsCapped;
     for (const item of batch.items) items.set(item.number, item);
     for (const milestone of batch.milestones) milestones.set(milestone.number, milestone);
@@ -110,6 +111,7 @@ const ZERO_WEEK = (start: string): WeekTotals => ({
   reviewed: 0,
   reviewSeconds: 0,
   stalled: 0,
+  sessionCostUsd: 0,
 });
 
 /** Every week in `starts`, quiet ones too, for the repositories in `only` (every one when not given). */
@@ -126,6 +128,7 @@ export function weekTotals(rows: SignalWeek[], starts: string[], only?: Readonly
     week.reviewed += row.reviewed;
     week.reviewSeconds += row.reviewSeconds;
     week.stalled += row.stalled;
+    week.sessionCostUsd += row.sessionCostUsd ?? 0;
   }
   return starts.map((start) => byStart.get(start)!);
 }

@@ -1859,7 +1859,14 @@ export type WorkspaceSignalsArgs = {
   /** The first UTC day `pulls` reaches back to: at most 400 days before `until`. */
   since: string;
 };
-/** One repository's week from UTC day `start`; empty weeks are left out. `stalled`: open when the week ended (now, for this week), and open over seven days by then. */
+/**
+ * One repository's week from UTC day `start`; empty weeks are left out.
+ * `stalled`: open when the week ended (now, for this week), opened three
+ * days or more before, and no activity (push, comment, review, timeline
+ * event, check, session entry) in the three days before it ended.
+ * `sessionCostUsd`: what the harness sessions started in the week cost,
+ * estimated at list price from the token usage they reported.
+ */
 export type SignalWeek = {
   repoId: string;
   start: string;
@@ -1872,6 +1879,7 @@ export type SignalWeek = {
   reviewed: number;
   reviewSeconds: number;
   stalled: number;
+  sessionCostUsd: number;
 };
 export type SignalDay = { repoId: string; day: string; opened: number; merged: number; agentMerged: number; reworked: number; reviews: number; sessions: number };
 /** An open pull request no one has reviewed, oldest first; `blocks`: the open work items waiting on its work item. */
@@ -1888,7 +1896,11 @@ export type SignalPull = {
   mergedAt: string | null;
   item: number | null;
   milestone: number | null;
+  /** Its share of its harness sessions' cost: each session's split evenly among the pull requests it is tied to. */
+  sessionCostUsd: number;
 };
+/** One person's use of one harness in one repository, root sessions only. */
+export type SignalHarness = { repoId: string; ownerId: string; ownerName: string; harness: string; firstAt: string; sessions: number };
 /** One person's merged pull requests in one repository over its history; `recent`: in the 90 days ending with `until`. */
 export type SignalAuthor = { repoId: string; ownerId: string; ownerName: string; firstMergedAt: string; lastMergedAt: string; merged: number; recent: number };
 export type SignalItem = { number: number; title: string; state: string; milestone: number | null };
@@ -1900,6 +1912,7 @@ export type WorkspaceSignals = {
   pulls: SignalPull[];
   pullsCapped: boolean;
   authors: SignalAuthor[];
+  harnesses: SignalHarness[];
   items: SignalItem[];
   milestones: SignalMilestone[];
 };
