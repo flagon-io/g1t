@@ -17,7 +17,7 @@ export type Harness = "claude_code" | "claude_managed_agents" | "codex" | "curso
  */
 export type SessionKind = "harness" | "hosted" | "agent" | "recorded";
 
-/** Active: heard from in 15 minutes; idle: not since; ended: ended, or quiet for 2 hours. */
+/** Active: heard from in 15 minutes; idle: not since; ended: ended, or quiet for 30 minutes. */
 export type SessionState = "active" | "idle" | "ended";
 
 export type PullStatus = "draft" | "open" | "merged" | "closed";
