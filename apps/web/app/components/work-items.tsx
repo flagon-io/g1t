@@ -49,11 +49,20 @@ export function RepoChips({ repos, workspace, max = 2, className }: { repos: Ite
   return (
     <span className={cn("inline-flex min-w-0 items-center gap-1", className)}>
       {shown.map((repo) => (
-        <Hint key={repo.repoId} label={`${repo.path || "A deleted repository"}: ${ROLE_LABELS[repo.role].toLowerCase()}${repo.landed ? ", landed" : ""}`}>
+        <Hint
+          key={repo.repoId}
+          label={`${repo.path || "A deleted repository"}${repo.deleted ? ", deleted" : ""}: ${ROLE_LABELS[repo.role].toLowerCase()}${repo.landed ? ", landed" : ""}`}
+        >
           <span
             className={cn(
               "inline-flex max-w-32 min-w-0 items-center gap-1 rounded-md border px-1.5 py-px font-mono text-[0.6875rem] leading-4",
-              repo.landed ? "border-merged/40 text-merged" : repo.role === "target" ? "border-line-strong text-fg-soft" : "border-line text-muted",
+              repo.deleted
+                ? "border-dashed border-line text-faint line-through"
+                : repo.landed
+                  ? "border-merged/40 text-merged"
+                  : repo.role === "target"
+                    ? "border-line-strong text-fg-soft"
+                    : "border-line text-muted",
             )}
           >
             {repo.landed && <Check size={10} className="shrink-0" />}

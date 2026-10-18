@@ -341,7 +341,14 @@ function RepoCard({ repo, pulls, full, canLink }: { repo: ItemRepo; pulls: WorkP
   return (
     <li className="px-3 py-3 sm:px-4">
       <div className="flex min-w-0 items-center gap-2">
-        {repo.path ? (
+        {repo.path && repo.deleted ? (
+          // Deleted, and restorable until it is purged: its name, nothing to open.
+          <Hint label={`${repo.path} was deleted. It can be restored until it is purged.`}>
+            <span className="min-w-0 truncate font-mono text-sm text-muted">
+              {repo.path} <span className="font-sans text-xs text-faint">deleted</span>
+            </span>
+          </Hint>
+        ) : repo.path ? (
           <Link to={`/${repo.path}`} className="min-w-0 truncate font-mono text-sm font-medium hover:text-accent">
             {repo.path}
           </Link>
@@ -534,7 +541,9 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
   const pullHref = pullHrefs(repoRows.map(({ repo, pulls: repoPulls }) => ({ path: repo.path, pulls: repoPulls })));
   const failureBase = `/${originOf(item.repos)?.path || workspace}`;
   // Where a pull request or a session would be opened: a target still missing, else where it was filed.
-  const workIn = missing[0] ?? item.repos.find((repo) => repo.role === "target")?.path ?? originOf(item.repos)?.path ?? null;
+  // A deleted repository takes no pull request.
+  const openable = item.repos.filter((repo) => repo.path && !repo.deleted);
+  const workIn = missing[0] ??item.repos.find((repo) => repo.role === "target")?.path ?? originOf(item.repos)?.path ?? null;
   const linkError = actionData && "action" in actionData && actionData.action === "link" ? actionData.error : null;
   const sideError = actionData && "action" in actionData && ["blocked-by", "start-session", "react", "link", "open-pull"].includes(String(actionData.action));
 
@@ -920,15 +929,15 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
               <div className="mt-3">
                 <CopyLine text={reference} />
               </div>
-              {viewer && item.repos.length > 0 ? (
+              {viewer && openable.length > 0 ? (
                 <Form method="post" className="mt-4 space-y-2 border-t border-line pt-4">
                   <input type="hidden" name="action" value="open-pull" />
                   <p className="text-xs text-muted">Or open a draft pull request yourself and get a fork to push to.</p>
                   <SelectField
                     name="repo"
                     aria-label="Repository"
-                    defaultValue={workIn ?? item.repos[0]!.path}
-                    options={item.repos.map((repo) => ({ value: repo.path, label: `${repo.path} (${ROLE_LABELS[repo.role].toLowerCase()})` }))}
+                    defaultValue={openable.some((repo) => repo.path === workIn) ? workIn! : openable[0]!.path}
+                    options={openable.map((repo) => ({ value: repo.path, label: `${repo.path} (${ROLE_LABELS[repo.role].toLowerCase()})` }))}
                   />
                   <Input name="agent" placeholder="Who is working, e.g. claude-code" maxLength={60} />
                   <div className="*:w-full">
