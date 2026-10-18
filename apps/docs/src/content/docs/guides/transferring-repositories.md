@@ -78,7 +78,7 @@ These belong to the old workspace and stay with it:
 
 | | |
 | --- | --- |
-| Work items | [Work items](/guides/work-items/) belong to the workspace, so they stay in the old one, with their numbers. |
+| Work items | [Work items](/work/work-items/) belong to the workspace, so they stay in the old one, with their numbers. |
 | Labels and milestones | They are the workspace's, and stay with it. |
 | Workspace secrets and variables | The old workspace's stop reaching the repository; the new workspace's start, if they reach every repository or name this one. |
 | Workspace webhooks | The old workspace's stop hearing about the repository; the new one's start. |

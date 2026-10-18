@@ -15,7 +15,7 @@ merge queue. Its database is `g1t-work`. The code lives in `repos`, and
 ## Work items and pull requests
 
 A work item belongs to a workspace, not to a repository
-([Work items](/guides/work-items/)). `work_items` holds them, numbered per
+([Work items](/work/work-items/)). `work_items` holds them, numbered per
 workspace, with no repository of their own. `work_item_repos` links each
 to any number of the workspace's repositories, one row per repository, in
 a role:
@@ -76,7 +76,7 @@ milestones merged into the workspace's. A job on `work`'s cron
 as `work.migrated`, for the other services to rewrite what they keep. Old
 `/<owner>/<repo>/issues/<n>` links and `#N` references resolve through
 `legacy_number` ([Issues became work
-items](/about/issues-became-work-items/)).
+items](/work/from-issues/)).
 
 ## Coordination
 
@@ -117,8 +117,8 @@ pull requests with their checks, overlaps and place in the queue, what it
 is blocked by and blocks, its decision records, and its latest
 coordination events. A session's entries on a pull request are what
 **Blame** reads to show the agent's account of a line ([Sessions and
-why-blame](/guides/why-blame/)). [Sessions, claims and
-dependencies](/guides/sessions/) has the calls.
+why-blame](/guides/why-blame/)). [Claims and
+dependencies](/work/claims-and-dependencies/) has the calls.
 
 ## Checks and statuses
 

@@ -37,9 +37,9 @@ your [pinned and recent projects](/guides/workspaces/#pinned-and-recent-projects
 | --- | --- | --- |
 | **Overview** | `g1t.sh/<workspace>/<project>` | What it is and its links; production wherever it is deployed, or for a library its packages; what is in progress, active branches, the latest commits, and its About. See [the overview](#the-overview). |
 | **Code** | `…/code` | The repository's files, commits and branches. |
-| **Work** | `g1t.sh/<workspace>/-/work?repo=<name>` | The workspace's [work items](/guides/work-items/) linked to the repository. |
+| **Work** | `g1t.sh/<workspace>/-/work?repo=<name>` | The workspace's [work items](/work/work-items/) linked to the repository. |
 | **Pull requests**, **Merge queue** | `…/pulls` and so on | As they always were. A pull request's **Session** tab is at `…/pull/<number>/session`. |
-| **Sessions** | `g1t.sh/<workspace>/-/work/sessions?repo=<name>` | The workspace's [sessions](/guides/sessions/#the-sessions-page) in the repository. |
+| **Sessions** | `g1t.sh/<workspace>/-/work/sessions?repo=<name>` | The workspace's [sessions](/work/sessions/) in the repository. |
 | **Actions** | `…/actions` | [GitHub Actions workflows](/guides/actions/). |
 | **Deployments** | `…/deployments` | What is up now and every build. |
 | **Settings** | `…/settings` | See below. |
@@ -73,7 +73,7 @@ rollback** is marked **Soon** and disabled; it does not change production.
 | **Facts** | Under production: its latest release (or, where the card does not already say it, production's state), how often checks pass, and either how many changes pass on the first try and what is open, or, for people with a role when [Observability](/guides/observability/) has data, requests and the error rate over the last day with how many errors are open. |
 | **Code** | One line to the repository: its name, default branch and when it was last pushed to, linking to **Code**. |
 | **Needs you** | For someone signed in: what is waiting on them, such as a failed production build or a pull request to merge or review. |
-| **Live now** | The people and coding agents working on it: each work item with its [claims and sessions](/guides/sessions/), the harness each came from and who it acts for, and sessions on no work item yet. Work's [Sessions](/guides/sessions/#the-sessions-page), filtered to the repository (`g1t.sh/<workspace>/-/work/sessions?repo=<name>`), has everything. With nobody working, people with a role see how to [connect a coding agent](/guides/bring-your-own-agent/). |
+| **Live now** | The people and coding agents working on it: each work item with its [claims and sessions](/work/claims-and-dependencies/), the harness each came from and who it acts for, and sessions on no work item yet. Work's [Sessions](/work/sessions/), filtered to the repository (`g1t.sh/<workspace>/-/work/sessions?repo=<name>`), has everything. With nobody working, people with a role see how to [connect a coding agent](/guides/bring-your-own-agent/). |
 | **Previews** | For people with a role: the pull requests' previews that are up. |
 | **Deployments** | Each environment's latest deployment and when. |
 | **Observability** | For people with a role, when there is data: the last day's requests, an hour a bar, latency, and the newest open errors. |

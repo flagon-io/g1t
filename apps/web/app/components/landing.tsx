@@ -760,7 +760,7 @@ export function Landing() {
               can open pull requests the same afternoon and main still only
               moves to what passed.
             </p>
-            <More to={`${DOCS}/guides/sessions/`}>Sessions, claims and overlaps</More>
+            <More to={`${DOCS}/work/claims-and-dependencies/`}>Sessions, claims and overlaps</More>
           </div>
         </div>
       </section>

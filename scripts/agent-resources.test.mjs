@@ -20,7 +20,7 @@ test("llms.txt follows the heading and file-list format and preserves the detail
 test("agent guides name work items, not the issues they replaced", () => {
   // Issues became workspace work items: no /repos/…/issues routes, no
   // issues:* scopes and no `issue` MCP tool remain (see
-  // apps/docs/src/content/docs/about/issues-became-work-items.md).
+  // apps/docs/src/content/docs/work/from-issues.md).
   const stale = [
     [/\/issues\b/, "an /issues route"],
     [/\bissues:(read|write)\b/, "an issues:* scope"],

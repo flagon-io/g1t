@@ -709,7 +709,7 @@ each an icon with what is unread on it:
 | --- | --- |
 | **Home** | Where you're needed across the workspace, and what happened while you were away. See [Home](/guides/home/). |
 | **Explore** | g1t beyond your workspaces: public projects, people and other workspaces. |
-| **Work** | The workspace's work items, their [Board](/guides/work-items/#the-board), and its labels and milestones, at `g1t.sh/<workspace>/-/work`; and its **Sessions**, what is cooking across the workspace (the sessions live now in every repository you can read, the merge queues, what just landed and what happened), at `g1t.sh/<workspace>/-/work/sessions`. Every member has it, with Code access or not. See [work items](/guides/work-items/) and [the Sessions page](/guides/sessions/#the-sessions-page). |
+| **Work** | The workspace's work items, their [Board](/work/board/), and its labels and milestones, at `g1t.sh/<workspace>/-/work`; and its **Sessions**, what is cooking across the workspace (the sessions live now in every repository you can read, the merge queues, what just landed and what happened), at `g1t.sh/<workspace>/-/work/sessions`. Every member has it, with Code access or not. See [work items](/work/work-items/) and [the Sessions page](/work/sessions/). |
 | **Chat** | Channels and messages. See [Chat](/guides/chat/). |
 | **Code** | Projects, pull requests and checks. Not shown to a member without Code access. |
 | **Artifacts** | Documents, decks and pages. See [artifacts](/guides/artifacts/). |
@@ -913,7 +913,7 @@ Signed in, `g1t.sh` itself opens [Home](/guides/home/) in the workspace
 you are in.
 
 **Review N that need you** jumps to the list, and **New work item** opens
-a new [work item](/guides/work-items/) of the workspace, filed in the
+a new [work item](/work/work-items/) of the workspace, filed in the
 project you pick.
 
 | Tab | What it lists |

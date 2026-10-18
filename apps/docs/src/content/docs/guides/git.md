@@ -327,7 +327,7 @@ A push does the same bookkeeping as merging on the site:
 - **It lands the work items its commits name.** A commit pushed to the
   default branch whose message says `Fixes #12`, `Closes #12` or another
   closing keyword marks this repository as landed on that
-  [work item](/guides/work-items/), and the work item records which commit
+  [work item](/work/work-items/), and the work item records which commit
   landed it and who pushed it. The work item closes as completed once every
   repository it targets has landed, or at once when it has no target.
   `Part of #12` links the commit without landing anything. Up to 250
@@ -344,7 +344,7 @@ git push origin main
 A repository whose **Land work items with merged linked pull requests**
 setting is off lands no work items either way. In a commit message on g1t,
 `#12` links to that work item or pull request; see
-[one number for the workspace](/guides/work-items/#one-number-for-the-workspace).
+[one number for the workspace](/work/work-items/#one-number-for-the-workspace).
 
 ## Limits
 

@@ -192,7 +192,7 @@ is addressed by workspace and number, a pull request by repository and
 number, and the two share one sequence of numbers per workspace: `#12` is
 one or the other. Below, `{work}` stands for `/workspaces/{workspace}/work`
 and `{repo}` for `/repos/{owner}/{name}`. Guide:
-https://docs.g1t.sh/guides/work-items/
+https://docs.g1t.sh/work/work-items/
 
 - **Find work:** `GET {work}?state=open`, optionally `&label=bug`,
   `&milestone=3` or `&repo=owner/name` (the work items linked to that
@@ -791,7 +791,6 @@ Get started:
 - [How g1t works](https://docs.g1t.sh/concepts/overview/)
 - [The g1t CLI](https://docs.g1t.sh/guides/cli/)
 - [Home](https://docs.g1t.sh/guides/home/)
-- [Work items](https://docs.g1t.sh/guides/work-items/)
 - [Ask g1t](https://docs.g1t.sh/guides/ask/)
 - [AI providers](https://docs.g1t.sh/guides/ai/)
 - [Notifications](https://docs.g1t.sh/guides/notifications/)
@@ -800,12 +799,26 @@ Get started:
 - [Search and Explore](https://docs.g1t.sh/guides/search/)
 - [Status and incidents](https://docs.g1t.sh/guides/status/)
 
+Work:
+
+- [Work](https://docs.g1t.sh/work/)
+- [Work items](https://docs.g1t.sh/work/work-items/)
+- [The Board](https://docs.g1t.sh/work/board/)
+- [Closing work items](https://docs.g1t.sh/work/closing/)
+- [Labels](https://docs.g1t.sh/work/labels/)
+- [Milestones](https://docs.g1t.sh/work/milestones/)
+- [Sessions](https://docs.g1t.sh/work/sessions/)
+- [Session titles](https://docs.g1t.sh/work/session-titles/)
+- [Claims and dependencies](https://docs.g1t.sh/work/claims-and-dependencies/)
+- [Working with agents](https://docs.g1t.sh/work/agents/)
+- [Issues became work items](https://docs.g1t.sh/work/from-issues/)
+
 Coding agents:
 
 - [Connect a coding agent](https://docs.g1t.sh/guides/bring-your-own-agent/)
 - [Build and ship an app with an agent](https://docs.g1t.sh/guides/build-and-ship/)
 - [Claude Code plugin](https://docs.g1t.sh/guides/claude-code-plugin/)
-- [Sessions, claims and dependencies](https://docs.g1t.sh/guides/sessions/)
+- [Recording sessions](https://docs.g1t.sh/guides/sessions/)
 - [Sessions and why-blame](https://docs.g1t.sh/guides/why-blame/)
 
 Chat and projects:
@@ -824,8 +837,6 @@ Landing changes:
 - [Pull requests](https://docs.g1t.sh/guides/pull-requests/)
 - [Checks](https://docs.g1t.sh/guides/checks/)
 - [Pull requests into other branches](https://docs.g1t.sh/guides/base-branches/)
-- [Labels](https://docs.g1t.sh/guides/labels/)
-- [Milestones](https://docs.g1t.sh/guides/milestones/)
 - [The merge queue](https://docs.g1t.sh/guides/merge-queue/)
 - [Rules](https://docs.g1t.sh/guides/rules/)
 - [CODEOWNERS](https://docs.g1t.sh/guides/codeowners/)

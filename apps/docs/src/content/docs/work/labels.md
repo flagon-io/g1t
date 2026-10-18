@@ -30,7 +30,7 @@ A new workspace starts with these:
 Labels used to belong to each repository. When they moved to the
 workspace, labels with the same name became one, and the one made first
 kept its color and description; see
-[Issues became work items](/about/issues-became-work-items/#labels-and-milestones).
+[Issues became work items](/work/from-issues/#labels-and-milestones).
 To add the defaults a workspace lacks:
 
 1. Open **Work**, then **Labels**.
