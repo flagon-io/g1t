@@ -62,6 +62,7 @@ pub(crate) mod sql;
 mod tests;
 
 pub(crate) use labels::Labeled;
+pub(crate) use links::MARK_DELETED;
 pub(crate) use landing::{Landing, PastLanding};
 pub(crate) use migration::{DELETED, RENAMED, TRANSFERRED};
 pub(crate) use reading::{held_rows, select};

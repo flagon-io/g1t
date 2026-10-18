@@ -309,7 +309,8 @@ fn the_floor_migration_sets_what_the_job_would() {
     .unwrap();
     migrate_from(&db, "0052_work_floors.sql");
     assert_eq!(numbers(&db, "SELECT workspace, floor FROM work_counters"), [("acme".to_owned(), Some(9))]);
-    assert_eq!(strings(&db, "SELECT name FROM work_jobs WHERE done_at IS NULL"), ["deleted_repos"]);
+    // The jobs after it wait their turn: the one 0052 adds, and 0055's.
+    assert_eq!(strings(&db, "SELECT name FROM work_jobs WHERE done_at IS NULL ORDER BY name"), ["deleted_marks", "deleted_repos"]);
     run(&db, super::migration::RAISE_FLOORS, &[&"2026-10-18T12:00:00Z"]);
     assert_eq!(numbers(&db, "SELECT workspace, floor FROM work_counters"), [("acme".to_owned(), Some(9))]);
 }

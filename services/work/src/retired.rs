@@ -179,7 +179,8 @@ impl Work {
     }
 
     /// `repo.deleted` and `repo.archived`: its runs stop (the runner stops
-    /// their sandboxes, see [`RunsInRepoArgs`]). Rows are kept, for a restore.
+    /// their sandboxes, see [`RunsInRepoArgs`]). Rows are kept, for a
+    /// restore; a deleted one is marked so in `repo_workspaces`.
     async fn stop_runs_in(&self, repo_id: &str) -> Result<()> {
         let now = rfc3339(now_ms());
         self.db
@@ -198,6 +199,15 @@ impl Work {
         }
         if let Some((repo_id, _, _)) = stopping(event) {
             self.stop_runs_in(&repo_id).await?;
+            // Its work items' links say it is deleted, until it is restored or purged.
+            if event.kind == "repo.deleted" {
+                let at = rfc3339(now_ms());
+                self.db
+                    .prepare(crate::items::MARK_DELETED)
+                    .bind(&[repo_id.as_str().into(), at.as_str().into()])?
+                    .run()
+                    .await?;
+            }
             return Ok(true);
         }
         if event.kind != "branch.renamed" {

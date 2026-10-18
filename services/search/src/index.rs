@@ -767,6 +767,8 @@ impl Search {
                 label: None,
                 milestone: None,
                 assignee: None,
+                closed_since: None,
+                before: None,
             },
         )
         .await?;
@@ -788,7 +790,7 @@ impl Search {
         let pulls: Outcome<Vec<Pull>> = g1t_kit::call(
             &self.work,
             "list_pulls",
-            &ListPullsArgs { repo: path.clone(), viewer: Some(actor), state: None, label: None, milestone: None, base: None },
+            &ListPullsArgs { repo: path.clone(), viewer: Some(actor), state: None, label: None, milestone: None, base: None, before: None, merged_since: None },
         )
         .await?;
         let Outcome::Ok(pulls) = pulls else { return Ok(()) };

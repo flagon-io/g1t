@@ -34,6 +34,11 @@ export type ItemRepo = {
   legacyNumber: number | null;
   /** A pull request or commit that closes it landed in this repository. */
   landed: boolean;
+  /**
+   * The repository is deleted, and can still be restored until it is
+   * purged: `path` is where it was. It has nothing to open or read.
+   */
+  deleted?: boolean;
 };
 
 /** What resolved a work item in one repository: a pull request merged, or a commit pushed. */
@@ -871,6 +876,9 @@ export type UpdateWorkItemInput = {
   blocked_by?: number[];
 };
 
+/** How many `listWorkItems` and `listPulls` give at most in one call. */
+export const LIST_PAGE = 100;
+
 /** The filters on `listWorkItems`. */
 export type WorkItemFilter = {
   /** Only those linked to this repository (in any role, or in `role`). */
@@ -881,6 +889,10 @@ export type WorkItemFilter = {
   milestone?: number;
   /** Only those assigned to this username. */
   assignee?: string;
+  /** Only those closed at or after this time (RFC 3339), the most recently closed first instead of the newest. */
+  closedSince?: string;
+  /** Only those numbered below this: the next page, after one whose lowest number this is. */
+  before?: number;
 };
 
 export type OpenPullInput = {
@@ -931,7 +943,7 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
    * meant to land.
    */
   openWorkItem(actor: User, input: OpenWorkItemInput): Promise<Result<WorkItem>>;
-  /** A workspace's work items the viewer may see, newest first. */
+  /** A workspace's work items the viewer may see, newest first, at most [`LIST_PAGE`] (`before` pages on). */
   listWorkItems(workspace: string, viewer: Viewer, filter?: WorkItemFilter): Promise<Result<WorkItem[]>>;
   getWorkItem(workspace: string, number: number, viewer: Viewer): Promise<Result<WorkItemDetail>>;
   /** Its owner, or someone with the Triage role on it, may. */
@@ -1071,12 +1083,20 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
    * branch, one ready for review.
    */
   openPull(actor: User, repo: RepoPath, input: OpenPullInput): Promise<Result<Pull>>;
-  /** Newest first. */
+  /** Newest first, at most [`LIST_PAGE`] (`before` pages on). */
   listPulls(
     repo: RepoPath,
     viewer: Viewer,
     state?: State,
-    filter?: { label?: string; milestone?: number; base?: string },
+    filter?: {
+      label?: string;
+      milestone?: number;
+      base?: string;
+      /** Only those numbered below this: the next page, after one whose lowest number this is. */
+      before?: number;
+      /** Only those merged at or after this time (RFC 3339). */
+      mergedSince?: string;
+    },
   ): Promise<Result<Pull[]>>;
   /**
    * Delivery for up to 100 repositories over UTC days `from` through

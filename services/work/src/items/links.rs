@@ -15,10 +15,16 @@ use crate::rows::ValueRow;
 use crate::{UNVERIFIED, Work};
 
 /// Records where repository `?1` is: workspace `?2`, path `?3`, and
-/// whether it is private (`?4`).
+/// whether it is private (`?4`). It is there, so not deleted.
 pub(crate) const REMEMBER_REPO: &str = "INSERT INTO repo_workspaces (repo_id, workspace, path, private)
      VALUES (?1, ?2, ?3, ?4)
-     ON CONFLICT (repo_id) DO UPDATE SET workspace = excluded.workspace, path = excluded.path, private = excluded.private";
+     ON CONFLICT (repo_id) DO UPDATE SET workspace = excluded.workspace, path = excluded.path, private = excluded.private,
+       deleted_at = NULL";
+
+/// `repo.deleted` (`?1` its id, at `?2`): its links say it is deleted
+/// until `repo.restored` records it again ([`REMEMBER_REPO`]) or
+/// `repo.purged` drops its row.
+pub(crate) const MARK_DELETED: &str = "UPDATE repo_workspaces SET deleted_at = COALESCE(deleted_at, ?2) WHERE repo_id = ?1";
 
 /// Linking a work item (`?1`) that a change in repository `?2` is part of,
 /// at `?3`, by `?4`, unless it is linked already.

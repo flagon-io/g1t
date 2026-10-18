@@ -493,6 +493,8 @@ export function workClient(service: ServiceBinding): WorkApi {
         label: filter.label ?? null,
         milestone: filter.milestone ?? null,
         assignee: filter.assignee ?? null,
+        closed_since: filter.closedSince ?? null,
+        before: filter.before ?? null,
       }),
     getWorkItem: (workspace, number, viewer) => call("get_work_item", { workspace, number, viewer }),
     updateWorkItem: (actor, workspace, number, input) =>
@@ -562,7 +564,8 @@ export function workClient(service: ServiceBinding): WorkApi {
     updateSettings: (actor, repo, settings) =>
       call("update_settings", { actor, repo, settings }),
     openPull: (actor, repo, input) => call("open_pull", { actor, repo, ...input }),
-    listPulls: (repo, viewer, state, filter = {}) => call("list_pulls", { repo, viewer, state, ...filter }),
+    listPulls: (repo, viewer, state, { mergedSince, ...filter } = {}) =>
+      call("list_pulls", { repo, viewer, state, ...filter, merged_since: mergedSince ?? null }),
     deliveryInsights: (repoIds, viewer, from, until) => call("delivery_insights", { repoIds, viewer, from, until }),
     workspaceSignals: (args, viewer) => call("workspace_signals", { ...args, viewer }),
     pullsForRepos: (repoIds, viewer, limit) => call("pulls_for_repos", { repoIds, viewer, limit }),

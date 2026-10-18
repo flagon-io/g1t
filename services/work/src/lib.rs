@@ -1137,25 +1137,30 @@ impl Work {
             .map(|label| label.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase())
             .filter(|label| !label.is_empty());
         let milestone = a.milestone;
+        let before = a.before;
+        let merged_since = a.merged_since.map(|at| at.trim().to_owned()).filter(|at| !at.is_empty());
         let read = |repo_id: String| {
             let label = label.clone();
+            let merged_since = merged_since.clone();
             async move {
                 let query = self
                     .db
                     .prepare(format!(
-                        "SELECT {PULL_COLUMNS} FROM pulls WHERE repo_id = ? {filter}
-                           AND (? IS NULL OR EXISTS
-                             (SELECT 1 FROM json_each(pulls.labels) WHERE json_each.value = ?))
-                           AND (? IS NULL OR milestone = ?)
-                         ORDER BY number DESC LIMIT ?"
+                        "SELECT {PULL_COLUMNS} FROM pulls WHERE repo_id = ?1 {filter}
+                           AND (?2 IS NULL OR EXISTS
+                             (SELECT 1 FROM json_each(pulls.labels) WHERE json_each.value = ?2))
+                           AND (?3 IS NULL OR milestone = ?3)
+                           AND (?5 IS NULL OR number < ?5)
+                           AND (?6 IS NULL OR (status = 'merged' AND merged_at >= ?6))
+                         ORDER BY number DESC LIMIT ?4"
                     ))
                     .bind(&[
                         repo_id.into(),
                         optional(&label),
-                        optional(&label),
-                        optional_number(milestone),
                         optional_number(milestone),
                         LIST_PAGE.into(),
+                        optional_number(before),
+                        optional(&merged_since),
                     ])?;
                 self.timing.db(1, query.all()).await?.results::<PullRow>()
             }

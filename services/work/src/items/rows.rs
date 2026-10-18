@@ -26,7 +26,7 @@ pub(crate) const ITEM_COLUMNS: &str = "work_items.*,
       WHERE b.number IS NOT NULL ORDER BY j.key)) AS blocked_numbers,
   (SELECT json_group_array(json_object('repo_id', l.repo_id, 'path', COALESCE(rw.path, l.path, ''), 'role', l.role,
       'legacy_number', l.legacy_number, 'landed', l.landed_at IS NOT NULL, 'workspace', rw.workspace,
-      'private', rw.private))
+      'private', rw.private, 'deleted', rw.deleted_at IS NOT NULL))
    FROM work_item_repos l LEFT JOIN repo_workspaces rw ON rw.repo_id = l.repo_id
    WHERE l.item_id = work_items.id) AS links";
 
@@ -88,6 +88,9 @@ struct LinkRow {
     workspace: Option<String>,
     #[serde(default)]
     private: Option<u8>,
+    /// The repository is deleted, not yet purged (`repo_workspaces.deleted_at`).
+    #[serde(default)]
+    deleted: u8,
 }
 
 /// A resolution as stored.
@@ -227,6 +230,7 @@ impl ItemRow {
                 role: link.role,
                 legacy_number: link.legacy_number,
                 landed: link.landed != 0,
+                deleted: link.deleted != 0,
             })
             .collect();
         sort_repos(&mut repos);
