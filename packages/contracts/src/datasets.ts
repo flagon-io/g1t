@@ -97,60 +97,12 @@ export type DatasetSpec = {
 
 /** The catalog. One dataset per line: the Rust mirror test reads it that way. */
 export const DATASETS: Record<DatasetId, DatasetSpec> = {
-  work_items: {
-    label: "Work items",
-    service: "work",
-    needs: "member",
-    times: ["created_at", "closed_at"],
-    dimensions: ["repo", "label", "state", "author_kind", "assignee_kind", "milestone"],
-    measures: ["time_to_close_hours", "comments"],
-    rates: ["closed"],
-  },
-  pull_requests: {
-    label: "Pull requests",
-    service: "work",
-    needs: "member",
-    times: ["created_at", "merged_at", "closed_at"],
-    dimensions: ["repo", "label", "state", "author_kind", "base_branch"],
-    measures: ["cycle_time_hours", "time_to_first_review_hours", "review_count", "additions", "deletions", "changed_files"],
-    rates: ["merged"],
-  },
-  workflow_runs: {
-    label: "Workflow runs",
-    service: "actions",
-    needs: "member",
-    times: ["started_at", "completed_at"],
-    dimensions: ["repo", "workflow", "branch", "event", "conclusion", "runner_kind"],
-    measures: ["duration_seconds", "queue_seconds"],
-    rates: ["succeeded"],
-  },
-  deployments: {
-    label: "Deployments",
-    service: "deployments",
-    needs: "member",
-    times: ["created_at"],
-    dimensions: ["repo", "project", "environment", "state"],
-    measures: ["duration_seconds", "time_to_restore_hours"],
-    rates: ["failed"],
-  },
-  spend: {
-    label: "Spend",
-    service: "billing",
-    needs: "billing",
-    times: ["day"],
-    dimensions: ["product", "project", "person", "model"],
-    measures: ["amount_micros"],
-    rates: [],
-  },
-  agent_sessions: {
-    label: "Agent sessions",
-    service: "agents",
-    needs: "member",
-    times: ["started_at"],
-    dimensions: ["agent", "repo", "outcome", "model", "trigger"],
-    measures: ["duration_seconds", "cost_micros", "tokens"],
-    rates: ["succeeded"],
-  },
+  work_items: { label: "Work items", service: "work", needs: "member", times: ["created_at", "closed_at"], dimensions: ["repo", "label", "state", "author_kind", "assignee_kind", "milestone"], measures: ["time_to_close_hours", "comments"], rates: ["closed"] },
+  pull_requests: { label: "Pull requests", service: "work", needs: "member", times: ["created_at", "merged_at", "closed_at"], dimensions: ["repo", "label", "state", "author_kind", "base_branch"], measures: ["cycle_time_hours", "time_to_first_review_hours", "review_count", "additions", "deletions", "changed_files"], rates: ["merged"] },
+  workflow_runs: { label: "Workflow runs", service: "actions", needs: "member", times: ["started_at", "completed_at"], dimensions: ["repo", "workflow", "branch", "event", "conclusion", "runner_kind"], measures: ["duration_seconds", "queue_seconds"], rates: ["succeeded"] },
+  deployments: { label: "Deployments", service: "deployments", needs: "member", times: ["created_at"], dimensions: ["repo", "project", "environment", "state"], measures: ["duration_seconds", "time_to_restore_hours"], rates: ["failed"] },
+  spend: { label: "Spend", service: "billing", needs: "billing", times: ["day"], dimensions: ["product", "project", "person", "model"], measures: ["amount_micros"], rates: [] },
+  agent_sessions: { label: "Agent sessions", service: "agents", needs: "member", times: ["started_at"], dimensions: ["agent", "repo", "outcome", "model", "trigger"], measures: ["duration_seconds", "cost_micros", "tokens"], rates: ["succeeded"] },
 };
 
 /** The most rows a query returns. */
@@ -264,9 +216,7 @@ export function parseDatasetQuery(input: unknown): { query: DatasetQuery } | { e
       }
       const value = filter.value;
       const ok =
-        typeof value === "string" ||
-        (typeof value === "number" && Number.isFinite(value)) ||
-        (Array.isArray(value) && value.every((item) => typeof item === "string"));
+        typeof value === "string" || (typeof value === "number" && Number.isFinite(value)) || (Array.isArray(value) && value.every((item) => typeof item === "string"));
       if (!ok) return { error: "A filter's value is text, a number or a list of text." };
       filters.push({ field: filter.field, op: filter.op as DatasetFilterOp, value: value as DatasetFilter["value"] });
     }
@@ -274,8 +224,7 @@ export function parseDatasetQuery(input: unknown): { query: DatasetQuery } | { e
   let range: DatasetRange | null = null;
   if (input.range != null) {
     if (typeof input.range === "string" && (DATASET_RANGE_PRESETS as readonly string[]).includes(input.range)) range = input.range as DatasetRangePreset;
-    else if (isObject(input.range) && typeof input.range.from === "string" && typeof input.range.to === "string")
-      range = { from: input.range.from, to: input.range.to };
+    else if (isObject(input.range) && typeof input.range.from === "string" && typeof input.range.to === "string") range = { from: input.range.from, to: input.range.to };
     else return { error: "range is 7d, 30d, 90d or { from, to }." };
   }
   const query: DatasetQuery = {

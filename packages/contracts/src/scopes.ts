@@ -42,20 +42,11 @@ export const SCOPES = [
   { scope: "repo:read", description: "See repositories, their settings, timelines, releases, languages, contributors and security alerts, and search" },
   { scope: "repo:create", description: "Create repositories, and nothing that changes or deletes one" },
   { scope: "repo:write", description: "Create repositories, create, rename and delete branches, change how pull requests merge and publish releases" },
-  {
-    scope: "repo:admin",
-    description: "Rename, archive, transfer, delete or change who can see a repository, change its rulesets, and dismiss security alerts",
-  },
+  { scope: "repo:admin", description: "Rename, archive, transfer, delete or change who can see a repository, change its rulesets, and dismiss security alerts" },
   { scope: "code:read", description: "Clone and fetch private repositories with git" },
   { scope: "code:write", description: "Push commits with git" },
-  {
-    scope: "security:read",
-    description: "See secret scanning, code scanning and vulnerability alerts, custom patterns, the dependency graph and SBOM, and security settings",
-  },
-  {
-    scope: "security:write",
-    description: "Dismiss and reopen alerts, bypass push protection, review bypass requests, manage custom patterns, upload SARIF and change security settings",
-  },
+  { scope: "security:read", description: "See secret scanning, code scanning and vulnerability alerts, custom patterns, the dependency graph and SBOM, and security settings" },
+  { scope: "security:write", description: "Dismiss and reopen alerts, bypass push protection, review bypass requests, manage custom patterns, upload SARIF and change security settings" },
   { scope: "packages:read", description: "Pull container images and install private packages" },
   { scope: "packages:write", description: "Push container images and publish packages" },
   { scope: "packages:delete", description: "Delete and restore packages and their versions" },
@@ -70,10 +61,7 @@ export const SCOPES = [
   { scope: "checks:write", description: "Report statuses and check runs on commits, and ask for checks to run again" },
   { scope: "deployments:read", description: "See deployments, their statuses and environments" },
   { scope: "deployments:write", description: "Report deployments and their statuses, from any CI" },
-  {
-    scope: "observability:read",
-    description: "See projects' requests, logs, traces, errors and metrics, and their observability settings, ingest tokens and exports",
-  },
+  { scope: "observability:read", description: "See projects' requests, logs, traces, errors and metrics, and their observability settings, ingest tokens and exports" },
   { scope: "observability:write", description: "Resolve and ignore errors, and change projects' observability settings, ingest tokens and exports" },
   { scope: "account:read", description: "Read your email addresses, invites, invitations, pinned projects and stars" },
   { scope: "account:write", description: "Change your email addresses, make invites, answer invitations, pin projects and star repositories" },
@@ -82,11 +70,7 @@ export const SCOPES = [
   { scope: "chat:read", description: "Read the conversations you are in: channels, direct messages, threads and reactions, live" },
   { scope: "chat:write", description: "Send, edit and delete your messages, react, mark conversations read, and answer cards in chat" },
   { scope: "workspace:read", description: "Read workspace settings, invites, integrations, AI providers, teams and rulesets" },
-  {
-    scope: "workspace:admin",
-    description:
-      "Create and delete workspaces, invite members, connect integrations, add AI providers and choose what Ask answers with, create, change and delete teams, and change the workspace's rulesets",
-  },
+  { scope: "workspace:admin", description: "Create and delete workspaces, invite members, connect integrations, add AI providers and choose what Ask answers with, create, change and delete teams, and change the workspace's rulesets" },
   { scope: "billing:read", description: "See a workspace's usage, budget and invoices" },
   { scope: "billing:write", description: "Change a workspace's budget" },
   { scope: "access:read", description: "See who has access to repositories" },
@@ -109,7 +93,8 @@ export const SCOPES = [
  * operation needs them. When one ships, its rows move to the end of
  * `SCOPES` and `SCOPE_RESOURCES`. Empty now: Artifacts shipped last.
  */
-export const UPCOMING_SCOPES: readonly { scope: Scope; description: string }[] = [] as const;
+export const UPCOMING_SCOPES: readonly { scope: Scope; description: string }[] = [
+] as const;
 
 /**
  * Scopes of what g1t no longer has (Rust: `Resource::retired`): `agents`
@@ -158,7 +143,8 @@ export const SCOPE_RESOURCES: { resource: ScopeResource; label: string; group: R
 ];
 
 /** Resources not offered yet, as `UPCOMING_SCOPES`: settings never show them. */
-export const UPCOMING_RESOURCES: { resource: ScopeResource; label: string; group: ResourceGroup }[] = [];
+export const UPCOMING_RESOURCES: { resource: ScopeResource; label: string; group: ResourceGroup }[] = [
+];
 
 /** Resources of what g1t no longer has, as `RETIRED_SCOPES`: settings never show them. */
 export const RETIRED_RESOURCES: { resource: ScopeResource; label: string; group: ResourceGroup }[] = [
@@ -193,7 +179,10 @@ export function describeScope(scope: Scope): string {
 
 /** Whether holding `held` gives `needed`: the same resource, at its level or lower. */
 export function scopeIncludes(held: Scope, needed: Scope): boolean {
-  return scopeResource(held) === scopeResource(needed) && LEVEL_ORDER[scopeLevel(held)] >= LEVEL_ORDER[scopeLevel(needed)];
+  return (
+    scopeResource(held) === scopeResource(needed) &&
+    LEVEL_ORDER[scopeLevel(held)] >= LEVEL_ORDER[scopeLevel(needed)]
+  );
 }
 
 /**
@@ -263,65 +252,17 @@ export type PresetId = "read_only" | "agent" | "ci" | "full";
 /** Starting points for choosing scopes. `*` is full access. No preset gives chat: an application gets it only by asking for it. */
 export const PRESET_SCOPES = {
   read_only: [
-    "repo:read",
-    "code:read",
-    "security:read",
-    "packages:read",
-    "work:read",
-    "pull_requests:read",
-    "workflows:read",
-    "checks:read",
-    "deployments:read",
-    "observability:read",
-    "account:read",
-    "notifications:read",
-    "workspace:read",
-    "billing:read",
-    "access:read",
-    "webhooks:read",
-    "secrets:read",
-    "runners:read",
-    "artifacts:read",
+    "repo:read", "code:read", "security:read", "packages:read", "work:read", "pull_requests:read", "workflows:read", "checks:read", "deployments:read", "observability:read", "account:read", "notifications:read", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "runners:read", "artifacts:read",
   ] as const,
   agent: [
-    "repo:read",
-    "repo:create",
-    "code:read",
-    "code:write",
-    "security:read",
-    "packages:read",
-    "work:read",
-    "work:write",
-    "pull_requests:read",
-    "pull_requests:write",
-    "workflows:read",
-    "checks:read",
-    "deployments:read",
-    "observability:read",
-    "account:read",
-    "notifications:read",
-    "notifications:write",
-    "workspace:read",
-    "billing:read",
-    "access:read",
-    "webhooks:read",
-    "secrets:read",
-    "artifacts:read",
+    "repo:read", "repo:create", "code:read", "code:write", "security:read", "packages:read", "work:read", "work:write", "pull_requests:read", "pull_requests:write", "workflows:read", "checks:read", "deployments:read", "observability:read", "account:read", "notifications:read", "notifications:write", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "artifacts:read",
   ] as const,
   ci: [
-    "repo:read",
-    "code:read",
-    "code:write",
-    "packages:read",
-    "packages:write",
-    "workflows:read",
-    "workflows:write",
-    "checks:read",
-    "checks:write",
-    "deployments:read",
-    "deployments:write",
+    "repo:read", "code:read", "code:write", "packages:read", "packages:write", "workflows:read", "workflows:write", "checks:read", "checks:write", "deployments:read", "deployments:write",
   ] as const,
-  full: ["*"] as const,
+  full: [
+    "*",
+  ] as const,
 };
 
 export const PRESETS: { id: PresetId; label: string; description: string }[] = [

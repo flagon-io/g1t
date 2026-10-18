@@ -20,3 +20,6 @@ apps/docs/src/data/openapi.json
 # Tables the deploy tool's tests read row by row (scripts/deploy/deploy.test.mjs).
 apps/docs/src/content/docs/architecture/services.md
 apps/docs/src/content/docs/guides/self-hosting-architecture.md
+# TypeScript mirrors that Rust tests read line by line (crates/contracts: datasets.rs, scopes.rs).
+packages/contracts/src/datasets.ts
+packages/contracts/src/scopes.ts
