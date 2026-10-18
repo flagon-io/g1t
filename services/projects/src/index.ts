@@ -29,7 +29,7 @@ import {
   runsSetting,
 } from "./kind";
 import { cleanLinks, cleanUrl, projectLinks } from "./links";
-import { ACTIVE, decayed, raised } from "./activity";
+import { ACTIVE, activeRepos, decayed, raised } from "./activity";
 import { MAX_PINS, MAX_RECENT, MAX_VISITS, placePin, recentAfterPins, reorderPins } from "./pins";
 import { renameStatements } from "./rename";
 import { moveStatements, slugOf, strandedQuery } from "./transfer";
@@ -984,8 +984,7 @@ class Projects {
 
   async onEvent(event: G1tEvent): Promise<void> {
     if (ACTIVE.has(event.type)) {
-      const repoId = event.repoId ?? ("repoId" in event.data ? (event.data as { repoId?: string }).repoId : undefined);
-      if (repoId) await this.active(repoId, event.time, event.type === "git.push");
+      for (const repoId of activeRepos(event.repoId, event.data)) await this.active(repoId, event.time, event.type === "git.push");
     }
     if (event.type === "deployment_status.created") {
       await this.productionReported(event.data);
