@@ -13,7 +13,8 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 
-/// Every permission GitHub's token has, as workflows name them.
+/// Every permission a job's token has, as workflows name them: GitHub's,
+/// with `work` (work items) in place of its `issues`.
 pub const NAMES: [&str; 16] = [
     "actions",
     "attestations",
@@ -22,7 +23,6 @@ pub const NAMES: [&str; 16] = [
     "deployments",
     "discussions",
     "id-token",
-    "issues",
     "metadata",
     "models",
     "packages",
@@ -31,6 +31,7 @@ pub const NAMES: [&str; 16] = [
     "repository-projects",
     "security-events",
     "statuses",
+    "work",
 ];
 
 /// Permissions that grant no scope of the token: g1t has nothing behind
@@ -163,7 +164,7 @@ impl Permissions {
         };
         add("contents", &["code:read"], &["code:write", "repo:write"]);
         add("pull-requests", &["pull_requests:read"], &["pull_requests:write"]);
-        add("issues", &["issues:read"], &["issues:write"]);
+        add("work", &["work:read"], &["work:write"]);
         add("actions", &["workflows:read"], &["workflows:write"]);
         add("checks", &["checks:read"], &["checks:write"]);
         add("statuses", &["checks:read"], &["checks:write"]);
@@ -220,7 +221,7 @@ mod tests {
         let restricted = Permissions::default_for(TokenDefault::Restricted);
         assert_eq!(restricted.get("contents"), Access::Read);
         assert_eq!(restricted.get("packages"), Access::Read);
-        assert_eq!(restricted.get("issues"), Access::None);
+        assert_eq!(restricted.get("work"), Access::None);
         assert_eq!(restricted.get("metadata"), Access::Read);
         assert_eq!(restricted.scopes(), ["repo:read", "code:read", "packages:read"]);
         let permissive = Permissions::default_for(TokenDefault::Permissive);
@@ -232,11 +233,11 @@ mod tests {
 
     #[test]
     fn written_permissions_leave_the_rest_at_none() {
-        let (permissions, unknown) = parse(&json!({ "contents": "write", "pull-requests": "write", "issues": "read" })).unwrap();
+        let (permissions, unknown) = parse(&json!({ "contents": "write", "pull-requests": "write", "work": "read" })).unwrap();
         assert!(unknown.is_empty());
         assert_eq!(
             permissions.scopes(),
-            ["repo:read", "code:read", "code:write", "repo:write", "pull_requests:read", "pull_requests:write", "issues:read"]
+            ["repo:read", "code:read", "code:write", "repo:write", "pull_requests:read", "pull_requests:write", "work:read"]
         );
         assert_eq!(permissions.get("packages"), Access::None);
         // `{}` is nothing but metadata.
@@ -249,7 +250,7 @@ mod tests {
         let (all, _) = parse(&json!("write-all")).unwrap();
         let scopes = all.scopes();
         for scope in [
-            "workflows:write", "checks:write", "deployments:write", "packages:write", "security:write", "issues:write",
+            "workflows:write", "checks:write", "deployments:write", "packages:write", "security:write", "work:write",
         ] {
             assert!(scopes.contains(&scope), "{scope}");
         }
@@ -278,10 +279,10 @@ mod tests {
     #[test]
     fn a_called_workflow_gets_no_more_than_its_caller() {
         let (callee, _) = parse(&json!("write-all")).unwrap();
-        let (caller, _) = parse(&json!({ "contents": "write", "issues": "read" })).unwrap();
+        let (caller, _) = parse(&json!({ "contents": "write", "work": "read" })).unwrap();
         let capped = callee.capped_by(&caller);
         assert_eq!(capped.get("contents"), Access::Write);
-        assert_eq!(capped.get("issues"), Access::Read);
+        assert_eq!(capped.get("work"), Access::Read);
         assert_eq!(capped.get("pull-requests"), Access::None);
     }
 
@@ -292,5 +293,11 @@ mod tests {
         assert!(parse(&json!(["contents"])).is_err());
         let (_, unknown) = parse(&json!({ "contents": "read", "wiki": "write" })).unwrap();
         assert_eq!(unknown, ["wiki"]);
+        // GitHub's `issues` is `work` on g1t: alone it grants nothing.
+        let (issues, unknown) = parse(&json!({ "issues": "write" })).unwrap();
+        assert_eq!(unknown, ["issues"]);
+        assert_eq!(issues.scopes(), ["repo:read"]);
+        let (work, _) = parse(&json!({ "work": "write" })).unwrap();
+        assert_eq!(work.scopes(), ["repo:read", "work:read", "work:write"]);
     }
 }
