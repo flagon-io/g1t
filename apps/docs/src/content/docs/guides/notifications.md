@@ -207,7 +207,7 @@ its members.
 | **Tags** | A tag is pushed or deleted, or a release is published. |
 | **Pull requests** | One is opened, updated, reviewed, commented on, checked, merged or closed. |
 | **Work**, filtered or not, and its **Board** | Any of the workspace's work items is opened, changed, labeled, linked, claimed, commented on, closed or reopened. |
-| **Sessions** | A session in one of the workspace's repositories starts, records or ends. |
+| Work's **Sessions** | A session in one of the workspace's repositories starts, records or ends. |
 | A **pull request** | Commits are pushed to it, its checks report, someone reviews or comments, or it is merged or closed. New items join its timeline where you are reading; if you are at the end of the page, it follows them down. |
 | A **work item** | Someone comments on it or changes it, links a repository, claims it, or a pull request for it lands. If you are at the end of the page, it follows new items down. |
 | **Actions** and a **run** | A run starts, one of its jobs starts or finishes, or the run finishes. A running job's log streams on its own. |

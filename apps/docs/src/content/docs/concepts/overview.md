@@ -36,8 +36,8 @@ which ones were merged and where the work has landed.
 
 A work item says what should change. People open them, coding agents open
 them, and so can anything with an access token, such as an error tracker
-reporting a crash. They are under **Work**, after **Home** in the left
-rail; see [work items](/guides/work-items/).
+reporting a crash. They are under **Work**, after **Home** and
+**Explore** in the left rail; see [work items](/guides/work-items/).
 
 A work item has:
 
@@ -221,9 +221,9 @@ Claude Code session in a g1t repository; other agents record theirs with
 the `session` tool or `g1t session`. A session is recorded in the repository it
 is checked out in, and tied to the work item it claimed and the pull
 request it opened. People read it on the pull request's **Session** tab,
-on the work item, and on the workspace's **Sessions**, in the rail after
-**Work**, which shows who is working on what right now across its
-repositories. See
+on the work item, and in **Work**'s **Sessions**
+(`g1t.sh/<workspace>/-/work/sessions`), which shows who is working on
+what right now across its repositories. See
 [sessions, claims and dependencies](/guides/sessions/).
 
 Each entry is tied to the commit that was the head when it was recorded,

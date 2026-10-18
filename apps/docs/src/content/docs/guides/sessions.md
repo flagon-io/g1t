@@ -31,10 +31,14 @@ truth; sessions are the account of how it got there.
 
 ## The Sessions page
 
-**Sessions** is in the left rail, directly after **Work**, at
-`g1t.sh/<workspace>/-/sessions`. It shows what is cooking across the
-workspace: the sessions in every one of its repositories you can read,
-as they happen, without reloading.
+**Sessions** is a section of [Work](/guides/work-items/), at
+`g1t.sh/<workspace>/-/work/sessions`: sessions are the work being done on
+work items, so they live with them. Work's sidebar has it under its
+**Sessions** heading, after the work items: **Live now**, **Recent**,
+**Yours**, then each kind (**People's harnesses**, **Started on g1t**,
+**g1t's agent** and **Recorded on pull requests**). It shows what is
+cooking across the workspace: the sessions in every one of its
+repositories you can read, as they happen, without reloading.
 
 - **Live now**: the active and idle sessions, the most recently heard
   from first. Each card shows the session's title, who it acts for, its
@@ -62,7 +66,7 @@ Narrow it by repository (`?repo=web`), person (`?person=<username>`),
 harness (`?harness=codex`), kind (`?kind=hosted`) and state. The address
 keeps the filters, so a filtered view can be shared. A repository's
 sessions are Sessions filtered to it,
-`g1t.sh/<workspace>/-/sessions?repo=<name>`: a repository has no
+`g1t.sh/<workspace>/-/work/sessions?repo=<name>`: a repository has no
 Sessions page of its own.
 
 Every kind of session is listed in this one place:
@@ -74,7 +78,7 @@ Every kind of session is listed in this one place:
 | `agent` | g1t's own agent at work on a pull request. Only the workspace's members see these. |
 | `recorded` | A session recorded on a pull request with no session of its own. It opens on the pull request's **Session** tab, `g1t.sh/<owner>/<repo>/pull/<number>/session`. |
 
-**A session's page** is `g1t.sh/<workspace>/-/sessions/<id>` (the
+**A session's page** is `g1t.sh/<workspace>/-/work/sessions/<id>` (the
 `ses_…` id), opened from Sessions or from anywhere the session is listed:
 who ran it, in which harness and on which model, how long it has run, its
 repository, the work items and pull requests it and its subagents worked

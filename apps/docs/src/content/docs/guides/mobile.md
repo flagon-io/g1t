@@ -51,10 +51,10 @@ The bar along the bottom is the site's phone bar:
 | Tab | What is on it |
 | --- | --- |
 | **Home** | Coming. Opens Home on the site meanwhile. |
-| **Work** | The workspace's work items and their Board, for every member, Code access or not. **Sessions** opens from the icon in its header. See [Work](#work). |
+| **Work** | The workspace's work items, their Board and the sessions working on them: **Items**, **Board** and **Sessions** at its top. For every member, Code access or not. See [Work](#work) and [Sessions](#sessions). |
 | **Chat** | Your starred conversations, channels and direct messages, with what is unread, moving live. See [Chat](#chat). |
 | **Notifications** | Coming. Opens your notifications on the site meanwhile; messages to you already arrive [on the phone](#notifications). |
-| **More** | **Sessions** first (see [Sessions](#sessions)), then **Code**, for members with Code access; whether this phone gets notifications, your workspaces, how you signed in, and **Sign out**. |
+| **More** | **Explore** first, which opens on the site, then **Code**, for members with Code access; whether this phone gets notifications, your workspaces, how you signed in, and **Sign out**. |
 
 **Code**, under **More**, is the workspace's repositories, each with its
 pull requests and its **Work**: the work items linked to it. A pull
@@ -94,9 +94,9 @@ list and the Board.
 
 ## Sessions
 
-**Sessions** is the site's [Sessions](/guides/sessions/#the-sessions-page):
-the sessions at work across the workspace. Open it from the icon in
-Work's header, or first in **More**.
+**Sessions** is the site's [Sessions](/guides/sessions/#the-sessions-page),
+a section of Work: the sessions at work across the workspace. Choose
+**Sessions** at the top of **Work**, beside **Items** and **Board**.
 
 - **Everything**, **Live** and **Recent** at the top choose what it
   lists. Pull down to read it again.
@@ -183,8 +183,8 @@ pages it has screens for:
 | `g1t://<workspace>/-/work/<number>` | The work item |
 | `g1t://<workspace>/-/work/new` | A new work item |
 | `g1t://<workspace>/-/work/board` | Work, on the Board |
-| `g1t://<workspace>/-/sessions` | Sessions |
-| `g1t://<workspace>/-/sessions/<id>` | The session |
+| `g1t://<workspace>/-/work/sessions`, with its filters (`?state=live&repo=web`) | Work, on Sessions |
+| `g1t://<workspace>/-/work/sessions/<id>` | The session |
 | `g1t://<workspace>/-/chat`, `…/-/chat/<channel>`, `…/-/chat/dm/<id>` | Chat, or the conversation, in that workspace |
 | `g1t://<owner>/<repo>` | The repository |
 | `g1t://<owner>/<repo>/pull/<number>` | The pull request |
@@ -192,7 +192,7 @@ pages it has screens for:
 
 The same paths as `https://g1t.sh/…` links, such as
 `https://g1t.sh/<workspace>/-/work/<number>` or
-`https://g1t.sh/<workspace>/-/sessions/<id>`, open these screens once
+`https://g1t.sh/<workspace>/-/work/sessions/<id>`, open these screens once
 g1t.sh publishes the files Android and iOS check first (see
 [below](#whats-not-there-yet)). The workspace's labels and milestones open
 on the site.
