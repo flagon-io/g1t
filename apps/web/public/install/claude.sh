@@ -1,6 +1,6 @@
 #!/bin/sh
 # Connects Claude Code on this machine to g1t. g1t's Claude Code plugin
-# records your sessions on g1t, loads an issue's work context, and adds
+# records your sessions on g1t, loads a work item's context, and adds
 # g1t's MCP server and commands; this prints the two commands that install
 # it. With --cli it also installs the g1t CLI, which the plugin's hooks use:
 #
@@ -24,7 +24,7 @@ Install g1t's plugin for Claude Code:
   claude plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git
   claude plugin install g1t@g1t
 
-The plugin's hooks use the g1t CLI (0.3.2 or later) and Node 18 or later.
+The plugin's hooks use the g1t CLI (0.4.0 or later) and Node 18 or later.
 If you do not have the CLI yet, or have an older one, install it
 (curl -fsSL $BASE/install | sh) and sign in with \`g1t auth login\`.
 Then, in Claude Code, run /mcp and choose plugin:g1t:g1t to sign its tools
