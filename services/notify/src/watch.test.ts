@@ -43,7 +43,7 @@ test("what is not a change is dropped", () => {
 test("changes go to their repositories in the order they came", () => {
   const grouped = byRepo([
     { repo_id: "rep_1", kind: "pull.opened", number: 1, at: AT },
-    { repo_id: "rep_2", kind: "issue.opened", number: 2, at: AT },
+    { repo_id: "rep_2", kind: "work_item.opened", number: 2, at: AT },
     { repo_id: "rep_1", kind: "pull.updated", number: 1, at: AT },
     { nonsense: true },
   ]);
