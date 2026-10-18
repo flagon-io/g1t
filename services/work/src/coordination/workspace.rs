@@ -194,11 +194,17 @@ pub(crate) struct Wanted<'a> {
 
 impl Wanted<'_> {
     fn admits(&self, session: &WorkspaceSession) -> bool {
+        self.admits_listed(session) && self.item.is_none_or(|item| session.item == Some(item))
+    }
+
+    /// For a row of the `sessions` table, which its query already chose by
+    /// work item, the session's own or one it is linked to
+    /// ([`workspace_sessions_sql`]): all but that.
+    fn admits_listed(&self, session: &WorkspaceSession) -> bool {
         self.shown.admits(session.state)
             && self.kind.is_none_or(|kind| kind == session.kind)
             && self.harness.is_none_or(|harness| session.harness == Some(harness))
             && self.person.is_none_or(|person| session.actor.as_deref().is_some_and(|actor| actor.eq_ignore_ascii_case(person)))
-            && self.item.is_none_or(|item| session.item == Some(item))
     }
 }
 
@@ -215,7 +221,7 @@ pub(crate) fn merged(
 ) -> Vec<WorkspaceSession> {
     let covered: HashSet<(String, u32)> =
         sessions.iter().chain(&runs).filter_map(|session| session.pull.map(|pull| (session.repo_id.clone(), pull))).collect();
-    let mut all: Vec<WorkspaceSession> = sessions.into_iter().filter(|session| wanted.admits(session)).collect();
+    let mut all: Vec<WorkspaceSession> = sessions.into_iter().filter(|session| wanted.admits_listed(session)).collect();
     all.extend(runs.into_iter().filter(|run| wanted.admits(run)));
     all.extend(
         recorded
@@ -708,6 +714,20 @@ mod tests {
         let all = merged(vec![listed], Vec::new(), vec![(from_recorded(recorded, "acme/api", NOW), false)], &wanted, 10);
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].id, "ses_q");
+    }
+
+    #[test]
+    fn a_session_linked_to_a_work_item_is_listed_for_it() {
+        // On no work item of its own, but linked to #12 (a claim, a trailer).
+        let session: Session = serde_json::from_value(serde_json::json!({
+            "id": "ses_l", "repoId": "rep_api", "item": null, "pull": null, "branch": null, "actor": { "id": "usr_2", "username": "bo" },
+            "harness": "codex", "harnessSessionId": null, "title": null, "state": "active", "headCommit": null,
+            "startedAt": at(5), "lastSeenAt": at(1), "endedAt": null, "endReason": null, "subagents": 0
+        }))
+        .unwrap();
+        let listed = from_session(session, "acme/api", NOW);
+        let for_item = Wanted { shown: SessionsShown::Recent, kind: None, harness: None, person: None, item: Some(12) };
+        assert_eq!(merged(vec![listed], Vec::new(), Vec::new(), &for_item, 10).len(), 1);
     }
 
     #[test]
