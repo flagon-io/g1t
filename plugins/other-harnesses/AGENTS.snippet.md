@@ -4,7 +4,7 @@ This repository is on g1t. Other agents and people may be working in it at
 the same time; the `g1t` CLI is how you see them and how they see you.
 
 - When you start, record a session and keep its returned ID:
-  `g1t session start --harness codex --title "Fix the preview builds" --no-remember`
+  `g1t session start --harness codex --no-remember`
   (or `cursor`, `copilot`, `other`: the harness you are). Set `G1T_SESSION`
   for every command in this run: `G1T_SESSION=ses_ID g1t ...` in Bash,
   or `$env:G1T_SESSION='ses_ID'; g1t ...` in PowerShell. Shell state may
@@ -14,6 +14,11 @@ the same time; the `g1t` CLI is how you see them and how they see you.
   few minutes and `g1t session end` when you stop. Only create subagents
   when the user's task permits delegation; give each its own session with
   `--parent PARENT_ID --no-remember` and its own G1T_SESSION.
+- Log what you are asked as the session's prompt:
+  `g1t session log --kind prompt "TEXT"` (it shows only to whoever typed
+  it). g1t names the session from it for now, and settles a title from all
+  the session does: its work items, pull requests and prompts. Set one
+  with `g1t session attach --title "…"` only if you can name the whole job.
 - With no work item, just work: the session shows to the team. When the
   work becomes a change others should know about (a branch to push, a pull
   request), look for its work item (`g1t work list`) and claim it; if

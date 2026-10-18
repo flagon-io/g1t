@@ -9,10 +9,9 @@
 //                     work item, g1t work view N, given to Claude as context
 //   UserPromptSubmit  g1t session log --kind prompt TEXT     (first 2,000 characters)
 //                     and, for a plugin's skill typed as /plugin:name,
-//                     g1t session log --kind skill NAME; at the session's
-//                     first prompt that is not a slash command, its intent
-//                     as the title, unless it has one: g1t session heartbeat
-//                     --json, then g1t session attach --title INTENT
+//                     g1t session log --kind skill NAME. g1t names the
+//                     session itself: for now from its first prompt, then
+//                     from all it did (services/work/src/coordination/titles.rs)
 //   PreToolUse        Agent: the task it is given, kept until its subagent starts,
 //                     which is paired with it by the call's tool_use_id or its
 //                     prompt (see pairSubagent).
@@ -66,8 +65,6 @@ export const PROMPT_LIMIT = 2000;
 export const SUMMARY_LIMIT = 200;
 /** The most of a work item's work context given to Claude. */
 export const CONTEXT_LIMIT = 8000;
-/** The most of a prompt's intent that titles a session. */
-export const TITLE_LIMIT = 80;
 /** The most of a subagent's task (its description) that is sent. */
 export const TASK_LIMIT = 200;
 /** The most of a subagent's prompt that is sent. */
@@ -270,56 +267,6 @@ export function agentResult(response) {
     .trim();
 }
 
-/** A turn the harness starts itself, as a tag: `<command-name>`, `<task-notification>`, one with attributes. */
-const HARNESS_TAG = /^\s*<[a-z][\w-]*(?:\s[^>]*)?>/i;
-
-/** What an editor adds ahead of a prompt, a whole block at a time: `<ide_opened_file>…</ide_opened_file>`. */
-const IDE_CONTEXT = /^\s*<(ide_[a-z_]+|system-reminder)\b[^>]*>[\s\S]*?<\/\1>/i;
-
-/**
- * What a prompt is for, as a session's title: its first line or sentence,
- * without code blocks or markdown, whitespace collapsed, clipped at
- * TITLE_LIMIT on a word with "…". Null for a slash command (/clear,
- * /g1t:status 4), a turn Claude Code starts itself, or nothing to say.
- * apps/web/app/lib/coordination.ts reads an untitled session's first
- * prompt the same way.
- */
-export function intentTitle(prompt) {
-  let text = String(prompt ?? "").replace(/^\uFEFF/, "");
-  // What the harness pasted in or attached is not what the prompt is for:
-  // pasted text (Claude Code's <pasted_content id="…">…</pasted_content>)
-  // and image placeholders ([Image #1], [Image: source: …]) go first.
-  text = text
-    .replace(/<pasted_content\b[^>]*>[\s\S]*?(?:<\/pasted_content[^>]*>|$)/gi, "\n")
-    .replace(/\[Image(?: #\d+)?(?::[^\]\n]*)?\]/g, " ");
-  // Context an editor puts before what was typed (VS Code's
-  // <ide_opened_file>, <ide_selection>) is not a turn the harness started.
-  while (IDE_CONTEXT.test(text)) text = text.replace(IDE_CONTEXT, "");
-  if (/^\s*\//.test(text) || HARNESS_TAG.test(text)) return null;
-  text = text
-    .replace(/```[\s\S]*?(```|$)/g, "\n")
-    .replace(/~~~[\s\S]*?(~~~|$)/g, "\n")
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/`([^`]*)`/g, "$1");
-  const line = text
-    .split(/\r?\n/)
-    .map((l) => l.replace(/^\s*(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)+/, "").replace(/(\*\*|__|~~)(.+?)\1/g, "$2").trim())
-    .find((l) => /[\p{L}\p{N}]/u.test(l));
-  if (!line) return null;
-  // Its first sentence: up to a stop followed by a space.
-  let intent = line.replace(/\s+/g, " ").split(/(?<=[.!?])\s+(?=\S)/)[0].trim();
-  if (intent.length > TITLE_LIMIT) {
-    const cut = intent.slice(0, TITLE_LIMIT - 1);
-    const space = cut.lastIndexOf(" ");
-    intent = `${(space > TITLE_LIMIT / 2 ? cut.slice(0, space) : cut).replace(/[\s,;:.\-–—]+$/, "")}…`;
-  } else {
-    intent = intent.replace(/[\s,;:.]+$/, "");
-  }
-  if (intent.length < 2) return null;
-  return intent[0].toLocaleUpperCase() + intent.slice(1);
-}
-
 /** The plugin skill a prompt runs when it is typed as one: `g1t:work-on-item` for `/g1t:work-on-item 42`. */
 export function typedSkill(prompt) {
   const text = String(prompt ?? "").replace(/^﻿/, "");
@@ -372,9 +319,7 @@ export function plan(event, env = process.env) {
       // A skill typed as /plugin:name is a skill used (its name), whether or not prompts are sent.
       const skill = typedSkill(prompt);
       if (skill) job.steps.push(skillStep(skill));
-      // What it is for titles the session, until it has a title (see hook and work).
-      const intent = env.G1T_RECORD_PROMPTS === "0" ? null : intentTitle(redact(prompt));
-      if (intent) job.steps.push({ title: intent });
+      // g1t names the session from its prompts and all it does: nothing to send for that.
       return job.steps.length ? job : null;
     }
     case "SubagentStart":
@@ -606,7 +551,6 @@ export function sessionFiles(sid, env = process.env) {
     shown: (session) => join(dir, `${safe}.shown.${safeName(session)}.json`),
     item: join(dir, `${safe}.item`),
     turn: join(dir, `${safe}.turn`),
-    titled: join(dir, `${safe}.titled`),
     task: (key) => join(dir, `${safe}.task.${safeName(key)}.json`),
     shell: (toolUseId) => join(dir, `${safe}.shell.${safeName(toolUseId)}.json`),
     unrecorded: join(dir, `${safe}.unrecorded.json`),
@@ -858,16 +802,6 @@ function background(job, env = process.env) {
   } catch {}
 }
 
-/** Whether a session, as `--json` prints it, has a title; unreadable reads as having one, so nothing is replaced. */
-export function hasTitle(stdout) {
-  try {
-    const title = JSON.parse(stdout).title;
-    return typeof title === "string" && title.trim() !== "";
-  } catch {
-    return true;
-  }
-}
-
 /** The session id in a `g1t session start --json` answer. */
 function startedId(out) {
   try {
@@ -975,15 +909,6 @@ export function work(job, env = process.env) {
         if (branch && branch !== "HEAD") touch.push("--branch", branch);
         cli(bin, touch, opts);
       }
-    } else if (step.title) {
-      // Only a session with no title: one set before (by the agent, a
-      // person, or this at an earlier prompt) is never replaced.
-      const seen = cli(bin, ["session", "heartbeat", "--json"], opts);
-      if (seen.status === EXIT_AUTH) return setProblem(env, "signed_out");
-      if (seen.status === EXIT_USAGE) return setProblem(env, "refused", "session heartbeat");
-      if (seen.status !== 0 || hasTitle(seen.stdout)) continue;
-      const out = cli(bin, ["session", "attach", `--title=${step.title}`], opts);
-      if (out.status === EXIT_USAGE) return setProblem(env, "refused", "session attach");
     } else if (step.touchHead) {
       const head = git(job.cwd, ["rev-parse", "HEAD"]);
       if (head) cli(bin, ["session", "touch", "--commit", head], opts);
@@ -1023,18 +948,10 @@ export function work(job, env = process.env) {
 const TRAILER = "Add the trailer `G1t-Session: $G1T_SESSION` to the commits you make (git commit --trailer), so g1t ties them to this session. A commit pushed straight to the default branch that finishes a work item says `Closes #N` in its message (`Part of #N` when it does only part of it): a bare `(#N)` only links it, and the item stays open.";
 
 /**
- * How the agent keeps its session's title true: it starts as the first
- * prompt's intent, which often stops being what the session is about.
+ * What the agent is told of its session's title, once: g1t names the
+ * session from all it does, so it sets one only for the whole job.
  */
-export const RETITLE = 'Its title starts as your first prompt; once what you are actually doing is clear, and whenever it changes, retitle it in a few words with `g1t session attach --title "…"`.';
-
-/**
- * At which prompts the agent is reminded to retitle: the second (what the
- * work is has usually shown by then) and every fifth after.
- */
-export function retitleNudge(turn) {
-  return turn === 2 || (turn > 2 && turn % 5 === 0) ? `g1t: if this session's title no longer says what it is doing, retitle it: \`g1t session attach --title "…"\`.` : null;
-}
+export const TITLE_NOTE = 'g1t names the session from what it does; set a title with `g1t session attach --title "…"` only if you can name the whole job.';
 
 /**
  * SessionStart: marks the session as one in a g1t working copy, and
@@ -1077,7 +994,7 @@ export function sessionStart(event, env = process.env, bin = findCli(env)) {
       context = `g1t: ${where} points at work item #${item}. Load what is known about it with \`g1t work view ${item}\`, and claim it with \`g1t work claim ${item}\` before you start. ${TRAILER}`;
     }
   } else {
-    context = `g1t: this session is recorded on g1t and shows to the team, titled with what you are asked to do. Just work. If it turns into a change others should know about (a branch to push, a pull request), first look for its work item (\`g1t work list\`) and claim it with \`g1t work claim N\`; if there is none, open a work item and claim it with \`g1t work claim --title "…"\`. Never open work items for questions, exploration or trivial fixes. ${RETITLE} ${TRAILER}`;
+    context = `g1t: this session is recorded on g1t and shows to the team. Just work. If it turns into a change others should know about (a branch to push, a pull request), first look for its work item (\`g1t work list\`) and claim it with \`g1t work claim N\`; if there is none, open a work item and claim it with \`g1t work claim --title "…"\`. Never open work items for questions, exploration or trivial fixes. ${TITLE_NOTE} ${TRAILER}`;
   }
   if (context) output.hookSpecificOutput = { hookEventName: "SessionStart", additionalContext: context };
   return output;
@@ -1172,24 +1089,18 @@ export const mayAddRemote = (command) =>
  * A session that started where there was no g1t remote (SessionStart left
  * it unrecorded) is recorded once there is one: looked for at each prompt,
  * and after a shell command that may have added one (mayAddRemote), never
- * after other tools. Returns what SessionStart would have printed, and the
- * title its first prompt with an intent gave it, or null while there is no
- * g1t remote (keeping that title for later).
+ * after other tools. Returns what SessionStart would have printed, or null
+ * while there is no g1t remote.
  */
 export function lateStart(event, env, files) {
   const name = event?.hook_event_name;
   if (name !== "UserPromptSubmit" && name !== "PostToolUse") return null;
   if (name === "PostToolUse" && !(SHELL_TOOLS.has(event.tool_name) && mayAddRemote(event.tool_input?.command))) return null;
   if (!existsSync(files.unrecorded)) return null;
-  const kept = readJson(files.unrecorded, {}) ?? {};
   const output = sessionStart(event, env, findCli(env));
-  if (!output) {
-    const intent = name === "UserPromptSubmit" && !kept.title && env.G1T_RECORD_PROMPTS !== "0" ? intentTitle(redact(event.prompt)) : null;
-    if (intent) write(files.unrecorded, JSON.stringify({ ...kept, title: intent }));
-    return null;
-  }
+  if (!output) return null;
   rmSync(files.unrecorded, { force: true });
-  return { output, title: kept.title ?? null };
+  return { output };
 }
 
 /** Runs one hook: what it prints, and the job it hands to the background. */
@@ -1231,17 +1142,8 @@ export function hook(event, env = process.env) {
   if (name === "SessionEnd" && !existsSync(files.marker)) rmSync(files.unrecorded, { force: true });
   // Only sessions found in a g1t working copy are recorded.
   if (!existsSync(files.marker) || !findCli(env)) return { output: null, job: null };
-  if (late) {
-    job.start = true;
-    // What its first prompt was for titles it, over what this one is for.
-    if (late.title) job.steps = [...job.steps.filter((step) => !step.title), { title: late.title }];
-  }
+  if (late) job.start = true;
   for (const step of job.steps) if (step.skill) step.key = `skill:${safeName(step.skill)}:${turn}`;
-  // The first prompt with an intent titles the session; later ones do not try.
-  if (job.steps.some((step) => step.title)) {
-    if (existsSync(files.titled)) job.steps = job.steps.filter((step) => !step.title);
-    else write(files.titled, "1");
-  }
   if (name === "SubagentStart") {
     // Paired with its Agent call in the background half (pairSubagent), which may wait for Claude Code's files.
     job.pair = true;
@@ -1253,8 +1155,6 @@ export function hook(event, env = process.env) {
   const context = [
     late?.output.hookSpecificOutput?.additionalContext,
     name === "UserPromptSubmit" ? updateContext(event, env) : null,
-    // Only while it is being recorded: not with the CLI signed out or too old.
-    name === "UserPromptSubmit" && !readJson(join(dataDir(env), "notice.json"), {}).problem ? retitleNudge(turn) : null,
   ]
     .filter(Boolean)
     .join("\n\n");

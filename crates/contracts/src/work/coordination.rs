@@ -206,7 +206,86 @@ pub struct Session {
     /// what it is for until it has a title.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub first_prompt: Option<String>,
+    /// Where its title came from; none for one with no title, or one from
+    /// before titles said.
+    #[serde(default)]
+    pub title_source: Option<TitleSource>,
+    /// RFC 3339: when its title was last settled (by g1t, its agent or a
+    /// person).
+    #[serde(default)]
+    pub title_settled_at: Option<String>,
 }
+
+/// Where a session's title came from. g1t settles a title from the
+/// session's whole record (coordination/titles.rs in services/work): a
+/// [`TitleSource::Prompt`] title is provisional until it does, a
+/// [`TitleSource::Person`] one is pinned and never replaced.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TitleSource {
+    /// What its first prompt was for: provisional.
+    Prompt,
+    /// Its harness or agent named it (`g1t session attach --title`). Kept,
+    /// unless the session went on to other work items or pull requests
+    /// after it was named, when it is settled again as it ends.
+    Agent,
+    /// A person named it from the site: pinned.
+    Person,
+    /// The title of the work item it works on.
+    Item,
+    /// The title of the pull request it opened or works on.
+    Pull,
+    /// g1t named the whole of its work: with the workspace's AI provider,
+    /// or from its most telling prompt.
+    Summary,
+}
+
+impl TitleSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TitleSource::Prompt => "prompt",
+            TitleSource::Agent => "agent",
+            TitleSource::Person => "person",
+            TitleSource::Item => "item",
+            TitleSource::Pull => "pull",
+            TitleSource::Summary => "summary",
+        }
+    }
+
+    pub fn parse(name: &str) -> Option<TitleSource> {
+        match name.trim() {
+            "prompt" => Some(TitleSource::Prompt),
+            "agent" => Some(TitleSource::Agent),
+            "person" => Some(TitleSource::Person),
+            "item" => Some(TitleSource::Item),
+            "pull" => Some(TitleSource::Pull),
+            "summary" => Some(TitleSource::Summary),
+            _ => None,
+        }
+    }
+
+    /// Whether g1t settled it from the session's record.
+    pub fn settled(self) -> bool {
+        matches!(self, TitleSource::Item | TitleSource::Pull | TitleSource::Summary)
+    }
+}
+
+/// `title_session`: a person names a session from the site, pinning its
+/// title: g1t never replaces it, nor does its agent. No `title` unpins
+/// it: g1t names it again from its record. Whoever runs the session may,
+/// and anyone with write access to the repository. Returns
+/// `Outcome<Session>`.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TitleSessionArgs {
+    pub actor: User,
+    pub repo: RepoPath,
+    pub id: String,
+    #[serde(default)]
+    pub title: Option<String>,
+}
+
+/// The most characters a session's title keeps.
+pub const MAX_SESSION_TITLE_CHARS: usize = 200;
 
 /// The most characters of an untitled session's first prompt a list gives.
 pub const MAX_FIRST_PROMPT_CHARS: usize = 300;

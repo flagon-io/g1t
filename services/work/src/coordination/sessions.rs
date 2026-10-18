@@ -31,7 +31,7 @@ use super::links::{PULL_SESSIONS, PullSessionRow, count_subagents, end_tree_sql,
 /// The most pull requests one `pull_sessions` asks about.
 const MAX_PULL_SESSIONS: usize = 100;
 use super::updates::push_delivery;
-use super::{SESSION_COLUMNS, SessionRow, after_minutes, shown, tidy, unwrap_or_fail};
+use super::{SESSION_COLUMNS, SessionRow, after_minutes, shown, tidy, titles, unwrap_or_fail};
 use crate::Work;
 use crate::items;
 use crate::rows::NumberRow;
@@ -40,7 +40,7 @@ use crate::rows::NumberRow;
 const ENTRY_PAGE: u32 = 500;
 /// The most sessions one list returns.
 const LIST_LIMIT: u32 = 100;
-const MAX_TITLE_CHARS: usize = 200;
+const MAX_TITLE_CHARS: usize = MAX_SESSION_TITLE_CHARS;
 const MAX_BRANCH_CHARS: usize = 255;
 const MAX_ID_CHARS: usize = 200;
 const MAX_COMMIT_CHARS: usize = 64;
@@ -125,8 +125,10 @@ pub(crate) fn insert_session_sql() -> String {
     format!(
         "INSERT INTO sessions
            (id, repo_id, item_id, pull, branch, actor_id, actor_name, harness, harness_session_id,
-            title, state, head_commit, started_at, last_seen_at, parent_id, agent_type, task, prompt, model)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'active', ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+            title, state, head_commit, started_at, last_seen_at, parent_id, agent_type, task, prompt, model,
+            title_source, title_settled_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'active', ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18,
+            CASE WHEN ?10 IS NULL THEN NULL ELSE 'agent' END, CASE WHEN ?10 IS NULL THEN NULL ELSE ?12 END)
          ON CONFLICT (repo_id, actor_id, harness, harness_session_id)
            WHERE harness_session_id IS NOT NULL DO NOTHING
          RETURNING {SESSION_COLUMNS}"
@@ -141,31 +143,36 @@ pub(crate) fn harness_session_sql() -> String {
     )
 }
 
-/// The fields `?1`–`?10` of [`Fields::binds`], each kept when not given.
+/// The fields `?1`–`?10` of [`Fields::binds`], each kept when not given;
+/// a title as [`titles::SET_TITLE`] takes it, from `?13` (`?11` now).
 const SET_FIELDS: &str = "item_id = COALESCE(?1, item_id), pull = COALESCE(?2, pull), branch = COALESCE(?3, branch),
-     head_commit = COALESCE(?4, head_commit), title = COALESCE(?5, title),
+     head_commit = COALESCE(?4, head_commit),
      agent_type = COALESCE(?6, agent_type), task = COALESCE(?7, task), prompt = COALESCE(?8, prompt),
      model = COALESCE(?9, model), result = COALESCE(?10, result)";
 
 /// A heartbeat: seen now (`?11`), active again, with whichever fields are
-/// given, of session `?12`.
+/// given, of session `?12`; a title given came from `?13`. One that ended
+/// is named again as it ends again.
 pub(crate) fn resume_sql() -> String {
     format!(
         "UPDATE sessions
-         SET {SET_FIELDS},
+         SET {SET_FIELDS}, {set_title},
+             title_final = CASE WHEN state = 'ended' THEN 0 ELSE title_final END,
              last_seen_at = ?11, state = 'active', ended_at = NULL, end_reason = NULL
          WHERE id = ?12
-         RETURNING {SESSION_COLUMNS}"
+         RETURNING {SESSION_COLUMNS}",
+        set_title = titles::SET_TITLE,
     )
 }
 
 /// The fields of session `?12`, changed without bringing it back: for a
-/// subagent's late hooks (`?11` unused, so the binds are the same).
+/// subagent's late hooks (the binds are the same).
 pub(crate) fn refresh_sql() -> String {
     format!(
-        "UPDATE sessions SET {SET_FIELDS}
+        "UPDATE sessions SET {SET_FIELDS}, {set_title}
          WHERE id = ?12 AND ?11 IS NOT NULL
-         RETURNING {SESSION_COLUMNS}"
+         RETURNING {SESSION_COLUMNS}",
+        set_title = titles::SET_TITLE,
     )
 }
 
@@ -330,6 +337,8 @@ impl Work {
             prompt: fields.prompt.clone(),
             result: None,
             model: fields.model.clone(),
+            title_source: fields.title.as_ref().map(|_| TitleSource::Agent.as_str().to_owned()),
+            title_settled_at: fields.title.as_ref().map(|_| at.clone()),
         }
         .at(now);
         let started = |session: &Session| g1t_contracts::events::marked(SessionEvent::of(session), Some(&a.actor));
@@ -412,9 +421,14 @@ impl Work {
         let parent_id = row.parent_id.clone();
         let id = row.id.clone();
         let at = rfc3339(now);
+        let current_source = row.title_source.as_deref().and_then(TitleSource::parse);
+        // A title given: its agent's, unless it is what g1t calls it already.
+        let given = fields.title.as_deref().map(|title| titles::given_source(title, row.title.as_deref(), current_source));
+        let pinned = current_source == Some(TitleSource::Person);
         let mut binds = fields.binds();
         binds.push(at.as_str().into());
         binds.push(id.as_str().into());
+        binds.push(given.map_or(JsValue::NULL, |source| source.as_str().into()));
         let sql = if finished { refresh_sql() } else { resume_sql() };
         let mut statements = vec![self.db.prepare(sql).bind(&binds)?];
         // Brought back from having ended: announced with the change.
@@ -425,7 +439,8 @@ impl Work {
                 pull: fields.pull.or(row.pull),
                 branch: fields.branch.clone().or(row.branch.clone()),
                 head_commit: fields.head_commit.clone().or(row.head_commit.clone()),
-                title: fields.title.clone().or(row.title.clone()),
+                title: if pinned { row.title.clone() } else { fields.title.clone().or(row.title.clone()) },
+                title_source: if pinned { row.title_source.clone() } else { given.map(|source| source.as_str().to_owned()).or(row.title_source.clone()) },
                 agent_type: fields.agent_type.clone().or(row.agent_type.clone()),
                 task: fields.task.clone().or(row.task.clone()),
                 prompt: fields.prompt.clone().or(row.prompt.clone()),
@@ -628,11 +643,13 @@ impl Work {
         let mut statements = vec![self
             .db
             .prepare(format!(
-                "UPDATE sessions SET state = 'ended', ended_at = ?, end_reason = ?, last_seen_at = ?, result = COALESCE(?, result)
-                 WHERE id = ? AND state = 'active'
-                 RETURNING {SESSION_COLUMNS}"
+                "UPDATE sessions SET state = 'ended', ended_at = ?1, end_reason = ?2, last_seen_at = ?1, result = COALESCE(?3, result),
+                   {final_due}
+                 WHERE id = ?4 AND state = 'active'
+                 RETURNING {SESSION_COLUMNS}",
+                final_due = titles::final_due("?1"),
             ))
-            .bind(&[at.as_str().into(), reason.as_str().into(), at.as_str().into(), text_or_null(&result), row.id.as_str().into()])?];
+            .bind(&[at.as_str().into(), reason.as_str().into(), text_or_null(&result), row.id.as_str().into()])?];
         let expected = end_one(row.clone(), &reason, result.clone());
         let sent = push_delivery(
             &mut statements,
@@ -693,6 +710,41 @@ impl Work {
                 None => self.publish("session.ended", &repo.id, &a.actor, SessionEvent::of(&orphan)).await?,
             }
         }
+        Ok(Outcome::Ok(session))
+    }
+
+    /// A person names a session from the site (`TitleSessionArgs`): pinned,
+    /// or with no title, unpinned for g1t to name again.
+    pub(crate) async fn title_session(&self, a: TitleSessionArgs) -> Result<Outcome<Session>> {
+        let repo = unwrap_or_fail!(self.participating_repo(&a.repo, &a.actor).await?);
+        let Some(row) = self.session_row(&repo.id, a.id.trim()).await? else {
+            return Ok(not_found());
+        };
+        let can_push = matches!(crate::allowed(Some(&a.actor), &repo, g1t_contracts::access::Capability::Push), Outcome::Ok(()));
+        if !may_end_session(&row.actor_id, &a.actor.id, can_push) {
+            return Ok(Outcome::fail(FailureCode::Forbidden, "Only whoever runs this session, or someone with write access to the repository, can name it."));
+        }
+        let at = rfc3339(now_ms());
+        let title = tidy(a.title.as_deref().map(shown::clean).as_deref(), MAX_TITLE_CHARS);
+        let statement = match &title {
+            Some(title) => self.db.prepare(titles::PIN_TITLE).bind(&[title.as_str().into(), at.as_str().into(), row.id.as_str().into()])?,
+            None => self.db.prepare(titles::UNPIN_TITLE).bind(&[at.as_str().into(), row.id.as_str().into()])?,
+        };
+        statement.run().await?;
+        let Some(row) = self.session_row(&repo.id, &row.id).await? else {
+            return Ok(not_found());
+        };
+        let session = row.at(now_ms());
+        self.publish_as(
+            "session.progressed",
+            &repo.id,
+            Some(a.actor.id.clone()),
+            SessionProgressed { repo_id: repo.id.clone(), number: session.pull.or(session.item), session_id: session.id.clone(), root_id: None },
+        )
+        .await?;
+        let mut sessions = [session];
+        shown::sessions(&mut sessions, &Some(a.actor.clone()), &repo.namespace);
+        let [session] = sessions;
         Ok(Outcome::Ok(session))
     }
 
@@ -932,6 +984,9 @@ impl Work {
         let total = a.entries.len() as u32;
         let mut statements = Vec::with_capacity(a.entries.len());
         let mut prompts = String::new();
+        // Each prompt's place among the statements, and what the first one with one is for.
+        let mut prompt_at: Vec<usize> = Vec::new();
+        let mut intent: Option<String> = None;
         for keyed in a.entries {
             let entry = keyed.entry;
             let kind = serde_json::to_value(entry.kind)?;
@@ -942,9 +997,15 @@ impl Work {
                 // A skill is its name, nothing more.
                 text = text.trim().chars().take(MAX_AGENT_CHARS).collect();
             }
-            if entry.kind == SessionEntryKind::Prompt && prompts.len() < MAX_REF_TEXT {
-                prompts.push_str(&text);
-                prompts.push('\n');
+            if entry.kind == SessionEntryKind::Prompt {
+                if prompts.len() < MAX_REF_TEXT {
+                    prompts.push_str(&text);
+                    prompts.push('\n');
+                }
+                prompt_at.push(statements.len());
+                if intent.is_none() {
+                    intent = titles::intent_title(&text);
+                }
             }
             let key = tidy(keyed.key.as_deref(), MAX_KEY_CHARS);
             // Each takes the next number of the session, and of its pull
@@ -966,8 +1027,28 @@ impl Work {
             );
         }
         let mut recorded = 0;
-        for result in self.db.batch(statements).await? {
-            recorded += result.results::<NumberRow>()?.len() as u32;
+        let mut prompted = 0;
+        for (index, result) in self.db.batch(statements).await?.into_iter().enumerate() {
+            let new = result.results::<NumberRow>()?.len() as u32;
+            recorded += new;
+            if prompt_at.contains(&index) {
+                prompted += new;
+            }
+        }
+        if prompted > 0 {
+            // The first prompt names the session for now; enough of them settle its title (titles.rs).
+            let now = now_ms();
+            self.db
+                .prepare(titles::prompted_sql())
+                .bind(&[
+                    session.id.as_str().into(),
+                    prompted.into(),
+                    text_or_null(&intent),
+                    rfc3339(now).into(),
+                    after_minutes(now, titles::SETTLE_AFTER_MINUTES).into(),
+                ])?
+                .run()
+                .await?;
         }
         if !prompts.is_empty() && recorded > 0 {
             self.link_refs(&session.id, &repo.id, &prompts).await?;

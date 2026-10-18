@@ -283,6 +283,9 @@ struct Work {
     events: Fetcher,
     /// GitHub Actions: runs a merge queue's `merge_group` workflows.
     actions: Fetcher,
+    /// Integrations: the workspace's AI provider names sessions
+    /// (coordination/titles.rs). None where it is not bound.
+    integrations: Option<Fetcher>,
     /// Where this request's time went, for its `Server-Timing`.
     timing: g1t_kit::d1::Timing,
     /// A pull request's rows read in one batch for this request
@@ -2559,6 +2562,7 @@ fn service(env: &Env) -> Result<Work> {
         repos: env.service("REPOS")?,
         events: env.service("EVENTS")?,
         actions: env.service("ACTIONS")?,
+        integrations: env.service("INTEGRATIONS").ok(),
         timing: g1t_kit::d1::Timing::default(),
         prefetched: std::cell::RefCell::new(None),
         known_repos: std::cell::RefCell::new(std::collections::HashMap::new()),
@@ -2670,6 +2674,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "start_session" => reply(&work.start_session(args(body)?).await?),
         "update_session" => reply(&work.update_session(args(body)?).await?),
         "end_session" => reply(&work.end_session(args(body)?).await?),
+        "title_session" => reply(&work.title_session(args(body)?).await?),
         "get_work_session" => reply(&work.get_work_session(args(body)?).await?),
         "list_work_sessions" => reply(&work.list_work_sessions(args(body)?).await?),
         "pull_sessions" => reply(&work.pull_sessions(args(body)?).await?),
@@ -2711,7 +2716,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
 }
 
 /// The cron trigger: moves on the job that moves issues into work items
-/// (items/migration.rs), until it is done.
+/// (items/migration.rs), until it is done, and settles the sessions'
+/// titles that are due (coordination/titles.rs).
 #[event(scheduled)]
 async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     let moved = async {
@@ -2720,6 +2726,13 @@ async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     };
     if let Err(error) = moved.await {
         worker::console_error!("moving issues into work items: {error}");
+    }
+    let settled = async {
+        let work = service(&env)?;
+        work.settle_titles().await
+    };
+    if let Err(error) = settled.await {
+        worker::console_error!("settling session titles: {error}");
     }
 }
 

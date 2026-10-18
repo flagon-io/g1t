@@ -1,4 +1,4 @@
-import { ArrowLeft, Bot, ChevronRight, ExternalLink, GitBranch, GitCommitHorizontal, Sparkles, Square } from "lucide-react";
+import { ArrowLeft, Bot, ChevronRight, ExternalLink, GitBranch, GitCommitHorizontal, Pencil, Sparkles, Square } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Form, Link, redirect } from "react-router";
 
@@ -8,7 +8,7 @@ import type { Route } from "./+types/session";
 import { page } from "../../lib/meta";
 import { Actor, CoordinationFeed, EndSessionDialog, HarnessBadge, SessionStateBadge } from "../../components/coordination";
 import { SessionEntries } from "../../components/session-entries";
-import { EmptyState, SubmitButton, TimeAgo } from "../../components/ui";
+import { EmptyState, Input, SubmitButton, TimeAgo } from "../../components/ui";
 import { Alert } from "../../components/ui/alert";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -29,6 +29,8 @@ import {
   pendingLines,
   sessionTitle,
   sessionTree,
+  titleHint,
+  titleIsProvisional,
   touchedByKind,
   viaLabel,
 } from "../../lib/coordination";
@@ -115,10 +117,75 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     if (!ended) return { error: "The session could not be ended. Try again in a moment." };
     return ended.ok ? { ended: true } : { error: ended.error.message };
   }
-  if (form.get("action") !== "stop") return { error: "There is nothing to do here but stop or end the session." };
+  // Naming it pins its title; an empty one lets g1t name it again. The work service checks who may.
+  if (form.get("action") === "title") {
+    const title = String(form.get("title") ?? "").trim();
+    if (title.length > 200) return { error: "A title is at most 200 characters." };
+    const titled = await work.titleWorkSession(user, path, params.id, title || null).catch(() => null);
+    if (!titled) return { error: "The title could not be saved. Try again in a moment." };
+    return titled.ok ? { titled: true } : { error: titled.error.message };
+  }
+  if (form.get("action") !== "stop") return { error: "There is nothing to do here but stop, end or name the session." };
   const result = await agentSessions.stop(user, path, params.id).catch(() => null);
   if (!result) return { error: "The session could not be stopped. Try again in a moment." };
   return result.ok ? null : { error: result.error.message };
+}
+
+/**
+ * The session's name, muted while it is provisional, and for whoever may,
+ * a way to name it (pinning it: g1t keeps a person's title) or to let g1t
+ * name it again.
+ */
+function SessionHeading({ session, name, canTitle }: { session: WorkSession; name: string; canTitle: boolean }) {
+  const [editing, setEditing] = useState(false);
+  const provisional = titleIsProvisional(session);
+  if (editing) {
+    return (
+      <div className="flex min-w-0 grow flex-wrap items-center gap-2">
+        <Form method="post" className="flex min-w-0 grow items-center gap-2" onSubmit={() => setEditing(false)}>
+          <input type="hidden" name="action" value="title" />
+          <Input
+            name="title"
+            defaultValue={provisional ? "" : (session.title ?? "")}
+            placeholder={name}
+            maxLength={200}
+            required
+            autoFocus
+            aria-label="Session title"
+          />
+          <SubmitButton size="xs" match={{ action: "title" }} pending="Saving…">
+            Save
+          </SubmitButton>
+          <Button type="button" variant="ghost" size="xs" onClick={() => setEditing(false)}>
+            Cancel
+          </Button>
+        </Form>
+        {session.titleSource === "person" && (
+          <Form method="post" onSubmit={() => setEditing(false)}>
+            <input type="hidden" name="action" value="title" />
+            <input type="hidden" name="title" value="" />
+            <Button type="submit" variant="ghost" size="xs">
+              Let g1t name it
+            </Button>
+          </Form>
+        )}
+      </div>
+    );
+  }
+  const hint = titleHint(session);
+  const text = <span className="min-w-0">{name}</span>;
+  return (
+    <h2 className={`flex min-w-0 grow items-center gap-1.5 text-lg font-semibold tracking-tight wrap-break-word ${provisional ? "text-muted" : ""}`}>
+      {hint ? <Hint label={hint}>{text}</Hint> : text}
+      {canTitle && (
+        <Hint label="Rename">
+          <Button type="button" variant="ghost" size="icon-xs" aria-label="Rename this session" onClick={() => setEditing(true)}>
+            <Pencil size={13} />
+          </Button>
+        </Hint>
+      )}
+    </h2>
+  );
 }
 
 /** A part of the page under a heading. */
@@ -346,7 +413,7 @@ export default function WorkSessionPage({ loaderData, actionData, params }: Rout
 
       <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
         <Actor username={session.actor.username} harness={session.harness} size={24} />
-        <h2 className="min-w-0 grow text-lg font-semibold tracking-tight wrap-break-word">{sessionName(session, firstPrompt)}</h2>
+        <SessionHeading session={session} name={sessionName(session, firstPrompt)} canTitle={canEnd && !isSubagent} />
         {isSubagent && session.agentType && (
           <Badge tone="accent">
             <Bot size={11} />

@@ -17,6 +17,7 @@ mod links;
 mod overlaps;
 mod sessions;
 pub(crate) mod shown;
+pub(crate) mod titles;
 #[cfg(test)]
 mod tests;
 
@@ -50,7 +51,7 @@ const SESSION_COLUMNS: &str = concat!(
     " AS item,
   pull, branch, actor_id, actor_name, harness, harness_session_id,
   title, state, head_commit, started_at, last_seen_at, ended_at, end_reason,
-  parent_id, agent_type, task, prompt, result, model"
+  parent_id, agent_type, task, prompt, result, model, title_source, title_settled_at"
 );
 
 /// A claim's columns, with its work item's workspace and number.
@@ -99,6 +100,10 @@ pub(crate) struct SessionRow {
     result: Option<String>,
     #[serde(default)]
     model: Option<String>,
+    #[serde(default)]
+    title_source: Option<String>,
+    #[serde(default)]
+    title_settled_at: Option<String>,
 }
 
 impl SessionRow {
@@ -129,6 +134,8 @@ impl SessionRow {
             model: self.model,
             subagents: 0,
             first_prompt: None,
+            title_source: self.title_source.as_deref().and_then(TitleSource::parse),
+            title_settled_at: self.title_settled_at,
         }
     }
 }
@@ -189,12 +196,14 @@ pub(crate) fn tidy(text: Option<&str>, limit: usize) -> Option<String> {
 const SWEEP_LIMIT: u32 = 50;
 
 /// Ends a repository's (`?1`) session `?3` if last seen at or before `?2`,
-/// as `timed_out`, as of when it was last seen.
+/// as `timed_out`, as of when it was last seen; its title is settled a
+/// last time (titles.rs).
 pub(crate) fn time_out_sessions_sql() -> String {
     format!(
-        "UPDATE sessions SET state = 'ended', ended_at = last_seen_at, end_reason = 'timed_out'
+        "UPDATE sessions SET state = 'ended', ended_at = last_seen_at, end_reason = 'timed_out', {final_due}
          WHERE repo_id = ?1 AND state = 'active' AND last_seen_at <= ?2 AND id = ?3
-         RETURNING {SESSION_COLUMNS}"
+         RETURNING {SESSION_COLUMNS}",
+        final_due = titles::final_due("last_seen_at")
     )
 }
 

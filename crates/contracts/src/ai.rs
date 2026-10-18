@@ -283,6 +283,27 @@ pub struct AskSetup {
     pub problem: Option<String>,
 }
 
+/// `ai_brief`: a short answer from the AI provider a workspace chose for
+/// Ask, on its fast model, for g1t's own use (a session's title). Only
+/// services ask it, over their bindings. Returns `Outcome<Option<String>>`:
+/// none when the workspace has no provider chosen, a failure when the
+/// provider was asked and could not answer.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AiBriefArgs {
+    pub workspace: String,
+    pub system: String,
+    /// What to answer about, already bounded by the caller (at most
+    /// [`MAX_BRIEF_INPUT_CHARS`] are sent).
+    pub input: String,
+    /// At most [`MAX_BRIEF_TOKENS`].
+    pub max_tokens: u32,
+}
+
+/// The most of an [`AiBriefArgs`] input sent to the provider.
+pub const MAX_BRIEF_INPUT_CHARS: usize = 6_000;
+/// The longest answer an [`AiBriefArgs`] may ask for.
+pub const MAX_BRIEF_TOKENS: u32 = 200;
+
 /// `ask_settings`: what Ask answers with. Returns `Outcome<AskSetup>`.
 /// Members only.
 #[derive(Debug, Serialize, Deserialize)]

@@ -7,8 +7,8 @@ g1t's plugin for Claude Code connects the sessions you run on your own
 machine to the work on g1t. With it installed, working in a g1t repository:
 
 - each Claude Code session is recorded on g1t as a
-  [session](/guides/why-blame/#sessions), titled with what you asked for
-  and attached to its work item and pull request, so the people and agents
+  [session](/guides/why-blame/#sessions), named by g1t from the work it
+  does and attached to its work item and pull request, so the people and agents
   also working there can see it, work item or not;
 - Claude starts each session knowing the work item it is on: its definition
   of done, the repositories it is meant to land in, who has claimed it, its
@@ -63,7 +63,7 @@ The plugin works in any working copy whose git remote is on g1t.sh, or on
 the host in `G1T_HOST` for a self-hosted g1t. Everywhere else its hooks do
 nothing. A session that starts in a folder with no g1t remote is recorded
 once it has one: from the next prompt, or the `git remote`, `git push` or
-`g1t repo create` command that added it, titled by its first prompt.
+`g1t repo create` command that added it.
 
 ### Update
 
@@ -99,7 +99,6 @@ session runs ([Who sees what](/guides/sessions/#who-sees-what)).
 | --- | --- | --- |
 | A session starts or resumes | `g1t session start --harness claude_code --harness-session-id ID` | A session for this Claude Code session. Starting the same session again, as a resume does, finds it rather than making another. |
 | You send a prompt | `g1t session log --kind prompt TEXT` | Your prompt's first 2,000 characters. |
-| You send a prompt that says what it is for, while the session has no title | `g1t session heartbeat --json`, then, if the session has no title, `g1t session attach --title INTENT` | Its title: what the prompt is for, as its first line or sentence without pasted text, image placeholders (`[Image #1]`), code blocks or markdown, up to 80 characters, cut on a word with `…`. A slash command, or a prompt that is only pasted text or images, gives no title, and the next prompt titles the session. A title the session already has (one Claude, you or an earlier prompt set) is never replaced. Not sent with prompts kept back. |
 | Claude uses a tool | `g1t session log --kind tool_call TEXT` | The tool's name and one line on what it was called with: the command, file, pattern or address, up to 200 characters, with anything that looks like a token or password replaced by `…`. |
 | Claude uses a skill, or you run one (`/g1t:work-on-item 42`) | `g1t session log --kind skill NAME` | The skill's name, nothing more, once in a turn. A plugin's skill or command you type as `/plugin:name` is recorded even with prompts kept back. |
 | Claude writes a file, makes a branch or a commit, or claims a work item | `g1t session touch --file PATH` (or `--branch`, `--commit`, `--item`) | What it touched: the path from the repository's root, the branch, the commit, the work item. A file is one Claude edited or wrote, or one a shell command changed while it ran (the uncommitted files before and after it), never what was uncommitted already, so sessions sharing a working copy do not claim each other's work. g1t ties the session to the pull requests and work items these lead to, and tells two sessions that touch the same file. |
@@ -150,8 +149,8 @@ recorded on it and the last integration failure. If the answer takes longer
 than a second, Claude is told to load it itself.
 
 With no work item in sight, Claude is told that the session is already
-recorded on g1t and shows to the team with what it is for, so it can just
-work; see [Work with no work item yet](#work-with-no-work-item-yet).
+recorded on g1t and shows to the team, so it can just work, and that g1t
+names the session itself: it sets a title only if it can name the whole job; see [Work with no work item yet](#work-with-no-work-item-yet).
 
 Claude is also told to put the trailer `G1t-Session: $G1T_SESSION` on the
 commits it makes, so g1t ties them, and the pull request they land in, to
@@ -169,22 +168,24 @@ Anthropic [AI provider](/guides/ai/), or `g1t work dispatch N --handoff`) runs a
 Most sessions start from a question or a request, not a work item, and
 most never need one. The session is the record of that work:
 
-1. **It is titled with what it is for.** At the session's first prompt
-   that says what it is for, the plugin gives the session a title from
-   it, unless it has one. The title is what you typed: text you pasted
-   and image placeholders are left out, so a prompt that starts with a
-   paste is titled by the words around it. Slash commands (`/clear`,
-   `/g1t:status`) and a prompt that is only a paste give no title; the
-   next prompt titles the session. A session whose title is only a tag,
-   such as `<pasted_content id="5c50">` from a plugin older than 0.2.4,
-   shows on the site by its first prompt's intent instead, else
-   **Session on** its branch. To name
-   it yourself, or have Claude name it, run
-   `g1t session attach --title "Fix the preview builds"`; that replaces
-   the title the prompt gave. Claude keeps it true as the work turns
-   out to be something else: the plugin tells it at the start that it
-   can retitle the session, and reminds it at the second prompt and every
-   fifth after (not while the CLI is signed out or too old).
+1. **g1t names it from the work it does.** Until there is enough to go
+   on, the session is called what its first prompt asked for (its first
+   line or sentence, without pasted text, image placeholders, code or
+   markdown), shown muted as provisional. g1t then settles a title from
+   the session's whole record: once it claims or attaches a work item or
+   opens a pull request, after a few prompts, or after half an hour. With
+   an [AI provider](/guides/ai/) chosen for Ask, the provider names it in
+   a few words, in the work item's terms; without one, it is the work
+   item's title, else the pull request's, else what its most telling
+   prompt asks for, without greetings and preambles. It is named again
+   only when what the session works on changes, at most every 20 minutes,
+   and a last time when it ends. Claude is told this once at the start,
+   and to name the session itself with
+   `g1t session attach --title "Fix the preview builds"` only if it can
+   name the whole job: g1t keeps that title, unless the session goes on to
+   other work items or pull requests, when it is named again as it ends.
+   Rename a session on its page to pin your own title: g1t and Claude never
+   replace it. See [Session titles](/guides/sessions/#session-titles).
 2. **It shows to the team.** The project's overview and its **Sessions** page
    list it in **Live now** under its pull request, else its branch, else
    under **No branch yet**, with who it is for, Claude Code, its state,
@@ -330,7 +331,7 @@ This repository is on g1t. Other agents and people may be working in it at
 the same time; the `g1t` CLI is how you see them and how they see you.
 
 - When you start, record a session and keep its returned ID:
-  `g1t session start --harness codex --title "Fix the preview builds" --no-remember`
+  `g1t session start --harness codex --no-remember`
   (or `cursor`, `copilot`, `other`: the harness you are). Set `G1T_SESSION`
   for every command in this run: `G1T_SESSION=ses_ID g1t ...` in Bash,
   or `$env:G1T_SESSION='ses_ID'; g1t ...` in PowerShell. Shell state may
@@ -340,6 +341,11 @@ the same time; the `g1t` CLI is how you see them and how they see you.
   few minutes and `g1t session end` when you stop. Only create subagents
   when the user's task permits delegation; give each its own session with
   `--parent PARENT_ID --no-remember` and its own G1T_SESSION.
+- Log what you are asked as the session's prompt:
+  `g1t session log --kind prompt "TEXT"` (it shows only to whoever typed
+  it). g1t names the session from it for now, and settles a title from all
+  the session does: its work items, pull requests and prompts. Set one
+  with `g1t session attach --title "…"` only if you can name the whole job.
 - With no work item, just work: the session shows to the team. When the
   work becomes a change others should know about (a branch to push, a pull
   request), look for its work item (`g1t work list`) and claim it; if
