@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { WorkSession, WorkspaceSession } from "@g1t/contracts";
 
-import { narrowed, peopleIn, repoName, runsIn, sessionHref, sessionsFilters, sessionsQuery, splitLive, workspaceSessionTitle } from "./sessions.ts";
+import { narrowed, peopleIn, repoName, runsIn, sessionCost, sessionHref, sessionsFilters, sessionsQuery, splitLive, workspaceSessionTitle } from "./sessions.ts";
 
 function listed(id: string, more: Partial<WorkspaceSession> = {}): WorkspaceSession {
   return {
@@ -85,4 +85,15 @@ test("live sessions come apart from those that ended, most recently heard from f
   assert.deepEqual(peopleIn(sessions), ["ana", "bo"]);
   assert.equal(repoName("acme/web", "Acme"), "web");
   assert.equal(repoName("other/web", "acme"), "other/web");
+});
+
+test("a session's cost reads as an estimate at list price, and says when some usage is priced as unknown", () => {
+  assert.equal(sessionCost({ costUsd: 4.1234 }), "≈ $4.12 at list price");
+  assert.equal(sessionCost({ costUsd: 1234.5, costPartial: true }), "≈ $1,234.50 at list price, some usage priced as unknown");
+  assert.equal(sessionCost({ costUsd: 0.004 }), "≈ under $0.01 at list price");
+  assert.equal(sessionCost({ costUsd: 0 }), "≈ $0.00 at list price");
+  assert.equal(sessionCost({ costUsd: null, costPartial: true }), "Usage priced as unknown");
+  assert.equal(sessionCost({ costUsd: null }), null);
+  assert.equal(sessionCost({}), null);
+  assert.equal(sessionCost(null), null);
 });

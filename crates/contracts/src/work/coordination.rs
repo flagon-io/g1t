@@ -214,6 +214,15 @@ pub struct Session {
     /// person).
     #[serde(default)]
     pub title_settled_at: Option<String>,
+    /// What it cost, estimated at Anthropic's list price from the token
+    /// usage its harness reported ([`crate::model_prices`]), in US dollars;
+    /// none until it reports usage for a model with a known price.
+    #[serde(default)]
+    pub cost_usd: Option<f64>,
+    /// Whether some of its usage was for models priced as unknown, which
+    /// [`Session::cost_usd`] leaves out.
+    #[serde(default)]
+    pub cost_partial: bool,
 }
 
 /// Where a session's title came from. g1t settles a title from the
@@ -808,6 +817,10 @@ pub struct UpdateSessionArgs {
     pub model: Option<String>,
     #[serde(default)]
     pub result: Option<String>,
+    /// The session's token usage so far, per model, as its harness counts
+    /// it: cumulative, so it replaces what was reported before.
+    #[serde(default)]
+    pub usage: Option<Vec<crate::model_prices::ModelUsage>>,
 }
 
 /// `end_session`. Returns `Outcome<Session>`; ending one already ended

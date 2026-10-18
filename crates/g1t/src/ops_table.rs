@@ -6138,6 +6138,7 @@ pub static OPERATIONS: &[Operation] = &[
             Field { name: "result", kind: "string", required: false, values: &[] },
             Field { name: "task", kind: "string", required: false, values: &[] },
             Field { name: "title", kind: "string", required: false, values: &[] },
+            Field { name: "usage", kind: "array", required: false, values: &[] },
         ],
     },
     Operation {

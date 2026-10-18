@@ -66844,7 +66844,7 @@
           "Sessions"
         ],
         "summary": "Update a session",
-        "description": "Update one of your sessions: attach it to a work item or pull request, or change its branch, head commit or title. Only the fields given change. An empty body is a heartbeat: every call keeps the session active and renews the claims made from it. A session reads as idle after 15 minutes without one and ends (`end_reason` timed_out) after 30 minutes; a heartbeat brings a timed-out one back. Attaching a pull request moves the entries recorded so far into that pull request's session. A subagent's `task`, `prompt`, `model` and `result` (what it reported, up to 8,000 characters) can be set too; a subagent that ended takes them and stays ended. Returns the session; one ended with end_session is refused with `409`.\n\nSend `{}` as a heartbeat. Each call renews the session's claims and brings back one that timed out. Refused with `404` for a session that is not yours, and `409` for one you ended.",
+        "description": "Update one of your sessions: attach it to a work item or pull request, or change its branch, head commit or title. Only the fields given change. An empty body is a heartbeat: every call keeps the session active and renews the claims made from it. A session reads as idle after 15 minutes without one and ends (`end_reason` timed_out) after 30 minutes; a heartbeat brings a timed-out one back. Attaching a pull request moves the entries recorded so far into that pull request's session. A subagent's `task`, `prompt`, `model` and `result` (what it reported, up to 8,000 characters) can be set too; a subagent that ended takes them and stays ended. `usage` reports the session's token usage so far, per model, replacing what was reported before: g1t estimates `cost_usd` from it at Anthropic's list price (none when no model in it has a known price), with `cost_partial` true when some of it was for a model it has no price for. Returns the session; one ended with end_session is refused with `409`.\n\nSend `{}` as a heartbeat. Each call renews the session's claims and brings back one that timed out. `usage` is the session's whole usage so far, so each report replaces the last; `cost_usd` is estimated from it at Anthropic's list price. See [Sessions](/guides/sessions/#what-a-session-cost). Refused with `404` for a session that is not yours, and `409` for one you ended.",
         "x-operation": "update_session",
         "x-mcp-tool": "session",
         "x-mcp-action": "update",
@@ -66915,7 +66915,9 @@
                   "started_at": "2026-10-12T14:02:11.204Z",
                   "last_seen_at": "2026-10-12T14:31:40.518Z",
                   "ended_at": null,
-                  "end_reason": null
+                  "end_reason": null,
+                  "cost_usd": 2.92602,
+                  "cost_partial": false
                 }
               }
             },
@@ -67053,6 +67055,39 @@
                     "type": "string",
                     "description": "What it reported when it finished: a subagent's final message. Kept up to 8,000 characters. Never a tool's output."
                   },
+                  "usage": {
+                    "type": "array",
+                    "description": "The session's token usage so far, one entry per model: `model`, `tier` (`long` for a claude-haiku-5-5 prompt over 100,000 tokens), `input_tokens`, `output_tokens`, `cache_write_5m_tokens`, `cache_write_1h_tokens` and `cache_read_tokens`, each a whole number. Cumulative: it replaces the usage given before. Up to 50 models. g1t estimates the session's `cost_usd` from it at Anthropic's list price.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "model": {
+                          "type": "string"
+                        },
+                        "tier": {
+                          "type": "string"
+                        },
+                        "input_tokens": {
+                          "type": "integer"
+                        },
+                        "output_tokens": {
+                          "type": "integer"
+                        },
+                        "cache_write_5m_tokens": {
+                          "type": "integer"
+                        },
+                        "cache_write_1h_tokens": {
+                          "type": "integer"
+                        },
+                        "cache_read_tokens": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "model"
+                      ]
+                    }
+                  },
                   "agent_type": {
                     "type": "string",
                     "description": "For a subagent: its kind, as the harness names it (Explore, security-reviewer)."
@@ -67073,7 +67108,17 @@
               },
               "example": {
                 "pull": 14,
-                "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13"
+                "head_commit": "9f2c4e1a7b3d5f60812a4c6e8b0d2f4a6c8e0b13",
+                "usage": [
+                  {
+                    "model": "claude-opus-5-5",
+                    "input_tokens": 1840,
+                    "output_tokens": 52310,
+                    "cache_write_5m_tokens": 210400,
+                    "cache_write_1h_tokens": 0,
+                    "cache_read_tokens": 4102300
+                  }
+                ]
               }
             }
           }

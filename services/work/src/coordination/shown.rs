@@ -76,6 +76,8 @@ pub(crate) fn session(session: &mut Session, sight: Sight) {
             session.head_commit = None;
             session.harness_session_id = None;
             session.agent_type = None;
+            session.cost_usd = None;
+            session.cost_partial = false;
             session.end_reason = session.end_reason.take().filter(|reason| reason == "timed_out");
         }
     }
@@ -108,7 +110,10 @@ fn clean_value(value: &mut serde_json::Value) {
 }
 
 /// What an update may say of another session that only members see.
-const MEMBERS_ONLY: &[&str] = &["title", "first_prompt", "prompt", "task", "result", "branch", "head_commit", "harness_session_id", "model", "agent_type", "end_reason"];
+const MEMBERS_ONLY: &[&str] = &[
+    "title", "first_prompt", "prompt", "task", "result", "branch", "head_commit", "harness_session_id", "model", "agent_type", "end_reason",
+    "cost_usd", "costUsd",
+];
 
 /// An update's data without what only members see: what other sessions
 /// are titled, were asked, reported and run on.
@@ -213,6 +218,8 @@ pub(crate) mod tests {
             first_prompt: Some("ugh fix it".into()),
             title_source: None,
             title_settled_at: None,
+            cost_usd: Some(4.12),
+            cost_partial: true,
         }
     }
 
@@ -237,6 +244,7 @@ pub(crate) mod tests {
         assert_eq!(one.result, None);
         assert_eq!(one.branch, None);
         assert_eq!(one.model, None);
+        assert_eq!((one.cost_usd, one.cost_partial), (None, false));
         assert_eq!(one.item, Some(4));
         assert_eq!(one.actor.username, "a");
         for kind in [SessionEntryKind::Prompt, SessionEntryKind::ToolCall, SessionEntryKind::Note, SessionEntryKind::Message] {
@@ -251,6 +259,7 @@ pub(crate) mod tests {
         assert_eq!(one.title.as_deref(), Some("Fix this login with G1T_TOKEN=[redacted]"));
         assert_eq!(one.first_prompt, None);
         assert_eq!(one.result.as_deref(), Some("done; token ghp_[redacted]"));
+        assert_eq!((one.cost_usd, one.cost_partial), (Some(4.12), true));
         let prompt = entry(an_entry(SessionEntryKind::Prompt, "wtf, fix it"), Sight::Member).unwrap();
         assert!(prompt.withheld && prompt.text.is_empty());
         let output = entry(an_entry(SessionEntryKind::ToolResult, "AWS_SECRET=x"), Sight::Member).unwrap();

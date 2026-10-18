@@ -1,6 +1,6 @@
 ---
 title: Recording sessions
-description: How a harness records its sessions on g1t, with the API, MCP or the CLI. Start, heartbeat, record and end a session, record subagents, work before there is a work item, and have g1t start sessions on your Anthropic account.
+description: How a harness records its sessions on g1t, with the API, MCP or the CLI. Start, heartbeat, record and end a session, record subagents, report what a session cost, work before there is a work item, and have g1t start sessions on your Anthropic account.
 ---
 
 A [session](/work/sessions/) is one run of your harness on a repository:
@@ -124,6 +124,61 @@ sibling's claim is listed in `others`), and when two of them touch the
 same file, each is told with `overlap.detected`. The
 [Claude Code plugin](/guides/claude-code-plugin/#subagents) does all of
 this for Claude Code's subagents.
+
+## What a session cost
+
+A harness can say how many tokens a session used, and g1t estimates what
+that cost at Anthropic's list price. The session's page and the
+workspace's **Sessions** list show it as "≈ $4.12 at list price". It is
+an estimate, not a bill: it is what the tokens cost at Anthropic's
+published per-token prices, whatever your plan or discounts.
+
+1. **Report** the session's usage so far with `session` `update`,
+   `g1t session heartbeat --usage-json '…'`, or
+   [`PATCH /repos/{owner}/{name}/sessions/{id}`](/reference/api/sessions/update-session/)
+   with `usage`: one entry per model, with its `input_tokens`,
+   `output_tokens`, `cache_write_5m_tokens`, `cache_write_1h_tokens` and
+   `cache_read_tokens`. Usage is cumulative: each report replaces the
+   last, so send the whole session's each time.
+
+   ```json
+   {
+     "usage": [
+       {
+         "model": "claude-opus-5-5",
+         "input_tokens": 1840,
+         "output_tokens": 52310,
+         "cache_write_5m_tokens": 210400,
+         "cache_write_1h_tokens": 0,
+         "cache_read_tokens": 4102300
+       }
+     ]
+   }
+   ```
+
+2. **g1t prices it** as it records it: each model's tokens at its list
+   price, cache writes at 1.25 times the input price for 5 minutes and
+   twice it for 1 hour. A model id is matched without its date
+   (`-20251001`), a `[1m]` suffix or a provider prefix
+   (`us.anthropic.`). For claude-haiku-5-5, a prompt over 100,000 tokens
+   is priced at its long-prompt rate: give those tokens in an entry of
+   their own with `tier` `long`.
+3. **The session shows `cost_usd`**, the sum over the models g1t has a
+   price for. A model it has no price for, another provider's included,
+   is left out, and `cost_partial` says some usage was priced as unknown
+   ("some usage priced as unknown" on the page). With no model priced,
+   `cost_usd` is null.
+
+A subagent reports its own usage, to its own session: its parent's
+transcript leaves out what the subagent used, so nothing is counted twice.
+Only the workspace's members see what a session cost, as with the rest of
+what is inside it ([who sees what](/work/sessions/#who-sees-what)). Up to
+50 models a session, each count a whole number of tokens.
+
+The [Claude Code plugin](/guides/claude-code-plugin/#what-a-session-cost)
+counts it from the session's transcript and sends only the counts. The
+Codex plugin does not report usage yet: it records sessions through g1t's
+MCP tools, with no hooks to read Codex's session files from.
 
 ## Start a session on your Anthropic account
 

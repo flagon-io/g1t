@@ -13,8 +13,19 @@ import { fileURLToPath } from "node:url";
 
 export const CONTRACT = JSON.parse(readFileSync(new URL("./cli-contract.json", import.meta.url), "utf8"));
 
-/** Why the real CLI would refuse `args`, or null when it takes them. */
-export function refusal(args, contract = CONTRACT) {
+/** Whether version a (1.2.3) is older than b. */
+const olderThan = (a, b) => {
+  const [pa, pb] = [a, b].map((v) => String(v).split(".").map(Number));
+  for (let i = 0; i < 3; i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) < (pb[i] || 0);
+  return false;
+};
+
+/**
+ * Why the real CLI would refuse `args`, or null when it takes them. A CLI
+ * of `version` refuses a flag its command's `since` says is newer; with no
+ * version, it is the newest.
+ */
+export function refusal(args, contract = CONTRACT, version = null) {
   const command = contract.commands
     .filter((c) => c.command.every((word, i) => args[i] === word))
     .sort((a, b) => b.command.length - a.command.length)[0];
@@ -40,6 +51,7 @@ export function refusal(args, contract = CONTRACT) {
       const flag = eq > 0 ? token.slice(0, eq) : token;
       const type = command.flags[flag];
       if (type === undefined) return `${name} takes no ${flag}`;
+      if (version && command.since?.[flag] && olderThan(version, command.since[flag])) return `${name} takes no ${flag} (the CLI is ${version})`;
       if (seen.has(flag) && !(command.repeatable ?? []).includes(flag)) return `${flag} given twice`;
       let value = null;
       if (eq > 0) {
@@ -78,7 +90,7 @@ function main() {
   // `touch` only when the caller left the CLI to guess touched files from the whole working copy.
   const guesses = process.env.G1T_TOUCH === "0" ? {} : { touch: process.env.G1T_TOUCH ?? "unset" };
   appendFileSync(process.env.FAKE_G1T_LOG, `${JSON.stringify({ args, session: process.env.G1T_SESSION ?? null, ...guesses })}\n`);
-  const refused = refusal(args);
+  const refused = refusal(args, CONTRACT, process.env.FAKE_G1T_VERSION ?? CONTRACT.minimum_version);
   if (refused) {
     process.stderr.write(`g1t: ${refused} See --help.\n`);
     process.exit(2);

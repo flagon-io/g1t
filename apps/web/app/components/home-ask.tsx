@@ -33,8 +33,12 @@ function spanLabel(span: AskSpan): string {
   return span.key === "last" && span.note == null ? "since I was last here" : `${span.words.charAt(0).toLowerCase()}${span.words.slice(1)}`;
 }
 
-/** The top of Home: what are we building today, a box that asks g1t, and a few things to ask first. */
-export function HomeAsk({ span }: { span: AskSpan }) {
+/**
+ * Home's box that asks g1t, with a few things to ask first: under the
+ * daily signal, `compact`, it says to ask about any of it; on its own, it
+ * leads the page with what are we building today.
+ */
+export function HomeAsk({ span, compact = false }: { span: AskSpan; compact?: boolean }) {
   const [draft, setDraft] = useState("");
   const send = () => {
     if (!draft.trim()) return;
@@ -52,10 +56,16 @@ export function HomeAsk({ span }: { span: AskSpan }) {
     }
   };
   return (
-    <section aria-labelledby="home-ask" className="mx-auto flex w-full max-w-3xl flex-col items-center gap-5 pt-4 pb-2 md:pt-8">
-      <h1 id="home-ask" className="text-center text-[1.75rem] leading-tight font-semibold tracking-tight md:text-[2rem]">
-        What are we building today?
-      </h1>
+    <section aria-labelledby="home-ask" className={compact ? "flex w-full flex-col gap-3" : "mx-auto flex w-full max-w-3xl flex-col items-center gap-5 pt-4 pb-2 md:pt-8"}>
+      {compact ? (
+        <h2 id="home-ask" className="text-sm font-semibold text-fg">
+          Ask about any of this
+        </h2>
+      ) : (
+        <h1 id="home-ask" className="text-center text-[1.75rem] leading-tight font-semibold tracking-tight md:text-[2rem]">
+          What are we building today?
+        </h1>
+      )}
       <form onSubmit={submit} className="w-full">
         <div className="flex items-end gap-2 rounded-2xl border border-line bg-surface p-2 pl-4 shadow-sm transition-shadow focus-within:border-accent-dim focus-within:ring-2 focus-within:ring-accent/25">
           <MarkGlyph className="mb-2.5 h-4 shrink-0 max-sm:hidden" />
@@ -79,7 +89,7 @@ export function HomeAsk({ span }: { span: AskSpan }) {
           </Hint>
         </div>
       </form>
-      <Suggestions className="justify-center">
+      <Suggestions className={compact ? "" : "justify-center"}>
         <Suggestion
           suggestion={`Summarize what changed ${spanLabel(span)}`}
           onPick={() => window.dispatchEvent(new CustomEvent(SUMMARIZE_EVENT))}

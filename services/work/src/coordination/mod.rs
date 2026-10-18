@@ -52,7 +52,8 @@ const SESSION_COLUMNS: &str = concat!(
     " AS item,
   pull, branch, actor_id, actor_name, harness, harness_session_id,
   title, state, head_commit, started_at, last_seen_at, ended_at, end_reason,
-  parent_id, agent_type, task, prompt, result, model, title_source, title_settled_at"
+  parent_id, agent_type, task, prompt, result, model, title_source, title_settled_at,
+  usage, cost_usd"
 );
 
 /// A claim's columns, with its work item's workspace and number.
@@ -105,6 +106,18 @@ pub(crate) struct SessionRow {
     title_source: Option<String>,
     #[serde(default)]
     title_settled_at: Option<String>,
+    /// Its token usage as last reported (JSON).
+    #[serde(default)]
+    usage: Option<String>,
+    #[serde(default)]
+    cost_usd: Option<f64>,
+}
+
+/// Whether some of a session's usage, as kept, was for models priced as unknown.
+fn cost_partial(usage: Option<&str>) -> bool {
+    usage
+        .and_then(|usage| serde_json::from_str::<Vec<g1t_contracts::model_prices::ModelUsage>>(usage).ok())
+        .is_some_and(|usage| g1t_contracts::model_prices::estimate(&usage).partial)
 }
 
 impl SessionRow {
@@ -137,6 +150,8 @@ impl SessionRow {
             first_prompt: None,
             title_source: self.title_source.as_deref().and_then(TitleSource::parse),
             title_settled_at: self.title_settled_at,
+            cost_partial: cost_partial(self.usage.as_deref()),
+            cost_usd: self.cost_usd,
         }
     }
 }

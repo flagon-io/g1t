@@ -64,6 +64,7 @@ export const WORKSPACE_SETTINGS_GROUPS: readonly WorkspaceSettingsGroup[] = [
     pages: [
       { key: "usage", label: "Usage", path: "usage" },
       { key: "billing", label: "Billing and plans", path: "billing" },
+      { key: "provider-costs", label: "Provider costs", path: "provider-costs" },
     ],
   },
   {
@@ -260,6 +261,7 @@ const PAGE_MODES: Record<string, ModeKey> = {
   workspace: "workspace",
   usage: "workspace",
   billing: "workspace",
+  "provider-costs": "workspace",
   integrations: "workspace",
   ai: "workspace",
   guardrails: "workspace",
