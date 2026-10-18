@@ -42,8 +42,10 @@ cand AS MATERIALIZED (
     AND NOT (x.status = 'closed' AND COALESCE(x.u < cuts.lo, 0))
 ),
 -- What each of them saw, as spans [t0, t1] (a moment where t0 = t1).
--- CROSS JOIN keeps each read starting from the few candidates.
-act(pull_id, t0, t1) AS MATERIALIZED (
+-- CROSS JOIN keeps each read starting from the few candidates. D1 takes
+-- at most five terms in one compound SELECT, so the sources are read in
+-- two halves of four and joined.
+act_a(pull_id, t0, t1) AS MATERIALIZED (
   -- Comments of every kind: reviews, and the timeline's events (labels,
   -- assignees, review requests, milestones, ready, draft, closed,
   -- reopened, base changes, the merge queue, auto-merge, branches deleted
@@ -57,9 +59,11 @@ act(pull_id, t0, t1) AS MATERIALIZED (
   -- Its acceptance checks, from queued to finished.
   UNION ALL SELECT k.id, julianday(cr.created_at), julianday(COALESCE(cr.finished_at, cr.created_at))
     FROM cand k CROSS JOIN check_runs cr ON cr.pull_id = k.id
+),
+act_b(pull_id, t0, t1) AS MATERIALIZED (
   -- Statuses and check runs on its head commit, the one commit pulls keep
   -- (a status keeps only when it last changed).
-  UNION ALL SELECT k.id, julianday(st.updated_at), julianday(st.updated_at)
+  SELECT k.id, julianday(st.updated_at), julianday(st.updated_at)
     FROM cand k CROSS JOIN commit_statuses st ON st.repo_id = k.repo_id AND st.sha = k.head_commit
   UNION ALL SELECT k.id, julianday(ck.created_at), julianday(ck.updated_at)
     FROM cand k CROSS JOIN commit_check_runs ck ON ck.repo_id = k.repo_id AND ck.head_sha = k.head_commit
@@ -70,6 +74,7 @@ act(pull_id, t0, t1) AS MATERIALIZED (
   UNION ALL SELECT k.id, julianday(s.started_at), julianday(s.last_seen_at)
     FROM cand k CROSS JOIN tied t ON t.pull_id = k.id CROSS JOIN sessions s ON s.parent_id = t.session_id
 ),
+act(pull_id, t0, t1) AS (SELECT * FROM act_a UNION ALL SELECT * FROM act_b),
 -- Each week a pull request saw something in the three days before its cut.
 busy AS MATERIALIZED (
   SELECT DISTINCT a.pull_id, w.start FROM act a JOIN w ON a.t0 < w.cut AND a.t1 >= w.cut - 3

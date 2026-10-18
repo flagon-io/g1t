@@ -9,8 +9,13 @@ use super::{AUTHORS, DAYS, HARNESSES, PULLS, PullRow, WAITING, WEEKS, WaitingRow
 
 const IDS: &str = r#"["a"]"#;
 
+/// D1 takes at most five terms in one compound SELECT; SQLite allows 500.
+const D1_COMPOUND_SELECT: i32 = 5;
+
 fn schema() -> Connection {
     let db = Connection::open_in_memory().unwrap();
+    // Refuse what D1 refuses, so a statement these tests pass also runs there.
+    db.set_limit(rusqlite::limits::Limit::SQLITE_LIMIT_COMPOUND_SELECT, D1_COMPOUND_SELECT);
     db.execute_batch(
         "CREATE TABLE pulls (id TEXT, repo_id TEXT, number INTEGER, title TEXT DEFAULT 'A change', status TEXT,
            item_id TEXT, milestone INTEGER, agent TEXT DEFAULT 'person', author_id TEXT DEFAULT 'usr_ana',
