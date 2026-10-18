@@ -9,19 +9,19 @@
 //!
 //! | Event | Who | Reason | Severity |
 //! | --- | --- | --- | --- |
-//! | `pull.stalled` | the pull request's owner, and its issue's owner and assignees | agent | warning |
+//! | `pull.stalled` | the pull request's owner, and its work item's owner and assignees | agent | warning |
 //! | `pull.review_requested` | the reviewers asked, and the people each team asked tells | review_requested | warning |
-//! | `issue.assigned`, `pull.assigned` | the people newly assigned | assign | info |
+//! | `work_item.assigned`, `pull.assigned` | the people newly assigned | assign | info |
 //! | `checks.completed`, failed or errored | the pull request's owner | ci_activity | error |
 //! | `workflow.completed`, failed | the pull request's owner, or whoever pushed | ci_activity | error |
 //! | `deployment.failed` | the pull request's owner, or whoever pushed; watchers | ci_activity | error |
 //! | `deployment.succeeded` | watchers; it settles the failure before it | subscribed | success |
 //! | `pull.auto_merge_disabled` | whoever turned it on, unless g1t handed it to the merge queue | state_change | warning |
-//! | `pull.merged`, `pull.closed`, `issue.closed`, `issue.reopened` | everyone subscribed | state_change | success for a merge, else info |
+//! | `pull.merged`, `pull.closed`, `work_item.closed`, `work_item.reopened` | everyone subscribed | state_change | success for a merge, else info |
 //! | `comment.created` | everyone mentioned, the people of teams mentioned, then everyone subscribed | mention, team_mention, or why they are subscribed | info (success for an approval) |
 //! | `comment.created` by a workspace's agent | the same, shown as "Margo (agent)"; a review also tells the owner, "(advisory)" | the same, or author | the same |
 //! | `commit_comment.created` | everyone mentioned, the people of teams mentioned, and the commit's author when their address is a g1t account's; one thread per commit | mention, team_mention, author | info |
-//! | `issue.opened`, `pull.opened` | whoever was assigned, asked to review or mentioned in its description (people and teams); watchers | assign, review_requested, mention, team_mention, subscribed | info |
+//! | `work_item.opened`, `pull.opened` | whoever was assigned, asked to review or mentioned in its description (people and teams); watchers | assign, review_requested, mention, team_mention, subscribed | info |
 //! | `secret_scanning_alert.summary`, `code_scanning_alert.summary`, `vulnerability_alert.summary` | the workspace's owners and security managers, whoever pushed a refused push, and watchers who chose security and may see findings; one thread per repository and alert type | security_alert | error for critical or high (told at once), info for the rest (a digest, unless the person chose at once) |
 //! | `security_advisory.reported` | the workspace's owners and security managers | security_alert | warning |
 //! | `secret_scanning.bypass_requested`, `.bypass_reviewed` | the reviewers named; the requester | security_alert | warning; info |
@@ -32,10 +32,19 @@
 //! once, so it is neither left unread nor pushed.
 //!
 //! Watchers of a repository at `all` (or `custom`, for the kinds they
-//! chose) hear of every issue and pull request opened, commented on,
+//! chose) hear of every work item and pull request opened, commented on,
 //! closed, reopened or merged, and of deployments. Anyone who ignores the
 //! thread or the repository hears of nothing on it; anyone who
 //! unsubscribed hears only of what is asked of them.
+//!
+//! A work item belongs to a workspace and is one thread (`item:<id>`),
+//! however many repositories it is linked to. Watchers of each of them
+//! hear of it; whoever ignores its origin hears of nothing on it. Its
+//! items are kept with its workspace and its origin, if it has one, and
+//! are shown to the workspace's members and to whoever can read the
+//! origin. Those who hear of it only by watching another repository it is
+//! linked to are not pushed it live: whether they may see it is known only
+//! when their inbox is read.
 //!
 //! Nobody is told of what they did themselves, though an outcome they set
 //! off (checks, a workflow, a deployment, g1t's work) is theirs to hear of.
@@ -71,12 +80,32 @@ const MAX_TITLE: usize = 200;
 const MAX_BODY: usize = 300;
 
 /// What the inbox asks about an event before deciding who is told.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct Wanted {
-    pub repo_id: String,
-    /// The issue or pull request, when the event names one.
+    /// The repository; for a work item, its origin, if it has one.
+    pub repo_id: Option<String>,
+    /// The work item or pull request, when the event names one.
     pub number: Option<u32>,
     pub comment_id: Option<String>,
+    /// When the event is about a work item.
+    pub item: Option<WantedItem>,
+}
+
+/// The work item an event is about.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct WantedItem {
+    pub id: String,
+    /// The workspace's slug.
+    pub workspace: String,
+    /// Every repository it is linked to, its origin first.
+    pub repo_ids: Vec<String>,
+}
+
+impl Wanted {
+    /// The repository's id, or empty for a work item without an origin.
+    fn repo(&self) -> &str {
+        self.repo_id.as_deref().unwrap_or_default()
+    }
 }
 
 /// One person to tell, and what.
@@ -123,24 +152,49 @@ pub(crate) fn is_g1t_id(id: &str) -> bool {
 /// back up, its head moved, a merge was asked for, or it is over.
 const RESUMES: [&str; 5] = ["pull.resumed", "pull.updated", "pull.merge_requested", "pull.merged", "pull.closed"];
 
-/// The issue or pull request an event names, and what to read for it.
+/// The work item an event's data names (`itemId`, with its workspace and
+/// linked repositories), if any.
+fn item_of(data: &serde_json::Value) -> Option<WantedItem> {
+    let id = data["itemId"].as_str().filter(|id| !id.is_empty())?;
+    Some(WantedItem {
+        id: id.to_owned(),
+        workspace: data["workspace"].as_str().unwrap_or_default().to_lowercase(),
+        repo_ids: names(data, "repoIds"),
+    })
+}
+
+/// The work item events the inbox tells people of.
+const ITEM_TOLD: [&str; 4] = ["work_item.opened", "work_item.closed", "work_item.reopened", "work_item.assigned"];
+
+/// The work item or pull request an event names, and what to read for it.
 /// None for events the inbox does not tell anyone of.
 pub fn wants(event: &Event) -> Option<Wanted> {
     let data = &event.data;
     let text = |key: &str| data[key].as_str().filter(|value| !value.is_empty()).map(str::to_owned);
     let number = |key: &str| data[key].as_u64().and_then(|n| u32::try_from(n).ok());
-    let repo_id = text("repoId").or_else(|| event.repo_id.clone())?;
+    let repo_id = text("repoId").or_else(|| event.repo_id.clone());
+    // A work item's events, and comments on one: it may have no origin.
+    let on_item = event.kind == "comment.created" && data["itemId"].is_string();
+    if ITEM_TOLD.contains(&event.kind.as_str()) || on_item {
+        return Some(Wanted {
+            repo_id,
+            number: Some(number("number")?),
+            comment_id: if on_item { Some(text("commentId")?) } else { None },
+            item: Some(item_of(data)?),
+        });
+    }
+    let repo_id = repo_id?;
     let on = |number: Option<u32>, comment_id: Option<String>| {
         Some(Wanted {
-            repo_id: repo_id.clone(),
+            repo_id: Some(repo_id.clone()),
             number,
             comment_id,
+            item: None,
         })
     };
     match event.kind.as_str() {
         "pull.stalled" | "pull.merged" | "pull.closed" | "pull.opened" | "pull.auto_merge_disabled"
-        | "pull.review_requested" | "pull.assigned" | "issue.opened" | "issue.closed" | "issue.reopened"
-        | "issue.assigned" => on(Some(number("number")?), None),
+        | "pull.review_requested" | "pull.assigned" => on(Some(number("number")?), None),
         "checks.completed" => match data["status"].as_str() {
             Some("failed" | "errored") => on(Some(number("number")?), None),
             _ => None,
@@ -155,7 +209,7 @@ pub fn wants(event: &Event) -> Option<Wanted> {
         "comment.created" => on(Some(number("number")?), Some(text("commentId")?)),
         // A commit is a thread of its own, its link the commit's page.
         "commit_comment.created" => on(None, None),
-        // Security alerts are threads of their own, not of an issue.
+        // Security alerts are threads of their own, not of a work item.
         kind if SECURITY_EVENTS.contains(&kind) => on(None, None),
         _ => None,
     }
@@ -188,9 +242,22 @@ pub struct Thread {
     pub link: Option<String>,
 }
 
-/// The thread key of an issue or pull request.
+/// The thread key of a pull request.
 pub fn numbered_thread(repo_id: &str, number: u32) -> String {
     format!("{repo_id}#{number}")
+}
+
+/// What a work item's thread key starts with: `item:<item_id>`.
+pub const ITEM_THREAD: &str = "item:";
+
+/// The thread key of a work item.
+pub fn item_thread(item_id: &str) -> String {
+    format!("{ITEM_THREAD}{item_id}")
+}
+
+/// Whether people subscribe to a thread: a work item's or a pull request's.
+pub fn subscribable(thread: &str) -> bool {
+    thread.starts_with(ITEM_THREAD) || thread.contains('#')
 }
 
 /// The thread of a workflow on a branch: `<repo_id>/run/<workflow>@<branch>`.
@@ -217,7 +284,7 @@ pub fn thread_of(event: &Event, wanted: &Wanted, subject: Option<&InboxSubject>)
         // A project's production, or one pull request's preview.
         "deployment.failed" | "deployment.succeeded" => {
             Thread {
-                key: deploy_thread(&wanted.repo_id, data, wanted.number),
+                key: deploy_thread(wanted.repo(), data, wanted.number),
                 kind: Some(SubjectKind::Deploy),
                 number: wanted.number,
                 run_id: text("deploymentId"),
@@ -228,7 +295,7 @@ pub fn thread_of(event: &Event, wanted: &Wanted, subject: Option<&InboxSubject>)
         "deployment.review_requested" => Thread {
             key: format!(
                 "{}/review/{}/{}",
-                wanted.repo_id,
+                wanted.repo(),
                 text("runId").unwrap_or_default(),
                 text("environment").unwrap_or_default()
             ),
@@ -240,7 +307,7 @@ pub fn thread_of(event: &Event, wanted: &Wanted, subject: Option<&InboxSubject>)
         // A workflow on a branch: its next failure bumps the same thread.
         "workflow.completed" if subject.is_none() => {
             Thread {
-                key: run_thread(&wanted.repo_id, data),
+                key: run_thread(wanted.repo(), data),
                 kind: Some(SubjectKind::Run),
                 number: None,
                 run_id: text("runId"),
@@ -249,7 +316,7 @@ pub fn thread_of(event: &Event, wanted: &Wanted, subject: Option<&InboxSubject>)
         }
         // One commit's comments (work/src/commit_comments.rs).
         "commit_comment.created" => Thread {
-            key: format!("{}/commit/{}", wanted.repo_id, text("commit").unwrap_or_default()),
+            key: format!("{}/commit/{}", wanted.repo(), text("commit").unwrap_or_default()),
             kind: None,
             number: None,
             run_id: None,
@@ -265,16 +332,24 @@ pub fn thread_of(event: &Event, wanted: &Wanted, subject: Option<&InboxSubject>)
                 _ => text("requestId").or_else(|| text("alertId")).unwrap_or_else(|| event.id.clone()),
             };
             Thread {
-                key: format!("{}/security/{which}", wanted.repo_id),
+                key: format!("{}/security/{which}", wanted.repo()),
                 kind: None,
                 number: None,
                 run_id: None,
                 link: text("link"),
             }
         }
+        // A work item: one thread, wherever it is linked.
+        _ if wanted.item.is_some() => Thread {
+            key: item_thread(wanted.item.as_ref().map_or("", |item| item.id.as_str())),
+            kind: Some(SubjectKind::Item),
+            number: wanted.number,
+            run_id: None,
+            link: None,
+        },
         _ => match wanted.number {
             Some(number) => Thread {
-                key: numbered_thread(&wanted.repo_id, number),
+                key: numbered_thread(wanted.repo(), number),
                 kind: subject.and_then(|subject| subject.kind),
                 number: Some(number),
                 run_id: None,
@@ -302,7 +377,7 @@ pub fn thread_of(event: &Event, wanted: &Wanted, subject: Option<&InboxSubject>)
 // | Item | Settled by |
 // | --- | --- |
 // | g1t stopped and needs you (`agent`) | `pull.resumed`, `pull.updated`, `pull.merge_requested`, `pull.merged`, `pull.closed` |
-// | Anything on an issue or pull request | `issue.closed`, `pull.merged`, `pull.closed`, after it is told (`closes`) |
+// | Anything on a work item or pull request | `work_item.closed`, `pull.merged`, `pull.closed`, after it is told (`closes`) |
 // | Your own item on a thread | your comment or review on it (`handled_by`) |
 // | A review asked of you | `pull.review_request_removed` naming you or your team |
 // | Checks failed on a pull request (`ci_activity`) | `checks.completed` passed on its head |
@@ -425,8 +500,11 @@ impl Settle {
     }
 }
 
-/// The issue or pull request an event names, as its thread.
+/// The work item or pull request an event names, as its thread.
 fn numbered(event: &Event) -> Option<String> {
+    if let Some(item) = item_of(&event.data) {
+        return Some(item_thread(&item.id));
+    }
     let repo_id = event.data["repoId"].as_str().map(str::to_owned).or_else(|| event.repo_id.clone())?;
     let number = event.data["number"].as_u64().and_then(|n| u32::try_from(n).ok())?;
     Some(numbered_thread(&repo_id, number))
@@ -551,15 +629,15 @@ pub fn settles(event: &Event, actor: Option<&str>) -> Vec<Settle> {
     settled
 }
 
-/// The events after which nothing is left to do about an issue or pull
+/// The events after which nothing is left to do about a work item or pull
 /// request: every item about it is settled once its own notices are
 /// written, so they reach each thread's history but nobody's inbox, and
 /// are not pushed. What landed shows on Home instead.
-pub const CLOSES: [&str; 3] = ["pull.merged", "pull.closed", "issue.closed"];
+pub const CLOSES: [&str; 3] = ["pull.merged", "pull.closed", "work_item.closed"];
 
 /// What an event settles once its own notices are written: everything
-/// about an issue or pull request that is over, a pull request's previews
-/// with it. `actor` is who merged or closed it, by username.
+/// about a work item or pull request that is over, a pull request's
+/// previews with it. `actor` is who merged or closed it, by username.
 pub fn closes(event: &Event, actor: Option<&str>) -> Vec<Settle> {
     if !CLOSES.contains(&event.kind.as_str()) {
         return Vec::new();
@@ -569,7 +647,7 @@ pub fn closes(event: &Event, actor: Option<&str>) -> Vec<Settle> {
     };
     let why = match event.kind.as_str() {
         "pull.merged" => "Merged",
-        "issue.closed" if event.data["reason"].as_str() == Some("not_planned") => "Closed as not planned",
+        "work_item.closed" if event.data["reason"].as_str() == Some("not_planned") => "Closed as not planned",
         _ => "Closed",
     };
     let mut settled = vec![Settle::thread(thread).saying(why, actor)];
@@ -641,7 +719,7 @@ impl Told<'_> {
         self.tell(&person.username, reason, severity, title, body, asked);
     }
 
-    /// Everyone subscribed to an issue or pull request: its owner and
+    /// Everyone subscribed to a work item or pull request: its owner and
     /// author, its assignees and reviewers, and whoever subscribed by
     /// commenting, being mentioned or by hand. `reason` overrides why
     /// each is told, as a state change does.
@@ -679,11 +757,11 @@ fn clip(text: &str, max: usize) -> String {
     format!("{}…", cut.trim_end())
 }
 
-/// The kind of activity a watcher chooses: `issues` or `pulls`.
+/// The kind of activity a watcher chooses: `work_items` or `pulls`.
 fn activity_of(subject: &InboxSubject) -> &'static str {
     match subject.kind {
         Some(SubjectKind::Pull) => "pulls",
-        _ => "issues",
+        _ => "work_items",
     }
 }
 
@@ -709,13 +787,15 @@ fn names(data: &serde_json::Value, key: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Who is told of `event`, in `repo` (`owner/name`), given what it names
-/// and who follows it. `actor` is who caused it; outcomes nobody chose
-/// (checks, workflows, deployments, g1t stopping) are told whoever caused them.
+/// Who is told of `event`, in `repo` (`owner/name`, or for a work item its
+/// workspace), given what it names and who follows it. `actor` is who
+/// caused it; outcomes nobody chose (checks, workflows, deployments, g1t
+/// stopping) are told whoever caused them.
 pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxSubject>, audience: &Audience) -> Vec<Notice> {
     let nobody = Actor::default();
     let data = &event.data;
-    // The issue or pull request, as titles name it: `acme/rocket#12`.
+    // The work item or pull request, as titles name it: `acme/rocket#12`,
+    // or `acme#12` for a work item.
     let at = match data["number"].as_u64().or(data["pull"].as_u64()) {
         Some(number) if subject.is_some() => format!("{repo}#{number}"),
         _ => repo.to_owned(),
@@ -742,9 +822,9 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
             let detail = data["detail"].as_str().map(str::trim).filter(|detail| !detail.is_empty());
             let (title, body) = (format!("g1t stopped on {at} and needs you"), detail.unwrap_or(&pull.title).to_owned());
             told.tell_person(pull.owner(), Reason::Agent, Severity::Warning, &title, &body, true);
-            if let Some(issue) = &pull.issue {
-                told.tell_person(issue.owner(), Reason::Agent, Severity::Warning, &title, &body, true);
-                for name in &issue.assignees {
+            if let Some(item) = &pull.item {
+                told.tell_person(item.owner(), Reason::Agent, Severity::Warning, &title, &body, true);
+                for name in &item.assignees {
                     told.tell(name, Reason::Agent, Severity::Warning, &title, &body, true);
                 }
             }
@@ -785,13 +865,13 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
                 }
             }
         }
-        ("issue.assigned" | "pull.assigned", Some(on)) => {
+        ("work_item.assigned" | "pull.assigned", Some(on)) => {
             let title = format!("{who} assigned you to {at}");
             for name in names(data, "added") {
                 told.tell(&name, Reason::Assign, Severity::Info, &title, &on.title, true);
             }
         }
-        ("issue.opened" | "pull.opened", Some(on)) => {
+        ("work_item.opened" | "pull.opened", Some(on)) => {
             let title = format!("{who} opened {at}");
             for name in &on.assignees {
                 told.tell(name, Reason::Assign, Severity::Info, &format!("{who} assigned you to {at}"), &on.title, true);
@@ -879,14 +959,14 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
             }
             told.tell_watchers("deployments", severity, &title, &body);
         }
-        ("pull.merged" | "pull.closed" | "issue.closed" | "issue.reopened", Some(on)) => {
+        ("pull.merged" | "pull.closed" | "work_item.closed" | "work_item.reopened", Some(on)) => {
             let (verb, severity) = match event.kind.as_str() {
                 "pull.merged" => ("merged", Severity::Success),
-                "issue.reopened" => ("reopened", Severity::Info),
+                "work_item.reopened" => ("reopened", Severity::Info),
                 _ => ("closed", Severity::Info),
             };
-            let title = match (actor.name(), data["resolvedBy"].as_u64()) {
-                (_, Some(pull)) if event.kind == "issue.closed" => format!("{at} was closed by #{pull}"),
+            let title = match (actor.name(), landed_by(data)) {
+                (_, Some(what)) if event.kind == "work_item.closed" => format!("{at} was closed by {what}"),
                 (Some(name), _) => format!("{name} {verb} {at}"),
                 (None, _) => format!("{at} was {verb}"),
             };
@@ -1036,7 +1116,7 @@ pub fn notices(event: &Event, repo: &str, actor: &Actor, subject: Option<&InboxS
     told.notices
 }
 
-/// Who an event subscribes to its issue or pull request without asking,
+/// Who an event subscribes to its work item or pull request without asking,
 /// and why: whoever commented, whoever they mentioned, the people assigned
 /// and the reviewers asked. Never g1t.
 pub fn subscribes(event: &Event, subject: Option<&InboxSubject>) -> Vec<(String, Reason)> {
@@ -1064,7 +1144,7 @@ pub fn subscribes(event: &Event, subject: Option<&InboxSubject>) -> Vec<(String,
                 }
             }
         }
-        "issue.opened" | "pull.opened" => {
+        "work_item.opened" | "pull.opened" => {
             if let Some(on) = subject {
                 for name in &on.mentions {
                     add(name, Reason::Mention);
@@ -1076,7 +1156,7 @@ pub fn subscribes(event: &Event, subject: Option<&InboxSubject>) -> Vec<(String,
                 }
             }
         }
-        "issue.assigned" | "pull.assigned" => {
+        "work_item.assigned" | "pull.assigned" => {
             for name in names(&event.data, "added") {
                 add(&name, Reason::Assign);
             }
@@ -1098,6 +1178,19 @@ pub fn subscribes(event: &Event, subject: Option<&InboxSubject>) -> Vec<(String,
 
 fn short(sha: &str) -> &str {
     sha.get(..7).unwrap_or(sha)
+}
+
+/// What landed a work item, as a close says it: the pull request
+/// (`acme/rocket#9`) or the commit (`acme/rocket@1a2b3c4`), from its
+/// `resolution`.
+fn landed_by(data: &serde_json::Value) -> Option<String> {
+    let resolution = &data["resolution"];
+    let repo = resolution["repo"].as_str().filter(|repo| !repo.is_empty())?;
+    match (resolution["pull"].as_u64(), resolution["commit"].as_str()) {
+        (Some(pull), _) => Some(format!("{repo}#{pull}")),
+        (None, Some(commit)) => Some(format!("{repo}@{}", short(commit))),
+        _ => None,
+    }
 }
 
 // --- Security summaries ------------------------------------------------------
@@ -1248,17 +1341,27 @@ async fn refresh_security_thread(db: &D1Database, thread: &str, repo: &str, summ
     Ok(())
 }
 
-/// Where an item is on g1t.sh.
-pub fn url(repo: Option<&str>, subject: Option<SubjectKind>, number: Option<u32>, run_id: Option<&str>, link: Option<&str>) -> String {
+/// Where an item is on g1t.sh: a work item's in its workspace, the rest in
+/// their repository.
+pub fn url(
+    repo: Option<&str>,
+    workspace: Option<&str>,
+    subject: Option<SubjectKind>,
+    number: Option<u32>,
+    run_id: Option<&str>,
+    link: Option<&str>,
+) -> String {
     if let Some(link) = link.filter(|link| link.starts_with('/')) {
         return link.to_owned();
+    }
+    if let (Some(SubjectKind::Item), Some(workspace), Some(number)) = (subject, workspace.filter(|slug| !slug.is_empty()), number) {
+        return format!("/{workspace}/-/work/{number}");
     }
     let Some(repo) = repo else {
         return "/inbox".to_owned();
     };
     match (subject, number, run_id) {
         (Some(SubjectKind::Pull), Some(number), _) => format!("/{repo}/pull/{number}"),
-        (Some(SubjectKind::Issue), Some(number), _) => format!("/{repo}/issues/{number}"),
         (Some(SubjectKind::Run), _, Some(run)) => format!("/{repo}/actions/runs/{run}"),
         (Some(SubjectKind::Deploy), Some(number), _) => format!("/{repo}/pull/{number}"),
         _ => format!("/{repo}"),
@@ -1280,11 +1383,16 @@ pub struct Sources<'a> {
 /// may be emailed.
 struct Written {
     notice: Notice,
-    repo_id: String,
+    /// The repository its email is checked against: none for a work item
+    /// without an origin, which is not emailed.
+    repo_id: Option<String>,
     url: String,
     event_id: String,
     /// Its event leaves nothing to do (`CLOSES`): settled once written.
     closing: bool,
+    /// Pushed live: not for someone who hears of a work item only by
+    /// watching a repository it is linked to other than its origin.
+    live: bool,
     /// The thread it is on, which notify keeps with what it replays.
     thread: String,
 }
@@ -1396,7 +1504,7 @@ async fn deliver_events(db: &D1Database, sources: &Sources<'_>, events: &[Event]
     if let Some(notify) = sources.notify {
         let live = written
             .iter()
-            .filter(|item| !item.closing)
+            .filter(|item| !item.closing && item.live)
             .map(|item| {
                 let live = live_notification(&item.event_id, &item.notice, &item.url, &rfc3339(now_ms()), Some(&item.thread));
                 (item.notice.username.clone(), live)
@@ -1550,21 +1658,18 @@ async fn deliver_one(
     wanted: Wanted,
     settled: &mut HashSet<Settled>,
 ) -> Result<Vec<Written>> {
-    if !paths.contains_key(&wanted.repo_id) {
-        let path: Option<RepoPath> = g1t_kit::call(
-            sources.repos,
-            "path_by_id",
-            &PathByIdArgs {
-                id: wanted.repo_id.clone(),
-            },
-        )
-        .await?;
-        paths.insert(wanted.repo_id.clone(), path);
+    if let Some(repo_id) = &wanted.repo_id
+        && !paths.contains_key(repo_id)
+    {
+        let path: Option<RepoPath> = g1t_kit::call(sources.repos, "path_by_id", &PathByIdArgs { id: repo_id.clone() }).await?;
+        paths.insert(repo_id.clone(), path);
     }
-    // A repository that is gone tells nobody.
-    let Some(path) = paths.get(&wanted.repo_id).cloned().flatten() else {
+    let path = wanted.repo_id.as_ref().and_then(|repo_id| paths.get(repo_id).cloned().flatten());
+    // A repository that is gone tells nobody; a work item stays in its
+    // workspace when its origin goes.
+    if path.is_none() && wanted.item.is_none() {
         return Ok(Vec::new());
-    };
+    }
     let subject: Option<InboxSubject> = match wanted.number {
         Some(number) => {
             let found: Option<InboxSubject> = g1t_kit::call(
@@ -1573,6 +1678,7 @@ async fn deliver_one(
                 &InboxSubjectArgs {
                     repo_id: wanted.repo_id.clone(),
                     number,
+                    item_id: wanted.item.as_ref().map(|item| item.id.clone()),
                     comment_id: wanted.comment_id.clone(),
                 },
             )
@@ -1597,25 +1703,49 @@ async fn deliver_one(
     if let Some(handled) = handled_by(event, subject.as_ref()) {
         settled.extend(settle(db, &[handled]).await?);
     }
-    if !watchers.contains_key(&wanted.repo_id) {
-        watchers.insert(wanted.repo_id.clone(), subscriptions::watchers(db, &wanted.repo_id).await?);
+    // Who watches it: its repository's watchers, or a work item's linked
+    // repositories', its origin's first.
+    let linked: Vec<&str> = wanted.item.as_ref().map_or_else(Vec::new, |item| {
+        item.repo_ids
+            .iter()
+            .map(String::as_str)
+            .filter(|id| wanted.repo_id.as_deref() != Some(*id))
+            .collect()
+    });
+    for repo_id in wanted.repo_id.iter().map(String::as_str).chain(linked.iter().copied()) {
+        if !watchers.contains_key(repo_id) {
+            watchers.insert(repo_id.to_owned(), subscriptions::watchers(db, repo_id).await?);
+        }
     }
+    let own = wanted.repo_id.as_ref().and_then(|id| watchers.get(id)).cloned().unwrap_or_default();
+    let others: Vec<Vec<subscriptions::Watcher>> = linked.iter().map(|id| watchers.get(*id).cloned().unwrap_or_default()).collect();
+    let (watching, elsewhere) = subscriptions::linked_watchers(own, &others);
     let audience = Audience {
         subscriptions: match thread.kind {
-            Some(SubjectKind::Issue | SubjectKind::Pull) => subscriptions::of_thread(db, &thread.key).await?,
+            Some(SubjectKind::Item | SubjectKind::Pull) => subscriptions::of_thread(db, &thread.key).await?,
             _ => Vec::new(),
         },
-        watchers: watchers.get(&wanted.repo_id).cloned().unwrap_or_default(),
+        watchers: watching,
     };
-    let repo = format!("{}/{}", path.namespace, path.name).to_lowercase();
-    let mut told = notices(event, &repo, &actor, subject.as_ref(), &audience);
-    let mut statements = subscriptions::auto_subscribe(db, &thread.key, &wanted.repo_id, &subscribes(event, subject.as_ref()), &event.time)?;
+    let repo = path.as_ref().map(|path| format!("{}/{}", path.namespace, path.name).to_lowercase());
+    // Where titles say it is: a work item's workspace, else the repository.
+    let workspace = match &wanted.item {
+        Some(item) => item.workspace.clone(),
+        None => path.as_ref().map(|path| path.namespace.to_lowercase()).unwrap_or_default(),
+    };
+    let place = match &wanted.item {
+        Some(item) => item.workspace.clone(),
+        None => repo.clone().unwrap_or_default(),
+    };
+    let mut told = notices(event, &place, &actor, subject.as_ref(), &audience);
+    let mut statements =
+        subscriptions::auto_subscribe(db, &thread.key, wanted.repo_id.as_deref(), &subscribes(event, subject.as_ref()), &event.time)?;
     // A scan's summary: one that opened nothing brings the thread up to date
     // without waking anyone, and what is not urgent waits for each person's
     // digest, or comes at once or never, as they chose (security_delivery).
-    if let Some(summary) = security_summary(event) {
+    if let (Some(summary), Some(path)) = (security_summary(event), &path) {
         if summary.opened_count == 0 {
-            refresh_security_thread(db, &thread.key, &repo, &summary, event).await?;
+            refresh_security_thread(db, &thread.key, &place, &summary, event).await?;
             return Ok(Vec::new());
         }
         let people: Vec<String> = told.iter().map(|notice| notice.username.clone()).collect();
@@ -1626,7 +1756,7 @@ async fn deliver_one(
             let setting = settings.get(&notice.username).cloned().unwrap_or_default();
             match security_delivery(&summary, &notice.username, &setting) {
                 Delivery::Now => kept.push(notice),
-                Delivery::Digest => statements.push(crate::security_digest::queue(db, &notice.username, &path, &summary, &event.id, now)?),
+                Delivery::Digest => statements.push(crate::security_digest::queue(db, &notice.username, path, &summary, &event.id, now)?),
                 Delivery::Never => {}
             }
         }
@@ -1640,7 +1770,7 @@ async fn deliver_one(
     }
     let now = now_ms();
     let link = thread.link.as_deref();
-    let item_url = url(Some(&repo), thread.kind, thread.number, thread.run_id.as_deref(), link);
+    let item_url = url(repo.as_deref(), Some(&workspace), thread.kind, thread.number, thread.run_id.as_deref(), link);
     // Three statements a notice: its thread brought up (unless this event
     // was told before), a line of history, and the history kept short.
     let first = statements.len();
@@ -1656,9 +1786,9 @@ async fn deliver_one(
             notice.severity.as_str().into(),
             notice.title.as_str().into(),
             notice.body.as_str().into(),
-            path.namespace.to_lowercase().into(),
-            wanted.repo_id.as_str().into(),
-            repo.as_str().into(),
+            workspace.as_str().into(),
+            wanted.repo_id.as_deref().map_or(JsValue::NULL, JsValue::from),
+            repo.as_deref().map_or(JsValue::NULL, JsValue::from),
             thread.kind.map_or(JsValue::NULL, |kind| kind.as_str().into()),
             thread.number.map_or(JsValue::NULL, JsValue::from),
             thread.run_id.as_deref().map_or(JsValue::NULL, JsValue::from),
@@ -1719,6 +1849,7 @@ async fn deliver_one(
         .into_iter()
         .filter(|notice| news.contains(&notice.username))
         .map(|notice| Written {
+            live: !(notice.reason == Reason::Subscribed && elsewhere.contains(&notice.username)),
             notice,
             repo_id: wanted.repo_id.clone(),
             url: item_url.clone(),
@@ -1755,6 +1886,7 @@ pub(crate) const BUMP: &str = "INSERT INTO inbox_items (id, username, thread, ev
    workspace = excluded.workspace,
    repo = excluded.repo,
    subject = COALESCE(excluded.subject, inbox_items.subject),
+   number = COALESCE(excluded.number, inbox_items.number),
    run_id = COALESCE(excluded.run_id, inbox_items.run_id),
    link = COALESCE(excluded.link, inbox_items.link),
    actor = excluded.actor,
@@ -1860,8 +1992,10 @@ pub(crate) async fn tell_live(notify: &Fetcher, items: Vec<(String, serde_json::
 
 /// Emails what was news to people who asked to be emailed for its reason.
 /// Identity sends each, only to a confirmed address and only if the person
-/// can still read the repository.
+/// can still read the repository (a work item's origin; one without is
+/// not emailed).
 async fn email(db: &D1Database, identity: &Fetcher, written: Vec<Written>) -> Result<()> {
+    let written: Vec<Written> = written.into_iter().filter(|item| item.repo_id.is_some()).collect();
     if written.is_empty() {
         return Ok(());
     }
@@ -1882,7 +2016,7 @@ async fn email(db: &D1Database, identity: &Fetcher, written: Vec<Written>) -> Re
             "notify_by_email",
             &NotifyByEmailArgs {
                 username: item.notice.username.clone(),
-                repo_id: item.repo_id.clone(),
+                repo_id: item.repo_id.clone().unwrap_or_default(),
                 subject: item.notice.title.clone(),
                 intro: item.notice.body.clone(),
                 quote: None,
@@ -1903,6 +2037,8 @@ async fn email(db: &D1Database, identity: &Fetcher, written: Vec<Written>) -> Re
 #[derive(Deserialize)]
 pub(crate) struct Row {
     pub(crate) id: String,
+    #[serde(default)]
+    thread: Option<String>,
     reason: String,
     severity: String,
     title: String,
@@ -1932,8 +2068,16 @@ impl Row {
     pub(crate) fn into_item(self) -> InboxItem {
         let subject = self.subject.as_deref().and_then(SubjectKind::parse);
         let number = self.number.map(|n| n as u32);
+        // A work item whose thread still has its issue's number, until the
+        // work service's numbers arrive (work_items.rs): the old link,
+        // which leads to it.
+        let legacy = subject == Some(SubjectKind::Item) && self.thread.as_deref().is_some_and(|thread| !thread.starts_with(ITEM_THREAD));
+        let link = match (legacy, &self.repo, number) {
+            (true, Some(repo), Some(number)) => Some(format!("/{repo}/issues/{number}")),
+            _ => self.link.clone(),
+        };
         InboxItem {
-            url: url(self.repo.as_deref(), subject, number, self.run_id.as_deref(), self.link.as_deref()),
+            url: url(self.repo.as_deref(), self.workspace.as_deref(), subject, number, self.run_id.as_deref(), link.as_deref()),
             id: self.id,
             reason: Reason::parse(&self.reason).unwrap_or(Reason::Subscribed),
             severity: Severity::parse(&self.severity).unwrap_or(Severity::Info),
@@ -1958,7 +2102,7 @@ impl Row {
     }
 }
 
-pub(crate) const COLUMNS: &str = "id, reason, severity, title, body, event, workspace, repo_id, repo, subject, number, run_id,
+pub(crate) const COLUMNS: &str = "id, thread, reason, severity, title, body, event, workspace, repo_id, repo, subject, number, run_id,
                        link, actor, activity, created_at, updated_at, read_at, done_at, saved, snoozed_until, bumped,
                        settled_reason, settled_by";
 
@@ -2076,48 +2220,88 @@ pub async fn list(db: &D1Database, repos: &Fetcher, a: ListInboxArgs) -> Result<
     })
 }
 
-/// Rows about repositories the viewer can still read; the rest are
-/// removed from their inbox as they are found.
+/// The workspaces whose work items the viewer sees all of: those they are
+/// a member of, lowercased.
+fn member_of(viewer: &g1t_contracts::Viewer) -> Vec<String> {
+    let Some(user) = viewer else {
+        return Vec::new();
+    };
+    user.workspaces
+        .iter()
+        .filter(|membership| g1t_contracts::access::workspace_role(user, &membership.slug).is_some())
+        .map(|membership| membership.slug.to_lowercase())
+        .collect()
+}
+
+impl Row {
+    /// A work item of one of these workspaces, which a member sees
+    /// whatever its origin.
+    fn seen_as_member(&self, members: &[String]) -> bool {
+        self.subject.as_deref() == Some(SubjectKind::Item.as_str())
+            && self.workspace.as_deref().is_some_and(|slug| members.iter().any(|member| member.eq_ignore_ascii_case(slug)))
+    }
+}
+
+/// Rows the viewer may still see: about repositories they can read, and
+/// work items of workspaces they belong to or whose origin they can read.
+/// The rest are removed from their inbox as they are found.
 pub(crate) async fn readable_only(db: &D1Database, repos: &Fetcher, viewer: &g1t_contracts::Viewer, username: &str, mut rows: Vec<Row>) -> Result<Vec<Row>> {
+    let members = member_of(viewer);
+    // A work item outside the viewer's workspaces with no origin is not theirs to see.
+    let unseen: Vec<String> = rows
+        .iter()
+        .filter(|row| row.subject.as_deref() == Some(SubjectKind::Item.as_str()) && row.repo_id.is_none() && !row.seen_as_member(&members))
+        .map(|row| row.id.clone())
+        .collect();
     let ids: Vec<String> = rows
         .iter()
+        .filter(|row| !row.seen_as_member(&members))
         .filter_map(|row| row.repo_id.clone())
         .collect::<HashSet<_>>()
         .into_iter()
         .collect();
-    if ids.is_empty() {
-        return Ok(rows);
-    }
-    let readable: Vec<Repo> = g1t_kit::call(
-        repos,
-        "readable",
-        &ReadableArgs {
-            ids: ids.clone(),
-            viewer: viewer.clone(),
-        },
-    )
-    .await?;
-    let readable: HashSet<String> = readable.into_iter().map(|repo| repo.id).collect();
-    let gone: Vec<String> = ids.into_iter().filter(|id| !readable.contains(id)).collect();
-    if !gone.is_empty() {
-        forget(db, username, &gone).await?;
-        rows.retain(|row| row.repo_id.as_ref().is_none_or(|id| !gone.contains(id)));
+    let gone: Vec<String> = if ids.is_empty() {
+        Vec::new()
+    } else {
+        let readable: Vec<Repo> = g1t_kit::call(
+            repos,
+            "readable",
+            &ReadableArgs {
+                ids: ids.clone(),
+                viewer: viewer.clone(),
+            },
+        )
+        .await?;
+        let readable: HashSet<String> = readable.into_iter().map(|repo| repo.id).collect();
+        ids.into_iter().filter(|id| !readable.contains(id)).collect()
+    };
+    if !gone.is_empty() || !unseen.is_empty() {
+        forget(db, username, &gone, &unseen, &members).await?;
+        rows.retain(|row| {
+            !unseen.contains(&row.id) && (row.seen_as_member(&members) || row.repo_id.as_ref().is_none_or(|id| !gone.contains(id)))
+        });
     }
     Ok(rows)
 }
 
-/// Removes a person's items about repositories they cannot read.
-async fn forget(db: &D1Database, username: &str, repo_ids: &[String]) -> Result<()> {
-    let marks = vec!["?"; repo_ids.len()].join(", ");
-    let mut values: Vec<JsValue> = vec![username.into()];
-    values.extend(repo_ids.iter().map(|id| JsValue::from(id.as_str())));
+/// Removes a person's items about repositories they cannot read (but for
+/// work items of the workspaces they are a member of), and the items by
+/// id in `unseen`.
+async fn forget(db: &D1Database, username: &str, repo_ids: &[String], unseen: &[String], members: &[String]) -> Result<()> {
+    let which = "username = ?1 AND (
+         (repo_id IN (SELECT value FROM json_each(?2))
+          AND NOT (subject = 'item' AND workspace IN (SELECT value FROM json_each(?3))))
+         OR id IN (SELECT value FROM json_each(?4)))";
+    let values: Vec<JsValue> = vec![
+        username.into(),
+        serde_json::to_string(repo_ids)?.into(),
+        serde_json::to_string(members)?.into(),
+        serde_json::to_string(unseen)?.into(),
+    ];
     db.batch(vec![
-        db.prepare(format!(
-            "DELETE FROM inbox_activity WHERE item_id IN (SELECT id FROM inbox_items WHERE username = ? AND repo_id IN ({marks}))"
-        ))
-        .bind(&values)?,
-        db.prepare(format!("DELETE FROM inbox_items WHERE username = ? AND repo_id IN ({marks})"))
+        db.prepare(format!("DELETE FROM inbox_activity WHERE item_id IN (SELECT id FROM inbox_items WHERE {which})"))
             .bind(&values)?,
+        db.prepare(format!("DELETE FROM inbox_items WHERE {which}")).bind(&values)?,
     ])
     .await?;
     Ok(())
@@ -2270,7 +2454,7 @@ pub async fn thread(db: &D1Database, repos: &Fetcher, work: &Fetcher, a: ThreadA
         .collect();
     let item = row.into_item();
     let subscription = match (item.subject, item.number) {
-        (Some(SubjectKind::Issue | SubjectKind::Pull), Some(_)) => {
+        (Some(SubjectKind::Item | SubjectKind::Pull), Some(_)) => {
             subscriptions::subscription(
                 db,
                 work,
@@ -2293,8 +2477,10 @@ pub async fn thread(db: &D1Database, repos: &Fetcher, work: &Fetcher, a: ThreadA
 
 // --- Keeping up ------------------------------------------------------------------
 
-/// Moves rows with renamed workspaces and repositories, and drops those
-/// of purged repositories, deleted workspaces and purged accounts.
+/// Moves rows with renamed workspaces and repositories, drops those of
+/// purged repositories, deleted workspaces and purged accounts, and
+/// rewrites what was kept by issue number as issues become work items
+/// (work_items.rs).
 pub async fn follow(db: &D1Database, events: &[Event]) -> Result<()> {
     let mut statements = Vec::new();
     for event in events {
@@ -2308,13 +2494,19 @@ pub async fn follow(db: &D1Database, events: &[Event]) -> Result<()> {
                 if from == to {
                     continue;
                 }
+                // A work item's origin may be in another workspace by now.
                 statements.push(
                     db.prepare(
-                        "UPDATE inbox_items SET repo = ?2 || substr(repo, length(?1) + 1), workspace = ?2,
+                        "UPDATE inbox_items SET workspace = ?2,
+                           repo = CASE WHEN repo LIKE ?1 || '/%' THEN ?2 || substr(repo, length(?1) + 1) ELSE repo END,
                            link = CASE WHEN link LIKE '/' || ?1 || '/%' THEN '/' || ?2 || substr(link, length(?1) + 2) ELSE link END
                          WHERE workspace = ?1",
                     )
                     .bind(&[from.as_str().into(), to.as_str().into()])?,
+                );
+                statements.push(
+                    db.prepare("UPDATE inbox_items SET repo = ?2 || substr(repo, length(?1) + 1) WHERE workspace IS NOT ?2 AND repo LIKE ?1 || '/%'")
+                        .bind(&[from.as_str().into(), to.as_str().into()])?,
                 );
                 statements.push(
                     db.prepare("UPDATE inbox_watching SET repo = ?2 || substr(repo, length(?1) + 1) WHERE repo LIKE ?1 || '/%'")
@@ -2332,21 +2524,28 @@ pub async fn follow(db: &D1Database, events: &[Event]) -> Result<()> {
             }
             "repo.transferred" => {
                 let path = format!("{}/{}", text("to"), text("name"));
+                // A work item stays in its workspace when its origin moves.
                 statements.push(
-                    db.prepare("UPDATE inbox_items SET repo = ?, workspace = ? WHERE repo_id = ?")
-                        .bind(&[path.as_str().into(), text("to").into(), text("repoId").into()])?,
+                    db.prepare(
+                        "UPDATE inbox_items SET repo = ?1, workspace = CASE WHEN subject = 'item' THEN workspace ELSE ?2 END
+                         WHERE repo_id = ?3",
+                    )
+                    .bind(&[path.as_str().into(), text("to").into(), text("repoId").into()])?,
                 );
                 statements.push(
                     db.prepare("UPDATE inbox_watching SET repo = ? WHERE repo_id = ?")
                         .bind(&[path.as_str().into(), text("repoId").into()])?,
                 );
             }
+            // Its work items stay in their workspace, with no origin now.
             "repo.purged" => {
                 for sql in [
-                    "DELETE FROM inbox_activity WHERE item_id IN (SELECT id FROM inbox_items WHERE repo_id = ?)",
-                    "DELETE FROM inbox_items WHERE repo_id = ?",
-                    "DELETE FROM inbox_subscriptions WHERE repo_id = ?",
-                    "DELETE FROM inbox_watching WHERE repo_id = ?",
+                    "UPDATE inbox_items SET repo_id = NULL, repo = NULL WHERE repo_id = ?1 AND subject = 'item'",
+                    "UPDATE inbox_subscriptions SET repo_id = NULL WHERE repo_id = ?1 AND thread LIKE 'item:%'",
+                    "DELETE FROM inbox_activity WHERE item_id IN (SELECT id FROM inbox_items WHERE repo_id = ?1)",
+                    "DELETE FROM inbox_items WHERE repo_id = ?1",
+                    "DELETE FROM inbox_subscriptions WHERE repo_id = ?1",
+                    "DELETE FROM inbox_watching WHERE repo_id = ?1",
                 ] {
                     statements.push(db.prepare(sql).bind(&[text("repoId").into()])?);
                 }
@@ -2361,6 +2560,8 @@ pub async fn follow(db: &D1Database, events: &[Event]) -> Result<()> {
                         .bind(&[text("slug").into()])?,
                 );
             }
+            // Issues moved into work items: what was kept by their numbers follows.
+            "work.migrated" => statements.extend(crate::work_items::moved(db, event)?),
             // An account purged: its inbox, what it watched and its
             // settings go with it (identity's account_deletion.rs).
             "user.deleted" => {
@@ -2439,15 +2640,15 @@ mod tests {
         }
     }
 
-    /// A pull request ana opened, assigned to bo, for an issue cy filed and dee is assigned.
+    /// A pull request ana opened, assigned to bo, for a work item cy filed and dee is assigned.
     fn pull() -> InboxSubject {
         InboxSubject {
             kind: Some(SubjectKind::Pull),
             title: "Add the inbox".into(),
             author: person("usr_ana", "ana"),
             assignees: vec!["bo".into()],
-            issue: Some(Box::new(InboxSubject {
-                kind: Some(SubjectKind::Issue),
+            item: Some(Box::new(InboxSubject {
+                kind: Some(SubjectKind::Item),
                 title: "An inbox".into(),
                 author: person("usr_cy", "cy"),
                 assignees: vec!["dee".into()],
@@ -2522,7 +2723,7 @@ mod tests {
         let asked = |kind: &str, data| wants(&event(kind, None, data));
         assert_eq!(
             asked("checks.completed", json!({ "repoId": "rep_1", "number": 4, "status": "failed" })),
-            Some(Wanted { repo_id: "rep_1".into(), number: Some(4), comment_id: None })
+            Some(Wanted { repo_id: Some("rep_1".into()), number: Some(4), ..Wanted::default() })
         );
         assert_eq!(asked("checks.completed", json!({ "repoId": "rep_1", "number": 4, "status": "passed" })), None);
         assert_eq!(asked("review.completed", json!({ "repoId": "rep_1", "number": 4, "verdict": "approve" })), None);
@@ -2530,21 +2731,86 @@ mod tests {
         assert_eq!(asked("workflow.completed", json!({ "repoId": "rep_1", "conclusion": "success" })), None);
         assert_eq!(
             asked("workflow.completed", json!({ "repoId": "rep_1", "conclusion": "failure" })),
-            Some(Wanted { repo_id: "rep_1".into(), number: None, comment_id: None })
+            Some(Wanted { repo_id: Some("rep_1".into()), ..Wanted::default() })
         );
         assert_eq!(
             asked("comment.created", json!({ "repoId": "rep_1", "number": 2, "commentId": "cmt_1" })).map(|w| w.comment_id),
             Some(Some("cmt_1".into()))
         );
         assert_eq!(asked("git.push", json!({ "repoId": "rep_1" })), None);
-        for kind in ["issue.opened", "pull.review_requested", "pull.stalled", "issue.assigned", "pull.closed", "issue.reopened"] {
+        for kind in ["pull.review_requested", "pull.stalled", "pull.closed"] {
             assert!(asked(kind, json!({ "repoId": "rep_1", "number": 1 })).is_some(), "{kind}");
         }
         assert_eq!(asked("deployment.failed", json!({ "repoId": "rep_1" })).map(|w| w.number), Some(None));
     }
 
     #[test]
-    fn a_stopped_pull_request_needs_its_people_and_its_issues_people_first() {
+    fn a_work_items_events_are_read_by_its_id_with_or_without_an_origin() {
+        let item = json!({ "itemId": "wki_1", "workspace": "Acme", "number": 40, "repoIds": ["rep_1", "rep_2"] });
+        for kind in ITEM_TOLD {
+            let wanted = wants(&event(kind, None, item.clone())).unwrap_or_else(|| panic!("{kind}"));
+            assert_eq!(wanted.repo_id.as_deref(), Some("rep_1"));
+            assert_eq!(wanted.number, Some(40));
+            assert_eq!(
+                wanted.item,
+                Some(WantedItem { id: "wki_1".into(), workspace: "acme".into(), repo_ids: vec!["rep_1".into(), "rep_2".into()] })
+            );
+        }
+        // Filed in the workspace: no origin.
+        let filed = Event { repo_id: None, ..event("work_item.opened", None, item.clone()) };
+        assert_eq!(wants(&filed).map(|wanted| wanted.repo_id), Some(None));
+        // A comment on one names it; one on a pull request does not.
+        let comment = json!({ "itemId": "wki_1", "workspace": "acme", "number": 40, "commentId": "cmt_1", "repoIds": [] });
+        let wanted = wants(&Event { repo_id: None, ..event("comment.created", None, comment) }).unwrap();
+        assert_eq!((wanted.comment_id.as_deref(), wanted.item.map(|item| item.id)), (Some("cmt_1"), Some("wki_1".into())));
+        // Without its id there is nothing to read.
+        assert_eq!(wants(&event("work_item.opened", None, json!({ "number": 40 }))), None);
+        // What the inbox does not tell of.
+        assert_eq!(wants(&event("work_item.labeled", None, item)), None);
+    }
+
+    #[test]
+    fn a_work_item_is_one_thread_in_its_workspace() {
+        let data = json!({ "itemId": "wki_1", "workspace": "acme", "number": 40, "repoIds": ["rep_1"] });
+        let opened = event("work_item.opened", None, data.clone());
+        let wanted = wants(&opened).unwrap();
+        let thread = thread_of(&opened, &wanted, None);
+        assert_eq!(thread.key, "item:wki_1");
+        assert_eq!(thread.kind, Some(SubjectKind::Item));
+        assert_eq!(url(Some("acme/rocket"), Some("acme"), thread.kind, thread.number, None, None), "/acme/-/work/40");
+        // Closing it settles everything on it, and says what landed it.
+        let closed = event(
+            "work_item.closed",
+            None,
+            json!({ "itemId": "wki_1", "workspace": "acme", "number": 40, "resolution": { "repo": "acme/api", "pull": 9 } }),
+        );
+        assert_eq!(closes(&closed, Some("bo")), vec![Settle::thread("item:wki_1").saying("Closed", Some("bo"))]);
+        let item = InboxSubject { kind: Some(SubjectKind::Item), title: "Ship it".into(), author: person("usr_cy", "cy"), ..InboxSubject::default() };
+        assert_eq!(notices(&closed, "acme", &Actor::default(), Some(&item), &nobody())[0].title, "acme#40 was closed by acme/api#9");
+        // A comment on it is handled on its thread.
+        let comment = event("comment.created", None, json!({ "itemId": "wki_1", "workspace": "acme", "number": 40, "commentId": "cmt_1" }));
+        let on = InboxSubject {
+            comment: Some(InboxComment { author: person("usr_bo", "bo"), ..InboxComment::default() }),
+            ..item
+        };
+        assert_eq!(handled_by(&comment, Some(&on)).map(|settle| settle.scope), Some(Scope::Thread("item:wki_1".into())));
+        assert!(subscribable("item:wki_1") && subscribable("rep_1#7") && !subscribable("rep_1/run/ci@main"));
+    }
+
+    #[test]
+    fn a_work_items_watchers_are_its_origins_then_its_other_repositories() {
+        let watcher = |name: &str, level: WatchLevel| Watcher { username: name.into(), level, events: Vec::new() };
+        let own = vec![watcher("ana", WatchLevel::All), watcher("bo", WatchLevel::Ignore)];
+        let others = vec![vec![watcher("bo", WatchLevel::All), watcher("cy", WatchLevel::All), watcher("dee", WatchLevel::Ignore)]];
+        let (watchers, elsewhere) = subscriptions::linked_watchers(own, &others);
+        let names: Vec<(&str, WatchLevel)> = watchers.iter().map(|w| (w.username.as_str(), w.level)).collect();
+        // Ignoring the origin stands; ignoring another repository says nothing.
+        assert_eq!(names, vec![("ana", WatchLevel::All), ("bo", WatchLevel::Ignore), ("cy", WatchLevel::All)]);
+        assert_eq!(elsewhere.into_iter().collect::<Vec<_>>(), vec!["cy".to_owned()]);
+    }
+
+    #[test]
+    fn a_stopped_pull_request_needs_its_people_and_its_work_items_people_first() {
         let stalled = event("pull.stalled", None, json!({ "number": 7 }));
         let notices_ = notices(&stalled, "acme/rocket", &Actor::default(), Some(&pull()), &nobody());
         assert_eq!(
@@ -2619,12 +2885,12 @@ mod tests {
         assert_eq!(closes(&closed, None).len(), 2);
         assert_eq!(closes(&closed, None)[0].why.as_deref(), Some("Closed"));
         assert_eq!(closes(&closed, None)[0].by, None);
-        // An issue has no previews.
-        let issue = event("issue.closed", None, json!({ "repoId": "rep_1", "number": 3, "reason": "not_planned" }));
-        assert_eq!(closes(&issue, Some("bo")), vec![Settle::thread("rep_1#3").saying("Closed as not planned", Some("bo"))]);
+        // A work item has no previews.
+        let item = event("work_item.closed", None, json!({ "itemId": "wki_1", "workspace": "acme", "number": 3, "reason": "not_planned" }));
+        assert_eq!(closes(&item, Some("bo")), vec![Settle::thread("item:wki_1").saying("Closed as not planned", Some("bo"))]);
         // Reopening is something to hear of, and settles nothing.
-        assert!(closes(&event("issue.reopened", None, json!({ "repoId": "rep_1", "number": 3 })), None).is_empty());
-        assert!(settles(&event("issue.reopened", None, json!({ "repoId": "rep_1", "number": 3 })), None).is_empty());
+        assert!(closes(&event("work_item.reopened", None, json!({ "itemId": "wki_1", "number": 3 })), None).is_empty());
+        assert!(settles(&event("work_item.reopened", None, json!({ "itemId": "wki_1", "number": 3 })), None).is_empty());
     }
 
     #[test]
@@ -2829,7 +3095,7 @@ mod tests {
         let notices_ = notices(&requested, "acme/rocket", &actor("usr_ana", "ana"), Some(&pull()), &nobody());
         assert_eq!(told(&notices_), vec![("bo", Reason::ReviewRequested, Severity::Warning)]);
         assert_eq!(notices_[0].title, "ana asked you to review acme/rocket#7");
-        let assigned = event("issue.assigned", Some("usr_ana"), json!({ "number": 3, "added": ["ana", "eve"] }));
+        let assigned = event("work_item.assigned", Some("usr_ana"), json!({ "number": 3, "added": ["ana", "eve"] }));
         let notices_ = notices(&assigned, "acme/rocket", &actor("usr_ana", "ana"), Some(&pull()), &nobody());
         assert_eq!(told(&notices_), vec![("eve", Reason::Assign, Severity::Info)]);
         assert_eq!(notices_[0].title, "ana assigned you to acme/rocket#3");
@@ -2887,7 +3153,7 @@ mod tests {
             Some("usr_bo"),
             json!({ "repoId": "rep_1", "projectId": "prj_1", "project": "rocket", "deploymentId": "dpl_1", "error": "The build failed.", "path": "/acme/rocket/deployments/dpl_1" }),
         );
-        let audience = watched(&[("cy", WatchLevel::Custom, &["deployments"]), ("dee", WatchLevel::Custom, &["issues"]), ("eve", WatchLevel::All, &[])]);
+        let audience = watched(&[("cy", WatchLevel::Custom, &["deployments"]), ("dee", WatchLevel::Custom, &["work_items"]), ("eve", WatchLevel::All, &[])]);
         let notices_ = notices(&failed, "acme/rocket", &actor("usr_bo", "bo"), None, &audience);
         assert_eq!(
             told(&notices_),
@@ -2901,7 +3167,7 @@ mod tests {
         assert_eq!(notices_[0].body, "The build failed.");
         let thread = thread_of(&failed, &wants(&failed).unwrap(), None);
         assert_eq!(thread.key, "rep_1/deploy/prj_1/production");
-        assert_eq!(url(Some("acme/rocket"), thread.kind, None, None, thread.link.as_deref()), "/acme/rocket/deployments/dpl_1");
+        assert_eq!(url(Some("acme/rocket"), None, thread.kind, None, None, thread.link.as_deref()), "/acme/rocket/deployments/dpl_1");
         // A success tells the owner nothing, even after a failure: it
         // settles the failure (settles). Watchers who chose deployments hear of it.
         let live = event("deployment.succeeded", Some("usr_bo"), json!({ "repoId": "rep_1", "projectId": "prj_1", "project": "rocket", "commit": "abcdef0123" }));
@@ -2944,12 +3210,12 @@ mod tests {
     #[test]
     fn a_scan_is_one_item_per_repository_and_alert_type() {
         let found = summary("vulnerability", &["vul_3", "vul_2", "vul_1"], (1, 2, 0, 0), (1, 2, 0, 0), None);
-        assert_eq!(wants(&found), Some(Wanted { repo_id: "rep_1".into(), number: None, comment_id: None }));
+        assert_eq!(wants(&found), Some(Wanted { repo_id: Some("rep_1".into()), ..Wanted::default() }));
         // cy watches for security alerts and is a member; eve watches
-        // everything but cannot see findings; dee watches issues only.
+        // everything but cannot see findings; dee watches work items only.
         let audience = watched(&[
             ("cy", WatchLevel::Custom, &["security"]),
-            ("dee", WatchLevel::Custom, &["issues"]),
+            ("dee", WatchLevel::Custom, &["work_items"]),
             ("eve", WatchLevel::All, &[]),
         ]);
         let notices_ = notices(&found, "acme/rocket", &Actor::default(), None, &audience);
@@ -2959,7 +3225,7 @@ mod tests {
         // The same thread for every scan of this type, however many alerts.
         let thread = thread_of(&found, &wants(&found).unwrap(), None);
         assert_eq!(thread.key, "rep_1/security/vulnerability");
-        assert_eq!(url(Some("acme/rocket"), thread.kind, None, None, thread.link.as_deref()), "/acme/rocket/security/vulnerabilities");
+        assert_eq!(url(Some("acme/rocket"), None, thread.kind, None, None, thread.link.as_deref()), "/acme/rocket/security/vulnerabilities");
         // Medium and low are news, but not urgent: an info item, or the digest.
         let quiet = summary("code_scanning", &["cod_1"], (0, 0, 1, 0), (0, 0, 1, 0), None);
         let notices_ = notices(&quiet, "acme/rocket", &Actor::default(), None, &audience);
@@ -3061,9 +3327,9 @@ mod tests {
 
     #[test]
     fn closing_and_reopening_tells_everyone_subscribed_and_watchers() {
-        let closed = event("issue.closed", Some("usr_bo"), json!({ "number": 3, "reason": "completed" }));
-        let issue = InboxSubject {
-            kind: Some(SubjectKind::Issue),
+        let closed = event("work_item.closed", Some("usr_bo"), json!({ "number": 3, "reason": "completed" }));
+        let item = InboxSubject {
+            kind: Some(SubjectKind::Item),
             title: "Crash".into(),
             author: person("usr_cy", "cy"),
             assignees: vec!["bo".into()],
@@ -3071,7 +3337,7 @@ mod tests {
         };
         let mut audience = subscribed(&[("eve", State::Subscribed, Some(Reason::Comment)), ("fay", State::Unsubscribed, None)]);
         audience.watchers = watched(&[("gus", WatchLevel::All, &[]), ("hal", WatchLevel::Custom, &["pulls"])]).watchers;
-        let notices_ = notices(&closed, "acme/rocket", &actor("usr_bo", "bo"), Some(&issue), &audience);
+        let notices_ = notices(&closed, "acme", &actor("usr_bo", "bo"), Some(&item), &audience);
         assert_eq!(
             told(&notices_),
             vec![
@@ -3080,18 +3346,18 @@ mod tests {
                 ("gus", Reason::Subscribed, Severity::Info),
             ]
         );
-        assert_eq!(notices_[0].title, "bo closed acme/rocket#3");
-        let by_pull = event("issue.closed", None, json!({ "number": 3, "resolvedBy": 9 }));
-        assert_eq!(notices(&by_pull, "acme/rocket", &Actor::default(), Some(&issue), &nobody())[0].title, "acme/rocket#3 was closed by #9");
-        let reopened = event("issue.reopened", Some("usr_cy"), json!({ "number": 3 }));
-        assert_eq!(told(&notices(&reopened, "acme/rocket", &actor("usr_cy", "cy"), Some(&issue), &nobody())), vec![("bo", Reason::StateChange, Severity::Info)]);
+        assert_eq!(notices_[0].title, "bo closed acme#3");
+        let by_pull = event("work_item.closed", None, json!({ "number": 3, "resolution": { "repo": "acme/rocket", "commit": "1a2b3c4d5e" } }));
+        assert_eq!(notices(&by_pull, "acme", &Actor::default(), Some(&item), &nobody())[0].title, "acme#3 was closed by acme/rocket@1a2b3c4");
+        let reopened = event("work_item.reopened", Some("usr_cy"), json!({ "number": 3 }));
+        assert_eq!(told(&notices(&reopened, "acme", &actor("usr_cy", "cy"), Some(&item), &nobody())), vec![("bo", Reason::StateChange, Severity::Info)]);
     }
 
     #[test]
     fn opening_tells_who_it_names_and_watchers_of_its_kind() {
         let opened = event("pull.opened", Some("usr_ana"), json!({ "number": 7 }));
         let subject = InboxSubject { reviewers: vec!["cy".into(), "g1t".into()], ..pull() };
-        let audience = watched(&[("bo", WatchLevel::All, &[]), ("dee", WatchLevel::Custom, &["issues"]), ("eve", WatchLevel::Custom, &["pulls"]), ("fay", WatchLevel::Participating, &[])]);
+        let audience = watched(&[("bo", WatchLevel::All, &[]), ("dee", WatchLevel::Custom, &["work_items"]), ("eve", WatchLevel::Custom, &["pulls"]), ("fay", WatchLevel::Participating, &[])]);
         let notices_ = notices(&opened, "acme/rocket", &actor("usr_ana", "ana"), Some(&subject), &audience);
         assert_eq!(
             told(&notices_),
@@ -3202,7 +3468,7 @@ mod tests {
         assert_eq!(wanted.number, None);
         let thread = thread_of(&created, &wanted, None);
         assert_eq!(thread.key, "rep_1/commit/abcdef1234567890");
-        assert_eq!(url(Some("acme/rocket"), thread.kind, thread.number, None, thread.link.as_deref()), "/acme/rocket/commit/abcdef1234567890");
+        assert_eq!(url(Some("acme/rocket"), None, thread.kind, thread.number, None, thread.link.as_deref()), "/acme/rocket/commit/abcdef1234567890");
         let notices_ = notices(&created, "acme/rocket", &actor("usr_bo", "bo"), None, &nobody());
         assert_eq!(
             told(&notices_),
@@ -3218,7 +3484,7 @@ mod tests {
     }
 
     #[test]
-    fn issues_and_pull_requests_are_one_thread_each() {
+    fn pull_requests_are_one_thread_each() {
         let created = event("comment.created", Some("usr_bo"), json!({ "repoId": "rep_1", "number": 7, "commentId": "cmt_1" }));
         let wanted = wants(&created).unwrap();
         let thread = thread_of(&created, &wanted, Some(&pull()));
@@ -3230,12 +3496,13 @@ mod tests {
 
     #[test]
     fn items_link_to_what_they_are_about() {
-        assert_eq!(url(Some("acme/rocket"), Some(SubjectKind::Pull), Some(7), None, None), "/acme/rocket/pull/7");
-        assert_eq!(url(Some("acme/rocket"), Some(SubjectKind::Issue), Some(3), None, None), "/acme/rocket/issues/3");
-        assert_eq!(url(Some("acme/rocket"), Some(SubjectKind::Run), None, Some("run_1"), None), "/acme/rocket/actions/runs/run_1");
-        assert_eq!(url(Some("acme/rocket"), Some(SubjectKind::Deploy), None, None, Some("/acme/site/deployments/dpl_1")), "/acme/site/deployments/dpl_1");
-        assert_eq!(url(Some("acme/rocket"), None, None, None, None), "/acme/rocket");
-        assert_eq!(url(None, None, None, None, None), "/inbox");
+        assert_eq!(url(Some("acme/rocket"), None, Some(SubjectKind::Pull), Some(7), None, None), "/acme/rocket/pull/7");
+        assert_eq!(url(Some("acme/rocket"), Some("acme"), Some(SubjectKind::Item), Some(3), None, None), "/acme/-/work/3");
+        assert_eq!(url(None, Some("acme"), Some(SubjectKind::Item), Some(3), None, None), "/acme/-/work/3");
+        assert_eq!(url(Some("acme/rocket"), None, Some(SubjectKind::Run), None, Some("run_1"), None), "/acme/rocket/actions/runs/run_1");
+        assert_eq!(url(Some("acme/rocket"), None, Some(SubjectKind::Deploy), None, None, Some("/acme/site/deployments/dpl_1")), "/acme/site/deployments/dpl_1");
+        assert_eq!(url(Some("acme/rocket"), None, None, None, None, None), "/acme/rocket");
+        assert_eq!(url(None, None, None, None, None, None), "/inbox");
     }
 
     #[test]
