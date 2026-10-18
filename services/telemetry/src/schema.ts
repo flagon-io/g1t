@@ -206,6 +206,10 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE error_groups RENAME COLUMN issue_number TO legacy_issue;
   ALTER TABLE error_groups ADD COLUMN item INTEGER;
   `,
+  // That old number is a work item number too, so its column says so.
+  `
+  ALTER TABLE error_groups RENAME COLUMN legacy_issue TO legacy_number;
+  `,
 ];
 
 /**

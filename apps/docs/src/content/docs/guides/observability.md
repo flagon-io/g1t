@@ -81,7 +81,7 @@ quiet.
 An error group names its work item as `item`, its number in the
 workspace; `update_error` with `item_number` links one, and `null` unlinks
 it. A group linked to an issue before work items, whose work item is not
-known yet, has that issue's number as `legacy_issue`.
+known yet, has that old number as `legacy_number`.
 
 ## Apps on g1t.page
 
