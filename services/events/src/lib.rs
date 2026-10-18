@@ -265,7 +265,7 @@ impl Events {
         let notify = self.env.service("NOTIFY").ok();
         // Pages open on the repositories: told first, as nobody waits longer.
         if let Some(notify) = notify.as_ref() {
-            live::tell(notify, events).await;
+            live::tell(notify, &repos, events).await;
         }
         let sources = inbox::Sources {
             work: &work,
