@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { Issue, Project, Pull, Repo, Result, Workspace } from "@g1t/contracts";
+import type { Project, Pull, Repo, Result, WorkItem, Workspace } from "@g1t/contracts";
 
 import { RENDER_VERSION, cacheKey } from "./cache.ts";
 import { type Sources, cardPath, clean, docsCard, resolve, segments } from "./resolve.ts";
@@ -30,7 +30,8 @@ const REPOS: Record<string, Repo> = {
   "acme/vault": repo("acme", "vault", true),
 };
 
-const ISSUE = { number: 7, title: "Fix the thing", state: "closed", reason: "not_planned", author, requestedBy: null } as Issue;
+// Work item 41 of acme, filed in acme/web as its issue #7.
+const ITEM = { workspace: "acme", number: 41, title: "Fix the thing", state: "closed", reason: "not_planned", author, requestedBy: null } as WorkItem;
 // A change g1t made for ada.
 const PULL = { number: 8, title: "Make the thing", status: "merged", author: { id: "usr_g1t_agent", username: "g1t", kind: "agent" }, requestedBy: author } as Pull;
 
@@ -60,13 +61,21 @@ function sources(overrides: Partial<Sources> = {}) {
       get: async (path, viewer) => seen(viewer, REPOS[`${path.namespace}/${path.name}`.toLowerCase()] ? ok(REPOS[`${path.namespace}/${path.name}`.toLowerCase()]) : notFound),
     },
     work: {
-      counts: async (path, viewer) => seen(viewer, hidden(path) ? notFound : ok({ issues: 3, pulls: 2 })),
-      getIssue: async (path, number, viewer) =>
-        seen(viewer, !hidden(path) && number === 7 ? ok({ issue: ISSUE, pulls: [], comments: [] }) : notFound),
+      counts: async (path, viewer) => seen(viewer, hidden(path) ? notFound : ok({ items: 3, pulls: 2 })),
+      // Item 42 was filed in the private acme/vault: no one outside sees it.
+      getWorkItem: async (workspace, number, viewer) =>
+        seen(viewer, workspace === "acme" && number === 41 ? ok({ item: ITEM, pulls: [], comments: [] }) : notFound),
+      resolveRef: async (viewer, context, number) =>
+        seen(
+          viewer,
+          "repo" in context && !hidden(context.repo) && number === 7
+            ? { kind: "work_item" as const, workspace: "acme", number: 41, itemId: "iss_7" }
+            : { kind: "none" as const },
+        ),
       getPull: async (path, number, viewer) =>
-        seen(viewer, !hidden(path) && number === 8 ? ok({ pull: PULL, issue: null, comments: [] } as never) : notFound),
+        seen(viewer, !hidden(path) && number === 8 ? ok({ pull: PULL, item: null, comments: [] } as never) : notFound),
       byAuthor: async (_username, viewer) =>
-        seen(viewer, ok({ items: [], next: null, repos: [], counts: { pullsMerged: 4, pullsOpen: 1, pulls: 6, issues: 2, issuesOpen: 1 } })),
+        seen(viewer, ok({ items: [], next: null, repos: [], counts: { pullsMerged: 4, pullsOpen: 1, pulls: 6, items: 2, itemsOpen: 1 } })),
     },
     projects: {
       get: async (workspace, slug, viewer) =>
@@ -127,7 +136,7 @@ test("a person shows their name, bio and public work, looked up as no one", asyn
     bio: "Engines.",
     pullsMerged: 4,
     pullsOpen: 1,
-    issues: 2,
+    items: 2,
     avatar: null,
   });
   assert.ok(viewers.every((viewer) => viewer === null));
@@ -144,23 +153,28 @@ test("a public project shows its name, description and open work", async () => {
     repo: "web",
     name: "Web app",
     description: "The storefront",
-    issues: 3,
+    items: 3,
     pulls: 2,
   });
 });
 
-test("issues, pull requests and Soon pages get cards of their own", async () => {
+test("work items, pull requests and Soon pages get cards of their own", async () => {
   const { sources: s } = sources();
-  assert.deepEqual(await resolve("/acme/web/issues/7", s), {
-    kind: "issue",
-    owner: "acme",
-    repo: "web",
-    number: 7,
+  const item = {
+    kind: "item",
+    workspace: "acme",
+    number: 41,
     title: "Fix the thing",
     state: "not_planned",
     author: "ada",
     requestedBy: null,
-  });
+  };
+  assert.deepEqual(await resolve("/acme/-/work/41", s), item);
+  assert.deepEqual(await resolve("/Acme/-/work/41", s), item);
+  // An old issue's address shows the work item it became.
+  assert.deepEqual(await resolve("/acme/web/issues/7", s), item);
+  // One no one outside the workspace may see gets the generic card.
+  assert.deepEqual(await resolve("/acme/-/work/42", s), { kind: "brand" });
   const pull = await resolve("/acme/web/pull/8", s);
   assert.equal(pull.kind, "pull");
   assert.equal(pull.kind === "pull" && pull.state, "merged");
@@ -199,7 +213,7 @@ test("a private project on a public repository keeps its name to itself", async 
 
 test("every lookup is made with no viewer", async () => {
   const { sources: s, viewers } = sources();
-  for (const path of ["/acme", "/acme/web", "/acme/web/issues/7", "/acme/web/pull/8", "/acme/vault/pull/8"]) {
+  for (const path of ["/acme", "/acme/web", "/acme/-/work/41", "/acme/web/issues/7", "/acme/web/pull/8", "/acme/vault/pull/8"]) {
     await resolve(path, s);
   }
   assert.ok(viewers.length > 0);
@@ -259,13 +273,16 @@ test("a path is keyed by the page whose card it shows", () => {
   assert.equal(cardPath("/u/Ada"), "/u/ada");
   assert.equal(cardPath("/acme/web/issues/12"), "/acme/web/issues/12");
   assert.equal(cardPath("/acme/web/issues/012"), "/acme/web");
+  assert.equal(cardPath("/Acme/-/work/12"), "/acme/-/work/12");
+  assert.equal(cardPath("/acme/-/work/12/extra"), "/acme");
+  assert.equal(cardPath("/acme/-/work/labels"), "/acme");
   assert.equal(cardPath("/acme/web/soon/no-such-thing"), "/acme/web");
   assert.equal(cardPath("//evil"), "/");
 });
 
 test("a path resolves to the same card as the page it is keyed by", async () => {
   const { sources: s } = sources();
-  for (const path of ["/acme/web/tree/main", "/acme/web/pull/7/files", "/acme/-/settings", "/acme/web/issues/3"]) {
+  for (const path of ["/acme/web/tree/main", "/acme/web/pull/7/files", "/acme/-/settings", "/acme/web/issues/3", "/Acme/-/work/41"]) {
     assert.deepEqual(await resolve(path, s), await resolve(cardPath(path), s), path);
   }
 });

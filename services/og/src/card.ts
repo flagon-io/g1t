@@ -5,7 +5,7 @@
  * dot grid and lavender kept for accents.
  */
 import { COLOR, ICON, LOCKUP_BOX, backdropSvg, dataUri, iconSvg, lockupSvg } from "./brand.ts";
-import type { Card, IssueState } from "./resolve.ts";
+import type { Card, ItemState } from "./resolve.ts";
 import type { PullStatus } from "@g1t/contracts";
 
 export const WIDTH = 1200;
@@ -308,10 +308,10 @@ const PULL_BADGE: Record<PullStatus, [string, string, Tone]> = {
   closed: ["Closed", ICON.pullClosed, TONE.closed],
 };
 
-const ISSUE_BADGE: Record<IssueState, [string, string, Tone]> = {
-  open: ["Open", ICON.issue, TONE.open],
-  completed: ["Closed", ICON.issueDone, TONE.merged],
-  not_planned: ["Not planned", ICON.issueNotPlanned, TONE.quiet],
+const ITEM_BADGE: Record<ItemState, [string, string, Tone]> = {
+  open: ["Open", ICON.item, TONE.open],
+  completed: ["Closed", ICON.itemDone, TONE.merged],
+  not_planned: ["Not planned", ICON.itemNotPlanned, TONE.quiet],
 };
 
 function count(n: number, one: string, many: string): [string, string] {
@@ -350,7 +350,7 @@ export function cardTree(card: Card): Node {
     case "person": {
       const [merged, mergedNoun] = count(card.pullsMerged, "pull request merged", "pull requests merged");
       const [pulls, pullNoun] = count(card.pullsOpen, "open pull request", "open pull requests");
-      const [issues, issueNoun] = count(card.issues, "issue opened", "issues opened");
+      const [items, itemNoun] = count(card.items, "work item opened", "work items opened");
       return frame({
         address: `g1t.sh/u/${card.username}`,
         // The username above the name they go by; "Profile" when there is none.
@@ -360,13 +360,13 @@ export function cardTree(card: Card): Node {
         facts: [
           fact(ICON.merged, merged, mergedNoun),
           fact(ICON.pull, pulls, pullNoun),
-          fact(ICON.issue, issues, issueNoun),
+          fact(ICON.item, items, itemNoun),
         ],
       });
     }
 
     case "project": {
-      const [issues, issueNoun] = count(card.issues, "open issue", "open issues");
+      const [items, itemNoun] = count(card.items, "open work item", "open work items");
       const [pulls, pullNoun] = count(card.pulls, "open pull request", "open pull requests");
       const named = card.name.toLowerCase() !== card.repo.toLowerCase();
       return frame({
@@ -374,18 +374,18 @@ export function cardTree(card: Card): Node {
         eyebrow: eyebrow(named ? `${card.owner}/${card.repo}` : `${card.owner} /`, true),
         title: named ? title(card.name, 2) : repoTitle(card.repo),
         description: card.description,
-        facts: [fact(ICON.issue, issues, issueNoun), fact(ICON.pull, pulls, pullNoun)],
+        facts: [fact(ICON.item, items, itemNoun), fact(ICON.pull, pulls, pullNoun)],
       });
     }
 
-    case "issue": {
-      const [label, shapes, tone] = ISSUE_BADGE[card.state];
+    case "item": {
+      const [label, shapes, tone] = ITEM_BADGE[card.state];
       return frame({
-        address: `g1t.sh/${card.owner}/${card.repo}/issues/${card.number}`,
-        eyebrow: eyebrowWithNumber(`${card.owner}/${card.repo}`, card.number),
+        address: `g1t.sh/${card.workspace}/-/work/${card.number}`,
+        eyebrow: eyebrowWithNumber(card.workspace, card.number),
         title: title(card.title),
         description: null,
-        facts: [badge(label, shapes, tone), plain("Issue"), dot(), byline(card.author, card.requestedBy)],
+        facts: [badge(label, shapes, tone), plain("Work item"), dot(), byline(card.author, card.requestedBy)],
       });
     }
 
