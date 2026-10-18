@@ -14,7 +14,7 @@ to the API names the operations it calls, which link to the
 
 | Flag | |
 | --- | --- |
-| `-R, --repo <[HOST/]OWNER/NAME>` | The repository, as [HOST/]OWNER/NAME, instead of the current directory's. |
+| `-R, --repo <[HOST/]OWNER/NAME>` | The repository, as [HOST/]OWNER/NAME, instead of the current directory's. Also `G1T_REPO`. |
 | `--hostname <HOST>` | The g1t host, such as g1t.sh or git.example.com. |
 | `--json [FIELDS]` | Print JSON: every field, or only the comma-separated FIELDS. |
 | `--jq <EXPRESSION>` | Run a jq expression over the JSON and print what it gives. |
@@ -1087,6 +1087,12 @@ Calls [`record_session_entries`](/reference/api/sessions/record-session-entries/
 
 Work items: list, view, open, edit, link, close; claims, hand-offs, dependencies, events.
 
+Flags every `g1t work` command takes:
+
+| Flag | |
+| --- | --- |
+| `--workspace <SLUG>` | The workspace, by its slug; the current repository's when left out. Also `G1T_WORKSPACE`. |
+
 ### g1t work list
 
 List the workspace's work items; with --repo, those linked to that repository.
@@ -1152,7 +1158,7 @@ Examples:
   g1t work new --title "Rename the flag" --target acme/api --target acme/docs
 ```
 
-Calls [`open_work_item`](/reference/api/work-items/open-work-item/), [`update_work_item`](/reference/api/work-items/update-work-item/), [`upload_attachment`](/reference/api/work-items/upload-attachment/).
+Calls [`open_work_item`](/reference/api/work-items/open-work-item/), [`update_work_item`](/reference/api/work-items/update-work-item/), [`upload_attachment`](/reference/api/work-items/upload-attachment/), [`upload_work_item_attachment`](/reference/api/work-items/upload-work-item-attachment/).
 
 ### g1t work comment
 
@@ -1169,7 +1175,7 @@ g1t work comment [OPTIONS] <NUMBER>
 | `-F, --body-file <FILE>` | Read the text from a file, or - for stdin. |
 | `--attach <FILE>` | An image to show after the text (PNG, JPEG, GIF or WebP, at most 10 MB): uploaded, and its Markdown added. Repeat for more. |
 
-Calls [`add_work_item_comment`](/reference/api/work-items/add-work-item-comment/), [`upload_attachment`](/reference/api/work-items/upload-attachment/).
+Calls [`add_work_item_comment`](/reference/api/work-items/add-work-item-comment/), [`upload_work_item_attachment`](/reference/api/work-items/upload-work-item-attachment/).
 
 ### g1t work edit
 
@@ -1454,7 +1460,7 @@ uploads and adds the Markdown for you:
   g1t pr comment --body 'The preview, after the fix:' --attach preview.png
 ```
 
-Calls [`upload_attachment`](/reference/api/work-items/upload-attachment/).
+Calls [`upload_attachment`](/reference/api/work-items/upload-attachment/), [`upload_work_item_attachment`](/reference/api/work-items/upload-work-item-attachment/).
 
 ## g1t api
 

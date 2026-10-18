@@ -114,10 +114,25 @@ fn describe(arg: &Arg) -> String {
     if arg.is_last_set() {
         text = format!("After `--`. {text}");
     }
+    if let Some(env) = arg.get_env() {
+        let _ = write!(text, " Also `{}`.", env.to_string_lossy());
+    }
     cell(text.trim())
 }
 
-fn command(out: &mut String, cmd: &Command, path: &str, depth: usize) {
+/// The flags a command group takes for every command under it (`g1t work
+/// --workspace`): its global ones that no command above it has.
+fn group_flags<'a>(cmd: &'a Command, above: &[String]) -> Vec<&'a Arg> {
+    cmd.get_arguments()
+        .filter(|a| {
+            a.is_global_set()
+                && !a.is_hide_set()
+                && !above.iter().any(|id| id == a.get_id().as_str())
+        })
+        .collect()
+}
+
+fn command(out: &mut String, cmd: &Command, path: &str, depth: usize, above: &[String]) {
     if cmd.is_hide_set() || cmd.get_name() == "help" {
         return;
     }
@@ -131,8 +146,27 @@ fn command(out: &mut String, cmd: &Command, path: &str, depth: usize) {
         let _ = writeln!(out, "{}\n", sentence(&about.to_string()));
     }
     if !subs.is_empty() {
+        let own = group_flags(cmd, above);
+        if !own.is_empty() {
+            let _ = writeln!(
+                out,
+                "Flags every `{path}` command takes:\n\n| Flag | |\n| --- | --- |"
+            );
+            for arg in &own {
+                let _ = writeln!(out, "| `{}` | {} |", cell(&flag(arg)), describe(arg));
+            }
+            let _ = writeln!(out);
+        }
+        let mut above = above.to_vec();
+        above.extend(own.iter().map(|a| a.get_id().to_string()));
         for sub in &subs {
-            command(out, sub, &format!("{path} {}", sub.get_name()), depth + 1);
+            command(
+                out,
+                sub,
+                &format!("{path} {}", sub.get_name()),
+                depth + 1,
+                &above,
+            );
         }
         return;
     }
@@ -179,15 +213,14 @@ pub fn reference() -> String {
     let mut root = <crate::cli::Cli as clap::CommandFactory>::command();
     root.build();
     let mut out = HEAD.to_owned();
-    for arg in root
-        .get_arguments()
-        .filter(|a| a.is_global_set() && !a.is_hide_set())
-    {
+    let globals = group_flags(&root, &[]);
+    for arg in &globals {
         let _ = writeln!(out, "| `{}` | {} |", cell(&flag(arg)), describe(arg));
     }
     let _ = writeln!(out);
+    let above: Vec<String> = globals.iter().map(|a| a.get_id().to_string()).collect();
     for sub in root.get_subcommands() {
-        command(&mut out, sub, &format!("g1t {}", sub.get_name()), 2);
+        command(&mut out, sub, &format!("g1t {}", sub.get_name()), 2, &above);
     }
     out.trim_end().to_owned() + "\n"
 }
