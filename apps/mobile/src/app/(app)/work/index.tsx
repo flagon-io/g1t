@@ -1,8 +1,9 @@
-import { Stack, router, useLocalSearchParams, useNavigation } from "expo-router";
-import { Check as CheckIcon, ListTodo, Plus, SlidersHorizontal, X } from "lucide-react-native";
-import { useEffect, useMemo, useState } from "react";
+import { Stack, router, useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
+import { Activity, Check as CheckIcon, ListTodo, Plus, SlidersHorizontal, X } from "lucide-react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 
+import { Board } from "@/components/board";
 import { Sheet } from "@/components/chat/sheet";
 import { Segments } from "@/components/segments";
 import { Button, Empty, ErrorView, Loading, Row, Screen, Text } from "@/components/ui";
@@ -12,7 +13,10 @@ import { useSignedIn } from "@/lib/session";
 import { type LinkRole, type WorkFilter, useLabels, useMilestones, useWorkItems } from "@/lib/work";
 import { radius, space, useColors } from "@/theme";
 
-type Params = { workspace?: string; state?: string; label?: string; milestone?: string; assignee?: string; repo?: string; role?: string };
+type Params = { workspace?: string; view?: string; state?: string; label?: string; milestone?: string; assignee?: string; repo?: string; role?: string };
+
+/** The list of items, or the board. */
+type Shown = "items" | "board";
 
 /** The filter a link to the list names (`/acme/-/work?repo=web&label=bug`), open items when it names none. */
 function filterOf(params: Params): WorkFilter {
@@ -31,9 +35,10 @@ function filterOf(params: Params): WorkFilter {
 
 /**
  * Work: the workspace's work items, newest first, for every member,
- * Code or not. Filters are in a sheet (the ⚙ in the header, the chips
- * above the list, or Work in the bar again); pull down to read again,
- * and the list loads more as it nears its end.
+ * Code or not, or its board (`/acme/-/work/board`). Filters are in a
+ * sheet (the ⚙ in the header, the chips above the list, or Work in the
+ * bar again); pull down to read again, and the list loads more as it
+ * nears its end. Sessions opens from the header.
  */
 export default function WorkList() {
   const params = useLocalSearchParams<Params>();
@@ -44,7 +49,17 @@ export default function WorkList() {
   const [filter, setFilter] = useState<WorkFilter>(linked);
   useEffect(() => setFilter(linked), [linked]);
   const [filtering, setFiltering] = useState(false);
-  const items = useWorkItems(slug, filter);
+  const linkedView: Shown = params.view === "board" ? "board" : "items";
+  const [view, setView] = useState<Shown>(linkedView);
+  useEffect(() => setView(linkedView), [linkedView]);
+  const [focused, setFocused] = useState(false);
+  useFocusEffect(
+    useCallback(() => {
+      setFocused(true);
+      return () => setFocused(false);
+    }, []),
+  );
+  const items = useWorkItems(view === "items" ? slug : undefined, filter);
   const milestones = useMilestones(filter.milestone ? slug : undefined);
 
   // Work in the bar again, on the list itself, opens its filters, as the site's bar opens Work's menu.
@@ -53,9 +68,9 @@ export default function WorkList() {
     const tabs = navigation.getParent();
     if (!tabs) return;
     return tabs.addListener("tabPress" as never, () => {
-      if (navigation.isFocused()) setFiltering(true);
+      if (navigation.isFocused() && view === "items") setFiltering(true);
     });
-  }, [navigation]);
+  }, [navigation, view]);
 
   const active = [
     filter.assignee ? { key: "assignee", label: filter.assignee === me.username ? "Assigned to me" : `@${filter.assignee}` } : null,
@@ -69,9 +84,18 @@ export default function WorkList() {
       options={{
         title: "Work",
         headerRight: () => (
-          <Pressable accessibilityLabel="Filters" hitSlop={10} onPress={() => setFiltering(true)}>
-            <SlidersHorizontal size={22} color={active.length ? colors.accent : colors.fg} />
-          </Pressable>
+          <View style={styles.actions}>
+            {slug ? (
+              <Pressable accessibilityLabel="Sessions" hitSlop={10} onPress={() => router.push({ pathname: "/work/sessions", params: { workspace: slug } })}>
+                <Activity size={22} color={colors.fg} />
+              </Pressable>
+            ) : null}
+            {view === "items" ? (
+              <Pressable accessibilityLabel="Filters" hitSlop={10} onPress={() => setFiltering(true)}>
+                <SlidersHorizontal size={22} color={active.length ? colors.accent : colors.fg} />
+              </Pressable>
+            ) : null}
+          </View>
         ),
       }}
     />
@@ -91,15 +115,25 @@ export default function WorkList() {
       {header}
       <View style={[styles.bar, { borderBottomColor: colors.line }]}>
         <Segments
-          value={filter.state}
-          onChange={(state) => setFilter({ ...filter, state })}
+          value={view}
+          onChange={setView}
           options={[
-            { value: "open", label: "Open" },
-            { value: "closed", label: "Closed" },
-            { value: "all", label: "All" },
+            { value: "items", label: "Items" },
+            { value: "board", label: "Board" },
           ]}
         />
-        {active.length ? (
+        {view === "items" ? (
+          <Segments
+            value={filter.state}
+            onChange={(state) => setFilter({ ...filter, state })}
+            options={[
+              { value: "open", label: "Open" },
+              { value: "closed", label: "Closed" },
+              { value: "all", label: "All" },
+            ]}
+          />
+        ) : null}
+        {view === "items" && active.length ? (
           <View style={styles.chips}>
             {active.map((one) => (
               <Chip
@@ -114,7 +148,9 @@ export default function WorkList() {
         ) : null}
       </View>
 
-      {items.isPending ? (
+      {view === "board" ? (
+        <Board workspace={slug} focused={focused} />
+      ) : items.isPending ? (
         <Loading />
       ) : items.error ? (
         <ErrorView error={items.error} retry={() => items.refetch()} />
@@ -290,6 +326,7 @@ function Check({ on }: { on: boolean }) {
 const styles = StyleSheet.create({
   bar: { paddingHorizontal: space.lg, paddingVertical: space.md, gap: space.sm, borderBottomWidth: StyleSheet.hairlineWidth },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  actions: { flexDirection: "row", alignItems: "center", gap: space.lg },
   fab: {
     position: "absolute",
     right: space.lg,

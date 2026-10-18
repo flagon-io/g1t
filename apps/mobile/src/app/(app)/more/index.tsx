@@ -3,7 +3,7 @@ import Constants from "expo-constants";
 import { hasCodeAccess } from "@g1t/contracts";
 import { Stack, router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { Bell, BellRing, Check, Code2, ExternalLink, LogOut } from "lucide-react-native";
+import { Activity, Bell, BellRing, Check, Code2, ExternalLink, LogOut } from "lucide-react-native";
 import { Linking, View } from "react-native";
 
 import { Avatar, Badge, Button, Row, Screen, SectionHeader, Text } from "@/components/ui";
@@ -12,7 +12,7 @@ import { isHosted, siteUrl } from "@/lib/server";
 import { useSignedIn } from "@/lib/session";
 import { space, useColors } from "@/theme";
 
-/** More: Code, notifications on this phone, your workspaces, how you signed in, and signing out. */
+/** More: Sessions, Code, notifications on this phone, your workspaces, how you signed in, and signing out. */
 export default function More() {
   const { me, workspace, server, client, selectWorkspace, signOut } = useSignedIn();
   const code = !workspace || hasCodeAccess(workspace);
@@ -44,16 +44,22 @@ export default function More() {
         </View>
       </View>
 
-      {code ? (
-        <View>
+      <View>
+        <Row
+          leading={<Activity size={22} color={colors.accent} />}
+          title="Sessions"
+          subtitle="What is cooking: the agents at work across the workspace"
+          onPress={() => router.push({ pathname: "/work/sessions", params: workspace ? { workspace: workspace.slug } : {} })}
+        />
+        {code ? (
           <Row
             leading={<Code2 size={22} color={colors.accent} />}
             title="Code"
             subtitle="Repositories, their pull requests and changes"
             onPress={() => router.push("/code")}
           />
-        </View>
-      ) : null}
+        ) : null}
+      </View>
 
       <View>
         <Row

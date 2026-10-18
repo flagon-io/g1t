@@ -1,8 +1,11 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { ApiComment, ApiUser, CheckStatus } from "./code";
+import { boardOf } from "./board";
+import type { Client } from "./client";
+import type { ApiComment, ApiPull, ApiUser, CheckStatus } from "./code";
 import type { RefContext, RefTarget } from "./links";
 import { useSignedIn } from "./session";
+import { type ApiSessionDetail, type ApiWorkspaceSessions, ENTRY_PAGE, type SessionsFilter, isLive, sessionsQuery } from "./sessions";
 
 /**
  * Work, through the REST API (docs.g1t.sh/reference/api/work-items/): a
@@ -224,4 +227,99 @@ export function useRefTarget(context: RefContext | null, number: number) {
 function refPath(context: RefContext): string {
   if ("repo" in context) return `/repos/${context.repo.split("/").map(encodeURIComponent).join("/")}`;
   return `/workspaces/${encodeURIComponent(context.workspace)}`;
+}
+
+const sessionsPath = (workspace: string) => `/workspaces/${encodeURIComponent(workspace)}/sessions`;
+
+/** How often Sessions and a live session are read again while on screen. */
+export const POLL_MS = 15_000;
+
+/**
+ * A workspace's sessions, most recently heard from first. With `poll`
+ * (the screen is in view) they are read again every 15 s while one is live.
+ */
+export function useWorkspaceSessions(workspace: string | undefined, filter: SessionsFilter, poll = false) {
+  const { client } = useSignedIn();
+  return useQuery({
+    queryKey: ["work", "sessions", workspace?.toLowerCase(), filter],
+    enabled: Boolean(workspace),
+    queryFn: () => client.api<ApiWorkspaceSessions>(`${sessionsPath(workspace!)}?${sessionsQuery(filter)}`),
+    refetchInterval: (query) => (poll && query.state.data?.sessions.some(isLive) ? POLL_MS : false),
+  });
+}
+
+/**
+ * One session and what it recorded, 500 steps at a time. With `poll` it
+ * is read again every 15 s while it is live.
+ */
+export function useWorkspaceSession(workspace: string, id: string, poll = false) {
+  const { client } = useSignedIn();
+  const query = useInfiniteQuery({
+    queryKey: ["work", "session", workspace.toLowerCase(), id],
+    initialPageParam: undefined as number | undefined,
+    queryFn: ({ pageParam }) =>
+      client.api<ApiSessionDetail>(`${sessionsPath(workspace)}/${encodeURIComponent(id)}${pageParam === undefined ? "" : `?after=${pageParam}`}`),
+    getNextPageParam: (last) => (last.entries.length >= ENTRY_PAGE ? last.entries[last.entries.length - 1].seq : undefined),
+    refetchInterval: (query) => {
+      const first = query.state.data?.pages[0];
+      return poll && first && isLive(first.session) ? POLL_MS : false;
+    },
+  });
+  const pages = query.data?.pages ?? [];
+  const detail = pages.length ? pages[pages.length - 1] : undefined;
+  const entries = (() => {
+    const seen = new Set<number>();
+    return pages.flatMap((page) => page.entries).filter((entry) => (seen.has(entry.seq) ? false : (seen.add(entry.seq), true)));
+  })();
+  return { ...query, detail, entries };
+}
+
+/** Every page of a list of items, up to `pages` of them. */
+async function allItems(client: Client, workspace: string, state: "open" | "closed", pages: number): Promise<ApiWorkItem[]> {
+  const items: ApiWorkItem[] = [];
+  const seen = new Set<string>();
+  for (let page = 1; page <= pages; page++) {
+    const batch = await client.api<ApiWorkItem[]>(`${workPath(workspace)}?${filterQuery({ state }, page)}`);
+    const fresh = batch.filter((item) => !seen.has(item.id));
+    fresh.forEach((item) => seen.add(item.id));
+    items.push(...fresh);
+    if (batch.length < PAGE || fresh.length === 0) break;
+  }
+  return items;
+}
+
+/** The repositories whose open pull requests the board reads, at most. */
+const BOARD_REPOS = 20;
+
+/**
+ * Work's board (lib/board.ts): the open items, those closed lately, the
+ * live sessions, and each repository's open pull requests. With `poll`,
+ * the sessions are read again every 15 s while one is live.
+ */
+export function useBoard(workspace: string | undefined, poll = false) {
+  const { client } = useSignedIn();
+  const key = workspace?.toLowerCase();
+  const open = useQuery({ queryKey: ["work", "board", key, "open"], enabled: Boolean(workspace), queryFn: () => allItems(client, workspace!, "open", 10) });
+  const closed = useQuery({ queryKey: ["work", "board", key, "closed"], enabled: Boolean(workspace), queryFn: () => allItems(client, workspace!, "closed", 3) });
+  const sessions = useWorkspaceSessions(workspace, { state: "live" }, poll);
+  const repos = (sessions.data?.repos ?? []).slice(0, BOARD_REPOS);
+  const pulls = useQueries({
+    queries: repos.map((repo) => {
+      const [owner, name] = repo.path.split("/", 2);
+      return {
+        queryKey: ["code", "pulls", owner, name, "open"],
+        queryFn: () => client.api<ApiPull[]>(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls?state=open`),
+        retry: false,
+      };
+    }),
+  });
+  const read = pulls.flatMap((one) => one.data ?? []);
+  const board = boardOf([...(open.data ?? []), ...(closed.data ?? [])], { pulls: read, sessions: sessions.data?.sessions ?? [] });
+  return {
+    board,
+    isPending: open.isPending || closed.isPending,
+    error: open.error ?? closed.error,
+    isRefetching: open.isRefetching || closed.isRefetching || sessions.isRefetching,
+    refetch: () => Promise.all([open.refetch(), closed.refetch(), sessions.refetch(), ...pulls.map((one) => one.refetch())]),
+  };
 }
