@@ -1908,8 +1908,10 @@ export type SignalWeek = {
   reviewSeconds: number;
   stalled: number;
   sessionCostUsd: number;
+  /** Commits agent sessions pushed outside any pull request (to the default branch, most of all), each once. */
+  agentCommits: number;
 };
-export type SignalDay = { repoId: string; day: string; opened: number; merged: number; agentMerged: number; reworked: number; reviews: number; sessions: number };
+export type SignalDay = { repoId: string; day: string; opened: number; merged: number; agentMerged: number; reworked: number; reviews: number; sessions: number; agentCommits: number };
 /** An open pull request no one has reviewed, oldest first; `blocks`: the open work items waiting on its work item. */
 export type WaitingPull = { repoId: string; number: number; title: string; createdAt: string; agent: boolean; draftSeconds: number | null; item: number | null; blocks: number[] };
 export type SignalPull = {

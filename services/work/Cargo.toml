@@ -23,7 +23,8 @@ hex = "0.4"
 sha2 = "0.10"
 
 [dev-dependencies]
-rusqlite = { version = "0.32", features = ["bundled"] }
+# limits: the tests' databases refuse what D1 refuses (signals/tests.rs).
+rusqlite = { version = "0.32", features = ["bundled", "limits"] }
 
 # wasm-opt at -O1: about the same gzipped size as -O in a tenth of the
 # time.

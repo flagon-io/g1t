@@ -58,6 +58,9 @@ pub struct SignalWeek {
     /// What the harness sessions started in the week cost, as they
     /// reported it (estimated at list price from their token usage).
     pub session_cost_usd: f64,
+    /// Commits agent sessions pushed outside any pull request in the week
+    /// (to the default branch, most of all), each once.
+    pub agent_commits: u32,
 }
 
 /// One repository's UTC day. Days with nothing in them are left out.
@@ -76,6 +79,8 @@ pub struct SignalDay {
     pub reviews: u32,
     /// Harness sessions started.
     pub sessions: u32,
+    /// Commits agent sessions pushed outside any pull request.
+    pub agent_commits: u32,
 }
 
 /// An open pull request no one has reviewed yet, oldest first.

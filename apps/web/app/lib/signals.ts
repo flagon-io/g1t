@@ -114,6 +114,7 @@ const ZERO_WEEK = (start: string): WeekTotals => ({
   reviewSeconds: 0,
   stalled: 0,
   sessionCostUsd: 0,
+  agentCommits: 0,
 });
 
 /** Every week in `starts`, quiet ones too, for the repositories in `only` (every one when not given). */
@@ -131,6 +132,7 @@ export function weekTotals(rows: SignalWeek[], starts: string[], only?: Readonly
     week.reviewSeconds += row.reviewSeconds;
     week.stalled += row.stalled;
     week.sessionCostUsd += row.sessionCostUsd ?? 0;
+    week.agentCommits += row.agentCommits ?? 0;
   }
   return starts.map((start) => byStart.get(start)!);
 }
@@ -172,14 +174,29 @@ export function reworkRate(week: WeekTotals): number | null {
   return week.agentMerged > 0 ? week.agentReworked / week.agentMerged : null;
 }
 
-/** The share of merges that were an agent's, 0 to 1. */
-export function agentShare(week: WeekTotals): number | null {
-  return week.merged > 0 ? week.agentMerged / week.merged : null;
+/**
+ * What agents landed in a week: their merged pull requests, and the
+ * commits their sessions pushed outside any pull request (to the default
+ * branch, most of all). A workspace that pushes straight to main lands
+ * most of its work the second way.
+ */
+export function agentChanges(week: WeekTotals): number {
+  return week.agentMerged + (week.agentCommits ?? 0);
 }
 
-/** Usage per agent merge, in micros. */
+/** Everything that landed in a week: merged pull requests, and agents' direct commits. */
+export function allChanges(week: WeekTotals): number {
+  return week.merged + (week.agentCommits ?? 0);
+}
+
+/** The share of what landed that was an agent's, 0 to 1. */
+export function agentShare(week: WeekTotals): number | null {
+  return allChanges(week) > 0 ? agentChanges(week) / allChanges(week) : null;
+}
+
+/** Usage per agent change (merge or direct commit), in micros. */
 export function spendPerMerge(micros: number | null, week: WeekTotals): number | null {
-  return micros != null && week.agentMerged > 0 ? micros / week.agentMerged : null;
+  return micros != null && agentChanges(week) > 0 ? micros / agentChanges(week) : null;
 }
 
 // --- Words ------------------------------------------------------------------------
@@ -282,8 +299,9 @@ export type PulseInput = {
 
 /**
  * The past week in four figures, each against the week before and drawn
- * over the last ten: agent merges, usage per agent merge, stalled changes,
- * and how often people asked for changes on an agent's work.
+ * over the last ten: what agents landed (merges and direct commits), usage
+ * per agent change, stalled changes, and how often people asked for
+ * changes on an agent's merged work.
  */
 export function pulse({ slug, weeks, spend }: PulseInput): PulseTile[] {
   const at = weeks.length - 1;
@@ -297,22 +315,22 @@ export function pulse({ slug, weeks, spend }: PulseInput): PulseTile[] {
   return [
     {
       key: "merges",
-      label: "Agent-authored merges",
-      value: String(now.agentMerged),
-      delta: deltaOf(now.agentMerged, before?.agentMerged ?? null, count, true),
-      series: weeks.map((week) => week.agentMerged),
-      points: weeks.map((week, i) => `${labels[i]}: ${week.agentMerged} of ${week.merged} merges`),
-      hint: "Merged pull requests an agent made: g1t's agent, or a harness session tied to it",
+      label: "Agent-authored changes",
+      value: String(agentChanges(now)),
+      delta: deltaOf(agentChanges(now), before ? agentChanges(before) : null, count, true),
+      series: weeks.map(agentChanges),
+      points: weeks.map((week, i) => `${labels[i]}: ${week.agentMerged} merged, ${week.agentCommits ?? 0} pushed directly, of ${allChanges(week)} changes`),
+      hint: "Agents' merged pull requests, and the commits their sessions pushed outside one",
       to: `/${slug}/-/overview?tab=landed`,
     },
     {
       key: "spend",
-      label: "Spend per agent merge",
+      label: "Spend per agent change",
       value: dollars(perMerge[at] ?? null),
       delta: deltaOf(perMerge[at] ?? null, before ? (perMerge[at - 1] ?? null) : null, (abs) => dollars(abs), false),
       series: perMerge,
-      points: perMerge.map((micros, i) => `${labels[i]}: ${micros == null ? "no agent merges" : dollars(micros)}`),
-      hint: "g1t's agent usage at price and harness sessions' cost at list price, over the agent merges",
+      points: perMerge.map((micros, i) => `${labels[i]}: ${micros == null ? "no agent changes" : dollars(micros)}`),
+      hint: "g1t's agent usage at price and harness sessions' cost at list price, over what agents landed",
       to: `/${slug}/-/usage`,
     },
     {
@@ -646,7 +664,8 @@ export function newGround(authors: SignalAuthor[], now: number, days = 14): NewG
 /**
  * A project where one person has done most of the recent work: their
  * share of its merges in the last 90 days, and whoever else has started
- * merging there in the last 30 (knowledge spreading, or not yet).
+ * merging there in the last 30 (knowledge spreading, or not yet). Only in
+ * a workspace where three people or more merged lately.
  */
 export type Silo = {
   repoId: string;
@@ -658,7 +677,10 @@ export type Silo = {
   joining: { ownerId: string; name: string }[];
 };
 
-export function silos(authors: SignalAuthor[], now: number, { minRecent = 6, minShare = 0.75 } = {}): Silo[] {
+export function silos(authors: SignalAuthor[], now: number, { minRecent = 6, minShare = 0.75, minPeople = 3 } = {}): Silo[] {
+  // Fewer than `minPeople` people merging anywhere lately: every project rests on someone, and saying so tells nothing.
+  const people = new Set(authors.filter((row) => row.recent > 0).map((row) => row.ownerId));
+  if (people.size < minPeople) return [];
   const byRepo = new Map<string, SignalAuthor[]>();
   for (const row of authors) byRepo.set(row.repoId, [...(byRepo.get(row.repoId) ?? []), row]);
   const found: Silo[] = [];
@@ -815,9 +837,10 @@ export function findings(ctx: SignalContext): Signal[] {
 
 /** The headline when nothing stands out: still a sentence about the week. */
 export function quietHeadline(week: WeekTotals | undefined): string {
-  if (!week || week.merged === 0) return "A quiet week: nothing has merged yet, and nothing is stuck.";
+  const landed = week ? allChanges(week) : 0;
+  if (!week || landed === 0) return "A quiet week: nothing has landed yet, and nothing is stuck.";
   const share = agentShare(week);
-  return `${countWord(week.merged)} ${week.merged === 1 ? "change" : "changes"} merged this week${share ? `, ${percent(share)} of them an agent's` : ""}, and nothing needs a closer look.`;
+  return `${countWord(landed)} ${landed === 1 ? "change" : "changes"} landed this week${share ? `, ${percent(share)} of them an agent's` : ""}, and nothing needs a closer look.`;
 }
 
 /** What Home shows: the pulse, and the findings with the one that leads. */
@@ -976,7 +999,7 @@ export function spendFlow(ctx: Pick<SignalContext, "slug" | "repos" | "signals" 
 
 // --- The rhythm of the work -------------------------------------------------------
 
-export type RhythmDay = { day: string; opened: number; merged: number; reworked: number; reviews: number; sessions: number };
+export type RhythmDay = { day: string; opened: number; merged: number; reworked: number; reviews: number; sessions: number; commits: number };
 
 export type RhythmRow = {
   key: string;
@@ -995,7 +1018,7 @@ export type Group = { key: string; label: string; note: string; to: string; repo
 export function rhythm(days: SignalDay[], list: string[], groups: Group[], max = 6): RhythmRow[] {
   const rows = groups.map((group) => {
     const ids = new Set(group.repoIds);
-    const byDay = new Map(list.map((day) => [day, { day, opened: 0, merged: 0, reworked: 0, reviews: 0, sessions: 0 }]));
+    const byDay = new Map(list.map((day) => [day, { day, opened: 0, merged: 0, reworked: 0, reviews: 0, sessions: 0, commits: 0 }]));
     for (const row of days) {
       const day = byDay.get(row.day);
       if (!day || !ids.has(row.repoId)) continue;
@@ -1004,9 +1027,10 @@ export function rhythm(days: SignalDay[], list: string[], groups: Group[], max =
       day.reworked += row.reworked;
       day.reviews += row.reviews;
       day.sessions += row.sessions;
+      day.commits += row.agentCommits ?? 0;
     }
     const out = list.map((day) => byDay.get(day)!);
-    const total = out.reduce((sum, day) => sum + day.opened + day.merged + day.reworked + day.reviews + day.sessions, 0);
+    const total = out.reduce((sum, day) => sum + day.opened + day.merged + day.reworked + day.reviews + day.sessions + day.commits, 0);
     return { key: group.key, label: group.label, note: group.note, to: group.to, days: out, total };
   });
   return rows
@@ -1024,8 +1048,9 @@ export function rhythmSum(days: RhythmDay[]) {
       reworked: sum.reworked + day.reworked,
       reviews: sum.reviews + day.reviews,
       sessions: sum.sessions + day.sessions,
+      commits: sum.commits + day.commits,
     }),
-    { opened: 0, merged: 0, reworked: 0, reviews: 0, sessions: 0 },
+    { opened: 0, merged: 0, reworked: 0, reviews: 0, sessions: 0, commits: 0 },
   );
 }
 
@@ -1034,12 +1059,12 @@ export function rhythmLine(row: RhythmRow): string {
   const half = Math.floor(row.days.length / 2);
   const last = rhythmSum(row.days.slice(0, half));
   const now = rhythmSum(row.days.slice(half));
-  const prs = (sum: ReturnType<typeof rhythmSum>) => sum.opened + sum.merged;
+  const prs = (sum: ReturnType<typeof rhythmSum>) => sum.opened + sum.merged + sum.commits;
   if (prs(now) === 0 && prs(last) > 0) return "Quiet this week after a busy last week";
   if (now.reviews === 0 && now.opened > 0) return `${now.opened} opened this week, no reviews yet`;
   if (prs(now) > 1.5 * prs(last) && prs(now) >= 4) return "Busier than last week";
   if (now.reworked > Math.max(2, last.reworked * 2)) return "More rework than last week";
-  return `${now.merged} merged this week, ${last.merged} last week`;
+  return `${now.merged + now.commits} landed this week, ${last.merged + last.commits} last week`;
 }
 
 export type WaitingRow = WaitingPull & { repo: RepoPath; to: string };
