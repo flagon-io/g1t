@@ -1480,6 +1480,26 @@ pub struct RepoCreator {
     pub owner_id: String,
 }
 
+/// `deleted_repos` takes [`AllIdsArgs`]: every repository that is not a
+/// fork and is deleted but not purged yet (so it may still be restored),
+/// by id, a page at a time, for work recording where such a repository's
+/// work items came from. Returns [`DeletedRepoPage`].
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct DeletedRepoPage {
+    pub repos: Vec<RestorableRepo>,
+    /// Where the next page starts; null on the last.
+    pub next: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RestorableRepo {
+    pub id: String,
+    /// Its workspace's slug.
+    pub namespace: String,
+    pub name: String,
+    pub is_private: bool,
+}
+
 /// `visibility`: which of these repositories (`namespace/name`) are
 /// private, for billing, which pays for work on public ones from g1t's
 /// open-source pool. A pull request's working copy answers as the
