@@ -16,8 +16,8 @@
       "database_name": "g1t-security",
       // Create with `wrangler d1 create g1t-security` and put its id here.
       "database_id": "a7febbca-768a-4828-97b8-dd69b2636e1e",
-      "migrations_dir": "migrations",
-    },
+      "migrations_dir": "migrations"
+    }
   ],
   "services": [
     { "binding": "IDENTITY", "service": "g1t-identity" },
@@ -28,7 +28,7 @@
     // The secrets a dependency update file's private registries name.
     { "binding": "ACTIONS", "service": "g1t-actions" },
     // Security events (webhooks, the inbox) and audit entries.
-    { "binding": "EVENTS", "service": "g1t-events" },
+    { "binding": "EVENTS", "service": "g1t-events" }
   ],
   // Pushes to a default branch (dependencies are read again), pushes too
   // large to scan first (scanned after they land), security updates'
@@ -36,15 +36,15 @@
   // failing checks (security updates move on), new repositories (their
   // history is scanned once) and renamed workspaces.
   "queues": {
-    "consumers": [{ "queue": "g1t-events-security", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }],
+    "consumers": [{ "queue": "g1t-events-security", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
   },
   // Continues history scans a page at a time, and reads every
   // repository's dependencies again once a day (every 30 minutes); runs
   // version updates that are due and looks at their pull requests (every 5).
   "triggers": { "crons": ["*/30 * * * *", "*/5 * * * *"] },
   "vars": {
-    "SITE_URL": "https://g1t.sh",
+    "SITE_URL": "https://g1t.sh"
   },
   // Logs of a tenth of requests: every push and page asks it.
-  "observability": { "enabled": true, "head_sampling_rate": 0.1 },
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

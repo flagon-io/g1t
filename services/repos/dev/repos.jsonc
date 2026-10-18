@@ -26,7 +26,7 @@
     { "binding": "IDENTITY", "service": "g1t-repos-stubs" },
     { "binding": "EVENTS", "service": "g1t-repos-stubs" },
     { "binding": "SECURITY", "service": "g1t-repos-stubs" },
-    { "binding": "BILLING", "service": "g1t-repos-stubs" },
+    { "binding": "BILLING", "service": "g1t-repos-stubs" }
   ],
   "vars": {
     "GIT_OPERATIONS_FREE_CAP": "50000",
@@ -36,6 +36,6 @@
     "LARGE_PUSHES": "unscanned",
     "FORK_RETENTION_DAYS": "1",
     "GITSTORE_NAMESPACES": "{\"GITSTORE\":\"g1t\"}",
-    "GITSTORE_NEW_REPOS": "",
-  },
+    "GITSTORE_NEW_REPOS": ""
+  }
 }

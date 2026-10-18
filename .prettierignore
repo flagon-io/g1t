@@ -13,3 +13,7 @@ package-lock.json
 *_fixtures.json
 # Prettier's MDX printer changes this page again on every run.
 apps/docs/src/content/docs/guides/self-hosted-runners.mdx
+# Generated, and checked against their generator by tests.
+apps/docs/src/content/docs/reference/cli.md
+apps/docs/src/data/openapi.json
+**/worker-configuration.d.ts

@@ -30,7 +30,7 @@
       // --containers-rollout=immediate). Ones that are busy are given
       // this long, in seconds, to finish first, so shipping g1t does not
       // kill work in the middle.
-      "rollout_active_grace_period": 7200,
+      "rollout_active_grace_period": 7200
     },
     {
       // Workflow jobs with `runs-on: g1t-2core`: the standard machine.
@@ -38,7 +38,7 @@
       "image": "./Dockerfile",
       "instance_type": "standard-3",
       "max_instances": 10,
-      "rollout_active_grace_period": 7200,
+      "rollout_active_grace_period": 7200
     },
     {
       // Workflow jobs with `runs-on: g1t-4core`: 4 vCPU, 12 GiB, 20 GB.
@@ -46,22 +46,22 @@
       "image": "./Dockerfile",
       "instance_type": "standard-4",
       "max_instances": 10,
-      "rollout_active_grace_period": 7200,
-    },
+      "rollout_active_grace_period": 7200
+    }
   ],
   "durable_objects": {
     "bindings": [
       { "name": "SANDBOX", "class_name": "AttemptSandbox" },
       { "name": "SANDBOX_2CORE", "class_name": "Sandbox2Core" },
-      { "name": "SANDBOX_4CORE", "class_name": "Sandbox4Core" },
-    ],
+      { "name": "SANDBOX_4CORE", "class_name": "Sandbox4Core" }
+    ]
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["AttemptSandbox"] },
     { "tag": "v2", "new_sqlite_classes": ["Sandbox2Core", "Sandbox4Core"] },
     { "tag": "v3", "new_sqlite_classes": ["AgentComputer"] },
     // Workspace agents' computers are gone, and with them their objects.
-    { "tag": "v4", "deleted_classes": ["AgentComputer"] },
+    { "tag": "v4", "deleted_classes": ["AgentComputer"] }
   ],
   "services": [
     { "binding": "IDENTITY", "service": "g1t-identity" },
@@ -71,7 +71,7 @@
     { "binding": "ACTIONS", "service": "g1t-actions" },
     { "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
     // The event bus: abuse.flagged, when a sandbox looks like it is mining.
-    { "binding": "EVENTS", "service": "g1t-events" },
+    { "binding": "EVENTS", "service": "g1t-events" }
   ],
   // A sweep for lifecycle steps whose trigger was missed or whose sandbox
   // died before reporting, which also starts queued nightly backups.
@@ -79,7 +79,7 @@
   // Events it reacts to: a pull request that may now merge by its
   // repository's settings, a merge check or the merge queue to start.
   "queues": {
-    "consumers": [{ "queue": "g1t-events-runner", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }],
+    "consumers": [{ "queue": "g1t-events-runner", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
   },
   "vars": {
     "CLOUDFLARE_ACCOUNT_ID": "1e6f2cffa3f445920836e8ebe446bb58",
@@ -101,8 +101,8 @@
     // backups the repos service queued, with at most BACKUPS_RUNNING at
     // once. "0" starts none.
     "BACKUPS_PER_SWEEP": "4",
-    "BACKUPS_RUNNING": "6",
+    "BACKUPS_RUNNING": "6"
   },
   // Every log kept: few requests, and a failed run must be traceable.
-  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
 }

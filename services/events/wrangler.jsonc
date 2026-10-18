@@ -14,8 +14,8 @@
       "binding": "DB",
       "database_name": "g1t-events",
       "database_id": "dd889749-0d01-4c94-8b9b-d789dec1c0e4",
-      "migrations_dir": "migrations",
-    },
+      "migrations_dir": "migrations"
+    }
   ],
   "queues": {
     "producers": [
@@ -38,9 +38,9 @@
       // Pages that cite code a merge changed, and projects' docs folders
       // (services/artifacts/src/staleness.ts). Create it once:
       //   npx wrangler queues create g1t-events-docs
-      { "binding": "SUBSCRIBER_DOCS", "queue": "g1t-events-docs" },
+      { "binding": "SUBSCRIBER_DOCS", "queue": "g1t-events-docs" }
     ],
-    "consumers": [{ "queue": "g1t-events", "max_batch_size": 100, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }],
+    "consumers": [{ "queue": "g1t-events", "max_batch_size": 100, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
   },
   // Each workspace's audit log keeps as many days as billing says (7 free,
   // 90 on the plan, or what staff set), asked for over this binding.
@@ -54,7 +54,7 @@
     { "binding": "IDENTITY", "service": "g1t-identity" },
     // Each new inbox item, told live in the person's tabs and pushed, and
     // what changed in each repository, for the pages open on it (services/notify).
-    { "binding": "NOTIFY", "service": "g1t-notify" },
+    { "binding": "NOTIFY", "service": "g1t-notify" }
   ],
   // Once a day, audit entries older than AUDIT_MAX_DAYS are removed for
   // everyone (keep it at least billing's AUDIT_MAX_DAYS), then each
@@ -65,5 +65,5 @@
   "triggers": { "crons": ["41 3 * * *", "0 8 * * *"] },
   "vars": { "AUDIT_MAX_DAYS": "400", "AUDIT_MIN_DAYS": "7" },
   // Logs of a tenth of requests: every change in g1t is an event.
-  "observability": { "enabled": true, "head_sampling_rate": 0.1 },
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

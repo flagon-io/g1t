@@ -18,8 +18,8 @@
       "binding": "DB",
       "database_name": "g1t-work",
       "database_id": "f35a9022-e36b-4547-b596-9ab9d5f1c47a",
-      "migrations_dir": "migrations",
-    },
+      "migrations_dir": "migrations"
+    }
   ],
   // Attachments' bytes (src/attachments.rs), in the namespace the
   // usercontent origin serves from (apps/web/workers/usercontent.ts),
@@ -32,14 +32,14 @@
     { "binding": "ACTIONS", "service": "g1t-actions" },
     // The workspace's AI provider, which names sessions from what they
     // did (src/coordination/titles.rs, integrations' `ai_brief`).
-    { "binding": "INTEGRATIONS", "service": "g1t-integrations" },
+    { "binding": "INTEGRATIONS", "service": "g1t-integrations" }
   ],
   "queues": {
-    "consumers": [{ "queue": "g1t-events-work", "max_batch_size": 100, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }],
+    "consumers": [{ "queue": "g1t-events-work", "max_batch_size": 100, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
   },
   // Logs of a quarter of requests: every work item and pull request page asks
   // it, so keeping every one costs more than it tells, and a quarter
   // still catches a rare error within hours. Repos, which it asks most,
   // logs its slow answers as fields (`answered_ms`, services/repos/src/lib.rs).
-  "observability": { "enabled": true, "head_sampling_rate": 0.25 },
+  "observability": { "enabled": true, "head_sampling_rate": 0.25 }
 }

@@ -15,8 +15,8 @@
       "binding": "DB",
       "database_name": "g1t-billing",
       "database_id": "695a6979-fd07-4850-bc97-904a6b4b7a04",
-      "migrations_dir": "migrations",
-    },
+      "migrations_dir": "migrations"
+    }
   ],
   // Identity emails owners as their workspace nears its usage limit.
   // Repos says which repositories are public (the open-source pool pays
@@ -25,7 +25,7 @@
     { "binding": "IDENTITY", "service": "g1t-identity" },
     { "binding": "REPOS", "service": "g1t-repos" },
     // What each workspace's packages hold, measured daily (src/storage.rs).
-    { "binding": "PACKAGES", "service": "g1t-packages" },
+    { "binding": "PACKAGES", "service": "g1t-packages" }
   ],
   // Margin alerts to staff (src/margin.rs), through Cloudflare Email
   // Sending like identity's and the status page's mail.
@@ -33,7 +33,7 @@
   // Events from the bus: a workspace renamed moves its billing to the
   // new slug (src/rename.rs).
   "queues": {
-    "consumers": [{ "queue": "g1t-events-billing", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }],
+    "consumers": [{ "queue": "g1t-events-billing", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
   },
   "vars": {
     // What is added to what g1t runs at cost, in percent: g1t's overhead
@@ -171,7 +171,7 @@
     "AUTO_PAUSE": "schedules,indexing",
     // Cloudflare's fixed subscriptions a month, for sudo's figures only:
     // Workers Paid ($5) and Workers for Platforms ($25).
-    "CLOUDFLARE_FIXED_MONTHLY_MICROS": "30000000",
+    "CLOUDFLARE_FIXED_MONTHLY_MICROS": "30000000"
   },
   // The tick every 15 minutes (Stripe, autopay, closing months), which at
   // a quarter past each hour also runs the platform watch; checking costs
@@ -187,5 +187,5 @@
   // (src/provider_costs.rs). Without it none can be connected; changing it
   // means every provider has to be connected again.
   // Every log kept: money moves here, and every failure matters.
-  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
 }

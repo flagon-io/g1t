@@ -12,8 +12,8 @@
       "binding": "DB",
       "database_name": "g1t-projects",
       "database_id": "0af698be-2b60-4bd9-aa93-81e84828e991",
-      "migrations_dir": "migrations",
-    },
+      "migrations_dir": "migrations"
+    }
   ],
   "services": [
     { "binding": "REPOS", "service": "g1t-repos" },
@@ -27,7 +27,7 @@
     // address is set or changed and when a production deployment is
     // reported for it (src/index.ts).
     { "binding": "SCREENSHOTS", "service": "g1t-og", "entrypoint": "Screenshots" },
-    { "binding": "EVENTS", "service": "g1t-events" },
+    { "binding": "EVENTS", "service": "g1t-events" }
   ],
   // Uploaded production images, under `production/<sha256>` in the same
   // namespace as avatars, which the usercontent origin serves
@@ -36,8 +36,8 @@
   // A repository created is given its own project; a production
   // deployment reported from elsewhere asks for its screenshot.
   "queues": {
-    "consumers": [{ "queue": "g1t-events-projects", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }],
+    "consumers": [{ "queue": "g1t-events-projects", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
   },
   // Logs of a tenth of requests: every repository page asks it.
-  "observability": { "enabled": true, "head_sampling_rate": 0.1 },
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

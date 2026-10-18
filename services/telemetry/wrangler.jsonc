@@ -18,12 +18,12 @@
   "durable_objects": {
     "bindings": [
       { "name": "STORES", "class_name": "TelemetryStore" },
-      { "name": "METERS", "class_name": "TelemetryMeter" },
-    ],
+      { "name": "METERS", "class_name": "TelemetryMeter" }
+    ]
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["TelemetryStore"] },
-    { "tag": "v2", "new_sqlite_classes": ["TelemetryMeter"] },
+    { "tag": "v2", "new_sqlite_classes": ["TelemetryMeter"] }
   ],
   // What the deployments service notes under each app's hostname (its
   // project and deployment), read to file a request the dispatcher saw
@@ -44,5 +44,5 @@
   // packages/contracts.
   "ratelimits": [{ "name": "TELEMETRY_INGEST_LIMIT", "namespace_id": "4701", "simple": { "limit": 600, "period": 60 } }],
   // Its own logs: few, as every request to an app is a tail event here.
-  "observability": { "enabled": true, "head_sampling_rate": 0.05 },
+  "observability": { "enabled": true, "head_sampling_rate": 0.05 }
 }

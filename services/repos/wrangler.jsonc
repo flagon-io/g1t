@@ -14,8 +14,8 @@
       "binding": "DB",
       "database_name": "g1t-repos",
       "database_id": "f9544c51-c3bf-4621-a96f-8a6d5cf24a97",
-      "migrations_dir": "migrations",
-    },
+      "migrations_dir": "migrations"
+    }
   ],
   // The git store: Cloudflare Artifacts, bound as GITSTORE (so "artifacts"
   // in code means g1t's own Artifacts; the namespaces keep their names).
@@ -45,7 +45,7 @@
   // `npx wrangler r2 bucket create g1t-backups`.
   "r2_buckets": [
     { "binding": "GIT_PACKS", "bucket_name": "g1t-git-packs" },
-    { "binding": "BACKUPS", "bucket_name": "g1t-backups" },
+    { "binding": "BACKUPS", "bucket_name": "g1t-backups" }
   ],
   "services": [
     { "binding": "IDENTITY", "service": "g1t-identity" },
@@ -57,7 +57,7 @@
     { "binding": "BILLING", "service": "g1t-billing" },
     // Rulesets: which hold for a push or another change to a branch or
     // tag, and where how they judged it is kept (src/rules.rs).
-    { "binding": "WORK", "service": "g1t-work" },
+    { "binding": "WORK", "service": "g1t-work" }
   ],
   // A free workspace past this many git operations in a month is slowed
   // to this many an hour, never charged (src/git_ops.rs). It is billing's
@@ -113,7 +113,7 @@
     "LARGE_PUSHES": "unscanned",
     "FORK_RETENTION_DAYS": "1",
     "GITSTORE_NAMESPACES": "{\"GITSTORE\":\"g1t\"}",
-    "GITSTORE_NEW_REPOS": "",
+    "GITSTORE_NEW_REPOS": ""
   },
   // Every hour, deleted repositories whose 30 days to be restored have
   // passed are purged, their git data with them (src/lifecycle.rs), and
@@ -126,7 +126,7 @@
   // A workspace renamed moves its repositories to the new slug; one
   // deleted purges the repositories it left in Recently deleted.
   "queues": {
-    "consumers": [{ "queue": "g1t-events-repos", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }],
+    "consumers": [{ "queue": "g1t-events-repos", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
   },
   // What an anonymous clone can cost a repository's owner (src/limits.rs):
   // packs written to GIT_PACKS, and anonymous fetches the git store
@@ -134,7 +134,7 @@
   // packages/contracts. Without them, nothing is limited.
   "ratelimits": [
     { "name": "PACK_FILL_LIMIT", "namespace_id": "4301", "simple": { "limit": 30, "period": 60 } },
-    { "name": "ANONYMOUS_FETCH_LIMIT", "namespace_id": "4302", "simple": { "limit": 120, "period": 60 } },
+    { "name": "ANONYMOUS_FETCH_LIMIT", "namespace_id": "4302", "simple": { "limit": 120, "period": 60 } }
   ],
   // Logs of a quarter of requests: every git request and page is one, so
   // keeping every one costs more than it tells, and a quarter still
@@ -143,5 +143,5 @@
   // (src/lib.rs, SLOW_RPC_MS) and a slow or partial About run
   // `{"about_run", "took_ms"}` (src/about.rs), so in the quarter kept they
   // can be counted by method without reading request lines.
-  "observability": { "enabled": true, "head_sampling_rate": 0.25 },
+  "observability": { "enabled": true, "head_sampling_rate": 0.25 }
 }

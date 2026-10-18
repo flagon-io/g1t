@@ -14,8 +14,8 @@
       "binding": "DB",
       "database_name": "g1t-actions",
       "database_id": "95ccaa88-8e15-4b90-81e2-0d02d8ce869d",
-      "migrations_dir": "migrations",
-    },
+      "migrations_dir": "migrations"
+    }
   ],
   // ACTIONS_KEY (secret): seals secrets at rest. Never regenerate it:
   // secrets saved under the old key could no longer be opened.
@@ -32,14 +32,14 @@
     // A job with an `environment:` makes its run's deployment there.
     { "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
     // Pages open on a repository hear its runs' jobs start and finish.
-    { "binding": "NOTIFY", "service": "g1t-notify" },
+    { "binding": "NOTIFY", "service": "g1t-notify" }
   ],
   // actions/cache entries and artifacts, which the API writes: deleted here when they
   // are evicted or expire.
   "r2_buckets": [{ "binding": "ACTIONS_CACHE", "bucket_name": "g1t-actions-cache" }],
   // Every event on the bus: what starts workflows, and pushes that change them.
   "queues": {
-    "consumers": [{ "queue": "g1t-events-actions", "max_batch_size": 10, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }],
+    "consumers": [{ "queue": "g1t-events-actions", "max_batch_size": 10, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
   },
   // What g1t keeps and allows (src/limits.rs): days a finished job's log is
   // kept (0: for good); what a workspace without the plan may keep in
@@ -48,10 +48,10 @@
   "vars": {
     "LOG_RETENTION_DAYS": "90",
     "FREE_ACTIONS_STORAGE_BYTES": "2147483648",
-    "FREE_SELF_HOSTED_JOBS": "4",
+    "FREE_SELF_HOSTED_JOBS": "4"
   },
   // Schedules, jobs waiting for room, and jobs whose runner went quiet.
   "triggers": { "crons": ["* * * * *"] },
   // Every log kept: few requests, and a failed job must be traceable.
-  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
 }

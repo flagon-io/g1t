@@ -22,8 +22,8 @@
       //   npx wrangler d1 create g1t-docs
       //   npx wrangler d1 migrations apply g1t-docs --remote
       "database_id": "8f2193ed-fd2b-4322-b6cb-c79090e7603d",
-      "migrations_dir": "migrations",
-    },
+      "migrations_dir": "migrations"
+    }
   ],
   // Files people put in pages (images, attachments), served from the
   // usercontent origin at /docs-files/<key> (apps/web/workers/usercontent.ts).
@@ -52,7 +52,7 @@
   "ai": { "binding": "AI" },
   "vectorize": [
     { "binding": "VECTORS", "index_name": "g1t-docs" },
-    { "binding": "FOLIO_VECTORS", "index_name": "g1t-folios" },
+    { "binding": "FOLIO_VECTORS", "index_name": "g1t-folios" }
   ],
   "services": [
     // Workspaces by slug, people's names and avatars, and teams.
@@ -67,7 +67,7 @@
     // doc.page.* events on the bus (src/events.ts).
     { "binding": "EVENTS", "service": "g1t-events" },
     // Whether a workspace has the plan, once its files pass the free cap (src/quota.ts).
-    { "binding": "BILLING", "service": "g1t-billing" },
+    { "binding": "BILLING", "service": "g1t-billing" }
   ],
   // What a workspace without the plan may keep in files put in its pages
   // and artifacts, in bytes; past it, new uploads are refused (src/quota.ts).
@@ -82,7 +82,7 @@
     // src/indexer.ts): a workspace's pages and projects' docs indexed in
     // batches, and waiting out the hourly embedding cap.
     "producers": [{ "binding": "JOBS", "queue": "g1t-events-docs" }],
-    "consumers": [{ "queue": "g1t-events-docs", "max_batch_size": 20, "max_batch_timeout": 2, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }],
+    "consumers": [{ "queue": "g1t-events-docs", "max_batch_size": 20, "max_batch_timeout": 2, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
   },
   // One room per page: it holds the page's Yjs document and open sockets,
   // hibernating while nobody types (src/room.ts). And one per folio
@@ -91,8 +91,8 @@
   "durable_objects": {
     "bindings": [
       { "name": "PAGES", "class_name": "PageRoom" },
-      { "name": "FOLIOS", "class_name": "FolioRoom" },
-    ],
+      { "name": "FOLIOS", "class_name": "FolioRoom" }
+    ]
   },
   // Both classes were made on g1t-docs-service (v1 PageRoom, v2 FolioRoom,
   // both SQLite). v3 transfers them, every room's storage with them, when
@@ -108,13 +108,13 @@
       "tag": "v3",
       "transferred_classes": [
         { "from": "PageRoom", "from_script": "g1t-docs-service", "to": "PageRoom" },
-        { "from": "FolioRoom", "from_script": "g1t-docs-service", "to": "FolioRoom" },
-      ],
-    },
+        { "from": "FolioRoom", "from_script": "g1t-docs-service", "to": "FolioRoom" }
+      ]
+    }
   ],
   // Daily: folios in the trash for over 30 days are deleted for good. Every
   // quarter hour: each workspace's month of search embeddings is reported
   // to billing (src/embed-billing.ts; DAILY_CRON in src/index.ts).
   "triggers": { "crons": ["17 3 * * *", "*/15 * * * *"] },
-  "observability": { "enabled": true, "head_sampling_rate": 0.1 },
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

@@ -4,5 +4,5 @@
   "name": "g1t-gitstore",
   "main": "../../../deploy/self-host/workers/gitstore/index.js",
   "compatibility_date": "2026-09-26",
-  "vars": { "GITSTORE_URL": "http://localhost:8799", "GITSTORE_SECRET": "dev-gitstore-secret-0123" },
+  "vars": { "GITSTORE_URL": "http://localhost:8799", "GITSTORE_SECRET": "dev-gitstore-secret-0123" }
 }

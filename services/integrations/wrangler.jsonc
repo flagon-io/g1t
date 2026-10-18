@@ -16,8 +16,8 @@
       "binding": "DB",
       "database_name": "g1t-integrations",
       "database_id": "86c6c1a9-4192-42d8-8c59-8da8d4f99c5e",
-      "migrations_dir": "migrations",
-    },
+      "migrations_dir": "migrations"
+    }
   ],
   "services": [
     { "binding": "IDENTITY", "service": "g1t-identity" },
@@ -25,16 +25,14 @@
     // Where a transferred repository is now, for moving its links.
     { "binding": "REPOS", "service": "g1t-repos" },
     // An imported repository's project takes GitHub's description.
-    { "binding": "PROJECTS", "service": "g1t-projects" },
+    { "binding": "PROJECTS", "service": "g1t-projects" }
   ],
   // Work starting on, and finishing, what an outside system is waiting on.
   // Every minute: sessions started on workspaces' Anthropic accounts are
   // followed until they end (src/agent_sessions.rs).
   "triggers": { "crons": ["* * * * *"] },
   "queues": {
-    "consumers": [
-      { "queue": "g1t-events-integrations", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" },
-    ],
+    "consumers": [{ "queue": "g1t-events-integrations", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
   },
   "vars": {
     "API_URL": "https://api.g1t.sh",
@@ -50,10 +48,10 @@
     // GITHUB_APP_WEBHOOK_SECRET. Leave the slug empty to turn it off.
     "GITHUB_APP_ID": "5203641",
     "GITHUB_APP_SLUG": "g1t-sh",
-    "GITHUB_APP_CLIENT_ID": "Iv23liZS94alfjIUn1eW",
+    "GITHUB_APP_CLIENT_ID": "Iv23liZS94alfjIUn1eW"
   },
   // Secret: INTEGRATIONS_KEY, 64 hex characters. Connections' secrets are
   // sealed with it; without it nothing can be connected.
   // Logs of a tenth of requests: every page and event asks it.
-  "observability": { "enabled": true, "head_sampling_rate": 0.1 },
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

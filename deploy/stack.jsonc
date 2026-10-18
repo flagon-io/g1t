@@ -29,8 +29,8 @@
       "16a4232cb746418db53782aa068be693": "g1t-actions-blobs",
       "e627b571f07047e187c03e1fc2b3bbdd": "g1t-avatars",
       "14bc5c233d4c46a5bbf23b5367cce5fd": "g1t-domains",
-      "be765052d0124c2a935b3db4dff99f1f": "g1t-repos-git-cache",
-    },
+      "be765052d0124c2a935b3db4dff99f1f": "g1t-repos-git-cache"
+    }
   },
 
   // Each deployable unit, by short name (`--only events,web`).
@@ -60,9 +60,9 @@
       "stage": "core",
       "secrets": [],
       "setup": [
-        "The dead-letter queue every queue consumer sends what it gave up on to, before any unit that names it deploys: npx wrangler queues create g1t-events-dlq",
+        "The dead-letter queue every queue consumer sends what it gave up on to, before any unit that names it deploys: npx wrangler queues create g1t-events-dlq"
       ],
-      "self_host": "run",
+      "self_host": "run"
     },
     "identity": {
       "path": "services/identity",
@@ -72,7 +72,7 @@
       "stage": "core",
       "secrets": ["GITHUB_APP_CLIENT_SECRET", "IDENTITY_KEY"],
       "setup": ["Email Sending on g1t.sh (the EMAIL binding)"],
-      "self_host": "run",
+      "self_host": "run"
     },
     "repos": {
       "path": "services/repos",
@@ -87,9 +87,9 @@
       "setup": [
         "The Artifacts namespace `g1t` (the ARTIFACTS binding)",
         "The R2 bucket `g1t-git-packs` (GIT_PACKS) with its lifecycle rule: `npx wrangler r2 bucket create g1t-git-packs`, then `npx wrangler r2 bucket lifecycle add g1t-git-packs expire-packs packs/ --expire-days 7 --abort-multipart-days 1`",
-        "The R2 bucket for nightly backups: npx wrangler r2 bucket create g1t-backups",
+        "The R2 bucket for nightly backups: npx wrangler r2 bucket create g1t-backups"
       ],
-      "self_host": "run",
+      "self_host": "run"
     },
     "work": {
       "path": "services/work",
@@ -98,7 +98,7 @@
       "d1": { "database": "g1t-work", "migrations": "migrations" },
       "stage": "core",
       "secrets": [],
-      "self_host": "run",
+      "self_host": "run"
     },
     "search": {
       "path": "services/search",
@@ -107,7 +107,7 @@
       "d1": { "database": "g1t-search", "migrations": "migrations" },
       "stage": "core",
       "secrets": [],
-      "self_host": "run",
+      "self_host": "run"
     },
     "projects": {
       "path": "services/projects",
@@ -116,7 +116,7 @@
       "d1": { "database": "g1t-projects", "migrations": "migrations" },
       "stage": "core",
       "secrets": [],
-      "self_host": "run",
+      "self_host": "run"
     },
     "chat": {
       "path": "services/chat",
@@ -126,7 +126,7 @@
       "stage": "core",
       "secrets": [],
       "setup": ["The D1 database, before the first deploy: npx wrangler d1 create g1t-chat, then put its id in services/chat/wrangler.jsonc"],
-      "self_host": "run",
+      "self_host": "run"
     },
     // Artifacts: docs (a doc is one kind of artifact), their spaces,
     // sharing and live rooms. It was g1t-docs-service (services/docs)
@@ -145,9 +145,9 @@
         "The R2 bucket for files in pages: npx wrangler r2 bucket create g1t-docs-files",
         "The queue the events service sends it merges and pushes on (pages whose cited code changed, projects' docs): npx wrangler queues create g1t-events-docs. The service also sends its own backfill jobs to it (JOBS)",
         "The Vectorize index Docs are searched by meaning from: npx wrangler vectorize create g1t-docs --dimensions=768 --metric=cosine, with string metadata indexes on workspace_id and space_id (npx wrangler vectorize create-metadata-index g1t-docs --property-name=<name> --type=string)",
-        "The Vectorize index for artifacts (folios), before the first deploy with FOLIO_VECTORS: npx wrangler vectorize create g1t-folios --dimensions=768 --metric=cosine, with string metadata indexes on workspace_id, scope and kind (npx wrangler vectorize create-metadata-index g1t-folios --property-name=<name> --type=string). Without it, artifacts are searched by words",
+        "The Vectorize index for artifacts (folios), before the first deploy with FOLIO_VECTORS: npx wrangler vectorize create g1t-folios --dimensions=768 --metric=cosine, with string metadata indexes on workspace_id, scope and kind (npx wrangler vectorize create-metadata-index g1t-folios --property-name=<name> --type=string). Without it, artifacts are searched by words"
       ],
-      "self_host": "run",
+      "self_host": "run"
     },
     "telemetry": {
       "path": "services/telemetry",
@@ -161,9 +161,9 @@
       // export of the apps), so it is not listed.
       "secrets": [],
       "setup": [
-        "Deployed once before the deployments service and the dispatcher, which name it (`node scripts/deploy.mjs deploy --only telemetry`): a binding or Tail Worker that names a Worker not yet there is refused",
+        "Deployed once before the deployments service and the dispatcher, which name it (`node scripts/deploy.mjs deploy --only telemetry`): a binding or Tail Worker that names a Worker not yet there is refused"
       ],
-      "self_host": "run",
+      "self_host": "run"
     },
     "notify": {
       "path": "services/notify",
@@ -179,9 +179,9 @@
       // is not listed.
       "secrets": ["VAPID_PRIVATE_KEY"],
       "setup": [
-        "The VAPID key pair for browser push: `node scripts/ops/vapid-keys.mjs` prints both halves and stores nothing. Put the public half in VAPID_PUBLIC_KEY in services/notify/wrangler.jsonc, and the private half with `npx wrangler secret put VAPID_PRIVATE_KEY` in services/notify",
+        "The VAPID key pair for browser push: `node scripts/ops/vapid-keys.mjs` prints both halves and stores nothing. Put the public half in VAPID_PUBLIC_KEY in services/notify/wrangler.jsonc, and the private half with `npx wrangler secret put VAPID_PRIVATE_KEY` in services/notify"
       ],
-      "self_host": "run",
+      "self_host": "run"
     },
     "billing": {
       "path": "services/billing",
@@ -190,7 +190,7 @@
       "d1": { "database": "g1t-billing", "migrations": "migrations" },
       "stage": "core",
       "secrets": ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "CLOUDFLARE_USAGE_TOKEN", "BILLING_KEY"],
-      "self_host": "run",
+      "self_host": "run"
     },
     "integrations": {
       "path": "services/integrations",
@@ -199,7 +199,7 @@
       "d1": { "database": "g1t-integrations", "migrations": "migrations" },
       "stage": "core",
       "secrets": ["INTEGRATIONS_KEY", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_WEBHOOK_SECRET"],
-      "self_host": "run",
+      "self_host": "run"
     },
     "webhooks": {
       "path": "services/webhooks",
@@ -208,7 +208,7 @@
       "d1": { "database": "g1t-webhooks", "migrations": "migrations" },
       "stage": "core",
       "secrets": ["WEBHOOKS_KEY"],
-      "self_host": "run",
+      "self_host": "run"
     },
     "actions": {
       "path": "services/actions",
@@ -217,7 +217,7 @@
       "d1": { "database": "g1t-actions", "migrations": "migrations" },
       "stage": "core",
       "secrets": ["ACTIONS_KEY"],
-      "self_host": "run",
+      "self_host": "run"
     },
     "packages": {
       "path": "services/packages",
@@ -230,9 +230,9 @@
         "The D1 database: npx wrangler d1 create g1t-packages, its id in services/packages/wrangler.jsonc",
         "The R2 bucket for packages' files: npx wrangler r2 bucket create g1t-packages",
         "The events queue: npx wrangler queues create g1t-events-packages",
-        "For signed downloads: an R2 API token with read access to g1t-packages, as R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY",
+        "For signed downloads: an R2 API token with read access to g1t-packages, as R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY"
       ],
-      "self_host": "run",
+      "self_host": "run"
     },
     "security": {
       "path": "services/security",
@@ -241,7 +241,7 @@
       "d1": { "database": "g1t-security", "migrations": "migrations" },
       "stage": "core",
       "secrets": [],
-      "self_host": "run",
+      "self_host": "run"
     },
     "deployments": {
       "path": "services/deployments",
@@ -252,9 +252,9 @@
       "secrets": ["CLOUDFLARE_API_TOKEN"],
       "setup": [
         "Workers for Platforms, and the dispatch namespace: scripts/setup-deployments.sh",
-        "Custom domains (Cloudflare for SaaS on g1t.page): scripts/setup-custom-domains.sh",
+        "Custom domains (Cloudflare for SaaS on g1t.page): scripts/setup-custom-domains.sh"
       ],
-      "self_host": "run",
+      "self_host": "run"
     },
     "runner": {
       "path": "services/runner",
@@ -268,9 +268,9 @@
         // The binary the image adds to its base (scripts/build-runner.mjs).
         "crate": "g1t-runner",
         "base": { "context": "services/runner/base", "lock": "services/runner/base.json" },
-        "repository": "g1t-runner",
+        "repository": "g1t-runner"
       },
-      "self_host": "off",
+      "self_host": "off"
     },
     "og": {
       "path": "services/og",
@@ -281,7 +281,7 @@
       "setup": ["Browser Rendering on the account (the BROWSER binding)"],
       // The roadmap cards read the site's roadmap.
       "inputs": ["apps/web/app/lib/roadmap.ts"],
-      "self_host": "none",
+      "self_host": "none"
     },
     "api": {
       "path": "apps/api",
@@ -295,9 +295,9 @@
       "secrets": ["ACTIONS_OIDC_KEY"],
       "setup": [
         "The OIDC signing key for workflow jobs: an RSA key made with `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048`, stored with `npx wrangler secret put ACTIONS_OIDC_KEY` (docs.g1t.sh/guides/deploy-to-cloudflare/#oidc-tokens-for-workflow-jobs)",
-        "The actions cache bucket's lifecycle rule limited to `c/`, so artifacts under `a/` are kept their retention-days (docs.g1t.sh/guides/deploy-to-cloudflare/#a-first-deploy-to-a-new-account)",
+        "The actions cache bucket's lifecycle rule limited to `c/`, so artifacts under `a/` are kept their retention-days (docs.g1t.sh/guides/deploy-to-cloudflare/#a-first-deploy-to-a-new-account)"
       ],
-      "self_host": "separate",
+      "self_host": "separate"
     },
     "pages": {
       "path": "services/pages",
@@ -306,7 +306,7 @@
       "stage": "edge",
       "secrets": [],
       "setup": ["A proxied wildcard DNS record on g1t.page (`*`, AAAA 100::): scripts/setup-deployments.sh"],
-      "self_host": "none",
+      "self_host": "none"
     },
     "status": {
       "path": "apps/status",
@@ -316,7 +316,7 @@
       "stage": "edge",
       "secrets": ["STATUS_SECRET"],
       "setup": ["Email Sending on g1t.sh (the EMAIL binding)"],
-      "self_host": "separate",
+      "self_host": "separate"
     },
     "web": {
       "path": "apps/web",
@@ -330,9 +330,9 @@
       "setup": [
         "The R2 bucket g1t-downloads, for the releases of the self-hosted runner, the CLI and the desktop app: npx wrangler r2 bucket create g1t-downloads",
         "The zone g1tusercontent.com on the account; the Worker's custom domain on it is made by the deploy",
-        "The key for private files' addresses: `node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\" | npx wrangler secret put USERCONTENT_KEY` in apps/web",
+        "The key for private files' addresses: `node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\" | npx wrangler secret put USERCONTENT_KEY` in apps/web"
       ],
-      "self_host": "run",
+      "self_host": "run"
     },
     "sudo": {
       "path": "apps/sudo",
@@ -341,7 +341,7 @@
       "stage": "front",
       "secrets": [],
       "setup": ["A Cloudflare Access application on sudo.g1t.sh; its AUD tag is ACCESS_AUD"],
-      "self_host": "none",
+      "self_host": "none"
     },
     "docs": {
       "path": "apps/docs",
@@ -349,7 +349,7 @@
       "worker": "g1t-docs",
       "stage": "front",
       "secrets": [],
-      "self_host": "none",
-    },
-  },
+      "self_host": "none"
+    }
+  }
 }

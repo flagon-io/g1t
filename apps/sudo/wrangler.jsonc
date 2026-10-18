@@ -29,7 +29,7 @@
     // projects, and their telemetry ingest tokens.
     { "binding": "ACTIONS", "service": "g1t-actions" },
     { "binding": "PROJECTS", "service": "g1t-projects" },
-    { "binding": "TELEMETRY", "service": "g1t-telemetry" },
+    { "binding": "TELEMETRY", "service": "g1t-telemetry" }
   ],
   "vars": {
     // The Zero Trust team domain, such as `g1t.cloudflareaccess.com`.
@@ -42,9 +42,9 @@
     // Access service tokens let in as staff: `<client id>=<name>`, comma
     // separated. Each acts, and is recorded, as `<name>@service.g1t.sh`.
     // The Access application needs a Service Auth policy including it.
-    "STAFF_SERVICE_TOKENS": "434297ede60761875e84742d0486cf27.access=claude",
+    "STAFF_SERVICE_TOKENS": "434297ede60761875e84742d0486cf27.access=claude"
   },
   // Every log kept: staff only, few requests.
   "observability": { "enabled": true, "head_sampling_rate": 1 },
-  "upload_source_maps": true,
+  "upload_source_maps": true
 }

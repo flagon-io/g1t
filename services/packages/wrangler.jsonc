@@ -15,8 +15,8 @@
       "binding": "DB",
       "database_name": "g1t-packages",
       "database_id": "e541c872-a2a8-47aa-bfe8-419d0d50fe3c",
-      "migrations_dir": "migrations",
-    },
+      "migrations_dir": "migrations"
+    }
   ],
   // Every package's files, by digest (src/store). Made by
   // `npx wrangler r2 bucket create g1t-packages`.
@@ -26,7 +26,7 @@
   // installations have neither binding, and no limit.
   "ratelimits": [
     { "name": "ANONYMOUS_LIMIT", "namespace_id": "4101", "simple": { "limit": 300, "period": 60 } },
-    { "name": "SIGNED_LIMIT", "namespace_id": "4102", "simple": { "limit": 5000, "period": 60 } },
+    { "name": "SIGNED_LIMIT", "namespace_id": "4102", "simple": { "limit": 5000, "period": 60 } }
   ],
   "services": [
     // Who a token or password belongs to.
@@ -37,7 +37,7 @@
     { "binding": "EVENTS", "service": "g1t-events" },
     // Whether a workspace is on the plan, and its free package storage
     // (src/quota.rs); asked at most every five minutes per workspace.
-    { "binding": "BILLING", "service": "g1t-billing" },
+    { "binding": "BILLING", "service": "g1t-billing" }
   ],
   // BLOB_STORE: r2 (the BLOBS binding) or s3 (S3_ENDPOINT, S3_BUCKET,
   //   S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_REGION, and optionally
@@ -62,7 +62,7 @@
     "MAX_REQUEST_BYTES": "100000000",
     "REGISTRY_HOST": "g1t.sh",
     "STORAGE_LIMITS": "on",
-    "PROTECTED_WORKSPACES": "flagon-io",
+    "PROTECTED_WORKSPACES": "flagon-io"
   },
   // Every hour, expired uploads are let go, and blobs no version has used
   // for a day are deleted.
@@ -70,8 +70,8 @@
   // Workspaces renamed or deleted, repositories that change visibility,
   // are renamed, move or are purged.
   "queues": {
-    "consumers": [{ "queue": "g1t-events-packages", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }],
+    "consumers": [{ "queue": "g1t-events-packages", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
   },
   // Logs of a tenth of requests: every registry pull is one.
-  "observability": { "enabled": true, "head_sampling_rate": 0.1 },
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

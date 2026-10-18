@@ -15,7 +15,7 @@
   // their own that never sees g1t.sh's cookies (workers/usercontent.ts).
   "routes": [
     { "pattern": "g1t.sh", "custom_domain": true },
-    { "pattern": "g1tusercontent.com", "custom_domain": true },
+    { "pattern": "g1tusercontent.com", "custom_domain": true }
   ],
   // The site holds no data of its own; everything goes through services.
   // GitHub Actions artifacts, as the API keeps them, for download from a run.
@@ -23,7 +23,7 @@
   // only here: the identity service checks and writes them.
   "kv_namespaces": [
     { "binding": "BLOBS", "id": "16a4232cb746418db53782aa068be693" },
-    { "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" },
+    { "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" }
   ],
   // The self-hosted runner's releases, served at /downloads/runner/
   // (routes/downloads-runner.ts); published by scripts/runner-release.mjs.
@@ -52,7 +52,7 @@
     // Observability: each project's requests, logs, traces, metrics and errors, and its live tail (services/telemetry).
     { "binding": "TELEMETRY", "service": "g1t-telemetry" },
     // Production screenshots for a project's overview (services/og).
-    { "binding": "SCREENSHOTS", "service": "g1t-og", "entrypoint": "Screenshots" },
+    { "binding": "SCREENSHOTS", "service": "g1t-og", "entrypoint": "Screenshots" }
   ],
   // The front door's limits (app/lib/front-door-limits.ts). Every id and
   // limit is in RATE_LIMITS (packages/contracts/src/rate-limits.ts), which
@@ -64,7 +64,7 @@
     { "name": "WEB_ADDRESS_LIMIT", "namespace_id": "4204", "simple": { "limit": 3000, "period": 60 } },
     { "name": "GIT_ANONYMOUS_LIMIT", "namespace_id": "4205", "simple": { "limit": 120, "period": 60 } },
     { "name": "GIT_SIGNED_LIMIT", "namespace_id": "4206", "simple": { "limit": 1200, "period": 60 } },
-    { "name": "WEB_TOKEN_LIMIT", "namespace_id": "4207", "simple": { "limit": 1000, "period": 60 } },
+    { "name": "WEB_TOKEN_LIMIT", "namespace_id": "4207", "simple": { "limit": 1000, "period": 60 } }
   ],
   // Logs of a tenth of requests: every page view is one, too many to keep all.
   // Cloudflare Turnstile on email sign-up (app/lib/turnstile.ts): the
@@ -72,5 +72,5 @@
   // secret. Either one empty turns it off.
   "vars": { "TURNSTILE_SITE_KEY": "0x4AAAAAAFWhRDwKfGS3CEvZ" },
   "observability": { "enabled": true, "head_sampling_rate": 0.1 },
-  "upload_source_maps": true,
+  "upload_source_maps": true
 }

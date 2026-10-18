@@ -18,8 +18,8 @@
       "binding": "DB",
       "database_name": "g1t",
       "database_id": "b7d49c93-2666-4006-a3c3-073a01838dc9",
-      "migrations_dir": "migrations",
-    },
+      "migrations_dir": "migrations"
+    }
   ],
   "send_email": [{ "name": "EMAIL", "remote": true }],
   // Uploaded avatars, keyed by the SHA-256 of their bytes. Only this
@@ -37,7 +37,7 @@
     // audit log, which billing keeps (src/deletion.rs).
     { "binding": "REPOS", "service": "g1t-repos" },
     { "binding": "PROJECTS", "service": "g1t-projects" },
-    { "binding": "BILLING", "service": "g1t-billing" },
+    { "binding": "BILLING", "service": "g1t-billing" }
   ],
   // Signing in with GitHub (src/github.rs), through g1t's GitHub App.
   // Its client ID is public. Secrets: GITHUB_APP_CLIENT_SECRET, the app's
@@ -64,8 +64,8 @@
     "PROTECTED_ACCOUNTS": "",
     "GITHUB_APP_CLIENT_ID": "Iv23liZS94alfjIUn1eW",
     "INVITE_TTL_DAYS": "30",
-    "INVITES_PER_USER": "20",
+    "INVITES_PER_USER": "20"
   },
   // Every log kept: sign-ins and tokens, where every failure matters.
-  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
 }

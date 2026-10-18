@@ -18,7 +18,7 @@
     { "pattern": "*.g1t.page/*", "zone_name": "g1t.page" },
     // Custom domains (Cloudflare for SaaS is on for the zone).
     { "pattern": "*/*", "zone_name": "g1t.page" },
-    { "pattern": "g1t.page", "custom_domain": true },
+    { "pattern": "g1t.page", "custom_domain": true }
   ],
   // The apps, uploaded by the deployments service.
   "dispatch_namespaces": [{ "binding": "APPS", "namespace": "g1t-deployments" }],
@@ -28,5 +28,5 @@
   // project) goes to observability, which files it with the app's own.
   "tail_consumers": [{ "service": "g1t-telemetry" }],
   // Logs of a tenth of requests: every visit to a deployed site is one.
-  "observability": { "enabled": true, "head_sampling_rate": 0.1 },
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }
