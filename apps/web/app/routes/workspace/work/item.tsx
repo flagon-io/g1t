@@ -341,12 +341,17 @@ function RepoCard({ repo, pulls, full, canLink }: { repo: ItemRepo; pulls: WorkP
   return (
     <li className="px-3 py-3 sm:px-4">
       <div className="flex min-w-0 items-center gap-2">
-        <Link to={`/${repo.path}`} className="min-w-0 truncate font-mono text-sm font-medium hover:text-accent">
-          {repo.path}
-        </Link>
+        {repo.path ? (
+          <Link to={`/${repo.path}`} className="min-w-0 truncate font-mono text-sm font-medium hover:text-accent">
+            {repo.path}
+          </Link>
+        ) : (
+          // Deleted before work items: nothing to link to, and no name kept.
+          <span className="min-w-0 truncate text-sm text-muted">A deleted repository</span>
+        )}
         <RoleBadge role={repo.role} />
         {repo.legacyNumber != null && (
-          <Hint label={`It was ${repo.path}#${repo.legacyNumber} before work items, and that still leads here.`}>
+          <Hint label={repo.path ? `It was ${repo.path}#${repo.legacyNumber} before work items, and that still leads here.` : `It was #${repo.legacyNumber} there before work items.`}>
             <span className="shrink-0 text-xs text-faint">was #{repo.legacyNumber}</span>
           </Hint>
         )}

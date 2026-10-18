@@ -155,7 +155,8 @@ export default function WorkItem() {
                         <Badge label="Not landed" tone="warn" />
                       ) : null
                     }
-                    onPress={() => setPicked(repo)}
+                    // A deleted repository has nothing to open or unlink.
+                    onPress={repo.path ? () => setPicked(repo) : undefined}
                   />
                   {repo.pulls.map((pull) => (
                     <View key={`${pull.repo}#${pull.number}`} style={{ paddingLeft: space.xl }}>
