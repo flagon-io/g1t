@@ -1,7 +1,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { MAX_CHANGES, WATCH_MS, byRepo, cleanChange, cleanRepoId, cleanRepoPath, named, stillWatching, watchUntil } from "./watch.ts";
+import {
+  MAX_CHANGES,
+  WATCH_MS,
+  byRepo,
+  byWorkspace,
+  cleanChange,
+  cleanRepoId,
+  cleanRepoPath,
+  cleanWorkspace,
+  cleanWorkspaceChange,
+  named,
+  stillWatching,
+  topicWorkspace,
+  watchUntil,
+  workspaceTopic,
+} from "./watch.ts";
 
 const AT = "2026-10-11T10:00:00Z";
 
@@ -78,4 +93,25 @@ test("a watch lasts its time and no longer", () => {
   assert.equal(stillWatching(until, now + WATCH_MS - 1), true);
   assert.equal(stillWatching(until, now + WATCH_MS), false);
   assert.equal(stillWatching(null, now), false);
+});
+
+test("a workspace's changes keep only what one carries, by workspace", () => {
+  const grouped = byWorkspace([
+    { workspace: "Acme", kind: "work_item.updated", number: 40, at: AT, title: "a secret title" },
+    { workspace: "acme", kind: "comment.created", number: 40, at: AT },
+    { workspace: "globex", kind: "work.claimed", at: AT },
+    { workspace: "not a slug!", kind: "work_item.updated", at: AT },
+    { workspace: "acme", kind: "<script>", at: AT },
+  ]);
+  assert.deepEqual([...grouped.keys()], ["acme", "globex"]);
+  assert.deepEqual(grouped.get("acme"), [
+    { workspace: "acme", kind: "work_item.updated", number: 40, at: AT },
+    { workspace: "acme", kind: "comment.created", number: 40, at: AT },
+  ]);
+  assert.equal(cleanWorkspaceChange(null), null);
+  assert.equal(cleanWorkspace(" Acme "), "acme");
+  // Its topic sits beside the repositories', and never takes a repository's id.
+  assert.equal(topicWorkspace(workspaceTopic("acme")), "acme");
+  assert.equal(topicWorkspace("rep_1"), null);
+  assert.equal(cleanRepoId(workspaceTopic("acme")), null);
 });

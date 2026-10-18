@@ -474,7 +474,8 @@ mod tests {
     fn an_inbox_item_says_what_happened_and_why_it_was_sent() {
         let a = g1t_contracts::inbox::NotifyByEmailArgs {
             username: "ana".into(),
-            repo_id: "rep_1".into(),
+            repo_id: Some("rep_1".into()),
+            workspace: None,
             subject: "bo asked you to review acme/rocket#7".into(),
             intro: "Add the inbox".into(),
             quote: None,

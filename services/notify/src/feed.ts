@@ -24,7 +24,9 @@
  * Live repository pages: a tab on a repository's page has the site ask
  * the feed to watch it (`watchRepo`), which tells the repository's topic
  * (src/topic.ts); the topic hands back what changes there (`repoChanged`),
- * and the feed sends it to the tabs as a `repo` event.
+ * and the feed sends it to the tabs as a `repo` event. A workspace's Work
+ * pages the same way, on the workspace's topic (`watchWorkspace`,
+ * `workspaceChanged`, a `workspace` event).
  *
  * The feed authorizes nothing: the Worker reaches it only for the person
  * the site checked (src/index.ts).
@@ -42,6 +44,7 @@ import {
   type FeedNotification,
   type FeedSeed,
   type RepoChange,
+  type WorkspaceChange,
   type NotifyPreferences,
   type NotifyStatus,
   type PushDevice,
@@ -69,7 +72,7 @@ import {
 import type { Room } from "./room.ts";
 import type { Topic } from "./topic.ts";
 import { type Visit, lastVisit, markVisit } from "./visits.ts";
-import { MAX_WATCHING, stillWatching, watchUntil } from "./watch.ts";
+import { MAX_WATCHING, stillWatching, watchUntil, workspaceTopic } from "./watch.ts";
 import { sendPush, type Vapid } from "./webpush.ts";
 
 export type FeedEnv = {
@@ -809,16 +812,34 @@ export class Feed extends DurableObject<FeedEnv> {
   }
 
   /**
+   * The person's tabs hear what changes to the work items of `workspace`
+   * (its Work pages) for REPO_WATCH_MS, on the workspace's topic, kept
+   * with the repositories they watch. The site checked they are a member.
+   */
+  async watchWorkspace(userId: string, workspace: string): Promise<{ ok: boolean; until: string | null }> {
+    return this.watchRepo(userId, workspaceTopic(workspace), workspace);
+  }
+
+  /**
    * What changed in a repository, from its topic: sent to the tabs, which
    * each keep what is about the page they show. False when nobody here is
    * watching it any more, so the topic drops this feed.
    */
   async repoChanged(repoId: string, changes: RepoChange[]): Promise<boolean> {
-    const row = this.sql.exec<{ until: number }>("SELECT until FROM watching WHERE repo_id = ?", repoId).toArray()[0];
+    return this.passOn(repoId, { type: "repo", changes });
+  }
+
+  /** What changed to a workspace's work items, from its topic (`key`), as `repoChanged`. */
+  async workspaceChanged(key: string, changes: WorkspaceChange[]): Promise<boolean> {
+    return this.passOn(key, { type: "workspace", changes });
+  }
+
+  private passOn(key: string, event: FeedEvent): boolean {
+    const row = this.sql.exec<{ until: number }>("SELECT until FROM watching WHERE repo_id = ?", key).toArray()[0];
     if (!stillWatching(row?.until, Date.now())) return false;
     const sockets = this.openSockets();
     if (!sockets.length) return false;
-    const text = JSON.stringify({ type: "repo", changes } satisfies FeedEvent);
+    const text = JSON.stringify(event);
     for (const socket of sockets) {
       try {
         socket.send(text);

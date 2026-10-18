@@ -27,7 +27,11 @@
  *   `calendar` or `integration`, for the person they act for;
  * - events and actions: `repo_changed`, what changed in repositories,
  *   told to whoever watches their pages; and the site `watch_repo`, for a
- *   tab on a repository page whose person it checked may read it.
+ *   tab on a repository page whose person it checked may read it;
+ * - events: `workspace_changed`, what changed to workspaces' work items,
+ *   told to whoever watches their Work pages; and the site
+ *   `watch_workspace`, for a tab on a Work page whose person it checked is
+ *   a member.
  *
  * Presence: each feed works out its person's from their tabs and tells
  * one room per workspace (src/room.ts), which tells everyone there who is
@@ -50,7 +54,7 @@ import { cleanChannelId } from "./forget.ts";
 import { onlyPeople } from "./presence.ts";
 import { visitWorkspace } from "./visits.ts";
 import { settledThreads } from "./prefs.ts";
-import { byRepo, cleanRepoId, cleanRepoPath } from "./watch.ts";
+import { byRepo, byWorkspace, cleanRepoId, cleanRepoPath, cleanWorkspace, workspaceTopic } from "./watch.ts";
 
 export { Feed } from "./feed.ts";
 export { Room } from "./room.ts";
@@ -120,6 +124,20 @@ async function answer(env: Env, method: string, args: any): Promise<Response> {
     for (const result of results) if (result.status === "rejected") console.error("notify: a repository's change was not told", result.reason);
     return Response.json({ ok: true });
   }
+  if (method === "workspace_changed") {
+    // For services: each workspace's work item changes to its topic, which tells whoever watches its Work pages.
+    const topics = env.TOPICS;
+    if (!topics) return Response.json({ ok: true });
+    const grouped = byWorkspace(args?.changes);
+    const results = await Promise.allSettled(
+      [...grouped].map(([slug, changes]) => {
+        const key = workspaceTopic(slug);
+        return topics.get(topics.idFromName(key)).workspaceChanged(key, changes);
+      }),
+    );
+    for (const result of results) if (result.status === "rejected") console.error("notify: a workspace's change was not told", result.reason);
+    return Response.json({ ok: true });
+  }
   if (method === "deliver") {
     const items = (Array.isArray(args?.items) ? args.items : []).slice(0, MAX_DELIVERIES) as FeedDelivery[];
     const byUser = new Map<string, FeedDelivery[]>();
@@ -162,6 +180,12 @@ async function answer(env: Env, method: string, args: any): Promise<Response> {
       const repo = cleanRepoPath(args.repo);
       if (!repoId || !repo) return Response.json({ ok: false, until: null });
       return Response.json(await stub.watchRepo(userId, repoId, repo));
+    }
+    case "watch_workspace": {
+      // The site checked the person is a member: members see all of its work items.
+      const workspace = cleanWorkspace(args.workspace);
+      if (!workspace) return Response.json({ ok: false, until: null });
+      return Response.json(await stub.watchWorkspace(userId, workspace));
     }
     case "forget_conversation": {
       // For chat, after the person cleared their direct message with @g1t (src/forget.ts).
