@@ -211,6 +211,8 @@ mod tests {
             model: Some("claude-opus-5-5".into()),
             subagents: 0,
             first_prompt: Some("ugh fix it".into()),
+            title_source: None,
+            title_settled_at: None,
         }
     }
 

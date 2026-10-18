@@ -24,6 +24,8 @@ import {
   resolutionOf,
   sessionTree,
   span,
+  titleHint,
+  titleIsProvisional,
   standingFailure,
   touchedByKind,
   treeSize,
@@ -178,6 +180,21 @@ test("a session is never title-less: its title, its first prompt's intent, its b
   assert.equal(sessionTitle({ title: "  ", branch: "auth", firstPrompt: "/clear" }), "Session on auth");
   assert.equal(sessionTitle({ title: null, branch: null }), "Untitled session");
   assert.equal(sessionTitle({ title: null, branch: null }, "look at the CI"), "Look at the CI", "a first prompt given stands in");
+});
+
+test("a title from the first prompt is provisional until g1t, the agent or a person names the session", () => {
+  assert.equal(titleIsProvisional({ title: "This project used to be in syntaqx/g1t", titleSource: "prompt", parentId: null }), true);
+  assert.equal(titleIsProvisional({ title: null, titleSource: null, parentId: null }), true);
+  for (const titleSource of ["agent", "person", "item", "pull", "summary"] as const) {
+    assert.equal(titleIsProvisional({ title: "Move issues to Work items", titleSource, parentId: null }), false, titleSource);
+  }
+  // From before titles said where they came from: as it is.
+  assert.equal(titleIsProvisional({ title: "Rewrite the auth flow", parentId: null }), false);
+  // A subagent goes by its task.
+  assert.equal(titleIsProvisional({ title: null, titleSource: null, parentId: "ses_1" }), false);
+  assert.match(titleHint({ title: "Mine", titleSource: "person", parentId: null }) ?? "", /keeps this title/);
+  assert.match(titleHint({ title: "x", titleSource: "prompt", parentId: null }) ?? "", /first prompt/);
+  assert.equal(titleHint({ title: "x", titleSource: "agent", parentId: "ses_1" }), undefined);
 });
 
 test("a prompt's intent is its first line or sentence, plain, clipped on a word", () => {

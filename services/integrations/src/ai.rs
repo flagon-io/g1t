@@ -22,7 +22,7 @@ use crate::{Integrations, Secrets, ask, ask_loop, ask_tools, auto, fail, http, h
 use g1t_secrets as crypto;
 
 /// The methods this module answers.
-pub const METHODS: &[&str] = &["ai_list", "ai_add", "ai_update", "ai_remove", "ai_test", "ask_settings", "set_ask_settings", "ask"];
+pub const METHODS: &[&str] = &["ai_list", "ai_add", "ai_update", "ai_remove", "ai_test", "ask_settings", "set_ask_settings", "ask", "ai_brief"];
 
 /// Answers one of [`METHODS`].
 pub async fn route(service: &Integrations, method: &str, body: Value) -> Result<Response> {
@@ -35,6 +35,7 @@ pub async fn route(service: &Integrations, method: &str, body: Value) -> Result<
         "ask_settings" => reply(&service.ask_settings(args(body)?).await?),
         "set_ask_settings" => reply(&service.set_ask_settings(args(body)?).await?),
         "ask" => service.ask(args(body)?).await,
+        "ai_brief" => reply(&service.ai_brief(args(body)?).await?),
         _ => Response::error("Unknown method", 404),
     }
 }
@@ -641,6 +642,61 @@ impl Integrations {
         headers.set("content-type", ASK_CONTENT_TYPE)?;
         headers.set("cache-control", "no-store")?;
         Ok(Response::from_stream(lines)?.with_headers(headers))
+    }
+
+    /// A short answer for g1t's own use (`AiBriefArgs`): the workspace's
+    /// Ask provider, on its fast model when it lists one, without tools.
+    /// None when the workspace has chosen none, or it cannot be used.
+    pub(crate) async fn ai_brief(&self, a: AiBriefArgs) -> Result<Outcome<Option<String>>> {
+        let workspace = a.workspace.to_lowercase();
+        let (setup, row) = self.ask_setup(&workspace).await?;
+        let (Some(row), None) = (row, setup.problem) else {
+            return Ok(Outcome::Ok(None));
+        };
+        let model = if setup.auto { auto::choose(&auto_models(&row), row.config().model.as_deref(), auto::Need::Quick) } else { setup.model };
+        let Some(model) = model else {
+            return Ok(Outcome::Ok(None));
+        };
+        let provider = row.provider();
+        let config = row.config();
+        let key = self.ai_secret(&row);
+        let input: String = a.input.chars().take(MAX_BRIEF_INPUT_CHARS).collect();
+        let messages = [AskMessage { role: AskRole::User, content: input }];
+        let built = match ask::build(&ask::Request {
+            provider,
+            config: &config,
+            key: key.as_deref(),
+            model: &model,
+            system: &a.system,
+            messages: &messages,
+            rounds: &[],
+            tools: &[],
+            answer_now: false,
+            max_tokens: a.max_tokens.clamp(1, MAX_BRIEF_TOKENS),
+        }) {
+            Ok(built) => built,
+            Err(problem) => return Ok(fail(FailureCode::Invalid, problem)),
+        };
+        let headers: Vec<(&str, &str)> = built.headers.iter().map(|(name, value)| (name.as_str(), value.as_str())).collect();
+        let mut response = match http::open(Method::Post, &built.url, &headers, Some(built.body)).await {
+            Ok(response) => response,
+            Err(error) => return Ok(fail(FailureCode::Unavailable, format!("{} could not be reached: {error}", provider.label()))),
+        };
+        let status = response.status_code();
+        if !(200..300).contains(&status) {
+            let problem = ask_loop::refused_by(provider, status, response.text().await.unwrap_or_default());
+            self.ai_note(&row.id, Some(&problem)).await?;
+            return Ok(fail(FailureCode::Unavailable, problem));
+        }
+        let bytes = response.bytes().await?;
+        let mut round = ask::Round::new(provider, false);
+        round.feed(&bytes);
+        round.end();
+        if let Some(problem) = round.error() {
+            return Ok(fail(FailureCode::Unavailable, problem.to_owned()));
+        }
+        let text = round.text().trim().to_owned();
+        Ok(Outcome::Ok((!text.is_empty()).then_some(text)))
     }
 
     /// An answer that never started: its credential ends now.

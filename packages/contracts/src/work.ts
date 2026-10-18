@@ -1438,7 +1438,20 @@ export type WorkSession = {
   subagents?: number;
   /** In a list, for one with no title: the start of the first prompt it recorded. */
   firstPrompt?: string | null;
+  /** Where its title came from; none for one with no title, or from before titles said. */
+  titleSource?: TitleSource | null;
+  /** When its title was last settled. */
+  titleSettledAt?: string | null;
 };
+
+/**
+ * Where a session's title came from. g1t settles a title from the whole of
+ * the session's record: `prompt` is provisional (its first prompt's
+ * intent) until it does; `person` is pinned from the site and never
+ * replaced; `agent` is its agent's own (`g1t session attach --title`);
+ * `item`, `pull` and `summary` are g1t's.
+ */
+export type TitleSource = "prompt" | "agent" | "person" | "item" | "pull" | "summary";
 
 /** What kind of thing a session touched. */
 export type TouchKind = "file" | "commit" | "branch" | "pull" | "item";
@@ -1713,6 +1726,13 @@ export interface CoordinationApi {
    * (`end_session` with `by_hand`; g1t_contracts::work::session_end_reason).
    */
   endWorkSession(actor: User, repo: RepoPath, id: string): Promise<Result<WorkSession>>;
+  /**
+   * A person names a session from the site, pinning its title: neither
+   * g1t nor its agent replaces it. No title unpins it, and g1t names it
+   * again from its record. The actor's own, or anyone's with write access
+   * to the repository (`title_session`).
+   */
+  titleWorkSession(actor: User, repo: RepoPath, id: string, title: string | null): Promise<Result<WorkSession>>;
   /**
    * The harness sessions tied to some pull requests (at most 100), any way
    * a session is tied to one; a subagent's as the session that started it.

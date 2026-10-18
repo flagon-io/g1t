@@ -17,8 +17,8 @@ the proposals, and around it g1t records:
 - **Dependencies**: the work items that have to land before this one.
 
 Until there is a work item, the session is the unit: work that starts from
-a question or a quick request is recorded as a session titled with what it
-is for, and shows to the team on its branch or pull request. It opens or
+a question or a quick request is recorded as a session, named by g1t from
+what it does ([Session titles](#session-titles)), and shows to the team on its branch or pull request. It opens or
 claims a work item only when it becomes a change others should know about;
 see [Work with no work item yet](#work-with-no-work-item-yet).
 
@@ -43,9 +43,10 @@ Everything here shows on g1t.sh as it happens, without reloading.
     is not the default branch), the most recently heard from first; those
     on neither are last, under **No branch yet**. Each session shows its
     title, who it acts for, its harness, its state, when it was last heard
-    from and its branch. A session with no title is named by what its
-    first prompt was for, else **Session on** its branch, else **Untitled
-    session**. A title that is only a tag, such as
+    from and its branch. A provisional title (what its first prompt asked
+    for, until g1t settles one) shows muted. A session with no title is
+    named by what its first prompt was for, else **Session on** its branch,
+    else **Untitled session**. A title that is only a tag, such as
     `<pasted_content id="5c50">`, counts as no title.
   - **Merge queue**: what is waiting to land and what is being tested,
     as on the [Merge queue](/guides/merge-queue/#the-merge-queue-page) page.
@@ -90,6 +91,40 @@ Everything here shows on g1t.sh as it happens, without reloading.
   Anthropic AI provider: see
   [Start a session on your Anthropic account](#start-a-session-on-your-anthropic-account).
 
+## Session titles
+
+A session's title names the whole of its work, and settles instead of
+following each turn. Each title says where it came from (`title_source`)
+and when it settled (`title_settled_at`):
+
+| Source | What it is |
+| --- | --- |
+| `prompt` | Provisional: what its first prompt asked for (its first line or sentence, without pasted text, image placeholders, code or markdown). Shown muted. |
+| `item`, `pull`, `summary` | Settled by g1t from the session's record. |
+| `agent` | Its harness or agent named it (`title` on start or update, `g1t session attach --title`). |
+| `person` | Someone renamed it on its page: pinned. Neither g1t nor the agent replaces it. **Let g1t name it** unpins it. |
+
+g1t settles a provisional title once there is enough to go on: the session
+claims or is attached to a work item, opens or pushes a pull request,
+records three prompts, or has run for 30 minutes. It names it again only
+when what the session works on changes (another work item or pull
+request, or many more prompts), at most every 20 minutes and only when the
+new title says something else, and a last time when the session ends,
+from everything it did. An agent's own title is kept, unless the session
+went on to other work items or pull requests after it was named, when it
+is named again as it ends.
+
+With an [AI provider](/guides/ai/) chosen for Ask, the provider names the
+session in a few words, on its fast model, from a short digest of the
+record: its work items and pull requests, its prompts (as recorded, with
+credentials taken out), its subagents' tasks, where it changed files, its
+commits and what it reported. A session is asked about at most five times,
+and one whose work is a single work item or pull request takes that title
+without asking. Without a provider, or when it fails, the title is the
+work item's, else the pull request's, else what the session's most telling
+prompt asks for, without greetings and preambles ("This project used
+to…", "I think", "So"). A subagent goes by its task and is not titled.
+
 ## Picking up a work item
 
 Before working on a work item, load its whole context in one call:
@@ -132,13 +167,13 @@ harness starts, keep it alive while it works, and end it when it stops.
    session already started, so a hook can call it every time without
    checking first. Give `item` (the work item's number in the
    repository's workspace), `pull` and `branch` when you know them, and a
-   `title`: what the session is for, in a few words (up to 200
-   characters).
+   `title` only if you can name the whole job in a few words (up to 200
+   characters): otherwise g1t names it (see [Session titles](#session-titles)).
 2. **Heartbeat** with `session` `update`, or
    [`PATCH /repos/{owner}/{name}/sessions/{id}`](/reference/api/sessions/update-session/)
    with an empty body. The same call attaches the session to a work item
-   or pull request, records the `head_commit` it pushed, or changes its
-   `title`.
+   or pull request, records the `head_commit` it pushed, or names it
+   (`title`; a title a person pinned stays).
 3. **Record** what happens with `session` `record`, or
    [`POST /repos/{owner}/{name}/sessions/{id}/entries`](/reference/api/sessions/record-session-entries/):
    prompts, reasoning, tool calls, notes and the skills it used (`skill`,

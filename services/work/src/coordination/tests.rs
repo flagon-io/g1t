@@ -180,7 +180,7 @@ fn a_quiet_session_times_out_and_a_heartbeat_brings_it_back() {
             &resume_sql(),
             params![
                 None::<String>, 9, None::<String>, "abc123", None::<String>, None::<String>, None::<String>, None::<String>,
-                None::<String>, None::<String>, late, "ses_1"
+                None::<String>, None::<String>, late, "ses_1", None::<String>
             ],
             |row| row.get(11),
         )
@@ -207,7 +207,7 @@ fn a_subagent_starts_once_and_once_finished_stays_finished() {
             &refresh_sql(),
             params![
                 None::<String>, None::<u32>, None::<String>, None::<String>, None::<String>, None::<String>, "List endpoints",
-                None::<String>, None::<String>, None::<String>, rfc3339(NOW), "ses_c1"
+                None::<String>, None::<String>, None::<String>, rfc3339(NOW), "ses_c1", None::<String>
             ],
             |row| Ok((row.get(11)?, row.get(19)?, row.get(21)?)),
         )
@@ -668,4 +668,165 @@ fn a_queue_result_told_twice_reaches_each_session_once() {
     // A later attempt's result is news of its own.
     let next = update_id("integration.failed", "qe_1:att_3:abc123");
     assert_ne!(next, id);
+}
+
+// --- Titles that settle (titles.rs) ----------------------------------------
+
+/// A session's title as stored: its text, source and when it is due.
+fn titled(db: &Connection, id: &str) -> (Option<String>, Option<String>, Option<String>) {
+    db.query_row("SELECT title, title_source, title_due_at FROM sessions WHERE id = ?", [id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .unwrap()
+}
+
+/// Records `n` prompts the first of which is for `intent`, at `at`.
+fn prompted(db: &Connection, id: &str, n: u32, intent: Option<&str>, at: u64) {
+    db.execute(&super::titles::prompted_sql(), params![id, n, intent, rfc3339(at), after_minutes(at, super::titles::SETTLE_AFTER_MINUTES)]).unwrap();
+}
+
+/// A heartbeat giving the title `title` from `source`, at `at`.
+fn heartbeat_titled(db: &Connection, id: &str, title: &str, source: &str, at: u64) {
+    db.query_row(
+        &resume_sql(),
+        params![
+            None::<String>, None::<u32>, None::<String>, None::<String>, title, None::<String>, None::<String>, None::<String>,
+            None::<String>, None::<String>, rfc3339(at), id, source
+        ],
+        |_| Ok(()),
+    )
+    .unwrap();
+}
+
+const MINUTE: u64 = 60_000;
+
+#[test]
+fn the_first_prompt_names_a_session_for_now_and_enough_of_them_settle_it() {
+    let db = database();
+    start(&db, "ses_1", Some("a"));
+    prompted(&db, "ses_1", 1, Some("This project used to be in syntaqx/g1t"), NOW);
+    let due_later = after_minutes(NOW, super::titles::SETTLE_AFTER_MINUTES);
+    assert_eq!(titled(&db, "ses_1"), (Some("This project used to be in syntaqx/g1t".into()), Some("prompt".into()), Some(due_later.clone())));
+    // A later prompt does not rename it, nor bring it forward yet.
+    prompted(&db, "ses_1", 1, Some("Fix the remotes"), NOW + MINUTE);
+    assert_eq!(titled(&db, "ses_1").0.as_deref(), Some("This project used to be in syntaqx/g1t"));
+    assert_eq!(titled(&db, "ses_1").2, Some(due_later));
+    // The third: due now.
+    prompted(&db, "ses_1", 1, None, NOW + 2 * MINUTE);
+    assert_eq!(titled(&db, "ses_1").2, Some(rfc3339(NOW + 2 * MINUTE)));
+    // A subagent is never titled from prompts.
+    start_child(&db, "ses_c", "ses_1", "a/agent/1", "Explore");
+    prompted(&db, "ses_c", 3, Some("Look around"), NOW);
+    assert_eq!(titled(&db, "ses_c"), (None, None, None));
+}
+
+#[test]
+fn an_agents_title_is_kept_and_a_pinned_one_never_replaced() {
+    let db = database();
+    start(&db, "ses_1", Some("a"));
+    prompted(&db, "ses_1", 1, Some("Fix login"), NOW);
+    heartbeat_titled(&db, "ses_1", "Rewrite the auth flow", "agent", NOW + MINUTE);
+    assert_eq!(titled(&db, "ses_1"), (Some("Rewrite the auth flow".into()), Some("agent".into()), None));
+    // Its prompts and links leave it be until it ends.
+    prompted(&db, "ses_1", 5, None, NOW + 2 * MINUTE);
+    db.execute(&super::titles::linked_sql(), params!["ses_1", rfc3339(NOW + 2 * MINUTE)]).unwrap();
+    assert_eq!(titled(&db, "ses_1").2, None);
+    // A person pins it: neither the agent nor g1t replaces it.
+    db.execute(super::titles::PIN_TITLE, params!["Auth, rewritten", rfc3339(NOW + 3 * MINUTE), "ses_1"]).unwrap();
+    heartbeat_titled(&db, "ses_1", "Something else", "agent", NOW + 4 * MINUTE);
+    prompted(&db, "ses_1", 5, None, NOW + 4 * MINUTE);
+    db.execute(&super::titles::linked_sql(), params!["ses_1", rfc3339(NOW + 4 * MINUTE)]).unwrap();
+    assert_eq!(titled(&db, "ses_1"), (Some("Auth, rewritten".into()), Some("person".into()), None));
+    // Not even as it ends.
+    let late = rfc3339(NOW + g1t_contracts::work::SESSION_TIMEOUT_MS * 2);
+    db.prepare(&time_out_sessions_sql()).unwrap().query_map(params!["rep_1", late, "ses_1"], |_| Ok(())).unwrap().count();
+    assert_eq!(titled(&db, "ses_1").2, None);
+    // Unpinned: g1t names it again.
+    db.execute(super::titles::UNPIN_TITLE, params![rfc3339(NOW + 5 * MINUTE), "ses_1"]).unwrap();
+    assert_eq!(titled(&db, "ses_1"), (Some("Auth, rewritten".into()), Some("prompt".into()), Some(rfc3339(NOW + 5 * MINUTE))));
+}
+
+#[test]
+fn an_agent_echoing_the_provisional_title_keeps_it_provisional() {
+    let db = database();
+    start(&db, "ses_1", Some("a"));
+    prompted(&db, "ses_1", 1, Some("Fix login"), NOW);
+    heartbeat_titled(&db, "ses_1", "Fix login", "prompt", NOW + MINUTE);
+    let (_, source, due) = titled(&db, "ses_1");
+    assert_eq!((source.as_deref(), due), (Some("prompt"), Some(after_minutes(NOW, super::titles::SETTLE_AFTER_MINUTES))));
+}
+
+#[test]
+fn a_settled_title_is_due_again_only_after_a_while_and_a_change() {
+    let db = database();
+    start(&db, "ses_1", Some("a"));
+    let settled = rfc3339(NOW);
+    db.execute(
+        "UPDATE sessions SET title = 'Move issues to Work items', title_source = 'item', title_settled_at = ?1, title_due_at = NULL,
+           title_prompts = 3, prompts = 3 WHERE id = 'ses_1'",
+        [settled.as_str()],
+    )
+    .unwrap();
+    // Tied to more work five minutes on: due, but not before twenty minutes after it settled.
+    db.execute(&super::titles::linked_sql(), params!["ses_1", rfc3339(NOW + 5 * MINUTE)]).unwrap();
+    assert_eq!(titled(&db, "ses_1").2, Some(rfc3339(NOW + 20 * MINUTE)));
+    // Later still: as soon as it is tied.
+    db.execute("UPDATE sessions SET title_due_at = NULL WHERE id = 'ses_1'", []).unwrap();
+    db.execute(&super::titles::linked_sql(), params!["ses_1", rfc3339(NOW + 45 * MINUTE)]).unwrap();
+    assert_eq!(titled(&db, "ses_1").2, Some(rfc3339(NOW + 45 * MINUTE)));
+    // Prompts: due again only once they grew past more_prompts(3) = 8.
+    db.execute("UPDATE sessions SET title_due_at = NULL WHERE id = 'ses_1'", []).unwrap();
+    prompted(&db, "ses_1", 4, None, NOW + 50 * MINUTE);
+    assert_eq!(titled(&db, "ses_1").2, None);
+    prompted(&db, "ses_1", 1, None, NOW + 51 * MINUTE);
+    assert_eq!(titled(&db, "ses_1").2, Some(rfc3339(NOW + 51 * MINUTE)));
+    // Settled for good as it ended: nothing makes it due but ending again.
+    db.execute("UPDATE sessions SET title_due_at = NULL, title_final = 1, state = 'ended' WHERE id = 'ses_1'", []).unwrap();
+    db.execute(&super::titles::linked_sql(), params!["ses_1", rfc3339(NOW + 90 * MINUTE)]).unwrap();
+    assert_eq!(titled(&db, "ses_1").2, None);
+    // Brought back, it is named again as it ends again.
+    heartbeat_titled(&db, "ses_1", "x", "agent", NOW + 91 * MINUTE);
+    let kept: u32 = db.query_row("SELECT title_final FROM sessions WHERE id = 'ses_1'", [], |row| row.get(0)).unwrap();
+    assert_eq!(kept, 0);
+}
+
+#[test]
+fn a_session_timing_out_is_named_a_last_time_its_subagents_not() {
+    let db = database();
+    start(&db, "ses_1", Some("a"));
+    start_child(&db, "ses_c", "ses_1", "a/agent/1", "Explore");
+    let late = rfc3339(NOW + g1t_contracts::work::SESSION_TIMEOUT_MS);
+    for id in ["ses_1", "ses_c"] {
+        db.prepare(&time_out_sessions_sql()).unwrap().query_map(params!["rep_1", late, id], |_| Ok(())).unwrap().count();
+    }
+    assert_eq!(titled(&db, "ses_1").2, Some(rfc3339(NOW)));
+    assert_eq!(titled(&db, "ses_c").2, None);
+}
+
+#[test]
+fn sessions_from_before_titles_settled_are_settled_once() {
+    let db = crate::migrated::database_before("0051_session_titles.sql");
+    let at = rfc3339(NOW);
+    db.execute(
+        "INSERT INTO sessions (id, repo_id, actor_id, actor_name, harness, title, state, started_at, last_seen_at, ended_at)
+         VALUES ('ses_old', 'rep_1', 'usr_1', 'ana', 'claude_code', 'This project used to be in syntaqx/g1t', 'ended', ?1, ?1, ?1)",
+        [at.as_str()],
+    )
+    .unwrap();
+    db.execute(
+        "INSERT INTO sessions (id, repo_id, actor_id, actor_name, harness, state, started_at, last_seen_at, parent_id)
+         VALUES ('ses_sub', 'rep_1', 'usr_1', 'ana', 'claude_code', 'ended', ?1, ?1, 'ses_old')",
+        [at.as_str()],
+    )
+    .unwrap();
+    for n in 1..=2u32 {
+        db.execute(
+            "INSERT INTO session_entries (seq, kind, text, at, session_id, session_seq) VALUES (?1, 'prompt', 'hi', ?2, 'ses_old', ?1)",
+            params![n, at],
+        )
+        .unwrap();
+    }
+    crate::migrated::migrate_from(&db, "0051_session_titles.sql");
+    let (prompts, due): (u32, Option<String>) =
+        db.query_row("SELECT prompts, title_due_at FROM sessions WHERE id = 'ses_old'", [], |row| Ok((row.get(0)?, row.get(1)?))).unwrap();
+    assert_eq!((prompts, due), (2, Some(at)));
+    assert_eq!(titled(&db, "ses_sub").2, None);
 }

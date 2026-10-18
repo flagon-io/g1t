@@ -67,6 +67,8 @@ import {
   type SessionEnder,
   sessionTitle,
   sessionTree,
+  titleHint,
+  titleIsProvisional,
 } from "../lib/coordination";
 import { AgentSetup } from "./agent-setup";
 import { Input, SubmitButton, TimeAgo } from "./ui";
@@ -309,9 +311,18 @@ export function SessionLine({
       <Actor username={session.actor.username} harness={session.harness} />
       <div className="min-w-0 grow">
         <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm">
-          <Link to={`${base}/sessions/${session.id}`} prefetch="intent" className="font-medium hover:text-accent">
-            {sessionTitle(session)}
-          </Link>
+          {titleIsProvisional(session) ? (
+            // Muted while it is what the first prompt asked: g1t names it once the work is clear.
+            <Hint label={titleHint(session)}>
+              <Link to={`${base}/sessions/${session.id}`} prefetch="intent" className="font-medium text-muted hover:text-accent">
+                {sessionTitle(session)}
+              </Link>
+            </Hint>
+          ) : (
+            <Link to={`${base}/sessions/${session.id}`} prefetch="intent" className="font-medium hover:text-accent">
+              {sessionTitle(session)}
+            </Link>
+          )}
           <HarnessBadge harness={session.harness} />
           <SessionStateBadge state={session.state} />
         </p>

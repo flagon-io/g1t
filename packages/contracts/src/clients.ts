@@ -623,6 +623,7 @@ export function workClient(service: ServiceBinding): WorkApi {
     getWorkSession: (repo, id, viewer, afterSeq = 0) =>
       call("get_work_session", { repo, id, viewer, after_seq: afterSeq }),
     endWorkSession: (actor, repo, id) => call("end_session", { actor, repo, id, by_hand: true }),
+    titleWorkSession: (actor, repo, id, title) => call("title_session", { actor, repo, id, title }),
     pullSessions: (repo, viewer, numbers) => call("pull_sessions", { repo, viewer, numbers }),
     listDecisions: (thread, viewer) => call("list_decisions", { ...threadArgs(thread), viewer }),
   };

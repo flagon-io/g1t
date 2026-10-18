@@ -211,19 +211,26 @@ impl Work {
     async fn link(&self, session_id: &str, repo_id: &str, kind: LinkKind, number: u32, item_id: &str, via: LinkVia) {
         let at = rfc3339(now_ms());
         let linked = async {
-            self.db
-                .prepare(INSERT_LINK)
+            let new = self
+                .db
+                .prepare(format!("{INSERT_LINK} RETURNING via"))
                 .bind(&[
                     session_id.into(),
                     repo_id.into(),
                     kind.as_str().into(),
                     number.into(),
                     via.as_str().into(),
-                    at.into(),
+                    at.as_str().into(),
                     item_id.into(),
                 ])?
-                .run()
-                .await
+                .all()
+                .await?
+                .results::<serde_json::Value>()?;
+            // Tied to what it works on for the first time: its title is due (titles.rs).
+            if !new.is_empty() && via != LinkVia::Ref {
+                self.db.prepare(super::titles::linked_sql()).bind(&[session_id.into(), at.as_str().into()])?.run().await?;
+            }
+            Ok::<(), worker::Error>(())
         };
         if let Err(error) = linked.await {
             worker::console_error!("session {session_id}: not tied to {} #{number}{item_id}: {error}", kind.as_str());

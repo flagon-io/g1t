@@ -128,8 +128,9 @@ const IDE_CONTEXT = /^\s*<(ide_[a-z_]+|system-reminder)\b[^>]*>[\s\S]*?<\/\1>/i;
  * What a prompt is for, as a session's title: its first line or sentence,
  * without code blocks or markdown, whitespace collapsed, clipped at
  * TITLE_LIMIT on a word with "…". Null for a slash command, a turn the
- * harness starts itself, or nothing to say. The Claude Code plugin
- * (plugins/claude-code/hooks/g1t.mjs) titles its sessions the same way.
+ * harness starts itself, or nothing to say. The work service gives a
+ * session its provisional title the same way, from its first prompt
+ * (services/work/src/coordination/titles.rs `intent_title`).
  */
 export function intentTitle(prompt: string | null | undefined): string | null {
   let text = String(prompt ?? "").replace(/^\uFEFF/, "");
@@ -181,6 +182,33 @@ export function sessionTitle(
   const intent = intentTitle(firstPrompt);
   if (intent) return intent;
   return session.branch ? `Session on ${session.branch}` : "Untitled session";
+}
+
+/**
+ * Whether what a session is called is still provisional: what its first
+ * prompt asked, until g1t settles a title from all it did. Shown muted. A
+ * subagent goes by its task, which is never provisional.
+ */
+export function titleIsProvisional(session: Pick<WorkSession, "title" | "titleSource" | "parentId">): boolean {
+  if (session.parentId) return false;
+  return session.titleSource === "prompt" || (!session.title?.trim() && session.titleSource == null);
+}
+
+/** Why a title reads as it does, for a hint on it. */
+export function titleHint(session: Pick<WorkSession, "title" | "titleSource" | "parentId">): string | undefined {
+  if (session.parentId) return undefined;
+  switch (session.titleSource) {
+    case "person":
+      return "Named by a person: g1t keeps this title.";
+    case "agent":
+      return "Named by its agent.";
+    case "item":
+    case "pull":
+    case "summary":
+      return "Named by g1t from what the session did.";
+    default:
+      return titleIsProvisional(session) ? "From its first prompt, for now: g1t names it once what it is doing is clear." : undefined;
+  }
 }
 
 // ── Live now ────────────────────────────────────────────────────────────
