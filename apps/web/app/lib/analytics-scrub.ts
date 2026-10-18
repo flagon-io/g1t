@@ -35,7 +35,7 @@ const ROUTE_WORDS = new Set([
   "compare", "confirm-email", "context", "deployments", "dm", "docs", "emails", "emoji", "entries", "explore", "files", "forgot", "gateway",
   "github", "guardrails", "home", "inbox", "apps", "insights", "integrations", "invitations", "invite", "invites", "issues",
   "jobs", "keys", "labels", "login", "members", "merge-queue", "milestones", "new", "notifications", "overview",
-  "packages", "patterns", "people", "personal-access-tokens", "pins", "policies", "profile", "projects", "pull",
+  "packages", "patterns", "people", "personal-access-tokens", "pins", "policies", "profile", "projects", "provider-costs", "pull",
   "pulls", "queue", "releases", "repositories", "reset", "rules", "runners", "runs", "search", "secrets", "security",
   "security-log", "settings", "soon", "spend", "tags", "teams", "today", "tokens", "tree", "two-factor", "u", "usage",
   "verify", "webhooks", "work", "workspace", "workspaces",
