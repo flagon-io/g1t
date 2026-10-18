@@ -6,12 +6,12 @@
  * page that does not exist, or anything that fails to load gets the generic
  * card: never a name or a title that a link preview could leak.
  */
-import type { IdentityApi, Issue, Project, PullStatus, ReposApi, WorkApi, ProjectsApi } from "@g1t/contracts";
+import type { IdentityApi, Project, PullStatus, ReposApi, WorkApi, WorkItem, ProjectsApi } from "@g1t/contracts";
 
 // The one list of Soon pages, shared with the site so the two never disagree.
 import { roadmapItem } from "../../../apps/web/app/lib/roadmap.ts";
 
-export type IssueState = "open" | "completed" | "not_planned";
+export type ItemState = "open" | "completed" | "not_planned";
 
 export type Card =
   /**
@@ -41,7 +41,7 @@ export type Card =
       /** Over public repositories only. */
       pullsMerged: number;
       pullsOpen: number;
-      issues: number;
+      items: number;
       avatar?: string | null;
       icon?: string;
     }
@@ -51,16 +51,17 @@ export type Card =
       repo: string;
       name: string;
       description: string | null;
-      issues: number;
+      /** Open work items linked to the repository. */
+      items: number;
       pulls: number;
     }
   | {
-      kind: "issue";
-      owner: string;
-      repo: string;
+      /** A work item, at `/<workspace>/-/work/<number>`. */
+      kind: "item";
+      workspace: string;
       number: number;
       title: string;
-      state: IssueState;
+      state: ItemState;
       author: string;
       /** For one g1t's agent filed: the person it was working for. */
       requestedBy: string | null;
@@ -86,7 +87,7 @@ export const BRAND: Card = { kind: "brand" };
 export type Sources = {
   identity: Pick<IdentityApi, "getWorkspace" | "profile">;
   repos: Pick<ReposApi, "get">;
-  work: Pick<WorkApi, "counts" | "getIssue" | "getPull" | "byAuthor">;
+  work: Pick<WorkApi, "counts" | "getWorkItem" | "resolveRef" | "getPull" | "byAuthor">;
   projects: Pick<ProjectsApi, "get" | "list">;
 };
 
@@ -117,7 +118,7 @@ const PAGES: Record<string, Card> = {
     address: "g1t.sh/search",
     eyebrow: "Search",
     title: "Search all of g1t",
-    description: "Repositories, code, issues, pull requests and people, in one search.",
+    description: "Repositories, code, work items, pull requests and people, in one search.",
   },
   policies: {
     kind: "page",
@@ -254,8 +255,10 @@ export function cardPath(path: string): string {
     return parts.length === 2 && page in PAGES ? join(lower, parts[1].toLowerCase()) : "/";
   }
   if (!NAME.test(owner)) return "/";
+  if (repo === "-" && section === "work" && item !== undefined && isNumber(item) && parts.length === 4) return join(lower, "-", "work", item);
   if (repo === undefined || repo === "-") return join(lower);
   if (!NAME.test(repo)) return "/";
+  // An old issue's address: the work item it became.
   if (section === "issues" && item !== undefined && isNumber(item) && parts.length === 4) return join(owner, repo, "issues", item);
   if (section === "pull" && item !== undefined && isNumber(item)) return join(owner, repo, "pull", item);
   if (section === "soon" && item !== undefined && parts.length === 4 && roadmapItem(item)) return join(owner, repo, "soon", item);
@@ -292,7 +295,7 @@ async function lookUp(parts: string[], sources: Sources): Promise<Card | null> {
       bio: profile.bio,
       pullsMerged: counts?.pullsMerged ?? 0,
       pullsOpen: counts?.pullsOpen ?? 0,
-      issues: counts?.issues ?? 0,
+      items: counts?.items ?? 0,
       avatar: profile.avatar,
     };
   }
@@ -303,6 +306,11 @@ async function lookUp(parts: string[], sources: Sources): Promise<Card | null> {
     return null;
   }
   if (!NAME.test(owner)) return null;
+
+  // A work item: only one filed in a public repository is anyone's to see.
+  if (repo === "-" && section === "work" && item !== undefined && isNumber(item) && parts.length === 4) {
+    return itemCard(work, owner.toLowerCase(), Number(item));
+  }
 
   // A workspace, or one of its own pages under `-`.
   if (repo === undefined || repo === "-") {
@@ -328,19 +336,12 @@ async function lookUp(parts: string[], sources: Sources): Promise<Card | null> {
   const { namespace, name } = found.value;
   const canonical = { namespace, name };
 
+  // An old issue's address names the work item it became.
   if (section === "issues" && item !== undefined && isNumber(item) && parts.length === 4) {
-    const issue = await work.getIssue(canonical, Number(item), null);
-    if (issue.ok) {
-      return {
-        kind: "issue",
-        owner: namespace,
-        repo: name,
-        number: issue.value.issue.number,
-        title: issue.value.issue.title,
-        state: issueState(issue.value.issue),
-        author: issue.value.issue.author.username,
-        requestedBy: issue.value.issue.requestedBy?.username ?? null,
-      };
+    const target = await work.resolveRef(null, { repo: canonical }, Number(item));
+    if (target.kind === "work_item") {
+      const card = await itemCard(work, target.workspace, target.number);
+      if (card) return card;
     }
   }
 
@@ -386,7 +387,7 @@ async function lookUp(parts: string[], sources: Sources): Promise<Card | null> {
     name: shown?.name ?? name,
     // Only projects have descriptions; a private project keeps its own to itself.
     description: shown?.description ?? null,
-    issues: counts?.ok ? counts.value.issues : 0,
+    items: counts?.ok ? counts.value.items : 0,
     pulls: counts?.ok ? counts.value.pulls : 0,
   };
 }
@@ -395,9 +396,25 @@ function isNumber(value: string): boolean {
   return /^[1-9][0-9]{0,8}$/.test(value);
 }
 
-function issueState(issue: Issue): IssueState {
-  if (issue.state === "open") return "open";
-  return issue.reason === "not_planned" ? "not_planned" : "completed";
+/** A work item's card, looked up with no viewer. */
+async function itemCard(work: Sources["work"], workspace: string, number: number): Promise<Card | null> {
+  const found = await work.getWorkItem(workspace, number, null);
+  if (!found.ok) return null;
+  const item = found.value.item;
+  return {
+    kind: "item",
+    workspace: item.workspace,
+    number: item.number,
+    title: item.title,
+    state: itemState(item),
+    author: item.author.username,
+    requestedBy: item.requestedBy?.username ?? null,
+  };
+}
+
+function itemState(item: WorkItem): ItemState {
+  if (item.state === "open") return "open";
+  return item.reason === "not_planned" ? "not_planned" : "completed";
 }
 
 /** The card for a page of the docs, from what the page says about itself. */
