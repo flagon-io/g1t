@@ -43,7 +43,7 @@ pub(crate) fn unless_archived(repo: Outcome<Repo>) -> Outcome<Repo> {
 /// kept by pull request go first, while the pull requests still name them.
 /// Its work items stay, their links keeping the path it had.
 pub(crate) const PURGED: &[&str] = &[
-    "UPDATE work_item_repos SET path = COALESCE((SELECT path FROM repo_workspaces WHERE repo_id = ?1), path) WHERE repo_id = ?1",
+    crate::items::sql::REPO_PURGED,
     "DELETE FROM session_entries WHERE pull_id IN (SELECT id FROM pulls WHERE repo_id = ?1)",
     "DELETE FROM session_entries WHERE session_id IN (SELECT id FROM sessions WHERE repo_id = ?1)",
     "DELETE FROM sessions WHERE repo_id = ?1",

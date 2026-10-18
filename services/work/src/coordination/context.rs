@@ -20,7 +20,7 @@ use worker::Result;
 
 use super::{SESSION_COLUMNS, SessionRow, unwrap_or_fail};
 use crate::Work;
-use crate::items::Held;
+use crate::items::{self, Held, PastLanding};
 use crate::rows::{PULL_COLUMNS, PullRow};
 
 /// How many sessions, decisions, events and suggestions `get_work` gives
@@ -38,15 +38,6 @@ struct PlaceRow {
     position: u32,
 }
 
-/// A repository another work item of the workspace landed in.
-#[derive(Clone, Debug, Deserialize)]
-pub(crate) struct LandingRow {
-    pub repo_id: String,
-    pub title: String,
-    /// JSON array of label names.
-    pub labels: String,
-}
-
 /// A repository of the workspace, and how many files sessions on the work
 /// item touched in it.
 #[derive(Clone, Debug, Deserialize)]
@@ -54,13 +45,6 @@ pub(crate) struct TouchedRow {
     pub repo_id: String,
     pub files: u32,
 }
-
-/// The repositories of workspace `?1` with what earlier work items (not
-/// `?2`) landed in them, newest first.
-const LANDED_BEFORE: &str = "SELECT r.repo_id AS repo_id, i.title AS title, i.labels AS labels
-     FROM work_item_repos r JOIN work_items i ON i.id = r.item_id
-     WHERE i.workspace = ?1 AND i.id <> ?2 AND r.landed_at IS NOT NULL
-     ORDER BY r.landed_at DESC LIMIT ?3";
 
 /// The repositories where sessions on work item `?1` touched files.
 const TOUCHED_FOR: &str = "SELECT s.repo_id AS repo_id, count(*) AS files
@@ -89,7 +73,7 @@ fn words(text: &str) -> Vec<String> {
 pub(crate) fn suggest_targets(
     item: &WorkItem,
     candidates: &[(String, String)],
-    landed: &[LandingRow],
+    landed: &[PastLanding],
     touched: &[TouchedRow],
 ) -> Vec<SuggestedTarget> {
     let title_words = words(&item.title);
@@ -101,7 +85,7 @@ pub(crate) fn suggest_targets(
         }
         let mut score = 0;
         let mut why: Vec<String> = Vec::new();
-        let landings: Vec<&LandingRow> = landed.iter().filter(|landing| landing.repo_id == *repo_id).collect();
+        let landings: Vec<&PastLanding> = landed.iter().filter(|landing| landing.repo_id == *repo_id).collect();
         let labelled = landings
             .iter()
             .filter(|landing| {
@@ -143,7 +127,7 @@ pub(crate) fn suggest_targets(
 
 impl Work {
     pub(crate) async fn get_work(&self, a: WorkItemViewArgs) -> Result<Outcome<WorkContext>> {
-        let held = unwrap_or_fail!(self.item_for(&a.viewer, &a.workspace, a.number, Capability::Read).await?);
+        let held = unwrap_or_fail!(items::for_viewer(self, &a.viewer, &a.workspace, a.number, Capability::Read).await?);
         // What went quiet in its repositories is read as it is now.
         for repo_id in held.repo_ids().iter().take(10) {
             self.sweep(repo_id).await?;
@@ -176,7 +160,7 @@ impl Work {
             self.work_sessions(&held, &pulls),
             self.suggestions(&held),
         );
-        let dependencies = try_join(self.blockers(&held.item.workspace, &held.item.blocked_by), self.blocked_items(&held));
+        let dependencies = try_join(self.blockers(&held.item.workspace, &held.item.blocked_by), items::blocked_items(self, &held));
         let linked = held.repo_ids();
         let history = try_join(
             self.coordination_events(&linked, &numbers, COORDINATION_EVENTS.to_vec(), EVENTS),
@@ -226,9 +210,6 @@ impl Work {
                 self.db
                     .prepare("SELECT repo_id, path FROM repo_workspaces WHERE workspace = ? ORDER BY path LIMIT 500")
                     .bind(&[held.item.workspace.as_str().into()])?,
-                self.db
-                    .prepare(LANDED_BEFORE)
-                    .bind(&[held.item.workspace.as_str().into(), held.item.id.as_str().into(), LANDINGS.into()])?,
                 self.db.prepare(TOUCHED_FOR).bind(&[held.item.id.as_str().into()])?,
             ])
             .await?;
@@ -237,10 +218,7 @@ impl Work {
             Some(result) => result.results::<Candidate>()?.into_iter().map(|row| (row.repo_id, row.path)).collect(),
             None => Vec::new(),
         };
-        let landed: Vec<LandingRow> = match results.next() {
-            Some(result) => result.results()?,
-            None => Vec::new(),
-        };
+        let landed = items::landed_before(self, held, LANDINGS).await?;
         let touched: Vec<TouchedRow> = match results.next() {
             Some(result) => result.results()?,
             None => Vec::new(),
@@ -338,7 +316,7 @@ impl Work {
         let mut pull = pull.clone();
         crate::fill_base(&mut pull, repo);
         let brief = |pull: &Pull| WorkPull {
-            repo: crate::items::path_of(repo),
+            repo: items::path_of(repo),
             number: pull.number,
             title: pull.title.clone(),
             status: pull.status,
@@ -402,8 +380,8 @@ mod tests {
         .unwrap()
     }
 
-    fn landing(repo: &str, title: &str, labels: &str) -> LandingRow {
-        LandingRow { repo_id: repo.into(), title: title.into(), labels: labels.into() }
+    fn landing(repo: &str, title: &str, labels: &str) -> PastLanding {
+        PastLanding { repo_id: repo.into(), title: title.into(), labels: labels.into() }
     }
 
     #[test]

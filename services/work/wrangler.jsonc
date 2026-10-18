@@ -34,7 +34,7 @@
 	"queues": {
 		"consumers": [{ "queue": "g1t-events-work", "max_batch_size": 100, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
 	},
-	// Logs of a quarter of requests: every issue and pull request page asks
+	// Logs of a quarter of requests: every work item and pull request page asks
 	// it, so keeping every one costs more than it tells, and a quarter
 	// still catches a rare error within hours. Repos, which it asks most,
 	// logs its slow answers as fields (`answered_ms`, services/repos/src/lib.rs).

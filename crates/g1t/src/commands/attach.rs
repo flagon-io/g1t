@@ -51,6 +51,27 @@ pub fn content_type(path: &Path) -> Option<&'static str> {
 
 /// Uploads one file to `repo`: `{ id, name, url, markdown, content_type, size }`.
 pub fn upload(client: &Client, repo: &Repo, path: &Path) -> Result<Value> {
+    let (name, kind, data) = read(path)?;
+    client.op("upload_attachment").repo(repo).field("name", name).field_opt("content_type", kind).field("data", data).send()
+}
+
+/// Uploads one file to work item `number` of `workspace`, which keeps it:
+/// one filed with no repository takes files too.
+pub fn upload_to_item(client: &Client, workspace: &str, number: u64, path: &Path) -> Result<Value> {
+    let (name, kind, data) = read(path)?;
+    client
+        .op("upload_work_item_attachment")
+        .arg("workspace", workspace)
+        .arg("number", number)
+        .field("name", name)
+        .field_opt("content_type", kind)
+        .field("data", data)
+        .send()
+}
+
+/// A file's name, the type its name says and its bytes in base64, once it
+/// is known to be small enough.
+fn read(path: &Path) -> Result<(String, Option<&'static str>, String)> {
     let shown = path.display();
     let size = std::fs::metadata(path)
         .map_err(|error| Error::usage(format!("{shown}: {error}")))?
@@ -68,13 +89,7 @@ pub fn upload(client: &Client, repo: &Repo, path: &Path) -> Result<Value> {
         .and_then(|name| name.to_str())
         .unwrap_or("image")
         .to_owned();
-    client
-        .op("upload_attachment")
-        .repo(repo)
-        .field("name", name)
-        .field_opt("content_type", content_type(path))
-        .field("data", base64::engine::general_purpose::STANDARD.encode(bytes))
-        .send()
+    Ok((name, content_type(path), base64::engine::general_purpose::STANDARD.encode(bytes)))
 }
 
 /// `body` with the Markdown of each of `files` after it, uploaded to
@@ -86,6 +101,20 @@ pub fn with_attachments(client: &Client, repo: &Repo, body: Option<String>, file
     let mut markdown = Vec::with_capacity(files.len());
     for file in files {
         let uploaded = upload(client, repo, file)?;
+        markdown.push(s(&uploaded, "markdown").to_owned());
+    }
+    Ok(Some(appended(body.as_deref(), &markdown)))
+}
+
+/// As [`with_attachments`], with the files kept by work item `number` of
+/// `workspace`.
+pub fn with_item_attachments(client: &Client, workspace: &str, number: u64, body: Option<String>, files: &[PathBuf]) -> Result<Option<String>> {
+    if files.is_empty() {
+        return Ok(body);
+    }
+    let mut markdown = Vec::with_capacity(files.len());
+    for file in files {
+        let uploaded = upload_to_item(client, workspace, number, file)?;
         markdown.push(s(&uploaded, "markdown").to_owned());
     }
     Ok(Some(appended(body.as_deref(), &markdown)))

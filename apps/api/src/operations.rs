@@ -202,6 +202,7 @@ pub enum Op {
     DeleteWorkItemComment,
     ReactToWorkItem,
     ListWorkItemDecisions,
+    UploadWorkItemAttachment,
     UploadAttachment,
     ReviewPullRequest,
     ListPullRequests,
@@ -867,7 +868,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 427] = [
+    pub const ALL: [Op; 428] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -952,6 +953,7 @@ impl Op {
         Op::DeleteWorkItemComment,
         Op::ReactToWorkItem,
         Op::ListWorkItemDecisions,
+        Op::UploadWorkItemAttachment,
         Op::UploadAttachment,
         Op::ReviewPullRequest,
         Op::ListPullRequests,
@@ -1388,6 +1390,7 @@ impl Op {
             Op::DeleteWorkItemComment => "delete_work_item_comment",
             Op::ReactToWorkItem => "react_to_work_item",
             Op::ListWorkItemDecisions => "list_work_item_decisions",
+            Op::UploadWorkItemAttachment => "upload_work_item_attachment",
             Op::UploadAttachment => "upload_attachment",
             Op::ReviewPullRequest => "review_pull_request",
             Op::ListPullRequests => "list_pull_requests",
@@ -1788,6 +1791,9 @@ impl Op {
             }
             Op::ListWorkItemDecisions => {
                 "The decision records on a work item and on its pull requests, oldest first: each with its kind (proposal, claim, integration_failure, integration_passed, fix, approval, merge or note), its confidence (claimed, tested or approved), who recorded it (absent for g1t), its summary and its evidence. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
+            }
+            Op::UploadWorkItemAttachment => {
+                "Upload an image to show in a work item's description or in a comment on it, kept by the work item: one filed with no repository takes files too. As upload_attachment otherwise (PNG, JPEG, GIF and WebP of at most 10 MB, 413 too_large, 415 unsupported_type, the same answer with its markdown); anyone who may comment on the work item may. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
             }
             Op::UploadAttachment => {
                 "Upload an image to show in a work item's or a pull request's description or in a comment: a screenshot of a preview, say, instead of committing it to the repository. data is the file base64-encoded, name its file name (the image's alt text), content_type optional (checked against the bytes). PNG, JPEG, GIF and WebP of at most 10 MB; a larger file is refused with 413 too_large, another type (SVG, PDF, anything its bytes do not show to be one of those) with 415 unsupported_type. Anyone who may comment on the repository may. Returns its id, url (on the usercontent origin, g1tusercontent.com on g1t.sh), name, size, content_type, and markdown (`![name](url)`) to paste into the body or summary of open_work_item, update_work_item, add_work_item_comment, add_comment, create_pull_request or mark_pull_request_ready. Its address is its permission: anyone given it can see the image, even one from a private repository. Over MCP the file travels in the tool call, so keep it small (a few hundred KB); `g1t attach FILE` uploads one from disk and prints the markdown."
@@ -2959,6 +2965,25 @@ impl Op {
                     "remove": { "type": "boolean", "description": "Take your reaction back." },
                 })),
                 &["number", "content"],
+            ),
+            Op::UploadWorkItemAttachment => object(
+                item_numbered(json!({
+                    "name": {
+                        "type": "string",
+                        "description": "The file's name, such as preview.png: the image's alt text in the markdown.",
+                    },
+                    "content_type": {
+                        "type": "string",
+                        "enum": g1t_contracts::attachments::ATTACHMENT_TYPES,
+                        "description": "What the file is. Optional: it is read from the bytes, and refused when it says otherwise.",
+                    },
+                    "data": {
+                        "type": "string",
+                        "contentEncoding": "base64",
+                        "description": "The file, base64-encoded: PNG, JPEG, GIF or WebP of at most 10 MB.",
+                    },
+                })),
+                &["number", "name", "data"],
             ),
             Op::UploadAttachment => object(
                 json!({
@@ -4241,6 +4266,7 @@ impl Op {
                 | Op::EditWorkItemComment
                 | Op::DeleteWorkItemComment
                 | Op::ReactToWorkItem
+                | Op::UploadWorkItemAttachment
                 | Op::ImportWorkItems
                 | Op::ListLabels
                 | Op::CreateLabel
@@ -5524,6 +5550,25 @@ impl Op {
                 )
                 .await
             }
+            Op::UploadWorkItemAttachment => {
+                let asked = g1t_contracts::attachments::UploadAttachmentArgs {
+                    actor: actor(),
+                    repo: None,
+                    workspace: item_ws(),
+                    number: Some(number),
+                    name: text(input, "name"),
+                    content_type: optional_text(input, "content_type"),
+                    data: text(input, "data"),
+                };
+                if asked.data.trim().is_empty() {
+                    return failed(FailureCode::Invalid, "Give data: the file, base64-encoded.");
+                }
+                let kept: Outcome<g1t_contracts::attachments::Attachment> = call(work, "upload_attachment", &asked).await?;
+                match kept {
+                    Outcome::Ok(attachment) => ok(&attachment_answer(&services.addresses.usercontent, &attachment)),
+                    Outcome::Fail(failure) => Ok(Outcome::Fail(failure)),
+                }
+            }
             Op::UpdatePullRequest => {
                 // `state` reopens a closed pull request (first, so that the
                 // rest can change it) or closes an open one (last).
@@ -5748,7 +5793,9 @@ impl Op {
             Op::UploadAttachment => {
                 let asked = g1t_contracts::attachments::UploadAttachmentArgs {
                     actor: actor(),
-                    repo,
+                    repo: Some(repo),
+                    workspace: String::new(),
+                    number: None,
                     name: text(input, "name"),
                     content_type: optional_text(input, "content_type"),
                     data: text(input, "data"),

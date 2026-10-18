@@ -1,17 +1,20 @@
 //! Files put in a work item's, a pull request's or a comment's Markdown
-//! (`upload_attachment`): whoever may comment on a repository may add one,
-//! as an agent shows a screenshot of its preview in a pull request instead
-//! of committing the image. The bytes go in the usercontent namespace
-//! (`AVATARS`) under `attachments/<id>`, which the usercontent origin
-//! serves at `/attachments/<id>` (apps/web/workers/usercontent.ts); a row
-//! here names the repository, so a purged repository's go with it
-//! ([`purge`]). See `g1t_contracts::attachments`.
+//! (`upload_attachment`): whoever may comment on a repository, or on a work
+//! item, may add one, as an agent shows a screenshot of its preview in a
+//! pull request instead of committing the image. The bytes go in the
+//! usercontent namespace (`AVATARS`) under `attachments/<id>`, which the
+//! usercontent origin serves at `/attachments/<id>`
+//! (apps/web/workers/usercontent.ts); a row here names the repository, or
+//! the work item and its workspace, so a purged repository's or a deleted
+//! workspace's go with it ([`purge`], [`purge_workspace`]). See
+//! `g1t_contracts::attachments`.
 
 use base64::Engine;
 use g1t_contracts::attachments::{
     ATTACHMENT_KEY_PREFIX, ATTACHMENT_TYPES, Attachment, AttachmentMeta, MAX_ATTACHMENT_BYTES, UploadAttachmentArgs,
     attachment_name, attachment_path, normalize_content_type, sniff_attachment,
 };
+use g1t_contracts::access::Capability;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome};
 use g1t_kit::now_ms;
@@ -19,7 +22,7 @@ use worker::kv::KvStore;
 use worker::{Env, Result};
 
 use crate::retired::writable;
-use crate::{UNVERIFIED, Work};
+use crate::{UNVERIFIED, Work, items};
 
 /// Unwraps an `Outcome`, returning its failure from the enclosing method.
 macro_rules! check {
@@ -33,6 +36,14 @@ macro_rules! check {
 
 /// `repo.purged`: the repository's rows, `?1` its id (its bytes go first, [`purge`]).
 pub(crate) const PURGED: &str = "DELETE FROM attachments WHERE repo_id = ?1";
+
+/// `workspace.deleted`: its work items' rows, `?1` its slug (their bytes
+/// go first, [`purge_workspace`]).
+pub(crate) const DELETED: &[&str] = &["DELETE FROM attachments WHERE workspace = ?1"];
+
+/// `workspace.renamed`: its work items' rows follow (`?1` the slug now,
+/// `?2` before).
+pub(crate) const RENAMED: &[&str] = &["UPDATE attachments SET workspace = ?1 WHERE workspace = ?2"];
 
 const MB: usize = 1024 * 1024;
 
@@ -92,14 +103,28 @@ fn store(env: &Env) -> Result<KvStore> {
 impl Work {
     /// `upload_attachment`: as `add_comment` checks who may comment (a
     /// confirmed account that can read the repository, which is not
-    /// archived), then keeps the file.
+    /// archived, or that may take part in the work item), then keeps the
+    /// file.
     pub(crate) async fn upload_attachment(&self, env: &Env, a: UploadAttachmentArgs) -> Result<Outcome<Attachment>> {
         if !a.actor.verified {
             return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
         }
         let (bytes, content_type) = check!(checked(&a.data, a.content_type.as_deref()));
-        let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
-        check!(writable(&repo));
+        // What it is kept by: the repository, or the work item and its workspace.
+        let (repo_id, item) = match &a.repo {
+            Some(path) => {
+                let repo = check!(self.repo(path, &Some(a.actor.clone())).await?);
+                check!(writable(&repo));
+                (Some(repo.id), None)
+            }
+            None => {
+                let Some(number) = a.number.filter(|number| *number > 0) else {
+                    return Ok(Outcome::fail(FailureCode::Invalid, "Say which repository, or which work item (workspace and number)."));
+                };
+                let held = check!(items::for_viewer(self, &Some(a.actor.clone()), &a.workspace, number, Capability::Participate).await?);
+                (None, Some((held.item.id, held.item.workspace)))
+            }
+        };
         let name = attachment_name(&a.name);
         let id = new_attachment_id();
         let now = now_ms();
@@ -109,7 +134,8 @@ impl Work {
             .metadata(AttachmentMeta {
                 content_type: content_type.to_owned(),
                 name: name.clone(),
-                repo_id: repo.id.clone(),
+                repo_id: repo_id.clone(),
+                item_id: item.as_ref().map(|(id, _)| id.clone()),
                 user_id: a.actor.id.clone(),
                 size,
                 at: now,
@@ -118,12 +144,14 @@ impl Work {
             .await?;
         self.db
             .prepare(
-                "INSERT INTO attachments (id, repo_id, user_id, name, content_type, size, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO attachments (id, repo_id, item_id, workspace, user_id, name, content_type, size, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 id.as_str().into(),
-                repo.id.as_str().into(),
+                crate::optional(&repo_id),
+                crate::optional(&item.as_ref().map(|(id, _)| id.clone())),
+                crate::optional(&item.as_ref().map(|(_, workspace)| workspace.clone())),
                 a.actor.id.as_str().into(),
                 name.as_str().into(),
                 content_type.into(),
@@ -145,13 +173,23 @@ impl Work {
 /// `repo.purged`: deletes the repository's attachments' bytes; its rows go
 /// with [`PURGED`], after.
 pub(crate) async fn purge(env: &Env, db: &worker::D1Database, repo_id: &str) -> Result<()> {
+    purge_where(env, db, "repo_id = ?1", repo_id).await
+}
+
+/// `workspace.deleted`: deletes the bytes of its work items' attachments;
+/// their rows go with [`DELETED`], after.
+pub(crate) async fn purge_workspace(env: &Env, db: &worker::D1Database, workspace: &str) -> Result<()> {
+    purge_where(env, db, "workspace = ?1", &workspace.to_lowercase()).await
+}
+
+async fn purge_where(env: &Env, db: &worker::D1Database, condition: &str, value: &str) -> Result<()> {
     #[derive(serde::Deserialize)]
     struct Row {
         id: String,
     }
     let rows: Vec<Row> = db
-        .prepare("SELECT id FROM attachments WHERE repo_id = ?1")
-        .bind(&[repo_id.into()])?
+        .prepare(format!("SELECT id FROM attachments WHERE {condition}"))
+        .bind(&[value.into()])?
         .all()
         .await?
         .results()?;
@@ -237,5 +275,35 @@ mod tests {
     #[test]
     fn purging_takes_the_repository_id() {
         assert_eq!(g1t_kit::transfer::parameters(PURGED), 1);
+        assert_eq!(g1t_kit::transfer::parameters(DELETED[0]), 1);
+        assert_eq!(g1t_kit::rename::parameters(RENAMED[0]), 2);
+    }
+
+    #[test]
+    fn a_work_item_keeps_attachments_of_its_own() {
+        let db = crate::migrated::database();
+        db.execute_batch(
+            "INSERT INTO attachments (id, repo_id, user_id, name, content_type, size, created_at)
+               VALUES ('a1', 'rep_1', 'usr_1', 'one.png', 'image/png', 1, 'now');
+             INSERT INTO attachments (id, item_id, workspace, user_id, name, content_type, size, created_at)
+               VALUES ('a2', 'wki_1', 'acme', 'usr_1', 'two.png', 'image/png', 1, 'now');",
+        )
+        .unwrap();
+        // Each names a repository or a work item.
+        let neither = "INSERT INTO attachments (id, user_id, name, content_type, size, created_at) VALUES ('a3', 'usr_1', 'x', 'image/png', 1, 'now')";
+        assert!(db.execute(neither, []).is_err());
+        db.execute(RENAMED[0], ["globex", "acme"]).unwrap();
+        db.execute(PURGED, ["rep_1"]).unwrap();
+        let left: Vec<(String, String)> = db
+            .prepare("SELECT id, workspace FROM attachments")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(left, vec![("a2".to_owned(), "globex".to_owned())]);
+        db.execute(DELETED[0], ["globex"]).unwrap();
+        let none: u32 = db.query_row("SELECT count(*) FROM attachments", [], |row| row.get(0)).unwrap();
+        assert_eq!(none, 0);
     }
 }

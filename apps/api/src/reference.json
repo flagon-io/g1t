@@ -1688,6 +1688,26 @@
     },
     "notes": "`data` is the file base64-encoded: `base64 -w0 preview.png`. Paste `markdown` into the `body` of a work item, pull request or comment, or a pull request's `summary`. The type is read from the bytes; a file over 10 MB is refused with `413` (`too_large`), one that is not a PNG, JPEG, GIF or WebP with `415` (`unsupported_type`). From a shell, `g1t attach preview.png` does all of it and prints the markdown."
   },
+  "upload_work_item_attachment": {
+    "params": {
+      "workspace": "flagon-io",
+      "number": 214
+    },
+    "request": {
+      "name": "preview.png",
+      "content_type": "image/png",
+      "data": "iVBORw0KGgoAAAANSUhEUgAA…"
+    },
+    "response": {
+      "id": "8d2e6b4f1a9c3e7d5b0f2a8c6e4d1b9f7a3c5e0d2b8f6a4c1e9d7b3f5a0c2e8d",
+      "name": "preview.png",
+      "url": "https://g1tusercontent.com/attachments/8d2e6b4f1a9c3e7d5b0f2a8c6e4d1b9f7a3c5e0d2b8f6a4c1e9d7b3f5a0c2e8d",
+      "markdown": "![preview.png](https://g1tusercontent.com/attachments/8d2e6b4f1a9c3e7d5b0f2a8c6e4d1b9f7a3c5e0d2b8f6a4c1e9d7b3f5a0c2e8d)",
+      "content_type": "image/png",
+      "size": 184213
+    },
+    "notes": "As upload_attachment, kept by the work item: one filed with no repository takes files too. Paste `markdown` into the work item's `body` or a comment on it. From a shell, `g1t work comment 214 --attach preview.png` uploads it and comments."
+  },
   "react": {
     "params": {
       "number": 12,

@@ -15,7 +15,7 @@ use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
 
-use crate::items::{Held, workspace_of};
+use super::rows::{Held, workspace_of};
 use crate::retired::writable;
 use crate::{On, Work};
 

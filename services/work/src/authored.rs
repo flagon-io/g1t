@@ -145,12 +145,12 @@ fn page_sql(a: &ByAuthorArgs, params: &mut Params, author: &str, visible: &str, 
     let limit = params.push(limit + 1);
     format!(
         "SELECT * FROM (
-           SELECT 'item' AS kind, i.id AS id, o.repo_id AS repo_id, i.workspace AS workspace, i.number AS number,
+           SELECT 'item' AS kind, i.id AS id, i.origin_id AS repo_id, i.workspace AS workspace, i.number AS number,
              i.title AS title, i.state AS state, i.reason AS reason,
              NULL AS status, i.created_at AS created_at, i.updated_at AS updated_at, NULL AS merged_at
-           FROM work_items i LEFT JOIN work_item_repos o ON o.item_id = i.id AND o.role = 'origin'
+           FROM {items} i
            WHERE COALESCE(i.requested_by_id, i.author_id) = {author} AND i.number IS NOT NULL
-             AND (o.repo_id IN (SELECT value FROM json_each({visible}))
+             AND (i.origin_id IN (SELECT value FROM json_each({visible}))
                OR i.workspace IN (SELECT value FROM json_each({members})))
            UNION ALL
            SELECT 'pull' AS kind, id, repo_id, NULL AS workspace, number, title,
@@ -161,24 +161,29 @@ fn page_sql(a: &ByAuthorArgs, params: &mut Params, author: &str, visible: &str, 
          ) AS work
          {filter}
          ORDER BY {key} {direction}, id {direction}
-         LIMIT {limit}"
+         LIMIT {limit}",
+        items = crate::items::sql::items_with_origin!(),
     )
 }
 
-const COUNTS_SQL: &str = "SELECT
+const COUNTS_SQL: &str = concat!(
+    "SELECT
    (SELECT count(*) FROM pulls WHERE COALESCE(requested_by_id, author_id) = ?1
       AND repo_id IN (SELECT value FROM json_each(?2)) AND status = 'merged') AS pulls_merged,
    (SELECT count(*) FROM pulls WHERE COALESCE(requested_by_id, author_id) = ?1
       AND repo_id IN (SELECT value FROM json_each(?2)) AND status IN ('draft', 'open')) AS pulls_open,
    (SELECT count(*) FROM pulls WHERE COALESCE(requested_by_id, author_id) = ?1
       AND repo_id IN (SELECT value FROM json_each(?2))) AS pulls,
-   (SELECT count(*) FROM work_items i WHERE COALESCE(i.requested_by_id, i.author_id) = ?1 AND i.number IS NOT NULL
-      AND (i.workspace IN (SELECT value FROM json_each(?3)) OR EXISTS (SELECT 1 FROM work_item_repos o
-        WHERE o.item_id = i.id AND o.role = 'origin' AND o.repo_id IN (SELECT value FROM json_each(?2))))) AS items,
-   (SELECT count(*) FROM work_items i WHERE COALESCE(i.requested_by_id, i.author_id) = ?1 AND i.number IS NOT NULL
+   (SELECT count(*) FROM ",
+    crate::items::sql::items_with_origin!(),
+    " i WHERE COALESCE(i.requested_by_id, i.author_id) = ?1 AND i.number IS NOT NULL
+      AND (i.workspace IN (SELECT value FROM json_each(?3)) OR i.origin_id IN (SELECT value FROM json_each(?2)))) AS items,
+   (SELECT count(*) FROM ",
+    crate::items::sql::items_with_origin!(),
+    " i WHERE COALESCE(i.requested_by_id, i.author_id) = ?1 AND i.number IS NOT NULL
       AND i.state = 'open'
-      AND (i.workspace IN (SELECT value FROM json_each(?3)) OR EXISTS (SELECT 1 FROM work_item_repos o
-        WHERE o.item_id = i.id AND o.role = 'origin' AND o.repo_id IN (SELECT value FROM json_each(?2))))) AS items_open";
+      AND (i.workspace IN (SELECT value FROM json_each(?3)) OR i.origin_id IN (SELECT value FROM json_each(?2)))) AS items_open"
+);
 
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -214,13 +219,15 @@ impl Work {
         // Every repository they have opened work in, busiest first...
         let touched = self
             .db
-            .prepare(
+            .prepare(concat!(
                 "SELECT repo_id, count(*) AS n FROM (
-                   SELECT o.repo_id AS repo_id FROM work_items i JOIN work_item_repos o ON o.item_id = i.id AND o.role = 'origin'
-                   WHERE COALESCE(i.requested_by_id, i.author_id) = ?1
+                   SELECT i.origin_id AS repo_id FROM ",
+                crate::items::sql::items_with_origin!(),
+                " i
+                   WHERE COALESCE(i.requested_by_id, i.author_id) = ?1 AND i.origin_id IS NOT NULL
                    UNION ALL SELECT repo_id FROM pulls WHERE COALESCE(requested_by_id, author_id) = ?1
                  ) GROUP BY repo_id ORDER BY n DESC LIMIT ?2",
-            )
+            ))
             .bind(&[person.id.as_str().into(), (MAX_READABLE as u32).into()])?
             .all()
             .await?

@@ -92,17 +92,21 @@ pub struct Snapshot {
 /// A pull request's columns, with what it is read with: its workspace
 /// milestone's title, and its work item and those it closes and is part of
 /// by number. What every read of a [`PullRow`] selects.
-pub const PULL_COLUMNS: &str = "pulls.*,
+pub const PULL_COLUMNS: &str = concat!(
+    "pulls.*,
   (SELECT title FROM milestones
    WHERE milestones.workspace = (SELECT workspace FROM repo_workspaces WHERE repo_workspaces.repo_id = pulls.repo_id)
      AND milestones.number = pulls.milestone) AS milestone_title,
-  (SELECT number FROM work_items WHERE work_items.id = pulls.item_id) AS item_number,
-  (SELECT json_group_array(number) FROM
-     (SELECT w.number AS number FROM json_each(pulls.closes_items) j JOIN work_items w ON w.id = j.value
-      WHERE w.number IS NOT NULL ORDER BY j.key)) AS closes_numbers,
-  (SELECT json_group_array(number) FROM
-     (SELECT w.number AS number FROM json_each(pulls.parts) j JOIN work_items w ON w.id = j.value
-      WHERE w.number IS NOT NULL ORDER BY j.key)) AS parts_numbers";
+  ",
+    crate::items::sql::item_number!("pulls.item_id"),
+    " AS item_number,
+  ",
+    crate::items::sql::item_numbers!("pulls.closes_items"),
+    " AS closes_numbers,
+  ",
+    crate::items::sql::item_numbers!("pulls.parts"),
+    " AS parts_numbers"
+);
 
 #[derive(Deserialize)]
 pub struct PullRow {

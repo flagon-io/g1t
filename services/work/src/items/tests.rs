@@ -1,14 +1,16 @@
 //! Issues moving into work items, against the schema the migrations leave:
 //! what migrations/0049_work_items.sql moves, what the job then numbers and
-//! merges (work_migration.rs), how `#N` is read (items.rs `REF_SQL`), what
-//! landing does (closing.rs) and where new numbers come from.
+//! merges (migration.rs), how `#N` is read (refs.rs `REF_SQL`), what
+//! landing does (landing.rs) and where new numbers come from (numbering.rs).
 
 use rusqlite::{Connection, OptionalExtension, params};
 
-use crate::closing::{LAND_SQL, PART_SQL};
-use crate::items::{NEXT_NUMBER, Named, REF_SQL, REMEMBER_REPO, RefRow};
+use super::landing::LAND_SQL;
+use super::links::{PART_SQL, REMEMBER_REPO};
+use super::migration::{RECORD_REPO, TRANSFERRED, finish_sql};
+use super::numbering::NEXT_NUMBER;
+use super::refs::{Named, REF_SQL, RefRow};
 use crate::migrated::{database, database_before, migrate_from};
-use crate::work_migration::{RECORD_REPO, TRANSFERRED, finish_sql};
 
 const MIGRATION: &str = "0049_work_items.sql";
 

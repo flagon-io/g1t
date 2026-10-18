@@ -22,7 +22,7 @@ use g1t_contracts::credentials::Principal;
 use super::updates::push_delivery;
 use super::{CLAIM_COLUMNS, ClaimRow, SessionRow, after_minutes, tidy, unwrap_or_fail};
 use crate::Work;
-use crate::items::{Held, workspace_of};
+use crate::items::{self, Held, workspace_of};
 
 /// The most claims one list returns.
 const LIST_LIMIT: u32 = 100;
@@ -196,7 +196,7 @@ impl Work {
     async fn claim_number(&self, a: ClaimArgs) -> Result<Outcome<Claimed>> {
         let repo = unwrap_or_fail!(self.claiming_repo(a.repo.as_ref(), &a.actor).await?);
         let workspace = workspace_of(&a.workspace, a.repo.as_ref());
-        let held = unwrap_or_fail!(self.item_for(&Some(a.actor.clone()), &workspace, a.number, Capability::Participate).await?);
+        let held = unwrap_or_fail!(items::for_viewer(self, &Some(a.actor.clone()), &workspace, a.number, Capability::Participate).await?);
         if held.item.state == State::Closed {
             return Ok(Outcome::fail(FailureCode::Conflict, format!("#{} is closed.", held.item.number)));
         }
@@ -359,7 +359,7 @@ impl Work {
     ) -> Result<Outcome<Claim>> {
         unwrap_or_fail!(self.claiming_repo(repo, actor).await?);
         let workspace = workspace_of(workspace, repo);
-        let held = unwrap_or_fail!(self.item_for(&Some(actor.clone()), &workspace, number, Capability::Read).await?);
+        let held = unwrap_or_fail!(items::for_viewer(self, &Some(actor.clone()), &workspace, number, Capability::Read).await?);
         let Some(claim) = self.own_claim(&held.item.id, actor, session.map(str::trim).filter(|id| !id.is_empty())).await? else {
             return Ok(Outcome::fail(FailureCode::NotFound, format!("You hold no claim on #{number}.")));
         };
@@ -479,10 +479,12 @@ impl Work {
             .db
             .prepare(format!(
                 "SELECT {CLAIM_COLUMNS} FROM claims
-                 WHERE state = ?2
-                   AND item_id IN (SELECT id FROM work_items WHERE workspace = ?1 AND (?3 IS NULL OR number = ?3))
-                   AND (?4 IS NULL OR repo_id = ?4 OR item_id IN (SELECT item_id FROM work_item_repos WHERE repo_id = ?4))
-                 ORDER BY created_at DESC, id DESC LIMIT ?5"
+                 WHERE state = ?2 AND {workspace} = ?1 AND (?3 IS NULL OR {number} = ?3)
+                   AND (?4 IS NULL OR repo_id = ?4 OR item_id IN {linked})
+                 ORDER BY created_at DESC, id DESC LIMIT ?5",
+                workspace = items::sql::item_workspace!("claims.item_id"),
+                number = items::sql::item_number!("claims.item_id"),
+                linked = items::sql::items_linked_to!("?4"),
             ))
             .bind(&[
                 workspace.as_str().into(),
@@ -497,8 +499,7 @@ impl Work {
         let mut ids: Vec<String> = rows.iter().map(|row| row.item_id.clone()).collect();
         ids.sort();
         ids.dedup();
-        let seen: Vec<String> = self
-            .items_by_ids(&ids)
+        let seen: Vec<String> = items::by_ids(self, &ids)
             .await?
             .into_iter()
             .filter(|held| held.may(a.viewer.as_ref(), Capability::Read))

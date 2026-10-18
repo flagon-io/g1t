@@ -47,7 +47,7 @@ use serde_json::json;
 use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
-use crate::Work;
+use crate::{Work, items};
 use crate::checks::{hash, new_token};
 use crate::decisions::NewDecision;
 use crate::queue::{BRANCH_PREFIX, Built, EntryRow};
@@ -949,7 +949,7 @@ impl Work {
         let summary = summary(pull.number, suspects, landed, &failure.check);
         let item = self.pull_item_id(&pull.id).await?;
         if let Some(item) = &item {
-            self.note_item(item, g1t, &format!("noted: {summary}")).await?;
+            items::note(self, item, g1t, &format!("noted: {summary}")).await?;
         }
         self.session_note(pull, &format!("g1t {note}")).await?;
         self.keep_decision_quietly(

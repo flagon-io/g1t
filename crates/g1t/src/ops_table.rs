@@ -7315,6 +7315,24 @@ pub static OPERATIONS: &[Operation] = &[
         ],
     },
     Operation {
+        id: "upload_work_item_attachment",
+        method: "POST",
+        path: "/workspaces/{workspace}/work/{number}/attachments",
+        tag: "Work items",
+        summary: "Upload an attachment to a work item",
+        scope: Some("work:write"),
+        params: &[
+            Param { name: "workspace", location: In::Path, kind: "string", required: true, values: &[] },
+            Param { name: "number", location: In::Path, kind: "integer", required: true, values: &[] },
+        ],
+        body: &[
+            Field { name: "content_type", kind: "string", required: false, values: &["image/png", "image/jpeg", "image/gif", "image/webp"] },
+            Field { name: "data", kind: "string", required: true, values: &[] },
+            Field { name: "name", kind: "string", required: true, values: &[] },
+            Field { name: "repo", kind: "string", required: false, values: &[] },
+        ],
+    },
+    Operation {
         id: "create_workspace",
         method: "POST",
         path: "/workspaces",

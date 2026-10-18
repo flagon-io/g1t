@@ -38,17 +38,19 @@ pub(crate) fn deliver_sql(guard: &str) -> String {
       ELSE json_array_length(?6) = 0
         OR (s.item_id IS NULL AND s.pull IS NULL AND NOT EXISTS (SELECT 1 FROM session_links l WHERE l.session_id = s.id))
         OR s.pull IN (SELECT value FROM json_each(?6))
-        OR s.item_id IN (SELECT w.id FROM work_items w
-             WHERE w.workspace = (SELECT rw.workspace FROM repo_workspaces rw WHERE rw.repo_id = s.repo_id)
-               AND w.number IN (SELECT value FROM json_each(?6)))
+        OR ({item_workspace} = (SELECT rw.workspace FROM repo_workspaces rw WHERE rw.repo_id = s.repo_id)
+             AND {item_number} IN (SELECT value FROM json_each(?6)))
         OR EXISTS (SELECT 1 FROM session_links l
              WHERE l.session_id = s.id AND l.kind = 'pull' AND l.number IN (SELECT value FROM json_each(?6)))
-        OR EXISTS (SELECT 1 FROM session_links l JOIN work_items w ON w.id = l.item_id
-             WHERE l.session_id = s.id AND l.kind = 'item' AND w.number IN (SELECT value FROM json_each(?6)))
+        OR EXISTS (SELECT 1 FROM session_links l
+             WHERE l.session_id = s.id AND l.kind = 'item' AND {linked_number} IN (SELECT value FROM json_each(?6)))
       END)
  AND (?2 NOT IN ('session.started', 'session.ended') OR s.id != COALESCE(json_extract(?3, '$.session.id'), ''))
  AND (?2 NOT IN ('work.claimed', 'work.released', 'work.handoff_requested') OR s.id != COALESCE(json_extract(?3, '$.claim.sessionId'), ''))
- AND ({guard})"
+ AND ({guard})",
+        item_workspace = crate::items::sql::item_workspace!("s.item_id"),
+        item_number = crate::items::sql::item_number!("s.item_id"),
+        linked_number = crate::items::sql::item_number!("l.item_id"),
     )
 }
 pub(super) const PENDING: &str = "SELECT id, kind, data, at FROM session_updates

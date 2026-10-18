@@ -27,7 +27,7 @@ use worker::wasm_bindgen::JsValue;
 use worker::{D1PreparedStatement, D1Result, Result};
 
 use crate::Work;
-use crate::items::ITEM_COLUMNS;
+use crate::items::{self, Held};
 use crate::rows::PULL_COLUMNS;
 
 /// The pull request's id, from the batch's `?1` (repository) and `?2` (number).
@@ -76,6 +76,14 @@ impl Prefetched {
     /// A slot's first row.
     pub(crate) fn first<T: DeserializeOwned>(&self, slot: Slot) -> Result<Option<T>> {
         Ok(self.rows::<T>(slot)?.into_iter().next())
+    }
+
+    /// A slot's first work item (`items::select`).
+    pub(crate) fn held(&self, slot: Slot) -> Result<Option<Held>> {
+        match self.results.get(slot as usize) {
+            Some(result) => Ok(items::held_rows(result)?.into_iter().next()),
+            None => Ok(None),
+        }
     }
 }
 
@@ -172,10 +180,7 @@ impl Work {
             self.statement(&format!("SELECT {PULL_COLUMNS} FROM pulls WHERE repo_id = ?1 AND number = ?2"), &key())?,
             // Slot::Item
             self.statement(
-                &format!(
-                    "SELECT {ITEM_COLUMNS} FROM work_items
-                     WHERE id = (SELECT item_id FROM pulls WHERE repo_id = ?1 AND number = ?2)"
-                ),
+                &items::select("id = (SELECT item_id FROM pulls WHERE repo_id = ?1 AND number = ?2)"),
                 &key(),
             )?,
             // Slot::Comments (lib.rs `comments`)
@@ -203,10 +208,14 @@ impl Work {
             self.statement("SELECT * FROM repo_settings WHERE repo_id = ?1", &repo_only())?,
             // Slot::Others (reviews.rs `overlaps`)
             self.statement(
-                "SELECT number, title, (SELECT number FROM work_items WHERE work_items.id = pulls.item_id) AS item_number,
+                concat!(
+                    "SELECT number, title, ",
+                    items::sql::item_number!("pulls.item_id"),
+                    " AS item_number,
                    files FROM pulls
                  WHERE repo_id = ?1 AND number != ?2 AND status IN ('draft', 'open')
-                 ORDER BY number LIMIT 200",
+                 ORDER BY number LIMIT 200"
+                ),
                 &key(),
             )?,
             // Slot::Queued (queue.rs `queued_entry`)

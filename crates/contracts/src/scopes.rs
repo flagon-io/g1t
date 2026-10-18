@@ -1175,6 +1175,7 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("react_to_work_item", Scope::WorkWrite),
     // An image for a description or a comment: whoever may comment.
     ("upload_attachment", Scope::WorkWrite),
+    ("upload_work_item_attachment", Scope::WorkWrite),
     ("create_commit_comment", Scope::WorkWrite),
     ("update_commit_comment", Scope::WorkWrite),
     ("delete_commit_comment", Scope::WorkWrite),

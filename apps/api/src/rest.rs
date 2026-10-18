@@ -623,6 +623,7 @@ pub const ROUTES: &[Route] = &[
     route("DELETE", "/workspaces/:workspace/work/:number/labels/:label", Op::RemoveWorkItemLabels, &[]),
     route("POST", "/workspaces/:workspace/work/:number/comments", Op::AddWorkItemComment, &[]),
     route("POST", "/workspaces/:workspace/work/:number/reactions", Op::ReactToWorkItem, &[]),
+    route("POST", "/workspaces/:workspace/work/:number/attachments", Op::UploadWorkItemAttachment, &[]),
     route("GET", "/workspaces/:workspace/work/:number/decisions", Op::ListWorkItemDecisions, &[]),
     // The work items linked to a repository: its Work tab. Read only.
     route("GET", "/repos/:owner/:name/work", Op::ListRepoWorkItems, &[("state", "state"), ("label", "label"), ("milestone", "milestone"), ("assignee", "assignee"), ("role", "role")]),

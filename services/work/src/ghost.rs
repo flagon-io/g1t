@@ -14,18 +14,17 @@ use g1t_contracts::account_deletion::{GHOST_ID, GHOST_USERNAME};
 /// Each statement takes the account's id as `?1` and its username as `?2`
 /// (`g1t_kit::user_deleted`). `ghost`'s id and name are written in.
 pub(crate) fn statements() -> Vec<String> {
-    let mut sql = Vec::new();
-    for table in ["work_items", "pulls", "comments", "plans", "agent_messages", "commit_comments"] {
+    // Its work items (items/sql.rs).
+    let mut sql = crate::items::sql::user_deleted();
+    for table in ["pulls", "comments", "plans", "agent_messages", "commit_comments"] {
         sql.push(format!(
             "UPDATE {table} SET author_id = '{GHOST_ID}', author_name = '{GHOST_USERNAME}' WHERE author_id = ?1"
         ));
     }
-    for table in ["work_items", "pulls"] {
-        sql.push(format!(
-            "UPDATE {table} SET requested_by_id = '{GHOST_ID}', requested_by_name = '{GHOST_USERNAME}' WHERE requested_by_id = ?1"
-        ));
-    }
-    for (table, column) in [("work_items", "assignees"), ("pulls", "assignees"), ("pulls", "reviewers")] {
+    sql.push(format!(
+        "UPDATE pulls SET requested_by_id = '{GHOST_ID}', requested_by_name = '{GHOST_USERNAME}' WHERE requested_by_id = ?1"
+    ));
+    for (table, column) in [("pulls", "assignees"), ("pulls", "reviewers")] {
         sql.push(format!(
             "UPDATE {table} SET {column} = (SELECT json_group_array(value) FROM json_each({table}.{column}) WHERE value <> ?2)
              WHERE ?1 IS NOT NULL AND json_valid({column}) AND EXISTS (SELECT 1 FROM json_each({table}.{column}) WHERE value = ?2)"

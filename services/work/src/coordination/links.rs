@@ -22,7 +22,7 @@ use worker::Result;
 
 use super::updates::push_delivery;
 use super::{SESSION_COLUMNS, SessionRow};
-use crate::items::Named;
+use crate::items::{self, Named};
 use crate::Work;
 
 /// The start (`?2` characters) of the first prompt each session in `?1`
@@ -243,11 +243,11 @@ impl Work {
     /// Ties a session to what `#N` in `text` names, read in its repository
     /// (`refs`): one of its pull requests, or a work item of its workspace.
     pub(crate) async fn link_refs(&self, session_id: &str, repo_id: &str, text: &str) -> Result<()> {
-        let Some(workspace) = self.repo_workspace(repo_id).await? else {
+        let Some(workspace) = items::repo_workspace(self, repo_id).await? else {
             return Ok(());
         };
         for number in refs_in(text).into_iter().take(MAX_REFS) {
-            match self.lookup_ref(Some(repo_id), &workspace, number).await?.named(true) {
+            match items::resolve(self, repo_id, &workspace, number).await? {
                 Some(Named::PullHere) => self.link_pull(session_id, repo_id, number, LinkVia::Ref).await,
                 Some(Named::Item(id)) => self.link_item(session_id, repo_id, &id, LinkVia::Ref).await,
                 _ => {}
@@ -301,11 +301,11 @@ impl Work {
         // A work item is kept by its id: named by its number in the
         // repository's workspace, one that is none is left out.
         if touches.iter().any(|touch| touch.kind == TouchKind::Item) {
-            let workspace = self.repo_workspace(&session.repo_id).await?.unwrap_or_default();
+            let workspace = items::repo_workspace(self, &session.repo_id).await?.unwrap_or_default();
             let mut kept = Vec::with_capacity(touches.len());
             for mut touch in touches {
                 if touch.kind == TouchKind::Item {
-                    let Some(held) = self.item(&workspace, touch.value.parse().unwrap_or_default()).await? else { continue };
+                    let Some(held) = items::by_number(self, &workspace, touch.value.parse().unwrap_or_default()).await? else { continue };
                     touch.value = held.item.id;
                 }
                 kept.push(touch);
@@ -505,14 +505,16 @@ impl Work {
         // A work item touched is shown by its number.
         let touches = self
             .db
-            .prepare(
+            .prepare(concat!(
                 "SELECT session_id, kind,
                    CASE WHEN kind = 'item'
-                     THEN COALESCE((SELECT CAST(number AS TEXT) FROM work_items WHERE id = session_touches.value), value)
+                     THEN COALESCE(CAST(",
+                items::sql::item_number!("session_touches.value"),
+                " AS TEXT), value)
                      ELSE value END AS value,
                    at FROM session_touches
                  WHERE session_id IN (SELECT value FROM json_each(?)) ORDER BY at, rowid LIMIT 1000",
-            )
+            ))
             .bind(&[ids_json.as_str().into()])?
             .all()
             .await?
@@ -528,13 +530,15 @@ impl Work {
         }
         let records: Vec<LinkRecord> = self
             .db
-            .prepare(
+            .prepare(concat!(
                 "SELECT session_id, kind,
-                   CASE WHEN kind = 'item' THEN (SELECT number FROM work_items WHERE id = session_links.item_id)
+                   CASE WHEN kind = 'item' THEN ",
+                items::sql::item_number!("session_links.item_id"),
+                "
                      ELSE number END AS number,
                    via FROM session_links
                  WHERE session_id IN (SELECT value FROM json_each(?)) ORDER BY at",
-            )
+            ))
             .bind(&[ids_json.as_str().into()])?
             .all()
             .await?
@@ -549,7 +553,7 @@ impl Work {
                 Some(LinkRecord { session_id: row.session_id, kind, number: row.number?, via: LinkVia::parse(&row.via)? })
             })
             .collect();
-        let workspace = self.repo_workspace(repo_id).await?.unwrap_or_default();
+        let workspace = items::repo_workspace(self, repo_id).await?.unwrap_or_default();
         let mut known = HashMap::new();
         let mut wanted: Vec<(LinkKind, u32)> = Vec::new();
         for record in &records {
@@ -559,7 +563,7 @@ impl Work {
         }
         for (kind, number) in wanted.into_iter().take(MAX_LINKED) {
             let found = match kind {
-                LinkKind::Item => self.item(&workspace, number).await?.map(|held| (held.item.title, state_name(&held.item.state))),
+                LinkKind::Item => items::by_number(self, &workspace, number).await?.map(|held| (held.item.title, state_name(&held.item.state))),
                 LinkKind::Pull => self.pull(repo_id, number).await?.map(|pull| (pull.title, state_name(&pull.status))),
             };
             if let Some(found) = found {

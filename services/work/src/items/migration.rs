@@ -21,18 +21,17 @@
 //! repo.visibility_changed, and workspace.renamed and workspace.deleted
 //! ([`RENAMED`], [`DELETED`]).
 
-use g1t_contracts::events::{WorkItemEvent, WorkMigrated};
-use g1t_contracts::repos::{AllIdsArgs, CreatorPage, Repo, RepoVisibility, VisibilityArgs};
+use g1t_contracts::events::WorkMigrated;
+use g1t_contracts::repos::{AllIdsArgs, CreatorPage, RepoVisibility, VisibilityArgs};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
-use g1t_contracts::User;
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
 
 use crate::Work;
-use crate::items::{Held, path_of};
-use crate::rows::{NumberRow, ValueRow};
+use crate::optional;
+use crate::rows::NumberRow;
 
 /// Repositories asked for at a time, and pages read in one run.
 const PAGE: u32 = 100;
@@ -44,7 +43,7 @@ const ANNOUNCED_PER_EVENT: u32 = 250;
 /// Records a repository (`?1`) as in workspace `?2` at path `?3`,
 /// private (`?4`) or not, and names its links by that path.
 pub(crate) const RECORD_REPO: [&str; 2] = [
-    crate::items::REMEMBER_REPO,
+    super::links::REMEMBER_REPO,
     "UPDATE work_item_repos SET path = ?3 WHERE repo_id = ?1 AND path IS NOT ?3",
 ];
 
@@ -331,7 +330,7 @@ impl Work {
 
     /// `repo.created`: where the repository is, and for a workspace's
     /// first, the default labels.
-    pub(crate) async fn repo_created(&self, data: &serde_json::Value) -> Result<()> {
+    pub(super) async fn repo_created(&self, data: &serde_json::Value) -> Result<()> {
         let Ok(created) = serde_json::from_value::<Created>(data.clone()) else {
             return Ok(());
         };
@@ -362,7 +361,7 @@ impl Work {
     }
 
     /// `repo.visibility_changed`: whether its work items are public.
-    pub(crate) async fn repo_visibility(&self, data: &serde_json::Value) -> Result<()> {
+    pub(super) async fn repo_visibility(&self, data: &serde_json::Value) -> Result<()> {
         let (Some(repo_id), Some(private)) = (data["repoId"].as_str(), data["isPrivate"].as_bool()) else {
             return Ok(());
         };
@@ -374,27 +373,22 @@ impl Work {
         Ok(())
     }
 
-    /// Links `repo` to a work item it now has a pull request for, as
-    /// touched, unless it is linked already, and says so.
-    pub(crate) async fn touch_item(&self, held: &Held, repo: &Repo, actor: &User) -> Result<()> {
-        let linked = self
+    /// `legacy_item_map`: a page of where repositories' old issues went.
+    pub(crate) async fn legacy_item_map(&self, a: LegacyItemMapArgs) -> Result<LegacyItemPage> {
+        let limit = a.limit.clamp(1, 500);
+        let items = self
             .db
-            .prepare(crate::closing::PART_SQL)
-            .bind(&[held.item.id.as_str().into(), repo.id.as_str().into(), rfc3339(now_ms()).into(), actor.id.as_str().into()])?
-            .first::<ValueRow>(None)
-            .await?;
-        if linked.is_none() {
-            return Ok(());
-        }
-        let Some(after) = self.item_by_id(&held.item.id).await? else {
-            return Ok(());
-        };
-        self.publish_item(
-            "work_item.linked",
-            &after,
-            Some(actor),
-            WorkItemEvent { repo: Some(path_of(repo)), role: Some(LinkRole::Touched), ..Self::item_event(&after) },
-        )
-        .await
+            .prepare(
+                "SELECT r.repo_id, r.legacy_number, i.workspace, i.number, i.id AS item_id
+                 FROM work_item_repos r JOIN work_items i ON i.id = r.item_id
+                 WHERE r.legacy_number IS NOT NULL AND i.number IS NOT NULL AND (?1 IS NULL OR i.id > ?1)
+                 ORDER BY i.id LIMIT ?2",
+            )
+            .bind(&[optional(&a.after), limit.into()])?
+            .all()
+            .await?
+            .results::<MigratedItem>()?;
+        let next = (items.len() as u32 == limit).then(|| items.last().map(|item| item.item_id.clone())).flatten();
+        Ok(LegacyItemPage { items, next, moved: self.items_moved().await? })
     }
 }

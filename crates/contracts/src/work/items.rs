@@ -439,6 +439,10 @@ pub struct LegacyItemPage {
     pub items: Vec<MigratedItem>,
     /// Where the next page starts; null on the last.
     pub next: Option<String>,
+    /// Whether every issue has its work item's number: until then the map
+    /// is not whole, and a service catching up on it waits.
+    #[serde(default)]
+    pub moved: bool,
 }
 
 #[cfg(test)]
