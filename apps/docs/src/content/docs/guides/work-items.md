@@ -8,13 +8,13 @@ It belongs to the workspace, not to one repository, so work that spans a
 service, its client and its docs is one item, with one number, one
 conversation and one place that says what is done.
 
-**Work** is in the left rail, directly after **Home**, at
+**Work** is in the left rail, after **Home** and **Explore**, at
 `g1t.sh/<workspace>/-/work`. A work item's page is
-`g1t.sh/<workspace>/-/work/<number>`. Work is the work items: the
-[list](#the-work-list), the [Board](#the-board), **New work item**,
-**Labels** and **Milestones**. The sessions working on them are in
-[Sessions](/guides/sessions/#the-sessions-page), right after Work in the
-rail.
+`g1t.sh/<workspace>/-/work/<number>`. Work has two sections. **Work
+items**: the [list](#the-work-list), the [Board](#the-board), **New work
+item**, **Labels** and **Milestones**. **Sessions**: the sessions working
+on them, at `g1t.sh/<workspace>/-/work/sessions` (see
+[the Sessions page](/guides/sessions/#the-sessions-page)).
 
 Work items used to be issues, one repository's each. [Issues became work
 items](/about/issues-became-work-items/) says what changed for the ones you
@@ -135,17 +135,17 @@ repository are the list filtered to it:
 `g1t.sh/<workspace>/-/work?repo=<name>`.
 
 Above the list, **Cooking now** is a strip of the sessions live in the
-workspace right now; it links to [Sessions](/guides/sessions/#the-sessions-page),
-which has them all.
+workspace right now; it links to Work's
+[Sessions](/guides/sessions/#the-sessions-page), which has them all.
 
-Work's sidebar has **Open**, **Assigned to you** and **Closed**, then
-**Board**, **New work item**, **Labels** and **Milestones**. On a phone,
-the bar along the bottom is **Home**, **Work**, **Chat**,
-**Notifications** and **More**, with **Work** there for every member,
-Code access or not. **More** starts with **Sessions**, then **Code**.
-Tapping **Work** again opens its menu: **Open**, **Assigned to you**,
-**Closed**, **Board**, **Sessions**, **New work item**, **Labels** and
-**Milestones**.
+Work's sidebar has two sections. **Work items**: **Open**, **Assigned to
+you** and **Closed**, then **Board**, **New work item**, **Labels** and
+**Milestones**. **Sessions**: **Live now**, **Recent** and **Yours**, then
+each kind of session. On a phone, the bar along the bottom is **Home**,
+**Work**, **Chat**, **Notifications** and **More**, with **Work** there
+for every member, Code access or not. Tapping **Work** again opens its
+menu, the same two sections. **More** starts with **Explore**, then
+**Code**.
 
 ## The Board
 
@@ -193,7 +193,7 @@ agents work on a work item at once without getting in each other's way;
 see [sessions, claims and dependencies](/guides/sessions/). A session is
 recorded in the repository it is checked out in, and the work item it
 works on is the workspace's. A work item's page lists the sessions on
-it; **Sessions**, in the rail, lists every session in the workspace.
+it; Work's **Sessions** lists every session in the workspace.
 
 To open a pull request for a work item, use `g1t pr create --item 12`, or
 the `pull_request` tool's `create` with `item: 12`. The pull request's
