@@ -143,9 +143,12 @@ pub(crate) async fn repo_visibility(work: &Work, data: &serde_json::Value) -> Re
 
 // --- References and landing ------------------------------------------------
 
-/// What `#number` names, read in repository `repo_id` of `workspace`.
-pub(crate) async fn resolve(work: &Work, repo_id: &str, workspace: &str, number: u32) -> Result<Option<Named>> {
-    Ok(work.lookup_ref(Some(repo_id), workspace, number).await?.named(true))
+/// What `reference` names, read in repository `repo_id` of `workspace`,
+/// with the repository it is read in (another of the workspace's, for
+/// `owner/name#N`): none for another workspace's, or a repository not
+/// known.
+pub(crate) async fn resolve_in(work: &Work, repo_id: &str, workspace: &str, reference: &Ref) -> Result<Option<(String, Named)>> {
+    work.resolve_in(repo_id, workspace, reference).await
 }
 
 /// The work item `reference` names, read in `repo`, by id: one of its

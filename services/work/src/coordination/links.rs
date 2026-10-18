@@ -247,17 +247,20 @@ impl Work {
         self.link(session_id, repo_id, LinkKind::Item, 0, item_id, via).await;
     }
 
-    /// Ties a session to what `#N` in `text` names, read in its repository
-    /// (`refs`): one of its pull requests, or a work item of its workspace.
+    /// Ties a session to what the references in `text` name, read in its
+    /// repository as every reader of them reads them
+    /// (`g1t_contracts::work::refs`, outside code): one of its workspace's
+    /// pull requests, or work items.
     pub(crate) async fn link_refs(&self, session_id: &str, repo_id: &str, text: &str) -> Result<()> {
         let Some(workspace) = items::repo_workspace(self, repo_id).await? else {
             return Ok(());
         };
-        for number in refs_in(text).into_iter().take(MAX_REFS) {
-            match items::resolve(self, repo_id, &workspace, number).await? {
-                Some(Named::PullHere) => self.link_pull(session_id, repo_id, number, LinkVia::Ref).await,
-                Some(Named::Item(id)) => self.link_item(session_id, repo_id, &id, LinkVia::Ref).await,
-                _ => {}
+        for reference in refs::refs_in_text(text).into_iter().take(MAX_REFS) {
+            let Some((read_in, named)) = items::resolve_in(self, repo_id, &workspace, &reference).await? else { continue };
+            match named {
+                Named::PullHere => self.link_pull(session_id, &read_in, reference.number, LinkVia::Ref).await,
+                Named::Item(id) => self.link_item(session_id, repo_id, &id, LinkVia::Ref).await,
+                Named::PullThere(_) => {}
             }
         }
         Ok(())
@@ -751,5 +754,29 @@ pub(crate) fn count_subagents(sessions: &mut [Session]) {
     }
     for session in sessions.iter_mut() {
         session.subagents = counts.get(&session.id).copied().unwrap_or_default();
+    }
+}
+
+#[cfg(test)]
+mod ref_tests {
+    use g1t_contracts::work::refs::{self, Ref, RefScope};
+
+    #[test]
+    fn a_session_reads_references_as_every_reader_does() {
+        // What link_refs reads: never inside code, and owner/name#N and
+        // workspace#N as what they name.
+        let found = refs::refs_in_text("Fixing `#5` in acme/web#7, see acme#9 and #123456789");
+        let scopes: Vec<(String, u32)> = found
+            .iter()
+            .map(|Ref { scope, number }| {
+                let scope = match scope {
+                    RefScope::Here => "here".to_owned(),
+                    RefScope::Repo(path) => format!("{}/{}", path.namespace, path.name),
+                    RefScope::Workspace(slug) => slug.clone(),
+                };
+                (scope, *number)
+            })
+            .collect();
+        assert_eq!(scopes, vec![("acme/web".to_owned(), 7), ("acme".to_owned(), 9), ("here".to_owned(), 123_456_789)]);
     }
 }
