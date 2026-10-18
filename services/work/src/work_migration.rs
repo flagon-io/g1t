@@ -37,8 +37,9 @@ use crate::rows::{NumberRow, ValueRow};
 /// Repositories asked for at a time, and pages read in one run.
 const PAGE: u32 = 100;
 const PAGES_PER_RUN: u32 = 10;
-/// Moved issues announced in one `work.migrated` event.
-const ANNOUNCED_PER_EVENT: u32 = 500;
+/// Moved issues announced in one `work.migrated` event: well under a
+/// queue message's size limit.
+const ANNOUNCED_PER_EVENT: u32 = 250;
 
 /// Records a repository (`?1`) as in workspace `?2` at path `?3`,
 /// private (`?4`) or not, and names its links by that path.
