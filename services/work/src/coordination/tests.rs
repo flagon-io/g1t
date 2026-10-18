@@ -745,6 +745,23 @@ fn an_agents_title_is_kept_and_a_pinned_one_never_replaced() {
 }
 
 #[test]
+fn an_agent_saying_its_title_again_leaves_when_it_settled() {
+    let db = database();
+    start(&db, "ses_1", Some("a"));
+    heartbeat_titled(&db, "ses_1", "Rewrite the auth flow", "agent", NOW + MINUTE);
+    let settled = |db: &Connection| -> Option<String> {
+        db.query_row("SELECT title_settled_at FROM sessions WHERE id = 'ses_1'", [], |row| row.get(0)).unwrap()
+    };
+    assert_eq!(settled(&db), Some(rfc3339(NOW + MINUTE)));
+    // Every heartbeat says it again: it settled when first given.
+    heartbeat_titled(&db, "ses_1", "Rewrite the auth flow", "agent", NOW + 30 * MINUTE);
+    assert_eq!(settled(&db), Some(rfc3339(NOW + MINUTE)));
+    // A new title settles anew.
+    heartbeat_titled(&db, "ses_1", "Rewrite auth and sessions", "agent", NOW + 40 * MINUTE);
+    assert_eq!(settled(&db), Some(rfc3339(NOW + 40 * MINUTE)));
+}
+
+#[test]
 fn an_agent_echoing_the_provisional_title_keeps_it_provisional() {
     let db = database();
     start(&db, "ses_1", Some("a"));
