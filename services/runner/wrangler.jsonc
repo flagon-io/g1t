@@ -9,9 +9,10 @@
   // types: standard-3 (2 vCPU, 8 GiB, 16 GB of disk) for the standard
   // machine and g1t-2core, which is kept as a name of it so workflows that
   // ask for it keep working, and standard-4 (4 vCPU, 12 GiB, 20 GB) for
-  // g1t-4core. At these max_instances, 40 sandboxes at once hold 100 vCPU,
-  // 360 GiB and 680 GB, well inside the account's limits for live
-  // instances (1,500 vCPU, 6 TiB of memory). crates/contracts
+  // g1t-4core, which is also what ubuntu-latest gets in a public
+  // repository. At these max_instances, 60 sandboxes at once hold 180 vCPU,
+  // 600 GiB and 1,080 GB, well inside the account's limits for live
+  // instances (1,500 vCPU, 6 TiB of memory, 30 TB of disk). crates/contracts
   // (INSTANCE_TYPES) and services/billing (keeper.rs) say the same sizes.
   // scripts/deploy.mjs deploys with each image set to the reference it
   // built and pushed ("The runner's images" in
@@ -22,7 +23,8 @@
       "class_name": "AttemptSandbox",
       "image": "./Dockerfile",
       // Workflow jobs with `runs-on: ubuntu-latest` (and every other
-      // hosted label), and all other work: 2 vCPU, 8 GiB, 16 GB.
+      // hosted label) in a private repository, checks, the merge queue and
+      // all other work: 2 vCPU, 8 GiB, 16 GB.
       "instance_type": "standard-3",
       "max_instances": 20,
       // A deploy that changes the image or these settings replaces every
@@ -41,11 +43,14 @@
       "rollout_active_grace_period": 7200
     },
     {
-      // Workflow jobs with `runs-on: g1t-4core`: 4 vCPU, 12 GiB, 20 GB.
+      // Workflow jobs with `runs-on: g1t-4core`, and `ubuntu-latest` (and
+      // every other hosted label) in a public repository: 4 vCPU, 12 GiB,
+      // 20 GB. Every public repository's workflow jobs run here, so it has
+      // the most room.
       "class_name": "Sandbox4Core",
       "image": "./Dockerfile",
       "instance_type": "standard-4",
-      "max_instances": 10,
+      "max_instances": 30,
       "rollout_active_grace_period": 7200
     }
   ],
