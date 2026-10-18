@@ -95,12 +95,16 @@ chat, a reference links to what it names:
 
 | You write | It names |
 | --- | --- |
-| `#12`, in a repository | That repository's pull request #12, else the work item that was its issue #12, else the workspace's work item #12, else pull request #12 in another of the workspace's repositories |
-| `#12`, outside a repository | The workspace's work item #12, else its pull request #12 |
+| `#12`, in a repository | That repository's pull request #12, else the work item that was its issue #12, else the workspace's work item #12, else pull request #12 in another of the workspace's repositories, if it was opened after work items came |
+| `#12`, outside a repository | The workspace's work item #12, else its pull request #12 opened after work items came |
 | `owner/name#12` | `#12` as it reads in repository `owner/name` |
 | `workspace#12` | Work item or pull request #12 of another workspace |
 
-What you may not see is passed over for the next in line. Text in code,
+A pull request opened before work items is numbered in its repository
+alone, so several may share a number: only a repository's own, or
+`owner/name#12`, names one. What you may not see is passed over for the
+next in line, and a repository you may not read reads as one that does
+not exist. Text in code,
 `` `#12` `` or a code block, is never a reference.
 
 So old references keep working: `#12` written about an issue before work
