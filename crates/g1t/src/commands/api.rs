@@ -526,7 +526,7 @@ mod tests {
 
     #[test]
     fn operations_fill_their_paths_from_the_repository() {
-        let op = ops::get("list_issues");
+        let op = ops::get("list_repo_work_items");
         let mut given = Map::new();
         given.insert("state".into(), json!("closed"));
         let plan = plan_op(op, None, given, &repo).unwrap();
@@ -534,34 +534,37 @@ mod tests {
             plan,
             Plan {
                 method: "GET".into(),
-                path: "/repos/acme/web/issues".into(),
+                path: "/repos/acme/web/work".into(),
                 query: vec![("state".into(), "closed".into())],
                 body: None
             }
         );
+        // A workspace's operations take the repository's.
+        let plan = plan_op(ops::get("list_work_items"), None, Map::new(), &repo).unwrap();
+        assert_eq!(plan.path, "/workspaces/acme/work");
 
-        let op = ops::get("create_issue");
+        let op = ops::get("open_work_item");
         let mut given = Map::new();
         given.insert("title".into(), json!("Broken"));
         let plan = plan_op(op, None, given, &repo).unwrap();
         assert_eq!(plan.method, "POST");
         assert_eq!(plan.body, Some(json!({ "title": "Broken" })));
 
-        let op = ops::get("get_issue");
+        let op = ops::get("get_work_item");
         let err = plan_op(op, None, Map::new(), &repo).unwrap_err();
         assert!(err.message.contains("number"), "{}", err.message);
-        let err = plan_op(ops::get("list_issues"), None, Map::new(), &no_repo).unwrap_err();
+        let err = plan_op(ops::get("list_repo_work_items"), None, Map::new(), &no_repo).unwrap_err();
         assert_eq!(err.kind, Kind::Usage);
     }
 
     #[test]
     fn paths_fill_placeholders() {
-        let plan = plan_path("repos/{owner}/{repo}/issues", None, Map::new(), &repo).unwrap();
-        assert_eq!(plan.path, "/repos/acme/web/issues");
+        let plan = plan_path("repos/{owner}/{repo}/work", None, Map::new(), &repo).unwrap();
+        assert_eq!(plan.path, "/repos/acme/web/work");
         assert_eq!(plan.method, "GET");
         let mut given = Map::new();
         given.insert("title".into(), json!("x"));
-        let plan = plan_path("/repos/acme/web/issues", None, given, &no_repo).unwrap();
+        let plan = plan_path("/workspaces/acme/work", None, given, &no_repo).unwrap();
         assert_eq!(plan.method, "POST");
         assert_eq!(plan.body, Some(json!({ "title": "x" })));
     }

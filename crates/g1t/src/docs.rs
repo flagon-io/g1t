@@ -371,9 +371,11 @@ mod tests {
                 continue;
             }
             let name = path.to_string_lossy().replace('\\', "/");
-            // The reference is written from the CLI itself.
+            // The reference is written from the CLI itself, and the note on
+            // issues becoming work items names the commands that went.
             if !(name.ends_with(".md") || name.ends_with(".mdx"))
                 || name.ends_with("reference/cli.md")
+                || name.ends_with("about/issues-became-work-items.md")
             {
                 continue;
             }
@@ -401,7 +403,8 @@ mod tests {
     #[test]
     fn a_wrong_command_or_flag_is_found() {
         assert_eq!(super::wrong("g1t session start --harness codex"), None);
-        assert_eq!(super::wrong("g1t pr create --issue N --draft --fill"), None);
+        assert_eq!(super::wrong("g1t pr create --item N --draft --fill"), None);
+        assert!(super::wrong("g1t issue list").is_some());
         assert!(super::wrong("g1t session pause").is_some());
         assert!(super::wrong("g1t session start --hearbeat").is_some());
         assert!(super::wrong("g1t session start --harness claude-managed-agents").is_some());

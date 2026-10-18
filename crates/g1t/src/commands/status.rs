@@ -69,10 +69,13 @@ fn here(ctx: &Ctx, me: &str) -> (Option<String>, Vec<Value>, Vec<Value>) {
     }
     let client = client.with_timeouts(std::time::Duration::from_secs(5), super::QUICK);
     let fetch = |op: &str, key: &str| -> Vec<Value> {
-        client
-            .op(op)
-            .repo(&repo)
-            .query("state", "active")
+        // Sessions are the repository's; claims are on its workspace's
+        // work items, those made from here or linked to it.
+        let call = match op {
+            "list_claims" => client.op(op).arg("workspace", repo.owner.to_lowercase()).query("repo", &repo),
+            _ => client.op(op).repo(&repo),
+        };
+        call.query("state", "active")
             .send()
             .map(|found| super::items(found, key))
             .unwrap_or_default()
@@ -190,7 +193,7 @@ pub fn run(ctx: &Ctx) -> Result<()> {
         println!();
         section(out, &format!("Your sessions in {repo}"), &sessions, "None.", |session| {
             let on = [
-                session["issue"].as_u64().map(|n| format!("#{n}")),
+                session["item"].as_u64().map(|n| format!("#{n}")),
                 session["branch"].as_str().map(str::to_owned),
             ]
             .into_iter()

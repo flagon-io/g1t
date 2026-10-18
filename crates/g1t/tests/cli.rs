@@ -166,24 +166,25 @@ fn run(mock: &Mock, args: &[&str]) -> Run {
     g1t(mock, &dir, args, None, Some("g1t_test"))
 }
 
-fn issue(number: u64, title: &str, labels: &[&str]) -> Value {
+fn item(number: u64, title: &str, labels: &[&str]) -> Value {
     json!({
-        "number": number, "title": title, "state": "open", "labels": labels, "body": "b",
+        "workspace": "acme", "number": number, "title": title, "state": "open", "labels": labels, "body": "b",
         "author": { "username": "ana" }, "assignees": [], "updated_at": "2026-10-01T18:04:11.482Z",
+        "repos": [{ "path": "acme/web", "role": "origin" }],
     })
 }
 
 #[test]
-fn issue_list_asks_for_open_issues_and_prints_json_fields() {
+fn work_list_asks_for_open_work_items_and_prints_json_fields() {
     let mock = Mock::start(|_| {
         (
             200,
-            json!([issue(12, "Greeting", &["feature"]), issue(11, "Docs", &[])]),
+            json!([item(12, "Greeting", &["feature"]), item(11, "Docs", &[])]),
         )
     });
     let out = run(
         &mock,
-        &["issue", "list", "-R", "acme/web", "--json", "number,title"],
+        &["work", "list", "-R", "acme/web", "--json", "number,title"],
     );
     assert_eq!(out.code, 0, "{}", out.stderr);
     assert_eq!(
@@ -192,7 +193,8 @@ fn issue_list_asks_for_open_issues_and_prints_json_fields() {
     );
     let seen = mock.requests();
     assert_eq!(seen[0].method, "GET");
-    assert_eq!(seen[0].target, "/repos/acme/web/issues?state=open");
+    // --repo narrows the workspace's list to the work items linked to it.
+    assert_eq!(seen[0].target, "/workspaces/acme/work?state=open&repo=acme%2Fweb");
     assert_eq!(seen[0].header("authorization"), Some("Bearer g1t_test"));
     assert!(
         seen[0]
@@ -204,22 +206,22 @@ fn issue_list_asks_for_open_issues_and_prints_json_fields() {
 
 #[test]
 fn piped_lists_are_tab_separated_without_a_header() {
-    let mock = Mock::start(|_| (200, json!([issue(12, "Greeting", &["feature", "p1"])])));
-    let out = run(&mock, &["issue", "list", "-R", "acme/web", "--limit", "5"]);
+    let mock = Mock::start(|_| (200, json!([item(12, "Greeting", &["feature", "p1"])])));
+    let out = run(&mock, &["work", "list", "-R", "acme/web", "--limit", "5"]);
     assert_eq!(out.code, 0, "{}", out.stderr);
     let line = out.stdout.lines().next().unwrap();
     let cells: Vec<&str> = line.split('\t').collect();
-    assert_eq!(&cells[..3], &["#12", "Greeting", "feature, p1"]);
+    assert_eq!(&cells[..4], &["#12", "Greeting", "acme/web", "feature, p1"]);
     assert_eq!(out.stdout.lines().count(), 1);
 }
 
 #[test]
 fn limits_keep_lists_short() {
-    let many: Vec<Value> = (1..=50).map(|n| issue(n, "x", &[])).collect();
+    let many: Vec<Value> = (1..=50).map(|n| item(n, "x", &[])).collect();
     let mock = Mock::start(move |_| (200, Value::Array(many.clone())));
     let out = run(
         &mock,
-        &["issue", "list", "-R", "acme/web", "--json", "number"],
+        &["work", "list", "-R", "acme/web", "--json", "number"],
     );
     let list: Vec<Value> = serde_json::from_str(&out.stdout).unwrap();
     assert_eq!(list.len(), 20, "the default page is small");
@@ -230,22 +232,22 @@ fn jq_selects_from_the_json() {
     let mock = Mock::start(|_| {
         (
             200,
-            json!([issue(12, "Greeting", &[]), issue(11, "Docs", &[])]),
+            json!([item(12, "Greeting", &[]), item(11, "Docs", &[])]),
         )
     });
     let out = run(
         &mock,
-        &["issue", "list", "-R", "acme/web", "--jq", ".[].title"],
+        &["work", "list", "-R", "acme/web", "--jq", ".[].title"],
     );
     assert_eq!(out.stdout, "Greeting\nDocs\n");
 }
 
 #[test]
 fn an_unknown_json_field_is_a_usage_error() {
-    let mock = Mock::start(|_| (200, json!([issue(12, "Greeting", &[])])));
+    let mock = Mock::start(|_| (200, json!([item(12, "Greeting", &[])])));
     let out = run(
         &mock,
-        &["issue", "list", "-R", "acme/web", "--json", "nope"],
+        &["work", "list", "-R", "acme/web", "--json", "nope"],
     );
     assert_eq!(out.code, 2);
     assert_eq!(out.stderr.lines().count(), 1, "{}", out.stderr);
@@ -253,9 +255,9 @@ fn an_unknown_json_field_is_a_usage_error() {
 }
 
 #[test]
-fn issue_create_sends_the_title_and_body() {
+fn work_new_sends_the_title_and_body_with_the_repository_as_origin() {
     let mock = Mock::start(|r| match (r.method.as_str(), r.path()) {
-        ("POST", "/repos/acme/web/issues") => (200, issue(13, "Broken link", &["docs"])),
+        ("POST", "/workspaces/acme/work") => (200, item(13, "Broken link", &["docs"])),
         _ => (
             404,
             json!({ "error": { "code": "not_found", "message": "No." } }),
@@ -264,8 +266,8 @@ fn issue_create_sends_the_title_and_body() {
     let out = run(
         &mock,
         &[
-            "issue",
-            "create",
+            "work",
+            "new",
             "-R",
             "acme/web",
             "-t",
@@ -274,21 +276,23 @@ fn issue_create_sends_the_title_and_body() {
             "On the home page.",
             "-l",
             "docs",
+            "--target",
+            "acme/api",
         ],
     );
     assert_eq!(out.code, 0, "{}", out.stderr);
-    assert_eq!(out.stdout.trim(), "https://g1t.sh/acme/web/issues/13");
+    assert_eq!(out.stdout.trim(), "https://g1t.sh/acme/-/work/13");
     let sent = mock.requests()[0].json();
     assert_eq!(
         sent,
-        json!({ "title": "Broken link", "body": "On the home page.", "labels": ["docs"] })
+        json!({ "title": "Broken link", "body": "On the home page.", "repo": "acme/web", "targets": ["acme/api"], "labels": ["docs"] })
     );
 }
 
 #[test]
 fn a_missing_title_without_a_terminal_names_the_flag() {
     let mock = Mock::start(|_| (200, json!({})));
-    let out = run(&mock, &["issue", "create", "-R", "acme/web"]);
+    let out = run(&mock, &["work", "new", "-R", "acme/web"]);
     assert_eq!(out.code, 2);
     assert!(out.stderr.contains("--title"), "{}", out.stderr);
     assert!(mock.requests().is_empty());
@@ -302,7 +306,7 @@ fn a_refused_token_exits_4_with_one_line() {
             json!({ "error": { "code": "unauthenticated", "message": "The token is not valid." } }),
         )
     });
-    let out = run(&mock, &["issue", "view", "12", "-R", "acme/web"]);
+    let out = run(&mock, &["work", "view", "12", "-R", "acme/web"]);
     assert_eq!(out.code, 4);
     assert_eq!(out.stderr.lines().count(), 1, "{}", out.stderr);
     assert!(
@@ -317,18 +321,18 @@ fn a_missing_scope_is_named() {
     let mock = Mock::start(|_| {
         (
             403,
-            json!({ "error": { "code": "forbidden", "message": "Not allowed.", "needed_scope": "issues:write" } }),
+            json!({ "error": { "code": "forbidden", "message": "Not allowed.", "needed_scope": "work:write" } }),
         )
     });
-    let out = run(&mock, &["issue", "close", "12", "-R", "acme/web"]);
+    let out = run(&mock, &["work", "close", "12", "-R", "acme/web"]);
     assert_eq!(out.code, 1);
-    assert!(out.stderr.contains("`issues:write`"), "{}", out.stderr);
+    assert!(out.stderr.contains("`work:write`"), "{}", out.stderr);
 }
 
 #[test]
 fn usage_mistakes_exit_2_on_one_line() {
     let mock = Mock::start(|_| (200, json!({})));
-    let out = run(&mock, &["issue", "list", "--state", "sideways"]);
+    let out = run(&mock, &["work", "list", "--state", "sideways"]);
     assert_eq!(out.code, 2);
     assert_eq!(out.stderr.lines().count(), 1, "{}", out.stderr);
     let out = run(&mock, &["frobnicate"]);
@@ -465,12 +469,12 @@ fn run_logs_failed_prints_only_the_failing_steps_tail() {
 
 #[test]
 fn api_calls_operations_by_name() {
-    let mock = Mock::start(|_| (200, json!([issue(12, "Greeting", &[])])));
+    let mock = Mock::start(|_| (200, json!([item(12, "Greeting", &[])])));
     let out = run(
         &mock,
         &[
             "api",
-            "list_issues",
+            "list_repo_work_items",
             "-f",
             "state=closed",
             "-R",
@@ -483,7 +487,7 @@ fn api_calls_operations_by_name() {
     assert_eq!(out.stdout, "Greeting\n");
     assert_eq!(
         mock.requests()[0].target,
-        "/repos/acme/web/issues?state=closed"
+        "/repos/acme/web/work?state=closed"
     );
 }
 
@@ -494,7 +498,7 @@ fn api_posts_typed_fields() {
         &mock,
         &[
             "api",
-            "create_issue",
+            "open_work_item",
             "-R",
             "acme/web",
             "-f",
@@ -509,7 +513,7 @@ fn api_posts_typed_fields() {
     let r = &mock.requests()[0];
     assert_eq!(
         (r.method.as_str(), r.path()),
-        ("POST", "/repos/acme/web/issues")
+        ("POST", "/workspaces/acme/work")
     );
     assert_eq!(
         r.json(),
@@ -685,12 +689,12 @@ fn secrets_are_read_from_stdin() {
 
 #[test]
 fn aliases_expand_before_the_command_runs() {
-    let mock = Mock::start(|_| (200, json!([issue(12, "Greeting", &["bug"])])));
+    let mock = Mock::start(|_| (200, json!([item(12, "Greeting", &["bug"])])));
     let dir = temp_dir("alias");
     let out = g1t(
         &mock,
         &dir,
-        &["alias", "set", "bugs", "issue list --label bug"],
+        &["alias", "set", "bugs", "work list --label bug"],
         None,
         None,
     );
@@ -706,12 +710,12 @@ fn aliases_expand_before_the_command_runs() {
     assert_eq!(out.stdout.trim(), r#"[{"number":12}]"#);
     assert_eq!(
         mock.requests()[0].target,
-        "/repos/acme/web/issues?state=open&label=bug"
+        "/workspaces/acme/work?state=open&label=bug&repo=acme%2Fweb"
     );
     let out = g1t(
         &mock,
         &dir,
-        &["alias", "set", "pr", "issue list"],
+        &["alias", "set", "pr", "work list"],
         None,
         None,
     );
@@ -745,7 +749,7 @@ fn pr_merge_and_review_send_what_was_asked() {
     assert_eq!(out.code, 0, "{}", out.stderr);
     let out = run(
         &mock,
-        &["pr", "merge", "14", "--keep-issue-open", "-R", "acme/web"],
+        &["pr", "merge", "14", "--keep-item-open", "-R", "acme/web"],
     );
     assert_eq!(out.code, 0, "{}", out.stderr);
     assert_eq!(out.stdout.trim(), "https://g1t.sh/acme/web/pull/14");
@@ -754,7 +758,7 @@ fn pr_merge_and_review_send_what_was_asked() {
         seen[0].json(),
         json!({ "verdict": "approve", "body": "Looks right." })
     );
-    assert_eq!(seen[1].json(), json!({ "keep_issue_open": true }));
+    assert_eq!(seen[1].json(), json!({ "keep_item_open": true }));
 }
 
 #[test]
@@ -961,18 +965,23 @@ fn the_repository_comes_from_the_git_remote() {
     let out = g1t(
         &mock,
         &dir,
-        &["issue", "list", "--json"],
+        &["work", "list", "--json"],
         None,
         Some("g1t_test"),
     );
     assert_eq!(out.code, 0, "{}", out.stderr);
     assert_eq!(out.stdout, "[]\n");
-    assert_eq!(mock.requests()[0].path(), "/repos/acme/web/issues");
+    // The repository's workspace's, not only the repository's.
+    assert_eq!(mock.requests()[0].target, "/workspaces/acme/work?state=open");
     // Outside any repository, and without --repo, it says what to do.
     let bare = temp_dir("bare");
-    let out = g1t(&mock, &bare, &["issue", "list"], None, Some("g1t_test"));
+    let out = g1t(&mock, &bare, &["work", "list"], None, Some("g1t_test"));
     assert_eq!(out.code, 2);
-    assert!(out.stderr.contains("--repo"), "{}", out.stderr);
+    assert!(out.stderr.contains("--workspace"), "{}", out.stderr);
+    // A workspace needs no repository.
+    let out = g1t(&mock, &bare, &["work", "list", "--workspace", "acme", "--json"], None, Some("g1t_test"));
+    assert_eq!(out.code, 0, "{}", out.stderr);
+    assert_eq!(mock.requests().last().unwrap().target, "/workspaces/acme/work?state=open");
 }
 
 /// Runs g1t in `dir` with a token and the environment `env` added.
@@ -1016,7 +1025,7 @@ fn working_copy(name: &str) -> PathBuf {
 }
 
 fn session(id: &str) -> Value {
-    json!({ "id": id, "state": "active", "harness": "claude_code", "issue": 12, "actor": "ana" })
+    json!({ "id": id, "state": "active", "harness": "claude_code", "item": 12, "actor": "ana" })
 }
 
 #[test]
@@ -1025,9 +1034,9 @@ fn a_session_is_remembered_per_working_copy_and_claims_carry_it() {
         ("POST", "/repos/acme/web/sessions") => (200, session("ses_1")),
         ("POST", "/repos/acme/web/sessions/ses_1/entries") => (200, json!({ "recorded": 1 })),
         ("POST", "/repos/acme/web/sessions/ses_2/entries") => (200, json!({ "recorded": 1 })),
-        ("POST", "/repos/acme/web/issues/12/claim") => (
+        ("POST", "/workspaces/acme/work/12/claim") => (
             200,
-            json!({ "claim": { "id": "clm_1", "issue": 12, "actor": "ana" }, "others": [], "blocked_by": [] }),
+            json!({ "claim": { "id": "clm_1", "workspace": "acme", "item": 12, "actor": "ana" }, "others": [], "blocked_by": [] }),
         ),
         ("POST", "/repos/acme/web/sessions/ses_1/end") => (200, session("ses_1")),
         _ => (404, json!({ "error": { "message": "No such endpoint." } })),
@@ -1036,7 +1045,7 @@ fn a_session_is_remembered_per_working_copy_and_claims_carry_it() {
     let out = g1t_with(
         &mock,
         &dir,
-        &["session", "start", "--harness", "claude_code", "--harness-session-id", "cc-9", "--issue", "12", "--json"],
+        &["session", "start", "--harness", "claude_code", "--harness-session-id", "cc-9", "--item", "12", "--json"],
         &[],
     );
     assert_eq!(out.code, 0, "{}", out.stderr);
@@ -1045,7 +1054,7 @@ fn a_session_is_remembered_per_working_copy_and_claims_carry_it() {
     let sent = mock.requests()[0].json();
     assert_eq!(sent["harness"], "claude_code");
     assert_eq!(sent["harness_session_id"], "cc-9");
-    assert_eq!(sent["issue"], 12);
+    assert_eq!(sent["item"], 12);
     let kept = std::fs::read_to_string(dir.join(".git/g1t/session")).unwrap();
     assert_eq!(kept.trim(), "ses_1");
 
@@ -1072,7 +1081,7 @@ fn a_session_is_remembered_per_working_copy_and_claims_carry_it() {
     assert_eq!(out.code, 0, "{}", out.stderr);
     assert_eq!(
         mock.requests().last().unwrap().json(),
-        json!({ "session_id": "ses_1", "note": "parser", "ttl_minutes": 120 })
+        json!({ "repo": "acme/web", "session_id": "ses_1", "note": "parser", "ttl_minutes": 120 })
     );
     assert!(out.stdout.contains("Claimed #12"), "{}", out.stdout);
 
@@ -1098,19 +1107,19 @@ fn an_older_server_says_it_cannot_do_this_yet() {
     let mock = Mock::start(|_| {
         (404, json!({ "error": { "code": "not_found", "message": "No such endpoint." } }))
     });
-    let out = run(&mock, &["work", "context", "12", "-R", "acme/web"]);
+    let out = run(&mock, &["work", "view", "12", "-R", "acme/web"]);
     assert_eq!(out.code, 1);
     assert!(out.stderr.contains("older than this CLI"), "{}", out.stderr);
-    assert!(out.stderr.contains("/repos/acme/web/issues/12/work"), "{}", out.stderr);
+    assert!(out.stderr.contains("/workspaces/acme/work/12/work"), "{}", out.stderr);
 }
 
 #[test]
-fn blocking_replaces_the_set_the_issue_waits_on() {
+fn blocking_replaces_the_set_the_work_item_waits_on() {
     let mock = Mock::start(|r| match (r.method.as_str(), r.path()) {
-        ("GET", "/repos/acme/web/issues/12") => {
-            (200, json!({ "issue": { "number": 12, "blocked_by": [9] } }))
+        ("GET", "/workspaces/acme/work/12") => {
+            (200, json!({ "item": { "number": 12, "blocked_by": [9] } }))
         }
-        ("PATCH", "/repos/acme/web/issues/12") => (200, json!({ "number": 12, "blocked_by": [9, 10] })),
+        ("PATCH", "/workspaces/acme/work/12") => (200, json!({ "number": 12, "blocked_by": [9, 10] })),
         _ => (404, json!({ "error": { "message": "No such endpoint." } })),
     });
     let out = run(&mock, &["work", "block", "12", "--by", "10", "--by", "9", "-R", "acme/web"]);
@@ -1142,7 +1151,7 @@ fn events_follow_from_the_newest_and_resume_from_the_last() {
     let out = run(
         &mock,
         &[
-            "work", "events", "--follow", "--issue", "12", "--type", "work.claimed", "-t",
+            "work", "events", "--follow", "--item", "12", "--type", "work.claimed", "-t",
             "work.released", "--json", "id", "-R", "acme/web",
         ],
     );

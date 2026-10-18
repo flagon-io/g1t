@@ -99,7 +99,7 @@ fn start(ctx: &Ctx, args: SessionStartArgs) -> Result<()> {
         .repo(&repo)
         .field("harness", args.harness.name())
         .field_opt("harness_session_id", args.harness_session_id.clone())
-        .field_opt("issue", args.issue)
+        .field_opt("item", args.item)
         .field_opt("pull", args.pull)
         .field_opt("branch", branch)
         .field_opt("title", args.title.clone())
@@ -227,8 +227,8 @@ fn log(ctx: &Ctx, args: SessionLogArgs) -> Result<()> {
 /// Where a session is: `#12`, `pull #14`, its branch.
 fn place(session: &Value) -> String {
     let mut parts = Vec::new();
-    if let Some(issue) = session["issue"].as_u64() {
-        parts.push(format!("#{issue}"));
+    if let Some(item) = session["item"].as_u64() {
+        parts.push(format!("#{item}"));
     }
     if let Some(pull) = session["pull"].as_u64() {
         parts.push(format!("pull #{pull}"));
@@ -246,7 +246,7 @@ fn attach(ctx: &Ctx, args: SessionAttachArgs) -> Result<()> {
         .op("update_session")
         .repo(&repo)
         .arg("id", &id)
-        .field_opt("issue", args.issue)
+        .field_opt("item", args.item)
         .field_opt("pull", args.pull)
         .field_opt("branch", args.branch.clone())
         .field_opt("head_commit", args.head_commit.clone())
@@ -256,7 +256,7 @@ fn attach(ctx: &Ctx, args: SessionAttachArgs) -> Result<()> {
     if ctx.out.structured() {
         return ctx.out.emit(&session);
     }
-    if args.issue.is_some() || args.pull.is_some() || args.branch.is_some() || args.head_commit.is_some() {
+    if args.item.is_some() || args.pull.is_some() || args.branch.is_some() || args.head_commit.is_some() {
         eprintln!("Session {id} is on {}.", place(&session));
     }
     if args.title.is_some() {
@@ -295,7 +295,7 @@ pub fn fetch_filtered(
     client: &Client,
     repo: &Repo,
     state: Option<&str>,
-    issue: Option<u64>,
+    item: Option<u64>,
     pull: Option<u64>,
     path: Option<&str>,
     subagents: bool,
@@ -304,7 +304,7 @@ pub fn fetch_filtered(
         .op("list_sessions")
         .repo(repo)
         .query_opt("state", state)
-        .query_opt("issue", issue)
+        .query_opt("item", item)
         .query_opt("pull", pull)
         .query_opt("path", path)
         .query_opt("subagents", subagents.then_some("true"))
@@ -319,7 +319,7 @@ fn list(ctx: &Ctx, args: SessionListArgs) -> Result<()> {
         SessionState::Idle => "idle",
         SessionState::Ended => "ended",
     });
-    let mut sessions = fetch_filtered(&client, &repo, state, args.issue, args.pull, args.path.as_deref(), args.subagents)?;
+    let mut sessions = fetch_filtered(&client, &repo, state, args.item, args.pull, args.path.as_deref(), args.subagents)?;
     sessions.truncate(args.limit);
     if ctx.out.structured() {
         return ctx.out.emit(&Value::Array(sessions));
@@ -363,7 +363,7 @@ fn touches(args: &SessionTouchArgs) -> Vec<Value> {
     args.commit.iter().for_each(|commit| add("commit", commit.clone()));
     args.branch.iter().for_each(|branch| add("branch", branch.clone()));
     args.pull.iter().for_each(|pull| add("pull", pull.to_string()));
-    args.issue.iter().for_each(|issue| add("issue", issue.to_string()));
+    args.item.iter().for_each(|item| add("item", item.to_string()));
     touched
 }
 
@@ -563,7 +563,7 @@ mod tests {
             commit: vec![],
             branch: vec!["12-fix".into()],
             pull: vec![14],
-            issue: vec![],
+            item: vec![],
         };
         assert_eq!(
             Value::Array(touches(&args)),
@@ -609,8 +609,8 @@ mod tests {
 
     #[test]
     fn a_session_says_where_it_is() {
-        assert_eq!(place(&json!({ "issue": 12, "pull": 14, "branch": "fix-x" })), "#12, pull #14, fix-x");
-        assert_eq!(place(&json!({ "issue": null, "branch": "" })), "");
+        assert_eq!(place(&json!({ "item": 12, "pull": 14, "branch": "fix-x" })), "#12, pull #14, fix-x");
+        assert_eq!(place(&json!({ "item": null, "branch": "" })), "");
     }
     #[test]
     fn changed_files_are_read_from_porcelain_status() {

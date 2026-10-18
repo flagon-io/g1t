@@ -1,5 +1,5 @@
 //! `g1t why PATH[:LINE]`: why a file or a line is as it is. The line's
-//! commit (by blame), the pull request that merged it, the issue that pull
+//! commit (by blame), the pull request that merged it, the work item that pull
 //! request was for, and the decisions and sessions recorded on them.
 
 use serde_json::Value;
@@ -104,8 +104,8 @@ pub fn run(ctx: &Ctx, args: WhyArgs) -> Result<()> {
         }
     };
     item("Pull   ", &found["pull"]);
-    item("Issue  ", &found["issue"]);
-    if found["pull"].is_null() && found["issue"].is_null() {
+    item("Item   ", &found["item"]);
+    if found["pull"].is_null() && found["item"].is_null() {
         println!("  {}", out.dim("No pull request merged this line; it came in a push."));
     }
     let decisions = found["decisions"].as_array().cloned().unwrap_or_default();

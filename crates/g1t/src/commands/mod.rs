@@ -7,7 +7,6 @@ pub mod auth;
 pub mod browse;
 pub mod cache;
 pub mod deploy;
-pub mod issue;
 pub mod logs;
 pub mod pr;
 pub mod repo;
@@ -41,7 +40,6 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Command::Alias(command) => alias::run(command),
         Command::Auth(command) => auth::run(Ctx::new(cli.global)?, command),
         Command::Repo(command) => repo::run(&Ctx::new(cli.global)?, command),
-        Command::Issue(command) => issue::run(&Ctx::new(cli.global)?, command),
         Command::Pr(command) => pr::run(&Ctx::new(cli.global)?, command),
         Command::Run(command) => run::run(&Ctx::new(cli.global)?, command),
         Command::Workflow(command) => workflow::run(&Ctx::new(cli.global)?, command),
@@ -122,5 +120,96 @@ pub fn items(value: serde_json::Value, key: &str) -> Vec<serde_json::Value> {
                 _ => Vec::new(),
             },
         },
+    }
+}
+
+/// Prints what was done: the object as JSON, or a line and its address.
+pub fn done(ctx: &Ctx, value: &serde_json::Value, said: &str, url: &str) -> Result<()> {
+    if ctx.out.structured() {
+        return ctx.out.emit(value);
+    }
+    eprintln!("{} {said}", ctx.out.green("✓"));
+    println!("{url}");
+    Ok(())
+}
+
+/// Names from a list of strings, or of objects with a username or a name.
+pub fn names(list: &serde_json::Value) -> Vec<String> {
+    list.as_array()
+        .map(|l| {
+            l.iter()
+                .filter_map(|v| {
+                    v.as_str()
+                        .map(str::to_owned)
+                        .or_else(|| v["username"].as_str().map(str::to_owned))
+                        .or_else(|| v["name"].as_str().map(str::to_owned))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// `current` with `add` put in and `remove` taken out, compared without case.
+pub fn adjust(current: Vec<String>, add: &[String], remove: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = current
+        .into_iter()
+        .filter(|c| !remove.iter().any(|r| r.eq_ignore_ascii_case(c)))
+        .collect();
+    for a in add {
+        if !out.iter().any(|c| c.eq_ignore_ascii_case(a)) {
+            out.push(a.clone());
+        }
+    }
+    out
+}
+
+/// A thread's comments: notes of what happened dimmed, the rest in full.
+pub fn print_comments(out: &crate::output::Output, comments: &serde_json::Value) {
+    use crate::output::{ago, s};
+    for c in comments.as_array().into_iter().flatten() {
+        let who = s(&c["author"], "username");
+        let when = ago(s(c, "created_at"));
+        if c["kind"] == "event" {
+            println!("{}", out.dim(&format!("  {who} {} {when}", s(c, "body"))));
+            continue;
+        }
+        println!();
+        let verdict = match c["verdict"].as_str() {
+            Some(v) => format!(
+                " {}",
+                out.state(if v == "approve" { "approved" } else { v })
+            ),
+            None => String::new(),
+        };
+        let place = match (c["path"].as_str(), c["line"].as_u64()) {
+            (Some(p), Some(l)) => out.dim(&format!(" on {p}:{l}")),
+            (Some(p), None) => out.dim(&format!(" on {p}")),
+            _ => String::new(),
+        };
+        println!("{}{verdict}{place} {}", out.bold(who), out.dim(&when));
+        for line in s(c, "body").trim_end().lines() {
+            println!("  {line}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn lists_are_adjusted_without_case() {
+        let have = vec!["bug".to_owned(), "docs".to_owned()];
+        assert_eq!(
+            adjust(have.clone(), &["Bug".into(), "p1".into()], &["DOCS".into()]),
+            vec!["bug".to_owned(), "p1".to_owned()]
+        );
+        assert_eq!(adjust(have, &[], &[]), vec!["bug".to_owned(), "docs".to_owned()]);
+    }
+
+    #[test]
+    fn names_come_from_strings_or_objects() {
+        assert_eq!(names(&json!(["a", { "username": "b" }, { "name": "c" }])), vec!["a", "b", "c"]);
     }
 }

@@ -556,7 +556,7 @@ fn rerun(ctx: &Ctx, args: RunRerunArgs) -> Result<()> {
     };
     let run = call.send()?;
     let id = s(&run, "id").to_owned();
-    super::issue::done(
+    super::done(
         ctx,
         &run,
         &format!("Rerunning {what} (attempt {})", run["attempt"]),
@@ -572,7 +572,7 @@ fn cancel(ctx: &Ctx, args: RunSelect) -> Result<()> {
         .repo(&repo)
         .arg("id", &id)
         .send()?;
-    super::issue::done(
+    super::done(
         ctx,
         &run,
         &format!("Cancelling {id}"),

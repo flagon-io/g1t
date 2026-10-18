@@ -1,6 +1,6 @@
-//! `g1t attach FILE...`: upload images to show in an issue, a pull request
+//! `g1t attach FILE...`: upload images to show in a work item, a pull request
 //! or a comment, and print the Markdown that shows each. `--attach FILE`
-//! on `g1t issue create`, `g1t issue comment`, `g1t pr create`, `g1t pr
+//! on `g1t work new`, `g1t work comment`, `g1t pr create`, `g1t pr
 //! comment` and `g1t pr ready` does the same and adds the Markdown to the
 //! text ([`with_attachments`]). An agent shows a screenshot of its preview
 //! this way, instead of committing the image to the repository.

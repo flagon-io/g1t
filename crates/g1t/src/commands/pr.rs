@@ -86,7 +86,7 @@ pub fn number(ctx: &Ctx, client: &Client, repo: &Repo, given: Option<u64>) -> Re
     }
 }
 
-/// The pull request, with its comments and the issue it is for.
+/// The pull request, with its comments and the work item it is for.
 fn get(client: &Client, repo: &Repo, number: u64) -> Result<Value> {
     client
         .op("get_pull_request")
@@ -207,8 +207,8 @@ fn view(ctx: &Ctx, args: PrViewArgs) -> Result<()> {
         facts.push(format!("checks {}", out.state(c)));
     }
     println!("{}", facts.join(" · "));
-    if let Some(issue) = pull["issue"].as_u64() {
-        println!("{} #{issue}", out.dim("For:"));
+    if let Some(item) = pull["item"].as_u64() {
+        println!("{} #{item}", out.dim("For:"));
     }
     let reviewers: Vec<String> = pull["reviewers"]
         .as_array()
@@ -241,7 +241,7 @@ fn view(ctx: &Ctx, args: PrViewArgs) -> Result<()> {
         .map(|c| c.iter().filter(|c| c["kind"] == "comment").count())
         .unwrap_or(0);
     if args.comments {
-        super::issue::print_comments(out, &pull["comments"]);
+        super::print_comments(out, &pull["comments"]);
     } else if comments > 0 {
         println!();
         println!(
@@ -336,11 +336,11 @@ fn create(ctx: &Ctx, args: PrCreateArgs) -> Result<()> {
         false,
     )?;
 
-    // For an issue, with no branch of its own: a draft with a working copy.
+    // For a work item, with no branch of its own: a draft with a working copy.
     if on_default {
-        let Some(issue) = args.issue else {
+        let Some(item) = args.item else {
             return Err(Error::usage(format!(
-                "You are on {}. Make a branch with your changes, or pass --issue N to start a pull request in a working copy of its own.",
+                "You are on {}. Make a branch with your changes, or pass --item N to start a pull request in a working copy of its own.",
                 head.unwrap_or(default)
             )));
         };
@@ -348,7 +348,7 @@ fn create(ctx: &Ctx, args: PrCreateArgs) -> Result<()> {
         let made = client
             .op("create_pull_request")
             .repo(&repo)
-            .field("issue", issue)
+            .field("item", item)
             .field_opt("title", args.title.clone())
             .field_opt("body", body)
             .field_opt("base", args.base.clone())
@@ -360,7 +360,7 @@ fn create(ctx: &Ctx, args: PrCreateArgs) -> Result<()> {
         }
         let remote = s(&made["git"], "remote");
         eprintln!(
-            "{} Started draft {repo}#{n} for #{issue}.",
+            "{} Started draft {repo}#{n} for #{item}.",
             ctx.out.green("✓")
         );
         eprintln!("  Its working copy: {remote}");
@@ -423,7 +423,7 @@ fn create(ctx: &Ctx, args: PrCreateArgs) -> Result<()> {
         .field("title", title)
         .field_opt("body", body)
         .field_opt("base", args.base.clone())
-        .field_opt("issue", args.issue)
+        .field_opt("item", args.item)
         .send()?;
     let pull = pull_of(&made);
     let n = pull["number"].as_u64().unwrap_or_default();
@@ -436,7 +436,7 @@ fn create(ctx: &Ctx, args: PrCreateArgs) -> Result<()> {
     } else {
         pull
     };
-    super::issue::done(
+    super::done(
         ctx,
         &pull,
         &match &head_repo {
@@ -834,7 +834,7 @@ fn review(ctx: &Ctx, args: PrReviewArgs) -> Result<()> {
             .arg("number", n)
             .field("body", text)
             .send()?;
-        return super::issue::done(ctx, &made, &format!("Commented on {repo}#{n}"), &url);
+        return super::done(ctx, &made, &format!("Commented on {repo}#{n}"), &url);
     }
     let verdict = if args.approve {
         "approve"
@@ -853,7 +853,7 @@ fn review(ctx: &Ctx, args: PrReviewArgs) -> Result<()> {
     } else {
         "Asked for changes on"
     };
-    super::issue::done(ctx, &made, &format!("{said} {repo}#{n}"), &url)
+    super::done(ctx, &made, &format!("{said} {repo}#{n}"), &url)
 }
 
 /// merge_pull_request's input, spelled so that mapping.rs, which finds the
@@ -871,7 +871,7 @@ fn merge(ctx: &Ctx, args: PrMergeArgs) -> Result<()> {
             .repo(&repo)
             .arg("number", n)
             .send()?;
-        return super::issue::done(ctx, &pull, &format!("Turned off auto-merge for {repo}#{n}"), &url);
+        return super::done(ctx, &pull, &format!("Turned off auto-merge for {repo}#{n}"), &url);
     }
     let method = if args.merge {
         Some("merge")
@@ -900,7 +900,7 @@ fn merge(ctx: &Ctx, args: PrMergeArgs) -> Result<()> {
         } else {
             format!("{repo}#{n} will merge on its own once its checks, reviews and rules allow")
         };
-        return super::issue::done(ctx, &pull, &said, &url);
+        return super::done(ctx, &pull, &said, &url);
     }
     let delete = if args.delete_branch {
         Some(true)
@@ -918,8 +918,8 @@ fn merge(ctx: &Ctx, args: PrMergeArgs) -> Result<()> {
         .field_opt("commit_message", message)
         .field_opt("sha", args.match_head_commit)
         .field_opt(DELETE_BRANCH, delete);
-    if args.keep_issue_open {
-        call = call.field("keep_issue_open", true);
+    if args.keep_item_open {
+        call = call.field("keep_item_open", true);
     }
     if args.admin {
         call = call
@@ -928,7 +928,7 @@ fn merge(ctx: &Ctx, args: PrMergeArgs) -> Result<()> {
     }
     let merged = call.send()?;
     if merged["status"] != "merged" {
-        return super::issue::done(
+        return super::done(
             ctx,
             &merged,
             &format!("{repo}#{n} lands once it is brought up to date or through the merge queue"),
@@ -943,7 +943,7 @@ fn merge(ctx: &Ctx, args: PrMergeArgs) -> Result<()> {
             let _ = git::run(&["branch", "-D", branch]);
         }
     }
-    super::issue::done(ctx, &merged, &format!("Merged {repo}#{n}"), &url)
+    super::done(ctx, &merged, &format!("Merged {repo}#{n}"), &url)
 }
 
 fn update_branch(ctx: &Ctx, args: PrUpdateBranchArgs) -> Result<()> {
@@ -959,10 +959,10 @@ fn update_branch(ctx: &Ctx, args: PrUpdateBranchArgs) -> Result<()> {
     match update["outcome"].as_str() {
         Some("updated") => {
             let how = if args.rebase { "Rebased" } else { "Updated" };
-            super::issue::done(ctx, &update, &format!("{how} the branch of {repo}#{n}"), &url)
+            super::done(ctx, &update, &format!("{how} the branch of {repo}#{n}"), &url)
         }
         Some("up_to_date") => {
-            super::issue::done(ctx, &update, &format!("{repo}#{n} is already up to date"), &url)
+            super::done(ctx, &update, &format!("{repo}#{n} is already up to date"), &url)
         }
         _ => {
             if ctx.out.structured() {
@@ -993,7 +993,7 @@ fn ready(ctx: &Ctx, args: PrReadyArgs) -> Result<()> {
             .repo(&repo)
             .arg("number", n)
             .send()?;
-        return super::issue::done(ctx, &pull, &format!("{repo}#{n} is a draft again"), &url);
+        return super::done(ctx, &pull, &format!("{repo}#{n} is a draft again"), &url);
     }
     let summary = match args.summary {
         Some(s) => s,
@@ -1019,14 +1019,21 @@ fn ready(ctx: &Ctx, args: PrReadyArgs) -> Result<()> {
         .arg("number", n)
         .field("summary", summary)
         .send()?;
-    super::issue::done(ctx, &pull, &format!("{repo}#{n} is ready for review"), &url)
+    super::done(ctx, &pull, &format!("{repo}#{n} is ready for review"), &url)
 }
 
 fn comment(ctx: &Ctx, args: CommentArgs) -> Result<()> {
     let (repo, client) = ctx.repo_client()?;
     let n = number(ctx, &client, &repo, args.number)?;
     let url = pull_url(&client.host.site, &repo, n);
-    super::issue::comment_on(ctx, &client, &repo, n, args, &url)
+    // Images alone make a comment; without any, the text is asked for.
+    let body = prompt::body(args.body.body, args.body.body_file.as_deref(), args.attach.is_empty())?;
+    let body = super::attach::with_attachments(&client, &repo, body, &args.attach)?
+        .filter(|b| !b.trim().is_empty())
+        .ok_or_else(|| prompt::needed("The comment", "--body, --body-file or --attach"))?;
+    let made = client.op("add_comment").repo(&repo).arg("number", n).field("body", body).send()?;
+    let id = s(&made, "id").to_owned();
+    super::done(ctx, &made, &format!("Commented on {repo}#{n}"), &format!("{url}#{id}"))
 }
 
 fn close(ctx: &Ctx, args: PrSelect, closing: bool) -> Result<()> {
@@ -1039,7 +1046,7 @@ fn close(ctx: &Ctx, args: PrSelect, closing: bool) -> Result<()> {
     };
     let pull = client.op(id).repo(&repo).arg("number", n).send()?;
     let said = if closing { "Closed" } else { "Reopened" };
-    super::issue::done(
+    super::done(
         ctx,
         &pull,
         &format!("{said} {repo}#{n}"),

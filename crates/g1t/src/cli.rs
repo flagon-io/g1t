@@ -8,12 +8,12 @@ pub const ABOUT: &str = "Work with g1t from the command line.";
 pub const AFTER_HELP: &str = "\
 Examples:
   g1t auth login
-  g1t issue list --label bug
+  g1t work list --label bug
   g1t pr create --fill
   g1t pr checks --watch --fail-fast
   g1t run logs --failed
   g1t workflow run release.yml -f channel=stable
-  g1t api list_issues --jq '.[].title'
+  g1t api list_work_items --jq '.[].title'
 
 Environment:
   G1T_TOKEN     A token to use instead of the stored one
@@ -83,9 +83,6 @@ pub enum Command {
     /// Repositories: view, clone, create, list, fork, sync.
     #[command(subcommand)]
     Repo(RepoCommand),
-    /// Issues: list, view, create, comment, close, reopen, edit.
-    #[command(subcommand)]
-    Issue(IssueCommand),
     /// Pull requests: list, view, create, check out, diff, checks, review, merge.
     #[command(subcommand)]
     Pr(PrCommand),
@@ -106,21 +103,20 @@ pub enum Command {
     Deploy(DeployCommand),
     /// A project's logs and errors.
     Logs(LogsArgs),
-    /// What needs you: your pull requests, reviews asked of you, your issues, failing checks, and your sessions and claims here.
+    /// What needs you: your pull requests, reviews asked of you, failing checks, and your sessions and claims here.
     Status(StatusArgs),
     /// Sessions: one run of an agent's harness, recorded as it works.
     #[command(subcommand)]
     Session(SessionCommand),
-    /// Coordinate work on issues: context, claims, hand-offs, dependencies, events.
-    #[command(subcommand)]
-    Work(WorkCommand),
-    /// Why a file or line is as it is: its commit, pull request, issue, decisions and sessions.
+    /// Work items: list, view, open, edit, link, close; claims, hand-offs, dependencies, events.
+    Work(WorkArgs),
+    /// Why a file or line is as it is: its commit, pull request, work item, decisions and sessions.
     Why(WhyArgs),
-    /// Upload images, such as a screenshot, to show in an issue, a pull request or a comment; prints their Markdown.
+    /// Upload images, such as a screenshot, to show in a work item, a pull request or a comment; prints their Markdown.
     Attach(AttachArgs),
     /// Call any API operation or path, with your token.
     Api(ApiArgs),
-    /// Open the repository, an issue or a pull request in the browser.
+    /// Open the repository, a work item or a pull request in the browser.
     Browse(BrowseArgs),
     /// Shortcuts for commands you type often.
     #[command(subcommand)]
@@ -336,64 +332,7 @@ pub struct RepoListArgs {
     pub limit: usize,
 }
 
-// --- issue ------------------------------------------------------------
-
-#[derive(Debug, Subcommand)]
-pub enum IssueCommand {
-    /// List issues.
-    List(IssueListArgs),
-    /// Show an issue, with its comments.
-    View(IssueViewArgs),
-    /// Open an issue.
-    Create(IssueCreateArgs),
-    /// Comment on an issue.
-    Comment(CommentArgs),
-    /// Close an issue.
-    Close(IssueCloseArgs),
-    /// Reopen an issue.
-    Reopen(ReopenArgs),
-    /// Change an issue's title, body, labels, assignees or milestone.
-    Edit(IssueEditArgs),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
-pub enum IssueState {
-    Open,
-    Closed,
-    All,
-}
-
-#[derive(Debug, Args)]
-pub struct IssueListArgs {
-    #[arg(short, long, value_enum, default_value_t = IssueState::Open)]
-    pub state: IssueState,
-    /// Only issues with this label.
-    #[arg(short, long)]
-    pub label: Option<String>,
-    /// Only issues in the milestone of this number.
-    #[arg(short, long)]
-    pub milestone: Option<u64>,
-    /// Only issues assigned to this person (@me for you).
-    #[arg(short, long)]
-    pub assignee: Option<String>,
-    /// Only issues opened by this person (@me for you).
-    #[arg(short = 'A', long)]
-    pub author: Option<String>,
-    #[arg(short = 'L', long, default_value_t = 20)]
-    pub limit: usize,
-}
-
-#[derive(Debug, Args)]
-pub struct IssueViewArgs {
-    /// The issue's number.
-    pub number: u64,
-    /// Show its comments too.
-    #[arg(short, long)]
-    pub comments: bool,
-    /// Open it in the browser.
-    #[arg(short, long)]
-    pub web: bool,
-}
+// --- shared -----------------------------------------------------------
 
 #[derive(Debug, Args)]
 pub struct BodyArgs {
@@ -406,59 +345,14 @@ pub struct BodyArgs {
 }
 
 #[derive(Debug, Args)]
-pub struct IssueCreateArgs {
-    #[arg(short, long)]
-    pub title: Option<String>,
-    #[command(flatten)]
-    pub body: BodyArgs,
-    /// An image to show after the text (PNG, JPEG, GIF or WebP, at most 10 MB): uploaded, and its Markdown added. Repeat for more.
-    #[arg(long, value_name = "FILE")]
-    pub attach: Vec<PathBuf>,
-    /// A label; repeat for more.
-    #[arg(short, long)]
-    pub label: Vec<String>,
-    /// Someone to assign; repeat for more (@me for you).
-    #[arg(short, long)]
-    pub assignee: Vec<String>,
-    /// A milestone's number.
-    #[arg(short, long)]
-    pub milestone: Option<u64>,
-    /// Open the new-issue page in the browser instead.
-    #[arg(short, long)]
-    pub web: bool,
-}
-
-#[derive(Debug, Args)]
 pub struct CommentArgs {
-    /// The number; for a pull request, the current branch's when left out.
+    /// The pull request's number; the current branch's when left out.
     pub number: Option<u64>,
     #[command(flatten)]
     pub body: BodyArgs,
     /// An image to show after the text (PNG, JPEG, GIF or WebP, at most 10 MB): uploaded, and its Markdown added. Repeat for more.
     #[arg(long, value_name = "FILE")]
     pub attach: Vec<PathBuf>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
-pub enum CloseReason {
-    Completed,
-    // Spelled as the API spells it.
-    #[value(name = "not_planned", alias = "not-planned")]
-    NotPlanned,
-}
-
-#[derive(Debug, Args)]
-pub struct IssueCloseArgs {
-    pub number: u64,
-    #[arg(short, long, value_enum)]
-    pub reason: Option<CloseReason>,
-    /// Leave a comment as it closes.
-    #[arg(short, long)]
-    pub comment: Option<String>,
-    /// The commit on the default branch that closed it: its message names
-    /// the issue after a closing keyword (Fixes #12). Its full hash.
-    #[arg(long)]
-    pub commit: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -469,29 +363,6 @@ pub struct ReopenArgs {
     pub comment: Option<String>,
 }
 
-#[derive(Debug, Args)]
-pub struct IssueEditArgs {
-    pub number: u64,
-    #[arg(short, long)]
-    pub title: Option<String>,
-    #[command(flatten)]
-    pub body: BodyArgs,
-    #[arg(long, value_name = "LABEL")]
-    pub add_label: Vec<String>,
-    #[arg(long, value_name = "LABEL")]
-    pub remove_label: Vec<String>,
-    #[arg(long, value_name = "LOGIN")]
-    pub add_assignee: Vec<String>,
-    #[arg(long, value_name = "LOGIN")]
-    pub remove_assignee: Vec<String>,
-    /// A milestone's number.
-    #[arg(short, long)]
-    pub milestone: Option<u64>,
-    /// Take it out of its milestone.
-    #[arg(long, conflicts_with = "milestone")]
-    pub remove_milestone: bool,
-}
-
 // --- pr ---------------------------------------------------------------
 
 #[derive(Debug, Subcommand)]
@@ -500,7 +371,7 @@ pub enum PrCommand {
     List(PrListArgs),
     /// Show a pull request.
     View(PrViewArgs),
-    /// Open a pull request from a branch, or start one for an issue.
+    /// Open a pull request from a branch, or start one for a work item.
     Create(PrCreateArgs),
     /// Check a pull request's changes out locally.
     Checkout(PrCheckoutArgs),
@@ -582,9 +453,10 @@ pub struct PrCreateArgs {
     /// The branch with the changes; the current one when left out.
     #[arg(short = 'H', long)]
     pub head: Option<String>,
-    /// The issue it is for. Without a branch, starts a draft in a working copy of its own.
+    /// The work item it is for, by its number in the workspace. Without a branch, starts a draft
+    /// in a working copy of its own.
     #[arg(short, long)]
-    pub issue: Option<u64>,
+    pub item: Option<u64>,
     /// Take the title and body from the branch's commits.
     #[arg(short, long)]
     pub fill: bool,
@@ -674,14 +546,14 @@ pub struct PrMergeArgs {
     #[command(flatten)]
     pub body: BodyArgs,
     /// Merge on its own once its checks, reviews and rules allow.
-    #[arg(long, conflicts_with_all = ["disable_auto", "keep_issue_open", "admin", "delete_branch", "keep_branch", "match_head_commit"])]
+    #[arg(long, conflicts_with_all = ["disable_auto", "keep_item_open", "admin", "delete_branch", "keep_branch", "match_head_commit"])]
     pub auto: bool,
     /// Turn its auto-merge off.
-    #[arg(long, conflicts_with_all = ["method", "subject", "body", "body_file", "keep_issue_open", "admin", "delete_branch", "keep_branch", "match_head_commit"])]
+    #[arg(long, conflicts_with_all = ["method", "subject", "body", "body_file", "keep_item_open", "admin", "delete_branch", "keep_branch", "match_head_commit"])]
     pub disable_auto: bool,
-    /// Leave the issue it is for open.
+    /// Do not land the work item it is for: it is only part of the work.
     #[arg(long)]
-    pub keep_issue_open: bool,
+    pub keep_item_open: bool,
     /// Merge past failing required checks and rules (needs the Admin role).
     #[arg(long)]
     pub admin: bool,
@@ -1142,7 +1014,7 @@ Starting again with the same --harness-session-id returns the same session.")]
     Heartbeat,
     /// Record a note, prompt or message in the current session.
     Log(SessionLogArgs),
-    /// Attach the current session to an issue, a pull request or a branch, or give it a title.
+    /// Attach the current session to a work item, a pull request or a branch, or give it a title.
     Attach(SessionAttachArgs),
     /// End the current session.
     End(SessionEndArgs),
@@ -1158,14 +1030,14 @@ acknowledge do too. G1T_TOUCH=0 turns that off.")]
     Updates(SessionViewArgs),
     /// Record your decision, then acknowledge exact coordination update IDs.
     Acknowledge(SessionAcknowledgeArgs),
-    /// Say what the current session touched: files, commits, branches, pull requests, issues.
+    /// Say what the current session touched: files, commits, branches, pull requests, work items.
     #[command(after_help = "\nEach is kept once. A file another active session touched too (a sibling subagent's included)
-is an overlap.detected event for both. Pull requests and issues tie the session to them.")]
+is an overlap.detected event for both. Pull requests and work items tie the session to them.")]
     Touch(SessionTouchArgs),
 }
 
 #[derive(Debug, Args)]
-#[command(group(clap::ArgGroup::new("what").required(true).multiple(true).args(["file", "commit", "branch", "pull", "issue"])))]
+#[command(group(clap::ArgGroup::new("what").required(true).multiple(true).args(["file", "commit", "branch", "pull", "item"])))]
 pub struct SessionTouchArgs {
     /// A file it wrote, from the repository's root. Repeat for more.
     #[arg(long)]
@@ -1179,16 +1051,16 @@ pub struct SessionTouchArgs {
     /// A pull request it opened.
     #[arg(long)]
     pub pull: Vec<u64>,
-    /// An issue it named.
+    /// A work item it named, by its number in the workspace.
     #[arg(long)]
-    pub issue: Vec<u64>,
+    pub item: Vec<u64>,
 }
 
 #[derive(Debug, Args)]
 pub struct SessionStartArgs {
-    /// The issue it works on.
+    /// The work item it works on, by its number in the workspace.
     #[arg(short, long)]
-    pub issue: Option<u64>,
+    pub item: Option<u64>,
     /// The pull request it works on.
     #[arg(short, long)]
     pub pull: Option<u64>,
@@ -1262,10 +1134,11 @@ pub struct SessionLogArgs {
 }
 
 #[derive(Debug, Args)]
-#[command(group(clap::ArgGroup::new("what").required(true).multiple(true).args(["issue", "pull", "branch", "head_commit", "title"])))]
+#[command(group(clap::ArgGroup::new("what").required(true).multiple(true).args(["item", "pull", "branch", "head_commit", "title"])))]
 pub struct SessionAttachArgs {
+    /// A work item, by its number in the workspace.
     #[arg(short, long)]
-    pub issue: Option<u64>,
+    pub item: Option<u64>,
     #[arg(short, long)]
     pub pull: Option<u64>,
     #[arg(short, long)]
@@ -1300,8 +1173,9 @@ pub struct SessionListArgs {
     /// Only sessions in this state.
     #[arg(short, long, value_enum)]
     pub state: Option<SessionState>,
+    /// Only sessions on this work item.
     #[arg(short, long)]
-    pub issue: Option<u64>,
+    pub item: Option<u64>,
     #[arg(short, long)]
     pub pull: Option<u64>,
     #[arg(short = 'L', long, default_value_t = 20)]
@@ -1335,43 +1209,249 @@ pub struct SessionAcknowledgeArgs {
 
 // --- work -------------------------------------------------------------
 
+#[derive(Debug, Args)]
+pub struct WorkArgs {
+    /// The workspace, by its slug; the current repository's when left out.
+    #[arg(long, global = true, value_name = "SLUG", env = "G1T_WORKSPACE")]
+    pub workspace: Option<String>,
+    #[command(subcommand)]
+    pub command: WorkCommand,
+}
+
 #[derive(Debug, Subcommand)]
 pub enum WorkCommand {
-    /// Everything about an issue's work: claims, sessions, pull requests, dependencies, decisions.
-    Context(WorkNumber),
-    /// Claim an issue: say you are working on it. Others are told, never stopped.
-    #[command(after_help = "\nWith --title instead of a number, a new issue is opened and claimed in one step, and the
-current session is attached to it: for work that became a change others should know about.
+    /// List the workspace's work items; with --repo, those linked to that repository.
+    List(WorkListArgs),
+    /// Show a work item with everything about its work: repositories and what landed, claims,
+    /// sessions, pull requests, what it waits on, decisions.
+    View(WorkViewArgs),
+    /// Open a work item, with the current repository as its origin.
+    #[command(after_help = "\nIn a repository, the work item is filed from it (its origin). With --workspace and no
+repository of that workspace here, it is filed in the workspace alone. --target names a repository
+where the work is meant to land; repeat it for more.
+Examples:
+  g1t work new --title \"Sign-in times out on slow networks\" --body \"...\"
+  g1t work new --title \"Rename the flag\" --target acme/api --target acme/docs")]
+    New(WorkNewArgs),
+    /// Comment on a work item.
+    Comment(WorkCommentArgs),
+    /// Change a work item's title, body, labels, assignees or milestone.
+    Edit(WorkEditArgs),
+    /// Close a work item.
+    Close(WorkCloseArgs),
+    /// Reopen a work item.
+    Reopen(ReopenArgs),
+    /// Link a repository to a work item: where the work must land (target), or touched.
+    #[command(after_help = "\nThe repository is the current one, or --repo OWNER/NAME. A work item with targets closes once it
+has landed in every one.
+Examples:
+  g1t work link 12 --repo acme/api
+  g1t work link 12 --role touched")]
+    Link(WorkLinkArgs),
+    /// Unlink a repository from a work item (never its origin).
+    Unlink(WorkNumber),
+    /// Claim a work item: say you are working on it. Others are told, never stopped.
+    #[command(after_help = "\nWith --title instead of a number, a new work item is opened (filed from the current repository)
+and claimed in one step, and the current session is attached to it: for work that became a change
+others should know about.
 Examples:
   g1t work claim 12 --note \"Rewriting the retry loop\"
   g1t work claim --title \"Preview builds time out on large repositories\"")]
     Claim(WorkClaimArgs),
-    /// Release your claim on an issue.
+    /// Release your claim on a work item.
     Release(WorkReleaseArgs),
-    /// Hand an issue over to someone else, or to anyone.
+    /// Hand a work item over to someone else, or to anyone.
     Handoff(WorkHandoffArgs),
     /// Active claims and sessions in the repository.
-    List,
-    /// Say an issue waits on others: it is blocked by them.
+    Status,
+    /// Say a work item waits on others: it is blocked by them.
     Block(WorkBlockArgs),
-    /// Say an issue no longer waits on others.
+    /// Say a work item no longer waits on others.
     Unblock(WorkBlockArgs),
     /// The repository's events; --follow keeps printing them as they happen.
     #[command(after_help = "\
 Examples:
-  g1t work events --follow --issue 12
+  g1t work events --follow --item 12
   g1t work events --follow --type integration.failed --type overlap.detected --json
 With --json, each event is one JSON object on a line of its own.")]
     Events(WorkEventsArgs),
-    /// Start work on an issue in a session on your own Claude, or print the Claude Code command for it.
+    /// Start work on a work item in a session on your own Claude, or print the Claude Code command for it.
     #[command(after_help = "\nWith the workspace's Anthropic AI provider, a Claude Managed Agents session starts on that
 account and is recorded on g1t; otherwise (or with --handoff) this prints a `claude` command
-to run with g1t's plugin, whose session attaches to the issue as it starts.
+to run with g1t's plugin, whose session attaches to the work item as it starts.
 Examples:
   g1t work dispatch 12
   g1t work dispatch 12 --mode plan --instruction \"Keep the old flag\"
   g1t work dispatch --title \"Add a healthcheck\" --handoff")]
     Dispatch(WorkDispatchArgs),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum ItemState {
+    Open,
+    Closed,
+    All,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum LinkRole {
+    Origin,
+    Target,
+    Touched,
+}
+
+impl LinkRole {
+    pub fn name(self) -> &'static str {
+        match self {
+            LinkRole::Origin => "origin",
+            LinkRole::Target => "target",
+            LinkRole::Touched => "touched",
+        }
+    }
+}
+
+/// The roles a repository can be linked in by hand: the origin is where a
+/// work item was filed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum LinkAs {
+    Target,
+    Touched,
+}
+
+impl LinkAs {
+    pub fn name(self) -> &'static str {
+        match self {
+            LinkAs::Target => "target",
+            LinkAs::Touched => "touched",
+        }
+    }
+}
+
+#[derive(Debug, Args)]
+pub struct WorkListArgs {
+    #[arg(short, long, value_enum, default_value_t = ItemState::Open)]
+    pub state: ItemState,
+    /// Only work items with this label.
+    #[arg(short, long)]
+    pub label: Option<String>,
+    /// Only work items in the workspace milestone of this number.
+    #[arg(short, long)]
+    pub milestone: Option<u64>,
+    /// Only work items assigned to this person (@me for you).
+    #[arg(short, long)]
+    pub assignee: Option<String>,
+    /// Only work items opened by this person (@me for you).
+    #[arg(short = 'A', long)]
+    pub author: Option<String>,
+    /// With --repo: only those linked to it this way.
+    #[arg(long, value_enum)]
+    pub role: Option<LinkRole>,
+    #[arg(short = 'L', long, default_value_t = 20)]
+    pub limit: usize,
+}
+
+#[derive(Debug, Args)]
+pub struct WorkViewArgs {
+    /// The work item's number.
+    pub number: u64,
+    /// Show its comments too.
+    #[arg(short, long)]
+    pub comments: bool,
+    /// Open it in the browser.
+    #[arg(short, long)]
+    pub web: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct WorkNewArgs {
+    #[arg(short, long)]
+    pub title: Option<String>,
+    #[command(flatten)]
+    pub body: BodyArgs,
+    /// An image to show after the text (PNG, JPEG, GIF or WebP, at most 10 MB): uploaded, and its Markdown added. Repeat for more.
+    #[arg(long, value_name = "FILE")]
+    pub attach: Vec<PathBuf>,
+    /// A repository of the workspace where the work is meant to land, OWNER/NAME; repeat for more.
+    #[arg(long, value_name = "OWNER/NAME")]
+    pub target: Vec<String>,
+    /// A label; repeat for more.
+    #[arg(short, long)]
+    pub label: Vec<String>,
+    /// Someone to assign; repeat for more (@me for you).
+    #[arg(short, long)]
+    pub assignee: Vec<String>,
+    /// A workspace milestone's number.
+    #[arg(short, long)]
+    pub milestone: Option<u64>,
+    /// Open the new work item page in the browser instead.
+    #[arg(short, long)]
+    pub web: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct WorkCommentArgs {
+    /// The work item's number.
+    pub number: u64,
+    #[command(flatten)]
+    pub body: BodyArgs,
+    /// An image to show after the text (PNG, JPEG, GIF or WebP, at most 10 MB): uploaded, and its Markdown added. Repeat for more.
+    #[arg(long, value_name = "FILE")]
+    pub attach: Vec<PathBuf>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum CloseReason {
+    Completed,
+    // Spelled as the API spells it.
+    #[value(name = "not_planned", alias = "not-planned")]
+    NotPlanned,
+}
+
+#[derive(Debug, Args)]
+pub struct WorkCloseArgs {
+    pub number: u64,
+    #[arg(short, long, value_enum)]
+    pub reason: Option<CloseReason>,
+    /// Leave a comment as it closes.
+    #[arg(short, long)]
+    pub comment: Option<String>,
+    /// The commit on the repository's default branch that did it: its message names the work item
+    /// after a closing keyword (Fixes #12). Its full hash. It lands there; the work item closes when
+    /// nothing else is left to land.
+    #[arg(long)]
+    pub commit: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct WorkEditArgs {
+    pub number: u64,
+    #[arg(short, long)]
+    pub title: Option<String>,
+    #[command(flatten)]
+    pub body: BodyArgs,
+    #[arg(long, value_name = "LABEL")]
+    pub add_label: Vec<String>,
+    #[arg(long, value_name = "LABEL")]
+    pub remove_label: Vec<String>,
+    #[arg(long, value_name = "LOGIN")]
+    pub add_assignee: Vec<String>,
+    #[arg(long, value_name = "LOGIN")]
+    pub remove_assignee: Vec<String>,
+    /// A workspace milestone's number.
+    #[arg(short, long)]
+    pub milestone: Option<u64>,
+    /// Take it out of its milestone.
+    #[arg(long, conflicts_with = "milestone")]
+    pub remove_milestone: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct WorkLinkArgs {
+    /// The work item's number.
+    pub number: u64,
+    /// How the repository is linked.
+    #[arg(long, value_enum, default_value_t = LinkAs::Target)]
+    pub role: LinkAs,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -1394,15 +1474,15 @@ impl DispatchMode {
 #[derive(Debug, Args)]
 #[command(group(clap::ArgGroup::new("which").required(true).args(["number", "title"])))]
 pub struct WorkDispatchArgs {
-    /// The issue's number.
+    /// The work item's number.
     pub number: Option<u64>,
-    /// Open a new issue with this title and work on it.
+    /// Open a new work item with this title and work on it.
     #[arg(long, conflicts_with = "number")]
     pub title: Option<String>,
-    /// The new issue's description.
+    /// The new work item's description.
     #[arg(long, requires = "title")]
     pub body: Option<String>,
-    /// What to do beyond what the issue says.
+    /// What to do beyond what the work item says.
     #[arg(short, long)]
     pub instruction: Option<String>,
     /// What kind of work.
@@ -1418,19 +1498,19 @@ pub struct WorkDispatchArgs {
 
 #[derive(Debug, Args)]
 pub struct WorkNumber {
-    /// The issue's number.
+    /// The work item's number.
     pub number: u64,
 }
 
 #[derive(Debug, Args)]
 #[command(group(clap::ArgGroup::new("which").required(true).args(["number", "title"])))]
 pub struct WorkClaimArgs {
-    /// The issue's number.
+    /// The work item's number.
     pub number: Option<u64>,
-    /// Open a new issue with this title and claim it; the current session is attached to it.
+    /// Open a new work item with this title and claim it; the current session is attached to it.
     #[arg(long, conflicts_with = "number")]
     pub title: Option<String>,
-    /// The new issue's description.
+    /// The new work item's description.
     #[arg(long, requires = "title")]
     pub body: Option<String>,
     /// What you are doing about it.
@@ -1462,9 +1542,9 @@ pub struct WorkHandoffArgs {
 
 #[derive(Debug, Args)]
 pub struct WorkBlockArgs {
-    /// The issue that waits.
+    /// The work item that waits.
     pub number: u64,
-    /// The issue it waits on; repeat for more.
+    /// The work item it waits on; repeat for more.
     #[arg(long = "by", value_name = "NUMBER", required = true)]
     pub by: Vec<u64>,
 }
@@ -1477,9 +1557,9 @@ pub struct WorkEventsArgs {
     /// Only events of this type; repeat for more.
     #[arg(short = 't', long = "type", value_name = "TYPE")]
     pub types: Vec<String>,
-    /// Only events about this issue or pull request; repeat for more.
-    #[arg(short, long = "issue", value_name = "NUMBER")]
-    pub issues: Vec<u64>,
+    /// Only events about this work item or pull request; repeat for more.
+    #[arg(short = 'i', long = "item", value_name = "NUMBER")]
+    pub items: Vec<u64>,
     /// Only events since then: 15m, 2h, 1d, or a time like 2026-10-12T09:00:00Z.
     #[arg(short, long)]
     pub since: Option<String>,
@@ -1515,7 +1595,7 @@ pub fn parse_ttl(text: &str) -> Result<u64, String> {
 Prints each image's Markdown, ![name](url), to paste into a description or a comment; --json prints
 { id, name, url, markdown, content_type, size } (a list for several files). The image is served from
 g1t's usercontent address, and anyone given that address can see it, even from a private repository.
---attach FILE on g1t issue create, g1t issue comment, g1t pr create, g1t pr comment and g1t pr ready
+--attach FILE on g1t work new, g1t work comment, g1t pr create, g1t pr comment and g1t pr ready
 uploads and adds the Markdown for you:
   g1t attach preview.png
   g1t pr comment --body 'The preview, after the fix:' --attach preview.png")]
@@ -1543,16 +1623,16 @@ pub struct StatusArgs {}
 
 #[derive(Debug, Args)]
 #[command(after_help = "\
-ENDPOINT is an operation's name (list_issues) or a path (/repos/{owner}/{name}/issues).
+ENDPOINT is an operation's name (list_work_items) or a path (/workspaces/{workspace}/work).
 {owner}, {name}, {repo} and {workspace} are filled in from the current repository,
 and an operation's other path parameters from -f/-F fields of the same name.
 
 Examples:
-  g1t api list_issues -f state=closed
+  g1t api list_work_items -f state=closed
   g1t api /user --jq .username
-  g1t api create_issue -f title='Broken link' -f labels[]=docs
+  g1t api open_work_item -f title='Broken link' -f labels[]=docs
   g1t api list_workflow_runs --paginate --jq '.[].conclusion'
-  g1t api --list issue")]
+  g1t api --list work")]
 pub struct ApiArgs {
     /// An operation's name, or a path.
     pub endpoint: Option<String>,
@@ -1590,15 +1670,16 @@ pub struct ApiArgs {
 
 #[derive(Debug, Args)]
 pub struct BrowseArgs {
-    /// An issue or pull request number, a file path (path:line), or a commit.
+    /// A work item or pull request number, a file path (path:line), or a commit.
     pub target: Option<String>,
     /// The branch to show files on.
     #[arg(short, long)]
     pub branch: Option<String>,
     #[arg(short, long)]
     pub settings: bool,
+    /// The repository's work items: the workspace's Work list, filtered to it.
     #[arg(long)]
-    pub issues: bool,
+    pub work: bool,
     #[arg(long)]
     pub pulls: bool,
     #[arg(long)]
@@ -1792,14 +1873,14 @@ mod tests {
         }
     }
 
-    /// `work claim` takes an issue's number, or a title for a new one, never both.
+    /// `work claim` takes a work item's number, or a title for a new one, never both.
     #[test]
-    fn a_claim_names_an_issue_or_a_title_for_a_new_one() {
+    fn a_claim_names_a_work_item_or_a_title_for_a_new_one() {
         let claim = |argv: &[&str]| {
             let mut all = vec!["g1t", "work", "claim"];
             all.extend_from_slice(argv);
             Cli::try_parse_from(all).map(|cli| match cli.command {
-                super::Command::Work(super::WorkCommand::Claim(args)) => args,
+                super::Command::Work(super::WorkArgs { command: super::WorkCommand::Claim(args), .. }) => args,
                 _ => panic!("not work claim"),
             })
         };
@@ -1834,4 +1915,19 @@ mod tests {
         assert!(Cli::try_parse_from(["g1t", "session", "acknowledge", "--note", "No IDs"]).is_err());
     }
 
+
+    #[test]
+    fn work_items_take_a_workspace_and_there_is_no_issue_command() {
+        let cli = Cli::try_parse_from(["g1t", "work", "list", "--workspace", "acme", "--label", "bug"]).unwrap();
+        let super::Command::Work(work) = cli.command else { panic!("not work") };
+        assert_eq!(work.workspace.as_deref(), Some("acme"));
+        assert!(Cli::try_parse_from(["g1t", "work", "view", "12", "--workspace", "acme"]).is_ok());
+        assert!(Cli::try_parse_from(["g1t", "work", "link", "12", "--role", "touched", "-R", "acme/api"]).is_ok());
+        assert!(Cli::try_parse_from(["g1t", "work", "link", "12", "--role", "origin"]).is_err());
+        assert!(Cli::try_parse_from(["g1t", "work", "close", "12", "--commit", "9f2c4e1"]).is_ok());
+        assert!(Cli::try_parse_from(["g1t", "work", "events", "-i", "12"]).is_ok());
+        assert!(Cli::try_parse_from(["g1t", "pr", "create", "--item", "12"]).is_ok());
+        assert!(Cli::try_parse_from(["g1t", "issue", "list"]).is_err());
+        assert!(Cli::try_parse_from(["g1t", "pr", "create", "--issue", "12"]).is_err());
+    }
 }
