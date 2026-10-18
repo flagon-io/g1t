@@ -83,7 +83,7 @@ workspace you belong to, as `github.sign_in`, `github.linked` and
    GitHub account, and import from the accounts an owner connected.
 4. Tick the repositories to bring across. You see only repositories that
    both you and the app can reach.
-5. Choose whether to copy their issues.
+5. Choose whether to copy their issues, as [work items](/guides/work-items/).
 6. Choose **Bring to g1t**.
 
 Each repository becomes a repository on g1t with the same name, private if
@@ -121,10 +121,10 @@ import page.
 | --- | --- |
 | Every branch and tag | Yes, with full history |
 | Its description | Yes, as its [project's](/guides/projects/) description, since a repository on g1t has none of its own. Change it later in the project's **Settings → General**. |
-| Issues | When **Copy issues too** is ticked: up to 200, oldest first, open or closed as on GitHub, with their labels (up to 10 each) |
-| Who opened an issue | Named in the issue: by their g1t username if they have linked GitHub, otherwise by their GitHub login. The issue itself is opened by you. |
-| Milestones | Named in each issue; g1t has no milestones |
-| Issue numbers | New numbers on g1t; each issue links to the original |
+| Issues | When **Copy issues too** is ticked: up to 200, oldest first, open or closed as on GitHub, with their labels (up to 10 each). Each becomes a work item of the workspace, with the new repository as its origin |
+| Who opened an issue | Named in the work item: by their g1t username if they have linked GitHub, otherwise by their GitHub login. The work item itself is opened by you. |
+| Milestones | Named in each work item; not copied |
+| Issue numbers | New numbers on g1t, the workspace's next; each work item links to the original issue |
 | Comments on issues | No |
 | Pull requests | No. Their branches come across; open pull requests stay on GitHub. |
 | GitHub Actions workflows | Yes, as files. Rename `.github` to `.g1t` to run them on g1t: see [GitHub Actions](/guides/actions/). |
@@ -139,7 +139,7 @@ Push a larger one with git instead: see [git](/guides/git/).
 | --- | --- | --- |
 | Contents | Read | Clone the repositories you choose. |
 | Metadata | Read | Required by GitHub for every app: names, visibility, and whether a branch is protected. |
-| Issues | Read | Copy issues when you ask. |
+| Issues | Read | Copy issues, as work items, when you ask. |
 | Email addresses (account) | Read | Find your verified email when you sign in. |
 
 The app only ever sees the repositories you or your organization's owners

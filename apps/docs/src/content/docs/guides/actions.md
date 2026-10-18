@@ -29,7 +29,7 @@ gives their values out, so they cannot be copied across.
 
 | On GitHub | On g1t |
 | --- | --- |
-| `on:` `push` (branches, tags, paths), `pull_request`, `pull_request_target`, `issues`, `issue_comment`, `pull_request_review`, `schedule`, `workflow_dispatch`, `workflow_run`, `merge_group`, `create`, `delete`, `repository_dispatch`, `release`, `deployment`, `deployment_status` | The same, from g1t's own pushes, pull requests, issues, comments, [releases](#releases), [deployments](#deployments) and [merge queue](/guides/merge-queue/). `create` starts on each new branch or tag, at its commit; `delete` on each branch or tag a push deletes, on the default branch's latest commit, with `github.event.ref` and `github.event.ref_type` naming what went. As on GitHub, neither takes `branches` or `tags` filters: a workflow on them runs for every branch and tag. `repository_dispatch` starts on [a dispatch event](#repository-dispatch). |
+| `on:` `push` (branches, tags, paths), `pull_request`, `pull_request_target`, `issues`, `issue_comment`, `pull_request_review`, `schedule`, `workflow_dispatch`, `workflow_run`, `merge_group`, `create`, `delete`, `repository_dispatch`, `release`, `deployment`, `deployment_status` | The same, from g1t's own pushes, pull requests, [work items](/guides/work-items/) linked to the repository, comments, [releases](#releases), [deployments](#deployments) and [merge queue](/guides/merge-queue/). `issues` is `work_item` on g1t, since issues became work items. `create` starts on each new branch or tag, at its commit; `delete` on each branch or tag a push deletes, on the default branch's latest commit, with `github.event.ref` and `github.event.ref_type` naming what went. As on GitHub, neither takes `branches` or `tags` filters: a workflow on them runs for every branch and tag. `repository_dispatch` starts on [a dispatch event](#repository-dispatch). |
 | `jobs`, `needs`, `if`, `outputs`, `env`, `defaults`, `timeout-minutes`, `continue-on-error` | The same. |
 | `timeout-minutes` and `continue-on-error` on a step | The same, for `run:` and `uses:` steps alike. A `uses:` step's action is stopped at its limit, with every process it started; a step inside a composite action stops at its own limit or the `uses:` step's, whichever comes first. A step stopped this way fails, unless `continue-on-error` lets the job go on. |
 | `strategy.matrix` with `include` and `exclude`, `fail-fast`, `max-parallel`, a matrix from `fromJSON(needs.…)` | The same. |
@@ -77,7 +77,7 @@ anything in it that runs differently.
 - **`on: label`, and some activity types.** Creating, editing or deleting
   a label starts no workflows yet, and the workflow's page says so. Nor do
   the `pull_request` types `unassigned`, `locked` and `unlocked`, `edited`
-  for a new title or description, or the `issues` types `unassigned`,
+  for a new title or description, or the `work_item` types `unassigned`,
   `locked`, `unlocked`, `pinned` and `unpinned`.
 - **Background steps.** A step with `background: true`, or a `wait`,
   `wait-all`, `cancel` or `parallel` step, is refused: g1t does not run
@@ -543,7 +543,7 @@ which every job has as `GITHUB_API_URL`:
   env:
     TOKEN: ${{ github.token }}
   run: |
-    curl -fsS -X POST "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/${{ github.event.number }}/comments" \
+    curl -fsS -X POST "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pulls/${{ github.event.number }}/comments" \
       -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
       -d '{"body": "Built."}'
 ```
@@ -1580,7 +1580,7 @@ default, as `opened` and `synchronize` are), `converted_to_draft`,
 `ready_for_review`, `labeled`, `unlabeled`, `milestoned`, `demilestoned`,
 `assigned`, `review_requested` and `closed`, and `edited` when the branch
 a pull request merges into changes; `issue_comment` workflows on
-`created`, `edited` (with `github.event.changes.body.from`) and `deleted`; `issues` workflows on `assigned`, `labeled`, `unlabeled`, `milestoned` and
+`created`, `edited` (with `github.event.changes.body.from`) and `deleted`; `work_item` workflows on `assigned`, `labeled`, `unlabeled`, `milestoned` and
 `demilestoned` too. List them under `types:` to run on them. For
 `labeled` and `unlabeled`, `github.event.label` names the label; for
 `assigned`, `github.event.assignee` names who was assigned. Assigning
@@ -1646,7 +1646,7 @@ whoever caused the event.
 `github.event`, and the file at `GITHUB_EVENT_PATH`, hold the webhook
 payload GitHub would send for the event, with the same keys and types.
 
-- **Ids are numbers.** `repository.id`, `pull_request.id`, `issue.id`,
+- **Ids are numbers.** `repository.id`, `pull_request.id`, `work_item.id`,
   `review.id`, `sender.id`, every `user.id` and `owner.id` are whole
   numbers, the same for an object wherever it appears and below 2^53, so
   JavaScript reads them exactly. `node_id` is g1t's own id, such as
@@ -1659,8 +1659,8 @@ payload GitHub would send for the event, with the same keys and types.
   `release.id`, `deployment.id`, `deployment_status.id`,
   `workflow_run.id` and `workflow_run.workflow_id` are g1t's ids
   (`cmt_…`, `rel_…`, `run_…`, `wfl_…`), so you can pass them straight
-  back, as in `PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}`
-  or `run-id: ${{ github.event.workflow_run.id }}`.
+  back to the [API](/reference/api/), or as
+  `run-id: ${{ github.event.workflow_run.id }}`.
 - **`repository.fork`** is true in a [fork](/concepts/forks/), and
   `repository.parent` names the repository it was forked from (its
   `full_name`, `name`, `owner` and `html_url`) when the reader may see it.
@@ -1689,10 +1689,9 @@ payload GitHub would send for the event, with the same keys and types.
   with their `ref`, `sha` and `repo` (`id`, `url`, `name`). As on
   GitHub, a pull request from a fork is not listed.
 
-Labels on `issue`, `pull_request` and a `labeled` event's `label` have
-their `id`, `name`, `color` and `description` as the repository has
-them, and `default`, which is true for the labels a repository starts
-with.
+Labels on `work_item`, `pull_request` and a `labeled` event's `label` have
+their `id`, `name`, `color` and `description` as the workspace has
+them, and `default`, which is true for the default labels.
 
 ## Checks
 
@@ -1788,7 +1787,7 @@ Each job gets a token of its own, `${{ secrets.G1T_TOKEN }}`
 - It **stops working when the job ends**, however it ends.
 - Everything it changes is in the [audit log](/guides/audit-log/) as that
   job's, under its run.
-- What it changes **starts no workflows**: a push, a pull request, an issue
+- What it changes **starts no workflows**: a push, a pull request, a work item
   or a comment made with it runs nothing, so a workflow cannot set itself
   off. `workflow_dispatch` and [`repository_dispatch`](#repository-dispatch)
   are the exceptions, for a workflow that means to start another.
@@ -1816,7 +1815,7 @@ jobs:
 | --- | --- | --- |
 | `contents` | Clone and fetch with git, read the repository | Push, publish releases |
 | `pull-requests` | Read pull requests | Open, review, close and merge them |
-| `issues` | Read issues | Open, edit, comment on and close them |
+| `issues` | Read the work items linked to the repository | Open, edit, comment on and close them |
 | `actions` | Read workflows, runs and logs | Run, cancel and re-run them |
 | `checks`, `statuses` | Read statuses and check runs | Report them |
 | `deployments`, `pages` | Read deployments | Report them |

@@ -1,17 +1,18 @@
 ---
 title: How g1t works
-description: How Code works on g1t, and how issues, pull requests, checks, review, merging and sessions fit together, for people and coding agents alike.
+description: How Code works on g1t, and how work items, pull requests, checks, review, merging and sessions fit together, for people and coding agents alike.
 ---
 
-A workspace holds your repositories, with issues, pull requests, required
-checks and the merge queue; [Actions](/guides/actions/) that run your
+A workspace holds your repositories and the work items that say what
+should change in them, with pull requests, required checks and the merge
+queue; [Actions](/guides/actions/) that run your
 workflows; [Deployments](/guides/deployments/) that put every pull request
 live; and [Chat](/guides/chat/) for your team. This page is about
 **Code**, where changes are made and landed.
 
 Underneath is ordinary git: clone, branch, commit, push and pull work as
 they do anywhere. On top of it are the two things you already know,
-**issues** and **pull requests**, built so that many people and coding
+**work items** and **pull requests**, built so that many people and coding
 agents can work at once without getting in each other's way.
 
 The coding agents you already use, such as Claude Code, Codex, Cursor or
@@ -23,38 +24,43 @@ reviews and rules as everyone else.
 
 | | What it is |
 | --- | --- |
-| **Issue** | What should change: a bug, a feature, a question. |
-| **Pull request** | A proposed change, on a branch or in a working copy of its own. Usually made for an issue. |
-| **Session** | One run of a coding agent: its prompts, reasoning and tool calls, tied to the issue and pull request it worked on. |
+| **Work item** | What should change: a feature, a bug, a chore. It belongs to the workspace and can land in several repositories. |
+| **Pull request** | A proposed change to one repository, on a branch or in a working copy of its own. Usually made for a work item. |
+| **Session** | One run of a coding agent: its prompts, reasoning and tool calls, tied to the work item and pull request it worked on. |
 
-One issue can have several pull requests, each from a different person or
-agent, and g1t keeps track of which one was merged.
+One work item can have several pull requests, in one repository or in
+several, each from a different person or agent, and g1t keeps track of
+which ones were merged and where the work has landed.
 
-## Issues
+## Work items
 
-An issue says what should change in a repository. People open them,
-coding agents open them, and so can anything with an access token, such
-as an error tracker reporting a crash.
+A work item says what should change. People open them, coding agents open
+them, and so can anything with an access token, such as an error tracker
+reporting a crash. They are under **Work**, after **Home** in the left
+rail; see [work items](/guides/work-items/).
 
-An issue has:
+A work item has:
 
 - a **title** and a **description** in Markdown. Whoever works on the
-  issue, person or agent, works from this text. Say what done means in
+  work item, person or agent, works from this text. Say what done means in
   plain words, under a `## Definition of done` heading if you like: it is
   context for whoever works on it and its reviewers, not something a merge
   waits on;
-- **labels**, which say what kind of issue it is;
+- its **repositories**: the one it was filed in (its `origin`), the ones
+  it should land in (its `targets`), and the ones a pull request or commit
+  for it has `touched`;
+- **labels**, which say what kind of work it is;
 - **comments** and **assignees**;
-- a **state**: open or closed. A closed issue records why: `completed` or
-  `not_planned`.
+- a **state**: open or closed. A closed work item records why:
+  `completed` or `not_planned`.
 
-Issues and pull requests share one sequence of numbers per repository, so
-`#12` names exactly one of them.
+Work items and pull requests share one sequence of numbers per workspace,
+so `#12` names exactly one of them, whichever repository you are in.
 
-A new repository starts with a set of labels such as `bug`,
-`enhancement` and `question`; anyone with the Triage role can make more as
-they label. An issue or pull request carries up to 20. See
-[labels](/guides/labels/).
+A workspace starts with a set of labels such as `bug`, `enhancement` and
+`question`, shared by all its repositories; anyone with the Triage role
+can make more as they label. A work item or pull request carries up to 20.
+See [labels](/guides/labels/).
 
 ## Pull requests
 
@@ -66,8 +72,9 @@ needs write access to the repository, and is ready for review as soon as
 it is opened.
 
 **In a working copy.** This is how coding agents usually work: the
-`pull_request` tool's `create` action, or `g1t pr create --issue 12` with
-no branch of your own, opens a draft pull request for an issue and makes
+`pull_request` tool's `create` action with `item`, or
+`g1t pr create --item 12` with no branch of your own, opens a draft pull
+request for a work item and makes
 it a copy of the repository that belongs to that pull request alone,
 ready in about the time a branch would be. The author clones it, commits
 and pushes to it, and nothing they do can touch `main` or another pull
@@ -84,16 +91,16 @@ better choice.
 | `merged` | Landed on its base branch. |
 | `closed` | Closed without merging. |
 
-A pull request is normally opened **for an issue**. It can also stand
-alone, with its own title, for a change nobody filed an issue about.
+A pull request is normally opened **for a work item**. It can also stand
+alone, with its own title, for a change nobody filed a work item about.
 
 ## Assignees and reviewers
 
-Issues and pull requests have assignees, and pull requests have
+Work items and pull requests have assignees, and pull requests have
 reviewers: the people and teams whose review was asked for. Each shows
 beside the conversation, with where every reviewer stands.
 
-Assigning an issue to `g1t`, or mentioning `@g1t` in a comment, starts a
+Assigning a work item to `g1t`, or mentioning `@g1t` in a comment, starts a
 session on the workspace's own Anthropic account, as the person who asked;
 see [Assign g1t](/guides/sessions/#assign-g1t-or-ask-it-in-the-thread).
 
@@ -101,27 +108,32 @@ The conversation tells what happened, in order, between the comments: who
 assigned whom, whose review was asked for, which sessions started, and
 when it was marked ready, merged or closed.
 
-## Several pull requests for one issue
+## Several pull requests for one work item
 
-An issue can have more than one pull request: a second attempt after the
-first fell short, or two agents trying different approaches. Each has its
-own branch or working copy, its own session and its own diff. The issue's
-page lists them all with their status.
+A work item can have more than one pull request: one in each repository
+it has to land in, a second attempt after the first fell short, or two
+agents trying different approaches. Each has its own branch or working
+copy, its own session and its own diff. The work item's page lists them
+all, by repository, with their status.
 
 When you merge one:
 
 - the pull request becomes `merged`, recording who merged it and when;
-- the issue closes as `completed`, and records that pull request as the one
-  that **resolved** it;
-- every other pull request for that issue that was still a draft or open is
-  closed, marked as **superseded** by the one that was merged.
+- its repository is marked **landed** on the work item, which records that
+  pull request as the one that **resolved** it there;
+- every other pull request for that work item in the same repository that
+  was still a draft or open is closed, marked as **superseded** by the one
+  that was merged;
+- the work item closes as `completed` once every repository it targets
+  has landed, or at once when it has no targets.
 
-So the answer to "which one did we take?" is on the issue, on the merged
-pull request, and on each one that was passed over.
+So the answer to "which one did we take?" is on the work item, on the
+merged pull request, and on each one that was passed over.
 
-When several pull requests each do part of an issue, say that the issue
-should stay open as you merge. The pull request merges, and the issue and
-the other pull requests are left as they are.
+When several pull requests in one repository each do part of the work,
+say `Part of #12` in all but the last, or say that the work item should
+stay open as you merge. The pull request merges, and the work item and the
+other pull requests are left as they are.
 
 ## Checks
 
@@ -157,8 +169,9 @@ When many changes are in flight, some touch the same files. g1t tracks
 which files each pull request changes, from every push, and shows on a
 pull request which others in progress change the same ones.
 
-Two pull requests for the *same* issue are expected to overlap: they are
-alternatives, and one will be merged. Two for *different* issues are
+Two pull requests for the *same* work item in one repository are expected
+to overlap: they are alternatives, and one will be merged. Two for
+*different* work items are
 heading for a conflict, and g1t says so while the work is still going on,
 not when the second one tries to merge. Agents get the same list from the
 `pull_request` tool's `get` action, as `overlaps`, so they can keep their
@@ -204,20 +217,21 @@ A session is one run of a coding agent: the prompts it was given, its
 reasoning, the tools it called, and what it touched. g1t's
 [Claude Code plugin](/guides/claude-code-plugin/) records one for every
 Claude Code session in a g1t repository; other agents record theirs with
-the `session` tool or `g1t session`. A session is tied to the issue it
-claimed and the pull request it opened, and people read it on the pull
-request's **Session** tab and on the repository's **Work** page, which
-shows who is working on what right now. See
+the `session` tool or `g1t session`. A session is recorded in the repository it
+is checked out in, and tied to the work item it claimed and the pull
+request it opened. People read it on the pull request's **Session** tab,
+on the work item, and on the repository's **Sessions** page, which shows
+who is working on what right now. See
 [sessions, claims and dependencies](/guides/sessions/).
 
 Each entry is tied to the commit that was the head when it was recorded,
 so **Blame** on any file can show not only the commit that last changed a
-line, but the pull request and issue it came from and the agent's own
+line, but the pull request and work item it came from and the agent's own
 account of the change. See [sessions and why-blame](/guides/why-blame/).
 
 ## Events
 
-Every state change in g1t is published as an event: a push, an issue being
+Every state change in g1t is published as an event: a push, a work item being
 opened, a pull request being merged, a session growing. Events reach the
 services that react to them, your [webhooks](/guides/webhooks/), and a
 timeline per repository that you can read through the

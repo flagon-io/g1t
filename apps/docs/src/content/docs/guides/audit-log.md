@@ -6,7 +6,7 @@ description: Every change people and tokens make through the API, the MCP server
 Every workspace keeps an audit log. It records:
 
 - **Every change people and workspace tokens make** through the API, the
-  MCP server and git: opening and closing issues, comments, merges,
+  MCP server and git: opening and closing work items, comments, merges,
   settings, pushes. Reads by people are not recorded. A workflow job's
   [`G1T_TOKEN`](/guides/actions/#the-jobs-token) is recorded as that job's,
   under its run.
@@ -76,8 +76,8 @@ Entries are only ever added: nothing edits or removes one.
 | Actor | Who did it: a person, or the workspace for its own tokens and deploy keys. |
 | Run | The workflow run whose job's token did it, as `workflow_job`. |
 | Credential | The id of the token used: on the API, the MCP server or git, or on g1t.sh by a token [used on the website](/guides/authentication/#use-a-token-on-the-website). Empty for a person signed in on g1t.sh. |
-| Action | The API or MCP operation, such as `create_issue`, or `git.push` and `git.fetch`. |
-| Target | The repository, the issue or pull request number, and for git the refs it moved. |
+| Action | The API or MCP operation, such as `open_work_item`, or `git.push` and `git.fetch`. |
+| Target | The repository or workspace, the work item or pull request number, and for git the refs it moved. |
 | Outcome | `allowed` or `denied`. |
 | Rule | What decided it: a refusal rule, such as `scope:repository`, or `token:repository` for a workflow job's token used on another repository; or, for people, their own access. A push allowed through is `person`, `workspace-token`, `deploy-key` or `agent-token`, after what pushed. A refusal by the repository's own rules is `service` (or `repository` for git). |
 | Result | `ok`, or the reason it failed. |

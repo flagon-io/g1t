@@ -1,6 +1,6 @@
 ---
 title: Pull requests and checks
-description: What the merge box shows before a pull request can merge, the checks your workflows report and which ones a merge needs, reviewers, sessions, how a large change's files load, drafts, closing and reopening, editing and deleting comments, merge methods, commit messages, auto-merge, merging by pushing, closing issues, deleting branches, comments on commits, conflicts, and keeping a branch up to date.
+description: What the merge box shows before a pull request can merge, the checks your workflows report and which ones a merge needs, reviewers, sessions, how a large change's files load, drafts, closing and reopening, editing and deleting comments, merge methods, commit messages, auto-merge, merging by pushing, closing work items, deleting branches, comments on commits, conflicts, and keeping a branch up to date.
 ---
 
 At the foot of an open pull request's conversation, the **merge box** says
@@ -46,16 +46,18 @@ its head commit's workflow runs, job by job, as they ended, each with
 **Details** to its log. It is there to read; nothing in it can be re-run,
 and it says nothing about merging.
 
-### Other attempts at the same issue
+### Other attempts at the same work item
 
-When an issue has more than one pull request, for example because two
-people or two coding agents each tried it, every one of them shows **Other attempts at #N**: the
-pull requests for that issue side by side, this one first. Each row has its
+When a work item has more than one pull request in a repository, for
+example because two people or two coding agents each tried it, every one
+of them shows **Other attempts at #N**: the pull requests for that work
+item in the repository side by side, this one first. Each row has its
 state (open, merged, or closed because another was merged instead), its
 head commit's checks, where its review stands, its size, and the files it
-changes that this one changes too. Pull requests for the same issue are
+changes that this one changes too. Pull requests for the same work item are
 alternatives, so they are not listed under **Other work is changing the
-same files**; that box is for work on other issues, which will collide.
+same files**; that box is for work on other work items, which will
+collide.
 
 ### Running them again
 
@@ -203,7 +205,7 @@ line of a file, keeps a card of its own, like a comment.
 
 ## Sessions
 
-Each session that works on a pull request, or on its issue, shows in the
+Each session that works on a pull request, or on its work item, shows in the
 conversation as a card where it started, the way a comment or a review
 does: who it is (or g1t, working for someone), where it stands, its
 branch, and its report once it ends, linked to its page. Mention `@g1t`
@@ -297,7 +299,7 @@ start [workflows](/guides/actions/).
 
 ## Editing and deleting comments
 
-You can edit and delete your own comments on issues and pull requests.
+You can edit and delete your own comments on work items and pull requests.
 Anyone with the Maintain [role](/guides/access-and-roles/) or higher can
 edit and delete anyone's.
 
@@ -311,53 +313,56 @@ so its verdict stays on record. One with nothing written has nothing to
 edit, so it has neither. The notes in the timeline of what happened,
 such as "closed this", cannot be edited or deleted.
 
-Through the API, `PATCH /repos/{owner}/{name}/issues/comments/{comment_id}`
-with `body` edits a comment and answers with it, and
-`DELETE /repos/{owner}/{name}/issues/comments/{comment_id}` deletes it and
-answers `204`. Both work for comments on issues and on pull requests; each
-comment's `id` is in `GET /repos/{owner}/{name}/issues/{number}` and
+Through the API, `PATCH /workspaces/{workspace}/work/comments/{comment_id}`
+with `body` edits a work item's comment and answers with it, and
+`DELETE /workspaces/{workspace}/work/comments/{comment_id}` deletes it and
+answers `204`; `PATCH` and `DELETE`
+`/repos/{owner}/{name}/pulls/comments/{comment_id}` do the same for a pull
+request's. Each comment's `id` is in
+`GET /workspaces/{workspace}/work/{number}` and
 `GET /repos/{owner}/{name}/pulls/{number}`. On the MCP server they are the
-`issue` tool's `edit_comment` and `delete_comment` actions. Editing
+`work_item` and `pull_request` tools' `edit_comment` and `delete_comment`
+actions. Editing
 publishes `comment.edited`, with what the comment said before in
 `changes.body.from`; deleting publishes `comment.deleted`, with the comment
 as it was in `comment`.
 
 ## Reactions
 
-React to an issue's or pull request's description, or to any comment on
+React to a work item's or pull request's description, or to any comment on
 it, with one of eight emoji: 👍 👎 😄 🎉 😕 ❤️ 🚀 👀. Select the smiley
 under it, or a reaction already there to add or take back yours; hovering
-one says who reacted. Anyone who can read the repository may react. g1t
+one says who reacted. Anyone who can read it may react. g1t
 reacts 👀 to what it was asked to take on.
 
-Through the API, `POST /repos/{owner}/{name}/issues/{number}/reactions`
-with `content` (`+1`, `-1`, `laugh`, `hooray`, `confused`, `heart`,
+Through the API, `POST /workspaces/{workspace}/work/{number}/reactions`
+(or `POST /repos/{owner}/{name}/pulls/{number}/reactions`) with `content` (`+1`, `-1`, `laugh`, `hooray`, `confused`, `heart`,
 `rocket` or `eyes`), and `comment_id` to react to a comment rather than
 the description, reacts and answers with the reactions it has now;
-`remove: true` takes yours back. On the MCP server it is the `issue`
-tool's `react` action. Each comment's `reactions`, and the description's,
-are in `GET /repos/{owner}/{name}/issues/{number}` and
+`remove: true` takes yours back. On the MCP server it is the `work_item`
+and `pull_request` tools' `react` action. Each comment's `reactions`, and
+the description's, are in `GET /workspaces/{workspace}/work/{number}` and
 `GET /repos/{owner}/{name}/pulls/{number}`: each with its `content`,
 `count` and the `users` who reacted.
 
 ## Images
 
-To show an image in a pull request's or an issue's description, or in a
+To show an image in a pull request's or a work item's description, or in a
 comment (a screenshot of a preview, say), upload it and paste the Markdown
 you get back. From a shell, `g1t attach preview.png` prints
 `![preview.png](https://g1tusercontent.com/attachments/…)`, and `--attach
 preview.png` on `g1t pr create`, `g1t pr ready`, `g1t pr comment`,
-`g1t issue create` and `g1t issue comment` adds it for you (see the
+`g1t work new` and `g1t work comment` adds it for you (see the
 [CLI guide](/guides/cli/#images-in-descriptions-and-comments)). Through the API it is
 `POST /repos/{owner}/{name}/attachments` with `name`, the file
 base64-encoded in `data`, and optionally `content_type`; it answers with
 `id`, `url`, `content_type`, `size` and `markdown`. On the MCP server it is
-the `issue` tool's `attach` action.
+the `work_item` tool's `attach` action.
 
 An attachment is a PNG, JPEG, GIF or WebP image of at most 10 MB, judged by
 its bytes: a larger file is refused with `413` (`too_large`), anything else
 with `415` (`unsupported_type`). Anyone who may comment on the repository
-may upload one, with `issues:write`. It is served from g1t's usercontent
+may upload one, with `work:write`. It is served from g1t's usercontent
 address, never g1t.sh, and its address is its permission: anyone given the
 link can see the image, even one from a private repository. A purged
 repository's attachments are deleted with it.
@@ -385,7 +390,7 @@ You can edit and delete your own commit comments; anyone with the Maintain
 | Delete | `DELETE /repos/{owner}/{name}/comments/{comment_id}`, which answers `204` | `delete_commit_comment` |
 
 Reading needs the `repo:read` scope; commenting, editing and deleting need
-`issues:write`, as comments on issues do. Each publishes
+`work:write`, as comments on work items do. Each publishes
 `commit_comment.created`, `commit_comment.edited` or
 `commit_comment.deleted` to [webhooks](/guides/webhooks/).
 
@@ -458,7 +463,7 @@ placeholders are filled in:
 | `{base}` | The branch it merges into |
 | `{author}` | Its author's username |
 | `{commits}` | Its commits' subjects, one `* subject` line each |
-| `{issues}` | The issues it closes, as `#12, #14` |
+| `{items}` | The work items it lands on, as `#12, #14` |
 | `{co_authors}` | A `Co-authored-by:` line for each author of its commits, each once |
 
 ```text
@@ -466,7 +471,7 @@ placeholders are filled in:
 
 {body}
 
-Closes {issues}
+Closes {items}
 {co_authors}
 ```
 
@@ -505,8 +510,8 @@ push its commits straight to the base. When a push to a branch brings in
 the head commit of an open pull request into that branch (a draft too),
 the pull request is marked merged, by whoever pushed, with `merge_commit`
 set to the commit the branch was pushed to. It is the same as any other
-merge: the issues it closes close, the other pull requests for its issue
-close as superseded, it leaves the merge queue, and `pull.merged` is
+merge: it lands on the work items it closes, the other pull requests for
+its work item in the repository close as superseded, it leaves the merge queue, and `pull.merged` is
 published. Its timeline says **merged this by pushing** that commit **to**
 the branch.
 
@@ -515,60 +520,77 @@ request's commits but not the last leaves it open. A head commit the branch
 already held before the push (a branch opened at a commit of the base, with
 nothing on it yet) does not merge it either. Its branch is not deleted.
 
-### Closing issues
+### Closing work items
 
-When a pull request merges into the default branch, it closes the issue it
-was made for and every issue its title or description names after a
-closing keyword: `close`, `closes`, `closed`, `fix`, `fixes`, `fixed`,
-`resolve`, `resolves` or `resolved`, in any case, with or without a colon:
+When a pull request merges into the default branch, it lands its
+repository on the work item it was made for, and on every work item its
+title or description names after a closing keyword: `close`, `closes`,
+`closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves` or `resolved`, in
+any case, with or without a colon:
 
 ```text
-Fixes #12. Resolves: #14, closes acme/web#15
+Fixes #12. Resolves: #14, closes acme/api#15
 ```
 
-An issue in another repository is never closed: `owner/name#3` counts only
-when it names this one. The pull request's `closes` lists the issues it
-will close, in the order named. Merging into any other branch closes
-nothing. A repository can turn this off with `auto_close_issues`; the
-issues then stay open after the merge.
+Landing marks the pull request's repository as landed on the work item and
+records a resolution: the repository and the pull request. The work item
+closes as completed when it has no target repositories, or once every
+target has landed; until then it stays open, and its page says which
+targets are missing. See [work items](/guides/work-items/#closing-a-work-item).
 
-Commit messages close issues the same way. When a push to the default
-branch brings in a commit whose message names an issue after a closing
-keyword, that issue closes as completed. This applies to commits pushed
-directly, merged in a clone, or landed by a pull request, and up to 250
-commits per push are read. The issue's timeline says who pushed it and
-**closed this in** that commit, its page shows **Closed by commit**, and
-the commit's page lists the issues it closed. `issue.closed` carries the
-commit as `commit`, and an issue has `resolved_commit` and
-`resolved_pushed_by`; reopening it clears both. A push that makes a new
-branch reads none of its commits, since they were pushed before, except a
-repository's first push, which makes its default branch: `Closes #1` in
-the first version of a new repository closes #1. Commits pushed to other
-branches close nothing until they reach the default branch, and
-`auto_close_issues` turns this off as well.
+`Part of #12` (also `Part of acme/api#12`, or `Refs #12`) links the pull
+request to the work item, and its repository as touched, without landing
+anything: use it for a pull request that does only part of a repository's
+share.
 
-A commit that is already on the default branch can close an issue later,
-say one pushed before the issue was open or while `auto_close_issues` was
-off: [`close_issue`](/reference/api/issues/close-issue/) with `commit` (its
-full hash), `g1t issue close 12 --commit <hash>`, or the `issue` tool's
-`close` with `commit`. The commit's message must name the issue after a
-closing keyword. The issue then closes as completed in that commit, the way
-a push of it would have, by whoever closed it: **closed this in** the
-commit, `resolved_commit`, and `issue.closed` with `commit`. A commit that is
-not on the default branch, or whose message does not name the issue, is
-refused, and so is an issue that is already closed.
+`#12` and `owner/name#12` name work items of the repository's own
+workspace, whichever of its repositories they are written in. A work item
+of another workspace is never closed. The pull request's `closes` lists
+the work items it will land on, in the order named, and `parts` the ones it
+is part of. Merging into any other branch lands nothing. A repository can
+turn this off with `auto_close_items`; its pull requests then land nothing
+when they merge.
 
-An issue's timeline links whatever closed it: **closed this in** a commit
-links the commit, **closed this by merging #14** links the pull request,
-and when it was closed in a [session](/guides/sessions/) the line ends
-**via session**, linking that session. That session is the one the closing
-commit names in a `G1t-Session: ses_…` trailer, or, for an issue closed
-with a token (from an agent, the CLI or the MCP server), the closer's own
-session on the issue that is still going. `issue.closed` carries it as
-`session`. An issue closed on the site says only who closed it.
+Commit messages land work items the same way. When a push to the default
+branch brings in a commit whose message names a work item after a closing
+keyword, the commit's repository lands on it. This applies to commits
+pushed directly, merged in a clone, or landed by a pull request, and up to
+250 commits per push are read. The work item's timeline says who pushed
+it and **landed this in** that commit, its page shows the commit beside
+the repository, and the commit's page lists the work items it landed on.
+The resolution records the commit as `commit` and who pushed it as
+`pushed_by`, and `work_item.closed`, when it closes, carries the commit as
+`commit`; reopening a work item clears its resolutions. A push that makes
+a new branch reads none of its commits, since they were pushed before,
+except a repository's first push, which makes its default branch:
+`Closes #1` in the first version of a new repository lands on #1. Commits
+pushed to other branches land nothing until they reach the default branch,
+and `auto_close_items` turns this off as well.
 
-Wherever a commit's message shows, `#12` links to that issue or pull
-request, with its title and state when you hover over it.
+A commit that is already on the default branch can land a work item later,
+say one pushed before the work item was open or while `auto_close_items`
+was off: [`close_work_item`](/reference/api/work-items/close-work-item/)
+with `repo` and `commit` (its full hash), `g1t work close 12 --commit
+<hash>` in the repository, or the `work_item` tool's `close` with `repo`
+and `commit`. The commit's message must name the work item after a closing
+keyword. Its repository then lands in that commit, the way a push of it
+would have, by whoever did it. A commit that is not on the default branch,
+or whose message does not name the work item, is refused, and so is a work
+item that is already closed.
+
+A work item's timeline links whatever landed it: **landed this in** a
+commit links the commit, **landed this by merging #14** links the pull
+request, and when it was done in a [session](/guides/sessions/) the line
+ends **via session**, linking that session. That session is the one the
+closing commit names in a `G1t-Session: ses_…` trailer, or, for a work item
+closed with a token (from an agent, the CLI or the MCP server), the
+closer's own session on the work item that is still going.
+`work_item.closed` carries it as `session`. A work item closed on the site
+says only who closed it.
+
+Wherever a commit's message shows, `#12` links to that work item or pull
+request, with its title and state when you hover over it. Old issue
+numbers written before work items still link to the work item each became.
 
 ### Deleting the branch
 
@@ -720,7 +742,8 @@ nothing was pushed. On the MCP server it is the `pull_request` tool's
 | `behind` | Whether its target has moved on without it. |
 | `merge_method`, `merge_commit` | Once merged: how, and the commit its base was left at. |
 | `auto_merge` | When auto-merge is on: `method`, `commit_title`, `commit_message`, `enabled_by` and `enabled_at`. |
-| `closes` | The issues it closes when it merges into the default branch. |
+| `item` | The number of the work item it was made for. |
+| `closes`, `parts` | The work items it lands on when it merges into the default branch, and the ones it is part of. |
 | `head_branch_deleted` | Whether its branch was deleted after it merged or closed. |
 | `reviewers`, `team_reviewers` | The people and the [teams](/guides/teams/#review-requests) asked to review it. |
 | `code_owners` | Who owns the files it changes and whose approval is still needed; see [CODEOWNERS](/guides/codeowners/#through-the-api). Absent when its target has no CODEOWNERS file. |

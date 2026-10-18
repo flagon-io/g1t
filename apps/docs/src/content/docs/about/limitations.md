@@ -377,10 +377,10 @@ The machine sizes are Cloudflare Containers' instance sizes. For more, use a
   request, as for [pushes](#pushes-up-to-100-mb-each). The step warns and
   the job goes on; smaller and larger entries are saved.
 - `on: label`: creating, editing or deleting a label starts no workflows.
-  Putting a label on an issue or a pull request starts `issues` and
+  Putting a label on a work item or a pull request starts `work_item` and
   `pull_request` workflows with the `labeled` type.
 - The `pull_request` activity types `unassigned`, `locked`, `unlocked`,
-  and `edited` for a new title or description, and the `issues` types
+  and `edited` for a new title or description, and the `work_item` types
   `unassigned`, `locked`, `unlocked`, `pinned` and `unpinned`: g1t starts
   no workflows for them.
 
@@ -504,7 +504,7 @@ the alpha.
 ### Self-hosting is early
 
 [Running g1t yourself](/guides/self-hosting/) gives you the core forge:
-accounts, repositories over HTTP, issues and pull requests, the REST API
+accounts, repositories over HTTP, work items and pull requests, the REST API
 and MCP, container images, search, webhooks and observability. Hosted
 runners, deployments, billing and git over SSH are off. The merge queue
 can accept pull requests, but cannot test or land them without g1t's

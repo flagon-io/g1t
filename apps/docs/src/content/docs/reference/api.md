@@ -30,7 +30,7 @@ curl https://api.g1t.sh/
   "mcp_url": "https://mcp.g1t.sh",
   "current_user_url": "https://api.g1t.sh/user",
   "repository_url": "https://api.g1t.sh/repos/{owner}/{name}",
-  "issues_url": "https://api.g1t.sh/repos/{owner}/{name}/issues{?state,label}",
+  "work_url": "https://api.g1t.sh/workspaces/{workspace}/work{?state,label,repo}",
   "pulls_url": "https://api.g1t.sh/repos/{owner}/{name}/pulls{?state}"
 }
 ```
@@ -90,18 +90,18 @@ operations its task needs, in its own repository.
 ### Scopes
 
 Each endpoint needs one [scope](/guides/authentication/#scopes), such as
-`issues:read` to read an issue or `issues:write` to open one. Its page
+`work:read` to read a work item or `work:write` to open one. Its page
 says which, and the [OpenAPI document](https://api.g1t.sh/openapi.json)
 gives it as `x-scope` on each operation, beside `x-mcp-tool` and
 `x-mcp-action`, the MCP tool and action that do the same:
 
 ```json
 {
-  "operationId": "get_issue",
-  "x-operation": "get_issue",
-  "x-mcp-tool": "issue",
+  "operationId": "get_work_item",
+  "x-operation": "get_work_item",
+  "x-mcp-tool": "work_item",
   "x-mcp-action": "get",
-  "x-scope": "issues:read"
+  "x-scope": "work:read"
 }
 ```
 
@@ -150,7 +150,7 @@ Names you chose are never changed: a workflow's `inputs`, the names of
 secrets and variables, an environment's `env`, a job's `outputs` and
 `matrix`, labels and headers come back exactly as they were written.
 
-Every person in a response, such as an issue's `author`, a workspace's
+Every person in a response, such as a work item's `author`, a workspace's
 members or whoever `whoami` is, has two usernames:
 
 - `username` is lowercased. It is what an account is found, linked and
@@ -168,9 +168,12 @@ A successful request answers `200` with the result as the body: an object,
 a list, or `true` for a deletion. There is no envelope around it.
 
 In paths, `{owner}` is the workspace that owns the repository and `{name}`
-is the repository's name. Issues and pull requests are addressed by
-`{number}`; the two share one sequence of numbers per repository, so a
-number names exactly one of them.
+is the repository's name; `{workspace}` is a workspace's slug. Work items
+live in a workspace, at `/workspaces/{workspace}/work/{number}`, and pull
+requests in a repository, at `/repos/{owner}/{name}/pulls/{number}`. The
+two share one sequence of numbers per workspace, so a new number names
+exactly one of them in it. Pull requests opened before work items keep the
+numbers they had. See [work items](/guides/work-items/).
 
 ## Errors
 
@@ -200,8 +203,8 @@ that scope in `needed_scope`:
 {
   "error": {
     "code": "forbidden",
-    "message": "This access token needs the issues:write scope to use create_issue.",
-    "needed_scope": "issues:write"
+    "message": "This access token needs the work:write scope to use open_work_item.",
+    "needed_scope": "work:write"
   }
 }
 ```
@@ -231,7 +234,7 @@ everything up to a limit; the few that grow without bound take a cursor:
 | Endpoint | Limit | Next page |
 | --- | --- | --- |
 | [List repositories](/reference/api/repositories/list-repos/) | 50 | None |
-| [List issues](/reference/api/issues/list-issues/) | 100 | None |
+| [List work items](/reference/api/work-items/list-work-items/) | 100 | None |
 | [List pull requests](/reference/api/pull-requests/list-pull-requests/) | 100 | None |
 | [List repository events](/reference/api/repositories/list-events/) | 50 | `before`: the id of the last event you have |
 | [List workflow runs](/reference/api/actions/list-workflow-runs/) | `per_page`, at most 100 and 50 if not given | None |
@@ -242,7 +245,8 @@ everything up to a limit; the few that grow without bound take a cursor:
 
 ## Identifiers and times
 
-Issues and pull requests are addressed by repository and number. Other ids
+Work items are addressed by workspace and number, pull requests by
+repository and number. Other ids
 are [TypeIDs](https://github.com/jetify-com/typeid): a prefix naming the
 kind of thing, then a UUIDv7 in base32, for example
 `pr_01jb2k7x9hfq0b3zj0f5s2m8ra`. They sort by creation time.
@@ -265,11 +269,11 @@ Times are RFC 3339 in UTC, with milliseconds, such as
 | [Code scanning](/reference/api/code-scanning/list-code-scanning-alerts/) | SARIF uploads, and the alerts and analyses they make. See [code scanning](/guides/security/code-scanning/). |
 | [Supply chain](/reference/api/supply-chain/list-vulnerability-alerts/) | Vulnerability alerts, the dependency graph, its SPDX SBOM, and comparing dependencies. See [supply chain](/guides/security/supply-chain/). |
 | [Security settings](/reference/api/security-settings/get-security-settings/) | When pull request checks fail, dependency review's policy, delegated bypass, validity checks and a workspace's overview. |
-| [Issues](/reference/api/issues/list-issues/) | What should change, with labels and comments. |
+| [Work items](/reference/api/work-items/list-work-items/) | What should change, in a workspace: the repositories each links, labels and comments, claims and hand-offs. See [work items](/guides/work-items/). |
 | [Pull requests](/reference/api/pull-requests/list-pull-requests/) | Proposed changes: reviews, merging and the merge queue. |
 | [Sessions](/reference/api/sessions/read-session/) | The record of how a pull request was made, written by the coding agent that made it. See [sessions and why-blame](/guides/why-blame/). |
 | [Actions](/reference/api/actions/list-workflows/) | Workflows, their runs and their logs. |
 | [Run protection](/reference/api/run-protection/update-environment/) | Environments' protection rules and the reviews of the jobs they hold, approving a pull request's run from outside, a job token's default permissions, and repository dispatch. See [GitHub Actions](/guides/actions/#environments). |
 | [Secrets and variables](/reference/api/secrets-and-variables/list-actions-secrets/) | Values workflows and deployments read. |
 | [Webhooks](/reference/api/webhooks/list-webhooks/) | Events sent to your own address. |
-| [Integrations](/reference/api/integrations/list-integrations/) | Alert sources and issue trackers. |
+| [Integrations](/reference/api/integrations/list-integrations/) | Alert sources and trackers. |

@@ -13,7 +13,7 @@ what the repository itself ships, as opposed to the
   once they do, and can be withdrawn.
 - A **vulnerability report** is how someone outside tells the maintainers
   privately, when the repository takes such reports: from its Security tab,
-  without an issue anyone can read. Accepting a report makes a draft advisory
+  without a work item anyone can read. Accepting a report makes a draft advisory
   from it.
 
 Both live under `g1t.sh/<owner>/<project>/security/advisories`; the Security

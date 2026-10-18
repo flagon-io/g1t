@@ -1,6 +1,6 @@
 ---
 title: Notifications
-description: What needs you, and what you follow, as it happens. One thread per issue, pull request, workflow or deployment, with why you were told. Choose what you hear of with subscriptions, watching and email settings.
+description: What needs you, and what you follow, as it happens. One thread per work item, pull request, workflow or deployment, with why you were told. Choose what you hear of with subscriptions, watching and email settings.
 ---
 
 **Notifications** tell you when something needs you, or when something
@@ -19,7 +19,7 @@ unread, and lavender otherwise.
 
 Notifications hold one **thread** for each thing you were told about:
 
-- an issue
+- a [work item](/guides/work-items/)
 - a pull request
 - a workflow on one branch
 - a deployment: a project's production, or one pull request's preview
@@ -71,7 +71,7 @@ what it was:
 | Someone asked a team to review a pull request | Everyone in the team and its child teams, or, with [review assignment](/guides/teams/#review-assignment), the people picked | `review_requested` | Needs you |
 | A workflow run's jobs wait for an [environment's reviewers](/guides/actions/#environments) | Each reviewer, and everyone in a reviewing team ("Deploy is waiting for your review to deploy to production in acme/api"), but not whoever started the run when it may not approve it | `review_requested` | Needs you |
 | A pull request changes files a [CODEOWNERS file](/guides/codeowners/) gives you or your team | The owners asked: "acme/api#42 changes files you own" | `review_requested` | Needs you |
-| Someone assigned people to an issue or pull request, or opened one with assignees | The people newly assigned | `assign` | Info |
+| Someone assigned people to a work item or pull request, or opened one with assignees | The people newly assigned | `assign` | Info |
 | Checks failed, or could not run, on a pull request | The person the pull request belongs to | `ci_activity` | Error |
 | A workflow failed on a pull request | The person the pull request belongs to | `ci_activity` | Error |
 | A workflow failed on a branch | Whoever pushed the commit it ran on | `ci_activity` | Error |
@@ -79,19 +79,20 @@ what it was:
 | Production failed to deploy | Whoever pushed or started it, and people watching deployments | `ci_activity`, or `subscribed` for watchers | Error |
 | A deployment went live | People watching deployments. It also [settles](#threads-that-settle-themselves) the failure before it | `subscribed` | Success |
 | [Auto-merge](/guides/pull-requests/#auto-merge) was turned off by someone else, or by g1t because the pull request can no longer merge on its own | Whoever turned it on. Not when g1t handed the pull request to the merge queue, which lands it | `state_change` | Needs you |
-| A pull request was merged, or an issue or pull request was closed | Its thread's history, for everyone subscribed to it and people watching its kind; the thread [settles](#threads-that-settle-themselves) at once, so it is neither unread nor pushed to you | `state_change`, or `subscribed` for watchers | Success for a merge, else Info |
-| An issue was reopened | Everyone subscribed to it, and people watching issues | `state_change`, or `subscribed` for watchers | Info |
+| A pull request was merged, or a work item or pull request was closed | Its thread's history, for everyone subscribed to it and people watching its kind; the thread [settles](#threads-that-settle-themselves) at once, so it is neither unread nor pushed to you | `state_change`, or `subscribed` for watchers | Success for a merge, else Info |
+| A work item was reopened | Everyone subscribed to it, and people watching work items in a repository linked to it | `state_change`, or `subscribed` for watchers | Info |
 | Someone mentioned you with `@username` in a comment | You | `mention` | Info |
-| Someone mentioned a team with `@workspace/team` in a comment, or in an issue or pull request they opened | Everyone in the team and its child teams, when the team's notifications are on and the writer can see the team | `team_mention` | Info |
-| Someone commented on an issue or pull request | Everyone subscribed to it, and people watching its kind | Why each is subscribed, or `subscribed` for watchers | Info, or Success for an approval |
-| An issue or pull request was opened | People watching its kind | `subscribed` | Info |
+| Someone mentioned a team with `@workspace/team` in a comment, or in a work item or pull request they opened | Everyone in the team and its child teams, when the team's notifications are on and the writer can see the team | `team_mention` | Info |
+| Someone commented on a work item or pull request | Everyone subscribed to it, and people watching its kind | Why each is subscribed, or `subscribed` for watchers | Info, or Success for an approval |
+| A work item or pull request was opened | People watching its kind | `subscribed` | Info |
 
 "The person a pull request belongs to" is its author. An approval or a
 request for changes always reaches that person. A mention in code or in a
 quoted line does not count.
 
-You only see items about repositories you can read. If you lose access to a
-repository, its items leave your notifications the next time you open them.
+You only see items about repositories and work items you can read. If you
+lose access to a repository, its items leave your notifications the next
+time you open them.
 
 ## Threads that settle themselves
 
@@ -105,8 +106,8 @@ any thread.
 
 | A thread about | Settles when |
 | --- | --- |
-| Anything on an issue or pull request | The pull request is merged or closed, or the issue is closed. A pull request's previews settle with it |
-| Your own thread on an issue or pull request | You comment on it or review it |
+| Anything on a work item or pull request | The pull request is merged or closed, or the work item is closed. A pull request's previews settle with it |
+| Your own thread on a work item or pull request | You comment on it or review it |
 | A review asked of you | The request to you, or to your team, is removed |
 | Checks that failed on your pull request | Its checks pass on its latest commit |
 | A workflow that failed on a branch | That workflow passes on that branch |
@@ -133,7 +134,7 @@ notification: what landed and what deployed is on [Home](/guides/home/).
 
 ## Subscriptions
 
-You are **subscribed** to an issue or pull request, and hear of what
+You are **subscribed** to a work item or pull request, and hear of what
 happens on it, without doing anything when you:
 
 - opened it, or asked g1t for it
@@ -142,7 +143,7 @@ happens on it, without doing anything when you:
 - commented on it
 - were mentioned in it, by name or through a team
 
-You can also subscribe to any issue or pull request yourself, or
+You can also subscribe to any work item or pull request yourself, or
 unsubscribe from one.
 
 | You are | You hear of |
@@ -151,9 +152,9 @@ unsubscribe from one.
 | Unsubscribed | Only what is asked of you or is about your own work: a review request, an assignment, a mention of you or your team, and failed checks, workflows and deployments. Commenting on it, or being mentioned in it, subscribes you again. |
 | Ignoring it | Nothing on it at all, not even a mention. Only you can undo this. |
 
-To subscribe to an issue or pull request, or unsubscribe:
+To subscribe to a work item or pull request, or unsubscribe:
 
-1. Open the issue or pull request.
+1. Open the work item or pull request.
 2. In the sidebar, under **Notifications**, select **Subscribe** or
    **Unsubscribe**.
 
@@ -161,8 +162,9 @@ The line under the button says where you stand, such as "You're subscribed
 because you were assigned.", "You're not subscribed. You'll still hear if
 you're mentioned or asked to review." or "You ignore this thread."
 
-To ignore an issue or pull request, use the API:
-`PUT /repos/{owner}/{name}/issues/{number}/subscription` with
+To ignore a work item or pull request, use the API:
+`PUT /notifications/threads/{id}/subscription`, or for a work item
+`PUT /workspaces/{workspace}/work/{number}/subscription`, with
 `"ignored": true`, or the `notifications` tool's `subscribe` action with
 `ignored`. See [from the API](#from-the-api). While
 you ignore one, its button reads **Stop ignoring**, which puts you back to
@@ -176,9 +178,9 @@ you take part in.
 | Level | You hear of |
 | --- | --- |
 | **Participating and @mentions** | Only what you take part in or are mentioned in. The default. |
-| **All activity** | Also every issue and pull request opened, commented on, closed, reopened or merged, and every deployment. |
+| **All activity** | Also every work item linked to it and every pull request opened, commented on, closed, reopened or merged, and every deployment. |
 | **Ignore** | Nothing on the repository at all, not even a mention or a review request. |
-| **Custom** | What you take part in, and the kinds you choose: **Issues**, **Pull requests**, **Deployments** and **Security alerts**. Security alerts reach only those with Write on the repository, who can see its findings. |
+| **Custom** | What you take part in, and the kinds you choose: **Work items** (those linked to the repository), **Pull requests**, **Deployments** and **Security alerts**. Security alerts reach only those with Write on the repository, who can see its findings. |
 
 To change how you watch a repository:
 
@@ -202,9 +204,9 @@ and comments appear as they happen.
 | **Commits** | Commits are pushed to the branch. They wait under a **3 new commits · Show** bar at the top instead of moving the list while you read; checks on the commits shown update in place. |
 | **Branches** | A branch is pushed, created, renamed or deleted. |
 | **Tags** | A tag is pushed or deleted, or a release is published. |
-| **Pull requests** and **Issues** | One is opened, updated, reviewed, commented on, checked, merged or closed. |
+| **Pull requests** and **Work** | One is opened, updated, reviewed, commented on, checked, merged or closed. |
 | A **pull request** | Commits are pushed to it, its checks report, someone reviews or comments, or it is merged or closed. New items join its timeline where you are reading; if you are at the end of the page, it follows them down. |
-| An **issue** | Someone comments on it or changes it, or a pull request linked to it moves. |
+| A **work item** | Someone comments on it or changes it, or a pull request linked to it moves. |
 | **Actions** and a **run** | A run starts, one of its jobs starts or finishes, or the run finishes. A running job's log streams on its own. |
 | **Security** | An alert is opened, fixed, dismissed or reopened. |
 | Your workspace's **Home** | Something lands, runs, deploys or comes to need you in its projects (the first 25). See [Home](/guides/home/#while-the-page-is-open). |
@@ -218,7 +220,7 @@ as soon as you come back to it.
 How it works: each signed-in tab keeps one live connection to g1t (the
 same one that brings notifications and chat counts). Opening a
 repository's page asks to follow that repository, and g1t first checks you
-can read it. From then on, every push, pull request, issue, comment,
+can read it. From then on, every push, pull request, work item linked to it, comment,
 review, check, run, release and security alert there sends that tab a
 short note naming only what kind of thing changed and where: a branch, a
 number, a commit. Never a title, a message or code. The page then reads
@@ -388,7 +390,7 @@ has both.
 | [`DELETE /notifications/threads/{id}`](/reference/api/notifications/mark-thread-done/) | `done` | Mark a thread done. |
 | [`PUT /notifications/threads/{id}/saved`](/reference/api/notifications/save-thread/) | `save` | Save a thread; `DELETE` unsaves it. |
 | [`PUT /notifications/threads/{id}/snooze`](/reference/api/notifications/snooze-thread/) | `snooze` | Snooze a thread until `until`; `DELETE` brings it back. |
-| [`PUT /repos/{owner}/{name}/issues/{number}/subscription`](/reference/api/notifications/set-issue-subscription/) | `subscribe` | Subscribe to an issue or pull request, unsubscribe, or ignore it. `GET` reads it and `DELETE` unsubscribes. The same works at `/notifications/threads/{id}/subscription`. |
+| [`PUT /workspaces/{workspace}/work/{number}/subscription`](/reference/api/notifications/set-work-item-subscription/) | `subscribe` | Subscribe to a work item, unsubscribe, or ignore it. `GET` reads it and `DELETE` unsubscribes. The same works at `/notifications/threads/{id}/subscription`, for a work item or a pull request. |
 | [`PUT /repos/{owner}/{name}/subscription`](/reference/api/notifications/set-repo-subscription/) | `watch` | Watch a repository at a `level`. `GET` reads it and `DELETE` goes back to the default. |
 | [`GET /user/subscriptions`](/reference/api/notifications/list-watched-repos/) | `watched` | The repositories you watch other than the default way. |
 

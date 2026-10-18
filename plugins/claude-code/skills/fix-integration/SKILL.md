@@ -20,8 +20,8 @@ left it, newest first, and one alone is the likely cause.
 Pull request: $ARGUMENTS (if empty, use the current branch's pull request).
 
 1. **Read what failed.** `g1t work events --type integration.failed --json`
-   for the event (narrow it with `--issue N`), and `g1t work context N` for
-   the issue, which shows the last integration failure, the pull requests
+   for the event (narrow it with `--item N`), and `g1t work view N` for
+   the work item, which shows the last integration failure, the pull requests
    on it and the decisions so far.
 2. **Open the failing check's log** from the event's check link, or with
    `g1t run logs --failed` on that run. Find the first real error.

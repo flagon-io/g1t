@@ -21,9 +21,9 @@ with the access you give them:
 
 The agent runs where you run it: on your machine, in your CI, or on a
 [runner](/guides/self-hosted-runners/) of your own, on your own model
-account. g1t runs no agents of its own; it keeps the code, the issues and
-pull requests, the checks and the record of what happened. To start one
-from g1t instead, see [hand an issue to g1t](#hand-an-issue-to-g1t).
+account. g1t runs no agents of its own; it keeps the code, the work items
+and pull requests, the checks and the record of what happened. To start
+one from g1t instead, see [hand a work item to g1t](#hand-a-work-item-to-g1t).
 
 ## Connect your AI client
 
@@ -75,7 +75,8 @@ Otherwise git asks for a username and a password: use your g1t username
 and an [access token](/guides/authentication/#access-tokens) with
 `code:write`.
 
-Ask it to list the open issues on a repository, or to work on one, and it
+Ask it to list the open work items of a workspace or a repository, or to
+work on one, and it
 will use g1t's tools. It sees only the tools and actions its access allows.
 
 ### With a token instead
@@ -106,42 +107,44 @@ scope it needs; see [scopes](/guides/authentication/#scopes). Everything
 the agent does is done as you, and shows as you in the
 [audit log](/guides/audit-log/).
 
-## How an agent works on an issue
+## How an agent works on a work item
 
-1. `issue` with `work`, to load everything about it in one call: what
-   done means, who has claimed it, the pull requests already made for it,
-   and what it is blocked by. Then `issue` with `claim`, which also says
-   who else is on it.
-2. `pull_request` with `create` and the issue's number. This opens a draft
-   pull request and returns the git remote of its [working copy](/concepts/forks/#working-copies-for-pull-requests).
+1. `work_item` with `work`, to load everything about it in one call: what
+   done means, the repositories it is meant to land in and which have,
+   who has claimed it, the pull requests already made for it, and what it
+   is blocked by. Then `work_item` with `claim`, which also says who else
+   is on it.
+2. `pull_request` with `create` in the repository the change is for, and
+   the work item's number as `item`. This opens a draft pull request and returns the git remote of its [working copy](/concepts/forks/#working-copies-for-pull-requests).
 3. Clone the working copy, make changes, commit and push.
 4. `pull_request` with `record_session` as it goes, so people can see its
    reasoning.
 5. `pull_request` with `get`, to check `overlaps`, `behind` and the checks.
 6. `pull_request` with `ready` and a summary of what changed and why.
 
-### Work with no issue yet
+### Work with no work item yet
 
-Most of what an agent is asked starts without an issue, and a question,
+Most of what an agent is asked starts without a work item, and a question,
 a look around or a trivial fix never needs one. Record the session
 anyway (`session` with `start`), with a `title` saying what it is for: the
-team sees it in **Live now** on the project's overview and **Work** page,
+team sees it in **Live now** on the project's overview and **Sessions** page,
 under its pull request or branch. When the work becomes a change others
-should know about (a branch to push, a pull request), look for its issue
-(`issue` with `list` or `list_claims`) and claim it. If there is none,
-`issue` with `claim`, a `title` and no `number` opens one and claims it
-in one step, and attaches the session (`session_id`) to it:
+should know about (a branch to push, a pull request), look for its work
+item (`work_item` with `list` or `list_claims`) and claim it. If there is
+none, `work_item` with `claim`, a `title` and no `number` opens one, with
+the repository as its origin, and claims it in one step, and attaches the
+session (`session_id`) to it:
 
 ```json
-{ "name": "issue", "arguments": { "action": "claim", "repo": "flagon-io/hello", "title": "Preview builds time out on large repositories", "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2" } }
+{ "name": "work_item", "arguments": { "action": "claim", "repo": "flagon-io/hello", "title": "Preview builds time out on large repositories", "session_id": "ses_01m4b2c3d4e5f6g7h8j9k0m1n2" } }
 ```
 
-See [Work with no issue yet](/guides/sessions/#work-with-no-issue-yet).
+See [Work with no work item yet](/guides/sessions/#work-with-no-work-item-yet).
 
 The call that starts the pull request:
 
 ```json
-{ "name": "pull_request", "arguments": { "action": "create", "repo": "flagon-io/hello", "issue": 42, "agent": "claude-code" } }
+{ "name": "pull_request", "arguments": { "action": "create", "repo": "flagon-io/hello", "item": 42, "agent": "claude-code" } }
 ```
 
 `agent` names the harness, so people can see what made the change. Its
@@ -181,14 +184,15 @@ Claude Code from `CLAUDE.md`, and Codex, OpenCode and Cursor from
 ```md title="AGENTS.md"
 ## Working on g1t
 
-- Work in a draft pull request (`pull_request` `create` with the issue),
+- Work in a draft pull request (`pull_request` `create` with the work
+  item as `item`),
   and record your session with `record_session` before each push.
 - Read `overlaps` and `behind` on `pull_request` `get` before going far.
 - Say why you made a choice with `pull_request` `record_decision`.
 ```
 
 An agent with a shell can use the [g1t CLI](/guides/cli/) instead of the
-tools, and claim the issue, record its session and hand off with it: the
+tools, and claim the work item, record its session and hand off with it: the
 lines for that are in
 [other coding agents](/guides/claude-code-plugin/#other-coding-agents).
 With Claude Code, the [plugin](/guides/claude-code-plugin/) does this for
@@ -225,9 +229,9 @@ Its hooks record your prompts, the tools Claude uses and what it called
 them with, and its pushes, through the [g1t CLI](/guides/cli/), which
 must be installed and signed in (`g1t auth login`), and title each
 session with what its first prompt asked for. They never send what a
-tool returned. The plugin also gives Claude the issue's work context when
-a session starts (or, with no issue, when to claim or open one), g1t's MCP
-server, and commands to claim and hand off issues. See [Claude Code plugin](/guides/claude-code-plugin/) for
+tool returned. The plugin also gives Claude the work item's context when
+a session starts (or, with no work item, when to claim or open one), g1t's
+MCP server, and commands to claim and hand off work items. See [Claude Code plugin](/guides/claude-code-plugin/) for
 everything it records, and how to opt out.
 
 Other agents record a session with the same CLI commands, from their
@@ -241,7 +245,7 @@ Several agents, and people, can work on one repository at once.
 
 - `overlaps`: other pull requests in progress that change files this one
   changes, with the paths. An overlap with a pull request for a different
-  issue will become a conflict for whichever merges second, so narrow the
+  work item will become a conflict for whichever merges second, so narrow the
   change, or say so in the pull request.
 - `behind`: whether `main` has moved since the pull request was made. If
   it has, `update_branch` before asking for a merge.
@@ -250,23 +254,23 @@ Required checks, [rules](/guides/rules/) and the
 [merge queue](/guides/merge-queue/) hold for an agent's pull request
 exactly as for a person's.
 
-## Hand an issue to g1t
+## Hand a work item to g1t
 
 g1t runs no model of its own, but it can start a session for you on the
 workspace's own Anthropic account. Once an owner adds an Anthropic key
 under [**AI**](/guides/ai/):
 
-- **Assign to g1t** in an issue's sidebar (or `g1t issue edit 12
-  --add-assignee g1t`), or mention `@g1t` in a comment on an issue or pull
-  request, with what you want done.
-- **Start a session** on an issue's page, `g1t work dispatch 12`, or the
+- **Assign to g1t** in a work item's sidebar (or `g1t work edit 12
+  --add-assignee g1t`), or mention `@g1t` in a comment on a work item or
+  pull request, with what you want done.
+- **Start a session** on a work item's page, `g1t work dispatch 12`, or the
   `session` tool's `dispatch` action, to choose the mode (`plan`,
   `implement` or `review`).
 
 g1t reacts 👀, then starts the session as you, with a token for that
 repository only that is revoked when the session ends. It installs the
 g1t CLI, clones the repository and works the way this page describes; its
-card shows in the issue's conversation, and Anthropic bills the account
+card shows in the work item's conversation, and Anthropic bills the account
 for it. Without an Anthropic key, `g1t work dispatch` prints a Claude Code
 command to run yourself instead. See
 [Assign g1t](/guides/sessions/#assign-g1t-or-ask-it-in-the-thread) and
@@ -279,7 +283,7 @@ events:
 
 - **Webhooks.** Register an address for a repository or a whole workspace
   with the `webhook` tool or in its settings, and choose the events, such
-  as `issue.labeled`, `issue.assigned`, `comment.created`,
+  as `work_item.labeled`, `work_item.assigned`, `comment.created`,
   `checks.completed` or `workflow.completed`. Each delivery is signed. See
   [webhooks](/guides/webhooks/).
 - **Workflows.** A workflow in `.g1t/workflows/` can start on `issues` or
@@ -292,10 +296,10 @@ events:
 
 ## Reviewing as an agent
 
-An agent can review as well as write. Given an issue with several pull
+An agent can review as well as write. Given a work item with several pull
 requests, it can call `pull_request` with `changes` and `read_session` on
 each, compare them, and read each one's check results from `get`. It can
-leave findings on specific lines with `issue` and `comment`, give a verdict
+leave findings on specific lines with `work_item` and `comment`, give a verdict
 with `pull_request` and `review`, and, with the Write role, `merge` the
 best one. It cannot approve or request changes on a pull request it opened.
 
@@ -338,27 +342,29 @@ which are the `workflow` tool's. Slides, designs and dashboards answer
 that they are not here yet. A workspace's own token cannot use artifacts:
 they always belong to a person.
 
-## Filing issues from another system
+## Filing work items from another system
 
-Anything that holds an access token can open issues: an error tracker, a
-monitor, a script. Call the `issue` tool with `create`, or `POST
-/repos/{owner}/{name}/issues`, with a title, a description and labels
-such as `bug`. Its token needs `issues:write`. The issue is attributed to
-the account the token belongs to.
+Anything that holds an access token can open work items: an error
+tracker, a monitor, a script. Call the `work_item` tool with `create`, or
+`POST /workspaces/{workspace}/work`, with a title, a description, labels
+such as `bug`, and the `repo` it is about as its origin. Its token needs
+`work:write`. The work item is attributed to the account the token
+belongs to.
 
 ## Tools
 
 Each tool is a kind of thing on g1t and takes an `action`, such as `get`
-or `create`. Repositories are given as `owner/name`, and issues and pull
-requests as the repository and a `number`.
+or `create`. Repositories are given as `owner/name`, pull requests as the
+repository and a `number`, and work items as the `workspace` and a
+`number`.
 
 | Tool | What it covers |
 | --- | --- |
-| `search` | Code, repositories, issues, pull requests and people across g1t; a tracker's ticket |
-| `repository` | Repositories, their settings, rulesets, branches, labels, milestones and releases |
-| `issue` | Issues, labels and comments; an issue's whole context, and claims |
+| `search` | Code, repositories, work items, pull requests and people across g1t; a tracker's ticket |
+| `repository` | Repositories, their settings, rulesets, branches and releases |
+| `work_item` | Work items, their repositories, labels and comments; a work item's whole context, and claims |
 | `pull_request` | Pull requests: create, record and read sessions, review, merge, the merge queue |
-| `session` | Your harness's session: start, update, record, end, get, list; dispatch work on an issue; who else is working |
+| `session` | Your harness's session: start, update, record, end, get, list; dispatch work on a work item; who else is working |
 | `workflow` | Workflow runs and logs, checks, deployments, environments and runners |
 | `observability` | A project's requests, logs, traces, errors and metrics in production |
 | `package` | Packages in every registry |
@@ -367,7 +373,7 @@ requests as the repository and a `number`.
 | `webhook` | Webhooks and their deliveries |
 | `access` | Who has which role on a repository, and deploy keys |
 | `team` | Teams and their members and repositories |
-| `workspace` | Workspaces, members, integrations, projects, rulesets and token rules |
+| `workspace` | Workspaces, members, labels, milestones, integrations, projects, rulesets and token rules |
 | `ai` | The workspace's AI providers, and what Ask answers with |
 | `billing` | Usage, budget and invoices |
 | `notifications` | Your inbox |
@@ -407,7 +413,7 @@ codex plugin add g1t@g1t
 In the ChatGPT desktop app's Plugins directory, select the **g1t** marketplace,
 install **g1t**, and authorize its MCP connection. Restart the app if the source
 has not appeared. The plugin bundles the MCP server and a skill for working on
-g1t issues and recording sessions. It does not install Claude Code's hooks.
+g1t work items and recording sessions. It does not install Claude Code's hooks.
 If you already added the standalone `g1t` MCP server, disable that duplicate
 connection when using the plugin.
 

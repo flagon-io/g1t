@@ -32,6 +32,18 @@ checklists, preview stacks and project dependencies, and invite-only
 registration. Wherever this review leans on mirroring as a live bridge to
 GitHub, or on any of these, read it as history.
 
+**Decision, 2026-10-17:** issues became workspace-level **work items**
+(g1t #57). A work item belongs to the workspace, not to one repository, and
+links any number of its repositories, each as `origin`, `target` or
+`touched`; it closes once every target has landed. Work items and new pull
+requests share one sequence of numbers per workspace. Sessions are still
+recorded per checkout, against the repository they run in, but the work
+item a session works on is the workspace's, and claims attach to the
+workspace's work items, not to a repository. Pull requests, path overlaps
+and the merge queue stay per repository. Wherever this review says
+"issue", read work item; wherever it treats coordination around an issue
+as per repository, read it as the workspace's.
+
 Labels used throughout:
 
 | Label | Meaning |
@@ -928,7 +940,7 @@ repo. What can actually go wrong, and what g1t can know:
 - **Not created implicitly from touched files.** Touches are signals, leases are intentions. Keep them separate so a broad `grep -l | xargs sed` doesn't "claim" half the repo.
 - **TTL** ≤ 30 min, renewed by any event from the owning session. Released on `SessionEnd`; expired on `abandoned`.
 - **Disconnected clients:** the DO is the clock. A laptop that comes back after expiry gets `lease_expired` in advice and may re-acquire.
-- **Storage:** one `RepoCoordinator` Durable Object per repository (SQLite inside), snapshotting to D1 for the board and history. It is per repo because coordination is meaningless across repos, and a DO handles ~1k req/s, orders of magnitude above one repo's session traffic.
+- **Storage:** one `RepoCoordinator` Durable Object per repository (SQLite inside), snapshotting to D1 for the board and history. It is per repo because coordination is meaningless across repos, and a DO handles ~1k req/s, orders of magnitude above one repo's session traffic. *(Superseded in part, 2026-10-17: work items now span repositories, so a claim on a work item belongs to the workspace's work item; path overlaps and sessions stay per repository. See the decision at the top.)*
 
 ### VII.3 Presence and the overlap index
 

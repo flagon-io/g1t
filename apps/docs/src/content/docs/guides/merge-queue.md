@@ -145,8 +145,8 @@ has landed, `main` moves to exactly the state that was tested: since each
 state was built on the one ahead of it, that is a fast-forward to the
 commits its method made, which are the commits its checks ran on. The pull
 request is recorded as merged by its method, with the commit `main` moved
-to as its merge commit. The issue closes and the other pull requests for
-it are superseded, as with any merge.
+to as its merge commit. Its work item records the repository as landed, and the other pull
+requests for it are superseded, as with any merge.
 
 Current reviews and branch rules are checked again before publication,
 against the combined commit's checks and the entry's merge method. Once publication starts, removal,
@@ -262,7 +262,7 @@ failure before choosing a repair.
    g1t found: the pull requests it fails with, whether that was narrowed
    down, and the check that failed; or, with nothing ahead, the pull
    requests that landed on `main` since it branched.
-3. Its issue's conversation says the same in one line, and so does the
+3. Its work item's conversation says the same in one line, and so does the
    pull request's [session](/guides/why-blame/#sessions), so the agent
    working on it reads it there.
 4. A [decision record](/guides/why-blame/#decision-records) of kind
@@ -272,7 +272,7 @@ failure before choosing a repair.
    is the latest of these.
 5. The `integration.failed` [event](/guides/webhooks/#events) carries the
    same to webhooks and to anyone following the repository's events:
-   `pull` (the entry that failed, also `number`), `issue`, `combination`
+   `pull` (the entry that failed, also `number`), `item`, `combination`
    (the pull requests tested together, in order), `check` (`name`,
    `conclusion`, `url`), `bisected`, `suspects`, `other_pulls`, `landed`
    (with nothing ahead, the pull requests merged into `main` since it
@@ -285,9 +285,9 @@ decision and the `integration.passed` event, with `pull` and `combination`.
 On the site, the pull request shows the failure above its checks until it
 passes in the queue or merges: the pull requests tested together, with the
 one that answers for it marked, the check that failed (linked to its run),
-what it fails with, and the fix once one is recorded. Its issue shows the
+what it fails with, and the fix once one is recorded. Its work item shows the
 same under its pull requests, and the repository's
-[Work page](/guides/sessions/#on-the-site) lists it among what happened.
+[Sessions page](/guides/sessions/#on-the-site) lists it among what happened.
 
 ### Getting back in the queue
 

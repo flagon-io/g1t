@@ -4,7 +4,7 @@ description: Start the core forge on your own machine with Docker Compose.
 ---
 
 g1t is MIT licensed. You can run the core forge on your own machine:
-accounts, workspaces, repositories, git over HTTP, issues and pull
+accounts, workspaces, repositories, git over HTTP, work items and pull
 requests, the site to browse them, and the REST API and MCP server. Your
 repositories are plain bare git repositories on a Docker volume.
 
@@ -18,7 +18,7 @@ a private network, not yet for an installation on the open internet.
 | Sign up, sign in, email confirmation | Works. Mail goes to the bundled Mailpit inbox. |
 | Workspaces, members, access tokens | Works |
 | Repositories: create, push and clone over HTTP, browse code, commits | Works. A fresh clone's pack is kept in the bundled object store, so the next clone of the same commit is served from there. |
-| Issues, comments, labels | Works |
+| Work items, comments, labels | Works |
 | Pull requests from a branch or from a fork, merged onto the default branch | Works, when the pull request is up to date with the default branch. |
 | The merge queue | Takes pull requests and shows them waiting. Testing and landing them needs g1t's runner, which is off: take a pull request out of the queue, or turn the queue off, to merge it. |
 | [The REST API](/reference/api/), OAuth and [MCP](/reference/mcp/) | Work, on a port of their own: `http://localhost:8789`, with the MCP server at `http://localhost:8789/mcp` |
@@ -117,7 +117,7 @@ access token examples show your own addresses.
 
 1. It signs up a new account, confirms it through Mailpit, makes a
    workspace and a repository, pushes and clones (twice, the second from
-   the clone pack cache), opens an issue and reads the code back through
+   the clone pack cache), opens a work item and reads the code back through
    the site.
 2. It makes an access token and calls the API, the OAuth metadata and the
    MCP server with it.
@@ -156,7 +156,7 @@ Set these in the environment, or in a `.env` file next to
 | `API_PORT` | `8789` | The port the API and the MCP server are published on |
 | `API_URL` | `PUBLIC_URL`'s host on `API_PORT` | The address of the API, as people and applications reach it. It is also the OAuth issuer. Set it when the API is behind a proxy, for example `https://api.git.example.com`. |
 | `MCP_URL` | `API_URL/mcp` | The address of the MCP server. |
-| `USERCONTENT_URL` | `PUBLIC_URL/-/usercontent` | Where [raw files](/guides/git/#raw-files), avatars and images attached to issues, pull requests and comments are served (the API names attachments by it too). Set it to a host of its own (another domain, not a subdomain of `PUBLIC_URL`'s, for example `https://files.example.net`) that your proxy sends to the same port as `PUBLIC_URL`, keeping the `Host` header, so a file in a repository can never reach the site's session cookie. Unset, they are served under `PUBLIC_URL`, still as plain text or images that cannot run script. |
+| `USERCONTENT_URL` | `PUBLIC_URL/-/usercontent` | Where [raw files](/guides/git/#raw-files), avatars and images attached to work items, pull requests and comments are served (the API names attachments by it too). Set it to a host of its own (another domain, not a subdomain of `PUBLIC_URL`'s, for example `https://files.example.net`) that your proxy sends to the same port as `PUBLIC_URL`, keeping the `Host` header, so a file in a repository can never reach the site's session cookie. Unset, they are served under `PUBLIC_URL`, still as plain text or images that cannot run script. |
 | `MAILPIT_PORT` | `8025` | The port of the Mailpit inbox |
 | `MAIL_FROM` | `g1t <noreply@localhost>` | The sender of g1t's email |
 | `MAIL_URL` | `http://mailpit:8025` | The Mailpit server g1t sends mail through |
@@ -268,7 +268,7 @@ across from GitHub, is in [GitHub](/guides/github/).
 
 | Volume | Holds |
 | --- | --- |
-| `g1t_g1t-data` | Accounts, workspaces, issues and every other record, as SQLite files; the keys that seal stored secrets (`keys.env`) |
+| `g1t_g1t-data` | Accounts, workspaces, work items and every other record, as SQLite files; the keys that seal stored secrets (`keys.env`) |
 | `g1t_g1t-git` | Your repositories, one bare git repository each |
 | `g1t_g1t-objects` | The bundled object store (RustFS): container images' layers and other package files in `g1t-packages`, the `g1t-backups` bucket, the clone packs in `g1t-git-packs`, and files added to pages and artifacts in `g1t-docs-files` |
 | `g1t_g1t-secrets` | The key the site and the git store share |
