@@ -56,11 +56,19 @@ test("a session is named by its title, its subagent task, its pull request, neve
 
 test("Sessions keeps its filters in the address and drops what it does not know", () => {
   const filters = sessionsFilters(new URLSearchParams("repo=web&person=@bo&harness=codex&kind=bogus&state=recent"));
-  assert.deepEqual(filters, { state: "recent", repo: "web", person: "bo", harness: "codex", kind: null });
+  assert.deepEqual(filters, { state: "recent", repo: "web", person: "bo", harness: "codex", kind: null, item: null });
   assert.equal(sessionsQuery(filters), "?state=recent&repo=web&person=bo&harness=codex");
   assert.equal(sessionsQuery({ state: "live" }), "");
   assert.equal(narrowed(filters), true);
   assert.equal(narrowed(sessionsFilters(new URLSearchParams("state=recent"))), false);
+});
+
+test("Sessions can be a work item's own: ?item=12", () => {
+  const filters = sessionsFilters(new URLSearchParams("state=recent&item=12"));
+  assert.equal(filters.item, 12);
+  assert.equal(narrowed(filters), true);
+  assert.equal(sessionsQuery(filters), "?state=recent&item=12");
+  for (const bad of ["0", "-3", "x", "1.5"]) assert.equal(sessionsFilters(new URLSearchParams(`item=${bad}`)).item, null, bad);
 });
 
 test("live sessions come apart from those that ended, most recently heard from first", () => {
