@@ -2,7 +2,7 @@
 //!
 //! It covers everything public, and private content the viewer is a member
 //! of: repositories (name, description, topics, README), code on default
-//! branches, issues and pull requests, people and workspaces. Who may see
+//! branches, work items and pull requests, people and workspaces. Who may see
 //! what is decided when the query runs, against the viewer's current
 //! memberships and each repository's current visibility, never only when
 //! something was indexed.
@@ -20,7 +20,7 @@ use crate::Viewer;
 pub enum SearchType {
     Repositories,
     Code,
-    Issues,
+    Items,
     Pulls,
     People,
 }
@@ -29,7 +29,7 @@ impl SearchType {
     pub const ALL: [SearchType; 5] = [
         SearchType::Repositories,
         SearchType::Code,
-        SearchType::Issues,
+        SearchType::Items,
         SearchType::Pulls,
         SearchType::People,
     ];
@@ -38,19 +38,19 @@ impl SearchType {
         match self {
             SearchType::Repositories => "repositories",
             SearchType::Code => "code",
-            SearchType::Issues => "issues",
+            SearchType::Items => "items",
             SearchType::Pulls => "pulls",
             SearchType::People => "people",
         }
     }
 
     /// Reads a type as people write it: `repositories`, `repos`, `code`,
-    /// `issues`, `pulls`, `prs`, `people`, `users`.
+    /// `items`, `pulls`, `prs`, `people`, `users`.
     pub fn parse(text: &str) -> Option<SearchType> {
         match text.trim().to_lowercase().as_str() {
             "repositories" | "repository" | "repos" | "repo" | "projects" | "project" => Some(SearchType::Repositories),
             "code" => Some(SearchType::Code),
-            "issues" | "issue" => Some(SearchType::Issues),
+            "items" | "item" => Some(SearchType::Items),
             "pulls" | "pull" | "prs" | "pr" | "pull_requests" | "pull-requests" => Some(SearchType::Pulls),
             "people" | "users" | "user" | "workspaces" | "workspace" => Some(SearchType::People),
             _ => None,
@@ -107,7 +107,7 @@ pub struct CodeLine {
 pub enum HitKind {
     Repository,
     Code,
-    Issue,
+    Item,
     Pull,
     User,
     Workspace,
@@ -123,9 +123,13 @@ pub struct Hit {
     pub title: String,
     /// Where it is on g1t.sh, as a path: `/acme/web/blob/main/src/app.rs#L12`.
     pub url: String,
-    /// The repository, as `owner/name`, for everything but people.
+    /// The repository, as `owner/name`, for everything but people and
+    /// workspaces: for a work item, the one it was filed in, if any.
     #[serde(default)]
     pub repo: Option<String>,
+    /// For a work item: its workspace's slug.
+    #[serde(default)]
+    pub workspace: Option<String>,
     /// Whether only members of its workspace can see it.
     #[serde(default)]
     pub private: bool,
@@ -148,17 +152,17 @@ pub struct Hit {
     /// For code: the branch it was read from.
     #[serde(default, rename = "ref")]
     pub git_ref: Option<String>,
-    /// For issues and pull requests.
+    /// For work items and pull requests.
     #[serde(default)]
     pub number: Option<u32>,
-    /// `open` or `closed` for an issue; `draft`, `open`, `merged` or
+    /// `open` or `closed` for a work item; `draft`, `open`, `merged` or
     /// `closed` for a pull request.
     #[serde(default)]
     pub state: Option<String>,
-    /// Who opened the issue or pull request: `g1t` for one g1t made.
+    /// Who opened the work item or pull request: `g1t` for one g1t made.
     #[serde(default)]
     pub author: Option<String>,
-    /// For an issue or pull request g1t opened: who asked for it.
+    /// For a work item or pull request g1t opened: who asked for it.
     #[serde(default)]
     pub requested_by: Option<String>,
     #[serde(default)]
@@ -184,6 +188,7 @@ impl Hit {
             title: title.into(),
             url: url.into(),
             repo: None,
+            workspace: None,
             private: false,
             description: None,
             snippet: Vec::new(),
@@ -209,7 +214,7 @@ impl Hit {
 pub struct SearchCounts {
     pub repositories: u32,
     pub code: u32,
-    pub issues: u32,
+    pub items: u32,
     pub pulls: u32,
     pub people: u32,
 }
@@ -219,7 +224,7 @@ impl SearchCounts {
         match kind {
             SearchType::Repositories => self.repositories,
             SearchType::Code => self.code,
-            SearchType::Issues => self.issues,
+            SearchType::Items => self.items,
             SearchType::Pulls => self.pulls,
             SearchType::People => self.people,
         }
@@ -229,7 +234,7 @@ impl SearchCounts {
         let slot = match kind {
             SearchType::Repositories => &mut self.repositories,
             SearchType::Code => &mut self.code,
-            SearchType::Issues => &mut self.issues,
+            SearchType::Items => &mut self.items,
             SearchType::Pulls => &mut self.pulls,
             SearchType::People => &mut self.people,
         };
@@ -331,6 +336,8 @@ mod tests {
         assert_eq!(SearchType::parse("prs"), Some(SearchType::Pulls));
         assert_eq!(SearchType::parse("Repos"), Some(SearchType::Repositories));
         assert_eq!(SearchType::parse("users"), Some(SearchType::People));
+        assert_eq!(SearchType::parse("items"), Some(SearchType::Items));
+        assert_eq!(SearchType::parse("issues"), None);
         assert_eq!(SearchType::parse("wiki"), None);
     }
 
