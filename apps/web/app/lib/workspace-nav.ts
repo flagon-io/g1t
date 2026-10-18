@@ -231,6 +231,7 @@ export function workspaceRedirect(pathname: string, search = ""): string | null 
 export type ModeKey =
   | "home"
   | "work"
+  | "sessions"
   | "chat"
   | "notifications"
   | "code"
@@ -247,6 +248,7 @@ export type ModeKey =
 const PAGE_MODES: Record<string, ModeKey> = {
   home: "home",
   work: "work",
+  sessions: "sessions",
   chat: "chat",
   artifacts: "artifacts",
   routines: "routines",
@@ -310,6 +312,8 @@ export function modeHome(mode: ModeKey, slug: string): string {
       return homePagePath(slug);
     case "work":
       return `/${slug}/-/work`;
+    case "sessions":
+      return `/${slug}/-/sessions`;
     case "notifications":
       return "/notifications";
     case "chat":

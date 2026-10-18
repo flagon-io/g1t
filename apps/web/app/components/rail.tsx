@@ -234,6 +234,8 @@ export function Rail({
     { key: "home", label: "Home" },
     // Every member's, Code access or not.
     { key: "work", label: "Work" },
+    // What is cooking across the workspace, right after its work items.
+    { key: "sessions", label: "Sessions" },
     {
       key: "chat",
       label: "Chat",
@@ -272,8 +274,8 @@ export function Rail({
                 current={here === item.key && !shown.some((app) => at(app.to))}
                 badge={item.badge}
               />
-              {/* Right after Work: g1t beyond your workspaces (Explore, search, profiles, other workspaces and their public projects). */}
-              {item.key === "work" && (
+              {/* Right after Sessions: g1t beyond your workspaces (Explore, search, profiles, other workspaces and their public projects). */}
+              {item.key === "sessions" && (
                 <RailLink to="/explore" label="Explore" icon={<Compass size={20} />} current={here === "browse" || at("/explore")} />
               )}
             </Fragment>

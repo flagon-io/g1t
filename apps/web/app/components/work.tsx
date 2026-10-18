@@ -14,6 +14,7 @@ import { RefLink, repoScope } from "./commit-message";
 import { Markdown } from "./markdown";
 import { Reactions } from "./reactions";
 import { ItemIcon, PullIcon } from "./work-icons";
+import { sessionPath } from "../lib/work-items";
 import { MentionTextarea } from "./mention-textarea";
 import { ErrorText, SubmitButton, TimeAgo } from "./ui";
 import { Badge } from "./ui/badge";
@@ -423,7 +424,7 @@ function WithReferences({ text, base, workspace, filesUrl }: { text: string; bas
                 )
               ) : part.kind === "session" ? (
                 // The session it was closed in.
-                base ? <SessionChip key={at} href={`${base}/sessions/${part.id}`} id={part.id} /> : <code key={at} className="font-mono text-xs text-fg">{part.text}</code>
+                base ? <SessionChip key={at} href={sessionPath(base.split("/").filter(Boolean)[0] ?? "", part.id)} id={part.id} /> : <code key={at} className="font-mono text-xs text-fg">{part.text}</code>
               ) : (
                 part.text
               ),

@@ -1,10 +1,11 @@
-import { Flag, Plus, Tag } from "lucide-react";
+import { Columns3, Flag, Plus, Tag } from "lucide-react";
 import { Link, useLocation } from "react-router";
 
 import type { Route } from "./+types/list";
 import { page } from "../../../lib/meta";
 import { ButtonLink, EmptyState } from "../../../components/ui";
 import { Card } from "../../../components/ui/card";
+import { CookingStrip } from "../../../components/sessions";
 import { StateTabs } from "../../../components/work";
 import { WorkFiltersBar, WorkItemRow } from "../../../components/work-items";
 import { Unavailable } from "../../../components/boundary";
@@ -15,7 +16,12 @@ import { getViewer, roleIn, unwrap } from "../../../lib/session.server";
 import { filtered, newItemPath, repoFilter, shortPath, workFilters, workPath, workQuery } from "../../../lib/work-items";
 import { workspaceProjects } from "../../../lib/workspace-projects.server";
 import { workPages } from "../../../lib/repo-live";
+import { useRefreshWhile } from "../../../lib/refresh";
+import { splitLive } from "../../../lib/sessions";
 import { useWorkspaceLive } from "../../../lib/use-repo-live";
+
+/** How many live sessions the strip over the list shows. */
+const COOKING = 6;
 
 export function meta({ params, location, ...args }: Route.MetaArgs) {
   const repo = new URLSearchParams(location.search).get("repo");
@@ -31,7 +37,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const assignee = filters.assignee === "@me" ? (viewer?.username ?? "") : filters.assignee;
   // The list is what the page is about; what fills its filters is a part
   // each, whose menu says so when its service fails.
-  const [items, labels, milestones, projects, members] = await Promise.all([
+  const [items, labels, milestones, projects, members, cooking] = await Promise.all([
     work.listWorkItems(workspace, viewer, {
       state: filters.state,
       label: filters.label || undefined,
@@ -45,7 +51,10 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     part(workspaceProjects(workspace, viewer), "Repositories"),
     // A member filters by the workspace's people; anyone else, by name in the address.
     member ? part(identity.listMembers(workspace, viewer), "The workspace's people") : null,
+    // What is cooking now, over the list: a nicety, left out when Sessions cannot say.
+    work.listWorkspaceSessions(workspace, viewer, { shown: "live", sessionsOnly: true, repo: filters.repo ? shortPath(filters.repo, workspace) : undefined, limit: 30 }).catch(() => null),
   ]);
+  const live = cooking?.ok ? splitLive(cooking.value.sessions) : null;
   return {
     workspace,
     filters,
@@ -58,6 +67,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     repos: isFailed(projects) || !projects.ok ? null : projects.value.filter((p) => p.workspace.toLowerCase() === workspace).map((p) => p.slug).sort(),
     people: members == null || isFailed(members) || !members.ok ? null : members.value.map((m) => m.username).sort(),
     labelsFailed: isFailed(labels),
+    cooking: live ? { sessions: [...live.active, ...live.idle].slice(0, COOKING), total: live.active.length + live.idle.length } : null,
   };
 }
 
@@ -69,8 +79,11 @@ export default function WorkList({ loaderData }: Route.ComponentProps) {
   // The tabs keep the filters; each filter keeps the state and the others.
   const kept = new URLSearchParams(workQuery({ ...filters, state: "open" }));
   useWorkspaceLive({ workspace, member, match: workPages.list() });
+  // Sessions go idle and end with no event to say so.
+  useRefreshWhile((loaderData.cooking?.total ?? 0) > 0, 30_000);
   return (
     <div>
+      {loaderData.cooking && <CookingStrip sessions={loaderData.cooking.sessions} total={loaderData.cooking.total} workspace={workspace} repo={repoName} />}
       {loaderData.labelsFailed && (
         <div className="mb-3">
           <Unavailable what="Labels" compact />
@@ -96,6 +109,13 @@ export default function WorkList({ loaderData }: Route.ComponentProps) {
           choices={{ repos: loaderData.repos, labels: loaderData.labels, milestones: loaderData.milestones, people: loaderData.people, me: loaderData.me }}
         />
         <span className="ml-auto hidden items-center gap-1 sm:flex">
+          <Link
+            to={workPath(workspace, repoName ? `board?repo=${encodeURIComponent(repoName)}` : "board")}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-muted transition-colors hover:bg-surface hover:text-fg"
+          >
+            <Columns3 size={14} />
+            Board
+          </Link>
           <Link
             to={workPath(workspace, "labels")}
             className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-muted transition-colors hover:bg-surface hover:text-fg"

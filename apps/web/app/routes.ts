@@ -227,15 +227,22 @@ export default [
       route("-/home", "routes/workspace/home.tsx"),
       route("-/home/seen", "routes/workspace/home-seen.ts"),
       // Work: the workspace's work items, for every member. The list (its
-      // filters in the address), a new one, the labels and milestones they
-      // share with pull requests, `#12` read in the workspace, and each item.
+      // filters in the address), the board of them as they move, a new one,
+      // the labels and milestones they share with pull requests, `#12` read
+      // in the workspace, and each item.
       route("-/work", "routes/workspace/work/list.tsx"),
+      route("-/work/board", "routes/workspace/work/board.tsx"),
       route("-/work/new", "routes/workspace/work/new.tsx"),
       route("-/work/labels", "routes/workspace/work/labels.tsx"),
       route("-/work/milestones", "routes/workspace/work/milestones.tsx"),
       route("-/work/milestones/:number", "routes/workspace/work/milestone.tsx"),
       route("-/work/ref/:number", "routes/workspace/work/ref.ts"),
       route("-/work/:number", "routes/workspace/work/item.tsx"),
+      // Sessions: what is cooking across the workspace, in every repository
+      // of it the viewer may read (live sessions of every kind, the merge
+      // queues, what landed and what happened), and one session's page.
+      route("-/sessions", "routes/workspace/sessions/list.tsx"),
+      route("-/sessions/:id", "routes/workspace/sessions/session.tsx"),
       route("-/today", "routes/workspace/moved.ts", { id: "routes/workspace/moved-today" }),
       route("-/apps", "routes/workspace/apps.tsx"),
       // Routines: standing work for @g1t, on a schedule or when something
@@ -261,16 +268,14 @@ export default [
   // the card over a `#12` in a commit message or on a timeline.
   route(":owner/:repo/ref/:number", "routes/repo/ref-card.ts"),
   // A repository's issues, labels and milestones moved to its workspace's
-  // Work, and its Work page became Sessions: old links are sent on
-  // (routes/repo/moved-work.ts), before the repository's own pages.
+  // Work: old links are sent on (routes/repo/moved-work.ts), before the
+  // repository's own pages.
   route(":owner/:repo/issues", "routes/repo/moved-work.ts", { id: "routes/repo/moved-issues" }),
   route(":owner/:repo/issues/new", "routes/repo/moved-work.ts", { id: "routes/repo/moved-issue-new" }),
   route(":owner/:repo/issues/:number", "routes/repo/moved-work.ts", { id: "routes/repo/moved-issue" }),
   route(":owner/:repo/labels", "routes/repo/moved-work.ts", { id: "routes/repo/moved-labels" }),
   route(":owner/:repo/milestones", "routes/repo/moved-work.ts", { id: "routes/repo/moved-milestones" }),
   route(":owner/:repo/milestones/:number", "routes/repo/moved-work.ts", { id: "routes/repo/moved-milestone" }),
-  route(":owner/:repo/work", "routes/repo/moved-work.ts", { id: "routes/repo/moved-work" }),
-  route(":owner/:repo/work/sessions/:id", "routes/repo/moved-work.ts", { id: "routes/repo/moved-work-session" }),
   // Why a line is the way it is, fetched by the blame view.
   route(":owner/:repo/why/:hash", "routes/repo/why.ts"),
   // Files of a large change with their lines, fetched as the diff view reaches them.
@@ -332,12 +337,6 @@ export default [
       route("pull/:number/:tab?", "routes/repo/pull.tsx"),
       route("queue", "routes/repo/queue.tsx"),
       route("usage", "routes/repo/usage.tsx"),
-      // Sessions: who is working on what, live (claims, harness sessions,
-      // the queue, coordination events), and the sessions recorded on its
-      // pull requests. One session's page by its id (`ses_…`), or a pull
-      // request's recorded session by its number.
-      route("sessions", "routes/repo/sessions.tsx"),
-      route("sessions/:id", "routes/repo/session.tsx"),
       route("actions", "routes/repo/actions.tsx"),
       route("actions/runs/:id", "routes/repo/actions-run.tsx"),
       route("actions/runs/:id/artifacts/:name", "routes/repo/actions-artifact.ts"),

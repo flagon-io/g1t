@@ -1,4 +1,4 @@
-import { Database, Activity, BarChart3, BrickWall, Building2, ChartLine, Flag, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTodo, Lock, LogOut, Mail, MonitorCog, MonitorDown, Package, PlayCircle, Plug, Plus, Repeat, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Star, House, Ticket, TrendingUp, UserPlus, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
+import { Database, Activity, BarChart3, Bot, Cpu, Columns3, Radio, ScrollText, BrickWall, Building2, ChartLine, Flag, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTodo, Lock, LogOut, Mail, MonitorCog, MonitorDown, Package, PlayCircle, Plug, Plus, Repeat, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Star, House, Ticket, TrendingUp, UserPlus, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -81,7 +81,7 @@ import type { AccountMenuData } from "../routes/settings-menu-json";
 import { useLiveBadges } from "../lib/notify-client";
 import { OwnPresenceDot, OwnPresenceItems, StatusDialog } from "./presence";
 import { THEME_COMMANDS, ThemeMenuSwitch } from "./theme-switch";
-import { newItemPath, repoWorkPath, workPath } from "../lib/work-items";
+import { newItemPath, repoWorkPath, sessionsPath, workPath } from "../lib/work-items";
 
 /**
  * What the sidebar needs, worked out by the root loader. For a visitor who
@@ -832,14 +832,8 @@ function RepoMenu({
         <SidebarLink to={`${base}/code`} also={[`${base}/tree`, `${base}/blob`, `${base}/commits`, `${base}/commit`, `${base}/branches`, `${base}/tags`, `${base}/compare`, ...soonPaths(base, "Code")]} icon={<Code2 size={15} />}>
           Code
         </SidebarLink>
-        {/* Its work items: the workspace's Work list, filtered to it. */}
-        {shows.has("work") && (
-          <SidebarLink to={repoWorkPath(repo.namespace, repo.name)} icon={<ListTodo size={15} />} count={repo.items}>
-            Work
-          </SidebarLink>
-        )}
         {shows.has("pulls") && (
-          <SidebarLink to={`${base}/pulls`} also={[`${base}/pull`, `${base}/queue`, `${base}/sessions`]} icon={<GitPullRequest size={15} />} count={repo.pulls}>
+          <SidebarLink to={`${base}/pulls`} also={[`${base}/pull`, `${base}/queue`]} icon={<GitPullRequest size={15} />} count={repo.pulls}>
             Pull requests
           </SidebarLink>
         )}
@@ -1425,7 +1419,9 @@ export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean
 /**
  * Work's sidebar, and its menu on a phone (the Work tab tapped again):
  * the views people keep coming back to, saved in the address (open, yours,
- * closed), then the workspace's labels and milestones, which Work holds.
+ * closed), the board of them as they move, then the workspace's labels and
+ * milestones, which Work holds. On a phone the menu also leads to
+ * Sessions, which has no tab of its own there.
  */
 function WorkSidebar({ slug, username }: { slug: string; username: string }) {
   const { pathname: path, search } = useSidebarLocation();
@@ -1449,6 +1445,14 @@ function WorkSidebar({ slug, username }: { slug: string; username: string }) {
           <SidebarLink to={`${list}?state=closed`} icon={<Check size={15} />} current={view({ state: "closed" })}>
             Closed
           </SidebarLink>
+          <SidebarLink to={workPath(slug, "board")} icon={<Columns3 size={15} />} current={at("board")}>
+            Board
+          </SidebarLink>
+          <div className="md:hidden">
+            <SidebarLink to={sessionsPath(slug)} icon={<Activity size={15} />}>
+              Sessions
+            </SidebarLink>
+          </div>
           <SidebarLink to={newItemPath(slug)} icon={<Plus size={15} />} current={at("new")}>
             New work item
           </SidebarLink>
@@ -1460,6 +1464,58 @@ function WorkSidebar({ slug, username }: { slug: string; username: string }) {
           </SidebarLink>
           <SidebarLink to={workPath(slug, "milestones")} icon={<Flag size={15} />} current={at("milestones")}>
             Milestones
+          </SidebarLink>
+        </NavRows>
+      </nav>
+    </div>
+  );
+}
+
+/**
+ * Sessions' sidebar, and its menu on a phone: what is going now, every
+ * session, your own, and each kind, kept in the address.
+ */
+function SessionsSidebar({ slug, username }: { slug: string; username: string }) {
+  const { pathname: path, search } = useSidebarLocation();
+  const list = sessionsPath(slug);
+  const query = new URLSearchParams(search);
+  const onList = path === list;
+  const view = (want: Record<string, string>) =>
+    onList && [...query.keys()].every((key) => key in want) && Object.entries(want).every(([key, value]) => query.get(key) === value);
+  return (
+    <div className="flex h-full flex-col">
+      <ModeHeader title="Sessions" />
+      <nav aria-label="Sessions" className={PANEL}>
+        <NavRows>
+          <SidebarLink to={list} icon={<Radio size={15} />} current={view({})}>
+            Live now
+          </SidebarLink>
+          <SidebarLink to={sessionsPath(slug, { state: "recent" })} icon={<History size={15} />} current={view({ state: "recent" })}>
+            Recent
+          </SidebarLink>
+          <SidebarLink to={sessionsPath(slug, { person: username })} icon={<CircleUserRound size={15} />} current={view({ person: username })}>
+            Yours
+          </SidebarLink>
+        </NavRows>
+        <Rule />
+        <NavRows>
+          <SidebarLink to={sessionsPath(slug, { kind: "harness" })} icon={<Bot size={15} />} current={view({ kind: "harness" })}>
+            People's harnesses
+          </SidebarLink>
+          <SidebarLink to={sessionsPath(slug, { kind: "hosted" })} icon={<Sparkles size={15} />} current={view({ kind: "hosted" })}>
+            Started on g1t
+          </SidebarLink>
+          <SidebarLink to={sessionsPath(slug, { kind: "agent" })} icon={<Cpu size={15} />} current={view({ kind: "agent" })}>
+            g1t's agent
+          </SidebarLink>
+          <SidebarLink to={sessionsPath(slug, { kind: "recorded" })} icon={<ScrollText size={15} />} current={view({ kind: "recorded" })}>
+            Recorded on pull requests
+          </SidebarLink>
+        </NavRows>
+        <Rule />
+        <NavRows>
+          <SidebarLink to={workPath(slug, "board")} icon={<Columns3 size={15} />}>
+            Board
           </SidebarLink>
         </NavRows>
       </nav>
@@ -1673,11 +1729,15 @@ function Breadcrumbs({
     } else if (third === "work") {
       // Work: Work / #12, Work / Labels, Work / Milestones / #3.
       trail.push({ label: "Work", to: page });
-      const words: Record<string, string> = { new: "New work item", labels: "Labels", milestones: "Milestones" };
+      const words: Record<string, string> = { new: "New work item", board: "Board", labels: "Labels", milestones: "Milestones" };
       if (fourth && /^\d+$/.test(fourth)) trail.push({ label: `Work item #${fourth}`, short: `#${fourth}`, to: `${page}/${fourth}` });
       else if (fourth && words[fourth]) trail.push({ label: words[fourth]!, to: `${page}/${fourth}` });
       const fifth = parts[4];
       if (fourth === "milestones" && fifth) trail.push({ label: `#${fifth}`, to: `${page}/milestones/${fifth}` });
+    } else if (third === "sessions") {
+      // Sessions: Sessions / one session.
+      trail.push({ label: "Sessions", to: page });
+      if (fourth) trail.push({ label: "Session", to: `${page}/${fourth}` });
     } else if (third) {
       // The workspace's settings pages each stand alone: General, Members, Permissions.
       trail.push({ label: third === "settings" ? "General" : (SECTIONS[third] ?? third), to: page });
@@ -1812,6 +1872,8 @@ function commandsFor(user: User, shell: ShellData): Command[] {
           { label: "Home", to: homePagePath(ws.slug), icon: <House size={15} /> },
           { label: "Work", hint: "The workspace's work items", to: workPath(ws.slug), icon: <ListTodo size={15} /> },
           { label: "New work item", to: newItemPath(ws.slug), icon: <Plus size={15} /> },
+          { label: "Board", hint: "Work items as they move", to: workPath(ws.slug, "board"), icon: <Columns3 size={15} /> },
+          { label: "Sessions", hint: "What is cooking across the workspace", to: sessionsPath(ws.slug), icon: <Activity size={15} /> },
           { label: "Labels", hint: "Work", to: workPath(ws.slug, "labels"), icon: <ListTodo size={15} /> },
           { label: "Milestones", hint: "Work", to: workPath(ws.slug, "milestones"), icon: <ListTodo size={15} /> },
           { label: "Chat", to: `/${ws.slug}/-/chat`, icon: <MessagesSquare size={15} /> },
@@ -1840,6 +1902,7 @@ function commandsFor(user: User, shell: ShellData): Command[] {
       { label: "Overview", hint: name, to: base, icon: <LayoutGrid size={15} /> },
       { label: "Code", hint: name, to: `${base}/code`, icon: <Code2 size={15} /> },
       { label: "Work", hint: name, to: repoWorkPath(repo.namespace, repo.name), icon: <ListTodo size={15} /> },
+      { label: "Sessions", hint: name, to: sessionsPath(repo.namespace, { repo: repo.name }), icon: <Activity size={15} /> },
       { label: "New work item", hint: name, to: newItemPath(repo.namespace, repo.name), icon: <Plus size={15} /> },
       { label: "Pull requests", hint: name, to: `${base}/pulls`, icon: <GitPullRequest size={15} /> },
       { label: "Commits", hint: name, to: `${base}/commits`, icon: <History size={15} /> },
@@ -1955,12 +2018,13 @@ function sidebarFor(mode: ModeKey, workspace: boolean): Panel | null {
 }
 
 /** The sidebars that sit beside the page, one per mode that has one. */
-type Panel = "work" | "chat" | "artifacts" | "code" | "notifications" | "people" | "workspace" | "account" | "browse";
+type Panel = "work" | "sessions" | "chat" | "artifacts" | "code" | "notifications" | "people" | "workspace" | "account" | "browse";
 
 /** Each sidebar's name, for the button that opens it on a phone. */
 const MODE_MENU: Record<Panel, string> = {
   browse: "Explore",
   work: "Work",
+  sessions: "Sessions",
   chat: "Chat",
   artifacts: "Artifacts",
   code: "Code",
@@ -2120,6 +2184,8 @@ export function AppShell({
         return <CodeSidebar user={user} shell={shell} missing={missing} browsing={browsing} />;
       case "work":
         return <WorkSidebar slug={ws.slug} username={user.username} />;
+      case "sessions":
+        return <SessionsSidebar slug={ws.slug} username={user.username} />;
       case "chat":
         return <ChatSidebar slug={ws.slug} />;
       case "artifacts":

@@ -26,7 +26,7 @@
 import { CONNECTORS, type Connector, connectorPath } from "@g1t/contracts/connectors";
 
 /** The apps that are always in the rail. */
-export type BuiltinApp = "home" | "work" | "chat" | "notifications" | "code" | "artifacts" | "routines" | "people" | "workspace";
+export type BuiltinApp = "home" | "work" | "sessions" | "chat" | "notifications" | "code" | "artifacts" | "routines" | "people" | "workspace";
 
 export type BuiltinInfo = {
   key: BuiltinApp;
@@ -43,6 +43,7 @@ const under = (page: string) => (slug: string) => `/${slug}/-/${page}`;
 export const BUILTINS: BuiltinInfo[] = [
   { key: "home", name: "Home", path: under("home") },
   { key: "work", name: "Work", path: under("work") },
+  { key: "sessions", name: "Sessions", path: under("sessions") },
   { key: "chat", name: "Chat", path: under("chat") },
   { key: "notifications", name: "Notifications", path: () => "/notifications" },
   { key: "code", name: "Code", path: under("overview"), code: true },
@@ -56,12 +57,13 @@ export const BUILTINS: BuiltinInfo[] = [
 export const PHONE_TABS = ["home", "work", "chat", "notifications"] as const satisfies readonly BuiltinApp[];
 
 /**
- * The built-in apps the phone's More sheet has, in its order: Code first,
- * for a member with Code access, then the rest of the rail's.
+ * The built-in apps the phone's More sheet has, in its order: Sessions
+ * first, then Code for a member with Code access, then the rest of the
+ * rail's.
  */
 export function phoneMoreApps(code: boolean): BuiltinApp[] {
-  const rest = BUILTINS.map((app) => app.key).filter((key) => !(PHONE_TABS as readonly string[]).includes(key) && key !== "code");
-  return code ? ["code", ...rest] : rest;
+  const rest = BUILTINS.map((app) => app.key).filter((key) => !(PHONE_TABS as readonly string[]).includes(key) && key !== "code" && key !== "sessions");
+  return code ? ["sessions", "code", ...rest] : ["sessions", ...rest];
 }
 
 /** The built-in app `key`. */

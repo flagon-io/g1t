@@ -1,6 +1,6 @@
 /**
  * A repository's issues, labels and milestones moved to its workspace's
- * Work, and its Work page became its Sessions page: old links are sent on
+ * Work: old links are sent on
  * (lib/work-items.ts `movedWorkPath` says where). An old issue's address
  * is read as `#n` in the repository (lib/refs.ts): the work item its issue
  * became, or a pull request. A work item belongs to the workspace, so these

@@ -45,7 +45,7 @@ import { isFailed, part } from "../../../lib/partial";
 import { parseBlockedBy, resolutionOf } from "../../../lib/coordination";
 import { refPath } from "../../../lib/refs.server";
 import { itemAbilities } from "../../../lib/work-access";
-import { LINK_ROLES, ROLE_LABELS, itemPath, originOf, repoFilter, shortPath, workPath } from "../../../lib/work-items";
+import { LINK_ROLES, ROLE_LABELS, itemPath, originOf, repoFilter, sessionPath, shortPath, workPath } from "../../../lib/work-items";
 import { workspaceProjects } from "../../../lib/workspace-projects.server";
 import { workPages } from "../../../lib/repo-live";
 import { useWorkspaceLive } from "../../../lib/use-repo-live";
@@ -206,7 +206,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       if (!result) return { error: "The session could not be started. Try again in a moment.", action: intent };
       if (!result.ok) return { error: result.error.message, action: intent };
       const started = result.value;
-      const to = sitePath(started.sessionUrl, request.url) ?? (started.session ? `/${repo.namespace}/${repo.name}/sessions/${started.session.id}` : null);
+      const to = sitePath(started.sessionUrl, request.url) ?? (started.session ? sessionPath(repo.namespace, started.session.id) : null);
       if (!to) return { error: "No session was started.", action: intent };
       throw redirect(to);
     }

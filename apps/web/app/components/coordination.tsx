@@ -70,6 +70,7 @@ import {
   titleHint,
   titleIsProvisional,
 } from "../lib/coordination";
+import { sessionPath } from "../lib/work-items";
 import { AgentSetup } from "./agent-setup";
 import { Input, SubmitButton, TimeAgo } from "./ui";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
@@ -236,7 +237,7 @@ export function EndSessionDialog({
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
-        <fetcher.Form method="post" action={`${base}/sessions/${session.id}`} className="grid gap-5">
+        <fetcher.Form method="post" action={sessionPath(workspaceOf(base), session.id)} className="grid gap-5">
           <input type="hidden" name="action" value="end" />
           <AlertDialogHeader>
             <AlertDialogTitle>End {sessionTitle(session)}?</AlertDialogTitle>
@@ -314,12 +315,12 @@ export function SessionLine({
           {titleIsProvisional(session) ? (
             // Muted while it is what the first prompt asked: g1t names it once the work is clear.
             <Hint label={titleHint(session)}>
-              <Link to={`${base}/sessions/${session.id}`} prefetch="intent" className="font-medium text-muted hover:text-accent">
+              <Link to={sessionPath(workspaceOf(base), session.id)} prefetch="intent" className="font-medium text-muted hover:text-accent">
                 {sessionTitle(session)}
               </Link>
             </Hint>
           ) : (
-            <Link to={`${base}/sessions/${session.id}`} prefetch="intent" className="font-medium hover:text-accent">
+            <Link to={sessionPath(workspaceOf(base), session.id)} prefetch="intent" className="font-medium hover:text-accent">
               {sessionTitle(session)}
             </Link>
           )}
@@ -391,7 +392,7 @@ export function TimelineSession({ session, base }: { session: WorkSession; base:
       }
       aside={
         <Link
-          to={`${base}/sessions/${session.id}`}
+          to={sessionPath(workspaceOf(base), session.id)}
           prefetch="intent"
           className="inline-flex items-center gap-1 text-xs text-faint hover:text-fg"
         >
@@ -400,7 +401,7 @@ export function TimelineSession({ session, base }: { session: WorkSession; base:
         </Link>
       }
     >
-      <Link to={`${base}/sessions/${session.id}`} prefetch="intent" className="font-medium hover:text-accent">
+      <Link to={sessionPath(workspaceOf(base), session.id)} prefetch="intent" className="font-medium hover:text-accent">
         {sessionTitle(session)}
       </Link>
       <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
@@ -447,7 +448,7 @@ export function SubagentLine({ session, base }: { session: WorkSession; base: st
   return (
     <div className="flex min-w-0 items-center gap-1.5 text-xs">
       <Bot size={12} className="shrink-0 text-faint" />
-      <Link to={`${base}/sessions/${session.id}`} prefetch="intent" className="shrink-0 font-medium text-fg hover:text-accent">
+      <Link to={sessionPath(workspaceOf(base), session.id)} prefetch="intent" className="shrink-0 font-medium text-fg hover:text-accent">
         {session.agentType ?? "Subagent"}
       </Link>
       {session.task && (
@@ -780,11 +781,12 @@ export function CoordinationFeed({ lines, base }: { lines: FeedLine[]; base: str
             <p className="min-w-0 grow wrap-break-word text-muted">
               <PersonLink name={line.who ?? "g1t"} className="font-medium text-fg hover:underline" />
               {line.harness && <span className="text-faint"> via {harnessName(line.harness)}</span>}{" "}
-              <NumberedText text={line.text} base={base} />
+              <NumberedText text={line.text} base={line.repo ? `/${line.repo}` : base} />
+              {line.repo && line.repo !== base.slice(1) && <span className="text-faint"> in {line.repo}</span>}
               {line.session && (
                 <>
                   {" · "}
-                  <Link to={`${base}/sessions/${line.session}`} className="text-fg hover:text-accent">
+                  <Link to={sessionPath(workspaceOf(base), line.session)} className="text-fg hover:text-accent">
                     the session
                   </Link>
                 </>

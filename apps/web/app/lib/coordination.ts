@@ -405,6 +405,8 @@ export type FeedLine = {
   number: number | null;
   /** The harness session it is about, by id, for a link to its page. */
   session?: string;
+  /** The repository it happened in, `owner/name`, in a feed across a workspace's. */
+  repo?: string;
   tone: "neutral" | "accent" | "success" | "warn" | "danger" | "info";
 };
 
