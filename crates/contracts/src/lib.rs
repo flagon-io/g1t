@@ -33,6 +33,7 @@ pub mod inbox;
 pub mod live;
 pub mod integrations;
 pub mod members;
+pub mod model_prices;
 mod ids;
 mod names;
 mod outcome;

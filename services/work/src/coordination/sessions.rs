@@ -176,6 +176,10 @@ pub(crate) fn refresh_sql() -> String {
     )
 }
 
+/// Session `?3`'s token usage (`?1`, JSON as reported) and the cost
+/// estimated from it (`?2`): cumulative, so each report replaces the last.
+pub(crate) const SET_USAGE: &str = "UPDATE sessions SET usage = ?1, cost_usd = ?2 WHERE id = ?3";
+
 /// A subagent's heartbeat keeps its parent `?2` seen at `?1`.
 pub(crate) const SEE_PARENT: &str = "UPDATE sessions SET last_seen_at = ?1 WHERE id = ?2 AND state = 'active' AND last_seen_at < ?1";
 
@@ -339,6 +343,8 @@ impl Work {
             model: fields.model.clone(),
             title_source: fields.title.as_ref().map(|_| TitleSource::Agent.as_str().to_owned()),
             title_settled_at: fields.title.as_ref().map(|_| at.clone()),
+            usage: None,
+            cost_usd: None,
         }
         .at(now);
         let started = |session: &Session| g1t_contracts::events::marked(SessionEvent::of(session), Some(&a.actor));
@@ -570,6 +576,20 @@ impl Work {
             model: tidy(a.model.as_deref(), MAX_MODEL_CHARS),
             result: clip(a.result.as_deref().map(shown::clean).as_deref(), MAX_RESULT_CHARS),
         };
+        // Its usage first, so the session returned carries the cost.
+        if let Some(usage) = &a.usage {
+            let usage = match g1t_contracts::model_prices::parse_usage(&serde_json::to_value(usage).unwrap_or_default()) {
+                Ok(usage) => usage,
+                Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
+            };
+            let cost = g1t_contracts::model_prices::estimate(&usage).cost_usd;
+            let json = serde_json::to_string(&usage).unwrap_or_else(|_| "[]".to_owned());
+            self.db
+                .prepare(SET_USAGE)
+                .bind(&[json.into(), cost.map_or(JsValue::NULL, JsValue::from), row.id.as_str().into()])?
+                .run()
+                .await?;
+        }
         self.resume(&repo, row, &a.actor, fields).await
     }
 

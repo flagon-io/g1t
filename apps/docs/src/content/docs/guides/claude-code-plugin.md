@@ -104,9 +104,9 @@ session runs ([Who sees what](/work/sessions/#who-sees-what)).
 | Claude writes a file, makes a branch or a commit, or claims a work item | `g1t session touch --file PATH` (or `--branch`, `--commit`, `--item`) | What it touched: the path from the repository's root, the branch, the commit, the work item. A file is one Claude edited or wrote, or one a shell command changed while it ran (the uncommitted files before and after it), never what was uncommitted already, so sessions sharing a working copy do not claim each other's work. g1t ties the session to the pull requests and work items these lead to, and tells two sessions that touch the same file. |
 | A `git push` reaches the remote | `g1t api update_session -f id=ID -f head_commit=SHA` and `g1t session touch --commit SHA --branch BRANCH` | The commit you pushed and its branch, so the session's entries line up with the code and it is tied to the branch's pull request. |
 | Claude starts a subagent | `g1t session start --parent SESSION --agent-type TYPE --task TASK --prompt PROMPT` | A session of its own for the subagent, under this one, with its kind and the task it was given (its prompt's first 4,000 characters). See [Subagents](#subagents). |
-| A subagent finishes | `g1t session end --result MESSAGE` | Its final message, up to 8,000 characters: what it reported to Claude. |
-| Claude finishes a turn | `g1t session heartbeat` | That the session is still active, which also renews its claims. |
-| The session ends | `g1t session end --reason REASON` | That it ended, and why: you exited, cleared it or logged out. |
+| A subagent finishes | `g1t session heartbeat --usage-json USAGE`, then `g1t session end --result MESSAGE` | The tokens it used, from its own transcript (see [What a session cost](#what-a-session-cost)), then its final message, up to 8,000 characters: what it reported to Claude. |
+| Claude finishes a turn | `g1t session heartbeat --usage-json USAGE` | That the session is still active, which also renews its claims, and the tokens it used so far. |
+| The session ends | `g1t session heartbeat --usage-json USAGE`, then `g1t session end --reason REASON` | The tokens it used, then that it ended, and why: you exited, cleared it or logged out. |
 
 It never records:
 
@@ -115,7 +115,8 @@ It never records:
   for its subagent's final message and id), nor the turns Claude Code
   starts itself to hand Claude a background task's output;
 - Claude's replies or reasoning;
-- your files, environment or transcript.
+- your files, environment or transcript: of the transcript, only the token
+  counts are sent.
 
 A session that stops sending heartbeats reads as idle after 15 minutes and
 ended after 30 minutes, so a closed laptop does not leave work looking
@@ -134,6 +135,34 @@ commands Claude runs (through Claude Code's session environment), so
 Claude's own `g1t` commands act in this session even when another session
 works in the same working copy. A command run before the session's id
 arrives, in its first second, uses the working copy's session.
+
+## What a session cost
+
+When Claude finishes a turn, when a subagent finishes and when the session
+ends, the plugin counts the tokens the session used so far from its
+transcript, the JSONL file Claude Code keeps of it (`transcript_path`, and
+for a subagent its own, `agent_transcript_path`), and sends the counts with
+the heartbeat. g1t estimates what the session cost from them at
+Anthropic's list price and shows it on the session's page; see
+[What a session cost](/guides/sessions/#what-a-session-cost).
+
+- **What is counted**: each model's input tokens, output tokens, cache
+  reads, and cache writes for 5 minutes and for 1 hour, from the `usage`
+  of each response Claude Code recorded (`message.usage` of the assistant
+  lines). Claude Code writes several lines for one response, each with the
+  same usage, so each response counts once, by `message.id` and
+  `requestId`.
+- **Only the counts leave your machine**: per model, the five numbers.
+  Nothing Claude or you wrote in the transcript is sent.
+- **A subagent counts on its own session.** Its parent's transcript leaves
+  out what the subagent used, and the subagent reports its own, so nothing
+  is counted twice.
+- The plugin reads the transcript from where it stopped last time, in the
+  background, so a long session does not slow a hook down. If the
+  transcript cannot be read, the heartbeat goes without usage.
+
+The usage is sent to a g1t CLI of 0.4.1 or later; with an older one,
+everything else is still recorded.
 
 ## The context Claude starts with
 
@@ -274,7 +303,8 @@ claim is allowed, and whoever makes it is told about the first.
 
 If `g1t` is not installed, not signed in, or older than 0.4.0 (the oldest
 that takes every command the hooks run), the hooks record nothing and
-Claude Code says so once. The plugin never installs anything itself.
+Claude Code says so once. A CLI older than 0.4.1 records everything but
+what the session cost. The plugin never installs anything itself.
 Install the CLI or run `g1t auth login`, and the next session is recorded.
 
 To update the CLI, run `g1t upgrade` (0.3.4 and later). For an older CLI,

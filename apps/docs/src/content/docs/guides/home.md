@@ -1,17 +1,21 @@
 ---
 title: Home
-description: Your workspace's front page. Ask g1t what to do, where you're needed now, what happened since you were last here in plain English, what is running, and the one item to start with. How every number is worked out.
+description: Your workspace's front page. The past week in four figures, the daily signal (what your work says today, with the evidence), where you're needed now, what happened since you were last here in plain English, what is running, and the one item to start with. How every number is worked out.
 ---
 
 **Home** is the first page of your workspace, at `/<workspace>/-/home`.
-It opens with **What are we building today?** and a box that
-[asks g1t](#ask-from-home). Under it, the main column is read top to
+Across the top is [the past week](#the-past-week) in four figures, each
+against the week before. Under it, the main column is read top to
 bottom:
 
-1. **Where you're needed**: everything waiting on you, however long ago
+1. **[The daily signal](#the-daily-signal)**: what the workspace's work
+   says today. Its headline is the finding that matters most, and the
+   others follow, each a sentence with its evidence and where to see it.
+   Under them is a box that [asks g1t](#ask-from-home) about any of it.
+2. **Where you're needed**: everything waiting on you, however long ago
    it started, with the action beside each item. Its first row is
    [Start here](#start-here), the one item to do first, and why.
-2. **Since you were last here**: one card for the span. It shows what people
+3. **Since you were last here**: one card for the span. It shows what people
    did, what changed in plain English when you ask for it, and what landed,
    each change with whether it is live yet.
 
@@ -21,8 +25,8 @@ The side column stays in view as you scroll:
 - **[Spent](#spent)**: what the span cost, and the month so far.
 - **[Settled for you](#settled-for-you)**: what finished by itself.
 
-On a phone it is one column: Where you're needed, Running now, the span,
-then Spent and Settled for you.
+On a phone it is one column: the past week, the daily signal, Where
+you're needed, Running now, the span, then Spent and Settled for you.
 
 For a workspace's owners, Home also opens
 [Getting started](/guides/workspaces/#getting-started), the setup guide,
@@ -30,13 +34,62 @@ until they finish or close it. The **Getting started** button at the top
 of Home opens it again at any time, as `?setup=1` does.
 
 Every number on the page comes from what g1t has recorded. Nothing is
-estimated. When a part of g1t does not answer, the section it feeds says
+estimated, and nothing compares your workspace or its teams with anyone
+else's: each figure is set against your own last weeks. When a part of g1t does not answer, the section it feeds says
 so, and the rest of the page still shows. Only what you ask g1t is written
 by a model: [What changed](#what-changed) and the answers in Ask.
 
+## The past week
+
+Four figures for the last seven UTC days. Each shows how it moved since the
+seven days before (green when that is good news, red when it is not) and a
+line over the last ten weeks. Point at the line, or focus it and use the
+arrow keys, to read any week. Each figure opens the page behind it.
+
+| Figure | What it counts |
+| --- | --- |
+| **Agent-authored merges** | Pull requests that merged in the week and were an [agent's](#whose-work-is-an-agents). |
+| **Spend per agent merge** | The week's agent [usage](/guides/usage-and-billing/#the-usage-page) at price, plus what the [sessions](/guides/sessions/) started in it cost (estimated at list price from their token usage), divided by the agent pull requests that merged in it: an average, not what any one cost. A dash when usage can't be read or nothing an agent made merged. |
+| **Stalled changes** | Pull requests open at the end of each week (now, for this one), opened three days or more before, with nothing in the three days before: no push, comment, review, timeline event, check or session. Drafts count. |
+| **Agent rework rate** | Of the agent pull requests that merged in the week, the share a person asked for changes on before they merged. |
+
+### Whose work is an agent's
+
+A pull request is an agent's when g1t's agent opened it, it was opened as
+an agent's, or a [session](/guides/sessions/) is tied to it: linked to it,
+started for it, or pushing its branch. Its owner is the person who asked
+for it, else its author, so an agent's work counts toward the person it
+was for.
+
+## The daily signal
+
+First the day, then one sentence for the finding that matters most today,
+then the others. Each finding names its evidence in a line of figures,
+links to where you can see it, and has **Ask g1t**, which asks
+[Ask](/guides/ask/) to look into it. A finding with a trend has its line
+beside it. When nothing stands out, the headline says what the week did.
+
+| Finding | When it shows |
+| --- | --- |
+| **Work items waiting on one unreviewed change** | An open pull request no one has reviewed is for a work item that other open work items are blocked by. The one holding up the most leads. |
+| **Agent drafts waiting for review** | This week's first reviews waited at least four times as long as agents took to open the pull requests (from their session starting), and at least four hours. Without that gap: first reviews took half as long again as the weeks before. |
+| **A milestone shipped** | A milestone closed in the last seven days, against its due date, with its weeks in build, its merged pull requests and its projects. |
+| **Where agent spend is going** | More than a third of the quarter's agent spend by pull request went into one milestone (else one work item, else one project). Spend is g1t's usage on each pull request and its share of its sessions' cost. |
+| **Stalled changes rising** | At least three more stalled changes than last week, and a quarter more. |
+| **Agent rework moving** | People asked for changes on agents' merged work at least 8 points more, or less, often than over the four weeks before (with five agent merges or more). |
+| **A practice catching on** | Two or more people started using a harness (Claude Code, Codex, Cursor and so on) this month, at least two weeks after the first person did. |
+| **Who works where** | Someone started merging to a project one person has carried (three quarters of its last 90 days' merges), or merged to a project for the first time this week after work elsewhere. |
+
+Findings are ordered by how much they hold up: blocked work first, then
+waits, then what shipped and where spend went. Up to five show, and the
+rest are one click away. What the work says is read again at most every
+five minutes for each person, so a figure can be up to five minutes
+behind. The same reads, at more length, are on the
+[workspace overview](/guides/workspaces/#the-workspace-overview).
+
 ## Ask from Home
 
-The box at the top asks g1t anything about your work. Type a question and
+The box under the daily signal asks g1t anything about your work. Type a question and
 press **Enter** (**Shift+Enter** starts a new line): the top bar's
 [Ask](/guides/ask/) panel opens and sends it, and the answer streams in
 there. Under the box are questions to start with:
@@ -341,6 +394,8 @@ Refreshing in place keeps the same span: it is the same visit.
 A member whose membership does not include Code sees Home without anything
 from Code:
 
+- The past week and the daily signal are not shown. The page opens with
+  **What are we building today?** and the box that asks g1t.
 - People shows what was said and the artifacts edited; nothing from
   repositories.
 - Where you're needed has no rows from Code, and no notifications about a
@@ -362,6 +417,9 @@ When one does not answer:
   deployments or sessions can't be read, Landed shows its rows without
   their live labels or agent markers.
 - Settled for you says when your notifications can't be read.
+- The daily signal says when the work couldn't be read, and the past week
+  is left out. When some projects didn't answer, it says its findings
+  leave them out.
 - What changed says when Ask can't be reached or isn't set up, or when
   the question could not be sent.
 - If your last visit can't be read, the span is the last 24 hours and the
@@ -409,3 +467,24 @@ repositories were named.
 `until`) returns `messages`, `channels` (conversations with at least one)
 and `authors` (`key`, `messages`; most first), over text messages and
 thread replies not deleted in the conversations the viewer can read.
+
+**`workspace_signals`** on the work service takes `workspace`,
+`repo_ids` (at most 100), `viewer`, `until` (a UTC day), `weeks` (1 to
+13), `days` (1 to 28) and `since` (a UTC day, at most 400 days before
+`until`). For the repositories the viewer can read, it returns:
+
+- `weeks`: per repository and week of seven days ending with `until`,
+  `merged`, `agent_merged`, `agent_reworked`, `agent_drafted` and
+  `agent_draft_seconds`, `reviewed` and `review_seconds`, and `stalled`.
+- `days`: per repository and day, `opened`, `merged`, `agent_merged`,
+  `reworked`, `reviews` and `sessions`.
+- `waiting`: open pull requests with no first review, oldest first, at
+  most 50, each with its work item and the open work items it `blocks`.
+- `pulls`: those opened or merged since `since`, at most 3,000 newest
+  first, each with its owner, work item and milestone; `pulls_capped`
+  when there were more.
+- `authors`: per repository and owner, their merges over its history and
+  in the last 90 days.
+- The `items` and `milestones` those name.
+
+Rows are per repository, so a caller asking in batches adds them up.

@@ -134,7 +134,7 @@ impl CoordinationOp {
     pub fn description(self) -> &'static str {
         match self {
             CoordinationOp::StartSession => "Start a session: one run of your own harness (a Claude Code session, a Codex run) on a repository, so others can see who is working on what. `harness` is claude_code, codex, cursor, copilot or other. Give `harness_session_id`, the harness's own id for the session, and starting again with it returns the session already started (refreshing the work item, pull request, branch, title and head given) instead of a new one, so a hook that fires twice is harmless. `item` and `pull` attach it to a work item of the repository's workspace and a pull request of the repository; a pull request for a work item attaches that work item too. A subagent is a session of its own: give `parent_id` (one of your sessions here), its `agent_type`, the `task` and `prompt` its parent gave it, and as `harness_session_id` the parent's harness id, `/agent/` and the subagent's id; it starts on the parent's work item, pull request and branch unless it says otherwise, sees and is seen by its siblings in get_work and list_sessions, and once ended stays ended when started again. Returns the session (`id` `ses_…`, `state` active, idle or ended). A new session, or one started again after it ended, is a session.started event. Needs a confirmed email address and a role that may open work items.",
-            CoordinationOp::UpdateSession => "Update one of your sessions: attach it to a work item or pull request, or change its branch, head commit or title. Only the fields given change. An empty body is a heartbeat: every call keeps the session active and renews the claims made from it. A session reads as idle after 15 minutes without one and ends (`end_reason` timed_out) after 30 minutes; a heartbeat brings a timed-out one back. Attaching a pull request moves the entries recorded so far into that pull request's session. A subagent's `task`, `prompt`, `model` and `result` (what it reported, up to 8,000 characters) can be set too; a subagent that ended takes them and stays ended. Returns the session; one ended with end_session is refused with `409`.",
+            CoordinationOp::UpdateSession => "Update one of your sessions: attach it to a work item or pull request, or change its branch, head commit or title. Only the fields given change. An empty body is a heartbeat: every call keeps the session active and renews the claims made from it. A session reads as idle after 15 minutes without one and ends (`end_reason` timed_out) after 30 minutes; a heartbeat brings a timed-out one back. Attaching a pull request moves the entries recorded so far into that pull request's session. A subagent's `task`, `prompt`, `model` and `result` (what it reported, up to 8,000 characters) can be set too; a subagent that ended takes them and stays ended. `usage` reports the session's token usage so far, per model, replacing what was reported before: g1t estimates `cost_usd` from it at Anthropic's list price (none when no model in it has a known price), with `cost_partial` true when some of it was for a model it has no price for. Returns the session; one ended with end_session is refused with `409`.",
             CoordinationOp::EndSession => "End one of your sessions, with an optional `reason` and `result` (what it reported when it finished: a subagent's final message, up to 8,000 characters, never a tool's output). A session.ended event. Ending one already ended returns it as it is, taking `result` if it had none. Its subagents still going end with it (`parent ended`). Its claims are not released: release them, hand the work item off, or let them expire. Anyone with write access to the repository may also end someone else's session, one left behind by a harness that was killed or never ended it: it ends as `ended by hand by @you`, without their `reason` or `result`.",
             CoordinationOp::GetSession => "A session and its entries, oldest first, numbered within the session (`seq`); `after` gives the entries after that number, 500 at a time. With them: `children`, its subagents and theirs in the order they started (each names its `parent_id`); `touched`, the files, commits, branches, pull requests and work items it and they touched; `links`, the work items and pull requests they worked on and how each was tied (`via`: attached, claim, branch, commit, trailer, opened or ref); `skills`, the skills they used by name; and for a subagent, `root`, the session at the top of its tree. `updates` contains up to 100 oldest pending coordination events that concern this session (id, kind, data, at): those about the work items and pull requests it is on or tied to, or every one while it is on nothing yet; never its own start, end or claims. Reading never acknowledges them; use record_session_entries with acknowledge IDs after considering them. To check for updates without the transcript, give `after` 4294967295. Anyone who can read the repository may. With `workspace` instead of `repo`, the session is found in whichever repository of the workspace it runs in, and `repo` says which.",
             CoordinationOp::ListSessions => "A repository's sessions, most recently heard from first, up to 100: `state` active (heard from in the last 15 minutes), idle or ended; `item` (a work item's number) or `pull` for those on one, attached or tied to it any other way; `path` for those that touched a file (or any under a folder ending in `/`). Subagents are left out unless `subagents` is true, which lists each tree whole. Each says how many `subagents` it started. Anyone who can read the repository may. With `workspace` instead of `repo`, every repository of the workspace you may read: see list_workspace_sessions.",
@@ -206,7 +206,33 @@ impl CoordinationOp {
                 ),
                 &["repo", "harness"],
             ),
-            CoordinationOp::UpdateSession => (with(fields(json!({ "id": id, "result": result })), subagent.clone()), &["repo", "id"]),
+            CoordinationOp::UpdateSession => (
+                with(
+                    fields(json!({
+                        "id": id,
+                        "result": result,
+                        "usage": {
+                            "type": "array",
+                            "description": "The session's token usage so far, one entry per model: `model`, `tier` (`long` for a claude-haiku-5-5 prompt over 100,000 tokens), `input_tokens`, `output_tokens`, `cache_write_5m_tokens`, `cache_write_1h_tokens` and `cache_read_tokens`, each a whole number. Cumulative: it replaces the usage given before. Up to 50 models. g1t estimates the session's `cost_usd` from it at Anthropic's list price.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "model": { "type": "string" },
+                                    "tier": { "type": "string" },
+                                    "input_tokens": { "type": "integer" },
+                                    "output_tokens": { "type": "integer" },
+                                    "cache_write_5m_tokens": { "type": "integer" },
+                                    "cache_write_1h_tokens": { "type": "integer" },
+                                    "cache_read_tokens": { "type": "integer" },
+                                },
+                                "required": ["model"],
+                            },
+                        },
+                    })),
+                    subagent.clone(),
+                ),
+                &["repo", "id"],
+            ),
             CoordinationOp::EndSession => (
                 json!({
                     "repo": repo,
@@ -471,6 +497,13 @@ pub async fn run(op: CoordinationOp, services: &Services, viewer: &Viewer, input
             g1t_kit::call(work, "start_session", &args).await
         }
         CoordinationOp::UpdateSession => {
+            let usage = match &input["usage"] {
+                Value::Null => None,
+                given => match g1t_contracts::model_prices::parse_usage(given) {
+                    Ok(usage) => Some(usage),
+                    Err(message) => return invalid(message),
+                },
+            };
             let args = UpdateSessionArgs {
                 actor: actor(),
                 repo,
@@ -485,6 +518,7 @@ pub async fn run(op: CoordinationOp, services: &Services, viewer: &Viewer, input
                 prompt: text(input, "prompt"),
                 model: text(input, "model"),
                 result: text(input, "result"),
+                usage,
             };
             g1t_kit::call(work, "update_session", &args).await
         }

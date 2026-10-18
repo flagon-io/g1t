@@ -671,6 +671,50 @@ it cannot be read, such as one service being briefly unavailable, Insights
 says so and shows a dash in place of numbers it cannot vouch for. **Explore
 costs** opens [Usage](/guides/usage-and-billing/#the-usage-page) with the same period and project.
 
+### The workspace overview
+
+The workspace's **Overview**, `g1t.sh/<workspace>/-/workspace`, opens with
+what its work says, for members who can see Code. It is worked out the
+same way as [Home's daily signal](/guides/home/#the-daily-signal), and
+each person sees only the projects they can read.
+
+1. **[The past week](/guides/home/#the-past-week)**: the same four
+   figures as Home.
+2. **Spend, threaded to the work**: the quarter's work in four columns:
+   each milestone, its work items, each work item's change set in each
+   project, and that change set's pull requests. Each box is sized by
+   what agents cost on its pull requests (g1t's metered usage, and each
+   pull request's share of its sessions' cost estimated at list price),
+   and shaded by how many were an agent's (**Agent use**, less to more). Choose a box to
+   open what is under it. Work with no milestone or work item has its own
+   box. When usage can't be read, boxes are sized by pull requests.
+   Above it, with a [provider's cost report](/guides/usage-and-billing/)
+   connected, is what Anthropic or OpenAI reported for the quarter and how
+   much of it is threaded to the work. Their figure holds everything the
+   organization ran, so it is never added to g1t's.
+3. **What's moving and what's waiting**: each team's last two weeks, day
+   by day, by the projects the team works on (each project, when the
+   workspace has no teams). Above the line are pull requests opened and
+   merged, and agent sessions started; below it, reviews and comments and
+   requests for changes. Turn each layer on or off above the rows, point
+   at a day for its numbers, or open **The numbers, as a table**. Each
+   row is drawn to its own scale. Beside it, **Waiting on a first
+   review** lists the oldest open pull requests no one has reviewed.
+4. **Quiet changes**: places to look, not verdicts.
+   - **Knowledge silos**: projects where one person merged three quarters
+     or more of the last 90 days' changes (six or more), and whoever has
+     started there this month.
+   - **New ground**: people who merged to a project for the first time in
+     the last two weeks, after three or more merges elsewhere.
+   - **Spreading**: a harness two or more people in a team started using
+     this month, at least two weeks after the first person did (across
+     the workspace, when it has no teams).
+   - **New habits**: people whose first agent-made change merged in the
+     last two weeks, after three or more of their own.
+
+Under it are the members and projects, the month's usage against the
+plan, and the workspace's policies.
+
 ## The rail, the sidebar and the page
 
 Signed in, g1t is always about one workspace: the one you are in. On a
@@ -820,7 +864,7 @@ open is left out for members.
 
 | Group | Page | Who | |
 | --- | --- | --- | --- |
-| | **Overview** | Members | The workspace at a glance: members, plan and spend. `g1t.sh/<workspace>/-/workspace` |
+| | **Overview** | Members | What the work says (the past week, spend threaded to the work, what is moving and waiting, quiet changes), then members, plan and spend. `g1t.sh/<workspace>/-/workspace` |
 | **General** | **General** | Owners | The icon, the display name, a one-line description, the address (the slug), [requiring two-factor authentication](#require-two-factor-authentication), [data residency](#data-residency), and deleting the workspace. `-/settings` |
 | **Access** | **Members** | Members | Who is in the workspace and their roles, with search and filters; owners [invite people](#add-people), change roles, and see **Outside collaborators**. `-/members` |
 | | **Invitations** | Owners | Every invitation to join, filtered by where it stands; send one again, revoke it, copy its link. `-/members/invitations` |

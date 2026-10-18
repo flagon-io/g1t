@@ -3996,6 +3996,157 @@ pub struct SetBillingDetailsArgs {
     pub language: Option<String>,
 }
 
+// --- Provider cost reports ----------------------------------------------------
+//
+// A workspace connects an AI provider's admin key, and billing reads what
+// the provider says the organization spent, day by day, from the
+// provider's own cost report: every use of that organization, inside g1t
+// or not. The key is sealed when it is saved and never returned; only its
+// last four characters are.
+
+/// An AI provider whose cost report g1t reads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CostProvider {
+    /// Anthropic's Usage and Cost Admin API, with an Admin API key.
+    Anthropic,
+    /// OpenAI's Costs API, with an admin key.
+    Openai,
+}
+
+impl CostProvider {
+    pub const ALL: [CostProvider; 2] = [CostProvider::Anthropic, CostProvider::Openai];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            CostProvider::Anthropic => "anthropic",
+            CostProvider::Openai => "openai",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            CostProvider::Anthropic => "Anthropic",
+            CostProvider::Openai => "OpenAI",
+        }
+    }
+
+    pub fn parse(name: &str) -> Option<CostProvider> {
+        CostProvider::ALL.into_iter().find(|provider| provider.name() == name)
+    }
+}
+
+/// A provider a workspace has connected, as anyone may see it: never the
+/// key, only its hint.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderConnection {
+    pub provider: CostProvider,
+    /// The key's last four characters, such as `…a1B2`.
+    pub hint: String,
+    /// The username of the owner who connected it.
+    pub connected_by: String,
+    /// RFC 3339.
+    pub connected_at: String,
+    /// RFC 3339: when its report was last read in full. None until then.
+    pub last_synced_at: Option<String>,
+    /// What went wrong at the last read, in a sentence that says what to
+    /// do; None when it worked.
+    pub last_error: Option<String>,
+    /// `YYYY-MM-DD`: the first day g1t has asked the provider for. None
+    /// until the first read.
+    #[serde(default)]
+    pub synced_from: Option<String>,
+}
+
+/// `provider_connections`: the providers a workspace has connected.
+/// Members only. Returns `Outcome<Vec<ProviderConnection>>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderConnectionsArgs {
+    pub workspace: String,
+    pub viewer: Viewer,
+}
+
+/// `connect_provider`: saves a provider's admin key for the workspace,
+/// after one small report request shows that it works, and reads up to 90
+/// days of its report. A workspace has one connection per provider:
+/// connecting again replaces the key and the costs read with the old one.
+/// Owners only, as people. Returns `Outcome<ProviderConnection>`.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectProviderArgs {
+    pub actor: User,
+    pub workspace: String,
+    pub provider: CostProvider,
+    /// The admin key. Never logged, never returned.
+    pub credential: String,
+}
+
+/// Written out without the key, so that logging the arguments cannot leak it.
+impl std::fmt::Debug for ConnectProviderArgs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConnectProviderArgs")
+            .field("actor", &self.actor.username)
+            .field("workspace", &self.workspace)
+            .field("provider", &self.provider)
+            .field("credential", &"<redacted>")
+            .finish()
+    }
+}
+
+/// `disconnect_provider`: deletes the provider's key and every cost read
+/// with it. Owners only, as people. Returns `Outcome<bool>`: whether there
+/// was a connection to delete.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DisconnectProviderArgs {
+    pub actor: User,
+    pub workspace: String,
+    pub provider: CostProvider,
+}
+
+/// `provider_costs`: what the connected providers say the workspace's
+/// organizations spent, by day. Members only. Returns
+/// `Outcome<ProviderCosts>`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderCostsArgs {
+    pub workspace: String,
+    pub viewer: Viewer,
+    /// `YYYY-MM-DD` (or an RFC 3339 time, whose day is used): the first
+    /// day, UTC.
+    pub since: String,
+}
+
+/// One day's cost of one line item at one provider, summed over the
+/// provider's own workspaces or projects.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderCostDay {
+    /// `YYYY-MM-DD`, UTC.
+    pub day: String,
+    pub provider: CostProvider,
+    /// The provider's own words for it: Anthropic's description (such as
+    /// "Claude Opus 5.5 Usage - Input Tokens"), OpenAI's line item. Empty
+    /// when the provider gave none.
+    pub item: String,
+    /// Millionths of a US dollar.
+    pub micros: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderCosts {
+    pub connections: Vec<ProviderConnection>,
+    /// Oldest first.
+    pub days: Vec<ProviderCostDay>,
+    /// True when at least one provider is connected and every one was last
+    /// read without an error and has been read back to `since`. The day in
+    /// progress is never complete at the provider either.
+    pub complete: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

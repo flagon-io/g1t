@@ -1,11 +1,13 @@
 import { ArrowRight, Box, ShieldCheck, Users } from "lucide-react";
-import type { ReactNode } from "react";
-import { Link, data } from "react-router";
+import { type ReactNode, Suspense } from "react";
+import { Await, Link, data } from "react-router";
+
+import { type User, hasCodeAccess } from "@g1t/contracts";
 
 import type { Route } from "./+types/workspace-overview";
 
 import { UsageCard } from "../../components/usage-card";
-import { identity } from "../../lib/services.server";
+import { billing, identity } from "../../lib/services.server";
 import { loadOnboarding } from "../../lib/onboarding.server";
 import { OnboardingOnPage } from "../../components/onboarding";
 import { getViewer, roleIn } from "../../lib/session.server";
@@ -16,7 +18,12 @@ import { Avatar } from "../../components/ui/avatar";
 import { Badge } from "../../components/ui/badge";
 import { Card } from "../../components/ui/card";
 import { Unavailable } from "../../components/boundary";
+import { GroundSkeleton, GroundTruth } from "../../components/ground-truth";
 import { isFailed, part } from "../../lib/partial";
+import { loadRepos } from "../../lib/home.server";
+import { shapeGround } from "../../lib/ground";
+import { providerQuarter, signalsRange } from "../../lib/signals";
+import { loadGroups, loadSignalData } from "../../lib/signals.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Workspace · ${params.owner} · g1t` });
@@ -26,9 +33,13 @@ export function meta({ params, ...args }: Route.MetaArgs) {
 const MAX_FACES = 10;
 
 /**
- * The workspace at a glance, for every member: who is in it, its
- * projects, and the month's usage against its plan. Each part is left out
- * when its service does not answer.
+ * The workspace's ground truth, from what its work says (lib/signals.ts),
+ * for members who see Code: the past week, the quarter's agent spend
+ * threaded to the work it produced, what is moving and what is waiting
+ * team by team, and quiet changes in who works where. Streamed, each part
+ * on its own. Then the workspace at a glance, for every member: who is in
+ * it, its projects, and the month's usage against its plan. Each part is
+ * left out when its service does not answer.
  */
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
@@ -38,6 +49,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // Getting started, for an owner, as on Home: streamed beside the rest.
   const setupAsked = new URL(request.url).searchParams.has("setup");
   const onboarding = loadOnboarding(viewer, slug, !setupAsked).catch(() => null);
+  const membership = viewer?.workspaces?.find((m) => m.slug === slug) ?? null;
+  const ground = viewer && hasCodeAccess(membership) ? loadGround(viewer, slug, Date.now()).catch(() => null) : null;
   const [members, usage, projects] = await Promise.all([
     part(identity.listMembers(slug, viewer), "The member list"),
     usageFor(slug, viewer),
@@ -51,8 +64,26 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     members: isFailed(members) ? members : members.ok ? members.value : null,
     usage,
     projects: projects?.ok ? projects.value.length : null,
+    ground,
   };
 }
+
+/** Everything the work says, shaped for the page; null when the work service did not answer. */
+async function loadGround(viewer: User, slug: string, now: number) {
+  const owned = await loadRepos(viewer, slug).catch(() => null);
+  if (!owned) return null;
+  const [found, groups, providers] = await Promise.all([
+    loadSignalData(viewer, slug, now, owned).catch(() => null),
+    loadGroups(viewer, slug, owned).catch(() => null),
+    // What the connected providers say was spent: beside the rest, never in the way of it.
+    billing
+      .providerCosts(slug, viewer, signalsRange(now).quarter)
+      .then((result) => (result.ok ? result.value : null))
+      .catch(() => null),
+  ]);
+  return found ? { ...shapeGround(found, groups, now), providers: providerQuarter(providers, found.range.quarter) } : null;
+}
+
 
 function Tile({ icon, label, value, to, action }: { icon: ReactNode; label: string; value: string; to: string; action: string }) {
   return (
@@ -74,6 +105,11 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
   return (
     <div className="space-y-8">
       <OnboardingOnPage slug={slug} view={loaderData.onboarding} asked={loaderData.setupAsked} />
+      {loaderData.ground && (
+        <Suspense fallback={<GroundSkeleton />}>
+          <Await resolve={loaderData.ground}>{(ground) => (ground ? <GroundTruth slug={slug} ground={ground} /> : <Unavailable what="What the work says" />)}</Await>
+        </Suspense>
+      )}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Tile icon={<Users size={12} />} label="Members" value={members && !isFailed(members) ? String(members.length) : "—"} to={role === "owner" ? `/${slug}/-/members` : `/${slug}/-/people`} action={role === "owner" ? "Manage people" : "See everyone"} />
         <Tile icon={<Box size={12} />} label="Projects" value={projects == null ? "—" : String(projects)} to={`/${slug}/-/projects`} action="Open Code" />

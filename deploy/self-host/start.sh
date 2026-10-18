@@ -38,6 +38,10 @@ fi
 if ! grep -q '^REPOS_KEY=' "$KEYS"; then
   echo "REPOS_KEY=$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')" >> "$KEYS"
 fi
+# Billing's key, which seals the admin keys of providers' cost reports.
+if ! grep -q '^BILLING_KEY=' "$KEYS"; then
+  echo "BILLING_KEY=$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')" >> "$KEYS"
+fi
 # The packages service's key, which signs registry tokens.
 if ! grep -q '^PACKAGES_TOKEN_SECRET=' "$KEYS"; then
   echo "PACKAGES_TOKEN_SECRET=$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')" >> "$KEYS"

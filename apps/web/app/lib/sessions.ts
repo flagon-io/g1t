@@ -3,7 +3,7 @@
  * and where it opens, the filters Sessions keeps in its address, and live
  * ones apart from the rest. Pure, so it is tested under Node.
  */
-import type { Harness, SessionKind, WorkspaceSession } from "@g1t/contracts";
+import type { Harness, SessionKind, WorkSession, WorkspaceSession } from "@g1t/contracts";
 
 import { HARNESS_NAMES, sessionTitle } from "./coordination.ts";
 import { sessionPath } from "./work-items.ts";
@@ -104,6 +104,19 @@ export function peopleIn(sessions: WorkspaceSession[]): string[] {
   const counts = new Map<string, number>();
   for (const session of sessions) if (session.actor) counts.set(session.actor, (counts.get(session.actor) ?? 0) + 1);
   return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([name]) => name);
+}
+
+/**
+ * What a session cost, in a few words: "≈ $4.12 at list price", with
+ * "some usage priced as unknown" when some of it was for models g1t has no
+ * price for. Null when it reported no usage.
+ */
+export function sessionCost(session: Pick<WorkSession, "costUsd" | "costPartial"> | null | undefined): string | null {
+  if (!session) return null;
+  const cost = session.costUsd;
+  if (cost == null || !Number.isFinite(cost)) return session.costPartial ? "Usage priced as unknown" : null;
+  const amount = cost > 0 && cost < 0.01 ? "under $0.01" : `$${cost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `≈ ${amount} at list price${session.costPartial ? ", some usage priced as unknown" : ""}`;
 }
 
 /** `acme/web` as the workspace `acme` names it: `web`. */

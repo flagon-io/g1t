@@ -564,6 +564,7 @@ export function workClient(service: ServiceBinding): WorkApi {
     openPull: (actor, repo, input) => call("open_pull", { actor, repo, ...input }),
     listPulls: (repo, viewer, state, filter = {}) => call("list_pulls", { repo, viewer, state, ...filter }),
     deliveryInsights: (repoIds, viewer, from, until) => call("delivery_insights", { repoIds, viewer, from, until }),
+    workspaceSignals: (args, viewer) => call("workspace_signals", { ...args, viewer }),
     pullsForRepos: (repoIds, viewer, limit) => call("pulls_for_repos", { repoIds, viewer, limit }),
     // Its own fields arrive in snake_case: read into camelCase here.
     getPull: (repo, number, viewer) =>
@@ -703,6 +704,10 @@ export function billingClient(service: ServiceBinding): BillingApi {
     setBudget: (actor, workspace, budget) => call("set_budget", { actor, workspace, ...budget }),
     billingDetails: (workspace, viewer) => call("billing_details", { workspace, viewer }),
     setBillingDetails: (actor, workspace, details) => call("set_billing_details", { actor, workspace, ...details }),
+    providerConnections: (workspace, viewer) => call("provider_connections", { workspace, viewer }),
+    connectProvider: (actor, workspace, provider, credential) => call("connect_provider", { actor, workspace, provider, credential }),
+    disconnectProvider: (actor, workspace, provider) => call("disconnect_provider", { actor, workspace, provider }),
+    providerCosts: (workspace, viewer, since) => call("provider_costs", { workspace, viewer, since }),
   };
 }
 
