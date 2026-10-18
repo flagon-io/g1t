@@ -761,13 +761,20 @@ pub struct TeamMentioned {
 }
 
 /// `notify_by_email` on the identity service: one item, emailed to the
-/// person it is for, if they can still read its repository and their
-/// address is confirmed. Returns whether it was sent.
+/// person it is for, if they can still see what it is about and their
+/// address is confirmed: they can read its repository, or, for a work
+/// item (`workspace`), they are a member of its workspace (one filed with
+/// no repository has only that). Returns whether it was sent.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyByEmailArgs {
     pub username: String,
-    pub repo_id: String,
+    /// Its repository: a pull request's, or a work item's origin.
+    #[serde(default)]
+    pub repo_id: Option<String>,
+    /// A work item's workspace.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<String>,
     /// The subject line and the first paragraph.
     pub subject: String,
     pub intro: String,

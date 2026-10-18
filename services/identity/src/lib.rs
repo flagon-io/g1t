@@ -603,8 +603,9 @@ impl Identity {
     }
 
     /// `notify_by_email`: an inbox item, emailed to the person it is for,
-    /// only at a confirmed address and only while they can still read the
-    /// repository it is about. Returns whether it was sent.
+    /// only at a confirmed address and only while they can still see what
+    /// it is about: a member of a work item's workspace, or someone who can
+    /// read its repository. Returns whether it was sent.
     async fn notify_by_email(&self, a: g1t_contracts::inbox::NotifyByEmailArgs) -> Result<bool> {
         #[derive(Deserialize)]
         struct Address {
@@ -619,17 +620,22 @@ impl Identity {
         let Some(user) = user.filter(|user| user.verified) else {
             return Ok(false);
         };
-        let readable: Vec<g1t_contracts::repos::Repo> = g1t_kit::call(
-            &self.env.service("REPOS")?,
-            "readable",
-            &g1t_contracts::repos::ReadableArgs {
-                ids: vec![a.repo_id.clone()],
-                viewer: Some(user.clone()),
-            },
-        )
-        .await?;
-        if readable.is_empty() {
-            return Ok(false);
+        // A work item is its workspace members' to see, under the
+        // workspace's policy; anything else, its repository's readers'.
+        let member = a.workspace.as_deref().is_some_and(|workspace| g1t_contracts::access::workspace_role(&user, workspace).is_some());
+        if !member {
+            let Some(repo_id) = a.repo_id.clone().filter(|id| !id.is_empty()) else {
+                return Ok(false);
+            };
+            let readable: Vec<g1t_contracts::repos::Repo> = g1t_kit::call(
+                &self.env.service("REPOS")?,
+                "readable",
+                &g1t_contracts::repos::ReadableArgs { ids: vec![repo_id], viewer: Some(user.clone()) },
+            )
+            .await?;
+            if readable.is_empty() {
+                return Ok(false);
+            }
         }
         let address = self
             .db
@@ -644,6 +650,35 @@ impl Identity {
         };
         email::send_notification(&self.env, &address, &a).await?;
         Ok(true)
+    }
+
+    /// `members_among`: which of these people are members of the
+    /// workspace, by lowercased username.
+    async fn members_among(&self, a: g1t_contracts::identity::MembersAmongArgs) -> Result<Vec<String>> {
+        #[derive(Deserialize)]
+        struct Named {
+            username: String,
+        }
+        let usernames: Vec<String> = a.usernames.iter().take(200).map(|name| name.to_lowercase()).collect();
+        if usernames.is_empty() {
+            return Ok(Vec::new());
+        }
+        Ok(self
+            .db
+            .prepare(
+                "SELECT lower(users.username) AS username FROM workspace_members
+                 JOIN workspaces ON workspaces.id = workspace_members.workspace_id
+                 JOIN users ON users.id = workspace_members.user_id
+                 WHERE workspaces.slug = lower(?1) AND workspaces.deleted_at IS NULL AND users.deleted_at IS NULL
+                   AND lower(users.username) IN (SELECT value FROM json_each(?2))",
+            )
+            .bind(&[a.workspace.trim().into(), serde_json::to_string(&usernames)?.into()])?
+            .all()
+            .await?
+            .results::<Named>()?
+            .into_iter()
+            .map(|row| row.username)
+            .collect())
     }
 
     async fn usernames(&self, a: UsernamesArgs) -> Result<std::collections::HashMap<String, String>> {
@@ -1033,6 +1068,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "user_by_username" => reply(&identity.user_by_username(args(body)?).await?),
         "user_by_id" => reply(&identity.current_user(args(body)?).await?),
         "usernames" => reply(&identity.usernames(args(body)?).await?),
+        "members_among" => reply(&identity.members_among(args(body)?).await?),
         // The API: each username's chosen case, shown beside it.
         "display_usernames" => reply(&identity.display_usernames(args(body)?).await?),
         "accounts" => reply(&identity.accounts(args(body)?).await?),

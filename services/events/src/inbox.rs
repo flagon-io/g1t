@@ -56,7 +56,7 @@ use std::collections::{HashMap, HashSet};
 
 use g1t_contracts::credentials::Principal;
 use g1t_contracts::events::{Event, WorkspaceRenamed};
-use g1t_contracts::identity::{AGENT_ID, UsernamesArgs};
+use g1t_contracts::identity::{AGENT_ID, MembersAmongArgs, UsernamesArgs};
 use g1t_contracts::inbox::*;
 use g1t_contracts::repos::{PathByIdArgs, ReadableArgs, Repo, RepoPath};
 use g1t_contracts::security::SeverityCounts;
@@ -1383,15 +1383,18 @@ pub struct Sources<'a> {
 /// may be emailed.
 struct Written {
     notice: Notice,
-    /// The repository its email is checked against: none for a work item
-    /// without an origin, which is not emailed.
+    /// What its email is checked against: its repository (a work item's
+    /// origin, which it may not have), and a work item's workspace, whose
+    /// members may see it.
     repo_id: Option<String>,
+    workspace: Option<String>,
     url: String,
     event_id: String,
     /// Its event leaves nothing to do (`CLOSES`): settled once written.
     closing: bool,
     /// Pushed live: not for someone who hears of a work item only by
-    /// watching a repository it is linked to other than its origin.
+    /// watching a repository it is linked to other than its origin, unless
+    /// they are a member of its workspace, who may see it.
     live: bool,
     /// The thread it is on, which notify keeps with what it replays.
     thread: String,
@@ -1845,13 +1848,42 @@ async fn deliver_one(
             news.extend(rows.into_iter().map(|row| row.username));
         }
     }
+    // Who hears of a work item only by watching another of its
+    // repositories is pushed it live when they are a member of its
+    // workspace, who may see it (all one filed with no repository has).
+    let members: HashSet<String> = match &wanted.item {
+        Some(item) => {
+            let usernames: Vec<String> = told
+                .iter()
+                .filter(|notice| notice.reason == Reason::Subscribed && elsewhere.contains(&notice.username) && news.contains(&notice.username))
+                .map(|notice| notice.username.clone())
+                .collect();
+            if usernames.is_empty() {
+                HashSet::new()
+            } else {
+                let asked = MembersAmongArgs { workspace: item.workspace.clone(), usernames };
+                g1t_kit::call::<_, Vec<String>>(sources.identity, "members_among", &asked)
+                    .await
+                    .unwrap_or_else(|error| {
+                        worker::console_error!("inbox: could not tell who is a member of {}: {error}", item.workspace);
+                        Vec::new()
+                    })
+                    .into_iter()
+                    .collect()
+            }
+        }
+        None => HashSet::new(),
+    };
     Ok(told
         .into_iter()
         .filter(|notice| news.contains(&notice.username))
         .map(|notice| Written {
-            live: !(notice.reason == Reason::Subscribed && elsewhere.contains(&notice.username)),
+            live: !(notice.reason == Reason::Subscribed
+                && elsewhere.contains(&notice.username)
+                && !members.contains(&notice.username)),
             notice,
             repo_id: wanted.repo_id.clone(),
+            workspace: wanted.item.as_ref().map(|item| item.workspace.clone()),
             url: item_url.clone(),
             event_id: event.id.clone(),
             closing: CLOSES.contains(&event.kind.as_str()),
@@ -1992,10 +2024,10 @@ pub(crate) async fn tell_live(notify: &Fetcher, items: Vec<(String, serde_json::
 
 /// Emails what was news to people who asked to be emailed for its reason.
 /// Identity sends each, only to a confirmed address and only if the person
-/// can still read the repository (a work item's origin; one without is
-/// not emailed).
+/// can still see it: they can read its repository, or are a member of a
+/// work item's workspace (all one filed with no repository has).
 async fn email(db: &D1Database, identity: &Fetcher, written: Vec<Written>) -> Result<()> {
-    let written: Vec<Written> = written.into_iter().filter(|item| item.repo_id.is_some()).collect();
+    let written: Vec<Written> = written.into_iter().filter(|item| item.repo_id.is_some() || item.workspace.is_some()).collect();
     if written.is_empty() {
         return Ok(());
     }
@@ -2016,7 +2048,8 @@ async fn email(db: &D1Database, identity: &Fetcher, written: Vec<Written>) -> Re
             "notify_by_email",
             &NotifyByEmailArgs {
                 username: item.notice.username.clone(),
-                repo_id: item.repo_id.clone().unwrap_or_default(),
+                repo_id: item.repo_id.clone(),
+                workspace: item.workspace.clone(),
                 subject: item.notice.title.clone(),
                 intro: item.notice.body.clone(),
                 quote: None,

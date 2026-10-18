@@ -11,6 +11,12 @@
 //!
 //! A change says only what kind of thing moved and where: never a title, a
 //! body, a name or anything else written in the repository.
+//!
+//! Work items live in workspaces, and one may have no repository at all:
+//! what happens to a workspace's work items is also told to the people
+//! watching its Work pages (`workspace_changed`, with
+//! [`workspace_change_of`] for each; a tab asks with `watch_workspace`,
+//! through the site, which checks they are a member first).
 
 use serde::{Deserialize, Serialize};
 
@@ -145,6 +151,61 @@ pub fn change_of(event: &Event) -> Option<RepoChange> {
     Some(change)
 }
 
+/// The notify service's method that takes [`WorkspaceChangedArgs`].
+pub const WORKSPACE_CHANGED: &str = "workspace_changed";
+
+/// Something that happened to a workspace's work items, as its Work pages
+/// hear of it: what kind of thing moved, and the work item's number.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkspaceChange {
+    /// Its slug, lowercase.
+    pub workspace: String,
+    /// The event's type (`work_item.updated`, `comment.created`, `work.claimed`, …).
+    pub kind: String,
+    /// The work item it is on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub number: Option<u32>,
+    /// RFC 3339.
+    pub at: String,
+}
+
+/// `workspace_changed`.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct WorkspaceChangedArgs {
+    pub changes: Vec<WorkspaceChange>,
+}
+
+/// What a workspace's Work pages hear of an event, or None when it is not
+/// about one of its work items: a work item's own events, and the events
+/// that name one (its comments and reactions, claims on it, what it is
+/// blocked by).
+pub fn workspace_change_of(event: &Event) -> Option<WorkspaceChange> {
+    if !is_live(&event.kind) {
+        return None;
+    }
+    let data = &event.data;
+    let workspace = text(&data["workspace"])?.to_lowercase();
+    let about_item = event.kind.starts_with("work_item.")
+        || text(&data["itemId"]).is_some()
+        || matches!(event.kind.as_str(), "dependency.changed" | "work.claimed" | "work.released" | "work.handoff_requested");
+    if !about_item {
+        return None;
+    }
+    Some(WorkspaceChange {
+        workspace,
+        kind: event.kind.clone(),
+        number: number(&data["number"]).or_else(|| number(&data["item"])),
+        at: event.time.clone(),
+    })
+}
+
+/// The workspace changes a batch of events makes, in order, in calls of at
+/// most [`MAX_CHANGES`].
+pub fn workspace_changes_of(events: &[Event]) -> Vec<Vec<WorkspaceChange>> {
+    let changes: Vec<WorkspaceChange> = events.iter().filter_map(workspace_change_of).collect();
+    changes.chunks(MAX_CHANGES).map(<[WorkspaceChange]>::to_vec).collect()
+}
+
 /// The changes a batch of events makes, in order, in calls of at most
 /// [`MAX_CHANGES`].
 pub fn changes_of(events: &[Event]) -> Vec<Vec<RepoChange>> {
@@ -188,6 +249,26 @@ mod tests {
                 ..RepoChange::default()
             })
         );
+    }
+
+    #[test]
+    fn a_workspaces_work_pages_hear_of_its_work_items_only() {
+        let data = json!({ "itemId": "wki_1", "workspace": "Acme", "number": 40, "repoIds": [], "title": "secret plans" });
+        let change = workspace_change_of(&event("work_item.updated", None, data)).unwrap();
+        assert_eq!(
+            change,
+            WorkspaceChange { workspace: "acme".into(), kind: "work_item.updated".into(), number: Some(40), at: "2026-10-11T10:00:00Z".into() }
+        );
+        // A comment on it, and a claim (which names it as `item`).
+        let comment = json!({ "itemId": "wki_1", "workspace": "acme", "number": 40, "commentId": "cmt_1" });
+        assert_eq!(workspace_change_of(&event("comment.created", None, comment)).unwrap().number, Some(40));
+        let claim = json!({ "workspace": "acme", "number": 40, "item": 40, "claim": {} });
+        assert!(workspace_change_of(&event("work.claimed", None, claim)).is_some());
+        // A pull request's comment, and what names no workspace, are not.
+        let on_pull = json!({ "repoId": "rep_1", "number": 4, "pullId": "pr_4" });
+        assert!(workspace_change_of(&event("comment.created", Some("rep_1"), on_pull)).is_none());
+        assert!(workspace_change_of(&event("work_item.updated", None, json!({ "number": 4 }))).is_none());
+        assert!(workspace_change_of(&event("audit.recorded", None, json!({ "workspace": "acme", "itemId": "wki_1" }))).is_none());
     }
 
     #[test]

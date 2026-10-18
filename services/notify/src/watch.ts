@@ -6,7 +6,7 @@
  * A change says what kind of thing moved and where, never anything
  * written in the repository; anything else sent along is dropped here.
  */
-import type { RepoChange } from "@g1t/contracts";
+import type { RepoChange, WorkspaceChange } from "@g1t/contracts";
 
 /** How long one watch lasts: REPO_WATCH_MS in @g1t/contracts, which the pages renew before. */
 export const WATCH_MS = 15 * 60_000;
@@ -85,4 +85,46 @@ export function watchUntil(now: number): number {
 /** Whether a watch kept until `until` still holds at `now`. */
 export function stillWatching(until: number | null | undefined, now: number): boolean {
   return typeof until === "number" && until > now;
+}
+
+/** The topic a workspace's Work pages are watched on: one per workspace, beside the repositories'. */
+export function workspaceTopic(workspace: string): string {
+  return `workspace:${workspace}`;
+}
+
+/** The workspace a topic key names, or null when it is a repository's. */
+export function topicWorkspace(key: string): string | null {
+  return key.startsWith("workspace:") ? key.slice("workspace:".length) : null;
+}
+
+/** A workspace's slug as services and the site send it, lowercase, or null. */
+export function cleanWorkspace(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const slug = value.trim().toLowerCase();
+  return /^[a-z0-9][a-z0-9-]{0,99}$/.test(slug) ? slug : null;
+}
+
+/** A workspace change as a service sent it, with only what one carries; null when it is not one. */
+export function cleanWorkspaceChange(value: unknown): WorkspaceChange | null {
+  if (!value || typeof value !== "object") return null;
+  const given = value as Record<string, unknown>;
+  const workspace = cleanWorkspace(given.workspace);
+  const kind = typeof given.kind === "string" && /^[a-z_]{1,40}\.[a-z_]{1,40}$/.test(given.kind) ? given.kind : null;
+  if (!workspace || !kind) return null;
+  const change: WorkspaceChange = { workspace, kind, at: text(given.at, 40) ?? new Date().toISOString() };
+  const number = count(given.number);
+  if (number != null) change.number = number;
+  return change;
+}
+
+/** The workspace changes of a call, cleaned, by workspace, in the order they came. */
+export function byWorkspace(values: unknown): Map<string, WorkspaceChange[]> {
+  const grouped = new Map<string, WorkspaceChange[]>();
+  const list = Array.isArray(values) ? values.slice(0, MAX_CHANGES) : [];
+  for (const value of list) {
+    const change = cleanWorkspaceChange(value);
+    if (!change) continue;
+    grouped.set(change.workspace, [...(grouped.get(change.workspace) ?? []), change]);
+  }
+  return grouped;
 }

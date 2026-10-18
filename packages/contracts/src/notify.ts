@@ -66,7 +66,7 @@ export type FeedNotification = {
   inbox_thread?: string | null;
   /**
    * The chat card it is about, when that card has something to press,
-   * such as a draft issue (File issue, Discard). The toast and the notifications panel show these
+   * such as a draft work item (File it, Discard). The toast and the notifications panel show these
    * actions, and pressing one goes to the site's `card_action`, exactly as
    * on the card itself.
    */
@@ -216,7 +216,7 @@ export type RepoChange = {
   kind: string;
   /** The full ref a push or deletion moved (`refs/heads/main`), or a run's. */
   ref?: string | null;
-  /** The issue or pull request it is on, or the pull request a run ran for. */
+  /** The work item or pull request it is on, or the pull request a run ran for. */
   number?: number | null;
   /** The commit: where a push left its ref, the one checked or reported on. */
   sha?: string | null;
@@ -228,7 +228,24 @@ export type RepoChange = {
   at: string;
 };
 
-/** How long one `watchRepo` lasts: a page open longer asks again before it runs out. */
+/**
+ * Something that happened to a workspace's work items, as its Work pages
+ * hear of it (`watchWorkspace`): what kind of thing moved and the work
+ * item's number, never anything written in it. A work item may have no
+ * repository, so its pages hear of it here rather than per repository.
+ */
+export type WorkspaceChange = {
+  /** Its slug, lowercase. */
+  workspace: string;
+  /** The event's type (`work_item.updated`, `comment.created`, `work.claimed`, …). */
+  kind: string;
+  /** The work item it is on. */
+  number?: number | null;
+  /** RFC 3339. */
+  at: string;
+};
+
+/** How long one `watchRepo` (or `watchWorkspace`) lasts: a page open longer asks again before it runs out. */
 export const REPO_WATCH_MS = 15 * 60_000;
 
 /** What the feed socket sends a tab. */
@@ -252,6 +269,8 @@ export type FeedEvent =
   | { type: "me"; me: OwnPresence }
   /** What changed in repositories you are watching the pages of (`watchRepo`). */
   | { type: "repo"; changes: RepoChange[] }
+  /** What changed to the work items of workspaces whose Work pages you are watching (`watchWorkspace`). */
+  | { type: "workspace"; changes: WorkspaceChange[] }
   /**
    * The person cleared a conversation (their direct message with @g1t):
    * the notifications from it are gone, so tabs drop them too.
@@ -361,6 +380,14 @@ export type NotifyApi = {
   /** For services: what changed in repositories (`crates/contracts/src/live.rs`), told to whoever watches each. */
   repoChanged(changes: RepoChange[]): Promise<{ ok: boolean }>;
   /**
+   * The person's tabs hear what changes to the workspace's work items, for
+   * `REPO_WATCH_MS`. The caller must have checked they are a member (who
+   * sees all of its work items): notify checks nothing.
+   */
+  watchWorkspace(user: Pick<User, "id">, workspace: string): Promise<{ ok: boolean; until: string | null }>;
+  /** For services: what changed to workspaces' work items (`crates/contracts/src/live.rs`), told to whoever watches each. */
+  workspaceChanged(changes: WorkspaceChange[]): Promise<{ ok: boolean }>;
+  /**
    * For chat, after the person cleared a conversation: the notifications
    * kept from it are deleted, its counts go to nothing, and a
    * notification of a message from before the clear that arrives late is
@@ -398,6 +425,8 @@ export function notifyClient(service: ServiceBinding): NotifyApi {
     markVisit: (user, workspace, at) => call("mark_visit", { user_id: user.id, workspace, at }),
     watchRepo: (user, repoId, repo) => call("watch_repo", { user_id: user.id, repo_id: repoId, repo }),
     repoChanged: (changes) => call("repo_changed", { changes }),
+    watchWorkspace: (user, workspace) => call("watch_workspace", { user_id: user.id, workspace }),
+    workspaceChanged: (changes) => call("workspace_changed", { changes }),
     forgetConversation: (user, workspace, channelId) => call("forget_conversation", { user_id: user.id, workspace, channel_id: channelId }),
   };
 }

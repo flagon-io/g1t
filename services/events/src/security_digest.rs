@@ -249,7 +249,8 @@ pub async fn send_due(db: &D1Database, identity: &Fetcher, notify: Option<&Fetch
                     "notify_by_email",
                     &g1t_contracts::inbox::NotifyByEmailArgs {
                         username: username.clone(),
-                        repo_id: first.repo_id.clone(),
+                        repo_id: Some(first.repo_id.clone()),
+                        workspace: None,
                         subject: notice.title.clone(),
                         intro: notice.body.clone(),
                         quote: None,

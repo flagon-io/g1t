@@ -6,10 +6,14 @@
 //! repository only after the site checked its person may read it.
 //!
 //! A work item's events and comments go to every repository it is linked
-//! to (`repoIds`), not only its origin, which it may not have.
+//! to (`repoIds`), not only its origin, which it may not have, and to its
+//! workspace's Work pages (`workspace_changed`), which hear of it with or
+//! without a repository.
 
 use g1t_contracts::events::Event;
-use g1t_contracts::live::{MAX_CHANGES, REPO_CHANGED, RepoChange, RepoChangedArgs, change_of};
+use g1t_contracts::live::{
+    MAX_CHANGES, REPO_CHANGED, RepoChange, RepoChangedArgs, WORKSPACE_CHANGED, WorkspaceChangedArgs, change_of, workspace_changes_of,
+};
 use worker::{Fetcher, Result};
 
 /// The changes an event makes: one for its repository, and one for each
@@ -39,6 +43,12 @@ pub(crate) async fn tell(notify: &Fetcher, events: &[Event]) {
         let told: Result<serde_json::Value> = g1t_kit::call(notify, REPO_CHANGED, &RepoChangedArgs { changes }).await;
         if let Err(error) = told {
             worker::console_error!("events: live pages not told: {error}");
+        }
+    }
+    for changes in workspace_changes_of(events) {
+        let told: Result<serde_json::Value> = g1t_kit::call(notify, WORKSPACE_CHANGED, &WorkspaceChangedArgs { changes }).await;
+        if let Err(error) = told {
+            worker::console_error!("events: live Work pages not told: {error}");
         }
     }
 }

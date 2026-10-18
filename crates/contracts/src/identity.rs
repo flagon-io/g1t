@@ -44,7 +44,7 @@ pub struct AccessToken {
     #[serde(default)]
     pub expires_at: Option<String>,
     /// Its scopes as permissions: each resource it may use, by name, at
-    /// the highest level, such as `{"issues": "write"}`. Every resource at
+    /// the highest level, such as `{"work": "write"}`. Every resource at
     /// its highest when `scopes` is null.
     #[serde(default)]
     pub permissions: std::collections::BTreeMap<String, String>,
@@ -160,6 +160,15 @@ pub struct UserIdArgs {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UsernamesArgs {
     pub ids: Vec<String>,
+}
+
+/// `members_among`: services only. Which of these people (by username,
+/// at most 200) are members of `workspace` (its slug). Returns their
+/// usernames, lowercased.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct MembersAmongArgs {
+    pub workspace: String,
+    pub usernames: Vec<String>,
 }
 
 /// `display_usernames`: how each of these people (by lowercased username,
@@ -937,7 +946,7 @@ pub struct UpdateOAuthGrantArgs {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentScope {
     pub repo: crate::repos::RepoPath,
-    /// API and MCP operation names, such as `create_issue`.
+    /// API and MCP operation names, such as `open_work_item`.
     pub operations: Vec<String>,
     /// Set on a run credential: the run it belongs to, and what it may do
     /// with git. See [`crate::credentials`].
