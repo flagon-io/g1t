@@ -11,7 +11,7 @@ use g1t_contracts::ai::*;
 use g1t_contracts::identity::{AskToken, CreateAskTokenArgs, Profile, RevokeAskTokenArgs, SlugArgs, UsernameArgs, Workspace};
 use g1t_contracts::integrations::Tested;
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::work::{IssueDetail, PullDetail, ViewArgs};
+use g1t_contracts::work::{PullDetail, ViewArgs, WorkItemDetail, WorkItemViewArgs};
 use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Role, User, new_id};
 use g1t_kit::{args, now_ms, reply};
 use serde::Deserialize;
@@ -450,11 +450,27 @@ impl Integrations {
         Ok(Outcome::Ok(self.ask_setup(&workspace).await?.0))
     }
 
-    /// The issue or pull request the person is looking at, as they may see
-    /// it. Nothing when there is none or they cannot.
+    /// The work item or pull request the person is looking at, as they may
+    /// see it. Nothing when there is none or they cannot.
     pub(crate) async fn ask_facts(&self, actor: &User, page: &AskPage) -> Result<Vec<ask::Fact>> {
+        let state = |value: Value| value.as_str().unwrap_or_default().to_owned();
+        let mut facts = Vec::new();
+        let workspace = page.repo.as_ref().map(|repo| repo.namespace.to_lowercase()).or_else(|| page.workspace.clone());
+        if let (Some(number), Some(workspace)) = (page.item, workspace) {
+            let view = WorkItemViewArgs { workspace, number, viewer: Some(actor.clone()) };
+            let found: Outcome<WorkItemDetail> = g1t_kit::call(&self.work, "get_work_item", &view).await?;
+            if let Outcome::Ok(detail) = found {
+                facts.push(ask::Fact {
+                    kind: "work item",
+                    number,
+                    state: state(serde_json::to_value(detail.item.state)?),
+                    title: detail.item.title,
+                    body: http::shorten(&detail.item.body, ASK_FACT_CHARS),
+                });
+            }
+        }
         let Some(repo) = &page.repo else {
-            return Ok(Vec::new());
+            return Ok(facts);
         };
         let view = |number: u32| ViewArgs {
             repo: repo.clone(),
@@ -462,20 +478,6 @@ impl Integrations {
             viewer: Some(actor.clone()),
             after_seq: 0,
         };
-        let state = |value: Value| value.as_str().unwrap_or_default().to_owned();
-        let mut facts = Vec::new();
-        if let Some(number) = page.issue {
-            let found: Outcome<IssueDetail> = g1t_kit::call(&self.work, "get_issue", &view(number)).await?;
-            if let Outcome::Ok(detail) = found {
-                facts.push(ask::Fact {
-                    kind: "issue",
-                    number,
-                    state: state(serde_json::to_value(detail.issue.state)?),
-                    title: detail.issue.title,
-                    body: http::shorten(&detail.issue.body, ASK_FACT_CHARS),
-                });
-            }
-        }
         if let Some(number) = page.pull {
             let found: Outcome<PullDetail> = g1t_kit::call(&self.work, "get_pull", &view(number)).await?;
             if let Outcome::Ok(detail) = found {
@@ -653,7 +655,7 @@ impl Integrations {
 
 /// The route that holds the workspace's choice for Ask g1t.
 const ASK_TASK: &str = "ask";
-/// How much of an issue's or pull request's description Ask is given.
+/// How much of a work item's or pull request's description Ask is given.
 const ASK_FACT_CHARS: usize = 6_000;
 const ASK_CONTENT_TYPE: &str = "application/x-ndjson; charset=utf-8";
 

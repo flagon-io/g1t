@@ -6,10 +6,9 @@ pub const STATEMENTS: &[&str] = &[
     "UPDATE connections SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE ai_providers SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE links SET workspace = ?1 WHERE workspace = ?2",
-    "UPDATE links SET repo = ?1 || substr(repo, length(?2) + 1) WHERE substr(repo, 1, length(?2) + 1) = ?2 || '/'",
     "UPDATE model_sessions SET workspace = ?1 WHERE workspace = ?2",
     "UPDATE model_sessions SET repo = ?1 || substr(repo, length(?2) + 1) WHERE substr(repo, 1, length(?2) + 1) = ?2 || '/'",
-    "UPDATE deliveries SET issue = ?1 || substr(issue, length(?2) + 1) WHERE substr(issue, 1, length(?2) + 1) = ?2 || '/'",
+    "UPDATE deliveries SET item = ?1 || substr(item, length(?2) + 1) WHERE substr(item, 1, length(?2) + 1) = ?2 || '#'",
     "UPDATE OR IGNORE ai_routes SET workspace = ?1 WHERE workspace = ?2",
     "DELETE FROM ai_routes WHERE workspace = ?2",
     "UPDATE OR IGNORE github_installations SET workspace = ?1 WHERE workspace = ?2",
@@ -20,24 +19,21 @@ pub const STATEMENTS: &[&str] = &[
     "UPDATE agent_runs SET repo = ?1 || substr(repo, length(?2) + 1) WHERE substr(repo, 1, length(?2) + 1) = ?2 || '/'",
 ];
 
-/// A repository transferred (see `g1t_kit::transfer`): its issues' links to
-/// outside trackers, and what was sent about them, follow its new path.
-/// The workspace's connections and AI providers stay with the workspace.
+/// A repository transferred (see `g1t_kit::transfer`): what was kept for
+/// it follows its new path. Work items, and so their links to outside
+/// trackers, stay with their workspace, as do the workspace's connections
+/// and AI providers.
 pub const TRANSFERRED: &[&str] = &[
-    "UPDATE links SET workspace = ?3, repo = ?1 WHERE repo = ?2",
     "UPDATE model_sessions SET repo = ?1 WHERE repo = ?2",
     "UPDATE github_repos SET workspace = ?3, repo = ?1 WHERE repo = ?2",
     "UPDATE agent_runs SET workspace = ?3, repo = ?1 WHERE repo = ?2",
-    "UPDATE deliveries SET issue = ?1 || substr(issue, length(?2) + 1) WHERE substr(issue, 1, length(?2) + 1) = ?2 || '#'",
 ];
 
-/// A repository purged: its issues' links to outside trackers, the model
-/// sessions of its runs, what was received about its issues, and its link
-/// to a GitHub repository go. `?1` its id, `?2` its path (`namespace/name`).
+/// A repository purged: the model sessions of its runs and its link to a
+/// GitHub repository go. Work items outlive it, with their links. `?1` its
+/// id, `?2` its path (`namespace/name`).
 pub const PURGED: &[&str] = &[
-    "DELETE FROM links WHERE repo_id = ?1",
     "DELETE FROM model_sessions WHERE repo = ?2",
-    "DELETE FROM deliveries WHERE substr(issue, 1, length(?2) + 1) = ?2 || '#'",
     "DELETE FROM github_repos WHERE repo_id = ?1",
     "UPDATE agent_runs SET status = 'ended' WHERE repo = ?2",
 ];

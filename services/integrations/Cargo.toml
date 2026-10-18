@@ -21,6 +21,9 @@ getrandom = { version = "0.2", features = ["js"] }
 hex = "0.4"
 sha2 = "0.10"
 
+[dev-dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
+
 # wasm-opt at -O1: about the same gzipped size as -O in a tenth of the
 # time.
 [package.metadata.wasm-pack.profile.release]

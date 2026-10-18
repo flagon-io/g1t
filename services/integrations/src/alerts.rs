@@ -9,11 +9,11 @@ use g1t_secrets as crypto;
 /// What an alert asks g1t to do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
-    /// Open an issue for it, or count it against the one already open.
+    /// Open a work item for it, or count it against the one already open.
     Open,
-    /// It came back after being fixed: reopen the issue.
+    /// It came back after being fixed: reopen the work item.
     Reopen,
-    /// It stopped. Say so on the issue, and nothing more.
+    /// It stopped. Say so on the work item, and nothing more.
     Recovered,
 }
 
@@ -23,7 +23,7 @@ pub struct Signal {
     /// What the sender called it: `issue.created`, `Triggered`.
     pub event: String,
     pub action: Action,
-    /// The sender's stable id for the problem, so it maps to one issue.
+    /// The sender's stable id for the problem, so it maps to one work item.
     pub external_id: String,
     pub key: String,
     pub title: String,

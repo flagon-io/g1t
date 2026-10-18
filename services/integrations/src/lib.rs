@@ -29,13 +29,17 @@ mod rename;
 mod sentry;
 mod summon;
 mod trackers;
+mod work_migrated;
 
 use g1t_contracts::events::Event;
 use g1t_contracts::identity::{SlugArgs, Workspace};
 use g1t_contracts::integrations::*;
 use g1t_contracts::repos::RepoPath;
 use g1t_contracts::time::rfc3339;
-use g1t_contracts::work::{AddCommentArgs, Issue, IssueActionArgs, IssueDetail, OpenIssueArgs, State, ViewArgs};
+use g1t_contracts::repos::PathByIdArgs;
+use g1t_contracts::work::{
+    AddCommentArgs, OpenWorkItemArgs, Resolution, State, ViewArgs, WorkItem, WorkItemActionArgs, WorkItemDetail, WorkItemViewArgs,
+};
 use g1t_contracts::{FailureCode, Membership, Outcome, PrincipalKind, Role, User, new_id};
 use g1t_kit::{args, now_ms, reply, rpc_method};
 use serde::{Deserialize, Serialize};
@@ -48,7 +52,7 @@ use g1t_secrets::{self as crypto, Sealer};
 use refs::Reference;
 
 const DELIVERIES_SHOWN: u32 = 30;
-/// An alert that keeps firing is mentioned on its issue at these counts.
+/// An alert that keeps firing is mentioned on its work item at these counts.
 const MILESTONES: [u32; 5] = [10, 100, 1_000, 10_000, 100_000];
 
 #[derive(Deserialize)]
@@ -95,11 +99,11 @@ struct LinkRow {
     key: String,
     title: String,
     url: String,
-    repo: String,
-    number: u32,
+    workspace: String,
+    /// Null until `work.migrated` for a link made to an issue.
+    number: Option<u32>,
     count: u32,
     announced: u32,
-    told_started: u32,
     first_seen: String,
     last_seen: String,
 }
@@ -111,7 +115,7 @@ struct DeliveryRow {
     event: String,
     outcome: String,
     detail: String,
-    issue: Option<String>,
+    item: Option<String>,
 }
 
 /// Something outside g1t that a reference named, and the connection that
@@ -168,13 +172,13 @@ fn check_config(provider: Provider, workspace: &str, config: &mut ConnectionConf
     let needs = |present: bool, what: &str| if present { Ok(()) } else { Err(what.to_owned()) };
     match provider {
         Provider::Sentry => {
-            needs(config.repo.is_some(), "Choose the repository issues are opened in.")?;
+            needs(config.repo.is_some(), "Choose the repository work items are filed from.")?;
             // The client secret comes once Sentry knows the webhook's
             // address, which it learns from this connection: it is added
             // after, and until then nothing Sentry sends is acted on.
             needs(config.organization.is_some(), "Give the Sentry organization's slug.")
         }
-        Provider::Datadog | Provider::Webhook => needs(config.repo.is_some(), "Choose the repository issues are opened in."),
+        Provider::Datadog | Provider::Webhook => needs(config.repo.is_some(), "Choose the repository work items are filed from."),
         Provider::Jira => {
             needs(config.site.is_some(), "Give your Jira site's address, such as https://acme.atlassian.net.")?;
             needs(config.email.is_some(), "Give the email address of the account the API token belongs to.")?;
@@ -192,7 +196,7 @@ pub(crate) struct Integrations {
     pub(crate) repos: Fetcher,
     /// Where the API is, for connections' webhook addresses.
     api_url: String,
-    /// Where the site is, for links back to issues and pull requests.
+    /// Where the site is, for links back to work items and pull requests.
     pub(crate) site_url: String,
     /// g1t's MCP server, which Ask reads g1t through as the person asking.
     pub(crate) mcp_url: String,
@@ -309,7 +313,7 @@ impl Integrations {
         };
         let seen: Outcome<serde_json::Value> = g1t_kit::call(
             &self.work,
-            "list_labels",
+            "counts",
             &ViewArgs {
                 repo: path,
                 number: 0,
@@ -457,12 +461,12 @@ impl Integrations {
         let tested = match provider {
             Provider::Sentry => match key {
                 Some(token) => sentry::test(&config, token).await?,
-                None => Ok("Sentry can send alerts. Add an auth token so g1t can read stack traces and resolve issues.".to_owned()),
+                None => Ok("Sentry can send alerts. Add an auth token so g1t can read stack traces and resolve them in Sentry.".to_owned()),
             },
             Provider::Jira => trackers::jira_test(&config, key.unwrap_or_default()).await?,
             Provider::Linear => trackers::linear_test(key.unwrap_or_default()).await?,
             _ => Ok(format!(
-                "Ready. Requests to its address that carry the secret open issues in {}.",
+                "Ready. Requests to its address that carry the secret open work items filed from {}.",
                 config.repo.as_deref().unwrap_or("its repository")
             )),
         };
@@ -496,7 +500,7 @@ impl Integrations {
                     event: row.event,
                     outcome: row.outcome,
                     detail: row.detail,
-                    issue: row.issue,
+                    item: row.item,
                 })
                 .collect(),
         ))
@@ -504,8 +508,8 @@ impl Integrations {
 
     // --- Acting in g1t --------------------------------------------------------
 
-    /// The workspace itself, as the one acting: issues an integration opens
-    /// are the workspace's, not whoever connected it.
+    /// The workspace itself, as the one acting: work items an integration
+    /// opens are the workspace's, not whoever connected it.
     async fn workspace_actor(&self, slug: &str) -> Result<Option<User>> {
         let workspace: Option<Workspace> = g1t_kit::call(&self.identity, "get_workspace", &SlugArgs { slug: slug.to_owned() }).await?;
         Ok(workspace.map(|workspace| User {
@@ -518,13 +522,16 @@ impl Integrations {
         }))
     }
 
-    async fn comment(&self, actor: &User, repo: &RepoPath, number: u32, body: String) -> Result<()> {
+    /// Comments on a thread: pull request `number` of `repo`, or without
+    /// one, work item `number` of `workspace`.
+    async fn comment(&self, actor: &User, workspace: &str, repo: Option<&RepoPath>, number: u32, body: String) -> Result<()> {
         let _: Outcome<Value> = g1t_kit::call(
             &self.work,
             "add_comment",
             &AddCommentArgs {
                 actor: actor.clone(),
-                repo: repo.clone(),
+                repo: repo.cloned(),
+                workspace: workspace.to_owned(),
                 number,
                 body,
                 path: None,
@@ -536,19 +543,18 @@ impl Integrations {
         Ok(())
     }
 
-    async fn issue_state(&self, actor: &User, repo: &RepoPath, number: u32) -> Result<Option<Issue>> {
-        let found: Outcome<IssueDetail> = g1t_kit::call(
+    async fn work_item(&self, actor: &User, workspace: &str, number: u32) -> Result<Option<WorkItem>> {
+        let found: Outcome<WorkItemDetail> = g1t_kit::call(
             &self.work,
-            "get_issue",
-            &ViewArgs {
-                repo: repo.clone(),
+            "get_work_item",
+            &WorkItemViewArgs {
+                workspace: workspace.to_owned(),
                 number,
                 viewer: Some(actor.clone()),
-                after_seq: 0,
             },
         )
         .await?;
-        Ok(found.into_result().ok().map(|detail| detail.issue))
+        Ok(found.into_result().ok().map(|detail| detail.item))
     }
 
     async fn link_for(&self, connection_id: &str, external_id: &str) -> Result<Option<LinkRow>> {
@@ -559,38 +565,26 @@ impl Integrations {
             .await
     }
 
-    #[allow(clippy::too_many_arguments)]
-    async fn insert_link(
-        &self,
-        connection: &Row,
-        external_id: &str,
-        key: &str,
-        title: &str,
-        url: &str,
-        issue: &Issue,
-        repo: &RepoPath,
-        count: u32,
-    ) -> Result<()> {
+    async fn insert_link(&self, connection: &Row, external_id: &str, key: &str, title: &str, url: &str, item: &WorkItem, count: u32) -> Result<()> {
         let now = now_ms();
         self.db
             .prepare(
                 "INSERT OR IGNORE INTO links
-                   (id, workspace, connection_id, provider, external_id, key, title, url, repo_id, repo,
+                   (id, workspace, connection_id, provider, external_id, key, title, url, item_id,
                     number, count, announced, first_seen, last_seen)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 new_id("lnk", now).into(),
-                connection.workspace.as_str().into(),
+                item.workspace.as_str().into(),
                 connection.id.as_str().into(),
                 connection.provider.as_str().into(),
                 external_id.into(),
                 key.into(),
                 title.chars().take(200).collect::<String>().into(),
                 url.into(),
-                issue.repo_id.as_str().into(),
-                format!("{}/{}", repo.namespace, repo.name).into(),
-                issue.number.into(),
+                item.id.as_str().into(),
+                item.number.into(),
                 count.into(),
                 count.into(),
                 rfc3339(now).into(),
@@ -659,11 +653,11 @@ impl Integrations {
         }
     }
 
-    async fn record(&self, connection_id: &str, event: &str, outcome: &str, detail: &str, issue: Option<&str>) -> Result<()> {
+    async fn record(&self, connection_id: &str, event: &str, outcome: &str, detail: &str, item: Option<&str>) -> Result<()> {
         let now = now_ms();
         self.db
             .prepare(
-                "INSERT INTO deliveries (id, connection_id, received_at, event, outcome, detail, issue)
+                "INSERT INTO deliveries (id, connection_id, received_at, event, outcome, detail, item)
                  VALUES (?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
@@ -673,22 +667,22 @@ impl Integrations {
                 event.chars().take(80).collect::<String>().into(),
                 outcome.into(),
                 detail.chars().take(500).collect::<String>().into(),
-                optional(issue),
+                optional(item),
             ])?
             .run()
             .await?;
         Ok(())
     }
 
-    /// Does what an alert asks: opens its issue, counts it against the one
-    /// already open, or reopens the one that was closed.
+    /// Does what an alert asks: opens its work item, counts it against the
+    /// one already open, or reopens the one that was closed.
     async fn process(&self, row: Row, signal: Signal) -> Result<()> {
         let outcome = self.act_on(&row, &signal).await;
-        let (outcome, detail, issue) = match outcome {
+        let (outcome, detail, item) = match outcome {
             Ok(done) => done,
             Err(error) => ("refused".to_owned(), format!("g1t could not act on it: {error}"), None),
         };
-        self.record(&row.id, &signal.event, &outcome, &detail, issue.as_deref()).await?;
+        self.record(&row.id, &signal.event, &outcome, &detail, item.as_deref()).await?;
         self.note(&row.id, (outcome == "refused").then_some(detail.as_str())).await
     }
 
@@ -697,21 +691,32 @@ impl Integrations {
         let config = row.config();
         let system = provider.label();
         let Some(repo) = config.repo.as_deref().and_then(repo_path) else {
-            return Ok(("ignored".into(), "The connection names no repository to open issues in.".into(), None));
+            return Ok(("ignored".into(), "The connection names no repository to file work items from.".into(), None));
         };
         let Some(actor) = self.workspace_actor(&row.workspace).await? else {
             return Ok(("refused".into(), "The workspace no longer exists.".into(), None));
         };
-        let at = |number: u32| format!("{}/{}#{number}", repo.namespace, repo.name);
+        let at = |workspace: &str, number: u32| format!("{workspace}#{number}");
 
         if let Some(link) = self.link_for(&row.id, &signal.external_id).await? {
-            let path = repo_path(&link.repo).unwrap_or(repo.clone());
-            let issue = self.issue_state(&actor, &path, link.number).await?;
+            let workspace = link.workspace.clone();
+            // A link made to an issue, until `work.migrated` says which work
+            // item that became: counted, and nothing more.
+            let Some(number) = link.number else {
+                let count = signal.count.unwrap_or(link.count + 1).max(link.count);
+                self.db
+                    .prepare("UPDATE links SET count = ?, last_seen = ? WHERE id = ?")
+                    .bind(&[count.into(), rfc3339(now_ms()).into(), link.id.as_str().into()])?
+                    .run()
+                    .await?;
+                return Ok(("updated".into(), format!("Seen again ({count} so far)."), None));
+            };
+            let item = self.work_item(&actor, &workspace, number).await?;
             if signal.action == Action::Recovered {
-                if issue.as_ref().is_some_and(|issue| issue.state == State::Open) {
-                    self.comment(&actor, &path, link.number, format!("{system} says this recovered.")).await?;
+                if item.as_ref().is_some_and(|item| item.state == State::Open) {
+                    self.comment(&actor, &workspace, None, number, format!("{system} says this recovered.")).await?;
                 }
-                return Ok(("updated".into(), "It recovered.".into(), Some(at(link.number))));
+                return Ok(("updated".into(), "It recovered.".into(), Some(at(&workspace, number))));
             }
             let count = signal.count.unwrap_or(link.count + 1).max(link.count);
             let milestone = MILESTONES.iter().rev().find(|m| count >= **m && link.announced < **m).copied();
@@ -725,36 +730,37 @@ impl Integrations {
                 ])?
                 .run()
                 .await?;
-            if issue.as_ref().is_some_and(|issue| issue.state == State::Closed) {
+            if item.as_ref().is_some_and(|item| item.state == State::Closed) {
                 let _: Outcome<Value> = g1t_kit::call(
                     &self.work,
-                    "reopen_issue",
-                    &IssueActionArgs {
+                    "reopen_work_item",
+                    &WorkItemActionArgs {
                         actor: actor.clone(),
-                        repo: path.clone(),
-                        number: link.number,
+                        workspace: workspace.clone(),
+                        number,
                         reason: None,
                     },
                 )
                 .await?;
                 self.comment(
                     &actor,
-                    &path,
-                    link.number,
+                    &workspace,
+                    None,
+                    number,
                     format!("{system} saw this again after it was closed, so it is open again: [{}]({}).", signal.key, signal.url),
                 )
                 .await?;
-                return Ok(("reopened".into(), format!("It came back after being closed: {}.", signal.title), Some(at(link.number))));
+                return Ok(("reopened".into(), format!("It came back after being closed: {}.", signal.title), Some(at(&workspace, number))));
             }
             if let Some(milestone) = milestone {
-                self.comment(&actor, &path, link.number, format!("{system} has now seen this {milestone} times or more."))
+                self.comment(&actor, &workspace, None, number, format!("{system} has now seen this {milestone} times or more."))
                     .await?;
             }
-            return Ok(("updated".into(), format!("Seen again ({count} so far)."), Some(at(link.number))));
+            return Ok(("updated".into(), format!("Seen again ({count} so far)."), Some(at(&workspace, number))));
         }
 
         if signal.action == Action::Recovered {
-            return Ok(("ignored".into(), "It recovered, and no issue was open for it.".into(), None));
+            return Ok(("ignored".into(), "It recovered, and no work item was open for it.".into(), None));
         }
         let mut body = signal.body.clone();
         if provider == Provider::Sentry
@@ -770,27 +776,28 @@ impl Integrations {
             row.name
         ));
         let label = config.label.clone().unwrap_or_else(|| "bug".to_owned());
-        let opened: Outcome<Issue> = g1t_kit::call(
+        let opened: Outcome<WorkItem> = g1t_kit::call(
             &self.work,
-            "open_issue",
-            &OpenIssueArgs {
+            "open_work_item",
+            &OpenWorkItemArgs {
                 actor: actor.clone(),
-                repo: repo.clone(),
+                workspace: row.workspace.clone(),
+                repo: Some(repo.clone()),
+                targets: Vec::new(),
                 title: signal.title.chars().take(200).collect(),
                 body,
                 labels: vec![label, provider.name().to_owned()],
-                checks: Vec::new(),
                 milestone: None,
             },
         )
         .await?;
-        let issue = match opened {
-            Outcome::Ok(issue) => issue,
+        let item = match opened {
+            Outcome::Ok(item) => item,
             Outcome::Fail(refused) => return Ok(("refused".into(), refused.message, None)),
         };
-        self.insert_link(row, &signal.external_id, &signal.key, &signal.title, &signal.url, &issue, &repo, signal.count.unwrap_or(1))
+        self.insert_link(row, &signal.external_id, &signal.key, &signal.title, &signal.url, &item, signal.count.unwrap_or(1))
             .await?;
-        Ok(("opened".into(), format!("Opened #{}.", issue.number), Some(at(issue.number))))
+        Ok(("opened".into(), format!("Opened #{}.", item.number), Some(at(&item.workspace, item.number))))
     }
 
     // --- References -----------------------------------------------------------
@@ -882,9 +889,13 @@ impl Integrations {
     }
 
     async fn import(&self, a: ImportArgs) -> Result<Outcome<Imported>> {
-        let workspace = a.repo.namespace.to_lowercase();
+        let workspace = match (&a.repo, a.workspace.trim()) {
+            (_, slug) if !slug.is_empty() => slug.to_lowercase(),
+            (Some(repo), _) => repo.namespace.to_lowercase(),
+            (None, _) => return Ok(fail(FailureCode::Invalid, "Name the workspace to import the work item into.")),
+        };
         if !a.actor.is_member(&workspace) {
-            return Ok(fail(FailureCode::Forbidden, format!("Only members of {workspace} can import into its repositories.")));
+            return Ok(fail(FailureCode::Forbidden, format!("Only members of {workspace} can import work items into it.")));
         }
         let Some(reference) = refs::find(&a.reference).into_iter().next() else {
             return Ok(fail(FailureCode::Invalid, "Give a ticket key such as TECH-1234, or a Jira, Linear or Sentry address."));
@@ -901,8 +912,15 @@ impl Integrations {
             Err(problem) => return Ok(fail(FailureCode::Conflict, problem)),
         };
         if let Some(link) = self.link_for(&found.connection.id, &found.external_id).await? {
+            let Some(number) = link.number else {
+                return Ok(fail(
+                    FailureCode::Conflict,
+                    format!("{} was imported already, and its work item is still being moved into the workspace. Try again in a few minutes.", found.item.key),
+                ));
+            };
             return Ok(Outcome::Ok(Imported {
-                number: link.number,
+                workspace: link.workspace,
+                number,
                 item: found.item,
                 created: false,
             }));
@@ -919,28 +937,30 @@ impl Integrations {
             body.push_str("\n\n");
             body.push_str(item.body.trim());
         }
-        let opened: Outcome<Issue> = g1t_kit::call(
+        let opened: Outcome<WorkItem> = g1t_kit::call(
             &self.work,
-            "open_issue",
-            &OpenIssueArgs {
+            "open_work_item",
+            &OpenWorkItemArgs {
                 actor: a.actor.clone(),
+                workspace: workspace.clone(),
                 repo: a.repo.clone(),
+                targets: a.targets.clone(),
                 title: item.title.chars().take(200).collect(),
                 body,
                 labels: vec![item.provider.name().to_owned()],
-                checks: Vec::new(),
                 milestone: None,
             },
         )
         .await?;
-        let issue = match opened {
-            Outcome::Ok(issue) => issue,
+        let opened = match opened {
+            Outcome::Ok(opened) => opened,
             Outcome::Fail(refused) => return Ok(Outcome::Fail(refused)),
         };
-        self.insert_link(&found.connection, &found.external_id, &item.key, &item.title, &item.url, &issue, &a.repo, 1)
+        self.insert_link(&found.connection, &found.external_id, &item.key, &item.title, &item.url, &opened, 1)
             .await?;
         Ok(Outcome::Ok(Imported {
-            number: issue.number,
+            workspace: opened.workspace,
+            number: opened.number,
             item: found.item,
             created: true,
         }))
@@ -949,11 +969,8 @@ impl Integrations {
     async fn links(&self, a: LinksArgs) -> Result<Vec<Link>> {
         let rows = self
             .db
-            .prepare("SELECT * FROM links WHERE repo = ? AND number = ? ORDER BY id")
-            .bind(&[
-                format!("{}/{}", a.repo.namespace.to_lowercase(), a.repo.name).into(),
-                a.number.into(),
-            ])?
+            .prepare("SELECT * FROM links WHERE workspace = ? AND number = ? ORDER BY id")
+            .bind(&[a.workspace.to_lowercase().into(), a.number.into()])?
             .all()
             .await?
             .results::<LinkRow>()?;
@@ -974,49 +991,62 @@ impl Integrations {
 
     // --- Writing back -----------------------------------------------------------
 
-    async fn on_event(&self, event: &Event) -> Result<()> {
-        let Some(repo_id) = event.repo_id.as_deref() else {
-            return Ok(());
-        };
-        let (number, closing) = match event.kind.as_str() {
-            "issue.closed" if event.data["reason"].as_str() != Some("not_planned") => (event.data["number"].as_u64(), true),
-            "pull.opened" => (event.data["issue"].as_u64(), false),
-            _ => return Ok(()),
-        };
-        let Some(number) = number else {
-            return Ok(());
-        };
-        let links = self
-            .db
-            .prepare("SELECT * FROM links WHERE repo_id = ? AND number = ?")
-            .bind(&[repo_id.into(), (number as u32).into()])?
-            .all()
-            .await?
-            .results::<LinkRow>()?;
-        for link in links {
-            if !closing && link.told_started != 0 {
-                continue;
+    async fn links_where(&self, sql: &str, binds: &[JsValue]) -> Result<Vec<LinkRow>> {
+        self.db.prepare(sql).bind(binds)?.all().await?.results::<LinkRow>()
+    }
+
+    /// The links of the work item an event is about, and what to tell
+    /// their systems: it closed as done (`work_item.closed`), or a pull
+    /// request for it opened (`pull.opened`).
+    async fn written_back(&self, event: &Event) -> Result<Option<(Vec<LinkRow>, bool, String, String)>> {
+        let site = self.site_url.trim_end_matches('/');
+        match event.kind.as_str() {
+            "work_item.closed" if event.data["reason"].as_str() != Some("not_planned") => {
+                let Some(item_id) = event.data["itemId"].as_str() else { return Ok(None) };
+                let found = self.links_where("SELECT * FROM links WHERE item_id = ?", &[item_id.into()]).await?;
+                let workspace = event.data["workspace"].as_str().unwrap_or_default();
+                let number = event.data["number"].as_u64().unwrap_or_default();
+                let resolution: Option<Resolution> = serde_json::from_value(event.data["resolution"].clone()).ok();
+                let (text, url) = match resolution {
+                    Some(Resolution { repo, pull: Some(pull), .. }) => {
+                        (format!("Fixed in g1t: pull request #{pull} on {repo} merged."), format!("{site}/{repo}/pull/{pull}"))
+                    }
+                    Some(Resolution { repo, commit: Some(commit), .. }) => (
+                        format!("Fixed in g1t: commit {} on {repo}.", commit.get(..12).unwrap_or(&commit)),
+                        format!("{site}/{repo}/commit/{commit}"),
+                    ),
+                    _ => (format!("Closed in g1t as done: work item {workspace}#{number}."), format!("{site}/{workspace}/-/work/{number}")),
+                };
+                Ok(Some((found, true, text, url)))
             }
+            "pull.opened" => {
+                let (Some(repo_id), Some(number)) = (event.repo_id.as_deref(), event.data["item"].as_u64()) else { return Ok(None) };
+                let Some(repo): Option<RepoPath> = g1t_kit::call(&self.repos, "path_by_id", &PathByIdArgs { id: repo_id.to_owned() }).await? else {
+                    return Ok(None);
+                };
+                let workspace = repo.namespace.to_lowercase();
+                let found = self
+                    .links_where(
+                        "SELECT * FROM links WHERE workspace = ? AND number = ? AND told_started = 0",
+                        &[workspace.as_str().into(), (number as u32).into()],
+                    )
+                    .await?;
+                let path = format!("{}/{}", repo.namespace, repo.name);
+                let pull = &event.data["number"];
+                Ok(Some((found, false, format!("Work on this started in g1t: pull request #{pull} on {path}."), format!("{site}/{path}/pull/{pull}"))))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    async fn on_event(&self, event: &Event) -> Result<()> {
+        let Some((links, closing, text, url)) = self.written_back(event).await? else {
+            return Ok(());
+        };
+        for link in links {
             let Some(row) = self.row(&link.connection_id).await? else { continue };
             let config = row.config();
             let Some(token) = self.secrets(&row).secret.filter(|_| config.write_back) else { continue };
-            let (text, url) = if closing {
-                match event.data["resolvedBy"].as_u64() {
-                    Some(pull) => (
-                        format!("Fixed in g1t: pull request #{pull} on {} merged.", link.repo),
-                        format!("{}/{}/pull/{pull}", self.site_url, link.repo),
-                    ),
-                    None => (
-                        format!("Closed in g1t as done: {}#{}.", link.repo, link.number),
-                        format!("{}/{}/issues/{}", self.site_url, link.repo, link.number),
-                    ),
-                }
-            } else {
-                (
-                    format!("Work on this started in g1t: pull request #{} on {}.", event.data["number"], link.repo),
-                    format!("{}/{}/pull/{}", self.site_url, link.repo, event.data["number"]),
-                )
-            };
             let told = match row.provider() {
                 Provider::Sentry if closing => sentry::resolve(&config, &token, &link.external_id, &format!("{text} {url}")).await?,
                 Provider::Sentry => sentry::comment(&config, &token, &link.external_id, &format!("{text} {url}")).await?,
@@ -1126,9 +1156,14 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
             message.ack();
             continue;
         }
+        // Issues moved into work items: links kept by issue number follow.
+        if work_migrated::on_event(&env.d1("DB")?, message.body()).await? {
+            message.ack();
+            continue;
+        }
         // A repository purged: what was kept for it goes.
         rename::on_purged(&env.d1("DB")?, message.body()).await?;
-        // g1t assigned an issue or asked in a thread: it takes it on.
+        // g1t assigned a work item or asked in a thread: it takes it on.
         service.summon(message.body()).await;
         service.on_event(message.body()).await?;
         message.ack();
