@@ -142,11 +142,11 @@ test("errors are grouped, counted, and open again when they come back", async ()
   assert.equal(groups.length, 1);
   assert.equal(groups[0].count, 2);
   assert.equal(groups[0].first_deployment_id, "dep_1");
-  store.setError(groups[0].fingerprint, { state: "resolved", issue_number: 12 });
+  store.setError(groups[0].fingerprint, { state: "resolved", item: 12 });
   await ingestTail(store, [appEvent("bbbbbbbbbbbbbbb3", { outcome: "exception", exception: "Cannot read 'z' of user 3" })]);
   groups = store.errors({});
   assert.equal(groups[0].state, "open");
-  assert.equal(groups[0].issue_number, 12);
+  assert.equal(groups[0].item, 12);
   const failed = store.requests({ errors_only: true });
   assert.equal(failed.items.length, 3);
   // An app that threw answered with an error page, whichever half said so.

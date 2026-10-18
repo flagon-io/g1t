@@ -199,6 +199,13 @@ export const MIGRATIONS: string[] = [
     ingested_bytes INTEGER NOT NULL DEFAULT 0
   );
   `,
+  // Issues became work items, numbered in the workspace: an error group
+  // links one by that number. One linked before keeps its old issue
+  // number, whose address still leads to the work item it became.
+  `
+  ALTER TABLE error_groups RENAME COLUMN issue_number TO legacy_issue;
+  ALTER TABLE error_groups ADD COLUMN item INTEGER;
+  `,
 ];
 
 /**
