@@ -33,6 +33,19 @@ pub const ISSUE_EVENTS: [&str; 9] = [
     "issue.reopened",
 ];
 
+/// The page's (`?1`) issues' events and comments, by repository and old
+/// number: the `type` list is `events_issue_number`'s (migration 0015),
+/// word for word, so SQLite reads that index.
+macro_rules! page_events_by_number {
+    () => {
+        "SELECT e.id FROM work_migrated m JOIN events e INDEXED BY events_issue_number
+         ON e.repo_id = m.repo_id AND json_extract(e.data, '$.number') = m.legacy_number
+         AND e.type IN ('issue.opened', 'issue.updated', 'issue.assigned', 'issue.labeled', 'issue.unlabeled', 'issue.milestoned',
+                        'issue.demilestoned', 'issue.closed', 'issue.reopened', 'comment.created', 'comment.edited', 'comment.deleted')
+       WHERE m.event_id = ?1"
+    };
+}
+
 /// What one page does, in order: `?1` the event's id, `?2` its items as
 /// JSON, `?3` [`ISSUE_EVENTS`] as JSON.
 pub const MOVED: [&str; 12] = [
@@ -73,41 +86,50 @@ pub const MOVED: [&str; 12] = [
     "UPDATE inbox_subscriptions SET thread = 'item:' || m.item_id
      FROM work_migrated m
      WHERE m.event_id = ?1 AND inbox_subscriptions.thread = m.repo_id || '#' || m.legacy_number",
-    // The log. Each statement reads the page's repositories' events once,
-    // and finds each one's work item by its repository and old number.
-    "UPDATE events SET type = 'work_item.' || substr(type, 7),
+    // The log: each of the page's issues' events, found by its repository
+    // and old number through an index of only such events (migration
+    // 0015), so a page reads what it rewrites and no more of the log.
+    concat!(
+        "UPDATE events SET type = 'work_item.' || substr(type, 7),
        data = json_set(json_remove(data, '$.issueId', '$.repoId'),
          '$.itemId', (SELECT m.item_id FROM work_migrated m WHERE m.repo_id = events.repo_id AND m.legacy_number = json_extract(events.data, '$.number')),
          '$.workspace', (SELECT m.workspace FROM work_migrated m WHERE m.repo_id = events.repo_id AND m.legacy_number = json_extract(events.data, '$.number')),
          '$.repoIds', json_array(events.repo_id),
          '$.number', (SELECT m.number FROM work_migrated m WHERE m.repo_id = events.repo_id AND m.legacy_number = json_extract(events.data, '$.number')))
-     WHERE repo_id IN (SELECT repo_id FROM work_migrated WHERE event_id = ?1)
-       AND type IN (SELECT value FROM json_each(?3))
-       AND EXISTS (SELECT 1 FROM work_migrated m WHERE m.repo_id = events.repo_id AND m.legacy_number = json_extract(events.data, '$.number'))",
+     WHERE id IN (",
+        page_events_by_number!(),
+        ")
+       AND type IN (SELECT value FROM json_each(?3))"
+    ),
     // Comments on an issue: on no pull request, and naming no work item yet.
-    "UPDATE events SET
+    concat!(
+        "UPDATE events SET
        data = json_set(data,
          '$.itemId', (SELECT m.item_id FROM work_migrated m WHERE m.repo_id = events.repo_id AND m.legacy_number = json_extract(events.data, '$.number')),
          '$.workspace', (SELECT m.workspace FROM work_migrated m WHERE m.repo_id = events.repo_id AND m.legacy_number = json_extract(events.data, '$.number')),
          '$.repoIds', json_array(events.repo_id),
          '$.number', (SELECT m.number FROM work_migrated m WHERE m.repo_id = events.repo_id AND m.legacy_number = json_extract(events.data, '$.number')))
-     WHERE repo_id IN (SELECT repo_id FROM work_migrated WHERE event_id = ?1)
+     WHERE id IN (",
+        page_events_by_number!(),
+        ")
        AND type IN ('comment.created', 'comment.edited', 'comment.deleted')
-       AND json_extract(data, '$.pullId') IS NULL AND json_extract(data, '$.itemId') IS NULL
-       AND EXISTS (SELECT 1 FROM work_migrated m WHERE m.repo_id = events.repo_id AND m.legacy_number = json_extract(events.data, '$.number'))",
+       AND json_extract(data, '$.pullId') IS NULL AND json_extract(data, '$.itemId') IS NULL"
+    ),
     // What names an issue it is about, or overlaps with: `issue`, `otherIssue`.
     "UPDATE events SET
        data = json_set(json_remove(data, '$.issue'),
          '$.item', (SELECT m.number FROM work_migrated m WHERE m.repo_id = events.repo_id AND m.legacy_number = json_extract(events.data, '$.issue')))
-     WHERE repo_id IN (SELECT repo_id FROM work_migrated WHERE event_id = ?1)
-       AND json_extract(data, '$.issue') IS NOT NULL
-       AND EXISTS (SELECT 1 FROM work_migrated m WHERE m.repo_id = events.repo_id AND m.legacy_number = json_extract(events.data, '$.issue'))",
+     WHERE id IN (
+       SELECT e.id FROM work_migrated m JOIN events e INDEXED BY events_issue
+         ON e.repo_id = m.repo_id AND json_extract(e.data, '$.issue') = m.legacy_number AND json_extract(e.data, '$.issue') IS NOT NULL
+       WHERE m.event_id = ?1)",
     "UPDATE events SET
        data = json_set(json_remove(data, '$.otherIssue'),
          '$.otherItem', (SELECT m.number FROM work_migrated m WHERE m.repo_id = events.repo_id AND m.legacy_number = json_extract(events.data, '$.otherIssue')))
-     WHERE repo_id IN (SELECT repo_id FROM work_migrated WHERE event_id = ?1)
-       AND json_extract(data, '$.otherIssue') IS NOT NULL
-       AND EXISTS (SELECT 1 FROM work_migrated m WHERE m.repo_id = events.repo_id AND m.legacy_number = json_extract(events.data, '$.otherIssue'))",
+     WHERE id IN (
+       SELECT e.id FROM work_migrated m JOIN events e INDEXED BY events_other_issue
+         ON e.repo_id = m.repo_id AND json_extract(e.data, '$.otherIssue') = m.legacy_number AND json_extract(e.data, '$.otherIssue') IS NOT NULL
+       WHERE m.event_id = ?1)",
 ];
 
 /// How many of `?1`, `?2`, `?3` a statement reads: D1 takes no more values
@@ -205,6 +227,25 @@ mod tests {
             .unwrap()
             .map(Result::unwrap)
             .collect()
+    }
+
+    #[test]
+    fn a_page_reads_only_its_own_issues_events() {
+        let db = database_before("9999");
+        for sql in MOVED.iter().filter(|sql| sql.contains("UPDATE events")) {
+            let mut statement = db.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
+            let plan: Vec<String> = statement
+                .query_map(rusqlite::params_from_iter(["evt_9", "[]", "[]"].iter().take(bound(sql))), |row| row.get::<_, String>(3))
+                .unwrap()
+                .map(Result::unwrap)
+                .collect();
+            // Never the whole log, nor every event of the page's repositories.
+            assert!(
+                plan.iter().all(|step| !step.starts_with("SCAN events") && !step.starts_with("SCAN e") && !step.contains("INDEX events_repo")),
+                "{sql}\n{plan:#?}"
+            );
+            assert!(plan.iter().any(|step| step.contains("INDEX events_issue") || step.contains("INDEX events_other_issue")), "{sql}\n{plan:#?}");
+        }
     }
 
     #[test]
