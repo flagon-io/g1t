@@ -1011,7 +1011,11 @@ The id is kept in .git/g1t/session (each worktree has its own); G1T_SESSION over
 Starting again with the same --harness-session-id returns the same session.")]
     Start(SessionStartArgs),
     /// Say the current session is still working; renews its claims.
-    Heartbeat,
+    #[command(after_help = "--usage-json reports the session's token usage so far, which g1t prices at Anthropic's list price:
+a JSON list with one entry per model, each {model, tier?, input_tokens, output_tokens,
+cache_write_5m_tokens, cache_write_1h_tokens, cache_read_tokens}. It is cumulative, so it replaces
+what the session reported before. - reads it from stdin.")]
+    Heartbeat(SessionHeartbeatArgs),
     /// Record a note, prompt or message in the current session.
     Log(SessionLogArgs),
     /// Attach the current session to a work item, a pull request or a branch, or give it a title.
@@ -1149,6 +1153,13 @@ pub struct SessionAttachArgs {
     /// What it is for, in a few words; replaces its title.
     #[arg(short, long)]
     pub title: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct SessionHeartbeatArgs {
+    /// The session's token usage so far, per model, as JSON; - reads it from stdin.
+    #[arg(long, value_name = "JSON")]
+    pub usage_json: Option<String>,
 }
 
 #[derive(Debug, Args)]
