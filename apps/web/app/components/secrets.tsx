@@ -197,7 +197,11 @@ function Row({ row, inherited, manage, override }: { row: Setting; inherited: bo
             </Hint>
           )}
         </div>
-        {row.note && <p className="truncate text-xs text-faint" title={row.note}>{row.note}</p>}
+        {row.note && (
+          <Hint label={row.note}>
+            <p className="truncate text-xs text-faint">{row.note}</p>
+          </Hint>
+        )}
         {override && <p className="mt-1 text-xs text-accent">{override}</p>}
         {!secret && row.value != null && <p className="truncate font-mono text-xs text-muted">{row.value}</p>}
       </div>
