@@ -1418,11 +1418,12 @@ export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean
 
 /**
  * Work's sidebar, and its menu on a phone (the Work tab tapped again), in
- * two sections. Work items: the views people keep coming back to, saved
- * in the address (open, yours, closed), the board of them as they move, a
- * new one, and the workspace's labels and milestones. Sessions, the work
- * being done on them: what is going now, what just ended, your own, and
- * each kind, kept in the address as well.
+ * two sections. First, under the mode's own name as every mode's first rows
+ * are, its work items: the views people keep coming back to, saved in the
+ * address (open, yours, closed), the board of them as they move, a new one,
+ * and the workspace's labels and milestones. Then Sessions, the work being
+ * done on them: what is going now, what just ended, your own, and each
+ * kind, kept in the address as well.
  */
 function WorkSidebar({ slug, username }: { slug: string; username: string }) {
   const { pathname: path, search } = useSidebarLocation();
@@ -1438,7 +1439,7 @@ function WorkSidebar({ slug, username }: { slug: string; username: string }) {
     <div className="flex h-full flex-col">
       <ModeHeader title="Work" />
       <nav aria-label="Work" className={PANEL}>
-        <NavGroup title="Work items">
+        <NavRows>
           <SidebarLink to={list} icon={<ListTodo size={15} />} current={view({})}>
             Open
           </SidebarLink>
@@ -1460,7 +1461,7 @@ function WorkSidebar({ slug, username }: { slug: string; username: string }) {
           <SidebarLink to={workPath(slug, "milestones")} icon={<Flag size={15} />} current={at("milestones")}>
             Milestones
           </SidebarLink>
-        </NavGroup>
+        </NavRows>
         <Rule />
         <NavGroup title="Sessions">
           <SidebarLink to={sessions} icon={<Radio size={15} />} current={sessionView({})}>
