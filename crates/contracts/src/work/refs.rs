@@ -1,7 +1,6 @@
 //! What `#N` in text names, the one set of rules every reader of references
 //! follows: closing keywords in pull requests and commits (work), Markdown
-//! on the site, chat and the CLI. `packages/contracts/src/refs.ts` mirrors
-//! it.
+//! on the site, chat and the CLI. `apps/web/app/lib/refs.ts` mirrors it.
 //!
 //! A reference is `#N`, `owner/name#N` (read in that repository's context)
 //! or `workspace#N` (in that workspace's). Read in a repository R of
@@ -10,11 +9,13 @@
 //! 1. a pull request of R numbered N;
 //! 2. a work item filed in R whose number there was N (an old issue);
 //! 3. the work item numbered N in W;
-//! 4. a pull request numbered N in another repository of W (new pull
-//!    requests are numbered in the workspace, so this is unique).
+//! 4. a pull request numbered N in another repository of W, when N is
+//!    above W's floor: new pull requests are numbered in the workspace, so
+//!    those are unique; the numbers its repositories used on their own
+//!    before collide, and name none of them from elsewhere.
 //!
 //! Read in a workspace alone, `#N` is the work item N in W, else a pull
-//! request numbered N in W. The work service's `resolve_ref` does the
+//! request numbered N in W, above its floor. The work service's `resolve_ref` does the
 //! lookups.
 //!
 //! What sits in code, a `span` or a fenced block, is no reference: it is

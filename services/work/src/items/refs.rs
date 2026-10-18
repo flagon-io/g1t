@@ -219,6 +219,37 @@ impl Work {
         })
     }
 
+    /// What `reference` names read in `repo_id` of `workspace`, and the
+    /// repository it is read in ([`super::resolve_in`]).
+    pub(super) async fn resolve_in(&self, repo_id: &str, workspace: &str, reference: &Ref) -> Result<Option<(String, Named)>> {
+        let read_in = match &reference.scope {
+            RefScope::Here => Some(repo_id.to_owned()),
+            RefScope::Workspace(named) => {
+                if !named.eq_ignore_ascii_case(workspace) {
+                    return Ok(None);
+                }
+                None
+            }
+            RefScope::Repo(path) => {
+                if !path.namespace.eq_ignore_ascii_case(workspace) {
+                    return Ok(None);
+                }
+                let known = self
+                    .db
+                    .prepare("SELECT repo_id AS value FROM repo_workspaces WHERE lower(path) = lower(?)")
+                    .bind(&[format!("{}/{}", path.namespace, path.name).into()])?
+                    .first::<ValueRow>(None)
+                    .await?;
+                match known {
+                    Some(row) => Some(row.value),
+                    None => return Ok(None),
+                }
+            }
+        };
+        let found = self.lookup_ref(read_in.as_deref(), workspace, reference.number).await?;
+        Ok(found.named(read_in.is_some()).map(|named| (read_in.unwrap_or_else(|| repo_id.to_owned()), named)))
+    }
+
     /// The work items `text`, written in `repo`, closes and is part of,
     /// with `own` (a pull request's own work item) closed first. Each of
     /// `who` (whoever wrote it, merges it or pushed it) must be able to
