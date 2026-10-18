@@ -2079,7 +2079,7 @@ class Deployments {
     });
     if (behind && attempts < RENAME_WAITS) throw new Error(`projects has not seen ${current} moved yet`);
 
-    // Its history goes with it, as the repository's issues do.
+    // Its history goes with it, as its pull requests do.
     const statements: D1PreparedStatement[] = [
       this.db.prepare("UPDATE deployments SET repo = ? WHERE repo_id = ?").bind(current, move.repoId),
     ];

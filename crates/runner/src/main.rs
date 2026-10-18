@@ -6,7 +6,7 @@
 //! `mergecheck` finds out whether a pull request merges cleanly, `deploy`
 //! builds a commit for g1t.page, `bump` makes a dependency update (one
 //! package raised in its lockfiles, pushed as g1t), `backup` cuts a
-//! repository's nightly backup bundle, and `checks` runs an issue's
+//! repository's nightly backup bundle, and `checks` runs a work item's
 //! commands, from before checks were workflows. See the modules of those
 //! names. It talks to g1t only through the public API and git.
 //!

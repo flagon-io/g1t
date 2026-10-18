@@ -235,7 +235,7 @@ mod tests {
             "metadata": { "workspaceId": "wsp_1" },
             "labels": { "goodFirstIssue": 3 },
             "byModel": { "claudeOpus": 1.5 },
-            "data": { "issueId": "iss_1", "outputs": { "artifactId": "a" } },
+            "data": { "itemId": "iss_1", "outputs": { "artifactId": "a" } },
         }));
         assert_eq!(
             sent,
@@ -252,7 +252,7 @@ mod tests {
                 "metadata": { "workspaceId": "wsp_1" },
                 "labels": { "goodFirstIssue": 3 },
                 "by_model": { "claudeOpus": 1.5 },
-                "data": { "issue_id": "iss_1", "outputs": { "artifactId": "a" } },
+                "data": { "item_id": "iss_1", "outputs": { "artifactId": "a" } },
             })
         );
         assert!(camel_case_keys(&sent).is_empty());

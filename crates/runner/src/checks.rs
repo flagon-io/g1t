@@ -1,6 +1,6 @@
 //! Runs commands against one commit and reports how each went: the merge
 //! queue's runner of commands, and `MODE=checks`, which ran commands written
-//! on issues before a pull request's checks were its workflows. g1t no
+//! on work items before a pull request's checks were its workflows. g1t no
 //! longer starts that mode; it stays for a sandbox already under way.
 //!
 //! The sandbox holds nothing but that commit, so a passing result says

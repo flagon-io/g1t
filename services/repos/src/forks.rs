@@ -1,6 +1,6 @@
 //! Pull requests' working copies after their pull request is done.
 //!
-//! Every pull request made from an issue works in its own copy of the
+//! Every pull request made for a work item works in its own copy of the
 //! repository in the git store (`pulls--<pull id>`, `fork_for_pull`).
 //! Cloudflare does not say whether a fork shares objects with its source,
 //! and storage is billed and capped per account (1 TB), so copies are not
