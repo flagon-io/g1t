@@ -89,7 +89,7 @@ mod tests {
         assert!(access.allows(Scope::PullRequestsRead));
         assert!(access.allows(Scope::RepoRead));
         assert!(!access.allows(Scope::PullRequestsWrite));
-        assert!(!access.allows(Scope::IssuesWrite));
+        assert!(!access.allows(Scope::WorkWrite));
         assert!(!access.allows(Scope::CodeWrite));
         // A person's conversations are never in it.
         assert!(!access.allows(Scope::ChatRead));

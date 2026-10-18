@@ -4,7 +4,7 @@
  * test keeps the tables here the same.
  *
  * A token's permissions are its scopes read per resource: each resource
- * at none or one level, such as issues: write. What a request may do is
+ * at none or one level, such as work: write. What a request may do is
  * the intersection of the owner's role, the token's reach (the workspace
  * it is made for, and its repositories) and its permissions.
  */
@@ -14,7 +14,7 @@ export type ScopeResource =
   | "code"
   | "security"
   | "packages"
-  | "issues"
+  | "work"
   | "pull_requests"
   | "agents"
   | "workflows"
@@ -39,7 +39,7 @@ export type ScopeLevel = "read" | "create" | "write" | "run" | "delete" | "admin
 
 /** Every scope, grouped by resource, least first. */
 export const SCOPES = [
-  { scope: "repo:read", description: "See repositories, their settings, labels, timelines, releases, languages, contributors and security alerts, and search" },
+  { scope: "repo:read", description: "See repositories, their settings, timelines, releases, languages, contributors and security alerts, and search" },
   { scope: "repo:create", description: "Create repositories, and nothing that changes or deletes one" },
   { scope: "repo:write", description: "Create repositories, create, rename and delete branches, change how pull requests merge and publish releases" },
   { scope: "repo:admin", description: "Rename, archive, transfer, delete or change who can see a repository, change its rulesets, and dismiss security alerts" },
@@ -50,10 +50,10 @@ export const SCOPES = [
   { scope: "packages:read", description: "Pull container images and install private packages" },
   { scope: "packages:write", description: "Push container images and publish packages" },
   { scope: "packages:delete", description: "Delete and restore packages and their versions" },
-  { scope: "issues:read", description: "Read issues and comments" },
-  { scope: "issues:write", description: "Open, edit, close and comment on issues" },
+  { scope: "work:read", description: "Read work items, their comments, labels, milestones and claims" },
+  { scope: "work:write", description: "Open, edit, link, close and comment on work items, claim them, and manage labels and milestones" },
   { scope: "pull_requests:read", description: "Read pull requests, their changes, sessions and merge queues" },
-  { scope: "pull_requests:write", description: "Open, review, close and merge pull requests" },
+  { scope: "pull_requests:write", description: "Open, review, comment on, close and merge pull requests" },
   { scope: "workflows:read", description: "Read workflows, runs and logs" },
   { scope: "workflows:write", description: "Run, cancel, rerun and turn workflows on or off" },
   { scope: "workflow_files:write", description: "Add, change and delete workflow files under .g1t/workflows and .github/workflows, with git or the API" },
@@ -123,7 +123,7 @@ export const SCOPE_RESOURCES: { resource: ScopeResource; label: string; group: R
   { resource: "code", label: "Code", group: "repository" },
   { resource: "security", label: "Security", group: "repository" },
   { resource: "packages", label: "Packages", group: "repository" },
-  { resource: "issues", label: "Issues", group: "repository" },
+  { resource: "work", label: "Work", group: "repository" },
   { resource: "pull_requests", label: "Pull requests", group: "repository" },
   { resource: "workflows", label: "Workflows", group: "repository" },
   { resource: "workflow_files", label: "Workflow files", group: "repository" },
@@ -252,10 +252,10 @@ export type PresetId = "read_only" | "agent" | "ci" | "full";
 /** Starting points for choosing scopes. `*` is full access. No preset gives chat: an application gets it only by asking for it. */
 export const PRESET_SCOPES = {
   read_only: [
-    "repo:read", "code:read", "security:read", "packages:read", "issues:read", "pull_requests:read", "workflows:read", "checks:read", "deployments:read", "observability:read", "account:read", "notifications:read", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "runners:read", "artifacts:read",
+    "repo:read", "code:read", "security:read", "packages:read", "work:read", "pull_requests:read", "workflows:read", "checks:read", "deployments:read", "observability:read", "account:read", "notifications:read", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "runners:read", "artifacts:read",
   ] as const,
   agent: [
-    "repo:read", "repo:create", "code:read", "code:write", "security:read", "packages:read", "issues:read", "issues:write", "pull_requests:read", "pull_requests:write", "workflows:read", "checks:read", "deployments:read", "observability:read", "account:read", "notifications:read", "notifications:write", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "artifacts:read",
+    "repo:read", "repo:create", "code:read", "code:write", "security:read", "packages:read", "work:read", "work:write", "pull_requests:read", "pull_requests:write", "workflows:read", "checks:read", "deployments:read", "observability:read", "account:read", "notifications:read", "notifications:write", "workspace:read", "billing:read", "access:read", "webhooks:read", "secrets:read", "artifacts:read",
   ] as const,
   ci: [
     "repo:read", "code:read", "code:write", "packages:read", "packages:write", "workflows:read", "workflows:write", "checks:read", "checks:write", "deployments:read", "deployments:write",
@@ -267,7 +267,7 @@ export const PRESET_SCOPES = {
 
 export const PRESETS: { id: PresetId; label: string; description: string }[] = [
   { id: "read_only", label: "Read only", description: "Read everything you can read; change nothing." },
-  { id: "agent", label: "Agent", description: "Read everything, work on issues and pull requests, push code, and create repositories." },
+  { id: "agent", label: "Agent", description: "Read everything, work on work items and pull requests, push code, and create repositories." },
   { id: "ci", label: "CI", description: "Clone and push code, push and pull packages, run workflows, and report checks and deployments." },
   { id: "full", label: "Full access", description: "Everything you can do, including deleting repositories and changing who has access." },
 ];
@@ -402,16 +402,16 @@ export const OPERATION_SCOPES = [
   ["create_release", "repo:write"],
   ["update_release", "repo:write"],
   ["delete_release", "repo:write"],
-  ["list_labels", "repo:read"],
-  ["list_milestones", "repo:read"],
-  ["get_milestone", "repo:read"],
-  ["create_label", "issues:write"],
-  ["update_label", "issues:write"],
-  ["delete_label", "issues:write"],
-  ["add_default_labels", "issues:write"],
-  ["create_milestone", "issues:write"],
-  ["update_milestone", "issues:write"],
-  ["delete_milestone", "issues:write"],
+  ["list_labels", "work:read"],
+  ["list_milestones", "work:read"],
+  ["get_milestone", "work:read"],
+  ["create_label", "work:write"],
+  ["update_label", "work:write"],
+  ["delete_label", "work:write"],
+  ["add_default_labels", "work:write"],
+  ["create_milestone", "work:write"],
+  ["update_milestone", "work:write"],
+  ["delete_milestone", "work:write"],
   ["get_repo_settings", "repo:read"],
   ["list_check_names", "repo:read"],
   ["list_deleted_repos", "repo:read"],
@@ -484,31 +484,37 @@ export const OPERATION_SCOPES = [
   ["set_security_advisory_state", "security:write"],
   ["report_vulnerability", "security:write"],
   ["review_vulnerability_report", "security:write"],
-  ["list_issues", "issues:read"],
-  ["get_issue", "issues:read"],
-  ["create_issue", "issues:write"],
-  ["update_issue", "issues:write"],
-  ["list_issue_labels", "issues:read"],
-  ["add_issue_labels", "issues:write"],
-  ["set_issue_labels", "issues:write"],
-  ["remove_issue_labels", "issues:write"],
-  ["close_issue", "issues:write"],
-  ["reopen_issue", "issues:write"],
-  ["add_comment", "issues:write"],
-  ["upload_attachment", "issues:write"],
-  ["edit_comment", "issues:write"],
-  ["delete_comment", "issues:write"],
-  ["react", "issues:write"],
-  ["create_commit_comment", "issues:write"],
-  ["update_commit_comment", "issues:write"],
-  ["delete_commit_comment", "issues:write"],
-  ["get_context", "issues:read"],
-  ["import_issue", "issues:write"],
-  ["list_claims", "issues:read"],
-  ["get_work", "issues:read"],
-  ["claim_issue", "issues:write"],
-  ["release_claim", "issues:write"],
-  ["hand_off_issue", "issues:write"],
+  ["list_work_items", "work:read"],
+  ["list_repo_work_items", "work:read"],
+  ["get_work_item", "work:read"],
+  ["list_work_item_links", "work:read"],
+  ["resolve_ref", "work:read"],
+  ["open_work_item", "work:write"],
+  ["update_work_item", "work:write"],
+  ["close_work_item", "work:write"],
+  ["reopen_work_item", "work:write"],
+  ["link_work_item", "work:write"],
+  ["unlink_work_item", "work:write"],
+  ["list_work_item_labels", "work:read"],
+  ["add_work_item_labels", "work:write"],
+  ["set_work_item_labels", "work:write"],
+  ["remove_work_item_labels", "work:write"],
+  ["list_work_item_decisions", "work:read"],
+  ["add_work_item_comment", "work:write"],
+  ["edit_work_item_comment", "work:write"],
+  ["delete_work_item_comment", "work:write"],
+  ["react_to_work_item", "work:write"],
+  ["upload_attachment", "work:write"],
+  ["create_commit_comment", "work:write"],
+  ["update_commit_comment", "work:write"],
+  ["delete_commit_comment", "work:write"],
+  ["get_context", "work:read"],
+  ["import_work_items", "work:write"],
+  ["list_claims", "work:read"],
+  ["get_work", "work:read"],
+  ["claim_work_item", "work:write"],
+  ["release_claim", "work:write"],
+  ["hand_off_work_item", "work:write"],
   ["list_pull_requests", "pull_requests:read"],
   ["get_pull_request", "pull_requests:read"],
   ["get_pull_request_changes", "pull_requests:read"],
@@ -532,6 +538,10 @@ export const OPERATION_SCOPES = [
   ["delete_pull_request_head_branch", "pull_requests:write"],
   ["restore_pull_request_head_branch", "pull_requests:write"],
   ["request_reviewers", "pull_requests:write"],
+  ["add_comment", "pull_requests:write"],
+  ["edit_comment", "pull_requests:write"],
+  ["delete_comment", "pull_requests:write"],
+  ["react", "pull_requests:write"],
   ["remove_requested_reviewers", "pull_requests:write"],
   ["get_session", "pull_requests:read"],
   ["list_sessions", "pull_requests:read"],
@@ -748,7 +758,7 @@ export const SCOPE_GROUPS: { id: string; label: string; scopes: Scope[] }[] = [
   { id: "code", label: "Repositories & code", scopes: ["repo:read", "repo:create", "repo:write", "code:read", "code:write"] },
   { id: "security", label: "Security", scopes: ["security:read", "security:write"] },
   { id: "packages", label: "Packages", scopes: ["packages:read", "packages:write"] },
-  { id: "work", label: "Issues & pull requests", scopes: ["issues:read", "issues:write", "pull_requests:read", "pull_requests:write"] },
+  { id: "work", label: "Work & pull requests", scopes: ["work:read", "work:write", "pull_requests:read", "pull_requests:write"] },
   { id: "workflows", label: "Workflows", scopes: ["workflows:read", "workflows:write", "workflow_files:write"] },
   { id: "checks", label: "Checks", scopes: ["checks:read", "checks:write"] },
   { id: "deployments", label: "Deployments", scopes: ["deployments:read", "deployments:write"] },

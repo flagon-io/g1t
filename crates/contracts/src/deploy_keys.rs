@@ -243,7 +243,7 @@ mod tests {
         let token = access("dk_1", "CI", "acme/web", true);
         assert_eq!(token.deploy_key.as_deref(), Some("dk_1"));
         assert!(!token.admin);
-        assert!(!token.allows(Scope::IssuesWrite));
+        assert!(!token.allows(Scope::WorkWrite));
         assert!(!token.allows(Scope::AccessAdmin));
     }
 

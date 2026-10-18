@@ -1414,6 +1414,7 @@ mod tests {
         assert!(restricted.allows(Scope::CodeRead));
         assert!(!restricted.allows(Scope::CodeWrite));
         assert!(!restricted.allows(Scope::PullRequestsWrite));
+        assert!(!restricted.allows(Scope::WorkWrite));
         // A pull request from outside reads, whatever it asks for.
         let outside = token(&Permissions::all(Access::Write).read_only());
         assert!(Scope::ALL.iter().filter(|scope| outside.allows(**scope)).all(|scope| scope.level() == Level::Read));
