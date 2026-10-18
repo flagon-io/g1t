@@ -181,9 +181,9 @@ test("work items, pull requests and Soon pages get cards of their own", async ()
   // g1t made it, for ada: the card says both.
   assert.equal(pull.kind === "pull" && pull.author, "g1t");
   assert.equal(pull.kind === "pull" && pull.requestedBy, "ada");
-  const soon = await resolve("/acme/web/soon/environments", s);
+  const soon = await resolve("/acme/web/soon/storage", s);
   assert.equal(soon.kind, "soon");
-  assert.equal(soon.kind === "soon" && soon.title, "Environments");
+  assert.equal(soon.kind === "soon" && soon.title, "Storage");
   // One that does not exist falls back to the project.
   assert.equal((await resolve("/acme/web/issues/99", s)).kind, "project");
   assert.equal((await resolve("/acme/web/soon/nothing", s)).kind, "project");
@@ -192,7 +192,7 @@ test("work items, pull requests and Soon pages get cards of their own", async ()
 
 test("nothing private ever reaches a card", async () => {
   const { sources: s } = sources();
-  for (const path of ["/acme/vault", "/acme/vault/issues/7", "/acme/vault/pull/8", "/acme/vault/soon/environments", "/acme/vault/settings"]) {
+  for (const path of ["/acme/vault", "/acme/vault/issues/7", "/acme/vault/pull/8", "/acme/vault/soon/storage", "/acme/vault/settings"]) {
     assert.deepEqual(await resolve(path, s), { kind: "brand" }, path);
   }
   // A missing repository says nothing either.
