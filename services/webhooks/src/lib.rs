@@ -17,7 +17,7 @@ use futures_util::future::{Either, select};
 use g1t_contracts::access::{self, Capability};
 use g1t_contracts::events::Event;
 use g1t_contracts::identity::{AGENT_ID, AGENT_NAME, UsernamesArgs};
-use g1t_contracts::repos::{GetArgs, GetByIdArgs, Repo};
+use g1t_contracts::repos::{GetArgs, GetByIdArgs, ReadableArgs, Repo};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::webhooks::*;
 use g1t_contracts::{FailureCode, Membership, Outcome, PrincipalKind, Role, User, Viewer, new_id};
@@ -638,25 +638,38 @@ impl Webhooks {
         self.send_all(event, hooks, Some((repo_id, name.as_ref()))).await
     }
 
-    /// An event about a work item: to its workspace's webhooks, and to
-    /// those of every repository it is linked to. Each repository's
-    /// webhooks are told of their own repository; the workspace's, of
-    /// where it was filed, when it was filed in one.
+    /// An event about a work item: always to its workspace's webhooks, and
+    /// to those of the repositories it is linked to whose readers may all
+    /// read it (`deliver::item_hook_repos`): its origin's (the event's own
+    /// repository), and the others' only when its origin is public, as one
+    /// anonymous `readable` call says. Each repository's webhooks are told
+    /// of their own repository; the workspace's, of where it was filed,
+    /// when it was filed in one.
     async fn on_item_event(&self, event: &Event, workspace: &str, repo_ids: &[String]) -> Result<()> {
+        let origin = event.repo_id.as_deref().filter(|id| !id.is_empty());
+        let origin_public = match origin {
+            Some(id) if repo_ids.iter().any(|linked| linked != id) => {
+                let public: Vec<Repo> =
+                    g1t_kit::call(&self.repos, "readable", &ReadableArgs { ids: vec![id.to_owned()], viewer: None }).await?;
+                public.iter().any(|repo| repo.id == id)
+            }
+            _ => false,
+        };
+        let repo_ids = deliver::item_hook_repos(origin, repo_ids, origin_public);
         let hooks = self
             .db
             .prepare(
                 "SELECT * FROM hooks WHERE active = 1
                  AND ((scope = 'workspace' AND workspace = ?1) OR (scope = 'repo' AND repo_id IN (SELECT value FROM json_each(?2))))",
             )
-            .bind(&[workspace.into(), serde_json::to_string(repo_ids)?.into()])?
+            .bind(&[workspace.into(), serde_json::to_string(&repo_ids)?.into()])?
             .all()
             .await?
             .results::<HookRow>()?;
         if hooks.is_empty() {
             return Ok(());
         }
-        let origin = event.repo_id.as_deref().filter(|id| repo_ids.iter().any(|linked| linked == id));
+        let origin = origin.filter(|id| repo_ids.iter().any(|linked| linked == id));
         let name = match origin {
             Some(id) => self.repo_name(id, &[workspace.to_owned()]).await?,
             None => None,
