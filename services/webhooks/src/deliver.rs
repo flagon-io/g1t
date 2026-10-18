@@ -91,8 +91,9 @@ pub fn workspace_scoped(event: &Event) -> Option<String> {
 }
 
 /// For an event about a work item (`work_item.*`, or a comment on one):
-/// its workspace, and every repository it is linked to. It goes to the
-/// workspace's webhooks and to those of each of those repositories.
+/// its workspace, and every repository it is linked to. It always goes to
+/// the workspace's webhooks; which of those repositories' webhooks hear of
+/// it is [`item_hook_repos`]'s to say.
 pub fn item_scoped(event: &Event) -> Option<(String, Vec<String>)> {
     let about_item = event.kind.starts_with("work_item.")
         || (event.kind.starts_with("comment.") && event.data["itemId"].as_str().is_some_and(|id| !id.is_empty()));
@@ -105,6 +106,20 @@ pub fn item_scoped(event: &Event) -> Option<(String, Vec<String>)> {
         .map(|ids| ids.iter().filter_map(Value::as_str).filter(|id| !id.is_empty()).map(str::to_owned).collect())
         .unwrap_or_default();
     Some((workspace, repo_ids))
+}
+
+/// The repositories, of those a work item is linked to (`repo_ids`),
+/// whose webhooks may be told of it: only those whose readers can all read
+/// it. That is its origin (the event's own repository, `origin`), whose
+/// readers may read it; and every one of them when its origin is public
+/// (`origin_public`), as anyone may then. An item with no origin is its
+/// workspace members' alone: no repository's webhooks hear of it, nor do
+/// those of a repository it only names while its origin is private.
+pub fn item_hook_repos(origin: Option<&str>, repo_ids: &[String], origin_public: bool) -> Vec<String> {
+    let Some(origin) = origin.filter(|id| !id.is_empty()) else {
+        return Vec::new();
+    };
+    repo_ids.iter().filter(|id| origin_public || id.as_str() == origin).cloned().collect()
 }
 
 /// What is sent to check a webhook works.
@@ -332,6 +347,18 @@ mod tests {
         let on_pull = repo_event("comment.created", json!({ "commentId": "cmt_2", "repoId": "rep_1", "number": 3, "pullId": "pul_1" }));
         assert_eq!(item_scoped(&on_pull), None);
         assert_eq!(item_scoped(&repo_event("pull.opened", json!({ "workspace": "acme" }))), None);
+    }
+
+    #[test]
+    fn a_work_item_reaches_only_the_webhooks_of_repositories_whose_readers_may_read_it() {
+        let linked = vec!["rep_1".to_owned(), "rep_2".to_owned()];
+        // A private origin: its own webhooks, not those of a repository it only names.
+        assert_eq!(item_hook_repos(Some("rep_1"), &linked, false), vec!["rep_1".to_owned()]);
+        // A public one: anyone may read it, so every repository it is linked to.
+        assert_eq!(item_hook_repos(Some("rep_1"), &linked, true), linked);
+        // No origin: the workspace's webhooks alone, whatever it is linked to.
+        assert!(item_hook_repos(None, &["rep_2".to_owned()], false).is_empty());
+        assert!(item_hook_repos(None, &["rep_2".to_owned()], true).is_empty());
     }
 
     #[test]
