@@ -51,6 +51,8 @@ export type SessionsFilters = {
   person: string | null;
   harness: Harness | null;
   kind: SessionKind | null;
+  /** The work item they are on, by number: a work item's own sessions. */
+  item: number | null;
 };
 
 const HARNESSES = Object.keys(HARNESS_NAMES) as Harness[];
@@ -66,6 +68,7 @@ export function sessionsFilters(query: URLSearchParams): SessionsFilters {
     person: text("person"),
     harness: harness && (HARNESSES as string[]).includes(harness) ? (harness as Harness) : null,
     kind: kind && (KINDS as string[]).includes(kind) ? (kind as SessionKind) : null,
+    item: /^\d+$/.test(query.get("item") ?? "") && Number(query.get("item")) > 0 ? Number(query.get("item")) : null,
   };
 }
 
@@ -73,9 +76,9 @@ export function sessionsFilters(query: URLSearchParams): SessionsFilters {
 export function sessionsQuery(filters: Partial<SessionsFilters>): string {
   const query = new URLSearchParams();
   if (filters.state === "recent") query.set("state", "recent");
-  for (const key of ["repo", "person", "harness", "kind"] as const) {
+  for (const key of ["repo", "person", "harness", "kind", "item"] as const) {
     const value = filters[key];
-    if (value) query.set(key, value);
+    if (value) query.set(key, String(value));
   }
   const text = query.toString();
   return text ? `?${text}` : "";
@@ -83,7 +86,7 @@ export function sessionsQuery(filters: Partial<SessionsFilters>): string {
 
 /** Whether any filter narrows the list. */
 export function narrowed(filters: SessionsFilters): boolean {
-  return Boolean(filters.repo || filters.person || filters.harness || filters.kind);
+  return Boolean(filters.repo || filters.person || filters.harness || filters.kind || filters.item);
 }
 
 /**

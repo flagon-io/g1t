@@ -38,7 +38,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const workspace = params.owner.toLowerCase();
   const filters = sessionsFilters(new URL(request.url).searchParams);
-  const narrow = { repo: filters.repo ?? undefined, person: filters.person ?? undefined, harness: filters.harness ?? undefined, kind: filters.kind ?? undefined };
+  const narrow = {
+    repo: filters.repo ?? undefined,
+    person: filters.person ?? undefined,
+    harness: filters.harness ?? undefined,
+    kind: filters.kind ?? undefined,
+    item: filters.item ?? undefined,
+  };
   const every = filters.state === "recent";
   // What is going now is what the page is about; what ended, a part of its own.
   const [now, ended] = await Promise.all([
@@ -265,7 +271,7 @@ export default function SessionsPage({ loaderData }: Route.ComponentProps) {
           icon={<History size={15} className="text-faint" />}
           title="Recent"
           aside={
-            <Link to={sessionsPath(workspace, { state: "recent", repo: filters.repo, person: filters.person, harness: filters.harness, kind: filters.kind })} className="hover:text-fg">
+            <Link to={sessionsPath(workspace, { state: "recent", repo: filters.repo, person: filters.person, harness: filters.harness, kind: filters.kind, item: filters.item ? String(filters.item) : null })} className="hover:text-fg">
               Every session
             </Link>
           }
