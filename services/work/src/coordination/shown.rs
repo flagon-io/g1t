@@ -171,7 +171,7 @@ pub(crate) fn sessions(sessions: &mut [Session], viewer: &Viewer, namespace: &st
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use g1t_contracts::{Membership, User};
     use g1t_contracts::credentials::Principal;
@@ -186,7 +186,7 @@ mod tests {
         })
     }
 
-    fn a_session() -> Session {
+    pub(crate) fn a_session() -> Session {
         Session {
             id: "ses_1".into(),
             repo_id: "rep_1".into(),

@@ -11,12 +11,12 @@ use g1t_contracts::access::Capability;
 use g1t_contracts::repos::{ReadableArgs, Repo};
 use g1t_contracts::work::refs::{self, Lookup, Ref, RefScope, first_found};
 use g1t_contracts::work::*;
-use g1t_contracts::Outcome;
+use g1t_contracts::{Outcome, User};
 use serde::Deserialize;
 use worker::Result;
 use worker::wasm_bindgen::JsValue;
 
-use super::rows::path_of;
+use super::rows::{Held, path_of};
 use crate::Work;
 use crate::rows::ValueRow;
 
@@ -24,15 +24,23 @@ use crate::rows::ValueRow;
 pub(crate) const MAX_CLOSES: usize = refs::MAX_REFS;
 
 /// What `#N` could name, read in repository `?1` (NULL for none) of
-/// workspace `?2`: a pull request of the repository, a work item filed
-/// there under that old number, the workspace's work item, and the newest
-/// pull request of that number in the workspace's other repositories.
+/// workspace `?2`: a pull request of the repository, a work item of the
+/// workspace filed there under that old number (a repository moved in from
+/// another workspace brings old numbers that name that workspace's work
+/// items, never this one's), the workspace's work item, and a pull request
+/// of that number in the workspace's other repositories. Only a number
+/// above the workspace's floor (`work_counters.floor`, the highest any of
+/// its repositories used on its own) is the workspace's alone; one at or
+/// below it may be any of its repositories' old pull requests, and names
+/// none of them from elsewhere.
 pub(crate) const REF_SQL: &str = "SELECT
      (SELECT 1 FROM pulls WHERE repo_id = ?1 AND number = ?3) AS pull_here,
-     (SELECT item_id FROM work_item_repos WHERE repo_id = ?1 AND legacy_number = ?3) AS legacy,
+     (SELECT item_id FROM work_item_repos WHERE repo_id = ?1 AND legacy_number = ?3
+        AND item_id IN (SELECT id FROM work_items WHERE workspace = ?2 OR workspace IS NULL)) AS legacy,
      (SELECT id FROM work_items WHERE workspace = ?2 AND number = ?3) AS item,
      (SELECT repo_id FROM pulls WHERE number = ?3 AND repo_id IS NOT ?1
         AND repo_id IN (SELECT repo_id FROM repo_workspaces WHERE workspace = ?2)
+        AND number > COALESCE((SELECT floor FROM work_counters WHERE workspace = ?2), 0)
       ORDER BY created_at DESC LIMIT 1) AS pull_there";
 
 /// What [`REF_SQL`] found.
@@ -113,19 +121,16 @@ impl Work {
     /// `resolve_ref`: what `#number` names for the viewer, read in `repo`
     /// or in `workspace` (`refs`).
     pub(crate) async fn resolve_ref(&self, a: ResolveRefArgs) -> Result<RefTarget> {
-        // Read in a repository the viewer may not read (a member without
-        // Code following an old link), `#N` still names the work items
-        // they may see; its pull requests stay out of reach.
+        // Read in a repository the viewer may not read, `#N` names
+        // nothing, exactly as in one that does not exist: anything else
+        // would tell them a private repository is there.
         let (repo, workspace) = match &a.repo {
-            Some(path) => match self.repo(path, &a.viewer).await? {
-                Outcome::Ok(repo) => {
+            Some(path) => match read_in(self.repo(path, &a.viewer).await?) {
+                Some(repo) => {
                     let workspace = repo.namespace.to_lowercase();
                     (Some((repo.id.clone(), Some(path_of(&repo)))), workspace)
                 }
-                Outcome::Fail(_) => match self.recorded_repo(&format!("{}/{}", path.namespace, path.name)).await? {
-                    Some((id, workspace)) => (Some((id, None)), workspace),
-                    None => return Ok(RefTarget::None),
-                },
+                None => return Ok(RefTarget::None),
             },
             None => (None, a.workspace.trim().to_lowercase()),
         };
@@ -172,23 +177,6 @@ impl Work {
         Ok(RefTarget::None)
     }
 
-    /// The id and workspace of the repository at `path` (`owner/name`), as
-    /// recorded, whoever is asking.
-    async fn recorded_repo(&self, path: &str) -> Result<Option<(String, String)>> {
-        #[derive(Deserialize)]
-        struct Recorded {
-            repo_id: String,
-            workspace: String,
-        }
-        Ok(self
-            .db
-            .prepare("SELECT repo_id, workspace FROM repo_workspaces WHERE lower(path) = lower(?)")
-            .bind(&[path.into()])?
-            .first::<Recorded>(None)
-            .await?
-            .map(|found| (found.repo_id, found.workspace)))
-    }
-
     /// The work item `reference` names, read in `repo`: its id, when it is
     /// one of the workspace's work items.
     pub(super) async fn ref_item(&self, repo: &Repo, reference: &Ref) -> Result<Option<String>> {
@@ -215,9 +203,11 @@ impl Work {
                         .bind(&[named.as_str().into()])?
                         .first::<ValueRow>(None)
                         .await?;
+                    // A repository not known names nothing, as resolve_ref
+                    // reads it: never the workspace's work item of that number.
                     match known {
                         Some(row) => (Some(row.value), true),
-                        None => (None, false),
+                        None => return Ok(None),
                     }
                 }
             }
@@ -230,10 +220,13 @@ impl Work {
     }
 
     /// The work items `text`, written in `repo`, closes and is part of,
-    /// with `own` (a pull request's own work item) closed first.
-    pub(super) async fn named_items(&self, repo: &Repo, own: Option<&str>, text: &str) -> Result<NamedItems> {
+    /// with `own` (a pull request's own work item) closed first. Each of
+    /// `who` (whoever wrote it, merges it or pushed it) must be able to
+    /// see what it names ([`admits`]); what one of them may not is left
+    /// unresolved, as a reference to nothing.
+    pub(super) async fn named_items(&self, repo: &Repo, own: Option<&str>, text: &str, who: &[&User]) -> Result<NamedItems> {
         let named = refs::named(text);
-        let mut closes: Vec<String> = own.map(str::to_owned).into_iter().collect();
+        let mut closes: Vec<String> = Vec::new();
         for reference in &named.closes {
             if let Some(id) = self.ref_item(repo, reference).await?
                 && !closes.contains(&id)
@@ -245,24 +238,96 @@ impl Work {
         for reference in &named.parts {
             if let Some(id) = self.ref_item(repo, reference).await?
                 && !closes.contains(&id)
+                && own != Some(id.as_str())
                 && !parts.contains(&id)
             {
                 parts.push(id);
             }
         }
-        closes.truncate(MAX_CLOSES);
-        parts.truncate(MAX_CLOSES);
-        let mut all = closes.clone();
-        all.extend(parts.iter().cloned());
+        let mut all: Vec<String> = own.map(str::to_owned).into_iter().collect();
+        all.extend(closes.iter().take(MAX_CLOSES * 2).cloned());
+        all.extend(parts.iter().take(MAX_CLOSES * 2).cloned());
         let held = self.items_by_ids(&all).await?;
-        let number = |id: &String| held.iter().find(|held| held.item.id == *id).map(|held| (id.clone(), held.item.number));
-        Ok(NamedItems { closes: closes.iter().filter_map(number).collect(), parts: parts.iter().filter_map(number).collect() })
+        let found = |id: &String| held.iter().find(|held| held.item.id == *id);
+        // Its own work item first, whoever may see it: the pull request
+        // was made for it.
+        let mut closing: Vec<(String, u32)> = own
+            .map(str::to_owned)
+            .into_iter()
+            .filter_map(|id| found(&id).map(|held| (id, held.item.number)))
+            .collect();
+        for id in &closes {
+            if let Some(held) = found(id).filter(|held| admits(held, who, true))
+                && !closing.iter().any(|(known, _)| known == id)
+            {
+                closing.push((id.clone(), held.item.number));
+            }
+        }
+        let mut parted: Vec<(String, u32)> = Vec::new();
+        for id in &parts {
+            if let Some(held) = found(id).filter(|held| admits(held, who, false)) {
+                parted.push((id.clone(), held.item.number));
+            }
+        }
+        closing.truncate(MAX_CLOSES);
+        parted.truncate(MAX_CLOSES);
+        Ok(NamedItems { closes: closing, parts: parted })
     }
+}
+
+/// The repository `#N` is read in, as the viewer found it: none when they
+/// may not read it, exactly as when there is no such repository.
+fn read_in<T>(found: Outcome<T>) -> Option<T> {
+    match found {
+        Outcome::Ok(repo) => Some(repo),
+        Outcome::Fail(_) => None,
+    }
+}
+
+/// Whether everyone in `who` may have `held` closed (`closing`: they may
+/// triage it) or linked as something they are part of (they may see it).
+pub(crate) fn admits(held: &Held, who: &[&User], closing: bool) -> bool {
+    let capability = if closing { Capability::Triage } else { Capability::Read };
+    who.iter().all(|user| held.may(Some(user), capability))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_repository_the_viewer_may_not_read_is_read_as_none() {
+        assert_eq!(read_in(Outcome::<u8>::fail(g1t_contracts::FailureCode::NotFound, "Repository not found.")), None);
+        assert_eq!(read_in(Outcome::Ok(1)), Some(1));
+    }
+
+    #[test]
+    fn only_what_everyone_involved_may_see_is_closed_or_linked() {
+        use crate::items::rows_for_test::{held_for_test, person_for_test};
+        let member = person_for_test("usr_2", Some("acme"));
+        // An outside collaborator with Write on public acme/web.
+        let mut outsider = person_for_test("usr_9", None);
+        outsider.grants.push(g1t_contracts::access::RepoGrant {
+            repo_id: "rep_web".into(),
+            workspace: "acme".into(),
+            role: g1t_contracts::access::RepoRole::Write,
+            team: None,
+        });
+        let filed_in_web = held_for_test(1, &[("rep_web", "origin", "acme", false)], &[]);
+        let members_only = held_for_test(2, &[("rep_web", "target", "acme", false)], &[]);
+        let private = held_for_test(3, &[("rep_secret", "origin", "acme", true)], &[]);
+        assert!(admits(&filed_in_web, &[&outsider], true));
+        assert!(!admits(&members_only, &[&outsider], true));
+        assert!(!admits(&members_only, &[&outsider], false));
+        assert!(!admits(&private, &[&outsider], true));
+        assert!(admits(&private, &[&member], true));
+        // Merged by a member, written by the outsider: what both may.
+        assert!(!admits(&private, &[&member, &outsider], true));
+        // Someone who may only read a public work item may not close it.
+        let reader = person_for_test("usr_8", None);
+        assert!(admits(&filed_in_web, &[&reader], false));
+        assert!(!admits(&filed_in_web, &[&reader], true));
+    }
 
     #[test]
     fn a_reference_names_the_first_thing_found_in_order() {

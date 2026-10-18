@@ -22,7 +22,7 @@
 //! ([`RENAMED`], [`DELETED`]).
 
 use g1t_contracts::events::WorkMigrated;
-use g1t_contracts::repos::{AllIdsArgs, CreatorPage, RepoVisibility, VisibilityArgs};
+use g1t_contracts::repos::{AllIdsArgs, CreatorPage, DeletedRepoPage, RepoVisibility, VisibilityArgs};
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
 use g1t_kit::now_ms;
@@ -55,10 +55,24 @@ const FALLBACK_WORKSPACE: &str = "COALESCE(
        (SELECT s.workspace FROM rulesets s WHERE s.repo_id = o.repo_id LIMIT 1))";
 
 /// What finishing does, in one batch, `?1` the time (see the module's
-/// notes). Each statement changes nothing run again, and those that
-/// would are guarded by the job not being done yet.
+/// notes): [`place_sql`], each workspace's floor, and the job done.
 pub(crate) fn finish_sql() -> Vec<String> {
-    let pending = "(SELECT done_at FROM work_jobs WHERE name = 'work_items') IS NULL";
+    let mut statements = place_sql();
+    statements.push("UPDATE work_jobs SET done_at = ?1, cursor = NULL WHERE name = 'work_items' AND done_at IS NULL".to_owned());
+    statements
+}
+
+/// Placing what the repositories recorded in `repo_workspaces` kept for
+/// themselves, in one batch, `?1` the time: their moved issues' workspaces
+/// and numbers, labels, milestones and numbers become their workspaces'.
+/// Only what is still theirs is moved, and then dropped, so run again it
+/// changes nothing; a repository recorded later (one deleted while the job
+/// ran, then restored, or the job for those, [`DELETED_REPOS_JOB`]) has
+/// its own moved then, and nothing of anyone else's twice.
+pub(crate) fn place_sql() -> Vec<String> {
+    let recorded = "SELECT repo_id FROM repo_workspaces";
+    // A repository's milestones are still its own: not moved yet.
+    let unmoved = "SELECT repo_id FROM repo_milestones WHERE repo_id IN (SELECT repo_id FROM repo_workspaces)";
     vec![
         // Each moved issue's workspace: its repository's.
         format!(
@@ -97,9 +111,10 @@ pub(crate) fn finish_sql() -> Vec<String> {
          GROUP BY workspace
          ON CONFLICT (workspace) DO UPDATE SET last = MAX(work_counters.last, excluded.last)"
             .to_owned(),
-        // Labels merge by name; the first made keeps its color and words.
+        // Labels merge by name, whatever its case (names are lowercase as
+        // work items carry them); the first made keeps its color and words.
         "INSERT INTO labels (workspace, name, color, description, created_at)
-         SELECT rw.workspace, l.name, l.color, l.description, l.created_at
+         SELECT rw.workspace, lower(l.name), l.color, l.description, l.created_at
          FROM repo_labels l JOIN repo_workspaces rw ON rw.repo_id = l.repo_id
          WHERE true ORDER BY l.created_at, l.repo_id
          ON CONFLICT (workspace, name) DO UPDATE
@@ -108,40 +123,70 @@ pub(crate) fn finish_sql() -> Vec<String> {
             .to_owned(),
         // Milestones are numbered on after the workspace's own, oldest
         // first, and what was in each moves with it.
-        format!(
-            "INSERT INTO milestone_moves (repo_id, old_number, workspace, number)
-             SELECT m.repo_id, m.number, rw.workspace,
-               COALESCE((SELECT MAX(x.number) FROM milestones x WHERE x.workspace = rw.workspace), 0)
-                 + ROW_NUMBER() OVER (PARTITION BY rw.workspace ORDER BY m.created_at, m.repo_id, m.number)
-             FROM repo_milestones m JOIN repo_workspaces rw ON rw.repo_id = m.repo_id
-             WHERE {pending}
-               AND NOT EXISTS (SELECT 1 FROM milestone_moves mm WHERE mm.repo_id = m.repo_id AND mm.old_number = m.number)"
-        ),
+        "INSERT INTO milestone_moves (repo_id, old_number, workspace, number)
+         SELECT m.repo_id, m.number, rw.workspace,
+           COALESCE((SELECT MAX(x.number) FROM milestones x WHERE x.workspace = rw.workspace), 0)
+             + ROW_NUMBER() OVER (PARTITION BY rw.workspace ORDER BY m.created_at, m.repo_id, m.number)
+         FROM repo_milestones m JOIN repo_workspaces rw ON rw.repo_id = m.repo_id
+         WHERE NOT EXISTS (SELECT 1 FROM milestone_moves mm WHERE mm.repo_id = m.repo_id AND mm.old_number = m.number)"
+            .to_owned(),
         "INSERT INTO milestones (workspace, number, origin_repo_id, title, description, due_on, state, created_at, updated_at, closed_at)
          SELECT mm.workspace, mm.number, m.repo_id, m.title, m.description, m.due_on, m.state, m.created_at, m.updated_at, m.closed_at
          FROM milestone_moves mm JOIN repo_milestones m ON m.repo_id = mm.repo_id AND m.number = mm.old_number
          WHERE true
          ON CONFLICT DO NOTHING"
             .to_owned(),
+        // Only what was in a milestone of a repository moving now: a
+        // repository with none keeps what its work items say.
         format!(
             "UPDATE work_items SET milestone = (
                SELECT mm.number FROM milestone_moves mm JOIN work_item_repos o ON o.repo_id = mm.repo_id
                WHERE o.item_id = work_items.id AND o.role = 'origin' AND mm.old_number = work_items.milestone)
-             WHERE milestone IS NOT NULL AND {pending}
-               AND id IN (SELECT item_id FROM work_item_repos WHERE legacy_number IS NOT NULL)"
+             WHERE milestone IS NOT NULL
+               AND id IN (SELECT item_id FROM work_item_repos WHERE legacy_number IS NOT NULL AND role = 'origin'
+                          AND repo_id IN ({unmoved}))"
         ),
         format!(
             "UPDATE pulls SET milestone = (
                SELECT mm.number FROM milestone_moves mm WHERE mm.repo_id = pulls.repo_id AND mm.old_number = pulls.milestone)
-             WHERE milestone IS NOT NULL AND {pending}"
+             WHERE milestone IS NOT NULL AND repo_id IN ({unmoved})"
         ),
+        // Every number they used is below the workspace's floor, and its
+        // sequence goes on above it.
+        "UPDATE work_counters SET floor = MAX(floor,
+           COALESCE((SELECT MAX(c.last) FROM counters c JOIN repo_workspaces rw ON rw.repo_id = c.repo_id
+                     WHERE rw.workspace = work_counters.workspace), 0))
+         WHERE true"
+            .to_owned(),
+        RAISE_FLOORS.to_owned(),
+        "UPDATE work_counters SET last = floor WHERE last < floor".to_owned(),
         // What the repositories kept for themselves is the workspace's now.
-        format!("DELETE FROM counters WHERE {pending}"),
-        format!("DELETE FROM repo_labels WHERE {pending}"),
-        format!("DELETE FROM repo_milestones WHERE {pending}"),
-        "UPDATE work_jobs SET done_at = ?1, cursor = NULL WHERE name = 'work_items' AND done_at IS NULL".to_owned(),
+        format!("DELETE FROM counters WHERE repo_id IN ({recorded})"),
+        format!("DELETE FROM repo_labels WHERE repo_id IN ({recorded})"),
+        format!("DELETE FROM repo_milestones WHERE repo_id IN ({recorded})"),
     ]
 }
+
+/// The job, after the first, that records repositories deleted but still
+/// restorable ([`Work::migrate_deleted_repos`]): the first job's paging
+/// left them out, and their work items with no path, private, and their
+/// labels and old numbers unmerged.
+pub(crate) const DELETED_REPOS_JOB: &str = "deleted_repos";
+
+/// Every label a workspace's work items or pull requests carry that the
+/// workspace does not have, as a label (gray, no description) made at
+/// `?1`: one a repository had that was never merged. Run again, it adds
+/// nothing.
+pub(crate) const CARRIED_LABELS: [&str; 2] = [
+    "INSERT INTO labels (workspace, name, color, description, created_at)
+     SELECT DISTINCT i.workspace, j.value, 'ededed', '', ?1 FROM work_items i, json_each(i.labels) j
+     WHERE i.workspace IS NOT NULL AND j.value <> ''
+     ON CONFLICT DO NOTHING",
+    "INSERT INTO labels (workspace, name, color, description, created_at)
+     SELECT DISTINCT rw.workspace, j.value, 'ededed', '', ?1 FROM pulls p JOIN repo_workspaces rw ON rw.repo_id = p.repo_id, json_each(p.labels) j
+     WHERE j.value <> ''
+     ON CONFLICT DO NOTHING",
+];
 
 /// A workspace renamed (`g1t_kit::rename`, `?1` its slug now, `?2` before):
 /// its work items, labels, milestones, numbers and repositories follow.
@@ -163,17 +208,37 @@ pub(crate) const RENAMED: &[&str] = &[
 
 /// A repository renamed or transferred (`g1t_kit::transfer`: `?1` its path
 /// now, `?3` its workspace now, `?5` its id): where it is now, and in the
-/// workspace it moved to, numbers go on after its pull requests', so a new
-/// one never takes a number it has. Its work items stay in their own
-/// workspace, linked to it.
+/// workspace it moved to, numbers go on after its pull requests' and its
+/// old issues', so a new one never takes a number it has. Those numbers
+/// were never that workspace's, so its floor rises above them too: `#N`
+/// read in the workspace's other repositories names none of them
+/// (refs.rs). A rename (`?4`, its workspace before, the same) changes no
+/// numbers. Its work items stay in their own workspace, linked to it.
 pub(crate) const TRANSFERRED: &[&str] = &[
-    "INSERT INTO repo_workspaces (repo_id, workspace, path, private) VALUES (?5, ?3, ?1, 1)
-     ON CONFLICT (repo_id) DO UPDATE SET workspace = ?3, path = ?1",
+    "INSERT INTO repo_workspaces (repo_id, workspace, path, private) VALUES (?5, lower(?3), ?1, 1)
+     ON CONFLICT (repo_id) DO UPDATE SET workspace = lower(?3), path = ?1",
     "UPDATE work_item_repos SET path = ?1 WHERE repo_id = ?5",
-    "INSERT INTO work_counters (workspace, last)
-     SELECT ?3, MAX(number) FROM pulls WHERE repo_id = ?5 GROUP BY repo_id
-     ON CONFLICT (workspace) DO UPDATE SET last = MAX(work_counters.last, excluded.last)",
+    "INSERT INTO work_counters (workspace, last, floor)
+     SELECT lower(?3), MAX(n), MAX(n) FROM (
+       SELECT MAX(number) AS n FROM pulls WHERE repo_id = ?5
+       UNION ALL SELECT MAX(legacy_number) FROM work_item_repos WHERE repo_id = ?5)
+     WHERE lower(?3) <> lower(?4)
+     HAVING MAX(n) IS NOT NULL
+     ON CONFLICT (workspace) DO UPDATE SET last = MAX(work_counters.last, excluded.last), floor = MAX(work_counters.floor, excluded.floor)",
 ];
+
+/// Raises each workspace's floor (`work_counters.floor`) to the highest
+/// number any of its repositories used on its own: a pull request opened
+/// before work items moved (by when the job finished, or `?1`, now, while
+/// it finishes) or an old issue's number. Run again, it changes nothing.
+/// migrations/0052_work_floors.sql does the same.
+pub(crate) const RAISE_FLOORS: &str = "UPDATE work_counters SET floor = MAX(floor,
+       COALESCE((SELECT MAX(p.number) FROM pulls p JOIN repo_workspaces rw ON rw.repo_id = p.repo_id
+                 WHERE rw.workspace = work_counters.workspace
+                   AND p.created_at <= COALESCE((SELECT done_at FROM work_jobs WHERE name = 'work_items'), ?1)), 0),
+       COALESCE((SELECT MAX(l.legacy_number) FROM work_item_repos l JOIN repo_workspaces rw ON rw.repo_id = l.repo_id
+                 WHERE rw.workspace = work_counters.workspace), 0))
+     WHERE true";
 
 /// A workspace deleted (`g1t_kit::deleted`, `?1` its slug): its work
 /// items go, with everything kept for them, and its labels, milestones
@@ -233,7 +298,7 @@ impl Work {
             return Ok(WorkMigration { done: true, ..WorkMigration::default() });
         };
         if job.done_at.is_some() {
-            return Ok(WorkMigration { done: true, ..WorkMigration::default() });
+            return self.migrate_deleted_repos().await;
         }
         let mut cursor = job.cursor;
         let mut recorded = 0;
@@ -254,6 +319,104 @@ impl Work {
             }
         }
         Ok(WorkMigration { done: false, repos: recorded, ..WorkMigration::default() })
+    }
+
+    /// The job after the first ([`DELETED_REPOS_JOB`]): records each
+    /// repository deleted but not purged, a few pages a run, then places
+    /// what it kept ([`place_sql`]) and gives its work items' labels to
+    /// the workspace ([`CARRIED_LABELS`]). Done once; run again, it
+    /// changes nothing.
+    async fn migrate_deleted_repos(&self) -> Result<WorkMigration> {
+        let job = self
+            .db
+            .prepare("SELECT cursor, done_at FROM work_jobs WHERE name = ?")
+            .bind(&[DELETED_REPOS_JOB.into()])?
+            .first::<JobRow>(None)
+            .await?;
+        let Some(job) = job.filter(|job| job.done_at.is_none()) else {
+            return Ok(WorkMigration { done: true, ..WorkMigration::default() });
+        };
+        let mut cursor = job.cursor;
+        let mut recorded = 0;
+        for _ in 0..PAGES_PER_RUN {
+            let page: DeletedRepoPage =
+                g1t_kit::call(&self.repos, "deleted_repos", &AllIdsArgs { after: cursor.clone(), limit: PAGE }).await?;
+            let repos: Vec<(String, String, String, bool)> = page
+                .repos
+                .iter()
+                .map(|repo| (repo.id.clone(), repo.namespace.clone(), repo.name.clone(), repo.is_private))
+                .collect();
+            recorded += self.record_repos(&repos).await?;
+            match page.next {
+                Some(next) => {
+                    self.db
+                        .prepare("UPDATE work_jobs SET cursor = ? WHERE name = ?")
+                        .bind(&[next.as_str().into(), DELETED_REPOS_JOB.into()])?
+                        .run()
+                        .await?;
+                    cursor = Some(next);
+                }
+                None => {
+                    self.place(true).await?;
+                    self.db
+                        .prepare("UPDATE work_jobs SET done_at = ?, cursor = NULL WHERE name = ? AND done_at IS NULL")
+                        .bind(&[rfc3339(now_ms()).into(), DELETED_REPOS_JOB.into()])?
+                        .run()
+                        .await?;
+                    return Ok(WorkMigration { done: true, repos: recorded, ..WorkMigration::default() });
+                }
+            }
+        }
+        Ok(WorkMigration { done: false, repos: recorded, ..WorkMigration::default() })
+    }
+
+    /// Records repositories (id, workspace, name, private) where they are.
+    async fn record_repos(&self, repos: &[(String, String, String, bool)]) -> Result<u32> {
+        if repos.is_empty() {
+            return Ok(0);
+        }
+        let mut statements = Vec::new();
+        for (id, namespace, name, private) in repos {
+            let path = format!("{namespace}/{name}");
+            let binds = [id.as_str().into(), namespace.to_lowercase().into(), path.as_str().into(), u32::from(*private).into()];
+            for sql in RECORD_REPO {
+                statements.push(self.db.prepare(sql).bind(&binds[..g1t_kit::rename::parameters(sql)])?);
+            }
+        }
+        self.db.batch(statements).await?;
+        Ok(repos.len() as u32)
+    }
+
+    /// [`place_sql`], and with `carried`, [`CARRIED_LABELS`], in one batch.
+    async fn place(&self, carried: bool) -> Result<()> {
+        let now = rfc3339(now_ms());
+        let mut sql = place_sql();
+        if carried {
+            sql.extend(CARRIED_LABELS.iter().map(|sql| (*sql).to_owned()));
+        }
+        let statements = sql
+            .iter()
+            .map(|sql| {
+                let binds = [now.as_str().into()];
+                self.db.prepare(sql).bind(&binds[..g1t_kit::rename::parameters(sql)])
+            })
+            .collect::<Result<Vec<_>>>()?;
+        self.db.batch(statements).await?;
+        Ok(())
+    }
+
+    /// `repo.restored`: where the repository is again, and, once work items
+    /// have moved, whatever of its own is still to place (a repository
+    /// deleted while the job ran).
+    pub(super) async fn repo_restored(&self, data: &serde_json::Value) -> Result<()> {
+        let Ok(restored) = serde_json::from_value::<Created>(data.clone()) else {
+            return Ok(());
+        };
+        self.record_repos(&[(restored.repo_id, restored.namespace, restored.name, restored.is_private)]).await?;
+        if self.items_moved().await? {
+            self.place(false).await?;
+        }
+        Ok(())
     }
 
     /// Records one page of repositories: where each is, and whether it is

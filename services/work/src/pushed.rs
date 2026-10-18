@@ -182,6 +182,12 @@ impl Work {
             for (reference, commit) in closes.iter().map(|(r, c)| (r, c)).chain(parts.iter().map(|(r, c)| (r, c))) {
                 let Some(id) = items::referenced(self, &repo, reference).await? else { continue };
                 let closing = closes.iter().any(|(known, _)| known == reference);
+                // Only what the pusher may close, or see: anything else is a
+                // reference to nothing.
+                let Some(held) = items::by_id(self, &id).await? else { continue };
+                if !items::admits(&held, &[&actor], closing) {
+                    continue;
+                }
                 let message = pushed.commits.iter().find(|pushed| pushed.hash == *commit).map(|pushed| pushed.message.as_str());
                 let session = self.trailer_session(&repo.id, message.unwrap_or_default()).await?;
                 let landing =

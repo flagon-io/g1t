@@ -186,7 +186,7 @@ impl Work {
                 .into_iter()
                 .filter_map(ItemRow::held)
                 .filter(|held| held.may(a.viewer.as_ref(), Capability::Read))
-                .map(|held| held.item)
+                .map(|held| held.shown(a.viewer.as_ref()))
                 .collect(),
             None => Vec::new(),
         };

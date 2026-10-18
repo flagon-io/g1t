@@ -26,13 +26,20 @@ struct EdgeRow {
     blocked_by: Option<String>,
 }
 
-/// A work item in brief: its id, number, title and state.
+/// A work item's number.
 #[derive(Clone, Debug, Deserialize)]
-pub(crate) struct Brief {
-    pub id: String,
-    pub number: u32,
-    pub title: String,
-    pub state: State,
+struct Numbered {
+    number: u32,
+}
+
+/// The numbers of those of `found` that `viewer` may see, and of those
+/// already in `kept` (what a work item is blocked by now).
+pub(crate) fn visible_numbers(found: &[Held], viewer: Option<&User>, kept: &[u32]) -> HashSet<u32> {
+    found
+        .iter()
+        .filter(|item| kept.contains(&item.item.number) || item.may(viewer, g1t_contracts::access::Capability::Read))
+        .map(|item| item.item.number)
+        .collect()
 }
 
 fn numbers(json: Option<&str>) -> Vec<u32> {
@@ -46,33 +53,33 @@ const EDGES: &str = "SELECT number,
       WHERE b.number IS NOT NULL) AS blocked_by
    FROM work_items WHERE workspace = ?1 AND blocked_by <> '[]' AND number IS NOT NULL";
 
-/// The work items of workspace `?1` numbered in `?2` (a JSON array), in
-/// brief.
-const BRIEFS: &str = "SELECT id, number, title, state FROM work_items
-     WHERE workspace = ?1 AND number IN (SELECT value FROM json_each(?2))";
-
 impl Work {
-    /// `asked` as `number`'s new `blocked_by` in `workspace`, or why it
-    /// cannot be.
-    pub(super) async fn checked_blocked_by(&self, workspace: &str, number: u32, asked: &[u32]) -> Result<Outcome<Vec<u32>>> {
+    /// `asked` as `held`'s new `blocked_by`, set by `actor`, or why it
+    /// cannot be. A work item `actor` may not see is refused as one that
+    /// is not there, unless `held` is blocked by it already.
+    pub(super) async fn checked_blocked_by(&self, held: &Held, actor: &User, asked: &[u32]) -> Result<Outcome<Vec<u32>>> {
+        let workspace = held.item.workspace.as_str();
         let wanted = serde_json::to_string(asked)?;
         let results = self
             .db
             .batch(vec![
-                self.db.prepare(BRIEFS).bind(&[workspace.into(), wanted.into()])?,
+                self.db
+                    .prepare(select("workspace = ?1 AND number IN (SELECT value FROM json_each(?2))"))
+                    .bind(&[workspace.into(), wanted.into()])?,
                 self.db.prepare(EDGES).bind(&[workspace.into()])?,
             ])
             .await?;
         let mut results = results.into_iter();
-        let found: Vec<Brief> = match results.next() {
-            Some(result) => result.results()?,
+        let found: Vec<Held> = match results.next() {
+            Some(result) => held_rows(&result)?,
             None => Vec::new(),
         };
         let edges: Vec<EdgeRow> = match results.next() {
             Some(result) => result.results()?,
             None => Vec::new(),
         };
-        let items: HashSet<u32> = found.iter().map(|row| row.number).collect();
+        let items = visible_numbers(&found, Some(actor), &held.item.blocked_by);
+        let number = held.item.number;
         let graph: HashMap<u32, Vec<u32>> = edges.into_iter().map(|row| (row.number, numbers(row.blocked_by.as_deref()))).collect();
         Ok(match check_blocked_by(number, asked, &items, &graph) {
             Ok(set) => Outcome::Ok(set),
@@ -130,10 +137,10 @@ impl Work {
         if numbers.is_empty() {
             return Ok(Vec::new());
         }
-        let open: Vec<Brief> = self
+        let open: Vec<Numbered> = self
             .db
             .prepare(
-                "SELECT id, number, title, state FROM work_items
+                "SELECT number FROM work_items
                  WHERE workspace = ? AND state = 'open' AND number IN (SELECT value FROM json_each(?))",
             )
             .bind(&[workspace.into(), serde_json::to_string(numbers)?.into()])?
@@ -162,31 +169,42 @@ impl Work {
         )
     }
 
-    /// The work items of `workspace` that `numbers` names, in brief, in no
-    /// particular order.
-    pub(super) async fn briefs(&self, workspace: &str, numbers: &[u32]) -> Result<Vec<Brief>> {
+    /// The work items of `workspace` that `numbers` names and `viewer` may
+    /// see, in no particular order.
+    pub(super) async fn visible_numbered(&self, workspace: &str, numbers: &[u32], viewer: Option<&User>) -> Result<Vec<Held>> {
         if numbers.is_empty() {
             return Ok(Vec::new());
         }
-        Ok(self.db.prepare(BRIEFS).bind(&[workspace.into(), serde_json::to_string(numbers)?.into()])?.all().await?.results()?)
+        let found = held_rows(
+            &self
+                .db
+                .prepare(select("workspace = ?1 AND number IN (SELECT value FROM json_each(?2))"))
+                .bind(&[workspace.into(), serde_json::to_string(numbers)?.into()])?
+                .all()
+                .await?,
+        )?;
+        Ok(found.into_iter().filter(|item| item.may(viewer, g1t_contracts::access::Capability::Read)).collect())
     }
 
-    /// The work items that name `held` in their `blocked_by`, by number.
-    pub(super) async fn blocked_items(&self, held: &Held) -> Result<Vec<ItemBrief>> {
-        Ok(self
-            .db
-            .prepare(
-                "SELECT id, number, title, state FROM work_items
-                 WHERE workspace = ? AND number IS NOT NULL
-                   AND EXISTS (SELECT 1 FROM json_each(work_items.blocked_by) WHERE json_each.value = ?)
-                 ORDER BY number LIMIT 100",
-            )
-            .bind(&[held.item.workspace.as_str().into(), held.item.id.as_str().into()])?
-            .all()
-            .await?
-            .results::<Brief>()?
+    /// The work items that name `held` in their `blocked_by`, by number:
+    /// those `viewer` may see.
+    pub(super) async fn blocked_items(&self, held: &Held, viewer: Option<&User>) -> Result<Vec<ItemBrief>> {
+        let found = held_rows(
+            &self
+                .db
+                .prepare(select(
+                    "workspace = ? AND number IS NOT NULL
+                       AND EXISTS (SELECT 1 FROM json_each(work_items.blocked_by) WHERE json_each.value = ?)
+                     ORDER BY number LIMIT 100",
+                ))
+                .bind(&[held.item.workspace.as_str().into(), held.item.id.as_str().into()])?
+                .all()
+                .await?,
+        )?;
+        Ok(found
             .into_iter()
-            .map(|row| ItemBrief { number: row.number, title: row.title, state: row.state })
+            .filter(|item| item.may(viewer, g1t_contracts::access::Capability::Read))
+            .map(|item| ItemBrief { number: item.item.number, title: item.item.title, state: item.item.state })
             .collect())
     }
 }

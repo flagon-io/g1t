@@ -359,7 +359,7 @@ impl Work {
         actor: Option<String>,
         data: serde_json::Value,
     ) -> Result<()> {
-        self.publish_on(kind, Some(repo_id), actor, data).await
+        self.publish_on(kind, Some(repo_id).filter(|id| !id.is_empty()), actor, data).await
     }
 
     /// Publishes an event about a repository, or about none (a work item
@@ -1053,7 +1053,8 @@ impl Work {
         let (author, requested_by) = authorship(&a.actor);
         // The work items it says it closes and is part of (closing.rs).
         let item_id = item.as_ref().map(|held| held.item.id.clone());
-        let named = items::named(self, &repo, item_id.as_deref(), &format!("{title}\n{}", body.as_deref().unwrap_or_default())).await?;
+        let named =
+            items::named(self, &repo, item_id.as_deref(), &format!("{title}\n{}", body.as_deref().unwrap_or_default()), &[&a.actor]).await?;
         self.db
             .prepare(
                 "INSERT INTO pulls
@@ -1241,7 +1242,11 @@ impl Work {
             return Ok(no_pull());
         };
         let stored = found.first::<StoredBehind>(prefetch::Slot::Pull)?;
-        let item = found.held(prefetch::Slot::Item)?.map(|held| held.item);
+        // Its work item, as far as the viewer may see it.
+        let item = found
+            .held(prefetch::Slot::Item)?
+            .filter(|held| held.may(a.viewer.as_ref(), Capability::Read))
+            .map(|held| held.shown(a.viewer.as_ref()));
         let mut comments: Vec<Comment> =
             found.rows::<CommentRow>(prefetch::Slot::Comments)?.into_iter().map(Comment::from).collect();
         let reactions = reactions::attach(&found.rows::<reactions::ReactionRow>(prefetch::Slot::Reactions)?, &row.id, &mut comments);
@@ -1337,7 +1342,7 @@ impl Work {
         // The work items it closes, as its title and description say now;
         // none where the repository does not close them that way.
         if pull.status.is_active() {
-            let named = self.items_to_close(&pull, &repo, &settings, false).await?;
+            let named = self.items_to_close(&pull, &repo, &settings, false, &[]).await?;
             pull.closes = named.close_numbers();
             pull.parts = named.part_numbers();
         }
@@ -1649,7 +1654,7 @@ impl Work {
         let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
         let own = self.pull_item_id(&pull.id).await?;
         let text = format!("{}\n{}", pull.title, summary.as_deref().or(pull.body.as_deref()).unwrap_or_default());
-        let named = items::named(self, &repo, own.as_deref(), &text).await?;
+        let named = items::named(self, &repo, own.as_deref(), &text, &[&a.actor]).await?;
         self.db
             .prepare(
                 "UPDATE pulls SET status = 'open', body = COALESCE(?, body), updated_at = ?, closes_items = ?, parts = ?
@@ -2123,7 +2128,12 @@ impl Work {
         // branch, it has not landed yet. Its own work item and those it
         // names land, where the repository closes them that way.
         let settings = self.settings(&repo.id).await?;
-        let named = self.items_to_close(&pull, repo, &settings, keep_item_open).await?;
+        // Only what whoever merges it, and whoever it is for, may close: an
+        // outside collaborator's "Fixes #N" closes no work item they cannot see.
+        let owner = self.pull_owner(&pull).await?;
+        let mut who: Vec<&User> = vec![actor];
+        who.extend(owner.as_ref().filter(|owner| owner.id != actor.id));
+        let named = self.items_to_close(&pull, repo, &settings, keep_item_open, &who).await?;
         let own = self.pull_item_id(&pull.id).await?;
         // A fast-forward leaves the base at what was landed, which is its
         // head; the other methods leave its head as it was.
@@ -2266,10 +2276,16 @@ impl Work {
         let pulls: Vec<Pull> = found.results::<PullRow>()?.into_iter().map(Pull::from).collect();
         let items: Vec<Held> = items::held_rows(item_rows)?;
         let items = &items;
+        let viewer = &viewer;
         // Where each stands: the remembered assessment when there is one,
         // and worked out otherwise.
         try_join_all(pulls.into_iter().zip(snapshots).zip(item_ids).map(|((pull, snapshot), item_id)| async move {
-            let item = item_id.and_then(|id| items.iter().find(|held| held.item.id == id).map(|held| held.item.clone()));
+            let item = item_id.and_then(|id| {
+                items
+                    .iter()
+                    .find(|held| held.item.id == id && held.may(Some(viewer), Capability::Read))
+                    .map(|held| held.clone().shown(Some(viewer)))
+            });
             // Every open pull request has a lifecycle (lifecycle.rs), kept
             // fresh by what moves it (`advance`, on each event that can);
             // anyone's draft but g1t's has none.
@@ -2390,6 +2406,9 @@ impl Work {
         // numbers; a workspace's first starts it with the default labels.
         if event.kind == "repo.created" {
             return items::repo_created(self, &event.data).await;
+        }
+        if event.kind == "repo.restored" {
+            return items::repo_restored(self, &event.data).await;
         }
         if event.kind == "repo.visibility_changed" || event.kind == "repo.updated" {
             return items::repo_visibility(self, &event.data).await;

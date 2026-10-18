@@ -61,13 +61,18 @@ pub(crate) mod sql;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use dependencies::Brief;
 pub(crate) use labels::Labeled;
 pub(crate) use landing::{Landing, PastLanding};
 pub(crate) use migration::{DELETED, RENAMED, TRANSFERRED};
 pub(crate) use reading::{held_rows, select};
 pub(crate) use refs::{MAX_CLOSES, Named, NamedItems};
-pub(crate) use rows::{Held, path_of, workspace_of};
+pub(crate) use rows::{Held, path_of, repo_readable, workspace_of};
+
+/// Work items and people made up for other modules' tests.
+#[cfg(test)]
+pub(crate) mod rows_for_test {
+    pub(crate) use super::rows::{held_for_test, person_for_test};
+}
 
 // --- Reading ---------------------------------------------------------------
 
@@ -125,6 +130,12 @@ pub(crate) async fn repo_created(work: &Work, data: &serde_json::Value) -> Resul
     work.repo_created(data).await
 }
 
+/// `repo.restored`: where the repository is again, and what it kept for
+/// itself, placed.
+pub(crate) async fn repo_restored(work: &Work, data: &serde_json::Value) -> Result<()> {
+    work.repo_restored(data).await
+}
+
 /// `repo.visibility_changed`: whether its work items are public.
 pub(crate) async fn repo_visibility(work: &Work, data: &serde_json::Value) -> Result<()> {
     work.repo_visibility(data).await
@@ -144,9 +155,16 @@ pub(crate) async fn referenced(work: &Work, repo: &Repo, reference: &Ref) -> Res
 }
 
 /// The work items `text`, written in `repo`, closes and is part of, with
-/// `own` (a pull request's own work item) closed first.
-pub(crate) async fn named(work: &Work, repo: &Repo, own: Option<&str>, text: &str) -> Result<NamedItems> {
-    work.named_items(repo, own, text).await
+/// `own` (a pull request's own work item) closed first: those each of
+/// `who` may close, or see (refs.rs `admits`).
+pub(crate) async fn named(work: &Work, repo: &Repo, own: Option<&str>, text: &str, who: &[&User]) -> Result<NamedItems> {
+    work.named_items(repo, own, text, who).await
+}
+
+/// Whether each of `who` may have `held` closed by naming it (`closing`),
+/// or linked as something a change is part of.
+pub(crate) fn admits(held: &Held, who: &[&User], closing: bool) -> bool {
+    refs::admits(held, who, closing)
 }
 
 /// Lands `closes` (work items, by id) in `repo` by `landing` and links
@@ -214,12 +232,20 @@ pub(crate) async fn still_open(work: &Work, workspace: &str, numbers: &[u32], cl
     work.still_open(workspace, numbers, cleared).await
 }
 
-/// The work items of `workspace` that `numbers` names, in brief.
-pub(crate) async fn briefs(work: &Work, workspace: &str, numbers: &[u32]) -> Result<Vec<Brief>> {
-    work.briefs(workspace, numbers).await
+/// Those of `ids` (repositories) that `viewer` may read, as recorded in
+/// `repo_workspaces`.
+pub(crate) async fn readable_repo_ids(work: &Work, viewer: Option<&User>, ids: &[String]) -> Result<std::collections::HashSet<String>> {
+    work.readable_repo_ids(viewer, ids).await
 }
 
-/// The work items that name `held` in their `blocked_by`.
-pub(crate) async fn blocked_items(work: &Work, held: &Held) -> Result<Vec<g1t_contracts::work::ItemBrief>> {
-    work.blocked_items(held).await
+/// The work items of `workspace` that `numbers` names and `viewer` may
+/// see, in no particular order.
+pub(crate) async fn visible_numbered(work: &Work, workspace: &str, numbers: &[u32], viewer: Option<&User>) -> Result<Vec<Held>> {
+    work.visible_numbered(workspace, numbers, viewer).await
+}
+
+/// The work items that name `held` in their `blocked_by`, those `viewer`
+/// may see.
+pub(crate) async fn blocked_items(work: &Work, held: &Held, viewer: Option<&User>) -> Result<Vec<g1t_contracts::work::ItemBrief>> {
+    work.blocked_items(held, viewer).await
 }

@@ -438,7 +438,7 @@ impl Work {
         } else {
             Vec::new()
         };
-        let items = self.items_to_close(pull, repo, settings, false).await?.close_numbers();
+        let items = self.items_to_close(pull, repo, settings, false, &[]).await?.close_numbers();
         Ok(messages_for(repo, pull, settings, methods, &commits, &items))
     }
 
@@ -501,7 +501,7 @@ impl Work {
             // A merged or closed one merges no more.
             Vec::new()
         };
-        let items = self.items_to_close(&pull, &repo, &settings, false).await?.close_numbers();
+        let items = self.items_to_close(&pull, &repo, &settings, false, &[]).await?.close_numbers();
         let messages = messages_for(&repo, &pull, &settings, &methods, &commits, &items);
         let options = messages
             .into_iter()

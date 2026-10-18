@@ -178,6 +178,143 @@ fn labels_merge_by_name_and_the_first_made_keeps_its_color() {
 }
 
 #[test]
+fn labels_merge_whatever_their_case() {
+    let db = legacy();
+    db.execute_batch(
+        "INSERT INTO repo_labels (repo_id, name, color, description, created_at)
+         VALUES ('rep_api', 'Docs', 'ffffff', 'Later', '2026-02-01');",
+    )
+    .unwrap();
+    finish(&db);
+    assert_eq!(strings(&db, "SELECT name || ' ' || color FROM labels WHERE workspace = 'acme' AND lower(name) = 'docs'"), ["docs 0075ca"]);
+}
+
+/// Places what the repositories recorded since kept for themselves, as the
+/// job for deleted repositories and `repo.restored` do, at `at`.
+fn place(db: &Connection, at: &str, carried: bool) {
+    for sql in super::migration::place_sql() {
+        run(db, &sql, &[&at]);
+    }
+    if carried {
+        for sql in super::migration::CARRIED_LABELS {
+            run(db, sql, &[&at]);
+        }
+    }
+}
+
+#[test]
+fn a_repository_left_out_of_the_job_keeps_what_it_had_until_it_is_recorded() {
+    let db = legacy();
+    // gone was deleted (but restorable) when the job ran: repos did not
+    // page it, so the job does not record it.
+    db.execute_batch(
+        "INSERT INTO counters (repo_id, last) VALUES ('rep_gone', 88);
+         INSERT INTO repo_labels (repo_id, name, color, description, created_at)
+         VALUES ('rep_gone', 'ci', '00ff00', 'Builds', '2025-01-01');
+         INSERT INTO repo_milestones (repo_id, number, title, created_at, updated_at)
+         VALUES ('rep_gone', 1, 'Gone', '2025-01-01', '2025-01-01');",
+    )
+    .unwrap();
+    finish(&db);
+    // What it kept is still its own, not dropped with everyone else's.
+    assert_eq!(strings(&db, "SELECT repo_id FROM counters"), ["rep_gone"]);
+    assert_eq!(strings(&db, "SELECT name FROM repo_labels"), ["ci"]);
+    assert_eq!(strings(&db, "SELECT title FROM repo_milestones"), ["Gone"]);
+    // Recorded later (the job for deleted repositories, or a restore):
+    // its labels and milestones are acme's, and acme's floor and sequence
+    // go above its numbers.
+    for sql in RECORD_REPO {
+        run(&db, sql, &[&"rep_gone", &"acme", &"acme/gone", &0]);
+    }
+    place(&db, "2026-10-18T00:00:00Z", true);
+    assert_eq!(strings(&db, "SELECT name || ' ' || color FROM labels WHERE workspace = 'acme' AND name = 'ci'"), ["ci 00ff00"]);
+    assert_eq!(strings(&db, "SELECT title FROM milestones WHERE workspace = 'acme' ORDER BY number"), ["Beta", "Launch", "Gone"]);
+    assert_eq!(numbers(&db, "SELECT workspace, floor FROM work_counters WHERE workspace = 'acme'"), [("acme".to_owned(), Some(88))]);
+    assert_eq!(numbers(&db, "SELECT workspace, last FROM work_counters WHERE workspace = 'acme'"), [("acme".to_owned(), Some(88))]);
+    assert!(strings(&db, "SELECT repo_id FROM counters").is_empty());
+    // Earlier milestones were not touched.
+    assert_eq!(numbers(&db, "SELECT id, milestone FROM work_items WHERE milestone IS NOT NULL ORDER BY id"), [
+        ("iss_api2".to_owned(), Some(1)),
+        ("iss_web5".to_owned(), Some(2)),
+    ]);
+    // Run again, nothing changes.
+    place(&db, "2026-10-19T00:00:00Z", true);
+    assert_eq!(strings(&db, "SELECT title FROM milestones WHERE workspace = 'acme'").len(), 3);
+    assert_eq!(numbers(&db, "SELECT workspace, last FROM work_counters WHERE workspace = 'acme'"), [("acme".to_owned(), Some(88))]);
+}
+
+/// g1t.sh as the first job left flagon-io's `hello`: deleted when it ran,
+/// so its 42 work items were placed (from what else was kept) and
+/// numbered, but with no path, as private, its labels dropped unmerged and
+/// its old numbers (up to 88) not in the floor.
+#[test]
+fn the_job_for_deleted_repositories_repairs_what_the_first_left() {
+    let db = legacy();
+    finish(&db);
+    db.execute_batch(
+        "INSERT INTO work_items (id, workspace, number, title, body, labels, author_id, author_name, created_at, updated_at)
+         VALUES ('iss_hello1', 'acme', 11, 'Hello', '', '[\"ci\",\"bug\"]', 'usr_1', 'ana', '', ''),
+                ('iss_hello88', 'acme', 12, 'Hooks', '', '[\"webhook\"]', 'usr_1', 'ana', '', '');
+         INSERT INTO work_item_repos (item_id, repo_id, role, legacy_number, added_at)
+         VALUES ('iss_hello1', 'rep_hello', 'origin', 1, ''), ('iss_hello88', 'rep_hello', 'origin', 88, '');
+         UPDATE work_counters SET last = 156 WHERE workspace = 'acme';",
+    )
+    .unwrap();
+    assert_eq!(strings(&db, "SELECT COALESCE(path, '') FROM work_item_repos WHERE repo_id = 'rep_hello' LIMIT 1"), [""]);
+    // The job records it as repos says it is (public), and places.
+    for sql in RECORD_REPO {
+        run(&db, sql, &[&"rep_hello", &"acme", &"acme/hello", &0]);
+    }
+    place(&db, "2026-10-18T00:00:00Z", true);
+    assert_eq!(strings(&db, "SELECT DISTINCT path FROM work_item_repos WHERE repo_id = 'rep_hello'"), ["acme/hello"]);
+    assert_eq!(strings(&db, "SELECT workspace || ' ' || private FROM repo_workspaces WHERE repo_id = 'rep_hello'"), ["acme 0"]);
+    // Its labels are acme's (bug was already, with its own color).
+    assert_eq!(strings(&db, "SELECT name || ' ' || color FROM labels WHERE workspace = 'acme' ORDER BY name"), [
+        "bug 0e8a16",
+        "ci ededed",
+        "docs 0075ca",
+        "webhook ededed"
+    ]);
+    // Its old numbers are below acme's floor; the sequence, past them
+    // already, stays where it is.
+    assert_eq!(numbers(&db, "SELECT workspace, floor FROM work_counters WHERE workspace = 'acme'"), [("acme".to_owned(), Some(88))]);
+    assert_eq!(numbers(&db, "SELECT workspace, last FROM work_counters WHERE workspace = 'acme'"), [("acme".to_owned(), Some(156))]);
+    // The work items keep their numbers; run again, nothing changes.
+    assert_eq!(numbers(&db, "SELECT id, number FROM work_items WHERE id LIKE 'iss_hello%' ORDER BY id"), [
+        ("iss_hello1".to_owned(), Some(11)),
+        ("iss_hello88".to_owned(), Some(12)),
+    ]);
+    place(&db, "2026-10-19T00:00:00Z", true);
+    assert_eq!(strings(&db, "SELECT name FROM labels WHERE workspace = 'acme'").len(), 4);
+    assert_eq!(strings(&db, "SELECT created_at FROM labels WHERE name = 'ci'"), ["2026-10-18T00:00:00Z"]);
+}
+
+#[test]
+fn the_floor_migration_sets_what_the_job_would() {
+    // A database the job finished before floors were kept: the migration
+    // gives each workspace the floor the job now sets, counting only pull
+    // requests opened before it finished.
+    let db = database_before("0052_work_floors.sql");
+    db.execute_batch(
+        "INSERT INTO repo_workspaces (repo_id, workspace, path, private) VALUES ('rep_web', 'acme', 'acme/web', 0);
+         INSERT INTO work_counters (workspace, last) VALUES ('acme', 30);
+         UPDATE work_jobs SET done_at = '2026-10-17T00:00:00Z' WHERE name = 'work_items';
+         INSERT INTO pulls (id, repo_id, number, title, agent, runtime, author_id, author_name, created_at, updated_at)
+         VALUES ('pr_old', 'rep_web', 7, 'Old', 'ana', 'external', 'usr_1', 'ana', '2026-01-01', ''),
+                ('pr_new', 'rep_web', 29, 'New', 'ana', 'external', 'usr_1', 'ana', '2026-10-18', '');
+         INSERT INTO work_items (id, workspace, number, title, body, author_id, author_name, created_at, updated_at)
+         VALUES ('iss_9', 'acme', 20, 'Old issue', '', 'usr_1', 'ana', '', '');
+         INSERT INTO work_item_repos (item_id, repo_id, role, legacy_number, added_at) VALUES ('iss_9', 'rep_web', 'origin', 9, '');",
+    )
+    .unwrap();
+    migrate_from(&db, "0052_work_floors.sql");
+    assert_eq!(numbers(&db, "SELECT workspace, floor FROM work_counters"), [("acme".to_owned(), Some(9))]);
+    assert_eq!(strings(&db, "SELECT name FROM work_jobs WHERE done_at IS NULL"), ["deleted_repos"]);
+    run(&db, super::migration::RAISE_FLOORS, &[&"2026-10-18T12:00:00Z"]);
+    assert_eq!(numbers(&db, "SELECT workspace, floor FROM work_counters"), [("acme".to_owned(), Some(9))]);
+}
+
+#[test]
 fn milestones_are_renumbered_in_the_workspace_and_what_was_in_them_follows() {
     let db = legacy();
     finish(&db);
@@ -216,15 +353,46 @@ fn a_reference_is_a_pull_request_here_then_an_old_issue_then_the_workspace() {
     // its own pull request, api's #2 (now #9) needs api or its new number.
     assert_eq!(reference(&db, Some("rep_web"), "acme", 2), Some(Named::PullHere));
     // In the workspace alone: its item, else a pull request of one of its
-    // repositories.
+    // repositories numbered in the workspace, above its floor (5, the
+    // most its repositories used on their own). An old pull request's
+    // number is any of its repositories', and names none of them: api's
+    // #3 and web's #2 could be another's.
     assert_eq!(reference(&db, None, "acme", 9), Some(Named::Item("iss_api2".into())));
-    assert_eq!(reference(&db, None, "acme", 3), Some(Named::PullThere("rep_api".into())));
+    assert_eq!(numbers(&db, "SELECT workspace, floor FROM work_counters ORDER BY workspace"), [
+        ("acme".to_owned(), Some(5)),
+        ("globex".to_owned(), Some(2)),
+    ]);
+    assert_eq!(reference(&db, None, "acme", 3), None);
+    assert_eq!(reference(&db, None, "acme", 2), None);
     assert_eq!(reference(&db, None, "acme", 42), None);
-    assert_eq!(reference(&db, None, "acme", 2), Some(Named::PullThere("rep_web".into())));
+    db.execute_batch(
+        "INSERT INTO pulls (id, repo_id, number, title, agent, runtime, author_id, author_name, created_at, updated_at)
+         VALUES ('pr_api11', 'rep_api', 11, 'New', 'ana', 'external', 'usr_1', 'ana', '2026-10-18', '2026-10-18');",
+    )
+    .unwrap();
+    assert_eq!(reference(&db, None, "acme", 11), Some(Named::PullThere("rep_api".into())));
+    assert_eq!(reference(&db, Some("rep_web"), "acme", 11), Some(Named::PullThere("rep_api".into())));
     // Another workspace's numbers are its own: globex's #3 is its item,
-    // and its pull request #2 is nothing of acme's.
+    // and its old pull request #2 is nothing of acme's.
     assert_eq!(reference(&db, None, "globex", 3), Some(Named::Item("iss_site1".into())));
-    assert_eq!(reference(&db, None, "globex", 2), Some(Named::PullThere("rep_site".into())));
+    assert_eq!(reference(&db, None, "globex", 2), None);
+}
+
+#[test]
+fn an_old_number_of_a_repository_moved_in_names_nothing_of_its_new_workspace() {
+    let db = legacy();
+    finish(&db);
+    // api moves from acme to globex: its old #1 is acme's #7, which
+    // globex's text never closes; read in api now, `#1` is no work item.
+    let values = g1t_kit::transfer::values("globex/api", "acme/api", "rep_api");
+    for sql in TRANSFERRED {
+        let binds: Vec<&dyn rusqlite::ToSql> = values.iter().map(|value| value as &dyn rusqlite::ToSql).collect();
+        run(&db, sql, &binds);
+    }
+    assert_eq!(reference(&db, Some("rep_api"), "acme", 1), Some(Named::Item("iss_api1".into())));
+    assert_eq!(reference(&db, Some("rep_api"), "globex", 1), None);
+    // And globex's floor rose above api's numbers.
+    assert_eq!(numbers(&db, "SELECT workspace, floor FROM work_counters WHERE workspace = 'globex'"), [("globex".to_owned(), Some(3))]);
 }
 
 /// A work item of acme, filed from web, meant to land in web and api.
@@ -346,8 +514,37 @@ fn a_workspaces_first_number_is_after_its_repositories_before_the_job_runs() {
     // The job numbers the moved issues after those.
     assert_eq!(numbers(&db, "SELECT id, number FROM work_items WHERE id = 'iss_web1'"), [("iss_web1".to_owned(), Some(8))]);
     // Whichever repository opens one first, none takes a number another
-    // already used for an issue: api's first is 4, and web's after its #5.
+    // already used for an issue, even before the job has recorded which
+    // repositories are acme's: api's first is after web's #5 too.
     let db = legacy();
-    assert_eq!(next(&db, "acme", Some("rep_api")), 4);
-    assert_eq!(next(&db, "acme", Some("rep_web")), 6);
+    assert_eq!(next(&db, "acme", Some("rep_api")), 6);
+    assert_eq!(next(&db, "acme", Some("rep_web")), 7);
+}
+
+#[test]
+fn a_pull_request_never_takes_an_old_issue_number_of_its_repository() {
+    let db = legacy();
+    finish(&db);
+    // A repository whose issues went up to #100 but pull requests to #5
+    // moves into acme (counter 10): its next pull request is #101, never
+    // #11, which `#11` in it names (its old issue).
+    db.execute_batch(
+        "INSERT INTO work_items (id, workspace, number, title, body, author_id, author_name, created_at, updated_at)
+         VALUES ('iss_far100', 'globex', 40, 'Old', '', 'usr_1', 'ana', '', '');
+         INSERT INTO work_item_repos (item_id, repo_id, role, legacy_number, added_at)
+         VALUES ('iss_far100', 'rep_far', 'origin', 100, '');
+         INSERT INTO pulls (id, repo_id, number, title, agent, runtime, author_id, author_name, created_at, updated_at)
+         VALUES ('pr_far5', 'rep_far', 5, 'Old', 'ana', 'external', 'usr_1', 'ana', '', '');",
+    )
+    .unwrap();
+    run(&db, REMEMBER_REPO, &[&"rep_far", &"globex", &"globex/far", &0]);
+    let values = g1t_kit::transfer::values("acme/far", "globex/far", "rep_far");
+    for sql in TRANSFERRED {
+        let binds: Vec<&dyn rusqlite::ToSql> = values.iter().map(|value| value as &dyn rusqlite::ToSql).collect();
+        run(&db, sql, &binds);
+    }
+    assert_eq!(numbers(&db, "SELECT workspace, last FROM work_counters WHERE workspace = 'acme'"), [("acme".to_owned(), Some(100))]);
+    // Even had the transfer not been heard of.
+    db.execute("UPDATE work_counters SET last = 10 WHERE workspace = 'acme'", []).unwrap();
+    assert_eq!(next(&db, "acme", Some("rep_far")), 101);
 }

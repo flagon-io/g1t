@@ -68,6 +68,36 @@ fn claim_repos(held: &Held, repo_id: Option<&str>) -> Vec<String> {
     repos
 }
 
+/// Why a claim on a work item of `workspace` may not be made from the
+/// repository in workspace `repo` (if one is named) or from a session
+/// whose repository is in workspace `session` (if one is named; `None`
+/// inside when the repository is not known): either in another
+/// workspace. `None` when it may.
+fn outside_workspace(workspace: &str, repo: Option<&str>, session: Option<Option<&str>>) -> Option<String> {
+    let other = |slug: &str| !slug.eq_ignore_ascii_case(workspace);
+    if repo.is_some_and(other) {
+        return Some(format!("That repository is not in {workspace}, the work item's workspace."));
+    }
+    if session.is_some_and(|slug| slug.is_none_or(other)) {
+        return Some(format!("That session is not in a repository of {workspace}, the work item's workspace."));
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::outside_workspace;
+
+    #[test]
+    fn a_claim_is_made_only_from_the_work_items_workspace() {
+        assert_eq!(outside_workspace("acme", None, None), None);
+        assert_eq!(outside_workspace("acme", Some("Acme"), Some(Some("acme"))), None);
+        assert!(outside_workspace("acme", Some("globex"), None).is_some());
+        assert!(outside_workspace("acme", None, Some(Some("globex"))).is_some());
+        assert!(outside_workspace("acme", None, Some(None)).is_some());
+    }
+}
+
 impl Work {
     /// The caller's active claim on a work item, if they hold one.
     async fn own_claim(&self, item_id: &str, actor: &User, session: Option<&str>) -> Result<Option<Claim>> {
@@ -211,6 +241,19 @@ impl Work {
         if session.as_ref().is_some_and(|session| session.state == SessionState::Ended) {
             return Ok(Outcome::fail(FailureCode::Invalid, "That session has ended. Start a new one."));
         }
+        // Only a repository, or a session in one, of the work item's own
+        // workspace is tied to it.
+        let session_workspace = match &session {
+            Some(session) => Some(items::repo_workspace(self, &session.repo_id).await?),
+            None => None,
+        };
+        if let Some(refusal) = outside_workspace(
+            &held.item.workspace,
+            repo.as_ref().map(|repo| repo.namespace.as_str()),
+            session_workspace.as_ref().map(Option::as_deref),
+        ) {
+            return Ok(Outcome::fail(FailureCode::Invalid, refusal));
+        }
         let repo_id = repo.as_ref().map(|repo| repo.id.clone()).or_else(|| session.as_ref().map(|session| session.repo_id.clone()));
         let minutes = claim_minutes(a.ttl_minutes);
         let note = tidy(a.note.as_deref(), MAX_NOTE_CHARS);
@@ -222,7 +265,12 @@ impl Work {
         let (mine, others): (Vec<Claim>, Vec<Claim>) = standing
             .into_iter()
             .partition(|claim| claim_is_mine(&claim.actor.id, claim.session_id.as_deref(), &a.actor.id, session_id.as_deref()));
-        let blocked_by = self.blockers(&held.item.workspace, &held.item.blocked_by).await?;
+        // The others, as far as the actor may read where they are.
+        let claimed_in: Vec<String> = others.iter().filter_map(|claim| claim.repo_id.clone()).collect();
+        let readable = items::readable_repo_ids(self, Some(&a.actor), &claimed_in).await?;
+        let others: Vec<Claim> =
+            others.into_iter().filter(|claim| claim.repo_id.as_ref().is_none_or(|id| readable.contains(id))).collect();
+        let blocked_by = self.blockers(Some(&a.actor), &held.item.workspace, &held.item.blocked_by).await?;
         let repos = claim_repos(&held, repo_id.as_deref());
         // Claiming what you hold renews it.
         if let Some(held_claim) = mine.into_iter().next() {
