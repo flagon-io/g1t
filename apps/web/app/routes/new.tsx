@@ -67,7 +67,7 @@ const SOURCES: { id: Source | "github"; title: string; text: string; icon: React
   {
     id: "empty",
     title: "Start empty",
-    text: "A new repository on g1t. Push to it, or hand your coding agent the first issue.",
+    text: "A new repository on g1t. Push to it, or hand your coding agent the first work item.",
     icon: <Sparkles />,
   },
   {
@@ -82,7 +82,7 @@ const SOURCES: { id: Source | "github"; title: string; text: string; icon: React
 const GITHUB_SOURCE = {
   id: "github" as const,
   title: "Import from GitHub",
-  text: "Import repositories you can reach on GitHub, private ones too, with their issues.",
+  text: "Import repositories you can reach on GitHub, private ones too, with their work items.",
   icon: <GithubMark />,
 };
 
@@ -178,7 +178,7 @@ export default function NewProject({ loaderData, actionData }: Route.ComponentPr
               value="public"
               icon={<Globe />}
               title="Public"
-              description="Anyone can see its code and open issues."
+              description="Anyone can see its code and open work items."
             />
             <RadioCard
               value="private"

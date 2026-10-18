@@ -107,7 +107,10 @@ const EVENT_WORDS: Record<string, string> = {
   pull_request: "pull request",
   pull_request_target: "pull request (target)",
   pull_request_review: "review",
-  issues: "issue",
+  work_item: "work item",
+  work_item_comment: "comment",
+  // Runs from before work items, under the events they had then.
+  issues: "work item",
   issue_comment: "comment",
   schedule: "schedule",
   workflow_dispatch: "manual",

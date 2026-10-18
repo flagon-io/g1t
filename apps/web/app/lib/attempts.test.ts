@@ -5,17 +5,17 @@ import type { Overlap } from "@g1t/contracts";
 
 import { MAX_ATTEMPTS, attemptOutcome, attemptReview, otherAttempts, sharedPaths, splitOverlaps } from "./attempts.ts";
 
-const overlap = (number: number, issue: number | null): Overlap => ({ number, title: `#${number}`, issue, paths: ["src/lib.rs"] });
+const overlap = (number: number, item: number | null): Overlap => ({ number, title: `#${number}`, item, paths: ["src/lib.rs"] });
 
-test("overlaps for the same issue are alternatives; the rest are collisions", () => {
+test("overlaps for the same work item are alternatives; the rest are collisions", () => {
   const { collisions, alternatives } = splitOverlaps([overlap(3, 2), overlap(4, 7), overlap(5, null)], 2);
   assert.deepEqual(alternatives.map((o) => o.number), [3]);
   assert.deepEqual(collisions.map((o) => o.number), [4, 5]);
-  // A pull request for no issue has no alternatives.
+  // A pull request for no work item has no alternatives.
   assert.deepEqual(splitOverlaps([overlap(5, null)], null).alternatives, []);
 });
 
-test("the other attempts are the issue's other pull requests, newest first, a few at most", () => {
+test("the other attempts are the work item's other pull requests, newest first, a few at most", () => {
   const pulls = [3, 9, 4, 12, 7, 8].map((number) => ({ number }));
   const others = otherAttempts(pulls, 9);
   assert.deepEqual(others, [12, 8, 7, 4]);

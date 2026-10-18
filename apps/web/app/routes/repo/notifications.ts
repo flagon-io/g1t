@@ -1,6 +1,6 @@
 /**
  * What a person hears of from one repository: subscribing to one of its
- * issues or pull requests (`intent` subscribe, unsubscribe, ignore or
+ * pull requests (`intent` subscribe, unsubscribe, ignore or
  * default, with its `number`), and watching it (`intent` watch, with
  * `level` and, for custom, the `event` kinds). Posted by the sidebar's
  * Notifications box and the header's Watch menu (components/notifications.tsx).
@@ -32,7 +32,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     const number = Number(form.get("number"));
     if (!choice || !Number.isInteger(number) || number < 1) return data({ error: "Nothing to do." }, { status: 400 });
     const subscription = await inbox.subscribe(user, { repoId: repo.value.id, number }, choice.subscribed, choice.ignored);
-    if (!subscription) return data({ error: "That issue or pull request could not be found." }, { status: 404 });
+    if (!subscription) return data({ error: "That pull request could not be found." }, { status: 404 });
     return { error: null, subscription };
   } catch {
     return data({ error: "That did not save. Try again in a moment." }, { status: 503 });

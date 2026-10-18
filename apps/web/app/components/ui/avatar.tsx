@@ -15,7 +15,7 @@ import { Mark } from "../logo";
 const AVATAR_HUES = [82, 200, 262, 28, 330, 160];
 
 /**
- * g1t itself: the system, as the author of security updates, the issues it
+ * g1t itself: the system, as the author of security updates, the work items it
  * opens and merges from the queue, and on older rows as reviewer, assignee
  * and commit author. One name, `g1t`.
  */

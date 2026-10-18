@@ -1,5 +1,5 @@
 /**
- * Coordinating work, as the site shows it: who is on which issue (claims),
+ * Coordinating work, as the site shows it: who is on which work item (claims),
  * which harness sessions are running, what the merge queue found when it
  * combined changes, and the decision records behind the result. Pure: the
  * pages and components/coordination.tsx draw what these say.
@@ -32,7 +32,7 @@ export function harnessName(harness: Harness | null | undefined): string | null 
   return harness ? (HARNESS_NAMES[harness] ?? harness) : null;
 }
 
-/** The coordination events the Work page lists, newest first. */
+/** The coordination events the Sessions page lists, newest first. */
 export const COORDINATION_TYPES = [
   "work.claimed",
   "work.released",
@@ -185,22 +185,22 @@ export function sessionTitle(
 
 // ── Live now ────────────────────────────────────────────────────────────
 
-/** One issue being worked on: its claims and the sessions on it. */
-export type LiveIssue = { issue: number; claims: Claim[]; sessions: WorkSession[] };
+/** One work item being worked on: its claims and the sessions on it. */
+export type LiveItem = { item: number; claims: Claim[]; sessions: WorkSession[] };
 
-/** Sessions on no issue yet, together: on one pull request, on one branch of their own, or on neither. */
+/** Sessions on no work item yet, together: on one pull request, on one branch of their own, or on neither. */
 export type LiveGroup =
   | { kind: "pull"; pull: number; sessions: WorkSession[] }
   | { kind: "branch"; branch: string; sessions: WorkSession[] }
   | { kind: "none"; sessions: WorkSession[] };
 
 /**
- * Whether a session has done nothing since it started: no title, no issue
+ * Whether a session has done nothing since it started: no title, no work item
  * or pull request, never heard from again. Opening a Claude Code tab starts
  * one before anything is typed in it, and it is nothing to show yet.
  */
 export function startedOnly(session: WorkSession): boolean {
-  return !session.title && session.issue == null && session.pull == null && session.lastSeenAt === session.startedAt;
+  return !session.title && session.item == null && session.pull == null && session.lastSeenAt === session.startedAt;
 }
 
 /**
@@ -222,30 +222,30 @@ export function awakeAndIdle(sessions: WorkSession[]): { awake: WorkSession[]; i
 const latestSeen = (sessions: WorkSession[]) => Math.max(0, ...sessions.map((session) => Date.parse(session.lastSeenAt)));
 
 /**
- * Active claims and sessions grouped by the issue they are on, the issue
- * with the most recent activity first. Sessions on no issue are grouped
+ * Active claims and sessions grouped by the work item they are on, the item
+ * with the most recent activity first. Sessions on no work item are grouped
  * after them (`groups`): by their pull request, else by their branch when
  * it is not `defaultBranch`, the most recently heard from first; the rest,
  * on no branch of their own, last together. `loose` is every session on no
- * issue, as the groups hold them.
+ * work item, as the groups hold them.
  */
-export function liveByIssue(
+export function liveByItem(
   claims: Claim[],
   sessions: WorkSession[],
   defaultBranch?: string | null,
-): { issues: LiveIssue[]; groups: LiveGroup[]; loose: WorkSession[] } {
-  const byIssue = new Map<number, LiveIssue>();
-  const at = (issue: number) => {
-    let group = byIssue.get(issue);
-    if (!group) byIssue.set(issue, (group = { issue, claims: [], sessions: [] }));
+): { items: LiveItem[]; groups: LiveGroup[]; loose: WorkSession[] } {
+  const byItem = new Map<number, LiveItem>();
+  const at = (item: number) => {
+    let group = byItem.get(item);
+    if (!group) byItem.set(item, (group = { item, claims: [], sessions: [] }));
     return group;
   };
-  for (const claim of claims) at(claim.issue).claims.push(claim);
+  for (const claim of claims) at(claim.item).claims.push(claim);
   const byPull = new Map<number, LiveGroup & { kind: "pull" }>();
   const byBranch = new Map<string, LiveGroup & { kind: "branch" }>();
   const rest: WorkSession[] = [];
   for (const session of sessions) {
-    if (session.issue != null) at(session.issue).sessions.push(session);
+    if (session.item != null) at(session.item).sessions.push(session);
     else if (session.pull != null) {
       const group = byPull.get(session.pull) ?? { kind: "pull" as const, pull: session.pull, sessions: [] };
       byPull.set(session.pull, group);
@@ -256,13 +256,13 @@ export function liveByIssue(
       group.sessions.push(session);
     } else rest.push(session);
   }
-  const latest = (group: LiveIssue) => Math.max(latestSeen(group.sessions), ...group.claims.map((claim) => Date.parse(claim.createdAt)));
+  const latest = (group: LiveItem) => Math.max(latestSeen(group.sessions), ...group.claims.map((claim) => Date.parse(claim.createdAt)));
   const recent = (a: LiveGroup, b: LiveGroup) => latestSeen(b.sessions) - latestSeen(a.sessions);
   const groups: LiveGroup[] = [...byPull.values(), ...byBranch.values()].sort(recent);
   if (rest.length > 0) groups.push({ kind: "none", sessions: rest });
   for (const group of groups) group.sessions.sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt));
   return {
-    issues: [...byIssue.values()].sort((a, b) => latest(b) - latest(a) || a.issue - b.issue),
+    items: [...byItem.values()].sort((a, b) => latest(b) - latest(a) || a.item - b.item),
     groups,
     loose: groups.flatMap((group) => group.sessions),
   };
@@ -355,7 +355,7 @@ export function resolutionOf(decisions: Decision[], failure: Decision): { fix: D
     .filter((decision) => Date.parse(decision.createdAt) > Date.parse(failure.createdAt))
     .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
   return {
-    fix: after.find((decision) => decision.kind === "fix" && (decision.pull === failure.pull || decision.issue === failure.issue)) ?? null,
+    fix: after.find((decision) => decision.kind === "fix" && (decision.pull === failure.pull || decision.item === failure.item)) ?? null,
     passed: after.find((decision) => decision.kind === "integration_passed" && decision.pull === failure.pull) ?? null,
   };
 }
@@ -373,7 +373,7 @@ export type FeedLine = {
   harness: Harness | null;
   /** The sentence, after the name. Numbers in it are written `#N`. */
   text: string;
-  /** The issue or pull request it is about. */
+  /** The work item or pull request it is about. */
   number: number | null;
   /** The harness session it is about, by id, for a link to its page. */
   session?: string;
@@ -406,8 +406,8 @@ export function feedLine(event: G1tEvent): FeedLine | null {
         type: event.type,
         who: claim.actor.username,
         harness: claim.harness,
-        text: `${tookOver ? "took over" : "claimed"} #${claim.issue}${also}`,
-        number: claim.issue,
+        text: `${tookOver ? "took over" : "claimed"} #${claim.item}${also}`,
+        number: claim.item,
         tone: others.length > 0 ? "warn" : "accent",
       };
     }
@@ -418,14 +418,14 @@ export function feedLine(event: G1tEvent): FeedLine | null {
         type: event.type,
         who: claim.actor.username,
         harness: claim.harness,
-        text: reason === "issue_closed" ? `no longer holds #${claim.issue}: the issue closed` : `released #${claim.issue}${reason ? `: ${reason}` : ""}`,
-        number: claim.issue,
+        text: reason === "item_closed" ? `no longer holds #${claim.item}: the work item closed` : `released #${claim.item}${reason ? `: ${reason}` : ""}`,
+        number: claim.item,
         tone: "neutral",
       };
     }
     case "work.claim_expired": {
       const { claim } = event.data;
-      return { ...base, type: event.type, who: claim.actor.username, harness: claim.harness, text: `let the claim on #${claim.issue} expire`, number: claim.issue, tone: "neutral" };
+      return { ...base, type: event.type, who: claim.actor.username, harness: claim.harness, text: `let the claim on #${claim.item} expire`, number: claim.item, tone: "neutral" };
     }
     case "work.handoff_requested": {
       const { claim, to, note } = event.data;
@@ -434,15 +434,15 @@ export function feedLine(event: G1tEvent): FeedLine | null {
         type: event.type,
         who: claim.actor.username,
         harness: claim.harness,
-        text: `handed #${claim.issue} off to ${to ?? "anyone"}${note ? `: ${note}` : ""}`,
-        number: claim.issue,
+        text: `handed #${claim.item} off to ${to ?? "anyone"}${note ? `: ${note}` : ""}`,
+        number: claim.item,
         tone: "info",
       };
     }
     case "session.started":
     case "session.ended": {
       const { session } = event.data;
-      const on = session.issue != null ? ` on #${session.issue}` : session.pull != null ? ` on #${session.pull}` : "";
+      const on = session.item != null ? ` on #${session.item}` : session.pull != null ? ` on #${session.pull}` : "";
       const why = event.type === "session.ended" && session.endReason === "timed_out" ? " (timed out)" : "";
       // Ended by hand: by whoever ran it, or by someone with write access for them.
       const byHand = event.type === "session.ended" && session.endReason?.startsWith(ENDED_BY_HAND) ? session.endReason.slice(ENDED_BY_HAND.length) : null;
@@ -454,7 +454,7 @@ export function feedLine(event: G1tEvent): FeedLine | null {
           who: byHand,
           harness: own ? session.harness : null,
           text: own ? `ended a session${on} by hand` : `ended ${session.actor.username}'s session${on} by hand`,
-          number: session.issue ?? session.pull,
+          number: session.item ?? session.pull,
           tone: "neutral",
         };
       }
@@ -464,12 +464,12 @@ export function feedLine(event: G1tEvent): FeedLine | null {
         who: session.actor.username,
         harness: session.harness,
         text: `${event.type === "session.started" ? "started a session" : "ended a session"}${on}${why}`,
-        number: session.issue ?? session.pull,
+        number: session.item ?? session.pull,
         tone: event.type === "session.started" ? "accent" : "neutral",
       };
     }
     case "dependency.changed": {
-      const { issue, added, removed, cleared, remaining, mergedPull } = event.data;
+      const { item, added, removed, cleared, remaining, mergedPull } = event.data;
       const parts = [
         added.length > 0 && `now waits on ${list(added)}`,
         removed.length > 0 && `no longer waits on ${list(removed)}`,
@@ -482,20 +482,20 @@ export function feedLine(event: G1tEvent): FeedLine | null {
         ...base,
         type: event.type,
         who: null,
-        text: `#${issue} ${[...parts, left].filter(Boolean).join("; ")}`,
-        number: issue,
+        text: `#${item} ${[...parts, left].filter(Boolean).join("; ")}`,
+        number: item,
         tone: remaining.length === 0 ? "success" : "info",
       };
     }
     case "overlap.detected": {
       if ("sessionId" in event.data) {
-        const { sessionId, otherActor, files, issue } = event.data;
+        const { sessionId, otherActor, files, item } = event.data;
         return {
           ...base,
           type: event.type,
           who: otherActor,
           text: `touched the same ${plural(files.length, "file", "files")} in a session as another session: ${files.slice(0, 3).join(", ")}${files.length > 3 ? ` and ${files.length - 3} more` : ""}`,
-          number: issue ?? number,
+          number: item ?? number,
           session: sessionId,
           tone: "warn",
         };
@@ -535,7 +535,7 @@ export function feedLine(event: G1tEvent): FeedLine | null {
         type: event.type,
         who: decision.actor,
         text: `recorded ${/^[aeiou]/.test(kind) ? "an" : "a"} ${kind}, ${decision.confidence}: ${decision.summary}`,
-        number: decision.pull ?? decision.issue ?? number,
+        number: decision.pull ?? decision.item ?? number,
         tone: decision.kind === "integration_failure" ? "danger" : decision.confidence === "approved" ? "success" : "neutral",
       };
     }
@@ -585,7 +585,7 @@ export function treeSize(node: SessionNode): number {
   return node.children.reduce((total, child) => total + 1 + treeSize(child), 0);
 }
 
-/** How a session was tied to an issue or pull request, in a few words. */
+/** How a session was tied to a work item or pull request, in a few words. */
 export const VIA_LABELS: Record<LinkVia, string> = {
   attached: "attached",
   claim: "claimed",
@@ -606,7 +606,7 @@ export const TOUCH_KINDS: Record<TouchKind, string> = {
   commit: "Commits",
   branch: "Branches",
   pull: "Pull requests",
-  issue: "Issues",
+  item: "Work items",
 };
 
 /** What was touched, grouped by kind in TOUCH_KINDS' order, each value once, in the order given. */

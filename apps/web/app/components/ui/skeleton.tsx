@@ -121,7 +121,7 @@ export function SkeletonTableRows({
 }
 
 /**
- * An item of an issue's or pull request's timeline (components/work.tsx
+ * An item of a work item's or pull request's timeline (components/work.tsx
  * `TimelineItem`): the avatar beside a card with its header and `lines`
  * of body.
  */

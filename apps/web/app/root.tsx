@@ -218,7 +218,7 @@ async function visitorShell(
         ? {
             ...path,
             member: false,
-            issues: counts.value.issues,
+            items: counts.value.items,
             pulls: counts.value.pulls,
           }
         : null,
@@ -350,7 +350,7 @@ async function shellFor(
             ...path,
             // Until the repository's own page says what their role is.
             member: hasAccessIn(user, path.namespace),
-            issues: counts.value.issues,
+            items: counts.value.items,
             pulls: counts.value.pulls,
           }
         : null,

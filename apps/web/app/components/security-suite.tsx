@@ -31,6 +31,7 @@ import { RadioGroup, RadioOption } from "./ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { wholeDollars } from "../lib/money";
+import { itemPath } from "../lib/refs";
 
 type Done = { ok: boolean; error?: string } | undefined;
 
@@ -148,10 +149,10 @@ export function CodeAlertItem({ alert, base }: { alert: CodeAlert; base: string 
             {alert.ruleName && alert.ruleName !== alert.ruleId ? alert.ruleName : shortRule(alert.ruleId)}
           </Link>
           <SeverityBadge severity={alert.severity} />
-          {alert.issue != null && (
-            <Link to={`${base}/issues/${alert.issue}`}>
+          {alert.item != null && (
+            <Link to={itemPath(base.split("/")[1]!, alert.item)}>
               <Badge tone="accent">
-                <Bot size={11} /> g1t on #{alert.issue}
+                <Bot size={11} /> g1t on #{alert.item}
               </Badge>
             </Link>
           )}

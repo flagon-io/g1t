@@ -62,13 +62,13 @@ const SCHEMA = {
  */
 const trees = new WeightedLru<{ tree: Root; weight: number }>(400_000, (entry) => entry.weight);
 
-function treeOf(source: string, repo: MarkdownRepo | undefined): Root {
-  const key = `${repo ? `${repo.namespace}/${repo.name}` : ""}\n${source}`;
+function treeOf(source: string, repo: MarkdownRepo | undefined, workspace: string | undefined): Root {
+  const key = `${repo ? `${repo.namespace}/${repo.name}` : workspace ? `${workspace}/-` : ""}\n${source}`;
   const kept = trees.get(key);
   if (kept) return kept.tree;
   const tree = markdownTree(source, {
     remarkPlugins: [remarkGfm],
-    rehypePlugins: [rehypeRaw, [rehypeSanitize, SCHEMA], rehypeAlerts, [rehypeReferences, { repo }]],
+    rehypePlugins: [rehypeRaw, [rehypeSanitize, SCHEMA], rehypeAlerts, [rehypeReferences, { repo, workspace }]],
   });
   trees.set(key, { tree, weight: markdownWeight(source) });
   return tree;
@@ -182,19 +182,23 @@ function isExternal(href: string) {
  * Renders markdown the way people expect from a forge: GitHub flavoured
  * markdown (tables, task lists, footnotes, strikethrough, autolinks), the
  * HTML GitHub allows, alerts, highlighted code, heading anchors, and
- * references (`#12`, `owner/repo#12`, `@name`, commit hashes) linked
- * within `repo`. Anything an author writes is sanitized, so untrusted
+ * references (`#12`, `owner/repo#12`, `workspace#12`, `@name`, commit
+ * hashes) read in `repo`, or in `workspace` for a workspace's own text
+ * (lib/refs.ts). Anything an author writes is sanitized, so untrusted
  * content is safe to pass in.
  */
 export function Markdown({
   source,
   repo,
+  workspace,
   base,
   rawBase,
 }: {
   source: string;
   /** The repository the text belongs to, for its references. */
   repo?: MarkdownRepo;
+  /** The workspace the text belongs to when it is no repository's (a work item's), for its references. */
+  workspace?: string;
   /** Where relative links point, e.g. `/acme/web/blob/main/docs` for a file's own folder. */
   base?: string;
   /**
@@ -210,7 +214,7 @@ export function Markdown({
   // components never change: where links and pictures point comes from
   // context, so a new commit (a README's pictures are that commit's files)
   // updates their addresses in place rather than replacing every element.
-  const tree = useMemo(() => treeOf(source, repo), [source, repo?.namespace, repo?.name]);
+  const tree = useMemo(() => treeOf(source, repo, workspace), [source, repo?.namespace, repo?.name, workspace]);
   const rendered = useMemo(() => renderMarkdownTree(tree, COMPONENTS), [tree]);
   const bases = useMemo(() => ({ base, rawBase }), [base, rawBase]);
   return (

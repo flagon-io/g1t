@@ -5,8 +5,8 @@
  * without its end). One renderer for every place g1t answers: the top
  * bar's Ask and its direct message in Chat.
  *
- * What g1t adds: issues, pull requests and commits as chips with their
- * card on hover (`owner/repo#12`, `#12` in the page's repository, a hash,
+ * What g1t adds: work items, pull requests and commits as chips with their
+ * card on hover (`owner/repo#12`, `#12` in the page's repository or the workspace, a hash,
  * a link to one, a full link to this site), people as their card, code in
  * chat's own block (highlighted, with its language and Copy), tables that
  * scroll inside the message, and task lists. Raw HTML is never drawn, and
@@ -26,7 +26,7 @@ import { refTarget } from "../../lib/g1t-chat";
 import { type MarkdownRepo, rehypeReferences } from "../../lib/markdown-plugins";
 import { CodeBlock } from "../chat/text";
 import { MemberCard } from "../chat/profile-card";
-import { CommitChip, IssueChip, PageChip } from "../chat/ref-chip";
+import { CommitChip, PageChip, RefChip } from "../chat/ref-chip";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 
 /** The text inside a React tree: a code block's source. */
@@ -59,11 +59,14 @@ function components(context: ResponseContext, origin: string, usercontent: strin
         );
       }
       const target = refTarget(href, origin);
-      if (target?.kind === "issue") {
+      if (target?.kind === "item" || target?.kind === "pull" || target?.kind === "ref") {
         const label = textOf(children);
+        const where = target.kind === "item" ? target.workspace : target.repo;
         // A bare link (its text is the address) shows as the reference it is.
-        const shown = /^https?:\/\/|^\//.test(label) ? `${target.repo}#${target.number}` : children;
-        return <IssueChip slug={context.slug} repo={target.repo} number={target.number} to={target.href} label={shown} kind={/\/pull\//.test(target.href) ? "pull" : "issue"} />;
+        const shown = /^https?:\/\/|^\//.test(label) ? `${where}#${target.number}` : children;
+        const [namespace = "", name = ""] = where.split("/");
+        const scope = target.kind === "item" ? { workspace: target.workspace } : { repo: { namespace, name } };
+        return <RefChip slug={context.slug} scope={scope} number={target.number} to={target.href} label={shown} kind={target.kind === "ref" ? undefined : target.kind} />;
       }
       if (target?.kind === "commit") return <CommitChip href={target.href} sha={target.sha} />;
       if (target?.kind === "page") {
@@ -165,7 +168,7 @@ export const MessageResponse = memo(
       }
     }, [site]);
     const drawn = useMemo(() => components(context, origin, usercontent), [context, origin, usercontent]);
-    const rehype = useMemo<PluggableList>(() => [...Object.values(defaultRehypePlugins), [rehypeReferences, { repo: context.repo ?? undefined }]], [context.repo]);
+    const rehype = useMemo<PluggableList>(() => [...Object.values(defaultRehypePlugins), [rehypeReferences, { repo: context.repo ?? undefined, workspace: context.slug }]], [context.repo, context.slug]);
     return (
       <Streamdown
         mode={streaming ? "streaming" : "static"}

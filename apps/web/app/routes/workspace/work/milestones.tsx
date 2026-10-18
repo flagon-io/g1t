@@ -3,43 +3,46 @@ import { useState } from "react";
 import { Link } from "react-router";
 
 import type { Route } from "./+types/milestones";
-import { MilestoneBar } from "../../components/labels";
+import { MilestoneBar } from "../../../components/labels";
 import {
   DeleteMilestone,
   DueLine,
   MilestoneForm,
   MilestoneStateButton,
   ProgressLine,
-} from "../../components/milestones";
-import { EmptyState, ErrorText } from "../../components/ui";
-import { Button } from "../../components/ui/button";
-import { Card } from "../../components/ui/card";
-import { plainText } from "../../components/work";
-import { requireRepo } from "../../lib/access.server";
-import { page } from "../../lib/meta";
-import { milestoneAction } from "../../lib/milestones.server";
-import { work } from "../../lib/services.server";
-import { unwrap } from "../../lib/session.server";
+} from "../../../components/milestones";
+import { EmptyState, ErrorText } from "../../../components/ui";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
+import { plainText } from "../../../components/work";
+import { page } from "../../../lib/meta";
+import { milestoneAction } from "../../../lib/milestones.server";
+import { work } from "../../../lib/services.server";
+import { getViewer, unwrap } from "../../../lib/session.server";
+import { canItem } from "../../../lib/work-access";
+import { workPath } from "../../../lib/work-items";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
-  return page(args, { title: `Milestones · ${params.owner}/${params.repo} · g1t` });
+  return page(args, { title: `Milestones · Work · ${params.owner} · g1t` });
 }
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
-  const { viewer, access } = await requireRepo(context, params, "read");
+  const viewer = getViewer(context);
+  const workspace = params.owner.toLowerCase();
   const state = new URL(request.url).searchParams.get("state") === "closed" ? "closed" : "open";
   // Both, for the tabs' counts; the list shows one.
-  const milestones = unwrap(await work.listMilestones({ namespace: params.owner, name: params.repo }, viewer));
-  return { milestones, state, canEdit: access.can.manage_labels, today: new Date().toISOString() } as const;
+  const milestones = unwrap(await work.listMilestones(workspace, viewer));
+  // Made, changed and deleted with the Write role in the workspace.
+  return { workspace, milestones, state, canEdit: canItem(viewer, workspace, null, "manage_labels"), today: new Date().toISOString() } as const;
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
   return milestoneAction(request, params, context);
 }
 
-export default function Milestones({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { milestones, state, canEdit } = loaderData;
-  const base = `/${params.owner}/${params.repo}`;
+export default function Milestones({ loaderData, actionData }: Route.ComponentProps) {
+  const { milestones, state, canEdit, workspace } = loaderData;
+  const base = workPath(workspace);
   const today = new Date(loaderData.today);
   const [creating, setCreating] = useState(false);
   const open = milestones.filter((milestone) => milestone.state === "open");
@@ -58,12 +61,6 @@ export default function Milestones({ loaderData, actionData, params }: Route.Com
   );
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-semibold tracking-tight">Milestones</h2>
-        <p className="mt-1 text-sm text-muted">
-          A milestone gathers issues and pull requests under one goal and a due date, and shows how much of it is done.
-        </p>
-      </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Card tone="plain" radius="lg" className="flex gap-1 p-1">
           {tab("open", "Open", open.length)}
@@ -82,7 +79,7 @@ export default function Milestones({ loaderData, actionData, params }: Route.Com
         <EmptyState title={state === "open" ? "No open milestones" : "No closed milestones"}>
           {state === "open"
             ? canEdit
-              ? "Make one for the next release or goal, then put issues and pull requests in it from their sidebars."
+              ? "Make one for the next release or goal, then put work items and pull requests in it from their sidebars."
               : "Nobody has made a milestone here yet."
             : "Milestones that are done show here once they are closed."}
         </EmptyState>

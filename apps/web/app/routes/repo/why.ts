@@ -54,7 +54,7 @@ function stepsFor(session: SessionEntry[], hash: string, file: string): SessionE
 
 /**
  * Why a line is the way it is: the commit that last changed it, the pull
- * request and issue it came from, and what the agent was thinking.
+ * request and work item it came from, and what the agent was thinking.
  * Fetched by the blame view when a line is picked.
  */
 export async function loader({ params, request, context }: Route.LoaderArgs) {
@@ -68,16 +68,16 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   ]);
   const commit = await showOneCommit(log.ok ? log.value[0] : undefined);
   if (!commit) throw data(null, { status: 404 });
-  if (!pull) return { commit, pull: null, issue: null, steps: [] as SessionEntry[], decisions: [] as Decision[] };
+  if (!pull) return { commit, pull: null, item: null, steps: [] as SessionEntry[], decisions: [] as Decision[] };
   const [detail, session, decisions] = await Promise.all([
     work.getPull(path, pull.number, viewer),
     pull.runtime === "hosted" || pull.agent ? work.readSession(path, pull.number, viewer) : null,
-    // The decisions behind it, oldest first: on its issue and every pull
+    // The decisions behind it, oldest first: on its work item and every pull
     // request for it (the other proposals, the failed combination, the fix,
     // the approval and the merge), or on the pull request alone.
-    work.listDecisions(path, pull.issue ?? pull.number, viewer).catch(() => null),
+    work.listDecisions(pull.item != null ? { workspace: params.owner.toLowerCase(), number: pull.item } : { repo: path, number: pull.number }, viewer).catch(() => null),
   ]);
-  const issue = detail.ok ? detail.value.issue : null;
+  const item = detail.ok ? detail.value.item : null;
   return {
     commit,
     pull: {
@@ -90,11 +90,12 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
       mergedBy: pull.mergedBy,
       mergedAt: pull.mergedAt,
     },
-    issue: issue && {
-      number: issue.number,
-      title: issue.title,
-      body: issue.body.length > 900 ? `${issue.body.slice(0, 900)}…` : issue.body,
-      author: issue.author.username,
+    item: item && {
+      workspace: item.workspace,
+      number: item.number,
+      title: item.title,
+      body: item.body.length > 900 ? `${item.body.slice(0, 900)}…` : item.body,
+      author: item.author.username,
     },
     steps: session?.ok ? stepsFor(session.value, commit.hash, file) : [],
     decisions: decisions?.ok ? decisions.value : [],

@@ -231,7 +231,7 @@ function LiveEditor({ slug, folioId, role, me, mentionables, usercontent, sugges
       { title: "Success callout", subtext: "A tip, or what good looks like", aliases: ["callout", "success", "tip"], group: "Callouts", icon: <CheckCircle2 size={18} />, onItemClick: insert({ type: "callout", props: { kind: "success" } }) },
       { title: "Diagram", subtext: "A Mermaid diagram, drawn as you type", aliases: ["mermaid", "flowchart", "sequence", "chart"], group: "Advanced", icon: <Workflow size={18} />, onItemClick: insert({ type: "mermaid" }) },
       { title: "Math", subtext: "A formula, typeset with KaTeX", aliases: ["math", "latex", "katex", "equation", "formula"], group: "Advanced", icon: <Sigma size={18} />, onItemClick: insert({ type: "math" }) },
-      { title: "Embed from g1t", subtext: "An issue, pull request, channel, project or artifact, live", aliases: ["embed", "issue", "pull", "pr", "channel", "project"], group: "g1t", icon: <GitPullRequest size={18} />, onItemClick: insert({ type: "embed" }) },
+      { title: "Embed from g1t", subtext: "A work item, pull request, channel, project or artifact, live", aliases: ["embed", "item", "work", "pull", "pr", "channel", "project"], group: "g1t", icon: <GitPullRequest size={18} />, onItemClick: insert({ type: "embed" }) },
       {
         title: "Mention",
         subtext: "A person",

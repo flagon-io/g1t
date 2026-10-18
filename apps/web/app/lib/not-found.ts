@@ -1,14 +1,14 @@
 /**
- * What a not-found page says. A private project, issue or workspace and one
+ * What a not-found page says. A private project, work item or workspace and one
  * that does not exist must look the same to someone who cannot see it, so
  * the words depend only on what kind of thing the address names and on who
  * is looking, never on whether it exists.
  */
 
 /** The kind of thing an address names. */
-export type MissingKind = "project" | "issue" | "pull" | "workspace" | "person" | "page";
+export type MissingKind = "project" | "item" | "pull" | "workspace" | "person" | "page";
 
-const KINDS: readonly MissingKind[] = ["project", "issue", "pull", "workspace", "person", "page"];
+const KINDS: readonly MissingKind[] = ["project", "item", "pull", "workspace", "person", "page"];
 
 /** Names that are pages of g1t itself, never a workspace. */
 const RESERVED = new Set([
@@ -27,9 +27,10 @@ export function missingKind(errorData: unknown, pathname: string): MissingKind {
   if (parts[0] === "u" && parts.length === 2) return "person";
   if (parts.length === 0 || RESERVED.has(parts[0]!)) return "page";
   if (parts.length === 1) return "workspace";
-  if (parts[1] === "-") return "page";
+  if (parts[1] === "-") return parts[2] === "work" && parts.length === 4 && /^\d+$/.test(parts[3]!) ? "item" : "page";
   if (parts.length === 2) return "project";
-  if (parts[2] === "issues" && parts.length === 4 && /^\d+$/.test(parts[3]!)) return "issue";
+  // An old issue's address: what it named, a work item now.
+  if (parts[2] === "issues" && parts.length === 4 && /^\d+$/.test(parts[3]!)) return "item";
   if (parts[2] === "pull" && parts.length === 4 && /^\d+$/.test(parts[3]!)) return "pull";
   return "page";
 }

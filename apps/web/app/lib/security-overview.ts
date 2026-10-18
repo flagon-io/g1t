@@ -99,7 +99,7 @@ export function overviewRows(facts: OverviewFacts): OverviewRow[] {
       status: facts.reporting ? "enabled" : "disabled",
       about: facts.reporting
         ? "Anyone who can see this repository can report a vulnerability to its maintainers privately, from its Security tab."
-        : "Let anyone who can see this repository report a vulnerability to its maintainers privately, instead of in an issue.",
+        : "Let anyone who can see this repository report a vulnerability to its maintainers privately, instead of in a work item.",
       action: facts.canManage ? { kind: "switch", label: "Private vulnerability reporting", intent: "reporting", on: facts.reporting } : null,
     },
     {
@@ -169,12 +169,12 @@ export function rowsIn(rows: OverviewRow[], group: RowGroup): OverviewRow[] {
 export function securityPolicyTemplate(repo: string, reporting: boolean, base: string): string {
   const report = reporting
     ? `Report it privately at https://g1t.sh${base}/security/report. You can report without an account; leave an email address so the maintainers can answer you.`
-    : `Email the maintainers (fill in the address here) rather than opening an issue, so the problem is not public before a fix is.`;
+    : `Email the maintainers (fill in the address here) rather than opening a work item, so the problem is not public before a fix is.`;
   return `# Security policy
 
 ## Reporting a vulnerability
 
-If you find a vulnerability in ${repo}, do not open an issue about it.
+If you find a vulnerability in ${repo}, do not open a work item about it.
 
 ${report}
 

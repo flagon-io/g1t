@@ -38,18 +38,22 @@ function segmentTab<T extends string>(tabs: readonly T[], value: string | undefi
 
 // --- A person's profile -----------------------------------------------------------
 
-export const PROFILE_TABS = ["overview", "pulls", "issues", "stars"] as const;
+export const PROFILE_TABS = ["overview", "pulls", "items", "stars"] as const;
 export type ProfileTab = (typeof PROFILE_TABS)[number];
+
+/** Profile tabs by an old name: Issues is Work items now. */
+const PROFILE_MOVED: Record<string, ProfileTab> = { issues: "items" };
 
 /** `/u/<username>`, or one of its tabs: `/u/<username>/pulls`. */
 export function profilePath(username: string, tab: ProfileTab | string = "overview"): string {
-  const known = (PROFILE_TABS as readonly string[]).includes(tab) ? tab : "overview";
+  const named = PROFILE_MOVED[tab] ?? tab;
+  const known = (PROFILE_TABS as readonly string[]).includes(named) ? named : "overview";
   return known === "overview" ? `/u/${username}` : `/u/${username}/${known}`;
 }
 
 /** The profile tab a path segment names; null for one it does not (a 404). */
 export function profileTab(segment: string | undefined): ProfileTab | null {
-  return segmentTab(PROFILE_TABS, segment);
+  return PROFILE_MOVED[segment?.toLowerCase() ?? ""] ?? segmentTab(PROFILE_TABS, segment);
 }
 
 // --- A pull request ---------------------------------------------------------------

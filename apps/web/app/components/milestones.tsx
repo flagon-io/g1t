@@ -138,7 +138,7 @@ export function DeleteMilestone({ milestone }: { milestone: Milestone }) {
             <AlertDialogDescription>
               {items === 0
                 ? "Nothing is in it. "
-                : `The ${items} ${items === 1 ? "issue or pull request" : "issues and pull requests"} in it stay as they are, in no milestone. `}
+                : `The ${items} ${items === 1 ? "work item or pull request" : "work items and pull requests"} in it stay as they are, in no milestone. `}
               This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>

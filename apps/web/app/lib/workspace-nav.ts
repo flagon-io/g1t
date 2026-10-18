@@ -214,7 +214,8 @@ export function workspaceRedirect(pathname: string, search = ""): string | null 
 }
 
 /**
- * The rail's modes. Home is the front page;
+ * The rail's modes. Home is the front page; Work is the workspace's work
+ * items, for every member;
  * Chat, Code and Artifacts are where work happens; Notifications
  * spans them; People is who belongs; Workspace is the workspace itself,
  * its settings area: who has access, money, policies and how each part is
@@ -229,6 +230,7 @@ export function workspaceRedirect(pathname: string, search = ""): string | null 
  */
 export type ModeKey =
   | "home"
+  | "work"
   | "chat"
   | "notifications"
   | "code"
@@ -244,6 +246,7 @@ export type ModeKey =
 /** Workspace pages under `-/`, by the mode they belong to. Anything else of the workspace's is Code's. */
 const PAGE_MODES: Record<string, ModeKey> = {
   home: "home",
+  work: "work",
   chat: "chat",
   artifacts: "artifacts",
   routines: "routines",
@@ -305,6 +308,8 @@ export function modeHome(mode: ModeKey, slug: string): string {
   switch (mode) {
     case "home":
       return homePagePath(slug);
+    case "work":
+      return `/${slug}/-/work`;
     case "notifications":
       return "/notifications";
     case "chat":
@@ -416,6 +421,9 @@ export function codeAccessPath(slug: string, from?: string): string {
   return `/${slug}/-/code-access${from ? `?from=${encodeURIComponent(from)}` : ""}`;
 }
 
+/** A repository's addresses that only send the browser on to Work or to what a reference names. */
+const WORK_REDIRECTS = new Set(["issues", "labels", "milestones", "ref"]);
+
 /** The workspace pages under `-/` that are Code's: closed to a member without Code access. */
 const CODE_PAGES = new Set(["overview", "projects", "repositories", "packages", "security", "rules", "runners", "actions", "insights", "soon"]);
 
@@ -441,6 +449,9 @@ export function codeGate(pathname: string, search: string, noCode: readonly stri
   // The workspace's own page is Home.
   if (parts.length === 1) return homePagePath(slug);
   if (parts[1] === "-") return CODE_PAGES.has(parts[2] ?? "") ? codeAccessPath(slug, from) : null;
+  // An old link to a repository's issues, labels or milestones leads to
+  // Work, which is every member's; a reference (`ref`) leads to what it names.
+  if (WORK_REDIRECTS.has(parts[2] ?? "")) return null;
   // A repository, and everything in it.
   return codeAccessPath(slug, from);
 }

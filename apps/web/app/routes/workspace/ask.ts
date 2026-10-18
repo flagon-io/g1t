@@ -12,7 +12,7 @@
  * `handoff` asks for the Claude Code command instead of starting one on
  * the workspace's Anthropic account. A proposal with `new_repository`
  * first creates the repository as the person (its project described with
- * the issue's title), turns on its deployments when `deploy`, and tells
+ * the work item's title), turns on its deployments when `deploy`, and tells
  * the session to push the first version to the default branch, which
  * deploys it. Sent again (a retry, or Copy after Start), a repository
  * already made is used as it is.
@@ -61,11 +61,11 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   if (!handoff && before?.starting_at && Date.now() - before.starting_at < STARTING_MS) {
     return Response.json({ error: "It's already starting. This card shows it in a moment.", ...before }, { status: 409 });
   }
-  const asked = Number.isInteger(input?.issue) && (input?.issue as number) > 0 ? (input?.issue as number) : undefined;
-  // An issue a click already opened is worked on, not opened again.
-  const issue = asked ?? before?.issue;
-  const title = issue ? undefined : text("title");
-  if (!issue && !title) return Response.json({ error: "The proposal names no issue." }, { status: 400 });
+  const asked = Number.isInteger(input?.item) && (input?.item as number) > 0 ? (input?.item as number) : undefined;
+  // A work item a click already opened is worked on, not opened again.
+  const item = asked ?? before?.item;
+  const title = item ? undefined : text("title");
+  if (!item && !title) return Response.json({ error: "The proposal names no work item." }, { status: 400 });
   const mode = AGENT_MODES.find((one) => one.mode === input?.mode)?.mode ?? "implement";
   if (!handoff) await kept.save({ starting_at: Date.now() });
   let instruction = text("instruction");
@@ -83,7 +83,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     instruction = [firstPush(made), instruction].filter(Boolean).join("\n\n");
   }
   const result = await agentSessions
-    .start(user, { namespace, name }, { issue, title, body: issue ? undefined : text("body"), instruction, mode, handoff })
+    .start(user, { namespace, name }, { item, title, body: item ? undefined : text("body"), instruction, mode, handoff })
     .catch(() => null);
   if (!result?.ok) {
     if (!handoff) await kept.save({ starting_at: 0 });
@@ -91,14 +91,14 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     return Response.json({ error: result.error.message, ...built }, { status: 400 });
   }
   const started = result.value;
-  const session_url = started.sessionUrl ?? (started.session ? `/${namespace}/${name}/work/sessions/${started.session.id}` : null);
+  const session_url = started.sessionUrl ?? (started.session ? `/${namespace}/${name}/sessions/${started.session.id}` : null);
   await kept.save(
     started.handoff
-      ? { issue: started.issue }
-      : { issue: started.issue, started: true, session_url, provider_session_url: started.providerSessionUrl ?? null },
+      ? { item: started.item }
+      : { item: started.item, started: true, session_url, provider_session_url: started.providerSessionUrl ?? null },
   );
   return Response.json({
-    issue: started.issue,
+    item: started.item,
     session_url,
     provider_session_url: started.providerSessionUrl,
     handoff: started.handoff,
@@ -176,6 +176,6 @@ function firstPush(built: Built): string {
   return (
     `The repository was just created for this and is empty. Build the first working version and push it straight to the default branch ` +
     `(\`git push origin HEAD:${built.default_branch}\`): there is nothing to open a pull request against yet, so open none. ` +
-    `Keep it small and make it build and serve from the repository's root. Put \`Closes #\` and the issue's number in the commit message, so the push closes it. ${live}`
+    `Keep it small and make it build and serve from the repository's root. Put \`Closes #\` and the work item's number in the commit message, so the push closes it. ${live}`
   );
 }

@@ -371,14 +371,14 @@ export function QueueArt({ className }: { className?: string }) {
 
 /**
  * Why-blame: a file in layers. One line lights up, and its provenance
- * rises out of it in turn: the commit, the pull request, the issue and
+ * rises out of it in turn: the commit, the pull request, the work item and
  * the session the coding agent that wrote it recorded.
  */
 export function WhyArt({ className }: { className?: string }) {
   const D = 7;
-  const layers = ["COMMIT", "PULL REQUEST", "ISSUE", "SESSION"];
+  const layers = ["COMMIT", "PULL REQUEST", "WORK ITEM", "SESSION"];
   return (
-    <svg viewBox="-112 -36 252 176" className={className} role="img" aria-label="A line in a file tracing back to its commit, pull request, issue and the coding agent's recorded session">
+    <svg viewBox="-112 -36 252 176" className={className} role="img" aria-label="A line in a file tracing back to its commit, pull request, work item and the coding agent's recorded session">
       <FadedGrid id="why" size={170} step={17} box={[-112, -36, 252, 176]} />
       <Plate x={30} y={30} w={90} d={110} stroke={LINE} opacity={0.4} />
       {[45, 58, 71, 97, 110, 123].map((y) => (

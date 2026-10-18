@@ -41,6 +41,7 @@ import {
 } from "./mission-control";
 import { needsYou } from "./inbox";
 import { deployments, events as eventLog, identity, inbox, projects as projectsApi, repos as reposApi, work } from "./services.server";
+import { itemPath } from "./refs";
 import { roleIn } from "./session.server";
 import { runners } from "./runners.server";
 import { readableRepos } from "./access.server";
@@ -223,7 +224,7 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
       ref: `#${pull.number}`,
       by: who(workOwner(pull).username),
       facts: pullFacts({ checkStatus: pull.checkStatus, files: pull.files }),
-      open: pull.issue != null ? `${base}/issues/${pull.issue}` : `${base}/pull/${pull.number}/files`,
+      open: pull.item != null ? itemPath(repo.namespace, pull.item) : `${base}/pull/${pull.number}/files`,
     };
   };
   const pullAction = (repo: Repo, pull: Pull, quick: Omit<QuickAction, "to">): QuickAction => ({
@@ -409,7 +410,7 @@ export async function loadMissionControl(viewer: User, request: Request, workspa
   for (const { repo, pulls, closed, events } of perRepo ?? []) {
     for (const pull of [...(pulls ?? []), ...(closed ?? [])]) titles[titleKey(repo, pull.number)] = pull.title;
     for (const event of events ?? []) {
-      if (event.type === "issue.opened") titles[titleKey(repo, event.data.number)] ??= event.data.title;
+      if (event.type === "work_item.opened") titles[titleKey(repo, event.data.number)] ??= event.data.title;
       const item = eventItem(event, pathOf(repo));
       if (item) items.push(item);
     }

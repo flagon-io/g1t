@@ -75,34 +75,45 @@ export function isClearCommand(text: string): boolean {
 }
 
 /**
- * What a reader may ask first, from where they are: about the issue or
+ * What a reader may ask first, from where they are: about the work item or
  * pull request in front of them, the repository, or their work.
  */
+/** The work item a page's path is, by number: `/acme/-/work/12`. */
+function itemAt(path: string | null | undefined): number | null {
+  const found = path?.match(/^\/[a-z0-9][a-z0-9-]*\/-\/work\/(\d+)\/?$/i);
+  return found ? Number(found[1]) : null;
+}
+
 export function suggestions(page: AskPage): string[] {
   if (page.pull) return [`Summarize pull request #${page.pull}`, `What's left before #${page.pull} can merge?`, "What changed in this pull request, file by file?", "What should I check when reviewing this?"];
-  if (page.issue) return [`Summarize issue #${page.issue}`, `What's blocking #${page.issue}?`, "How would you approach this issue?", "Which code does this issue touch?"];
+  const item = page.item ?? itemAt(page.path);
+  if (item) return [`Summarize work item #${item}`, `What's blocking #${item}?`, "How would you approach this work item?", "Which code does this work item touch?"];
   if (page.repo) return [`What is ${page.repo.name} for?`, "What shipped here this week?", "What's open and needs attention?", "Where do I start reading the code?"];
   return ["What shipped today?", "What needs my attention?", "Summarize what my team is working on", "How do I set up a deployment?"];
 }
 
 /**
  * Where a question to @g1t was asked from, when it was asked on a page
- * (the top bar's Ask on a pull request, an issue or a repository): what to
- * call it and where it leads. Null for a question written in Chat.
+ * (the top bar's Ask on a pull request, a work item or a repository): what
+ * to call it and where it leads. Null for a question written in Chat.
  */
 export function askedFrom(page: AskPage | null | undefined): { label: string; href: string } | null {
   if (!page) return null;
   const repo = page.repo ? `${page.repo.namespace}/${page.repo.name}` : null;
   if (repo && page.pull) return { label: `pull request #${page.pull} in ${repo}`, href: page.path ?? `/${repo}/pull/${page.pull}` };
-  if (repo && page.issue) return { label: `issue #${page.issue} in ${repo}`, href: page.path ?? `/${repo}/issues/${page.issue}` };
+  const workspace = page.workspace ?? page.path?.match(/^\/([a-z0-9][a-z0-9-]*)\/-\/work\/\d+\/?$/i)?.[1]?.toLowerCase() ?? null;
+  const item = page.item ?? itemAt(page.path);
+  if (workspace && item) return { label: `work item #${item} in ${workspace}`, href: page.path ?? `/${workspace}/-/work/${item}` };
   if (repo) return { label: repo, href: page.path ?? `/${repo}` };
   if (page.path && !/\/-\/chat(\/|$)/.test(page.path)) return { label: page.path, href: page.path };
   return null;
 }
 
-/** A link g1t knows how to show as a chip: an issue or pull request, a commit, or another page of the site. */
+/** A link g1t knows how to show as a chip: a work item, a pull request, a reference read in a repository, a commit, or another page of the site. */
 export type RefTarget =
-  | { kind: "issue"; repo: string; number: number; href: string }
+  | { kind: "item"; workspace: string; number: number; href: string }
+  | { kind: "pull"; repo: string; number: number; href: string }
+  | { kind: "ref"; repo: string; number: number; href: string }
   | { kind: "commit"; repo: string; sha: string; href: string }
   | { kind: "page"; href: string };
 
@@ -110,9 +121,11 @@ export type RefTarget =
 const SITE_HOSTS = new Set(["g1t.sh", "www.g1t.sh"]);
 
 /**
- * Where a link leads on the site, if it does: `/acme/web/issues/12`,
- * `/acme/web/pull/12`, `/acme/web/commit/<sha>`, or the same as a full
- * `https://g1t.sh/…` link (or one to `origin`, the site the reader is on).
+ * Where a link leads on the site, if it does: `/acme/-/work/12`,
+ * `/acme/web/pull/12`, `/acme/web/ref/12` (and an old issue's
+ * `/acme/web/issues/12`, read the same way), `/acme/web/commit/<sha>`, or
+ * the same as a full `https://g1t.sh/…` link (or one to `origin`, the site
+ * the reader is on).
  */
 export function refTarget(href: string, origin: string | null = null): RefTarget | null {
   let path: string;
@@ -129,8 +142,12 @@ export function refTarget(href: string, origin: string | null = null): RefTarget
     path = `${url.pathname}${url.search}${url.hash}`;
   }
   const bare = path.split(/[?#]/)[0]!;
-  const issue = bare.match(/^\/([a-z0-9][a-z0-9-]*)\/([a-z0-9._-]+)\/(?:issues|pull)\/(\d+)\/?$/i);
-  if (issue) return { kind: "issue", repo: `${issue[1]!.toLowerCase()}/${issue[2]}`, number: Number(issue[3]), href: path };
+  const item = bare.match(/^\/([a-z0-9][a-z0-9-]*)\/-\/work\/(\d+)\/?$/i);
+  if (item) return { kind: "item", workspace: item[1]!.toLowerCase(), number: Number(item[2]), href: path };
+  const pull = bare.match(/^\/([a-z0-9][a-z0-9-]*)\/([a-z0-9._-]+)\/pull\/(\d+)\/?$/i);
+  if (pull) return { kind: "pull", repo: `${pull[1]!.toLowerCase()}/${pull[2]}`, number: Number(pull[3]), href: path };
+  const ref = bare.match(/^\/([a-z0-9][a-z0-9-]*)\/([a-z0-9._-]+)\/(?:ref|issues)\/(\d+)\/?$/i);
+  if (ref) return { kind: "ref", repo: `${ref[1]!.toLowerCase()}/${ref[2]}`, number: Number(ref[3]), href: path };
   const commit = bare.match(/^\/([a-z0-9][a-z0-9-]*)\/([a-z0-9._-]+)\/commit\/([0-9a-f]{7,40})\/?$/i);
   if (commit) return { kind: "commit", repo: `${commit[1]!.toLowerCase()}/${commit[2]}`, sha: commit[3]!.toLowerCase(), href: path };
   return { kind: "page", href: path };

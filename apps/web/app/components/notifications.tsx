@@ -1,5 +1,5 @@
 /**
- * Choosing what you hear of: subscribing to one issue or pull request, from
+ * Choosing what you hear of: subscribing to one work item or pull request, from
  * its sidebar, and watching a repository, from its header. Both post to
  * the repository's `notifications` route (routes/repo/notifications.ts);
  * the events service keeps the choice and the inbox follows it.
@@ -16,7 +16,7 @@ import { cn } from "../lib/cn";
 import { WATCH_CHOICES, WATCH_EVENT_LABEL, subscriptionLine, watchLabel } from "../lib/inbox";
 
 /**
- * The sidebar's Notifications box on an issue or pull request: one button
+ * The sidebar's Notifications box on a work item or pull request: one button
  * to subscribe or unsubscribe (or stop ignoring it), and a line saying
  * whether you hear of it, and why. While the choice is on its way, it
  * shows as made.
@@ -27,10 +27,10 @@ export function SubscriptionBox({
   kind,
   subscription,
 }: {
-  /** The repository's notifications route: `/<owner>/<repo>/notifications`. */
+  /** Where the choice is posted: a repository's notifications route (`/<owner>/<repo>/notifications`), or a work item's page. */
   action: string;
   number: number;
-  kind: "issue" | "pull";
+  kind: "item" | "pull";
   subscription: ThreadSubscription | null;
 }) {
   const fetcher = useFetcher<{ error?: string }>();

@@ -34,8 +34,9 @@ import { ButtonLink, CopyLine, SoonPill, SubmitButton, TimeAgo } from "../../com
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { type LivePull, LiveNowList, StartHere } from "../../components/coordination";
-import { awakeAndIdle, liveByIssue } from "../../lib/coordination";
+import { awakeAndIdle, liveByItem } from "../../lib/coordination";
 import { type Need, ageBuckets, rankNeeds, runHealth } from "../../lib/mission";
+import { repoWorkPath } from "../../lib/work-items";
 import { count, duration, percent } from "../../lib/observability";
 import { ECOSYSTEM_LABEL, installCommands } from "../../lib/packages";
 import {
@@ -70,7 +71,7 @@ import { useRepoLive } from "../../lib/use-repo-live";
 
 /** A library's packages shown on its overview; the rest are a link away. */
 const PACKAGES_SHOWN = 3;
-/** Issues being worked on that Live now lists; Work has the rest. */
+/** Work items being worked on that Live now lists; Sessions has the rest. */
 const LIVE_SHOWN = 4;
 /** Open errors the Observability card names. */
 const ERRORS_SHOWN = 3;
@@ -157,7 +158,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     list,
     open,
     counts,
-    issues,
+    items,
     claims,
     active,
     idle,
@@ -177,9 +178,10 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     listP,
     openP,
     soft(countsFor(context, params)),
-    soft(work.listIssues(path, viewer, { state: "open" })),
-    // Who is working on it right now, as Work shows them.
-    soft(work.listClaims(path, viewer)),
+    // Its open work items: those linked to it, in any role.
+    soft(work.listWorkItems(params.owner.toLowerCase(), viewer, { state: "open", repo: path })),
+    // Who is working on it right now, as Sessions shows them.
+    soft(work.listClaims(params.owner.toLowerCase(), viewer, { repo: path })),
     soft(work.listWorkSessions(path, viewer, { state: "active" })),
     soft(work.listWorkSessions(path, viewer, { state: "idle" })),
     minePullsP,
@@ -237,12 +239,12 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
   }
 
   // --- Health ------------------------------------------------------------------
-  const openIssues = ok(issues);
+  const openItems = ok(items);
 
   // --- Live now ------------------------------------------------------------------
   const titles: Record<number, string> = {};
-  for (const issue of openIssues ?? []) titles[issue.number] = issue.title;
-  // For sessions on a pull request or a branch of their own, with no issue yet.
+  for (const item of openItems ?? []) titles[item.number] = item.title;
+  // For sessions on a pull request or a branch of their own, with no work item yet.
   const livePulls: Record<number, LivePull> = {};
   for (const pull of openPulls) livePulls[pull.number] = { title: pull.title, status: pull.status };
   const repoValue = await repoP;
@@ -302,7 +304,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     elsewhereShot: elsewhereShot(projectValue, deployment, base),
     // Every environment's latest deployment, for the Deployments panel.
     environments: environmentList,
-    open: ok(counts) ?? { issues: openIssues?.length ?? 0, pulls: openPulls.length },
+    open: ok(counts) ?? { items: openItems?.length ?? 0, pulls: openPulls.length },
     needs: rankNeeds(needs),
     claims: ok(claims) ?? [],
     sessions: [...(ok(active) ?? []), ...(ok(idle) ?? [])],
@@ -320,7 +322,7 @@ async function overviewData({ params, context }: Pick<Route.LoaderArgs, "params"
     defaultBranch,
     health: {
       ...runHealth(ok(workflowRuns) ?? []),
-      ages: openIssues ? ageBuckets(openIssues.map((issue) => issue.createdAt), now) : null,
+      ages: openItems ? ageBuckets(openItems.map((item) => item.createdAt), now) : null,
     },
     telemetry: telemetryData ? { overview: telemetryData.overview!, errors: telemetryData.errors ?? [] } : null,
     library: isLibrary
@@ -736,8 +738,8 @@ function Overview({
   useRepoLive({ match: (change) => repoPages.overview()(change) || repoPages.runs()(change) || change.kind === "git.push" });
   // Claims lapse and sessions go idle with no event to say so.
   useRefreshWhile(working || (loaderData.workflowRuns ?? []).some((run) => run.status !== "completed"), 15_000);
-  const live = liveByIssue(claims, awake);
-  const moreIssues = live.issues.length - LIVE_SHOWN;
+  const live = liveByItem(claims, awake);
+  const moreItems = live.items.length - LIVE_SHOWN;
 
   return (
     <div className="space-y-8">
@@ -859,7 +861,7 @@ function Overview({
               </span>
             ) : null
           }
-          all={{ to: `${base}/work`, label: "Work" }}
+          all={{ to: `${base}/sessions`, label: "Sessions" }}
         >
           {!loaderData.liveLoaded ? (
             <Unavailable what="Who is working" />
@@ -876,9 +878,9 @@ function Overview({
                 limit={LIVE_SHOWN}
                 ender={loaderData.ender}
               />
-              {moreIssues > 0 && (
-                <Link to={`${base}/work`} className="mt-2 inline-block px-1 text-xs text-muted hover:text-fg">
-                  {plural(moreIssues, "more issue")} being worked on
+              {moreItems > 0 && (
+                <Link to={`${base}/sessions`} className="mt-2 inline-block px-1 text-xs text-muted hover:text-fg">
+                  {plural(moreItems, "more work item")} being worked on
                 </Link>
               )}
             </>
@@ -886,7 +888,7 @@ function Overview({
             <StartHere title={`Nobody is working on ${name} right now`} />
           ) : (
             <Quiet>
-              Nobody is working on {name} right now. When people and their coding agents claim an issue or start a session, it shows here.
+              Nobody is working on {name} right now. When people and their coding agents claim a work item or start a session, it shows here.
             </Quiet>
           )}
         </Panel>
@@ -980,7 +982,7 @@ function ObservabilityCard({ overview, errors, base }: { overview: TelemetryOver
   );
 }
 
-/** How it is keeping up: its recent builds, for members, and its open issues by age. */
+/** How it is keeping up: its recent builds, for members, and its open work items by age. */
 function HealthCard({ loaderData, base, plan }: { loaderData: Loaded; base: string; plan: string }) {
   const { member, builds, open, health } = loaderData;
   const ages = health.ages;
@@ -1008,9 +1010,9 @@ function HealthCard({ loaderData, base, plan }: { loaderData: Loaded; base: stri
           )}
           <div>
             <div className="flex items-baseline justify-between">
-              <span className="text-muted">Open issues by age</span>
-              <Link to={`${base}/issues`} className="font-medium tabular-nums hover:text-accent">
-                {open.issues}
+              <span className="text-muted">Open work items by age</span>
+              <Link to={repoWorkPath(base.split("/")[1]!, base.split("/")[2]!)} className="font-medium tabular-nums hover:text-accent">
+                {open.items}
               </Link>
             </div>
             {ages ? (
@@ -1029,7 +1031,7 @@ function HealthCard({ loaderData, base, plan }: { loaderData: Loaded; base: stri
                 ))}
               </ul>
             ) : (
-              <p className="mt-1 text-faint">Issues could not be loaded just now.</p>
+              <p className="mt-1 text-faint">Work items could not be loaded just now.</p>
             )}
           </div>
         </div>

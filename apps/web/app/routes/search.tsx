@@ -31,8 +31,8 @@ export function meta({ loaderData, ...args }: Route.MetaArgs) {
   return page(args, {
     title: q ? `${q} · Search · g1t` : "Search · g1t",
     description: q
-      ? `Repositories, code, issues, pull requests and people on g1t matching "${q}".`
-      : "Search all of g1t: repositories, code, issues, pull requests and people.",
+      ? `Repositories, code, work items, pull requests and people on g1t matching "${q}".`
+      : "Search all of g1t: repositories, code, work items, pull requests and people.",
   });
 }
 
@@ -58,8 +58,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   }
 }
 
-const STATES: Record<"issues" | "pulls", { value: string | null; label: string }[]> = {
-  issues: [
+const STATES: Record<"items" | "pulls", { value: string | null; label: string }[]> = {
+  items: [
     { value: null, label: "All" },
     { value: "open", label: "Open" },
     { value: "closed", label: "Closed" },
@@ -130,7 +130,7 @@ export default function Search({ loaderData }: Route.ComponentProps) {
     <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
       <h1 className="text-2xl font-semibold tracking-tight">Search</h1>
       <p className="mt-1 text-sm text-muted">
-        Repositories, code, issues, pull requests and people: everything public on g1t, and what is private to the
+        Repositories, code, work items, pull requests and people: everything public on g1t, and what is private to the
         workspaces you belong to.
       </p>
       <div className="mt-6 flex gap-2">
@@ -189,7 +189,7 @@ export default function Search({ loaderData }: Route.ComponentProps) {
         </TabStrip>
       )}
 
-      {results && (type === "code" || type === "repositories" || type === "issues" || type === "pulls") && (
+      {results && (type === "code" || type === "repositories" || type === "items" || type === "pulls") && (
         <div className="mt-4 flex flex-wrap items-center gap-3">
           {(type === "code" || type === "repositories") && (
             <div className="w-56">
@@ -206,7 +206,7 @@ export default function Search({ loaderData }: Route.ComponentProps) {
               />
             </div>
           )}
-          {(type === "issues" || type === "pulls") && (
+          {(type === "items" || type === "pulls") && (
             <Card tone="bg" radius="lg" className="flex items-center gap-1 p-1">
               {STATES[type].map((state) => (
                 <Pill
@@ -225,7 +225,7 @@ export default function Search({ loaderData }: Route.ComponentProps) {
               <span className="font-mono text-muted">path:*.rs</span>.
             </p>
           )}
-          {(type === "issues" || type === "pulls") && (
+          {(type === "items" || type === "pulls") && (
             <p className="text-xs text-faint">
               Narrow with <span className="font-mono text-muted">author:</span> and{" "}
               <span className="font-mono text-muted">label:</span>.

@@ -7,7 +7,7 @@ import { Hint } from "./ui/hint";
 /**
  * What a pull request's own check status says. A pull request's checks are
  * the workflows run on it (see the merge box); this is set when the merge
- * queue took it out, and on older pull requests, by commands their issue
+ * queue took it out, and on older pull requests, by commands their work item
  * once had run.
  */
 const LABELS: Record<CheckStatus, string> = {

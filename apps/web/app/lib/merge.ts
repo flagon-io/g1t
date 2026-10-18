@@ -85,7 +85,7 @@ export const PLACEHOLDERS: { name: string; about: string }[] = [
   { name: "base", about: "The branch it merges into" },
   { name: "author", about: "Its author's username" },
   { name: "commits", about: "Its commits' subjects, one * subject line each" },
-  { name: "issues", about: "The issues it closes, as #12, #14" },
+  { name: "items", about: "The work items it closes, as #12, #14" },
   { name: "co_authors", about: "A Co-authored-by line for each author of its commits, each once" },
 ];
 
@@ -112,8 +112,8 @@ export type TemplatePull = {
   author: string;
   /** Its commits, oldest first, merge commits left out. */
   commits: PullCommit[];
-  /** The issues it closes. */
-  issues: number[];
+  /** The work items it closes. */
+  items: number[];
 };
 
 /** A made-up pull request, to show what a choice or a template says. */
@@ -131,7 +131,7 @@ export const SAMPLE_PULL: TemplatePull = {
     { message: "Back off between retries\n\nDoubling each time, up to a minute.", authorEmail: "ben@example.com" },
     { message: "Test the retry schedule", authorEmail: "ana@example.com" },
   ],
-  issues: [97],
+  items: [97],
 };
 
 /** A commit message as a title (its first line) and the rest. */
@@ -204,7 +204,7 @@ export function fillTemplate(template: string, pull: TemplatePull): CommitText {
       base: pull.base,
       author: pull.author,
       commits: bullets(pull.commits),
-      issues: pull.issues.map((number) => `#${number}`).join(", "),
+      items: pull.items.map((number) => `#${number}`).join(", "),
       co_authors: coAuthors(pull.commits),
     }),
   );

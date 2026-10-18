@@ -4,7 +4,7 @@
  *
  * The left column is who they are; the main column is their work, as
  * tabs: an overview (their contribution calendar first), then their pull
- * requests and issues with a filter aside. Everything is filtered on the server by `work.byAuthor`, which
+ * requests and work items with a filter aside. Everything is filtered on the server by `work.byAuthor`, which
  * only ever returns work on repositories the viewer may read, and the
  * workspaces shown are only those the viewer could know about anyway (see
  * `profile_workspaces` in services/identity/src/profiles.rs).
@@ -35,7 +35,8 @@ import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { RadioGroup, RadioOption } from "../components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { IssueIcon, PullIcon } from "../components/work-icons";
+import { ItemIcon, PullIcon } from "../components/work-icons";
+import { itemPath } from "../lib/refs";
 import { lastDay } from "../lib/contribution-calendar";
 import { notFound } from "../lib/not-found.server";
 import { type ProfileTab, movedTab, profilePath, profileTab } from "../lib/tab-paths";
@@ -49,7 +50,7 @@ type Tab = ProfileTab;
 const EMPTY: Authored = {
   items: [],
   next: null,
-  counts: { pullsMerged: 0, pullsOpen: 0, pulls: 0, issues: 0, issuesOpen: 0 },
+  counts: { pullsMerged: 0, pullsOpen: 0, pulls: 0, items: 0, itemsOpen: 0 },
   repos: [],
 };
 
@@ -66,7 +67,7 @@ export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   if (!profile) return page(args, { title: `${params.username} · g1t` });
   return page(args, {
     title: `${displayName(profile)} · g1t`,
-    description: profile.bio || `${profile.name ?? shownUsername(profile)} (@${shownUsername(profile)}) on g1t: their pull requests, issues and workspaces.`,
+    description: profile.bio || `${profile.name ?? shownUsername(profile)} (@${shownUsername(profile)}) on g1t: their pull requests, work items and workspaces.`,
     // What the card shows, so it is drawn again when any of it changes.
     version: [profile.name, profile.bio, profile.avatar, loaderData.publicCounts],
   });
@@ -100,7 +101,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   const filter =
     tab === "overview"
       ? { limit: RECENT }
-      : { kind: tab === "pulls" ? ("pull" as const) : ("issue" as const), state, repo, sort, before };
+      : { kind: tab === "pulls" ? ("pull" as const) : ("item" as const), state, repo, sort, before };
 
   // Only real memberships, and only those the viewer could see anyway.
   const workspaces = identity
@@ -317,7 +318,7 @@ function ProfileTabs({
     <nav aria-label="Profile" className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-line scrollbar-none [&::-webkit-scrollbar]:hidden">
       {item("overview", "Overview", <LayoutGrid size={15} />)}
       {item("pulls", "Pull requests", <GitPullRequest size={15} />, counts.pulls)}
-      {item("issues", "Issues", <CircleDot size={15} />, counts.issues)}
+      {item("items", "Work items", <CircleDot size={15} />, counts.items)}
       {item("stars", "Stars", <Star size={15} />)}
     </nav>
   );
@@ -393,10 +394,10 @@ function Overview({ profile, activity, failed, contributions }: Data) {
           to={`${profilePath(profile.username, "pulls")}?state=open`}
         />
         <Stat
-          label="Issues opened"
-          value={counts.issues}
+          label="Work items opened"
+          value={counts.items}
           icon={<CircleDot size={15} className="text-success" />}
-          to={profilePath(profile.username, "issues")}
+          to={profilePath(profile.username, "items")}
         />
       </dl>
 
@@ -407,21 +408,21 @@ function Overview({ profile, activity, failed, contributions }: Data) {
             <EmptyState title="Activity could not be loaded">Try again in a moment.</EmptyState>
           ) : items.length === 0 ? (
             <EmptyState title={`No activity from ${who} yet`}>
-              Pull requests and issues @{profile.username} opens on repositories you can see show up here.
+              Pull requests and work items @{profile.username} opens that you can see show up here.
             </EmptyState>
           ) : (
             <>
               <ItemList items={items} />
-              {(counts.pulls > 0 || counts.issues > 0) && (
+              {(counts.pulls > 0 || counts.items > 0) && (
                 <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
                   {counts.pulls > 0 && (
                     <Link to={profilePath(profile.username, "pulls")} className="text-muted hover:text-fg">
                       All {counts.pulls} pull {counts.pulls === 1 ? "request" : "requests"} →
                     </Link>
                   )}
-                  {counts.issues > 0 && (
-                    <Link to={profilePath(profile.username, "issues")} className="text-muted hover:text-fg">
-                      All {counts.issues} {counts.issues === 1 ? "issue" : "issues"} →
+                  {counts.items > 0 && (
+                    <Link to={profilePath(profile.username, "items")} className="text-muted hover:text-fg">
+                      All {counts.items} {counts.items === 1 ? "work item" : "work items"} →
                     </Link>
                   )}
                 </p>
@@ -452,8 +453,8 @@ function Stat({ label, value, icon, to }: { label: string; value: number; icon: 
 // --- Lists ---------------------------------------------------------------------------
 
 function itemUrl(item: AuthoredItem): string {
-  const base = `/${item.repo.namespace}/${item.repo.name}`;
-  return item.kind === "pull" ? `${base}/pull/${item.number}` : `${base}/issues/${item.number}`;
+  if (item.kind === "pull" && item.repo) return `/${item.repo.namespace}/${item.repo.name}/pull/${item.number}`;
+  return itemPath(item.workspace, item.number);
 }
 
 function ItemList({ items }: { items: AuthoredItem[] }) {
@@ -461,7 +462,7 @@ function ItemList({ items }: { items: AuthoredItem[] }) {
     <Card asChild tone="plain" divided className="overflow-hidden">
       <ul>
         {items.map((item) => (
-          <li key={`${item.kind}:${item.repo.namespace}/${item.repo.name}#${item.number}`}>
+          <li key={`${item.kind}:${item.repo ? `${item.repo.namespace}/${item.repo.name}` : item.workspace}#${item.number}`}>
             <Link
               prefetch="intent"
               to={itemUrl(item)}
@@ -471,7 +472,7 @@ function ItemList({ items }: { items: AuthoredItem[] }) {
                 {item.kind === "pull" ? (
                   <PullIcon status={item.status ?? (item.state === "open" ? "open" : "closed")} />
                 ) : (
-                  <IssueIcon issue={{ state: item.state, reason: item.reason }} />
+                  <ItemIcon item={{ state: item.state, reason: item.reason }} />
                 )}
               </span>
               <span className="min-w-0 grow">
@@ -485,7 +486,7 @@ function ItemList({ items }: { items: AuthoredItem[] }) {
                 </span>
                 <span className="mt-0.5 block truncate text-xs text-faint">
                   <span className="font-mono text-muted">
-                    {item.repo.namespace}/{item.repo.name}
+                    {item.kind === "pull" && item.repo ? `${item.repo.namespace}/${item.repo.name}` : item.workspace}
                   </span>{" "}
                   #{item.number} · opened <TimeAgo at={item.createdAt} />
                   {item.merged && item.mergedAt ? (
@@ -517,7 +518,7 @@ const SORTS: { value: AuthoredSort; label: string }[] = [
 
 function WorkList({ profile, tab, filter, activity, failed }: Data) {
   const pulls = tab === "pulls";
-  const noun = pulls ? "pull requests" : "issues";
+  const noun = pulls ? "pull requests" : "work items";
   const filtered = filter.state != null || filter.repo != null;
   const base = profilePath(profile.username, tab);
   const [params] = useSearchParams();
@@ -529,7 +530,7 @@ function WorkList({ profile, tab, filter, activity, failed }: Data) {
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_220px]">
       <div className="min-w-0 lg:order-1">
         {failed ? (
-          <EmptyState title={`${pulls ? "Pull requests" : "Issues"} could not be loaded`}>
+          <EmptyState title={`${pulls ? "Pull requests" : "Work items"} could not be loaded`}>
             Try again in a moment.
           </EmptyState>
         ) : activity.items.length === 0 ? (
@@ -544,7 +545,7 @@ function WorkList({ profile, tab, filter, activity, failed }: Data) {
             <EmptyState title={`No ${noun} yet`}>
               {pulls
                 ? `Pull requests @${profile.username} opens on repositories you can see show up here.`
-                : `Issues @${profile.username} opens on repositories you can see show up here.`}
+                : `Work items @${profile.username} opens that you can see show up here.`}
             </EmptyState>
           )
         ) : (
@@ -609,9 +610,9 @@ function FilterAside({
         { value: "closed", label: "Closed" },
       ]
     : [
-        { value: "all", label: "All", count: counts.issues },
-        { value: "open", label: "Open", count: counts.issuesOpen },
-        { value: "closed", label: "Closed", count: counts.issues - counts.issuesOpen },
+        { value: "all", label: "All", count: counts.items },
+        { value: "open", label: "Open", count: counts.itemsOpen },
+        { value: "closed", label: "Closed", count: counts.items - counts.itemsOpen },
       ];
   const filtered = filter.state != null || filter.repo != null || filter.sort !== "created";
   return (
@@ -625,7 +626,7 @@ function FilterAside({
               aria-label="Type"
             >
               <RadioOption value="pulls" label={<Counted label="Pull requests" count={counts.pulls} />} />
-              <RadioOption value="issues" label={<Counted label="Issues" count={counts.issues} />} />
+              <RadioOption value="items" label={<Counted label="Work items" count={counts.items} />} />
             </RadioGroup>
           </FilterGroup>
           <FilterGroup title="State">

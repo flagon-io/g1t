@@ -22,6 +22,7 @@ import { Hint } from "./ui/hint";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { PersonLink } from "./work";
+import { itemPath } from "../lib/refs";
 
 /** The trigger half of a split button: the chevron that opens its menu. */
 function SplitTrigger({ label, variant, disabled }: { label: string; variant: "accent" | "outline"; disabled?: boolean }) {
@@ -100,7 +101,7 @@ export function MergeButton({
   blocked,
   queue,
   canAutoMerge,
-  issue,
+  item,
   options,
   error,
 }: {
@@ -115,8 +116,8 @@ export function MergeButton({
   queue: boolean;
   /** The viewer may turn auto-merge on: they may merge it. */
   canAutoMerge: boolean;
-  /** The open issue it is for, which merging closes unless kept open. */
-  issue: { number: number } | null;
+  /** The open work item it is for, which merging lands unless kept open. */
+  item: { number: number } | null;
   options?: ReactNode;
   error?: string | null;
 }) {
@@ -167,7 +168,7 @@ export function MergeButton({
         pull={pull}
         base={base}
         repo={repo}
-        issue={issue}
+        item={item}
         blocked={confirming === "merge" ? blocked : null}
         options={confirming === "merge" ? options : null}
         error={error}
@@ -257,7 +258,7 @@ function UnwrittenMessage() {
   );
 }
 
-/** The confirm step: the commit's message, the branch, and the issues it closes. */
+/** The confirm step: the commit's message, the branch, and the work items it closes. */
 function ConfirmMerge({
   mode,
   method: initial,
@@ -265,7 +266,7 @@ function ConfirmMerge({
   pull,
   base,
   repo,
-  issue,
+  item,
   blocked,
   options,
   error,
@@ -277,7 +278,7 @@ function ConfirmMerge({
   pull: Pull;
   base: string;
   repo: string;
-  issue: { number: number } | null;
+  item: { number: number } | null;
   blocked: string | null;
   options?: ReactNode;
   error?: string | null;
@@ -287,7 +288,7 @@ function ConfirmMerge({
   const [method, setMethod] = useState(initial);
   const message = choices.messages[method];
   const [keepOpen, setKeepOpen] = useState(false);
-  const closes = keepOpen ? (pull.closes ?? []).filter((number) => number !== issue?.number) : (pull.closes ?? []);
+  const closes = keepOpen ? (pull.closes ?? []).filter((number) => number !== item?.number) : (pull.closes ?? []);
   const deletable = choices.canDeleteBranch ?? (pull.branch != null && !pull.fork);
   return (
     <div className="space-y-4">
@@ -354,12 +355,12 @@ function ConfirmMerge({
             />
           </>
         )}
-        {mode === "merge" && issue && (
+        {mode === "merge" && item && (
           <CheckboxOption
-            name="keepIssueOpen"
+            name="keepItemOpen"
             checked={keepOpen}
             onCheckedChange={(checked) => setKeepOpen(checked === true)}
-            label={`Keep #${issue.number} open. This is only part of the work.`}
+            label={`Keep #${item.number} open. This is only part of the work.`}
             labelClassName="text-xs text-muted"
           />
         )}
@@ -370,7 +371,7 @@ function ConfirmMerge({
           <CircleDot size={13} className="text-success" />
           {mode === "auto" ? "Once merged, closes" : "Closes"}
           {closes.map((number) => (
-            <Link key={number} to={`/${repo}/issues/${number}`} className="font-medium text-fg hover:underline">
+            <Link key={number} to={itemPath(repo.split("/")[0]!, number)} className="font-medium text-fg hover:underline">
               #{number}
             </Link>
           ))}

@@ -133,7 +133,7 @@ export function DeleteAccountAction({
                 that your addresses, keys, profile and settings are removed for good.
               </li>
               <li>
-                What you wrote stays where it is: issues, pull requests, comments and reviews show as{" "}
+                What you wrote stays where it is: work items, pull requests, comments and reviews show as{" "}
                 <span className="font-mono text-fg">ghost</span> once it is removed.
               </li>
               <li>

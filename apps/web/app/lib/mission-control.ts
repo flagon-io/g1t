@@ -137,7 +137,7 @@ export type NeedRow = {
   key: string;
   reason: Reason;
   repo: RepoPath | null;
-  /** "#41", when it is an issue or pull request. */
+  /** "#41", when it is a work item or pull request. */
   ref: string | null;
   title: string;
   /** The ask, in one sentence. */

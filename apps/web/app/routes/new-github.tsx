@@ -325,7 +325,7 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
               <CheckboxOption
                 name="issues"
                 defaultChecked
-                label="Copy issues too"
+                label="Copy its issues too, as work items"
                 description="Up to 200 per repository, with their labels and whether they are open; a milestone is noted in the description. Pull requests stay on GitHub; their branches come across."
               />
 

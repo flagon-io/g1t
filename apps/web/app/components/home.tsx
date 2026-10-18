@@ -320,7 +320,7 @@ function inSpan(span: Pick<Span, "key" | "note" | "words">): string {
 const WORK_FILL: Record<WorkKind, string> = {
   pushes: "bg-series-1",
   pulls: "bg-series-2",
-  issues: "bg-series-3",
+  items: "bg-series-3",
   shipped: "bg-series-4",
   docs: "bg-series-5",
   chat: "bg-series-6",
@@ -602,7 +602,7 @@ function LandedItem({ change, now, tz, timeOnly, arrived }: { change: LandedChan
       <div className="min-w-0 grow">
         <div className="flex min-w-0 items-center gap-1.5">
           {change.refsIn ? (
-            // A commit's subject: its `#12`s link to their issues, the rest to the commit.
+            // A commit's subject: its `#12`s link to what they name, the rest to the commit.
             <span className="line-clamp-2 text-sm text-fg sm:truncate">
               <CommitText text={change.title} base={`/${change.refsIn}`} to={change.to} linkClassName="hover:underline" />
             </span>

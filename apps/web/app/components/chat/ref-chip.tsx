@@ -1,21 +1,23 @@
 /**
- * References in chat and in g1t's answers, as compact chips: an issue or
- * pull request (`acme/web#12`, `#12` in a repository's context, or a link
- * to one) with its title and state in a hover card, a commit by its short
- * hash, and any other page of the site by its path. One look everywhere a
- * conversation shows them (components/chat/text.tsx for people's messages,
- * components/ai-elements/response.tsx for g1t's answers).
+ * References in chat and in g1t's answers, as compact chips: a work item
+ * or pull request (`acme/web#12`, `acme#12`, `#12` read as lib/refs.ts
+ * says, or a link to one) with its title and state in a hover card, a
+ * commit by its short hash, and any other page of the site by its path.
+ * One look everywhere a conversation shows them (components/chat/text.tsx
+ * for people's messages, components/ai-elements/response.tsx for g1t's
+ * answers).
  */
-import { Bot, CircleDot, GitCommitHorizontal, GitPullRequest, Link2 } from "lucide-react";
+import { Bot, GitCommitHorizontal, GitPullRequest, Link2, ListTodo } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Link } from "react-router";
 
 import type { PullStatus } from "@g1t/contracts";
 
-import { PullIcon, IssueIcon } from "../work-icons";
+import { ItemIcon, PullIcon } from "../work-icons";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "../ui/hover-card";
 import { Skeleton } from "../ui/skeleton";
 import { cn } from "../../lib/cn";
+import type { RefContext } from "../../lib/refs";
 import type { RefCard } from "../../routes/workspace/chat/ref";
 
 /** The chip's frame: a quiet pill that reads as part of the sentence. */
@@ -38,12 +40,24 @@ function cardAt(url: string): Promise<RefCard | null> {
   return found;
 }
 
+/** Where `#number` is read, in words: `acme/web` or `acme`. */
+function scopeName(scope: RefContext): string {
+  return "repo" in scope ? `${scope.repo.namespace}/${scope.repo.name}` : scope.workspace;
+}
+
+/** Chat's card for `#number` read in `scope`, asked for in the workspace `slug` (routes/workspace/chat/ref.ts). */
+export function chatCardUrl(slug: string, scope: RefContext, number: number): string {
+  const where = "repo" in scope ? `repo=${encodeURIComponent(scopeName(scope))}` : `workspace=${encodeURIComponent(scope.workspace)}`;
+  return `/${slug}/-/chat/ref?${where}&number=${number}`;
+}
+
 /**
  * The card itself, asked for from `url` once it opens: chat's
  * (routes/workspace/chat/ref.ts) for chips there, a repository's
  * (routes/repo/ref-card.ts) for references in its commits and timelines.
+ * `where` names the repository or workspace it was read in.
  */
-export function RefCardBody({ url, repo, number }: { url: string; repo: string; number: number }) {
+export function RefCardBody({ url, where, number }: { url: string; where: string; number: number }) {
   const [card, setCard] = useState<RefCard | null | "loading">("loading");
   useEffect(() => {
     let live = true;
@@ -60,19 +74,19 @@ export function RefCardBody({ url, repo, number }: { url: string; repo: string; 
       </div>
     );
   }
-  if (!card) return <p className="text-xs text-muted">Nothing you can see is numbered #{number} in {repo}.</p>;
+  if (!card) return <p className="text-xs text-muted">Nothing you can see is numbered #{number} in {where}.</p>;
   return (
     <div className="flex gap-2.5">
       <span className="mt-0.5">
         {card.kind === "pull" ? (
           <PullIcon status={PULL_STATUSES.find((s) => s === card.state) ?? "open"} size={16} />
         ) : (
-          <IssueIcon issue={{ state: card.state === "open" ? "open" : "closed", reason: null }} size={16} />
+          <ItemIcon item={{ state: card.state === "open" ? "open" : "closed", reason: card.state === "not planned" ? "not_planned" : null }} size={16} />
         )}
       </span>
       <span className="min-w-0">
         <span className="block text-xs text-muted">
-          {card.repo} · {card.kind === "pull" ? "Pull request" : "Issue"} #{card.number}
+          {card.kind === "pull" ? `${card.repo} · Pull request` : `${card.workspace} · Work item`} #{card.number}
         </span>
         <span className="mt-0.5 block font-medium leading-snug text-fg">{card.title}</span>
         <span className="mt-1 block text-xs text-faint capitalize">{card.state}</span>
@@ -81,19 +95,36 @@ export function RefCardBody({ url, repo, number }: { url: string; repo: string; 
   );
 }
 
-/** `acme/web#12`: a chip to the issue or pull request, its card on hover. */
-export function IssueChip({ slug, repo, number, label, to, kind }: { slug: string; repo: string; number: number; label?: ReactNode; to?: string; kind?: "issue" | "pull" }) {
-  const href = to ?? `/${repo}/issues/${number}`;
+/**
+ * `acme/web#12` or `#12`: a chip to the work item or pull request it names
+ * (`to`), its card on hover, read in `scope` and asked for in the
+ * workspace `slug`.
+ */
+export function RefChip({
+  slug,
+  scope,
+  number,
+  label,
+  to,
+  kind,
+}: {
+  slug: string;
+  scope: RefContext;
+  number: number;
+  label?: ReactNode;
+  to: string;
+  kind?: "item" | "pull";
+}) {
   return (
     <HoverCard>
       <HoverCardTrigger asChild>
-        <Link to={href} className={CHIP} data-ref="issue">
-          {kind === "pull" ? <GitPullRequest size={12} className="text-faint" /> : <CircleDot size={12} className="text-faint" />}
-          <span className="truncate">{label ?? `${repo}#${number}`}</span>
+        <Link to={to} className={CHIP} data-ref="ref">
+          {kind === "pull" ? <GitPullRequest size={12} className="text-faint" /> : <ListTodo size={12} className="text-faint" />}
+          <span className="truncate">{label ?? `${"repo" in scope ? scopeName(scope) : ""}#${number}`}</span>
         </Link>
       </HoverCardTrigger>
       <HoverCardContent className="w-80">
-        <RefCardBody url={`/${slug}/-/chat/ref?repo=${encodeURIComponent(repo)}&number=${number}`} repo={repo} number={number} />
+        <RefCardBody url={chatCardUrl(slug, scope, number)} where={scopeName(scope)} number={number} />
       </HoverCardContent>
     </HoverCard>
   );

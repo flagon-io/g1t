@@ -13,7 +13,7 @@ import {
   harnessName,
   intentTitle,
   awakeAndIdle,
-  liveByIssue,
+  liveByItem,
   sessionTitle,
   duration,
   mayEndSession,
@@ -33,11 +33,12 @@ import {
 const ana = { id: "usr_ana", username: "ana" };
 const bo = { id: "usr_bo", username: "bo" };
 
-function claim(issue: number, over: Partial<Claim> = {}): Claim {
+function claim(item: number, over: Partial<Claim> = {}): Claim {
   return {
-    id: `clm_${issue}_${over.actor?.username ?? "ana"}`,
+    id: `clm_${item}_${over.actor?.username ?? "ana"}`,
     repoId: "rep_1",
-    issue,
+    workspace: "acme",
+    item,
     sessionId: null,
     actor: ana,
     harness: "claude_code",
@@ -56,7 +57,7 @@ function session(id: string, over: Partial<WorkSession> = {}): WorkSession {
   return {
     id,
     repoId: "rep_1",
-    issue: null,
+    item: null,
     pull: null,
     branch: null,
     actor: bo,
@@ -76,7 +77,7 @@ function session(id: string, over: Partial<WorkSession> = {}): WorkSession {
 function decision(kind: Decision["kind"], at: string, over: Partial<Decision> = {}): Decision {
   return {
     id: `dec_${kind}_${at}`,
-    issue: 2,
+    item: 2,
     pull: 5,
     sessionId: null,
     actor: null,
@@ -124,13 +125,13 @@ test("Live now lists sessions heard from lately and folds away the idle, the lat
   assert.equal(awakeAndIdle([{ ...opened, title: "Fix the build" }]).awake.length, 1);
 });
 
-test("live work is grouped by issue, most recent first, with sessions on no issue apart", () => {
-  const { issues, loose } = liveByIssue(
+test("live work is grouped by work item, most recent first, with sessions on no work item apart", () => {
+  const { items, loose } = liveByItem(
     [claim(1), claim(2, { createdAt: "2026-10-12T10:20:00Z" }), claim(2, { actor: bo })],
-    [session("ses_a", { issue: 1, lastSeenAt: "2026-10-12T10:30:00Z" }), session("ses_b")],
+    [session("ses_a", { item: 1, lastSeenAt: "2026-10-12T10:30:00Z" }), session("ses_b")],
   );
   assert.deepEqual(
-    issues.map((group) => [group.issue, group.claims.length, group.sessions.length]),
+    items.map((group) => [group.item, group.claims.length, group.sessions.length]),
     [
       [1, 1, 1],
       [2, 2, 0],
@@ -139,9 +140,9 @@ test("live work is grouped by issue, most recent first, with sessions on no issu
   assert.deepEqual(loose.map((one) => one.id), ["ses_b"]);
 });
 
-test("sessions on no issue are grouped by pull request, then by a branch of their own, then the rest together", () => {
+test("sessions on no work item are grouped by pull request, then by a branch of their own, then the rest together", () => {
   const seen = (minute: number) => `2026-10-12T10:${String(minute).padStart(2, "0")}:00Z`;
-  const { issues, groups, loose } = liveByIssue(
+  const { items, groups, loose } = liveByItem(
     [],
     [
       session("ses_main", { branch: "main", lastSeenAt: seen(50) }),
@@ -149,11 +150,11 @@ test("sessions on no issue are grouped by pull request, then by a branch of thei
       session("ses_pr", { pull: 12, branch: "tidy-readme", lastSeenAt: seen(20) }),
       session("ses_fix2", { branch: "fix-previews", lastSeenAt: seen(40) }),
       session("ses_none", { lastSeenAt: seen(30) }),
-      session("ses_issue", { issue: 3, branch: "3-x", lastSeenAt: seen(5) }),
+      session("ses_issue", { item: 3, branch: "3-x", lastSeenAt: seen(5) }),
     ],
     "main",
   );
-  assert.deepEqual(issues.map((group) => group.issue), [3]);
+  assert.deepEqual(items.map((group) => group.item), [3]);
   assert.deepEqual(
     groups.map((group) => [group.kind === "pull" ? `#${group.pull}` : group.kind === "branch" ? group.branch : "none", group.sessions.map((one) => one.id)]),
     [
@@ -165,7 +166,7 @@ test("sessions on no issue are grouped by pull request, then by a branch of thei
   );
   assert.deepEqual(loose.map((one) => one.id), ["ses_fix2", "ses_fix1", "ses_pr", "ses_main", "ses_none"]);
   // Without the default branch known, its sessions are a branch's.
-  assert.equal(liveByIssue([], [session("ses_main", { branch: "main" })]).groups[0].kind, "branch");
+  assert.equal(liveByItem([], [session("ses_main", { branch: "main" })]).groups[0].kind, "branch");
 });
 
 test("a session is never title-less: its title, its first prompt's intent, its branch, or untitled", () => {
@@ -223,7 +224,7 @@ test("a failure stands until the pull request passes in the queue or merges, and
 });
 
 test("coordination events read as lines of the feed", () => {
-  const claimed = feedLine(event("work.claimed", { repoId: "rep_1", number: 2, issue: 2, claim: claim(2, { actor: bo, harness: "codex" }), others: [claim(2)] }))!;
+  const claimed = feedLine(event("work.claimed", { repoId: "rep_1", number: 2, item: 2, claim: claim(2, { actor: bo, harness: "codex" }), others: [claim(2)] }))!;
   assert.equal(claimed.who, "bo");
   assert.equal(claimed.harness, "codex");
   assert.equal(claimed.text, "claimed #2 (ana is on it too)");
@@ -231,7 +232,7 @@ test("coordination events read as lines of the feed", () => {
 
   const failed = feedLine(
     event("integration.failed", {
-      repoId: "rep_1", pullId: "pul_5", number: 5, pull: 5, issue: 2, combination: [4, 5],
+      repoId: "rep_1", pullId: "pul_5", number: 5, pull: 5, item: 2, combination: [4, 5],
       check: { name: "CI / merge_group", conclusion: "failure", url: null }, bisected: false, suspects: [4], otherPulls: [4], commit: null,
     }),
   )!;
@@ -240,7 +241,7 @@ test("coordination events read as lines of the feed", () => {
   assert.equal(failed.tone, "danger");
 
   const unblocked = feedLine(
-    event("dependency.changed", { repoId: "rep_1", number: 2, issue: 2, blockedBy: [1], added: [], removed: [], cleared: [1], remaining: [], mergedPull: 4 }),
+    event("dependency.changed", { repoId: "rep_1", number: 2, item: 2, blockedBy: [1], added: [], removed: [], cleared: [1], remaining: [], mergedPull: 4 }),
   )!;
   assert.equal(unblocked.text, "#2 #1 landed (#4 merged); unblocked");
 
@@ -249,7 +250,7 @@ test("coordination events read as lines of the feed", () => {
   assert.equal(overlap.session, undefined);
 
   const sessions = feedLine(
-    event("overlap.detected", { repoId: "rep_1", sessionId: "ses_a", otherSessionId: "ses_b", otherActor: "bo", files: ["a.rs", "b.rs", "c.rs", "d.rs"], issue: 2 }),
+    event("overlap.detected", { repoId: "rep_1", sessionId: "ses_a", otherSessionId: "ses_b", otherActor: "bo", files: ["a.rs", "b.rs", "c.rs", "d.rs"], item: 2 }),
   )!;
   assert.equal(sessions.who, "bo");
   assert.equal(sessions.text, "touched the same files in a session as another session: a.rs, b.rs, c.rs and 1 more");
@@ -257,7 +258,7 @@ test("coordination events read as lines of the feed", () => {
   assert.equal(sessions.number, 2);
   assert.equal(feedLine(event("session.progressed", { repoId: "rep_1", number: 2, sessionId: "ses_a" })), null);
 
-  const started = feedLine(event("session.started", { repoId: "rep_1", session: session("ses_a", { issue: 2 }) }))!;
+  const started = feedLine(event("session.started", { repoId: "rep_1", session: session("ses_a", { item: 2 }) }))!;
   assert.equal(started.text, "started a session on #2");
   assert.equal(feedLine(event("session.appended", { repoId: "rep_1", number: 5, pullId: "p", count: 3 })), null);
 });
@@ -279,7 +280,7 @@ test("a session is ended by hand by whoever runs it, or by anyone who can write"
 });
 
 test("a session ended by hand says who ended it in the feed", () => {
-  const own = feedLine(event("session.ended", { repoId: "rep_1", session: session("ses_a", { issue: 2, state: "ended", endReason: `${ENDED_BY_HAND}bo` }) }))!;
+  const own = feedLine(event("session.ended", { repoId: "rep_1", session: session("ses_a", { item: 2, state: "ended", endReason: `${ENDED_BY_HAND}bo` }) }))!;
   assert.equal(own.who, "bo");
   assert.equal(own.text, "ended a session on #2 by hand");
   const theirs = feedLine(event("session.ended", { repoId: "rep_1", session: session("ses_a", { state: "ended", endReason: `${ENDED_BY_HAND}ana` }) }))!;
@@ -362,7 +363,7 @@ test("blocked_by is typed as numbers", () => {
 
 test("a session's pending updates read as the feed does, leaving out what it does not show", () => {
   const lines = pendingLines([
-    { id: "upd_1", kind: "work.claimed", at: "2026-10-14T10:00:00Z", data: { repoId: "rep_1", number: 4, issue: 4, claim: claim(4, { actor: bo, harness: "codex" }) } },
+    { id: "upd_1", kind: "work.claimed", at: "2026-10-14T10:00:00Z", data: { repoId: "rep_1", number: 4, item: 4, claim: claim(4, { actor: bo, harness: "codex" }) } },
     { id: "upd_2", kind: "session.progressed", at: "2026-10-14T10:00:01Z", data: {} },
   ]);
   assert.equal(lines.length, 1);

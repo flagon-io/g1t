@@ -67,7 +67,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 const ABOUT: Record<OnboardingStep, { icon: ReactNode; lead: string }> = {
   ai: {
     icon: <Sparkles size={16} />,
-    lead: "g1t works with models on your own keys: Ask and @g1t in Chat answer with one, and an Anthropic key starts sessions on issues. Add a frontier lab, a platform, or a model you host yourself. g1t bills nothing for it; what it costs is on your provider's bill.",
+    lead: "g1t works with models on your own keys: Ask and @g1t in Chat answer with one, and an Anthropic key starts sessions on work items. Add a frontier lab, a platform, or a model you host yourself. g1t bills nothing for it; what it costs is on your provider's bill.",
   },
   ask: {
     icon: <Bot size={16} />,
@@ -75,7 +75,7 @@ const ABOUT: Record<OnboardingStep, { icon: ReactNode; lead: string }> = {
   },
   code: {
     icon: <Code2 size={16} />,
-    lead: "Start a project with a new repository, or bring repositories you already have across from GitHub. Issues, pull requests, checks and deployments live beside the code.",
+    lead: "Start a project with a new repository, or bring repositories you already have across from GitHub. Work items, pull requests, checks and deployments live beside the code.",
   },
   harness: {
     icon: <Laptop size={16} />,

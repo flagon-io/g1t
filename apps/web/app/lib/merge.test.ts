@@ -20,7 +20,7 @@ import {
 
 const commit = (message: string, email: string): PullCommit => ({ message, authorEmail: email });
 
-const facts = (commits: PullCommit[] = [], issues: number[] = []): TemplatePull => ({
+const facts = (commits: PullCommit[] = [], items: number[] = []): TemplatePull => ({
   number: 12,
   title: "Add forks ",
   body: "Forks are ordinary repositories.\n",
@@ -30,7 +30,7 @@ const facts = (commits: PullCommit[] = [], issues: number[] = []): TemplatePull 
   base: "main",
   author: "ana",
   commits,
-  issues,
+  items,
 });
 
 const asPair = (text: { title: string; message: string }) => [text.title, text.message];
@@ -61,7 +61,7 @@ test("a squash lists its commits when it has more than one", () => {
 test("a template is filled in once", () => {
   const commits = [commit("One", "ana@example.com"), commit("Two", "Ana@Example.com"), commit("Three", "bo@example.com")];
   const template =
-    "{title} (#{number}) into {base}\n\n{body}\nFrom {head_repo}:{branch} by {author}\n{commits}\nCloses {issues}\n{co_authors}\n{unknown} {title";
+    "{title} (#{number}) into {base}\n\n{body}\nFrom {head_repo}:{branch} by {author}\n{commits}\nCloses {items}\n{co_authors}\n{unknown} {title";
   const { title, message } = defaultMessage("squash", "custom", template, facts(commits, [3, 4]));
   assert.equal(title, "Add forks (#12) into main");
   assert.equal(
@@ -86,7 +86,7 @@ test("the sample pull request previews as the server writes it", () => {
     "Merge pull request #128 from acme/webhook-retries",
     "Retry failed webhook deliveries",
   ]);
-  const filled = fillTemplate("{title} (#{number})\n\n{body}\n\nCloses {issues}\n{co_authors}\n{nope}", SAMPLE_PULL);
+  const filled = fillTemplate("{title} (#{number})\n\n{body}\n\nCloses {items}\n{co_authors}\n{nope}", SAMPLE_PULL);
   assert.equal(filled.title, "Retry failed webhook deliveries (#128)");
   assert.equal(
     filled.message,

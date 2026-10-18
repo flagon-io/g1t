@@ -21,7 +21,7 @@ export function headers({ loaderHeaders }: Route.HeadersArgs) {
 
 /**
  * Code's Overview, for this workspace: what needs you and what landed,
- * the week's numbers, activity, and a way to open an issue.
+ * the week's numbers, activity, and a way to open a work item.
  */
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = requireUser(context, request);

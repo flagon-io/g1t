@@ -87,7 +87,7 @@ export function isOverdue(milestone: { dueOn: string | null; state: string }, to
 }
 
 /**
- * The filters an issue or pull request list reads from its address:
+ * The filters a work item or pull request list reads from its address:
  * `?label=bug&milestone=3`, and `label:bug milestone:3 is:closed` written
  * in `q`, which win over the plain parameters.
  */

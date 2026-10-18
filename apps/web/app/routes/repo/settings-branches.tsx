@@ -207,7 +207,7 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
                 it merges, as them, the moment its required reviews and checks pass.
               </Toggle>
               <Toggle name="autoMerge" on={settings.autoMerge} title="Land pull requests g1t sees through when ready">
-                A pull request g1t is seeing through for an issue lands without anyone pressing merge once every rule of
+                A pull request g1t is seeing through for a work item lands without anyone pressing merge once every rule of
                 its branch is met, its required checks included. A ruleset can turn this off for some branches. Off, it
                 waits for a member to merge it.
               </Toggle>

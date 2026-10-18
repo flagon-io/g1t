@@ -1,6 +1,6 @@
 /**
  * g1t's own blocks in the page editor, beside BlockNote's: callouts,
- * Mermaid diagrams, math, and cards for g1t things (an issue, a pull
+ * Mermaid diagrams, math, and cards for g1t things (a work item, a pull
  * request, a channel, a project, another page); and inline mentions of
  * people, agents and pages, dates, and citations of code (a file, folder
  * or pattern in a repository, and the symbol, endpoint or environment
@@ -21,7 +21,7 @@ import { Button } from "../../ui/button";
 import { Card } from "../../ui/card";
 
 /** What an embed shows, from the site (`-/artifacts/api?embed=`). */
-export type EmbedCard = { kind: "issue" | "pull" | "channel" | "project" | "page" | "link"; title: string; subtitle: string | null; state: string | null; href: string };
+export type EmbedCard = { kind: "item" | "pull" | "channel" | "project" | "page" | "link"; title: string; subtitle: string | null; state: string | null; href: string };
 
 const CALLOUTS = {
   info: { icon: <Info size={16} />, ring: "border-info/30 bg-info/8", text: "text-info" },
@@ -178,7 +178,7 @@ export const MathBlock = createReactBlockSpec(
 );
 
 const EMBED_ICONS: Record<EmbedCard["kind"], ReactNode> = {
-  issue: <CircleDot size={16} />,
+  item: <CircleDot size={16} />,
   pull: <GitPullRequest size={16} />,
   channel: <Hash size={16} />,
   project: <Package size={16} />,
@@ -241,7 +241,7 @@ export const Embed = createReactBlockSpec(
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => e.stopPropagation()}
-              placeholder="Paste the address of an issue, pull request, channel, project or artifact"
+              placeholder="Paste the address of a work item, pull request, channel, project or artifact"
               className="min-w-0 grow bg-transparent px-1.5 text-sm text-fg outline-none placeholder:text-faint"
             />
             <Button type="submit" variant="secondary" size="inline" className="px-2.5 py-1 text-xs">

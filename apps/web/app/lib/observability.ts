@@ -220,8 +220,8 @@ export function matchesLog(
   return wanted.size === 0 || wanted.has(log.severity);
 }
 
-/** The issue made for an error group, for a person or an agent to take: what happened, how often, since when, and where to look. */
-export function errorIssue(
+/** The work item made for an error group, for a person or an agent to take: what happened, how often, since when, and where to look. */
+export function errorItem(
   group: { name: string; message: string; stack: string | null; count: number; first_us: number; last_us: number; service: string; environment: string | null; first_deployment_id: string | null; last_request_id: string | null; last_trace_id: string | null },
   pageUrl: string,
 ): { title: string; body: string } {

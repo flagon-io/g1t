@@ -79,8 +79,8 @@ export function isAgent(name: string | null | undefined): boolean {
 
 export type Verb =
   | "landed"
-  | "opened_issue"
-  | "closed_issue"
+  | "opened_item"
+  | "closed_item"
   | "started"
   | "ready"
   | "checks_passed"
@@ -99,8 +99,8 @@ export type Verb =
  */
 export const FEED_EVENT_TYPES = [
   "pull.merged",
-  "issue.opened",
-  "issue.closed",
+  "work_item.opened",
+  "work_item.closed",
   "pull.opened",
   "pull.ready",
   "checks.completed",
@@ -117,11 +117,11 @@ export type ActivityItem = {
   repo: RepoPath;
   actor: string | null;
   verb: Verb;
-  /** The issue or pull request it was about. */
+  /** The work item (numbered in `repo`'s workspace) or pull request it was about. */
   number: number | null;
   /** For a push: the commit. */
   text?: string;
-  /** Where the line links, when it is not an issue or pull request. */
+  /** Where the line links, when it is not a work item or pull request. */
   to?: string;
 };
 
@@ -131,10 +131,11 @@ export function eventItem(event: G1tEvent, repo: RepoPath): ActivityItem | null 
   switch (event.type) {
     case "pull.merged":
       return { ...base, verb: "landed", number: event.data.number };
-    case "issue.opened":
-      return { ...base, verb: "opened_issue", number: event.data.number };
-    case "issue.closed":
-      return event.data.resolvedBy != null ? null : { ...base, verb: "closed_issue", number: event.data.number };
+    case "work_item.opened":
+      return { ...base, verb: "opened_item", number: event.data.number };
+    // One a landing closed is told by the pull request or commit that landed it.
+    case "work_item.closed":
+      return event.data.resolution != null ? null : { ...base, verb: "closed_item", number: event.data.number };
     case "pull.opened":
       return { ...base, actor: event.data.agent || event.actor, verb: "started", number: event.data.number };
     case "pull.ready":
@@ -367,16 +368,16 @@ export function runHealth(runs: { attempt: number; status: string; conclusion: s
   return { passRate: passRate(passed), firstPass: { rate: decided.length ? first / decided.length : null, of: decided.length }, checkRuns: decided.length };
 }
 
-/** How long from an issue being opened to its change landing, for each that did, in ms. */
-export function issueToMerge(
+/** How long from a work item being opened to its change landing, for each that did, in ms. */
+export function itemToMerge(
   opened: { repo: string; number: number; at: number }[],
-  merged: { repo: string; issue: number | null; at: number }[],
+  merged: { repo: string; item: number | null; at: number }[],
 ): number[] {
   const openedAt = new Map(opened.map((o) => [`${o.repo}#${o.number}`, o.at]));
   const spans: number[] = [];
   for (const m of merged) {
-    if (m.issue == null) continue;
-    const start = openedAt.get(`${m.repo}#${m.issue}`);
+    if (m.item == null) continue;
+    const start = openedAt.get(`${m.repo}#${m.item}`);
     if (start != null && m.at >= start) spans.push(m.at - start);
   }
   return spans;
@@ -408,7 +409,7 @@ export function sparkPoints(values: number[], width: number, height: number, pad
   });
 }
 
-/** Open issues by how long they have been open. */
+/** Open work items by how long they have been open. */
 export function ageBuckets(created: string[], now: number): { label: string; count: number }[] {
   const buckets = [
     { label: "Under a day", max: DAY, count: 0 },

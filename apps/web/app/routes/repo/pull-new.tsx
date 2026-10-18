@@ -108,7 +108,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     forks: theirs.map((f) => ({ namespace: f.namespace, name: f.name })),
     forksFailed: isFailed(forks) ? forks : null,
     selected: query.get("branch") ?? head.branch,
-    issue: query.get("issue") ?? "",
+    item: query.get("item") ?? "",
   };
 }
 
@@ -116,7 +116,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
   const form = await request.formData();
-  const issue = Number(form.get("issue"));
+  const item = Number(form.get("item"));
   // From a fork: `namespace/name`; absent for a branch of this repository.
   const [headNamespace, headName] = String(form.get("headRepo") ?? "").split("/");
   const result = await work.openPull(
@@ -127,7 +127,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       headRepo: headNamespace && headName ? { namespace: headNamespace, name: headName } : undefined,
       title: String(form.get("title") ?? ""),
       body: String(form.get("body") ?? ""),
-      issue: issue > 0 ? issue : undefined,
+      item: item > 0 ? item : undefined,
       agent: user.username,
       runtime: "external",
       base: String(form.get("base") ?? "") || undefined,
@@ -139,7 +139,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function NewPull({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { defaultBranch, base, bases, branches, selected, issue, headRepo, headFailed, forks, forksFailed } = loaderData;
+  const { defaultBranch, base, bases, branches, selected, item, headRepo, headFailed, forks, forksFailed } = loaderData;
   const navigate = useNavigate();
   const self = `${params.owner}/${params.repo}`;
   const from = headRepo ? `${headRepo.namespace}/${headRepo.name}` : self;
@@ -148,7 +148,7 @@ export default function NewPull({ loaderData, actionData, params }: Route.Compon
   const choose = (repo: string) => {
     const next = new URLSearchParams({ base });
     if (repo !== self) next.set("head", `${repo}:`);
-    if (issue) next.set("issue", issue);
+    if (item) next.set("item", item);
     navigate(`?${next}`, { replace: true });
   };
   const picker =
@@ -206,7 +206,7 @@ export default function NewPull({ loaderData, actionData, params }: Route.Compon
         </div>
         <p className="mt-4 text-sm text-muted">
           A coding agent connected through the MCP server does not need a branch: it can
-          open a draft pull request for an issue and get a fork of its own to push to.
+          open a draft pull request for a work item and get a fork of its own to push to.
         </p>
       </div>
     );
@@ -253,10 +253,10 @@ export default function NewPull({ loaderData, actionData, params }: Route.Compon
         <Textarea name="body" rows={8} />
       </Field>
       <Field
-        label="Issue (optional)"
-        hint={`The number of the issue this resolves. Merging the pull request into ${defaultBranch} closes it.`}
+        label="Work item (optional)"
+        hint={`The number of the workspace's work item this is for. Merging the pull request into ${defaultBranch} lands it here.`}
       >
-        <Input name="issue" type="number" min={1} defaultValue={issue} placeholder="12" />
+        <Input name="item" type="number" inputMode="numeric" min={1} defaultValue={item} placeholder="12" />
       </Field>
       <ErrorText>{actionData?.error}</ErrorText>
       <div className="flex flex-wrap items-center gap-2">

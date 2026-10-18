@@ -12,7 +12,8 @@ import { NavTab, NavTabs } from "../../components/ui/nav-tabs";
 import { refusal } from "../../lib/access.server";
 import { cn } from "../../lib/cn";
 import { page } from "../../lib/meta";
-import { count, errorIssue, viewHref } from "../../lib/observability";
+import { count, errorItem, viewHref } from "../../lib/observability";
+import { itemPath } from "../../lib/refs";
 import { observed, soft } from "../../lib/observability.server";
 import { Unavailable } from "../../components/boundary";
 import { work } from "../../lib/services.server";
@@ -32,7 +33,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     soft(service.errors({ project_id: projectId, ...filter, deployment_id: null, state }), "errors"),
     soft(service.facets({ project_id: projectId }), "facets"),
   ]);
-  return { view, groups, facets, state, can: { triage: access.can.triage, issue: access.can.participate } };
+  return { view, groups, facets, state, can: { triage: access.can.triage, item: access.can.participate } };
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
@@ -48,18 +49,19 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     await service.setError({ project_id: projectId, fingerprint, state: intent });
     return { notice: intent === "open" ? "Open again." : intent === "resolved" ? "Resolved. It opens again if it happens again." : "Ignored." };
   }
-  if (intent === "issue") {
+  if (intent === "item") {
     const refused = await refusal(context, params, "participate");
     if (refused) return { error: refused, fingerprint };
     const group = (await service.errors({ project_id: projectId })).find((g) => g.fingerprint === fingerprint);
     if (!group) return { error: "That error is no longer kept.", fingerprint };
     const url = new URL(request.url);
-    const { title, body } = errorIssue(group, `${url.origin}/${params.owner}/${params.repo}/observability`);
+    const { title, body } = errorItem(group, `${url.origin}/${params.owner}/${params.repo}/observability`);
     const path = { namespace: repo.namespace, name: repo.name };
-    const opened = await work.openIssue(user, path, { title, body, labels: ["bug"] });
+    // Filed from the project's repository, and meant to land there.
+    const opened = await work.openWorkItem(user, { repo: path, targets: [path], title, body, labels: ["bug"] });
     if (!opened.ok) return { error: opened.error.message, fingerprint };
-    await service.setError({ project_id: projectId, fingerprint, issue_number: opened.value.number });
-    throw redirect(`/${path.namespace}/${path.name}/issues/${opened.value.number}`);
+    await service.setError({ project_id: projectId, fingerprint, item: opened.value.number });
+    throw redirect(itemPath(opened.value.workspace, opened.value.number));
   }
   return { error: "Unknown request.", fingerprint };
 }
@@ -75,7 +77,7 @@ export default function Errors({ loaderData, actionData, params }: Route.Compone
     <div className="mx-auto max-w-6xl">
       <ObservabilityHeader
         title="Errors"
-        about="Exceptions, grouped: the same error thrown a thousand times is one row. Each can become an issue, carrying the stack and the request it came from."
+        about="Exceptions, grouped: the same error thrown a thousand times is one row. Each can become a work item, carrying the stack and the request it came from."
       />
       <FilterBar path={path} view={view} environments={facets?.environments ?? []} services={facets?.services ?? []}>
         <NavTabs label="State" variant="pill">
@@ -117,9 +119,12 @@ export default function Errors({ loaderData, actionData, params }: Route.Compone
                           {g.service || "app"}
                         </Badge>
                         {g.environment && <Badge tone="neutral">{g.environment}</Badge>}
-                        {g.issue_number && (
-                          <Link to={`${base}/issues/${g.issue_number}`} className="inline-flex items-center gap-1 text-xs text-accent hover:underline">
-                            <CircleDot size={12} />#{g.issue_number}
+                        {(g.item ?? g.legacy_issue) != null && (
+                          <Link
+                            to={g.item != null ? itemPath(params.owner, g.item) : `${base}/ref/${g.legacy_issue}`}
+                            className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
+                          >
+                            <CircleDot size={12} />#{g.item ?? g.legacy_issue}
                           </Link>
                         )}
                       </p>
@@ -157,13 +162,13 @@ export default function Errors({ loaderData, actionData, params }: Route.Compone
                       <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-line bg-bg p-3 font-mono text-xs whitespace-pre">{g.stack}</pre>
                     </details>
                   )}
-                  {(can.triage || (can.issue && !g.issue_number)) && (
+                  {(can.triage || (can.item && g.item == null && g.legacy_issue == null)) && (
                     <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
-                      {can.issue && !g.issue_number && (
+                      {can.item && g.item == null && g.legacy_issue == null && (
                         <Form method="post" className="flex flex-wrap items-center gap-2">
                           <input type="hidden" name="fingerprint" value={g.fingerprint} />
-                          <SubmitButton name="intent" value="issue" size="sm" variant="outline">
-                            Make an issue
+                          <SubmitButton name="intent" value="item" size="sm" variant="outline">
+                            Make a work item
                           </SubmitButton>
                         </Form>
                       )}

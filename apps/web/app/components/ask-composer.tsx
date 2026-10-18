@@ -463,9 +463,11 @@ function AskPanel({
               <div className="space-y-1">
                 <h3 className="text-base font-semibold text-fg">Ask about your work</h3>
                 <p className="max-w-sm text-sm text-muted">
-                  {where.repo
-                    ? `g1t is told you're in ${where.repo.namespace}/${where.repo.name}${where.issue ? `, on issue #${where.issue}` : where.pull ? `, on pull request #${where.pull}` : ""}.`
-                    : "g1t is told which page you're on, and reads the issue or pull request in front of you."}
+                  {where.item && where.workspace
+                    ? `g1t is told you're on work item #${where.item} in ${where.workspace}.`
+                    : where.repo
+                      ? `g1t is told you're in ${where.repo.namespace}/${where.repo.name}${where.pull ? `, on pull request #${where.pull}` : ""}.`
+                      : "g1t is told which page you're on, and reads the work item or pull request in front of you."}
                 </p>
               </div>
               <Suggestions className="mt-3 max-w-md justify-center">

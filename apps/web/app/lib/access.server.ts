@@ -21,7 +21,7 @@ type Context = Parameters<typeof getViewer>[0];
 type RepoParams = { owner?: string; repo?: string };
 
 /**
- * One count of a project's open issues and pull requests per request: the
+ * One count of a project's open work items and pull requests per request: the
  * sidebar (root) and the project's tabs (its layout) both show them.
  */
 const tallies = new WeakMap<object, Map<string, ReturnType<typeof work.counts>>>();

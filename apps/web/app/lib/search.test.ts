@@ -35,7 +35,7 @@ test("is: values of one family replace each other", () => {
 test("addresses carry the query, the tab and the page", () => {
   assert.equal(searchHref(" fn main ", "code"), "/search?q=fn+main&type=code");
   assert.equal(searchHref("x", null, 3), "/search?q=x&page=3");
-  assert.equal(searchHref("x", "issues", 1), "/search?q=x&type=issues");
+  assert.equal(searchHref("x", "items", 1), "/search?q=x&type=items");
 });
 
 test("counts stop at the cap", () => {

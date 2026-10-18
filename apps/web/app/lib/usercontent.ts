@@ -8,7 +8,7 @@
  *   <usercontent>/avatars/<sha256>                   an uploaded avatar
  *   <usercontent>/emoji/<sha256>                     a workspace's custom emoji
  *   <usercontent>/production-images/<sha256>         a project's uploaded production image
- *   <usercontent>/attachments/<id>                   an image in an issue, pull request or comment
+ *   <usercontent>/attachments/<id>                   an image in a work item, pull request or comment
  *
  * A public repository's files are there for anyone. A private one's carry
  * `?token=`, a signature the site makes for someone who can read the

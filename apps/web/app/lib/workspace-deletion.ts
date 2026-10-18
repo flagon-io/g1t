@@ -16,7 +16,7 @@ export function whatGoes(deletion: WorkspaceDeletion, apps: number | null): stri
   const lines: string[] = [];
   if (deletion.repositories > 0) {
     const their = deletion.repositories === 1 ? "its" : "their";
-    lines.push(`${plural(deletion.repositories, "repository", "repositories")}, with ${their} issues, pull requests and workflow runs`);
+    lines.push(`${plural(deletion.repositories, "repository", "repositories")}, with ${their} work items, pull requests and workflow runs`);
   }
   if (deletion.projects > 0) lines.push(plural(deletion.projects, "project", "projects"));
   if (apps && apps > 0) lines.push(`${plural(apps, "live app", "live apps")}, taken offline`);

@@ -112,7 +112,7 @@ function QuickReply({ notification, onSent }: { notification: FeedNotification; 
 function ToastCard({ notification, paused }: { notification: FeedNotification; paused: boolean }) {
   const kind = KIND[notification.kind] ?? { label: "Notifications", icon: <Bell /> };
   const loud = LOUD.has(notification.kind);
-  // A card's actions (Approve more, Stop, File issue…): more time to decide.
+  // A card's actions (Approve more, Stop, File work item…): more time to decide.
   const card = notificationActions(notification).length > 0;
   const open = () => {
     dismiss(notification.id);

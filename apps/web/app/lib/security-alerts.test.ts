@@ -50,7 +50,7 @@ const vuln = (over: Partial<Vulnerability> = {}): Vulnerability => ({
   severity: "high",
   fixedVersion: "4.17.21",
   status: "open",
-  issue: null,
+  item: null,
   foundAt: "2026-10-01T10:00:00Z",
   fixedAt: null,
   state: "open",
@@ -105,7 +105,7 @@ test("versions compare number by number", () => {
 });
 
 test("the newest security update wins", () => {
-  const older = { state: "superseded" as const, target: "4.17.20", branch: null, pull: 3, issue: null, error: null, updatedAt: "2026-10-01T00:00:00Z" };
+  const older = { state: "superseded" as const, target: "4.17.20", branch: null, pull: 3, item: null, error: null, updatedAt: "2026-10-01T00:00:00Z" };
   const newer = { ...older, state: "open" as const, target: "4.17.21", pull: 14, updatedAt: "2026-10-02T00:00:00Z" };
   assert.equal(latestUpdate([vuln({ update: older }), vuln({ update: newer }), vuln()])?.pull, 14);
   assert.equal(latestUpdate([vuln()]), null);
@@ -155,7 +155,7 @@ test("an older decision without a row is shown from the alert itself", () => {
   assert.equal(covered.filter((e) => e.text === "dismissed it").length, 1);
 });
 
-test("a dependency's activity links its pull request and issue", () => {
+test("a dependency's activity links its pull request and work item", () => {
   const entries = alertActivity(vuln({ state: "fixed", status: "fixed", fixedAt: "2026-10-05T00:00:00Z" }), [
     row({ id: "a", alertId: "vul_1", action: "update_opened", actor: "g1t", reason: null, comment: null, number: 14, at: "2026-10-02T00:00:00Z" }),
     row({ id: "b", alertId: "vul_1", action: "update_needs_code", actor: "g1t", reason: null, comment: null, number: 15, at: "2026-10-03T00:00:00Z" }),
@@ -163,7 +163,7 @@ test("a dependency's activity links its pull request and issue", () => {
   ]);
   assert.deepEqual(
     entries.map((e) => e.ref),
-    [null, { kind: "pull", number: 14 }, { kind: "issue", number: 15 }, { kind: "pull", number: 14 }],
+    [null, { kind: "pull", number: 14 }, { kind: "item", number: 15 }, { kind: "pull", number: 14 }],
   );
   // A merged update already says it was fixed.
   assert.ok(!entries.some((e) => e.text === "found it no longer vulnerable"));

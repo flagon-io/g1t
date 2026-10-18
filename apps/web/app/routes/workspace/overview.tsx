@@ -22,7 +22,7 @@ import { workspaceProjects } from "../../lib/workspace-projects.server";
 import { Unavailable } from "../../components/boundary";
 import { isFailed, part } from "../../lib/partial";
 
-/** Projects whose open issues and pull requests are counted: the most active. */
+/** Projects whose open work items and pull requests are counted: the most active. */
 const MAX_COUNTED = 30;
 /** Projects shown under Recently active, after the pins. */
 const MAX_ACTIVE = 6;
@@ -37,7 +37,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // A member's way in is Home; this page
   // is the workspace as a visitor sees it.
   if (role) throw redirect(`/${slug}/-/home`);
-  const [listed, members, deploys, usage, published, shortcuts] = await Promise.all([
+  const [listed, members, deploys, usage, published, shortcuts, items] = await Promise.all([
     // The listing the sidebar and the Projects tab share.
     workspaceProjects(slug, viewer),
     role ? identity.listMembers(slug, viewer) : null,
@@ -47,6 +47,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     packages.list(slug, viewer).catch(() => null),
     // The viewer's pins lead the page, as they lead the sidebar.
     role ? projectsApi.shortcuts(slug, viewer).catch(() => null) : null,
+    // Its open work items the viewer may see: the workspace's, counted once whatever they are linked to.
+    part(work.listWorkItems(slug, viewer, { state: "open" }), "Open work items"),
   ]);
   const projects = listed.ok ? listed.value : [];
   const pinnedIds = new Set((shortcuts?.pinned ?? []).map((project) => project.id));
@@ -68,8 +70,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // The projects are what the page is about. What is open in each, and the
   // pull requests in progress, are beside them: a project whose counts
   // could not be read shows none, and the page says the totals are short.
-  const counts = await Promise.all(counted.map((project) => part(work.counts(pathOf(project), viewer), "Open issues and pull requests")));
-  const open: Record<string, { issues: number; pulls: number }> = {};
+  const counts = await Promise.all(counted.map((project) => part(work.counts(pathOf(project), viewer), "Open work items and pull requests")));
+  const open: Record<string, { items: number; pulls: number }> = {};
   counted.forEach((project, i) => {
     const result = counts[i];
     if (!isFailed(result) && result.ok) open[project.id] = result.value;
@@ -109,7 +111,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     deploys: bySlug,
     packageOf,
     pulls: pulls.map(({ pull, project }) => ({ pull, slug: project.slug, name: project.name })),
-    countsFailed,
+    countsFailed: countsFailed ?? (isFailed(items) ? items : null),
+    openItems: !isFailed(items) && items.ok ? items.value.length : 0,
     pullsFailed,
     members: members?.ok ? members.value : null,
     usage,
@@ -146,7 +149,7 @@ function ProjectCard({
   pinned,
 }: {
   project: Project;
-  open: { issues: number; pulls: number } | undefined;
+  open: { items: number; pulls: number } | undefined;
   deploys: ProjectDeploys | undefined;
   /** For a library, the package it publishes. */
   pkg: PackageSummary | undefined;
@@ -234,7 +237,7 @@ function ProjectCard({
           )}
           <span className="flex items-center gap-1">
             <CircleDot size={12} className="text-faint" />
-            {open?.issues ?? 0}
+            {open?.items ?? 0}
           </span>
           <span className="flex items-center gap-1">
             <GitPullRequest size={12} className="text-faint" />
@@ -265,10 +268,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
       pinned={role ? isPinned : null}
     />
   );
-  const totals = Object.values(open).reduce(
-    (sum, counts) => ({ issues: sum.issues + counts.issues, pulls: sum.pulls + counts.pulls }),
-    { issues: 0, pulls: 0 },
-  );
+  const totals = Object.values(open).reduce((sum, counts) => ({ pulls: sum.pulls + counts.pulls }), { pulls: 0 });
   // Live on g1t, or deployed elsewhere with an address.
   const liveApps =
     Object.values(deploys).filter((entry) => entry.production).length +
@@ -283,7 +283,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Stat value={total} label={total === 1 ? "Project" : "Projects"} />
               <Stat value={liveApps} label="In production" />
-              <Stat value={totals.issues} label="Open issues" />
+              <Stat value={loaderData.openItems} label="Open work items" />
               <Stat value={totals.pulls} label="Pull requests in progress" />
             </div>
             {loaderData.countsFailed && <Unavailable what={loaderData.countsFailed.what} compact />}
@@ -362,7 +362,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
                             <span className="block truncate font-medium">{pull.title}</span>
                             <span className="text-xs text-muted">
                               {name} <span className="font-mono">#{pull.number}</span>
-                              {pull.issue != null && ` · for #${pull.issue}`} · {openedBy(pull).name}
+                              {pull.item != null && ` · for #${pull.item}`} · {openedBy(pull).name}
                             </span>
                           </span>
                           <span className="hidden shrink-0 text-xs text-muted sm:block">
@@ -406,7 +406,7 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
           </section>
         ) : (
           <p className="text-sm text-muted">
-            Members of this workspace build its projects. Anyone can open an issue or a pull request on a public one.
+            Members of this workspace build its projects. Anyone can file a work item or open a pull request on a public one.
           </p>
         )}
 

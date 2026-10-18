@@ -122,7 +122,7 @@ function MessageDefault({
   disabled?: boolean;
 }) {
   const [choice, setChoice] = useState<CommitMessageDefault>(saved);
-  const [template, setTemplate] = useState(savedTemplate ?? "{title} (#{number})\n\n{body}\n\nCloses {issues}\n{co_authors}");
+  const [template, setTemplate] = useState(savedTemplate ?? "{title} (#{number})\n\n{body}\n\nCloses {items}\n{co_authors}");
   const box = useRef<HTMLTextAreaElement>(null);
   const name = method === "merge" ? "mergeCommit" : "squashCommit";
   const preview = defaultMessage(method, choice, template, SAMPLE_PULL);

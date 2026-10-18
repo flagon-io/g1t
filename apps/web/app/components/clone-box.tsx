@@ -39,7 +39,7 @@ export function CloneBox({ path }: { path: string }) {
       <TabsContent value="agent">
         <AgentSetup />
         <p className="mt-2 text-xs text-muted">
-          Then ask it to work on an issue in <span className="font-mono text-fg">{path}</span>.{" "}
+          Then ask it to work on a work item in <span className="font-mono text-fg">{path}</span>.{" "}
           <Link to="https://docs.g1t.sh/guides/bring-your-own-agent/" className="text-fg underline underline-offset-4">
             More
           </Link>

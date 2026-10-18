@@ -7,7 +7,7 @@
  * digest reads them) over the live socket, as a repository page
  * watches its own (lib/repo-live.ts), and refreshes when something it
  * lists moves: a push to a default branch, a pull request or review, an
- * issue or comment, a run starting or finishing, a deployment or release,
+ * work item or comment, a run starting or finishing, a deployment or release,
  * a session starting or ending. Not a branch's pushes or a commit's
  * checks: a busy workspace sends those all the time, and nothing on Home
  * shows them. Its loader reads many services, so it refreshes at most
@@ -25,7 +25,7 @@ export const HOME_GAP_MS = 5000;
 /** A project Home watches: its id, `owner/name` and default branch. */
 export type HomeRepo = { id: string; path: string; defaultBranch: string | null };
 
-const FAMILIES = ["pull", "review", "issue", "comment", "workflow", "run", "deployment", "deployment_status", "release", "package"];
+const FAMILIES = ["pull", "review", "work_item", "comment", "workflow", "run", "deployment", "deployment_status", "release", "package"];
 const KINDS = ["session.started", "session.ended", "queue.changed"];
 
 /** Whether a change moves something Home shows. */

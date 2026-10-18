@@ -4,6 +4,8 @@
  * author wrote never is.
  */
 
+import { type RefContext, parseRef, refHref } from "./refs.ts";
+
 type Text = { type: "text"; value: string };
 type Element = {
   type: "element";
@@ -14,7 +16,7 @@ type Element = {
 /** A node of the HTML tree, loosely: only what these plugins read. */
 type Node = { type: string; value?: string; tagName?: string; properties?: Record<string, unknown>; children?: Node[] };
 
-/** The repository a document belongs to, so `#12` can name its issues. */
+/** The repository a document belongs to, so `#12` is read in it. */
 export type MarkdownRepo = { namespace: string; name: string };
 
 /** The repository a site path like `/acme/web` names. */
@@ -67,9 +69,9 @@ export function rehypeAlerts() {
  */
 export const G1T_MENTION_HREF = "https://docs.g1t.sh/";
 
-/** `owner/repo#12`, `#12`, `@workspace/team`, `@name` and commit hashes, in one pass. */
+/** `owner/repo#12`, `workspace#12`, `#12`, `@workspace/team`, `@name` and commit hashes, in one pass. */
 const REFERENCE =
-  /(?<![\w/@#])(?:([a-z0-9][a-z0-9-]*\/[a-z0-9._-]+)#(\d+)|#(\d+)|@([a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38})\/([a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,59})|@([a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38})|([0-9a-f]{7,40}))(?![\w-])/gi;
+  /(?<![\w/@#])(?:(?:([a-z0-9][a-z0-9-]*)(?:\/([a-z0-9._-]+))?)?#(\d+)|@([a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38})\/([a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,59})|@([a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38})|([0-9a-f]{7,40}))(?![\w-])/gi;
 
 function link(href: string, text: string, kind: string): Element {
   return {
@@ -81,14 +83,15 @@ function link(href: string, text: string, kind: string): Element {
 }
 
 /**
- * Links what a forge's text refers to: `#12` to an issue or pull request
- * in this repository (the issue page sends a pull request's number on to
- * it), `owner/repo#12` to one elsewhere, `@name` to a person or workspace
- * (`@g1t` to how g1t's agent works), and a commit hash to its commit.
- * Nothing inside code or a link changes.
+ * Links what a forge's text refers to: `#12`, `owner/repo#12` and
+ * `workspace#12` to the work item or pull request they name, read as
+ * lib/refs.ts says (in the document's repository, else its workspace),
+ * `@name` to a person or workspace (`@g1t` to how g1t's agent works), and
+ * a commit hash to its commit. Nothing inside code or a link changes.
  */
-export function rehypeReferences(options: { repo?: MarkdownRepo }) {
-  const { repo } = options;
+export function rehypeReferences(options: { repo?: MarkdownRepo; workspace?: string }) {
+  const { repo, workspace: here } = options;
+  const context: RefContext | null = repo ? { repo } : here ? { workspace: here } : null;
   return (tree: Node) => {
     const walk = (node: Node) => {
       const children = node.children;
@@ -105,12 +108,12 @@ export function rehypeReferences(options: { repo?: MarkdownRepo }) {
         const parts: Node[] = [];
         let last = 0;
         for (const match of value.matchAll(REFERENCE)) {
-          const [whole, other, otherNumber, number, workspace, team, name, hash] = match;
+          const [whole, owner, otherName, number, workspace, team, name, hash] = match;
           let replacement: Element | null = null;
-          if (other && otherNumber) {
-            replacement = link(`/${other}/issues/${otherNumber}`, whole, "issue");
-          } else if (number && repo) {
-            replacement = link(`/${repo.namespace}/${repo.name}/issues/${number}`, whole, "issue");
+          if (number) {
+            const ref = parseRef(owner, otherName, number);
+            const href = ref ? refHref(ref, context) : null;
+            if (href) replacement = link(href, whole, "ref");
           } else if (workspace && team) {
             replacement = link(`/${workspace.toLowerCase()}/-/teams/${team.toLowerCase()}`, whole, "team");
           } else if (name) {

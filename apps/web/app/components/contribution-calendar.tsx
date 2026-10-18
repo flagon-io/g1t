@@ -1,7 +1,7 @@
 /**
  * A person's last year on their profile: a square a day, a column a week,
  * shaded in the accent by how much they did (commits pushed to a default
- * branch, issues and pull requests opened, reviews given) on repositories
+ * branch, work items and pull requests opened, reviews given) on repositories
  * the viewer can see. The layout is
  * lib/contribution-calendar.ts; the counts come from the work service's
  * `contributions`, which never counts work the viewer could not open.

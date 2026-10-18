@@ -42,7 +42,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const kind = sectionKind(params.section);
   if (!kind) throw new Response(null, { status: 404 });
   // The connections are what the page is about. The repositories a new
-  // one can file issues in, and what each alert source sent lately, are
+  // one can file work items from, and what each alert source sent lately, are
   // beside them: each says so in its place when it cannot be read.
   const [connections, listed] = await Promise.all([integrations.list(slug, viewer), part(repos.list(viewer, { namespace: slug }), "Repositories")]);
   const all = unwrap(connections);
@@ -126,21 +126,21 @@ const KIND_INFO: Record<ProviderKind, { title: string; icon: ReactNode; blurb: s
   alerts: {
     title: "Alerts",
     icon: <Siren size={16} />,
-    blurb: "Problems your monitoring finds become issues, with what was seen.",
+    blurb: "Problems your monitoring finds become work items, with what was seen.",
   },
   tracker: {
     title: "Trackers",
     icon: <Ticket size={16} />,
-    blurb: "Tickets people can import as issues, and that hear back when the work lands.",
+    blurb: "Tickets people can import as work items, and that hear back when the work lands.",
   },
 };
 
 const PROVIDER_BLURB: Partial<Record<Provider, string>> = {
-  sentry: "New errors open issues, with the stack trace. Resolved in Sentry when the fix merges.",
-  datadog: "Monitors that trigger open issues. Recoveries are noted on them.",
+  sentry: "New errors open work items, with the stack trace. Resolved in Sentry when the fix merges.",
+  datadog: "Monitors that trigger open work items. Recoveries are noted on them.",
   webhook: "Anything that can send signed JSON: PagerDuty, Grafana, your own scripts.",
-  jira: "Import tickets such as TECH-1234 as issues; they hear back when the work lands.",
-  linear: "Import issues such as ENG-42; they hear back when the work lands.",
+  jira: "Import tickets such as TECH-1234 as work items; they hear back when the work lands.",
+  linear: "Import Linear issues such as ENG-42 as work items; they hear back when the work lands.",
 };
 
 export default function WorkspaceIntegrations({ loaderData, actionData }: Route.ComponentProps) {
@@ -290,7 +290,7 @@ function ConnectionRow({
   const { config } = connection;
   const facts = [
     PROVIDERS[connection.provider].label,
-    config.repo && `issues in ${config.repo}`,
+    config.repo && `work items filed from ${config.repo}`,
     config.organization,
     host(config.site),
     config.keys?.length ? config.keys.join(", ") : null,
@@ -372,12 +372,12 @@ function ConnectionRow({
               />
               <span className="font-mono text-faint">{delivery.event}</span>
               <span className="min-w-0 truncate">{delivery.detail}</span>
-              {delivery.issue && (
+              {delivery.item && (
                 <Link
-                  to={`/${delivery.issue.replace("#", "/issues/")}`}
+                  to={`/${delivery.item.replace("#", "/-/work/")}`}
                   className="shrink-0 font-mono text-fg hover:underline"
                 >
-                  {delivery.issue}
+                  {delivery.item}
                 </Link>
               )}
               <span className="ml-auto shrink-0 text-faint">
@@ -442,8 +442,8 @@ function AddForm({
         <Field label="Organization" hint="Its slug, as in acme.sentry.io.">
           <Input name="organization" required placeholder="acme" />
         </Field>
-        <RepoField repos={repos} required hint="Where issues are opened." />
-        <Field label="Auth token" hint="The internal integration's token, with Issue & Event read and write. Lets g1t read stack traces and resolve issues. Optional, but recommended.">
+        <RepoField repos={repos} required hint="The repository its work items are filed from." />
+        <Field label="Auth token" hint="The internal integration's token, with Issue & Event read and write. Lets g1t read stack traces and resolve Sentry issues. Optional, but recommended.">
           <Input name="secret" type="password" />
         </Field>
         <Field label="Client secret" hint="You get this from Sentry after giving it this connection's address; you can add it on the next step.">
@@ -453,12 +453,12 @@ function AddForm({
     ),
     datadog: (
       <>
-        <RepoField repos={repos} required hint="Where issues are opened." />
+        <RepoField repos={repos} required hint="The repository its work items are filed from." />
       </>
     ),
     webhook: (
       <>
-        <RepoField repos={repos} required hint="Where issues are opened." />
+        <RepoField repos={repos} required hint="The repository its work items are filed from." />
       </>
     ),
     jira: (
@@ -569,7 +569,7 @@ function Connected({ connected }: { connected: { connection: Connection; signing
               <CopyLine text={url} />
               <p>
                 with <code>Authorization: Bearer &lt;secret&gt;</code>, or an HMAC-SHA256 of the body in{" "}
-                <code>X-G1t-Signature</code>. An <code>id</code> keeps repeats on one issue.
+                <code>X-G1t-Signature</code>. An <code>id</code> keeps repeats on one work item.
               </p>
             </>
           )}
@@ -577,7 +577,7 @@ function Connected({ connected }: { connected: { connection: Connection; signing
       )}
       {connection.kind === "tracker" && (
         <p className="mt-2 text-sm text-muted">
-          You can import a ticket from any repository's new issue page. Use Test to check the token.
+          You can import a ticket from New work item, under Work. Use Test to check the token.
         </p>
       )}
     </div>

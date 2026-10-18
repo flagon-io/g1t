@@ -57,18 +57,18 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     visibility: access.can.change_visibility,
     // How long workflow runs' artifacts are kept.
     retention: isFailed(retention) ? retention : retention.ok ? retention.value : { days: 14, maximum_allowed_days: 90 },
-    // Whether issues can be opened in it; null when it was not answered.
+    // Whether work items can be filed from it; null when it was not answered.
     issues: isFailed(settings)
       ? settings
       : settings.ok
-        ? { on: settings.value.issuesEnabled ?? true, chosen: settings.value.hasIssues != null }
+        ? { on: settings.value.workItemsEnabled ?? true, chosen: settings.value.hasWorkItems != null }
         : null,
-    // How commits and issues are handled; null when it was not answered.
+    // How commits and work items are handled; null when it was not answered.
     pullSettings: isFailed(settings)
       ? settings
       : settings.ok
         ? {
-            autoCloseIssues: settings.value.autoCloseIssues,
+            autoCloseItems: settings.value.autoCloseItems,
             requireWebCommitSignOff: settings.value.requireWebCommitSignOff,
             allowCommitComments: settings.value.allowCommitComments,
           }
@@ -119,15 +119,15 @@ export async function action({ request, params, context }: Route.ActionArgs): Pr
       return outcome(intent, await repos.setVisibility(user, path, text("visibility") === "private", typed));
     }
     case "features": {
-      // The other settings are sent back as they are: only issues change here.
+      // The other settings are sent back as they are: only work items change here.
       const current = await work.getSettings(path, user);
       if (!current.ok) return outcome(intent, current);
       return outcome(
         intent,
         await work.updateSettings(user, path, {
           ...current.value,
-          hasIssues: form.get("hasIssues") === "on",
-          autoCloseIssues: form.get("autoCloseIssues") === "on",
+          hasWorkItems: form.get("hasWorkItems") === "on",
+          autoCloseItems: form.get("autoCloseItems") === "on",
         }),
       );
     }
@@ -274,25 +274,25 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
         )}
         {issues && (
           <Section title="Features" about="What the repository has besides its code.">
-            <Form method="post" key={`${issues.on}|${pullSettings?.autoCloseIssues}`} className="space-y-3">
+            <Form method="post" key={`${issues.on}|${pullSettings?.autoCloseItems}`} className="space-y-3">
               <fieldset disabled={archived} className="min-w-0 space-y-3">
                 <input type="hidden" name="intent" value="features" />
-                <SettingToggle name="hasIssues" on={issues.on} title="Issues" disabled={archived}>
-                  Track bugs, ideas and work to do in it. Turned off, no new issue can be opened and Issues leaves its
-                  menus; issues already opened stay readable at their addresses.
+                <SettingToggle name="hasWorkItems" on={issues.on} title="Work items" disabled={archived}>
+                  File the workspace's work items from it: bugs, ideas and work to do. Turned off, no new work item can
+                  be filed from it; those filed already stay, and work items can still land in it as a target.
                   {repo.forkedFrom && !issues.chosen && " Off by default, as it was made as a fork."}
                 </SettingToggle>
                 {pullSettings && (
                   <SettingToggle
-                    name="autoCloseIssues"
-                    on={pullSettings.autoCloseIssues}
-                    title="Auto-close issues with merged linked pull requests"
+                    name="autoCloseItems"
+                    on={pullSettings.autoCloseItems}
+                    title="Land work items with merged linked pull requests"
                     disabled={archived}
                   >
-                    When a pull request merges into {repo.defaultBranch}, the issues it is for or names after a closing
+                    When a pull request merges into {repo.defaultBranch}, the work items it is for or names after a closing
                     keyword (<span className="font-mono text-xs">Fixes #12</span>,{" "}
-                    <span className="font-mono text-xs">Closes #12</span>) close, naming it. Off, they stay open to be
-                    closed by hand.
+                    <span className="font-mono text-xs">Closes #12</span>) land here, and close once nothing else is left to land. Off,
+                    they stay open to be closed by hand.
                   </SettingToggle>
                 )}
                 <div className="flex flex-wrap items-center gap-4 pt-1">
@@ -757,7 +757,7 @@ function VisibilityAction({ full, isPrivate, fork, error }: { full: string; isPr
     >
       {isPrivate ? (
         <>
-          <li>Anyone can see its code, issues and pull requests, and clone it, without signing in.</li>
+          <li>Anyone can see its code, work items and pull requests, and clone it, without signing in.</li>
           <li>It shows in search and on Explore.</li>
           <li>Links to it show a preview card with its name and its project's description where they are shared.</li>
         </>

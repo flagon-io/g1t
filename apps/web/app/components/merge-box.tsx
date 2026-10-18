@@ -555,7 +555,7 @@ export function ChecksSection({
         {run && (
           <section aria-label={queueFailed ? "Merge queue" : "Earlier commands"} className="py-1">
             <p className="flex flex-wrap items-center gap-x-1.5 px-4 pt-1.5 pb-1 text-xs text-faint">
-              <span className="font-medium text-muted">{queueFailed ? "Merge queue" : "Commands from the issue"}</span>
+              <span className="font-medium text-muted">{queueFailed ? "Merge queue" : "Commands from the work item"}</span>
               <span>· on</span>
               <Link to={commitPath(run.headCommit)} className="inline-flex items-center gap-1 font-mono hover:text-fg">
                 <GitCommitHorizontal size={12} />

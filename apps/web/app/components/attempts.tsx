@@ -1,7 +1,7 @@
 /**
- * The pull requests for one issue, side by side, on each of them: how each
+ * The pull requests for one work item, side by side, on each of them: how each
  * stands, how its checks went, where its review is and how big it is, so
- * two agents' attempts at the same issue can be compared and one chosen.
+ * two agents' attempts at the same work item can be compared and one chosen.
  */
 import { CircleCheck, CircleDashed, CircleSlash, GitPullRequestArrow, MessageSquare } from "lucide-react";
 import { Suspense } from "react";
@@ -71,10 +71,10 @@ function AttemptRow({ attempt, base }: { attempt: Attempt; base: string }) {
 }
 
 /**
- * Every pull request for issue `issue`, this one first: streamed, so the
+ * Every pull request for work item `item`, this one first: streamed, so the
  * page shows before the others are read. Nothing while there are no others.
  */
-export function AttemptsBox({ attempts, issue, base }: { attempts: Promise<Attempt[]>; issue: number; base: string }) {
+export function AttemptsBox({ attempts, item, base }: { attempts: Promise<Attempt[]>; item: number; base: string }) {
   return (
     <Suspense
       fallback={
@@ -87,13 +87,13 @@ export function AttemptsBox({ attempts, issue, base }: { attempts: Promise<Attem
         {(found) =>
           found.filter((attempt) => !attempt.current).length > 0 && (
             <Card asChild className="mt-4 overflow-hidden text-sm">
-              <section aria-label={`Other attempts at #${issue}`}>
+              <section aria-label={`Other attempts at #${item}`}>
                 <h3 className="flex items-center gap-2.5 px-4 pt-3 font-medium">
                   <GitPullRequestArrow size={16} className="shrink-0 text-info" />
-                  Other attempts at #{issue}
+                  Other attempts at #{item}
                 </h3>
                 <p className="px-4 pt-0.5 pb-2 text-xs text-faint">
-                  Pull requests for the same issue. Merging one closes the others.
+                  Pull requests for the same work item in this repository. Merging one closes the others.
                 </p>
                 <ul className="divide-y divide-line border-t border-line">
                   {found.map((attempt) => (

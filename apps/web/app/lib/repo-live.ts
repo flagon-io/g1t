@@ -5,7 +5,7 @@
  *
  * A tab on a repository page watches the repository over the live socket
  * (`/-/live`, services/notify): the site checks the person may read it,
- * then every push, pull request, issue, comment, review, check, run,
+ * then every push, pull request, work item, comment, review, check, run,
  * release and security alert there arrives as a small `RepoChange`. A page
  * refreshes its loader when a change matches it, a second after the last
  * one, at most every two seconds, never under someone typing or with a
@@ -145,10 +145,6 @@ export const repoPages = {
   pulls(): RepoMatch {
     return (change) => ["pull", "review", "checks", "queue"].includes(family(change)) || (family(change) === "comment" && change.number != null) || isCheck(change);
   },
-  /** The issues list: issues, comments on them, and pull requests that close them. */
-  issues(): RepoMatch {
-    return (change) => ["issue", "comment"].includes(family(change)) || ["pull.opened", "pull.merged", "pull.closed", "pull.reopened"].includes(change.kind);
-  },
   /**
    * A pull request: its own changes (commits, reviews, comments, checks,
    * merged or closed), pushes to its head branch, and what is reported on
@@ -156,17 +152,13 @@ export const repoPages = {
    */
   pull(number: number, head?: { branch?: string | null; sha?: string | null }): RepoMatch {
     return (change) =>
-      (change.number === number && family(change) !== "issue") ||
+      (change.number === number && family(change) !== "work_item") ||
       (!!head?.branch && isPushTo(change, head.branch)) ||
       (!!head?.sha && change.sha === head.sha && isCheck(change)) ||
       change.kind === "queue.changed";
   },
-  /** An issue: its own changes and comments, and the pull requests linked to it. */
-  issue(number: number, linked: number[] = []): RepoMatch {
-    return (change) => change.number != null && (change.number === number || linked.includes(change.number));
-  },
   /**
-   * The Work page: claims, sessions starting and ending, dependencies,
+   * The Sessions page: claims, sessions starting and ending, dependencies,
    * overlaps, what the merge queue finds and decisions, the queue moving,
    * and merges; and sessions going on (heard from, so still active).
    */

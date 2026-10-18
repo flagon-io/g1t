@@ -173,7 +173,7 @@ export function actorKeys(activity: ActivityDigest | null, chatActivity: ChatAct
   for (const project of deploys?.projects ?? []) for (const deploy of project.deployments) keys.add(deployActorKey(deploy.createdBy) ?? "");
   for (const repo of activity?.repos ?? []) {
     for (const by of [...repo.pushes.by, ...repo.pushes.default_branch.by]) keys.add(by.actor);
-    for (const list of [repo.pulls.opened, repo.pulls.merged, repo.pulls.closed, repo.issues.opened, repo.issues.closed, repo.reviews, repo.comments, repo.deployments.succeeded, repo.deployments.failed]) {
+    for (const list of [repo.pulls.opened, repo.pulls.merged, repo.pulls.closed, repo.items.opened, repo.items.closed, repo.reviews, repo.comments, repo.deployments.succeeded, repo.deployments.failed]) {
       for (const entry of list) keys.add(entry.actor);
     }
     for (const release of repo.releases) keys.add(release.actor);

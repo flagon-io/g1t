@@ -35,7 +35,7 @@ const INBOX_REASONS: InboxReason[] = [
   "manual",
   "subscribed",
 ];
-const WATCH_EVENTS: WatchEvent[] = ["issues", "pulls", "deployments", "security"];
+const WATCH_EVENTS: WatchEvent[] = ["work_items", "pulls", "deployments", "security"];
 
 export type InboxTab = "all" | "needs" | "error" | "success" | "info";
 
@@ -224,14 +224,14 @@ export function settledLine(item: Pick<InboxItem, "doneAt" | "settledReason" | "
 /** The ways to watch a repository, in the order the menu shows them. */
 export const WATCH_CHOICES: { level: WatchLevel; label: string; detail: string }[] = [
   { level: "participating", label: "Participating and @mentions", detail: "Only what you take part in, or are mentioned in." },
-  { level: "all", label: "All activity", detail: "Every issue and pull request, and every deployment." },
+  { level: "all", label: "All activity", detail: "Every work item and pull request, and every deployment." },
   { level: "ignore", label: "Ignore", detail: "Nothing at all, not even a mention." },
   { level: "custom", label: "Custom", detail: "What you take part in, and the kinds you choose." },
 ];
 
 /** The kinds a custom watch can follow, with their names for people. */
 export const WATCH_EVENT_LABEL: Record<WatchEvent, string> = {
-  issues: "Issues",
+  work_items: "Work items",
   pulls: "Pull requests",
   deployments: "Deployments",
   security: "Security alerts",
@@ -266,8 +266,8 @@ export function watchFromForm(form: FormData): { level: WatchLevel; events: Watc
 }
 
 /** The line under the subscribe button: whether, and why. */
-export function subscriptionLine(subscription: ThreadSubscription | null | undefined, kind: "issue" | "pull"): string {
-  const thing = kind === "pull" ? "pull request" : "issue";
+export function subscriptionLine(subscription: ThreadSubscription | null | undefined, kind: "item" | "pull"): string {
+  const thing = kind === "pull" ? "pull request" : "work item";
   if (!subscription) return `Subscribe to hear of what happens on this ${thing}.`;
   if (subscription.ignored) return `You ignore this ${thing}: you hear of nothing on it, not even a mention.`;
   if (!subscription.subscribed) return "You're not subscribed. You'll still hear if you're mentioned or asked to review.";
@@ -310,17 +310,17 @@ export const EMAIL_REASONS: { reason: InboxReason; label: string; detail: string
   { reason: "review_requested", label: "You're asked to review", detail: "Someone asked for your review of a pull request." },
   { reason: "mention", label: "You're mentioned", detail: "Someone wrote your @username in a comment." },
   { reason: "team_mention", label: "Your team is mentioned", detail: "Someone wrote @workspace/team for a team you're in." },
-  { reason: "assign", label: "You're assigned", detail: "Someone assigned you an issue or a pull request." },
+  { reason: "assign", label: "You're assigned", detail: "Someone assigned you a work item or a pull request." },
   { reason: "ci_activity", label: "Your work's checks and deployments", detail: "Checks, a workflow or a deployment failed on your work." },
   {
     reason: "security_alert",
     label: "Security alerts",
     detail: "Critical and high alerts, a push of yours that push protection refused, a vulnerability report, and your security digest.",
   },
-  { reason: "state_change", label: "What you follow closes or merges", detail: "An issue or pull request you're subscribed to was closed, reopened or merged." },
+  { reason: "state_change", label: "What you follow closes or merges", detail: "A work item or pull request you're subscribed to was closed, reopened or merged." },
   { reason: "author", label: "News on your work", detail: "An approval, changes asked for, or g1t finishing what you asked for." },
-  { reason: "comment", label: "Conversations you're in", detail: "Comments on issues and pull requests you commented on." },
-  { reason: "manual", label: "Threads you subscribed to", detail: "Activity on issues and pull requests you subscribed to by hand." },
+  { reason: "comment", label: "Conversations you're in", detail: "Comments on work items and pull requests you commented on." },
+  { reason: "manual", label: "Threads you subscribed to", detail: "Activity on work items and pull requests you subscribed to by hand." },
   { reason: "subscribed", label: "Repositories you watch", detail: "Activity in repositories you watch." },
 ];
 

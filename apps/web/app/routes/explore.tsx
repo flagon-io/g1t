@@ -141,7 +141,7 @@ export default function ExplorePage({ loaderData }: Route.ComponentProps) {
         <input
           name="q"
           {...notACredential()}
-          placeholder="Search repositories, code, issues and people"
+          placeholder="Search repositories, code, work items and people"
           aria-label="Search g1t"
           className="h-10 w-full rounded-lg border border-line bg-surface pr-4 pl-10 text-sm outline-none transition-colors placeholder:text-faint hover:border-line-strong focus:border-accent-dim"
         />
