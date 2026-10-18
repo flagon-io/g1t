@@ -123,9 +123,12 @@ pub const ROUTES: &[Route] = &[
     route("GET", "/repos/:owner/:name/subscription", Op::GetRepoSubscription, &[]),
     route("PUT", "/repos/:owner/:name/subscription", Op::SetRepoSubscription, &[]),
     route("DELETE", "/repos/:owner/:name/subscription", Op::DeleteRepoSubscription, &[]),
-    route("GET", "/repos/:owner/:name/issues/:number/subscription", Op::GetThreadSubscription, &[]),
-    route("PUT", "/repos/:owner/:name/issues/:number/subscription", Op::SetThreadSubscription, &[]),
-    route("DELETE", "/repos/:owner/:name/issues/:number/subscription", Op::DeleteThreadSubscription, &[]),
+    route("GET", "/repos/:owner/:name/pulls/:number/subscription", Op::GetThreadSubscription, &[]),
+    route("PUT", "/repos/:owner/:name/pulls/:number/subscription", Op::SetThreadSubscription, &[]),
+    route("DELETE", "/repos/:owner/:name/pulls/:number/subscription", Op::DeleteThreadSubscription, &[]),
+    route("GET", "/workspaces/:workspace/work/:number/subscription", Op::GetThreadSubscription, &[]),
+    route("PUT", "/workspaces/:workspace/work/:number/subscription", Op::SetThreadSubscription, &[]),
+    route("DELETE", "/workspaces/:workspace/work/:number/subscription", Op::DeleteThreadSubscription, &[]),
     route("GET", "/user/subscriptions", Op::ListWatchedRepos, &[]),
     // Stars: yours, and who starred a repository.
     route("GET", "/user/starred", Op::About(AboutOp::ListStarred), &[]),
@@ -583,78 +586,70 @@ pub const ROUTES: &[Route] = &[
             ("wait", "wait"),
         ],
     ),
-    route("GET", "/repos/:owner/:name/labels", Op::ListLabels, &[]),
-    route("POST", "/repos/:owner/:name/labels", Op::CreateLabel, &[]),
-    route("POST", "/repos/:owner/:name/labels/defaults", Op::AddDefaultLabels, &[]),
-    route("PATCH", "/repos/:owner/:name/labels/:label", Op::UpdateLabel, &[]),
-    route("DELETE", "/repos/:owner/:name/labels/:label", Op::DeleteLabel, &[]),
-    route("GET", "/repos/:owner/:name/issues/:number/labels", Op::ListIssueLabels, &[]),
-    route("POST", "/repos/:owner/:name/issues/:number/labels", Op::AddIssueLabels, &[]),
-    route("PUT", "/repos/:owner/:name/issues/:number/labels", Op::SetIssueLabels, &[]),
-    route("DELETE", "/repos/:owner/:name/issues/:number/labels", Op::RemoveIssueLabels, &[]),
-    route("DELETE", "/repos/:owner/:name/issues/:number/labels/:label", Op::RemoveIssueLabels, &[]),
-    route("GET", "/repos/:owner/:name/milestones", Op::ListMilestones, &[("state", "state")]),
-    route("POST", "/repos/:owner/:name/milestones", Op::CreateMilestone, &[]),
-    route("GET", "/repos/:owner/:name/milestones/:milestone", Op::GetMilestone, &[]),
-    route("PATCH", "/repos/:owner/:name/milestones/:milestone", Op::UpdateMilestone, &[]),
-    route("DELETE", "/repos/:owner/:name/milestones/:milestone", Op::DeleteMilestone, &[]),
+    // A workspace's labels and milestones, which its work items and pull
+    // requests carry.
+    route("GET", "/workspaces/:workspace/labels", Op::ListLabels, &[]),
+    route("POST", "/workspaces/:workspace/labels", Op::CreateLabel, &[]),
+    route("POST", "/workspaces/:workspace/labels/defaults", Op::AddDefaultLabels, &[]),
+    route("PATCH", "/workspaces/:workspace/labels/:label", Op::UpdateLabel, &[]),
+    route("DELETE", "/workspaces/:workspace/labels/:label", Op::DeleteLabel, &[]),
+    route("GET", "/workspaces/:workspace/milestones", Op::ListMilestones, &[("state", "state")]),
+    route("POST", "/workspaces/:workspace/milestones", Op::CreateMilestone, &[]),
+    route("GET", "/workspaces/:workspace/milestones/:milestone", Op::GetMilestone, &[]),
+    route("PATCH", "/workspaces/:workspace/milestones/:milestone", Op::UpdateMilestone, &[]),
+    route("DELETE", "/workspaces/:workspace/milestones/:milestone", Op::DeleteMilestone, &[]),
+    // Work items: a workspace's tracked work, linked to its repositories.
     route(
         "GET",
-        "/repos/:owner/:name/issues",
-        Op::ListIssues,
-        &[("state", "state"), ("label", "label"), ("milestone", "milestone")],
+        "/workspaces/:workspace/work",
+        Op::ListWorkItems,
+        &[("state", "state"), ("label", "label"), ("milestone", "milestone"), ("assignee", "assignee"), ("repo", "repo"), ("role", "role")],
     ),
-    route("POST", "/repos/:owner/:name/issues", Op::CreateIssue, &[]),
+    route("POST", "/workspaces/:workspace/work", Op::OpenWorkItem, &[]),
+    route("POST", "/workspaces/:workspace/work/import", Op::ImportWorkItems, &[]),
+    route("PATCH", "/workspaces/:workspace/work/comments/:comment_id", Op::EditWorkItemComment, &[]),
+    route("DELETE", "/workspaces/:workspace/work/comments/:comment_id", Op::DeleteWorkItemComment, &[]),
+    route("GET", "/workspaces/:workspace/work/:number", Op::GetWorkItem, &[]),
+    route("PATCH", "/workspaces/:workspace/work/:number", Op::UpdateWorkItem, &[]),
+    route("POST", "/workspaces/:workspace/work/:number/close", Op::CloseWorkItem, &[]),
+    route("POST", "/workspaces/:workspace/work/:number/reopen", Op::ReopenWorkItem, &[]),
+    route("GET", "/workspaces/:workspace/work/:number/links", Op::ListWorkItemLinks, &[]),
+    route("POST", "/workspaces/:workspace/work/:number/links", Op::LinkWorkItem, &[]),
+    route("DELETE", "/workspaces/:workspace/work/:number/links", Op::UnlinkWorkItem, &[("repo", "repo")]),
+    route("GET", "/workspaces/:workspace/work/:number/labels", Op::ListWorkItemLabels, &[]),
+    route("POST", "/workspaces/:workspace/work/:number/labels", Op::AddWorkItemLabels, &[]),
+    route("PUT", "/workspaces/:workspace/work/:number/labels", Op::SetWorkItemLabels, &[]),
+    route("DELETE", "/workspaces/:workspace/work/:number/labels", Op::RemoveWorkItemLabels, &[]),
+    route("DELETE", "/workspaces/:workspace/work/:number/labels/:label", Op::RemoveWorkItemLabels, &[]),
+    route("POST", "/workspaces/:workspace/work/:number/comments", Op::AddWorkItemComment, &[]),
+    route("POST", "/workspaces/:workspace/work/:number/reactions", Op::ReactToWorkItem, &[]),
+    route("GET", "/workspaces/:workspace/work/:number/decisions", Op::ListWorkItemDecisions, &[]),
+    // The work items linked to a repository: its Work tab. Read only.
+    route("GET", "/repos/:owner/:name/work", Op::ListRepoWorkItems, &[("state", "state"), ("label", "label"), ("milestone", "milestone"), ("assignee", "assignee"), ("role", "role")]),
+    // What `#N` names, read in a repository or a workspace: how an old
+    // link to a repository's issue finds the work item it became.
+    route("GET", "/repos/:owner/:name/refs/:number", Op::ResolveRef, &[]),
+    route("GET", "/workspaces/:workspace/refs/:number", Op::ResolveRef, &[]),
+    // Coordinating work: claims on work items, a work item's whole context,
+    // and sessions of people's own harnesses.
+    route("GET", "/workspaces/:workspace/work/:number/work", Op::Coordination(CoordinationOp::GetWork), &[]),
+    route("POST", "/workspaces/:workspace/work/:number/claim", Op::Coordination(CoordinationOp::ClaimWorkItem), &[]),
+    // Work with no work item yet: open one from a title and claim it.
+    route("POST", "/workspaces/:workspace/claims", Op::Coordination(CoordinationOp::ClaimWorkItem), &[]),
+    route("POST", "/workspaces/:workspace/work/:number/release", Op::Coordination(CoordinationOp::ReleaseClaim), &[]),
+    route("POST", "/workspaces/:workspace/work/:number/handoff", Op::Coordination(CoordinationOp::HandOffWorkItem), &[]),
     route(
         "GET",
-        "/repos/:owner/:name/issues/:number",
-        Op::GetIssue,
-        &[],
-    ),
-    route(
-        "PATCH",
-        "/repos/:owner/:name/issues/:number",
-        Op::UpdateIssue,
-        &[],
-    ),
-    route(
-        "POST",
-        "/repos/:owner/:name/issues/:number/close",
-        Op::CloseIssue,
-        &[],
-    ),
-    route(
-        "POST",
-        "/repos/:owner/:name/issues/:number/reopen",
-        Op::ReopenIssue,
-        &[],
-    ),
-    route(
-        "POST",
-        "/repos/:owner/:name/issues/import",
-        Op::ImportIssue,
-        &[],
-    ),
-    // Coordinating work: claims on issues, an issue's whole context, and
-    // sessions of people's own harnesses.
-    route("GET", "/repos/:owner/:name/issues/:number/work", Op::Coordination(CoordinationOp::GetWork), &[]),
-    route("POST", "/repos/:owner/:name/issues/:number/claim", Op::Coordination(CoordinationOp::ClaimIssue), &[]),
-    // Work with no issue yet: open one from a title and claim it.
-    route("POST", "/repos/:owner/:name/claims", Op::Coordination(CoordinationOp::ClaimIssue), &[]),
-    route("POST", "/repos/:owner/:name/issues/:number/release", Op::Coordination(CoordinationOp::ReleaseClaim), &[]),
-    route("POST", "/repos/:owner/:name/issues/:number/handoff", Op::Coordination(CoordinationOp::HandOffIssue), &[]),
-    route(
-        "GET",
-        "/repos/:owner/:name/claims",
+        "/workspaces/:workspace/claims",
         Op::Coordination(CoordinationOp::ListClaims),
-        &[("state", "state"), ("issue", "issue")],
+        &[("state", "state"), ("item", "item"), ("repo", "repo")],
     ),
     route("POST", "/repos/:owner/:name/sessions", Op::Coordination(CoordinationOp::StartSession), &[]),
     route(
         "GET",
         "/repos/:owner/:name/sessions",
         Op::Coordination(CoordinationOp::ListSessions),
-        &[("state", "state"), ("issue", "issue"), ("pull", "pull"), ("path", "path"), ("subagents", "subagents")],
+        &[("state", "state"), ("item", "item"), ("pull", "pull"), ("path", "path"), ("subagents", "subagents")],
     ),
     route("POST", "/repos/:owner/:name/agent-sessions", Op::Coordination(CoordinationOp::StartAgentSession), &[]),
     route("GET", "/repos/:owner/:name/sessions/:id", Op::Coordination(CoordinationOp::GetSession), &[("after", "after")]),
@@ -1060,16 +1055,12 @@ pub const ROUTES: &[Route] = &[
     route("POST", "/workspaces/:workspace/actions/runner-groups", Op::CreateRunnerGroup, &[]),
     route("PATCH", "/workspaces/:workspace/actions/runner-groups/:id", Op::UpdateRunnerGroup, &[]),
     route("DELETE", "/workspaces/:workspace/actions/runner-groups/:id", Op::DeleteRunnerGroup, &[]),
-    route(
-        "POST",
-        "/repos/:owner/:name/issues/:number/comments",
-        Op::AddComment,
-        &[],
-    ),
-    route("PATCH", "/repos/:owner/:name/issues/comments/:comment_id", Op::EditComment, &[]),
-    route("DELETE", "/repos/:owner/:name/issues/comments/:comment_id", Op::DeleteComment, &[]),
-    route("POST", "/repos/:owner/:name/issues/:number/reactions", Op::React, &[]),
-    // An image to show in an issue's, a pull request's or a comment's Markdown.
+    // Comments on pull requests, and reactions to them.
+    route("POST", "/repos/:owner/:name/pulls/:number/comments", Op::AddComment, &[]),
+    route("PATCH", "/repos/:owner/:name/pulls/comments/:comment_id", Op::EditComment, &[]),
+    route("DELETE", "/repos/:owner/:name/pulls/comments/:comment_id", Op::DeleteComment, &[]),
+    route("POST", "/repos/:owner/:name/pulls/:number/reactions", Op::React, &[]),
+    // An image to show in a work item's, a pull request's or a comment's Markdown.
     route("POST", "/repos/:owner/:name/attachments", Op::UploadAttachment, &[]),
     route(
         "GET",
@@ -1131,11 +1122,10 @@ pub const ROUTES: &[Route] = &[
         Op::RecordSession,
         &[],
     ),
-    // Decision records, on a pull request or an issue (with its pull
-    // requests'), and why a line is the way it is.
+    // Decision records on a pull request (a work item's are with it), and
+    // why a line is the way it is.
     route("GET", "/repos/:owner/:name/pulls/:number/decisions", Op::ListDecisions, &[]),
     route("POST", "/repos/:owner/:name/pulls/:number/decisions", Op::RecordDecision, &[]),
-    route("GET", "/repos/:owner/:name/issues/:number/decisions", Op::ListDecisions, &[]),
     route("GET", "/repos/:owner/:name/why", Op::Why, &[("path", "path"), ("line", "line"), ("ref", "ref")]),
     route(
         "POST",
@@ -1196,7 +1186,7 @@ impl Route {
     pub fn no_content(&self) -> bool {
         matches!(
             self.op,
-            Op::DeleteComment | Op::DeleteCommitComment | Op::Caches(CachesOp::DeleteCache)
+            Op::DeleteComment | Op::DeleteWorkItemComment | Op::DeleteCommitComment | Op::Caches(CachesOp::DeleteCache)
         )
     }
 
@@ -1330,7 +1320,7 @@ pub fn resolve(
         input.remove("until");
     }
     if let Some(number) = param("number") {
-        // Not a number: zero, which no issue or pull request has.
+        // Not a number: zero, which no work item or pull request has.
         input.insert(
             "number".to_owned(),
             number.parse::<u32>().unwrap_or(0).into(),
@@ -1396,14 +1386,14 @@ mod tests {
             "POST",
             "/repos/flagon-io/hello/pulls/14/merge",
             &[],
-            json!({ "keep_issue_open": true, "number": 99, "repo": "someone/else" }),
+            json!({ "keep_item_open": true, "number": 99, "repo": "someone/else" }),
         )
         .unwrap();
         assert_eq!(route.op, Op::MergePullRequest);
         // What the path names wins over the body.
         assert_eq!(
             input,
-            json!({ "keep_issue_open": true, "number": 14, "repo": "flagon-io/hello" })
+            json!({ "keep_item_open": true, "number": 14, "repo": "flagon-io/hello" })
         );
     }
 
@@ -1516,7 +1506,7 @@ mod tests {
     }
 
     #[test]
-    fn notifications_are_addressed_as_threads_and_by_issue() {
+    fn notifications_are_addressed_as_threads_and_by_number() {
         let (route, input) = resolve("DELETE", "/notifications/threads/ntf_1", &[], Value::Null).unwrap();
         assert_eq!(route.op, Op::MarkThreadDone);
         assert_eq!(input, json!({ "id": "ntf_1" }));
@@ -1530,7 +1520,10 @@ mod tests {
         let (route, input) = resolve("GET", "/repos/acme/rocket/notifications", &query, Value::Null).unwrap();
         assert_eq!(route.op, Op::ListNotifications);
         assert_eq!(input, json!({ "all": "true", "per_page": "50", "repo": "acme/rocket" }));
-        let (route, input) = resolve("PUT", "/repos/acme/rocket/issues/7/subscription", &[], json!({ "ignored": true })).unwrap();
+        let (route, input) = resolve("PUT", "/workspaces/acme/work/7/subscription", &[], json!({ "ignored": true })).unwrap();
+        assert_eq!(route.op, Op::SetThreadSubscription);
+        assert_eq!(input, json!({ "ignored": true, "number": 7, "workspace": "acme" }));
+        let (route, input) = resolve("PUT", "/repos/acme/rocket/pulls/7/subscription", &[], json!({ "ignored": true })).unwrap();
         assert_eq!(route.op, Op::SetThreadSubscription);
         assert_eq!(input, json!({ "ignored": true, "number": 7, "repo": "acme/rocket" }));
         assert_eq!(resolve("GET", "/user/subscriptions", &[], Value::Null).unwrap().0.op, Op::ListWatchedRepos);
@@ -1538,20 +1531,23 @@ mod tests {
 
     #[test]
     fn labels_and_milestones_are_named_in_the_path() {
-        let (route, input) = resolve("PATCH", "/repos/acme/web/labels/good%20first%20issue", &[], json!({ "color": "7057ff" })).unwrap();
+        let (route, input) = resolve("PATCH", "/workspaces/acme/labels/good%20first%20issue", &[], json!({ "color": "7057ff" })).unwrap();
         assert_eq!(route.op, Op::UpdateLabel);
-        assert_eq!(input, json!({ "color": "7057ff", "label": "good first issue", "repo": "acme/web" }));
-        let (route, input) = resolve("DELETE", "/repos/acme/web/issues/7/labels/bug", &[], Value::Null).unwrap();
-        assert_eq!(route.op, Op::RemoveIssueLabels);
-        assert_eq!(input, json!({ "label": "bug", "number": 7, "repo": "acme/web" }));
-        let (route, input) = resolve("DELETE", "/repos/acme/web/issues/7/labels", &[], Value::Null).unwrap();
-        assert_eq!(route.op, Op::RemoveIssueLabels);
-        assert_eq!(input, json!({ "number": 7, "repo": "acme/web" }));
-        let (route, _) = resolve("POST", "/repos/acme/web/labels/defaults", &[], Value::Null).unwrap();
+        assert_eq!(input, json!({ "color": "7057ff", "label": "good first issue", "workspace": "acme" }));
+        let (route, input) = resolve("DELETE", "/workspaces/acme/work/7/labels/bug", &[], Value::Null).unwrap();
+        assert_eq!(route.op, Op::RemoveWorkItemLabels);
+        assert_eq!(input, json!({ "label": "bug", "number": 7, "workspace": "acme" }));
+        let (route, input) = resolve("DELETE", "/workspaces/acme/work/7/labels", &[], Value::Null).unwrap();
+        assert_eq!(route.op, Op::RemoveWorkItemLabels);
+        assert_eq!(input, json!({ "number": 7, "workspace": "acme" }));
+        let (route, _) = resolve("POST", "/workspaces/acme/labels/defaults", &[], Value::Null).unwrap();
         assert_eq!(route.op, Op::AddDefaultLabels);
-        let (route, input) = resolve("PATCH", "/repos/acme/web/milestones/3", &[], json!({ "state": "closed" })).unwrap();
+        let (route, input) = resolve("PATCH", "/workspaces/acme/milestones/3", &[], json!({ "state": "closed" })).unwrap();
         assert_eq!(route.op, Op::UpdateMilestone);
-        assert_eq!(input, json!({ "state": "closed", "milestone": 3, "repo": "acme/web" }));
+        assert_eq!(input, json!({ "state": "closed", "milestone": 3, "workspace": "acme" }));
+        // A repository's labels and milestones are its workspace's now.
+        assert!(resolve("GET", "/repos/acme/web/labels", &[], Value::Null).is_none());
+        assert!(resolve("GET", "/repos/acme/web/milestones", &[], Value::Null).is_none());
         let (route, input) = resolve("PATCH", "/repos/acme/web/pulls/9", &[], json!({ "base": "release" })).unwrap();
         assert_eq!(route.op, Op::UpdatePullRequest);
         assert_eq!(input, json!({ "base": "release", "number": 9, "repo": "acme/web" }));
@@ -1581,8 +1577,8 @@ mod tests {
         assert_eq!(input, json!({ "body": "Better", "comment_id": "cc_1", "repo": "acme/web" }));
         let (route, _) = resolve("DELETE", "/repos/acme/web/comments/cc_1", &[], Value::Null).unwrap();
         assert!(route.op == Op::DeleteCommitComment && route.no_content());
-        // An issue's comments keep theirs.
-        assert_eq!(op("PATCH", "/repos/acme/web/issues/comments/cmt_1"), Op::EditComment);
+        // A pull request's comments keep theirs.
+        assert_eq!(op("PATCH", "/repos/acme/web/pulls/comments/cmt_1"), Op::EditComment);
     }
 
     #[test]
@@ -1596,18 +1592,57 @@ mod tests {
         assert_eq!(route.op, Op::UpdatePullRequest);
         assert_eq!(input, json!({ "state": "open", "number": 9, "repo": "acme/web" }));
         let (route, input) =
-            resolve("PATCH", "/repos/acme/web/issues/comments/cmt_1", &[], json!({ "body": "Better" })).unwrap();
+            resolve("PATCH", "/repos/acme/web/pulls/comments/cmt_1", &[], json!({ "body": "Better" })).unwrap();
         assert_eq!(route.op, Op::EditComment);
         assert_eq!(input, json!({ "body": "Better", "comment_id": "cmt_1", "repo": "acme/web" }));
-        let (route, input) = resolve("DELETE", "/repos/acme/web/issues/comments/cmt_1", &[], Value::Null).unwrap();
+        let (route, input) = resolve("DELETE", "/repos/acme/web/pulls/comments/cmt_1", &[], Value::Null).unwrap();
         assert_eq!(route.op, Op::DeleteComment);
         assert_eq!(input, json!({ "comment_id": "cmt_1", "repo": "acme/web" }));
-        // Still an issue's comments, labels and subscription.
-        assert_eq!(op("POST", "/repos/acme/web/issues/7/comments"), Op::AddComment);
-        assert_eq!(op("POST", "/repos/acme/web/issues/7/reactions"), Op::React);
+        assert_eq!(op("POST", "/repos/acme/web/pulls/7/comments"), Op::AddComment);
+        assert_eq!(op("POST", "/repos/acme/web/pulls/7/reactions"), Op::React);
         assert_eq!(op("POST", "/repos/acme/web/attachments"), Op::UploadAttachment);
-        assert_eq!(op("DELETE", "/repos/acme/web/issues/7/labels"), Op::RemoveIssueLabels);
-        assert_eq!(op("DELETE", "/repos/acme/web/issues/7/subscription"), Op::DeleteThreadSubscription);
+        assert_eq!(op("DELETE", "/repos/acme/web/pulls/7/subscription"), Op::DeleteThreadSubscription);
+        // A work item's are in its workspace.
+        let (route, input) =
+            resolve("PATCH", "/workspaces/acme/work/comments/cmt_1", &[], json!({ "body": "Better" })).unwrap();
+        assert_eq!(route.op, Op::EditWorkItemComment);
+        assert_eq!(input, json!({ "body": "Better", "comment_id": "cmt_1", "workspace": "acme" }));
+        assert_eq!(op("DELETE", "/workspaces/acme/work/comments/cmt_1"), Op::DeleteWorkItemComment);
+        assert_eq!(op("POST", "/workspaces/acme/work/7/comments"), Op::AddWorkItemComment);
+        assert_eq!(op("POST", "/workspaces/acme/work/7/reactions"), Op::ReactToWorkItem);
+        assert_eq!(op("DELETE", "/workspaces/acme/work/7/subscription"), Op::DeleteThreadSubscription);
+    }
+
+    #[test]
+    fn work_items_are_addressed_by_workspace_and_number() {
+        let op = |method: &str, path: &str| resolve(method, path, &[], Value::Null).unwrap().0.op;
+        let query = [("state".to_owned(), "open".to_owned()), ("repo".to_owned(), "acme/web".to_owned()), ("role".to_owned(), "target".to_owned())];
+        let (route, input) = resolve("GET", "/workspaces/acme/work", &query, Value::Null).unwrap();
+        assert_eq!(route.op, Op::ListWorkItems);
+        assert_eq!(input, json!({ "state": "open", "repo": "acme/web", "role": "target", "workspace": "acme" }));
+        assert_eq!(op("POST", "/workspaces/acme/work"), Op::OpenWorkItem);
+        assert_eq!(op("POST", "/workspaces/acme/work/import"), Op::ImportWorkItems);
+        let (route, input) = resolve("GET", "/workspaces/acme/work/12", &[], Value::Null).unwrap();
+        assert_eq!(route.op, Op::GetWorkItem);
+        assert_eq!(input, json!({ "number": 12, "workspace": "acme" }));
+        assert_eq!(op("PATCH", "/workspaces/acme/work/12"), Op::UpdateWorkItem);
+        assert_eq!(op("POST", "/workspaces/acme/work/12/close"), Op::CloseWorkItem);
+        assert_eq!(op("POST", "/workspaces/acme/work/12/reopen"), Op::ReopenWorkItem);
+        assert_eq!(op("GET", "/workspaces/acme/work/12/links"), Op::ListWorkItemLinks);
+        assert_eq!(op("POST", "/workspaces/acme/work/12/links"), Op::LinkWorkItem);
+        let (route, input) = resolve("DELETE", "/workspaces/acme/work/12/links", &[("repo".to_owned(), "acme/api".to_owned())], Value::Null).unwrap();
+        assert_eq!(route.op, Op::UnlinkWorkItem);
+        assert_eq!(input, json!({ "repo": "acme/api", "number": 12, "workspace": "acme" }));
+        assert_eq!(op("GET", "/workspaces/acme/work/12/decisions"), Op::ListWorkItemDecisions);
+        assert_eq!(op("GET", "/repos/acme/web/work"), Op::ListRepoWorkItems);
+        let (route, input) = resolve("GET", "/repos/acme/web/refs/7", &[], Value::Null).unwrap();
+        assert_eq!(route.op, Op::ResolveRef);
+        assert_eq!(input, json!({ "number": 7, "repo": "acme/web" }));
+        assert_eq!(op("GET", "/workspaces/acme/refs/7"), Op::ResolveRef);
+        // The repository's issues are gone, with no aliases.
+        for path in ["/repos/acme/web/issues", "/repos/acme/web/issues/7", "/repos/acme/web/issues/7/comments"] {
+            assert!(resolve("GET", path, &[], Value::Null).is_none(), "{path}");
+        }
     }
 
     #[test]
@@ -1719,9 +1754,9 @@ mod tests {
 
     #[test]
     fn method_and_shape_must_match() {
-        assert!(resolve("GET", "/repos/a/b/issues/1/close", &[], Value::Null).is_none());
+        assert!(resolve("GET", "/workspaces/a/work/1/close", &[], Value::Null).is_none());
         assert!(resolve("GET", "/repos/a", &[], Value::Null).is_none());
-        assert!(resolve("GET", "/repos/a/b/issues/1/extra", &[], Value::Null).is_none());
+        assert!(resolve("GET", "/workspaces/a/work/1/extra", &[], Value::Null).is_none());
         assert!(resolve("GET", "/repos/a/b/", &[], Value::Null).is_some());
     }
 

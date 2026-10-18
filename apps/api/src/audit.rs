@@ -346,14 +346,14 @@ mod tests {
 
     #[test]
     fn a_token_without_the_scope_is_refused_and_told_which() {
-        let reader = with_token(Some(&[Scope::IssuesRead]), false);
+        let reader = with_token(Some(&[Scope::WorkRead]), false);
         let input = json!({ "repo": "acme/rocket", "title": "x" });
-        assert!(token_decision(Op::GetIssue, &reader, &input).unwrap().allowed);
-        let refused = token_decision(Op::CreateIssue, &reader, &input).unwrap();
+        assert!(token_decision(Op::GetWorkItem, &reader, &input).unwrap().allowed);
+        let refused = token_decision(Op::OpenWorkItem, &reader, &input).unwrap();
         assert!(!refused.allowed);
-        assert!(refused.reason.unwrap().contains("issues:write"));
-        assert_eq!(missing_scope(Op::CreateIssue, &Some(reader.clone()), &input), Some(Scope::IssuesWrite));
-        assert_eq!(missing_scope(Op::GetIssue, &Some(reader), &input), None);
+        assert!(refused.reason.unwrap().contains("work:write"));
+        assert_eq!(missing_scope(Op::OpenWorkItem, &Some(reader.clone()), &input), Some(Scope::WorkWrite));
+        assert_eq!(missing_scope(Op::GetWorkItem, &Some(reader), &input), None);
     }
 
     #[test]

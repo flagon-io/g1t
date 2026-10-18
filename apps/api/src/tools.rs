@@ -62,17 +62,17 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "search",
         title: "Search",
-        description: "Find things. `code` (the default) searches all of g1t you can see: repositories, code, issues, pull requests and people, with qualifiers like repo:owner/name, language:rust, is:issue. `ticket` reads a Jira, Linear or Sentry item the work refers to.",
+        description: "Find things. `code` (the default) searches all of g1t you can see: repositories, code, work items, pull requests and people, with qualifiers like repo:owner/name, language:rust, is:item. `ticket` reads a Jira, Linear or Sentry item the work refers to.",
         default_action: Some("code"),
         actions: &[
-            a("code", Op::Search, "Search all of g1t: repositories, code, issues, pull requests, people"),
+            a("code", Op::Search, "Search all of g1t: repositories, code, work items, pull requests, people"),
             a("ticket", Op::GetContext, "A Jira, Linear or Sentry item the work refers to, as it is now"),
         ],
     },
     Tool {
         name: "repository",
         title: "Repositories",
-        description: "Repositories: find, read and create them, change their settings and rulesets (what may happen to branches and tags, and what a pull request needs to merge), check their CODEOWNERS file, manage their labels and milestones, see and dismiss their security alerts (secrets and vulnerable dependencies), read what their default branch says (languages, contributors, license), star them, publish releases and comment on their commits. Name one as \"owner/name\". Deleting, transferring and changing visibility need `confirm`.",
+        description: "Repositories: find, read and create them, change their settings and rulesets (what may happen to branches and tags, and what a pull request needs to merge), check their CODEOWNERS file, see and dismiss their security alerts (secrets and vulnerable dependencies), read what their default branch says (languages, contributors, license), star them, publish releases and comment on their commits. Name one as \"owner/name\". Deleting, transferring and changing visibility need `confirm`.",
         default_action: None,
         actions: &[
             a("list", Op::ListRepos, "Repositories you can see"),
@@ -99,17 +99,8 @@ pub const TOOLS: &[Tool] = &[
             a("branch_rules", Op::Rules(RulesOp::GetBranchRules), "Every rule that holds for a branch or tag, and where it comes from"),
             a("rule_evaluations", Op::Rules(RulesOp::ListRuleEvaluations), "How its rules judged pushes and merges, with insights"),
             a("codeowners", Op::GetCodeownersErrors, "Problems in its CODEOWNERS file, by line"),
-            a("list_labels", Op::ListLabels, "Labels, with colors and how many issues and pull requests carry each"),
-            a("create_label", Op::CreateLabel, "Create a label"),
-            a("update_label", Op::UpdateLabel, "Rename a label or change its color or description"),
-            a("delete_label", Op::DeleteLabel, "Delete a label, from everything that carries it"),
-            a("add_default_labels", Op::AddDefaultLabels, "Add the default labels it is missing"),
-            a("list_milestones", Op::ListMilestones, "Milestones, with progress and due dates"),
-            a("get_milestone", Op::GetMilestone, "One milestone with its issues and pull requests"),
-            a("create_milestone", Op::CreateMilestone, "Create a milestone"),
-            a("update_milestone", Op::UpdateMilestone, "Change a milestone's title, description, due date or state"),
-            a("delete_milestone", Op::DeleteMilestone, "Delete a milestone"),
-            a("list_events", Op::ListEvents, "Timeline: pushes, issues, pull requests, comments"),
+            a("list_events", Op::ListEvents, "Timeline: pushes, work items, pull requests, comments"),
+            a("work", Op::ListRepoWorkItems, "The work items linked to it, in any role or in one"),
             a("languages", Op::About(AboutOp::GetLanguages), "Its languages by bytes, with colors and percentages"),
             a("contributors", Op::About(AboutOp::ListContributors), "Who made it: commits per person, agent and author, by week"),
             a("license", Op::About(AboutOp::GetLicense), "The license its LICENSE file holds"),
@@ -141,45 +132,50 @@ pub const TOOLS: &[Tool] = &[
             a("list_deleted", Op::ListDeletedRepos, "A workspace's deleted repositories"),
             a("restore", Op::RestoreRepo, "Restore a deleted one"),
             a("purge", Op::PurgeRepo, "Remove a deleted one for good"),
-            a("why", Op::Why, "Why a line is the way it is: commit, pull request, issue, decisions, session"),
+            a("why", Op::Why, "Why a line is the way it is: commit, pull request, work item, decisions, session"),
             a("security_alerts", Op::ListSecurityAlerts, "Secret and dependency alerts, filtered by state"),
             a("dismiss_alert", Op::DismissSecurityAlert, "Dismiss an alert with a reason"),
             a("reopen_alert", Op::ReopenSecurityAlert, "Reopen a dismissed alert"),
         ],
     },
     Tool {
-        name: "issue",
-        title: "Issues",
-        description: "Issues: what should change. Before working on one, `work` gives everything about it (definition of done, who is on it, its pull requests, what it waits on); `claim` says you are on it (advisory and expiring, never a lock), `release` or `handoff` when you stop. `update` with blocked_by sets the issues that must land first. Issues and pull requests share numbers; `comment` works on either, and `attach` uploads an image (a screenshot) whose markdown goes in either's body or a comment.",
+        name: "work_item",
+        title: "Work items",
+        description: "Work items: any tracked work of a workspace (a feature, a bug, a chore), numbered in the workspace with its new pull requests, and linked to the repositories it concerns: its origin (where it was filed), its targets (where the work is meant to land) and those it touched. Name one by `workspace` and `number`; `repo` alone names the workspace too (and on `list` filters, on `create` is the origin). Before working on one, `work` gives everything about it (definition of done, each repository with its pull requests and whether the work landed there, what is missing, suggested targets, who is on it, what it waits on); `claim` says you are on it (advisory and expiring, never a lock), `release` or `handoff` when you stop. `link` a repository as a target to say the work must land there too. `update` with blocked_by sets the work items that must land first. `attach` uploads an image (a screenshot) whose markdown goes in a body or a comment.",
         default_action: None,
         actions: &[
-            a("list", Op::ListIssues, "Issues on a repository, newest first"),
-            a("get", Op::GetIssue, "One issue with comments and its pull requests"),
-            a("create", Op::CreateIssue, "Open an issue"),
-            a("update", Op::UpdateIssue, "Change title, body, labels, milestone, assignees or blocked_by"),
-            a("labels", Op::ListIssueLabels, "The labels an issue or pull request carries"),
-            a("add_labels", Op::AddIssueLabels, "Add labels to an issue or pull request"),
-            a("set_labels", Op::SetIssueLabels, "Replace the labels of an issue or pull request"),
-            a("remove_labels", Op::RemoveIssueLabels, "Take labels off an issue or pull request"),
-            a("close", Op::CloseIssue, "Close it without a pull request; commit names the commit on the default branch that did it"),
-            a("reopen", Op::ReopenIssue, "Reopen it"),
-            a("comment", Op::AddComment, "Comment on an issue or pull request; path and line for one line of a change"),
-            a("edit_comment", Op::EditComment, "Change a comment's text: your own, or any with the Maintain role"),
-            a("delete_comment", Op::DeleteComment, "Delete a comment: your own, or any with the Maintain role"),
-            a("react", Op::React, "React with an emoji to it, or with comment_id to one of its comments; remove takes it back"),
+            a("list", Op::ListWorkItems, "A workspace's work items, newest first; by state, label, milestone, assignee, or a repository linked to them"),
+            a("get", Op::GetWorkItem, "One work item with its repositories, comments and pull requests"),
+            a("create", Op::OpenWorkItem, "Open a work item, filed from repo or in the workspace, with targets"),
+            a("update", Op::UpdateWorkItem, "Change title, body, labels, milestone, assignees or blocked_by"),
+            a("close", Op::CloseWorkItem, "Close it without a pull request; commit (with repo) names the default-branch commit that did it"),
+            a("reopen", Op::ReopenWorkItem, "Reopen it"),
+            a("links", Op::ListWorkItemLinks, "The repositories it is linked to, with roles and where it landed"),
+            a("link", Op::LinkWorkItem, "Link a repository as a target (or touched)"),
+            a("unlink", Op::UnlinkWorkItem, "Unlink a repository it no longer concerns"),
+            a("labels", Op::ListWorkItemLabels, "The labels it carries"),
+            a("add_labels", Op::AddWorkItemLabels, "Add labels to it"),
+            a("set_labels", Op::SetWorkItemLabels, "Replace its labels"),
+            a("remove_labels", Op::RemoveWorkItemLabels, "Take labels off it"),
+            a("comment", Op::AddWorkItemComment, "Comment on it"),
+            a("edit_comment", Op::EditWorkItemComment, "Change a comment's text: your own, or any with the Maintain role"),
+            a("delete_comment", Op::DeleteWorkItemComment, "Delete a comment: your own, or any with the Maintain role"),
+            a("react", Op::ReactToWorkItem, "React with an emoji to it, or with comment_id to one of its comments; remove takes it back"),
+            a("decisions", Op::ListWorkItemDecisions, "Decision records on it and its pull requests"),
             a("attach", Op::UploadAttachment, "Upload an image (base64, PNG/JPEG/GIF/WebP, at most 10 MB; keep it small over MCP) for its markdown, to paste into a body, summary or comment"),
-            a("import", Op::ImportIssue, "Open an issue from a Jira, Linear or Sentry item"),
-            a("work", Op::Coordination(CoordinationOp::GetWork), "Everything to pick it up: done means, claims, sessions, pull requests, blockers, decisions, recent events"),
-            a("claim", Op::Coordination(CoordinationOp::ClaimIssue), "Say you are working on it; lists who else is, and what it is blocked by"),
+            a("import", Op::ImportWorkItems, "Open a work item from a Jira, Linear or Sentry item"),
+            a("resolve", Op::ResolveRef, "What #N names in a workspace, or in repo: a work item or a pull request"),
+            a("work", Op::Coordination(CoordinationOp::GetWork), "Everything to pick it up: done means, repositories and what landed, missing targets, suggested targets, claims, sessions, pull requests, blockers, decisions"),
+            a("claim", Op::Coordination(CoordinationOp::ClaimWorkItem), "Say you are working on it; lists who else is, and what it is blocked by. Without number, title opens one and claims it"),
             a("release", Op::Coordination(CoordinationOp::ReleaseClaim), "Stop working on it"),
-            a("handoff", Op::Coordination(CoordinationOp::HandOffIssue), "Hand it off, to someone or anyone, with a note on where it stands"),
-            a("list_claims", Op::Coordination(CoordinationOp::ListClaims), "Claims on a repository's issues: who is working on what"),
+            a("handoff", Op::Coordination(CoordinationOp::HandOffWorkItem), "Hand it off, to someone or anyone, with a note on where it stands"),
+            a("list_claims", Op::Coordination(CoordinationOp::ListClaims), "Claims on a workspace's work items: who is working on what"),
         ],
     },
     Tool {
         name: "pull_request",
         title: "Pull requests",
-        description: "Pull requests: start a change for an issue, record your session, mark it ready, ask people and teams to review, review, update its branch, and merge (by merge, squash, rebase or fast_forward) now or with auto-merge. Read `overlaps` and `behind` on `get` before going far, and `code_owners` for whose approval it needs.",
+        description: "Pull requests: start a change for a work item (`item`, its number in the workspace), record your session, comment, mark it ready, ask people and teams to review, review, update its branch, and merge (by merge, squash, rebase or fast_forward) now or with auto-merge. Read `overlaps` and `behind` on `get` before going far, and `code_owners` for whose approval it needs.",
         default_action: None,
         actions: &[
             a("list", Op::ListPullRequests, "Pull requests on a repository, newest first"),
@@ -190,7 +186,11 @@ pub const TOOLS: &[Tool] = &[
             a("record_session", Op::RecordSession, "Append user-facing decision summaries and tool activity to its session"),
             a("read_session", Op::ReadSession, "Its recorded session"),
             a("record_decision", Op::RecordDecision, "Record why: a proposal, claim, fix or note, kept as claimed"),
-            a("list_decisions", Op::ListDecisions, "Decision records on a pull request, or an issue and its pull requests"),
+            a("list_decisions", Op::ListDecisions, "Decision records on a pull request"),
+            a("comment", Op::AddComment, "Comment on it; path and line for one line of the change"),
+            a("edit_comment", Op::EditComment, "Change a comment's text: your own, or any with the Maintain role"),
+            a("delete_comment", Op::DeleteComment, "Delete a comment: your own, or any with the Maintain role"),
+            a("react", Op::React, "React with an emoji to it, or with comment_id to one of its comments; remove takes it back"),
             a("ready", Op::MarkPullRequestReady, "Mark a draft ready, with a summary"),
             a("draft", Op::ConvertPullRequestToDraft, "Turn it back into a draft"),
             a("request_reviewers", Op::RequestReviewers, "Ask people or teams to review it"),
@@ -211,16 +211,16 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "session",
         title: "Sessions",
-        description: "Your harness session on a repository, so others see who is working on what: `start` once (idempotent on harness_session_id; a subagent starts its own with parent_id), `update` as a heartbeat or to attach an issue, pull request, branch or head commit, `record` user-facing decisions, tool calls, skills used and what it touched (idempotent on key), `end` when done with what it reported. `list` with an issue, or a path, shows who else (sibling subagents too) is on the same work. `dispatch` starts work on an issue in a session on the person's own Claude. A session goes idle after 15 minutes without a heartbeat and ends after 30 minutes; a heartbeat brings it back.",
+        description: "Your harness session on a repository, so others see who is working on what: `start` once (idempotent on harness_session_id; a subagent starts its own with parent_id), `update` as a heartbeat or to attach a work item, pull request, branch or head commit, `record` user-facing decisions, tool calls, skills used and what it touched (idempotent on key), `end` when done with what it reported. `list` with an item, or a path, shows who else (sibling subagents too) is on the same work. `dispatch` starts work on a work item in a session on the person's own Claude. A session goes idle after 15 minutes without a heartbeat and ends after 30 minutes; a heartbeat brings it back.",
         default_action: None,
         actions: &[
             a("start", Op::Coordination(CoordinationOp::StartSession), "Start one, or get the one started with this harness_session_id"),
-            a("update", Op::Coordination(CoordinationOp::UpdateSession), "Heartbeat; or attach an issue, pull request, branch, head commit or title"),
+            a("update", Op::Coordination(CoordinationOp::UpdateSession), "Heartbeat; or attach a work item, pull request, branch, head commit or title"),
             a("record", Op::Coordination(CoordinationOp::RecordSessionEntries), "Record entries and acknowledge exact coordination update IDs after considering them; entry keys make retries idempotent"),
             a("end", Op::Coordination(CoordinationOp::EndSession), "End it"),
             a("get", Op::Coordination(CoordinationOp::GetSession), "One session, entries and pending coordination updates (reading never acknowledges)"),
-            a("list", Op::Coordination(CoordinationOp::ListSessions), "A repository's sessions: active, idle or ended, by issue, pull request or file touched; with subagents, each tree whole"),
-            a("dispatch", Op::Coordination(CoordinationOp::StartAgentSession), "Start work on an issue in a session on the person's own Claude (Managed Agents with the workspace's Anthropic key), or get a Claude Code hand-off"),
+            a("list", Op::Coordination(CoordinationOp::ListSessions), "A repository's sessions: active, idle or ended, by work item, pull request or file touched; with subagents, each tree whole"),
+            a("dispatch", Op::Coordination(CoordinationOp::StartAgentSession), "Start work on a work item in a session on the person's own Claude (Managed Agents with the workspace's Anthropic key), or get a Claude Code hand-off"),
         ],
     },
     Tool {
@@ -315,7 +315,7 @@ pub const TOOLS: &[Tool] = &[
             a("traces", Op::Telemetry(TelemetryOp::ListTraces), "Traces, newest first: q, errors_only, min_duration_ms"),
             a("trace", Op::Telemetry(TelemetryOp::GetTrace), "One trace: every span, with its timing, status and attributes, and its logs"),
             a("errors", Op::Telemetry(TelemetryOp::ListErrors), "Errors grouped by exception, most recent first, with the deployment that brought each in"),
-            a("update_error", Op::Telemetry(TelemetryOp::UpdateError), "Resolve, ignore or reopen an error group, or link the issue made for it"),
+            a("update_error", Op::Telemetry(TelemetryOp::UpdateError), "Resolve, ignore or reopen an error group, or link the work item made for it"),
             a("metrics", Op::Telemetry(TelemetryOp::ListMetrics), "The metrics the project's software sends"),
             a("metric", Op::Telemetry(TelemetryOp::GetMetric), "One metric over time: aggregate (avg, sum, p95), group_by an attribute"),
         ],
@@ -420,7 +420,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "workspace",
         title: "Workspaces",
-        description: "Workspaces own repositories (g1t.sh/{workspace}/{repo}): read what happened across its repositories (`activity`: what merged, shipped and deployed, by whom, over a span), create, update or delete one, invite members, connect integrations, set rulesets that hold across its repositories, read and change its projects (what each is, where it runs, its links), and keep your own pinned projects at the top of its sidebar.",
+        description: "Workspaces own repositories (g1t.sh/{workspace}/{repo}) and work items (g1t.sh/{workspace}/-/work): read what happened across its repositories (`activity`: what merged, shipped and deployed, by whom, over a span), create, update or delete one, invite members, manage its labels and milestones (which its work items and pull requests carry), connect integrations, set rulesets that hold across its repositories, read and change its projects (what each is, where it runs, its links), and keep your own pinned projects at the top of its sidebar.",
         default_action: None,
         actions: &[
             a("get", Op::GetWorkspace, "A workspace's details and settings"),
@@ -435,12 +435,22 @@ pub const TOOLS: &[Tool] = &[
             a("list_invites", Op::ListWorkspaceInvites, "Its invites"),
             a("invite_member", Op::InviteMember, "Invite someone by username or email address"),
             a("revoke_invite", Op::RevokeWorkspaceInvite, "Revoke a pending invite"),
+            a("list_labels", Op::ListLabels, "Its labels, with colors and how many work items and pull requests carry each"),
+            a("create_label", Op::CreateLabel, "Create a label"),
+            a("update_label", Op::UpdateLabel, "Rename a label or change its color or description"),
+            a("delete_label", Op::DeleteLabel, "Delete a label, from everything that carries it"),
+            a("add_default_labels", Op::AddDefaultLabels, "Add the default labels it is missing"),
+            a("list_milestones", Op::ListMilestones, "Its milestones, with progress and due dates"),
+            a("get_milestone", Op::GetMilestone, "One milestone with its work items and pull requests"),
+            a("create_milestone", Op::CreateMilestone, "Create a milestone"),
+            a("update_milestone", Op::UpdateMilestone, "Change a milestone's title, description, due date or state"),
+            a("delete_milestone", Op::DeleteMilestone, "Delete a milestone"),
             a("list_integrations", Op::ListIntegrations, "Alert sources and issue trackers"),
             a("connect_integration", Op::ConnectIntegration, "Connect one"),
             a("update_integration", Op::UpdateIntegration, "Change one: rotate its key or its settings"),
             a("disconnect_integration", Op::DisconnectIntegration, "Remove one"),
             a("test_integration", Op::TestIntegration, "Check its credentials"),
-            a("activity", Op::GetWorkspaceActivity, "What happened across its repositories over a span: merged pull requests, releases, deployments, pushes, issues; what shipped"),
+            a("activity", Op::GetWorkspaceActivity, "What happened across its repositories over a span: merged pull requests, releases, deployments, pushes, work items; what shipped"),
             a("list_projects", Op::ListProjects, "Its projects you can see: what each is, where it runs, its links"),
             a("get_project", Op::GetProject, "One project"),
             a("update_project", Op::UpdateProject, "Change a project's name, description, kind, where it runs or its links"),
@@ -548,7 +558,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "notifications",
         title: "Notifications",
-        description: "Your inbox: what needs you, and what you follow. One thread per issue, pull request, workflow or deployment, with why you were told (`reason`): a review asked of you, an assignment, a mention, your work's checks, or what you subscribe to and watch. Mark threads read or done once handled, and choose what you hear of with subscribe, unsubscribe and watch. Your own: a personal token.",
+        description: "Your inbox: what needs you, and what you follow. One thread per work item, pull request, workflow or deployment, with why you were told (`reason`): a review asked of you, an assignment, a mention, your work's checks, or what you subscribe to and watch. Mark threads read or done once handled, and choose what you hear of with subscribe, unsubscribe and watch. Your own: a personal token.",
         default_action: Some("list"),
         actions: &[
             a("list", Op::ListNotifications, "Unread threads, latest first; all, a view, a reason, a repository"),
@@ -558,8 +568,8 @@ pub const TOOLS: &[Tool] = &[
             a("done", Op::MarkThreadDone, "Mark a thread done; new activity brings it back"),
             a("save", Op::SaveThread, "Save a thread, or unsave it"),
             a("snooze", Op::SnoozeThread, "Snooze a thread until a time, or bring it back"),
-            a("subscription", Op::GetThreadSubscription, "Your subscription to an issue or pull request"),
-            a("subscribe", Op::SetThreadSubscription, "Subscribe to an issue or pull request, or ignore it"),
+            a("subscription", Op::GetThreadSubscription, "Your subscription to a work item or pull request"),
+            a("subscribe", Op::SetThreadSubscription, "Subscribe to a work item or pull request, or ignore it"),
             a("unsubscribe", Op::DeleteThreadSubscription, "Unsubscribe until you comment or are mentioned"),
             a("watching", Op::GetRepoSubscription, "How you watch a repository"),
             a("watch", Op::SetRepoSubscription, "Watch a repository: participating, all, ignore or custom"),
@@ -1022,17 +1032,22 @@ mod tests {
             assert_eq!(tool["annotations"]["readOnlyHint"], true, "{}", tool["name"]);
             assert_eq!(tool["annotations"]["destructiveHint"], false);
         }
-        let issue = tools.iter().find(|tool| tool["name"] == "issue").unwrap();
-        assert_eq!(issue["inputSchema"]["properties"]["action"]["enum"], json!(["list", "get", "labels", "work", "list_claims"]));
+        let work_item = tools.iter().find(|tool| tool["name"] == "work_item").unwrap();
+        assert_eq!(
+            work_item["inputSchema"]["properties"]["action"]["enum"],
+            json!(["list", "get", "links", "labels", "decisions", "resolve", "work", "list_claims"])
+        );
     }
 
     #[test]
     fn a_narrow_token_sees_only_its_tools() {
-        let access = token(Some(vec![Scope::IssuesWrite]));
+        let access = token(Some(vec![Scope::WorkWrite]));
         let names: Vec<Value> = listed(&Gate::Token(&access)).into_iter().map(|tool| tool["name"].clone()).collect();
-        // Labels and milestones are the repository's, managed with issues:write;
-        // looking up the ticket an issue refers to is search's.
-        assert_eq!(names, vec![json!("search"), json!("repository"), json!("issue"), json!("account")]);
+        // Labels and milestones are the workspace's, managed with work:write;
+        // looking up the ticket a work item refers to is search's, and a
+        // repository's commit comments and its work list are the
+        // repository's.
+        assert_eq!(names, vec![json!("search"), json!("repository"), json!("work_item"), json!("workspace"), json!("account")]);
         // Notifications are a resource of their own: reading them lists
         // only what reads.
         let reader = token(Some(vec![Scope::NotificationsRead]));
@@ -1060,11 +1075,18 @@ mod tests {
 
     #[test]
     fn calls_resolve_to_their_operation_or_say_what_is_missing() {
-        let issue = Tool::by_name("issue").unwrap();
-        assert_eq!(resolve(issue, &json!({ "action": "get", "repo": "a/b", "number": 1 })), Ok(Op::GetIssue));
-        assert_eq!(resolve(issue, &json!({ "action": "get", "repo": "a/b" })), Err("issue.get needs number.".to_owned()));
-        assert!(resolve(issue, &json!({})).unwrap_err().starts_with("Give an action"));
-        assert!(resolve(issue, &json!({ "action": "explode" })).unwrap_err().contains("no action explode"));
+        let work_item = Tool::by_name("work_item").unwrap();
+        assert_eq!(resolve(work_item, &json!({ "action": "get", "workspace": "a", "number": 1 })), Ok(Op::GetWorkItem));
+        assert_eq!(resolve(work_item, &json!({ "action": "get", "repo": "a/b" })), Err("work_item.get needs number.".to_owned()));
+        assert!(resolve(work_item, &json!({})).unwrap_err().starts_with("Give an action"));
+        assert!(resolve(work_item, &json!({ "action": "explode" })).unwrap_err().contains("no action explode"));
+        assert!(Tool::by_name("issue").is_none());
+        // Labels and milestones are the workspace's.
+        let workspace = Tool::by_name("workspace").unwrap();
+        assert_eq!(resolve(workspace, &json!({ "action": "list_labels", "workspace": "a" })), Ok(Op::ListLabels));
+        assert!(Tool::by_name("repository").unwrap().action("list_labels").is_none());
+        let pull = Tool::by_name("pull_request").unwrap();
+        assert_eq!(resolve(pull, &json!({ "action": "comment", "repo": "a/b", "number": 2, "body": "x" })), Ok(Op::AddComment));
         let search = Tool::by_name("search").unwrap();
         assert_eq!(resolve(search, &json!({ "query": "x" })), Ok(Op::Search));
         let account = Tool::by_name("account").unwrap();
@@ -1158,7 +1180,7 @@ mod tests {
         let admin = actions(vec![Scope::ArtifactsAdmin]).unwrap();
         assert_eq!(admin.as_array().unwrap().len(), Tool::by_name("artifact").unwrap().actions.len());
         // Without an artifacts scope there is no artifact tool at all.
-        assert_eq!(actions(vec![Scope::WorkflowsWrite, Scope::IssuesWrite]), None);
+        assert_eq!(actions(vec![Scope::WorkflowsWrite, Scope::WorkWrite]), None);
         // And an artifacts scope shows nothing of workflow runs' artifacts.
         let access = token(Some(vec![Scope::ArtifactsAdmin]));
         assert!(Tool::by_name("workflow").unwrap().listed(&Gate::Token(&access)).is_none());

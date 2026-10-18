@@ -81,7 +81,7 @@ pub fn asked(input: &Value) -> std::result::Result<Asked, String> {
     for item in list(&input["numbers"]) {
         match item.parse::<u32>() {
             Ok(number) if number > 0 => numbers.push(number),
-            _ => return Err(format!("numbers are issue and pull request numbers, and {item} is not one.")),
+            _ => return Err(format!("numbers are work item and pull request numbers, and {item} is not one.")),
         }
     }
     numbers.sort_unstable();

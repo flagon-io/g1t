@@ -180,14 +180,19 @@ fn sample(op: Op, example: &Value) -> Value {
         Op::ListDecisions => through::<Vec<g1t_contracts::decisions::Decision>>(op, sent),
         Op::RecordDecision => through::<g1t_contracts::decisions::Decision>(op, sent),
         Op::Why => through::<g1t_contracts::decisions::Why>(op, sent),
-        Op::ListIssues => through::<Vec<work::Issue>>(op, sent),
-        Op::CreateIssue | Op::UpdateIssue | Op::CloseIssue | Op::ReopenIssue => {
-            through::<work::Issue>(op, sent)
-        }
-        Op::GetIssue => through::<work::IssueDetail>(op, sent),
+        Op::ListWorkItems | Op::ListRepoWorkItems => through::<Vec<work::WorkItem>>(op, sent),
+        Op::OpenWorkItem
+        | Op::UpdateWorkItem
+        | Op::CloseWorkItem
+        | Op::ReopenWorkItem
+        | Op::LinkWorkItem
+        | Op::UnlinkWorkItem => through::<work::WorkItem>(op, sent),
+        Op::GetWorkItem => through::<work::WorkItemDetail>(op, sent),
+        Op::ResolveRef => through::<work::RefTarget>(op, sent),
+        Op::ListWorkItemDecisions => through::<Vec<g1t_contracts::decisions::Decision>>(op, sent),
         Op::ListPullRequests => through::<Vec<work::Pull>>(op, sent),
         Op::UpdatePullRequest => through::<work::Pull>(op, sent),
-        Op::ListLabels | Op::AddDefaultLabels | Op::ListIssueLabels => through::<Vec<work::Label>>(op, sent),
+        Op::ListLabels | Op::AddDefaultLabels | Op::ListWorkItemLabels => through::<Vec<work::Label>>(op, sent),
         Op::CreateLabel | Op::UpdateLabel => through::<work::Label>(op, sent),
         Op::ListMilestones => through::<Vec<work::Milestone>>(op, sent),
         Op::CreateMilestone | Op::UpdateMilestone => through::<work::Milestone>(op, sent),
@@ -264,8 +269,8 @@ fn sample(op: Op, example: &Value) -> Value {
         Op::Coordination(CoordinationOp::GetSession) => through::<work::SessionDetail>(op, sent),
         Op::Coordination(CoordinationOp::ListSessions) => through::<Vec<work::Session>>(op, sent),
         Op::Coordination(CoordinationOp::RecordSessionEntries) => through::<work::Recorded>(op, sent),
-        Op::Coordination(CoordinationOp::ClaimIssue) => through::<work::Claimed>(op, sent),
-        Op::Coordination(CoordinationOp::ReleaseClaim | CoordinationOp::HandOffIssue) => through::<work::Claim>(op, sent),
+        Op::Coordination(CoordinationOp::ClaimWorkItem) => through::<work::Claimed>(op, sent),
+        Op::Coordination(CoordinationOp::ReleaseClaim | CoordinationOp::HandOffWorkItem) => through::<work::Claim>(op, sent),
         Op::Coordination(CoordinationOp::ListClaims) => through::<Vec<work::Claim>>(op, sent),
         Op::Coordination(CoordinationOp::GetWork) => through::<work::WorkContext>(op, sent),
         Op::Coordination(CoordinationOp::StartAgentSession) => through::<g1t_contracts::agent_sessions::AgentSessionStarted>(op, sent),

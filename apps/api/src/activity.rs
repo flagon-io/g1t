@@ -1,6 +1,6 @@
 //! `get_workspace_activity`: what happened across a workspace's
 //! repositories over a span, newest first, as one list a person (or Ask
-//! g1t, or an agent) can read: pull requests merged and opened, issues
+//! g1t, or an agent) can read: pull requests merged and opened, work items
 //! opened and closed, releases, deployments and pushes, each with its
 //! repository, who did it, its title where it has one and its address on
 //! the site. "What shipped today?" is one call.
@@ -46,7 +46,7 @@ pub const MAX_LIMIT: u32 = 200;
 pub const KINDS: &[(&str, &[&str])] = &[
     ("merged", &["pull.merged"]),
     ("pulls", &["pull.opened", "pull.merged", "pull.closed"]),
-    ("issues", &["issue.opened", "issue.closed"]),
+    ("work_items", &["work_item.opened", "work_item.closed"]),
     ("releases", &["release.published"]),
     ("deployments", &["deployment.succeeded", "deployment.failed"]),
     ("pushes", &["git.push"]),
@@ -68,10 +68,10 @@ const LANDED_RUNS: u32 = 100;
 
 /// What is read when no kinds are given: everything but comments, which
 /// would crowd out the rest on a busy day.
-const DEFAULT_KINDS: &[&str] = &["pulls", "issues", "releases", "deployments", "pushes", "reviews", "packages", "runs"];
+const DEFAULT_KINDS: &[&str] = &["pulls", "work_items", "releases", "deployments", "pushes", "reviews", "packages", "runs"];
 
 pub fn description() -> &'static str {
-    "What happened across a workspace's repositories that you can read, newest first: pull requests merged, opened and closed, issues opened and closed, releases published, deployments that succeeded or failed, pushes (with `default_branch` true for what landed on the default branch without a pull request), reviews, packages, and workflow runs that finished (`workflow`, `run_number`, `conclusion`, `run_id` for workflow get_run, and `production` true for a run of a deploy workflow on the default branch: a repository that deploys itself). Each event has its `kind`, `time`, `repo` (owner/name), `actor` (a username), and where it has them its `number`, `title`, `url` (its page on g1t), `branch`, `commit`, `commits`, `tag` and `error`. `summary` counts merged pull requests, releases, production deployments (projects' production deployments and successful deploy runs on default branches), failed ones, default-branch pushes and failed runs, and in `shipped` the landed commits by where they are. `landed` lists the commits made on default branches in the span, one line each (`repo`, `commit`, `subject`, `author` as git wrote it, `username` when the author's address is a g1t account's, `time`, `url`), and, where the repository deploys, `production`: `live` (a successful deploy carried it, named in `deploy` with its `url`), `deploying`, `failed` (its deploy failed and none since succeeded) or `not_deployed`. That is what shipped: what reached the default branch, and which of it is live. The span is `since` to `until` (RFC 3339; the last 24 hours when `since` is left out, at most 31 days); narrow it with `kinds` (merged, pulls, issues, releases, deployments, pushes, reviews, comments, packages, runs; all but comments when left out) and `limit` (100 unless you say, at most 200). `complete` is false when more happened than was read: narrow the span or the kinds. For one repository's full timeline use list_events."
+    "What happened across a workspace's repositories that you can read, newest first: pull requests merged, opened and closed, work items opened and closed (linked to the repositories, numbered in the workspace), releases published, deployments that succeeded or failed, pushes (with `default_branch` true for what landed on the default branch without a pull request), reviews, packages, and workflow runs that finished (`workflow`, `run_number`, `conclusion`, `run_id` for workflow get_run, and `production` true for a run of a deploy workflow on the default branch: a repository that deploys itself). Each event has its `kind`, `time`, `repo` (owner/name), `actor` (a username), and where it has them its `number`, `title`, `url` (its page on g1t), `branch`, `commit`, `commits`, `tag` and `error`. `summary` counts merged pull requests, releases, production deployments (projects' production deployments and successful deploy runs on default branches), failed ones, default-branch pushes and failed runs, and in `shipped` the landed commits by where they are. `landed` lists the commits made on default branches in the span, one line each (`repo`, `commit`, `subject`, `author` as git wrote it, `username` when the author's address is a g1t account's, `time`, `url`), and, where the repository deploys, `production`: `live` (a successful deploy carried it, named in `deploy` with its `url`), `deploying`, `failed` (its deploy failed and none since succeeded) or `not_deployed`. That is what shipped: what reached the default branch, and which of it is live. The span is `since` to `until` (RFC 3339; the last 24 hours when `since` is left out, at most 31 days); narrow it with `kinds` (merged, pulls, work_items, releases, deployments, pushes, reviews, comments, packages, runs; all but comments when left out) and `limit` (100 unless you say, at most 200). `complete` is false when more happened than was read: narrow the span or the kinds. For one repository's full timeline use list_events."
 }
 
 pub fn input() -> Value {
@@ -84,7 +84,7 @@ pub fn input() -> Value {
             "kinds": {
                 "type": "array",
                 "items": { "type": "string", "enum": KINDS.iter().map(|(name, _)| *name).collect::<Vec<_>>() },
-                "description": "What to read: merged (merged pull requests only), pulls, issues, releases, deployments, pushes, reviews, comments, packages, runs (workflow runs that finished). All but comments when left out.",
+                "description": "What to read: merged (merged pull requests only), pulls, work_items, releases, deployments, pushes, reviews, comments, packages, runs (workflow runs that finished). All but comments when left out.",
             },
             "limit": { "type": "integer", "minimum": 1, "maximum": MAX_LIMIT, "description": "The most events to return, newest first: 100 unless you say, at most 200." },
         },
@@ -202,14 +202,14 @@ pub fn shape(found: &Found) -> Value {
                     shown["title"] = json!(title);
                 }
                 shown["url"] = json!(format!("{page}/pull/{number}"));
-                if let Some(issue) = data.get("issue").and_then(Value::as_u64) {
-                    shown["issue"] = json!(issue);
+                if let Some(item) = data.get("item").and_then(Value::as_u64) {
+                    shown["item"] = json!(item);
                 }
                 if event.kind == "pull.merged" {
                     merged += 1;
                 }
             }
-            "issue.opened" | "issue.closed" => {
+            "work_item.opened" | "work_item.closed" => {
                 let Some(number) = number else { continue };
                 shown["number"] = json!(number);
                 if let Some(title) = text(data, "title") {
@@ -218,14 +218,18 @@ pub fn shape(found: &Found) -> Value {
                 if let Some(reason) = text(data, "reason") {
                     shown["reason"] = json!(reason);
                 }
-                if let Some(pull) = data.get("resolvedBy").and_then(Value::as_u64) {
-                    shown["resolved_by"] = json!(pull);
+                // What landed it here: a merged pull request, or a commit
+                // pushed to the default branch.
+                if let Some(resolution) = data.get("resolution") {
+                    if let Some(pull) = resolution.get("pull").and_then(Value::as_u64) {
+                        shown["resolved_by"] = json!(pull);
+                    }
+                    if let Some(commit) = text(resolution, "commit") {
+                        shown["resolved_commit"] = json!(commit);
+                    }
                 }
-                // Closed by a commit pushed to the default branch.
-                if let Some(commit) = text(data, "commit") {
-                    shown["resolved_commit"] = json!(commit);
-                }
-                shown["url"] = json!(format!("{page}/issues/{number}"));
+                let workspace = text(data, "workspace").unwrap_or(repo.namespace.as_str());
+                shown["url"] = json!(format!("{site}/{workspace}/-/work/{number}"));
             }
             "release.published" => {
                 let tag = text(data, "tagName").unwrap_or_default();
@@ -280,9 +284,14 @@ pub fn shape(found: &Found) -> Value {
                 }
             }
             "review.completed" | "comment.created" => {
-                if let Some(number) = number.or_else(|| data.get("issue").and_then(Value::as_u64).map(|n| n as u32)) {
+                if let Some(number) = number {
                     shown["number"] = json!(number);
-                    shown["url"] = json!(format!("{page}/issues/{number}"));
+                    // On a work item, its page in the workspace; else the
+                    // pull request's.
+                    shown["url"] = match (text(data, "itemId"), text(data, "workspace")) {
+                        (Some(_), Some(workspace)) => json!(format!("{site}/{workspace}/-/work/{number}")),
+                        _ => json!(format!("{page}/pull/{number}")),
+                    };
                 }
                 if let Some(verdict) = text(data, "verdict") {
                     shown["verdict"] = json!(verdict);
@@ -889,11 +898,11 @@ The long why.", "2026-10-13T05:00:00Z"),
         let events = [
             event("deployment.succeeded", "rep_1", "2026-10-12T15:00:00Z", "usr_1", json!({ "kind": "production", "project": "web", "commit": "abcdef1234567890", "path": "/acme/web/deployments/dpl_1", "triggeredBy": "ana" })),
             event("release.published", "rep_2", "2026-10-12T14:00:00Z", "usr_2", json!({ "tagName": "v1.2.0", "release": { "name": "Faster pushes" } })),
-            event("pull.merged", "rep_1", "2026-10-12T13:00:00Z", "usr_1", json!({ "number": 7, "issue": 3 })),
+            event("pull.merged", "rep_1", "2026-10-12T13:00:00Z", "usr_1", json!({ "number": 7, "item": 3 })),
             event("git.push", "rep_2", "2026-10-12T12:00:00Z", "usr_2", json!({ "ref": "refs/heads/main", "after": "0123456789abcdef", "defaultBranch": true, "commits": 2 })),
             event("git.push", "rep_2", "2026-10-12T11:00:00Z", "usr_2", json!({ "ref": "refs/tags/v1.2.0", "after": "0123" })),
             event("workflow.completed", "rep_1", "2026-10-12T11:30:00Z", "usr_1", json!({ "runId": "run_257", "workflow": "Deploy", "number": 257, "conclusion": "failure", "ref": "refs/heads/main", "sha": "fedcba9876543210" })),
-            event("issue.closed", "rep_1", "2026-10-12T10:00:00Z", "usr_1", json!({ "number": 3, "title": "Login fails", "reason": "completed", "resolvedBy": 7 })),
+            event("work_item.closed", "rep_1", "2026-10-12T10:00:00Z", "usr_1", json!({ "workspace": "acme", "number": 3, "title": "Login fails", "reason": "completed", "resolution": { "repo": "acme/web", "pull": 7 } })),
             // Outside the span, and a repository the caller cannot read.
             event("pull.merged", "rep_1", "2026-10-11T10:00:00Z", "usr_1", json!({ "number": 6 })),
             event("pull.merged", "rep_9", "2026-10-12T10:00:00Z", "usr_1", json!({ "number": 1 })),
@@ -926,7 +935,7 @@ The long why.", "2026-10-13T05:00:00Z"),
         assert_eq!(listed[1]["url"], "https://g1t.sh/acme/api/releases/tag/v1.2.0");
         assert_eq!(
             listed[2],
-            json!({ "kind": "pull_merged", "time": "2026-10-12T13:00:00Z", "repo": "acme/web", "actor": "ana", "number": 7, "title": "Fix login", "url": "https://g1t.sh/acme/web/pull/7", "issue": 3 })
+            json!({ "kind": "pull_merged", "time": "2026-10-12T13:00:00Z", "repo": "acme/web", "actor": "ana", "number": 7, "title": "Fix login", "url": "https://g1t.sh/acme/web/pull/7", "item": 3 })
         );
         assert_eq!(listed[3]["default_branch"], true);
         assert_eq!(listed[3]["actor"], "bo");
@@ -935,18 +944,19 @@ The long why.", "2026-10-13T05:00:00Z"),
             json!({ "kind": "workflow_completed", "time": "2026-10-12T11:30:00Z", "repo": "acme/web", "actor": "ana", "workflow": "Deploy", "run_number": 257, "conclusion": "failure", "branch": "main", "commit": "fedcba987654", "run_id": "run_257", "url": "https://g1t.sh/acme/web/actions/runs/run_257", "production": true })
         );
         assert_eq!(listed[5]["resolved_by"], 7);
+        assert_eq!(listed[5]["url"], "https://g1t.sh/acme/-/work/3");
         assert_eq!(shown["complete"], true);
     }
 
     #[test]
-    fn an_issue_a_commit_closed_names_the_commit() {
+    fn a_work_item_a_commit_closed_names_the_commit() {
         let repos = [repo("rep_1", "web")];
         let events = [event(
-            "issue.closed",
+            "work_item.closed",
             "rep_1",
             "2026-10-12T10:00:00Z",
             "usr_1",
-            json!({ "number": 3, "title": "Login fails", "reason": "completed", "commit": "0123456789abcdef0123456789abcdef01234567" }),
+            json!({ "workspace": "acme", "number": 3, "title": "Login fails", "reason": "completed", "resolution": { "repo": "acme/web", "commit": "0123456789abcdef0123456789abcdef01234567" } }),
         )];
         let names = HashMap::from([("usr_1".to_owned(), "ana".to_owned())]);
         let shown = shape(&Found {

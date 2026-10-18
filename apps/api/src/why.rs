@@ -4,12 +4,12 @@
 //! request it arrived in is the one whose head it is, or else the one whose
 //! stretch of the default branch's history holds it (as the site's blame
 //! view finds it, `apps/web/app/lib/provenance.server.ts`); then that pull
-//! request's issue, its decision records, and the session entries recorded
+//! request's work item, its decision records, and the session entries recorded
 //! around the commit.
 
-use g1t_contracts::decisions::{Decision, ListDecisionsArgs, Why, WhyCommit, WhyIssue, WhyPull};
+use g1t_contracts::decisions::{Decision, ListDecisionsArgs, Why, WhyCommit, WhyItem, WhyPull};
 use g1t_contracts::repos::{Blame, BlameArgs, Commit, LogArgs, RepoPath};
-use g1t_contracts::work::{IssueDetail, ListPullsArgs, Pull, PullStatus, SessionEntry, SessionEntryKind, State, ViewArgs};
+use g1t_contracts::work::{ListPullsArgs, Pull, PullStatus, SessionEntry, SessionEntryKind, State, ViewArgs, WorkItemDetail, WorkItemViewArgs};
 use g1t_contracts::{FailureCode, Outcome, Viewer};
 use serde_json::Value;
 use worker::Result;
@@ -22,7 +22,7 @@ const HISTORY_READ: u32 = 300;
 const MAX_STEPS: usize = 8;
 /// Longest a step's text is shown.
 const MAX_STEP_CHARS: usize = 600;
-/// Longest an issue's description is shown.
+/// Longest a work item's description is shown.
 const MAX_BODY_CHARS: usize = 900;
 
 /// The commit that last changed `line`, from a blame of the file.
@@ -192,21 +192,26 @@ pub(crate) async fn why(
     }
 
     let Some(pull) = pull else {
-        return ok(Why { path, line, commit, pull: None, issue: None, decisions: Vec::new(), sessions: Vec::new() });
+        return ok(Why { path, line, commit, pull: None, item: None, decisions: Vec::new(), sessions: Vec::new() });
     };
     let view = |number: u32| ViewArgs { repo: repo.clone(), number, viewer: viewer.clone(), after_seq: 0 };
     // A few small reads, one after another: the API has no join helper.
-    let issue = match pull.issue {
-        Some(number) => match g1t_kit::call::<_, Outcome<IssueDetail>>(&services.work, "get_issue", &view(number)).await? {
-            Outcome::Ok(detail) => Some(detail.issue),
-            Outcome::Fail(_) => None,
-        },
+    // Its work item is numbered in the repository's workspace.
+    let workspace = repo.namespace.to_lowercase();
+    let item = match pull.item {
+        Some(number) => {
+            let asked = WorkItemViewArgs { workspace: workspace.clone(), number, viewer: viewer.clone() };
+            match g1t_kit::call::<_, Outcome<WorkItemDetail>>(&services.work, "get_work_item", &asked).await? {
+                Outcome::Ok(detail) => Some(detail.item),
+                Outcome::Fail(_) => None,
+            }
+        }
         None => None,
     };
     let decisions: Outcome<Vec<Decision>> = g1t_kit::call(
         &services.work,
         "list_decisions",
-        &ListDecisionsArgs { repo: repo.clone(), viewer: viewer.clone(), number: pull.number },
+        &ListDecisionsArgs { repo: Some(repo.clone()), workspace: String::new(), viewer: viewer.clone(), number: pull.number },
     )
     .await?;
     let session: Outcome<Vec<SessionEntry>> = g1t_kit::call(&services.work, "read_session", &view(pull.number)).await?;
@@ -218,14 +223,15 @@ pub(crate) async fn why(
         Outcome::Ok(entries) => steps_for(&entries, &commit.hash, &path),
         Outcome::Fail(_) => Vec::new(),
     };
-    let issue = issue.map(|issue| WhyIssue {
-        number: issue.number,
-        title: issue.title,
-        state: if issue.state == State::Open { "open" } else { "closed" }.to_owned(),
-        body: if issue.body.chars().count() > MAX_BODY_CHARS {
-            format!("{}…", issue.body.chars().take(MAX_BODY_CHARS).collect::<String>())
+    let item = item.map(|item| WhyItem {
+        workspace: item.workspace,
+        number: item.number,
+        title: item.title,
+        state: if item.state == State::Open { "open" } else { "closed" }.to_owned(),
+        body: if item.body.chars().count() > MAX_BODY_CHARS {
+            format!("{}…", item.body.chars().take(MAX_BODY_CHARS).collect::<String>())
         } else {
-            issue.body
+            item.body
         },
     });
     let pull = WhyPull {
@@ -236,7 +242,7 @@ pub(crate) async fn why(
         merged_by: pull.merged_by.clone(),
         merged_at: pull.merged_at.clone(),
     };
-    ok(Why { path, line, commit, pull: Some(pull), issue, decisions, sessions })
+    ok(Why { path, line, commit, pull: Some(pull), item, decisions, sessions })
 }
 
 fn ok(why: Why) -> Result<Outcome<Value>> {
@@ -261,7 +267,7 @@ mod tests {
 
     fn merged(number: u32, head: &str, base: Option<&str>) -> Pull {
         serde_json::from_value(serde_json::json!({
-            "id": format!("pr_{number}"), "repoId": "rep_1", "number": number, "issue": 9, "title": "t", "body": null,
+            "id": format!("pr_{number}"), "repoId": "rep_1", "number": number, "item": 9, "title": "t", "body": null,
             "agent": "claude-code", "runtime": "external", "status": "merged", "fork": null, "forkRepoId": null,
             "branch": "b", "headCommit": head, "mergeBase": base, "mergedBy": "ana", "mergedAt": "2026-10-12T00:00:00Z",
             "supersededBy": null, "checkStatus": null,

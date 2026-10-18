@@ -1,5 +1,5 @@
 //! Usernames as their owners wrote them. Every person in an answer, the
-//! REST API's and MCP's alike (an issue's `author`, a member, a
+//! REST API's and MCP's alike (a work item's `author`, a member, a
 //! collaborator, whoever `whoami` is), carries `display_username` beside
 //! `username`: `username` stays the lowercased key, stable for anything
 //! that matches on it, and `display_username` is the case its owner chose
@@ -100,7 +100,7 @@ mod tests {
     #[test]
     fn every_person_in_an_answer_is_found_once() {
         let answer = json!({
-            "issue": { "author": { "id": "usr_1", "username": "ana" }, "assignees": [{ "username": "bo" }, { "username": "ana" }] },
+            "item": { "author": { "id": "usr_1", "username": "ana" }, "assignees": [{ "username": "bo" }, { "username": "ana" }] },
             "git": { "username": "ana", "password": "your g1t access token" },
             "count": 3,
         });

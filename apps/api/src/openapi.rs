@@ -37,7 +37,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     ),
     (
         "Notifications",
-        "Your inbox: a thread for each thing you were told about (an issue, a pull request, a workflow on a branch, a deployment), why you were told, and what you subscribe to and watch. Your own: personal tokens and sessions only.",
+        "Your inbox: a thread for each thing you were told about (a work item, a pull request, a workflow on a branch, a deployment), why you were told, and what you subscribe to and watch. Your own: personal tokens and sessions only.",
         &[
             Op::ListNotifications,
             Op::MarkNotificationsRead,
@@ -362,40 +362,41 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
         ],
     ),
     (
-        "Issues",
-        "What should change in a repository, with labels and comments. Issues and pull requests share one sequence of numbers.",
+        "Work items",
+        "A workspace's tracked work (features, bugs, chores), numbered in the workspace's sequence with its new pull requests, and linked to the repositories it concerns: its origin (where it was filed), its targets (where the work is meant to land) and those it touched. A work item closes once what closes it has landed in every target. With comments, reactions, labels and decisions; and what `#N` names where it is written.",
         &[
-            Op::ListIssues,
-            Op::CreateIssue,
-            Op::GetIssue,
-            Op::UpdateIssue,
-            Op::CloseIssue,
-            Op::ReopenIssue,
-            Op::AddComment,
-            Op::EditComment,
-            Op::DeleteComment,
-            Op::React,
+            Op::ListWorkItems,
+            Op::OpenWorkItem,
+            Op::GetWorkItem,
+            Op::UpdateWorkItem,
+            Op::CloseWorkItem,
+            Op::ReopenWorkItem,
+            Op::ListWorkItemLinks,
+            Op::LinkWorkItem,
+            Op::UnlinkWorkItem,
+            Op::ListRepoWorkItems,
+            Op::ImportWorkItems,
+            Op::ResolveRef,
+            Op::AddWorkItemComment,
+            Op::EditWorkItemComment,
+            Op::DeleteWorkItemComment,
+            Op::ReactToWorkItem,
             Op::UploadAttachment,
-            Op::ListIssueLabels,
-            Op::AddIssueLabels,
-            Op::SetIssueLabels,
-            Op::RemoveIssueLabels,
-        ],
-    ),
-    (
-        "Claims and work",
-        "Coordinating work on issues: an advisory, expiring claim that says you are on one (never a lock), handing it off with a note, and everything an agent needs before starting on an issue in one call. What an issue is blocked by is set with update_issue.",
-        &[
+            Op::ListWorkItemLabels,
+            Op::AddWorkItemLabels,
+            Op::SetWorkItemLabels,
+            Op::RemoveWorkItemLabels,
+            Op::ListWorkItemDecisions,
             Op::Coordination(CoordinationOp::GetWork),
-            Op::Coordination(CoordinationOp::ClaimIssue),
+            Op::Coordination(CoordinationOp::ClaimWorkItem),
             Op::Coordination(CoordinationOp::ReleaseClaim),
-            Op::Coordination(CoordinationOp::HandOffIssue),
+            Op::Coordination(CoordinationOp::HandOffWorkItem),
             Op::Coordination(CoordinationOp::ListClaims),
         ],
     ),
     (
         "Labels and milestones",
-        "A repository's labels, which issues and pull requests carry by name, and its milestones, which gather them under a goal and a due date.",
+        "A workspace's labels, which its work items and pull requests carry by name, and its milestones, which gather them under a goal and a due date.",
         &[
             Op::ListLabels,
             Op::CreateLabel,
@@ -411,7 +412,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     ),
     (
         "Pull requests",
-        "A proposed change in its own fork or on a branch. Several can be made for one issue; the one merged resolves it. It merges by a merge commit, a squash, a rebase or a fast-forward, now or with auto-merge once everything it needs is met.",
+        "A proposed change in its own fork or on a branch, with its comments and reactions. Several can be made for one work item, in its repositories; each merged one lands it in its repository. It merges by a merge commit, a squash, a rebase or a fast-forward, now or with auto-merge once everything it needs is met.",
         &[
             Op::ListPullRequests,
             Op::CreatePullRequest,
@@ -433,11 +434,15 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::ClosePullRequest,
             Op::ReopenPullRequest,
             Op::GetMergeQueue,
+            Op::AddComment,
+            Op::EditComment,
+            Op::DeleteComment,
+            Op::React,
         ],
     ),
     (
         "Sessions",
-        "Who is working on what, and how a pull request was made. A session is one run of your own harness (a Claude Code session, a Codex run) on a repository: started once, kept alive by heartbeats, attached to an issue and a pull request, and recording prompts, reasoning, the tools that ran, the skills used and what it touched. Each subagent is a session of its own under the one that started it. A pull request's session shows what was recorded on it. A session can also be started on an issue in your own Claude, on the workspace's Anthropic account.",
+        "Who is working on what, and how a pull request was made. A session is one run of your own harness (a Claude Code session, a Codex run) on a repository: started once, kept alive by heartbeats, attached to a work item and a pull request, and recording prompts, reasoning, the tools that ran, the skills used and what it touched. Each subagent is a session of its own under the one that started it. A pull request's session shows what was recorded on it. A session can also be started on a work item in your own Claude, on the workspace's Anthropic account.",
         &[
             Op::Coordination(CoordinationOp::StartSession),
             Op::Coordination(CoordinationOp::UpdateSession),
@@ -452,12 +457,12 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     ),
     (
         "Decisions and why",
-        "Decision records: why the work is the way it is, and how sure that is (claimed, tested by a check or the merge queue, or approved by a person). And why a line of code is the way it is: its commit, pull request, issue, decisions and session.",
+        "Decision records: why the work is the way it is, and how sure that is (claimed, tested by a check or the merge queue, or approved by a person). And why a line of code is the way it is: its commit, pull request, work item, decisions and session.",
         &[Op::ListDecisions, Op::RecordDecision, Op::Why],
     ),
     (
         "Search",
-        "One search across all of g1t: repositories, code, issues, pull requests, people and workspaces. Public content for everyone, and private content in workspaces you belong to.",
+        "One search across all of g1t: repositories, code, work items, pull requests, people and workspaces. Public content for everyone, and private content in workspaces you belong to.",
         &[Op::Search],
     ),
     (
@@ -619,7 +624,7 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
     ),
     (
         "Integrations",
-        "A workspace's connections to outside systems: the alert sources that open issues (Sentry, Datadog, webhooks) and the issue trackers whose tickets agents read (Jira, Linear).",
+        "A workspace's connections to outside systems: the alert sources that open work items (Sentry, Datadog, webhooks) and the issue trackers whose tickets agents read (Jira, Linear).",
         &[
             Op::ListIntegrations,
             Op::ConnectIntegration,
@@ -627,7 +632,6 @@ const SECTIONS: &[(&str, &str, &[Op])] = &[
             Op::DisconnectIntegration,
             Op::TestIntegration,
             Op::GetContext,
-            Op::ImportIssue,
         ],
     ),
     (
@@ -729,31 +733,41 @@ fn title(op: Op) -> &'static str {
         Op::ListCheckNames => "List check names",
         Op::GetMergeQueue => "Get the merge queue",
         Op::Search => "Search g1t",
-        Op::ListIssues => "List issues",
-        Op::GetIssue => "Get an issue",
-        Op::CreateIssue => "Create an issue",
-        Op::UpdateIssue => "Update an issue",
-        Op::CloseIssue => "Close an issue",
-        Op::ReopenIssue => "Reopen an issue",
+        Op::ListWorkItems => "List a workspace's work items",
+        Op::ListRepoWorkItems => "List a repository's work items",
+        Op::GetWorkItem => "Get a work item",
+        Op::OpenWorkItem => "Open a work item",
+        Op::UpdateWorkItem => "Update a work item",
+        Op::CloseWorkItem => "Close a work item",
+        Op::ReopenWorkItem => "Reopen a work item",
+        Op::ListWorkItemLinks => "List a work item's repositories",
+        Op::LinkWorkItem => "Link a repository to a work item",
+        Op::UnlinkWorkItem => "Unlink a repository from a work item",
+        Op::ResolveRef => "Resolve a reference",
         Op::ListLabels => "List labels",
         Op::CreateLabel => "Create a label",
         Op::UpdateLabel => "Update a label",
         Op::DeleteLabel => "Delete a label",
         Op::AddDefaultLabels => "Add the default labels",
-        Op::ListIssueLabels => "List an issue's labels",
-        Op::AddIssueLabels => "Add labels to an issue",
-        Op::SetIssueLabels => "Set an issue's labels",
-        Op::RemoveIssueLabels => "Remove labels from an issue",
+        Op::ListWorkItemLabels => "List a work item's labels",
+        Op::AddWorkItemLabels => "Add labels to a work item",
+        Op::SetWorkItemLabels => "Set a work item's labels",
+        Op::RemoveWorkItemLabels => "Remove labels from a work item",
         Op::ListMilestones => "List milestones",
         Op::GetMilestone => "Get a milestone",
         Op::CreateMilestone => "Create a milestone",
         Op::UpdateMilestone => "Update a milestone",
         Op::DeleteMilestone => "Delete a milestone",
         Op::UpdatePullRequest => "Update a pull request",
-        Op::AddComment => "Add a comment",
-        Op::EditComment => "Edit a comment",
-        Op::DeleteComment => "Delete a comment",
-        Op::React => "React with an emoji",
+        Op::AddComment => "Comment on a pull request",
+        Op::EditComment => "Edit a pull request comment",
+        Op::DeleteComment => "Delete a pull request comment",
+        Op::React => "React to a pull request",
+        Op::AddWorkItemComment => "Comment on a work item",
+        Op::EditWorkItemComment => "Edit a work item comment",
+        Op::DeleteWorkItemComment => "Delete a work item comment",
+        Op::ReactToWorkItem => "React to a work item",
+        Op::ListWorkItemDecisions => "List a work item's decisions",
         Op::UploadAttachment => "Upload an attachment",
         Op::ReviewPullRequest => "Review a pull request",
         Op::ListPullRequests => "List pull requests",
@@ -795,7 +809,7 @@ fn title(op: Op) -> &'static str {
         Op::GetAskSettings => "Get Ask settings",
         Op::SetAskSettings => "Set Ask settings",
         Op::GetContext => "Look up a ticket",
-        Op::ImportIssue => "Import an issue",
+        Op::ImportWorkItems => "Import a work item",
         Op::ListWebhooks => "List webhooks",
         Op::CreateWebhook => "Create a webhook",
         Op::UpdateWebhook => "Update a webhook",
@@ -989,28 +1003,35 @@ fn operation_id(route: &Route) -> String {
         ("GET", ":attempt") => "get_workflow_run_attempt".to_owned(),
         ("PATCH", ":setting") => "update_actions_variable".to_owned(),
         ("GET", "runs") if route.path.contains("/workflows/:workflow/") => "list_runs_of_workflow".to_owned(),
-        // One repository's notifications, and an issue's subscription by
-        // its number rather than a thread's id.
+        // One repository's notifications, and a work item's or a pull
+        // request's subscription by its number rather than a thread's id.
         (_, "notifications") if route.path.starts_with("/repos/") => match op {
             Op::ListNotifications => "list_repo_notifications".to_owned(),
             _ => "mark_repo_notifications_read".to_owned(),
         },
-        (method, "subscription") if route.path.contains("/issues/:number/") => match method {
-            "GET" => "get_issue_subscription".to_owned(),
-            "PUT" => "set_issue_subscription".to_owned(),
-            _ => "delete_issue_subscription".to_owned(),
+        (method, "subscription") if route.path.contains("/work/:number/") => match method {
+            "GET" => "get_work_item_subscription".to_owned(),
+            "PUT" => "set_work_item_subscription".to_owned(),
+            _ => "delete_work_item_subscription".to_owned(),
         },
-        // One label off an issue, by its name in the path.
-        ("DELETE", ":label") if route.path.contains("/issues/:number/") => "remove_issue_label".to_owned(),
+        (method, "subscription") if route.path.contains("/pulls/:number/") => match method {
+            "GET" => "get_pull_request_subscription".to_owned(),
+            "PUT" => "set_pull_request_subscription".to_owned(),
+            _ => "delete_pull_request_subscription".to_owned(),
+        },
+        // One label off a work item, by its name in the path.
+        ("DELETE", ":label") if route.path.contains("/work/:number/") => "remove_work_item_label".to_owned(),
         ("DELETE", "saved") => "unsave_thread".to_owned(),
         ("DELETE", "snooze") => "unsnooze_thread".to_owned(),
-        // An issue's decisions, by its number.
-        ("GET", "decisions") if route.path.contains("/issues/:number/") => "list_issue_decisions".to_owned(),
-        // A claim that opens its issue first.
-        ("POST", "claims") => "claim_new_issue".to_owned(),
+        // A claim that opens its work item first.
+        ("POST", "claims") => "claim_new_work_item".to_owned(),
         _ => op.name().to_owned(),
     };
-    if route.path.starts_with("/workspaces/") && ROUTES.iter().any(|other| other.op == op && other.path.starts_with("/repos/")) {
+    // A work item's own addresses are only ever a workspace's.
+    if route.path.starts_with("/workspaces/")
+        && !route.path.contains("/work/")
+        && ROUTES.iter().any(|other| other.op == op && other.path.starts_with("/repos/"))
+    {
         format!("{base}_for_workspace")
     } else {
         base
@@ -1031,13 +1052,16 @@ fn summary(route: &Route, id: &str) -> String {
         "list_runs_of_workflow" => "List a workflow's runs",
         "list_repo_notifications" => "List a repository's notifications",
         "mark_repo_notifications_read" => "Mark a repository's notifications read",
-        "get_issue_subscription" => "Get your subscription to an issue",
-        "set_issue_subscription" => "Subscribe to an issue",
-        "delete_issue_subscription" => "Unsubscribe from an issue",
+        "get_work_item_subscription" => "Get your subscription to a work item",
+        "set_work_item_subscription" => "Subscribe to a work item",
+        "delete_work_item_subscription" => "Unsubscribe from a work item",
+        "get_pull_request_subscription" => "Get your subscription to a pull request",
+        "set_pull_request_subscription" => "Subscribe to a pull request",
+        "delete_pull_request_subscription" => "Unsubscribe from a pull request",
+        "remove_work_item_label" => "Remove a label from a work item",
         "unsave_thread" => "Unsave a thread",
         "unsnooze_thread" => "Bring a snoozed thread back",
-        "list_issue_decisions" => "List an issue's decisions",
-        "claim_new_issue" => "Open an issue and claim it",
+        "claim_new_work_item" => "Open a work item and claim it",
         _ => title(route.op),
     };
     if id.ends_with("_for_workspace") {
@@ -1054,7 +1078,12 @@ fn operation(route: &Route) -> Value {
     // so a `name` in the body, such as a check run's, is the body's own.
     let stands_for_repo =
         |name: &str| matches!(name, "owner" | "name") && path_params.contains(&"owner") && path_params.contains(&"name");
-    let covered = |name: &str| name == "repo" || (path_params.contains(&name) && !stands_for_repo(name));
+    // `repo` is the path's `owner` and `name`; at a workspace's address, a
+    // work item operation takes it in the body or query (a repository of
+    // the workspace: an origin, a filter or one to link), and others not.
+    let repo_in_body = !path_params.contains(&"owner")
+        && (op.in_a_workspace() || matches!(op, Op::Coordination(coordination) if !coordination.needs_repo()));
+    let covered = |name: &str| (name == "repo" && !repo_in_body) || (path_params.contains(&name) && !stands_for_repo(name));
     let all_properties = op.properties();
     let mut properties = all_properties.clone();
     properties.retain(|name, _| !covered(name));
@@ -1387,7 +1416,7 @@ pub fn document() -> Value {
                                 "message": { "type": "string" },
                                 "needed_scope": {
                                     "type": "string",
-                                    "description": "On a 403 for an access token without the scope the call needs: that scope, such as `issues:write`.",
+                                    "description": "On a 403 for an access token without the scope the call needs: that scope, such as `work:write`.",
                                 },
                             },
                         },
@@ -1451,7 +1480,7 @@ mod tests {
         let document = document();
         let merge = &document["paths"]["/repos/{owner}/{name}/pulls/{number}/merge"]["post"];
         let body = &merge["requestBody"]["content"]["application/json"]["schema"]["properties"];
-        assert!(body.get("keep_issue_open").is_some());
+        assert!(body.get("keep_item_open").is_some());
         assert!(body.get("repo").is_none() && body.get("number").is_none());
         let list = &document["paths"]["/repos"]["get"];
         assert_eq!(list["parameters"][0]["name"], "q");
@@ -1471,7 +1500,7 @@ mod tests {
 
     #[test]
     fn titles_read_as_sentences() {
-        assert_eq!(title(Op::CreateIssue), "Create an issue");
+        assert_eq!(title(Op::OpenWorkItem), "Open a work item");
         assert_eq!(title(Op::Whoami), "Get the current user");
     }
 

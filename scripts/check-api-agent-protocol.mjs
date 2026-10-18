@@ -31,7 +31,7 @@ try {
   assert.equal((await request("/", { headers: { "X-G1t-Api-Version": "1" } })).status, 200);
   assert.equal((await request("/v1/")).status, 200);
   const before = calls;
-  assert.equal((await request("/repos/example/test/issues", { method: "POST", headers: { "X-G1t-Api-Version": "unsupported", "content-type": "application/json" }, body: "{}" })).status, 422);
+  assert.equal((await request("/workspaces/example/work", { method: "POST", headers: { "X-G1t-Api-Version": "unsupported", "content-type": "application/json" }, body: "{}" })).status, 422);
   assert.equal(calls, before, "unsupported versions cannot execute a mutation");
   const cors = await request("/repos", { method: "OPTIONS" });
   assert.equal(cors.status, 204);

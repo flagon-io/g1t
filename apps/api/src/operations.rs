@@ -168,21 +168,26 @@ pub enum Op {
     ListCheckNames,
     GetMergeQueue,
     Search,
-    ListIssues,
-    GetIssue,
-    CreateIssue,
-    UpdateIssue,
-    CloseIssue,
-    ReopenIssue,
+    ListWorkItems,
+    ListRepoWorkItems,
+    GetWorkItem,
+    OpenWorkItem,
+    UpdateWorkItem,
+    CloseWorkItem,
+    ReopenWorkItem,
+    ListWorkItemLinks,
+    LinkWorkItem,
+    UnlinkWorkItem,
+    ResolveRef,
     ListLabels,
     CreateLabel,
     UpdateLabel,
     DeleteLabel,
     AddDefaultLabels,
-    ListIssueLabels,
-    AddIssueLabels,
-    SetIssueLabels,
-    RemoveIssueLabels,
+    ListWorkItemLabels,
+    AddWorkItemLabels,
+    SetWorkItemLabels,
+    RemoveWorkItemLabels,
     ListMilestones,
     GetMilestone,
     CreateMilestone,
@@ -192,6 +197,11 @@ pub enum Op {
     EditComment,
     DeleteComment,
     React,
+    AddWorkItemComment,
+    EditWorkItemComment,
+    DeleteWorkItemComment,
+    ReactToWorkItem,
+    ListWorkItemDecisions,
     UploadAttachment,
     ReviewPullRequest,
     ListPullRequests,
@@ -234,7 +244,7 @@ pub enum Op {
     GetAskSettings,
     SetAskSettings,
     GetContext,
-    ImportIssue,
+    ImportWorkItems,
     ListWebhooks,
     CreateWebhook,
     UpdateWebhook,
@@ -364,8 +374,8 @@ pub enum Op {
     /// Artifacts mode's docs, slides, designs and dashboards, kept by the
     /// artifacts service: folios.rs.
     Folios(FoliosOp),
-    /// Coordinating work: harness sessions, claims on issues and an
-    /// issue's whole context, kept by the work service: coordination.rs.
+    /// Coordinating work: harness sessions, claims on work items and a
+    /// work item's whole context, kept by the work service: coordination.rs.
     Coordination(CoordinationOp),
 }
 
@@ -404,28 +414,6 @@ pub(crate) fn attachment_answer(usercontent: &str, attachment: &g1t_contracts::a
         "content_type": attachment.content_type,
         "size": attachment.size,
     })
-}
-
-/// Commands given the deprecated way, as `checks` or `acceptance_checks`.
-fn deprecated_checks(input: &Value) -> Vec<String> {
-    let mut checks = strings(input, "checks").unwrap_or_default();
-    checks.extend(strings(input, "acceptance_checks").unwrap_or_default());
-    checks.retain(|check| !check.trim().is_empty());
-    checks
-}
-
-/// What the response says when `checks` was given: it still works, as
-/// words in the issue's body, and what replaced it.
-pub(crate) const CHECKS_DEPRECATION: &str = "checks is deprecated: commands are no longer run per issue. They were added to the issue's body under \"Definition of done\". What must pass before a pull request merges is the default branch's required checks: see update_repo_settings (required_checks).";
-
-fn with_deprecation(outcome: Outcome<Value>, deprecated: bool) -> Outcome<Value> {
-    match outcome {
-        Outcome::Ok(mut value) if deprecated && value.is_object() => {
-            value["deprecation"] = Value::String(CHECKS_DEPRECATION.to_owned());
-            Outcome::Ok(value)
-        }
-        other => other,
-    }
 }
 
 fn text(input: &Value, key: &str) -> String {
@@ -502,13 +490,13 @@ fn object(properties: Value, required: &[&str]) -> Value {
     schema
 }
 
-/// The properties naming an issue or pull request, with `more` added.
+/// The properties naming a pull request, with `more` added.
 fn numbered(more: Value) -> Value {
     let mut properties = json!({
         "repo": repo_schema(),
         "number": {
             "type": "integer",
-            "description": "The number shown after the #. Issues and pull requests share one sequence.",
+            "description": "The pull request's number, shown after the #.",
         },
     });
     if let (Some(all), Value::Object(more)) = (properties.as_object_mut(), more) {
@@ -517,10 +505,57 @@ fn numbered(more: Value) -> Value {
     properties
 }
 
+/// The properties naming a work item, with `more` added: its workspace
+/// and number, or a repository of the workspace in place of the workspace.
+fn item_numbered(more: Value) -> Value {
+    let mut properties = json!({
+        "workspace": workspace_schema(),
+        "repo": item_repo_schema(),
+        "number": item_number_schema(),
+    });
+    if let (Some(all), Value::Object(more)) = (properties.as_object_mut(), more) {
+        all.extend(more);
+    }
+    properties
+}
+
+fn item_number_schema() -> Value {
+    json!({
+        "type": "integer",
+        "description": "The work item's number, shown after the #. A workspace numbers its work items and new pull requests in one sequence.",
+    })
+}
+
+/// `repo` where a work item operation reads it only for its workspace.
+fn item_repo_schema() -> Value {
+    json!({
+        "type": "string",
+        "description": "Instead of workspace: a repository of the workspace, as \"owner/name\", whose workspace it is.",
+    })
+}
+
+/// `targets`: repositories as `owner/name`, or why one is not.
+fn targets(input: &Value) -> std::result::Result<Vec<RepoPath>, String> {
+    strings(input, "targets")
+        .unwrap_or_default()
+        .into_iter()
+        .map(|target| repo_path(&json!({ "repo": target })).ok_or(format!("Give each target as owner/name, not {target}.")))
+        .collect()
+}
+
+/// The workspace a work item, label or milestone operation is about:
+/// `workspace`, or with only `repo`, the repository's.
+pub(crate) fn item_workspace(input: &Value) -> String {
+    match optional_text(input, "workspace") {
+        Some(workspace) => workspace.trim().to_lowercase(),
+        None => repo_path(input).map(|repo| repo.namespace.to_lowercase()).unwrap_or_default(),
+    }
+}
+
 fn comment_id_schema() -> Value {
     json!({
         "type": "string",
-        "description": "The comment's id, such as \"cmt_01J9Z8\": each comment's id in get_issue or get_pull_request.",
+        "description": "The comment's id, such as \"cmt_01J9Z8\": each comment's id in get_work_item or get_pull_request.",
     })
 }
 
@@ -765,13 +800,14 @@ fn thread_id_schema() -> Value {
     json!({ "type": "string", "description": "The thread's id, from list_notifications." })
 }
 
-/// The inputs that name an issue or pull request to subscribe to: a
+/// The inputs that name a work item or pull request to subscribe to: a
 /// thread's id, or a repository and number; with `more` added.
 fn subscription_target(more: Value) -> Value {
     let mut properties = json!({
-        "id": { "type": "string", "description": "A thread's id, from list_notifications. Or give repo and number." },
-        "repo": { "type": "string", "description": "Instead of id: the repository, as \"owner/name\"." },
-        "number": { "type": "integer", "description": "With repo: the issue or pull request's number." },
+        "id": { "type": "string", "description": "A thread's id, from list_notifications. Or give repo and number for a pull request, or workspace and number for a work item." },
+        "repo": { "type": "string", "description": "Instead of id: the pull request's repository, as \"owner/name\"." },
+        "workspace": { "type": "string", "description": "Instead of id and repo: the work item's workspace, by slug." },
+        "number": { "type": "integer", "description": "With repo, the pull request's number; with workspace, the work item's." },
     });
     if let (Some(all), Value::Object(more)) = (properties.as_object_mut(), more) {
         all.extend(more);
@@ -831,7 +867,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 417] = [
+    pub const ALL: [Op; 427] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -882,21 +918,26 @@ impl Op {
         Op::ListCheckNames,
         Op::GetMergeQueue,
         Op::Search,
-        Op::ListIssues,
-        Op::GetIssue,
-        Op::CreateIssue,
-        Op::UpdateIssue,
-        Op::CloseIssue,
-        Op::ReopenIssue,
+        Op::ListWorkItems,
+        Op::ListRepoWorkItems,
+        Op::GetWorkItem,
+        Op::OpenWorkItem,
+        Op::UpdateWorkItem,
+        Op::CloseWorkItem,
+        Op::ReopenWorkItem,
+        Op::ListWorkItemLinks,
+        Op::LinkWorkItem,
+        Op::UnlinkWorkItem,
+        Op::ResolveRef,
         Op::ListLabels,
         Op::CreateLabel,
         Op::UpdateLabel,
         Op::DeleteLabel,
         Op::AddDefaultLabels,
-        Op::ListIssueLabels,
-        Op::AddIssueLabels,
-        Op::SetIssueLabels,
-        Op::RemoveIssueLabels,
+        Op::ListWorkItemLabels,
+        Op::AddWorkItemLabels,
+        Op::SetWorkItemLabels,
+        Op::RemoveWorkItemLabels,
         Op::ListMilestones,
         Op::GetMilestone,
         Op::CreateMilestone,
@@ -906,6 +947,11 @@ impl Op {
         Op::EditComment,
         Op::DeleteComment,
         Op::React,
+        Op::AddWorkItemComment,
+        Op::EditWorkItemComment,
+        Op::DeleteWorkItemComment,
+        Op::ReactToWorkItem,
+        Op::ListWorkItemDecisions,
         Op::UploadAttachment,
         Op::ReviewPullRequest,
         Op::ListPullRequests,
@@ -948,7 +994,7 @@ impl Op {
         Op::GetAskSettings,
         Op::SetAskSettings,
         Op::GetContext,
-        Op::ImportIssue,
+        Op::ImportWorkItems,
         Op::ListWebhooks,
         Op::CreateWebhook,
         Op::UpdateWebhook,
@@ -1243,9 +1289,9 @@ impl Op {
         Op::Coordination(CoordinationOp::GetSession),
         Op::Coordination(CoordinationOp::ListSessions),
         Op::Coordination(CoordinationOp::RecordSessionEntries),
-        Op::Coordination(CoordinationOp::ClaimIssue),
+        Op::Coordination(CoordinationOp::ClaimWorkItem),
         Op::Coordination(CoordinationOp::ReleaseClaim),
-        Op::Coordination(CoordinationOp::HandOffIssue),
+        Op::Coordination(CoordinationOp::HandOffWorkItem),
         Op::Coordination(CoordinationOp::ListClaims),
         Op::Coordination(CoordinationOp::GetWork),
         Op::Coordination(CoordinationOp::StartAgentSession),
@@ -1308,21 +1354,26 @@ impl Op {
             Op::GetMergeQueue => "get_merge_queue",
             Op::Search => "search",
             Op::UpdateRepoSettings => "update_repo_settings",
-            Op::ListIssues => "list_issues",
-            Op::GetIssue => "get_issue",
-            Op::CreateIssue => "create_issue",
-            Op::UpdateIssue => "update_issue",
-            Op::CloseIssue => "close_issue",
-            Op::ReopenIssue => "reopen_issue",
+            Op::ListWorkItems => "list_work_items",
+            Op::ListRepoWorkItems => "list_repo_work_items",
+            Op::GetWorkItem => "get_work_item",
+            Op::OpenWorkItem => "open_work_item",
+            Op::UpdateWorkItem => "update_work_item",
+            Op::CloseWorkItem => "close_work_item",
+            Op::ReopenWorkItem => "reopen_work_item",
+            Op::ListWorkItemLinks => "list_work_item_links",
+            Op::LinkWorkItem => "link_work_item",
+            Op::UnlinkWorkItem => "unlink_work_item",
+            Op::ResolveRef => "resolve_ref",
             Op::ListLabels => "list_labels",
             Op::CreateLabel => "create_label",
             Op::UpdateLabel => "update_label",
             Op::DeleteLabel => "delete_label",
             Op::AddDefaultLabels => "add_default_labels",
-            Op::ListIssueLabels => "list_issue_labels",
-            Op::AddIssueLabels => "add_issue_labels",
-            Op::SetIssueLabels => "set_issue_labels",
-            Op::RemoveIssueLabels => "remove_issue_labels",
+            Op::ListWorkItemLabels => "list_work_item_labels",
+            Op::AddWorkItemLabels => "add_work_item_labels",
+            Op::SetWorkItemLabels => "set_work_item_labels",
+            Op::RemoveWorkItemLabels => "remove_work_item_labels",
             Op::ListMilestones => "list_milestones",
             Op::GetMilestone => "get_milestone",
             Op::CreateMilestone => "create_milestone",
@@ -1332,6 +1383,11 @@ impl Op {
             Op::EditComment => "edit_comment",
             Op::DeleteComment => "delete_comment",
             Op::React => "react",
+            Op::AddWorkItemComment => "add_work_item_comment",
+            Op::EditWorkItemComment => "edit_work_item_comment",
+            Op::DeleteWorkItemComment => "delete_work_item_comment",
+            Op::ReactToWorkItem => "react_to_work_item",
+            Op::ListWorkItemDecisions => "list_work_item_decisions",
             Op::UploadAttachment => "upload_attachment",
             Op::ReviewPullRequest => "review_pull_request",
             Op::ListPullRequests => "list_pull_requests",
@@ -1374,7 +1430,7 @@ impl Op {
             Op::GetAskSettings => "get_ask_settings",
             Op::SetAskSettings => "set_ask_settings",
             Op::GetContext => "get_context",
-            Op::ImportIssue => "import_issue",
+            Op::ImportWorkItems => "import_work_items",
             Op::ListWebhooks => "list_webhooks",
             Op::CreateWebhook => "create_webhook",
             Op::UpdateWebhook => "update_webhook",
@@ -1568,7 +1624,7 @@ impl Op {
                 "Change a repository's website, topics and default branch, whether its default branch is protected, whether it is private, whether a private repository may be forked, and the most branches and tags one push may change (max_ref_updates). Only the fields given are changed. Its website and topics need the Maintain role or higher; protecting its default branch, making it public or private, allowing forking, max_ref_updates and changing its default branch need the Admin role (and making it public or private, the workspace's member privileges to allow it, unless you are an owner), and a free workspace takes a private repository only while its private storage has room. A protected branch refuses pushes and changes only by merging a pull request. A new default branch must already exist; open pull requests then merge into it. A fork cannot be made public or private: it is as visible as its parent until it is detached (detach_fork). A repository has no description of its own: description changes its project's, as update_project does, and needs the Maintain role or higher."
             }
             Op::RenameRepo => {
-                "Give a repository a new name in its workspace. Needs the Admin role. Everything stays with it: git data, issues, pull requests, workflow runs, deployments, secrets and webhooks. Its old address keeps working: web pages, git remotes and API calls redirect to the new one until a repository is made at the old address. The new name must be free in the workspace, including names held by recently deleted repositories."
+                "Give a repository a new name in its workspace. Needs the Admin role. Everything stays with it: git data, pull requests, its links to work items, workflow runs, deployments, secrets and webhooks. Its old address keeps working: web pages, git remotes and API calls redirect to the new one until a repository is made at the old address. The new name must be free in the workspace, including names held by recently deleted repositories."
             }
             Op::RenameBranch => {
                 "Rename a branch. Needs the Write role or higher; the default branch, which stays the default, needs the Admin role. Open pull requests from the branch follow it, and web addresses that name the old branch redirect until a branch of that name is made again. Git remotes do not follow: fetch, then rename or re-track the branch in your clone. Give a branch with slashes URL-encoded in the path, e.g. feature%2Flogin."
@@ -1580,13 +1636,13 @@ impl Op {
                 "Delete a branch. Needs the Write role or higher, and the repository's rules for deleting the branch hold; the default branch is never deleted. Give head, the commit you saw it at, to leave it alone if someone has pushed since. Returns the branch as it was: its commits stay in the repository, so create_branch with that commit as from restores it. Open pull requests from it can no longer be updated or merged until it is back. Give a branch with slashes URL-encoded in the path, e.g. feature%2Flogin."
             }
             Op::ArchiveRepo => {
-                "Archive a repository: make it read-only. Needs the Admin role. Pushes and merges are refused, issues and pull requests are locked, and agents and workflows do not run. It can still be read, cloned and searched, and its deployments keep serving. unarchive_repo makes it writable again."
+                "Archive a repository: make it read-only. Needs the Admin role. Pushes and merges are refused, pull requests are locked, work items cannot be filed from it, and agents and workflows do not run. It can still be read, cloned and searched, and its deployments keep serving. unarchive_repo makes it writable again."
             }
             Op::UnarchiveRepo => {
-                "Unarchive a repository: make it writable again. Needs the Admin role. Pushes, merges, issues, pull requests, agents and workflows work again; nothing that was refused while it was archived runs by itself."
+                "Unarchive a repository: make it writable again. Needs the Admin role. Pushes, merges, filing work items, pull requests, agents and workflows work again; nothing that was refused while it was archived runs by itself."
             }
             Op::SetRepoVisibility => {
-                "Make a repository public or private. Needs the Admin role, and confirm must be its full name, owner/name. Unless you are an owner of its workspace, the workspace's member privileges must let repository admins change visibility (members_can_change_repo_visibility) and let members create a repository of that kind. Making it public shows it, its code, issues and pull requests to everyone and adds it to search for everyone. Making it private hides it from everyone without a role on it; a free workspace takes it only while its private storage has room. Nothing else about it changes."
+                "Make a repository public or private. Needs the Admin role, and confirm must be its full name, owner/name. Unless you are an owner of its workspace, the workspace's member privileges must let repository admins change visibility (members_can_change_repo_visibility) and let members create a repository of that kind. Making it public shows it, its code, its pull requests and the work items filed from it to everyone and adds it to search for everyone. Making it private hides it from everyone without a role on it; a free workspace takes it only while its private storage has room. Nothing else about it changes."
             }
             Op::DeleteRepo => {
                 "Delete a repository. Owners only, and confirm must be its full name, owner/name. It disappears at once: git refuses it, agents and workflows stop, its deployments are taken down, and search drops it. For 30 days an owner can restore it with restore_repo, as it was; then it is purged, its git data with it. Its name stays taken until it is purged. list_deleted_repos shows what can be restored."
@@ -1595,16 +1651,16 @@ impl Op {
                 "A workspace's recently deleted repositories, newest first, each with when it was deleted, by whom, and when it will be purged. Owners only; anyone else gets an empty list."
             }
             Op::RestoreRepo => {
-                "Restore a deleted repository at the address it had, as it was when it was deleted: git data, issues, pull requests, settings, secrets and webhooks. Owners only. Its deployments are built again. Agents and workflows do not catch up on what they missed while it was deleted."
+                "Restore a deleted repository at the address it had, as it was when it was deleted: git data, pull requests, settings, secrets and webhooks. Owners only. Its deployments are built again. Agents and workflows do not catch up on what they missed while it was deleted."
             }
             Op::PurgeRepo => {
-                "Permanently remove a deleted repository now, instead of waiting for its 30 days to end. Owners only, and confirm must be its full name, owner/name. Its git data, issues, pull requests, deployments and custom domains are removed and cannot be recovered, and its name is free to use again."
+                "Permanently remove a deleted repository now, instead of waiting for its 30 days to end. Owners only, and confirm must be its full name, owner/name. Its git data, pull requests, deployments and custom domains are removed (work items keep it by name) and cannot be recovered, and its name is free to use again."
             }
             Op::TransferRepo => {
-                "Move a repository to another workspace, keeping its name. You must own both workspaces, and the destination must not already have a repository of that name; a free destination takes a private repository only if its private storage has room. Everything moves with it: git data, issues, pull requests, comments, labels, workflow runs, deployments, its project, and its own secrets, variables and webhooks. Its old address keeps working: web pages, git remotes and API calls redirect to the new one until a repository is made at the old address. Usage from now on is charged to the new workspace."
+                "Move a repository to another workspace, keeping its name. You must own both workspaces, and the destination must not already have a repository of that name; a free destination takes a private repository only if its private storage has room. Everything moves with it: git data, pull requests and their comments, workflow runs, deployments, its project, and its own secrets, variables and webhooks. Its old address keeps working: web pages, git remotes and API calls redirect to the new one until a repository is made at the old address. Usage from now on is charged to the new workspace."
             }
             Op::ForkRepo => {
-                "Fork a repository: copy it into a workspace you can create repositories in, as a new repository that remembers the one it came from (its parent). Anyone who can read a public repository may fork it; a private one only when its admins allow forking (allow_forking on update_repo). A fork is exactly as visible as its parent: a public repository's fork is public, a private one's private. Only its code comes with it: the default branch, or every branch and tag with default_branch_only false. Its project starts with the parent project's description. Its issues, pull requests, settings, rulesets, secrets, variables, webhooks, environments and deployments stay behind; issues are off in the fork, and Actions is off until an admin of the fork turns it on. Its full size counts toward the destination workspace's storage, and a free workspace takes a private fork only while its private storage has room. workspace is the destination's slug: your personal workspace when left out. name is the parent's when left out. Returns the fork, with parent naming the repository it came from."
+                "Fork a repository: copy it into a workspace you can create repositories in, as a new repository that remembers the one it came from (its parent). Anyone who can read a public repository may fork it; a private one only when its admins allow forking (allow_forking on update_repo). A fork is exactly as visible as its parent: a public repository's fork is public, a private one's private. Only its code comes with it: the default branch, or every branch and tag with default_branch_only false. Its project starts with the parent project's description. Its pull requests, settings, rulesets, secrets, variables, webhooks, environments and deployments stay behind; work items cannot be filed from the fork, and Actions is off until an admin of the fork turns it on. Its full size counts toward the destination workspace's storage, and a free workspace takes a private fork only while its private storage has room. workspace is the destination's slug: your personal workspace when left out. name is the parent's when left out. Returns the fork, with parent naming the repository it came from."
             }
             Op::ListForks => {
                 "A repository's forks that you can see, newest first, each with parent naming the repository. limit is at most 100, 30 when left out. Forks of its forks are listed on them."
@@ -1616,16 +1672,16 @@ impl Op {
                 "Detach a fork from its parent: it becomes an ordinary repository with no parent, and can then be made public or private. Needs the Admin role on the fork. Its code, settings, and the pull requests it already opened into the parent stay as they are; it can no longer be synced or open new pull requests into the parent. It cannot be attached again."
             }
             Op::GetRepoSettings => {
-                "How a repository handles pull requests, commits and issues: the merge methods it allows and the one offered first, what merge and squash commits say by default (merge_commit_message, squash_commit_message, and the templates for custom), whether pull requests may turn on auto-merge, whether their branches are deleted once merged, whether to suggest updating branches, whether web commits are signed off, whether commit comments are allowed, whether merged pull requests close the issues they name, and whether issues can be opened (issues_enabled); also whether they merge by themselves, and its default branch's protection as the rules of its rulesets stack there: the checks that must pass (required_checks), the approvals a merge needs, whether its code owners must approve (`require_code_owner_review`), whether required checks can be bypassed, whether a pull request must be up to date, and the merge queue. The same rules hold for every pull request, whoever opened it. list_repo_rulesets and get_branch_rules show every rule."
+                "How a repository handles pull requests, commits and work items: the merge methods it allows and the one offered first, what merge and squash commits say by default (merge_commit_message, squash_commit_message, and the templates for custom), whether pull requests may turn on auto-merge, whether their branches are deleted once merged, whether to suggest updating branches, whether web commits are signed off, whether commit comments are allowed, whether merged pull requests land the work items they name (auto_close_items), and whether work items can be filed from it (work_items_enabled); also whether they merge by themselves, and its default branch's protection as the rules of its rulesets stack there: the checks that must pass (required_checks), the approvals a merge needs, whether its code owners must approve (`require_code_owner_review`), whether required checks can be bypassed, whether a pull request must be up to date, and the merge queue. The same rules hold for every pull request, whoever opened it. list_repo_rulesets and get_branch_rules show every rule."
             }
             Op::UpdateRepoSettings => {
-                "Change how a repository handles pull requests, commits and issues. Only the fields given are changed; required_checks replaces the whole list. At least one merge method must stay allowed, and default_merge_method must be one of them. A custom commit message (merge_commit_message or squash_commit_message custom) uses its template, whose {title}, {number}, {body}, {branch}, {head_repo}, {base}, {author}, {commits}, {issues} and {co_authors} are filled in; pull_title_and_commits is for squash commits only. The branch protection fields (required_checks, require_up_to_date, required_approvals, count_agent_approvals, allow_ignoring_checks, merge_queue, require_code_owner_review) are written to the repository's \"Default branch protection\" ruleset, made when it has none; rules only rulesets have stay as they are. A required check is named as list_check_names gives it: a workflow's name, such as CI, or another status's context, such as g1t / deploy. Needs the Maintain role or higher, and the Admin role to change a branch protection field."
+                "Change how a repository handles pull requests, commits and work items. Only the fields given are changed; required_checks replaces the whole list. At least one merge method must stay allowed, and default_merge_method must be one of them. A custom commit message (merge_commit_message or squash_commit_message custom) uses its template, whose {title}, {number}, {body}, {branch}, {head_repo}, {base}, {author}, {commits}, {items} and {co_authors} are filled in; pull_title_and_commits is for squash commits only. The branch protection fields (required_checks, require_up_to_date, required_approvals, count_agent_approvals, allow_ignoring_checks, merge_queue, require_code_owner_review) are written to the repository's \"Default branch protection\" ruleset, made when it has none; rules only rulesets have stay as they are. A required check is named as list_check_names gives it: a workflow's name, such as CI, or another status's context, such as g1t / deploy. Needs the Maintain role or higher, and the Admin role to change a branch protection field."
             }
             Op::ListCheckNames => {
                 "The check names reported on a repository's commits in the last 30 days, most recent first, with the events each was reported for: the names update_repo_settings takes in required_checks. A workflow's runs report a check named after the workflow; a check required on the default branch must be reported on a pull request's head (pull_request events) and, with the merge queue on, on its queued state (merge_group events)."
             }
             Op::Search => {
-                "Search all of g1t: repositories (name, their project's description, topics, README), code on default branches (file names and contents), issues, pull requests, people and workspaces. Covers everything public, and private content in workspaces you belong to; signed out, public only. Write words, \"exact phrases\", -words to leave out, and qualifiers: repo:owner/name, org:workspace, language:rust, path:src/ (a glob with *), is:issue, is:pr, is:open, is:closed, is:merged, author:username, label:bug. type picks the kind of results (repositories, code, issues, pulls or people); without it, the qualifiers decide. Returns one page of results with the matches highlighted, code with line numbers, and how many there are of each kind."
+                "Search all of g1t: repositories (name, their project's description, topics, README), code on default branches (file names and contents), work items, pull requests, people and workspaces. Covers everything public, and private content in workspaces you belong to; signed out, public only. Write words, \"exact phrases\", -words to leave out, and qualifiers: repo:owner/name, org:workspace, language:rust, path:src/ (a glob with *), is:item, is:pr, is:open, is:closed, is:merged, author:username, label:bug. type picks the kind of results (repositories, code, work items, pull requests or people); without it, the qualifiers decide. Returns one page of results with the matches highlighted, code with line numbers, and how many there are of each kind."
             }
             Op::GetMergeQueue => {
                 "A repository's merge queue: the pull requests waiting to land, in order, each with the state it is being tested in (the default branch with the pull requests ahead of it landed in turn, each by its merge method) and how that went; then those that recently landed or left. With the queue on, merging a pull request adds it here."
@@ -1633,76 +1689,108 @@ impl Op {
             Op::CreateRepo => {
                 "Create a repository in one of your workspaces, empty or as a copy of a public git repository elsewhere. It gets a project of its own name; description is that project's. With deploy true, its project's g1t.page Deployments are turned on as soon as it is made, as update_deployment_settings with enabled true does: its first push to the default branch deploys production. The repository is made either way: the response has `deployments` (the settings, with production_url) when they are on, or `deploy_error` saying why not (the workspace has no g1t plan, or your role is too low)."
             }
-            Op::ListIssues => {
-                "Issues on a repository, newest first. An issue is something that should change: a bug, a feature, a question. Pull requests are made against it. Filter by state, by a label's name, or by a milestone's number."
+            Op::ListWorkItems => {
+                "A workspace's work items, newest first. A work item is any tracked work (a feature, a bug, a chore) of the workspace, numbered in its sequence with new pull requests, and linked to the repositories it concerns: its `origin` (where it was filed, if it was filed in one), its `target`s (where the work is meant to land) and those it `touched` (where a pull request or commit for it landed or is under way). Filter by state, by a label's name, by a milestone's number, by assignee, and with repo by a repository it is linked to (role narrows it to one kind of link). Members see every work item; anyone who can read a repository sees the work items filed in it."
             }
-            Op::GetIssue => {
-                "An issue: its description (which may say what done means, under \"Definition of done\"), labels, its comments, and every pull request made against it with its status. If the issue is closed, resolved_by is the number of the pull request that was merged for it, or resolved_commit the commit pushed to the default branch whose message closed it (with resolved_pushed_by, who pushed it). Read this before opening a pull request, to see what others have already tried. A comment one of the workspace's agents wrote as itself has `agent` (its `id`, `handle`, `display_name` and `avatar_seed`) and `acting_for` (the person it acted for, whose access capped it); its `author` is the agent, of kind `agent`."
+            Op::ListRepoWorkItems => {
+                "The work items linked to a repository, in any role (origin, target or touched) or in role: the workspace's work list filtered to it. Read only: work items are opened in the workspace (open_work_item, with repo as their origin)."
             }
-            Op::CreateIssue => {
-                "Open an issue on a repository. Say what done means in the body if it helps, for instance under a \"Definition of done\" heading; what must pass before a pull request for it merges is the default branch's required checks, the same for every pull request. labels are the repository's labels by name; a name it does not have yet is created when you have the Triage role or higher, and refused otherwise. milestone, a milestone's number, needs the Triage role."
+            Op::GetWorkItem => {
+                "A work item: its description (which may say what done means, under \"Definition of done\"), labels, milestone, `repos` (each linked repository with its `role`, its `legacy_number` when it was filed there as an issue before work items, and whether the work `landed` there), `resolutions` (what landed it in each repository: a merged pull request, or a commit pushed to its default branch, with who pushed it), its comments and reactions, and every pull request made for it, in any repository. Read this before opening a pull request, to see what others have already tried. A comment one of the workspace's agents wrote as itself has `agent` (its `id`, `handle`, `display_name` and `avatar_seed`) and `acting_for` (the person it acted for, whose access capped it); its `author` is the agent, of kind `agent`. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
             }
-            Op::UpdateIssue => {
-                "Change an issue's title, body, labels, milestone, the people it is assigned to, or what it is blocked by. Only the fields given are changed; labels, assignees and blocked_by each replace the whole set, and milestone null or 0 takes it out of its milestone. blocked_by lists the numbers of the issues of the same repository that have to land first: one that is not an issue there, the issue itself, or a set that would make a cycle is refused with `422`, and a change is a dependency.changed event (as is a blocker closing, or its pull request merging, later). Its author may change their own issue, as may the person g1t filed one for; anyone else needs the Triage role or higher, and so does the milestone. Each label added or removed is an issue.labeled or issue.unlabeled event."
+            Op::OpenWorkItem => {
+                "Open a work item in a workspace. With repo, it is filed from that repository, its origin: anyone who may take part in the repository may (on a public one, anyone signed in), and workspace may be left out. Without, only a member of the workspace may. targets are repositories of the workspace where the work is meant to land; the work item closes once a pull request or commit that closes it has landed in every target (with none, once anything that closes it lands). Say what done means in the body if it helps, for instance under a \"Definition of done\" heading. labels are the workspace's labels by name; a name it does not have yet is created when you have the Write role, and refused otherwise. milestone, a workspace milestone's number, needs the Triage role. A work_item.opened event."
             }
-            Op::CloseIssue => {
-                "Close an issue without a pull request. Merging a pull request made for an issue closes it for you, as does pushing a commit whose message names it after a closing keyword (Fixes #12) to the default branch. When a commit already on the default branch did the work, give it as commit: the issue closes as completed in that commit, as its push would have, and its timeline links the commit. A commit that is not on the default branch, or whose message does not name the issue after a closing keyword, is refused with `422`; an issue already closed, with `409`. Closed with a token from a session working on the issue (or by a commit with a `G1t-Session` trailer), its timeline links that session too. Its author may close their own issue, as may the person g1t filed one for; anyone else needs the Triage role or higher."
+            Op::UpdateWorkItem => {
+                "Change a work item's title, body, labels, milestone, the people it is assigned to, or what it is blocked by. Only the fields given are changed; labels, assignees and blocked_by each replace the whole set, and milestone null or 0 takes it out of its milestone. blocked_by lists the numbers of the work items of the workspace that have to land first: one that is not a work item, the work item itself, or a set that would make a cycle is refused with `422`, and a change is a dependency.changed event. Its author may change their own work item, as may the person g1t filed one for; anyone else needs the Triage role, and so does the milestone. Each label added or removed is a work_item.labeled or work_item.unlabeled event. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
             }
-            Op::ReopenIssue => "Reopen a closed issue. Its author may reopen their own issue, as may the person g1t filed one for; anyone else needs the Triage role or higher.",
+            Op::CloseWorkItem => {
+                "Close a work item without a pull request. A work item closes by itself once what closes it has landed in every target: a pull request whose title or description names it after a closing keyword (Fixes #12) merging into a repository's default branch, or such a commit pushed there, marks that repository landed. When a commit already on a default branch did the work, give it as commit, with repo the repository it is in: it lands there as its push would have, and the work item closes if nothing else is left to land. A commit that is not on the default branch, or whose message does not name the work item after a closing keyword, is refused with `422`; a work item already closed, with `409`. Its author may close their own work item, as may the person g1t filed one for; anyone else needs the Triage role. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
+            }
+            Op::ReopenWorkItem => {
+                "Reopen a closed work item. Its author may reopen their own work item, as may the person g1t filed one for; anyone else needs the Triage role. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
+            }
+            Op::ListWorkItemLinks => {
+                "The repositories a work item is linked to: its origin first, then its targets, then those it touched, each with its `role`, its `legacy_number` (the issue number it had in its origin before work items) and whether the work `landed` there. `missing` lists the targets it has not landed in yet. The workspace is `workspace`, its slug."
+            }
+            Op::LinkWorkItem => {
+                "Link a repository of the workspace to a work item as a target (where the work is meant to land; the default role) or as touched, or change how it is linked. A work item with targets closes once it has landed in every one. An origin cannot be given: it is where the work item was filed. Needs the Triage role on the work item. A work_item.linked event; linking closes and reopens nothing by itself. Confirming one of get_work's suggested_targets is linking it as a target."
+            }
+            Op::UnlinkWorkItem => {
+                "Unlink a repository from a work item: a target it no longer needs to land in, or one it touched. Its origin stays. Needs the Triage role on the work item. A work_item.unlinked event; unlinking closes and reopens nothing by itself."
+            }
+            Op::ResolveRef => {
+                "What `#number` names, read where it is written: in a repository (repo) or in a workspace alone (workspace). In a repository, it is the first of a pull request of that repository numbered so, a work item filed there whose old issue number it was, the work item of the workspace with that number, and a pull request of another of the workspace's repositories. In a workspace, the work item with that number, else its pull request. Answers `{ kind: work_item, workspace, number, item_id }`, `{ kind: pull, repo, number }`, or `{ kind: none }` when it names nothing you may see. This is how an old link to a repository's issue finds the work item it became."
+            }
             Op::ListLabels => {
-                "A repository's labels, by name: each one's color (six hex digits), description, and how many issues and pull requests carry it. A new repository starts with bug, documentation, duplicate, enhancement, good first issue, help wanted, invalid, question, wontfix, dependencies and security."
+                "A workspace's labels, by name: each one's color (six hex digits), description, and how many work items and pull requests carry it. Labels belong to the workspace and are shared by all its repositories' work items and pull requests. A new workspace starts with bug, documentation, duplicate, enhancement, good first issue, help wanted, invalid, question, wontfix, dependencies and security."
             }
             Op::CreateLabel => {
-                "Create a label, named by label. Names are lowercase and unique in a repository, at most 50 characters; color is six hex digits (one is chosen from the name when left out), description at most 100 characters. Needs the Write role or higher; applying labels and milestones needs Triage."
+                "Create a workspace label, named by label. Names are lowercase and unique in a workspace, at most 50 characters; color is six hex digits (one is chosen from the name when left out), description at most 100 characters. Needs the Write role through workspace membership; applying labels and milestones needs Triage."
             }
             Op::UpdateLabel => {
-                "Change a label's name, color or description; only the fields given change. Renaming it renames it on every issue and pull request that carries it. Needs the Write role or higher; applying labels and milestones needs Triage."
+                "Change a workspace label's name, color or description; only the fields given change. Renaming it renames it on every work item and pull request that carries it. Needs the Write role through workspace membership."
             }
             Op::DeleteLabel => {
-                "Delete a label. It is taken off every issue and pull request that carries it, without events for each. Needs the Write role or higher; applying labels and milestones needs Triage."
+                "Delete a workspace label. It is taken off every work item and pull request that carries it, without events for each. Needs the Write role through workspace membership."
             }
             Op::AddDefaultLabels => {
-                "Add the default labels a repository does not have yet: bug, documentation, duplicate, enhancement, good first issue, help wanted, invalid, question, wontfix, dependencies and security. Labels it has already are left as they are. Returns every label it has now. Needs the Write role or higher; applying labels and milestones needs Triage."
+                "Add the default labels a workspace does not have yet: bug, documentation, duplicate, enhancement, good first issue, help wanted, invalid, question, wontfix, dependencies and security. Labels it has already are left as they are. Returns every label it has now. Needs the Write role through workspace membership."
             }
-            Op::ListIssueLabels => {
-                "The labels an issue or a pull request carries, with their colors and descriptions. Issues and pull requests share numbers."
+            Op::ListWorkItemLabels => {
+                "The labels a work item carries, with their colors and descriptions. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
             }
-            Op::AddIssueLabels => {
-                "Add labels to an issue or a pull request, keeping the ones it has. A name the repository does not have yet is created when you have the Write role or higher; without it, you may use the repository's labels on what you opened. Each label added is an issue.labeled or pull.labeled event. Returns its labels now, at most 20."
+            Op::AddWorkItemLabels => {
+                "Add labels to a work item, keeping the ones it has. A name the workspace does not have yet is created when you have the Write role; without it, you may use the workspace's labels on what you opened. Each label added is a work_item.labeled event. Returns its labels now, at most 20. A pull request's labels are changed with update_pull_request."
             }
-            Op::SetIssueLabels => {
-                "Replace the labels of an issue or a pull request with these; an empty list takes them all off. The same rules as add_issue_labels. Returns its labels now."
+            Op::SetWorkItemLabels => {
+                "Replace the labels of a work item with these; an empty list takes them all off. The same rules as add_work_item_labels. Returns its labels now."
             }
-            Op::RemoveIssueLabels => {
-                "Take labels off an issue or a pull request: label for one, labels for several, or neither for all of them. The labels stay on the repository. Returns its labels now."
+            Op::RemoveWorkItemLabels => {
+                "Take labels off a work item: label for one, labels for several, or neither for all of them. The labels stay in the workspace. Returns its labels now."
             }
             Op::ListMilestones => {
-                "A repository's milestones: open ones soonest due first (those without a due date after), then closed ones, most recently closed first. Each has its number, title, description, due_on (YYYY-MM-DD), state, and open_items and closed_items: its issues and pull requests, a merged pull request counting as closed."
+                "A workspace's milestones: open ones soonest due first (those without a due date after), then closed ones, most recently closed first. Each has its number, title, description, due_on (YYYY-MM-DD), state, and open_items and closed_items: its work items and pull requests, a merged pull request counting as closed."
             }
-            Op::GetMilestone => "A milestone, with every issue and pull request in it, newest first.",
+            Op::GetMilestone => "A workspace milestone, with every work item and pull request in it, newest first.",
             Op::CreateMilestone => {
-                "Create a milestone: a title, unique in the repository, at most 100 characters; a description in Markdown; and a due_on day (YYYY-MM-DD). Milestones are numbered from 1 in each repository, apart from issues. Needs the Write role or higher; applying labels and milestones needs Triage."
+                "Create a workspace milestone: a title, unique in the workspace, at most 100 characters; a description in Markdown; and a due_on day (YYYY-MM-DD). Milestones are numbered from 1 in each workspace, apart from work items. Needs the Write role through workspace membership; applying labels and milestones needs Triage."
             }
             Op::UpdateMilestone => {
-                "Change a milestone's title, description, due date or state (open or closed); only the fields given change, and due_on \"\" clears its due date. Needs the Write role or higher; applying labels and milestones needs Triage."
+                "Change a workspace milestone's title, description, due date or state (open or closed); only the fields given change, and due_on \"\" clears its due date. Needs the Write role through workspace membership."
             }
             Op::DeleteMilestone => {
-                "Delete a milestone. The issues and pull requests in it are in no milestone afterwards. Needs the Write role or higher; applying labels and milestones needs Triage."
+                "Delete a workspace milestone. The work items and pull requests in it are in no milestone afterwards. Needs the Write role through workspace membership."
             }
             Op::AddComment => {
-                "Comment on an issue or a pull request. On a pull request, give path and line to comment on one line of the change."
+                "Comment on a pull request. Give path and line to comment on one line of the change. A work item is commented on with add_work_item_comment."
             }
             Op::EditComment => {
-                "Change the text of a comment on an issue or a pull request, named by comment_id (the id get_issue and get_pull_request give each comment). Its author may edit it, and so may anyone with the Maintain role or higher. Notes of what happened, such as \"closed this\", cannot be edited. Publishes comment.edited with what it said before."
+                "Change the text of a comment on a pull request, named by comment_id (the id get_pull_request gives each comment). Its author may edit it, and so may anyone with the Maintain role or higher. Notes of what happened, such as \"closed this\", cannot be edited. Publishes comment.edited with what it said before."
             }
             Op::DeleteComment => {
-                "Delete a comment on an issue or a pull request, named by comment_id. Its author may delete it, and so may anyone with the Maintain role or higher. A review that approved or requested changes cannot be deleted, only edited, and notes of what happened cannot be deleted. This cannot be undone. Publishes comment.deleted with the comment as it was."
+                "Delete a comment on a pull request, named by comment_id. Its author may delete it, and so may anyone with the Maintain role or higher. A review that approved or requested changes cannot be deleted, only edited, and notes of what happened cannot be deleted. This cannot be undone. Publishes comment.deleted with the comment as it was."
             }
             Op::React => {
-                "React to an issue or a pull request with an emoji: to its description, or with comment_id to one of its comments. content is one of +1, -1, laugh, hooray, confused, heart, rocket and eyes; remove true takes your reaction back. Anyone who can read the repository may. Answers with the reactions it has now, each with its count and the usernames of who reacted (`g1t` for g1t, which reacts eyes to what it was asked to take on). get_issue and get_pull_request give each comment's reactions, and the description's as reactions."
+                "React to a pull request with an emoji: to its description, or with comment_id to one of its comments. content is one of +1, -1, laugh, hooray, confused, heart, rocket and eyes; remove true takes your reaction back. Anyone who can read the repository may. Answers with the reactions it has now, each with its count and the usernames of who reacted (`g1t` for g1t, which reacts eyes to what it was asked to take on)."
+            }
+            Op::AddWorkItemComment => {
+                "Comment on a work item, in Markdown. Anyone who may see it and take part may: a member of its workspace, or on a public origin repository anyone signed in. A comment.created event. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
+            }
+            Op::EditWorkItemComment => {
+                "Change the text of a comment on a work item, named by comment_id (the id get_work_item gives each comment). Its author may edit it, and so may anyone with the Maintain role or higher. Notes of what happened cannot be edited. Publishes comment.edited with what it said before."
+            }
+            Op::DeleteWorkItemComment => {
+                "Delete a comment on a work item, named by comment_id. Its author may delete it, and so may anyone with the Maintain role or higher. Notes of what happened cannot be deleted. This cannot be undone. Publishes comment.deleted with the comment as it was."
+            }
+            Op::ReactToWorkItem => {
+                "React to a work item with an emoji: to its description, or with comment_id to one of its comments. content is one of +1, -1, laugh, hooray, confused, heart, rocket and eyes; remove true takes your reaction back. Answers with the reactions it has now, each with its count and the usernames of who reacted. get_work_item gives each comment's reactions, and the description's as reactions."
+            }
+            Op::ListWorkItemDecisions => {
+                "The decision records on a work item and on its pull requests, oldest first: each with its kind (proposal, claim, integration_failure, integration_passed, fix, approval, merge or note), its confidence (claimed, tested or approved), who recorded it (absent for g1t), its summary and its evidence. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
             }
             Op::UploadAttachment => {
-                "Upload an image to show in an issue's or a pull request's description or in a comment: a screenshot of a preview, say, instead of committing it to the repository. data is the file base64-encoded, name its file name (the image's alt text), content_type optional (checked against the bytes). PNG, JPEG, GIF and WebP of at most 10 MB; a larger file is refused with 413 too_large, another type (SVG, PDF, anything its bytes do not show to be one of those) with 415 unsupported_type. Anyone who may comment on the repository may. Returns its id, url (on the usercontent origin, g1tusercontent.com on g1t.sh), name, size, content_type, and markdown (`![name](url)`) to paste into the body or summary of create_issue, update_issue, add_comment, create_pull_request or mark_pull_request_ready. Its address is its permission: anyone given it can see the image, even one from a private repository. Over MCP the file travels in the tool call, so keep it small (a few hundred KB); `g1t attach FILE` uploads one from disk and prints the markdown."
+                "Upload an image to show in a work item's or a pull request's description or in a comment: a screenshot of a preview, say, instead of committing it to the repository. data is the file base64-encoded, name its file name (the image's alt text), content_type optional (checked against the bytes). PNG, JPEG, GIF and WebP of at most 10 MB; a larger file is refused with 413 too_large, another type (SVG, PDF, anything its bytes do not show to be one of those) with 415 unsupported_type. Anyone who may comment on the repository may. Returns its id, url (on the usercontent origin, g1tusercontent.com on g1t.sh), name, size, content_type, and markdown (`![name](url)`) to paste into the body or summary of open_work_item, update_work_item, add_work_item_comment, add_comment, create_pull_request or mark_pull_request_ready. Its address is its permission: anyone given it can see the image, even one from a private repository. Over MCP the file travels in the tool call, so keep it small (a few hundred KB); `g1t attach FILE` uploads one from disk and prints the markdown."
             }
             Op::ReviewPullRequest => {
                 "Give a verdict on a pull request: approve it, or request changes and say what. Read get_pull_request_changes first. You cannot review a pull request you opened, or one g1t made for you (you are its requested_by)."
@@ -1711,26 +1799,26 @@ impl Op {
                 "Pull requests on a repository, newest first. State open covers drafts and those ready for review; closed covers merged and closed. Filter by a label's name, a milestone's number, or base, the branch they merge into."
             }
             Op::GetPullRequest => {
-                "A pull request's status, base (the branch it merges into), head commit, labels, milestone, comments and reviews, the issue it is for, its checks (statuses: what each workflow run reported on its head, with a link to the run; get_workflow_run and get_job_logs say why one failed), required_checks (each check the rules of the branch it merges into require, as success, failure, pending or expected when nothing has reported it yet), rules (each rule of that branch it does not meet yet, with the ruleset it comes from, what is wrong and how to meet it, in `unmet`; those you may bypass in `bypassable`; those of rulesets in evaluate that would refuse it in `evaluate`; and whether merging joins the merge queue), whether it is behind the branch it would merge into, and overlaps: other pull requests in progress that change the same files. An overlap with a pull request for a different issue means the two will conflict; say so, or keep clear of those files. `pull.reviewers` lists the people asked to review it and `pull.team_reviewers` the teams, as `workspace/team`. `code_owners` is there when the branch it merges into has a CODEOWNERS file: its `path`, whether code owners' approval is `required`, `reviews` (one per section and rule that owns a changed file, with its `section`, `line`, `pattern`, `owners`, `files`, whether it is `optional`, the approvals `required`, who it was `approved_by` and `changes_requested_by`, and whether it is `satisfied`), what is still `missing`, and how many `errors` the file has (get_codeowners_errors lists them). A comment one of the workspace's agents wrote as itself has `agent` (its `id`, `handle`, `display_name` and `avatar_seed`) and `acting_for` (the person it acted for, whose access capped it); its `author` is the agent, of kind `agent`. An agent's review also has `advisory: true`: its `verdict` (none, for a review that only comments) is shown but never counts toward required approvals or code owners, and never blocks a merge."
+                "A pull request's status, base (the branch it merges into), head commit, labels, milestone, comments and reviews, the work item it is for (`item`), its checks (statuses: what each workflow run reported on its head, with a link to the run; get_workflow_run and get_job_logs say why one failed), required_checks (each check the rules of the branch it merges into require, as success, failure, pending or expected when nothing has reported it yet), rules (each rule of that branch it does not meet yet, with the ruleset it comes from, what is wrong and how to meet it, in `unmet`; those you may bypass in `bypassable`; those of rulesets in evaluate that would refuse it in `evaluate`; and whether merging joins the merge queue), whether it is behind the branch it would merge into, and overlaps: other pull requests in progress that change the same files. An overlap with a pull request for a different work item means the two will conflict; say so, or keep clear of those files. `pull.reviewers` lists the people asked to review it and `pull.team_reviewers` the teams, as `workspace/team`. `code_owners` is there when the branch it merges into has a CODEOWNERS file: its `path`, whether code owners' approval is `required`, `reviews` (one per section and rule that owns a changed file, with its `section`, `line`, `pattern`, `owners`, `files`, whether it is `optional`, the approvals `required`, who it was `approved_by` and `changes_requested_by`, and whether it is `satisfied`), what is still `missing`, and how many `errors` the file has (get_codeowners_errors lists them). A comment one of the workspace's agents wrote as itself has `agent` (its `id`, `handle`, `display_name` and `avatar_seed`) and `acting_for` (the person it acted for, whose access capped it); its `author` is the agent, of kind `agent`. An agent's review also has `advisory: true`: its `verdict` (none, for a review that only comments) is shown but never counts toward required approvals or code owners, and never blocks a merge."
             }
             Op::CreatePullRequest => {
-                "Start a change. Opens a draft pull request with its own fork of the repository and returns the fork's git remote. Clone it, commit your work there, push, record your session as you go, then call mark_pull_request_ready. Give the issue it is for whenever there is one. If the change is already on a branch pushed to the repository, give that branch instead: no fork is made and the pull request is ready for review at once. It merges into the default branch unless base names another existing branch; leave base out unless you were asked for another."
+                "Start a change. Opens a draft pull request with its own fork of the repository and returns the fork's git remote. Clone it, commit your work there, push, record your session as you go, then call mark_pull_request_ready. Give item, the number of the work item it is for in the repository's workspace, whenever there is one; this repository is then linked to it as touched, if it was not a target already. If the change is already on a branch pushed to the repository, give that branch instead: no fork is made and the pull request is ready for review at once. It merges into the default branch unless base names another existing branch; leave base out unless you were asked for another."
             }
             Op::UpdatePullRequest => {
-                "Change an open pull request: base, the branch it merges into (an existing branch; needs the Write role or higher); its labels (replacing the set, as set_issue_labels does); its milestone (a number, or null or 0 for none; needs the Triage role); and assignees and reviewers (each replacing the set). Only the fields given change. Its author, or whoever asked g1t for it, may change it; anyone else needs the Triage role or higher. A new base is a pull.base_changed event: it leaves the merge queue, and whether it is behind, merges cleanly and has the checks it needs is worked out against the new base. state open reopens a closed pull request, as reopen_pull_request does, before anything else changes; state closed closes it, as close_pull_request does, after."
+                "Change an open pull request: base, the branch it merges into (an existing branch; needs the Write role or higher); its labels (the workspace's labels, replacing the set); its milestone (a number, or null or 0 for none; needs the Triage role); and assignees and reviewers (each replacing the set). Only the fields given change. Its author, or whoever asked g1t for it, may change it; anyone else needs the Triage role or higher. A new base is a pull.base_changed event: it leaves the merge queue, and whether it is behind, merges cleanly and has the checks it needs is worked out against the new base. state open reopens a closed pull request, as reopen_pull_request does, before anything else changes; state closed closes it, as close_pull_request does, after."
             }
             Op::RecordSession => {
                 "Append entries to a pull request's session: the task you were given, public decision summaries and evidence, and the tools you ran. Never record private chain-of-thought or credentials. This is how people later see why a change was made, so record as you work, not only at the end."
             }
             Op::ReadSession => "The recorded session of a pull request, oldest entry first.",
             Op::RecordDecision => {
-                "Record a decision on a pull request: why the change is made the way it is (proposal), something you say is true of it (claim), what you changed to fix a failure (fix), or a note. It is kept with confidence claimed, attributed to you, with the issue the pull request is for, and published as decision.recorded. evidence is an object of what it rests on, such as {\"commit\": \"â€¦\", \"check\": \"CI\"}; session_id names the session it was made in. g1t records the decisions it saw proved itself: integration_failure and integration_passed when the merge queue combines pull requests (confidence tested), approval when a person approves (approved), and merge."
+                "Record a decision on a pull request: why the change is made the way it is (proposal), something you say is true of it (claim), what you changed to fix a failure (fix), or a note. It is kept with confidence claimed, attributed to you, with the work item the pull request is for, and published as decision.recorded. evidence is an object of what it rests on, such as {\"commit\": \"â€¦\", \"check\": \"CI\"}; session_id names the session it was made in. g1t records the decisions it saw proved itself: integration_failure and integration_passed when the merge queue combines pull requests (confidence tested), approval when a person approves (approved), and merge."
             }
             Op::ListDecisions => {
-                "The decision records on an issue (with those on its pull requests) or on a pull request, oldest first: each with its kind (proposal, claim, integration_failure, integration_passed, fix, approval, merge or note), its confidence (claimed: someone said so; tested: a check or a combination of pull requests proved it; approved: a person approved it), who recorded it (absent for g1t), its summary and its evidence. Issues and pull requests share numbers, so number names either."
+                "The decision records on a pull request, oldest first (a work item's, with its pull requests', are list_work_item_decisions): each with its kind (proposal, claim, integration_failure, integration_passed, fix, approval, merge or note), its confidence (claimed: someone said so; tested: a check or a combination of pull requests proved it; approved: a person approved it), who recorded it (absent for g1t), its summary and its evidence."
             }
             Op::Why => {
-                "Why a line of a file is the way it is: the commit that last changed it (by blame, at ref or the default branch; its author named as git wrote them, with `username`, the g1t account their address belongs to, when one does, and never the address), the merged pull request it arrived in, that pull request's issue, the decision records on the pull request, and the session entries recorded around that commit (what was said and the tool calls that touched the file, at most eight). pull, issue, decisions and sessions are empty when the commit did not arrive through a pull request."
+                "Why a line of a file is the way it is: the commit that last changed it (by blame, at ref or the default branch; its author named as git wrote them, with `username`, the g1t account their address belongs to, when one does, and never the address), the merged pull request it arrived in, that pull request's work item, the decision records on the pull request, and the session entries recorded around that commit (what was said and the tool calls that touched the file, at most eight). pull, item, decisions and sessions are empty when the commit did not arrive through a pull request."
             }
             Op::MarkPullRequestReady => {
                 "Mark a draft pull request ready for review. Push your commits first. The summary becomes its description and should say what changed and why."
@@ -1739,10 +1827,10 @@ impl Op {
             Op::ReopenPullRequest => "Reopen a closed pull request. It comes back as the draft it was if it was closed as one, and ready for review otherwise; a merged pull request cannot be reopened, nor one whose branch was deleted. Its author may reopen their own, and whoever asked g1t for one may reopen that one; anyone else needs the Triage role or higher. Publishes pull.reopened with its head commit.",
             Op::ConvertPullRequestToDraft => "Turn a pull request that is ready for review back into a draft. A draft cannot be merged until it is marked ready again; it leaves the merge queue, and a merge waiting for it to catch up is called off. Its author may, and whoever asked g1t for it; anyone else needs the Triage role or higher. Publishes pull.converted_to_draft.",
             Op::GetPullRequestChanges => {
-                "What a pull request changes: the files it touches and their line-by-line diff against the commit it started from. Use it to review a pull request or to compare several made for the same issue. A large one lists every file (up to 300; truncated says when there were more) but has the lines of only the first, about 20,000 lines read: the files after that come with omitted true and no lines or counts. Ask again with paths (up to 50 at a time) to have those files' lines."
+                "What a pull request changes: the files it touches and their line-by-line diff against the commit it started from. Use it to review a pull request or to compare several made for the same work item. A large one lists every file (up to 300; truncated says when there were more) but has the lines of only the first, about 20,000 lines read: the files after that come with omitted true and no lines or counts. Ask again with paths (up to 50 at a time) to have those files' lines."
             }
             Op::MergePullRequest => {
-                "Land a pull request on its base, the branch it merges into (the default branch unless it names another). merge_method says how: merge (a merge commit joins its branch to the base, its commits included), squash (one new commit holds everything it changed), rebase (each of its commits is made again on top of the base, in order) or fast_forward (the base moves to its head, exactly the commit that was checked; only when its branch contains the base's head). Left out, the repository's default_merge_method. A method the repository does not allow (allow_merge_commit, allow_squash_merge, allow_rebase_merge, allow_fast_forward on update_repo_settings), or that a rule for the base does not (allowed_merge_methods, and required linear history, which refuses merge), is refused. commit_title and commit_message are a merge or squash commit's message: its first line and the rest; left out, the repository's merge_commit_message or squash_commit_message decides. With sha, the merge is refused (409) if the pull request's head is no longer that commit. delete_branch deletes its branch once it has merged (left out, the repository's delete_branch_on_merge); restore_pull_request_head_branch brings it back. Merging needs the Write role or higher, and only once it is marked ready and it meets every rule that holds for its base (see rules and required_checks on get_pull_request: approvals, checks, deployments, merge windows and the rest, from the repository's and its workspace's rulesets); the refusal names the first rule not met. With ignore_checks, someone who may merge can bypass required checks where the rule allows it; with bypass_rules, someone a ruleset lists as a bypass actor merges past its rules, and it is recorded. Merging into the default branch closes the issues in its closes: the issue it was made for and those its title and description name after a closing keyword (Fixes #12), where the repository closes issues (auto_close_issues); the other pull requests still in progress for its issue close as superseded. Merging into another branch closes nothing. Where the repository has a merge queue, a pull request into the default branch joins the queue instead of landing at once, to be tested and landed by merge_method (the merge queue rule's when absent) with the commit message given. If its base has moved since the pull request was opened, it is brought up to date first and lands when that is done; a repository that requires pull requests into its default branch to be up to date refuses instead: update_pull_request_branch, then merge again. Check status in the result to see whether it has landed, and merge_method and merge_commit for how."
+                "Land a pull request on its base, the branch it merges into (the default branch unless it names another). merge_method says how: merge (a merge commit joins its branch to the base, its commits included), squash (one new commit holds everything it changed), rebase (each of its commits is made again on top of the base, in order) or fast_forward (the base moves to its head, exactly the commit that was checked; only when its branch contains the base's head). Left out, the repository's default_merge_method. A method the repository does not allow (allow_merge_commit, allow_squash_merge, allow_rebase_merge, allow_fast_forward on update_repo_settings), or that a rule for the base does not (allowed_merge_methods, and required linear history, which refuses merge), is refused. commit_title and commit_message are a merge or squash commit's message: its first line and the rest; left out, the repository's merge_commit_message or squash_commit_message decides. With sha, the merge is refused (409) if the pull request's head is no longer that commit. delete_branch deletes its branch once it has merged (left out, the repository's delete_branch_on_merge); restore_pull_request_head_branch brings it back. Merging needs the Write role or higher, and only once it is marked ready and it meets every rule that holds for its base (see rules and required_checks on get_pull_request: approvals, checks, deployments, merge windows and the rest, from the repository's and its workspace's rulesets); the refusal names the first rule not met. With ignore_checks, someone who may merge can bypass required checks where the rule allows it; with bypass_rules, someone a ruleset lists as a bypass actor merges past its rules, and it is recorded. Merging into the default branch lands the work items in its closes in this repository: the work item it was made for (unless keep_item_open) and those its title and description name after a closing keyword (Fixes #12), where the repository does so (auto_close_items); each closes once it has landed in every target, and the other pull requests still in progress for its work item in this repository close as superseded. Merging into another branch closes nothing. Where the repository has a merge queue, a pull request into the default branch joins the queue instead of landing at once, to be tested and landed by merge_method (the merge queue rule's when absent) with the commit message given. If its base has moved since the pull request was opened, it is brought up to date first and lands when that is done; a repository that requires pull requests into its default branch to be up to date refuses instead: update_pull_request_branch, then merge again. Check status in the result to see whether it has landed, and merge_method and merge_commit for how."
             }
             Op::GetPullRequestMergeOptions => {
                 "How a pull request may merge now, as the merge box offers it to you: the methods it may merge by (the repository's, as the rules for its base allow them) and the one offered first (default_method); each method's default commit title and message, and why one cannot be used now (unavailable); whether it is behind its base, can fast-forward as it is, should be offered an update (suggest_update) or must be up to date (require_up_to_date); whether it goes through the merge queue; whether you may turn on auto-merge; whether deleting its branch starts ticked and is possible; and whether commits made merging it are signed off."
@@ -1778,13 +1866,13 @@ impl Op {
                 "Delete a commit comment, named by comment_id. Its author may, and so may anyone with the Maintain role or higher. This cannot be undone. Publishes commit_comment.deleted."
             }
             Op::ListEvents => {
-                "The timeline of a repository: pushes, issues, pull requests, comments, sessions, claims and integration results, newest first; page back with before. To follow it, give after (an event id): the events written after that one come oldest first, and the last one's id is the next call's after. With after and wait (seconds, at most 25), a call that finds nothing holds on until a matching event is written or the wait ends, then returns what it has, perhaps nothing. Narrow it with types, numbers (issues and pull requests, matching events about them and comments on them), since and limit (50 by default, at most 200)."
+                "The timeline of a repository: pushes, its work items, pull requests, comments, sessions, claims and integration results, newest first; page back with before. To follow it, give after (an event id): the events written after that one come oldest first, and the last one's id is the next call's after. With after and wait (seconds, at most 25), a call that finds nothing holds on until a matching event is written or the wait ends, then returns what it has, perhaps nothing. Narrow it with types, numbers (work items and pull requests, matching events about them and comments on them), since and limit (50 by default, at most 200)."
             }
             Op::ListIntegrations => {
-                "A workspace's integrations: the alert sources that open issues (Sentry, Datadog, webhooks), and the trackers whose tickets agents can read (Jira, Linear). Secrets are never returned. Members only."
+                "A workspace's integrations: the alert sources that open work items (Sentry, Datadog, webhooks), and the trackers whose tickets agents can read (Jira, Linear). Secrets are never returned. Members only."
             }
             Op::ConnectIntegration => {
-                "Connect a workspace to an alert source or an issue tracker. provider is sentry, datadog, webhook, jira or linear. config holds the settings each needs; secret is the API key or token, kept encrypted and never returned (secret_hint shows its last four characters). For datadog and webhook, g1t makes the signing secret and returns it once. AI providers are not integrations: see add_ai_provider. Owners only."
+                "Connect a workspace to an alert source or a ticket tracker. provider is sentry, datadog, webhook, jira or linear. config holds the settings each needs; secret is the API key or token, kept encrypted and never returned (secret_hint shows its last four characters). For datadog and webhook, g1t makes the signing secret and returns it once. AI providers are not integrations: see add_ai_provider. Owners only."
             }
             Op::UpdateIntegration => {
                 "Change an integration: its name, its config (replaced whole when given) or its secret (a new key replaces the old one, write-only). Use it to rotate a key. Fields left out are kept. Secrets are never returned. Owners only."
@@ -1894,8 +1982,8 @@ impl Op {
             Op::UpdateRunnerSettings => {
                 "Change where g1t's own jobs (pull request checks and merge checks) run and whether pull requests from forks may use self-hosted runners, for a workspace or one repository. Left out is unchanged; `inherit` drops a repository's own settings. Allowing forks lets anyone who can open a pull request run code on your machines. Owners of the workspace, or admins of the repository."
             }
-            Op::ImportIssue => {
-                "Open an issue from a ticket in Jira or Linear, or from a Sentry issue, by its key or address. The issue is linked to it: agents read the original, and when the work lands the ticket is told. Importing the same ticket again returns the issue already made."
+            Op::ImportWorkItems => {
+                "Open a work item in a workspace from a ticket in Jira or Linear, or from a Sentry issue, by its key or address. The work item is linked to it: agents read the original, and when the work lands the ticket is told. With repo (a repository of the workspace), the work item is filed from it, its origin. Importing the same ticket again returns the work item already made."
             }
             Op::ListCollaborators => {
                 "Who has access to a repository: the workspace's `base_permission`, and `people`, everyone with a role on it other than through it being public. Each person has their effective `role` (read, triage, write, maintain or admin), its `source` (`owner` of the workspace, the workspace's `base` permission, or a `direct` role on this repository), their `direct` role if they have one, and their `workspace_role` (`owner`, `member`, or null for an outside collaborator). Pending `invitations` are listed for those with the Admin role, and empty for anyone else. `viewer_role` is your own role, and `can_manage` whether you may change who has access. Needs the Write role or higher. People only."
@@ -1943,13 +2031,13 @@ impl Op {
                 "Open a dismissed alert again. A reopened secret stops pushes that carry it again. The same roles as dismissing: Admin for a secret, Write for a dependency. Returns the alert as it is now."
             }
             Op::ListNotifications => {
-                "Your notifications: one thread for each thing you were told about (an issue, a pull request, a workflow on a branch, a deployment), latest activity first. As in your inbox, only unread threads unless `all` is true; `view` `saved` or `done` lists those instead, read or not. Each thread has a `reason`, why you were told (`agent`, `review_requested`, `assign`, `mention`, `ci_activity`, `security_alert`, `state_change`, `author`, `comment`, `manual` or `subscribed`), a `severity`, the latest activity's `title`, and `count`, how many things have happened on it. Filter by `reason` or `severity`, by `participating` (leaving out what you only watch or subscribed to by hand), by `since` and `before` (RFC 3339, the latest activity), or to one repository. A page holds `per_page` threads, 30 unless you say (at most 100); pass `next` back as `cursor` for the next. Threads about repositories you can no longer read are left out. Your own: a personal access token or a session, never a workspace's."
+                "Your notifications: one thread for each thing you were told about (a work item, a pull request, a workflow on a branch, a deployment), latest activity first. As in your inbox, only unread threads unless `all` is true; `view` `saved` or `done` lists those instead, read or not. Each thread has a `reason`, why you were told (`agent`, `review_requested`, `assign`, `mention`, `ci_activity`, `security_alert`, `state_change`, `author`, `comment`, `manual` or `subscribed`), a `severity`, the latest activity's `title`, and `count`, how many things have happened on it. Filter by `reason` or `severity`, by `participating` (leaving out what you only watch or subscribed to by hand), by `since` and `before` (RFC 3339, the latest activity), or to one repository. A page holds `per_page` threads, 30 unless you say (at most 100); pass `next` back as `cursor` for the next. Threads about repositories you can no longer read are left out. Your own: a personal access token or a session, never a workspace's."
             }
             Op::MarkNotificationsRead => {
                 "Mark every thread in your inbox read, or every thread about one repository. Threads whose latest activity came after `last_read_at` (now, when left out) stay unread, so nothing that arrived while you looked is lost. With `read` false they are marked unread instead. Returns how many changed."
             }
             Op::GetNotificationThread => {
-                "One of your threads: what it is about, its latest activity, its last 10 things that happened (`activity`, newest first), and for an issue or pull request your `subscription` to it."
+                "One of your threads: what it is about, its latest activity, its last 10 things that happened (`activity`, newest first), and for a work item or pull request your `subscription` to it."
             }
             Op::MarkThreadRead => {
                 "Mark one thread read, or with `read` false, unread. Returns the thread."
@@ -1964,16 +2052,16 @@ impl Op {
                 "Snooze one thread out of your inbox until `until` (RFC 3339, a time to come); it is marked read and comes back at that time. Leave `until` out to bring it back now. Returns the thread."
             }
             Op::GetThreadSubscription => {
-                "Your subscription to an issue or pull request, named by a thread's `id`, or by `repo` and `number`. `subscribed` says whether you hear of what happens on it, `ignored` whether you hear of nothing at all, and `reason` why you are subscribed: you opened it or asked g1t for it (`author`), are assigned (`assign`), were asked to review (`review_requested`), commented (`comment`), were mentioned (`mention`), or subscribed by hand (`manual`)."
+                "Your subscription to a work item or pull request, named by a thread's `id`, by `workspace` and `number` (a work item), or by `repo` and `number` (a pull request). `subscribed` says whether you hear of what happens on it, `ignored` whether you hear of nothing at all, and `reason` why you are subscribed: you opened it or asked g1t for it (`author`), are assigned (`assign`), were asked to review (`review_requested`), commented (`comment`), were mentioned (`mention`), or subscribed by hand (`manual`)."
             }
             Op::SetThreadSubscription => {
-                "Subscribe to an issue or pull request (`subscribed`, true unless you say), unsubscribe (`subscribed` false), or ignore it (`ignored` true): hear of nothing on it, not even a mention. Unsubscribed, you still hear of what is asked of you (a review, an assignment, a mention, an agent waiting on you), and commenting or being mentioned subscribes you again. Name it by a thread's `id`, or by `repo` and `number`. Returns your subscription."
+                "Subscribe to a work item or pull request (`subscribed`, true unless you say), unsubscribe (`subscribed` false), or ignore it (`ignored` true): hear of nothing on it, not even a mention. Unsubscribed, you still hear of what is asked of you (a review, an assignment, a mention, an agent waiting on you), and commenting or being mentioned subscribes you again. Name it by a thread's `id`, or by `repo` and `number`. Returns your subscription."
             }
             Op::DeleteThreadSubscription => {
-                "Unsubscribe from an issue or pull request until you comment on it or are mentioned. What is asked of you directly (a review, an assignment, a mention, an agent waiting on you) still reaches you. Name it by a thread's `id`, or by `repo` and `number`. Returns your subscription."
+                "Unsubscribe from a work item or pull request until you comment on it or are mentioned. What is asked of you directly (a review, an assignment, a mention, an agent waiting on you) still reaches you. Name it by a thread's `id`, or by `repo` and `number`. Returns your subscription."
             }
             Op::GetRepoSubscription => {
-                "How you watch a repository. `level` is `participating` (the default: only what you take part in or are mentioned in), `all` (every issue and pull request opened, commented on, closed or merged, and every deployment), `ignore` (nothing, not even a mention) or `custom` (what you take part in, and the kinds in `events`: `issues`, `pulls`, `deployments`, `security`). `subscribed` is true for `all` and `custom`, and `ignored` for `ignore`."
+                "How you watch a repository. `level` is `participating` (the default: only what you take part in or are mentioned in), `all` (every work item linked to it and pull request opened, commented on, closed or merged, and every deployment), `ignore` (nothing, not even a mention) or `custom` (what you take part in, and the kinds in `events`: `work_items`, `pulls`, `deployments`, `security`). `subscribed` is true for `all` and `custom`, and `ignored` for `ignore`."
             }
             Op::SetRepoSubscription => {
                 "Watch a repository you can read: give `level`, with `events` for `custom`; or, as booleans, `subscribed` (all its activity, or with false, only what you take part in) and `ignored` (nothing at all). Returns how you watch it now."
@@ -2097,6 +2185,8 @@ impl Op {
     /// The JSON Schema of the operation's input.
     pub fn input(self) -> Value {
         let repo_only = || object(json!({ "repo": repo_schema() }), &["repo"]);
+        let workspace_only = || object(json!({ "workspace": workspace_schema() }), &["workspace"]);
+        let item_only = || object(item_numbered(json!({})), &["number"]);
         let just_numbered = || object(numbered(json!({})), &["repo", "number"]);
         let states = json!({ "type": "string", "enum": ["open", "closed"] });
         match self {
@@ -2339,39 +2429,45 @@ impl Op {
                 &["repo"],
             ),
             Op::DetachFork => repo_only(),
-            Op::GetRepo | Op::ListLabels | Op::AddDefaultLabels => repo_only(),
+            Op::GetRepo => repo_only(),
+            Op::ListLabels | Op::AddDefaultLabels => workspace_only(),
             Op::CreateLabel => object(
                 json!({
-                    "repo": repo_schema(),
+                    "workspace": workspace_schema(),
                     "label": { "type": "string", "description": "Its name: lowercase, at most 50 characters, e.g. \"good first issue\"." },
                     "color": { "type": "string", "description": "Six hex digits, with or without #, e.g. \"d73a4a\". Chosen from the name when left out." },
                     "description": { "type": "string", "description": "What it means, at most 100 characters." },
                 }),
-                &["repo", "label"],
+                &["workspace", "label"],
             ),
             Op::UpdateLabel => object(
                 json!({
-                    "repo": repo_schema(),
+                    "workspace": workspace_schema(),
                     "label": label_schema(),
                     "new_name": { "type": "string", "description": "Rename it, on everything that carries it." },
                     "color": { "type": "string", "description": "Six hex digits." },
+                    "description": { "type": "string", "description": "What it means, at most 100 characters." },
                 }),
-                &["repo", "label"],
+                &["workspace", "label"],
             ),
-            Op::DeleteLabel => object(json!({ "repo": repo_schema(), "label": label_schema() }), &["repo", "label"]),
-            Op::ListIssueLabels => just_numbered(),
-            Op::AddIssueLabels | Op::SetIssueLabels => object(
-                numbered(json!({
+            Op::DeleteLabel => object(json!({ "workspace": workspace_schema(), "label": label_schema() }), &["workspace", "label"]),
+            Op::ListWorkItemLabels
+            | Op::GetWorkItem
+            | Op::ReopenWorkItem
+            | Op::ListWorkItemLinks
+            | Op::ListWorkItemDecisions => item_only(),
+            Op::AddWorkItemLabels | Op::SetWorkItemLabels => object(
+                item_numbered(json!({
                     "labels": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "Label names, e.g. [\"bug\", \"help wanted\"]. Names the repository does not have yet are created for someone with the Write role.",
+                        "description": "Label names, e.g. [\"bug\", \"help wanted\"]. Names the workspace does not have yet are created for someone with the Write role.",
                     },
                 })),
-                &["repo", "number", "labels"],
+                &["number", "labels"],
             ),
-            Op::RemoveIssueLabels => object(
-                numbered(json!({
+            Op::RemoveWorkItemLabels => object(
+                item_numbered(json!({
                     "label": label_schema(),
                     "labels": {
                         "type": "array",
@@ -2379,28 +2475,28 @@ impl Op {
                         "description": "Instead of label: several to take off. With neither, all of them.",
                     },
                 })),
-                &["repo", "number"],
+                &["number"],
             ),
             Op::ListMilestones => object(
-                json!({ "repo": repo_schema(), "state": states }),
-                &["repo"],
+                json!({ "workspace": workspace_schema(), "state": states }),
+                &["workspace"],
             ),
             Op::GetMilestone | Op::DeleteMilestone => {
-                object(json!({ "repo": repo_schema(), "milestone": milestone_schema() }), &["repo", "milestone"])
+                object(json!({ "workspace": workspace_schema(), "milestone": milestone_schema() }), &["workspace", "milestone"])
             }
             Op::CreateMilestone | Op::UpdateMilestone => {
                 let mut properties = json!({
-                    "repo": repo_schema(),
-                    "title": { "type": "string", "description": "Unique in the repository, at most 100 characters." },
+                    "workspace": workspace_schema(),
+                    "title": { "type": "string", "description": "Unique in the workspace, at most 100 characters." },
                     "description": { "type": "string", "description": "Markdown." },
                     "due_on": { "type": "string", "description": "The day it is due, YYYY-MM-DD. On update, \"\" clears it." },
                     "state": states,
                 });
                 if self == Op::UpdateMilestone {
                     properties["milestone"] = milestone_schema();
-                    object(properties, &["repo", "milestone"])
+                    object(properties, &["workspace", "milestone"])
                 } else {
-                    object(properties, &["repo", "title"])
+                    object(properties, &["workspace", "title"])
                 }
             }
             Op::UpdateRepo => object(
@@ -2520,8 +2616,8 @@ impl Op {
                     "query": { "type": "string", "description": "What to look for: words, \"phrases\" and qualifiers, such as parse_query language:rust repo:acme/web." },
                     "type": {
                         "type": "string",
-                        "enum": ["repositories", "code", "issues", "pulls", "people"],
-                        "description": "Which kind of results. Worked out from the qualifiers if not given: path: means code, is:pr pull requests, is:open or label: issues, otherwise repositories.",
+                        "enum": g1t_contracts::search::SearchType::ALL.map(|kind| kind.as_str()),
+                        "description": "Which kind of results. Worked out from the qualifiers if not given: path: means code, is:pr pull requests, is:open, is:item or label: work items, otherwise repositories.",
                     },
                     "page": { "type": "integer", "description": "From 1; at most 50." },
                     "per_page": { "type": "integer", "description": "At most 50; 20 if not given." },
@@ -2593,7 +2689,7 @@ impl Op {
                     },
                     "merge_commit_template": {
                         "type": "string",
-                        "description": "With merge_commit_message custom: the message, its first line the title. {title}, {number}, {body}, {branch}, {head_repo}, {base}, {author}, {commits}, {issues} and {co_authors} are filled in. An empty string clears it.",
+                        "description": "With merge_commit_message custom: the message, its first line the title. {title}, {number}, {body}, {branch}, {head_repo}, {base}, {author}, {commits}, {items} and {co_authors} are filled in. An empty string clears it.",
                     },
                     "squash_commit_template": {
                         "type": "string",
@@ -2619,13 +2715,13 @@ impl Op {
                         "type": "boolean",
                         "description": "Let anyone who can read the repository comment on its commits. Existing comments stay readable either way.",
                     },
-                    "auto_close_issues": {
+                    "auto_close_items": {
                         "type": "boolean",
-                        "description": "Close the issues a pull request names (its issue, and Fixes #12 in its title or description) when it merges into the default branch.",
+                        "description": "Land the work items a pull request names (its item, and Fixes #12 in its title or description) in this repository when it merges into the default branch, closing those with nothing left to land; and the same for commits pushed there.",
                     },
-                    "has_issues": {
+                    "has_work_items": {
                         "type": "boolean",
-                        "description": "Whether issues can be opened in it. null goes back to the default: on for a repository, off for a fork. Existing issues stay readable either way.",
+                        "description": "Whether work items can be filed from it (with it as their origin). null goes back to the default: on for a repository, off for a fork. Work items filed from it before stay readable either way, and it can always be linked as a target.",
                     },
                 }),
                 &["repo"],
@@ -2650,18 +2746,38 @@ impl Op {
                 }),
                 &["name"],
             ),
-            Op::ListIssues => object(
+            Op::ListWorkItems => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "repo": { "type": "string", "description": "Only work items linked to this repository (\"owner/name\"), in any role or in role. Given without workspace, its workspace's." },
+                    "state": states,
+                    "label": { "type": "string", "description": "Only work items carrying this label." },
+                    "milestone": { "type": "integer", "description": "Only work items in the workspace milestone of this number." },
+                    "assignee": { "type": "string", "description": "Only work items assigned to this username." },
+                    "role": {
+                        "type": "string",
+                        "enum": ["origin", "target", "touched"],
+                        "description": "With repo: only work items linked to it this way.",
+                    },
+                }),
+                &[],
+            ),
+            Op::ListRepoWorkItems => object(
                 json!({
                     "repo": repo_schema(),
                     "state": states,
-                    "label": { "type": "string", "description": "Only issues carrying this label." },
-                    "milestone": { "type": "integer", "description": "Only issues in the milestone of this number." },
+                    "label": { "type": "string", "description": "Only work items carrying this label." },
+                    "milestone": { "type": "integer", "description": "Only work items in the workspace milestone of this number." },
+                    "assignee": { "type": "string", "description": "Only work items assigned to this username." },
+                    "role": {
+                        "type": "string",
+                        "enum": ["origin", "target", "touched"],
+                        "description": "With repo: only work items linked to it this way.",
+                    },
                 }),
                 &["repo"],
             ),
-            Op::GetIssue
-            | Op::ReopenIssue
-            | Op::GetPullRequest
+            Op::GetPullRequest
             | Op::ClosePullRequest
             | Op::ReopenPullRequest
             | Op::ConvertPullRequestToDraft => just_numbered(),
@@ -2675,9 +2791,18 @@ impl Op {
                 })),
                 &["repo", "number"],
             ),
-            Op::CreateIssue => object(
+            Op::OpenWorkItem => object(
                 json!({
-                    "repo": repo_schema(),
+                    "workspace": workspace_schema(),
+                    "repo": {
+                        "type": "string",
+                        "description": "The repository it is filed from, \"owner/name\": its origin. Left out, it is filed in the workspace alone (members only).",
+                    },
+                    "targets": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Repositories of the workspace (\"owner/name\") where the work is meant to land. It closes once it has landed in every one.",
+                    },
                     "title": { "type": "string", "description": "The problem or goal in one line." },
                     "body": {
                         "type": "string",
@@ -2686,30 +2811,24 @@ impl Op {
                     "labels": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "What kind of issue this is, e.g. \"bug\" or \"enhancement\": the repository's labels, as list_labels gives them. A name it does not have yet is created for someone with the Write role.",
+                        "description": "What kind of work this is, e.g. \"bug\" or \"enhancement\": the workspace's labels, as list_labels gives them. A name it does not have yet is created for someone with the Write role.",
                     },
-                    "checks": {
-                        "type": "array",
-                        "items": { "type": "string" },
-                        "deprecated": true,
-                        "description": "Deprecated. Commands are added to the body under \"Definition of done\", and the response says so in deprecation. What must pass before a pull request merges is the default branch's required checks.",
-                    },
-                    "milestone": { "type": "integer", "description": "The number of the milestone to put it in. Needs the Triage role." },
+                    "milestone": { "type": "integer", "description": "The number of the workspace milestone to put it in. Needs the Triage role." },
                 }),
-                &["repo", "title"],
+                &["title"],
             ),
-            Op::UpdateIssue => object(
-                numbered(json!({
+            Op::UpdateWorkItem => object(
+                item_numbered(json!({
                     "title": { "type": "string" },
                     "body": { "type": "string" },
                     "labels": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": "Replaces the whole set. Names the repository does not have yet are created for someone with the Write role.",
+                        "description": "Replaces the whole set. Names the workspace does not have yet are created for someone with the Write role.",
                     },
                     "milestone": {
                         "type": ["integer", "null"],
-                        "description": "The number of the milestone to put it in; null or 0 takes it out. Needs the Triage role.",
+                        "description": "The number of the workspace milestone to put it in; null or 0 takes it out. Needs the Triage role.",
                     },
                     "assignees": {
                         "type": "array",
@@ -2719,13 +2838,19 @@ impl Op {
                     "blocked_by": {
                         "type": "array",
                         "items": { "type": "integer" },
-                        "description": "The numbers of the issues of this repository that have to land first. Replaces the whole set; an empty list clears it. No cycles, and never the issue itself.",
+                        "description": "The numbers of the work items of the workspace that have to land first. Replaces the whole set; an empty list clears it. No cycles, and never the work item itself.",
                     },
                 })),
-                &["repo", "number"],
+                &["number"],
             ),
-            Op::CloseIssue => object(
-                numbered(json!({
+            Op::CloseWorkItem => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "repo": {
+                        "type": "string",
+                        "description": "With commit: the repository the commit is in, \"owner/name\". Given without workspace, its workspace is the work item's.",
+                    },
+                    "number": item_number_schema(),
                     "reason": {
                         "type": "string",
                         "enum": ["completed", "not_planned"],
@@ -2733,10 +2858,36 @@ impl Op {
                     },
                     "commit": {
                         "type": "string",
-                        "description": "The commit that closed it: one on the default branch whose message names this issue after a closing keyword (Fixes #12). It closes as completed in that commit, as pushing it would have.",
+                        "description": "The commit that did it: one on repo's default branch whose message names this work item after a closing keyword (Fixes #12). It lands there as pushing it would have.",
                     },
-                })),
-                &["repo", "number"],
+                }),
+                &["number"],
+            ),
+            Op::LinkWorkItem | Op::UnlinkWorkItem => {
+                let mut properties = json!({
+                    "workspace": workspace_schema(),
+                    "number": item_number_schema(),
+                    "repo": {
+                        "type": "string",
+                        "description": "The repository to link or unlink, \"owner/name\": one of the workspace's. Given without workspace, its workspace is the work item's.",
+                    },
+                });
+                if self == Op::LinkWorkItem {
+                    properties["role"] = json!({
+                        "type": "string",
+                        "enum": ["target", "touched"],
+                        "description": "How it is linked: target (where the work is meant to land; the default) or touched.",
+                    });
+                }
+                object(properties, &["number", "repo"])
+            }
+            Op::ResolveRef => object(
+                json!({
+                    "repo": { "type": "string", "description": "The repository the reference is written in, \"owner/name\"." },
+                    "workspace": { "type": "string", "description": "Instead of repo: the workspace it is written in, by slug." },
+                    "number": { "type": "integer", "description": "The number after the #." },
+                }),
+                &["number"],
             ),
             Op::AddComment => object(
                 numbered(json!({
@@ -2777,6 +2928,37 @@ impl Op {
                     "remove": { "type": "boolean", "description": "Take your reaction back." },
                 })),
                 &["repo", "number", "content"],
+            ),
+            Op::AddWorkItemComment => object(
+                item_numbered(json!({ "body": { "type": "string", "description": "Markdown." } })),
+                &["number", "body"],
+            ),
+            Op::EditWorkItemComment => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "repo": item_repo_schema(),
+                    "comment_id": comment_id_schema(),
+                    "body": { "type": "string", "description": "The new text, in Markdown." },
+                }),
+                &["comment_id", "body"],
+            ),
+            Op::DeleteWorkItemComment => object(
+                json!({ "workspace": workspace_schema(), "repo": item_repo_schema(), "comment_id": comment_id_schema() }),
+                &["comment_id"],
+            ),
+            Op::ReactToWorkItem => object(
+                item_numbered(json!({
+                    "content": {
+                        "type": "string",
+                        "enum": ["+1", "-1", "laugh", "hooray", "confused", "heart", "rocket", "eyes"],
+                    },
+                    "comment_id": {
+                        "type": "string",
+                        "description": "A comment on it, to react to that comment rather than to its description.",
+                    },
+                    "remove": { "type": "boolean", "description": "Take your reaction back." },
+                })),
+                &["number", "content"],
             ),
             Op::UploadAttachment => object(
                 json!({
@@ -2854,10 +3036,10 @@ impl Op {
             Op::CreatePullRequest => object(
                 json!({
                     "repo": repo_schema(),
-                    "issue": { "type": "integer", "description": "The number of the issue this is for." },
+                    "item": { "type": "integer", "description": "The number of the work item this is for, in the repository's workspace." },
                     "title": {
                         "type": "string",
-                        "description": "Defaults to the issue's title. Required when there is no issue.",
+                        "description": "Defaults to the work item's title. Required when there is no item.",
                     },
                     "branch": {
                         "type": "string",
@@ -2940,9 +3122,9 @@ impl Op {
             ),
             Op::MergePullRequest => object(
                 numbered(json!({
-                    "keep_issue_open": {
+                    "keep_item_open": {
                         "type": "boolean",
-                        "description": "Set when this pull request is only part of the work: the issue stays open and the other pull requests for it are left alone.",
+                        "description": "Set when this pull request is only part of the work: it does not land its work item, and the other pull requests for it are left alone.",
                     },
                     "ignore_checks": {
                         "type": "boolean",
@@ -3059,7 +3241,7 @@ impl Op {
                     "numbers": {
                         "type": "array",
                         "items": { "type": "integer" },
-                        "description": "Only events about these issues or pull requests, and comments, reviews and links on them. In a query string, a comma-separated list.",
+                        "description": "Only events about these work items or pull requests, and comments, reviews and links on them. In a query string, a comma-separated list.",
                     },
                     "since": { "type": "string", "description": "Only events at or after this time (RFC 3339)." },
                     "limit": { "type": "integer", "minimum": 1, "maximum": 200, "description": "How many events at most; 50 by default." },
@@ -3083,7 +3265,7 @@ impl Op {
                     "name": { "type": "string", "description": "What to call it. The provider's name if left out." },
                     "config": {
                         "type": "object",
-                        "description": "Settings. repo (owner/name) is where alerts open issues; label names the label (bug). organization is the Sentry org's slug. site is Jira's address; email the account its token belongs to; keys the project or team keys it answers for. write_back (default true) tells the outside system when the work lands.",
+                        "description": "Settings. repo (owner/name) is the repository alerts file work items from; label names the label (bug). organization is the Sentry org's slug. site is Jira's address; email the account its token belongs to; keys the project or team keys it answers for. write_back (default true) tells the outside system when the work lands.",
                     },
                     "secret": { "type": "string", "description": "The API key or token g1t uses to call it. Write-only: kept encrypted, never returned." },
                     "signing_secret": { "type": "string", "description": "For sentry: the integration's client secret." },
@@ -3353,12 +3535,21 @@ impl Op {
                 }),
                 &["repo", "reference"],
             ),
-            Op::ImportIssue => object(
+            Op::ImportWorkItems => object(
                 json!({
-                    "repo": repo_schema(),
+                    "workspace": workspace_schema(),
+                    "repo": {
+                        "type": "string",
+                        "description": "A repository of the workspace to file it from, \"owner/name\": its origin. Given without workspace, its workspace's.",
+                    },
+                    "targets": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Repositories of the workspace (\"owner/name\") where the work is meant to land.",
+                    },
                     "reference": { "type": "string", "description": "A ticket key such as TECH-1234, or a Jira, Linear or Sentry address." },
                 }),
-                &["repo", "reference"],
+                &["reference"],
             ),
             Op::ListCollaborators | Op::ListRepoInvitations => repo_only(),
             Op::AddCollaborator => object(
@@ -3824,10 +4015,14 @@ impl Op {
                 | Op::Search
                 | Op::GetRepo
                 | Op::ListForks
-                | Op::ListIssues
-                | Op::GetIssue
+                | Op::ListWorkItems
+                | Op::ListRepoWorkItems
+                | Op::GetWorkItem
+                | Op::ListWorkItemLinks
+                | Op::ResolveRef
+                | Op::ListWorkItemDecisions
                 | Op::ListLabels
-                | Op::ListIssueLabels
+                | Op::ListWorkItemLabels
                 | Op::ListMilestones
                 | Op::GetMilestone
                 | Op::ListPullRequests
@@ -3903,6 +4098,14 @@ impl Op {
         // A workspace's, never one repository's.
         if let Op::Tokens(_) | Op::Sso(_) | Op::Onboarding(_) = self {
             return false;
+        }
+        // Work items, labels and milestones are the workspace's; a
+        // repository in their input names it, or filters or links.
+        if self.in_a_workspace() || self == Op::ResolveRef {
+            return false;
+        }
+        if let Op::Coordination(op) = self {
+            return op.needs_repo();
         }
         !matches!(
             self,
@@ -4012,6 +4215,43 @@ impl Op {
                 | Op::SetBudget
                 | Op::ListInvoices
                 | Op::GetBillingDetails
+        )
+    }
+
+    /// Whether the operation is about a work item, a label or a milestone:
+    /// its workspace's, named by `workspace` or by a repository of it.
+    pub(crate) fn in_a_workspace(self) -> bool {
+        matches!(
+            self,
+            Op::ListWorkItems
+                | Op::GetWorkItem
+                | Op::OpenWorkItem
+                | Op::UpdateWorkItem
+                | Op::CloseWorkItem
+                | Op::ReopenWorkItem
+                | Op::ListWorkItemLinks
+                | Op::LinkWorkItem
+                | Op::UnlinkWorkItem
+                | Op::ListWorkItemLabels
+                | Op::AddWorkItemLabels
+                | Op::SetWorkItemLabels
+                | Op::RemoveWorkItemLabels
+                | Op::ListWorkItemDecisions
+                | Op::AddWorkItemComment
+                | Op::EditWorkItemComment
+                | Op::DeleteWorkItemComment
+                | Op::ReactToWorkItem
+                | Op::ImportWorkItems
+                | Op::ListLabels
+                | Op::CreateLabel
+                | Op::UpdateLabel
+                | Op::DeleteLabel
+                | Op::AddDefaultLabels
+                | Op::ListMilestones
+                | Op::GetMilestone
+                | Op::CreateMilestone
+                | Op::UpdateMilestone
+                | Op::DeleteMilestone
         )
     }
 
@@ -4127,6 +4367,15 @@ impl Op {
                     ),
                 );
             }
+            // Work items are its repository's workspace's, and no other's.
+            let workspace_op = self.in_a_workspace()
+                || matches!(self, Op::Coordination(op) if !op.needs_repo());
+            if workspace_op && !item_workspace(input).eq_ignore_ascii_case(&scope.repo.namespace) {
+                return failed(
+                    FailureCode::Forbidden,
+                    &format!("A run's token works in the {} workspace only.", scope.repo.namespace),
+                );
+            }
         }
         // Checked above for every operation that uses it.
         let actor = || viewer.clone().unwrap_or_default();
@@ -4155,7 +4404,7 @@ impl Op {
             repo: repo.clone(),
             number,
             summary: text(input, "summary"),
-            keep_issue_open: input["keep_issue_open"].as_bool() == Some(true),
+            keep_item_open: input["keep_item_open"].as_bool() == Some(true),
             ignore_checks: input["ignore_checks"].as_bool() == Some(true),
             bypass_rules: input["bypass_rules"].as_bool() == Some(true),
             merge_method: None,
@@ -4176,6 +4425,14 @@ impl Op {
             ..
         } = services;
         let workspace = || text(input, "workspace").to_lowercase();
+        // A work item, label or milestone is its workspace's: named by
+        // slug, or by a repository of it.
+        let item_ws = || item_workspace(input);
+        if self.in_a_workspace() && item_ws().is_empty() {
+            return failed(FailureCode::Invalid, "Give the workspace by its slug, or a repository of it as \"owner/name\".");
+        }
+        let item_view = || WorkItemViewArgs { workspace: item_ws(), number, viewer: viewer.clone() };
+        let given_repo = || repo_path(input);
 
         match self {
             Op::Whoami => ok(&actor()),
@@ -4893,12 +5150,12 @@ impl Op {
                     None => now.clone(),
                     Some(given) => given.as_str().map(str::to_owned).filter(|text| !text.trim().is_empty()),
                 };
-                let has_issues = match input.get("has_issues") {
-                    None => current.has_issues,
+                let has_work_items = match input.get("has_work_items") {
+                    None => current.has_work_items,
                     Some(Value::Null) => None,
                     Some(given) => match given.as_bool() {
                         Some(on) => Some(on),
-                        None => return failed(FailureCode::Invalid, "has_issues must be true, false or null."),
+                        None => return failed(FailureCode::Invalid, "has_work_items must be true, false or null."),
                     },
                 };
                 let settings = RepoSettings {
@@ -4916,8 +5173,8 @@ impl Op {
                     delete_branch_on_merge: flag("delete_branch_on_merge", current.delete_branch_on_merge),
                     require_web_commit_sign_off: flag("require_web_commit_sign_off", current.require_web_commit_sign_off),
                     allow_commit_comments: flag("allow_commit_comments", current.allow_commit_comments),
-                    auto_close_issues: flag("auto_close_issues", current.auto_close_issues),
-                    has_issues,
+                    auto_close_items: flag("auto_close_items", current.auto_close_items),
+                    has_work_items,
                     auto_merge: flag("auto_merge", current.auto_merge),
                     required_checks: strings(input, "required_checks").unwrap_or(current.required_checks.clone()),
                     require_up_to_date: flag("require_up_to_date", current.require_up_to_date),
@@ -5004,50 +5261,80 @@ impl Op {
                     created => Ok(created),
                 }
             }
-            Op::ListIssues => {
+            Op::ListWorkItems | Op::ListRepoWorkItems => {
+                let role = match optional_text(input, "role") {
+                    None => None,
+                    Some(role) => match LinkRole::parse(&role) {
+                        Some(role) => Some(role),
+                        None => return failed(FailureCode::Invalid, "role is origin, target or touched."),
+                    },
+                };
+                // On the workspace's list, a repository may be named by
+                // its name alone, as the site's Work list does.
+                let filter = given_repo().or_else(|| {
+                    optional_text(input, "repo")
+                        .filter(|name| !name.contains('/') && !item_ws().is_empty())
+                        .map(|name| RepoPath { namespace: item_ws(), name })
+                });
                 pass(
                     work,
-                    "list_issues",
-                    &ListIssuesArgs {
-                        repo,
+                    "list_work_items",
+                    &ListWorkItemsArgs {
+                        workspace: if self == Op::ListRepoWorkItems { String::new() } else { item_ws() },
                         viewer: viewer.clone(),
+                        repo: filter,
+                        role,
                         state: state(input),
                         label: optional_text(input, "label"),
+                        milestone: integer(input, "milestone"),
+                        assignee: optional_text(input, "assignee"),
+                    },
+                )
+                .await
+            }
+            Op::GetWorkItem => pass(work, "get_work_item", &item_view()).await,
+            Op::ListWorkItemLinks => {
+                let found: Outcome<WorkItemDetail> = call(work, "get_work_item", &item_view()).await?;
+                match found {
+                    Outcome::Ok(detail) => {
+                        let missing = detail.item.missing();
+                        ok(&json!({ "repos": detail.item.repos, "missing": missing }))
+                    }
+                    Outcome::Fail(failure) => Ok(Outcome::Fail(failure)),
+                }
+            }
+            Op::OpenWorkItem => {
+                let targets = match targets(input) {
+                    Ok(targets) => targets,
+                    Err(message) => return failed(FailureCode::Invalid, &message),
+                };
+                pass(
+                    work,
+                    "open_work_item",
+                    &OpenWorkItemArgs {
+                        actor: actor(),
+                        workspace: optional_text(input, "workspace").map(|slug| slug.to_lowercase()).unwrap_or_default(),
+                        repo: given_repo(),
+                        targets,
+                        title: text(input, "title"),
+                        body: text(input, "body"),
+                        labels: strings(input, "labels").unwrap_or_default(),
                         milestone: integer(input, "milestone"),
                     },
                 )
                 .await
             }
-            Op::GetIssue => pass(work, "get_issue", &view()).await,
-            Op::CreateIssue => {
-                let checks = deprecated_checks(input);
-                let opened = pass(
-                    work,
-                    "open_issue",
-                    &OpenIssueArgs {
-                        actor: actor(),
-                        repo,
-                        title: text(input, "title"),
-                        body: text(input, "body"),
-                        labels: strings(input, "labels").unwrap_or_default(),
-                        checks: checks.clone(),
-                        milestone: integer(input, "milestone"),
-                    },
-                )
-                .await?;
-                Ok(with_deprecation(opened, !checks.is_empty()))
-            }
-            Op::UpdateIssue => {
+            Op::UpdateWorkItem => {
                 let blocked_by = match crate::coordination::blocked_by(input) {
                     Ok(blocked_by) => blocked_by,
                     Err(message) => return failed(FailureCode::Invalid, &message),
                 };
                 pass(
                     work,
-                    "update_issue",
-                    &UpdateIssueArgs {
+                    "update_work_item",
+                    &UpdateWorkItemArgs {
                         actor: actor(),
-                        repo,
+                        workspace: item_ws(),
                         number,
                         title: input["title"].as_str().map(str::to_owned),
                         body: input["body"].as_str().map(str::to_owned),
@@ -5059,29 +5346,51 @@ impl Op {
                 )
                 .await
             }
-            Op::CloseIssue | Op::ReopenIssue => {
+            Op::CloseWorkItem | Op::ReopenWorkItem => {
                 let reason = match input["reason"].as_str() {
-                    Some("not_planned") => IssueReason::NotPlanned,
-                    _ => IssueReason::Completed,
+                    Some("not_planned") => CloseReason::NotPlanned,
+                    _ => CloseReason::Completed,
                 };
-                let method = if self == Op::CloseIssue {
-                    "close_issue"
-                } else {
-                    "reopen_issue"
-                };
-                let issue = IssueActionArgs {
-                    actor: actor(),
-                    repo,
-                    number,
-                    reason: Some(reason),
-                };
-                if self == Op::CloseIssue {
-                    let commit = optional_text(input, "commit");
-                    return pass(work, method, &CloseIssueArgs { issue, commit }).await;
+                let item = WorkItemActionArgs { actor: actor(), workspace: item_ws(), number, reason: Some(reason) };
+                if self == Op::ReopenWorkItem {
+                    return pass(work, "reopen_work_item", &item).await;
                 }
-                pass(work, method, &issue).await
+                let commit = optional_text(input, "commit");
+                if commit.is_some() && given_repo().is_none() {
+                    return failed(FailureCode::Invalid, "Give repo, the repository the commit is in, as owner/name.");
+                }
+                pass(work, "close_work_item", &CloseWorkItemArgs { item, repo: given_repo(), commit }).await
             }
-            Op::ListLabels => pass(work, "list_labels", &view()).await,
+            Op::LinkWorkItem | Op::UnlinkWorkItem => {
+                let Some(linked) = given_repo() else {
+                    return failed(FailureCode::Invalid, "Give repo, the repository to link, as owner/name.");
+                };
+                let role = match optional_text(input, "role") {
+                    None => LinkRole::Target,
+                    Some(role) => match LinkRole::parse(&role) {
+                        Some(LinkRole::Origin) => {
+                            return failed(FailureCode::Invalid, "A work item's origin is where it was filed: link a repository as target or touched.");
+                        }
+                        Some(role) => role,
+                        None => return failed(FailureCode::Invalid, "role is target or touched."),
+                    },
+                };
+                let method = if self == Op::LinkWorkItem { "link_work_item" } else { "unlink_work_item" };
+                pass(work, method, &LinkWorkItemArgs { actor: actor(), workspace: item_ws(), number, repo: linked, role }).await
+            }
+            Op::ResolveRef => {
+                if given_repo().is_none() && workspace().is_empty() {
+                    return failed(FailureCode::Invalid, "Give the repository the reference is written in, as owner/name, or the workspace.");
+                }
+                let found: RefTarget = g1t_kit::call(
+                    work,
+                    "resolve_ref",
+                    &ResolveRefArgs { viewer: viewer.clone(), repo: given_repo(), workspace: workspace(), number },
+                )
+                .await?;
+                ok(&found)
+            }
+            Op::ListLabels => pass(work, "list_labels", &WorkspaceViewArgs { workspace: item_ws(), viewer: viewer.clone() }).await,
             Op::CreateLabel | Op::UpdateLabel => {
                 let creating = self == Op::CreateLabel;
                 pass(
@@ -5089,7 +5398,7 @@ impl Op {
                     "save_label",
                     &SaveLabelArgs {
                         actor: actor(),
-                        repo,
+                        workspace: item_ws(),
                         name: (!creating).then(|| text(input, "label")),
                         new_name: if creating { Some(text(input, "label")) } else { optional_text(input, "new_name") },
                         color: optional_text(input, "color"),
@@ -5099,19 +5408,17 @@ impl Op {
                 .await
             }
             Op::DeleteLabel => {
-                pass(work, "delete_label", &DeleteLabelArgs { actor: actor(), repo, name: text(input, "label") }).await
+                pass(work, "delete_label", &DeleteLabelArgs { actor: actor(), workspace: item_ws(), name: text(input, "label") }).await
             }
-            Op::AddDefaultLabels => pass(work, "add_default_labels", &RepoActorArgs { actor: actor(), repo }).await,
-            Op::ListIssueLabels => {
-                // The item's names, with each label's color and description.
-                let labels = call::<_, Vec<Label>>(work, "list_labels", &view()).await?;
-                let item = call::<_, IssueDetail>(work, "get_issue", &view()).await?;
-                let names = match item {
-                    Outcome::Ok(detail) => detail.issue.labels,
-                    Outcome::Fail(_) => match call::<_, PullDetail>(work, "get_pull", &view()).await? {
-                        Outcome::Ok(detail) => detail.pull.labels,
-                        Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
-                    },
+            Op::AddDefaultLabels => {
+                pass(work, "add_default_labels", &WorkspaceActorArgs { actor: actor(), workspace: item_ws() }).await
+            }
+            Op::ListWorkItemLabels => {
+                // The work item's names, with each label's color and description.
+                let labels = call::<_, Vec<Label>>(work, "list_labels", &WorkspaceViewArgs { workspace: item_ws(), viewer: viewer.clone() }).await?;
+                let names = match call::<_, WorkItemDetail>(work, "get_work_item", &item_view()).await? {
+                    Outcome::Ok(detail) => detail.item.labels,
+                    Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
                 };
                 let labels = match labels {
                     Outcome::Ok(labels) => labels,
@@ -5122,10 +5429,10 @@ impl Op {
                     .filter_map(|name| labels.iter().find(|label| label.name == *name))
                     .collect::<Vec<_>>())
             }
-            Op::AddIssueLabels | Op::SetIssueLabels | Op::RemoveIssueLabels => {
+            Op::AddWorkItemLabels | Op::SetWorkItemLabels | Op::RemoveWorkItemLabels => {
                 let (change, labels) = match self {
-                    Op::AddIssueLabels => (LabelChange::Add, strings(input, "labels").unwrap_or_default()),
-                    Op::SetIssueLabels => (LabelChange::Set, strings(input, "labels").unwrap_or_default()),
+                    Op::AddWorkItemLabels => (LabelChange::Add, strings(input, "labels").unwrap_or_default()),
+                    Op::SetWorkItemLabels => (LabelChange::Set, strings(input, "labels").unwrap_or_default()),
                     // One, several, or with neither, all of them.
                     _ => match (optional_text(input, "label"), strings(input, "labels")) {
                         (Some(one), _) => (LabelChange::Remove, vec![one]),
@@ -5133,13 +5440,13 @@ impl Op {
                         (None, None) => (LabelChange::Set, Vec::new()),
                     },
                 };
-                pass(work, "set_labels", &SetLabelsArgs { actor: actor(), repo, number, labels, change }).await
+                pass(work, "set_labels", &SetLabelsArgs { actor: actor(), repo: None, workspace: item_ws(), number, labels, change }).await
             }
             Op::ListMilestones => {
-                pass(work, "list_milestones", &ListMilestonesArgs { repo, viewer: viewer.clone(), state: state(input) }).await
+                pass(work, "list_milestones", &ListMilestonesArgs { workspace: item_ws(), viewer: viewer.clone(), state: state(input) }).await
             }
             Op::GetMilestone => {
-                let asked = ViewArgs { number: integer(input, "milestone").unwrap_or_default(), ..view() };
+                let asked = WorkItemViewArgs { number: integer(input, "milestone").unwrap_or_default(), ..item_view() };
                 pass(work, "get_milestone", &asked).await
             }
             Op::CreateMilestone | Op::UpdateMilestone => {
@@ -5148,7 +5455,7 @@ impl Op {
                     "save_milestone",
                     &SaveMilestoneArgs {
                         actor: actor(),
-                        repo,
+                        workspace: item_ws(),
                         number: (self == Op::UpdateMilestone).then(|| integer(input, "milestone").unwrap_or_default()),
                         title: input["title"].as_str().map(str::to_owned),
                         description: input["description"].as_str().map(str::to_owned),
@@ -5162,7 +5469,58 @@ impl Op {
                 pass(
                     work,
                     "delete_milestone",
-                    &DeleteMilestoneArgs { actor: actor(), repo, number: integer(input, "milestone").unwrap_or_default() },
+                    &DeleteMilestoneArgs { actor: actor(), workspace: item_ws(), number: integer(input, "milestone").unwrap_or_default() },
+                )
+                .await
+            }
+            Op::AddWorkItemComment => {
+                pass(
+                    work,
+                    "add_comment",
+                    &AddCommentArgs {
+                        actor: actor(),
+                        repo: None,
+                        workspace: item_ws(),
+                        number,
+                        body: text(input, "body"),
+                        path: None,
+                        line: None,
+                        verdict: None,
+                    },
+                )
+                .await
+            }
+            Op::EditWorkItemComment | Op::DeleteWorkItemComment => {
+                let asked = CommentActionArgs {
+                    actor: actor(),
+                    repo: None,
+                    workspace: item_ws(),
+                    comment_id: text(input, "comment_id"),
+                    body: text(input, "body"),
+                };
+                let method = if self == Op::EditWorkItemComment { "edit_comment" } else { "delete_comment" };
+                pass(work, method, &asked).await
+            }
+            Op::ReactToWorkItem => {
+                let Some(content) = input["content"].as_str().and_then(ReactionContent::parse) else {
+                    return failed(FailureCode::Invalid, "content must be one of +1, -1, laugh, hooray, confused, heart, rocket and eyes.");
+                };
+                let asked = ReactArgs {
+                    actor: actor(),
+                    repo: None,
+                    workspace: item_ws(),
+                    number,
+                    comment_id: optional_text(input, "comment_id"),
+                    content,
+                    remove: input["remove"].as_bool().unwrap_or(false),
+                };
+                pass(work, "react", &asked).await
+            }
+            Op::ListWorkItemDecisions => {
+                pass(
+                    work,
+                    "list_decisions",
+                    &g1t_contracts::decisions::ListDecisionsArgs { repo: None, workspace: item_ws(), viewer: viewer.clone(), number },
                 )
                 .await
             }
@@ -5235,7 +5593,8 @@ impl Op {
                     "add_comment",
                     &AddCommentArgs {
                         actor: actor(),
-                        repo,
+                        repo: Some(repo),
+                        workspace: String::new(),
                         number,
                         body: text(input, "body"),
                         path: optional_text(input, "path"),
@@ -5278,7 +5637,7 @@ impl Op {
                     &OpenPullArgs {
                         actor: user.clone(),
                         repo: repo.clone(),
-                        issue: integer(input, "issue"),
+                        item: integer(input, "item"),
                         title: text(input, "title"),
                         body: text(input, "body"),
                         branch: optional_text(input, "branch"),
@@ -5353,7 +5712,7 @@ impl Op {
                 pass(
                     work,
                     "list_decisions",
-                    &g1t_contracts::decisions::ListDecisionsArgs { repo, viewer: viewer.clone(), number },
+                    &g1t_contracts::decisions::ListDecisionsArgs { repo: Some(repo), workspace: String::new(), viewer: viewer.clone(), number },
                 )
                 .await
             }
@@ -5377,7 +5736,8 @@ impl Op {
                 };
                 let asked = ReactArgs {
                     actor: actor(),
-                    repo,
+                    repo: Some(repo),
+                    workspace: String::new(),
                     number,
                     comment_id: optional_text(input, "comment_id"),
                     content,
@@ -5405,7 +5765,8 @@ impl Op {
             Op::EditComment | Op::DeleteComment => {
                 let asked = CommentActionArgs {
                     actor: actor(),
-                    repo,
+                    repo: Some(repo),
+                    workspace: String::new(),
                     comment_id: text(input, "comment_id"),
                     body: text(input, "body"),
                 };
@@ -5895,15 +6256,21 @@ impl Op {
                 )
                 .await
             }
-            Op::ImportIssue => {
+            Op::ImportWorkItems => {
+                let targets = match targets(input) {
+                    Ok(targets) => targets,
+                    Err(message) => return failed(FailureCode::Invalid, &message),
+                };
                 pass(
                     integrations,
                     "import",
-                    &json!({
-                        "actor": actor(),
-                        "repo": repo,
-                        "reference": text(input, "reference"),
-                    }),
+                    &g1t_contracts::integrations::ImportArgs {
+                        actor: actor(),
+                        workspace: item_ws(),
+                        repo: given_repo(),
+                        targets,
+                        reference: text(input, "reference"),
+                    },
                 )
                 .await
             }

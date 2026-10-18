@@ -133,7 +133,8 @@ pub struct AlertUpdate {
     pub target: String,
     pub branch: Option<String>,
     pub pull: Option<u32>,
-    pub issue: Option<u32>,
+    /// The work item opened for it, by number in the workspace.
+    pub item: Option<u32>,
     pub error: Option<String>,
     pub updated_at: String,
 }
@@ -145,7 +146,7 @@ impl From<SecurityUpdate> for AlertUpdate {
             target: update.target,
             branch: update.branch,
             pull: update.pull,
-            issue: update.issue,
+            item: update.item,
             error: update.error,
             updated_at: update.updated_at,
         }
@@ -278,11 +279,11 @@ mod tests {
             "severity": "high",
             "fixedVersion": null,
             "status": "open",
-            "issue": null,
+            "item": null,
             "foundAt": "2026-10-01T12:00:00Z",
             "fixedAt": null,
             "state": "open",
-            "update": { "state": "open", "target": "4.17.21", "branch": "g1t/security/lodash-4.17.21", "pull": 12, "issue": null, "error": null, "updatedAt": "2026-10-01T12:05:00Z" },
+            "update": { "state": "open", "target": "4.17.21", "branch": "g1t/security/lodash-4.17.21", "pull": 12, "item": null, "error": null, "updatedAt": "2026-10-01T12:05:00Z" },
         }))
         .unwrap()
     }
