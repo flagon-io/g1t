@@ -5,10 +5,12 @@
  * or `workspace#N` (in that workspace). Read in a repository, `#N` is its
  * pull request N, else the work item that was its issue N, else the
  * workspace's work item N, else a pull request N of another of its
- * repositories: only the work service knows which, so a link goes through
+ * repositories, numbered after work items came (an older pull request's
+ * number is only its repository's): only the work service knows which, so a link goes through
  * `/<owner>/<repo>/ref/<n>`, which asks it (`resolveRef`) and sends the
  * browser on. Read in a workspace alone, `#N` is its work item N, else its
- * pull request N: the work item's page sends a pull request's number on.
+ * pull request N numbered after work items came: the work item's page sends
+ * a pull request's number on.
  * Pure, so it is tested under Node.
  */
 

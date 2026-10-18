@@ -32,6 +32,13 @@ code, `` `#12` `` or a code block, are never read.
 repository's own workspace only. A work item of another workspace is never
 closed by your repositories: `Closes other-workspace#3` does nothing.
 
+A closing keyword closes a work item only for someone who could close it
+by hand: for a merged pull request, both whoever merges it and its owner
+need the **Triage** role on the work item; for a pushed commit, whoever
+pushed it. A work item one of them may not triage is left alone, and one
+they may not even see is named nothing at all. `Part of #12` needs only
+that they can see it.
+
 ## Landing, target by target
 
 When a pull request merges into its repository's default branch, for each

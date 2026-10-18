@@ -628,7 +628,7 @@ async fn list_workspace_sessions(services: &Services, viewer: &Viewer, input: &V
         None => SessionsShown::Recent,
         Some(state) => match SessionsShown::parse(&state) {
             Some(shown) => shown,
-            None => return invalid(format!("state is live, recent or ended, not {state}.")),
+            None => return invalid(format!("state is live, recent (or all) or ended, not {state}.")),
         },
     };
     let kind = match text(input, "kind") {

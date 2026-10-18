@@ -206,7 +206,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   if (!found.ok) {
     // Work items and pull requests share numbers: `#number` here may be a work item.
     const to = await refPath(viewer, { repo: { namespace: params.owner.toLowerCase(), name: params.repo } }, number);
-    if (to && to !== `/${params.owner.toLowerCase()}/${params.repo}/pull/${number}`) throw redirect(to);
+    // For good: a number names the same work item or pull request from here on.
+    if (to && to !== `/${params.owner.toLowerCase()}/${params.repo}/pull/${number}`) throw redirect(to, 301);
     throw notFound("pull");
   }
   const { pull } = found.value;
