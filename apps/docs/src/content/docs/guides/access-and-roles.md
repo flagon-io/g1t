@@ -112,7 +112,7 @@ keep it out.
 
 ### Work items
 
-[Work items](/guides/work-items/) belong to the workspace, not to one
+[Work items](/work/work-items/) belong to the workspace, not to one
 repository, and so do its labels and milestones.
 
 - The workspace's members see every work item.

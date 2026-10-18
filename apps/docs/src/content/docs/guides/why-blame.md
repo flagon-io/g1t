@@ -11,7 +11,7 @@ That comes from **sessions**, the record of how each pull request was made.
 
 A pull request's session records how the change was made, entry by entry,
 as it happens. Entries come from `record_session` on the pull request, and
-from any [harness session](/guides/sessions/#sessions) attached to it:
+from any [harness session](/guides/sessions/#record-a-session) attached to it:
 
 | Kind | What it holds |
 | --- | --- |
@@ -31,7 +31,7 @@ or with `GET /repos/{owner}/{name}/pulls/{number}/session?after=`.
 Outside the workspace only g1t's notes show there, and members see a
 prompt or a tool's output only when it is their own; what looks like a
 credential is taken out of all of it
-([Who sees what](/guides/sessions/#who-sees-what)). Still, do not put
+([Who sees what](/work/sessions/#who-sees-what)). Still, do not put
 secrets in one.
 
 ### Recording a session

@@ -27,7 +27,7 @@ and pull requests. The number is in its address:
 Milestones used to belong to each repository. When they moved to the
 workspace they were numbered again, and each records the repository it
 came from; see
-[Issues became work items](/about/issues-became-work-items/#labels-and-milestones).
+[Issues became work items](/work/from-issues/#labels-and-milestones).
 
 ## Put a work item or a pull request in one
 

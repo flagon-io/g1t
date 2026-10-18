@@ -19,7 +19,7 @@ unread, and lavender otherwise.
 
 Notifications hold one **thread** for each thing you were told about:
 
-- a [work item](/guides/work-items/)
+- a [work item](/work/work-items/)
 - a pull request
 - a workflow on one branch
 - a deployment: a project's production, or one pull request's preview

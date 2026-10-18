@@ -3024,7 +3024,7 @@
       "ended_at": null,
       "end_reason": null
     },
-    "notes": "Idempotent on `harness_session_id`: a second start with it returns this session, so call it from a hook without checking first. `state` is `active`, `idle` (no heartbeat for 15 minutes) or `ended` (ended, or no heartbeat for 2 hours: `end_reason` `timed_out`). A subagent gives `parent_id`, `agent_type`, `task` and `prompt`. See [Sessions](/guides/sessions/)."
+    "notes": "Idempotent on `harness_session_id`: a second start with it returns this session, so call it from a hook without checking first. `state` is `active`, `idle` (no heartbeat for 15 minutes) or `ended` (ended, or no heartbeat for 30 minutes: `end_reason` `timed_out`). A subagent gives `parent_id`, `agent_type`, `task` and `prompt`. See [Sessions](/guides/sessions/)."
   },
   "start_agent_session": {
     "request": {
@@ -3610,7 +3610,7 @@
         }
       ]
     },
-    "notes": "A claim is advisory: it is made even when `others` lists someone already on the work item. Claiming a work item you hold renews your claim. Refused with `409` for a closed work item. See [Claims](/guides/sessions/#claims)."
+    "notes": "A claim is advisory: it is made even when `others` lists someone already on the work item. Claiming a work item you hold renews your claim. Refused with `409` for a closed work item. See [Claims](/work/claims-and-dependencies/#claims)."
   },
   "release_claim": {
     "request": {
@@ -3992,7 +3992,7 @@
         }
       ]
     },
-    "notes": "`repos` are the repositories it is linked to (origin, targets, touched), each with `landed`, the `required_checks` of its default branch and its `pulls` for the work item, oldest first; `required_checks`, `mergeable`, `overlaps` and `queue` (its `state` and `position` in the merge queue, 1 at the front) are filled in for those still open or draft. `missing` lists the targets it has not landed in yet, and `suggested_targets` the repositories of the workspace it may belong in, each with `why`: link one as a target with link_work_item. `recent` holds up to 20 coordination events about the work item or its pull requests, newest first. See [Picking up a work item](/guides/work-items/)."
+    "notes": "`repos` are the repositories it is linked to (origin, targets, touched), each with `landed`, the `required_checks` of its default branch and its `pulls` for the work item, oldest first; `required_checks`, `mergeable`, `overlaps` and `queue` (its `state` and `position` in the merge queue, 1 at the front) are filled in for those still open or draft. `missing` lists the targets it has not landed in yet, and `suggested_targets` the repositories of the workspace it may belong in, each with `why`: link one as a target with link_work_item. `recent` holds up to 20 coordination events about the work item or its pull requests, newest first. See [Picking up a work item](/work/work-items/)."
   },
   "record_decision": {
     "request": {

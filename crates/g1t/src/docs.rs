@@ -408,7 +408,7 @@ mod tests {
             // issues becoming work items names the commands that went.
             if !(name.ends_with(".md") || name.ends_with(".mdx"))
                 || name.ends_with("reference/cli.md")
-                || name.ends_with("about/issues-became-work-items.md")
+                || name.ends_with("work/from-issues.md")
             {
                 continue;
             }

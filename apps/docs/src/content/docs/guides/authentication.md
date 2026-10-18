@@ -874,7 +874,7 @@ one.
 | `packages:read` | Pull container images and install private [packages](/guides/packages/). Public ones need no scope. |
 | `packages:write` | Push container images and publish packages; with the Admin role on a package, change its settings |
 | `packages:delete` | Delete and restore packages and their versions |
-| `work:read` | Read [work items](/guides/work-items/) and their comments, and the workspace's [labels](/guides/labels/) and [milestones](/guides/milestones/) |
+| `work:read` | Read [work items](/work/work-items/) and their comments, and the workspace's [labels](/work/labels/) and [milestones](/work/milestones/) |
 | `work:write` | Open, edit, link, claim, close, comment on and react to work items; manage labels and milestones |
 | `pull_requests:read` | Read pull requests, their changes, sessions and merge queues |
 | `pull_requests:write` | Open, review, comment on, close and merge pull requests |

@@ -83,7 +83,7 @@ workspace you belong to, as `github.sign_in`, `github.linked` and
    GitHub account, and import from the accounts an owner connected.
 4. Tick the repositories to bring across. You see only repositories that
    both you and the app can reach.
-5. Choose whether to copy their issues, as [work items](/guides/work-items/).
+5. Choose whether to copy their issues, as [work items](/work/work-items/).
 6. Choose **Bring to g1t**.
 
 Each repository becomes a repository on g1t with the same name, private if

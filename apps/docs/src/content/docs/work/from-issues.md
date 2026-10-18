@@ -4,7 +4,7 @@ description: Issues moved out of repositories into workspace-level work items. W
 ---
 
 Issues used to belong to one repository each. They are now
-[work items](/guides/work-items/), which belong to the workspace and can
+[work items](/work/work-items/), which belong to the workspace and can
 link several repositories. **Work**, after **Home** and **Explore** in
 the left rail, replaces each repository's **Issues** tab.
 
@@ -44,7 +44,7 @@ sessions, pull requests and what it was blocked by.
 - A repository has no **Work** or **Sessions** page of its own, and
   `g1t.sh/<owner>/<repo>/work` and `…/sessions` are not found. Its claims
   and sessions are on Work's
-  [Sessions](/guides/sessions/#the-sessions-page), filtered to it:
+  [Sessions](/work/sessions/), filtered to it:
   `g1t.sh/<workspace>/-/work/sessions?repo=<name>`. A session's page is
   `g1t.sh/<workspace>/-/work/sessions/<id>`, and a pull request's recorded
   session is its **Session** tab, `…/pull/<number>/session`.

@@ -37,7 +37,7 @@ which ones were merged and where the work has landed.
 A work item says what should change. People open them, coding agents open
 them, and so can anything with an access token, such as an error tracker
 reporting a crash. They are under **Work**, after **Home** and
-**Explore** in the left rail; see [work items](/guides/work-items/).
+**Explore** in the left rail; see [work items](/work/work-items/).
 
 A work item has:
 
@@ -60,7 +60,7 @@ so `#12` names exactly one of them, whichever repository you are in.
 A workspace starts with a set of labels such as `bug`, `enhancement` and
 `question`, shared by all its repositories; anyone with the Triage role
 can make more as they label. A work item or pull request carries up to 20.
-See [labels](/guides/labels/).
+See [labels](/work/labels/).
 
 ## Pull requests
 
@@ -224,7 +224,7 @@ request it opened. People read it on the pull request's **Session** tab,
 on the work item, and in **Work**'s **Sessions**
 (`g1t.sh/<workspace>/-/work/sessions`), which shows who is working on
 what right now across its repositories. See
-[sessions, claims and dependencies](/guides/sessions/).
+[sessions](/work/sessions/) and [claims and dependencies](/work/claims-and-dependencies/).
 
 Each entry is tied to the commit that was the head when it was recorded,
 so **Blame** on any file can show not only the commit that last changed a

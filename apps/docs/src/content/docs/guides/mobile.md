@@ -5,7 +5,7 @@ description: g1t on Android and iOS, built with Expo. Highly experimental and ba
 
 The phone app is meant to be g1t on Android and iOS, with its own
 screens for what you do away from a desk: triaging and discussing
-[work items](/guides/work-items/) in Work, talking with your team in
+[work items](/work/work-items/) in Work, talking with your team in
 Chat, with notifications on your phone, and reviewing pull requests in
 Code. Everything else opens on the site, in your phone's browser.
 
@@ -63,14 +63,15 @@ and you can approve it or ask for changes.
 
 ## Work
 
-Work on the phone is the site's [Work](/guides/work-items/), laid out for
-one hand. A switch at its top, **Items | Board**, chooses between the
-list and the Board.
+Work on the phone is the site's [Work](/work/), laid out for one hand. A
+switch at its top, **Items | Board | Sessions**, chooses between the list,
+the Board and [Sessions](#sessions).
 
-- **The list** shows the workspace's open work items, newest first: each
-  with its number, title, state, labels and the repositories it is linked
-  to, which fold into "+2" past the first few. Pull down to read it
-  again; it loads more as you near its end.
+- **The list** shows the workspace's work items, newest first, with
+  **Open**, **Closed** and **All** under the switch: each with its number,
+  title, state, labels and the repositories it is linked to, which fold
+  into "+2" past the first few. Pull down to read it again; it loads more
+  as you near its end.
 - **Filters** are in a sheet: tap the filter button in the header, a
   filter's chip above the list, or **Work** in the bar again. Choose the
   state, **Assigned to me**, a label, a milestone, a repository and its role.
@@ -84,23 +85,26 @@ list and the Board.
   done, or as not planned), reopens it, links a repository as a target,
   copies its link, or opens it on the site. Tap a repository to open it or
   unlink it.
-- **New work item** (the **+** on Work) takes a title, a description,
+- **New work item** (**+ New** on Work) takes a title, a description,
   labels and the repositories it should land in; none is fine. Opened from
-  a repository's Work, that repository is its origin.
-- **The Board** is the site's [Board](/guides/work-items/#the-board):
+  the list filtered to a repository, that repository is its origin, and
+  starts as a target too.
+- **The Board** is the site's [Board](/work/board/):
   **Backlog**, **In progress**, **In review**, **Landing** and **Done**,
-  each card a work item with who or which session is on it. Tap a card to
-  open the work item.
+  one under another, with a chip for each to show one alone. Each card is
+  a work item with who or which session is on it. Tap a card to open the
+  work item.
 
 ## Sessions
 
-**Sessions** is the site's [Sessions](/guides/sessions/#the-sessions-page),
+**Sessions** is the site's [Sessions](/work/sessions/),
 a section of Work: the sessions at work across the workspace. Choose
 **Sessions** at the top of **Work**, beside **Items** and **Board**.
 
 - **Everything**, **Live** and **Recent** at the top choose what it
   lists. Pull down to read it again.
-- **Filters** are in a sheet: **Started by me**, and a repository.
+- **Filters** are in a sheet: **Started by me**, and a repository. Tap
+  **Work** in the bar again to open it.
 - **A session** shows its facts (who, harness, repository, branch, state,
   when it was last heard from), what it is working on (its work item and
   pull request), its subagents as a tree, the files it touched, and its

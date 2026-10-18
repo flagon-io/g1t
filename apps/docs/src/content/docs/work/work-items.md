@@ -1,6 +1,6 @@
 ---
 title: Work items
-description: Track any work, a feature, a bug or a chore, as a work item of your workspace. Link it to the repositories it starts in and lands in, number it once for the whole workspace, close it when every repository has landed, and work on it from the site, the CLI, MCP and the API.
+description: Track any work, a feature, a bug or a chore, as a work item of your workspace. File it, number it once for the whole workspace, say who sees it, and link it to the repositories it starts in, lands in and touches.
 ---
 
 A work item is anything your team means to do: a feature, a bug, a chore.
@@ -8,17 +8,12 @@ It belongs to the workspace, not to one repository, so work that spans a
 service, its client and its docs is one item, with one number, one
 conversation and one place that says what is done.
 
-**Work** is in the left rail, after **Home** and **Explore**, at
-`g1t.sh/<workspace>/-/work`. A work item's page is
-`g1t.sh/<workspace>/-/work/<number>`. Work has two sections. **Work
-items**: the [list](#the-work-list), the [Board](#the-board), **New work
-item**, **Labels** and **Milestones**. **Sessions**: the sessions working
-on them, at `g1t.sh/<workspace>/-/work/sessions` (see
-[the Sessions page](/guides/sessions/#the-sessions-page)).
+Work items are listed on [Work](/work/), at `g1t.sh/<workspace>/-/work`.
+A work item's page is `g1t.sh/<workspace>/-/work/<number>`.
 
-Work items used to be issues, one repository's each. [Issues became work
-items](/about/issues-became-work-items/) says what changed for the ones you
-had.
+Work items used to be issues, one repository's each.
+[Issues became work items](/work/from-issues/) says what changed for the
+ones you had.
 
 ## What a work item has
 
@@ -27,12 +22,65 @@ had.
   words, under a `## Definition of done` heading if you like: it is
   context for whoever works on it and its reviewers, not something a merge
   waits on;
-- its **repositories**, each with a role (see below);
-- **labels** and a **milestone**, both the workspace's;
-- **comments**, **reactions** and **assignees**;
-- what it is **blocked by**: other work items that must land first;
+- its **repositories**, each with a role: where it was filed, where it
+  should land, and where work for it happened (see
+  [below](#repositories-and-their-roles));
+- **labels** and a **milestone**, both the workspace's: see
+  [labels](/work/labels/) and [milestones](/work/milestones/);
+- **comments**, **reactions** and up to 10 **assignees**, `g1t` among
+  them if you like (see [assign g1t](/guides/sessions/#assign-g1t-or-ask-it-in-the-thread));
+- what it is **blocked by**: other work items that must land first (see
+  [dependencies](/work/claims-and-dependencies/#dependencies));
 - a **state**: open or closed. A closed work item records why:
-  `completed` or `not_planned`.
+  `completed` or `not_planned`. One closed by what landed records each
+  **resolution**: the repository, and the pull request or commit that
+  landed it (see [closing work items](/work/closing/)).
+
+## File a work item
+
+On [Work](/work/), choose **New work item**:
+
+1. Give it a **title** (up to 200 characters) and a **description**.
+2. Under **Where it lands**, tick the repositories it should land in, its
+   targets: none, one or several. It closes once what closes it has landed
+   in every one, or, with none, once anything does.
+3. Tick its **labels**. With the Write role you can type new ones beside
+   them, separated by commas.
+4. With the Triage role, pick a **milestone**.
+5. Choose **Open work item**.
+
+Filed from Work filtered to a repository (`?repo=<name>`), that repository
+is its **origin**, and starts ticked as a target too. Filed from Work
+itself, it has no origin. A workspace with a tracker or Sentry connected
+also offers to bring one in from there; see
+[integrations](/guides/integrations/).
+
+From the CLI, `g1t work new` files one in the current repository's
+workspace, with the repository as its origin:
+
+```sh
+g1t work new --title "Sign-in times out on slow networks" --body "…"
+g1t work new --title "Rename the flag" --target acme/api --target acme/docs
+```
+
+`--target` names a repository it should land in; repeat it for more.
+`--workspace`, outside a repository of that workspace, files one with no
+origin. In the [phone app](/guides/mobile/#work), **+ New** on Work does
+the same. Agents file one with the `work_item` tool's `create`, or file
+and claim one in a single step; see [working with agents](/work/agents/).
+
+Who may file one:
+
+- You need a confirmed email address.
+- **With an origin**: anyone who may take part in the repository, which is
+  anyone signed in for a public one. Work items must be turned on there
+  (`has_work_items`, on unless the repository is a fork; see
+  [managing a repository](/guides/managing-repositories/)), and the
+  repository must not be archived. Naming targets as you file needs the
+  Triage role.
+- **With no origin**: members of the workspace.
+
+Opening a work item is a `work_item.opened` event.
 
 ## One number for the workspace
 
@@ -52,9 +100,35 @@ chat, a reference links to what it names:
 | `owner/name#12` | `#12` as it reads in repository `owner/name` |
 | `workspace#12` | Work item or pull request #12 of another workspace |
 
+What you may not see is passed over for the next in line. Text in code,
+`` `#12` `` or a code block, is never a reference.
+
 So old references keep working: `#12` written about an issue before work
 items, `owner/repo#12`, and `Closes #12` in a commit, all reach the work
 item that issue became.
+
+## Who sees a work item
+
+- The workspace's members see every work item.
+- Anyone who can read a work item's origin repository sees it. Work items
+  filed in a public repository are public.
+- A work item with no origin is seen only by members.
+
+## Who can do what
+
+Your role on a work item is the higher of your
+[role](/guides/access-and-roles/) in the workspace and your role in its
+origin repository.
+
+| To | You need |
+| --- | --- |
+| Comment and react | To be signed in and see it |
+| Edit its title and description, change its labels, assignees and what it is blocked by, close and reopen it | To be its owner, or the Triage role. Its owner is its author, or, for one g1t filed for someone, that person. |
+| Put it in a milestone | The Triage role |
+| Link and unlink repositories | The Triage role |
+| Make a new label as you label it | The Write role |
+
+A work item carries at most 20 labels and 10 assignees.
 
 ## Repositories and their roles
 
@@ -63,220 +137,69 @@ role:
 
 | Role | Means |
 | --- | --- |
-| `origin` | The repository it was filed in. A work item opened from a repository has one; one opened on **Work** itself has none. |
-| `target` | A repository the work is meant to land in. |
-| `touched` | A repository where a pull request or commit for it landed or is in progress. g1t adds these itself, when a pull request is opened for the work item or a commit names it. |
+| `origin` | The repository it was filed in. A work item filed from a repository has one; one filed on **Work** itself has none. It never changes. |
+| `target` | A repository the work is meant to land in. It closes once every target has landed. |
+| `touched` | A repository where a pull request or commit for it landed or is in progress. |
 
-A work item's page lists its repositories with their roles, each with its
-pull requests for the item and whether it has **landed**. Under them,
-**Suggested** names repositories it may also need, each with why: work
-items like it landed there before, its CODEOWNERS cover what the item
-talks about, or sessions on the item touched it. Choose **Add as target**
-to link one.
+g1t links `touched` repositories itself: when a pull request is opened
+for the work item, when a pull request or commit lands it, and when one
+says it is `Part of` it (see [closing work items](/work/closing/#part-of-and-refs)).
+It never changes a link that is already there.
 
-With the Triage role or higher, choose **Link a repository** to add one
-in a role, and the cross beside a repository to unlink it. Each is noted in
-the conversation, and is a `work_item.linked` or `work_item.unlinked`
-event.
+A work item's page lists its repositories, each with its role, the old
+issue number it had there (**was #4**), its pull requests for the item
+and how each stands, and **Landed** or, for a target that has not,
+**Missing**. Above them it says how many targets are still to land.
 
-## Closing a work item
+With the Triage role:
 
-A pull request that merges into its repository's default branch, or a
-commit pushed there, marks **its repository** as landed on every work item
-it names after a closing keyword (`Closes #12`, `Fixes #12`,
-`Resolves #12`; see [Closing work items](/guides/pull-requests/#closing-work-items)).
-The work item records it as a **resolution**: the repository, and the pull
-request or commit that landed it.
+- **Link a repository** adds one, as a **Target** or **Touched**. Linking
+  a repository already linked changes its role.
+- The cross beside a repository unlinks it. The origin cannot be unlinked.
 
-The work item closes as `completed`:
+Each is noted in the conversation (**added acme/api as a target**,
+**unlinked acme/docs**), and is a `work_item.linked` or
+`work_item.unlinked` event, with the `repo` and its `role`.
 
-- when it has no target, at the first resolution;
-- when it has targets, once every target has landed.
+### Suggested targets
 
-Until then it stays open, and its page says which targets are still
-missing. A pull request that does only part of a repository's share says
-`Part of #12` instead (or `Refs #12`): it links the pull request to the
-work item, and the repository as touched, without landing anything.
+Work items often need more repositories than whoever filed them thought
+of. While a work item is open, its page lists under **Suggested** up to
+five other repositories of the workspace it may also need, each with why:
 
-A work item in another workspace is never closed by your repositories:
-`Closes other-workspace#3` does nothing.
+- work items with the same labels, or with words of their titles in
+  common, landed there before;
+- its title or description names the repository;
+- sessions on the work item changed files there.
 
-You can also close a work item yourself, as `completed` or `not_planned`,
-and reopen it. Reopening clears its resolutions.
+Choose **Add as target** to link one as a target (Triage role). Agents
+get the same list, as `suggested_targets` in the work item's
+[work context](/work/agents/#pick-up-a-work-item), and the phone app shows
+it too.
 
-## Labels and milestones
+## A work item's page
 
-Labels and milestones belong to the workspace, and every work item and
-pull request in it uses the same ones. See [labels](/guides/labels/) and
-[milestones](/guides/milestones/). Both are under **Work**:
-**Labels** at `g1t.sh/<workspace>/-/work/labels` and **Milestones** at
-`g1t.sh/<workspace>/-/work/milestones`.
+Besides its description, conversation and repositories, a work item's
+page has:
 
-## Who sees a work item
+- a banner for each repository it **landed in**, by which pull request or
+  commit;
+- its [decision records](/guides/why-blame/#decision-records), and the
+  latest combination that failed in the merge queue, if any;
+- in its sidebar, the **Work** panel: who has claimed it, the sessions on
+  it, what it is blocked by and what it blocks (see
+  [claims and dependencies](/work/claims-and-dependencies/));
+- **Start a session**, where the workspace has an Anthropic AI provider
+  (see [start a session on your Anthropic account](/guides/sessions/#start-a-session-on-your-anthropic-account));
+- its assignees, with **Assign yourself** and **Assign to g1t**;
+- **Bring your own agent**, while nobody has a pull request open for it:
+  its reference to give your agent (`acme#12`), or a draft pull request to
+  open yourself;
+- its labels, milestone and whether you get notifications about it.
 
-- The workspace's members see every work item.
-- Anyone who can read a work item's origin repository sees it. Work items
-  filed in a public repository are public, and anyone who can take part in
-  a public repository can file one there.
-- A work item with no origin is seen only by members.
-
-What you can do with one follows your [role](/guides/access-and-roles/):
-the higher of your role in the workspace and your role in its origin
-repository. Triage labels, assigns and links repositories; the author and
-whoever asked for it can edit it.
-
-## The Work list
-
-**Work** lists the workspace's work items, open first, newest first.
-Filter it by state, label, milestone, assignee, repository and role (for
-example the items a repository is a target of). The address keeps the
-filters, so a filtered list can be shared. The work items of one
-repository are the list filtered to it:
-`g1t.sh/<workspace>/-/work?repo=<name>`.
-
-Above the list, **Cooking now** is a strip of the sessions live in the
-workspace right now; it links to Work's
-[Sessions](/guides/sessions/#the-sessions-page), which has them all.
-
-Work's sidebar has two sections. **Work items**: **Open**, **Assigned to
-you** and **Closed**, then **Board**, **New work item**, **Labels** and
-**Milestones**. **Sessions**: **Live now**, **Recent** and **Yours**, then
-each kind of session. On a phone, the bar along the bottom is **Home**,
-**Work**, **Chat**, **Notifications** and **More**, with **Work** there
-for every member, Code access or not. Tapping **Work** again opens its
-menu, the same two sections. **More** starts with **Explore**, then
-**Code**.
-
-## The Board
-
-**Board**, at `g1t.sh/<workspace>/-/work/board`, is the backlog as it
-moves. Its columns come from what is true of each work item, so there is
-nothing to drag:
-
-| Column | Holds the work items |
-| --- | --- |
-| **Backlog** | Open, with nobody on it. |
-| **In progress** | Claimed or assigned, with a live session on it, or with a draft pull request. |
-| **In review** | With an open pull request. |
-| **Landing** | Landed in some of its target repositories, still missing in others. |
-| **Done** | Closed in the last 14 days. |
-
-A work item goes in the first column that holds for it, in the order
-**Done**, **Landing**, **In review**, **In progress**, **Backlog**. Each
-card links to its work item and shows who, or which session, is on it.
-Filter it by repository with `?repo=<name>`. On a phone the Board shows
-one column at a time, with a switcher for the column.
-
-## Open a work item
-
-On **Work**, choose **New work item**. Give it a title and a description,
-and pick the repositories it should land in, as targets: none, one or
-several. Opened from the list filtered to a repository, that repository
-is its origin.
-
-From the CLI, `g1t work new` opens one in the current repository's
-workspace, with the repository as its origin:
-
-```sh
-g1t work new --title "Sign-in times out on slow networks" --body "…"
-g1t work new --title "Rename the flag" --target acme/api --target acme/docs
-```
-
-`--target` names a repository it should land in; repeat it for more.
-`--workspace`, outside a repository of that workspace, opens one with no
-repository as its origin.
-
-## Work on one
-
-Claims, hand-offs, dependencies and sessions are how people and coding
-agents work on a work item at once without getting in each other's way;
-see [sessions, claims and dependencies](/guides/sessions/). A session is
-recorded in the repository it is checked out in, and the work item it
-works on is the workspace's. A work item's page lists the sessions on
-it; Work's **Sessions** lists every session in the workspace.
-
-To open a pull request for a work item, use `g1t pr create --item 12`, or
-the `pull_request` tool's `create` with `item: 12`. The pull request's
-repository becomes touched on the work item, and the pull request lands it
-there when it merges.
-
-## The CLI
-
-`g1t work` works on the current repository's workspace, or the one in
-`--workspace` (or the `G1T_WORKSPACE` environment variable). `-R` (or
-`--repo`) `owner/name` names a repository instead of the current one:
-it filters `g1t work list`, and is the repository `g1t work link` and
-`g1t work unlink` act on. Every command takes `--json`.
-
-| Command | Does |
-| --- | --- |
-| `g1t work list` | Lists open work items. `-R`, `--state`, `--label`, `--milestone`, `--assignee` and `--author` narrow it; with `-R`, `--role` keeps those linked to the repository in one role. |
-| `g1t work view N` | Shows the work item with everything about its work: its repositories and what landed, claims, sessions, pull requests, what blocks it, decisions. |
-| `g1t work new` | Opens a work item; `--target` for each repository it should land in. `--attach FILE` adds an image to its description: uploaded to the repository it is filed from, or, filed in the workspace alone, to the work item once it is open. |
-| `g1t work comment N` | Comments on it. `--attach FILE` uploads an image to the work item and adds it to the comment. |
-| `g1t work edit N` | Changes its title, description, labels, assignees or milestone. |
-| `g1t work close N` | Closes it, as completed, or `--reason not_planned`. `--commit SHA` names a commit on the default branch that did it, which lands it there. |
-| `g1t work reopen N` | Opens it again. |
-| `g1t work link N` | Links a repository in a role: `--role target` (the default) or `touched`, the current repository or `-R owner/name`. |
-| `g1t work unlink N` | Unlinks a repository, never its origin. |
-| `g1t work claim N` | Says you are working on it. With `--title` instead of a number, opens a work item and claims it. |
-| `g1t work release N` | Lets go of your claim. |
-| `g1t work handoff N` | Hands it to someone else, or to anyone, with a note. |
-| `g1t work status` | The repository's active claims and sessions. |
-| `g1t work block N --by M` | Says it waits on work item M; `g1t work unblock N --by M` takes that back. |
-| `g1t work events` | The repository's events; `--follow` keeps printing them, `--item N` for one work item. |
-| `g1t work dispatch N` | Starts work on it in a session on your own Claude, or prints the Claude Code command for it. |
-
-[CLI commands](/reference/cli/#g1t-work) lists every flag.
-
-## MCP and the API
-
-The MCP server's `work_item` tool takes an `action`: `list`, `get`,
-`create`, `update`, `close`, `reopen`, `links`, `link`, `unlink`, the
-label actions, `comment`, `react`, `attach`, `decisions`, `resolve`, `claim`,
-`release`, `handoff`, `work` and `import`, among others. A workspace's
-labels and milestones are on the `workspace` tool, and a repository's
-work list is the `repository` tool's `work`. It takes
-`workspace` and `number`; `repo` is optional, as the origin of a new work
-item, a filter, or to find the workspace. See [MCP tools](/reference/mcp/).
-
-The REST API has the same under `/workspaces/{workspace}/work`:
-
-| To | REST |
-| --- | --- |
-| List work items | `GET /workspaces/{workspace}/work` |
-| Open one | `POST /workspaces/{workspace}/work` |
-| Get one | `GET /workspaces/{workspace}/work/{number}` |
-| Change one | `PATCH /workspaces/{workspace}/work/{number}` |
-| Close or reopen it | `POST /workspaces/{workspace}/work/{number}/close`, `…/reopen` |
-| Its repositories | `GET /workspaces/{workspace}/work/{number}/links` |
-| Link or unlink a repository | `POST` or `DELETE /workspaces/{workspace}/work/{number}/links` |
-| Its labels | `GET`, `POST`, `PUT` or `DELETE /workspaces/{workspace}/work/{number}/labels` |
-| Comment | `POST /workspaces/{workspace}/work/{number}/comments`; `PATCH` or `DELETE /workspaces/{workspace}/work/comments/{id}` |
-| React | `POST /workspaces/{workspace}/work/{number}/reactions` |
-| Upload an image for it | [`POST /workspaces/{workspace}/work/{number}/attachments`](/reference/api/work-items/upload-work-item-attachment/), with `work:write`; anyone who may comment on it may |
-| Its decisions, with its pull requests' | `GET /workspaces/{workspace}/work/{number}/decisions` |
-| Watch it | `GET`, `PUT` or `DELETE /workspaces/{workspace}/work/{number}/subscription` |
-| Its work context | `GET /workspaces/{workspace}/work/{number}/work` |
-| Claim, release, hand off | `POST /workspaces/{workspace}/work/{number}/claim`, `…/release`, `…/handoff` |
-| A repository's work items | `GET /repos/{owner}/{name}/work` |
-| What `#N` names | `GET /repos/{owner}/{name}/refs/{number}`, or `GET /workspaces/{workspace}/refs/{number}` |
-| The workspace's labels and milestones | `/workspaces/{workspace}/labels`, `/workspaces/{workspace}/milestones` |
-
-```sh
-curl -X POST https://api.g1t.sh/workspaces/acme/work \
-  -H "Authorization: Bearer $G1T_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"title": "Sign-in times out", "repo": "acme/web", "targets": ["acme/web", "acme/api"]}'
-```
-
-A work item has `workspace`, `number`, `title`, `body`, `state`, `reason`,
-`labels`, `milestone`, `assignees`, `blocked_by`, `repos` (each with
-`path`, `role`, `landed` and, for one that was an issue, its
-`legacy_number`) and `resolutions` (each with `repo` and the `pull` or
-`commit` that landed it). Changing work items needs a token with
-`work:write`.
-
-Every change is an event, `work_item.opened`, `work_item.closed` and so
-on, sent to [webhooks](/guides/webhooks/): a repository's webhooks for the
-work items linked to it, a workspace's for all of them.
+Every change to a work item is an event, sent to
+[webhooks](/guides/webhooks/): `work_item.opened`, `work_item.updated`,
+`work_item.assigned`, `work_item.labeled`, `work_item.milestoned`,
+`work_item.landed`, `work_item.closed`, `work_item.reopened` and the
+rest. A repository's webhooks get those of the work items linked to it,
+a workspace's get all of them.
