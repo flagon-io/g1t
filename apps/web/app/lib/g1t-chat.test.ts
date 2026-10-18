@@ -80,14 +80,18 @@ test("who g1t is, and answers cut off at their limit", () => {
 
 test("suggestions fit the page", () => {
   assert.match(suggestions({ pull: 4, repo: { namespace: "acme", name: "web" } })[0]!, /#4/);
-  assert.match(suggestions({ issue: 12 }).join(" "), /blocking #12/);
+  assert.match(suggestions({ item: 12 }).join(" "), /blocking #12/);
+  assert.match(suggestions({ path: "/acme/-/work/12" }).join(" "), /work item #12/);
   assert.match(suggestions({ repo: { namespace: "acme", name: "web" } })[0]!, /web/);
   assert.equal(suggestions({}).length, 4);
 });
 
 test("links into the site show as what they lead to", () => {
-  assert.deepEqual(refTarget("/acme/web/issues/12"), { kind: "issue", repo: "acme/web", number: 12, href: "/acme/web/issues/12" });
-  assert.deepEqual(refTarget("https://g1t.sh/Acme/web/pull/7#discussion"), { kind: "issue", repo: "acme/web", number: 7, href: "/Acme/web/pull/7#discussion" });
+  // An old issue's address reads as `#12` in its repository, as `ref` does.
+  assert.deepEqual(refTarget("/acme/web/issues/12"), { kind: "ref", repo: "acme/web", number: 12, href: "/acme/web/issues/12" });
+  assert.deepEqual(refTarget("/acme/web/ref/12"), { kind: "ref", repo: "acme/web", number: 12, href: "/acme/web/ref/12" });
+  assert.deepEqual(refTarget("/Acme/-/work/12"), { kind: "item", workspace: "acme", number: 12, href: "/Acme/-/work/12" });
+  assert.deepEqual(refTarget("https://g1t.sh/Acme/web/pull/7#discussion"), { kind: "pull", repo: "acme/web", number: 7, href: "/Acme/web/pull/7#discussion" });
   assert.deepEqual(refTarget("/acme/web/commit/0123abcd"), { kind: "commit", repo: "acme/web", sha: "0123abcd", href: "/acme/web/commit/0123abcd" });
   assert.deepEqual(refTarget("https://g1t.example/acme/-/chat", "https://g1t.example"), { kind: "page", href: "/acme/-/chat" });
   assert.equal(refTarget("https://example.com/acme/web/issues/1"), null);
@@ -98,7 +102,8 @@ test("links into the site show as what they lead to", () => {
 test("a question asked on a page says which, and one written in Chat says nothing", () => {
   const repo = { namespace: "flagon-io", name: "g1t" };
   assert.deepEqual(askedFrom({ path: "/flagon-io/g1t/pull/8", repo, pull: 8 }), { label: "pull request #8 in flagon-io/g1t", href: "/flagon-io/g1t/pull/8" });
-  assert.deepEqual(askedFrom({ repo, issue: 21 }), { label: "issue #21 in flagon-io/g1t", href: "/flagon-io/g1t/issues/21" });
+  assert.deepEqual(askedFrom({ workspace: "flagon-io", item: 21 }), { label: "work item #21 in flagon-io", href: "/flagon-io/-/work/21" });
+  assert.deepEqual(askedFrom({ path: "/flagon-io/-/work/21" }), { label: "work item #21 in flagon-io", href: "/flagon-io/-/work/21" });
   assert.equal(askedFrom({ path: "/flagon-io/g1t", repo })?.label, "flagon-io/g1t");
   assert.equal(askedFrom({ path: "/flagon-io/-/chat/dm/chn_1" }), null);
   assert.equal(askedFrom({ time_zone: "America/Denver" }), null);

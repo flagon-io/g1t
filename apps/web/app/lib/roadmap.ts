@@ -16,7 +16,7 @@ export type RoadmapItem = {
    * in the project's sidebar ("Project"), or the workspace, for what spans
    * projects (Insights).
    */
-  section: "Code" | "Issues" | "Deployments" | "Observability" | "Security" | "Insights" | "Project" | "Workspace";
+  section: "Code" | "Deployments" | "Observability" | "Security" | "Insights" | "Project" | "Workspace";
   /** One line, for the menu's tooltip and the page's lead. */
   summary: string;
   /** Why it matters, in two or three sentences. */
@@ -106,7 +106,7 @@ export const ROADMAP: RoadmapItem[] = [
     section: "Insights",
     summary: "What the project costs, by workflow run, sandbox, build and app.",
     why: "Usage is charged by the workspace; here it is broken down for one project, so you can see what each part of the work costs.",
-    plans: ["Cost by kind of work and by issue", "Cost per merged change", "Budgets per project"],
+    plans: ["Cost by kind of work and by work item", "Cost per merged change", "Budgets per project"],
   },
 ];
 

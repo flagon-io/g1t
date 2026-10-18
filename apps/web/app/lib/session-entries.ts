@@ -6,7 +6,7 @@ import type { SessionEntry } from "@g1t/contracts";
 
 /** A tool call as it reads: which tool, on what, and of what sort. */
 export type ToolCall = {
-  /** The tool's own name, as `issue` of g1t's `issue` over MCP. */
+  /** The tool's own name, as `work_item` of g1t's `work_item` over MCP. */
   name: string;
   /** The MCP server it came from, if any: `g1t`. */
   server: string | null;
@@ -29,8 +29,8 @@ function serverName(raw: string): string {
 /**
  * A tool call's entry, read: its tool (the entry's own, else the name its
  * text starts with), what it was called with, with that name taken off the
- * front where the text repeats it, and its MCP server (`g1t:issue` from a
- * session g1t ran, `mcp__plugin_g1t_g1t__issue` from Claude Code).
+ * front where the text repeats it, and its MCP server (`g1t:work_item` from a
+ * session g1t ran, `mcp__plugin_g1t_g1t__work_item` from Claude Code).
  */
 export function readToolCall(entry: Pick<SessionEntry, "text" | "tool">): ToolCall {
   const text = entry.text.trim();
@@ -99,13 +99,14 @@ export function transcript(entries: SessionEntry[]): TranscriptItem[] {
 }
 
 /**
- * A prompt with g1t's `<issue>` and `<comment>` blocks (what it quotes of
- * an issue or a comment) as quotes under a label, so they read as markdown
- * rather than as tags that vanish.
+ * A prompt with g1t's `<work_item>` and `<comment>` blocks (what it quotes
+ * of a work item or a comment) as quotes under a label, so they read as
+ * markdown rather than as tags that vanish. Sessions from before work
+ * items quote an `<issue>`, read the same.
  */
 export function quotedBlocks(text: string): string {
-  return text.replace(/^<(issue|comment)\b[^>\n]*>\n([\s\S]*?)\n<\/\1>[ \t]*$/gm, (_, tag: string, body: string) => {
-    const label = tag === "issue" ? "**The issue**" : "**The comment**";
+  return text.replace(/^<(work_item|issue|comment)\b[^>\n]*>\n([\s\S]*?)\n<\/\1>[ \t]*$/gm, (_, tag: string, body: string) => {
+    const label = tag === "comment" ? "**The comment**" : "**The work item**";
     // A blank line after it, so the text that follows is not part of the quote.
     return [label, "", ...body.split("\n").map((line) => (line ? `> ${line}` : ">")), ""].join("\n");
   });

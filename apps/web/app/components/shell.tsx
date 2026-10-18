@@ -1,4 +1,4 @@
-import { Database, Activity, BarChart3, BrickWall, Building2, ChartLine, Flag, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, Lock, LogOut, Mail, MonitorCog, MonitorDown, Package, PlayCircle, Plug, Plus, Repeat, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Star, House, Ticket, TrendingUp, UserPlus, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
+import { Database, Activity, BarChart3, BrickWall, Building2, ChartLine, Flag, MessagesSquare, Bell, BookMarked, BookOpen, Bookmark, Blocks, Box, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot, GripVertical, CircleUserRound, Code2, Compass, CreditCard, Fingerprint, Gauge, GitBranch, GitPullRequest, Globe, History, Keyboard, KeyRound, Layers, LayoutDashboard, LayoutGrid, LifeBuoy, ListTodo, Lock, LogOut, Mail, MonitorCog, MonitorDown, Package, PlayCircle, Plug, Plus, Repeat, Rocket, Search, ServerCog, Settings, Shapes, Shield, ShieldCheck, Scale, Smile, Sparkles, Star, House, Ticket, TrendingUp, UserPlus, UserRoundKey, Users, UsersRound, Webhook, X } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useFetcher, useLocation, useNavigation, useRouteLoaderData, useSubmit } from "react-router";
 
@@ -81,6 +81,7 @@ import type { AccountMenuData } from "../routes/settings-menu-json";
 import { useLiveBadges } from "../lib/notify-client";
 import { OwnPresenceDot, OwnPresenceItems, StatusDialog } from "./presence";
 import { THEME_COMMANDS, ThemeMenuSwitch } from "./theme-switch";
+import { newItemPath, repoWorkPath, workPath } from "../lib/work-items";
 
 /**
  * What the sidebar needs, worked out by the root loader. For a visitor who
@@ -103,7 +104,8 @@ export type ShellData = {
     namespace: string;
     name: string;
     member: boolean;
-    issues: number;
+    /** Open work items linked to it. */
+    items: number;
     pulls: number;
   } | null;
   /** Where the workspace stands against its usage limit, if billing is on. */
@@ -769,10 +771,9 @@ type MenuRepo = {
   settings?: boolean;
   /** What they may do there, once the repository's page loads. */
   can?: Abilities;
-  issues?: number;
+  /** Open work items linked to it. */
+  items?: number;
   pulls?: number;
-  /** False when issues cannot be opened in it (a fork's default): Issues leaves the menu. */
-  issuesOn?: boolean;
 };
 
 function sameRepo(a: { namespace: string; name: string } | null, b: { namespace: string; name: string } | null) {
@@ -831,13 +832,14 @@ function RepoMenu({
         <SidebarLink to={`${base}/code`} also={[`${base}/tree`, `${base}/blob`, `${base}/commits`, `${base}/commit`, `${base}/branches`, `${base}/tags`, `${base}/compare`, ...soonPaths(base, "Code")]} icon={<Code2 size={15} />}>
           Code
         </SidebarLink>
-        {shows.has("issues") && repo.issuesOn !== false && (
-          <SidebarLink to={`${base}/issues`} also={[`${base}/milestones`, `${base}/labels`, ...soonPaths(base, "Issues")]} icon={<CircleDot size={15} />} count={repo.issues}>
-            Issues
+        {/* Its work items: the workspace's Work list, filtered to it. */}
+        {shows.has("work") && (
+          <SidebarLink to={repoWorkPath(repo.namespace, repo.name)} icon={<ListTodo size={15} />} count={repo.items}>
+            Work
           </SidebarLink>
         )}
         {shows.has("pulls") && (
-          <SidebarLink to={`${base}/pulls`} also={[`${base}/pull`, `${base}/work`, `${base}/queue`, `${base}/sessions`]} icon={<GitPullRequest size={15} />} count={repo.pulls}>
+          <SidebarLink to={`${base}/pulls`} also={[`${base}/pull`, `${base}/queue`, `${base}/sessions`]} icon={<GitPullRequest size={15} />} count={repo.pulls}>
             Pull requests
           </SidebarLink>
         )}
@@ -1037,7 +1039,7 @@ function CodeSidebar({
   const target = destination.pathname;
   // On a 404, the address is not a place: no list is drilled into from it,
   // except the project's own when the project is real and visible and only
-  // something inside it is missing (a file, a commit, an issue).
+  // something inside it is missing (a file, a commit, a work item).
   const lost = missing && destination.key === location.key;
   const active = shell.repo;
   // In a repository, or on the way into one, its own list.
@@ -1065,11 +1067,11 @@ function CodeSidebar({
     : null;
   // The viewer's role there, from the repository's page once it has loaded.
   const page = useRouteLoaderData("routes/repo/layout") as
-    | { repo?: { namespace: string; name: string }; access?: ViewerAccess; issues?: boolean }
+    | { repo?: { namespace: string; name: string }; access?: ViewerAccess }
     | undefined;
   const menuRepo: MenuRepo | null =
     guessed && page?.access && page.repo && sameRepo(page.repo, guessed)
-      ? { ...guessed, member: page.access.insider, settings: seesSettings(page.access), can: page.access.can, issuesOn: page.issues }
+      ? { ...guessed, member: page.access.insider, settings: seesSettings(page.access), can: page.access.can }
       : guessed;
 
   // The way from Code's list (or Explore's, browsing) to the one shown.
@@ -1421,6 +1423,51 @@ export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean
 }
 
 /**
+ * Work's sidebar, and its menu on a phone (the Work tab tapped again):
+ * the views people keep coming back to, saved in the address (open, yours,
+ * closed), then the workspace's labels and milestones, which Work holds.
+ */
+function WorkSidebar({ slug, username }: { slug: string; username: string }) {
+  const { pathname: path, search } = useSidebarLocation();
+  const list = workPath(slug);
+  const query = new URLSearchParams(search);
+  const onList = path === list;
+  const view = (want: Record<string, string>) =>
+    onList && [...query.keys()].every((key) => key in want) && Object.entries(want).every(([key, value]) => query.get(key) === value);
+  const at = (page: string) => path === workPath(slug, page) || path.startsWith(`${workPath(slug, page)}/`);
+  return (
+    <div className="flex h-full flex-col">
+      <ModeHeader title="Work" />
+      <nav aria-label="Work" className={PANEL}>
+        <NavRows>
+          <SidebarLink to={list} icon={<ListTodo size={15} />} current={view({})}>
+            Open
+          </SidebarLink>
+          <SidebarLink to={`${list}?assignee=${encodeURIComponent(username)}`} icon={<CircleUserRound size={15} />} current={view({ assignee: username })}>
+            Assigned to you
+          </SidebarLink>
+          <SidebarLink to={`${list}?state=closed`} icon={<Check size={15} />} current={view({ state: "closed" })}>
+            Closed
+          </SidebarLink>
+          <SidebarLink to={newItemPath(slug)} icon={<Plus size={15} />} current={at("new")}>
+            New work item
+          </SidebarLink>
+        </NavRows>
+        <Rule />
+        <NavRows>
+          <SidebarLink to={workPath(slug, "labels")} icon={<Ticket size={15} />} current={at("labels")}>
+            Labels
+          </SidebarLink>
+          <SidebarLink to={workPath(slug, "milestones")} icon={<Flag size={15} />} current={at("milestones")}>
+            Milestones
+          </SidebarLink>
+        </NavRows>
+      </nav>
+    </div>
+  );
+}
+
+/**
  * People's sidebar: everyone in the workspace and its teams. Who belongs, and
  * inviting people, is the workspace's: Workspace mode's Access group.
  */
@@ -1511,7 +1558,6 @@ export function AccountSidebar({ username }: { username: string }) {
 
 /** Words for the sections a path can end in. */
 const SECTIONS: Record<string, string> = {
-  issues: "Issues",
   milestones: "Milestones",
   labels: "Labels",
   pulls: "Pull requests",
@@ -1624,6 +1670,14 @@ function Breadcrumbs({
     if (third === "settings" && fourth === "chat") {
       // Chat settings is a page of its own, not one of General's.
       trail.push({ label: "Chat settings", to: `${page}/chat` });
+    } else if (third === "work") {
+      // Work: Work / #12, Work / Labels, Work / Milestones / #3.
+      trail.push({ label: "Work", to: page });
+      const words: Record<string, string> = { new: "New work item", labels: "Labels", milestones: "Milestones" };
+      if (fourth && /^\d+$/.test(fourth)) trail.push({ label: `Work item #${fourth}`, short: `#${fourth}`, to: `${page}/${fourth}` });
+      else if (fourth && words[fourth]) trail.push({ label: words[fourth]!, to: `${page}/${fourth}` });
+      const fifth = parts[4];
+      if (fourth === "milestones" && fifth) trail.push({ label: `#${fifth}`, to: `${page}/milestones/${fifth}` });
     } else if (third) {
       // The workspace's settings pages each stand alone: General, Members, Permissions.
       trail.push({ label: third === "settings" ? "General" : (SECTIONS[third] ?? third), to: page });
@@ -1636,7 +1690,6 @@ function Breadcrumbs({
     const repo = `/${owner}/${second}`;
     trail.push({ label: second, to: repo, mono: true });
     if (third === "pull" && fourth) trail.push({ label: `Pull request #${fourth}`, short: `#${fourth}`, to: `${repo}/pull/${fourth}` });
-    else if (third === "issues" && fourth && fourth !== "new") trail.push({ label: `Issue #${fourth}`, short: `#${fourth}`, to: `${repo}/issues/${fourth}` });
     else if (third === "commit" && fourth) trail.push({ label: fourth.slice(0, 7), to: `${repo}/commit/${fourth}`, mono: true });
     // A Soon page names what is coming.
     else if (third === "soon" && fourth && roadmapItem(fourth)) trail.push({ label: roadmapItem(fourth)!.title, to: `${repo}/soon/${fourth}` });
@@ -1757,6 +1810,10 @@ function commandsFor(user: User, shell: ShellData): Command[] {
     ...(ws
       ? [
           { label: "Home", to: homePagePath(ws.slug), icon: <House size={15} /> },
+          { label: "Work", hint: "The workspace's work items", to: workPath(ws.slug), icon: <ListTodo size={15} /> },
+          { label: "New work item", to: newItemPath(ws.slug), icon: <Plus size={15} /> },
+          { label: "Labels", hint: "Work", to: workPath(ws.slug, "labels"), icon: <ListTodo size={15} /> },
+          { label: "Milestones", hint: "Work", to: workPath(ws.slug, "milestones"), icon: <ListTodo size={15} /> },
           { label: "Chat", to: `/${ws.slug}/-/chat`, icon: <MessagesSquare size={15} /> },
           ...(hasCodeAccess(ws) ? [{ label: "Code overview", to: `/${ws.slug}/-/overview`, icon: <Code2 size={15} /> }] : []),
           { label: "Artifacts", to: `/${ws.slug}/-/artifacts`, icon: <Shapes size={15} /> },
@@ -1766,7 +1823,7 @@ function commandsFor(user: User, shell: ShellData): Command[] {
         ]
       : []),
     { label: "Explore repositories", to: "/explore", icon: <Compass size={15} /> },
-    { label: "Search g1t", hint: "Repositories, code, issues, people", to: "/search", icon: <Search size={15} /> },
+    { label: "Search g1t", hint: "Repositories, code, work items, people", to: "/search", icon: <Search size={15} /> },
     { label: "Notifications", hint: "What needs you", to: "/notifications", icon: <Bell size={15} /> },
     { label: "New project", to: "/new", icon: <Plus size={15} /> },
     { label: "Your settings", to: FIRST_SETTINGS_PAGE, icon: <Settings size={15} /> },
@@ -1782,8 +1839,8 @@ function commandsFor(user: User, shell: ShellData): Command[] {
     commands.unshift(
       { label: "Overview", hint: name, to: base, icon: <LayoutGrid size={15} /> },
       { label: "Code", hint: name, to: `${base}/code`, icon: <Code2 size={15} /> },
-      { label: "Issues", hint: name, to: `${base}/issues`, icon: <CircleDot size={15} /> },
-      { label: "New issue", hint: name, to: `${base}/issues/new`, icon: <Plus size={15} /> },
+      { label: "Work", hint: name, to: repoWorkPath(repo.namespace, repo.name), icon: <ListTodo size={15} /> },
+      { label: "New work item", hint: name, to: newItemPath(repo.namespace, repo.name), icon: <Plus size={15} /> },
       { label: "Pull requests", hint: name, to: `${base}/pulls`, icon: <GitPullRequest size={15} /> },
       { label: "Commits", hint: name, to: `${base}/commits`, icon: <History size={15} /> },
       ...(repo.member
@@ -1898,11 +1955,12 @@ function sidebarFor(mode: ModeKey, workspace: boolean): Panel | null {
 }
 
 /** The sidebars that sit beside the page, one per mode that has one. */
-type Panel = "chat" | "artifacts" | "code" | "notifications" | "people" | "workspace" | "account" | "browse";
+type Panel = "work" | "chat" | "artifacts" | "code" | "notifications" | "people" | "workspace" | "account" | "browse";
 
 /** Each sidebar's name, for the button that opens it on a phone. */
 const MODE_MENU: Record<Panel, string> = {
   browse: "Explore",
+  work: "Work",
   chat: "Chat",
   artifacts: "Artifacts",
   code: "Code",
@@ -2060,6 +2118,8 @@ export function AppShell({
         return <CodeSidebar user={user} shell={shell} missing={missing} />;
       case "browse":
         return <CodeSidebar user={user} shell={shell} missing={missing} browsing={browsing} />;
+      case "work":
+        return <WorkSidebar slug={ws.slug} username={user.username} />;
       case "chat":
         return <ChatSidebar slug={ws.slug} />;
       case "artifacts":
@@ -2190,7 +2250,7 @@ export function AppShell({
   );
 }
 
-/** Create new: a project, an issue in the one you are in, a workspace or a team. */
+/** Create new: a work item (from the project you are in), a project, a workspace or a team. */
 function CreateMenu({ shell }: { shell: ShellData }) {
   return (
     <DropdownMenu>
@@ -2203,17 +2263,29 @@ function CreateMenu({ shell }: { shell: ShellData }) {
         </DropdownMenuTrigger>
       </Hint>
       <DropdownMenuContent align="end" className="min-w-52">
-        {shell.repo && (
+        {shell.repo ? (
           <>
             <DropdownMenuLabel className="truncate">In {shell.repo.name}</DropdownMenuLabel>
             <DropdownMenuItem asChild>
-              <Link to={`/${shell.repo.namespace}/${shell.repo.name}/issues/new`}>
-                <CircleDot />
-                New issue
+              <Link to={newItemPath(shell.repo.namespace, shell.repo.name)}>
+                <ListTodo />
+                New work item
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
           </>
+        ) : (
+          shell.workspace && (
+            <>
+              <DropdownMenuItem asChild>
+                <Link to={newItemPath(shell.workspace.slug)}>
+                  <ListTodo />
+                  New work item
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          )
         )}
         <DropdownMenuItem asChild>
           <Link to="/new">

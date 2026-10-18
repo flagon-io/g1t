@@ -16,7 +16,7 @@ import {
   greetingFor,
   groupActivity,
   hourIn,
-  issueToMerge,
+  itemToMerge,
   median,
   nameActor,
   nextSeen,
@@ -88,7 +88,7 @@ test("one person's burst in one project reads as one line", () => {
     item("2", NOW - 5 * MIN, "g1t", "started", 5),
     item("3", NOW - 10 * MIN, "g1t", "started", 6),
     item("4", NOW - 12 * MIN, "g1t", "landed", 3),
-    item("5", NOW - 20 * MIN, "ana", "opened_issue", 7),
+    item("5", NOW - 20 * MIN, "ana", "opened_item", 7),
     item("6", NOW - 25 * MIN, "g1t", "landed", 2),
   ]);
   assert.equal(groups.length, 3);
@@ -166,10 +166,10 @@ test("median, pass rates and spans", () => {
   assert.equal(formatSpan(2 * DAY + 4 * HOUR), "2d 4h");
 });
 
-test("issue to merge pairs a merge with the issue it resolved", () => {
-  const spans = issueToMerge(
+test("work item to merge pairs a merge with the work item it landed", () => {
+  const spans = itemToMerge(
     [{ repo: "a", number: 1, at: 100 }, { repo: "b", number: 1, at: 50 }],
-    [{ repo: "a", issue: 1, at: 400 }, { repo: "a", issue: null, at: 500 }, { repo: "c", issue: 1, at: 900 }],
+    [{ repo: "a", item: 1, at: 400 }, { repo: "a", item: null, at: 500 }, { repo: "c", item: 1, at: 900 }],
   );
   assert.deepEqual(spans, [300]);
 });
@@ -189,7 +189,7 @@ test("sparkline points span the box, zero on the floor", () => {
   assert.deepEqual(sparkPoints([3], 10, 10, 1), [[5, 1]]);
 });
 
-test("open issues by age", () => {
+test("open work items by age", () => {
   const buckets = ageBuckets(
     [new Date(NOW - HOUR).toISOString(), new Date(NOW - 3 * DAY).toISOString(), new Date(NOW - 90 * DAY).toISOString()],
     NOW,

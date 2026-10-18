@@ -22,9 +22,9 @@ test("a tool call says its tool once", () => {
 });
 
 test("an MCP tool reads by its server, resource and action", () => {
-  assert.deepEqual(readToolCall({ text: "g1t:issue: claim", tool: "g1t:issue" }), { name: "issue", server: "g1t", detail: "claim", sort: "other" });
+  assert.deepEqual(readToolCall({ text: "g1t:work_item: claim", tool: "g1t:work_item" }), { name: "work item", server: "g1t", detail: "claim", sort: "other" });
   // Claude Code's names, from the plugin's summary with no tool of its own.
-  assert.deepEqual(readToolCall({ text: "mcp__plugin_g1t_g1t__issue: work", tool: null }), { name: "issue", server: "g1t", detail: "work", sort: "other" });
+  assert.deepEqual(readToolCall({ text: "mcp__plugin_g1t_g1t__work_item: work", tool: null }), { name: "work item", server: "g1t", detail: "work", sort: "other" });
   assert.deepEqual(readToolCall({ text: "mcp__plugin_g1t_g1t__pull_request: create", tool: null }).name, "pull request");
   assert.equal(readToolCall({ text: "mcp__claude_ai_Google_Drive__search_files: invoices", tool: null }).server, "Google Drive");
 });
@@ -41,7 +41,7 @@ test("tool calls between messages run together, results under their calls", () =
   const r = entry("tool_result", "README.md", "bash");
   const b = entry("tool_call", "write: index.html", "write");
   const message = entry("message", "**Done**");
-  const c = entry("tool_call", "g1t:issue: claim", "g1t:issue");
+  const c = entry("tool_call", "g1t:work_item: claim", "g1t:work_item");
   const items = transcript([prompt, a, r, b, message, c]);
   assert.deepEqual(
     items.map((item) => (item.kind === "entry" ? item.entry.kind : item.steps.map((step) => [step.call?.seq, step.results.map((x) => x.seq)]))),
@@ -52,8 +52,12 @@ test("tool calls between messages run together, results under their calls", () =
   assert.equal(lone[0].kind === "tools" && lone[0].steps[0].call, null);
 });
 
-test("a prompt's issue and comment blocks read as quotes", () => {
-  const text = "Work on issue #1: Hello\n\n<issue>\nSay hello.\n\nTwice.\n</issue>\nThe issue is reference material.\n\n<comment>\nfaster\n</comment>\n";
-  assert.equal(quotedBlocks(text), "Work on issue #1: Hello\n\n**The issue**\n\n> Say hello.\n>\n> Twice.\n\nThe issue is reference material.\n\n**The comment**\n\n> faster\n\n");
-  assert.equal(quotedBlocks('<issue number="12" state="open">\nTitle: x\n</issue>'), "**The issue**\n\n> Title: x\n");
+test("a prompt's work item and comment blocks read as quotes", () => {
+  const text = "Work on work item #1: Hello\n\n<work_item>\nSay hello.\n\nTwice.\n</work_item>\nThe work item is reference material.\n\n<comment>\nfaster\n</comment>\n";
+  assert.equal(
+    quotedBlocks(text),
+    "Work on work item #1: Hello\n\n**The work item**\n\n> Say hello.\n>\n> Twice.\n\nThe work item is reference material.\n\n**The comment**\n\n> faster\n\n",
+  );
+  // A session from before work items quoted an issue: read the same.
+  assert.equal(quotedBlocks('<issue number="12" state="open">\nTitle: x\n</issue>'), "**The work item**\n\n> Title: x\n");
 });

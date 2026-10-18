@@ -1,6 +1,6 @@
 /**
  * What the command palette shows as someone types: a few repositories,
- * issues, pull requests and people, as the viewer may see them. Signed out,
+ * work items, pull requests and people, as the viewer may see them. Signed out,
  * public ones only.
  */
 import type { Route } from "./+types/search-json";

@@ -199,7 +199,7 @@ export type FolioUnfurl = Pick<Folio, "id" | "kind" | "title" | "icon" | "path" 
 
 /**
  * The card for a g1t address embedded in a doc, as this reader may see
- * it: an issue or pull request with its state, a channel, a project, an
+ * it: a work item or pull request with its state, a channel, a project, an
  * artifact. Anything they can't read is not found, exactly as one that
  * does not exist.
  */
@@ -228,16 +228,26 @@ async function embed(slug: string, address: string, viewer: User, origin: string
   if (parts[1] === "-" && parts[2] === "chat" && parts[3]) {
     return { ok: true, value: { kind: "channel", title: parts[3] === "dm" ? "A direct message" : `#${parts[3]}`, subtitle: "Chat", state: null, href: path } };
   }
+  // /<workspace>/-/work/<n>, and an old issue's /<owner>/<repo>/issues/<n>, which reads as `#n` there.
+  const item = parts[1] === "-" && parts[2] === "work" && /^\d+$/.test(parts[3] ?? "") ? { workspace: parts[0]!.toLowerCase(), number: Number(parts[3]) } : null;
+  const legacy = parts[1] !== "-" && parts[2] === "issues" && /^\d+$/.test(parts[3] ?? "") ? Number(parts[3]) : null;
+  if (item || legacy) {
+    const target = item ? { kind: "work_item" as const, ...item } : await work.resolveRef(viewer, { repo: { namespace: parts[0]!.toLowerCase(), name: parts[1]! } }, legacy!).catch(() => null);
+    if (target?.kind === "work_item") {
+      const found = await work.getWorkItem(target.workspace, target.number, viewer);
+      if (!found.ok) return missing;
+      const { item: shown } = found.value;
+      return { ok: true, value: { kind: "item", title: `${shown.title} #${shown.number}`, subtitle: shown.workspace, state: shown.state, href: `/${shown.workspace}/-/work/${shown.number}` } };
+    }
+    if (target?.kind !== "pull") return missing;
+    path = `/${target.repo}/pull/${target.number}`;
+    parts.splice(0, parts.length, ...path.split("/").filter(Boolean));
+  }
   if (parts.length < 2 || parts[1] === "-") return missing;
   const repo = { namespace: parts[0]!, name: parts[1]! };
-  // /<owner>/<repo>/issues/<n> and /pull/<n>
+  // /<owner>/<repo>/pull/<n>
   const number = Number(parts[3]);
-  if ((parts[2] === "issues" || parts[2] === "pull" || parts[2] === "pulls") && Number.isInteger(number) && number > 0) {
-    if (parts[2] === "issues") {
-      const found = await work.getIssue(repo, number, viewer);
-      if (!found.ok) return missing;
-      return { ok: true, value: { kind: "issue", title: `${found.value.issue.title} #${number}`, subtitle: `${repo.namespace}/${repo.name}`, state: found.value.issue.state, href: path } };
-    }
+  if ((parts[2] === "pull" || parts[2] === "pulls") && Number.isInteger(number) && number > 0) {
     const found = await work.getPull(repo, number, viewer);
     if (!found.ok) return missing;
     const pull = found.value.pull as { title: string; status: string; mergedAt?: string | null };

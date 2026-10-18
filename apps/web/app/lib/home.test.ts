@@ -296,7 +296,7 @@ const quietRepo = (repo_id: string): RepoDigest => ({
   repo_id,
   pushes: { count: 0, commits: 0, branches: [], by: [], default_branch: { count: 0, commits: 0, by: [], last_at: null } },
   pulls: { opened: [], merged: [], closed: [] },
-  issues: { opened: [], closed: [] },
+  items: { opened: [], closed: [] },
   reviews: [],
   comments: [],
   deployments: { succeeded: [], failed: [], production: 0 },
@@ -331,7 +331,7 @@ function busyDay(): ActivityDigest {
           default_branch: { count: 3, commits: 9, by: [{ actor: ANA, count: 3, commits: 9 }], last_at: iso(NOW - 2 * HOUR) },
         },
         pulls: { opened: [count(ANA, 1), count(G1T, 2), count(MARGO, 1)], merged: [count(ANA, 3), count(BO, 1)], closed: [] },
-        issues: { opened: [count(BO, 2)], closed: [count(ANA, 1), count(G1T, 1)] },
+        items: { opened: [count(BO, 2)], closed: [count(ANA, 1), count(G1T, 1)] },
         reviews: [count(BO, 2), count(G1T, 2)],
         comments: [count(ANA, 4), count(MARGO, 3)],
         deployments: { succeeded: [count(ANA, 2)], failed: [], production: 2 },
@@ -400,7 +400,7 @@ test("the digest: what was done, by kind with counts, and who, agents marked", (
     [
       ["pushes", "47 commits to 4 projects", "/acme/-/repositories"],
       ["pulls", "5 opened, 5 merged, 4 reviewed", "/acme/-/repositories"],
-      ["issues", "2 opened, 2 closed, 7 comments", "/acme/web/issues"],
+      ["items", "2 opened, 2 closed, 7 comments", "/acme/-/work?repo=web"],
       ["shipped", "2 deploys, 1 release, 1 package version", "/acme/web/deployments"],
       ["docs", "1 doc created, 7 docs edited", "/acme/-/artifacts"],
       ["chat", "120 messages in 5 conversations", "/acme/-/chat"],
@@ -430,7 +430,7 @@ test("g1t is one row, named, whichever key it used: its account, a workspace, or
   assert.deepEqual(
     digest.people.actors.map((actor) => [actor.name, actor.kind, actor.count, actor.parts]),
     [
-      ["g1t", "agent", 6, { issues: 3, chat: 3 }],
+      ["g1t", "agent", 6, { items: 3, chat: 3 }],
       ["ana", "person", 2, { chat: 2 }],
     ],
   );

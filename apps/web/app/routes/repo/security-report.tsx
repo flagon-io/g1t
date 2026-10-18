@@ -69,7 +69,7 @@ export default function SecurityReport({ loaderData, actionData, params }: Route
             <Link to={`${base}/security`} className="underline underline-offset-2">
               Security page
             </Link>{" "}
-            shows its security policy, if it has one, which says how to report. Please do not open a public issue about a vulnerability.
+            shows its security policy, if it has one, which says how to report. Please do not open a public work item about a vulnerability.
           </AlertDescription>
         </Alert>
       </div>

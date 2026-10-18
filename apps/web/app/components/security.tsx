@@ -25,6 +25,8 @@ import {
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useFetcher } from "react-router";
 
+import { itemPath } from "../lib/refs";
+
 import {
   type AlertActivity,
   type AlertState,
@@ -272,7 +274,7 @@ function ActivityLog({ entries, base, open }: { entries: ActivityEntry[]; base: 
               <span>{entry.text}</span>
               {entry.ref && (
                 <Link
-                  to={`${base}/${entry.ref.kind === "pull" ? "pull" : "issues"}/${entry.ref.number}`}
+                  to={entry.ref.kind === "pull" ? `${base}/pull/${entry.ref.number}` : itemPath(base.split("/")[1]!, entry.ref.number)}
                   className="font-medium text-fg-soft hover:text-fg hover:underline"
                 >
                   #{entry.ref.number}
@@ -504,11 +506,11 @@ export function SecretsList({
   );
 }
 
-/** Where the legacy upgrade issue for a package stands, as the page loads it. */
+/** Where the legacy upgrade work item for a package stands, as the page loads it. */
 export type UpgradeFix = {
   number: number;
   state: "open" | "closed";
-  /** The newest pull request for the issue, if any. */
+  /** The newest pull request for the work item, if any. */
   pull: { number: number; status: PullStatus; agent: string | null } | null;
   resolvedBy: number | null;
 };
@@ -516,13 +518,13 @@ export type UpgradeFix = {
 /** A security update's pull request as the page loads it. */
 export type PullInfo = { number: number; status: PullStatus; title: string };
 
-function FixLink({ issue, fix, base }: { issue: number; fix: UpgradeFix | undefined; base: string }) {
+function FixLink({ item, fix, base }: { item: number; fix: UpgradeFix | undefined; base: string }) {
   const pull = fix?.pull;
   return (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-      <span className="text-muted">Upgrade issue</span>
-      <Link to={`${base}/issues/${issue}`} className="inline-flex items-center gap-1 text-fg-soft hover:text-fg">
-        {fix?.state === "closed" ? <CircleCheck size={12} className="text-merged" /> : <CircleDot size={12} className="text-success" />}#{issue}
+      <span className="text-muted">Upgrade work item</span>
+      <Link to={itemPath(base.split("/")[1]!, item)} className="inline-flex items-center gap-1 text-fg-soft hover:text-fg">
+        {fix?.state === "closed" ? <CircleCheck size={12} className="text-merged" /> : <CircleDot size={12} className="text-success" />}#{item}
       </Link>
       {pull && (
         <Link to={`${base}/pull/${pull.number}`} className="inline-flex items-center gap-1 text-muted hover:text-fg">
@@ -557,12 +559,12 @@ function UpdateStatus({ update, name, pulls, base }: {
     superseded: <>A newer update replaced it, or the package is no longer vulnerable, so g1t closed it.</>,
     needs_code: (
       <>
-        Raising {name} to {update.target} needs code changes, so g1t opened an issue to make them
-        {update.issue != null && (
+        Raising {name} to {update.target} needs code changes, so g1t opened a work item to make them
+        {update.item != null && (
           <>
             :{" "}
-            <Link to={`${base}/issues/${update.issue}`} className="font-medium text-fg-soft hover:text-fg hover:underline">
-              #{update.issue}
+            <Link to={itemPath(base.split("/")[1]!, update.item)} className="font-medium text-fg-soft hover:text-fg hover:underline">
+              #{update.item}
             </Link>
           </>
         )}
@@ -688,7 +690,7 @@ function PackageItem({
   const manifests = [...new Set(group.vulns.map((vuln) => vuln.manifest))];
   const target = highestFix(group.vulns);
   const update = latestUpdate(group.vulns);
-  const issue = update ? null : (group.vulns.find((vuln) => vuln.issue != null)?.issue ?? null);
+  const item = update ? null : (group.vulns.find((vuln) => vuln.item != null)?.item ?? null);
   return (
     <li className="px-4 py-3">
       <div className="flex items-start gap-3">
@@ -707,9 +709,9 @@ function PackageItem({
         </div>
       </div>
       {update && <UpdateStatus update={update} name={group.name} pulls={pulls} base={base} />}
-      {issue != null && (
+      {item != null && (
         <div className="mt-2 sm:ml-7">
-          <FixLink issue={issue} fix={fixes[issue]} base={base} />
+          <FixLink item={item} fix={fixes[item]} base={base} />
         </div>
       )}
       <Card asChild tone="plain" radius="lg" className="mt-2.5 space-y-px overflow-hidden sm:ml-7">

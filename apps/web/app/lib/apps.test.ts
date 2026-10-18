@@ -19,7 +19,25 @@ import {
   sidebarCookie,
   withPin,
   writeDock,
+  PHONE_TABS,
+  appOf,
+  phoneMoreApps,
 } from "./apps.ts";
+
+test("Work is a built-in app right after Home, for every member", () => {
+  assert.deepEqual(BUILTINS.slice(0, 2).map((app) => app.key), ["home", "work"]);
+  assert.equal(appOf("work").path("acme"), "/acme/-/work");
+  assert.equal(appOf("work").code, undefined, "not part of Code");
+});
+
+test("a phone's bar is Home, Work, Chat and Notifications, with Code first under More", () => {
+  assert.deepEqual([...PHONE_TABS], ["home", "work", "chat", "notifications"]);
+  // Four tabs and More: five slots.
+  assert.equal(PHONE_TABS.length + 1, 5);
+  assert.deepEqual(phoneMoreApps(true), ["code", "artifacts", "routines", "people", "workspace"]);
+  // A member without Code access has the rest, Work still on the bar.
+  assert.deepEqual(phoneMoreApps(false), ["artifacts", "routines", "people", "workspace"]);
+});
 
 test("only integrations are pinned; built-in apps, their pages, old plugins and connectors are not", () => {
   for (const app of BUILTINS) assert.equal(isPinnable(app.key), false, app.key);

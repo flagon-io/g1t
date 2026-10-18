@@ -237,14 +237,14 @@ export type RepoRef = RepoPath & { defaultBranch: string };
  * The kinds of work the span's chart is split into, in the order the
  * legend and each bar show them (and the chart's colour slots).
  */
-export const WORK_KINDS = ["pushes", "pulls", "issues", "shipped", "docs", "chat"] as const;
+export const WORK_KINDS = ["pushes", "pulls", "items", "shipped", "docs", "chat"] as const;
 export type WorkKind = (typeof WORK_KINDS)[number];
 
 /** Each kind's name in the legend. */
 export const WORK_LABEL: Record<WorkKind, string> = {
   pushes: "Pushes",
   pulls: "Pull requests",
-  issues: "Issues",
+  items: "Work items",
   shipped: "Shipped",
   docs: "Docs",
   chat: "Chat",
@@ -435,17 +435,20 @@ export function digestColumn(input: DigestInput): DigestColumn {
       lines.push({ key: "pulls", text, count: pulls, to: placeFor(slug, repos, [...opened.repoIds, ...merged.repoIds, ...closed.repoIds, ...reviews.repoIds], "pulls") });
     }
 
-    const issuesOpened = sum("issues", (repo) => repo.issues.opened);
-    const issuesClosed = sum("issues", (repo) => repo.issues.closed);
-    const comments = sum("issues", (repo) => repo.comments);
-    const issues = issuesOpened.count + issuesClosed.count + comments.count;
-    if (issues > 0) {
+    const itemsOpened = sum("items", (repo) => repo.items.opened);
+    const itemsClosed = sum("items", (repo) => repo.items.closed);
+    const comments = sum("items", (repo) => repo.comments);
+    const items = itemsOpened.count + itemsClosed.count + comments.count;
+    if (items > 0) {
       const text = counted([
-        [issuesOpened.count, "# opened"],
-        [issuesClosed.count, "# closed"],
+        [itemsOpened.count, "# opened"],
+        [itemsClosed.count, "# closed"],
         [comments.count, comments.count === 1 ? "# comment" : "# comments"],
       ]);
-      lines.push({ key: "issues", text, count: issues, to: placeFor(slug, repos, [...issuesOpened.repoIds, ...issuesClosed.repoIds, ...comments.repoIds], "issues") });
+      // Work items are the workspace's: its Work list, filtered to the one project they were in, if one.
+      const ids = new Set([...itemsOpened.repoIds, ...itemsClosed.repoIds, ...comments.repoIds]);
+      const only = ids.size === 1 ? repos[[...ids][0]!] : null;
+      lines.push({ key: "items", text, count: items, to: only ? `/${slug}/-/work?repo=${encodeURIComponent(only.name)}` : `/${slug}/-/work` });
     }
 
     const succeeded = sum("shipped", (repo) => repo.deployments.succeeded);
@@ -564,7 +567,7 @@ export type LandedChange = {
   shipped?: ShipInfo | null;
   /** Made in a harness session (`withSessions`, or a `G1t-Session:` trailer): the agent marker, and the session. */
   agent?: AgentMark | null;
-  /** A title that is a commit's subject: its repository (`owner/name`), whose issues its `#12`s are. */
+  /** A title that is a commit's subject: its repository (`owner/name`), which its `#12`s are read in. */
   refsIn?: string;
   /** A production build that failed (`landedDeploys`). */
   failed?: boolean;
@@ -881,7 +884,7 @@ export function settledIn(items: InboxItem[] | null, slug: string, code: boolean
     .filter((item) => (item.workspace ?? item.repo?.split("/")[0] ?? "").toLowerCase() === slug && (code || !item.repo))
     .map((item) => ({
       key: `settled:${item.id}`,
-      // An issue's or pull request's own title; else the item's ("CI failed on main in acme/web").
+      // A work item's or pull request's own title; else the entry's ("CI failed on main in acme/web").
       title: item.number != null ? item.body || item.title : item.title,
       why: settledLine(item),
       where: item.repo ? `${item.repo}${item.number != null ? `#${item.number}` : ""}` : null,

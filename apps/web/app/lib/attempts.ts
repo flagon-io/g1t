@@ -1,8 +1,8 @@
 /**
- * The other pull requests for the same issue, as a pull request shows them
+ * The other pull requests for the same work item, as a pull request shows them
  * beside itself: alternatives to compare, not collisions to avoid. Each
  * says how it stands, how its head commit's checks went, and where its
- * review is, so two agents' attempts at one issue can be weighed side by
+ * review is, so two agents' attempts at one work item can be weighed side by
  * side (routes/repo/pull.tsx).
  */
 import type { ChangedFile, Comment, CommitChecks, Overlap, Pull, PullStatus } from "@g1t/contracts";
@@ -15,7 +15,7 @@ export type AttemptReview = {
   text: string;
 };
 
-/** One pull request for the issue: this one, or another. */
+/** One pull request for the work item: this one, or another. */
 export type Attempt = {
   number: number;
   title: string;
@@ -37,16 +37,16 @@ export type Attempt = {
 };
 
 /**
- * A pull request's overlaps, split: those for other issues will collide
- * with it; those for the same issue are alternatives to it, and expected
+ * A pull request's overlaps, split: those for other work items will collide
+ * with it; those for the same work item are alternatives to it, and expected
  * to change the same files.
  */
-export function splitOverlaps(overlaps: Overlap[], issue: number | null): { collisions: Overlap[]; alternatives: Overlap[] } {
-  const same = (other: Overlap) => issue != null && other.issue === issue;
+export function splitOverlaps(overlaps: Overlap[], item: number | null): { collisions: Overlap[]; alternatives: Overlap[] } {
+  const same = (other: Overlap) => item != null && other.item === item;
   return { collisions: overlaps.filter((other) => !same(other)), alternatives: overlaps.filter(same) };
 }
 
-/** The other pull requests of an issue worth showing beside `number`: newest first, at most a few. */
+/** The other pull requests of a work item worth showing beside `number`: newest first, at most a few. */
 export function otherAttempts(pulls: Pick<Pull, "number">[], number: number): number[] {
   return pulls
     .map((pull) => pull.number)

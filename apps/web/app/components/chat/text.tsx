@@ -3,8 +3,15 @@ import { Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 
 import { MemberCard } from "./profile-card";
-import { CommitChip, IssueChip } from "./ref-chip";
+import { CommitChip, RefChip } from "./ref-chip";
 import { refTarget } from "../../lib/g1t-chat";
+import { type RefContext, refHref } from "../../lib/refs";
+
+/** `acme/web` as a repository. */
+function repoOf(path: string): { namespace: string; name: string } {
+  const [namespace = "", name = ""] = path.split("/");
+  return { namespace: namespace.toLowerCase(), name };
+}
 import { Button } from "../ui/button";
 import { Hint } from "../ui/hint";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
@@ -48,10 +55,13 @@ function SpanView({ span, context }: { span: Span; context: TextContext }): Reac
     case "del":
       return <del className="text-muted">{spans(span.c, context)}</del>;
     case "link": {
-      // A link to an issue, a pull request or a commit here is its chip (components/chat/ref-chip.tsx).
+      // A link to a work item, a pull request or a commit here is its chip (components/chat/ref-chip.tsx).
       const target = refTarget(span.href);
-      if (target?.kind === "issue" && !context.codeLink) {
-        return <IssueChip slug={context.slug} repo={target.repo} number={target.number} to={target.href} label={spans(span.c, context)} kind={/\/pull\//.test(target.href) ? "pull" : "issue"} />;
+      if (target?.kind === "item") {
+        return <RefChip slug={context.slug} scope={{ workspace: target.workspace }} number={target.number} to={target.href} label={spans(span.c, context)} kind="item" />;
+      }
+      if ((target?.kind === "pull" || target?.kind === "ref") && !context.codeLink) {
+        return <RefChip slug={context.slug} scope={{ repo: repoOf(target.repo) }} number={target.number} to={target.href} label={spans(span.c, context)} kind={target.kind === "pull" ? "pull" : undefined} />;
       }
       if (target?.kind === "commit" && !context.codeLink) return <CommitChip href={target.href} sha={target.sha} />;
       if (span.href.startsWith("/")) {
@@ -96,14 +106,21 @@ function SpanView({ span, context }: { span: Span; context: TextContext }): Reac
         `#${span.name}`
       );
     case "ref": {
-      const repo = span.repo ? (span.repo.includes("/") ? span.repo : `${context.slug}/${span.repo}`) : context.project ? `${context.slug}/${context.project}` : null;
+      // `acme/web#12` in that repository, `acme#12` in that workspace, and
+      // `#12` in the channel's project, else this workspace (lib/refs.ts).
+      const scope: RefContext = span.repo
+        ? span.repo.includes("/")
+          ? { repo: repoOf(span.repo) }
+          : { workspace: span.repo.toLowerCase() }
+        : context.project
+          ? { repo: { namespace: context.slug, name: context.project } }
+          : { workspace: context.slug };
       const label = `${span.repo ? span.repo : ""}#${span.number}`;
-      if (!repo) return <span className="font-medium text-fg-soft">{label}</span>;
-      // Issues and pull requests share numbers; the issue page sends a pull on.
-      const href = `/${repo}/issues/${span.number}`;
-      if (!context.codeLink) return <IssueChip slug={context.slug} repo={repo} number={span.number} label={label} />;
+      const href = refHref({ scope: "here", number: span.number }, scope)!;
+      // Read in a repository it may be a pull request, which is Code's.
+      if (!context.codeLink || !("repo" in scope)) return <RefChip slug={context.slug} scope={scope} number={span.number} to={href} label={label} />;
       return (
-        <Link to={context.codeLink ? context.codeLink(href) : href} className="font-medium text-accent hover:underline">
+        <Link to={context.codeLink(href)} className="font-medium text-accent hover:underline">
           {label}
         </Link>
       );

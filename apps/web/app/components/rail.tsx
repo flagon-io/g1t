@@ -200,7 +200,7 @@ function AppsButton({ slug, pins, onToggle, current }: { slug: string; pins: Pin
 /**
  * The rail down the window's left edge: a narrow column of icons, each
  * named by the hint beside it. g1t's mark, which leads to Home; the
- * built-in apps (Home, Chat, Code and Artifacts) with what is
+ * built-in apps (Home, Work, Chat, Code, Artifacts and Routines) with what is
  * unread on them (Notifications is the bell in the top bar, not a rail
  * app); Explore, lit anywhere beyond your workspaces; the apps you
  * pinned; the Apps launcher;
@@ -232,6 +232,8 @@ export function Rail({
   const { pins, toggle } = useAppPins(slug, saved);
   const builtins: Item[] = [
     { key: "home", label: "Home" },
+    // Every member's, Code access or not.
+    { key: "work", label: "Work" },
     {
       key: "chat",
       label: "Chat",
@@ -270,8 +272,8 @@ export function Rail({
                 current={here === item.key && !shown.some((app) => at(app.to))}
                 badge={item.badge}
               />
-              {/* Right after Home: g1t beyond your workspaces (Explore, search, profiles, other workspaces and their public projects). */}
-              {item.key === "home" && (
+              {/* Right after Work: g1t beyond your workspaces (Explore, search, profiles, other workspaces and their public projects). */}
+              {item.key === "work" && (
                 <RailLink to="/explore" label="Explore" icon={<Compass size={20} />} current={here === "browse" || at("/explore")} />
               )}
             </Fragment>

@@ -2,17 +2,18 @@ import { Bot, CircleCheck, CircleSlash, Pencil, Trash2 } from "lucide-react";
 import { type CSSProperties, Fragment, type ReactNode } from "react";
 import { Form, Link } from "react-router";
 
-import type { AgentRef, Comment, Issue, Pull, State } from "@g1t/contracts";
+import type { AgentRef, Comment, Pull, State, WorkItem } from "@g1t/contracts";
 
 import { mayChangeComment } from "../lib/comments";
 import { messageParts } from "../lib/commit-message";
 import { chipStyle } from "../lib/labels";
 import { repoAt } from "../lib/markdown-plugins";
+import type { RefContext } from "../lib/refs";
 import { CommitChip, SessionChip } from "./chat/ref-chip";
-import { RefLink } from "./commit-message";
+import { RefLink, repoScope } from "./commit-message";
 import { Markdown } from "./markdown";
 import { Reactions } from "./reactions";
-import { IssueIcon, PullIcon } from "./work-icons";
+import { ItemIcon, PullIcon } from "./work-icons";
 import { MentionTextarea } from "./mention-textarea";
 import { ErrorText, SubmitButton, TimeAgo } from "./ui";
 import { Badge } from "./ui/badge";
@@ -34,7 +35,7 @@ import { CheckboxOption } from "./ui/checkbox";
 import { Hint } from "./ui/hint";
 import { UserCard } from "./user-card";
 
-export { IssueIcon, PullIcon };
+export { ItemIcon, PullIcon };
 
 /** Hues for the labels every repository starts with. */
 const LABEL_HUES: Record<string, number> = {
@@ -75,7 +76,7 @@ export function Label({ name, color }: { name: string; color?: string | null }) 
   );
 }
 
-/** The people an issue is assigned to, as overlapping avatars. */
+/** The people a work item is assigned to, as overlapping avatars. */
 export function AssigneeStack({ people }: { people: string[] }) {
   if (people.length === 0) return null;
   const shown = people.slice(0, 3);
@@ -98,7 +99,7 @@ export function AssigneeStack({ people }: { people: string[] }) {
   );
 }
 
-/** The agent working on an issue now. */
+/** The agent working on a work item now. */
 export function Assignee({ agent }: { agent: string }) {
   return (
     <Hint label={`Assigned to ${agent}`}>
@@ -113,20 +114,20 @@ export function Assignee({ agent }: { agent: string }) {
 
 const PILL = "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium";
 
-/** The large state badge at the top of an issue. */
-export function IssueState({ issue }: { issue: Pick<Issue, "state" | "reason"> }) {
+/** The large state badge at the top of a work item. */
+export function ItemState({ item }: { item: Pick<WorkItem, "state" | "reason"> }) {
   const style =
-    issue.state === "open"
+    item.state === "open"
       ? "border-success/30 bg-success/10 text-success"
-      : issue.reason === "not_planned"
+      : item.reason === "not_planned"
         ? "border-line bg-surface text-muted"
         : "border-merged/30 bg-merged/10 text-merged";
   return (
     <span className={`${PILL} ${style}`}>
-      <IssueIcon issue={issue} size={14} />
-      {issue.state === "open"
+      <ItemIcon item={item} size={14} />
+      {item.state === "open"
         ? "Open"
-        : issue.reason === "not_planned"
+        : item.reason === "not_planned"
           ? "Closed as not planned"
           : "Closed"}
     </span>
@@ -377,14 +378,16 @@ function AdvisoryChip() {
 type Review = { changesUrl: string; canJudge: boolean };
 
 /**
- * Text with each `#12` linked to the issue or pull request of that number
- * (its card on hover), each full commit hash linked to its commit, and
- * each file named in backticks shown as code, linked to its diff when
- * `filesUrl` says where the changes are.
+ * Text with each `#12` linked to the work item or pull request it names
+ * (its card on hover), read in the repository at `base` or else in
+ * `workspace`; each full commit hash linked to its commit, and each
+ * file named in backticks shown as code, linked to its diff when
+ * `filesUrl` says where the changes are. Without a repository, a commit or
+ * a session (both a repository's) is shown by its short id, unlinked.
  */
-function WithReferences({ text, base, filesUrl }: { text: string; base?: string; filesUrl?: string }) {
-  if (!base) return <>{text}</>;
-  const repo = base.slice(1);
+function WithReferences({ text, base, workspace, filesUrl }: { text: string; base?: string; workspace?: string; filesUrl?: string }) {
+  if (!base && !workspace) return <>{text}</>;
+  const here: RefContext = base ? repoScope(base) : { workspace: workspace! };
   return (
     <>
       {text.split(/(`[^`\n]+`)/).map((chunk, index) =>
@@ -406,15 +409,21 @@ function WithReferences({ text, base, filesUrl }: { text: string; base?: string;
           <Fragment key={index}>
             {messageParts(chunk).map((part, at) =>
               part.kind === "ref" ? (
-                <RefLink key={at} repo={part.repo ?? repo} number={part.number} className="font-medium text-fg hover:underline">
+                <RefLink key={at} scope={part.repo ? repoScope(part.repo) : here} number={part.number} className="font-medium text-fg hover:underline">
                   {part.text}
                 </RefLink>
               ) : part.kind === "commit" ? (
                 // The commit that closed or merged it, by its short hash.
-                <CommitChip key={at} href={`${base}/commit/${part.sha}`} sha={part.sha} />
+                base ? (
+                  <CommitChip key={at} href={`${base}/commit/${part.sha}`} sha={part.sha} />
+                ) : (
+                  <code key={at} className="font-mono text-xs text-fg">
+                    {part.sha.slice(0, 7)}
+                  </code>
+                )
               ) : part.kind === "session" ? (
                 // The session it was closed in.
-                <SessionChip key={at} href={`${base}/work/sessions/${part.id}`} id={part.id} />
+                base ? <SessionChip key={at} href={`${base}/sessions/${part.id}`} id={part.id} /> : <code key={at} className="font-mono text-xs text-fg">{part.text}</code>
               ) : (
                 part.text
               ),
@@ -466,11 +475,11 @@ function TimelineRow({ comment, mark, children }: { comment: Comment; mark?: Rea
 }
 
 /** Something that happened, as one line on the conversation's rail. */
-function TimelineEvent({ comment, base, filesUrl }: { comment: Comment; base?: string; filesUrl?: string }) {
+function TimelineEvent({ comment, base, workspace, filesUrl }: { comment: Comment; base?: string; workspace?: string; filesUrl?: string }) {
   return (
     <TimelineRow comment={comment}>
       <span>
-        <WithReferences text={comment.body} base={base} filesUrl={filesUrl} />
+        <WithReferences text={comment.body} base={base} workspace={workspace} filesUrl={filesUrl} />
       </span>
     </TimelineRow>
   );
@@ -583,7 +592,7 @@ function CommentActions({
 export type TimelineExtra = { id: string; at: string; node: ReactNode };
 
 /**
- * The conversation of an issue or a pull request, oldest first: what
+ * The conversation of a work item or a pull request, oldest first: what
  * people and agents wrote, and between those, what happened, with
  * `extra` (its sessions) where each happened.
  */
@@ -591,6 +600,7 @@ export function CommentList({
   comments,
   review,
   base,
+  workspace,
   viewerId,
   viewerName = null,
   canModerate = false,
@@ -601,6 +611,8 @@ export function CommentList({
   review?: Review;
   /** The repository's path, so that `#12` in an event can be linked. */
   base?: string;
+  /** For a work item's conversation, which no repository holds: the workspace `#12` is read in. */
+  workspace?: string;
   /** The signed-in viewer, who may edit and delete their own comments. */
   viewerId?: string | null;
   /** Maintain and up: may edit and delete anyone's comments. */
@@ -634,7 +646,7 @@ export function CommentList({
 
   function entry(comment: Comment) {
         if (comment.kind === "event") {
-          return <TimelineEvent key={comment.id} comment={comment} base={base} filesUrl={review?.changesUrl} />;
+          return <TimelineEvent key={comment.id} comment={comment} base={base} workspace={workspace} filesUrl={review?.changesUrl} />;
         }
         const verdict = comment.verdict;
         // A verdict with nothing said and no line it is about is one line, not a card.
@@ -680,7 +692,7 @@ export function CommentList({
               )
             }
           >
-            {comment.body && <Markdown source={comment.body} repo={repoAt(base)} />}
+            {comment.body && <Markdown source={comment.body} repo={repoAt(base)} workspace={workspace} />}
             <Reactions reactions={comment.reactions} commentId={comment.id} viewer={viewerName} className="mt-3" />
             {(can.edit || can.delete) && (
               <CommentActions comment={comment} can={can} error={failed?.comment === comment.id ? failed.error : null} />

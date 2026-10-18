@@ -132,7 +132,7 @@ export default function WorkspaceAi({ loaderData, actionData }: Route.ComponentP
       </div>
       <p className="mt-1.5 mb-6 border-b border-line pb-6 text-sm text-muted">
         The models g1t works with in {slug}, on your own keys: Ask and @g1t in Chat answer with one, and an Anthropic key
-        starts sessions on issues. Use a frontier lab or a platform, or a model you host yourself. g1t hosts no model for
+        starts sessions on work items. Use a frontier lab or a platform, or a model you host yourself. g1t hosts no model for
         this and bills nothing for it: what it costs is on your provider's bill.
       </p>
       {justAdded && <Added connection={justAdded} />}
@@ -385,7 +385,7 @@ function ProviderSettings({ connection, updated }: { connection: AiConnection; u
             azure
               ? undefined
               : connection.provider === "anthropic"
-                ? "Optional, and separate from Ask's model above. Sessions on issues run on Ask's model when it names one, else this one, else claude-opus-5-5."
+                ? "Optional, and separate from Ask's model above. Sessions on work items run on Ask's model when it names one, else this one, else claude-opus-5-5."
                 : "Optional, and separate from Ask's model above: the model your team uses on it."
           }
         >

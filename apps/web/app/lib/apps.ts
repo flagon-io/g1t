@@ -2,7 +2,7 @@
  * The rail's built-in apps, the apps a workspace added, and the ones each
  * person pins to their rail.
  *
- * Built-in apps (Home, Chat, Notifications, Code, Artifacts, Routines,
+ * Built-in apps (Home, Work, Chat, Notifications, Code, Artifacts, Routines,
  * People and Workspace) are always in the rail; their own pages (Projects, Usage,
  * Teams and the rest) are in their sidebars. Apps are the integrations
  * the workspace connected, each opening where it is looked after. Each
@@ -26,7 +26,7 @@
 import { CONNECTORS, type Connector, connectorPath } from "@g1t/contracts/connectors";
 
 /** The apps that are always in the rail. */
-export type BuiltinApp = "home" | "chat" | "notifications" | "code" | "artifacts" | "routines" | "people" | "workspace";
+export type BuiltinApp = "home" | "work" | "chat" | "notifications" | "code" | "artifacts" | "routines" | "people" | "workspace";
 
 export type BuiltinInfo = {
   key: BuiltinApp;
@@ -42,6 +42,7 @@ const under = (page: string) => (slug: string) => `/${slug}/-/${page}`;
 /** The rail's built-in apps, in its order. */
 export const BUILTINS: BuiltinInfo[] = [
   { key: "home", name: "Home", path: under("home") },
+  { key: "work", name: "Work", path: under("work") },
   { key: "chat", name: "Chat", path: under("chat") },
   { key: "notifications", name: "Notifications", path: () => "/notifications" },
   { key: "code", name: "Code", path: under("overview"), code: true },
@@ -50,6 +51,18 @@ export const BUILTINS: BuiltinInfo[] = [
   { key: "people", name: "People", path: under("people") },
   { key: "workspace", name: "Workspace", path: under("workspace") },
 ];
+
+/** A phone's bottom bar, before More: Work for every member, Code under More. */
+export const PHONE_TABS = ["home", "work", "chat", "notifications"] as const satisfies readonly BuiltinApp[];
+
+/**
+ * The built-in apps the phone's More sheet has, in its order: Code first,
+ * for a member with Code access, then the rest of the rail's.
+ */
+export function phoneMoreApps(code: boolean): BuiltinApp[] {
+  const rest = BUILTINS.map((app) => app.key).filter((key) => !(PHONE_TABS as readonly string[]).includes(key) && key !== "code");
+  return code ? ["code", ...rest] : rest;
+}
 
 /** The built-in app `key`. */
 export function appOf(key: BuiltinApp): BuiltinInfo {

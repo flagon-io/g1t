@@ -8,14 +8,16 @@ test("the kind a loader names wins over the address", () => {
   assert.equal(missingKind({ kind: "pull" }, "/acme/web/pull/7"), "pull");
   // Anything else a loader put there is ignored.
   assert.equal(missingKind({ kind: "secret" }, "/acme/web"), "project");
-  assert.equal(missingKind("Issue not found.", "/acme/web/issues/3"), "issue");
+  assert.equal(missingKind("Work item not found.", "/acme/-/work/3"), "item");
 });
 
 test("without one, the shape of the address decides", () => {
   const cases: [string, MissingKind][] = [
     ["/acme", "workspace"],
     ["/acme/web", "project"],
-    ["/acme/web/issues/12", "issue"],
+    ["/acme/-/work/12", "item"],
+    ["/acme/web/issues/12", "item"],
+    ["/acme/-/work", "page"],
     ["/acme/web/pull/12", "pull"],
     ["/acme/web/issues", "page"],
     ["/acme/web/settings", "page"],
@@ -27,7 +29,7 @@ test("without one, the shape of the address decides", () => {
   for (const [path, kind] of cases) assert.equal(missingKind(null, path), kind, path);
 });
 
-const KINDS: MissingKind[] = ["project", "issue", "pull", "workspace", "page"];
+const KINDS: MissingKind[] = ["project", "item", "pull", "workspace", "page"];
 
 test("signed out: nothing here, which may be private, and sign in if it is yours", () => {
   for (const kind of KINDS) {

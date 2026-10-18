@@ -161,6 +161,30 @@ test("a member without Code access is sent around Code's pages", async () => {
   assert.equal(codeGate("/acme/-/code-access", "", none, "acme"), null);
   assert.equal(codeGate("/other/web", "", none, "acme"), null);
   assert.equal(codeGate("/acme/web", "", [], "acme"), null);
+  // Work is every member's: its pages, and a repository's old issue, label
+  // and milestone addresses and `#12` links, which lead there.
+  assert.equal(codeGate("/acme/-/work", "", none, "acme"), null);
+  assert.equal(codeGate("/acme/-/work/12", "", none, "acme"), null);
+  assert.equal(codeGate("/acme/-/work/labels", "", none, "acme"), null);
+  assert.equal(codeGate("/acme/web/issues/12", "", none, "acme"), null);
+  assert.equal(codeGate("/acme/web/issues", "", none, "acme"), null);
+  assert.equal(codeGate("/acme/web/milestones/2", "", none, "acme"), null);
+  assert.equal(codeGate("/acme/web/ref/12", "", none, "acme"), null);
+  // A repository's Sessions page is Code's.
+  assert.equal(codeGate("/acme/web/sessions", "", none, "acme"), "/acme/-/code-access?from=%2Facme%2Fweb%2Fsessions");
+});
+
+test("Work is a mode of its own, after Home", async () => {
+  const { modeOf, modeHome } = await import("./workspace-nav.ts");
+  assert.equal(modeOf("/acme/-/work", "acme"), "work");
+  assert.equal(modeOf("/acme/-/work.data", "acme"), "work");
+  assert.equal(modeOf("/acme/-/work/12", "acme"), "work");
+  assert.equal(modeOf("/acme/-/work/new", "acme"), "work");
+  assert.equal(modeOf("/acme/-/work/labels", "acme"), "work");
+  assert.equal(modeOf("/acme/-/work/milestones/3", "acme"), "work");
+  assert.equal(modeHome("work", "acme"), "/acme/-/work");
+  // A repository's pages, its Sessions among them, are Code's.
+  assert.equal(modeOf("/acme/web/sessions", "acme"), "code");
 });
 
 test("g1t beyond your workspaces is browsed, and whose it is", async () => {

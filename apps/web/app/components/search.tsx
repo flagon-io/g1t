@@ -28,7 +28,7 @@ export function Highlighted({ parts, className }: { parts: Segment[]; className?
 }
 
 function stateIcon(hit: SiteHit): ReactNode {
-  if (hit.kind === "issue") {
+  if (hit.kind === "item") {
     return hit.state === "open" ? (
       <CircleDot size={15} className="text-success" aria-label="Open" />
     ) : (
@@ -54,7 +54,7 @@ export function hitIcon(hit: SiteHit, size = 15): ReactNode {
       return hit.private ? <Lock size={size} /> : <BookMarked size={size} />;
     case "code":
       return <FileCode2 size={size} />;
-    case "issue":
+    case "item":
       return hit.state === "open" ? <CircleDot size={size} /> : <CircleSlash size={size} />;
     case "pull":
       return <GitPullRequest size={size} />;
@@ -214,7 +214,7 @@ export function SearchHitView({ hit }: { hit: SiteHit }) {
       return <Repository hit={hit} />;
     case "code":
       return <Code hit={hit} />;
-    case "issue":
+    case "item":
     case "pull":
       return <Item hit={hit} />;
     case "user":

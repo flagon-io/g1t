@@ -24,11 +24,12 @@ import { Markdown } from "./markdown";
 import { TimeAgo } from "./ui";
 import { Button } from "./ui/button";
 import { Skeleton } from "./ui/skeleton";
+import { itemPath } from "../lib/refs";
 
 /**
  * A file with, beside each run of lines, the commit that last changed it.
  * Picking a line opens why it is the way it is: the commit, the pull
- * request and issue it came from, and what the agent was thinking.
+ * request and work item it came from, and what the agent was thinking.
  */
 export function BlameView({
   base,
@@ -99,7 +100,7 @@ export function BlameView({
     <div>
       <p className="flex items-center gap-2 border-b border-line px-4 py-2 text-xs text-muted">
         <Sparkles size={13} className="text-accent" />
-        Pick any line to see why it is the way it is: the commit, the pull request and issue it
+        Pick any line to see why it is the way it is: the commit, the pull request and work item it
         came from, and what the agent was thinking.
       </p>
       <div className="overflow-x-auto">
@@ -282,21 +283,21 @@ function WhyPanel({
             </section>
           )}
 
-          {current.issue && (
+          {current.item && (
             <section className="p-4">
               <p className="flex items-center gap-1.5 text-xs text-faint">
                 <CircleDot size={13} />
                 What was asked for
               </p>
               <Link
-                to={`${base}/issues/${current.issue.number}`}
+                to={itemPath(current.item.workspace, current.item.number)}
                 className="mt-1.5 block font-medium hover:text-accent"
               >
-                {current.issue.title} <span className="font-normal text-faint">#{current.issue.number}</span>
+                {current.item.title} <span className="font-normal text-faint">#{current.item.number}</span>
               </Link>
-              {current.issue.body && (
+              {current.item.body && (
                 <div className="mt-2 max-h-48 overflow-hidden text-muted **:text-[0.8125rem]! **:leading-5! mask-[linear-gradient(to_bottom,black_70%,transparent)]">
-                  <Markdown source={current.issue.body} repo={repoAt(base)} />
+                  <Markdown source={current.item.body} workspace={current.item.workspace} />
                 </div>
               )}
             </section>

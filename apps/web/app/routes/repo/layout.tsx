@@ -42,7 +42,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
   // Members pin the workspace's projects, and what they open is their Recent.
   const member = viewer ? roleIn(viewer, params.owner) != null : false;
-  const [repo, counts, found, watching, shortcuts, stars, forks, issues] = await Promise.all([
+  const [repo, counts, found, watching, shortcuts, stars, forks, workItems] = await Promise.all([
     repoFor(context, params),
     // The repository is what the frame is about; its open counts are only
     // the tabs' badges, which do without them.
@@ -59,9 +59,9 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     repos.stars(path, viewer).then((found) => (found.ok ? found.value : null)).catch(() => null),
     // Its forks the viewer can see, counted up to 100, for the header's Fork button.
     repos.forks(path, viewer, FORKS_COUNTED).then((found) => (found.ok ? found.value.length : null)).catch(() => null),
-    // Whether issues can be opened in it (off by default in a fork): Issues
+    // Whether work items can be filed from it (off by default in a fork): Work
     // leaves its menus when they cannot. On when it could not be read.
-    work.getSettings(path, viewer).then((found) => (found.ok ? (found.value.issuesEnabled ?? true) : true)).catch(() => true),
+    work.getSettings(path, viewer).then((found) => (found.ok ? (found.value.workItemsEnabled ?? true) : true)).catch(() => true),
   ]);
   if (!repo.ok && !found.ok) {
     // Under a workspace's old name, after a rename: the project is at the new one.
@@ -97,14 +97,14 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     welcome,
     repo: value,
     project,
-    open: !isFailed(counts) && counts.ok ? counts.value : { issues: 0, pulls: 0 },
+    open: !isFailed(counts) && counts.ok ? counts.value : { items: 0, pulls: 0 },
     access,
     member: access.insider,
     watching,
     // Null for a pull request's working copy, or when it could not be read.
     stars: value.forkOf ? null : stars,
     forking,
-    issues,
+    workItems,
     signedIn: Boolean(viewer),
     // Null when they cannot pin it: not one of their workspaces.
     pinned: member && project ? (shortcuts?.pinned ?? []).some((pinned) => pinned.id === project.id) : null,
@@ -209,7 +209,7 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
   const site = projectHomepage(project) ?? repo.website ?? null;
   const { pathname } = useLocation();
   const rest = pathname.slice(base.length + 1);
-  const tabs = tabsFor(rest, member, access.can, { issues: loaderData.issues });
+  const tabs = tabsFor(rest, member, access.can);
   // One row of tabs for the project's pages, along the header's border (a
   // member's sidebar has them on a computer), and the views of the section
   // the page is in as a quieter row at the top of its content.
@@ -247,7 +247,7 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
           )}
           <Topics topics={repo.topics} className="mt-3" />
           <div className={signedIn ? "mt-3 md:hidden" : "mt-3"}>
-            <ProjectStrip base={base} member={member} can={access.can} settings={seesSettings(access)} counts={loaderData.open} always={!signedIn} issues={loaderData.issues} />
+            <ProjectStrip base={base} member={member} can={access.can} settings={seesSettings(access)} counts={loaderData.open} always={!signedIn} />
           </div>
         </div>
       </div>
@@ -256,7 +256,7 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
         {welcome && (
           <div className="mb-6">
             <WelcomeBanner title={`You're in ${repo.namespace}/${repo.name}`}>
-              You have the {access.role} role on it now. Its code, issues and pull requests are yours to work on.
+              You have the {access.role} role on it now. Its code, work items and pull requests are yours to work on.
             </WelcomeBanner>
           </div>
         )}

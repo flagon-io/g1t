@@ -52,7 +52,7 @@ export function PaletteKey({ className }: { className?: string }) {
 
 /**
  * ⌘K: pages and actions from what the page already knows, and, as someone
- * types, repositories, issues, pull requests and people from search
+ * types, repositories, work items, pull requests and people from search
  * (command-palette-dialog.tsx).
  */
 export function CommandPalette(props: {

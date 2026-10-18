@@ -36,8 +36,8 @@ import {
   CheckCheck,
   ChevronDown,
   ChevronLeft,
-  CircleDot,
   CircleHelp,
+  Ellipsis,
   Code2,
   Compass,
   FileDiff,
@@ -47,6 +47,7 @@ import {
   GitPullRequest,
   Hash,
   House,
+  ListTodo,
   Loader,
   MessageSquare,
   MessagesSquare,
@@ -273,6 +274,7 @@ function Message({ who, time, children, enter }: { who: string; time: string; ch
 /** The rail's modes, in the app's order (components/rail.tsx), with its icons. */
 const RAIL: { key: string; icon: ReactNode; label: string; target?: CursorTarget; scenes?: Scene[]; badge?: number }[] = [
   { key: "home", icon: <House size={15} />, label: "Home", scenes: ["home"] },
+  { key: "work", icon: <ListTodo size={15} />, label: "Work" },
   { key: "explore", icon: <Compass size={15} />, label: "Explore" },
   { key: "chat", icon: <MessagesSquare size={15} />, label: "Chat", target: "rail-chat", scenes: ["chat"], badge: 3 },
   { key: "code", icon: <Code2 size={15} />, label: "Code", target: "rail-code", scenes: ["code", "session"] },
@@ -556,7 +558,7 @@ function CodeSide() {
         </div>
         <div className="mx-2 my-2 h-px bg-line" />
         {row(<Code2 size={13} />, "Code")}
-        {row(<CircleDot size={13} />, "Issues", "12")}
+        {row(<ListTodo size={13} />, "Work", "12")}
         {row(<GitPullRequest size={13} />, "Pull requests", "3", true)}
         {row(<PlayCircle size={13} />, "Workflows")}
         <div className="mx-2 my-2 h-px bg-line" />
@@ -962,7 +964,7 @@ function WhatChangedCardMock({ frame }: { frame: Frame }) {
 const TOUR_FILL: Record<WorkKind, string> = {
   pushes: "bg-series-1",
   pulls: "bg-series-2",
-  issues: "bg-series-3",
+  items: "bg-series-3",
   shipped: "bg-series-4",
   docs: "bg-series-5",
   chat: "bg-series-6",
@@ -975,15 +977,15 @@ const TOUR_FILL: Record<WorkKind, string> = {
  */
 function PeopleCardMock() {
   const rows: { name: string; agent: boolean; parts: Partial<Record<WorkKind, number>> }[] = [
-    { name: "jordan", agent: false, parts: { pushes: 4, pulls: 2, issues: 3, chat: 9 } },
-    { name: "alex", agent: false, parts: { pulls: 3, issues: 2, docs: 2, chat: 6 } },
+    { name: "jordan", agent: false, parts: { pushes: 4, pulls: 2, items: 3, chat: 9 } },
+    { name: "alex", agent: false, parts: { pulls: 3, items: 2, docs: 2, chat: 6 } },
     { name: "claude", agent: true, parts: { pushes: 6, pulls: 2 } },
     { name: "g1t", agent: true, parts: { shipped: 3, chat: 4 } },
   ];
   const legend: [WorkKind, string][] = [
     ["pushes", "23 commits to 2 projects"],
     ["pulls", "4 opened, 3 merged"],
-    ["issues", "3 opened, 2 closed"],
+    ["items", "3 opened, 2 closed"],
     ["shipped", "3 deploys"],
     ["docs", "2 docs edited"],
     ["chat", "19 messages in 4 conversations"],
@@ -1268,9 +1270,11 @@ const MODE: Record<Scene, { icon: ReactNode; label: string }> = {
 /** The phone's tab bar, as the app has it (components/mobile.tsx). */
 const TABS: { scenes: Scene[]; icon: ReactNode; label: string }[] = [
   { scenes: ["home"], icon: <House size={16} />, label: "Home" },
+  { scenes: [], icon: <ListTodo size={16} />, label: "Work" },
   { scenes: ["chat"], icon: <MessagesSquare size={16} />, label: "Chat" },
   { scenes: [], icon: <Bell size={16} />, label: "Notifications" },
-  { scenes: ["code", "session"], icon: <Code2 size={16} />, label: "Code" },
+  // Code is the first of More's tiles on a phone.
+  { scenes: ["code", "session"], icon: <Ellipsis size={16} />, label: "More" },
 ];
 
 function Phone({ frame }: { frame: Frame }) {
@@ -1303,7 +1307,7 @@ function Phone({ frame }: { frame: Frame }) {
       </div>
       {/* Inside a conversation the tab bar steps aside, as it does on a phone. */}
       {frame.scene !== "chat" && (
-        <div className="grid h-12 shrink-0 grid-cols-4 border-t border-line bg-[#0b0b0d]">
+        <div className="grid h-12 shrink-0 grid-cols-5 border-t border-line bg-[#0b0b0d]">
           {TABS.map((tab) => {
             const on = tab.scenes.includes(frame.scene);
             return (

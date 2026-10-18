@@ -37,9 +37,35 @@ test("@workspace/team links to the team", () => {
   assert.deepEqual(links("(@Acme/Web-Platform)"), [["/acme/-/teams/web-platform", "@Acme/Web-Platform"]]);
 });
 
-test("issues and pull requests still link", () => {
+/** The links a paragraph of `text` gets, read in `options`' repository or workspace. */
+function linksIn(text: string, options: { repo?: { namespace: string; name: string }; workspace?: string }): [string, string][] {
+  const tree: Node = { type: "root", children: [{ type: "element", tagName: "p", properties: {}, children: [{ type: "text", value: text }] }] };
+  rehypeReferences(options)(tree as never);
+  return (tree.children![0]!.children ?? [])
+    .filter((node) => node.tagName === "a")
+    .map((node) => [String(node.properties!.href), node.children![0]!.value!]);
+}
+
+test("#12 in a repository is read there, by the page that asks the work service", () => {
+  // Its pull request, the work item its issue became, the workspace's work
+  // item or another repository's pull request: lib/refs.ts says which page asks.
   assert.deepEqual(links("see #12 and other/repo#3"), [
-    ["/acme/web/issues/12", "#12"],
-    ["/other/repo/issues/3", "other/repo#3"],
+    ["/acme/web/ref/12", "#12"],
+    ["/other/repo/ref/3", "other/repo#3"],
   ]);
+});
+
+test("#12 in a workspace's text is its work item, and workspace#12 is that workspace's", () => {
+  assert.deepEqual(linksIn("see #12, beta#4 and beta/api#7", { workspace: "acme" }), [
+    ["/acme/-/work/12", "#12"],
+    ["/beta/-/work/4", "beta#4"],
+    ["/beta/api/ref/7", "beta/api#7"],
+  ]);
+  // A repository's text reads `workspace#12` in that workspace too.
+  assert.deepEqual(links("Part of acme#9"), [["/acme/-/work/9", "acme#9"]]);
+});
+
+test("#12 with nowhere to read it stays text, and so does a link's fragment", () => {
+  assert.deepEqual(linksIn("see #12", {}), []);
+  assert.deepEqual(linksIn("see /docs#12 and ##3", { workspace: "acme" }), []);
 });

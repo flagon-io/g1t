@@ -19,8 +19,8 @@ function hitHint(hit: SiteHit): string {
   switch (hit.kind) {
     case "repository":
       return "Repository";
-    case "issue":
-      return `${hit.repo} #${hit.number}`;
+    case "item":
+      return `${hit.workspace ?? hit.repo} #${hit.number}`;
     case "pull":
       return `${hit.repo} #${hit.number}`;
     case "user":
@@ -34,7 +34,7 @@ function hitHint(hit: SiteHit): string {
 
 /**
  * ⌘K: pages and actions from what the page already knows, and, as someone
- * types, repositories, issues, pull requests and people from search,
+ * types, repositories, work items, pull requests and people from search,
  * public ones for anyone and private ones for their workspaces' members.
  * The first row always searches all of g1t for what was typed.
  */

@@ -68,7 +68,7 @@ test("the files page follows refs, checks, releases and deployments", () => {
   for (const c of [push("main"), push("other"), change("git.deleted", { ref: "refs/heads/old" }), change("status.created", { sha: "abc" }), change("release.published"), change("deployment_status.created")]) {
     assert.equal(files(c), true, c.kind);
   }
-  assert.equal(files(change("issue.opened", { number: 3 })), false);
+  assert.equal(files(change("work_item.opened", { number: 3 })), false);
   assert.equal(files(change("comment.created", { number: 3 })), false);
 });
 
@@ -108,20 +108,16 @@ test("the commits page hears pushes to its own branch only", () => {
   assert.equal(shown(change("status.created", { sha: "f00d" })), false, "not on one it does not");
 });
 
-test("branches, tags, and the lists of pull requests and issues", () => {
+test("branches, tags, and the list of pull requests", () => {
   assert.equal(repoPages.refs()(push("x")), true);
   assert.equal(repoPages.refs()(change("pull.opened", { number: 1 })), true);
-  assert.equal(repoPages.refs()(change("issue.opened", { number: 1 })), false);
+  assert.equal(repoPages.refs()(change("work_item.opened", { number: 1 })), false);
   assert.equal(repoPages.tags()(change("git.push", { ref: "refs/tags/v2" })), true);
   assert.equal(repoPages.tags()(push("main")), false);
   assert.equal(repoPages.tags()(change("release.published")), true);
   assert.equal(repoPages.pulls()(change("pull.updated", { number: 4 })), true);
   assert.equal(repoPages.pulls()(change("review.completed", { number: 4 })), true);
-  assert.equal(repoPages.pulls()(change("issue.opened", { number: 5 })), false);
-  assert.equal(repoPages.issues()(change("issue.closed", { number: 5 })), true);
-  assert.equal(repoPages.issues()(change("comment.created", { number: 5 })), true);
-  assert.equal(repoPages.issues()(change("pull.merged", { number: 6 })), true, "a merge may close issues");
-  assert.equal(repoPages.issues()(push("main")), false);
+  assert.equal(repoPages.pulls()(change("work_item.opened", { number: 5 })), false);
 });
 
 test("a pull request hears its own changes, its head branch and its head's checks", () => {
@@ -139,16 +135,11 @@ test("a pull request hears its own changes, its head branch and its head's check
   assert.equal(pull(change("status.created", { sha: "beef" })), false);
 });
 
-test("an issue hears its own changes and its linked pull requests", () => {
-  const issue = repoPages.issue(3, [9]);
-  assert.equal(issue(change("comment.created", { number: 3 })), true);
-  assert.equal(issue(change("issue.closed", { number: 3 })), true);
-  assert.equal(issue(change("pull.merged", { number: 9 })), true);
-  assert.equal(issue(change("comment.created", { number: 4 })), false);
-  assert.equal(issue(push("main")), false);
+test("a pull request does not hear a work item that shares its number", () => {
+  assert.equal(repoPages.pull(3)(change("work_item.closed", { number: 3 })), false);
 });
 
-test("the Work page hears claims, sessions starting and ending, what the queue finds, and merges", () => {
+test("the Sessions page hears claims, sessions starting and ending, what the queue finds, and merges", () => {
   const page = repoPages.work();
   for (const kind of ["work.claimed", "work.claim_expired", "session.started", "session.ended", "dependency.changed", "overlap.detected", "integration.failed", "decision.recorded", "queue.changed", "pull.merged"]) {
     assert.equal(page(change(kind, { number: 3 })), true, kind);
@@ -157,15 +148,9 @@ test("the Work page hears claims, sessions starting and ending, what the queue f
   assert.equal(page(change("session.appended", { number: 3 })), false);
   assert.equal(page(change("comment.created", { number: 3 })), false);
   assert.equal(page(push("main")), false);
-  // An issue hears coordination about itself and its pull requests by number.
-  assert.equal(repoPages.issue(3, [9])(change("integration.failed", { number: 9 })), true);
 });
 
-test("a session going on reaches the issue and pull request it is on, and no other", () => {
-  assert.equal(repoPages.issue(3, [9])(change("session.progressed", { number: 3 })), true);
-  assert.equal(repoPages.issue(3, [9])(change("session.progressed", { number: 9 })), true);
-  assert.equal(repoPages.issue(3)(change("session.progressed", { number: 4 })), false);
-  assert.equal(repoPages.issue(3)(change("session.progressed")), false);
+test("a session going on reaches the pull request it is on, and no other", () => {
   assert.equal(repoPages.pull(9)(change("session.progressed", { number: 9 })), true);
   assert.equal(repoPages.pull(9)(change("session.progressed", { number: 3 })), false);
   assert.equal(repoPages.pull(9)(change("session.progressed")), false);
@@ -184,7 +169,7 @@ test("a session's page hears every session, claim and overlap in the repository"
 test("runs, one run, and security", () => {
   assert.equal(repoPages.runs()(change("run.updated", { run: "run_1" })), true);
   assert.equal(repoPages.runs()(change("status.created", { sha: "abc" })), true, "a new run reports pending on its commit");
-  assert.equal(repoPages.runs()(change("issue.opened", { number: 1 })), false);
+  assert.equal(repoPages.runs()(change("work_item.opened", { number: 1 })), false);
   const run = repoPages.run("run_1", "abc");
   assert.equal(run(change("run.updated", { run: "run_1" })), true);
   assert.equal(run(change("workflow.completed", { run: "run_1" })), true);
@@ -192,7 +177,7 @@ test("runs, one run, and security", () => {
   assert.equal(run(change("status.created", { sha: "abc" })), true);
   assert.equal(repoPages.security()(change("secret_scanning_alert.created")), true);
   assert.equal(repoPages.security()(change("code_scanning_alert.fixed", { number: 2 })), true);
-  assert.equal(repoPages.security()(change("issue.opened", { number: 1 })), false);
+  assert.equal(repoPages.security()(change("work_item.opened", { number: 1 })), false);
 });
 
 test("new commits are counted, and uncounted when a push was not", () => {

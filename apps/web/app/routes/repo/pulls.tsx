@@ -35,8 +35,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       base: base || undefined,
     }),
     // What the filters offer: each a part, whose menu says so when its service fails.
-    part(work.listLabels(path, viewer), "Labels"),
-    part(work.listMilestones(path, viewer, "open"), "Milestones"),
+    part(work.listLabels(params.owner.toLowerCase(), viewer), "Labels"),
+    part(work.listMilestones(params.owner.toLowerCase(), viewer, "open"), "Milestones"),
     // The layout looks it up in this request too.
     repoFor(context, params),
   ]);
@@ -160,7 +160,7 @@ export default function Pulls({ loaderData, params }: Route.ComponentProps) {
             }
           >
             A pull request proposes a change. Push a branch and open one, or
-            have your coding agent open one for an issue.
+            have your coding agent open one for a work item.
           </EmptyState>
         ) : (
           <Card asChild tone="plain" divided className="overflow-hidden">
@@ -191,7 +191,7 @@ export default function Pulls({ loaderData, params }: Route.ComponentProps) {
                         #{pull.number} opened <TimeAgo at={pull.createdAt} /> by{" "}
                         {openedBy(pull).name}
                         {pull.requestedBy && <> for {pull.requestedBy.username}</>}
-                        {pull.issue != null && <> · for #{pull.issue}</>}
+                        {pull.item != null && <> · for #{pull.item}</>}
                         {pull.supersededBy != null && <> · superseded by #{pull.supersededBy}</>}
                         {pull.milestone && (
                           <>

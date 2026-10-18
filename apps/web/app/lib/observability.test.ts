@@ -3,7 +3,7 @@ import test from "node:test";
 
 import type { TelemetrySpan } from "@g1t/contracts";
 
-import { change, count, duration, errorIssue, filterOf, matchesLog, niceTicks, parseView, percent, viewHref } from "./observability.ts";
+import { change, count, duration, errorItem, filterOf, matchesLog, niceTicks, parseView, percent, viewHref } from "./observability.ts";
 import { spanTree } from "./observability-trace.ts";
 
 test("a view reads from the address and writes back to it", () => {
@@ -79,14 +79,14 @@ test("spans nest under their parents, and orphans are still shown", () => {
   );
 });
 
-test("an error's issue says what, how often and where to look", () => {
-  const issue = errorIssue(
+test("an error's work item says what, how often and where to look", () => {
+  const item = errorItem(
     { name: "TypeError", message: "x is undefined", stack: "TypeError\n  at f (a.ts:1)", count: 3, first_us: 0, last_us: 60_000_000, service: "web", environment: "production", first_deployment_id: "dep_1", last_request_id: "r1", last_trace_id: null },
     "https://g1t.sh/acme/web/observability",
   );
-  assert.equal(issue.title, "TypeError: x is undefined");
-  assert.match(issue.body, /3 times/);
-  assert.match(issue.body, /requests\/r1/);
-  assert.match(issue.body, /dep_1/);
-  assert.doesNotMatch(issue.body, /traces\//);
+  assert.equal(item.title, "TypeError: x is undefined");
+  assert.match(item.body, /3 times/);
+  assert.match(item.body, /requests\/r1/);
+  assert.match(item.body, /dep_1/);
+  assert.doesNotMatch(item.body, /traces\//);
 });

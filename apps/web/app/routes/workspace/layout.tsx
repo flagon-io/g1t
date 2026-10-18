@@ -98,6 +98,22 @@ const PAGES: Record<string, { title: string; about: string }> = {
     title: "Packages",
     about: "What the workspace publishes and installs, beside its code: container images, npm, Composer, Go, Cargo, Maven, NuGet and RubyGems, with the same members, roles and tokens.",
   },
+  work: {
+    title: "Work",
+    about: "Everything the workspace means to do, features, bugs and chores, numbered once for the whole workspace and linked to the repositories it lands in.",
+  },
+  "work/new": {
+    title: "New work item",
+    about: "Say what should change, and pick the repositories it should land in. Whoever works on it, person or agent, works from this text.",
+  },
+  "work/labels": {
+    title: "Labels",
+    about: "The workspace's labels, shared by every work item and pull request in it.",
+  },
+  "work/milestones": {
+    title: "Milestones",
+    about: "Goals with a due date, that work items and pull requests from every repository of the workspace are gathered under.",
+  },
   insights: { title: "Insights", about: "Delivery, review times, work in progress and costs across your workspace." },
   usage: { title: "Usage", about: "What the workspace used and what it cost, by product, project and day." },
   billing: { title: "Billing and plans", about: "The g1t plan, the trial, your spend limit, prepaying, and every charge." },
@@ -199,7 +215,7 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
           {welcome && (
             <div className="mb-6">
               <WelcomeBanner title={`You're in ${workspace.name}`}>
-                You joined as a {role}. Its projects, issues and people are all here.
+                You joined as a {role}. Its projects, work and people are all here.
               </WelcomeBanner>
             </div>
           )}

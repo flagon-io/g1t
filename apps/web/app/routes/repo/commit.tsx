@@ -2,7 +2,7 @@ import { Check, Copy, GitCommitHorizontal, GitPullRequest, MessageSquareOff, Mes
 import { Suspense, useState } from "react";
 import { Await, Link, data, redirect } from "react-router";
 
-import type { ClosedIssue, Comparison, Pull } from "@g1t/contracts";
+import type { ClosedItem, Comparison, Pull } from "@g1t/contracts";
 
 import { asComments } from "../../lib/commit-comments";
 
@@ -16,7 +16,7 @@ import { DiffView } from "../../components/diff-view";
 import { CommitAvatars, CommitNames } from "../../components/commit-person";
 import { ErrorText, TimeAgo } from "../../components/ui";
 import { CommentForm, CommentList } from "../../components/work";
-import { IssueIcon } from "../../components/work-icons";
+import { ItemIcon } from "../../components/work-icons";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
@@ -58,8 +58,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     throw new Response("Commit not found.", { status: 404 });
   }
   const started = Date.now();
-  // Its comments, whether more may be added and the issues it closed: never
-  // cached, read beside the commit. Its comments and the issues it closed
+  // Its comments, whether more may be added and the work items it landed: never
+  // cached, read beside the commit. Its comments and the work items it landed
   // are parts of the page that say so when they fail; without the settings
   // or the viewer's role, comments stay open and nobody moderates, which
   // the service checks again when one is sent.
@@ -67,7 +67,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     part(work.commitComments(viewer, path, hash), "Comments"),
     work.getSettings(path, viewer).catch(() => null),
     accessTo(context, params).catch(() => null),
-    part(work.closedByCommit(path, hash, viewer), "The issues it closed"),
+    part(work.closedByCommit(path, hash, viewer), "The work items it landed"),
   ]);
   const found = unwrap(await repos.get(path, viewer));
   // The viewer may read the repository, and a commit never changes: after
@@ -106,7 +106,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
       comments: isFailed(comments) ? comments : comments.ok ? comments.value : [],
       // Off, the comments made stay readable and no more can be added.
       commentsOn: settings?.ok ? settings.value.allowCommitComments : true,
-      // The issues its message closed (`Closes #12`) when it was pushed.
+      // The work items its message landed (`Closes #12`) when it was pushed.
       closed: isFailed(closed) ? closed : closed.ok ? closed.value : [],
       viewer: viewer ? { username: viewer.username } : null,
       // Maintain and up edit and delete anyone's comments; everyone, their own.
@@ -190,14 +190,17 @@ function MergedIn({ base, pull }: { base: string; pull: Pull }) {
   );
 }
 
-/** An issue the commit's message closed when it was pushed. */
-function ClosedIssueRow({ base, issue }: { base: string; issue: ClosedIssue }) {
+/**
+ * A work item the commit's message named after a closing keyword when it
+ * was pushed: it landed here, and closed if nothing else was left to land.
+ */
+function ClosedItemRow({ item }: { item: ClosedItem }) {
   return (
     <div className="flex items-center gap-2 border-t border-line px-5 py-3 text-sm">
-      <IssueIcon issue={{ state: "closed", reason: "completed" }} size={15} />
-      <span className="text-muted">Closed</span>
-      <RefLink repo={base.slice(1)} number={issue.number} className="min-w-0 truncate font-medium hover:underline">
-        {issue.title} <span className="font-normal text-faint">#{issue.number}</span>
+      <ItemIcon item={{ state: item.closed ? "closed" : "open", reason: item.closed ? "completed" : null }} size={15} />
+      <span className="shrink-0 text-muted">{item.closed ? "Closed" : "Landed here for"}</span>
+      <RefLink scope={{ workspace: item.workspace }} number={item.number} className="min-w-0 truncate font-medium hover:underline">
+        {item.title} <span className="font-normal text-faint">#{item.number}</span>
       </RefLink>
     </div>
   );
@@ -304,7 +307,7 @@ export default function CommitPage({ loaderData, actionData, params }: Route.Com
               <Unavailable what={closed.what} compact />
             </div>
           ) : (
-            closed.map((issue) => <ClosedIssueRow key={issue.number} base={base} issue={issue} />)
+            closed.map((item) => <ClosedItemRow key={`${item.workspace}#${item.number}`} item={item} />)
           )}
         </section>
       </Card>

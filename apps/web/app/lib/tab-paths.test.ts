@@ -24,7 +24,9 @@ test("a profile's tabs are paths, and its overview is the profile", () => {
   assert.equal(profilePath("ada"), "/u/ada");
   assert.equal(profilePath("ada", "overview"), "/u/ada");
   assert.equal(profilePath("ada", "pulls"), "/u/ada/pulls");
-  assert.equal(profilePath("ada", "issues"), "/u/ada/issues");
+  assert.equal(profilePath("ada", "items"), "/u/ada/items");
+  // Issues is Work items now: the old tab leads there.
+  assert.equal(profilePath("ada", "issues"), "/u/ada/items");
   assert.equal(profilePath("ada", "stars"), "/u/ada/stars");
   // A tab it never had (GitHub's repositories) is the overview.
   assert.equal(profilePath("ada", "repositories"), "/u/ada");
@@ -40,7 +42,7 @@ test("an old profile address with ?tab= goes to the tab's path, keeping its filt
   const to = (address: string) => movedTab(at(address), (tab) => profilePath("ada", tab));
   assert.equal(to("/u/ada?tab=pulls"), "/u/ada/pulls");
   assert.equal(to("/u/ada?tab=pulls&state=merged"), "/u/ada/pulls?state=merged");
-  assert.equal(to("/u/ada?state=open&tab=issues&repo=acme%2Fweb&sort=oldest"), "/u/ada/issues?state=open&repo=acme%2Fweb&sort=oldest");
+  assert.equal(to("/u/ada?state=open&tab=issues&repo=acme%2Fweb&sort=oldest"), "/u/ada/items?state=open&repo=acme%2Fweb&sort=oldest");
   assert.equal(to("/u/ada?tab=STARS"), "/u/ada/stars");
   assert.equal(to("/u/ada?tab=overview"), "/u/ada");
   assert.equal(to("/u/ada?tab=repositories"), "/u/ada");

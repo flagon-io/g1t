@@ -2,11 +2,11 @@ import { LoaderCircle, Plus, Search, Tag, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Form, Link, useActionData } from "react-router";
 
-import type { Label } from "@g1t/contracts";
+import { type Label, needs } from "@g1t/contracts";
 
 import type { Route } from "./+types/labels";
-import { LabelChip } from "../../components/labels";
-import { EmptyState, ErrorText, SubmitButton, usePending } from "../../components/ui";
+import { LabelChip } from "../../../components/labels";
+import { EmptyState, ErrorText, SubmitButton, usePending } from "../../../components/ui";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,23 +17,26 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "../../components/ui/alert-dialog";
-import { Button } from "../../components/ui/button";
-import { Card } from "../../components/ui/card";
-import { refusal, requireRepo } from "../../lib/access.server";
-import { matchLabels, tidyColor } from "../../lib/labels";
-import { page } from "../../lib/meta";
-import { work } from "../../lib/services.server";
-import { assertSameOrigin, requireUser, unwrap } from "../../lib/session.server";
+} from "../../../components/ui/alert-dialog";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
+import { canItem } from "../../../lib/work-access";
+import { matchLabels, tidyColor } from "../../../lib/labels";
+import { page } from "../../../lib/meta";
+import { work } from "../../../lib/services.server";
+import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../../lib/session.server";
+import { workListPath } from "../../../lib/work-items";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
-  return page(args, { title: `Labels · ${params.owner}/${params.repo} · g1t` });
+  return page(args, { title: `Labels · Work · ${params.owner} · g1t` });
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {
-  const { viewer, access } = await requireRepo(context, params, "read");
-  const labels = await work.listLabels({ namespace: params.owner, name: params.repo }, viewer);
-  return { labels: unwrap(labels), canEdit: access.can.manage_labels };
+  const viewer = getViewer(context);
+  const workspace = params.owner.toLowerCase();
+  const labels = await work.listLabels(workspace, viewer);
+  // Made, changed and deleted with the Write role in the workspace.
+  return { workspace, labels: unwrap(labels), canEdit: canItem(viewer, workspace, null, "manage_labels") };
 }
 
 type ActionData = { intent: string; name?: string; error?: string; done?: string };
@@ -44,10 +47,11 @@ export async function action({ request, params, context }: Route.ActionArgs): Pr
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
   const name = String(form.get("name") ?? "");
-  // Labels are made, changed and deleted with the Write role; Triage applies them.
-  const refused = await refusal(context, params, "manage_labels");
+  // Labels are made, changed and deleted with the Write role in the workspace; Triage applies them.
+  const workspace = params.owner.toLowerCase();
+  const refused = canItem(user, workspace, null, "manage_labels") ? null : needs("manage_labels");
   if (refused) return { intent, name, error: refused };
-  const path = { namespace: params.owner, name: params.repo };
+  const path = workspace;
   const text = (key: string) => String(form.get(key) ?? "");
   switch (intent) {
     case "defaults": {
@@ -164,7 +168,7 @@ function LabelForm({ label, onDone }: { label?: Label; onDone: () => void }) {
 
 function DeleteLabel({ label }: { label: Label }) {
   const deleting = usePending({ intent: "delete", name: label.name });
-  const carried = label.issues + label.pulls;
+  const carried = label.items + label.pulls;
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
@@ -182,7 +186,7 @@ function DeleteLabel({ label }: { label: Label }) {
             <AlertDialogDescription>
               {carried === 0
                 ? "Nothing carries it. "
-                : `It comes off the ${label.issues} ${label.issues === 1 ? "issue" : "issues"} and ${label.pulls} pull ${label.pulls === 1 ? "request" : "requests"} that carry it. `}
+                : `It comes off the ${label.items} ${label.items === 1 ? "work item" : "work items"} and ${label.pulls} pull ${label.pulls === 1 ? "request" : "requests"} that carry it. `}
               This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -201,9 +205,8 @@ function DeleteLabel({ label }: { label: Label }) {
   );
 }
 
-export default function Labels({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { labels, canEdit } = loaderData;
-  const base = `/${params.owner}/${params.repo}`;
+export default function Labels({ loaderData, actionData }: Route.ComponentProps) {
+  const { labels, canEdit, workspace } = loaderData;
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -215,7 +218,7 @@ export default function Labels({ loaderData, actionData, params }: Route.Compone
         <div>
           <h2 className="text-xl font-semibold tracking-tight">Labels</h2>
           <p className="mt-1 text-sm text-muted">
-            Issues and pull requests carry labels to say what they are. Filter either list by one.
+            Work items and pull requests carry labels to say what they are. Filter either list by one.
           </p>
         </div>
         {canEdit && !creating && (
@@ -277,20 +280,15 @@ export default function Labels({ loaderData, actionData, params }: Route.Compone
                   </span>
                   <span className="min-w-0 grow text-sm text-muted">{label.description}</span>
                   <span className="flex shrink-0 items-center gap-3 text-xs text-faint">
-                    {label.issues > 0 ? (
-                      <Link to={`${base}/issues?label=${encodeURIComponent(label.name)}&state=open`} className="hover:text-fg">
-                        {count(label.issues, "issue", "issues")}
+                    {label.items > 0 ? (
+                      <Link to={workListPath(workspace, { label: label.name })} className="hover:text-fg">
+                        {count(label.items, "work item", "work items")}
                       </Link>
                     ) : (
-                      <span>no issues</span>
+                      <span>no work items</span>
                     )}
-                    {label.pulls > 0 ? (
-                      <Link to={`${base}/pulls?label=${encodeURIComponent(label.name)}`} className="hover:text-fg">
-                        {count(label.pulls, "pull request", "pull requests")}
-                      </Link>
-                    ) : (
-                      <span>no pull requests</span>
-                    )}
+                    {/* Pull requests are each repository's: their lists filter by label there. */}
+                    <span>{label.pulls > 0 ? count(label.pulls, "pull request", "pull requests") : "no pull requests"}</span>
                   </span>
                   {canEdit && (
                     <span className="flex shrink-0 items-center gap-2">

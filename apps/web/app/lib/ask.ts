@@ -1,7 +1,7 @@
 /**
  * Ask g1t (components/ask-composer): where the person is when they ask,
  * which goes with each question to their direct message with @g1t, so g1t
- * is told the page and reads the issue or pull request on it. Pure, so it
+ * is told the page and reads the work item or pull request on it. Pure, so it
  * is tested on its own.
  */
 import type { AskEvent, AskPage, AskProposalState, AskSource, AskToolStatus } from "@g1t/contracts";
@@ -12,16 +12,21 @@ const RESERVED = new Set([
   "confirm-email", "login", "register", "logout", "forgot", "reset", "search", "status", "avatars", "docs", "-",
 ]);
 
-/** Where the person is: the page, and the repository, issue or pull request on it. */
+/** Where the person is: the page, and the repository, work item or pull request on it. */
 export function askPage(pathname: string): AskPage {
   const path = pathname.split(/[?#]/)[0] ?? "";
   const parts = path.split("/").filter(Boolean).map((part) => decodeURIComponent(part));
   const page: AskPage = { path: path || "/" };
   const [owner, name, section, number] = parts;
-  if (!owner || !name || RESERVED.has(owner.toLowerCase()) || name === "-") return page;
+  if (!owner || !name || RESERVED.has(owner.toLowerCase())) return page;
+  // A work item's page: `/<workspace>/-/work/<n>`, numbered in the workspace.
+  if (name === "-") {
+    const item = section === "work" && number && /^\d+$/.test(number) ? Number(number) : null;
+    if (item != null) Object.assign(page, { workspace: owner.toLowerCase(), item });
+    return page;
+  }
   page.repo = { namespace: owner.toLowerCase(), name };
   const numbered = number && /^\d+$/.test(number) ? Number(number) : null;
-  if (numbered != null && section === "issues") page.issue = numbered;
   if (numbered != null && section === "pull") page.pull = numbered;
   return page;
 }
@@ -47,7 +52,7 @@ export function openAsk() {
 
 /** What the composer says about where the question is asked from. */
 export function askWhere(page: AskPage): string | null {
-  if (page.issue) return `On issue #${page.issue}`;
+  if (page.item) return `On work item #${page.item}`;
   if (page.pull) return `On pull request #${page.pull}`;
   if (page.repo) return `In ${page.repo.name}`;
   return null;
@@ -78,14 +83,14 @@ export function proposalSteps(proposal: Proposal): string {
       ? `${made}, turns on its deployments, then runs in your own harness and pushes the first version, which goes live on g1t.page.`
       : `${made}, then runs in your own harness and pushes the first version.`;
   }
-  return proposal.issue ? "Runs in your own harness, with your skills, tied to the issue." : "Opens the issue, then runs in your own harness, tied to it.";
+  return proposal.item ? "Runs in your own harness, with your skills, tied to the work item." : "Opens the work item, then runs in your own harness, tied to it.";
 }
 
 /** What a proposal asks the session to do, in a line: "Implement #12 in acme/web". */
 export function proposalTitle(proposal: Proposal): string {
   if (proposal.new_repository) return `Build “${proposal.title}” in ${proposal.repo}`;
   const verb = { plan: "Plan", implement: "Implement", review: "Review" }[proposal.mode] ?? "Work on";
-  return proposal.issue ? `${verb} #${proposal.issue} in ${proposal.repo}` : `${verb} “${proposal.title}” in ${proposal.repo}`;
+  return proposal.item ? `${verb} #${proposal.item} in ${proposal.repo}` : `${verb} “${proposal.title}” in ${proposal.repo}`;
 }
 
 /**
@@ -114,7 +119,7 @@ export function foldAnswer(events: unknown): { steps: Step[]; sources: AskSource
     if (line.type === "sources" && Array.isArray(line.sources)) {
       sources = line.sources.filter((source) => source && typeof source.url === "string" && typeof source.title === "string");
     }
-    if (line.type === "proposal" && typeof line.id === "string" && typeof line.repo === "string" && (line.issue || line.title)) {
+    if (line.type === "proposal" && typeof line.id === "string" && typeof line.repo === "string" && (line.item || line.title)) {
       if (!proposals.some((known) => known.id === line.id)) proposals.push(line);
     }
   }

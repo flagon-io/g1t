@@ -145,7 +145,7 @@ type Started = {
  * Work g1t proposed to hand to a session in the person's own harness. Ask
  * never starts it: Start runs it on the workspace's Anthropic account (when
  * one is connected), Copy command gives the Claude Code command to run it
- * with the g1t plugin. Either way the session is tied to the issue.
+ * with the g1t plugin. Either way the session is tied to the work item.
  */
 export function SessionProposal({
   proposal,

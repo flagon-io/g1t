@@ -89,13 +89,13 @@ function ArchiveAction({ full, archived, error }: { full: string; archived: bool
       {archived ? (
         <>
           <li>Pushes and merges are accepted again.</li>
-          <li>Issues and pull requests unlock.</li>
+          <li>Work items and pull requests unlock.</li>
           <li>Workflows run again.</li>
         </>
       ) : (
         <>
           <li>Pushes and merges are refused, for everyone.</li>
-          <li>Issues and pull requests are locked. They stay readable.</li>
+          <li>Work items and pull requests are locked. They stay readable.</li>
           <li>Workflows do not run.</li>
           <li>Its deployments keep serving, and anyone who could see it still can.</li>
         </>
@@ -191,7 +191,7 @@ function TransferAction({
             <AlertDialogHeader>
               <AlertDialogTitle>Transfer {repo}</AlertDialogTitle>
               <AlertDialogDescription>
-                It keeps its name and moves with everything in it: code, issues, pull requests, workflow runs,
+                It keeps its name and moves with everything in it: code, work items, pull requests, workflow runs,
                 deployments, and its own secrets, variables and webhooks.
               </AlertDialogDescription>
             </AlertDialogHeader>

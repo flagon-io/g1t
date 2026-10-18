@@ -55,14 +55,6 @@ export function sections(): Section[] {
       ],
     },
     {
-      key: "Issues",
-      tabs: [
-        { label: "Issues", path: "issues" },
-        { label: "Milestones", path: "milestones" },
-        ...soon("Issues"),
-      ],
-    },
-    {
       key: "Deployments",
       tabs: [{ label: "Deployments", path: "deployments" }, { label: "Build configuration", path: "settings/deployments", members: true, needs: "manage_integrations" }, ...soon("Deployments")],
     },
@@ -105,12 +97,11 @@ export function sections(): Section[] {
   ]);
 }
 
-/** Pull requests, the work on them, the merge queue and sessions share a page's tabs too. */
+/** Pull requests, the merge queue and the sessions working on them share a page's tabs too. */
 export const PULLS: Section = {
   key: "Code",
   tabs: [
     { label: "Pull requests", path: "pulls", also: ["pull"] },
-    { label: "Work", path: "work" },
     { label: "Merge queue", path: "queue" },
     { label: "Sessions", path: "sessions" },
   ],
@@ -124,10 +115,8 @@ function matches(rest: string, tab: Tab): boolean {
  * The tabs for the page at `rest` (the path under the project), if it
  * belongs to a page with more than one view.
  */
-export function tabsFor(rest: string, member: boolean, can?: Partial<Abilities>, features?: { issues?: boolean }): Tab[] | null {
+export function tabsFor(rest: string, member: boolean, can?: Partial<Abilities>): Tab[] | null {
   for (const section of [...sections(), PULLS]) {
-    // Issues turned off (a fork's default): no Issues tabs, though what was opened stays readable.
-    if (section.key === "Issues" && features?.issues === false) continue;
     const visible = section.tabs.filter(
       (tab) => (member || !tab.members) && (!tab.needs || !can || Boolean(can[tab.needs])),
     );

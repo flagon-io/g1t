@@ -3,7 +3,7 @@
  * where the result lands, and it runs by itself after that, whether or not
  * anyone is at a keyboard. A routine is not only about code: a morning
  * brief, a digest posted to a channel, a watch on production or a topic,
- * a reminder, as much as triaging issues or fixing CI on main.
+ * a reminder, as much as triaging work items or fixing CI on main.
  *
  * Not on yet. The page is here so Routines has its place in the rail and
  * its shape is settled: every control is drawn and none can be used (the
@@ -88,25 +88,25 @@ const STARTERS: { title: string; about: string; items: Starter[] }[] = [
   },
   {
     title: "Find work",
-    about: "Proposals, not changes: each issue waits for your yes, then someone (or @g1t) picks it up.",
+    about: "Proposals, not changes: each work item waits for your yes, then someone (or @g1t) picks it up.",
     items: [
       {
         title: "What people keep asking for",
-        prompt: "Read the week's #support and #feedback, and propose an issue for each thing that keeps coming up, with who asked.",
+        prompt: "Read the week's #support and #feedback, and propose a work item for each thing that keeps coming up, with who asked.",
         when: { icon: SCHEDULE, text: "Fridays at 14:00" },
-        lands: { icon: Lightbulb, text: "Issues to approve" },
+        lands: { icon: Lightbulb, text: "Work items to approve" },
       },
       {
         title: "Worth fixing",
         prompt: "Look through TODOs, flaky tests, slow pages and errors in production, and propose the few worth doing, each with how big it is.",
         when: { icon: SCHEDULE, text: "Mondays at 7:00" },
-        lands: { icon: Lightbulb, text: "Issues to approve" },
+        lands: { icon: Lightbulb, text: "Work items to approve" },
       },
       {
         title: "Next steps",
-        prompt: "From our plan and what shipped since, propose the next three issues that move it forward, and say why these first.",
+        prompt: "From our plan and what shipped since, propose the next three work items that move it forward, and say why these first.",
         when: { icon: EVENT, text: "When a milestone closes" },
-        lands: { icon: Lightbulb, text: "Issues to approve" },
+        lands: { icon: Lightbulb, text: "Work items to approve" },
       },
     ],
   },
@@ -139,9 +139,9 @@ const STARTERS: { title: string; about: string; items: Starter[] }[] = [
     about: "On a repository: what they change goes through review and checks like anyone's.",
     items: [
       {
-        title: "Triage new issues",
-        prompt: "Label each new issue, find what it duplicates, and ask the reporter for what is missing.",
-        when: { icon: EVENT, text: "When an issue opens" },
+        title: "Triage new work items",
+        prompt: "Label each new work item, find what it duplicates, and ask the reporter for what is missing.",
+        when: { icon: EVENT, text: "When a work item opens" },
         lands: { icon: Tag, text: "Labels and a comment" },
       },
       {
@@ -195,17 +195,17 @@ const PARTS = [
   {
     icon: FileText,
     title: "Say what",
-    body: "In plain words, as you would ask a person. About code, or about anything @g1t can reach: chat, artifacts, issues, production, and what your connectors let it read.",
+    body: "In plain words, as you would ask a person. About code, or about anything @g1t can reach: chat, artifacts, work items, production, and what your connectors let it read.",
   },
   {
     icon: Repeat,
     title: "Say when",
-    body: "On a schedule or once; when something happens (an issue opens, CI fails, a thread grows, errors spike); or by hand and through the API.",
+    body: "On a schedule or once; when something happens (a work item opens, CI fails, a thread grows, errors spike); or by hand and through the API.",
   },
   {
     icon: MousePointerClick,
     title: "Say where it lands",
-    body: "A message, an artifact, a comment, a draft pull request, or issues it proposes for you to approve. What it writes goes through the same review and checks as anyone's.",
+    body: "A message, an artifact, a comment, a draft pull request, or work items it proposes for you to approve. What it writes goes through the same review and checks as anyone's.",
   },
 ];
 
@@ -264,7 +264,7 @@ export default function Routines({ loaderData }: Route.ComponentProps) {
                   <ToggleGroupItem value="dm">Your DM</ToggleGroupItem>
                   <ToggleGroupItem value="channel">A channel</ToggleGroupItem>
                   <ToggleGroupItem value="artifact">An artifact</ToggleGroupItem>
-                  <ToggleGroupItem value="issues">Issues to approve</ToggleGroupItem>
+                  <ToggleGroupItem value="issues">Work items to approve</ToggleGroupItem>
                   <ToggleGroupItem value="pull">A pull request</ToggleGroupItem>
                 </ToggleGroup>
                 <FieldDescription>It writes nowhere else: anything bigger waits for a person to say yes.</FieldDescription>

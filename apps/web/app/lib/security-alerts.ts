@@ -119,8 +119,8 @@ export type ActivityEntry = {
   actor: string | null;
   /** What happened, after the actor's name. */
   text: string;
-  /** The pull request or issue it concerns. */
-  ref: { kind: "pull" | "issue"; number: number } | null;
+  /** The pull request or work item it concerns. */
+  ref: { kind: "pull" | "item"; number: number } | null;
   reason: DismissReason | null;
   comment: string | null;
   at: string;
@@ -145,8 +145,8 @@ function describe(row: AlertActivity): { text: string; ref: ActivityEntry["ref"]
       return { text: "closed the security update as superseded", ref: pull };
     case "update_needs_code":
       return {
-        text: "found the upgrade needs code changes and opened an issue to make them",
-        ref: row.number != null ? { kind: "issue", number: row.number } : null,
+        text: "found the upgrade needs code changes and opened a work item to make them",
+        ref: row.number != null ? { kind: "item", number: row.number } : null,
       };
     case "update_failed":
       return { text: "could not make the security update", ref: null };

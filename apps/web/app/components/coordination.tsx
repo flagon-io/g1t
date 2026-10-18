@@ -1,7 +1,7 @@
 /**
  * Coordinating work, drawn: claims, harness sessions, dependencies,
- * integration failures and decision records, as the issue page, the pull
- * request page, the Work page, a project's overview and the why panel
+ * integration failures and decision records, as a work item's page, the pull
+ * request page, the Sessions page, a project's overview and the why panel
  * show them. What each says
  * is worked out in lib/coordination.ts.
  */
@@ -58,9 +58,9 @@ import {
   expiresIn,
   harnessName,
   type LiveGroup,
-  type LiveIssue,
+  type LiveItem,
   awakeAndIdle,
-  liveByIssue,
+  liveByItem,
   mayEndSession,
   mergeSessions,
   numberedParts,
@@ -96,15 +96,32 @@ import { Textarea } from "./ui/textarea";
 import { Markdown } from "./markdown";
 import { PersonLink, TimelineItem } from "./work";
 import { repoAt } from "../lib/markdown-plugins";
-import { IssueIcon, PullIcon } from "./work-icons";
+import { ItemIcon, PullIcon } from "./work-icons";
+import { itemPath } from "../lib/refs";
 
-/** Text with each `#N` linked to that issue or pull request (the issue's address leads to a pull request too). */
+/** The workspace of the repository at `base` (`/acme/web`): its work items are numbered there. */
+function workspaceOf(base: string): string {
+  return base.split("/").filter(Boolean)[0]?.toLowerCase() ?? "";
+}
+
+/**
+ * Where a session's pages are: under the repository at `base`, or, where
+ * sessions from several repositories show together (a work item's page),
+ * under the one each was recorded in.
+ */
+export type SessionBase = string | ((session: WorkSession) => string);
+
+function baseOf(base: SessionBase, session: WorkSession): string {
+  return typeof base === "string" ? base : base(session);
+}
+
+/** Text with each `#N` linked to what it names, read in the repository at `base` (lib/refs.ts). */
 export function NumberedText({ text, base }: { text: string; base: string }) {
   return (
     <>
       {numberedParts(text).map((part, index) =>
         typeof part === "number" ? (
-          <Link key={index} to={`${base}/issues/${part}`} className="font-medium text-fg hover:text-accent">
+          <Link key={index} to={`${base}/ref/${part}`} className="font-medium text-fg hover:text-accent">
             #{part}
           </Link>
         ) : (
@@ -153,7 +170,7 @@ export function ConfidenceBadge({ confidence }: { confidence: DecisionConfidence
 }
 
 /** One claim: who, from which harness, since when, and when it lapses; one no longer active is muted. */
-export function ClaimLine({ claim, now, showIssue, base }: { claim: Claim; now: number; showIssue?: boolean; base: string }) {
+export function ClaimLine({ claim, now, showItem }: { claim: Claim; now: number; showItem?: boolean; base?: string }) {
   const active = claim.state === "active";
   const left = expiresIn(claim, now);
   return (
@@ -162,11 +179,11 @@ export function ClaimLine({ claim, now, showIssue, base }: { claim: Claim; now: 
       <div className="min-w-0 grow">
         <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm">
           <PersonLink name={claim.actor.username} className="font-medium hover:underline" />
-          {showIssue ? (
+          {showItem ? (
             <span className="text-muted">
               claimed{" "}
-              <Link to={`${base}/issues/${claim.issue}`} className="font-medium text-fg hover:text-accent">
-                #{claim.issue}
+              <Link to={itemPath(claim.workspace, claim.item)} className="font-medium text-fg hover:text-accent">
+                #{claim.item}
               </Link>
             </span>
           ) : null}
@@ -217,7 +234,7 @@ export function EndSessionDialog({
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
-        <fetcher.Form method="post" action={`${base}/work/sessions/${session.id}`} className="grid gap-5">
+        <fetcher.Form method="post" action={`${base}/sessions/${session.id}`} className="grid gap-5">
           <input type="hidden" name="action" value="end" />
           <AlertDialogHeader>
             <AlertDialogTitle>End {sessionTitle(session)}?</AlertDialogTitle>
@@ -292,7 +309,7 @@ export function SessionLine({
       <Actor username={session.actor.username} harness={session.harness} />
       <div className="min-w-0 grow">
         <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm">
-          <Link to={`${base}/work/sessions/${session.id}`} prefetch="intent" className="font-medium hover:text-accent">
+          <Link to={`${base}/sessions/${session.id}`} prefetch="intent" className="font-medium hover:text-accent">
             {sessionTitle(session)}
           </Link>
           <HarnessBadge harness={session.harness} />
@@ -329,10 +346,10 @@ export function SessionLine({
 }
 
 /**
- * A session in an issue's or pull request's conversation, where it
+ * A session in a work item's or pull request's conversation, where it
  * started, as a card like a comment or a review: g1t working for someone
  * (a session g1t started on the workspace's Claude, when it was assigned
- * the issue or asked in the thread), or someone working in their own
+ * the work item or asked in the thread), or someone working in their own
  * harness. What it is about, where it stands now, its branch, and what it
  * reported once it ended, linked to its page.
  */
@@ -363,7 +380,7 @@ export function TimelineSession({ session, base }: { session: WorkSession; base:
       }
       aside={
         <Link
-          to={`${base}/work/sessions/${session.id}`}
+          to={`${base}/sessions/${session.id}`}
           prefetch="intent"
           className="inline-flex items-center gap-1 text-xs text-faint hover:text-fg"
         >
@@ -372,7 +389,7 @@ export function TimelineSession({ session, base }: { session: WorkSession; base:
         </Link>
       }
     >
-      <Link to={`${base}/work/sessions/${session.id}`} prefetch="intent" className="font-medium hover:text-accent">
+      <Link to={`${base}/sessions/${session.id}`} prefetch="intent" className="font-medium hover:text-accent">
         {sessionTitle(session)}
       </Link>
       <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
@@ -419,7 +436,7 @@ export function SubagentLine({ session, base }: { session: WorkSession; base: st
   return (
     <div className="flex min-w-0 items-center gap-1.5 text-xs">
       <Bot size={12} className="shrink-0 text-faint" />
-      <Link to={`${base}/work/sessions/${session.id}`} prefetch="intent" className="shrink-0 font-medium text-fg hover:text-accent">
+      <Link to={`${base}/sessions/${session.id}`} prefetch="intent" className="shrink-0 font-medium text-fg hover:text-accent">
         {session.agentType ?? "Subagent"}
       </Link>
       {session.task && (
@@ -456,7 +473,7 @@ export function SessionTreeList({
   ender,
 }: {
   nodes: SessionNode[];
-  base: string;
+  base: SessionBase;
   showWhere?: boolean;
   showBranch?: boolean;
   className?: string;
@@ -466,10 +483,10 @@ export function SessionTreeList({
     <ul className={className ?? "space-y-3"}>
       {nodes.map((node) => (
         <li key={node.session.id}>
-          <SessionLine session={node.session} base={base} showWhere={showWhere} showBranch={showBranch} ender={ender} />
+          <SessionLine session={node.session} base={baseOf(base, node.session)} showWhere={showWhere} showBranch={showBranch} ender={ender} />
           {node.children.length > 0 && (
             <div className="pl-7.5">
-              <SubagentBranch nodes={node.children} base={base} />
+              <SubagentBranch nodes={node.children} base={baseOf(base, node.session)} />
             </div>
           )}
         </li>
@@ -479,11 +496,11 @@ export function SessionTreeList({
 }
 
 /**
- * Starting a session on the issue on the workspace's Anthropic account: a
+ * Starting a session on the work item on the workspace's Anthropic account: a
  * button opening a dialog that asks what kind of work and for anything to
- * add, posting `start-session` to the issue's action.
+ * add, posting `start-session` to the work item's action.
  */
-export function StartSessionDialog({ setup, error }: { setup: AgentSessionsSetup; error?: string | null }) {
+export function StartSessionDialog({ setup, repo, error }: { setup: AgentSessionsSetup; /** The repository it works in, `owner/name`. */ repo?: string; error?: string | null }) {
   const [open, setOpen] = useState(Boolean(error));
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -496,11 +513,12 @@ export function StartSessionDialog({ setup, error }: { setup: AgentSessionsSetup
       <DialogContent>
         <Form method="post" className="grid gap-5">
           <input type="hidden" name="action" value="start-session" />
+          {repo && <input type="hidden" name="repo" value={repo} />}
           <DialogHeader>
-            <DialogTitle>Start a session on this issue</DialogTitle>
+            <DialogTitle>Start a session on this work item</DialogTitle>
             <DialogDescription>
               Claude works on it on {setup.connectionName ? `the ${setup.connectionName} connection` : "your workspace's Anthropic account"}
-              {setup.model ? `, with ${setup.model}` : ""}. It shows on this issue as it goes, with its subagents.
+              {setup.model ? `, with ${setup.model}` : ""}. It shows on this work item as it goes, with its subagents.
             </DialogDescription>
           </DialogHeader>
           <FieldSet>
@@ -755,7 +773,7 @@ export function CoordinationFeed({ lines, base }: { lines: FeedLine[]; base: str
               {line.session && (
                 <>
                   {" · "}
-                  <Link to={`${base}/work/sessions/${line.session}`} className="text-fg hover:text-accent">
+                  <Link to={`${base}/sessions/${line.session}`} className="text-fg hover:text-accent">
                     the session
                   </Link>
                 </>
@@ -771,15 +789,15 @@ export function CoordinationFeed({ lines, base }: { lines: FeedLine[]; base: str
   );
 }
 
-/** An issue's place among others: one it waits on, or one waiting on it. */
-function DependencyLine({ base, number, title, state, detail }: { base: string; number: number; title: string; state: State; detail?: ReactNode }) {
+/** A work item's place among others: one it waits on, or one waiting on it. */
+function DependencyLine({ workspace, number, title, state, detail }: { workspace: string; number: number; title: string; state: State; detail?: ReactNode }) {
   return (
     <li className="flex items-start gap-2">
       <span className="mt-0.5">
-        <IssueIcon issue={{ state, reason: null }} size={14} />
+        <ItemIcon item={{ state, reason: null }} size={14} />
       </span>
       <span className="min-w-0 grow">
-        <Link to={`${base}/issues/${number}`} className="block truncate text-sm hover:text-accent">
+        <Link to={itemPath(workspace, number)} className="block truncate text-sm hover:text-accent">
           {title} <span className="text-faint">#{number}</span>
         </Link>
         {detail && <span className="block text-xs text-muted">{detail}</span>}
@@ -816,11 +834,11 @@ function PanelPart({ title, action, children }: { title: ReactNode; action?: Rea
 }
 
 /**
- * The Work panel of an issue's sidebar: who has claimed it, the sessions on
+ * The Work panel of a work item's sidebar: who has claimed it, the sessions on
  * it, what it waits on and what waits on it, and for those who may, the
  * blockers to change.
  */
-export function IssueWorkPanel({
+export function ItemWorkPanel({
   work,
   ended,
   base,
@@ -833,7 +851,8 @@ export function IssueWorkPanel({
   work: WorkContext;
   /** Claims on it that ended lately, shown muted. */
   ended: Claim[];
-  base: string;
+  /** Where each of its sessions' pages is: under the repository it was recorded in. */
+  base: SessionBase;
   now: number;
   canEdit: boolean;
   error?: string | null;
@@ -842,7 +861,7 @@ export function IssueWorkPanel({
   /** Starting a session on it, for those who may. */
   start?: ReactNode;
 }) {
-  const open = work.issue.state === "open";
+  const open = work.item.state === "open";
   const trees = sessionTree(mergeSessions(work.sessions, all));
   const sessions = trees.slice(0, 5);
   const waiting = work.blockedBy.filter((blocker) => blocker.state === "open").length;
@@ -859,14 +878,14 @@ export function IssueWorkPanel({
             <p className="text-xs text-muted">
               {open ? (
                 <>
-                  Nobody has claimed it. Claim it from your harness, or with <code className="font-mono text-fg-soft">g1t work claim {work.issue.number}</code>.
+                  Nobody has claimed it. Claim it from your harness, or with <code className="font-mono text-fg-soft">g1t work claim {work.item.number}</code>.
                 </>
               ) : (
                 "Nobody is working on it."
               )}
             </p>
           ) : (
-            [...work.claims, ...ended.slice(0, 3)].map((claim) => <ClaimLine key={claim.id} claim={claim} now={now} base={base} />)
+            [...work.claims, ...ended.slice(0, 3)].map((claim) => <ClaimLine key={claim.id} claim={claim} now={now} />)
           )}
           {work.claims.length > 1 && (
             <Alert tone="warn" className="flex items-start gap-1.5 px-2.5 py-1.5 text-xs">
@@ -884,9 +903,9 @@ export function IssueWorkPanel({
               <SessionTreeList nodes={sessions} base={base} showBranch={false} />
             )}
             {trees.length > sessions.length && (
-              <Link to={`${base}/work`} className="mt-2 inline-block text-xs text-muted hover:text-fg">
-                {trees.length - sessions.length} more on the Work page
-              </Link>
+              <p className="mt-2 text-xs text-muted">
+                {trees.length - sessions.length} more on its repositories' Sessions pages
+              </p>
             )}
           </PanelPart>
         )}
@@ -898,14 +917,14 @@ export function IssueWorkPanel({
               {waiting > 0 && <span className="text-warn"> · {waiting} open</span>}
             </>
           }
-          action={canEdit ? <BlockedByEditor current={work.issue.blockedBy} /> : undefined}
+          action={canEdit ? <BlockedByEditor current={work.item.blockedBy} /> : undefined}
         >
           {work.blockedBy.length === 0 ? (
             <p className="text-xs text-faint">Nothing. It can start now.</p>
           ) : (
             <ul className="space-y-2">
               {work.blockedBy.map((blocker) => (
-                <DependencyLine key={blocker.number} base={base} number={blocker.number} title={blocker.title} state={blocker.state} detail={blockerDetail(blocker)} />
+                <DependencyLine key={blocker.number} workspace={work.item.workspace} number={blocker.number} title={blocker.title} state={blocker.state} detail={blockerDetail(blocker)} />
               ))}
             </ul>
           )}
@@ -915,8 +934,8 @@ export function IssueWorkPanel({
         {work.blocks.length > 0 && (
           <PanelPart title="Blocks">
             <ul className="space-y-2">
-              {work.blocks.map((issue) => (
-                <DependencyLine key={issue.number} base={base} number={issue.number} title={issue.title} state={issue.state} />
+              {work.blocks.map((item) => (
+                <DependencyLine key={item.number} workspace={work.item.workspace} number={item.number} title={item.title} state={item.state} />
               ))}
             </ul>
           </PanelPart>
@@ -926,7 +945,7 @@ export function IssueWorkPanel({
   );
 }
 
-/** Changing what an issue waits on: the whole list, as numbers. */
+/** Changing what a work item waits on: the whole list, as numbers. */
 function BlockedByEditor({ current }: { current: number[] }) {
   return (
     <Popover>
@@ -941,7 +960,7 @@ function BlockedByEditor({ current }: { current: number[] }) {
           <input type="hidden" name="action" value="blocked-by" />
           <Label htmlFor="blocked-by">Blocked by</Label>
           <Input id="blocked-by" name="blocked_by" defaultValue={current.map((n) => `#${n}`).join(", ")} placeholder="#12, #14" autoComplete="off" />
-          <p className="text-xs text-muted">Issues of this repository that have to land first. Leave it empty for none.</p>
+          <p className="text-xs text-muted">Work items of this workspace that have to land first. Leave it empty for none.</p>
           <SubmitButton size="sm" match={{ action: "blocked-by" }} pending="Saving…">
             Save
           </SubmitButton>
@@ -951,15 +970,15 @@ function BlockedByEditor({ current }: { current: number[] }) {
   );
 }
 
-/** One issue being worked on: its title, then each claim and session on it. */
-export function LiveIssueCard({
+/** One work item being worked on: its title, then each claim and session on it. */
+export function LiveItemCard({
   group,
   title,
   base,
   now,
   ender,
 }: {
-  group: LiveIssue;
+  group: LiveItem;
   title: string | undefined;
   base: string;
   now: number;
@@ -970,10 +989,10 @@ export function LiveIssueCard({
       <li>
         <div className="flex items-start gap-2.5 px-4 py-3">
           <span className="mt-1">
-            <IssueIcon issue={{ state: "open", reason: null }} />
+            <ItemIcon item={{ state: "open", reason: null }} />
           </span>
-          <Link to={`${base}/issues/${group.issue}`} prefetch="intent" className="min-w-0 grow font-medium hover:text-accent">
-            {title ?? `Issue #${group.issue}`} <span className="font-normal text-faint">#{group.issue}</span>
+          <Link to={itemPath(workspaceOf(base), group.item)} prefetch="intent" className="min-w-0 grow font-medium hover:text-accent">
+            {title ?? `Work item #${group.item}`} <span className="font-normal text-faint">#{group.item}</span>
           </Link>
           {group.claims.length > 1 && <Badge tone="warn">{group.claims.length} claims</Badge>}
         </div>
@@ -995,7 +1014,7 @@ export function LiveIssueCard({
 /** A pull request a session is on, as Live now names it. */
 export type LivePull = { title: string; status: Pull["status"] };
 
-/** What a group of sessions on no issue is on, as its card's heading: the pull request, the branch, or neither. */
+/** What a group of sessions on no work item is on, as its card's heading: the pull request, the branch, or neither. */
 function LiveGroupHeading({
   group,
   pulls,
@@ -1017,7 +1036,7 @@ function LiveGroupHeading({
         <Link to={`${base}/pull/${group.pull}`} prefetch="intent" className="min-w-0 grow font-medium hover:text-accent">
           {pull?.title ?? `Pull request #${group.pull}`} <span className="font-normal text-faint">#{group.pull}</span>
         </Link>
-        <span className="mt-0.5 shrink-0 text-xs text-faint">No issue yet</span>
+        <span className="mt-0.5 shrink-0 text-xs text-faint">No work item yet</span>
       </div>
     );
   }
@@ -1028,7 +1047,7 @@ function LiveGroupHeading({
         <Link to={`${base}/tree/${encodeURIComponent(group.branch)}`} prefetch="intent" className="min-w-0 truncate font-mono text-sm font-medium hover:text-accent">
           {group.branch}
         </Link>
-        <span className="ml-auto shrink-0 text-xs text-faint">No issue yet</span>
+        <span className="ml-auto shrink-0 text-xs text-faint">No work item yet</span>
       </div>
     );
   }
@@ -1037,7 +1056,7 @@ function LiveGroupHeading({
   return (
     <div className="flex items-center gap-2.5 px-4 py-3">
       {onDefault ? <GitBranch size={16} className="shrink-0 text-faint" /> : <Activity size={16} className="shrink-0 text-faint" />}
-      <Hint label="Sessions on no issue, pull request or branch of their own, each titled with what it is for. One opens or claims an issue when its work becomes a change.">
+      <Hint label="Sessions on no work item, pull request or branch of their own, each titled with what it is for. One opens or claims a work item when its work becomes a change.">
         <span className="text-sm text-muted">
           {onDefault ? (
             <>
@@ -1052,7 +1071,7 @@ function LiveGroupHeading({
   );
 }
 
-/** Sessions on no issue yet that share a pull request or a branch, or share neither: a heading, then each session. */
+/** Sessions on no work item yet that share a pull request or a branch, or share neither: a heading, then each session. */
 export function LiveGroupCard({
   group,
   pulls,
@@ -1088,9 +1107,9 @@ export function LiveGroupCard({
 }
 
 /**
- * Who is working right now: each issue with its claims and sessions, the
- * most recently active first, then sessions on no issue yet, by pull
- * request, then by branch, then those on neither. `limit` caps the issues
+ * Who is working right now: each work item with its claims and sessions, the
+ * most recently active first, then sessions on no work item yet, by pull
+ * request, then by branch, then those on neither. `limit` caps the work items
  * shown, for a page that links to the rest.
  */
 export function LiveNowList({
@@ -1107,7 +1126,7 @@ export function LiveNowList({
   claims: Claim[];
   sessions: WorkSession[];
   titles: Record<number, string>;
-  /** The open pull requests' titles and states, for the sessions on one with no issue. */
+  /** The open pull requests' titles and states, for the sessions on one with no work item. */
   pulls?: Record<number, LivePull>;
   /** Sessions on it have no branch of their own. */
   defaultBranch?: string | null;
@@ -1118,12 +1137,12 @@ export function LiveNowList({
   ender?: SessionEnder;
 }) {
   const { awake, idle } = awakeAndIdle(sessions);
-  const live = liveByIssue(claims, awake, defaultBranch);
-  const issues = limit == null ? live.issues : live.issues.slice(0, limit);
+  const live = liveByItem(claims, awake, defaultBranch);
+  const items = limit == null ? live.items : live.items.slice(0, limit);
   return (
     <ol className="space-y-3">
-      {issues.map((group) => (
-        <LiveIssueCard key={group.issue} group={group} title={titles[group.issue]} base={base} now={now} ender={ender} />
+      {items.map((group) => (
+        <LiveItemCard key={group.item} group={group} title={titles[group.item]} base={base} now={now} ender={ender} />
       ))}
       {live.groups.map((group) => (
         <LiveGroupCard
@@ -1176,7 +1195,7 @@ export function StartHere({ title }: { title: string }) {
     <Card className="flex flex-wrap items-center justify-between gap-4 p-5">
       <div>
         <p className="text-sm font-medium">{title}</p>
-        <p className="mt-1 text-xs text-muted">Sessions and claimed issues appear here as work happens.</p>
+        <p className="mt-1 text-xs text-muted">Sessions and claimed work items appear here as work happens.</p>
       </div>
       <Dialog>
         <DialogTrigger asChild>
@@ -1188,7 +1207,7 @@ export function StartHere({ title }: { title: string }) {
             <DialogDescription>Choose your client, connect it to g1t, then ask it to work on this project.</DialogDescription>
           </DialogHeader>
           <AgentSetup />
-          <p className="text-xs text-muted">Ask your agent to claim an issue and record its session so the team can follow along.</p>
+          <p className="text-xs text-muted">Ask your agent to claim a work item and record its session so the team can follow along.</p>
           <a href="https://docs.g1t.sh/guides/bring-your-own-agent/" className="text-sm text-accent hover:underline">Connection guide &rarr;</a>
         </DialogContent>
       </Dialog>

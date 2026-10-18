@@ -233,7 +233,7 @@ const MODES: {
     icon: <Code2 size={18} />,
     name: "Code",
     about:
-      "Repositories, issues, pull requests, checks, a merge queue and deployments. For the people who build.",
+      "Repositories, work items, pull requests, checks, a merge queue and deployments. For the people who build.",
     to: `${DOCS}/concepts/overview/`,
   },
   {
@@ -293,7 +293,7 @@ const RAILS: { icon: ReactNode; title: string; about: string; to: string }[] = [
 const FLOW: [string, string][] = [
   [
     "Ask",
-    "Open an issue, or raise it in a channel: what should change, and what done looks like.",
+    "Open a work item, or raise it in a channel: what should change, and what done looks like.",
   ],
   [
     "Change",
@@ -317,7 +317,7 @@ const FLOW: [string, string][] = [
 const FORGE = [
   "Git over HTTPS",
   "Public and private repositories",
-  "Issues and labels",
+  "Work items and labels",
   "Pull requests and forks",
   "Line comments and reviews",
   "Protected branches",
@@ -605,12 +605,12 @@ export function Landing() {
               "Sessions recorded onto pull requests",
               "Why-blame on any line",
               "Decisions recorded with the reasons behind them",
-              "Search across code, issues and people",
+              "Search across code, work items and people",
             ]}
             more={["Sessions and why-blame", `${DOCS}/guides/why-blame/`]}
           >
             Pick any line. g1t shows the commit that changed it, the pull
-            request and issue it came from, and the session your coding agent
+            request and work item it came from, and the session your coding agent
             recorded as it worked: what it read, ran and decided. The reasoning
             stays with the code, for people and for the next agent.
           </Pillar>
@@ -646,7 +646,7 @@ export function Landing() {
               A complete forge for the people who build
             </h2>
             <p className="mt-4 max-w-md leading-7 text-muted">
-              Issues, branches, pull requests and reviews, the way your team
+              Work items, branches, pull requests and reviews, the way your team
               already works. Write a change by hand, have your coding agent
               write it, or both on the same branch.
             </p>
@@ -716,19 +716,19 @@ export function Landing() {
 
         <div className="mt-10 grid gap-4 lg:grid-cols-2">
           <div className="rounded-3xl bg-surface p-7 ring-1 ring-line sm:p-8">
-            <Eyebrow>Issues</Eyebrow>
+            <Eyebrow>Work</Eyebrow>
             <h3 className="mt-3 text-2xl font-semibold tracking-tight text-balance">
-              Point your coding agent at an issue
+              Point your coding agent at a work item
             </h3>
             <p className="mt-3 text-sm leading-6 text-muted">
               Your coding agent connects to g1t through MCP and works as you. It
-              reads the issue, pushes a branch, opens the pull request and
+              reads the work item, pushes a branch, opens the pull request and
               records its session onto it, and the pull request goes through
               the same checks and reviews as anyone&apos;s.
             </p>
             <ol className="mt-6 space-y-3 text-sm">
               {[
-                "Open an issue: what should change, and what done looks like",
+                "Open a work item: what should change, and what done looks like",
                 "Work it yourself, or hand it to your coding agent",
                 "The pull request runs your checks and lands through the queue",
               ].map((step, index) => (
@@ -750,7 +750,7 @@ export function Landing() {
               Many agents, no collisions
             </h3>
             <p className="mt-3 text-sm leading-6 text-muted">
-              Run as many coding agents as you like. Each claims the issue it
+              Run as many coding agents as you like. Each claims the work item it
               takes, and every session shows live as it works, so everyone sees
               who is on what. Two that start changing the same files are told
               while they work, before either opens a pull request. The merge
@@ -775,7 +775,7 @@ export function Landing() {
             </h2>
             <p className="mt-4 max-w-md leading-7 text-muted">
               Connect Claude Code, Codex, Cursor or any other MCP client and
-              sign in once. It works as you: it reads issues, pushes branches,
+              sign in once. It works as you: it reads work items, pushes branches,
               opens pull requests, and records its session and its decisions
               onto them.
             </p>
@@ -895,7 +895,7 @@ export function Landing() {
         <div className="mx-auto max-w-6xl px-4 py-24">
           <Eyebrow>How it flows</Eyebrow>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight">
-            From an issue to main
+            From a work item to main
           </h2>
           <Live>
             <ol className="relative mt-12 grid gap-6 md:grid-cols-5">
@@ -967,7 +967,7 @@ export function Landing() {
             </h2>
             <p className="mt-4 max-w-xl leading-7 text-muted">
               Bring repositories across from GitHub in a few clicks: every
-              branch and tag with full history, and their issues if you want
+              branch and tag with full history, and their issues as work items if you want
               them. The copy on g1t is then your own.
             </p>
             <p className="mt-4 max-w-xl leading-7 text-muted">
@@ -1059,7 +1059,7 @@ export function Landing() {
             </p>
             <p className="mt-4 max-w-xl leading-7 text-muted">
               You can run the core forge yourself with Docker Compose today:
-              accounts, repositories, issues, pull requests and search. It is an
+              accounts, repositories, work items, pull requests and search. It is an
               early version, and chat and deployments still run only on g1t.sh.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">

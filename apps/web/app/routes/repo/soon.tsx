@@ -163,7 +163,7 @@ export function SoonView({
 
       <p className="mt-10 text-xs text-faint">
         {ROADMAP.length} things are on the way to every project. Want this one sooner, or something else?{" "}
-        <a href="https://g1t.sh/flagon-io/g1t/issues/new" className="text-muted hover:text-fg">
+        <a href="https://g1t.sh/flagon-io/-/work/new?repo=g1t" className="text-muted hover:text-fg">
           Tell us
         </a>
         .

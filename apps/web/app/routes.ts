@@ -188,7 +188,7 @@ export default [
       route("-/chat/api", "routes/workspace/chat/api.ts"),
       // A person's card in Chat: their profile and teams here.
       route("-/chat/person/:username", "routes/workspace/chat/person.ts"),
-      // An issue or pull request's card, over its chip in chat and g1t's answers.
+      // A work item or pull request's card, over its chip in chat and g1t's answers.
       route("-/chat/ref", "routes/workspace/chat/ref.ts"),
       route("-/chat", "routes/workspace/chat/layout.tsx", [
         index("routes/workspace/chat/index.tsx"),
@@ -226,6 +226,16 @@ export default [
       // to your rail.
       route("-/home", "routes/workspace/home.tsx"),
       route("-/home/seen", "routes/workspace/home-seen.ts"),
+      // Work: the workspace's work items, for every member. The list (its
+      // filters in the address), a new one, the labels and milestones they
+      // share with pull requests, `#12` read in the workspace, and each item.
+      route("-/work", "routes/workspace/work/list.tsx"),
+      route("-/work/new", "routes/workspace/work/new.tsx"),
+      route("-/work/labels", "routes/workspace/work/labels.tsx"),
+      route("-/work/milestones", "routes/workspace/work/milestones.tsx"),
+      route("-/work/milestones/:number", "routes/workspace/work/milestone.tsx"),
+      route("-/work/ref/:number", "routes/workspace/work/ref.ts"),
+      route("-/work/:number", "routes/workspace/work/item.tsx"),
       route("-/today", "routes/workspace/moved.ts", { id: "routes/workspace/moved-today" }),
       route("-/apps", "routes/workspace/apps.tsx"),
       // Routines: standing work for @g1t, on a schedule or when something
@@ -247,8 +257,20 @@ export default [
       route("-/soon/:feature", "routes/workspace/soon.tsx"),
     ]),
   ]),
-  // An issue or pull request's card, over a `#12` in a commit message or on a timeline.
+  // `#12` read in a repository: where Markdown's `#12` leads, and, as JSON,
+  // the card over a `#12` in a commit message or on a timeline.
   route(":owner/:repo/ref/:number", "routes/repo/ref-card.ts"),
+  // A repository's issues, labels and milestones moved to its workspace's
+  // Work, and its Work page became Sessions: old links are sent on
+  // (routes/repo/moved-work.ts), before the repository's own pages.
+  route(":owner/:repo/issues", "routes/repo/moved-work.ts", { id: "routes/repo/moved-issues" }),
+  route(":owner/:repo/issues/new", "routes/repo/moved-work.ts", { id: "routes/repo/moved-issue-new" }),
+  route(":owner/:repo/issues/:number", "routes/repo/moved-work.ts", { id: "routes/repo/moved-issue" }),
+  route(":owner/:repo/labels", "routes/repo/moved-work.ts", { id: "routes/repo/moved-labels" }),
+  route(":owner/:repo/milestones", "routes/repo/moved-work.ts", { id: "routes/repo/moved-milestones" }),
+  route(":owner/:repo/milestones/:number", "routes/repo/moved-work.ts", { id: "routes/repo/moved-milestone" }),
+  route(":owner/:repo/work", "routes/repo/moved-work.ts", { id: "routes/repo/moved-work" }),
+  route(":owner/:repo/work/sessions/:id", "routes/repo/moved-work.ts", { id: "routes/repo/moved-work-session" }),
   // Why a line is the way it is, fetched by the blame view.
   route(":owner/:repo/why/:hash", "routes/repo/why.ts"),
   // Files of a large change with their lines, fetched as the diff view reaches them.
@@ -263,7 +285,7 @@ export default [
   route(":owner/:repo/star", "routes/repo/star.ts"),
   // Bringing a fork's branch up to date with its parent's (components/fork-bar.tsx).
   route(":owner/:repo/sync-fork", "routes/repo/sync-fork.ts"),
-  // Subscribing to its issues and pull requests, and watching it.
+  // Subscribing to its work items and pull requests, and watching it.
   route(":owner/:repo/notifications", "routes/repo/notifications.ts"),
   // A starter CI workflow, opened as a pull request (components/add-ci.tsx).
   route(":owner/:repo/add-ci", "routes/repo/add-ci.ts"),
@@ -304,23 +326,18 @@ export default [
       route("commit/:hash", "routes/repo/commit.tsx"),
       // A check run reported on a commit: its report, annotations and buttons.
       route("checks/:id", "routes/repo/check-run.tsx"),
-      route("labels", "routes/repo/labels.tsx"),
-      route("milestones", "routes/repo/milestones.tsx"),
-      route("milestones/:number", "routes/repo/milestone.tsx"),
-      route("issues", "routes/repo/issues.tsx"),
-      route("issues/new", "routes/repo/issue-new.tsx"),
-      route("issues/:number", "routes/repo/issue.tsx"),
       route("pulls", "routes/repo/pulls.tsx"),
       route("pulls/new", "routes/repo/pull-new.tsx"),
       // Its tabs are paths: `pull/12/session`, `pull/12/files`.
       route("pull/:number/:tab?", "routes/repo/pull.tsx"),
       route("queue", "routes/repo/queue.tsx"),
-      // Who is working on what, live: claims, harness sessions, the queue, coordination events.
-      route("work", "routes/repo/work.tsx"),
-      route("work/sessions/:id", "routes/repo/work-session.tsx"),
       route("usage", "routes/repo/usage.tsx"),
+      // Sessions: who is working on what, live (claims, harness sessions,
+      // the queue, coordination events), and the sessions recorded on its
+      // pull requests. One session's page by its id (`ses_…`), or a pull
+      // request's recorded session by its number.
       route("sessions", "routes/repo/sessions.tsx"),
-      route("sessions/:number", "routes/repo/session.tsx"),
+      route("sessions/:id", "routes/repo/session.tsx"),
       route("actions", "routes/repo/actions.tsx"),
       route("actions/runs/:id", "routes/repo/actions-run.tsx"),
       route("actions/runs/:id/artifacts/:name", "routes/repo/actions-artifact.ts"),

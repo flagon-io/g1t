@@ -1,36 +1,41 @@
 /**
- * `/<owner>/<repo>/ref/<number>`: the card that opens over a `#12` in a
- * commit message or on a timeline (components/commit-message.tsx), for
- * anyone who may read the repository, signed in or not. Issues and pull
- * requests share numbers: the issue if there is one, else the pull
- * request; anything the viewer may not read is not found. Kept a minute
- * by the browser, and out of indexes (lib/robots.ts).
+ * `/<owner>/<repo>/ref/<number>`: `#12` read in the repository, as the
+ * work service reads it (lib/refs.ts): its pull request, the work item that
+ * was its issue before work items, the workspace's work item or another of its repositories'
+ * pull requests. Followed as a link (Markdown's `#12`), it sends the
+ * browser on to that page; asked for JSON, it is the card that opens over
+ * a `#12` in a commit message or on a timeline (components/commit-message.tsx),
+ * for anyone who may read it, signed in or not. Anything the viewer may not
+ * read is not found. A card is kept a minute by the browser, and out of
+ * indexes (lib/robots.ts).
  */
+import { data, redirect } from "react-router";
+
 import type { Route } from "./+types/ref-card";
-import type { RefCard } from "../workspace/chat/ref";
-import { work } from "../../lib/services.server";
+import { refCard, refPath } from "../../lib/refs.server";
 import { getViewer } from "../../lib/session.server";
 
 const HEADERS = {
   "cache-control": "private, max-age=60",
-  vary: "Cookie",
+  vary: "Cookie, Accept",
   "x-robots-tag": "noindex, nofollow",
 };
 
-export async function loader({ params, context }: Route.LoaderArgs) {
+export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const repo = { namespace: params.owner.toLowerCase(), name: params.repo };
   const number = Number(params.number);
-  if (!Number.isInteger(number) || number < 1) return Response.json({ error: "not_found" }, { status: 404, headers: HEADERS });
-  const slug = `${repo.namespace}/${repo.name}`;
-  const issue = await work.getIssue(repo, number, viewer).catch(() => null);
-  let card: RefCard | null = issue?.ok
-    ? { kind: "issue", repo: slug, number, title: issue.value.issue.title, state: String(issue.value.issue.state) }
-    : null;
-  if (!card) {
-    const pull = await work.getPull(repo, number, viewer).catch(() => null);
-    if (pull?.ok) card = { kind: "pull", repo: slug, number, title: pull.value.pull.title, state: pull.value.pull.status };
+  const card = (request.headers.get("accept") ?? "").startsWith("application/json");
+  if (!Number.isInteger(number) || number < 1) {
+    if (card) return Response.json({ error: "not_found" }, { status: 404, headers: HEADERS });
+    throw data(null, { status: 404 });
   }
-  if (!card) return Response.json({ error: "not_found" }, { status: 404, headers: HEADERS });
-  return Response.json(card, { headers: HEADERS });
+  if (card) {
+    const found = await refCard(viewer, { repo }, number);
+    if (!found) return Response.json({ error: "not_found" }, { status: 404, headers: HEADERS });
+    return Response.json(found, { headers: HEADERS });
+  }
+  const to = await refPath(viewer, { repo }, number);
+  if (!to) throw data(null, { status: 404 });
+  return redirect(to);
 }

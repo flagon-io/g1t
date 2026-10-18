@@ -30,7 +30,7 @@ export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Vulnerabilities · ${params.owner}/${params.repo} · g1t` });
 }
 
-/** Upgrade issues and security update pull requests looked up per page, at most. */
+/** Upgrade work items and security update pull requests looked up per page, at most. */
 const MAX_FIXES = 30;
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
@@ -44,11 +44,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     [...new Set(numbers.filter((n): n is number => n != null))].slice(0, MAX_FIXES);
   // Security updates' pull requests, for their live status.
   const pullNumbers = unique(overview.vulnerabilities.map((vuln) => vuln.update?.pull));
-  // Older upgrade issues, from before g1t opened pull requests itself.
-  const issueNumbers = unique(overview.vulnerabilities.filter((vuln) => !vuln.update).map((vuln) => vuln.issue));
-  const [pullDetails, issueDetails] = await Promise.all([
+  // Older upgrade work items, from before g1t opened pull requests itself.
+  const itemNumbers = unique(overview.vulnerabilities.filter((vuln) => !vuln.update).map((vuln) => vuln.item));
+  const [pullDetails, itemDetails] = await Promise.all([
     Promise.all(pullNumbers.map((number) => work.getPull(repo, number, viewer).catch(() => null))),
-    Promise.all(issueNumbers.map((number) => work.getIssue(repo, number, viewer).catch(() => null))),
+    Promise.all(itemNumbers.map((number) => work.getWorkItem(params.owner.toLowerCase(), number, viewer).catch(() => null))),
   ]);
   const pulls: Record<number, PullInfo> = {};
   for (const found of pullDetails) {
@@ -57,14 +57,14 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     pulls[pull.number] = { number: pull.number, status: pull.status, title: pull.title };
   }
   const fixes: Record<number, UpgradeFix> = {};
-  for (const found of issueDetails) {
+  for (const found of itemDetails) {
     if (!found?.ok) continue;
-    const { issue, pulls: issuePulls } = found.value;
-    const latest = issuePulls.at(-1) ?? null;
-    fixes[issue.number] = {
-      number: issue.number,
-      state: issue.state,
-      resolvedBy: issue.resolvedBy,
+    const { item, pulls: itemPulls } = found.value;
+    const latest = itemPulls.at(-1) ?? null;
+    fixes[item.number] = {
+      number: item.number,
+      state: item.state,
+      resolvedBy: item.resolutions.find((landed) => landed.pull != null)?.pull ?? null,
       pull: latest ? { number: latest.number, status: latest.status, agent: latest.runtime === "hosted" ? latest.agent : null } : null,
     };
   }

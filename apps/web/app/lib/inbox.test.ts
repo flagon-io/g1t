@@ -187,11 +187,11 @@ test("watching is read from the menu, and a custom watch of nothing is the defau
 
 test("the subscribe button says whether, and why", () => {
   const sub = (changes: object) => ({ subscribed: true, ignored: false, reason: null, repo: null, number: 7, updatedAt: null, ...changes });
-  assert.equal(subscriptionLine(sub({ reason: "assign" }), "issue"), "You're subscribed because you were assigned.");
+  assert.equal(subscriptionLine(sub({ reason: "assign" }), "item"), "You're subscribed because you were assigned.");
   assert.equal(subscriptionLine(sub({ reason: "author" }), "pull"), "You're subscribed because you opened this pull request, or asked g1t for it.");
-  assert.match(subscriptionLine(sub({ subscribed: false }), "issue"), /still hear if you're mentioned/);
-  assert.match(subscriptionLine(sub({ subscribed: false, ignored: true }), "issue"), /ignore this issue/);
-  assert.match(subscriptionLine(null, "issue"), /^Subscribe/);
+  assert.match(subscriptionLine(sub({ subscribed: false }), "item"), /still hear if you're mentioned/);
+  assert.match(subscriptionLine(sub({ subscribed: false, ignored: true }), "item"), /ignore this work item/);
+  assert.match(subscriptionLine(null, "item"), /^Subscribe/);
   const intent = (value: string) => {
     const data = new FormData();
     data.set("intent", value);

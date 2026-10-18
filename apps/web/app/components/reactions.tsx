@@ -34,7 +34,7 @@ function applied(groups: ReactionGroup[], viewer: string, content: ReactionConte
 }
 
 /**
- * How people (and g1t) reacted to an issue's or pull request's description
+ * How people (and g1t) reacted to a work item's or pull request's description
  * (no `commentId`) or to one of its comments: a pill per emoji with how
  * many, lit when the viewer is one of them, and who when hovered. Signed
  * in, a pill adds or takes back the viewer's own and the smiley offers the

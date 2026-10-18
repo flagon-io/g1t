@@ -49,7 +49,7 @@ export type PageMeta = {
 type ProjectData = {
   /** Only projects have descriptions; a repository has none. */
   project?: { name?: string; description?: string | null } | null;
-  open?: { issues?: number; pulls?: number };
+  open?: { items?: number; pulls?: number };
 };
 type WorkspaceData = { workspace?: { name?: string; description?: string | null; avatar?: string | null } };
 

@@ -39,9 +39,9 @@ export function parseCommitMessage(message: string): CommitMessage {
 }
 
 /**
- * A run of a commit message, or of a note on an issue's timeline: plain
- * text, a reference to an issue or pull request (`#12` in the repository
- * it is in, `acme/web#12` in another), a commit by its full hash, or a
+ * A run of a commit message, or of a note on a timeline: plain text, a
+ * reference to a work item or pull request (`#12` where it is written,
+ * `acme/web#12` in that repository), a commit by its full hash, or a
  * session by its id (`ses_…`, as in "closed this in … via session ses_…").
  */
 export type MessagePart =

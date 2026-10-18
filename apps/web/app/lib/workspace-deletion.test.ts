@@ -8,13 +8,13 @@ const nothing = { repositories: 0, projects: 0, members: 0, billing: null, prote
 test("what goes lists only what the workspace holds", () => {
   assert.deepEqual(whatGoes(nothing, null), []);
   assert.deepEqual(whatGoes({ ...nothing, repositories: 1, projects: 2, members: 1 }, 3), [
-    "1 repository, with its issues, pull requests and workflow runs",
+    "1 repository, with its work items, pull requests and workflow runs",
     "2 projects",
     "3 live apps, taken offline",
     "Access for 1 member; their own accounts stay",
   ]);
   assert.deepEqual(whatGoes({ ...nothing, repositories: 4 }, 0), [
-    "4 repositories, with their issues, pull requests and workflow runs",
+    "4 repositories, with their work items, pull requests and workflow runs",
   ]);
 });
 

@@ -19,7 +19,7 @@ const PAGE_SIZE = 100;
 const COMMON_ACTIONS = [
   "git.push",
   "git.fetch",
-  "create_issue",
+  "open_work_item",
   "add_comment",
   "record_session",
   "mark_pull_request_ready",

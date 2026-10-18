@@ -80,7 +80,7 @@ import { type Attempt, attemptReview, otherAttempts, sharedPaths, splitOverlaps 
 import {
   CommentForm,
   CommentList,
-  IssueIcon,
+  ItemIcon,
   PeoplePicker,
   PersonLink,
   PullState,
@@ -93,6 +93,8 @@ import { METHOD_INFO, type MergeChoicesView, choicesFromService, choicesFromSett
 import { ViolationList } from "../../components/rules";
 import { PullCodeOwnersPanel, TeamReviewer } from "../../components/codeowners";
 import { notFound } from "../../lib/not-found.server";
+import { refPath } from "../../lib/refs.server";
+import { itemPath } from "../../lib/refs";
 import { type PullTab, movedTab, pullPath, pullTab } from "../../lib/tab-paths";
 import { actions, deployments, identity, inbox, repos, securitySuite, work } from "../../lib/services.server";
 import { commitChecksFor } from "../../lib/commit-checks.server";
@@ -153,8 +155,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const ref = { workspace: params.owner, slug: params.repo };
   const access = accessTo(context, params);
   const pullFound = work.getPull(path, number, viewer);
-  // Its labels and milestone, with the repository's to choose from.
-  const labelsFound = work.listLabels(path, viewer);
+  // Its labels and milestone, with the workspace's to choose from.
+  const labelsFound = work.listLabels(params.owner.toLowerCase(), viewer);
   // How it may merge now, for the merge box: streamed, since its default
   // messages may have to be read from the branch's commits. Asked for
   // beside the pull request rather than after it; only one still open or
@@ -167,7 +169,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
           )
           .catch(() => null)
       : Promise.resolve(null);
-  const milestonesFound = work.listMilestones(path, viewer);
+  const milestonesFound = work.listMilestones(params.owner.toLowerCase(), viewer);
   // Parts of the sidebar: one that fails says so in its place.
   const labelsPart = part(labelsFound, "Labels");
   const milestonesPart = part(milestonesFound, "Milestones");
@@ -194,7 +196,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     member ? part(identity.listTeams(viewer, params.owner), "Teams") : null,
     // Its decision records: what the merge queue found when it was combined
     // with others, and the reasons kept on it (decisions.rs).
-    tab !== "changes" ? part(work.listDecisions(path, number, viewer), "Decisions") : null,
+    tab !== "changes" ? part(work.listDecisions({ repo: path, number }, viewer), "Decisions") : null,
     // The harness sessions tied to it in any way: with their subagents for
     // the Session tab, and in the conversation where each started.
     tab === "session" || tab === "conversation"
@@ -202,9 +204,9 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       : null,
   ]);
   if (!found.ok) {
-    // Issues and pull requests share numbers; this one may be an issue.
-    const issue = await work.getIssue(path, number, viewer);
-    if (issue.ok) throw redirect(`/${params.owner}/${params.repo}/issues/${number}`);
+    // Work items and pull requests share numbers: `#number` here may be a work item.
+    const to = await refPath(viewer, { repo: { namespace: params.owner.toLowerCase(), name: params.repo } }, number);
+    if (to && to !== `/${params.owner.toLowerCase()}/${params.repo}/pull/${number}`) throw redirect(to);
     throw notFound("pull");
   }
   const { pull } = found.value;
@@ -259,10 +261,10 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
           .catch(() => false)
       : false,
   ]);
-  // Every pull request for its issue, to compare: streamed, and read only
+  // Every pull request for its work item, to compare: streamed, and read only
   // when there is more than this one.
   const attempts =
-    tab === "conversation" && pull.issue != null && (found.value.issue?.pullCount ?? 0) > 1
+    tab === "conversation" && pull.item != null && (found.value.item?.pullCount ?? 0) > 1
       ? attemptsFor(path, viewer, pull, found.value.comments).catch(() => [] as Attempt[])
       : null;
   const [labels, milestones] = await Promise.all([labelsPart, milestonesPart]);
@@ -351,15 +353,16 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 }
 
 /**
- * This pull request and the latest few others for its issue, each with its
+ * This pull request and the latest few others for its work item in this
+ * repository, each with its
  * head's checks and where its review stands, this one first.
  */
 async function attemptsFor(path: RepoPath, viewer: Viewer, pull: Pull, comments: Comment[]): Promise<Attempt[]> {
-  const found = await work.getIssue(path, pull.issue!, viewer);
+  const found = await work.getWorkItem(path.namespace.toLowerCase(), pull.item!, viewer);
   if (!found.ok) return [];
-  const others = otherAttempts(found.value.pulls, pull.number).flatMap(
-    (number) => found.value.pulls.find((other) => other.number === number) ?? [],
-  );
+  // Those in this repository: the attempts that compete with this one.
+  const mine = found.value.pulls.filter((other) => other.repoId === pull.repoId);
+  const others = otherAttempts(mine, pull.number).flatMap((number) => mine.find((other) => other.number === number) ?? []);
   const [details, checks] = await Promise.all([
     Promise.all(others.map((other) => work.getPull(path, other.number, viewer).catch(() => null))),
     commitChecksFor(path, viewer, [pull.headCommit, ...others.map((other) => other.headCommit)]),
@@ -423,7 +426,7 @@ function mergeOptions(form: FormData): MergeOptions {
   const title = String(form.get("commitTitle") ?? "").trim();
   const head = String(form.get("expectedHead") ?? "");
   return {
-    keepIssueOpen: form.get("keepIssueOpen") === "on",
+    keepItemOpen: form.get("keepItemOpen") === "on",
     ignoreChecks: form.get("ignoreChecks") === "on",
     bypassRules: form.get("bypassRules") === "on",
     ...(isMergeMethod(method) ? { mergeMethod: method } : {}),
@@ -470,7 +473,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   if (action === "react") {
     const content = REACTIONS.find((one) => one.content === form.get("content"))?.content;
     if (!content) return { error: "Pick a reaction.", action };
-    const reacted = await work.react(user, path, number, {
+    const reacted = await work.react(user, { repo: path, number }, {
       commentId: String(form.get("comment") ?? "") || undefined,
       content,
       remove: form.get("remove") === "1",
@@ -478,7 +481,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     return reacted.ok ? null : { error: reacted.error.message, action };
   }
   if (action === "labels") {
-    const set = await work.setLabels(user, path, number, form.getAll("label").map(String));
+    const set = await work.setLabels(user, { repo: path, number }, form.getAll("label").map(String));
     return set.ok ? null : { error: set.error.message, action };
   }
   if (action === "milestone" || action === "base") {
@@ -573,8 +576,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     const id = String(form.get("comment") ?? "");
     const changed =
       action === "edit-comment"
-        ? await work.editComment(user, path, id, String(form.get("body") ?? ""))
-        : await work.deleteComment(user, path, id);
+        ? await work.editComment(user, { repo: path }, id, String(form.get("body") ?? ""))
+        : await work.deleteComment(user, { repo: path }, id);
     return changed.ok ? null : { error: changed.error.message, action, comment: id };
   }
   const result =
@@ -598,7 +601,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
           : action === "assign"
             ? await work.updatePull(user, path, number, { assignees: picked("assignee") })
           : action === "comment"
-            ? await work.addComment(user, path, number, {
+            ? await work.addComment(user, { repo: path, number }, {
                 body: String(form.get("body") ?? ""),
                 path: String(form.get("path") ?? "") || undefined,
                 line: line > 0 ? line : undefined,
@@ -768,7 +771,7 @@ function awaitedChecks(checks: { name: string; state: string }[]): string {
 export default function PullPage({ loaderData, actionData, params }: Route.ComponentProps) {
   const {
     pull,
-    issue,
+    item,
     comments,
     checks,
     overlaps,
@@ -880,10 +883,10 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   // required check that has not passed, or the merge queue taking it out.
   const unchecked = requiredChecks.some((check) => check.state !== "success") || checks?.status === "failed";
   const requiredFailed = requiredChecks.some((check) => check.state === "failure") || checks?.status === "failed";
-  // Pull requests for other issues changing the same files will conflict;
-  // ones for the same issue are alternatives, and expected to: those are
+  // Pull requests for other work items changing the same files will conflict;
+  // ones for the same work item are alternatives, and expected to: those are
   // compared under their own heading.
-  const { collisions } = splitOverlaps(overlaps, pull.issue);
+  const { collisions } = splitOverlaps(overlaps, pull.item);
   // A combination with it that failed in the merge queue and has not passed since.
   const failure = active ? standingFailure(decisions, pull.number) : null;
   const answered = failure ? resolutionOf(decisions, failure).fix : null;
@@ -1053,31 +1056,32 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
       </header>
       <div className={`mt-6 grid gap-6 lg:gap-8 ${tab === "changes" ? "" : "lg:grid-cols-[1fr_19rem]"}`}>
         <div className="min-w-0">
-          {/* What is happening on it now: its issue, how it ended, the other
-              attempts at its issue, and what else touches the same files. On the
+          {/* What is happening on it now: its work item, how it ended, the other
+              attempts at it, and what else touches the same files. On the
               conversation, so the tabs sit right under the title. */}
           {tab === "conversation" && (
             <div>
-              {issue && (
+              {item && (
                 <Link
-                  to={`${base}/issues/${issue.number}`}
+                  to={itemPath(item.workspace, item.number)}
                   className="mt-4 flex items-center gap-2.5 rounded-xl border border-line bg-surface px-4 py-2.5 text-sm transition-colors hover:border-line-strong"
                 >
-                  <IssueIcon issue={issue} />
-                  <span className="text-muted">
-                    {pull.status === "merged" && issue.resolvedBy === pull.number
-                      ? "Resolved"
-                      : "For issue"}
+                  <ItemIcon item={item} />
+                  <span className="shrink-0 text-muted">
+                    {pull.status === "merged" && item.resolutions.some((landed) => landed.pull === pull.number && landed.repo.toLowerCase() === `${params.owner}/${params.repo}`.toLowerCase())
+                      ? "Landed"
+                      : "For work item"}
                   </span>
-                  <span className="truncate font-medium">{issue.title}</span>
-                  <span className="text-faint">#{issue.number}</span>
-                  {issue.pullCount > 1 && (
-                    <span className="ml-auto shrink-0 text-xs text-faint">
-                      1 of {issue.pullCount} pull requests
+                  <span className="truncate font-medium">{item.title}</span>
+                  <span className="text-faint">#{item.number}</span>
+                  {item.pullCount > 1 && (
+                    <span className="ml-auto shrink-0 text-xs text-faint max-sm:hidden">
+                      1 of {item.pullCount} pull requests
                     </span>
                   )}
                 </Link>
               )}
+              <ItemRefs pull={pull} workspace={params.owner.toLowerCase()} />
               {pull.status === "merged" && (
                 <p className="mt-4 flex items-center gap-2.5 rounded-xl border border-merged/40 bg-merged/5 px-4 py-2.5 text-sm">
                   <GitMerge size={16} className="shrink-0 text-merged" />
@@ -1112,11 +1116,11 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                     >
                       #{pull.supersededBy}
                     </Link>{" "}
-                    was merged for this issue instead.
+                    was merged for this work item instead.
                   </p>
                 </Card>
               )}
-              {attempts && pull.issue != null && <AttemptsBox attempts={attempts} issue={pull.issue} base={base} />}
+              {attempts && pull.item != null && <AttemptsBox attempts={attempts} item={pull.item} base={base} />}
               {collisions.length > 0 && active && (
                 <Card className="mt-4 px-4 py-3 text-sm">
                   <p className="flex items-center gap-2.5 font-medium">
@@ -1540,7 +1544,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                           blocked={canMerge ? mergeBlocked : `Merging needs the Write role.`}
                           queue={mergeQueue && canMerge}
                           canAutoMerge={canAutoMerge}
-                          issue={issue?.state === "open" ? { number: issue.number } : null}
+                          item={item?.state === "open" ? { number: item.number } : null}
                           error={
                             actionData?.action === "merge" || actionData?.action === "auto-merge-on" || actionData?.action === "auto-merge-off"
                               ? actionData.error
@@ -1916,5 +1920,35 @@ function DeploymentCard({
         )}
       </section>
     </Card>
+  );
+}
+
+/**
+ * The work items it names beside its own: those it lands when it merges
+ * (`Closes #12`) and those it is only part of (`Part of #12`), each a link
+ * to the workspace's work item.
+ */
+function ItemRefs({ pull, workspace }: { pull: Pull; workspace: string }) {
+  const closes = (pull.closes ?? []).filter((number) => number !== pull.item);
+  const parts = pull.parts ?? [];
+  if (closes.length === 0 && parts.length === 0) return null;
+  const list = (numbers: number[]) =>
+    numbers.map((number, index) => (
+      <span key={number}>
+        {index > 0 && ", "}
+        <Link to={itemPath(workspace, number)} className="font-medium text-fg hover:underline">
+          #{number}
+        </Link>
+      </span>
+    ));
+  return (
+    <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+      {closes.length > 0 && (
+        <span>
+          {pull.status === "merged" ? "Landed" : "Lands"} {list(closes)}
+        </span>
+      )}
+      {parts.length > 0 && <span>Part of {list(parts)}</span>}
+    </p>
   );
 }

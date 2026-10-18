@@ -154,7 +154,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "What does moving from GitHub cost, and can we leave again?",
-    a: "Moving in is an import: bring repositories across from GitHub with every branch, tag and their issues. Your code is plain git and g1t is MIT licensed, so leaving is a git clone, and the core forge runs on your own machine with Docker Compose.",
+    a: "Moving in is an import: bring repositories across from GitHub with every branch, tag and their work items. Your code is plain git and g1t is MIT licensed, so leaving is a git clone, and the core forge runs on your own machine with Docker Compose.",
   },
   {
     q: "Is Docs included?",
@@ -217,7 +217,7 @@ function rows(tier: Required<FreeTier>): Row[] {
       what: "The forge",
       free: "Free",
       plan: "Included",
-      note: "Public and private repositories, issues, pull requests, reviews, protected branches, code owners, search and Explore.",
+      note: "Public and private repositories, work items, pull requests, reviews, protected branches, code owners, search and Explore.",
     },
     {
       what: "Checks, workflows, merge queue",

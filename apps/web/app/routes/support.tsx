@@ -160,14 +160,14 @@ export default function Support() {
           </Card>
           <p className="mt-4 text-sm text-muted">
             Write from the email address on your g1t account, so we know it's you. Found a bug in g1t itself? You can
-            also open an issue on <Link to="/flagon-io/g1t/issues" className="text-accent hover:underline">flagon-io/g1t</Link>.
+            also open a work item on <Link to="/flagon-io/-/work?repo=g1t" className="text-accent hover:underline">flagon-io/g1t</Link>.
           </p>
         </Section>
 
         <Section title="What to include">
           <ul className="list-disc space-y-1.5 pl-5 text-[0.9375rem] text-fg/90">
             <li>Your username, and the workspace and project, such as <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-[0.85em]">g1t.sh/acme/web</code>.</li>
-            <li>A link to where it happened: the page, issue, pull request or workflow run.</li>
+            <li>A link to where it happened: the page, work item, pull request or workflow run.</li>
             <li>What you did, what you expected, and what happened instead, with any error message as text.</li>
             <li>When it happened, with your time zone.</li>
           </ul>

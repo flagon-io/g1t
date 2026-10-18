@@ -1,7 +1,7 @@
 /**
  * The merge queue as a train: the default branch, then each entry in
  * order with the combination it is tested as and how its checks stand.
- * The Merge queue page shows it whole; the Work page shows what is moving.
+ * The Merge queue page shows it whole; the Sessions page shows what is moving.
  */
 import { Check, CircleDashed, GitCommitHorizontal, GitMerge, Loader2, Minus, X } from "lucide-react";
 import { type ReactNode, Suspense } from "react";

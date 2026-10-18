@@ -341,8 +341,8 @@ function AddForm({ result }: { result: Outcome | undefined }) {
 
 function roleLine(role: RepoRole): string {
   return {
-    read: "they can see and clone it, open issues and pull requests, and comment.",
-    triage: "they can also apply labels and milestones, and assign, close and reopen issues and pull requests.",
+    read: "they can see and clone it, open work items and pull requests, and comment.",
+    triage: "they can also apply labels and milestones, and assign, close and reopen work items and pull requests.",
     write: "they can also push, merge, manage labels and milestones, see security alerts and run workflows.",
     maintain: "they can also change its settings and topics.",
     admin: "they can do everything, including branch protection, webhooks, secrets, deployments and who has access.",
@@ -472,7 +472,7 @@ function RemoveButton({
             </AlertDialogTitle>
             <AlertDialogDescription>
               {outside
-                ? "They lose access to the repository at once, and stop seeing it in Shared with you. Their issues, pull requests and comments stay."
+                ? "They lose access to the repository at once, and stop seeing it in Shared with you. Their work items, pull requests and comments stay."
                 : "They lose the role given to them here, and keep what the workspace's base permission gives every member."}
             </AlertDialogDescription>
           </AlertDialogHeader>

@@ -11,10 +11,10 @@ export const QUALIFIERS: { example: string; means: string }[] = [
   { example: "org:acme", means: "Only in one workspace (also workspace:acme)" },
   { example: "language:rust", means: "Code in a language, or repositories mostly in it" },
   { example: "path:src/", means: "Code under a path; path:*.rs for a pattern" },
-  { example: "is:issue  is:pr", means: "Only issues, or only pull requests" },
-  { example: "is:open  is:closed  is:merged", means: "Issues and pull requests by state" },
+  { example: "is:item  is:pr", means: "Only work items, or only pull requests" },
+  { example: "is:open  is:closed  is:merged", means: "Work items and pull requests by state" },
   { example: "author:ana", means: "Opened by someone" },
-  { example: "label:bug", means: "Issues and pull requests with a label" },
+  { example: "label:bug", means: "Work items and pull requests with a label" },
   { example: "\"exact phrase\"", means: "These words together, in this order" },
   { example: "-word  -label:wontfix", means: "Leave out what has it" },
 ];
@@ -50,7 +50,7 @@ export const LANGUAGES = [
 export const TYPE_LABELS: Record<SearchType, string> = {
   repositories: "Repositories",
   code: "Code",
-  issues: "Issues",
+  items: "Work items",
   pulls: "Pull requests",
   people: "People",
 };

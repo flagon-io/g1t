@@ -372,7 +372,7 @@ function ResidencySection({
       <h2 className="font-medium">Data residency</h2>
       <p className="mt-1.5 text-xs text-faint">
         Where the git data of repositories made from now on is stored. Repositories the workspace already has stay
-        where they are; ask support to move them. Issues, pull requests and settings are not affected.
+        where they are; ask support to move them. Work items, pull requests and settings are not affected.
       </p>
       <Form method="post" className="mt-5 space-y-4">
         <input type="hidden" name="intent" value="residency" />

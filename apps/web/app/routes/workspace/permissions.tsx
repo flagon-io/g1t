@@ -89,8 +89,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 /** What the base permission means for members, in a sentence. */
 const BASE_MEANS: Record<BasePermission, string> = {
   none: "Members see only public repositories and the ones they are given a role on.",
-  read: "Members can see and clone every repository, open issues and pull requests, and comment.",
-  write: "Members can see every repository, manage its issues and pull requests, push and merge.",
+  read: "Members can see and clone every repository, open work items and pull requests, and comment.",
+  write: "Members can see every repository, manage its work items and pull requests, push and merge.",
   admin: "Members can do everything on every repository, including its settings, webhooks, secrets and who has access. Only owners transfer or delete one.",
 };
 

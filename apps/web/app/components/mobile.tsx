@@ -29,13 +29,14 @@ import { Avatar } from "./ui/avatar";
 import { NavTab, NavTabs } from "./ui/nav-tabs";
 import { StatusDialog } from "./presence";
 import { ThemeSwitch } from "./theme-switch";
-import { type BuiltinApp, type PinnableApp, appOf } from "../lib/apps";
+import { type BuiltinApp, PHONE_TABS, type PinnableApp, appOf, phoneMoreApps } from "../lib/apps";
 import { setPresence, useOwnPresence } from "../lib/notify-client";
 import { dndOn, liveStatus, pauseUntil, untilLabel } from "../lib/presence";
 import { STATUS_URL } from "../lib/status";
 import { type ModeKey, modeHome, modeOf } from "../lib/workspace-nav";
 import { PROJECT_PAGE_LINKS, type ProjectPage, projectPageAt, projectPages } from "../lib/chrome";
 import { ROADMAP, type RoadmapItem } from "../lib/roadmap";
+import { repoWorkPath } from "../lib/work-items";
 
 /**
  * The phone's layout (below 768px): a bottom bar of apps with More for
@@ -121,12 +122,13 @@ type Tab = { key: ModeKey; label: string; badge?: { count: number; loud: boolean
 
 /**
  * The bottom bar of a phone, flat along the bottom edge under a rule, as
- * the rail stands flat beside the page on a computer: Home, Chat,
- * Notifications and Code (for a member with Code access), each
- * with what is unread, and More. The tab you are in has the rail's own
+ * the rail stands flat beside the page on a computer: Home, Work, Chat and
+ * Notifications (lib/apps.ts `PHONE_TABS`), each with what is unread, and
+ * More, whose sheet starts with Code: a phone triages and talks about work
+ * far more than it browses code. The tab you are in has the rail's own
  * mark: its icon on the sidebar's accent. It steps aside while the keyboard is up
  * and inside a conversation. The tab you are in, tapped again, opens its
- * mode's menu (its sidebar).
+ * mode's menu (its sidebar: Work's saved views, labels and milestones).
  */
 export function BottomBar({
   user,
@@ -150,14 +152,12 @@ export function BottomBar({
   const [more, setMore] = useState(false);
   useEffect(() => setMore(false), [pathname]);
   const slug = workspace.slug;
-  const code = hasCodeAccess(workspace);
   const mode = shellMode ?? modeOf(pathname, slug);
-  const tabs: Tab[] = [
-    { key: "home", label: "Home" },
-    { key: "chat", label: "Chat", badge: { count: unread.mentions > 0 ? unread.mentions : unread.chat, loud: unread.mentions > 0 } },
-    { key: "notifications", label: "Notifications", badge: { count: unread.notifications, loud: true } },
-    ...(code ? [{ key: "code" as const, label: "Code" }] : []),
-  ];
+  const badges: Partial<Record<ModeKey, Tab["badge"]>> = {
+    chat: { count: unread.mentions > 0 ? unread.mentions : unread.chat, loud: unread.mentions > 0 },
+    notifications: { count: unread.notifications, loud: true },
+  };
+  const tabs: Tab[] = PHONE_TABS.map((key) => ({ key, label: appOf(key).name, badge: badges[key] }));
   const inTabs = tabs.some((tab) => tab.key === mode);
   if (isConversation(pathname)) return null;
   return (
@@ -259,8 +259,9 @@ function MoreTile({ to, icon, label, onClick, disabled, note }: { to?: string; i
 
 /**
  * More, from the bottom bar: a flat panel standing on it, with g1t's
- * mark at its top and a grid of big tiles: all apps,
- * your pinned apps, Artifacts, People, Workspace, Explore, and "You and
+ * mark at its top and a grid of big tiles: Code (for a member with Code
+ * access), all apps, your pinned apps, Artifacts, Routines, People,
+ * Workspace, Explore, and "You and
  * help", which opens your account's sheet. Browsing beyond your
  * workspaces, Explore opens Explore's menu (`onExplore`) rather than the
  * page.
@@ -283,6 +284,7 @@ function MoreSheet({
   const slug = workspace.slug;
   const [account, setAccount] = useState(false);
   const shown = pins.map((key) => pinnedApp(key, slug)).filter((app) => app != null);
+  const apps = phoneMoreApps(hasCodeAccess(workspace));
   return (
     <>
       <Primitive.Root open={open} onOpenChange={onOpenChange}>
@@ -300,14 +302,17 @@ function MoreSheet({
               <span className="ml-auto truncate font-mono text-xs text-faint">{slug}</span>
             </div>
             <div className="grid grid-cols-4 gap-1.5">
+              {/* Code first, for a member who has it: it left the bar for Work. */}
+              {apps.includes("code") && <MoreTile to={appOf("code").path(slug)} icon={appIcon("code", 20)} label="Code" />}
               <MoreTile to={`/${slug}/-/apps`} icon={<LayoutGrid size={20} />} label="All apps" />
               {shown.map((app) => (
                 <MoreTile key={app.key} to={app.to} icon={app.icon(26)} label={app.name} />
               ))}
-              <MoreTile to={appOf("artifacts").path(slug)} icon={appIcon("artifacts", 20)} label="Artifacts" />
-              <MoreTile to={appOf("routines").path(slug)} icon={appIcon("routines", 20)} label="Routines" />
-              <MoreTile to={appOf("people").path(slug)} icon={appIcon("people", 20)} label="People" />
-              <MoreTile to={appOf("workspace").path(slug)} icon={appIcon("workspace", 20)} label="Workspace" />
+              {apps
+                .filter((key) => key !== "code")
+                .map((key) => (
+                  <MoreTile key={key} to={appOf(key).path(slug)} icon={appIcon(key, 20)} label={appOf(key).name} />
+                ))}
               {onExplore ? (
                 <MoreTile
                   icon={<Compass size={20} />}
@@ -540,7 +545,6 @@ export function AccountSheet({ open, onOpenChange, user }: { open: boolean; onOp
 /** Which project page a roadmap page (`soon/<key>`) sits under, by its section. */
 const SOON_UNDER: Partial<Record<RoadmapItem["section"], ProjectPage>> = {
   Code: "code",
-  Issues: "issues",
   Deployments: "deployments",
   Observability: "observability",
   Security: "security",
@@ -557,8 +561,9 @@ const soonPagesOf = (): Record<string, ProjectPage> =>
 /**
  * A project's pages along the bottom of its header: the sidebar's own list
  * (lib/chrome.ts) as a row of tabs that scrolls sideways on a phone, the
- * current one underlined on the header's border and kept in view, so Issues
- * and Pull requests are one tap away. From 768px a member's sidebar has
+ * current one underlined on the header's border and kept in view, so Work
+ * and Pull requests are one tap away. Work is the workspace's Work list
+ * filtered to the project (lib/work-items.ts `repoWorkPath`). From 768px a member's sidebar has
  * them; a visitor, who has none, always sees the row.
  */
 export function ProjectStrip({
@@ -568,7 +573,6 @@ export function ProjectStrip({
   settings,
   counts,
   always = false,
-  issues = true,
 }: {
   /** `/<namespace>/<name>`. */
   base: string;
@@ -576,29 +580,29 @@ export function ProjectStrip({
   can?: Partial<Abilities>;
   /** Whether they see its settings (lib/access.ts `seesSettings`), as the sidebar decides. */
   settings?: boolean;
-  counts?: { issues: number; pulls: number };
+  counts?: { items: number; pulls: number };
   /** On a computer too: for a visitor, who has no sidebar to list them. */
   always?: boolean;
-  /** Whether issues can be opened in it; Issues leaves the row when not. */
-  issues?: boolean;
 }) {
   const { pathname } = useLocation();
   const rest = pathname.toLowerCase().startsWith(base.toLowerCase()) ? pathname.slice(base.length) : "";
   const at = projectPageAt(rest, soonPagesOf());
-  const pages: (ProjectPage | "overview")[] = ["overview", ...projectPages(member, can).filter((page) => page !== "observability" && page !== "settings" && (issues || page !== "issues")),
+  const pages: (ProjectPage | "overview")[] = ["overview", ...projectPages(member, can).filter((page) => page !== "observability" && page !== "settings"),
     ...(settings ?? member ? (["settings"] as const) : []),
   ];
   return (
     <NavTabs label="Project" className={always ? undefined : "md:hidden"}>
       {pages.map((page) => {
         const link = page === "overview" ? { label: "Overview", path: "" } : PROJECT_PAGE_LINKS[page];
+        const [namespace = "", name = ""] = base.split("/").filter(Boolean);
+        const to = page === "work" ? repoWorkPath(namespace, name) : link.path ? `${base}/${link.path}` : base;
         return (
           <NavTab
             key={page}
-            to={link.path ? `${base}/${link.path}` : base}
+            to={to}
             current={at === page}
             soon={page !== "overview" && PROJECT_PAGE_LINKS[page].soon}
-            count={page === "issues" ? counts?.issues : page === "pulls" ? counts?.pulls : undefined}
+            count={page === "work" ? counts?.items : page === "pulls" ? counts?.pulls : undefined}
           >
             {link.label}
           </NavTab>

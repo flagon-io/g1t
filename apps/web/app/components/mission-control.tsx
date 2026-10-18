@@ -35,6 +35,7 @@ import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import type { Loaded } from "../lib/mission-control.server";
+import { itemPath, newItemPath } from "../lib/work-items";
 
 /*
  * Code's Overview: where the viewer is needed in the workspace's code,
@@ -273,7 +274,7 @@ function NeedCard({ row, first }: { row: NeedRow; first: boolean }) {
         )}
         {row.open !== row.to && (
           <Link to={row.open} prefetch="intent" className="px-2 py-1.5 text-sm text-muted hover:text-fg">
-            {row.open.includes("/issues/") ? "Open issue" : isPull ? "See the changes" : "Open pull request"}
+            {row.open.includes("/-/work/") ? "Open work item" : isPull ? "See the changes" : "Open pull request"}
           </Link>
         )}
       </div>
@@ -469,8 +470,8 @@ function WeekChart({ week }: { week: Week }) {
 
 const VERB: Record<Verb, string> = {
   landed: "landed",
-  opened_issue: "opened",
-  closed_issue: "closed",
+  opened_item: "opened",
+  closed_item: "closed",
   started: "started on",
   ready: "marked ready",
   checks_passed: "checks passed on",
@@ -502,7 +503,7 @@ function FeedLine({ group, titles }: { group: ActivityGroup; titles: Record<stri
         )}{" "}
         {VERB[part.verb]}{" "}
         {number != null ? (
-          <Link to={`${base}/issues/${number}`} prefetch="intent" className="text-fg-soft hover:text-fg">
+          <Link to={part.verb === "opened_item" || part.verb === "closed_item" ? itemPath(group.repo.namespace, number) : `${base}/pull/${number}`} prefetch="intent" className="text-fg-soft hover:text-fg">
             <span className="font-mono text-xs">#{number}</span>
             {title && <> {title}</>}
           </Link>
@@ -601,17 +602,17 @@ export default function MissionControl({ loaderData }: { loaderData: Loaded }) {
   const delta = change(week.total, week.previous);
   const feed = everyActivity ? groups : groups.slice(0, 8);
 
-  const newIssue =
+  const newItem =
     repos.length > 0 ? (
       <DropdownMenu>
         <DropdownMenuTrigger className="inline-flex items-center gap-1.5 rounded-md border border-line-strong px-3 py-2 text-sm font-medium text-fg/90 transition-colors hover:bg-raised hover:text-fg">
-          <Plus size={14} /> New issue
+          <Plus size={14} /> New work item
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">
-          <DropdownMenuLabel>In which project?</DropdownMenuLabel>
+          <DropdownMenuLabel>Filed from which project?</DropdownMenuLabel>
           {repos.map((repo) => (
             <DropdownMenuItem key={repo.name} asChild>
-              <Link to={`/${repo.namespace}/${repo.name}/issues/new`}>
+              <Link to={newItemPath(repo.namespace, repo.name)}>
                 <Avatar name={repo.name} size={18} square />
                 {repo.name}
               </Link>
@@ -640,7 +641,7 @@ export default function MissionControl({ loaderData }: { loaderData: Loaded }) {
       </header>
 
       <section aria-label="Start work" className="flex flex-wrap items-center gap-2">
-        {newIssue}
+        {newItem}
         {needs.length > 0 && (
           <Link
             to={`${link({ tab: "needs", all: null })}#work`}
