@@ -14,10 +14,11 @@
 //!   and pull request events) name the work item and its number.
 //!
 //! Every statement leaves what it already rewrote alone, so a page
-//! delivered again, or out of order, changes nothing more.
+//! delivered again, or out of order, changes nothing more. The cron
+//! catches up on pages that never arrived ([`catch_up`]).
 
 use g1t_contracts::events::{Event, WorkMigrated};
-use worker::{D1Database, D1PreparedStatement, Result};
+use worker::{D1Database, D1PreparedStatement, Fetcher, Result};
 
 /// The issue events of the log, by their old names.
 pub const ISSUE_EVENTS: [&str; 9] = [
@@ -128,13 +129,35 @@ pub fn moved(db: &D1Database, event: &Event) -> Result<Vec<D1PreparedStatement>>
     if event.data["truncated"].as_bool() == Some(true) {
         worker::console_error!("work.migrated {} (page {}) was cut short: some issue numbers are left as they were", event.id, page.page);
     }
+    page_statements(db, &event.id, &page)
+}
+
+/// The statements for one page, recorded as `id`'s.
+fn page_statements(db: &D1Database, id: &str, page: &WorkMigrated) -> Result<Vec<D1PreparedStatement>> {
     if page.items.is_empty() {
         return Ok(Vec::new());
     }
     let items = serde_json::to_string(&page.items)?;
     let issue_events = serde_json::to_string(&ISSUE_EVENTS)?;
-    let values: [worker::wasm_bindgen::JsValue; 3] = [event.id.as_str().into(), items.as_str().into(), issue_events.as_str().into()];
+    let values: [worker::wasm_bindgen::JsValue; 3] = [id.into(), items.as_str().into(), issue_events.as_str().into()];
     MOVED.iter().map(|sql| db.prepare(*sql).bind(&values[..bound(sql)])).collect()
+}
+
+/// The cron: pages of `work.migrated` that never arrived, read from the
+/// work service (`g1t_kit::work_migrated`) and applied as the event's
+/// would have been, each recorded as `catch-up:<page>`.
+pub async fn catch_up(db: &D1Database, work: &Fetcher) {
+    let caught = g1t_kit::work_migrated::catch_up(db, work, |page| async move {
+        let statements = page_statements(db, &format!("catch-up:{}", page.page), &page)?;
+        if !statements.is_empty() {
+            db.batch(statements).await?;
+        }
+        Ok(())
+    })
+    .await;
+    if let Err(error) = caught {
+        worker::console_error!("catching up on work.migrated: {error}");
+    }
 }
 
 #[cfg(test)]
@@ -247,6 +270,14 @@ mod tests {
         let first = items(&db);
         run(&db, "evt_9", &page());
         assert_eq!(items(&db), first);
+        // And again as the cron's catch-up reads it: nothing more either.
+        let log = |db: &Connection| -> Vec<(String, serde_json::Value)> {
+            ["evt_1", "evt_2", "evt_3", "evt_5", "evt_6", "evt_7"].iter().map(|id| logged(db, id)).collect()
+        };
+        let logged_once = log(&db);
+        run(&db, "catch-up:1", &page());
+        assert_eq!(items(&db), first);
+        assert_eq!(log(&db), logged_once);
         assert_eq!(
             first,
             vec![

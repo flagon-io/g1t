@@ -280,6 +280,13 @@ impl Search {
         g1t_kit::call(&self.repos, "path_by_id", &PathByIdArgs { id: repo_id.to_owned() }).await
     }
 
+    /// Pages of `work.migrated` that never arrived, read from the work
+    /// service (`g1t_kit::work_migrated`): each page's work items are read
+    /// again, as the event's would have been. Whether it is done.
+    pub async fn catch_up_on_moves(&self) -> Result<bool> {
+        g1t_kit::work_migrated::catch_up(&self.db, &self.work, |page| async move { self.enqueue(migrated_jobs(&page)).await }).await
+    }
+
     pub async fn enqueue(&self, jobs: Vec<Job>) -> Result<()> {
         let queue = self.env.queue("JOBS")?;
         for batch in jobs.chunks(100) {

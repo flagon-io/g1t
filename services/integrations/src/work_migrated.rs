@@ -3,9 +3,11 @@
 //! (`legacy_repo_id`, `legacy_number`, from migrations/0013_work_items.sql)
 //! take the work item's id, workspace and number, and lose the old pair.
 //! Each page is applied on its own, and a page seen again changes nothing.
+//! The cron catches up on pages that never arrived ([`catch_up`]).
 
 use g1t_contracts::events::{Event, WorkMigrated};
-use worker::{D1Database, Result};
+use g1t_contracts::work::MigratedItem;
+use worker::{D1Database, Fetcher, Result};
 
 /// The page's moves, from `?1` (its `items` as JSON), as rows.
 const MOVES: &str = "SELECT json_extract(value, '$.repoId') AS repo_id, json_extract(value, '$.legacyNumber') AS legacy_number,
@@ -37,16 +39,30 @@ pub async fn on_event(db: &D1Database, event: &Event) -> Result<bool> {
     let Ok(page) = serde_json::from_value::<WorkMigrated>(event.data.clone()) else {
         return Ok(true);
     };
-    if page.items.is_empty() {
-        return Ok(true);
+    apply(db, &page.items).await?;
+    Ok(true)
+}
+
+/// Applies one page's moves.
+async fn apply(db: &D1Database, moves: &[MigratedItem]) -> Result<()> {
+    if moves.is_empty() {
+        return Ok(());
     }
-    let items = serde_json::to_string(&page.items)?;
+    let items = serde_json::to_string(moves)?;
     let mut batch = Vec::new();
     for sql in statements() {
         batch.push(db.prepare(&sql).bind(&[items.as_str().into()])?);
     }
     db.batch(batch).await?;
-    Ok(true)
+    Ok(())
+}
+
+/// The cron: pages of `work.migrated` that never arrived, read from the
+/// work service (`g1t_kit::work_migrated`), until the last.
+pub async fn catch_up(db: &D1Database, work: &Fetcher) {
+    if let Err(error) = g1t_kit::work_migrated::catch_up(db, work, |page| async move { apply(db, &page.items).await }).await {
+        worker::console_error!("catching up on work.migrated: {error}");
+    }
 }
 
 #[cfg(test)]
@@ -123,10 +139,11 @@ mod tests {
             MigratedItem { repo_id: "rep_api".into(), legacy_number: 4, workspace: "acme".into(), number: 32, item_id: "iss_api4".into() },
             MigratedItem { repo_id: "rep_web".into(), legacy_number: 5, workspace: "acme".into(), number: 33, item_id: "iss_web5".into() },
         ];
-        // Twice: a page seen again changes nothing.
-        for _ in 0..2 {
+        // Part of it as the event's page, then all of it twice as the
+        // catch-up's pages: a move applied again changes nothing.
+        for moves in [&moved[..1], &moved[..], &moved[..]] {
             for sql in statements() {
-                db.execute(&sql, params![page(&moved)]).unwrap();
+                db.execute(&sql, params![page(moves)]).unwrap();
             }
         }
         let link = |id: &str| -> (String, Option<String>, Option<u32>, Option<String>, Option<u32>) {
@@ -150,5 +167,12 @@ mod tests {
             )
             .unwrap();
         assert_eq!(left, 0);
+        // Where the catch-up starts.
+        let start: (Option<String>, u32, Option<String>) = db
+            .query_row("SELECT cursor, page, done_at FROM work_catch_up WHERE name = 'work.migrated'", [], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })
+            .unwrap();
+        assert_eq!(start, (None, 0, None));
     }
 }

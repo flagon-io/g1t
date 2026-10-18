@@ -655,6 +655,13 @@ impl Security {
         Ok(())
     }
 
+    /// Pages of `work.migrated` that never arrived, read from the work
+    /// service (`g1t_kit::work_migrated`), until the last. Whether it is done.
+    async fn catch_up_on_moves(&self) -> Result<bool> {
+        let store = &self.store;
+        g1t_kit::work_migrated::catch_up(&store.db, &self.work, |page| async move { store.work_migrated(&page.items).await }).await
+    }
+
     /// The sweep: continues history scans and scans of pushes that landed
     /// unscanned, catches security updates whose sandbox never pushed, and
     /// reads dependencies that have not been read for a day.
@@ -803,6 +810,9 @@ async fn scheduled(event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
         Ok(security) => {
             if let Err(error) = security.sweep().await {
                 worker::console_error!("security: the sweep failed: {error}");
+            }
+            if let Err(error) = security.catch_up_on_moves().await {
+                worker::console_error!("security: catching up on work.migrated failed: {error}");
             }
         }
         Err(error) => worker::console_error!("security: could not start: {error}"),
