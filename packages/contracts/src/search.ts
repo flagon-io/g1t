@@ -4,15 +4,15 @@ import type { Result } from "./result";
 
 /**
  * Search across all of g1t: repositories (name, description, topics,
- * README), code on default branches, issues and pull requests, people and
+ * README), code on default branches, work items and pull requests, people and
  * workspaces. Everything public, and private content the viewer is a member
  * of, decided when the query runs. Mirrors `crates/contracts/src/search.rs`.
  */
 
 /** One tab of results. */
-export type SearchType = "repositories" | "code" | "issues" | "pulls" | "people";
+export type SearchType = "repositories" | "code" | "items" | "pulls" | "people";
 
-export const SEARCH_TYPES: SearchType[] = ["repositories", "code", "issues", "pulls", "people"];
+export const SEARCH_TYPES: SearchType[] = ["repositories", "code", "items", "pulls", "people"];
 
 /** The most results on one page, and how many a page has when none is asked for. */
 export const MAX_PER_PAGE = 50;
@@ -26,17 +26,19 @@ export type Segment = { text: string; highlight: boolean };
 /** A line of code in a result, numbered from 1. */
 export type CodeLine = { number: number; parts: Segment[] };
 
-export type HitKind = "repository" | "code" | "issue" | "pull" | "user" | "workspace";
+export type HitKind = "repository" | "code" | "item" | "pull" | "user" | "workspace";
 
 /** One result. Which fields are set depends on `kind`. */
 export type SiteHit = {
   kind: HitKind;
-  /** `acme/web`, a file's path, an issue's title, a person's name. */
+  /** `acme/web`, a file's path, a work item's title, a person's name. */
   title: string;
   /** A path on g1t.sh: `/acme/web/blob/main/src/app.rs#L12`. */
   url: string;
-  /** `owner/name`, for everything but people. */
+  /** `owner/name`, for everything but people: for a work item, the one it was filed in, if any. */
   repo: string | null;
+  /** For a work item: its workspace's slug. */
+  workspace?: string | null;
   private: boolean;
   description: string | null;
   snippet: Segment[];
@@ -46,11 +48,11 @@ export type SiteHit = {
   language: string | null;
   ref: string | null;
   number: number | null;
-  /** `open`/`closed` for an issue; `draft`/`open`/`merged`/`closed` for a pull request. */
+  /** `open`/`closed` for a work item; `draft`/`open`/`merged`/`closed` for a pull request. */
   state: string | null;
-  /** Who opened the issue or pull request: `g1t` for one g1t made. */
+  /** Who opened the work item or pull request: `g1t` for one g1t made. */
   author: string | null;
-  /** For an issue or pull request g1t opened: who asked for it. */
+  /** For a work item or pull request g1t opened: who asked for it. */
   requestedBy?: string | null;
   labels: string[];
   topics: string[];
@@ -107,7 +109,7 @@ export interface SearchApi {
     query: string,
     options?: { type?: SearchType | null; page?: number; perPage?: number },
   ): Promise<Result<SearchResults>>;
-  /** A few repositories, issues, pull requests and people, as someone types. */
+  /** A few repositories, work items, pull requests and people, as someone types. */
   suggest(viewer: Viewer, query: string): Promise<SiteHit[]>;
   /** Public repositories, recently active or new, by language or topic. */
   explore(
@@ -150,9 +152,9 @@ export function searchType(value: string | null | undefined): SearchType | null 
       return "repositories";
     case "code":
       return "code";
-    case "issues":
-    case "issue":
-      return "issues";
+    case "items":
+    case "item":
+      return "items";
     case "pulls":
     case "prs":
     case "pr":
