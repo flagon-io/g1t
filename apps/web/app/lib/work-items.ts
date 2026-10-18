@@ -172,7 +172,12 @@ export function repoFilter(workspace: string, repo: string): { namespace: string
 }
 
 /** A repository's name in its workspace: `web` for `acme/web` in `acme`, the whole path elsewhere. */
+/** What a link to a repository that is gone, with no path kept, is called. */
+export const DELETED_REPO = "deleted repository";
+
 export function shortPath(path: string, workspace: string): string {
+  // A repository deleted before work items had no path left to keep.
+  if (!path) return DELETED_REPO;
   const [namespace, name] = path.split("/");
   return name && namespace?.toLowerCase() === workspace.toLowerCase() ? name : path;
 }

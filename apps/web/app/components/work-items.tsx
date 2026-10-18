@@ -49,7 +49,7 @@ export function RepoChips({ repos, workspace, max = 2, className }: { repos: Ite
   return (
     <span className={cn("inline-flex min-w-0 items-center gap-1", className)}>
       {shown.map((repo) => (
-        <Hint key={repo.repoId} label={`${repo.path}: ${ROLE_LABELS[repo.role].toLowerCase()}${repo.landed ? ", landed" : ""}`}>
+        <Hint key={repo.repoId} label={`${repo.path || "A deleted repository"}: ${ROLE_LABELS[repo.role].toLowerCase()}${repo.landed ? ", landed" : ""}`}>
           <span
             className={cn(
               "inline-flex max-w-32 min-w-0 items-center gap-1 rounded-md border px-1.5 py-px font-mono text-[0.6875rem] leading-4",

@@ -48,6 +48,8 @@ export function Chip({ label, tone = "neutral", onPress, leading }: { label: str
 
 /** A repository's name in a chip: just the name when it is in the item's workspace. */
 export function repoName(path: string, workspace: string): string {
+  // A repository deleted before work items had no path left to keep.
+  if (!path) return "deleted repository";
   const [owner, name] = path.split("/", 2);
   return name && owner.toLowerCase() === workspace.toLowerCase() ? name : path;
 }
