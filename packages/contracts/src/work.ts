@@ -1862,8 +1862,10 @@ export type WorkspaceSignalsArgs = {
 /**
  * One repository's week from UTC day `start`; empty weeks are left out.
  * `stalled`: open when the week ended (now, for this week), opened three
- * days or more before, and no activity (push, comment, review, timeline
- * event, check, session entry) in the three days before it ended.
+ * days or more before, and no activity (comment, review, timeline event,
+ * its latest push, a check or status on its current head, an acceptance
+ * check, a session entry, a tied session or its subagent running) in the
+ * three days before it ended.
  * `sessionCostUsd`: what the harness sessions started in the week cost,
  * estimated at list price from the token usage they reported.
  */
@@ -1896,7 +1898,11 @@ export type SignalPull = {
   mergedAt: string | null;
   item: number | null;
   milestone: number | null;
-  /** Its share of its harness sessions' cost: each session's split evenly among the pull requests it is tied to. */
+  /**
+   * Its share of its harness sessions' cost: each session's split evenly
+   * among the pull requests it is tied to (a subagent tied to none counts
+   * with its root session's).
+   */
   sessionCostUsd: number;
 };
 /** One person's use of one harness in one repository, root sessions only. */
