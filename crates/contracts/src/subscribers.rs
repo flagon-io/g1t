@@ -36,12 +36,13 @@ pub const ROUTES: &[(&str, &[&str])] = &[
             "branch.renamed",
             "repo.created",
             "repo.archived",
+            "repo.visibility_changed",
             "repo.default_branch_changed",
             "pull.merged",
             "comment.created",
         ],
     ),
-    // Pull requests g1t is seeing through, mentions, queued issues and the
+    // Pull requests g1t is seeing through, mentions, queued work items and the
     // merge queue (runner/src/index.ts queue).
     (
         "SUBSCRIBER_RUNNER",
@@ -57,15 +58,16 @@ pub const ROUTES: &[(&str, &[&str])] = &[
             "checks.completed",
             "queue.changed",
             "comment.created",
-            "issue.opened",
-            "issue.updated",
-            "issue.closed",
+            "work_item.opened",
+            "work_item.updated",
+            "work_item.closed",
             "repo.archived",
         ],
     ),
     // Write-back to linked trackers (integrations/src lib.rs), and g1t
     // taking on what it is assigned or asked in a thread (summon.rs).
-    ("SUBSCRIBER_INTEGRATIONS", &["issue.closed", "pull.opened", "issue.assigned", "comment.created"]),
+    // `work.migrated` rewrites links kept to issue numbers.
+    ("SUBSCRIBER_INTEGRATIONS", &["work_item.closed", "pull.opened", "work_item.assigned", "comment.created", "work.migrated"]),
     // A hook may ask for any type, or for every one.
     ("SUBSCRIBER_WEBHOOKS", &["*"]),
     // Every event a workflow can run on (g1t_actions::events::github_events),
@@ -76,7 +78,7 @@ pub const ROUTES: &[(&str, &[&str])] = &[
             "git.push",
             "git.deleted",
             "pull.*",
-            "issue.*",
+            "work_item.*",
             "comment.*",
             "release.*",
             "deployment.created",
@@ -112,9 +114,9 @@ pub const ROUTES: &[(&str, &[&str])] = &[
         &[
             "git.push",
             "repo.*",
-            "issue.opened",
-            "issue.closed",
-            "issue.reopened",
+            "work_item.opened",
+            "work_item.closed",
+            "work_item.reopened",
             "pull.opened",
             "pull.updated",
             "pull.merged",
@@ -163,7 +165,7 @@ pub const ROUTES: &[(&str, &[&str])] = &[
         ],
     ),
     // The site-wide search index (search/src/index.rs).
-    ("SUBSCRIBER_SEARCH", &["git.push", "repo.*", "issue.*", "pull.*", "user.*", "workspace.*"]),
+    ("SUBSCRIBER_SEARCH", &["git.push", "repo.*", "work_item.*", "work.migrated", "pull.*", "user.*", "workspace.*"]),
     // Composer packages read from repositories, and packages that follow
     // their workspace, team or repository (packages/src/lib.rs on_event).
     (
@@ -206,7 +208,9 @@ mod tests {
     use super::*;
 
     /// Types published on the bus that hooks are not offered.
-    const UNOFFERED: [&str; 28] = [
+    const UNOFFERED: [&str; 29] = [
+        // The one-off move of issues into work items.
+        "work.migrated",
         "pull.mergecheck",
         "pull.mergeability",
         "deployment.review_requested",
@@ -281,8 +285,8 @@ mod tests {
         assert!(!routed("SUBSCRIBER_ACTIONS", "check_run.completed"));
         assert!(routed("SUBSCRIBER_RUNNER", "comment.created"));
         assert!(!routed("SUBSCRIBER_RUNNER", "status.created"));
-        assert!(routed("SUBSCRIBER_INTEGRATIONS", "issue.closed"));
-        assert!(routed("SUBSCRIBER_INTEGRATIONS", "issue.assigned"));
+        assert!(routed("SUBSCRIBER_INTEGRATIONS", "work_item.closed"));
+        assert!(routed("SUBSCRIBER_INTEGRATIONS", "work_item.assigned"));
         assert!(routed("SUBSCRIBER_INTEGRATIONS", "comment.created"));
         assert!(!routed("SUBSCRIBER_INTEGRATIONS", "git.push"));
         assert!(!routed("SUBSCRIBER_INTEGRATIONS", "check_run.completed"));

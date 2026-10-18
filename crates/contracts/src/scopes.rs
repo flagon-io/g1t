@@ -913,6 +913,18 @@ impl TokenAccess {
     pub fn covers_repo(&self, repo_id: &str, namespace: &str) -> bool {
         self.reach.as_ref().is_none_or(|reach| reach.covers(repo_id, namespace))
     }
+
+    /// Whether it reaches the whole workspace `namespace`, as its work
+    /// items, labels and milestones need: every token but a workflow job's
+    /// (its one repository) and a narrowed one made for another workspace
+    /// or for some of this one's repositories.
+    pub fn covers_workspace(&self, namespace: &str) -> bool {
+        self.repo.is_none()
+            && self
+                .reach
+                .as_ref()
+                .is_none_or(|reach| reach.owned_by(namespace) && reach.repositories == RepositorySelection::All)
+    }
 }
 
 /// Every operation of the API and MCP server, with the scope it needs. An

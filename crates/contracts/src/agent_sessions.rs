@@ -1,12 +1,12 @@
-//! Starting work on an issue in a session of its own, on the person's own
+//! Starting work on a work item in a session of its own, on the person's own
 //! Claude (the integrations service, `src/agent_sessions.rs`).
 //!
-//! g1t runs no model. Work on an issue happens in someone's own harness:
+//! g1t runs no model. Work on a work item happens in someone's own harness:
 //! their Claude Code with the g1t plugin, or a Claude Managed Agents
 //! session that g1t starts with the workspace's own Anthropic key. Either
 //! way the session is recorded on g1t (`work::Session`) and tied to the
-//! issue and the pull requests it makes. `start_agent_session` is what
-//! Ask, chat and the issue page call to hand work off.
+//! work item and the pull requests it makes. `start_agent_session` is what
+//! Ask, chat and the work item page call to hand work off.
 
 use serde::{Deserialize, Serialize};
 
@@ -18,12 +18,12 @@ use crate::{User, Viewer};
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentMode {
-    /// Work out how, and say so on the issue; change nothing.
+    /// Work out how, and say so on the work item; change nothing.
     Plan,
     /// Make the change and open a pull request.
     #[default]
     Implement,
-    /// Review the issue's pull request.
+    /// Review the work item's pull request.
     Review,
 }
 
@@ -49,8 +49,8 @@ impl AgentMode {
 /// The most characters of an instruction kept.
 pub const MAX_INSTRUCTION_CHARS: usize = 4_000;
 
-/// Who asked g1t in an issue or a pull request, rather than from a
-/// button: by assigning it the issue, or by mentioning `@g1t` in a comment.
+/// Who asked g1t in a work item or a pull request, rather than from a
+/// button: by assigning it the work item, or by mentioning `@g1t` in a comment.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Asked {
     /// Their username.
@@ -58,11 +58,11 @@ pub struct Asked {
     /// What their comment said; none for an assignment.
     #[serde(default)]
     pub comment: Option<String>,
-    /// Where they asked: the comment, or the issue.
+    /// Where they asked: the comment, or the work item.
     pub url: String,
 }
 
-/// `start_agent_session`: work on `issue` (or a new issue from `title` and
+/// `start_agent_session`: work on `item` (or a new work item from `title` and
 /// `body`), or carry on with pull request `pull`, as `actor`. Returns
 /// `Outcome<AgentSessionStarted>`.
 #[derive(Debug, Serialize, Deserialize)]
@@ -70,19 +70,19 @@ pub struct StartAgentSessionArgs {
     pub actor: User,
     pub repo: RepoPath,
     #[serde(default)]
-    pub issue: Option<u32>,
-    /// A pull request to carry on with, on its branch: in place of `issue`.
+    pub item: Option<u32>,
+    /// A pull request to carry on with, on its branch: in place of `item`.
     #[serde(default)]
     pub pull: Option<u32>,
     /// Set when g1t was asked in the thread (integrations' summon.rs).
     #[serde(default)]
     pub asked: Option<Asked>,
-    /// Without `issue`: a new issue's title, opened first.
+    /// Without `item`: a new work item's title, opened first.
     #[serde(default)]
     pub title: Option<String>,
     #[serde(default)]
     pub body: Option<String>,
-    /// What to do beyond what the issue says.
+    /// What to do beyond what the work item says.
     #[serde(default)]
     pub instruction: Option<String>,
     #[serde(default)]
@@ -98,8 +98,9 @@ pub struct StartAgentSessionArgs {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentSessionStarted {
-    /// The issue it works on: for a pull request with none, its number.
-    pub issue: u32,
+    /// The work item it works on, by number in the workspace: for a pull
+    /// request with none, the pull request's number.
+    pub item: u32,
     /// The pull request it carries on with, when it was started on one.
     #[serde(default)]
     pub pull: Option<u32>,

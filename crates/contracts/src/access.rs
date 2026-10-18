@@ -54,9 +54,9 @@ use crate::{Membership, PrincipalKind, Role, User};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RepoRole {
-    /// Read and clone; open issues and pull requests, and comment.
+    /// Read and clone; open work items and pull requests, and comment.
     Read,
-    /// Read, and manage issues and pull requests: label, assign, close.
+    /// Read, and manage work items and pull requests: label, assign, close.
     Triage,
     /// Triage, and push, merge, and put agents to work.
     Write,
@@ -165,12 +165,12 @@ impl BasePermission {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Capability {
-    /// See the code, issues and pull requests; clone and fetch.
+    /// See the code, work items and pull requests; clone and fetch.
     Read,
-    /// Open issues and pull requests, and comment on them.
+    /// Open work items and pull requests, and comment on them.
     Participate,
-    /// Apply labels and milestones; assign, close and reopen issues and
-    /// pull requests; ask for reviews.
+    /// Apply labels and milestones; assign, close and reopen work items
+    /// and pull requests; ask for reviews.
     Triage,
     /// Push to branches that are not protected, and edit files on the web.
     Push,
@@ -245,9 +245,9 @@ pub struct CapabilityRow {
 /// follows GitHub's table of repository roles; where g1t differs, the
 /// access guide says so.
 pub const CAPABILITIES: [CapabilityRow; 16] = [
-    CapabilityRow { capability: Capability::Read, role: RepoRole::Read, about: "See code, issues and pull requests; clone and fetch" },
-    CapabilityRow { capability: Capability::Participate, role: RepoRole::Read, about: "Open issues and pull requests, and comment" },
-    CapabilityRow { capability: Capability::Triage, role: RepoRole::Triage, about: "Apply labels and milestones; assign, close and reopen issues and pull requests" },
+    CapabilityRow { capability: Capability::Read, role: RepoRole::Read, about: "See code, work items and pull requests; clone and fetch" },
+    CapabilityRow { capability: Capability::Participate, role: RepoRole::Read, about: "Open work items and pull requests, and comment" },
+    CapabilityRow { capability: Capability::Triage, role: RepoRole::Triage, about: "Apply labels and milestones; assign, close and reopen work items and pull requests" },
     CapabilityRow { capability: Capability::Push, role: RepoRole::Write, about: "Push to branches that are not protected" },
     CapabilityRow { capability: Capability::Merge, role: RepoRole::Write, about: "Merge pull requests and use the merge queue" },
     CapabilityRow { capability: Capability::ManageLabels, role: RepoRole::Write, about: "Create, edit and delete labels and milestones" },
@@ -460,6 +460,63 @@ pub fn check<'a>(
     } else {
         Err(Denied::Forbidden)
     }
+}
+
+// --- Work items -------------------------------------------------------------
+
+/// What a membership of `workspace` gives on its work items: what it gives
+/// on its repositories, and at least reading and taking part, since every
+/// member sees the workspace's work. A narrowed token that does not reach
+/// the whole workspace gives none.
+pub fn workspace_role(user: &User, workspace: &str) -> Option<RepoRole> {
+    if user.token.as_deref().is_some_and(|token| !token.covers_workspace(workspace)) {
+        return None;
+    }
+    let membership = user.workspaces.iter().find(|membership| membership.slug.eq_ignore_ascii_case(workspace))?;
+    membership_role(user, membership).max(Some(RepoRole::Read))
+}
+
+/// The viewer's role on a work item of `workspace` filed from `origin`
+/// (none for one filed in the workspace itself): the better of what their
+/// membership of the workspace gives ([`workspace_role`]) and their role
+/// on the origin ([`permission`]). So members see all of a workspace's
+/// work items, anyone who can read a repository sees those filed there
+/// (on a public one, everyone), and one with no origin is for members
+/// only. `None` means they may not see it at all.
+pub fn item_role(viewer: Option<&User>, workspace: &str, origin: Option<RepoRef<'_>>) -> Option<RepoRole> {
+    let member = viewer.and_then(|user| workspace_role(user, workspace));
+    let repo = origin.and_then(|origin| permission(viewer, origin));
+    member.max(repo)
+}
+
+/// Whether the viewer may do `capability` on a work item, by the same
+/// table as [`can`]: through their membership of the workspace, or their
+/// role on its origin as [`can`] reads it.
+pub fn can_item(viewer: Option<&User>, workspace: &str, origin: Option<RepoRef<'_>>, capability: Capability) -> bool {
+    let member = viewer.and_then(|user| workspace_role(user, workspace));
+    if member.is_some_and(|role| allows(role, capability)) {
+        return true;
+    }
+    origin.is_some_and(|origin| can(viewer, origin, capability))
+}
+
+/// `Ok` when the viewer may do `capability` on a work item; otherwise
+/// whether to answer not found (they may not see it) or forbidden.
+pub fn check_item(viewer: Option<&User>, workspace: &str, origin: Option<RepoRef<'_>>, capability: Capability) -> Result<(), Denied> {
+    if item_role(viewer, workspace, origin).is_none() {
+        return Err(Denied::NotFound);
+    }
+    if can_item(viewer, workspace, origin, capability) {
+        Ok(())
+    } else {
+        Err(Denied::Forbidden)
+    }
+}
+
+/// The sentence a refusal of `capability` on a work item of `workspace`
+/// gives.
+pub fn needs_on_item(capability: Capability, workspace: &str) -> String {
+    format!("You need the {} role or higher in {workspace} to do that.", least_role(capability).label())
 }
 
 /// The sentence a refusal of `capability` gives.
@@ -763,6 +820,84 @@ pub struct OutsideCollaboratorsArgs {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ForgetRepoAccessArgs {
     pub repo_id: String,
+}
+
+#[cfg(test)]
+mod item_tests {
+    use super::*;
+    use crate::scopes::{RepositorySelection, TokenAccess, TokenReach};
+
+    fn person(memberships: &[(&str, Role, Option<BasePermission>)], grants: &[(&str, &str, RepoRole)]) -> User {
+        User {
+            id: "usr_1".into(),
+            username: "ana".into(),
+            verified: true,
+            workspaces: memberships
+                .iter()
+                .map(|(slug, role, base)| Membership { role: *role, base_permission: *base, ..Membership::member(*slug) })
+                .collect(),
+            grants: grants
+                .iter()
+                .map(|(id, workspace, role)| RepoGrant { repo_id: (*id).into(), workspace: (*workspace).into(), role: *role, team: None })
+                .collect(),
+            ..User::default()
+        }
+    }
+
+    fn origin(private: bool) -> Option<RepoRef<'static>> {
+        Some(RepoRef { id: "rep_1", namespace: "acme", private })
+    }
+
+    #[test]
+    fn members_see_every_work_item_of_their_workspace() {
+        let member = person(&[("acme", Role::Member, Some(BasePermission::None))], &[]);
+        assert_eq!(item_role(Some(&member), "acme", None), Some(RepoRole::Read));
+        assert_eq!(item_role(Some(&member), "acme", origin(true)), Some(RepoRole::Read));
+        assert!(can_item(Some(&member), "acme", None, Capability::Participate));
+        assert!(!can_item(Some(&member), "acme", None, Capability::Triage));
+        let writer = person(&[("acme", Role::Member, Some(BasePermission::Write))], &[]);
+        assert!(can_item(Some(&writer), "ACME", None, Capability::ManageLabels));
+        let owner = person(&[("acme", Role::Owner, None)], &[]);
+        assert_eq!(item_role(Some(&owner), "acme", None), Some(RepoRole::Admin));
+        // Another workspace's member sees none of them.
+        let other = person(&[("globex", Role::Owner, None)], &[]);
+        assert_eq!(check_item(Some(&other), "acme", None, Capability::Read), Err(Denied::NotFound));
+    }
+
+    #[test]
+    fn anyone_who_can_read_the_origin_sees_what_was_filed_there() {
+        // A public repository's work items are public, and anyone signed
+        // in may take part in them, as in the repository.
+        assert_eq!(item_role(None, "acme", origin(false)), Some(RepoRole::Read));
+        let outsider = person(&[], &[]);
+        assert!(can_item(Some(&outsider), "acme", origin(false), Capability::Participate));
+        assert_eq!(check_item(Some(&outsider), "acme", origin(false), Capability::Triage), Err(Denied::Forbidden));
+        // A private one's are for those it is shared with.
+        assert_eq!(item_role(Some(&outsider), "acme", origin(true)), None);
+        let collaborator = person(&[], &[("rep_1", "acme", RepoRole::Triage)]);
+        assert_eq!(item_role(Some(&collaborator), "acme", origin(true)), Some(RepoRole::Triage));
+        assert!(can_item(Some(&collaborator), "acme", origin(true), Capability::Triage));
+        // With no origin, only members.
+        assert_eq!(item_role(Some(&collaborator), "acme", None), None);
+    }
+
+    #[test]
+    fn a_narrowed_token_reaches_only_what_it_was_made_for() {
+        let mut member = person(&[("acme", Role::Member, Some(BasePermission::Write))], &[]);
+        member.token = Some(Box::new(TokenAccess {
+            reach: Some(TokenReach { workspace: Some("acme".into()), repositories: RepositorySelection::Selected, repo_ids: vec!["rep_2".into()] }),
+            ..TokenAccess::full()
+        }));
+        // Not the whole workspace: no member's view of it.
+        assert_eq!(item_role(Some(&member), "acme", None), None);
+        // A public origin still reads.
+        assert_eq!(item_role(Some(&member), "acme", origin(false)), Some(RepoRole::Read));
+        member.token = Some(Box::new(TokenAccess {
+            reach: Some(TokenReach { workspace: Some("acme".into()), repositories: RepositorySelection::All, repo_ids: Vec::new() }),
+            ..TokenAccess::full()
+        }));
+        assert_eq!(item_role(Some(&member), "acme", None), Some(RepoRole::Write));
+    }
 }
 
 #[cfg(test)]

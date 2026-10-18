@@ -1,10 +1,13 @@
-//! The work service: issues, pull requests, comments and sessions.
+//! The work service: work items, pull requests, comments and sessions.
 //!
 //! Each `*Args` struct is the argument of the method of the same name,
 //! served at `POST /rpc/<method>`.
 //!
-//! Issues and pull requests share one sequence of numbers per repository,
-//! so `#12` names exactly one of them.
+//! Work items belong to a workspace and link the repositories the work
+//! touches. Work items and new pull requests share one sequence of numbers
+//! per workspace, so `#12` in a workspace names exactly one of them; pull
+//! requests still live in their repositories. See [`refs`] for how `#N`
+//! in text resolves.
 
 use serde::{Deserialize, Serialize};
 
@@ -19,13 +22,18 @@ pub use insights::*;
 mod coordination;
 pub use coordination::*;
 
+mod items;
+pub use items::*;
+
+pub mod refs;
+
 /// The labels a new repository starts with, and that "Add the default
 /// labels" adds to one that is missing some: `(name, color, description)`.
 /// Colors are six hex digits, without `#`.
 pub const DEFAULT_LABELS: [(&str, &str, &str); 11] = [
     ("bug", "d73a4a", "Something isn't working"),
     ("documentation", "0075ca", "Improvements or additions to documentation"),
-    ("duplicate", "cfd3d7", "This issue or pull request already exists"),
+    ("duplicate", "cfd3d7", "This work item or pull request already exists"),
     ("enhancement", "a2eeef", "New feature or request"),
     ("good first issue", "7057ff", "Good for newcomers"),
     ("help wanted", "008672", "Extra attention is needed"),
@@ -63,15 +71,15 @@ pub fn tidy_color(color: &str) -> Option<String> {
     }
 }
 
-/// The most labels one issue or pull request can carry, and the longest
-/// name and description of one.
+/// The most labels one work item or pull request can carry, and the
+/// longest name and description of one.
 pub const MAX_LABELS: usize = 20;
 pub const MAX_LABEL_CHARS: usize = 50;
 pub const MAX_LABEL_DESCRIPTION_CHARS: usize = 100;
 
-/// A label of a repository: a name, a color and what it means. Issues and
-/// pull requests carry labels by name. Names are lowercase and unique in
-/// a repository.
+/// A label of a workspace: a name, a color and what it means. Work items
+/// and the pull requests of its repositories carry labels by name. Names
+/// are lowercase and unique in a workspace.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Label {
@@ -80,15 +88,15 @@ pub struct Label {
     pub color: String,
     #[serde(default)]
     pub description: String,
-    /// How many issues carry it, open or closed.
+    /// How many work items carry it, open or closed.
     #[serde(default)]
-    pub issues: u32,
+    pub items: u32,
     /// How many pull requests carry it, in any state.
     #[serde(default)]
     pub pulls: u32,
 }
 
-/// A milestone, as an issue or pull request names it.
+/// A milestone, as a work item or pull request names it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MilestoneRef {
@@ -96,13 +104,13 @@ pub struct MilestoneRef {
     pub title: String,
 }
 
-/// A milestone: a goal, with an optional due date, that issues and pull
-/// requests are gathered under. Its progress is how many of them are
-/// closed (a merged pull request counts as closed).
+/// A milestone of a workspace: a goal, with an optional due date, that
+/// work items and pull requests are gathered under. Its progress is how
+/// many of them are closed (a merged pull request counts as closed).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Milestone {
-    /// Numbered from 1 in each repository, apart from issues.
+    /// Numbered from 1 in each workspace, apart from work items.
     pub number: u32,
     pub title: String,
     /// Markdown.
@@ -112,12 +120,16 @@ pub struct Milestone {
     #[serde(default)]
     pub due_on: Option<String>,
     pub state: State,
-    /// Open issues and pull requests in it (drafts count as open).
+    /// Open work items and pull requests in it (drafts count as open).
     #[serde(default)]
     pub open_items: u32,
-    /// Closed issues, and merged or closed pull requests, in it.
+    /// Closed work items, and merged or closed pull requests, in it.
     #[serde(default)]
     pub closed_items: u32,
+    /// For a milestone moved from a repository when work items moved to
+    /// the workspace: that repository's id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_repo_id: Option<String>,
     /// RFC 3339.
     pub created_at: String,
     /// RFC 3339.
@@ -152,18 +164,19 @@ pub fn tidy_due_on(value: &str) -> Option<String> {
     ((1..=12).contains(&month) && (1..=31).contains(&date)).then(|| day.to_owned())
 }
 
-/// `list_labels`: a repository's labels, by name, each with how many
-/// issues and pull requests carry it. Takes `ViewArgs`; returns
+/// `list_labels`: a workspace's labels, by name, each with how many work
+/// items and pull requests carry it. Takes [`WorkspaceViewArgs`]; returns
 /// `Outcome<Vec<Label>>`.
 ///
 /// `save_label`: creates a label, or with `name` changes one (renaming it
-/// renames it on every issue and pull request). Needs the Triage role.
-/// Returns `Outcome<Label>`.
+/// renames it on every work item and pull request). Needs the Write role
+/// in the workspace (`Capability::ManageLabels`). Returns `Outcome<Label>`.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveLabelArgs {
     pub actor: User,
-    pub repo: RepoPath,
+    /// The workspace's slug.
+    pub workspace: String,
     /// The label to change; absent to create one.
     #[serde(default)]
     pub name: Option<String>,
@@ -177,26 +190,34 @@ pub struct SaveLabelArgs {
     pub description: Option<String>,
 }
 
-/// `delete_label`: removes a label from the repository and from every
-/// issue and pull request that carries it. Needs the Triage role. Returns
-/// `Outcome<bool>`.
+/// `delete_label`: removes a label from the workspace and from every work
+/// item and pull request that carries it. Needs `ManageLabels` in the
+/// workspace. Returns `Outcome<bool>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DeleteLabelArgs {
     pub actor: User,
-    pub repo: RepoPath,
+    pub workspace: String,
     pub name: String,
 }
 
-/// `add_default_labels`: adds those of [`DEFAULT_LABELS`] the repository
-/// does not have yet. Needs the Triage role. Returns
+/// `add_default_labels`: adds those of [`DEFAULT_LABELS`] the workspace
+/// does not have yet. Needs `ManageLabels` in the workspace. Returns
 /// `Outcome<Vec<Label>>`, every label it has now.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct RepoActorArgs {
+pub struct WorkspaceActorArgs {
     pub actor: User,
-    pub repo: RepoPath,
+    pub workspace: String,
 }
 
-/// How `set_labels` changes an issue's or pull request's labels.
+/// `list_labels`: what a workspace keeps, for whoever may see one of its
+/// work items or is a member.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkspaceViewArgs {
+    pub workspace: String,
+    pub viewer: Viewer,
+}
+
+/// How `set_labels` changes a work item's or pull request's labels.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LabelChange {
@@ -209,52 +230,58 @@ pub enum LabelChange {
     Remove,
 }
 
-/// `set_labels`: changes the labels of an issue or a pull request (they
-/// share numbers). A label the repository does not have yet is created
-/// when the actor has the Triage role; anyone else may only use existing
-/// ones, on what they opened. Returns `Outcome<Vec<String>>`, its labels
-/// now.
+/// `set_labels`: changes the labels of a thread (see [`AddCommentArgs`]):
+/// with `repo`, its pull request `number`; without, the work item `number`
+/// of `workspace`. A label the workspace does not have yet is created when
+/// the actor may manage labels; anyone else may only use existing ones,
+/// and only on what they opened unless they may triage. Returns
+/// `Outcome<Vec<String>>`, its labels now.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SetLabelsArgs {
     pub actor: User,
-    pub repo: RepoPath,
+    #[serde(default)]
+    pub repo: Option<RepoPath>,
+    #[serde(default)]
+    pub workspace: String,
     pub number: u32,
     pub labels: Vec<String>,
     #[serde(default)]
     pub change: LabelChange,
 }
 
-/// `list_milestones`: a repository's milestones, open ones by due date
+/// `list_milestones`: a workspace's milestones, open ones by due date
 /// (soonest first, those without one last), then closed ones most recently
 /// closed first. Returns `Outcome<Vec<Milestone>>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ListMilestonesArgs {
-    pub repo: RepoPath,
+    pub workspace: String,
     pub viewer: Viewer,
     /// Both when absent.
     #[serde(default)]
     pub state: Option<State>,
 }
 
-/// `get_milestone`: one milestone and what is in it. Takes `ViewArgs`,
-/// whose `number` is the milestone's. Returns `Outcome<MilestoneDetail>`.
+/// `get_milestone`: one milestone and what is in it. Takes
+/// [`WorkItemViewArgs`], whose `number` is the milestone's. Returns
+/// `Outcome<MilestoneDetail>`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MilestoneDetail {
     pub milestone: Milestone,
-    /// Newest first, open and closed.
-    pub issues: Vec<Issue>,
+    /// Newest first, open and closed, those the viewer may see.
+    pub items: Vec<WorkItem>,
     /// Newest first, in any state.
     pub pulls: Vec<Pull>,
 }
 
-/// `save_milestone`: creates a milestone, or with `number` changes the
-/// fields given. Needs the Triage role. Returns `Outcome<Milestone>`.
+/// `save_milestone`: creates a milestone of a workspace, or with `number`
+/// changes the fields given. Needs `ManageLabels` in the workspace.
+/// Returns `Outcome<Milestone>`.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveMilestoneArgs {
     pub actor: User,
-    pub repo: RepoPath,
+    pub workspace: String,
     /// The milestone to change; absent to create one.
     #[serde(default)]
     pub number: Option<u32>,
@@ -271,15 +298,15 @@ pub struct SaveMilestoneArgs {
 }
 
 /// `delete_milestone`: removes a milestone; what was in it is in none.
-/// Needs the Triage role. Returns `Outcome<bool>`.
+/// Needs `ManageLabels` in the workspace. Returns `Outcome<bool>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DeleteMilestoneArgs {
     pub actor: User,
-    pub repo: RepoPath,
+    pub workspace: String,
     pub number: u32,
 }
 
-/// `open` or `closed`: the filter on lists of issues and pull requests. An
+/// `open` or `closed`: the filter on lists of work items and pull requests. An
 /// open pull request is a draft or one ready for review; a closed one was
 /// merged or closed without merging.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -287,82 +314,6 @@ pub struct DeleteMilestoneArgs {
 pub enum State {
     Open,
     Closed,
-}
-
-/// Why an issue was closed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum IssueReason {
-    /// The work was done. If a pull request did it, `resolved_by` names it.
-    Completed,
-    NotPlanned,
-}
-
-impl IssueReason {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            IssueReason::Completed => "completed",
-            IssueReason::NotPlanned => "not_planned",
-        }
-    }
-}
-
-/// Something that should change in a repository: a bug, a feature, a
-/// question. Opened by a person, an agent or an integration. Pull requests
-/// are made against it; the one that is merged resolves it.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Issue {
-    pub id: String,
-    pub repo_id: String,
-    /// Shown as `#12`.
-    pub number: u32,
-    pub title: String,
-    /// Markdown. Also what an agent is given to work from.
-    pub body: String,
-    pub labels: Vec<String>,
-    pub state: State,
-    /// Set when closed.
-    pub reason: Option<IssueReason>,
-    /// The number of the pull request whose merge closed this issue.
-    pub resolved_by: Option<u32>,
-    /// The commit pushed to the default branch whose message closed this
-    /// issue (`Closes #12`), when a commit rather than a pull request did.
-    #[serde(default)]
-    pub resolved_commit: Option<String>,
-    /// Who pushed that commit, by username.
-    #[serde(default)]
-    pub resolved_pushed_by: Option<String>,
-    /// Who opened it: a person, an integration, or g1t (`kind` `agent`)
-    /// for one its agent filed while at work.
-    pub author: User,
-    /// For an issue g1t's agent filed: the person it was working for. They
-    /// may manage it as its author could. See [`owner`](Issue::owner).
-    #[serde(default)]
-    pub requested_by: Option<User>,
-    /// RFC 3339.
-    pub created_at: String,
-    /// RFC 3339.
-    pub updated_at: String,
-    /// RFC 3339.
-    pub closed_at: Option<String>,
-    /// Pull requests made against this issue, in any state.
-    pub pull_count: u32,
-    pub comment_count: u32,
-    /// Usernames of the people it is assigned to.
-    #[serde(default)]
-    pub assignees: Vec<String>,
-    /// The numbers of the issues that have to be merged before this one is
-    /// worked on.
-    #[serde(default)]
-    pub blocked_by: Vec<u32>,
-    /// The agent working on it now: the one behind its newest pull request
-    /// that is still in progress in a fork, such as `g1t`.
-    #[serde(default)]
-    pub agent: Option<String>,
-    /// The milestone it is in, if any.
-    #[serde(default)]
-    pub milestone: Option<MilestoneRef>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -409,10 +360,12 @@ pub enum Runtime {
 pub struct Pull {
     pub id: String,
     pub repo_id: String,
-    /// Shown as `#12`.
+    /// Shown as `#12`. New ones are numbered in their workspace's
+    /// sequence, which work items share.
     pub number: u32,
-    /// The number of the issue this is for, if any.
-    pub issue: Option<u32>,
+    /// The work item this is for, if any, by number in the workspace of
+    /// its repository.
+    pub item: Option<u32>,
     pub title: String,
     /// Markdown: what changed and why. Set when marked ready.
     pub body: Option<String>,
@@ -455,18 +408,24 @@ pub struct Pull {
     /// asked: see [`AutoMerge`].
     #[serde(default)]
     pub auto_merge: Option<AutoMerge>,
-    /// The issues it closes when it merges into the default branch: `issue`
-    /// and those its title and description name after a closing keyword
-    /// (`Fixes #12`, or `closes owner/repo#3` naming this repository), in
-    /// the order named. Empty where the repository does not close issues.
+    /// The work items it closes when it merges into the default branch,
+    /// by number in its workspace: `item` and those its title and
+    /// description name after a closing keyword (`Fixes #12`, or
+    /// `closes owner/name#3` for a repository of the same workspace), in
+    /// the order named. Merging marks this repository's link to each as
+    /// landed. Empty where the repository does not close work items.
     #[serde(default)]
     pub closes: Vec<u32>,
+    /// The work items it is part of (`Part of #12`, `Refs #12`): it is
+    /// linked to them, without counting toward closing them.
+    #[serde(default)]
+    pub parts: Vec<u32>,
     /// Its branch was deleted after it merged or closed, and can be
     /// restored at `head_commit` (`restore_head_branch`).
     #[serde(default)]
     pub head_branch_deleted: bool,
-    /// Set on a pull request closed because another one for the same issue
-    /// was merged: that one's number.
+    /// Set on a pull request closed because another one for the same work
+    /// item was merged: that one's number.
     pub superseded_by: Option<u32>,
     /// `failed` when the merge queue took it out because its combined
     /// state failed, until its head moves. Its checks are the statuses
@@ -503,7 +462,7 @@ pub struct Pull {
     /// for a change g1t made.
     pub author: User,
     /// For a change g1t made: the person who asked for it, by assigning
-    /// an issue or handing g1t the work. They answer for it as its author
+    /// a work item or handing g1t the work. They answer for it as its author
     /// would. See [`owner`](Pull::owner).
     #[serde(default)]
     pub requested_by: Option<User>,
@@ -529,26 +488,18 @@ pub struct ChangedFile {
 }
 
 /// Another pull request in progress that changes some of the same files.
-/// Two for the same issue are alternatives; two for different issues are
-/// heading for a conflict.
+/// Two for the same work item are alternatives; two for different ones
+/// are heading for a conflict.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Overlap {
     pub number: u32,
     pub title: String,
-    /// The number of the issue the other pull request is for.
-    pub issue: Option<u32>,
+    /// The number of the work item the other pull request is for.
+    pub item: Option<u32>,
     /// The files both change.
     pub paths: Vec<String>,
 }
 
-impl Issue {
-    /// Who the issue is theirs to manage: the person g1t's agent filed it
-    /// for, or its author. They may edit, close and reopen it without the
-    /// Triage role.
-    pub fn owner(&self) -> &User {
-        self.requested_by.as_ref().unwrap_or(&self.author)
-    }
-}
 
 impl Pull {
     /// Who the pull request is theirs to answer for: whoever asked g1t to
@@ -656,7 +607,7 @@ pub fn g1t_author() -> User {
     }
 }
 
-/// Who is recorded as opening an issue or a pull request that `actor`
+/// Who is recorded as opening a work item or a pull request that `actor`
 /// opens, and who asked for it: `(author, requested_by)`.
 ///
 /// - A session g1t started for someone, which acts as that person with
@@ -718,7 +669,7 @@ impl CheckStatus {
 }
 
 /// How one command went. Recorded by earlier runs of commands written on
-/// issues, which g1t no longer runs; kept so their history still reads.
+/// work items, which g1t no longer runs; kept so their history still reads.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CheckResult {
@@ -736,7 +687,7 @@ pub struct CheckResult {
 }
 
 /// A record against a pull request's head: the merge queue taking it out,
-/// with why, or an earlier run of commands written on its issue.
+/// with why, or an earlier run of commands written on its work item.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CheckRun {
@@ -770,7 +721,7 @@ impl Verdict {
     }
 }
 
-/// An emoji reaction to an issue, a pull request or a comment: the same
+/// An emoji reaction to a work item, a pull request or a comment: the same
 /// eight as everywhere else people react to code.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum ReactionContent {
@@ -852,15 +803,19 @@ pub fn group_reactions<'a>(pairs: impl IntoIterator<Item = (ReactionContent, &'a
     groups
 }
 
-/// `react`: `actor` reacts with `content` to comment `comment_id` on issue
-/// or pull request `number`, or to its description when `comment_id` is
-/// unset; with `remove`, takes that reaction back. Anyone who can read the
-/// repository may. Returns `Outcome<Vec<ReactionGroup>>`: what it has now.
+/// `react`: `actor` reacts with `content` to comment `comment_id` on a
+/// thread (see [`AddCommentArgs`]), or to its description when
+/// `comment_id` is unset; with `remove`, takes that reaction back. Anyone
+/// who can read it may. Returns `Outcome<Vec<ReactionGroup>>`: what it has
+/// now.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReactArgs {
     pub actor: User,
-    pub repo: RepoPath,
+    #[serde(default)]
+    pub repo: Option<RepoPath>,
+    #[serde(default)]
+    pub workspace: String,
     pub number: u32,
     #[serde(default)]
     pub comment_id: Option<String>,
@@ -880,7 +835,7 @@ pub enum CommentKind {
     Event,
 }
 
-/// A comment on an issue or a pull request. On a pull request it can sit
+/// A comment on a work item or a pull request. On a pull request it can sit
 /// on one line of the change, and it can carry a reviewer's verdict.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1023,28 +978,18 @@ pub struct NewSessionEntry {
     pub commit: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct IssueDetail {
-    pub issue: Issue,
-    /// Every pull request made against it, oldest first.
-    pub pulls: Vec<Pull>,
-    pub comments: Vec<Comment>,
-    /// How people (and g1t) reacted to its description.
-    #[serde(default)]
-    pub reactions: Vec<ReactionGroup>,
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PullDetail {
     pub pull: Pull,
-    /// The issue it is for, if any.
-    pub issue: Option<Issue>,
+    /// The work item it is for, if any.
+    pub item: Option<WorkItem>,
     pub comments: Vec<Comment>,
     /// How people (and g1t) reacted to its description.
     #[serde(default)]
     pub reactions: Vec<ReactionGroup>,
     /// The latest record against its head: the merge queue taking it out,
-    /// or (from before checks were workflows) a run of its issue's commands.
+    /// or (from before checks were workflows) a run of its work item's commands.
     pub checks: Option<CheckRun>,
     /// Other pull requests in progress that change the same files.
     #[serde(default)]
@@ -1229,10 +1174,10 @@ pub struct SeenChecksArgs {
     pub viewer: Viewer,
 }
 
-/// The heading an issue's plain-words description of done goes under.
+/// The heading a work item's plain-words description of done goes under.
 pub const DEFINITION_OF_DONE: &str = "## Definition of done";
 
-/// An issue's body with `items` added as a bulleted "Definition of done"
+/// A work item's body with `items` added as a bulleted "Definition of done"
 /// section, for the agent and reviewers to read. Nothing is added when
 /// `items` is empty, or when the body already has the section, so folding
 /// the same items twice changes nothing.
@@ -1385,7 +1330,7 @@ pub struct SetCommitStatusArgs {
     pub source: Option<String>,
 }
 
-/// A step on the way from an assigned issue to a pull request that is ready
+/// A step on the way from an assigned work item to a pull request that is ready
 /// to merge. g1t takes each one without being asked.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1475,13 +1420,14 @@ pub struct RepoSettings {
     /// (its CODEOWNERS file) have approved, as many as each section asks.
     /// Only people count, and `g1t` only where the file names `@g1t`.
     pub require_code_owner_review: bool,
-    /// Whether issues can be opened in it: null for the default, which is
-    /// on for a repository and off for a fork of one. Existing issues stay
-    /// readable either way.
-    pub has_issues: Option<bool>,
-    /// Whether issues can be opened in it now: `has_issues`, or its
-    /// default. Filled in by the service; `update_settings` ignores it.
-    pub issues_enabled: bool,
+    /// Whether work items can be filed from it (with it as their origin):
+    /// null for the default, which is on for a repository and off for a
+    /// fork of one. Work items filed from it before stay readable either
+    /// way, and it can always be linked as a target.
+    pub has_work_items: Option<bool>,
+    /// Whether work items can be filed from it now: `has_work_items`, or
+    /// its default. Filled in by the service; `update_settings` ignores it.
+    pub work_items_enabled: bool,
     /// Which merge methods a pull request may use (at least one). Rules
     /// can narrow them for a branch (`allowed_merge_methods`).
     #[serde(default = "yes")]
@@ -1502,7 +1448,7 @@ pub struct RepoSettings {
     pub squash_commit_message: CommitMessageDefault,
     /// For `Custom`: a template whose `{title}`, `{number}`, `{body}`,
     /// `{branch}`, `{head_repo}`, `{base}`, `{author}`, `{commits}`,
-    /// `{issues}` and `{co_authors}` are filled in.
+    /// `{items}` and `{co_authors}` are filled in.
     #[serde(default)]
     pub merge_commit_template: Option<String>,
     #[serde(default)]
@@ -1526,11 +1472,12 @@ pub struct RepoSettings {
     /// comments stay readable either way.
     #[serde(default = "yes")]
     pub allow_commit_comments: bool,
-    /// Close the issues a pull request names (its issue, and `Fixes #12`
-    /// in its title or description) when it merges into the default
-    /// branch.
+    /// Mark the work items a pull request names (its item, and `Fixes #12`
+    /// in its title or description) landed in this repository when it
+    /// merges into the default branch, closing those with nothing else
+    /// left to land; and the same for commits pushed there.
     #[serde(default = "yes")]
-    pub auto_close_issues: bool,
+    pub auto_close_items: bool,
     /// Username of the member who last changed the settings, if anyone has.
     pub updated_by: Option<String>,
     /// RFC 3339.
@@ -1548,8 +1495,8 @@ impl Default for RepoSettings {
             allow_ignoring_checks: true,
             merge_queue: false,
             require_code_owner_review: false,
-            has_issues: None,
-            issues_enabled: true,
+            has_work_items: None,
+            work_items_enabled: true,
             allow_merge_commit: true,
             allow_squash_merge: true,
             allow_rebase_merge: true,
@@ -1564,7 +1511,7 @@ impl Default for RepoSettings {
             delete_branch_on_merge: false,
             require_web_commit_sign_off: false,
             allow_commit_comments: true,
-            auto_close_issues: true,
+            auto_close_items: true,
             updated_by: None,
             updated_at: None,
         }
@@ -1572,10 +1519,10 @@ impl Default for RepoSettings {
 }
 
 impl RepoSettings {
-    /// Whether issues can be opened: as `has_issues` says, else on unless
-    /// the repository is a fork (`is_fork`).
-    pub fn issues_on(&self, is_fork: bool) -> bool {
-        self.has_issues.unwrap_or(!is_fork)
+    /// Whether work items can be filed from it: as `has_work_items` says,
+    /// else on unless the repository is a fork (`is_fork`).
+    pub fn work_items_on(&self, is_fork: bool) -> bool {
+        self.has_work_items.unwrap_or(!is_fork)
     }
 
     /// Whether the repository lets pull requests merge by `method`.
@@ -1638,9 +1585,9 @@ pub struct CommitCommentsArgs {
     pub page: Option<u32>,
 }
 
-/// `closed_by_commit`: the issues of a repository that a commit pushed to
-/// its default branch closed by naming them in its message, for anyone who
-/// may read the repository. Returns `Outcome<Vec<ClosedIssue>>`.
+/// `closed_by_commit`: the work items a commit pushed to a repository's
+/// default branch resolved by naming them in its message, for anyone who
+/// may read the repository. Returns `Outcome<Vec<ClosedItem>>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClosedByCommitArgs {
     pub viewer: Viewer,
@@ -1648,11 +1595,16 @@ pub struct ClosedByCommitArgs {
     pub commit: String,
 }
 
-/// An issue a commit closed.
+/// A work item a commit resolved: it landed in the commit's repository,
+/// and closed once nothing else was left to land.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ClosedIssue {
+pub struct ClosedItem {
+    pub workspace: String,
     pub number: u32,
     pub title: String,
+    /// Whether the work item is closed now.
+    #[serde(default)]
+    pub closed: bool,
 }
 
 /// `add_commit_comment`: needs Read (refused where the repository turned
@@ -1719,40 +1671,6 @@ pub struct ManagedPullsArgs {
     pub repo_id: Option<String>,
 }
 
-/// `open_issue`. Returns `Outcome<Issue>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct OpenIssueArgs {
-    pub actor: User,
-    pub repo: RepoPath,
-    pub title: String,
-    #[serde(default)]
-    pub body: String,
-    #[serde(default)]
-    pub labels: Vec<String>,
-    /// Deprecated: commands, added to the body under "Definition of done".
-    /// Checks are the workflows the branch's protection requires.
-    #[serde(default)]
-    pub checks: Vec<String>,
-    /// The number of the milestone to put it in. Needs the Triage role.
-    #[serde(default)]
-    pub milestone: Option<u32>,
-}
-
-/// `list_issues`, newest first. Returns `Outcome<Vec<Issue>>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ListIssuesArgs {
-    pub repo: RepoPath,
-    pub viewer: Viewer,
-    #[serde(default)]
-    pub state: Option<State>,
-    /// Only issues carrying this label.
-    #[serde(default)]
-    pub label: Option<String>,
-    /// Only issues in the milestone of this number.
-    #[serde(default)]
-    pub milestone: Option<u32>,
-}
-
 /// `list_pulls`, newest first. Returns `Outcome<Vec<Pull>>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ListPullsArgs {
@@ -1799,10 +1717,9 @@ pub struct RepoPulls {
     pub closed: Vec<Pull>,
 }
 
-/// `get_issue` (`Outcome<IssueDetail>`), `get_pull` (`Outcome<PullDetail>`),
-/// `read_session` (`Outcome<Vec<SessionEntry>>`), `list_labels`
-/// (`Outcome<Vec<String>>`) and `counts` (`Outcome<Counts>`). The last two
-/// ignore `number`.
+/// `get_pull` (`Outcome<PullDetail>`), `read_session`
+/// (`Outcome<Vec<SessionEntry>>`) and `counts` (`Outcome<Counts>`, which
+/// ignores `number`).
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ViewArgs {
@@ -1815,73 +1732,27 @@ pub struct ViewArgs {
     pub after_seq: u32,
 }
 
-/// How many issues and pull requests are open on a repository.
+/// How many work items linked to a repository, and how many of its pull
+/// requests, are open.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Counts {
-    pub issues: u32,
+    pub items: u32,
     pub pulls: u32,
 }
 
-/// `update_issue`: changes whichever fields are given. The author or a
-/// member of the workspace may. Returns `Outcome<Issue>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UpdateIssueArgs {
-    pub actor: User,
-    pub repo: RepoPath,
-    pub number: u32,
-    #[serde(default)]
-    pub title: Option<String>,
-    #[serde(default)]
-    pub body: Option<String>,
-    #[serde(default)]
-    pub labels: Option<Vec<String>>,
-    /// Usernames of the people it is assigned to; replaces the whole set.
-    #[serde(default)]
-    pub assignees: Option<Vec<String>>,
-    /// The number of the milestone to put it in; 0 takes it out of its
-    /// milestone. Needs the Triage role.
-    #[serde(default)]
-    pub milestone: Option<u32>,
-    /// The numbers of the issues of the same repository that have to land
-    /// first; replaces the whole set. Refused when one is not an issue, is
-    /// the issue itself, or would make a cycle.
-    #[serde(default)]
-    pub blocked_by: Option<Vec<u32>>,
-}
-
-/// `close_issue` and `reopen_issue`. Each returns `Outcome<Issue>`.
-/// `close_issue` takes [`CloseIssueArgs`], which these are a part of.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct IssueActionArgs {
-    pub actor: User,
-    pub repo: RepoPath,
-    pub number: u32,
-    /// For `close_issue`; `completed` if left out.
-    #[serde(default)]
-    pub reason: Option<IssueReason>,
-}
-
-/// `close_issue`: an [`IssueActionArgs`], and the commit that did it, if
-/// one did. With `commit`, a commit on the default branch whose message
-/// names the issue after a closing keyword (`Fixes #12`), it closes as the
-/// push of that commit would have: completed, in that commit, by the
-/// caller; a commit that is not on the default branch, or does not name
-/// the issue, is refused. Returns `Outcome<Issue>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CloseIssueArgs {
-    #[serde(flatten)]
-    pub issue: IssueActionArgs,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub commit: Option<String>,
-}
-
-/// `add_comment`, on an issue or a pull request. On a pull request it may
-/// name a line of the change, and may carry a verdict; nobody can give a
-/// verdict on their own pull request. Returns `Outcome<Comment>`.
+/// `add_comment`, on a thread: a pull request or a work item. Every method
+/// that takes a thread reads it the same way: with `repo`, the pull
+/// request `number` of that repository; without, the work item `number`
+/// of `workspace`. On a pull request a comment may name a line of the
+/// change, and may carry a verdict; nobody can give a verdict on their own
+/// pull request. Returns `Outcome<Comment>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AddCommentArgs {
     pub actor: User,
-    pub repo: RepoPath,
+    #[serde(default)]
+    pub repo: Option<RepoPath>,
+    #[serde(default)]
+    pub workspace: String,
     pub number: u32,
     /// May be empty when approving.
     #[serde(default)]
@@ -1894,9 +1765,10 @@ pub struct AddCommentArgs {
     pub verdict: Option<Verdict>,
 }
 
-/// `edit_comment` and `delete_comment`: change the text of a comment on an
-/// issue or a pull request, or delete it. Its author may, and so may anyone
-/// with the Maintain role or higher ([`may_change_comment`]). Notes of what
+/// `edit_comment` and `delete_comment`: change the text of a comment, or
+/// delete it: one on a pull request of `repo`, or without `repo`, one on a
+/// work item of `workspace`. Its author may, and so may anyone with the
+/// Maintain role or higher ([`may_change_comment`]). Notes of what
 /// happened (`CommentKind::Event`) cannot be changed, and a review that
 /// gave a verdict cannot be deleted, only edited. `edit_comment` returns
 /// `Outcome<Comment>`; `delete_comment` returns `Outcome<()>`.
@@ -1904,7 +1776,10 @@ pub struct AddCommentArgs {
 #[serde(rename_all = "camelCase")]
 pub struct CommentActionArgs {
     pub actor: User,
-    pub repo: RepoPath,
+    #[serde(default)]
+    pub repo: Option<RepoPath>,
+    #[serde(default)]
+    pub workspace: String,
     pub comment_id: String,
     /// For `edit_comment`: the new text, in Markdown.
     #[serde(default)]
@@ -1943,15 +1818,17 @@ pub fn may_change_comment(
 /// `open_pull`. Without `branch`, forks the repo and returns a draft pull
 /// request to push to. With it, opens a pull request, ready for review,
 /// for a branch already pushed to the repo, or to `head_repo`, a fork of
-/// it. Returns `Outcome<Pull>`.
+/// it. Its number is the next in its workspace's sequence. Opening one for
+/// a work item links the repository to the item (`touched`) unless it is
+/// linked already. Returns `Outcome<Pull>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OpenPullArgs {
     pub actor: User,
     pub repo: RepoPath,
-    /// The issue this is for.
+    /// The work item this is for, by number in the repository's workspace.
     #[serde(default)]
-    pub issue: Option<u32>,
-    /// Defaults to the issue's title; required without an issue.
+    pub item: Option<u32>,
+    /// Defaults to the work item's title; required without one.
     #[serde(default)]
     pub title: String,
     /// What changed and why. Usually set later, when a draft is marked ready.
@@ -2106,10 +1983,11 @@ pub struct PullActionArgs {
     /// For `ready_pull`: what changed and why.
     #[serde(default)]
     pub summary: String,
-    /// For `merge_pull`: leave the issue open and the other pull requests
-    /// for it untouched, because this one is only part of the work.
+    /// For `merge_pull`: leave the work item open and the other pull
+    /// requests for it untouched, because this one is only part of the
+    /// work: it is recorded as part of it, as `Part of #N` would be.
     #[serde(default)]
-    pub keep_issue_open: bool,
+    pub keep_item_open: bool,
     /// For `merge_pull`: merge although required checks have not passed,
     /// where the repository lets members bypass them.
     #[serde(default)]
@@ -2213,16 +2091,14 @@ pub struct ReportChecksArgs {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ActivePull {
     pub pull: Pull,
-    pub issue: Option<Issue>,
+    pub item: Option<WorkItem>,
     /// Where it stands, for one g1t is seeing through.
     #[serde(default)]
     pub lifecycle: Option<Lifecycle>,
 }
 
 /// `list_active_pulls`: drafts and open pull requests the viewer started,
-/// most recently active first. Returns `Vec<ActivePull>`. Also
-/// `list_assigned_issues`: open issues assigned to the viewer, most
-/// recently changed first. Returns `Vec<Issue>`.
+/// most recently active first. Returns `Vec<ActivePull>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ViewerArgs {
     pub viewer: Viewer,
@@ -2511,11 +2387,11 @@ pub struct LocatedPull {
 
 // --- A person's work -------------------------------------------------------
 
-/// Issues or pull requests, on a person's profile.
+/// Work items or pull requests, on a person's profile.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AuthoredKind {
-    Issue,
+    Item,
     Pull,
 }
 
@@ -2545,9 +2421,9 @@ pub enum AuthoredSort {
 /// The most items one `by_author` page holds.
 pub const AUTHORED_PAGE: u32 = 25;
 
-/// `by_author`: the issues and pull requests a person opened, only on
-/// repositories `viewer` may read, so a private title never reaches anyone
-/// who could not open it. Returns `Outcome<Authored>`; not found for an
+/// `by_author`: the work items and pull requests a person opened, only
+/// those `viewer` may read, so a private title never reaches anyone who
+/// could not open it. Returns `Outcome<Authored>`; not found for an
 /// account that does not exist.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ByAuthorArgs {
@@ -2557,7 +2433,8 @@ pub struct ByAuthorArgs {
     pub kind: Option<AuthoredKind>,
     #[serde(default)]
     pub state: Option<AuthoredState>,
-    /// Only work on this repository: `namespace/name`.
+    /// Only work on this repository (`namespace/name`): its pull requests,
+    /// and the work items filed from it.
     #[serde(default)]
     pub repo: Option<String>,
     #[serde(default)]
@@ -2570,20 +2447,24 @@ pub struct ByAuthorArgs {
     pub limit: Option<u32>,
 }
 
-/// One issue or pull request a person opened.
+/// One work item or pull request a person opened.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthoredItem {
     pub kind: AuthoredKind,
-    pub repo: RepoPath,
+    /// The workspace it is numbered in.
+    pub workspace: String,
+    /// A pull request's repository, or the repository a work item was
+    /// filed from, if it was.
+    pub repo: Option<RepoPath>,
     pub number: u32,
     pub title: String,
     /// Open or closed; a merged pull request is closed.
     pub state: State,
     /// A pull request's own status.
     pub status: Option<PullStatus>,
-    /// Why an issue was closed.
-    pub reason: Option<IssueReason>,
+    /// Why a work item was closed.
+    pub reason: Option<CloseReason>,
     pub draft: bool,
     pub merged: bool,
     /// RFC 3339.
@@ -2601,8 +2482,8 @@ pub struct AuthoredCounts {
     pub pulls_merged: u32,
     pub pulls_open: u32,
     pub pulls: u32,
-    pub issues: u32,
-    pub issues_open: u32,
+    pub items: u32,
+    pub items_open: u32,
 }
 
 /// A repository a person has opened work on, with how much.
@@ -2629,7 +2510,7 @@ pub struct Authored {
 pub const CONTRIBUTION_DAYS: u64 = 365;
 
 /// `contributions`: what a person did each day of the last year (commits
-/// they pushed to a default branch, issues and pull requests opened,
+/// they pushed to a default branch, work items and pull requests opened,
 /// reviews given), only on repositories `viewer` may read, for the calendar on their profile. Returns
 /// `Outcome<Contributions>`; not found for an account that does not exist.
 #[derive(Debug, Serialize, Deserialize)]
@@ -2714,7 +2595,7 @@ mod required_tests {
     #[test]
     fn a_pull_request_merges_into_its_base_or_the_default_branch() {
         let mut pull: Pull = serde_json::from_value(serde_json::json!({
-            "id": "pr_1", "repoId": "rep_1", "number": 14, "issue": null, "title": "Fix it", "body": null,
+            "id": "pr_1", "repoId": "rep_1", "number": 14, "item": null, "title": "Fix it", "body": null,
             "agent": "agent", "runtime": "external", "status": "open", "fork": null, "forkRepoId": null,
             "branch": "fix", "headCommit": null, "mergeBase": null, "mergedBy": null, "mergedAt": null,
             "supersededBy": null, "checkStatus": null, "author": { "id": "x", "username": "x" },
@@ -2785,7 +2666,7 @@ mod authorship_tests {
 
     fn pull(author: User, requested_by: Option<User>) -> Pull {
         let mut pull: Pull = serde_json::from_value(serde_json::json!({
-            "id": "pr_1", "repoId": "rep_1", "number": 14, "issue": 12, "title": "Fix it", "body": null,
+            "id": "pr_1", "repoId": "rep_1", "number": 14, "item": 12, "title": "Fix it", "body": null,
             "agent": "g1t", "runtime": "hosted", "status": "open", "fork": null, "forkRepoId": null,
             "branch": null, "headCommit": null, "mergeBase": null, "mergedBy": null, "mergedAt": null,
             "supersededBy": null, "checkStatus": null,

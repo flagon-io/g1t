@@ -3,7 +3,7 @@
 //! The events service keeps it, beside the event log: as events arrive it
 //! works out who should hear of each (see `services/events/src/inbox.rs`)
 //! and why. Each person has one item per **thread**, the thing it is about
-//! (an issue, a pull request, a workflow on a branch, a deployment): new
+//! (a work item, a pull request, a workflow on a branch, a deployment): new
 //! activity on a thread brings its item back to the top, unread, and adds
 //! a line to its short history, rather than adding another item. Items are
 //! kept by username, which never changes.
@@ -35,7 +35,7 @@
 //!   `inbox_update_settings` takes `UpdateInboxSettingsArgs` and returns
 //!   `InboxSettings`.
 //!
-//! What an event is about (the issue or pull request, its people, the
+//! What an event is about (the work item or pull request, its people, the
 //! comment) comes from the work service's `inbox_subject`, which takes
 //! `InboxSubjectArgs` and returns `Option<InboxSubject>`.
 
@@ -187,7 +187,8 @@ impl Reason {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SubjectKind {
-    Issue,
+    /// A work item.
+    Item,
     Pull,
     /// A workflow's runs on one branch.
     Run,
@@ -196,11 +197,11 @@ pub enum SubjectKind {
 }
 
 impl SubjectKind {
-    pub const ALL: [SubjectKind; 4] = [SubjectKind::Issue, SubjectKind::Pull, SubjectKind::Run, SubjectKind::Deploy];
+    pub const ALL: [SubjectKind; 4] = [SubjectKind::Item, SubjectKind::Pull, SubjectKind::Run, SubjectKind::Deploy];
 
     pub fn as_str(self) -> &'static str {
         match self {
-            SubjectKind::Issue => "issue",
+            SubjectKind::Item => "item",
             SubjectKind::Pull => "pull",
             SubjectKind::Run => "run",
             SubjectKind::Deploy => "deploy",
@@ -235,7 +236,7 @@ pub struct InboxItem {
     /// The workspace it happened in.
     pub workspace: Option<String>,
     pub subject: Option<SubjectKind>,
-    /// The issue or pull request's number.
+    /// The work item's or pull request's number.
     pub number: Option<u32>,
     /// Where it is on g1t.sh: a path such as `/acme/rocket/pull/12`.
     pub url: String,
@@ -432,12 +433,12 @@ pub struct InboxThread {
     pub item: InboxItem,
     /// Newest first, at most [`MAX_ACTIVITY`].
     pub activity: Vec<InboxActivity>,
-    /// For an issue or pull request; absent for a run or a deployment,
+    /// For a work item or pull request; absent for a run or a deployment,
     /// which nobody subscribes to.
     pub subscription: Option<ThreadSubscription>,
 }
 
-/// A person's subscription to an issue or pull request.
+/// A person's subscription to a work item or pull request.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadSubscription {
@@ -450,14 +451,15 @@ pub struct ThreadSubscription {
     /// (`comment`), were mentioned (`mention`) or subscribed by hand
     /// (`manual`). Absent when they are not.
     pub reason: Option<Reason>,
-    /// `owner/name`, and the issue or pull request's number.
+    /// `owner/name` (a work item's workspace, for one), and the work
+    /// item's or pull request's number.
     pub repo: Option<String>,
     pub number: Option<u32>,
     /// RFC 3339: when they last chose, or null if they never did.
     pub updated_at: Option<String>,
 }
 
-/// Which issue or pull request: by a thread's id, or by its repository and
+/// Which work item or pull request: by a thread's id, or by its repository and
 /// number.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -493,7 +495,7 @@ pub enum WatchLevel {
     /// Only what they take part in or are mentioned in: the default.
     #[default]
     Participating,
-    /// Everything: every issue and pull request opened, commented on,
+    /// Everything: every work item and pull request opened, commented on,
     /// closed or merged, and every deployment.
     All,
     /// Nothing at all, not even a mention.
@@ -657,14 +659,19 @@ pub struct UpdateInboxSettingsArgs {
 }
 
 /// `inbox_subject` on the work service: what an event names, for the
-/// inbox. A service-to-service read: it checks nobody's access, and what
-/// it returns is only ever shown to the people it names, or to those who
-/// can read the repository.
+/// inbox: a work item by `item_id` (from a `work_item.*` or comment
+/// event's data), else the pull request `number` of `repo_id`. A
+/// service-to-service read: it checks nobody's access, and what it returns
+/// is only ever shown to the people it names, or to those who can read it.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InboxSubjectArgs {
-    pub repo_id: String,
+    #[serde(default)]
+    pub repo_id: Option<String>,
+    #[serde(default)]
     pub number: u32,
+    #[serde(default)]
+    pub item_id: Option<String>,
     /// The comment the event is about, if any.
     #[serde(default)]
     pub comment_id: Option<String>,
@@ -673,7 +680,7 @@ pub struct InboxSubjectArgs {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InboxSubject {
-    /// `issue` or `pull`.
+    /// `item` or `pull`.
     pub kind: Option<SubjectKind>,
     pub title: String,
     pub author: Principal,
@@ -687,15 +694,15 @@ pub struct InboxSubject {
     #[serde(default)]
     pub reviewers: Vec<String>,
     /// The people its description mentions by name, outside code and
-    /// quotes, for `issue.opened` and `pull.opened`. Never `g1t`.
+    /// quotes, for `work_item.opened` and `pull.opened`. Never `g1t`.
     #[serde(default)]
     pub mentions: Vec<String>,
     /// The teams its description mentions, with the people each tells.
     #[serde(default)]
     pub team_mentions: Vec<TeamMentioned>,
-    /// For a pull request: the issue it is for, with that issue's people.
+    /// For a pull request: the work item it is for, with its people.
     #[serde(default)]
-    pub issue: Option<Box<InboxSubject>>,
+    pub item: Option<Box<InboxSubject>>,
     #[serde(default)]
     pub comment: Option<InboxComment>,
 }

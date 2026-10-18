@@ -1,12 +1,13 @@
 //! Coordinating work between agents and people: sessions, claims and
 //! dependencies.
 //!
-//! The issue is the unit of work. A **session** is one run of someone's
-//! own harness (a Claude Code session, a Codex run) on a repository, by a
-//! person's token, optionally attached to an issue, a pull request and a
-//! branch. A **claim** is an advisory, expiring "I'm working on #N": never
-//! a lock, so two can stand on one issue, and the second claimant is told
-//! about the first. An issue's `blocked_by` names the issues that have to
+//! The work item is the unit of work. A **session** is one run of
+//! someone's own harness (a Claude Code session, a Codex run) on a
+//! repository, by a person's token, optionally attached to a work item of
+//! the repository's workspace, a pull request and a branch. A **claim** is
+//! an advisory, expiring "I'm working on #N": never a lock, so two can
+//! stand on one work item, and the second claimant is told about the
+//! first. A work item's `blocked_by` names the work items that have to
 //! land first.
 //!
 //! Hooks and telemetry are evidence, never truth: what git and g1t record
@@ -17,7 +18,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{CheckStatus, Issue, Mergeable, NewSessionEntry, Overlap, PullStatus, QueueState, RequiredCheck, SessionEntry, State};
+use super::{
+    CheckStatus, ItemRepo, Mergeable, NewSessionEntry, Overlap, PullStatus, QueueState, RequiredCheck, SessionEntry, State,
+    WorkItem,
+};
 use crate::credentials::Principal;
 use crate::events::Event;
 use crate::repos::RepoPath;
@@ -32,15 +36,15 @@ pub const SESSION_TIMEOUT_MS: u64 = 30 * 60 * 1000;
 pub const CLAIM_DEFAULT_MINUTES: u32 = 30;
 /// The longest a claim may be asked to last, in minutes.
 pub const CLAIM_MAX_MINUTES: u32 = 240;
-/// The most issues one issue can be blocked by.
+/// The most work items one work item can be blocked by.
 pub const MAX_BLOCKED_BY: usize = 50;
 /// The most characters a session's title, a claim's note or a reason keeps.
 pub const MAX_NOTE_CHARS: usize = 500;
 /// The most characters an entry's idempotency key may have.
 pub const MAX_KEY_CHARS: usize = 200;
 
-/// The event types about coordinating work, which `get_work` lists as an
-/// issue's recent activity (with the merge queue's, once it sends them).
+/// The event types about coordinating work, which `get_work` lists as a
+/// work item's recent activity (with the merge queue's, once it sends them).
 pub const COORDINATION_EVENTS: [&str; 11] = [
     "session.started",
     "session.ended",
@@ -149,8 +153,9 @@ pub struct Session {
     /// `ses_…`.
     pub id: String,
     pub repo_id: String,
-    /// The issue it works on, if it said.
-    pub issue: Option<u32>,
+    /// The work item it works on, if it said: by number in the
+    /// repository's workspace.
+    pub item: Option<u32>,
     /// The pull request it works on, if it said.
     pub pull: Option<u32>,
     pub branch: Option<String>,
@@ -239,8 +244,8 @@ pub enum TouchKind {
     Branch,
     /// A pull request it opened.
     Pull,
-    /// An issue it named.
-    Issue,
+    /// A work item it named, by number in the repository's workspace.
+    Item,
 }
 
 impl TouchKind {
@@ -250,12 +255,12 @@ impl TouchKind {
             TouchKind::Commit => "commit",
             TouchKind::Branch => "branch",
             TouchKind::Pull => "pull",
-            TouchKind::Issue => "issue",
+            TouchKind::Item => "item",
         }
     }
 
     pub fn parse(name: &str) -> Option<TouchKind> {
-        [TouchKind::File, TouchKind::Commit, TouchKind::Branch, TouchKind::Pull, TouchKind::Issue]
+        [TouchKind::File, TouchKind::Commit, TouchKind::Branch, TouchKind::Pull, TouchKind::Item]
             .into_iter()
             .find(|kind| kind.as_str() == name.trim())
     }
@@ -265,7 +270,8 @@ impl TouchKind {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NewTouch {
     pub kind: TouchKind,
-    /// The path, commit, branch, or number (`12`) for a pull request or issue.
+    /// The path, commit, branch, or number (`12`) for a pull request or
+    /// work item.
     pub value: String,
 }
 
@@ -281,13 +287,13 @@ pub struct SessionTouch {
 }
 
 /// Touches as given, tidied: trimmed, cut, numbers for pull requests and
-/// issues, empty and repeated ones dropped, at most [`MAX_TOUCHES`].
+/// work items, empty and repeated ones dropped, at most [`MAX_TOUCHES`].
 pub fn tidy_touches(touches: &[NewTouch]) -> Vec<NewTouch> {
     let mut out: Vec<NewTouch> = Vec::new();
     for touch in touches {
         let mut value: String = touch.value.trim().chars().take(MAX_TOUCH_CHARS).collect();
         match touch.kind {
-            TouchKind::Pull | TouchKind::Issue => {
+            TouchKind::Pull | TouchKind::Item => {
                 match value.trim_start_matches('#').parse::<u32>() {
                     Ok(number) if number > 0 => value = number.to_string(),
                     _ => continue,
@@ -313,8 +319,9 @@ pub fn tidy_touches(touches: &[NewTouch]) -> Vec<NewTouch> {
     out
 }
 
-/// The issue and pull request numbers `#N` in text names, in order, once
-/// each: `#12`, `(#12)`, `fixes #12`, never `a#12`, `&#12;` or `#12abc`.
+/// The numbers bare `#N` in text names, in order, once each: `#12`,
+/// `(#12)`, `fixes #12`, never `a#12`, `&#12;` or `#12abc`. What each names
+/// is read as [`super::refs`] says.
 pub fn refs_in(text: &str) -> Vec<u32> {
     let bytes = text.as_bytes();
     let mut found = Vec::new();
@@ -362,13 +369,13 @@ pub fn session_trailers(message: &str) -> Vec<String> {
     found
 }
 
-/// How a session was tied to an issue or pull request.
+/// How a session was tied to a work item or pull request.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LinkVia {
     /// The session said it works on it (start or update).
     Attached,
-    /// It claimed the issue.
+    /// It claimed the work item.
     Claim,
     /// It pushed the pull request's branch.
     Branch,
@@ -403,22 +410,32 @@ impl LinkVia {
     }
 }
 
-/// Issue or pull request.
+/// Work item or pull request.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LinkKind {
-    Issue,
+    Item,
     Pull,
 }
 
-/// An issue or pull request a session, or one of its subagents, worked on.
+impl LinkKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LinkKind::Item => "item",
+            LinkKind::Pull => "pull",
+        }
+    }
+}
+
+/// A work item or pull request a session, or one of its subagents, worked
+/// on. A work item's `number` is its number in the workspace.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionLink {
     pub kind: LinkKind,
     pub number: u32,
     pub title: String,
-    /// The issue's state (`open`, `closed`) or the pull request's status.
+    /// The work item's state (`open`, `closed`) or the pull request's status.
     pub state: String,
     /// How it was tied, strongest first.
     pub via: Vec<LinkVia>,
@@ -426,7 +443,7 @@ pub struct SessionLink {
     pub session_ids: Vec<String>,
 }
 
-/// One tie of a session to an issue or pull request, as stored.
+/// One tie of a session to a work item or pull request, as stored.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LinkRecord {
     pub session_id: String,
@@ -435,9 +452,10 @@ pub struct LinkRecord {
     pub via: LinkVia,
 }
 
-/// The links a session tree's ties make: one per issue or pull request,
-/// its ways gathered strongest first, the pull requests first, then the
-/// issues, each by number. `known` gives each one's title and state; a tie
+/// The links a session tree's ties make: one per work item or pull
+/// request, its ways gathered strongest first, the pull requests first,
+/// then the work items, each by number. `known` gives each one's title and
+/// state; a tie
 /// to anything it does not know (deleted, or a `#N` that names nothing) is
 /// left out.
 pub fn gather_links(records: &[LinkRecord], known: &std::collections::HashMap<(LinkKind, u32), (String, String)>) -> Vec<SessionLink> {
@@ -519,9 +537,13 @@ impl ClaimState {
 pub struct Claim {
     /// `clm_…`.
     pub id: String,
-    pub repo_id: String,
-    /// The issue it is on.
-    pub issue: u32,
+    /// The repository of the checkout it was made from, if it was made
+    /// from one.
+    pub repo_id: Option<String>,
+    /// The workspace of the work item it is on.
+    pub workspace: String,
+    /// The work item it is on, by number.
+    pub item: u32,
     /// The session it was made from, whose heartbeats renew it.
     pub session_id: Option<String>,
     pub actor: Principal,
@@ -558,14 +580,14 @@ pub fn claim_minutes(asked: Option<u32>) -> u32 {
 }
 
 /// `blocked_by` as asked for `number`, de-duplicated in the order given,
-/// or why it cannot be: one names `number` itself or is not an issue of
-/// the repository (`issues`), there are too many, or it would close a
-/// cycle through the blockers already recorded (`graph`: each issue's
+/// or why it cannot be: one names `number` itself or is not a work item of
+/// the workspace (`items`), there are too many, or it would close a cycle
+/// through the blockers already recorded (`graph`: each work item's
 /// `blocked_by`).
 pub fn check_blocked_by(
     number: u32,
     asked: &[u32],
-    issues: &std::collections::HashSet<u32>,
+    items: &std::collections::HashSet<u32>,
     graph: &std::collections::HashMap<u32, Vec<u32>>,
 ) -> Result<Vec<u32>, String> {
     let mut wanted: Vec<u32> = Vec::new();
@@ -575,13 +597,13 @@ pub fn check_blocked_by(
         }
     }
     if wanted.len() > MAX_BLOCKED_BY {
-        return Err(format!("An issue can be blocked by at most {MAX_BLOCKED_BY} issues."));
+        return Err(format!("A work item can be blocked by at most {MAX_BLOCKED_BY} work items."));
     }
     if wanted.contains(&number) {
         return Err(format!("#{number} cannot be blocked by itself."));
     }
-    if let Some(missing) = wanted.iter().find(|blocker| !issues.contains(blocker)) {
-        return Err(format!("#{missing} is not an issue in this repository."));
+    if let Some(missing) = wanted.iter().find(|blocker| !items.contains(blocker)) {
+        return Err(format!("#{missing} is not a work item in this workspace."));
     }
     // A cycle: some blocker is itself, through what blocks it, blocked by
     // `number`.
@@ -604,7 +626,7 @@ pub fn check_blocked_by(
     Ok(wanted)
 }
 
-/// The items of an issue's "Definition of done" section: each bulleted or
+/// The items of a work item's "Definition of done" section: each bulleted or
 /// numbered line under the heading, up to the next heading.
 pub fn definition_of_done(body: &str) -> Vec<String> {
     let mut items = Vec::new();
@@ -645,7 +667,7 @@ pub fn overlap_changes(current: &[u32], announced: &[u32]) -> (Vec<u32>, Vec<u32
 
 /// `start_session`. Returns `Outcome<Session>`: a new one, or the one
 /// already started with the same `harness_session_id` (which then takes
-/// the issue, pull request, branch, title and head given).
+/// the work item, pull request, branch, title and head given).
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StartSessionArgs {
     pub actor: User,
@@ -653,8 +675,9 @@ pub struct StartSessionArgs {
     pub harness: Harness,
     #[serde(default)]
     pub harness_session_id: Option<String>,
+    /// A work item of the repository's workspace, by number.
     #[serde(default)]
-    pub issue: Option<u32>,
+    pub item: Option<u32>,
     #[serde(default)]
     pub pull: Option<u32>,
     #[serde(default)]
@@ -687,7 +710,7 @@ pub struct UpdateSessionArgs {
     pub repo: RepoPath,
     pub id: String,
     #[serde(default)]
-    pub issue: Option<u32>,
+    pub item: Option<u32>,
     #[serde(default)]
     pub pull: Option<u32>,
     #[serde(default)]
@@ -797,7 +820,7 @@ pub struct SessionDetail {
     /// What it and its subagents touched, in the order first said.
     #[serde(default)]
     pub touched: Vec<SessionTouch>,
-    /// The issues and pull requests it and its subagents worked on.
+    /// The work items and pull requests it and its subagents worked on.
     #[serde(default)]
     pub links: Vec<SessionLink>,
     /// The skills it and its subagents used, by name.
@@ -844,9 +867,10 @@ pub struct SessionRef {
 
 /// `list_work_sessions`: a repository's sessions, most recently heard from
 /// first. Returns `Outcome<Vec<Session>>`. Subagents are left out unless
-/// `subagents`; with `issue` or `pull`, the sessions tied to it any way
-/// (attached, a claim, its branch or commits, a trailer, opened, named)
-/// are listed, and with `subagents` their subagents too.
+/// `subagents`; with `item` (a work item of its workspace) or `pull`, the
+/// sessions tied to it any way (attached, a claim, its branch or commits,
+/// a trailer, opened, named) are listed, and with `subagents` their
+/// subagents too.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ListWorkSessionsArgs {
     pub viewer: Viewer,
@@ -854,7 +878,7 @@ pub struct ListWorkSessionsArgs {
     #[serde(default)]
     pub state: Option<SessionState>,
     #[serde(default)]
-    pub issue: Option<u32>,
+    pub item: Option<u32>,
     #[serde(default)]
     pub pull: Option<u32>,
     #[serde(default)]
@@ -885,8 +909,8 @@ pub struct RecordEntriesArgs {
     pub id: String,
     pub entries: Vec<KeyedSessionEntry>,
     /// What it touched: files, commits, branches, pull requests opened,
-    /// issues named. Recorded once each; pull requests and issues tie the
-    /// session to them.
+    /// work items named. Recorded once each; pull requests and work items
+    /// tie the session to them.
     #[serde(default)]
     pub touched: Vec<NewTouch>,
 }
@@ -904,22 +928,29 @@ pub struct Recorded {
     pub acknowledged: u32,
 }
 
-/// `claim_issue`. Returns `Outcome<Claimed>`. Claiming an issue you hold
-/// renews your claim (and changes its note or session when given). With
-/// no number and a `title`, it opens the issue first and attaches the
-/// session to it; `Claimed::issue` is the issue it opened.
+/// `claim_work_item`. Returns `Outcome<Claimed>`. Claiming a work item you
+/// hold renews your claim (and changes its note or session when given).
+/// With no number and a `title`, it opens the work item first (filed from
+/// `repo`, when given) and attaches the session to it; `Claimed::item` is
+/// the work item it opened.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ClaimArgs {
     pub actor: User,
-    pub repo: RepoPath,
-    /// The issue to claim; 0 with `title` to open one and claim it.
+    /// The workspace; empty for `repo`'s.
+    #[serde(default)]
+    pub workspace: String,
+    /// The repository of the checkout claiming it, if there is one: where
+    /// the claim's session runs.
+    #[serde(default)]
+    pub repo: Option<RepoPath>,
+    /// The work item to claim; 0 with `title` to open one and claim it.
     #[serde(default)]
     pub number: u32,
-    /// Without a number: the title of a new issue to open and claim. The
-    /// session named by `session_id` is attached to it.
+    /// Without a number: the title of a new work item to open and claim.
+    /// The session named by `session_id` is attached to it.
     #[serde(default)]
     pub title: Option<String>,
-    /// Without a number: the new issue's description.
+    /// Without a number: the new work item's description.
     #[serde(default)]
     pub body: Option<String>,
     #[serde(default)]
@@ -934,22 +965,26 @@ pub struct ClaimArgs {
 #[serde(rename_all = "camelCase")]
 pub struct Claimed {
     pub claim: Claim,
-    /// Other active claims on the issue: someone else is on it too.
+    /// Other active claims on the work item: someone else is on it too.
     pub others: Vec<Claim>,
-    /// What the issue is blocked by, and where each stands.
+    /// What the work item is blocked by, and where each stands.
     pub blocked_by: Vec<Blocker>,
-    /// The issue the claim opened, when it was asked to open one (a
+    /// The work item the claim opened, when it was asked to open one (a
     /// `title` instead of a number).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub issue: Option<Issue>,
+    pub item: Option<WorkItem>,
 }
 
-/// `release_claim`: gives up your active claim on an issue. Returns
+/// `release_claim`: gives up your active claim on a work item. Returns
 /// `Outcome<Claim>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ReleaseArgs {
     pub actor: User,
-    pub repo: RepoPath,
+    /// The workspace; empty for `repo`'s.
+    #[serde(default)]
+    pub workspace: String,
+    #[serde(default)]
+    pub repo: Option<RepoPath>,
     pub number: u32,
     #[serde(default)]
     pub reason: Option<String>,
@@ -958,13 +993,17 @@ pub struct ReleaseArgs {
     pub session_id: Option<String>,
 }
 
-/// `hand_off_issue`: ends your active claim on an issue as handed off, to
-/// someone (`to`, a username) or anyone, with a note on where it stands.
-/// Returns `Outcome<Claim>`.
+/// `hand_off_work_item`: ends your active claim on a work item as handed
+/// off, to someone (`to`, a username) or anyone, with a note on where it
+/// stands. Returns `Outcome<Claim>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HandOffArgs {
     pub actor: User,
-    pub repo: RepoPath,
+    /// The workspace; empty for `repo`'s.
+    #[serde(default)]
+    pub workspace: String,
+    #[serde(default)]
+    pub repo: Option<RepoPath>,
     pub number: u32,
     #[serde(default)]
     pub to: Option<String>,
@@ -974,30 +1013,27 @@ pub struct HandOffArgs {
     pub session_id: Option<String>,
 }
 
-/// `list_claims`: a repository's claims, newest first; active ones unless
-/// `state` says otherwise. Returns `Outcome<Vec<Claim>>`.
+/// `list_claims`: a workspace's claims on the work items the viewer may
+/// see, newest first; active ones unless `state` says otherwise. With
+/// `repo` (then `workspace` may be empty), those made from its checkouts
+/// or on work items linked to it. Returns `Outcome<Vec<Claim>>`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ListClaimsArgs {
     pub viewer: Viewer,
-    pub repo: RepoPath,
+    #[serde(default)]
+    pub workspace: String,
+    #[serde(default)]
+    pub repo: Option<RepoPath>,
     #[serde(default)]
     pub state: Option<ClaimState>,
+    /// Only those on this work item.
     #[serde(default)]
-    pub issue: Option<u32>,
+    pub item: Option<u32>,
 }
 
-/// `get_work`: everything an agent needs to pick up an issue. Returns
-/// `Outcome<WorkContext>`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GetWorkArgs {
-    pub viewer: Viewer,
-    pub repo: RepoPath,
-    pub number: u32,
-}
-
-/// An issue in brief.
+/// A work item in brief.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct IssueBrief {
+pub struct ItemBrief {
     pub number: u32,
     pub title: String,
     pub state: State,
@@ -1011,7 +1047,7 @@ pub struct PullBrief {
     pub status: PullStatus,
 }
 
-/// An issue another is blocked by, and where it stands.
+/// A work item another is blocked by, and where it stands.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Blocker {
     pub number: u32,
@@ -1031,10 +1067,12 @@ pub struct QueuePlace {
     pub position: u32,
 }
 
-/// One of an issue's pull requests, with where it stands.
+/// One of a work item's pull requests, with where it stands.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkPull {
+    /// Its repository, `owner/name`.
+    pub repo: String,
     pub number: u32,
     pub title: String,
     pub status: PullStatus,
@@ -1053,25 +1091,60 @@ pub struct WorkPull {
     pub queue: Option<QueuePlace>,
 }
 
-/// Everything about an issue an agent needs to pick it up: the one call to
-/// make before starting.
+/// One repository a work item is linked to, as an agent picking it up sees
+/// it: how it is linked, whether the work landed there, and its pull
+/// requests for the item.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkRepo {
+    #[serde(flatten)]
+    pub link: ItemRepo,
+    /// The checks every pull request into its default branch must pass.
+    pub required_checks: Vec<String>,
+    /// Its pull requests for the work item, oldest first.
+    pub pulls: Vec<WorkPull>,
+}
+
+/// A repository of the workspace the work may belong in, offered for an
+/// agent or a person to confirm as a target (`link_work_item`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuggestedTarget {
+    pub repo_id: String,
+    /// `owner/name`.
+    pub path: String,
+    /// Why it is suggested, in a sentence.
+    pub why: String,
+    /// Higher is likelier; only the order means anything.
+    pub score: u32,
+}
+
+/// Everything about a work item an agent needs to pick it up: the one call
+/// to make before starting.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkContext {
-    pub issue: Issue,
+    pub item: WorkItem,
     /// The items under its "Definition of done" heading.
     pub definition_of_done: Vec<String>,
-    /// The checks every pull request into the default branch must pass.
-    pub required_checks: Vec<String>,
+    /// The repositories it is linked to, each with its pull requests for
+    /// it and what landed there: origin first, then targets, then touched.
+    pub repos: Vec<WorkRepo>,
+    /// The targets it has not landed in yet, by path. Empty with no
+    /// targets: then whatever closes it closes it.
+    pub missing: Vec<String>,
+    /// Repositories of the workspace it may belong in, likeliest first,
+    /// when it has no targets yet or could have more.
+    #[serde(default)]
+    pub suggested_targets: Vec<SuggestedTarget>,
     /// Active claims on it.
     pub claims: Vec<Claim>,
     /// Sessions on it or its pull requests, most recently heard from first.
     pub sessions: Vec<Session>,
-    pub pulls: Vec<WorkPull>,
     /// What it is blocked by, and where each stands.
     pub blocked_by: Vec<Blocker>,
-    /// The issues it blocks.
-    pub blocks: Vec<IssueBrief>,
+    /// The work items it blocks.
+    pub blocks: Vec<ItemBrief>,
     /// Decision records on it and its pull requests, newest first.
     #[serde(default)]
     pub decisions: Vec<crate::decisions::Decision>,
@@ -1090,11 +1163,11 @@ pub struct WorkContext {
 #[serde(rename_all = "camelCase")]
 pub struct SessionEvent {
     pub repo_id: String,
-    /// The pull request it works on, else its issue.
+    /// The pull request it works on, else its work item.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub number: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub issue: Option<u32>,
+    pub item: Option<u32>,
     pub session: Session,
 }
 
@@ -1102,8 +1175,8 @@ impl SessionEvent {
     pub fn of(session: &Session) -> SessionEvent {
         SessionEvent {
             repo_id: session.repo_id.clone(),
-            number: session.pull.or(session.issue),
-            issue: session.issue,
+            number: session.pull.or(session.item),
+            item: session.item,
             session: session.clone(),
         }
     }
@@ -1120,7 +1193,7 @@ pub const PROGRESS_EVERY_MS: u64 = 5_000;
 #[serde(rename_all = "camelCase")]
 pub struct SessionProgressed {
     pub repo_id: String,
-    /// The pull request it works on, else its issue.
+    /// The pull request it works on, else its work item.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub number: Option<u32>,
     pub session_id: String,
@@ -1130,15 +1203,21 @@ pub struct SessionProgressed {
 }
 
 /// `work.claimed`, `work.released`, `work.claim_expired` and
-/// `work.handoff_requested`: `number` and `issue` are the issue claimed.
+/// `work.handoff_requested`: `number` and `item` are the work item claimed,
+/// in `workspace`; `repo_ids` the repositories it is linked to.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClaimEvent {
-    pub repo_id: String,
+    /// The repository of the checkout it was claimed from, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo_id: Option<String>,
+    pub workspace: String,
     pub number: u32,
-    pub issue: u32,
+    pub item: u32,
+    #[serde(default)]
+    pub repo_ids: Vec<String>,
     pub claim: Claim,
-    /// On `work.claimed`: the other active claims on the issue.
+    /// On `work.claimed`: the other active claims on the work item.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub others: Option<Vec<Claim>>,
     /// On `work.claimed`, when it takes over a claim handed off.
@@ -1158,11 +1237,13 @@ pub struct ClaimEvent {
 }
 
 impl ClaimEvent {
-    pub fn of(claim: &Claim) -> ClaimEvent {
+    pub fn of(claim: &Claim, repo_ids: &[String]) -> ClaimEvent {
         ClaimEvent {
             repo_id: claim.repo_id.clone(),
-            number: claim.issue,
-            issue: claim.issue,
+            workspace: claim.workspace.clone(),
+            number: claim.item,
+            item: claim.item,
+            repo_ids: repo_ids.to_vec(),
             claim: claim.clone(),
             others: None,
             took_over: None,
@@ -1174,15 +1255,18 @@ impl ClaimEvent {
     }
 }
 
-/// `dependency.changed`: an issue's `blocked_by` changed, or one of the
-/// issues it is blocked by closed or had its pull request merged.
+/// `dependency.changed`: a work item's `blocked_by` changed, or one of the
+/// work items it is blocked by closed or had its pull request merged.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DependencyChanged {
-    pub repo_id: String,
-    /// The issue whose dependencies changed.
+    pub workspace: String,
+    /// The work item whose dependencies changed.
     pub number: u32,
-    pub issue: u32,
+    pub item: u32,
+    /// The repositories it is linked to.
+    #[serde(default)]
+    pub repo_ids: Vec<String>,
     /// What it is blocked by now.
     pub blocked_by: Vec<u32>,
     /// Added to `blocked_by`.
@@ -1212,9 +1296,9 @@ pub struct OverlapDetected {
     /// The files both change.
     pub files: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub issue: Option<u32>,
+    pub item: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub other_issue: Option<u32>,
+    pub other_item: Option<u32>,
 }
 
 /// `overlap.detected` between two sessions: the session `session_id` (or
@@ -1227,7 +1311,7 @@ pub struct OverlapDetected {
 #[serde(rename_all = "camelCase")]
 pub struct SessionOverlapDetected {
     pub repo_id: String,
-    /// The pull request the session is on, else its issue.
+    /// The pull request the session is on, else its work item.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub number: Option<u32>,
     pub session_id: String,
@@ -1237,9 +1321,9 @@ pub struct SessionOverlapDetected {
     /// The files both touched.
     pub files: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub issue: Option<u32>,
+    pub item: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub other_issue: Option<u32>,
+    pub other_item: Option<u32>,
 }
 
 /// The sessions `touched` (session and file pairs, as found) overlaps
@@ -1276,7 +1360,7 @@ mod tests {
 
     use super::*;
 
-    fn issues(numbers: &[u32]) -> HashSet<u32> {
+    fn items(numbers: &[u32]) -> HashSet<u32> {
         numbers.iter().copied().collect()
     }
 
@@ -1337,12 +1421,12 @@ mod tests {
     }
 
     #[test]
-    fn blocked_by_is_issues_of_the_repository_never_itself() {
+    fn blocked_by_is_work_items_of_the_workspace_never_itself() {
         let graph = HashMap::new();
-        assert_eq!(check_blocked_by(5, &[3, 4, 3], &issues(&[3, 4, 5]), &graph), Ok(vec![3, 4]));
-        assert_eq!(check_blocked_by(5, &[], &issues(&[5]), &graph), Ok(vec![]));
-        assert!(check_blocked_by(5, &[5], &issues(&[5]), &graph).unwrap_err().contains("itself"));
-        assert!(check_blocked_by(5, &[9], &issues(&[5]), &graph).unwrap_err().contains("#9 is not an issue"));
+        assert_eq!(check_blocked_by(5, &[3, 4, 3], &items(&[3, 4, 5]), &graph), Ok(vec![3, 4]));
+        assert_eq!(check_blocked_by(5, &[], &items(&[5]), &graph), Ok(vec![]));
+        assert!(check_blocked_by(5, &[5], &items(&[5]), &graph).unwrap_err().contains("itself"));
+        assert!(check_blocked_by(5, &[9], &items(&[5]), &graph).unwrap_err().contains("#9 is not a work item"));
         let many: Vec<u32> = (100..100 + MAX_BLOCKED_BY as u32 + 1).collect();
         assert!(check_blocked_by(5, &many, &many.iter().copied().collect(), &graph).is_err());
     }
@@ -1351,7 +1435,7 @@ mod tests {
     fn blocked_by_never_makes_a_cycle() {
         // 3 is blocked by 4, which is blocked by 5.
         let graph: HashMap<u32, Vec<u32>> = [(3, vec![4]), (4, vec![5])].into_iter().collect();
-        let all = issues(&[3, 4, 5, 6]);
+        let all = items(&[3, 4, 5, 6]);
         let refused = check_blocked_by(5, &[3], &all, &graph).unwrap_err();
         assert!(refused.contains("#5 → #3 → #4 → #5"), "{refused}");
         // A diamond is not a cycle.
@@ -1417,7 +1501,7 @@ mod tests {
             touch(TouchKind::File, "src\\lib.rs"),
             touch(TouchKind::File, "src/lib.rs"),
             touch(TouchKind::Pull, "#14"),
-            touch(TouchKind::Issue, "not a number"),
+            touch(TouchKind::Item, "not a number"),
             touch(TouchKind::Commit, "ABCDEF1234"),
             touch(TouchKind::Commit, "xyz"),
             touch(TouchKind::Branch, "refs/heads/fix-4"),
@@ -1438,31 +1522,31 @@ mod tests {
     fn links_gather_every_way_a_tree_was_tied_and_skip_what_is_unknown() {
         let record = |session: &str, kind, number, via| LinkRecord { session_id: session.into(), kind, number, via };
         let known: std::collections::HashMap<(LinkKind, u32), (String, String)> = [
-            ((LinkKind::Issue, 4), ("Greet".to_owned(), "open".to_owned())),
+            ((LinkKind::Item, 4), ("Greet".to_owned(), "open".to_owned())),
             ((LinkKind::Pull, 9), ("Greet in French".to_owned(), "open".to_owned())),
         ]
         .into_iter()
         .collect();
         let links = gather_links(
             &[
-                record("ses_root", LinkKind::Issue, 4, LinkVia::Ref),
-                record("ses_root", LinkKind::Issue, 4, LinkVia::Claim),
+                record("ses_root", LinkKind::Item, 4, LinkVia::Ref),
+                record("ses_root", LinkKind::Item, 4, LinkVia::Claim),
                 record("ses_child", LinkKind::Pull, 9, LinkVia::Branch),
                 record("ses_child", LinkKind::Pull, 9, LinkVia::Opened),
-                record("ses_root", LinkKind::Issue, 77, LinkVia::Ref),
+                record("ses_root", LinkKind::Item, 77, LinkVia::Ref),
             ],
             &known,
         );
         assert_eq!(links.len(), 2);
         assert_eq!((links[0].kind, links[0].number, links[0].via.clone()), (LinkKind::Pull, 9, vec![LinkVia::Branch, LinkVia::Opened]));
         assert_eq!(links[0].session_ids, vec!["ses_child".to_owned()]);
-        assert_eq!((links[1].kind, links[1].number, links[1].via.clone()), (LinkKind::Issue, 4, vec![LinkVia::Claim, LinkVia::Ref]));
+        assert_eq!((links[1].kind, links[1].number, links[1].via.clone()), (LinkKind::Item, 4, vec![LinkVia::Claim, LinkVia::Ref]));
     }
 
     #[test]
     fn a_session_from_before_subagents_reads_as_a_top_level_one() {
         let session: Session = serde_json::from_value(serde_json::json!({
-            "id": "ses_1", "repoId": "rep_1", "issue": null, "pull": null, "branch": null,
+            "id": "ses_1", "repoId": "rep_1", "item": null, "pull": null, "branch": null,
             "actor": { "id": "usr_1", "username": "ana" }, "harness": "claude_code",
             "harnessSessionId": null, "title": null, "state": "active", "headCommit": null,
             "startedAt": "", "lastSeenAt": "", "endedAt": null, "endReason": null
@@ -1472,15 +1556,15 @@ mod tests {
     }
 
     #[test]
-    fn events_name_the_issue_or_pull_request_they_are_about() {
+    fn events_name_the_work_item_or_pull_request_they_are_about() {
         let session: Session = serde_json::from_value(serde_json::json!({
-            "id": "ses_1", "repoId": "rep_1", "issue": 4, "pull": 9, "branch": null,
+            "id": "ses_1", "repoId": "rep_1", "item": 4, "pull": 9, "branch": null,
             "actor": { "id": "usr_1", "username": "ana" }, "harness": "claude_code",
             "harnessSessionId": null, "title": null, "state": "active", "headCommit": null,
             "startedAt": "", "lastSeenAt": "", "endedAt": null, "endReason": null
         }))
         .unwrap();
         let event = serde_json::to_value(SessionEvent::of(&session)).unwrap();
-        assert_eq!((event["number"].as_u64(), event["issue"].as_u64()), (Some(9), Some(4)));
+        assert_eq!((event["number"].as_u64(), event["item"].as_u64()), (Some(9), Some(4)));
     }
 }

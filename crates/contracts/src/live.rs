@@ -36,7 +36,7 @@ pub struct RepoChange {
     /// The full ref a push or deletion moved (`refs/heads/main`), or a run's.
     #[serde(rename = "ref", default, skip_serializing_if = "Option::is_none")]
     pub git_ref: Option<String>,
-    /// The issue or pull request it is on, or the pull request a run ran for.
+    /// The work item or pull request it is on, or the pull request a run ran for.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub number: Option<u32>,
     /// The commit: where a push left its ref, the one checked or reported on.
@@ -67,7 +67,7 @@ const LIVE: [&str; 28] = [
     "branch.renamed",
     "repo.default_branch_changed",
     "pull.",
-    "issue.",
+    "work_item.",
     "comment.",
     "review.",
     "checks.",
@@ -82,7 +82,7 @@ const LIVE: [&str; 28] = [
     "secret_scanning_alert.",
     "code_scanning_alert.",
     "vulnerability_alert.",
-    // Coordinating work: the issue, pull request and Work pages show them.
+    // Coordinating work: the work item, pull request and Work pages show them.
     "work.",
     "session.started",
     "session.ended",
@@ -139,7 +139,7 @@ pub fn change_of(event: &Event) -> Option<RepoChange> {
         "check_suite" => change.sha = text(&data["checkSuite"]["headSha"]),
         "code_scanning_alert" => change.number = number(&data["alertNumber"]),
         "secret_scanning_alert" | "vulnerability_alert" | "release" | "queue" | "deployment" | "deployment_status" | "repo" | "branch" => {}
-        // Issues, pull requests, comments and reviews name their number.
+        // Work items, pull requests, comments and reviews name their number.
         _ => change.number = number(&data["number"]),
     }
     Some(change)
@@ -191,8 +191,8 @@ mod tests {
     }
 
     #[test]
-    fn pull_requests_issues_comments_and_checks_name_their_number() {
-        for kind in ["pull.updated", "pull.merged", "issue.closed", "comment.created", "review.completed"] {
+    fn pull_requests_work_items_comments_and_checks_name_their_number() {
+        for kind in ["pull.updated", "pull.merged", "work_item.closed", "comment.created", "review.completed"] {
             let change = change_of(&event(kind, Some("rep_1"), json!({ "number": 7, "title": "secret plans" }))).unwrap();
             assert_eq!(change.number, Some(7), "{kind}");
         }
@@ -219,10 +219,10 @@ mod tests {
 
     #[test]
     fn nothing_written_in_the_repository_goes_along() {
-        let change = change_of(&event("issue.opened", Some("rep_1"), json!({ "number": 1, "title": "Leaked title", "body": "Leaked body" }))).unwrap();
+        let change = change_of(&event("work_item.opened", Some("rep_1"), json!({ "number": 1, "title": "Leaked title", "body": "Leaked body" }))).unwrap();
         let sent = serde_json::to_string(&change).unwrap();
         assert!(!sent.contains("Leaked"));
-        assert_eq!(sent, r#"{"repo_id":"rep_1","kind":"issue.opened","number":1,"at":"2026-10-11T10:00:00Z"}"#);
+        assert_eq!(sent, r#"{"repo_id":"rep_1","kind":"work_item.opened","number":1,"at":"2026-10-11T10:00:00Z"}"#);
     }
 
     #[test]
@@ -241,9 +241,9 @@ mod tests {
     }
 
     #[test]
-    fn coordination_names_the_issue_or_pull_request_it_is_about() {
+    fn coordination_names_the_work_item_or_pull_request_it_is_about() {
         for kind in ["work.claimed", "work.claim_expired", "session.started", "dependency.changed", "overlap.detected", "integration.failed", "integration.passed", "decision.recorded"] {
-            let change = change_of(&event(kind, None, json!({ "repoId": "rep_1", "number": 12, "issue": 4 }))).unwrap();
+            let change = change_of(&event(kind, None, json!({ "repoId": "rep_1", "number": 12, "item": 4 }))).unwrap();
             assert_eq!((change.repo_id.as_str(), change.number), ("rep_1", Some(12)), "{kind}");
         }
         // Each recorded step of a session changes no page anyone is watching live.

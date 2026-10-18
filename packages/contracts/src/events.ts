@@ -12,7 +12,44 @@ import type { RepoRole } from "./access";
 import type { CheckRunEventData, CheckSuiteEventData, StatusEventData } from "./checks";
 import type { DeploymentStatus, RepoDeployment } from "./deployments";
 import type { TeamRole, TeamVisibility } from "./teams";
-import type { AgentRef, ClaimEventData, DependencyChangedData, OverlapDetectedData, SessionEventData, SessionProgressedData, Verdict } from "./work";
+import type {
+  AgentRef,
+  ClaimEventData,
+  CloseReason,
+  DependencyChangedData,
+  LinkRole,
+  OverlapDetectedData,
+  Resolution,
+  SessionEventData,
+  SessionProgressedData,
+  Verdict,
+} from "./work";
+
+/** What every `work_item.*` event carries. */
+export type WorkItemEventData = {
+  itemId: string;
+  /** The workspace's slug; `number` is the work item's there. */
+  workspace: string;
+  number: number;
+  /** Every repository it is linked to, its origin first. */
+  repoIds: string[];
+  author?: { id: string; username: string };
+  requestedBy?: { id: string; username: string };
+};
+
+/**
+ * What a comment event says it is on: pull request `number` of `repoId`
+ * (with `pullId`), or work item `number` of `workspace` (with `itemId`,
+ * `repoIds` its linked repositories and `repoId` its origin, if any).
+ */
+export type CommentOnData = {
+  repoId?: string;
+  number: number;
+  pullId?: string;
+  itemId?: string;
+  workspace?: string;
+  repoIds?: string[];
+};
 
 /** What every `package.*` event names. */
 export type PackageEventData = {
@@ -233,35 +270,43 @@ export type EventPayloads = {
   "git.deleted": { repoId: string; ref: string; before: string; causedByJob?: string };
   /**
    * `author` is who opened it: g1t, for one its agent filed while at work,
-   * with `requestedBy` the person it was working for. Every issue and pull
-   * request event carries both.
+   * with `requestedBy` the person it was working for. Every work item and
+   * pull request event carries both. A work item's events are numbered in
+   * its workspace and carry every repository it is linked to (`repoIds`,
+   * its origin first): each is that repository's event as well.
    */
-  "issue.opened": {
-    issueId: string;
-    repoId: string;
-    number: number;
-    title: string;
-    author?: { id: string; username: string };
-    requestedBy?: { id: string; username: string };
-  };
-  "issue.updated": { issueId: string; repoId: string; number: number };
-  /** The people an issue is assigned to changed; `assignees` is the new set, `added` those newly assigned. */
-  "issue.assigned": { issueId: string; repoId: string; number: number; assignees: string[]; added?: string[] };
-  /** `resolvedBy` is the number of the pull request whose merge closed it. */
-  "issue.closed": {
-    issueId: string;
-    repoId: string;
-    number: number;
-    reason: "completed" | "not_planned";
-    resolvedBy?: number;
-    /** The commit whose message closed it, when one pushed to the default branch did. */
-    commit?: string;
-    /** The session it was closed in: the one its closing commit names (`G1t-Session`), or the caller's own on the issue. */
+  "work_item.opened": WorkItemEventData & { title: string };
+  "work_item.updated": WorkItemEventData;
+  /** The people it is assigned to changed; `assignees` is the new set, `added` those newly assigned. */
+  "work_item.assigned": WorkItemEventData & { assignees: string[]; added?: string[] };
+  /**
+   * It closed: `resolution` is what landed last, when a landing closed it,
+   * and `missing` is empty.
+   */
+  "work_item.closed": WorkItemEventData & {
+    reason: CloseReason;
+    resolution?: Resolution;
+    missing?: string[];
+    /** The session it was closed in: the one its closing commit names (`G1t-Session`), or the caller's own on it. */
     session?: string;
   };
-  "issue.reopened": { issueId: string; repoId: string; number: number };
+  "work_item.reopened": WorkItemEventData;
+  /** What closes it landed in one repository (`resolution`); `missing` are the targets still to land in. */
+  "work_item.landed": WorkItemEventData & { resolution: Resolution; missing: string[]; session?: string };
+  /** A repository (`repo`, `owner/name`) was linked to it, or its link changed (`role`). */
+  "work_item.linked": WorkItemEventData & { repo: string; role: LinkRole };
+  "work_item.unlinked": WorkItemEventData & { repo: string; role: LinkRole };
   /**
-   * `issue` is the number of the issue the pull request is for. `author` is
+   * A page of where repositories' issues went when they became work items,
+   * sent by the job that moved them; the last page has `done`.
+   */
+  "work.migrated": {
+    page: number;
+    items: { repoId: string; legacyNumber: number; workspace: string; number: number; itemId: string }[];
+    done: boolean;
+  };
+  /**
+   * `item` is the number, in the workspace, of the work item the pull request is for. `author` is
    * who opened it: g1t, for a change g1t made, with `requestedBy` the person
    * who asked for it.
    */
@@ -269,29 +314,29 @@ export type EventPayloads = {
     pullId: string;
     repoId: string;
     number: number;
-    issue?: number;
+    item?: number;
     agent: string;
     author?: { id: string; username: string };
     requestedBy?: { id: string; username: string };
   };
-  "pull.ready": { pullId: string; repoId: string; number: number; issue?: number };
+  "pull.ready": { pullId: string; repoId: string; number: number; item?: number };
   /** A push moved the head of a pull request that is ready for review. */
-  "pull.updated": { pullId: string; repoId: string; number: number; issue?: number; commit: string };
+  "pull.updated": { pullId: string; repoId: string; number: number; item?: number; commit: string };
   /** A merge was asked for while the pull request was behind; it has to catch up first. */
-  "pull.merge_requested": { pullId: string; repoId: string; number: number; issue?: number };
-  "pull.closed": { pullId: string; repoId: string; number: number; issue?: number };
+  "pull.merge_requested": { pullId: string; repoId: string; number: number; item?: number };
+  "pull.closed": { pullId: string; repoId: string; number: number; item?: number };
   /** A closed pull request was opened again. `commit` is its head. */
-  "pull.reopened": { pullId: string; repoId: string; number: number; issue?: number; commit?: string };
+  "pull.reopened": { pullId: string; repoId: string; number: number; item?: number; commit?: string };
   /** A pull request that was ready for review was turned back into a draft. */
-  "pull.converted_to_draft": { pullId: string; repoId: string; number: number; issue?: number };
+  "pull.converted_to_draft": { pullId: string; repoId: string; number: number; item?: number };
   /** People were assigned to a pull request: `assignees` is the new set, `added` those newly assigned. */
-  "pull.assigned": { pullId: string; repoId: string; number: number; issue?: number; assignees: string[]; added: string[] };
+  "pull.assigned": { pullId: string; repoId: string; number: number; item?: number; assignees: string[]; added: string[] };
   /** Reviewers were asked for a pull request (`reviewers`), or no longer are. */
   "pull.review_requested": {
     pullId: string;
     repoId: string;
     number: number;
-    issue?: number;
+    item?: number;
     reviewers?: string[];
     /** Teams asked: `team` is `workspace/slug`, `notified` who is told, `assigned` who review assignment picked. */
     teams?: TeamRequested[];
@@ -302,23 +347,23 @@ export type EventPayloads = {
     pullId: string;
     repoId: string;
     number: number;
-    issue?: number;
+    item?: number;
     reviewers?: string[];
     teams?: TeamRequested[];
   };
   /** g1t stopped seeing a pull request through until a person steps in; `detail` says why. */
-  "pull.stalled": { pullId: string; repoId: string; number: number; issue?: number; detail: string };
+  "pull.stalled": { pullId: string; repoId: string; number: number; item?: number; detail: string };
   /** A pull request g1t had stopped on is going again. */
-  "pull.resumed": { pullId: string; repoId: string; number: number; issue?: number };
+  "pull.resumed": { pullId: string; repoId: string; number: number; item?: number };
   /**
    * The pull request's head or its target moved and the files both changed
    * overlap: a sandbox should find out whether it still merges cleanly.
    * `commit` is its head.
    */
-  "pull.mergecheck": { pullId: string; repoId: string; number: number; issue?: number; commit: string };
+  "pull.mergecheck": { pullId: string; repoId: string; number: number; item?: number; commit: string };
   /** Whether the pull request merges cleanly was settled. */
-  "pull.mergeability": { pullId: string; repoId: string; number: number; issue?: number };
-  "pull.merged": { pullId: string; repoId: string; number: number; issue?: number; commit: string };
+  "pull.mergeability": { pullId: string; repoId: string; number: number; item?: number };
+  "pull.merged": { pullId: string; repoId: string; number: number; item?: number; commit: string };
   /** A run of the acceptance checks finished. `commit` is what was checked. */
   "checks.completed": {
     pullId: string;
@@ -375,7 +420,7 @@ export type EventPayloads = {
     pullId: string;
     number: number;
     pull: number;
-    issue: number | null;
+    item: number | null;
     combination: number[];
     check: { name: string; conclusion: string; url: string | null };
     bisected: boolean;
@@ -390,18 +435,18 @@ export type EventPayloads = {
     pullId: string;
     number: number;
     pull: number;
-    issue: number | null;
+    item: number | null;
     combination: number[];
     commit: string | null;
   };
-  /** A decision record was kept on an issue or pull request (`number`). */
+  /** A decision record was kept on a work item or pull request (`number`). */
   "decision.recorded": {
     repoId: string;
     number: number;
-    issue: number | null;
+    item: number | null;
     decision: {
       id: string;
-      issue: number | null;
+      item: number | null;
       pull: number | null;
       sessionId: string | null;
       actor: string | null;
@@ -412,13 +457,9 @@ export type EventPayloads = {
       createdAt: string;
     };
   };
-  /** `number` is the issue or pull request commented on. */
-  "comment.created": {
+  /** `number` is the work item or pull request commented on. */
+  "comment.created": CommentOnData & {
     commentId: string;
-    repoId: string;
-    number: number;
-    /** Set when the comment is on a pull request. */
-    pullId?: string;
     /** Set when the comment is a review. */
     verdict?: Verdict;
     /**
@@ -431,21 +472,13 @@ export type EventPayloads = {
     advisory?: boolean;
   };
   /** A comment's text changed; `changes.body.from` is what it said before. */
-  "comment.edited": {
+  "comment.edited": CommentOnData & {
     commentId: string;
-    repoId: string;
-    number: number;
-    /** Set when the comment is on a pull request. */
-    pullId?: string;
     changes: { body: { from: string } };
   };
   /** A comment was deleted; `comment` is the comment as it was. */
-  "comment.deleted": {
+  "comment.deleted": CommentOnData & {
     commentId: string;
-    repoId: string;
-    number: number;
-    /** Set when the comment was on a pull request. */
-    pullId?: string;
     comment: {
       id: string;
       body: string;
@@ -462,12 +495,12 @@ export type EventPayloads = {
   "session.ended": SessionEventData;
   /** A session (or a subagent of it) recorded more: at most every few seconds each, for the pages showing it. */
   "session.progressed": SessionProgressedData;
-  /** Someone claimed an issue; `others` are the other active claims on it. */
+  /** Someone claimed a work item; `others` are the other active claims on it. */
   "work.claimed": ClaimEventData;
   "work.released": ClaimEventData;
   "work.claim_expired": ClaimEventData;
   "work.handoff_requested": ClaimEventData;
-  /** An issue's blockers changed, or one of them closed or had its pull request merged. */
+  /** A work item's blockers changed, or one of them closed or had its pull request merged. */
   "dependency.changed": DependencyChangedData;
   /** A push made a pull request change files another open one changes. */
   "overlap.detected": OverlapDetectedData;
@@ -687,7 +720,7 @@ export type EventQuery = {
   before?: string;
   /** Only events by this account id. */
   actor?: string;
-  /** Only events about these issues or pull requests (`number`, or the `issue` a comment or review is on). */
+  /** Only events about these work items or pull requests (`number`, or the `item` a comment or review is on). */
   numbers?: number[];
   /** Only events at or after this RFC 3339 time. */
   since?: string;
@@ -743,7 +776,8 @@ export type RepoDigest = {
   pushes: PushDigest;
   /** Pull requests opened, merged and closed without merging, each by who did it. */
   pulls: { opened: ActorCount[]; merged: ActorCount[]; closed: ActorCount[] };
-  issues: { opened: ActorCount[]; closed: ActorCount[] };
+  /** Work items linked to it opened and closed, each by who did it. */
+  items: { opened: ActorCount[]; closed: ActorCount[] };
   /** `review.completed` (g1t's), and a comment with a verdict (a person's). */
   reviews: ActorCount[];
   /** Comments without a verdict; one by an agent as itself is the agent's. */

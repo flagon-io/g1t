@@ -86,8 +86,8 @@ impl DecisionConfidence {
 #[serde(rename_all = "camelCase")]
 pub struct Decision {
     pub id: String,
-    /// The issue it is about, when known.
-    pub issue: Option<u32>,
+    /// The work item it is about, when known, by number in its workspace.
+    pub item: Option<u32>,
     /// The pull request it is about, when known.
     pub pull: Option<u32>,
     /// The session it was recorded in, if one was named.
@@ -124,14 +124,17 @@ pub struct RecordDecisionArgs {
     pub session_id: Option<String>,
 }
 
-/// `list_decisions`: the decisions on an issue (and on its pull requests)
-/// or on a pull request, oldest first. Returns `Outcome<Vec<Decision>>`.
+/// `list_decisions`: the decisions on a thread, oldest first: with `repo`,
+/// on its pull request `number`; without, on the work item `number` of
+/// `workspace` and on its pull requests. Returns `Outcome<Vec<Decision>>`.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListDecisionsArgs {
-    pub repo: RepoPath,
+    #[serde(default)]
+    pub repo: Option<RepoPath>,
+    #[serde(default)]
+    pub workspace: String,
     pub viewer: Viewer,
-    /// An issue's or a pull request's number: they share a sequence.
     pub number: u32,
 }
 
@@ -161,8 +164,8 @@ pub struct IntegrationFailed {
     /// The responsible pull request, as `pull`.
     pub number: u32,
     pub pull: u32,
-    /// Its issue, if it has one.
-    pub issue: Option<u32>,
+    /// Its work item, if it has one.
+    pub item: Option<u32>,
     /// The pull requests tested together, in queue order; the last is
     /// `pull`.
     pub combination: Vec<u32>,
@@ -192,7 +195,7 @@ pub struct IntegrationPassed {
     pub pull_id: String,
     pub number: u32,
     pub pull: u32,
-    pub issue: Option<u32>,
+    pub item: Option<u32>,
     pub combination: Vec<u32>,
     pub commit: Option<String>,
 }
@@ -202,9 +205,9 @@ pub struct IntegrationPassed {
 #[serde(rename_all = "camelCase")]
 pub struct DecisionRecorded {
     pub repo_id: String,
-    /// The pull request it is about, or else its issue.
+    /// The pull request it is about, or else its work item.
     pub number: u32,
-    pub issue: Option<u32>,
+    pub item: Option<u32>,
     pub decision: Decision,
 }
 
@@ -220,10 +223,11 @@ pub struct WhyPull {
     pub merged_at: Option<String>,
 }
 
-/// The issue that pull request was for.
+/// The work item that pull request was for.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WhyIssue {
+pub struct WhyItem {
+    pub workspace: String,
     pub number: u32,
     pub title: String,
     pub state: String,
@@ -271,7 +275,7 @@ impl WhyCommit {
 }
 
 /// `why`: why a line is the way it is. The commit that last changed it,
-/// the merged pull request it arrived in, that pull request's issue, the
+/// the merged pull request it arrived in, that pull request's work item, the
 /// decisions recorded on them, and the session entries behind the commit.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -280,7 +284,7 @@ pub struct Why {
     pub line: u32,
     pub commit: WhyCommit,
     pub pull: Option<WhyPull>,
-    pub issue: Option<WhyIssue>,
+    pub item: Option<WhyItem>,
     pub decisions: Vec<Decision>,
     pub sessions: Vec<SessionEntry>,
 }
@@ -329,13 +333,13 @@ mod tests {
     }
 
     #[test]
-    fn an_integration_failure_carries_number_and_issue_for_filters() {
+    fn an_integration_failure_carries_number_and_item_for_filters() {
         let event = IntegrationFailed {
             repo_id: "rep_1".into(),
             pull_id: "pr_1".into(),
             number: 14,
             pull: 14,
-            issue: Some(9),
+            item: Some(9),
             combination: vec![11, 12, 14],
             check: FailedCheck { name: "CI / merge_group".into(), conclusion: "failure".into(), url: None },
             bisected: true,
@@ -346,7 +350,7 @@ mod tests {
         };
         let sent = serde_json::to_value(&event).unwrap();
         assert_eq!(sent["number"], 14);
-        assert_eq!(sent["issue"], 9);
+        assert_eq!(sent["item"], 9);
         assert_eq!(sent["otherPulls"], serde_json::json!([11, 12]));
         assert_eq!(sent["check"]["conclusion"], "failure");
         assert_eq!(sent["landed"], serde_json::json!([]));

@@ -160,20 +160,40 @@ pub struct GitDeleted {
     pub caused_by_job: Option<String>,
 }
 
-/// The payload of `issue.opened`, `issue.updated`, `issue.assigned`,
-/// `issue.labeled`, `issue.unlabeled`, `issue.milestoned`,
-/// `issue.demilestoned`, `issue.closed` and `issue.reopened`; each uses
-/// the fields that apply to it.
+/// The work item events the work service publishes. Each one's payload is
+/// a [`WorkItemEvent`]; the event's `repoId` is the work item's origin,
+/// when it has one.
+pub const WORK_ITEM_EVENTS: [&str; 12] = [
+    "work_item.opened",
+    "work_item.updated",
+    "work_item.assigned",
+    "work_item.labeled",
+    "work_item.unlabeled",
+    "work_item.milestoned",
+    "work_item.demilestoned",
+    "work_item.closed",
+    "work_item.reopened",
+    "work_item.linked",
+    "work_item.unlinked",
+    "work_item.landed",
+];
+
+/// The payload of every `work_item.*` event ([`WORK_ITEM_EVENTS`]); each
+/// uses the fields that apply to it. A repository's subscribers hear of
+/// work items linked to it (`repo_ids`); a workspace's, of all of its.
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct IssueEvent {
-    pub issue_id: String,
-    pub repo_id: String,
+pub struct WorkItemEvent {
+    pub item_id: String,
+    /// The workspace's slug.
+    pub workspace: String,
     pub number: u32,
+    /// Every repository it is linked to, its origin first.
+    pub repo_ids: Vec<String>,
     /// Who opened it: g1t, for one its agent filed while at work.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub author: Option<crate::credentials::Principal>,
-    /// For an issue g1t's agent filed: the person it was working for.
+    /// For one g1t's agent filed: the person it was working for.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub requested_by: Option<crate::credentials::Principal>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -181,35 +201,56 @@ pub struct IssueEvent {
     /// On close: `completed` or `not_planned`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<&'static str>,
-    /// On close: the number of the pull request whose merge closed it.
+    /// On `work_item.landed` and on a close a landing caused: what landed,
+    /// in which repository.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub resolved_by: Option<u32>,
-    /// On close: the commit pushed to the default branch whose message
-    /// closed it (`Fixes #12`), when one did.
+    pub resolution: Option<crate::work::Resolution>,
+    /// On `work_item.landed` and on close: the targets it has not landed
+    /// in yet, by path. Empty on close.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub commit: Option<String>,
+    pub missing: Option<Vec<String>>,
     /// On close: the session it was closed in, when it was: the one the
     /// closing commit names (`G1t-Session: ses_…`), or the caller's own
-    /// session on the issue when it closed it with a token.
+    /// session on the work item when it closed it with a token.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,
-    /// On `issue.assigned`: the people it is now assigned to.
+    /// On `work_item.assigned`: the people it is now assigned to.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub assignees: Option<Vec<String>>,
-    /// On `issue.assigned`: those of them who were not before.
+    /// On `work_item.assigned`: those of them who were not before.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub added: Option<Vec<String>>,
-    /// On `issue.labeled` and `issue.unlabeled`: the label put on or taken
-    /// off. One event for each.
+    /// On `work_item.labeled` and `work_item.unlabeled`: the label put on
+    /// or taken off. One event for each.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<EventLabel>,
-    /// On `issue.milestoned`: the milestone it was put in; on
-    /// `issue.demilestoned`, the one it was taken out of.
+    /// On `work_item.milestoned`: the milestone it was put in; on
+    /// `work_item.demilestoned`, the one it was taken out of.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub milestone: Option<crate::work::MilestoneRef>,
+    /// On `work_item.linked` and `work_item.unlinked`: the repository
+    /// (`owner/name`) and how it is linked now, or was.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<crate::work::LinkRole>,
 }
 
-/// A label, as `issue.labeled`, `pull.labeled` and their `unlabeled` say.
+/// `work.migrated`: a page of where repositories' issues went when they
+/// became work items, for services that stored issue numbers to rewrite
+/// them. Sent once per page by the migration job, then with `done`.
+#[derive(Clone, Debug, Default, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkMigrated {
+    /// Counts from 1.
+    pub page: u32,
+    pub items: Vec<crate::work::MigratedItem>,
+    /// The last page.
+    pub done: bool,
+}
+
+/// A label, as `work_item.labeled`, `pull.labeled` and their `unlabeled`
+/// say.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct EventLabel {
     pub name: String,
@@ -238,9 +279,9 @@ pub struct PullEvent {
     /// For a change g1t made: the person who asked for it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub requested_by: Option<crate::credentials::Principal>,
-    /// The number of the issue it is for.
+    /// The number of the work item it is for, in its workspace.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub issue: Option<u32>,
+    pub item: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent: Option<String>,
     /// On merge: the commit the branch now points to. On update, when
@@ -374,7 +415,7 @@ pub struct DeploymentEvent {
     pub triggered_by: String,
 }
 
-/// `checks.completed`: a run of an issue's acceptance checks against a pull
+/// `checks.completed`: a run of a work item's acceptance checks against a pull
 /// request finished.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -411,16 +452,36 @@ pub struct WorkflowEvent {
     pub pull: Option<u32>,
 }
 
-/// `comment.created`. `number` is the issue or pull request commented on.
+/// Where a comment is, as the `comment.*` events say: a pull request of a
+/// repository (`repo_id`, `pull_id`), or a work item of a workspace
+/// (`workspace`, `item_id`, and the repositories it is linked to in
+/// `repo_ids`). `number` is the pull request's or the work item's.
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CommentCreated {
-    pub comment_id: String,
-    pub repo_id: String,
+pub struct CommentOn {
+    /// The pull request's repository; a work item's origin, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo_id: Option<String>,
     pub number: u32,
     /// Set when the comment is on a pull request.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pull_id: Option<String>,
+    /// Set when the comment is on a work item.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub item_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub repo_ids: Vec<String>,
+}
+
+/// `comment.created`.
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommentCreated {
+    pub comment_id: String,
+    #[serde(flatten)]
+    pub on: CommentOn,
     /// Set when the comment is a review: approve or request changes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub verdict: Option<crate::work::Verdict>,
@@ -442,11 +503,8 @@ pub struct CommentCreated {
 #[serde(rename_all = "camelCase")]
 pub struct CommentEdited {
     pub comment_id: String,
-    pub repo_id: String,
-    pub number: u32,
-    /// Set when the comment is on a pull request.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pull_id: Option<String>,
+    #[serde(flatten)]
+    pub on: CommentOn,
     pub changes: CommentChanges,
 }
 
@@ -468,11 +526,8 @@ pub struct ChangedFrom {
 #[serde(rename_all = "camelCase")]
 pub struct CommentDeleted {
     pub comment_id: String,
-    pub repo_id: String,
-    pub number: u32,
-    /// Set when the comment was on a pull request.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pull_id: Option<String>,
+    #[serde(flatten)]
+    pub on: CommentOn,
     pub comment: DeletedComment,
 }
 
@@ -663,8 +718,9 @@ pub struct ListArgs {
     /// Only events by this account id.
     #[serde(default)]
     pub actor: Option<String>,
-    /// Only events about these issues or pull requests: their `number`, or
-    /// the `issue` a comment, review or link is on. All when empty.
+    /// Only events about these work items or pull requests: their
+    /// `number`, or the `item` a comment, review or link is on. All when
+    /// empty.
     #[serde(default)]
     pub numbers: Vec<u32>,
     /// Only events at or after this RFC 3339 time.
@@ -828,9 +884,9 @@ pub struct RepoPurged {
 }
 
 /// `repo.archived` and `repo.unarchived`: a repository became read-only,
-/// or writable again. While archived, pushes are refused, issues and pull
-/// requests are locked, and agents and workflows do not run for it; its
-/// deployments keep serving.
+/// or writable again. While archived, pushes are refused, its pull
+/// requests are locked, no work items are filed from it, and agents and
+/// workflows do not run for it; its deployments keep serving.
 #[derive(Clone, Debug, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RepoArchived {
@@ -1248,9 +1304,9 @@ pub struct PullDigest {
     pub closed: Vec<ActorCount>,
 }
 
-/// Issues opened and closed, each by who did it.
+/// Work items opened and closed, each by who did it.
 #[derive(Debug, Default, Serialize, serde::Deserialize, PartialEq, Eq)]
-pub struct IssueDigest {
+pub struct ItemDigest {
     pub opened: Vec<ActorCount>,
     pub closed: Vec<ActorCount>,
 }
@@ -1291,7 +1347,7 @@ pub struct RepoDigest {
     pub repo_id: String,
     pub pushes: PushDigest,
     pub pulls: PullDigest,
-    pub issues: IssueDigest,
+    pub items: ItemDigest,
     /// Reviews: `review.completed` (g1t's), and a comment with a verdict (a person's).
     pub reviews: Vec<ActorCount>,
     /// Comments without a verdict; one by an agent as itself is the agent's.
@@ -1332,9 +1388,7 @@ mod tests {
     fn comment_edits_and_deletes_say_what_it_was() {
         let edited = CommentEdited {
             comment_id: "cmt_1".into(),
-            repo_id: "rep_1".into(),
-            number: 7,
-            pull_id: Some("pr_1".into()),
+            on: CommentOn { repo_id: Some("rep_1".into()), number: 7, pull_id: Some("pr_1".into()), ..CommentOn::default() },
             changes: CommentChanges { body: ChangedFrom { from: "Before".into() } },
         };
         assert_eq!(
@@ -1344,11 +1398,17 @@ mod tests {
                 "changes": { "body": { "from": "Before" } },
             })
         );
+        // On a work item: its workspace and every repository it is linked to.
         let deleted = CommentDeleted {
             comment_id: "cmt_1".into(),
-            repo_id: "rep_1".into(),
-            number: 7,
-            pull_id: None,
+            on: CommentOn {
+                repo_id: Some("rep_1".into()),
+                number: 7,
+                item_id: Some("wki_1".into()),
+                workspace: Some("acme".into()),
+                repo_ids: vec!["rep_1".into(), "rep_2".into()],
+                ..CommentOn::default()
+            },
             comment: DeletedComment {
                 id: "cmt_1".into(),
                 body: "Gone".into(),
@@ -1361,7 +1421,8 @@ mod tests {
         assert_eq!(
             serde_json::to_value(deleted).unwrap(),
             serde_json::json!({
-                "commentId": "cmt_1", "repoId": "rep_1", "number": 7,
+                "commentId": "cmt_1", "repoId": "rep_1", "number": 7, "itemId": "wki_1", "workspace": "acme",
+                "repoIds": ["rep_1", "rep_2"],
                 "comment": {
                     "id": "cmt_1", "body": "Gone", "author": { "id": "usr_1", "username": "ana" },
                     "createdAt": "2026-10-08T00:00:00Z", "path": null, "line": null,

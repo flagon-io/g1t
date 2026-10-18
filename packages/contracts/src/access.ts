@@ -35,8 +35,8 @@ export const REPO_ROLE_LABELS: Record<RepoRole, string> = {
 
 /** One line on what each role is for, as role pickers show it. */
 export const REPO_ROLE_SUMMARIES: Record<RepoRole, string> = {
-  read: "Read and clone; open issues and pull requests, and comment.",
-  triage: "Read, and manage issues and pull requests: apply labels, assign, close.",
+  read: "Read and clone; open work items and pull requests, and comment.",
+  triage: "Read, and manage work items and pull requests: apply labels, assign, close.",
   write: "Triage, and push, merge, manage labels, see security alerts, and put agents to work.",
   maintain: "Write, and manage the repository's settings and topics.",
   admin: "Everything: branch protection, webhooks, secrets, security, access, name and visibility.",
@@ -80,9 +80,9 @@ export type Capability =
 
 /** The permission table: the least role for each capability. */
 export const CAPABILITIES = [
-  { capability: "read", role: "read", about: "See code, issues and pull requests; clone and fetch" },
-  { capability: "participate", role: "read", about: "Open issues and pull requests, and comment" },
-  { capability: "triage", role: "triage", about: "Apply labels and milestones; assign, close and reopen issues and pull requests" },
+  { capability: "read", role: "read", about: "See code, work items and pull requests; clone and fetch" },
+  { capability: "participate", role: "read", about: "Open work items and pull requests, and comment" },
+  { capability: "triage", role: "triage", about: "Apply labels and milestones; assign, close and reopen work items and pull requests" },
   { capability: "push", role: "write", about: "Push to branches that are not protected" },
   { capability: "merge", role: "write", about: "Merge pull requests and use the merge queue" },
   { capability: "manage_labels", role: "write", about: "Create, edit and delete labels and milestones" },
