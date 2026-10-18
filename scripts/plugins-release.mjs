@@ -120,7 +120,15 @@ export function publishedMarketplace(marketplace) {
   return { ...marketplace, plugins: marketplace.plugins.map((p) => ({ ...p, source: `./${PUBLISHED}` })) };
 }
 
-export function readme(version) {
+/**
+ * The oldest g1t CLI the plugin's hooks work with: the CLI contract's
+ * minimum_version, which the hooks' MIN_CLI keeps to.
+ */
+export function minimumCli(root = ROOT) {
+  return readJson(root, `${SOURCE}/test/cli-contract.json`).minimum_version;
+}
+
+export function readme(version, cli = minimumCli()) {
   return `# g1t plugins
 
 g1t's plugin marketplace for Claude Code and Codex. Choose your client below.
@@ -138,7 +146,7 @@ ${INSTALL.join("\n")}
 
 Then start Claude Code again, run \`/mcp\` and sign **plugin:g1t:g1t** in.
 The plugin's hooks need the [g1t CLI](https://docs.g1t.sh/guides/cli/)
-0.3.2 or later and Node 18 or later.
+${cli} or later and Node 18 or later.
 
 The guide, with what each hook records and never records and how to opt
 out: https://docs.g1t.sh/guides/claude-code-plugin/
@@ -209,7 +217,7 @@ export function build(out = join(ROOT, "target", "g1t-plugins"), root = ROOT) {
   mkdirSync(join(out, ".agents/plugins"), { recursive: true });
   writeFileSync(join(out, ".agents/plugins/marketplace.json"), JSON.stringify(codexMarketplace(), null, 2) + "\n");
   for (const name of CODEX_FILES) cpSync(join(root, CODEX_SOURCE, name), join(out, CODEX_PUBLISHED, name), { recursive: true });
-  writeFileSync(join(out, "README.md"), readme(version) + `
+  writeFileSync(join(out, "README.md"), readme(version, minimumCli(root)) + `
 ## Codex
 
 Add this marketplace with:
