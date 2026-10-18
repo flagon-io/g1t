@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { INSTALL, PUBLISHED, SOURCE, authEnv, tagName, build, expectedFiles, manifests, publish, scan, walk } from "./plugins-release.mjs";
+import { INSTALL, PUBLISHED, SOURCE, authEnv, tagName, build, expectedFiles, manifests, minimumCli, publish, scan, walk } from "./plugins-release.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const temps = [];
@@ -56,6 +56,10 @@ test("the build is the marketplace, the plugin without its tests, a README and t
   }
   const readme = readFileSync(join(out, "README.md"), "utf8");
   for (const line of INSTALL) assert.ok(readme.includes(line), line);
+  // The CLI the README asks for is the one the hooks need.
+  const hooks = readFileSync(join(ROOT, SOURCE, "hooks/g1t.mjs"), "utf8");
+  assert.equal(minimumCli(), hooks.match(/export const MIN_CLI = "([^"]+)"/)?.[1]);
+  assert.ok(readme.includes(`${minimumCli()} or later and Node`), readme);
 });
 
 test("manifests that disagree stop the build", () => {
