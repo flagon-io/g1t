@@ -554,13 +554,20 @@ say; see [the job's token](#the-jobs-token). The
 
 ### Machine sizes
 
-A job runs on the standard machine unless its `runs-on` is `g1t-4core`:
+`ubuntu-latest` gets what it gets on GitHub: 4 vCPUs in a public
+repository, 2 in a private one. Any other Linux label is the same.
 
-| `runs-on`                                    | vCPUs | Memory | Disk  | A minute |
-| -------------------------------------------- | ----- | ------ | ----- | -------- |
-| `ubuntu-latest`, or any other Linux label    | 2     | 8 GiB  | 16 GB | $0.004   |
-| `g1t-2core` (a name of the standard machine) | 2     | 8 GiB  | 16 GB | $0.004   |
-| `g1t-4core`                                  | 4     | 12 GiB | 20 GB | $0.007   |
+| `runs-on`                                                         | vCPUs | Memory | Disk  | A minute |
+| ----------------------------------------------------------------- | ----- | ------ | ----- | -------- |
+| `ubuntu-latest`, or any other Linux label, in a public repository | 4     | 12 GiB | 20 GB | $0.007   |
+| `ubuntu-latest`, or any other Linux label, in a private one       | 2     | 8 GiB  | 16 GB | $0.004   |
+| `g1t-4core`, in any repository                                    | 4     | 12 GiB | 20 GB | $0.007   |
+| `g1t-2core`, in any repository                                    | 2     | 8 GiB  | 16 GB | $0.004   |
+
+GitHub's machine for public repositories has 16 GB of memory; g1t's has
+12 GiB, the most its machines have.
+
+To choose a machine whatever the repository's visibility, name it:
 
 ```yaml
 jobs:
@@ -568,10 +575,10 @@ jobs:
     runs-on: g1t-4core
 ```
 
-`g1t-4core` is for heavier jobs: builds that compile, such as Rust or a
-large TypeScript project, image builds and databases. `g1t-2core` is kept
-as a name of the standard machine, so workflows that ask for it keep
-working. The label can come from the matrix or the run's inputs
+`g1t-4core` suits heavier jobs in a private repository: builds that
+compile, such as Rust or a large TypeScript project, image builds and
+databases. `g1t-2core` keeps a public repository's light jobs on the
+smaller machine. The label can come from the matrix or the run's inputs
 (`runs-on: ${{ matrix.big && 'g1t-4core' || 'ubuntu-latest' }}`).
 
 Each job is charged its time rounded up to the whole minute (61 seconds

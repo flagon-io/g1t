@@ -38,7 +38,7 @@ env:
 jobs:
   rust:
     name: Rust
-    runs-on: g1t-4core
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
       # Line tables, not full debug info: a panic still names its file and
@@ -158,9 +158,9 @@ jobs:
 
   desktop:
     name: Desktop app
-    # The larger machine, as the Rust job: linking Tauri on the small one
-    # ran out of room and the linker died with a bus error.
-    runs-on: g1t-4core
+    # ubuntu-latest is 4 vCPU in this public repository, as on GitHub; linking
+    # Tauri needs it (on 2 vCPU it ran out of room and died with a bus error).
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5

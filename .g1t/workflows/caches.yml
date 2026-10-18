@@ -266,8 +266,9 @@ jobs:
     name: The desktop app's Linux build
     needs: look
     if: ${{ needs.look.outputs.desktop-linux == 'true' }}
-    # The larger machine: linking Tauri on the small one dies with a bus error.
-    runs-on: g1t-4core
+    # ubuntu-latest is 4 vCPU in this public repository, as on GitHub; linking
+    # Tauri needs it (on 2 vCPU it dies with a bus error).
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
@@ -310,7 +311,7 @@ jobs:
     name: The desktop app's Windows build
     needs: look
     if: ${{ needs.look.outputs.desktop-windows == 'true' && vars.DESKTOP_WINDOWS_FROM_LINUX == 'true' && vars.DESKTOP_WINDOWS_RUNNER != 'true' }}
-    runs-on: g1t-4core
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
@@ -374,7 +375,7 @@ jobs:
     needs: look
     if: ${{ needs.look.outputs.cli == 'true' }}
     # The builder runs in Docker, which g1t's own machines give each job.
-    runs-on: g1t-4core
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5

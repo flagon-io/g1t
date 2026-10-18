@@ -505,8 +505,16 @@ pub(crate) fn deploys_to(run: &RunRow, job: &JobRow) -> Option<JobEnvironment> {
     env.filter(|env| env.deploys)
 }
 
+/// Whether a run's repository was public when the run was made, from its
+/// event's `repository.private`: private when the event doesn't say.
+fn run_is_public(run: &RunRow) -> bool {
+    run.info().event.get("repository").and_then(|repository| repository.get("private")).and_then(Value::as_bool) == Some(false)
+}
+
 /// The machine a job's `runs-on` asks for (`instance_for`), for the
-/// runner: none for the standard one.
+/// runner: none for the standard one. `ubuntu-latest` follows GitHub: the
+/// 4-core machine in a public repository. Billing charges the job as the
+/// machine named here, so what it ran on is what it pays for.
 fn start_instance(run: &RunRow, job: &JobRow) -> Option<String> {
     let spec = match job.callee() {
         Some((_, spec, _)) => spec,
@@ -526,7 +534,7 @@ fn start_instance(run: &RunRow, job: &JobRow) -> Option<String> {
         },
         _ => Vec::new(),
     };
-    let instance = g1t_contracts::actions::instance_for(&labels);
+    let instance = g1t_contracts::actions::instance_for(&labels, run_is_public(run));
     (instance != g1t_contracts::actions::STANDARD_INSTANCE).then(|| instance.label.to_owned())
 }
 
@@ -3251,5 +3259,30 @@ mod reruns {
         assert_eq!(variables["ACTIONS_RUNNER_DEBUG"], "true");
         assert_eq!(runner["debug"], Value::String("1".into()));
         assert_eq!(runner["name"], "g1t");
+    }
+}
+
+#[cfg(test)]
+mod machines {
+    use serde_json::json;
+
+    use super::{RunInfo, RunRow, run_is_public};
+
+    fn run(event: serde_json::Value) -> RunRow {
+        let info = serde_json::to_string(&RunInfo { repository: "acme/web".into(), event, ..RunInfo::default() }).unwrap();
+        serde_json::from_value(json!({
+            "id": "run_1", "workflow_id": "wf_1", "repo_id": "rep_1", "repo": "acme/web", "path": ".g1t/workflows/ci.yml", "name": "CI",
+            "title": "CI", "number": 1, "attempt": 1, "event": "push", "git_ref": "refs/heads/main", "sha": "abc", "status": "queued",
+            "source": "", "info": info, "inputs": "{}", "trusted": 1, "created_at": "2026-10-18T00:00:00Z",
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_runs_repository_is_public_only_when_its_event_says_so() {
+        assert!(run_is_public(&run(json!({ "repository": { "private": false } }))));
+        assert!(!run_is_public(&run(json!({ "repository": { "private": true } }))));
+        // An event that doesn't say is taken as private: the standard machine.
+        assert!(!run_is_public(&run(json!({}))));
     }
 }

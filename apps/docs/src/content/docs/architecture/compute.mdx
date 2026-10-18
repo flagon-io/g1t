@@ -74,12 +74,15 @@ what is kept.
 `runner` defines three Container classes, picked by `runs-on`, each a
 named Cloudflare instance type:
 
-| `runs-on`                                            | Class            | Size                                            |
-| ---------------------------------------------------- | ---------------- | ----------------------------------------------- |
-| Any other hosted label, and every other kind of work | `AttemptSandbox` | `standard-3`: 2 vCPU, 8 GiB memory, 16 GB disk  |
-| `g1t-2core`                                          | `Sandbox2Core`   | `standard-3`: 2 vCPU, 8 GiB memory, 16 GB disk  |
-| `g1t-4core`                                          | `Sandbox4Core`   | `standard-4`: 4 vCPU, 12 GiB memory, 20 GB disk |
+| `runs-on`                                                                    | Class            | Size                                            |
+| ---------------------------------------------------------------------------- | ---------------- | ----------------------------------------------- |
+| Any other hosted label in a private repository, and every other kind of work | `AttemptSandbox` | `standard-3`: 2 vCPU, 8 GiB memory, 16 GB disk  |
+| `g1t-2core`                                                                  | `Sandbox2Core`   | `standard-3`: 2 vCPU, 8 GiB memory, 16 GB disk  |
+| `g1t-4core`, and any other hosted label in a public repository               | `Sandbox4Core`   | `standard-4`: 4 vCPU, 12 GiB memory, 20 GB disk |
 
+`ubuntu-latest` follows GitHub's hosted runners: the actions service
+resolves it to `g1t-4core` when the run's repository is public (its
+event's `repository.private`), and the job is billed as that machine.
 `g1t-2core` is kept as a name of the standard machine, so workflows that
 ask for it keep working; it keeps its class and its own `max_instances`
 in `services/runner/wrangler.jsonc`. The contracts' instance table

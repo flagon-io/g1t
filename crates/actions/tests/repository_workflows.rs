@@ -872,7 +872,7 @@ fn deploy_stage_matrices_come_from_the_plan() {
 }
 
 #[test]
-fn deploy_builds_rust_on_the_larger_machine_with_its_target_cached() {
+fn deploy_builds_on_ubuntu_latest_with_its_target_cached() {
     let deploy = read("deploy.yml");
     for stage in ["core", "edge", "front"] {
         let job = deploy.jobs.iter().find(|j| j.id == stage).unwrap();
@@ -889,9 +889,11 @@ fn deploy_builds_rust_on_the_larger_machine_with_its_target_cached() {
             };
             expr::interpolate_value(&job.runs_on, &scope).unwrap()
         };
-        assert_eq!(on(true, false), json!("g1t-4core"), "{stage}");
-        // The runner's image is built with the job's own Docker Engine.
-        assert_eq!(on(false, true), json!("g1t-4core"), "{stage}");
+        // Every job on ubuntu-latest, as on GitHub: 4 vCPU in this public
+        // repository (g1t_contracts::actions::instance_for), Rust builds and
+        // the runner's image included.
+        assert_eq!(on(true, false), json!("ubuntu-latest"), "{stage}");
+        assert_eq!(on(false, true), json!("ubuntu-latest"), "{stage}");
         assert_eq!(on(false, false), json!("ubuntu-latest"), "{stage}");
     }
     let source = std::fs::read_to_string(workflows_dir().join("deploy.yml")).unwrap();

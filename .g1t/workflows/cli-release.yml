@@ -11,7 +11,7 @@
 # Every platform builds in one job, in the rust-cross/cargo-zigbuild image,
 # pinned by digest in scripts/cli-release.mjs: the macOS builds link Apple's
 # Security framework (the keychain), and that image carries its SDK. It
-# runs on g1t's own machines (g1t-4core), whose jobs have a Docker Engine of
+# runs on g1t's own machines (ubuntu-latest, 4 vCPU here), whose jobs have a Docker Engine of
 # their own.
 name: CLI release
 
@@ -34,7 +34,7 @@ env:
 jobs:
   build:
     name: Build every platform
-    runs-on: g1t-4core
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
