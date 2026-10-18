@@ -622,6 +622,22 @@ export function workClient(service: ServiceBinding): WorkApi {
       }),
     getWorkSession: (repo, id, viewer, afterSeq = 0) =>
       call("get_work_session", { repo, id, viewer, after_seq: afterSeq }),
+    listWorkspaceSessions: (workspace, viewer, filter = {}) =>
+      call("list_workspace_sessions", {
+        workspace,
+        viewer,
+        shown: filter.shown ?? "recent",
+        kind: filter.kind ?? null,
+        harness: filter.harness ?? null,
+        person: filter.person ?? null,
+        repo: filter.repo ?? null,
+        item: filter.item ?? null,
+        subagents: filter.subagents ?? false,
+        sessions_only: filter.sessionsOnly ?? false,
+        limit: filter.limit ?? null,
+      }),
+    getWorkspaceSession: (workspace, id, viewer, afterSeq = 0) =>
+      call("get_workspace_session", { workspace, id, viewer, after_seq: afterSeq }),
     endWorkSession: (actor, repo, id) => call("end_session", { actor, repo, id, by_hand: true }),
     titleWorkSession: (actor, repo, id, title) => call("title_session", { actor, repo, id, title }),
     pullSessions: (repo, viewer, numbers) => call("pull_sessions", { repo, viewer, numbers }),

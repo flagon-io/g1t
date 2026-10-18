@@ -1186,6 +1186,19 @@ pub struct SessionListArgs {
     /// List subagents too, under the sessions that started them.
     #[arg(long)]
     pub subagents: bool,
+    /// Every repository of a workspace you may read, every kind of session:
+    /// this repository's workspace, or the one named.
+    #[arg(long, value_name = "SLUG", num_args = 0..=1, default_missing_value = "")]
+    pub workspace: Option<String>,
+    /// With --workspace: only sessions in this harness (claude_code, codex, …).
+    #[arg(long, requires = "workspace")]
+    pub harness: Option<String>,
+    /// With --workspace: only sessions this person runs, by username.
+    #[arg(long, requires = "workspace")]
+    pub person: Option<String>,
+    /// With --workspace: only sessions in this repository of it, by name.
+    #[arg(long = "in", value_name = "NAME", requires = "workspace")]
+    pub in_repo: Option<String>,
 }
 
 #[derive(Debug, Args)]

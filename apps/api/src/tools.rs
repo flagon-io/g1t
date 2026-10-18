@@ -212,7 +212,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "session",
         title: "Sessions",
-        description: "Your harness session on a repository, so others see who is working on what: `start` once (idempotent on harness_session_id; a subagent starts its own with parent_id), `update` as a heartbeat or to attach a work item, pull request, branch or head commit, `record` user-facing decisions, tool calls, skills used and what it touched (idempotent on key), `end` when done with what it reported. `list` with an item, or a path, shows who else (sibling subagents too) is on the same work. `dispatch` starts work on a work item in a session on the person's own Claude. A session goes idle after 15 minutes without a heartbeat and ends after 30 minutes; a heartbeat brings it back.",
+        description: "Your harness session on a repository, so others see who is working on what: `start` once (idempotent on harness_session_id; a subagent starts its own with parent_id), `update` as a heartbeat or to attach a work item, pull request, branch or head commit, `record` user-facing decisions, tool calls, skills used and what it touched (idempotent on key), `end` when done with what it reported. `list` with an item, or a path, shows who else (sibling subagents too) is on the same work; `list` with a `workspace` shows everything cooking across it: people's harnesses, sessions started on g1t, g1t's agent and what was recorded on pull requests. `dispatch` starts work on a work item in a session on the person's own Claude. A session goes idle after 15 minutes without a heartbeat and ends after 30 minutes; a heartbeat brings it back.",
         default_action: None,
         actions: &[
             a("start", Op::Coordination(CoordinationOp::StartSession), "Start one, or get the one started with this harness_session_id"),
@@ -220,7 +220,7 @@ pub const TOOLS: &[Tool] = &[
             a("record", Op::Coordination(CoordinationOp::RecordSessionEntries), "Record entries and acknowledge exact coordination update IDs after considering them; entry keys make retries idempotent"),
             a("end", Op::Coordination(CoordinationOp::EndSession), "End it"),
             a("get", Op::Coordination(CoordinationOp::GetSession), "One session, entries and pending coordination updates (reading never acknowledges)"),
-            a("list", Op::Coordination(CoordinationOp::ListSessions), "A repository's sessions: active, idle or ended, by work item, pull request or file touched; with subagents, each tree whole"),
+            a("list", Op::Coordination(CoordinationOp::ListSessions), "A repository's sessions: active, idle or ended, by work item, pull request or file touched; with subagents, each tree whole. With workspace instead: what is cooking across it, every kind of session, with its merge queues and what landed"),
             a("dispatch", Op::Coordination(CoordinationOp::StartAgentSession), "Start work on a work item in a session on the person's own Claude (Managed Agents with the workspace's Anthropic key), or get a Claude Code hand-off"),
         ],
     },
@@ -646,6 +646,10 @@ pub const REST_ONLY: &[Op] = &[
     // A person's own Getting started is about them at a page, not for agents.
     Op::Onboarding(OnboardingOp::GetOnboarding),
     Op::Onboarding(OnboardingOp::UpdateOnboarding),
+    // Sessions across a workspace are the `session` tool's `list` and
+    // `get` with a `workspace`.
+    Op::Coordination(CoordinationOp::ListWorkspaceSessions),
+    Op::Coordination(CoordinationOp::GetWorkspaceSession),
 ];
 
 /// Operations that cannot be undone, or reach beyond g1t's own records:

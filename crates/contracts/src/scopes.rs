@@ -1222,6 +1222,8 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     // Harness sessions, which record how pull requests are made.
     ("get_session", Scope::PullRequestsRead),
     ("list_sessions", Scope::PullRequestsRead),
+    ("list_workspace_sessions", Scope::PullRequestsRead),
+    ("get_workspace_session", Scope::PullRequestsRead),
     ("start_session", Scope::PullRequestsWrite),
     ("update_session", Scope::PullRequestsWrite),
     ("end_session", Scope::PullRequestsWrite),

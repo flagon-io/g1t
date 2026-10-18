@@ -71,6 +71,34 @@ const COLUMNS: &str = "id, workspace, repo_id, repo, number, pull_id, kind, agen
   started_at, finished_at, updated_at, budget_usd, time_cap_minutes, halted,
   COALESCE((SELECT title FROM pulls WHERE pulls.id = agent_runs.pull_id), agent_runs.title) AS title";
 
+/// The pull requests of the repositories in `?1` (a JSON array of ids)
+/// with entries recorded on them directly (not by a session moved onto
+/// it), most recently recorded first, at most `?2`.
+pub(crate) const RECORDED_IN: &str = "SELECT p.id AS pull_id, p.repo_id, p.number, p.title, p.status, p.agent, p.author_name,
+   (SELECT number FROM work_items WHERE work_items.id = p.item_id) AS item,
+   min(e.at) AS started_at, max(e.at) AS last_at,
+   EXISTS (SELECT 1 FROM agent_runs r WHERE r.pull_id = p.id) AS has_runs
+ FROM pulls p JOIN session_entries e ON e.pull_id = p.id
+ WHERE p.repo_id IN (SELECT value FROM json_each(?1)) AND e.session_id IS NULL
+ GROUP BY p.id ORDER BY last_at DESC LIMIT ?2";
+
+/// A pull request's recorded session, for a workspace's sessions.
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct RecordedRow {
+    pub(crate) pull_id: String,
+    pub(crate) repo_id: String,
+    pub(crate) number: u32,
+    pub(crate) title: String,
+    pub(crate) status: g1t_contracts::work::PullStatus,
+    pub(crate) agent: String,
+    pub(crate) author_name: String,
+    #[serde(default)]
+    pub(crate) item: Option<u32>,
+    pub(crate) started_at: String,
+    pub(crate) last_at: String,
+    pub(crate) has_runs: u32,
+}
+
 #[derive(Deserialize)]
 pub(crate) struct RunRow {
     id: String,
@@ -450,6 +478,45 @@ impl Work {
             .await?
             .results::<RunRow>()?;
         Ok(Outcome::Ok(rows.into_iter().map(|row| row.into_run(member)).collect()))
+    }
+
+    /// The runs of g1t's own agent in some repositories of a workspace
+    /// (sandboxes for checks, the queue and merge checks are not agents),
+    /// newest first, with each one's repository id. Only `live` ones: those
+    /// queued or running.
+    pub(crate) async fn agent_runs_in(&self, workspace: &str, repo_ids: &[String], live: bool, member: bool, limit: u32) -> Result<Vec<(String, AgentRun)>> {
+        if repo_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rows = self
+            .db
+            .prepare(format!(
+                "SELECT {COLUMNS} FROM agent_runs
+                 WHERE workspace = ?1 AND repo_id IN (SELECT value FROM json_each(?2))
+                   AND kind IN ('implement', 'revise', 'review', 'answer', 'update', 'plan')
+                   AND (?3 = 0 OR status IN ('queued', 'running'))
+                 ORDER BY updated_at DESC LIMIT ?4"
+            ))
+            .bind(&[workspace.to_lowercase().into(), serde_json::to_string(repo_ids)?.into(), u32::from(live).into(), limit.into()])?
+            .all()
+            .await?
+            .results::<RunRow>()?;
+        Ok(rows.into_iter().map(|row| (row.repo_id.clone(), row.into_run(member))).collect())
+    }
+
+    /// The pull requests of some repositories with a recorded session,
+    /// most recently recorded first: each one's id, number, title, status,
+    /// agent label, author, first and last entry.
+    pub(crate) async fn recorded_in(&self, repo_ids: &[String], limit: u32) -> Result<Vec<RecordedRow>> {
+        if repo_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.db
+            .prepare(RECORDED_IN)
+            .bind(&[serde_json::to_string(repo_ids)?.into(), limit.into()])?
+            .all()
+            .await?
+            .results::<RecordedRow>()
     }
 
     pub(crate) async fn get_run(&self, a: GetRunArgs) -> Result<Outcome<AgentRun>> {

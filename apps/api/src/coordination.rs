@@ -35,12 +35,14 @@ pub enum CoordinationOp {
     ListClaims,
     GetWork,
     StartAgentSession,
+    ListWorkspaceSessions,
+    GetWorkspaceSession,
 }
 
 impl CoordinationOp {
     /// Every one: `Op::ALL` lists each as `Op::Coordination(…)`, which a
     /// test checks against this.
-    pub const ALL: [CoordinationOp; 12] = [
+    pub const ALL: [CoordinationOp; 14] = [
         CoordinationOp::StartSession,
         CoordinationOp::UpdateSession,
         CoordinationOp::EndSession,
@@ -53,6 +55,8 @@ impl CoordinationOp {
         CoordinationOp::ListClaims,
         CoordinationOp::GetWork,
         CoordinationOp::StartAgentSession,
+        CoordinationOp::ListWorkspaceSessions,
+        CoordinationOp::GetWorkspaceSession,
     ];
 
     pub fn name(self) -> &'static str {
@@ -69,6 +73,8 @@ impl CoordinationOp {
             CoordinationOp::ListClaims => "list_claims",
             CoordinationOp::GetWork => "get_work",
             CoordinationOp::StartAgentSession => "start_agent_session",
+            CoordinationOp::ListWorkspaceSessions => "list_workspace_sessions",
+            CoordinationOp::GetWorkspaceSession => "get_workspace_session",
         }
     }
 
@@ -87,17 +93,24 @@ impl CoordinationOp {
             CoordinationOp::ListClaims => "List claims",
             CoordinationOp::GetWork => "Get a work item's work context",
             CoordinationOp::StartAgentSession => "Start an agent session on a work item",
+            CoordinationOp::ListWorkspaceSessions => "List a workspace's sessions",
+            CoordinationOp::GetWorkspaceSession => "Get a session of a workspace",
         }
     }
 
     /// Whether it is about one repository: sessions are where they run;
     /// claims and work contexts are of a workspace's work items, and take a
     /// repository only to name its workspace (or, for a claim, where it is
-    /// made from).
+    /// made from). Sessions are read across a workspace too: listing or
+    /// getting them takes a repository or a workspace.
     pub fn needs_repo(self) -> bool {
         !matches!(
             self,
-            CoordinationOp::ClaimWorkItem
+            CoordinationOp::GetSession
+                | CoordinationOp::ListSessions
+                | CoordinationOp::ListWorkspaceSessions
+                | CoordinationOp::GetWorkspaceSession
+                | CoordinationOp::ClaimWorkItem
                 | CoordinationOp::ReleaseClaim
                 | CoordinationOp::HandOffWorkItem
                 | CoordinationOp::ListClaims
@@ -109,7 +122,12 @@ impl CoordinationOp {
     pub fn reads(self) -> bool {
         matches!(
             self,
-            CoordinationOp::GetSession | CoordinationOp::ListSessions | CoordinationOp::ListClaims | CoordinationOp::GetWork
+            CoordinationOp::GetSession
+                | CoordinationOp::ListSessions
+                | CoordinationOp::ListClaims
+                | CoordinationOp::GetWork
+                | CoordinationOp::ListWorkspaceSessions
+                | CoordinationOp::GetWorkspaceSession
         )
     }
 
@@ -118,8 +136,10 @@ impl CoordinationOp {
             CoordinationOp::StartSession => "Start a session: one run of your own harness (a Claude Code session, a Codex run) on a repository, so others can see who is working on what. `harness` is claude_code, codex, cursor, copilot or other. Give `harness_session_id`, the harness's own id for the session, and starting again with it returns the session already started (refreshing the work item, pull request, branch, title and head given) instead of a new one, so a hook that fires twice is harmless. `item` and `pull` attach it to a work item of the repository's workspace and a pull request of the repository; a pull request for a work item attaches that work item too. A subagent is a session of its own: give `parent_id` (one of your sessions here), its `agent_type`, the `task` and `prompt` its parent gave it, and as `harness_session_id` the parent's harness id, `/agent/` and the subagent's id; it starts on the parent's work item, pull request and branch unless it says otherwise, sees and is seen by its siblings in get_work and list_sessions, and once ended stays ended when started again. Returns the session (`id` `ses_…`, `state` active, idle or ended). A new session, or one started again after it ended, is a session.started event. Needs a confirmed email address and a role that may open work items.",
             CoordinationOp::UpdateSession => "Update one of your sessions: attach it to a work item or pull request, or change its branch, head commit or title. Only the fields given change. An empty body is a heartbeat: every call keeps the session active and renews the claims made from it. A session reads as idle after 15 minutes without one and ends (`end_reason` timed_out) after 30 minutes; a heartbeat brings a timed-out one back. Attaching a pull request moves the entries recorded so far into that pull request's session. A subagent's `task`, `prompt`, `model` and `result` (what it reported, up to 8,000 characters) can be set too; a subagent that ended takes them and stays ended. Returns the session; one ended with end_session is refused with `409`.",
             CoordinationOp::EndSession => "End one of your sessions, with an optional `reason` and `result` (what it reported when it finished: a subagent's final message, up to 8,000 characters, never a tool's output). A session.ended event. Ending one already ended returns it as it is, taking `result` if it had none. Its subagents still going end with it (`parent ended`). Its claims are not released: release them, hand the work item off, or let them expire. Anyone with write access to the repository may also end someone else's session, one left behind by a harness that was killed or never ended it: it ends as `ended by hand by @you`, without their `reason` or `result`.",
-            CoordinationOp::GetSession => "A session and its entries, oldest first, numbered within the session (`seq`); `after` gives the entries after that number, 500 at a time. With them: `children`, its subagents and theirs in the order they started (each names its `parent_id`); `touched`, the files, commits, branches, pull requests and work items it and they touched; `links`, the work items and pull requests they worked on and how each was tied (`via`: attached, claim, branch, commit, trailer, opened or ref); `skills`, the skills they used by name; and for a subagent, `root`, the session at the top of its tree. `updates` contains up to 100 oldest pending coordination events that concern this session (id, kind, data, at): those about the work items and pull requests it is on or tied to, or every one while it is on nothing yet; never its own start, end or claims. Reading never acknowledges them; use record_session_entries with acknowledge IDs after considering them. To check for updates without the transcript, give `after` 4294967295. Anyone who can read the repository may.",
-            CoordinationOp::ListSessions => "A repository's sessions, most recently heard from first, up to 100: `state` active (heard from in the last 15 minutes), idle or ended; `item` (a work item's number) or `pull` for those on one, attached or tied to it any other way; `path` for those that touched a file (or any under a folder ending in `/`). Subagents are left out unless `subagents` is true, which lists each tree whole. Each says how many `subagents` it started. Anyone who can read the repository may.",
+            CoordinationOp::GetSession => "A session and its entries, oldest first, numbered within the session (`seq`); `after` gives the entries after that number, 500 at a time. With them: `children`, its subagents and theirs in the order they started (each names its `parent_id`); `touched`, the files, commits, branches, pull requests and work items it and they touched; `links`, the work items and pull requests they worked on and how each was tied (`via`: attached, claim, branch, commit, trailer, opened or ref); `skills`, the skills they used by name; and for a subagent, `root`, the session at the top of its tree. `updates` contains up to 100 oldest pending coordination events that concern this session (id, kind, data, at): those about the work items and pull requests it is on or tied to, or every one while it is on nothing yet; never its own start, end or claims. Reading never acknowledges them; use record_session_entries with acknowledge IDs after considering them. To check for updates without the transcript, give `after` 4294967295. Anyone who can read the repository may. With `workspace` instead of `repo`, the session is found in whichever repository of the workspace it runs in, and `repo` says which.",
+            CoordinationOp::ListSessions => "A repository's sessions, most recently heard from first, up to 100: `state` active (heard from in the last 15 minutes), idle or ended; `item` (a work item's number) or `pull` for those on one, attached or tied to it any other way; `path` for those that touched a file (or any under a folder ending in `/`). Subagents are left out unless `subagents` is true, which lists each tree whole. Each says how many `subagents` it started. Anyone who can read the repository may. With `workspace` instead of `repo`, every repository of the workspace you may read: see list_workspace_sessions.",
+            CoordinationOp::ListWorkspaceSessions => "What is cooking across a workspace: the sessions of every repository of it you may read, every kind in one shape, most recently heard from first (up to 200, 60 if `limit` is left out). `kind` is harness (someone's own harness: Claude Code, Codex, Cursor, Copilot, another), hosted (started on g1t on the workspace's Anthropic provider), agent (g1t's own agent on a pull request; members only) or recorded (what a coding agent recorded on a pull request with no session behind it). Each gives `repo`, `title`, `actor`, `harness` or `agent`, `branch`, `item` and its title, `pull` and its title and status, `state` (active, idle or ended: one quiet for 30 minutes reads as ended), `last_activity_at`, `subagents`, and for harness and hosted ones the `session` itself. `state` live (going now), recent (the default) or ended; `harness`, `person` (a username), `repo` (a repository's name in the workspace) and `item` narrow it; `subagents` true gives each tree's subagents in `children`. With them: `queue`, the merge queues with something waiting, `landed`, the pull requests merged most recently, and `repos`, the repositories looked in. Only what you may read is listed; outside the workspace, sessions show who runs them and what they are tied to, not what they recorded.",
+            CoordinationOp::GetWorkspaceSession => "One session of a workspace by its id (ses_…), in whichever of its repositories it runs: as get_session, with `repo` naming the repository. Anyone who can read that repository may.",
             CoordinationOp::RecordSessionEntries => "Record entries in one of your sessions: up to 200 at a time, each with `kind` (prompt, message, tool_call, tool_result, note, or skill for a skill it used, by name), `text` (up to 64,000 characters), and for tools `tool`. Give each a `key` and recording it again does nothing, so a retried hook records it once. `touched` says what it touched, up to 200: `{ kind, value }` with kind file (a path from the repository's root), commit, branch, pull (one it opened) or item (a work item it named); each is kept once, ties the session to the pull requests and work items it names, and a file another active session touched too (outside its own parents and subagents, so siblings yes) is an overlap.detected event for both, once per pair and again when a file it was not announced for joins. Entries of a session attached to a pull request show in that pull request's session too, where reviewers read why the change is what it is. `acknowledge` accepts up to 100 exact pending update IDs this session has considered; reading alone never acknowledges. Recording is a heartbeat. Returns how many were `recorded`, how many were `duplicates`, and how many of the `acknowledge` IDs were `acknowledged` (fewer than given means some were not this session's updates).",
             CoordinationOp::ClaimWorkItem => "Claim an open work item: say you are working on it. A claim is advisory, never a lock: anyone may claim a work item someone else has, and `others` lists the claims already on it, so you can coordinate or pick something else. It lasts `ttl_minutes` (30 unless you say, up to 240) and is renewed by claiming again or, when you give the `session_id` of one of your sessions, by that session's heartbeats. Name the work item by `workspace` and `number`; `repo`, the repository of your checkout, names the workspace when `workspace` is left out and says where the claim is made from. Returns your `claim`, the `others`, and `blocked_by`: each work item this one waits on, with its claims and pull requests. A new claim is a work.claimed event; one taking over a hand-off says which in `took_over`. For work that has no work item yet, leave out `number` and give `title` (and `body`): the work item is opened first (filed from `repo` when given; a work_item.opened event), then claimed, the session named by `session_id` is attached to it, and `item` is the work item opened. The session is checked first, so a claim it would refuse opens nothing.",
             CoordinationOp::ReleaseClaim => "Release your claim on a work item, with an optional `reason`: you stopped working on it. A work.released event. Claims also end when the work item closes (reason item_closed), and expire when not renewed. Refused with `404` when you hold no active claim on it.",
@@ -198,22 +218,46 @@ impl CoordinationOp {
             ),
             CoordinationOp::GetSession => (
                 json!({
-                    "repo": repo,
+                    "repo": { "type": "string", "description": "Repository as \"owner/name\". Left out, give workspace." },
+                    "workspace": { "type": "string", "description": "A workspace's slug, instead of repo: the session is found in whichever repository of it it runs in." },
                     "id": id,
                     "after": { "type": "integer", "description": "Only entries after this sequence number, for the next page. To read only pending `updates`, give 4294967295: no entries come back." },
                 }),
-                &["repo", "id"],
+                &["id"],
             ),
             CoordinationOp::ListSessions => (
                 json!({
-                    "repo": repo,
+                    "repo": { "type": "string", "description": "Repository as \"owner/name\". Left out, give workspace for every repository of it you may read." },
+                    "workspace": { "type": "string", "description": "A workspace's slug, instead of repo: its sessions across every repository of it you may read (see list_workspace_sessions for what else it takes)." },
                     "state": { "type": "string", "enum": ["active", "idle", "ended"], "description": "Only sessions in this state." },
                     "item": { "type": "integer", "description": "Only sessions on this work item: attached, or tied to it any other way." },
                     "pull": { "type": "integer", "description": "Only sessions on this pull request: attached, or tied to it any other way." },
                     "path": { "type": "string", "description": "Only sessions that touched this file, or any under it when it ends in `/`." },
                     "subagents": { "type": "boolean", "description": "List subagents too, each tree whole. Left out, only the sessions at the top." },
                 }),
-                &["repo"],
+                &[],
+            ),
+            CoordinationOp::ListWorkspaceSessions => (
+                json!({
+                    "workspace": { "type": "string", "description": "The workspace's slug." },
+                    "state": { "type": "string", "enum": ["live", "recent", "ended"], "description": "live: going now (active or idle, a run queued or running); recent: every one (the default); ended." },
+                    "kind": { "type": "string", "enum": SessionKind::ALL.map(SessionKind::as_str), "description": "Only sessions of this kind." },
+                    "harness": { "type": "string", "enum": Harness::ALL.map(Harness::as_str), "description": "Only sessions in this harness." },
+                    "person": { "type": "string", "description": "Only sessions this person runs, by username." },
+                    "repo": { "type": "string", "description": "Only sessions in this repository of the workspace, by its name (or \"owner/name\")." },
+                    "item": { "type": "integer", "description": "Only sessions on this work item of the workspace." },
+                    "subagents": { "type": "boolean", "description": "Give each session's subagents too, in its `children`." },
+                    "limit": { "type": "integer", "description": "At most this many, up to 200; 60 if left out." },
+                }),
+                &["workspace"],
+            ),
+            CoordinationOp::GetWorkspaceSession => (
+                json!({
+                    "workspace": { "type": "string", "description": "The workspace's slug." },
+                    "id": id,
+                    "after": { "type": "integer", "description": "Only entries after this sequence number, for the next page." },
+                }),
+                &["workspace", "id"],
             ),
             CoordinationOp::RecordSessionEntries => (
                 json!({
@@ -364,6 +408,26 @@ pub async fn run(op: CoordinationOp, services: &Services, viewer: &Viewer, input
     // A claim or a work context names its work item's workspace, or a
     // repository of it.
     let workspace = item_workspace(input);
+    // Sessions across a workspace: listing or getting them without a repository.
+    if given.is_none() && !workspace.is_empty() {
+        match op {
+            CoordinationOp::ListSessions => return list_workspace_sessions(services, viewer, input, workspace).await,
+            CoordinationOp::GetSession => return get_workspace_session(services, viewer, input, workspace).await,
+            _ => {}
+        }
+    }
+    if matches!(op, CoordinationOp::ListWorkspaceSessions | CoordinationOp::GetWorkspaceSession) {
+        if workspace.is_empty() {
+            return invalid("Give the workspace by its slug.".to_owned());
+        }
+        return match op {
+            CoordinationOp::ListWorkspaceSessions => list_workspace_sessions(services, viewer, input, workspace).await,
+            _ => get_workspace_session(services, viewer, input, workspace).await,
+        };
+    }
+    if matches!(op, CoordinationOp::ListSessions | CoordinationOp::GetSession) && given.is_none() {
+        return invalid("Give the repository as \"owner/name\", or the workspace by its slug.".to_owned());
+    }
     if !op.needs_repo() && workspace.is_empty() {
         return invalid("Give the workspace by its slug, or a repository of it as \"owner/name\".".to_owned());
     }
@@ -552,7 +616,66 @@ pub async fn run(op: CoordinationOp, services: &Services, viewer: &Viewer, input
             };
             g1t_kit::call(&services.integrations, "start_agent_session", &args).await
         }
+        // Answered above, before a repository is asked for.
+        CoordinationOp::ListWorkspaceSessions | CoordinationOp::GetWorkspaceSession => invalid("Give the workspace by its slug.".to_owned()),
     }
+}
+
+/// `list_workspace_sessions`, from a `workspace` and its filters.
+async fn list_workspace_sessions(services: &Services, viewer: &Viewer, input: &Value, workspace: String) -> Result<Outcome<Value>> {
+    let invalid = |message: String| Ok(Outcome::fail(FailureCode::Invalid, message));
+    let shown = match text(input, "state") {
+        None => SessionsShown::Recent,
+        Some(state) => match SessionsShown::parse(&state) {
+            Some(shown) => shown,
+            None => return invalid(format!("state is live, recent or ended, not {state}.")),
+        },
+    };
+    let kind = match text(input, "kind") {
+        None => None,
+        Some(kind) => match SessionKind::parse(&kind) {
+            Some(kind) => Some(kind),
+            None => return invalid(format!("kind is harness, hosted, agent or recorded, not {kind}.")),
+        },
+    };
+    let harness = match text(input, "harness") {
+        None => None,
+        Some(name) => match Harness::parse(&name) {
+            Some(harness) => Some(harness),
+            None => {
+                let names: Vec<&str> = Harness::ALL.iter().map(|harness| harness.as_str()).collect();
+                return invalid(format!("harness is one of {}.", names.join(", ")));
+            }
+        },
+    };
+    let item = match optional_number(input, "item") {
+        Ok(item) => item,
+        Err(message) => return invalid(message),
+    };
+    let subagents = matches!(&input["subagents"], Value::Bool(true)) || input["subagents"].as_str() == Some("true");
+    let args = ListWorkspaceSessionsArgs {
+        viewer: viewer.clone(),
+        workspace,
+        shown,
+        kind,
+        harness,
+        person: text(input, "person"),
+        repo: text(input, "repo").or_else(|| text(input, "repository")),
+        item,
+        subagents,
+        sessions_only: false,
+        limit: number(input, "limit"),
+    };
+    g1t_kit::call(&services.work, "list_workspace_sessions", &args).await
+}
+
+/// `get_workspace_session`, from a `workspace` and the session's `id`.
+async fn get_workspace_session(services: &Services, viewer: &Viewer, input: &Value, workspace: String) -> Result<Outcome<Value>> {
+    let Some(id) = text(input, "id") else {
+        return Ok(Outcome::fail(FailureCode::Invalid, "Name the session by its id (ses_…)."));
+    };
+    let args = GetWorkspaceSessionArgs { viewer: viewer.clone(), workspace, id, after_seq: number(input, "after").unwrap_or_default() };
+    g1t_kit::call(&services.work, "get_workspace_session", &args).await
 }
 
 #[cfg(test)]

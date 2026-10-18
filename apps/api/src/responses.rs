@@ -268,6 +268,8 @@ fn sample(op: Op, example: &Value) -> Value {
         }
         Op::Coordination(CoordinationOp::GetSession) => through::<work::SessionDetail>(op, sent),
         Op::Coordination(CoordinationOp::ListSessions) => through::<Vec<work::Session>>(op, sent),
+        Op::Coordination(CoordinationOp::ListWorkspaceSessions) => through::<work::WorkspaceSessions>(op, sent),
+        Op::Coordination(CoordinationOp::GetWorkspaceSession) => through::<work::WorkspaceSessionDetail>(op, sent),
         Op::Coordination(CoordinationOp::RecordSessionEntries) => through::<work::Recorded>(op, sent),
         Op::Coordination(CoordinationOp::ClaimWorkItem) => through::<work::Claimed>(op, sent),
         Op::Coordination(CoordinationOp::ReleaseClaim | CoordinationOp::HandOffWorkItem) => through::<work::Claim>(op, sent),

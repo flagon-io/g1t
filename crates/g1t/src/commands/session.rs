@@ -313,6 +313,9 @@ pub fn fetch_filtered(
 }
 
 fn list(ctx: &Ctx, args: SessionListArgs) -> Result<()> {
+    if args.workspace.is_some() {
+        return list_workspace(ctx, args);
+    }
     let (repo, client) = super::coordination_client(ctx, super::QUICK)?;
     let state = args.state.map(|state| match state {
         SessionState::Active => "active",
@@ -329,6 +332,82 @@ fn list(ctx: &Ctx, args: SessionListArgs) -> Result<()> {
         return Ok(());
     }
     print_list(&ctx.out, &sessions, current().as_deref())
+}
+
+/// `g1t session list --workspace`: what is cooking across a workspace.
+fn list_workspace(ctx: &Ctx, args: SessionListArgs) -> Result<()> {
+    let place = super::work::place(ctx, args.workspace.as_deref())?;
+    let state = match args.state {
+        None => "recent",
+        Some(SessionState::Active | SessionState::Idle) => "live",
+        Some(SessionState::Ended) => "ended",
+    };
+    let mut call = place.client.op("list_workspace_sessions").arg("workspace", &place.workspace).query("state", state).query("limit", args.limit.clamp(1, 200));
+    if let Some(item) = args.item {
+        call = call.query("item", item);
+    }
+    if let Some(harness) = &args.harness {
+        call = call.query("harness", harness);
+    }
+    if let Some(person) = &args.person {
+        call = call.query("person", person.trim_start_matches('@'));
+    }
+    if let Some(name) = &args.in_repo {
+        call = call.query("repo", name);
+    }
+    if args.subagents {
+        call = call.query("subagents", true);
+    }
+    let found = call.send()?;
+    if ctx.out.structured() {
+        return ctx.out.emit(&found);
+    }
+    let sessions = found["sessions"].as_array().cloned().unwrap_or_default();
+    if sessions.is_empty() {
+        eprintln!("No {} sessions in the {} workspace.", if state == "recent" { "matching" } else { state }, place.workspace);
+        return Ok(());
+    }
+    let mine = current();
+    let mut rows: Vec<Vec<Cell>> = Vec::new();
+    for session in &sessions {
+        let id = s(session, "id");
+        let marked = if Some(id) == mine.as_deref() { format!("{id} *") } else { id.to_owned() };
+        let by = match session["harness"].as_str() {
+            Some(harness) => harness.to_owned(),
+            None => format!("{} {}", s(session, "kind"), s(session, "agent")).trim().to_owned(),
+        };
+        let mut on = s(session, "repo").to_owned();
+        if let Some(item) = session["item"].as_u64() {
+            on.push_str(&format!(" #{item}"));
+        }
+        if let Some(pull) = session["pull"].as_u64() {
+            on.push_str(&format!(" PR #{pull}"));
+        }
+        rows.push(vec![
+            Cell::new(marked),
+            Cell::styled(s(session, "state"), ctx.out.state(s(session, "state"))),
+            Cell::new(s(session, "actor")),
+            Cell::new(by),
+            Cell::new(on),
+            Cell::styled(ago(s(session, "last_activity_at")), ctx.out.dim(&ago(s(session, "last_activity_at")))),
+        ]);
+        for child in session["children"].as_array().into_iter().flatten() {
+            rows.push(vec![
+                Cell::new(format!("↳ {} {}", s(child, "id"), s(child, "agent_type")).trim_end().to_owned()),
+                Cell::styled(s(child, "state"), ctx.out.state(s(child, "state"))),
+                Cell::new(super::login_of(child)),
+                Cell::new(s(child, "harness")),
+                Cell::new(String::new()),
+                Cell::styled(ago(s(child, "last_seen_at")), ctx.out.dim(&ago(s(child, "last_seen_at")))),
+            ]);
+        }
+    }
+    ctx.out.table(&["session", "state", "who", "harness", "on", "last seen"], &rows)?;
+    let waiting: u64 = found["queue"].as_array().into_iter().flatten().map(|queue| queue["active"].as_array().map_or(0, |active| active.len() as u64)).sum();
+    if waiting > 0 {
+        eprintln!("{waiting} waiting in merge queues.");
+    }
+    Ok(())
 }
 
 pub fn print_list(out: &Output, sessions: &[Value], mine: Option<&str>) -> Result<()> {

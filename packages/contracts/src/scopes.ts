@@ -546,6 +546,8 @@ export const OPERATION_SCOPES = [
   ["remove_requested_reviewers", "pull_requests:write"],
   ["get_session", "pull_requests:read"],
   ["list_sessions", "pull_requests:read"],
+  ["list_workspace_sessions", "pull_requests:read"],
+  ["get_workspace_session", "pull_requests:read"],
   ["start_session", "pull_requests:write"],
   ["update_session", "pull_requests:write"],
   ["end_session", "pull_requests:write"],

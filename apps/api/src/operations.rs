@@ -868,7 +868,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 428] = [
+    pub const ALL: [Op; 430] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -1297,6 +1297,8 @@ impl Op {
         Op::Coordination(CoordinationOp::ListClaims),
         Op::Coordination(CoordinationOp::GetWork),
         Op::Coordination(CoordinationOp::StartAgentSession),
+        Op::Coordination(CoordinationOp::ListWorkspaceSessions),
+        Op::Coordination(CoordinationOp::GetWorkspaceSession),
     ];
 
     pub fn by_name(name: &str) -> Option<Op> {

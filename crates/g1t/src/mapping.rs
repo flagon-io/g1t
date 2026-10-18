@@ -255,7 +255,7 @@ pub static COMMANDS: &[Mapping] = &[
     Mapping { command: "session log", ops: &["record_session_entries"] },
     Mapping { command: "session attach", ops: &["update_session"] },
     Mapping { command: "session end", ops: &["end_session"] },
-    Mapping { command: "session list", ops: &["list_sessions"] },
+    Mapping { command: "session list", ops: &["list_sessions", "list_workspace_sessions"] },
     Mapping { command: "session view", ops: &["get_session"] },
     Mapping { command: "session updates", ops: &["get_session"] },
     Mapping { command: "session acknowledge", ops: &["record_session_entries"] },
