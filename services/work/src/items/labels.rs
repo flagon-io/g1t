@@ -188,12 +188,20 @@ fn tidy_description(description: &str) -> Result<String, &'static str> {
     Ok(description.to_owned())
 }
 
+/// Whether `actor` may make labels in `workspace`, which are the whole
+/// workspace's: through their membership of it alone, never their role on
+/// one repository (an outside collaborator's Write on a public repository
+/// makes no workspace labels).
+pub(crate) fn may_create_labels(actor: &User, workspace: &str) -> bool {
+    access::can_item(Some(actor), workspace, None, Capability::ManageLabels)
+}
+
 /// Refused while issues are still being moved into work items: what is
 /// numbered or kept by workspace is not all there yet.
 pub(crate) fn still_moving<T>() -> Outcome<T> {
     Outcome::fail(
         FailureCode::Conflict,
-        "Issues are moving into work items, with their labels and milestones, and new numbers wait for them; try again in a few minutes.",
+        "Work items are still being moved into this workspace; try again in a few minutes.",
     )
 }
 
@@ -410,23 +418,17 @@ impl Work {
     }
 
     /// Makes sure every label in `names` exists in the workspace: those
-    /// missing are created when `actor` may manage labels (through the
-    /// workspace, or their role on `repo`), and refused otherwise. Returns
-    /// their colors, by name.
-    pub(crate) async fn ensure_labels(
-        &self,
-        actor: &User,
-        workspace: &str,
-        repo: Option<RepoRef<'_>>,
-        names: &[String],
-    ) -> Result<Outcome<Vec<(String, String)>>> {
+    /// missing are created when `actor` may manage the workspace's labels
+    /// ([`may_create_labels`]), and refused otherwise. Returns their
+    /// colors, by name.
+    pub(crate) async fn ensure_labels(&self, actor: &User, workspace: &str, names: &[String]) -> Result<Outcome<Vec<(String, String)>>> {
         if names.is_empty() {
             return Ok(Outcome::Ok(Vec::new()));
         }
         let existing: Vec<Label> = self.labels_in(workspace, None).await?;
         let missing: Vec<&String> = names.iter().filter(|name| !existing.iter().any(|label| label.name == **name)).collect();
         if !missing.is_empty() {
-            if !access::can_item(Some(actor), workspace, repo, Capability::ManageLabels) {
+            if !may_create_labels(actor, workspace) {
                 let list = missing.iter().map(|name| name.as_str()).collect::<Vec<_>>().join(", ");
                 return Ok(Outcome::fail(
                     FailureCode::Invalid,
@@ -475,7 +477,7 @@ impl Work {
                 format!("A work item or pull request can have up to {MAX_LABELS} labels of up to {MAX_LABEL_CHARS} characters each."),
             ));
         };
-        let colors = check!(self.ensure_labels(actor, &labeled.workspace(), labeled.repo(), &after).await?);
+        let colors = check!(self.ensure_labels(actor, &labeled.workspace(), &after).await?);
         let before = labeled.labels().to_vec();
         let (added, removed) = label_changes(&before, &after);
         if added.is_empty() && removed.is_empty() {
@@ -573,6 +575,21 @@ mod tests {
 
     fn names(list: &[&str]) -> Vec<String> {
         list.iter().map(|name| (*name).to_owned()).collect()
+    }
+
+    #[test]
+    fn only_the_workspaces_members_make_its_labels() {
+        use crate::items::rows_for_test::person_for_test;
+        // An outside collaborator with Write on one of acme's repositories.
+        let mut outsider = person_for_test("usr_9", None);
+        outsider.grants.push(g1t_contracts::access::RepoGrant {
+            repo_id: "rep_web".into(),
+            workspace: "acme".into(),
+            role: g1t_contracts::access::RepoRole::Write,
+            team: None,
+        });
+        assert!(!may_create_labels(&outsider, "acme"));
+        assert!(may_create_labels(&person_for_test("usr_2", Some("acme")), "acme"));
     }
 
     #[test]

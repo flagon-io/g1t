@@ -125,7 +125,7 @@ impl Work {
                 return Ok(Outcome::fail(FailureCode::Invalid, "A work item's origin is where it was filed; link a target instead."));
             }
             if current.as_ref().is_some_and(|link| link.role == a.role) {
-                return Ok(Outcome::Ok(held.item));
+                return Ok(Outcome::Ok(held.shown(Some(&a.actor))));
             }
             self.db
                 .prepare(
@@ -164,6 +164,6 @@ impl Work {
         }
         self.publish_item(kind, &after, Some(&a.actor), WorkItemEvent { repo: Some(path), role: Some(role), ..event }).await?;
         self.note_item(&after.item.id, &a.actor, &text).await?;
-        Ok(Outcome::Ok(after.item))
+        Ok(Outcome::Ok(after.shown(Some(&a.actor))))
     }
 }

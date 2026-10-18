@@ -110,9 +110,41 @@ pub(crate) struct Held {
     /// The origin's id, workspace and privacy, while the repository is
     /// known: one deleted for good no longer makes it public.
     origin: Option<(String, String, bool)>,
+    /// Each linked repository's id with its workspace and privacy, while
+    /// known: what deciding who may see that it is linked needs.
+    known: Vec<(String, String, bool)>,
+    /// The repository of each of `item.resolutions`, by id, in order.
+    resolved_in: Vec<String>,
 }
 
 impl Held {
+    /// Whether `viewer` may read linked repository `repo_id`: one whose
+    /// workspace and privacy are not known is not shown.
+    pub(crate) fn may_read_repo(&self, viewer: Option<&User>, repo_id: &str) -> bool {
+        self.known
+            .iter()
+            .find(|(id, _, _)| id == repo_id)
+            .is_some_and(|(id, namespace, private)| repo_readable(viewer, id, Some(namespace), Some(u8::from(*private))))
+    }
+
+    /// The work item as `viewer` is shown it: only the linked repositories
+    /// and the resolutions in repositories they may read. Who may see a
+    /// work item is its workspace's and its origin's business; that it is
+    /// linked to a private repository is that repository's.
+    pub(crate) fn shown(self, viewer: Option<&User>) -> WorkItem {
+        let readable = |repo_id: &str| self.may_read_repo(viewer, repo_id);
+        let repos: Vec<ItemRepo> = self.item.repos.iter().filter(|repo| readable(&repo.repo_id)).cloned().collect();
+        let resolutions: Vec<Resolution> = self
+            .item
+            .resolutions
+            .iter()
+            .zip(&self.resolved_in)
+            .filter(|(_, repo_id)| readable(repo_id))
+            .map(|(resolution, _)| resolution.clone())
+            .collect();
+        WorkItem { repos, resolutions, ..self.item }
+    }
+
     pub(crate) fn origin(&self) -> Option<RepoRef<'_>> {
         self.origin.as_ref().map(|(id, namespace, private)| RepoRef { id, namespace, private: *private })
     }
@@ -122,10 +154,13 @@ impl Held {
         self.item.repos.iter().map(|repo| repo.repo_id.clone()).collect()
     }
 
-    /// The repository its events are filed under: its origin, else the
-    /// first it is linked to.
+    /// The repository its events are filed under: its origin, or none for
+    /// one filed in the workspace. Never another linked repository: its
+    /// readers may not see a members-only work item, and events filed
+    /// under a repository are shown to whoever reads it. The others hear
+    /// of it through the event's `repoIds`.
     pub(crate) fn event_repo(&self) -> Option<&str> {
-        self.item.repos.first().map(|repo| repo.repo_id.as_str())
+        self.item.repos.iter().find(|repo| repo.role == LinkRole::Origin).map(|repo| repo.repo_id.as_str())
     }
 
     pub(crate) fn may(&self, viewer: Option<&User>, capability: Capability) -> bool {
@@ -141,6 +176,14 @@ impl Held {
             Err(Denied::Forbidden) => Outcome::fail(FailureCode::Forbidden, access::needs_on_item(capability, &self.item.workspace)),
         }
     }
+}
+
+/// Whether `viewer` may read repository `repo_id`, as `repo_workspaces`
+/// records it (its `workspace` and `private`): one not recorded is not.
+pub(crate) fn repo_readable(viewer: Option<&User>, repo_id: &str, workspace: Option<&str>, private: Option<u8>) -> bool {
+    workspace.is_some_and(|namespace| {
+        access::can(viewer, RepoRef { id: repo_id, namespace, private: private != Some(0) }, Capability::Read)
+    })
 }
 
 pub(crate) fn no_item<T>() -> Outcome<T> {
@@ -172,6 +215,10 @@ impl ItemRow {
             let namespace = link.workspace.clone()?;
             Some((link.repo_id.clone(), namespace, link.private != Some(0)))
         });
+        let known: Vec<(String, String, bool)> = links
+            .iter()
+            .filter_map(|link| Some((link.repo_id.clone(), link.workspace.clone()?, link.private != Some(0))))
+            .collect();
         let mut repos: Vec<ItemRepo> = links
             .into_iter()
             .map(|link| ItemRepo {
@@ -185,6 +232,7 @@ impl ItemRow {
         sort_repos(&mut repos);
         let stored: Vec<StoredResolution> =
             self.resolutions.as_deref().and_then(|json| serde_json::from_str(json).ok()).unwrap_or_default();
+        let resolved_in: Vec<String> = stored.iter().map(|resolution| resolution.repo_id.clone()).collect();
         let resolutions = stored
             .into_iter()
             .map(|resolution| Resolution {
@@ -222,13 +270,83 @@ impl ItemRow {
                 repos,
             },
             origin,
+            known,
+            resolved_in,
         })
+    }
+}
+
+/// A work item of `acme` linked as `links` (`[repo_id, role, workspace,
+/// private]`, a workspace of "" for a repository not known) and resolved
+/// in `resolved` (repository ids), for tests.
+#[cfg(test)]
+pub(crate) fn held_for_test(number: u32, links: &[(&str, &str, &str, bool)], resolved: &[&str]) -> Held {
+    let links: Vec<serde_json::Value> = links
+        .iter()
+        .map(|(id, role, workspace, private)| {
+            serde_json::json!({
+                "repo_id": id, "path": format!("{workspace}/{id}"), "role": role, "landed": 0,
+                "workspace": if workspace.is_empty() { serde_json::Value::Null } else { (*workspace).into() },
+                "private": u8::from(*private),
+            })
+        })
+        .collect();
+    let resolutions: Vec<serde_json::Value> = resolved.iter().map(|id| serde_json::json!({ "repo_id": id, "pull": 1 })).collect();
+    let row: ItemRow = serde_json::from_value(serde_json::json!({
+        "id": format!("wki_{number}"), "workspace": "acme", "number": number, "title": format!("Item {number}"), "body": "",
+        "labels": "[]", "state": "open", "reason": null, "resolutions": serde_json::to_string(&resolutions).unwrap(),
+        "author_id": "usr_1", "author_name": "ana", "created_at": "", "updated_at": "", "closed_at": null, "assignees": "[]",
+        "links": serde_json::to_string(&links).unwrap(),
+    }))
+    .unwrap();
+    row.held().unwrap()
+}
+
+/// A verified person, a member (with the default Write) of `member_of`
+/// if given, for tests.
+#[cfg(test)]
+pub(crate) fn person_for_test(id: &str, member_of: Option<&str>) -> User {
+    User {
+        id: id.to_owned(),
+        username: id.trim_start_matches("usr_").to_owned(),
+        verified: true,
+        workspaces: member_of.map(g1t_contracts::Membership::member).into_iter().collect(),
+        ..User::default()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn events_are_filed_under_the_origin_only() {
+        let filed = held_for_test(1, &[("rep_web", "origin", "acme", false), ("rep_api", "target", "acme", false)], &[]);
+        assert_eq!(filed.event_repo(), Some("rep_web"));
+        // Filed in the workspace: none, not the public repository it targets.
+        let members_only = held_for_test(2, &[("rep_public", "target", "acme", false)], &[]);
+        assert_eq!(members_only.event_repo(), None);
+        assert_eq!(members_only.repo_ids(), vec!["rep_public".to_owned()]);
+    }
+
+    #[test]
+    fn a_viewer_is_shown_only_the_repositories_they_may_read() {
+        let held = held_for_test(
+            3,
+            &[("rep_web", "origin", "acme", false), ("rep_secret", "target", "acme", true), ("rep_gone", "touched", "", false)],
+            &["rep_web", "rep_secret"],
+        );
+        let shown = held.clone().shown(None);
+        assert_eq!(shown.repos.iter().map(|repo| repo.repo_id.as_str()).collect::<Vec<_>>(), vec!["rep_web"]);
+        assert_eq!(shown.resolutions.len(), 1);
+        assert_eq!(shown.resolutions[0].repo, "acme/rep_web");
+        // A member who reads every repository sees them all, but for one
+        // that is not known.
+        let member = person_for_test("usr_2", Some("acme"));
+        let shown = held.shown(Some(&member));
+        assert_eq!(shown.repos.len(), 2);
+        assert_eq!(shown.resolutions.len(), 2);
+    }
 
     #[test]
     fn a_workspace_is_the_one_given_or_its_repositorys() {

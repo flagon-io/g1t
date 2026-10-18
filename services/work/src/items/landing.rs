@@ -51,7 +51,7 @@ pub(crate) const LAND_SQL: [&str; 4] = [
 ];
 
 /// The work items a commit (`?2`) pushed to repository `?1` resolved.
-const CLOSED_BY_COMMIT: &str = "SELECT i.workspace, i.number, i.title, i.state = 'closed' AS closed
+const CLOSED_BY_COMMIT: &str = "SELECT i.workspace, i.number, i.title, i.state = 'closed' AS closed, i.id AS id
      FROM work_item_repos r JOIN work_items i ON i.id = r.item_id
      WHERE r.repo_id = ?1 AND i.number IS NOT NULL
        AND EXISTS (SELECT 1 FROM json_each(i.resolutions) j
@@ -67,6 +67,7 @@ const LANDED_BEFORE: &str = "SELECT r.repo_id AS repo_id, i.title AS title, i.la
 
 #[derive(Deserialize)]
 struct ClosedRow {
+    id: String,
     workspace: String,
     number: u32,
     title: String,
@@ -80,6 +81,14 @@ pub(crate) struct PastLanding {
     pub title: String,
     /// JSON array of label names.
     pub labels: String,
+}
+
+/// Those of `rows` (what a commit resolved) that `viewer` may see.
+fn seen_closed(rows: Vec<ClosedRow>, held: &[Held], viewer: Option<&User>) -> Vec<ClosedItem> {
+    rows.into_iter()
+        .filter(|row| held.iter().any(|held| held.item.id == row.id && held.may(viewer, g1t_contracts::access::Capability::Read)))
+        .map(|row| ClosedItem { workspace: row.workspace, number: row.number, title: row.title, closed: row.closed != 0 })
+        .collect()
 }
 
 /// A note of a landing: where, and by what.
@@ -173,7 +182,7 @@ impl Work {
                     None => format!("closed this in {what}"),
                 };
                 self.note_item(id, by, &crate::pushed::closed_note(&text, session)).await?;
-                self.item_resolved(&held, actor, true, landing.pull).await;
+                self.item_resolved(&held, actor, true, Some(landing)).await;
                 closed.push(held);
                 continue;
             }
@@ -197,8 +206,9 @@ impl Work {
                     format!("landed {what}; still to land in {}", missing.join(", "))
                 };
                 self.note_item(id, by, &crate::pushed::closed_note(&text, session)).await?;
-                // Merged for it: what it blocks hears, though it stays open.
-                self.item_resolved(&held, actor, false, landing.pull).await;
+                // Landed for it: what it blocks hears, though it stays open
+                // and they still wait on it.
+                self.item_resolved(&held, actor, false, Some(landing)).await;
             }
         }
         for id in parts {
@@ -311,7 +321,8 @@ impl Work {
     }
 
     /// `closed_by_commit`: the work items a commit pushed to a repository
-    /// resolved, for anyone who may read the repository.
+    /// resolved, for anyone who may read the repository: those of them
+    /// they may see.
     pub(crate) async fn closed_by_commit(&self, a: ClosedByCommitArgs) -> Result<Outcome<Vec<ClosedItem>>> {
         let Some(commit) = crate::commit_comments::valid_commit(&a.commit).filter(|commit| commit.len() >= 40) else {
             return Ok(Outcome::Ok(Vec::new()));
@@ -320,17 +331,11 @@ impl Work {
             Outcome::Ok(repo) => repo,
             Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
         };
-        Ok(Outcome::Ok(
-            self.db
-                .prepare(CLOSED_BY_COMMIT)
-                .bind(&[repo.id.as_str().into(), commit.into()])?
-                .all()
-                .await?
-                .results::<ClosedRow>()?
-                .into_iter()
-                .map(|row| ClosedItem { workspace: row.workspace, number: row.number, title: row.title, closed: row.closed != 0 })
-                .collect(),
-        ))
+        let rows = self.db.prepare(CLOSED_BY_COMMIT).bind(&[repo.id.as_str().into(), commit.into()])?.all().await?.results::<ClosedRow>()?;
+        let ids: Vec<String> = rows.iter().map(|row| row.id.clone()).collect();
+        let held = self.items_by_ids(&ids).await?;
+        let viewer = a.viewer.as_ref();
+        Ok(Outcome::Ok(seen_closed(rows, &held, viewer)))
     }
 
     /// Where the other work items of `held`'s workspace landed, newest
@@ -351,6 +356,20 @@ mod tests {
     use rusqlite::params;
 
     use super::*;
+
+    #[test]
+    fn a_commit_names_only_the_work_items_the_viewer_may_see() {
+        use crate::items::rows_for_test::{held_for_test, person_for_test};
+        let row = |id: &str, number: u32| ClosedRow { id: id.into(), workspace: "acme".into(), number, title: format!("Item {number}"), closed: 1 };
+        // #1 filed in a public repository, #2 a members-only one.
+        let held = vec![held_for_test(1, &[("rep_web", "origin", "acme", false)], &[]), held_for_test(2, &[], &[])];
+        let numbers = |viewer: Option<&User>| -> Vec<u32> {
+            seen_closed(vec![row("wki_1", 1), row("wki_2", 2)], &held, viewer).iter().map(|item| item.number).collect()
+        };
+        assert_eq!(numbers(None), vec![1]);
+        assert_eq!(numbers(Some(&person_for_test("usr_9", None))), vec![1]);
+        assert_eq!(numbers(Some(&person_for_test("usr_2", Some("acme")))), vec![1, 2]);
+    }
 
     #[test]
     fn a_landing_is_named_by_its_pull_request_or_commit() {

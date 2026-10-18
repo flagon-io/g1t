@@ -76,11 +76,17 @@ pub(crate) fn suggest_targets(
     landed: &[PastLanding],
     touched: &[TouchedRow],
 ) -> Vec<SuggestedTarget> {
+    // A closed work item needs nowhere else to land.
+    if item.state == State::Closed {
+        return Vec::new();
+    }
     let title_words = words(&item.title);
     let text = format!("{}\n{}", item.title, item.body).to_lowercase();
     let mut suggested: Vec<SuggestedTarget> = Vec::new();
+    let counted = |n: u32| if n == 1 { "1 work item".to_owned() } else { format!("{n} work items") };
     for (repo_id, path) in candidates {
-        if item.repos.iter().any(|repo| repo.repo_id == *repo_id && repo.role == LinkRole::Target) {
+        // Linked already, as its origin, a target or touched.
+        if item.repos.iter().any(|repo| repo.repo_id == *repo_id) {
             continue;
         }
         let mut score = 0;
@@ -95,12 +101,12 @@ pub(crate) fn suggest_targets(
             .count() as u32;
         if labelled > 0 {
             score += 3 * labelled;
-            why.push(format!("{labelled} work items with the same labels landed there"));
+            why.push(format!("{} with the same labels landed there", counted(labelled)));
         }
         let alike = landings.iter().filter(|landing| words(&landing.title).iter().any(|word| title_words.contains(word))).count() as u32;
         if alike > 0 {
             score += 2 * alike;
-            why.push(format!("{alike} work items with like titles landed there"));
+            why.push(format!("{} with like titles landed there", counted(alike)));
         }
         let name = path.rsplit('/').next().unwrap_or(path).to_lowercase();
         let names_it = text.split(|c: char| !(c.is_alphanumeric() || c == '-' || c == '_' || c == '.')).any(|word| word == name);
@@ -123,6 +129,17 @@ pub(crate) fn suggest_targets(
     suggested.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.path.cmp(&b.path)));
     suggested.truncate(SUGGESTIONS);
     suggested
+}
+
+/// Who is on a work item of `workspace`, as `viewer` is shown it: the
+/// claims and sessions in repositories they may read (`readable`), each
+/// session as `shown` lets them see it.
+fn shown_people(claims: Vec<Claim>, mut sessions: Vec<Session>, readable: &[String], viewer: &Viewer, workspace: &str) -> (Vec<Claim>, Vec<Session>) {
+    let may_read = |repo_id: &str| readable.iter().any(|id| id == repo_id);
+    let claims = claims.into_iter().filter(|claim| claim.repo_id.as_deref().is_none_or(may_read)).collect();
+    sessions.retain(|session| may_read(&session.repo_id));
+    super::shown::sessions(&mut sessions, viewer, workspace);
+    (claims, sessions)
 }
 
 impl Work {
@@ -154,14 +171,18 @@ impl Work {
         let pulls: Vec<Pull> = pulls.into_iter().filter(|pull| readable.iter().any(|repo| repo.id == pull.repo_id)).collect();
         let mut numbers = vec![held.item.number];
         numbers.extend(pulls.iter().map(|pull| pull.number));
+        let viewer = a.viewer.as_ref();
+        let may_read = |repo_id: &str| readable.iter().any(|repo| repo.id == repo_id);
 
         let people = try_join3(
             self.active_claims(&held.item.id),
             self.work_sessions(&held, &pulls),
-            self.suggestions(&held),
+            self.suggestions(&held, viewer),
         );
-        let dependencies = try_join(self.blockers(&held.item.workspace, &held.item.blocked_by), items::blocked_items(self, &held));
-        let linked = held.repo_ids();
+        let dependencies = try_join(self.blockers(viewer, &held.item.workspace, &held.item.blocked_by), items::blocked_items(self, &held, viewer));
+        // Only the repositories the viewer may read: the events service
+        // takes the ids it is given as checked.
+        let linked: Vec<String> = held.repo_ids().into_iter().filter(|id| may_read(id)).collect();
         let history = try_join(
             self.coordination_events(&linked, &numbers, COORDINATION_EVENTS.to_vec(), EVENTS),
             self.decisions_on(&held, &a.viewer),
@@ -173,10 +194,13 @@ impl Work {
         }));
         let (((claims, sessions, suggested_targets), (blocked_by, blocks)), ((recent, decisions), repos)) =
             try_join(try_join(people, dependencies), try_join(history, repos)).await?;
+        let readable_ids: Vec<String> = readable.iter().map(|repo| repo.id.clone()).collect();
+        let (claims, sessions) = shown_people(claims, sessions, &readable_ids, &a.viewer, &held.item.workspace);
+        let item = held.shown(viewer);
         Ok(Outcome::Ok(WorkContext {
-            definition_of_done: definition_of_done(&held.item.body),
-            missing: held.item.missing(),
-            item: held.item,
+            definition_of_done: definition_of_done(&item.body),
+            missing: item.missing(),
+            item,
             repos,
             suggested_targets,
             claims,
@@ -197,25 +221,36 @@ impl Work {
         Ok(WorkRepo { link, required_checks: settings.required_checks, pulls })
     }
 
-    /// Where else a work item may belong ([`suggest_targets`]).
-    async fn suggestions(&self, held: &Held) -> Result<Vec<SuggestedTarget>> {
+    /// Where else a work item may belong ([`suggest_targets`]), among the
+    /// repositories `viewer` may read.
+    async fn suggestions(&self, held: &Held, viewer: Option<&g1t_contracts::User>) -> Result<Vec<SuggestedTarget>> {
         #[derive(Deserialize)]
         struct Candidate {
             repo_id: String,
             path: String,
+            workspace: String,
+            private: u8,
+        }
+        if held.item.state == State::Closed {
+            return Ok(Vec::new());
         }
         let results = self
             .db
             .batch(vec![
                 self.db
-                    .prepare("SELECT repo_id, path FROM repo_workspaces WHERE workspace = ? ORDER BY path LIMIT 500")
+                    .prepare("SELECT repo_id, path, workspace, private FROM repo_workspaces WHERE workspace = ? ORDER BY path LIMIT 500")
                     .bind(&[held.item.workspace.as_str().into()])?,
                 self.db.prepare(TOUCHED_FOR).bind(&[held.item.id.as_str().into()])?,
             ])
             .await?;
         let mut results = results.into_iter();
         let candidates: Vec<(String, String)> = match results.next() {
-            Some(result) => result.results::<Candidate>()?.into_iter().map(|row| (row.repo_id, row.path)).collect(),
+            Some(result) => result
+                .results::<Candidate>()?
+                .into_iter()
+                .filter(|row| items::repo_readable(viewer, &row.repo_id, Some(&row.workspace), Some(row.private)))
+                .map(|row| (row.repo_id, row.path))
+                .collect(),
             None => Vec::new(),
         };
         let landed = items::landed_before(self, held, LANDINGS).await?;
@@ -402,15 +437,38 @@ mod tests {
         let paths: Vec<&str> = suggested.iter().map(|s| s.path.as_str()).collect();
         assert_eq!(paths, ["acme/web", "acme/api"]);
         assert_eq!(suggested[0].why, "It names web; sessions on it touched 3 files there.");
-        assert_eq!(suggested[1].why, "1 work items with the same labels landed there; 1 work items with like titles landed there.");
+        assert_eq!(suggested[1].why, "1 work item with the same labels landed there; 1 work item with like titles landed there.");
         assert!(suggested[0].score > suggested[1].score);
     }
 
     #[test]
-    fn a_target_already_linked_is_not_suggested() {
+    fn a_repository_already_linked_is_not_suggested() {
         let candidates = vec![("rep_web".to_owned(), "acme/web".to_owned())];
-        let target = ItemRepo { repo_id: "rep_web".into(), path: "acme/web".into(), role: LinkRole::Target, legacy_number: None, landed: false };
-        let item = item("Fix web", "", &[], vec![target]);
-        assert!(suggest_targets(&item, &candidates, &[], &[]).is_empty());
+        for role in LinkRole::ALL {
+            let linked = ItemRepo { repo_id: "rep_web".into(), path: "acme/web".into(), role, legacy_number: None, landed: false };
+            let item = item("Fix web", "", &[], vec![linked]);
+            assert!(suggest_targets(&item, &candidates, &[], &[]).is_empty(), "{role:?}");
+        }
+    }
+
+    #[test]
+    fn sessions_and_claims_are_shown_as_the_viewer_may_see_them() {
+        let public = super::super::shown::tests::a_session();
+        let private = Session { id: "ses_2".into(), repo_id: "rep_secret".into(), ..public.clone() };
+        let (_, sessions) = shown_people(Vec::new(), vec![public, private], &["rep_1".to_owned()], &None, "acme");
+        // Only the one in a repository they may read, and not what is inside it.
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].id, "ses_1");
+        assert_eq!(sessions[0].branch, None);
+        assert_eq!(sessions[0].title, None);
+    }
+
+    #[test]
+    fn a_closed_work_item_gets_no_suggestions() {
+        let candidates = vec![("rep_web".to_owned(), "acme/web".to_owned())];
+        let mut closed = item("Fix web", "", &[], Vec::new());
+        assert_eq!(suggest_targets(&closed, &candidates, &[], &[]).len(), 1);
+        closed.state = State::Closed;
+        assert!(suggest_targets(&closed, &candidates, &[], &[]).is_empty());
     }
 }

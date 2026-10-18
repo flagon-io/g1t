@@ -14,6 +14,20 @@ use super::landing::Landing;
 use super::rows::{Held, no_item, path_of, workspace_of};
 use crate::{UNVERIFIED, Work, optional, optional_number, valid_title};
 
+/// What closing work item `number` by a commit in `landed_in` says when it
+/// stays open: the targets it still has to land in (`missing`, by path; an
+/// empty one for a repository the actor may not read).
+pub(crate) fn still_open(number: u32, landed_in: &str, missing: &[String]) -> String {
+    let named: Vec<&str> = missing.iter().map(String::as_str).filter(|path| !path.is_empty()).collect();
+    let hidden = missing.len() - named.len();
+    let mut targets = named.join(", ");
+    if hidden > 0 {
+        let more = if hidden == 1 { "1 other repository".to_owned() } else { format!("{hidden} other repositories") };
+        targets = if targets.is_empty() { more } else { format!("{targets} and {more}") };
+    }
+    format!("Recorded the commit as landed in {landed_in}, but #{number} stays open until it lands in {targets} too.")
+}
+
 impl Work {
     pub(super) fn item_event(held: &Held) -> WorkItemEvent {
         WorkItemEvent {
@@ -108,7 +122,7 @@ impl Work {
         if !targets.is_empty() && origin.is_some() && !may(Capability::Triage) {
             return Ok(Outcome::fail(FailureCode::Forbidden, access::needs_on_item(Capability::Triage, &workspace)));
         }
-        let colors = check!(self.ensure_labels(&a.actor, &workspace, origin_ref, &labels).await?);
+        let colors = check!(self.ensure_labels(&a.actor, &workspace, &labels).await?);
         let milestone = match a.milestone.filter(|number| *number > 0) {
             Some(number) => {
                 if !may(Capability::Triage) {
@@ -186,7 +200,7 @@ impl Work {
             )
             .await?;
         }
-        Ok(Outcome::Ok(held.item))
+        Ok(Outcome::Ok(held.shown(Some(&a.actor))))
     }
 
 
@@ -209,7 +223,7 @@ impl Work {
         };
         // What it is blocked by: checked before anything changes.
         let blocked_by = match &a.blocked_by {
-            Some(asked) => Some(check!(self.checked_blocked_by(&held.item.workspace, held.item.number, asked).await?)),
+            Some(asked) => Some(check!(self.checked_blocked_by(&held, &a.actor, asked).await?)),
             None => None,
         };
         // Its labels and milestone first: either can be refused, and then
@@ -287,7 +301,7 @@ impl Work {
             )
             .await?;
         }
-        Ok(Outcome::Ok(held.item))
+        Ok(Outcome::Ok(held.shown(Some(&a.actor))))
     }
 
 
@@ -315,7 +329,17 @@ impl Work {
             let landing = Landing { pull: None, commit: Some(commit), pushed_by: Some(a.actor.username.clone()) };
             self.land(&found, &landing, &a.actor, std::slice::from_ref(&held.item.id), &[], session.as_deref(), false).await?;
             return Ok(match self.item_by_id(&held.item.id).await? {
-                Some(held) => Outcome::Ok(held.item),
+                Some(after) if after.item.state == State::Open && !after.item.missing().is_empty() => {
+                    let missing: Vec<String> = after
+                        .item
+                        .repos
+                        .iter()
+                        .filter(|repo| repo.role == LinkRole::Target && !repo.landed)
+                        .map(|repo| if after.may_read_repo(Some(&a.actor), &repo.repo_id) { repo.path.clone() } else { String::new() })
+                        .collect();
+                    Outcome::fail(FailureCode::Conflict, still_open(after.item.number, &path_of(&found), &missing))
+                }
+                Some(after) => Outcome::Ok(after.shown(Some(&a.actor))),
                 None => no_item(),
             });
         }
@@ -341,7 +365,7 @@ impl Work {
         self.note_item(&held.item.id, &a.actor, &crate::pushed::closed_note(note, session.as_deref())).await?;
         // Its claims end, and the work items it blocks hear (coordination/).
         self.item_resolved(&held, &a.actor, true, None).await;
-        let mut item = held.item;
+        let mut item = held.shown(Some(&a.actor));
         item.state = State::Closed;
         item.reason = Some(reason);
         item.closed_at = Some(now.clone());
@@ -371,8 +395,25 @@ impl Work {
         self.publish_item("work_item.reopened", &held, Some(&a.actor), Self::item_event(&held)).await?;
         self.note_item(&held.item.id, &a.actor, "reopened this").await?;
         Ok(match self.item_by_id(&held.item.id).await? {
-            Some(held) => Outcome::Ok(held.item),
+            Some(held) => Outcome::Ok(held.shown(Some(&a.actor))),
             None => no_item(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::still_open;
+
+    #[test]
+    fn a_commit_that_does_not_close_says_where_it_has_still_to_land() {
+        assert_eq!(
+            still_open(12, "acme/web", &["acme/api".to_owned()]),
+            "Recorded the commit as landed in acme/web, but #12 stays open until it lands in acme/api too."
+        );
+        assert_eq!(
+            still_open(12, "acme/web", &["acme/api".to_owned(), String::new()]),
+            "Recorded the commit as landed in acme/web, but #12 stays open until it lands in acme/api and 1 other repository too."
+        );
     }
 }

@@ -9,14 +9,19 @@ use crate::rows::{NumberRow, ValueRow};
 
 /// The next number of workspace `?1`'s sequence, taken in one statement so
 /// two openings never get the same one. A pull request of repository `?2`
-/// never takes a number one of that repository's has (a repository moved
-/// in from another workspace brings its own), and a workspace's first
-/// number comes after every number its repositories used before work
-/// items moved to the workspace.
+/// never takes a number one of that repository's has, a pull request's or
+/// an old issue's (a repository moved in from another workspace, or
+/// restored, brings its own), and a workspace's first number comes after
+/// every number its repositories used before work items moved to the
+/// workspace. While the job that moves them runs, which repositories are
+/// the workspace's is not known yet: a number then comes after every
+/// number any repository used, so it is above the floor the job finds.
 pub(crate) const NEXT_NUMBER: &str = "INSERT INTO work_counters (workspace, last)
-     SELECT ?1, MAX(COALESCE(MAX(c.last), 0), COALESCE((SELECT MAX(number) FROM pulls WHERE repo_id = ?2), 0)) + 1
+     SELECT ?1, MAX(COALESCE(MAX(c.last), 0), COALESCE((SELECT MAX(number) FROM pulls WHERE repo_id = ?2), 0),
+                    COALESCE((SELECT MAX(legacy_number) FROM work_item_repos WHERE repo_id = ?2), 0)) + 1
      FROM counters c
      WHERE c.repo_id = ?2 OR c.repo_id IN (SELECT repo_id FROM repo_workspaces WHERE workspace = ?1)
+        OR EXISTS (SELECT 1 FROM work_jobs WHERE name = 'work_items' AND done_at IS NULL)
      ON CONFLICT (workspace) DO UPDATE SET last = MAX(work_counters.last + 1, excluded.last)
      RETURNING last AS n";
 

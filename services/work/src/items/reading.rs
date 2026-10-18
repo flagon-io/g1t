@@ -40,6 +40,41 @@ pub(crate) fn held_rows(result: &worker::D1Result) -> Result<Vec<Held>> {
     Ok(result.results::<ItemRow>()?.into_iter().filter_map(ItemRow::held).collect())
 }
 
+/// What a repository the reader may not read is called instead.
+const UNNAMED: &str = "a private repository";
+
+/// `text` with each of `hidden` (`owner/name`, any case) that stands as a
+/// name of its own, not inside a longer one, called [`UNNAMED`]; what
+/// follows it (`#5`, `@abc1234`) goes too.
+pub(crate) fn redact_paths(text: &str, hidden: &[String]) -> String {
+    let part = |c: char| c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | '/');
+    let hidden: Vec<String> = hidden.iter().map(|path| path.to_lowercase()).collect();
+    let mut out = String::with_capacity(text.len());
+    let mut at = 0;
+    'scan: while let Some(c) = text[at..].chars().next() {
+        if text[..at].chars().next_back().is_none_or(|before| !part(before)) {
+            for path in &hidden {
+                let end = at + path.len();
+                let here = text.get(at..end).is_some_and(|found| found.eq_ignore_ascii_case(path));
+                if here && text[end..].chars().next().is_none_or(|after| !part(after)) {
+                    out.push_str(UNNAMED);
+                    // Its pull request or commit goes with it.
+                    let mut rest = end;
+                    if let Some(mark) = text[end..].chars().next().filter(|mark| matches!(mark, '#' | '@')) {
+                        rest += mark.len_utf8();
+                        rest += text[rest..].chars().take_while(char::is_ascii_alphanumeric).map(char::len_utf8).sum::<usize>();
+                    }
+                    at = rest;
+                    continue 'scan;
+                }
+            }
+        }
+        out.push(c);
+        at += c.len_utf8();
+    }
+    out
+}
+
 impl Work {
     /// A work item by workspace and number, whoever is asking.
     pub(super) async fn item(&self, workspace: &str, number: u32) -> Result<Option<Held>> {
@@ -76,6 +111,32 @@ impl Work {
                 .all()
                 .await?,
         )
+    }
+
+    /// Those of `ids` (repositories) that `viewer` may read, as
+    /// `repo_workspaces` records them: one not recorded is not.
+    pub(super) async fn readable_repo_ids(&self, viewer: Option<&User>, ids: &[String]) -> Result<std::collections::HashSet<String>> {
+        #[derive(Deserialize)]
+        struct Recorded {
+            repo_id: String,
+            workspace: String,
+            private: u8,
+        }
+        if ids.is_empty() {
+            return Ok(std::collections::HashSet::new());
+        }
+        let recorded = self
+            .db
+            .prepare("SELECT repo_id, workspace, private FROM repo_workspaces WHERE repo_id IN (SELECT value FROM json_each(?))")
+            .bind(&[serde_json::to_string(ids)?.into()])?
+            .all()
+            .await?
+            .results::<Recorded>()?;
+        Ok(recorded
+            .into_iter()
+            .filter(|row| super::rows::repo_readable(viewer, &row.repo_id, Some(&row.workspace), Some(row.private)))
+            .map(|row| row.repo_id)
+            .collect())
     }
 
     /// A work item, if `viewer` may do `capability` on it.
@@ -161,7 +222,7 @@ impl Work {
             rows.into_iter()
                 .filter_map(ItemRow::held)
                 .filter(|held| held.may(viewer, Capability::Read))
-                .map(|held| held.item)
+                .map(|held| held.shown(viewer))
                 .collect(),
         ))
     }
@@ -183,7 +244,44 @@ impl Work {
         let reacted = rows(2)?.results::<crate::reactions::ReactionRow>()?;
         let reactions = crate::reactions::attach(&reacted, &held.item.id, &mut comments);
         let pulls = self.readable_pulls(&a.viewer, pulls).await?;
-        Ok(Outcome::Ok(WorkItemDetail { item: held.item, pulls, comments, reactions }))
+        // What g1t noted names repositories ("added acme/api as a target",
+        // "closed this by merging acme/api#5"): those the viewer may not
+        // read are not named.
+        let hidden = self.hidden_paths(&held, a.viewer.as_ref()).await?;
+        if !hidden.is_empty() {
+            for comment in comments.iter_mut().filter(|comment| comment.kind == CommentKind::Event) {
+                comment.body = redact_paths(&comment.body, &hidden);
+            }
+        }
+        Ok(Outcome::Ok(WorkItemDetail { item: held.shown(a.viewer.as_ref()), pulls, comments, reactions }))
+    }
+
+    /// The paths (`owner/name`) of the repositories of `held`'s workspace,
+    /// and of those it is linked to, that `viewer` may not read.
+    async fn hidden_paths(&self, held: &Held, viewer: Option<&User>) -> Result<Vec<String>> {
+        #[derive(Deserialize)]
+        struct Recorded {
+            repo_id: String,
+            workspace: String,
+            path: String,
+            private: u8,
+        }
+        let recorded = self
+            .db
+            .prepare(
+                "SELECT repo_id, workspace, path, private FROM repo_workspaces
+                 WHERE workspace = ?1 OR repo_id IN (SELECT repo_id FROM work_item_repos WHERE item_id = ?2)",
+            )
+            .bind(&[held.item.workspace.as_str().into(), held.item.id.as_str().into()])?
+            .all()
+            .await?
+            .results::<Recorded>()?;
+        Ok(recorded
+            .into_iter()
+            .filter(|row| !super::rows::repo_readable(viewer, &row.repo_id, Some(&row.workspace), Some(row.private)))
+            .map(|row| row.path)
+            .filter(|path| !path.is_empty())
+            .collect())
     }
 
     /// Those of `pulls` whose repositories `viewer` may read, each naming
@@ -204,5 +302,24 @@ impl Work {
                 Some(pull)
             })
             .collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::redact_paths;
+
+    #[test]
+    fn notes_do_not_name_repositories_the_reader_may_not_read() {
+        let hidden = vec!["acme/secret".to_owned()];
+        assert_eq!(redact_paths("added acme/secret as a target", &hidden), "added a private repository as a target");
+        assert_eq!(redact_paths("closed this by merging Acme/Secret#5", &hidden), "closed this by merging a private repository");
+        assert_eq!(
+            redact_paths("landed acme/secret@abc1234; still to land in acme/web", &hidden),
+            "landed a private repository; still to land in acme/web"
+        );
+        // Only the name itself, never a longer one it starts or ends.
+        assert_eq!(redact_paths("added acme/secret-tools as a target", &hidden), "added acme/secret-tools as a target");
+        assert_eq!(redact_paths("added xacme/secret", &hidden), "added xacme/secret");
     }
 }
