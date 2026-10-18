@@ -58,14 +58,22 @@ test("a token with the website permission signs the request in as its owner", as
     assert.equal(verdict.kind === "signed-in" && verdict.user.username, "ada");
   }
   // A form post too, which a token's request needs no CSRF token for.
-  const post = request("/acme/rocket/issues/new", { method: "POST", headers: { ...bearer("g1t_web"), origin: "https://g1t.sh" }, body: new URLSearchParams({ title: "x" }) });
+  const post = request("/acme/rocket/issues/new", {
+    method: "POST",
+    headers: { ...bearer("g1t_web"), origin: "https://g1t.sh" },
+    body: new URLSearchParams({ title: "x" }),
+  });
   assert.equal((await tokenVerdict(post, tokens)).kind, "signed-in");
 });
 
 test("a token without the website permission is no one: a page loads signed out, data and posts get a 401", async () => {
   for (const token of ["g1t_api_only", "g1t_workspace", "g1t_job", "g1t_agent"]) {
     assert.deepEqual(await tokenVerdict(request("/acme/rocket", { headers: bearer(token) }), tokens), { kind: "signed-out" }, token);
-    assert.deepEqual(await tokenVerdict(request("/acme/rocket.data", { headers: bearer(token) }), tokens), { kind: "refused", status: 401, body: TOKEN_REFUSED }, token);
+    assert.deepEqual(
+      await tokenVerdict(request("/acme/rocket.data", { headers: bearer(token) }), tokens),
+      { kind: "refused", status: 401, body: TOKEN_REFUSED },
+      token,
+    );
     const post = request("/acme/rocket/issues/new", { method: "POST", headers: bearer(token), body: new URLSearchParams({ title: "x" }) });
     assert.equal((await tokenVerdict(post, tokens)).kind, "refused", token);
   }
@@ -116,7 +124,14 @@ test("what needs a real sign-in is refused with a token, whatever the method", a
     const verdict = await tokenVerdict(request(path, { headers: bearer("g1t_web") }), tokens);
     assert.deepEqual(verdict, { kind: "refused", status: 403, body: NEEDS_SIGN_IN }, path);
   }
-  for (const path of ["/settings/profile", "/settings/notifications", "/settings/security-log", "/acme/-/settings", "/acme/-/billing", "/acme/rocket/settings"]) {
+  for (const path of [
+    "/settings/profile",
+    "/settings/notifications",
+    "/settings/security-log",
+    "/acme/-/settings",
+    "/acme/-/billing",
+    "/acme/rocket/settings",
+  ]) {
     assert.ok(!alwaysNeedsSignIn(path), path);
   }
   assert.ok(isNeedsSignIn(NEEDS_SIGN_IN));
@@ -193,7 +208,8 @@ const scopedTokens = lookup({
 });
 
 const verdictOf = async (token: string, path: string, method = "GET") =>
-  (await tokenVerdict(request(path, { method, headers: bearer(token), body: method === "GET" ? undefined : JSON.stringify({ intent: "post" }) }), scopedTokens)).kind;
+  (await tokenVerdict(request(path, { method, headers: bearer(token), body: method === "GET" ? undefined : JSON.stringify({ intent: "post" }) }), scopedTokens))
+    .kind;
 
 test("a token with chat:read reads Chat's JSON without the website permission, and sends nothing", async () => {
   for (const path of ["/acme/-/chat/api", "/acme/-/chat/api?channel=ch_1&thread=m_1", "/Acme//-/chat/api/", "/acme/-/chat/person/bob"]) {
@@ -224,7 +240,11 @@ test("a chat-scoped token opens nothing else on the site: pages are signed out, 
     }
     // A client navigation's data runs the loaders around the route as well, so it is not Chat's JSON.
     for (const path of ["/acme/-/chat/api.data", "/acme/-/chat/person/bob.data", "/acme/-/chat.data", "/-/notify.data", "/-/live/ticket.data", "/_root.data"]) {
-      assert.deepEqual(await tokenVerdict(request(path, { headers: bearer(token) }), scopedTokens), { kind: "refused", status: 401, body: TOKEN_REFUSED }, `${token} ${path}`);
+      assert.deepEqual(
+        await tokenVerdict(request(path, { headers: bearer(token) }), scopedTokens),
+        { kind: "refused", status: 401, body: TOKEN_REFUSED },
+        `${token} ${path}`,
+      );
     }
     for (const path of ["/acme/rocket/issues/new", "/acme/-/chat/general", "/-/live/ticket", "/acme/-/chat/person/bob", "/-/-/chat/api"]) {
       assert.equal(await verdictOf(token, path, "POST"), "refused", `${token} ${path}`);

@@ -42,7 +42,10 @@ test("each day is shaded in quarters of the busiest", () => {
   );
   assert.equal(calendar.max, 8);
   const days = calendar.weeks.flat();
-  assert.deepEqual(days.find((day) => day?.date === "2026-10-01"), { date: "2026-10-01", count: 8, commits: 0, level: 4 });
+  assert.deepEqual(
+    days.find((day) => day?.date === "2026-10-01"),
+    { date: "2026-10-01", count: 8, commits: 0, level: 4 },
+  );
   assert.equal(days.find((day) => day?.date === "2026-10-02")?.level, 1);
 });
 
@@ -56,7 +59,10 @@ test("months are named over the week they start in", () => {
     ["Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct"],
   );
   for (const { label, week } of months.slice(1)) {
-    assert.ok(weeks[week]!.some((day) => day?.date.endsWith("-01")), label);
+    assert.ok(
+      weeks[week]!.some((day) => day?.date.endsWith("-01")),
+      label,
+    );
   }
   // Increasing, and never two in one column.
   for (let i = 1; i < months.length; i++) assert.ok(months[i]!.week > months[i - 1]!.week);

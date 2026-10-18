@@ -34,7 +34,7 @@ test("the script answers every request with a 301 to the same place", async () =
 
 test("the target is lowercased and must be a hostname", () => {
   assert.match(redirectScript("Web-Zenith.g1t.page"), /"web-zenith\.g1t\.page"/);
-  assert.throws(() => redirectScript("evil.example/\"; alert(1); \""));
+  assert.throws(() => redirectScript('evil.example/"; alert(1); "'));
   assert.throws(() => redirectScript("no-dots"));
   assert.throws(() => redirectScript("-bad.g1t.page"));
 });

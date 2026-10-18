@@ -42,7 +42,7 @@ export function kind(text) {
 export function variables(env) {
   const out = {};
   for (const [name, value] of Object.entries(env)) {
-    if (/^(GITHUB_|RUNNER_|ACTIONS_)/.test(name) && !name.startsWith("CTX_") || ["CI", "ImageOS", "ImageVersion", "HOME"].includes(name)) {
+    if ((/^(GITHUB_|RUNNER_|ACTIONS_)/.test(name) && !name.startsWith("CTX_")) || ["CI", "ImageOS", "ImageVersion", "HOME"].includes(name)) {
       out[name] = kind(value ?? "");
     }
   }

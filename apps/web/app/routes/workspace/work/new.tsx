@@ -57,16 +57,23 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     // Only a hint at what can be imported: the page does without it.
     member ? integrations.list(workspace, user).catch(() => null) : null,
   ]);
-  const sources = connections?.ok
-    ? [...new Set(connections.value.filter((c) => c.kind === "tracker" || c.provider === "sentry").map((c) => c.provider))]
-    : [];
+  const sources = connections?.ok ? [...new Set(connections.value.filter((c) => c.kind === "tracker" || c.provider === "sentry").map((c) => c.provider))] : [];
   return {
     workspace,
     origin: name,
     labels: isFailed(labels) ? labels : labels.ok ? labels.value : [],
     milestones: isFailed(milestones) ? milestones : milestones?.ok ? milestones.value : [],
     repos:
-      projects == null ? [] : isFailed(projects) ? projects : projects.ok ? projects.value.filter((p) => p.workspace.toLowerCase() === workspace).map((p) => p.slug).sort() : [],
+      projects == null
+        ? []
+        : isFailed(projects)
+          ? projects
+          : projects.ok
+            ? projects.value
+                .filter((p) => p.workspace.toLowerCase() === workspace)
+                .map((p) => p.slug)
+                .sort()
+            : [],
     canTriage: triage,
     // Making labels needs Write in the workspace; choosing them and a milestone, Triage.
     canMakeLabels: canItem(user, workspace, ref, "manage_labels"),
@@ -139,8 +146,11 @@ export default function NewWorkItem({ loaderData, actionData }: Route.ComponentP
         <p className="mb-6 flex items-start gap-2 rounded-lg border border-line bg-surface px-3 py-2.5 text-sm text-muted">
           <Info size={15} className="mt-0.5 shrink-0 text-faint" />
           <span>
-            Filed from <span className="font-mono text-fg">{workspace}/{origin}</span>, its origin: anyone who can read it sees this work
-            item.
+            Filed from{" "}
+            <span className="font-mono text-fg">
+              {workspace}/{origin}
+            </span>
+            , its origin: anyone who can read it sees this work item.
           </span>
         </p>
       )}
@@ -154,8 +164,7 @@ export default function NewWorkItem({ loaderData, actionData }: Route.ComponentP
               Bring one in from {names.join(" or ")}
             </p>
             <p className="mt-1 text-xs text-muted">
-              Give a key such as TECH-1234 or paste its address. The work item stays linked to the original, and it hears back when the
-              work lands.
+              Give a key such as TECH-1234 or paste its address. The work item stays linked to the original, and it hears back when the work lands.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <div className="min-w-56 grow">

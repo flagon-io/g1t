@@ -125,7 +125,9 @@ async function buildVm(ctx, arch, v, out) {
     `cp /work/root/boot/vmlinuz-* /out/${names[`vm-${arch}-kernel`]}`,
     `cp /work/root/boot/initrd.img-* /out/${names[`vm-${arch}-initrd`]}`,
     // Apple's Virtualization framework boots an uncompressed arm64 Image.
-    arch === "arm64" ? `if gzip -t /out/${names[`vm-${arch}-kernel`]} 2>/dev/null; then mv /out/${names[`vm-${arch}-kernel`]} /out/k.gz && gzip -dc /out/k.gz > /out/${names[`vm-${arch}-kernel`]} && rm /out/k.gz; fi` : "true",
+    arch === "arm64"
+      ? `if gzip -t /out/${names[`vm-${arch}-kernel`]} 2>/dev/null; then mv /out/${names[`vm-${arch}-kernel`]} /out/k.gz && gzip -dc /out/k.gz > /out/${names[`vm-${arch}-kernel`]} && rm /out/k.gz; fi`
+      : "true",
     "mke2fs -q -t ext4 -L g1t-system -d /work/root /out/disk.raw 3G",
     "chmod 0644 /out/*",
   ].join(" && ");
@@ -159,7 +161,13 @@ if (process.argv[1]?.replaceAll("\\", "/").endsWith("scripts/sandbox-image.mjs")
     switch (command) {
       case "build": {
         const v = option("version") ?? version();
-        await build({ arch: option("arch") ?? "x64", runner: option("runner"), kind: option("kind") ?? "all", out: option("out") ?? join(ROOT, "target", "runner-release", v), v });
+        await build({
+          arch: option("arch") ?? "x64",
+          runner: option("runner"),
+          kind: option("kind") ?? "all",
+          out: option("out") ?? join(ROOT, "target", "runner-release", v),
+          v,
+        });
         break;
       }
       case "section": {

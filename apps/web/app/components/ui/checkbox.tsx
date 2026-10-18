@@ -23,7 +23,12 @@ export function CheckboxOption({
   const id = props.id ?? generated;
   return (
     <div className={cn("flex items-start gap-2.5", props.disabled && "opacity-60", className)}>
-      <Checkbox id={id} className={className?.includes("items-center") ? undefined : "mt-0.5"} aria-describedby={description ? `${id}-d` : undefined} {...props} />
+      <Checkbox
+        id={id}
+        className={className?.includes("items-center") ? undefined : "mt-0.5"}
+        aria-describedby={description ? `${id}-d` : undefined}
+        {...props}
+      />
       <label htmlFor={id} className={cn("min-w-0 text-sm text-fg", props.disabled ? "cursor-not-allowed" : "cursor-pointer", labelClassName)}>
         {label}
         {description && (
@@ -49,11 +54,7 @@ export function Checkbox({ className, ...props }: ComponentProps<typeof Primitiv
       {...props}
     >
       <Primitive.Indicator className="flex items-center justify-center data-[state=checked]:animate-pop-in motion-reduce:animate-none">
-        {props.checked === "indeterminate" ? (
-          <Minus size={12} strokeWidth={3} />
-        ) : (
-          <Check size={12} strokeWidth={3} />
-        )}
+        {props.checked === "indeterminate" ? <Minus size={12} strokeWidth={3} /> : <Check size={12} strokeWidth={3} />}
       </Primitive.Indicator>
     </Primitive.Root>
   );

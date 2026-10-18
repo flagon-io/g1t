@@ -3,7 +3,7 @@ title: Deployments, packages and telemetry
 description: How apps are built and served on g1t.page, how the package registries are routed and stored, and where a project's logs, traces and metrics go.
 ---
 
-import Diagram from '../../../components/Diagram.astro';
+import Diagram from "../../../components/Diagram.astro";
 
 ## Deployments
 
@@ -58,10 +58,10 @@ instead and hand over the result, with
 
 ### Serving
 
-| | Hostname |
-| --- | --- |
-| Production | `<project>-<workspace>.g1t.page` |
-| A preview | `<project>-git-<branch>-<workspace>.g1t.page` |
+|             | Hostname                                                            |
+| ----------- | ------------------------------------------------------------------- |
+| Production  | `<project>-<workspace>.g1t.page`                                    |
+| A preview   | `<project>-git-<branch>-<workspace>.g1t.page`                       |
 | Your domain | A CNAME to `domains.g1t.page`, a custom hostname on g1t.page's zone |
 
 `pages` answers every one of those hostnames. It reads the app's name from
@@ -77,15 +77,15 @@ has been idle for a number of days you choose (7 by default).
 registry g1t has. The site recognises a registry's path and passes the
 request on whole, as it does for git:
 
-| Registry | Path on `g1t.sh` |
-| --- | --- |
-| Container images (OCI Distribution 1.1) | `/v2/`, with tokens at `/v2/token` |
-| npm | `/-/npm/` |
-| Cargo, sparse index | `/-/cargo/<workspace>/` |
-| Composer | `/-/composer/` |
-| Maven | `/-/maven/` |
-| NuGet | `/-/nuget/<workspace>/v3/index.json` |
-| RubyGems | `/-/rubygems/` |
+| Registry                                | Path on `g1t.sh`                     |
+| --------------------------------------- | ------------------------------------ |
+| Container images (OCI Distribution 1.1) | `/v2/`, with tokens at `/v2/token`   |
+| npm                                     | `/-/npm/`                            |
+| Cargo, sparse index                     | `/-/cargo/<workspace>/`              |
+| Composer                                | `/-/composer/`                       |
+| Maven                                   | `/-/maven/`                          |
+| NuGet                                   | `/-/nuget/<workspace>/v3/index.json` |
+| RubyGems                                | `/-/rubygems/`                       |
 
 Files are stored in the `g1t-packages` bucket by their digest, so a layer
 or a tarball pushed twice is kept once. The bucket sits behind the
@@ -102,11 +102,11 @@ shares a database with another's.
 
 It has three ways in:
 
-| Door | From |
-| --- | --- |
-| `otel.g1t.sh/v1/traces`, `/v1/logs`, `/v1/metrics` | Your software, as OpenTelemetry over HTTP, JSON or protobuf, with a `g1to_…` token |
-| Tail events | Apps on `g1t.page`: `telemetry` is `pages`' tail consumer, and apps name it as their Tail Worker |
-| `/otlp/v1/*` on the API | The same as `otel.g1t.sh`, passed on as it is; the only door on a self-hosted installation |
+| Door                                               | From                                                                                             |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `otel.g1t.sh/v1/traces`, `/v1/logs`, `/v1/metrics` | Your software, as OpenTelemetry over HTTP, JSON or protobuf, with a `g1to_…` token               |
+| Tail events                                        | Apps on `g1t.page`: `telemetry` is `pages`' tail consumer, and apps name it as their Tail Worker |
+| `/otlp/v1/*` on the API                            | The same as `otel.g1t.sh`, passed on as it is; the only door on a self-hosted installation       |
 
 A store keeps up to 4 GiB and sheds its oldest day past that. You choose
 how long raw data is kept, from 1 to 30 days; rollups are kept 90 days.

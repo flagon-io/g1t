@@ -58,7 +58,13 @@ export const WATCHER_QUERIES = [
   { key: "d1", dataset: "d1AnalyticsAdaptiveGroups", select: "sum { rowsRead rowsWritten }", dimensions: "databaseId", hourFilter: "datetimeHour" },
   { key: "queues", dataset: "queueMessageOperationsAdaptiveGroups", select: "sum { billableOperations }", dimensions: "queueId", hourFilter: "datetime" },
   { key: "do_invocations", dataset: "durableObjectsInvocationsAdaptiveGroups", select: "sum { requests }", dimensions: "scriptName", hourFilter: "datetime" },
-  { key: "do_periodic", dataset: "durableObjectsPeriodicGroups", select: "sum { activeTime storageWriteUnits }", dimensions: "namespaceId", hourFilter: "datetime" },
+  {
+    key: "do_periodic",
+    dataset: "durableObjectsPeriodicGroups",
+    select: "sum { activeTime storageWriteUnits }",
+    dimensions: "namespaceId",
+    hourFilter: "datetime",
+  },
   { key: "do_sql", dataset: "durableObjectsPeriodicGroups", select: "sum { rowsWritten }", dimensions: "namespaceId", hourFilter: "datetime" },
   { key: "kv", dataset: "kvOperationsAdaptiveGroups", select: "sum { requests }", dimensions: "namespaceId actionType", hourFilter: "datetime" },
   { key: "artifacts", dataset: "artifactsEventsAdaptiveGroups", select: "count", dimensions: "repositoryName", hourFilter: "datetime" },
@@ -239,7 +245,13 @@ export const metricsOf = (variant) => [...(variant.count ? ["count"] : []), ...(
  * with Cloudflare's message when the answer has errors or no such dataset.
  */
 export function parseGroups(body, variant, names = {}) {
-  if (body?.errors?.length) throw new Error(body.errors.map((error) => error.message).join("; ").slice(0, 400));
+  if (body?.errors?.length)
+    throw new Error(
+      body.errors
+        .map((error) => error.message)
+        .join("; ")
+        .slice(0, 400),
+    );
   const groups = body?.data?.viewer?.accounts?.[0]?.rows;
   if (!Array.isArray(groups)) throw new Error("no rows in the answer");
   const metrics = metricsOf(variant);
@@ -320,7 +332,11 @@ export function format(report, top = 10) {
     for (const set of window.datasets) {
       lines.push("", `${set.label} (${set.dataset})`);
       const shown = set.rows.slice(0, top);
-      const cells = [["name", ...set.metrics], ...shown.map((row) => [row.name, ...set.metrics.map((m) => number(row[m]))]), ["total", ...set.metrics.map((m) => number(set.totals[m]))]];
+      const cells = [
+        ["name", ...set.metrics],
+        ...shown.map((row) => [row.name, ...set.metrics.map((m) => number(row[m]))]),
+        ["total", ...set.metrics.map((m) => number(set.totals[m]))],
+      ];
       const widths = cells[0].map((_, at) => Math.max(...cells.map((row) => String(row[at]).length)));
       const render = (row) => "  " + row.map((cell, at) => (at === 0 ? String(cell).padEnd(widths[at]) : String(cell).padStart(widths[at]))).join("  ");
       lines.push(render(cells[0]));
@@ -365,7 +381,19 @@ async function graphql(auth, account, query, variables = {}) {
 /** The account type's field names, to skip datasets the schema lacks; null when it cannot be read. */
 async function schemaFields(auth, account) {
   try {
-    const body = await graphql(auth, account, `{ __type(name: "account") { fields { name } } }`);
+    const body = await graphql(
+      auth,
+      account,
+      `
+        {
+          __type(name: "account") {
+            fields {
+              name
+            }
+          }
+        }
+      `,
+    );
     const fields = body.data?.__type?.fields;
     return Array.isArray(fields) ? fields.map((field) => field.name) : null;
   } catch {
@@ -395,7 +423,9 @@ async function listing(auth, path, id, name) {
   const out = {};
   try {
     for (let page = 1; page <= 10; page++) {
-      const response = await fetch(`${API}${path}${path.includes("?") ? "&" : "?"}per_page=100&page=${page}`, { headers: { ...auth, "user-agent": "g1t-ops" } });
+      const response = await fetch(`${API}${path}${path.includes("?") ? "&" : "?"}per_page=100&page=${page}`, {
+        headers: { ...auth, "user-agent": "g1t-ops" },
+      });
       const body = await response.json();
       if (!response.ok || !Array.isArray(body.result)) break;
       for (const item of body.result) if (item[id]) out[item[id]] = item[name] ?? item[id];
@@ -415,7 +445,9 @@ async function main() {
   }
   const auth = cloudflareAuth();
   if (!auth) {
-    console.error(`Set CLOUDFLARE_API_TOKEN to a token with Account Analytics: Read on account ${options.account}, or CLOUDFLARE_API_KEY and CLOUDFLARE_EMAIL.`);
+    console.error(
+      `Set CLOUDFLARE_API_TOKEN to a token with Account Analytics: Read on account ${options.account}, or CLOUDFLARE_API_KEY and CLOUDFLARE_EMAIL.`,
+    );
     return 2;
   }
   const now = new Date();

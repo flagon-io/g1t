@@ -99,9 +99,7 @@ export default function Apps({ loaderData }: Route.ComponentProps) {
             </div>
             {pinned.length === 0 ? (
               <Card asChild tone="plain" className="mt-3 border-dashed px-4 py-6 text-center text-sm text-muted">
-                <p>
-                  Nothing pinned yet. Pin an app below and it shows in your rail, under the built-in ones.
-                </p>
+                <p>Nothing pinned yet. Pin an app below and it shows in your rail, under the built-in ones.</p>
               </Card>
             ) : (
               <div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-2">

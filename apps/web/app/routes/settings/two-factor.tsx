@@ -23,10 +23,7 @@ export function meta(args: Route.MetaArgs) {
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const user = requireUser(context, request);
-  const [status, github] = await Promise.all([
-    accounts.twoFactorStatus(user).catch(() => null),
-    githubSignIn.account(user).catch(() => null),
-  ]);
+  const [status, github] = await Promise.all([accounts.twoFactorStatus(user).catch(() => null), githubSignIn.account(user).catch(() => null)]);
   return {
     status: status?.ok ? status.value : null,
     hasPassword: github?.hasPassword ?? true,
@@ -56,9 +53,7 @@ function RecoveryCodes({ codes }: { codes: string[] }) {
       <h2 id="recovery-codes" className="flex items-center gap-2 text-sm font-medium">
         <KeyRound size={16} className="text-warn" /> Save your recovery codes
       </h2>
-      <p className="mt-1 text-sm text-muted">
-        Each one signs you in once if you lose your phone. They are shown only now: keep them in your password manager.
-      </p>
+      <p className="mt-1 text-sm text-muted">Each one signs you in once if you lose your phone. They are shown only now: keep them in your password manager.</p>
       <ul className="mt-4 grid grid-cols-2 gap-2 font-mono text-sm sm:grid-cols-5">
         {codes.map((code) => (
           <li key={code} className="rounded-md border border-line bg-bg px-2 py-1.5 text-center">
@@ -67,10 +62,15 @@ function RecoveryCodes({ codes }: { codes: string[] }) {
         ))}
       </ul>
       <Button
-        type="button" variant="link" size="inline" className="mt-4 text-sm underline" onClick={() => {
+        type="button"
+        variant="link"
+        size="inline"
+        className="mt-4 text-sm underline"
+        onClick={() => {
           void navigator.clipboard.writeText(codes.join("\n"));
           setCopied(true);
-        }}>
+        }}
+      >
         {copied ? "Copied" : "Copy all"}
       </Button>
     </section>
@@ -97,9 +97,8 @@ export default function TwoFactorSettings({ loaderData, actionData }: Route.Comp
         <div role="alert" className="flex gap-3 rounded-xl border border-warn/40 bg-surface p-4 text-sm">
           <ShieldAlert size={16} className="mt-0.5 shrink-0 text-warn" />
           <p>
-            <span className="font-medium">{status.required_by.join(", ")}</span>{" "}
-            {status.required_by.length === 1 ? "requires" : "require"} two-factor authentication. You cannot use{" "}
-            {status.required_by.length === 1 ? "it" : "them"} until you turn it on here.
+            <span className="font-medium">{status.required_by.join(", ")}</span> {status.required_by.length === 1 ? "requires" : "require"} two-factor
+            authentication. You cannot use {status.required_by.length === 1 ? "it" : "them"} until you turn it on here.
           </p>
         </div>
       )}
@@ -114,8 +113,7 @@ export default function TwoFactorSettings({ loaderData, actionData }: Route.Comp
                 <Badge tone="success">On</Badge>
               </div>
               <p className="mt-2 text-sm text-muted">
-                Signing in with your password asks for a code from your app too. Git over HTTPS takes an access token,
-                never your password.
+                Signing in with your password asks for a code from your app too. Git over HTTPS takes an access token, never your password.
                 {status.enabled_at && (
                   <>
                     {" "}
@@ -123,9 +121,7 @@ export default function TwoFactorSettings({ loaderData, actionData }: Route.Comp
                   </>
                 )}
               </p>
-              <p className="mt-2 text-sm text-muted">
-                {status.recovery_codes_left} of 10 recovery codes left.
-              </p>
+              <p className="mt-2 text-sm text-muted">{status.recovery_codes_left} of 10 recovery codes left.</p>
               <Form method="post" className="mt-4">
                 <input type="hidden" name="intent" value="two-factor-codes" />
                 <SubmitButton variant="outline" match={{ intent: "two-factor-codes" }} pending="Making codes…">
@@ -196,8 +192,7 @@ export default function TwoFactorSettings({ loaderData, actionData }: Route.Comp
               <Badge>Off</Badge>
             </div>
             <p className="mt-2 text-sm text-muted">
-              A code from an app on your phone, asked for each time you sign in with your password, so a stolen password
-              is not enough.
+              A code from an app on your phone, asked for each time you sign in with your password, so a stolen password is not enough.
             </p>
             <Form method="post" className="mt-4">
               <input type="hidden" name="intent" value="two-factor-start" />

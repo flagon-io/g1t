@@ -66,7 +66,11 @@ export default function ReleasePage({ loaderData, actionData, params }: Route.Co
       </div>
       {actionData?.error && <ErrorText>{actionData.error}</ErrorText>}
       <ReleaseCard release={release} repo={{ namespace: params.owner, name: params.repo }} linkTitle={false} />
-      {canPush && <p className="text-xs text-faint">Deleting a release keeps its tag. Delete the tag with git: <code className="font-mono">git push origin :refs/tags/{release.tagName}</code></p>}
+      {canPush && (
+        <p className="text-xs text-faint">
+          Deleting a release keeps its tag. Delete the tag with git: <code className="font-mono">git push origin :refs/tags/{release.tagName}</code>
+        </p>
+      )}
     </div>
   );
 }

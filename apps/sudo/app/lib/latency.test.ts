@@ -37,7 +37,10 @@ test("the chart: answered checks as a line, broken by failures and gaps; slow on
   // The first check is at the left edge, the last at the right.
   assert.ok(p.line.startsWith(`M${p.plot.x} `));
   assert.ok(p.line.includes(`L${p.plot.x + p.plot.width} `));
-  assert.deepEqual(p.ticks.map((t) => t.label), ["0", "750 ms", "1.5 s"]);
+  assert.deepEqual(
+    p.ticks.map((t) => t.label),
+    ["0", "750 ms", "1.5 s"],
+  );
 });
 
 test("the chart's scale leaves room over the slow line when every check was fast", () => {

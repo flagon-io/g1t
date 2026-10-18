@@ -5,17 +5,7 @@ import type { ReactNode } from "react";
  * standalone frame draws (components/standalone.tsx): a short heading, a
  * line under it, the form, and what else there is to do.
  */
-export function AuthCard({
-  title,
-  subtitle,
-  footer,
-  children,
-}: {
-  title: string;
-  subtitle: string;
-  footer: ReactNode;
-  children: ReactNode;
-}) {
+export function AuthCard({ title, subtitle, footer, children }: { title: string; subtitle: string; footer: ReactNode; children: ReactNode }) {
   return (
     <main className="mx-auto flex w-full max-w-85 flex-col pt-8">
       <h1 className="text-center text-xl font-semibold tracking-tight">{title}</h1>

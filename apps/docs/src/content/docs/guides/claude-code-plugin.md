@@ -95,18 +95,18 @@ it records. Your prompts show only to you; the workspace's members see the
 rest, and anyone else who can read the repository sees only that the
 session runs ([Who sees what](/work/sessions/#who-sees-what)).
 
-| When | The hook runs | What g1t receives |
-| --- | --- | --- |
-| A session starts or resumes | `g1t session start --harness claude_code --harness-session-id ID` | A session for this Claude Code session. Starting the same session again, as a resume does, finds it rather than making another. |
-| You send a prompt | `g1t session log --kind prompt TEXT` | Your prompt's first 2,000 characters. |
-| Claude uses a tool | `g1t session log --kind tool_call TEXT` | The tool's name and one line on what it was called with: the command, file, pattern or address, up to 200 characters, with anything that looks like a token or password replaced by `…`. |
-| Claude uses a skill, or you run one (`/g1t:work-on-item 42`) | `g1t session log --kind skill NAME` | The skill's name, nothing more, once in a turn. A plugin's skill or command you type as `/plugin:name` is recorded even with prompts kept back. |
-| Claude writes a file, makes a branch or a commit, or claims a work item | `g1t session touch --file PATH` (or `--branch`, `--commit`, `--item`) | What it touched: the path from the repository's root, the branch, the commit, the work item. A file is one Claude edited or wrote, or one a shell command changed while it ran (the uncommitted files before and after it), never what was uncommitted already, so sessions sharing a working copy do not claim each other's work. g1t ties the session to the pull requests and work items these lead to, and tells two sessions that touch the same file. |
-| A `git push` reaches the remote | `g1t api update_session -f id=ID -f head_commit=SHA` and `g1t session touch --commit SHA --branch BRANCH` | The commit you pushed and its branch, so the session's entries line up with the code and it is tied to the branch's pull request. |
-| Claude starts a subagent | `g1t session start --parent SESSION --agent-type TYPE --task TASK --prompt PROMPT` | A session of its own for the subagent, under this one, with its kind and the task it was given (its prompt's first 4,000 characters). See [Subagents](#subagents). |
-| A subagent finishes | `g1t session heartbeat --usage-json USAGE`, then `g1t session end --result MESSAGE` | The tokens it used, from its own transcript (see [What a session cost](#what-a-session-cost)), then its final message, up to 8,000 characters: what it reported to Claude. |
-| Claude finishes a turn | `g1t session heartbeat --usage-json USAGE` | That the session is still active, which also renews its claims, and the tokens it used so far. |
-| The session ends | `g1t session heartbeat --usage-json USAGE`, then `g1t session end --reason REASON` | The tokens it used, then that it ended, and why: you exited, cleared it or logged out. |
+| When                                                                    | The hook runs                                                                                             | What g1t receives                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A session starts or resumes                                             | `g1t session start --harness claude_code --harness-session-id ID`                                         | A session for this Claude Code session. Starting the same session again, as a resume does, finds it rather than making another.                                                                                                                                                                                                                                                                                                                             |
+| You send a prompt                                                       | `g1t session log --kind prompt TEXT`                                                                      | Your prompt's first 2,000 characters.                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Claude uses a tool                                                      | `g1t session log --kind tool_call TEXT`                                                                   | The tool's name and one line on what it was called with: the command, file, pattern or address, up to 200 characters, with anything that looks like a token or password replaced by `…`.                                                                                                                                                                                                                                                                    |
+| Claude uses a skill, or you run one (`/g1t:work-on-item 42`)            | `g1t session log --kind skill NAME`                                                                       | The skill's name, nothing more, once in a turn. A plugin's skill or command you type as `/plugin:name` is recorded even with prompts kept back.                                                                                                                                                                                                                                                                                                             |
+| Claude writes a file, makes a branch or a commit, or claims a work item | `g1t session touch --file PATH` (or `--branch`, `--commit`, `--item`)                                     | What it touched: the path from the repository's root, the branch, the commit, the work item. A file is one Claude edited or wrote, or one a shell command changed while it ran (the uncommitted files before and after it), never what was uncommitted already, so sessions sharing a working copy do not claim each other's work. g1t ties the session to the pull requests and work items these lead to, and tells two sessions that touch the same file. |
+| A `git push` reaches the remote                                         | `g1t api update_session -f id=ID -f head_commit=SHA` and `g1t session touch --commit SHA --branch BRANCH` | The commit you pushed and its branch, so the session's entries line up with the code and it is tied to the branch's pull request.                                                                                                                                                                                                                                                                                                                           |
+| Claude starts a subagent                                                | `g1t session start --parent SESSION --agent-type TYPE --task TASK --prompt PROMPT`                        | A session of its own for the subagent, under this one, with its kind and the task it was given (its prompt's first 4,000 characters). See [Subagents](#subagents).                                                                                                                                                                                                                                                                                          |
+| A subagent finishes                                                     | `g1t session heartbeat --usage-json USAGE`, then `g1t session end --result MESSAGE`                       | The tokens it used, from its own transcript (see [What a session cost](#what-a-session-cost)), then its final message, up to 8,000 characters: what it reported to Claude.                                                                                                                                                                                                                                                                                  |
+| Claude finishes a turn                                                  | `g1t session heartbeat --usage-json USAGE`                                                                | That the session is still active, which also renews its claims, and the tokens it used so far.                                                                                                                                                                                                                                                                                                                                                              |
+| The session ends                                                        | `g1t session heartbeat --usage-json USAGE`, then `g1t session end --reason REASON`                        | The tokens it used, then that it ended, and why: you exited, cleared it or logged out.                                                                                                                                                                                                                                                                                                                                                                      |
 
 It never records:
 
@@ -268,6 +268,7 @@ twelve subagents, g1t shows twelve sessions and they see each other.
   `Bash(g1t work claim:*)` may no longer match it and Claude Code asks
   instead. Other commands are left as Claude wrote them, and the session
   records each command as Claude wrote it.
+
 - **When it finishes** (`SubagentStop`), its session ends with its final
   message as its result. A background subagent's, or a late hook's, order
   does not matter: starting a subagent again finds the same session, and
@@ -282,19 +283,19 @@ out.
 
 Claude uses a skill when the task matches it, or you can run one by name.
 
-| Skill | What it does |
-| --- | --- |
-| `/g1t:work-on-item N` | Loads the work item's context, claims it, makes a branch named for it, opens a draft pull request early with `g1t pr create --item N --draft`, does the work, watches the checks and merges, or adds the pull request to the [merge queue](/guides/merge-queue/). |
-| `/g1t:fix-integration N` | For a pull request the merge queue failed together with others: reads the `integration.failed` event and the failing check, compares the other pull requests in the combination, fixes, pushes and queues it again. |
-| `/g1t:coordinate N` | Follows the work item's events in the background with `g1t work events --follow --item N`, and acts on another claim, an overlapping pull request, a change to what blocks it or an integration result as it happens. |
+| Skill                    | What it does                                                                                                                                                                                                                                                      |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/g1t:work-on-item N`    | Loads the work item's context, claims it, makes a branch named for it, opens a draft pull request early with `g1t pr create --item N --draft`, does the work, watches the checks and merges, or adds the pull request to the [merge queue](/guides/merge-queue/). |
+| `/g1t:fix-integration N` | For a pull request the merge queue failed together with others: reads the `integration.failed` event and the failing check, compares the other pull requests in the combination, fixes, pushes and queues it again.                                               |
+| `/g1t:coordinate N`      | Follows the work item's events in the background with `g1t work events --follow --item N`, and acts on another claim, an overlapping pull request, a change to what blocks it or an integration result as it happens.                                             |
 
 ## Commands
 
-| Command | What it does |
-| --- | --- |
-| `/g1t:claim N [note]` | Loads work item N's context and claims it for this session, telling you who else holds a claim. With a title instead of a number (or nothing), looks for a work item that covers the work in hand, and opens and claims one with `g1t work claim --title` if there is none. |
-| `/g1t:status` | This session (its title, work item, branch or pull request), and the repository's active claims and sessions. |
-| `/g1t:handoff N [@login]` | Pushes what is unpushed, writes a hand-off note and hands the work item off, to anyone or to one person. |
+| Command                   | What it does                                                                                                                                                                                                                                                                |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/g1t:claim N [note]`     | Loads work item N's context and claims it for this session, telling you who else holds a claim. With a title instead of a number (or nothing), looks for a work item that covers the work in hand, and opens and claims one with `g1t work claim --title` if there is none. |
+| `/g1t:status`             | This session (its title, work item, branch or pull request), and the repository's active claims and sessions.                                                                                                                                                               |
+| `/g1t:handoff N [@login]` | Pushes what is unpushed, writes a hand-off note and hands the work item off, to anyone or to one person.                                                                                                                                                                    |
 
 A claim says you are working on a work item. It is never a lock: a second
 claim is allowed, and whoever makes it is told about the first.
@@ -331,12 +332,12 @@ do.
 
 ## Opt out
 
-| To | Do |
-| --- | --- |
-| Not send prompts | Set `G1T_RECORD_PROMPTS=0` in the environment Claude Code runs in. |
-| Not record anything | Set `G1T_RECORD=0`. |
-| Turn the plugin off for now | `claude plugin disable g1t@g1t` |
-| Remove it | `claude plugin uninstall g1t@g1t` |
+| To                          | Do                                                                 |
+| --------------------------- | ------------------------------------------------------------------ |
+| Not send prompts            | Set `G1T_RECORD_PROMPTS=0` in the environment Claude Code runs in. |
+| Not record anything         | Set `G1T_RECORD=0`.                                                |
+| Turn the plugin off for now | `claude plugin disable g1t@g1t`                                    |
+| Remove it                   | `claude plugin uninstall g1t@g1t`                                  |
 
 To set one of these for every session, put it under `env` in Claude Code's
 settings, for example in `~/.claude/settings.json`:
@@ -404,7 +405,7 @@ the same time; the `g1t` CLI is how you see them and how they see you.
   Reading is not acknowledgement. Repeat until the pending page is empty.
   With an older CLI, use `g1t api get_session -f id=SESSION_ID` and, after
   logging your decision, `g1t api record_session_entries -f id=SESSION_ID
-  -f "acknowledge[]=UPDATE_ID"`.
+-f "acknowledge[]=UPDATE_ID"`.
 - Without a shell, use MCP `session` actions `start`, `get`, `record`,
   `update`, and `end`. Keep the returned ID and pass it explicitly. To read
   pending updates without the transcript, call `get` with `after: 4294967295`.

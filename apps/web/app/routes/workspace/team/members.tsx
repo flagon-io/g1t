@@ -31,7 +31,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const user = requireUser(context, request);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
-  const username = String(form.get("username") ?? "").trim().replace(/^@/, "");
+  const username = String(form.get("username") ?? "")
+    .trim()
+    .replace(/^@/, "");
   if (!username) return { intent, username, error: "Enter a username." };
   if (intent === "remove") {
     const removed = await identity.removeTeamMember(user, params.owner, params.team, username);
@@ -47,8 +49,7 @@ export default function TeamMembers({ loaderData, actionData }: Route.ComponentP
   const { members, children, me } = loaderData;
   const [, setParams] = useSearchParams();
   const manage = team.can_manage;
-  const rowError = (username: string) =>
-    actionData && actionData.intent !== "add" && actionData.username === username ? actionData.error : null;
+  const rowError = (username: string) => (actionData && actionData.intent !== "add" && actionData.username === username ? actionData.error : null);
 
   return (
     <div className="max-w-3xl space-y-10">

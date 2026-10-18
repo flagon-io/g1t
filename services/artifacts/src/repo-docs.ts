@@ -17,7 +17,10 @@ export function repoDocTitle(path: string, markdown: string): string {
   const body = front ? markdown.slice(front[0].length) : markdown;
   const heading = /^\s{0,3}#\s+(.+?)\s*#*\s*$/m.exec(body)?.[1];
   if (heading) return heading.replace(/[*_`]/g, "").slice(0, 200);
-  const name = path.split("/").pop()!.replace(/\.(md|markdown|mdx)$/i, "");
+  const name = path
+    .split("/")
+    .pop()!
+    .replace(/\.(md|markdown|mdx)$/i, "");
   if (/^readme$/i.test(name)) return path.includes("/") ? path.split("/").slice(-2, -1)[0]! : "README";
   return name.replace(/[-_]+/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 }
@@ -33,4 +36,3 @@ export function pickRepoDocs<T extends { path: string }>(files: T[]): T[] {
     })
     .slice(0, MAX_REPO_FILES);
 }
-

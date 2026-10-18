@@ -74,8 +74,7 @@ export function attemptReview(
   for (const comment of comments) {
     if (comment.verdict && !comment.agent && !comment.advisory) latest.set(comment.author.username, comment.verdict);
   }
-  const by = (verdict: NonNullable<Comment["verdict"]>) =>
-    [...latest].filter(([, given]) => given === verdict).map(([reviewer]) => reviewer);
+  const by = (verdict: NonNullable<Comment["verdict"]>) => [...latest].filter(([, given]) => given === verdict).map(([reviewer]) => reviewer);
   const blocking = by("request_changes");
   if (blocking.length > 0) return { state: "changes_requested", text: `Changes requested by ${blocking.join(", ")}` };
   const approving = by("approve");

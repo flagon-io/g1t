@@ -119,9 +119,7 @@ export function MentionTextarea({ handles, ...props }: ComponentProps<"textarea"
                 onMouseDown={(event) => event.preventDefault()}
                 onMouseEnter={() => setActive(index)}
                 onClick={() => complete(handle)}
-                className={`flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 font-mono text-xs text-fg ${
-                  index === active ? "bg-line" : ""
-                }`}
+                className={`flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 font-mono text-xs text-fg ${index === active ? "bg-line" : ""}`}
               >
                 <Users size={12} className="shrink-0 text-faint" />
                 <span className="min-w-0 truncate">{handle}</span>

@@ -1,48 +1,48 @@
 {
-	"$schema": "../../node_modules/wrangler/config-schema.json",
-	"name": "g1t-og",
-	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
-	"compatibility_date": "2026-09-26",
-	// The browser that takes screenshots (@cloudflare/puppeteer) needs it.
-	"compatibility_flags": ["nodejs_compat"],
-	"main": "./src/index.ts",
-	"workers_dev": false,
-	// The social cards the site and the docs link to from their og:image
-	// tags. A custom domain, whose DNS record Cloudflare makes on deploy.
-	"routes": [{ "pattern": "og.g1t.sh", "custom_domain": true }],
-	// The fonts are vendored as TrueType, which satori can read; the
-	// renderers' WebAssembly is bundled as modules, the only way Workers
-	// will run it.
-	"rules": [{ "type": "Data", "globs": ["**/*.ttf"], "fallthrough": false }],
-	// What a card shows is only ever what an anonymous visitor could see:
-	// every call is made with no viewer.
-	// Uploaded avatars, read to draw a workspace's icon or a person's picture on its card.
-	"kv_namespaces": [{ "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" }],
-	// Screenshots of each project's production, one per deploy, taken by
-	// Browser Rendering and kept in R2. Reached only through the
-	// `Screenshots` entrypoint: deployments asks for one when production
-	// goes live, projects when a production deployed elsewhere gets an
-	// address or reports a deploy, and the site reads it for a project's
-	// overview.
-	"browser": { "binding": "BROWSER" },
-	// Made by `npx wrangler r2 bucket create g1t-screenshots`.
-	"r2_buckets": [{ "binding": "SCREENSHOTS", "bucket_name": "g1t-screenshots" }],
-	// Once a day, screenshots older than 30 days are deleted, and each
-	// production deployed elsewhere whose screenshot is a day old is taken
-	// again (src/capture.ts).
-	"triggers": { "crons": ["37 5 * * *"] },
-	"services": [
-		{ "binding": "IDENTITY", "service": "g1t-identity" },
-		{ "binding": "REPOS", "service": "g1t-repos" },
-		{ "binding": "WORK", "service": "g1t-work" },
-		{ "binding": "PROJECTS", "service": "g1t-projects" },
-		// Whether rendering is paused across g1t (billing's platform_pause):
-		// cards fall back to a static image while it is (src/paused.ts).
-		{ "binding": "BILLING", "service": "g1t-billing" }
-	],
-	// Cards drawn for a cache miss, per address (src/index.ts). Past it,
-	// the brand card. Id and limit: RATE_LIMITS in packages/contracts.
-	"ratelimits": [{ "name": "OG_RENDER_LIMIT", "namespace_id": "4501", "simple": { "limit": 60, "period": 60 } }],
-	// Logs of a tenth of requests: every link shared is one.
-	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "g1t-og",
+  "account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+  "compatibility_date": "2026-09-26",
+  // The browser that takes screenshots (@cloudflare/puppeteer) needs it.
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "./src/index.ts",
+  "workers_dev": false,
+  // The social cards the site and the docs link to from their og:image
+  // tags. A custom domain, whose DNS record Cloudflare makes on deploy.
+  "routes": [{ "pattern": "og.g1t.sh", "custom_domain": true }],
+  // The fonts are vendored as TrueType, which satori can read; the
+  // renderers' WebAssembly is bundled as modules, the only way Workers
+  // will run it.
+  "rules": [{ "type": "Data", "globs": ["**/*.ttf"], "fallthrough": false }],
+  // What a card shows is only ever what an anonymous visitor could see:
+  // every call is made with no viewer.
+  // Uploaded avatars, read to draw a workspace's icon or a person's picture on its card.
+  "kv_namespaces": [{ "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" }],
+  // Screenshots of each project's production, one per deploy, taken by
+  // Browser Rendering and kept in R2. Reached only through the
+  // `Screenshots` entrypoint: deployments asks for one when production
+  // goes live, projects when a production deployed elsewhere gets an
+  // address or reports a deploy, and the site reads it for a project's
+  // overview.
+  "browser": { "binding": "BROWSER" },
+  // Made by `npx wrangler r2 bucket create g1t-screenshots`.
+  "r2_buckets": [{ "binding": "SCREENSHOTS", "bucket_name": "g1t-screenshots" }],
+  // Once a day, screenshots older than 30 days are deleted, and each
+  // production deployed elsewhere whose screenshot is a day old is taken
+  // again (src/capture.ts).
+  "triggers": { "crons": ["37 5 * * *"] },
+  "services": [
+    { "binding": "IDENTITY", "service": "g1t-identity" },
+    { "binding": "REPOS", "service": "g1t-repos" },
+    { "binding": "WORK", "service": "g1t-work" },
+    { "binding": "PROJECTS", "service": "g1t-projects" },
+    // Whether rendering is paused across g1t (billing's platform_pause):
+    // cards fall back to a static image while it is (src/paused.ts).
+    { "binding": "BILLING", "service": "g1t-billing" },
+  ],
+  // Cards drawn for a cache miss, per address (src/index.ts). Past it,
+  // the brand card. Id and limit: RATE_LIMITS in packages/contracts.
+  "ratelimits": [{ "name": "OG_RENDER_LIMIT", "namespace_id": "4501", "simple": { "limit": 60, "period": 60 } }],
+  // Logs of a tenth of requests: every link shared is one.
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 },
 }

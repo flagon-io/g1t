@@ -46,7 +46,14 @@ export function AskButton({ slug }: { slug: string }) {
     <Sheet open={open} onOpenChange={change}>
       <Hint label="Ask g1t about your work">
         <SheetTrigger asChild>
-          <Button variant="soft" size="bar" aria-label="Ask g1t" className="gap-2 max-md:ring-0 lg:px-3" onPointerEnter={() => void load()} onFocus={() => void load()}>
+          <Button
+            variant="soft"
+            size="bar"
+            aria-label="Ask g1t"
+            className="gap-2 max-md:ring-0 lg:px-3"
+            onPointerEnter={() => void load()}
+            onFocus={() => void load()}
+          >
             <MarkGlyph className="h-3.5" />
             <span className="max-lg:hidden">Ask</span>
           </Button>

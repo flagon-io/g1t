@@ -66,11 +66,24 @@ import {
 } from "./deploy/image.mjs";
 import { decide, git, planJson, pool, table } from "./deploy/plan.mjs";
 import { reportDeployment } from "./deploy/report.mjs";
-import { ROOT, byStage, codeStages, containersRollout, findWranglerConfigs, npmCiArgs, npmWorkspace, pick, problems, resolvedStack, waves } from "./deploy/stack.mjs";
+import {
+  ROOT,
+  byStage,
+  codeStages,
+  containersRollout,
+  findWranglerConfigs,
+  npmCiArgs,
+  npmWorkspace,
+  pick,
+  problems,
+  resolvedStack,
+  waves,
+} from "./deploy/stack.mjs";
 import { withDeployWindow } from "./deploy/status-window.mjs";
 import { publishWebAssets, verifyWebAssets } from "./deploy/web-assets.mjs";
 
-const USAGE = "usage: node scripts/deploy.mjs plan|deploy|build|migrate|manifest|doctor|install|build-base|image [--all] [--only a,b] [--skip a,b] [--force] [--rollback] [--concurrency N] [--stage S] [--json]";
+const USAGE =
+  "usage: node scripts/deploy.mjs plan|deploy|build|migrate|manifest|doctor|install|build-base|image [--all] [--only a,b] [--skip a,b] [--force] [--rollback] [--concurrency N] [--stage S] [--json]";
 
 function parseArgs(argv) {
   const opts = { command: argv[0], only: [], skip: [], concurrency: 4, force: false, all: false, json: false };
@@ -126,7 +139,10 @@ function writeGithubOutputs(data, p) {
     `commit=${data.commit}`,
     `migrate=${data.migrations.length > 0}`,
     `migrate_units=${data.migrations.map((m) => m.unit).join(",")}`,
-    `deploying=${data.units.filter((u) => u.deploy).map((u) => u.unit).join(",")}`,
+    `deploying=${data.units
+      .filter((u) => u.deploy)
+      .map((u) => u.unit)
+      .join(",")}`,
   ];
   for (const [stage, { jobs }] of Object.entries(data.stages)) {
     // A matrix needs one entry; an empty stage's job is skipped by its `if`.
@@ -141,11 +157,23 @@ ${data.migration_errors[0].error}`);
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `${lines.join("\n")}\n`);
   else console.log(lines.join("\n"));
   if (process.env.GITHUB_STEP_SUMMARY) {
-    const rows = p.decisions.map((d) => `| ${d.unit.id} | ${d.unit.stage} | ${d.deploy ? "deploy" : ""} | ${d.since ? d.since.slice(0, 12) : "?"} | ${d.reason.replaceAll("|", "\\|")} |`);
+    const rows = p.decisions.map(
+      (d) => `| ${d.unit.id} | ${d.unit.stage} | ${d.deploy ? "deploy" : ""} | ${d.since ? d.since.slice(0, 12) : "?"} | ${d.reason.replaceAll("|", "\\|")} |`,
+    );
     const pending = data.migrations.map((m) => `- ${m.database}: ${m.pending.join(", ")}`);
     appendFileSync(
       process.env.GITHUB_STEP_SUMMARY,
-      [`## Deploy plan for ${data.commit.slice(0, 12)}`, "", "| unit | stage | action | live | why |", "| --- | --- | --- | --- | --- |", ...rows, "", pending.length ? "### Pending migrations" : "", ...pending, ""].join("\n"),
+      [
+        `## Deploy plan for ${data.commit.slice(0, 12)}`,
+        "",
+        "| unit | stage | action | live | why |",
+        "| --- | --- | --- | --- | --- |",
+        ...rows,
+        "",
+        pending.length ? "### Pending migrations" : "",
+        ...pending,
+        "",
+      ].join("\n"),
     );
   }
 }
@@ -227,7 +255,9 @@ function printPlan(stack, { head, decisions, migrations, live }) {
   const deploying = decisions.filter((d) => d.deploy).map((d) => d.unit);
   console.log(
     deploying.length
-      ? `\n${deploying.length} to deploy: ${byStage(stack, deploying).map((g) => `${g.stage} (${g.units.map((u) => u.id).join(", ")})`).join(" -> ")}`
+      ? `\n${deploying.length} to deploy: ${byStage(stack, deploying)
+          .map((g) => `${g.stage} (${g.units.map((u) => u.id).join(", ")})`)
+          .join(" -> ")}`
       : "\nNothing to deploy.",
   );
 }
@@ -335,7 +365,9 @@ async function newBase(unit, { push = true, noCache = false, onLine = log } = {}
   const digest = push ? await pushImage(ref, { onLine }) : null;
   const lock = { image: ref, digest, pushed: push, inputs, built_at: new Date().toISOString(), size_bytes: size, versions };
   writeBaseLock(unit, lock);
-  onLine(`base ${tag}: built in ${seconds(built - started)}${push ? `, pushed in ${seconds(Date.now() - built)}` : ""}, ${(size / 1e9).toFixed(2)} GB unpacked`);
+  onLine(
+    `base ${tag}: built in ${seconds(built - started)}${push ? `, pushed in ${seconds(Date.now() - built)}` : ""}, ${(size / 1e9).toFixed(2)} GB unpacked`,
+  );
   return lock;
 }
 
@@ -412,14 +444,22 @@ async function reportContainers(unit, cwd, out) {
     for (const app of apps.filter((a) => String(a.name ?? "").startsWith(`${unit.worker}-`))) {
       const c = app.configuration ?? {};
       const disk = c.disk?.size_mb ?? c.disk_mb ?? c.disk?.size;
-      const size = [c.instance_type, c.vcpu != null && `${c.vcpu} vCPU`, c.memory_mib != null && `${c.memory_mib} MiB`, disk != null && `${disk} MB disk`].filter(Boolean).join(", ");
+      const size = [c.instance_type, c.vcpu != null && `${c.vcpu} vCPU`, c.memory_mib != null && `${c.memory_mib} MiB`, disk != null && `${disk} MB disk`]
+        .filter(Boolean)
+        .join(", ");
       const rollout = app.active_rollout_id ? `rollout ${app.active_rollout_id} in progress` : "no rollout in progress";
-      out.line(`container ${app.name}: ${size || JSON.stringify(c).slice(0, 200)}; version ${app.version ?? "?"}; ${app.instances ?? "?"} instances; ${rollout}`);
+      out.line(
+        `container ${app.name}: ${size || JSON.stringify(c).slice(0, 200)}; version ${app.version ?? "?"}; ${app.instances ?? "?"} instances; ${rollout}`,
+      );
     }
   } catch (error) {
     out.line(`could not read the container applications as JSON (${error.message ?? error}); wrangler said:`);
     const said = await wrangler(["containers", "list"], { cwd }).catch(() => ({ out: "" }));
-    for (const line of said.out.split("\n").filter((l) => l.trim()).slice(0, 40)) out.line(`  ${line}`);
+    for (const line of said.out
+      .split("\n")
+      .filter((l) => l.trim())
+      .slice(0, 40))
+      out.line(`  ${line}`);
   }
 }
 
@@ -449,7 +489,14 @@ async function migrate(stack, units, migrations, opts) {
 }
 
 function summary(results) {
-  const rows = results.map((r) => [r.unit, r.stage, r.ok ? "ok" : r.skipped ? "not started" : "FAILED", r.version ?? "", r.ms ? seconds(r.ms) : "", r.note.split("\n")[0]]);
+  const rows = results.map((r) => [
+    r.unit,
+    r.stage,
+    r.ok ? "ok" : r.skipped ? "not started" : "FAILED",
+    r.version ?? "",
+    r.ms ? seconds(r.ms) : "",
+    r.note.split("\n")[0],
+  ]);
   console.log(`\n${table(rows, ["unit", "stage", "result", "version", "time", "note"])}`);
   for (const r of results.filter((r) => !r.ok && !r.skipped)) console.log(`\n${r.unit}: ${r.note}`);
 }
@@ -466,9 +513,13 @@ async function deploy(stack, opts, { dryRun = false } = {}) {
   // A deploy names the commit it came from, so a dirty tree would be
   // recorded as something it is not.
   const dirtyFiles = git.dirty();
-  const dirty = deploying.some((d) => dirtyFiles.some((file) => file.startsWith(`${d.unit.path}/`) || d.unit.dependsOn.some((dir) => file.startsWith(`${dir}/`)) || d.unit.inputs.includes(file)));
+  const dirty = deploying.some((d) =>
+    dirtyFiles.some((file) => file.startsWith(`${d.unit.path}/`) || d.unit.dependsOn.some((dir) => file.startsWith(`${dir}/`)) || d.unit.inputs.includes(file)),
+  );
   if (dirty && !dryRun && !opts.allowDirty) {
-    throw new Error("Uncommitted changes touch what would deploy. Commit them, or pass --allow-dirty (the deploy then records no commit, and the next plan deploys it again).");
+    throw new Error(
+      "Uncommitted changes touch what would deploy. Commit them, or pass --allow-dirty (the deploy then records no commit, and the next plan deploys it again).",
+    );
   }
 
   const results = [];
@@ -510,7 +561,13 @@ async function deploy(stack, opts, { dryRun = false } = {}) {
             continue;
           }
           log(`== ${stage}: ${wave.map((u) => u.id).join(", ")}`);
-          const shipped = await pool(wave, opts.concurrency, (unit) => ship(unit, deploying.find((d) => d.unit === unit), context));
+          const shipped = await pool(wave, opts.concurrency, (unit) =>
+            ship(
+              unit,
+              deploying.find((d) => d.unit === unit),
+              context,
+            ),
+          );
           results.push(...shipped);
           failed = shipped.some((r) => !r.ok);
         }
@@ -604,7 +661,10 @@ async function main() {
       return deploy(stack, { ...opts, force: true }, { dryRun: true });
     case "migrate": {
       const units = selected(stack, opts);
-      const { migrations } = await survey(units.filter((u) => u.d1), { ...opts, noMigrations: false, noLive: true });
+      const { migrations } = await survey(
+        units.filter((u) => u.d1),
+        { ...opts, noMigrations: false, noLive: true },
+      );
       const results = await migrate(stack, units, migrations, opts);
       if (results.length) summary(results);
       else console.log("No migrations to apply.");

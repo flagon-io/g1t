@@ -45,5 +45,8 @@ test("the site's chat client never reaches the internal methods", async () => {
   await client.g1tReset("acme", "chn_1", viewer as never);
   await client.g1tRetry("acme", "chn_1", viewer as never);
   await client.g1tStop("acme", "chn_1", viewer as never);
-  assert.ok(urls.every((url) => url.startsWith("https://service/rpc/")), urls.join(" "));
+  assert.ok(
+    urls.every((url) => url.startsWith("https://service/rpc/")),
+    urls.join(" "),
+  );
 });

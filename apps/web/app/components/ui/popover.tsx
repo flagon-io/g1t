@@ -10,13 +10,7 @@ export const PopoverTrigger = Primitive.Trigger;
 export const PopoverAnchor = Primitive.Anchor;
 export const PopoverClose = Primitive.Close;
 
-export function PopoverContent({
-  className,
-  align = "center",
-  sideOffset = 6,
-  collisionPadding = 8,
-  ...props
-}: ComponentProps<typeof Primitive.Content>) {
+export function PopoverContent({ className, align = "center", sideOffset = 6, collisionPadding = 8, ...props }: ComponentProps<typeof Primitive.Content>) {
   return (
     <Primitive.Portal>
       <Primitive.Content

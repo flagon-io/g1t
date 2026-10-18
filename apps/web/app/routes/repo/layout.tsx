@@ -50,18 +50,25 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     projectFor(context, params),
     // How the person watches it, for the header's Watch menu, as soon as
     // the repository is known.
-    viewer
-      ? repoFor(context, params).then((found) => (found.ok ? inbox.watching(viewer.username, found.value.id).catch(() => null) : null))
-      : null,
+    viewer ? repoFor(context, params).then((found) => (found.ok ? inbox.watching(viewer.username, found.value.id).catch(() => null) : null)) : null,
     // Whether they pinned it, for the header's Pin button.
     member ? projects.shortcuts(params.owner, viewer).catch(() => null) : null,
     // How many starred it and whether they did, for the header's Star button.
-    repos.stars(path, viewer).then((found) => (found.ok ? found.value : null)).catch(() => null),
+    repos
+      .stars(path, viewer)
+      .then((found) => (found.ok ? found.value : null))
+      .catch(() => null),
     // Its forks the viewer can see, counted up to 100, for the header's Fork button.
-    repos.forks(path, viewer, FORKS_COUNTED).then((found) => (found.ok ? found.value.length : null)).catch(() => null),
+    repos
+      .forks(path, viewer, FORKS_COUNTED)
+      .then((found) => (found.ok ? found.value.length : null))
+      .catch(() => null),
     // Whether work items can be filed from it (off by default in a fork): Work
     // leaves its menus when they cannot. On when it could not be read.
-    work.getSettings(path, viewer).then((found) => (found.ok ? (found.value.workItemsEnabled ?? true) : true)).catch(() => true),
+    work
+      .getSettings(path, viewer)
+      .then((found) => (found.ok ? (found.value.workItemsEnabled ?? true) : true))
+      .catch(() => true),
   ]);
   if (!repo.ok && !found.ok) {
     // Under a workspace's old name, after a rename: the project is at the new one.
@@ -93,22 +100,25 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       ? null
       : { count: Math.min(forks, FORKS_COUNTED), more: forks >= FORKS_COUNTED, allowed: forkable };
   const headers = welcome ? { "Set-Cookie": clearWelcome(new URL(request.url).protocol === "https:") } : undefined;
-  return data({
-    welcome,
-    repo: value,
-    project,
-    open: !isFailed(counts) && counts.ok ? counts.value : { items: 0, pulls: 0 },
-    access,
-    member: access.insider,
-    watching,
-    // Null for a pull request's working copy, or when it could not be read.
-    stars: value.forkOf ? null : stars,
-    forking,
-    workItems,
-    signedIn: Boolean(viewer),
-    // Null when they cannot pin it: not one of their workspaces.
-    pinned: member && project ? (shortcuts?.pinned ?? []).some((pinned) => pinned.id === project.id) : null,
-  }, { headers });
+  return data(
+    {
+      welcome,
+      repo: value,
+      project,
+      open: !isFailed(counts) && counts.ok ? counts.value : { items: 0, pulls: 0 },
+      access,
+      member: access.insider,
+      watching,
+      // Null for a pull request's working copy, or when it could not be read.
+      stars: value.forkOf ? null : stars,
+      forking,
+      workItems,
+      signedIn: Boolean(viewer),
+      // Null when they cannot pin it: not one of their workspaces.
+      pinned: member && project ? (shortcuts?.pinned ?? []).some((pinned) => pinned.id === project.id) : null,
+    },
+    { headers },
+  );
 }
 
 /**
@@ -127,7 +137,16 @@ export function useProject() {
 }
 
 /** The project's name row: its kind, owner and name, visibility, and Pin, Watch and Star at the end. */
-function Header({ project, isPrivate, archived, namespace, name, large, actions, parent }: {
+function Header({
+  project,
+  isPrivate,
+  archived,
+  namespace,
+  name,
+  large,
+  actions,
+  parent,
+}: {
   project: Project | null;
   /** The repository it was forked from, when the viewer can see it. */
   parent?: { namespace: string; name: string } | null;
@@ -142,9 +161,7 @@ function Header({ project, isPrivate, archived, namespace, name, large, actions,
   const base = `/${namespace}/${name}`;
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <span
-        className={`flex shrink-0 items-center justify-center rounded-md bg-raised text-muted ring-1 ring-line ${large ? "size-8" : "size-6"}`}
-      >
+      <span className={`flex shrink-0 items-center justify-center rounded-md bg-raised text-muted ring-1 ring-line ${large ? "size-8" : "size-6"}`}>
         {isPrivate ? <Lock size={large ? 15 : 13} /> : <Box size={large ? 15 : 13} />}
       </span>
       <h1 className={large ? "text-lg" : "text-[0.9375rem]"}>
@@ -183,18 +200,17 @@ function Header({ project, isPrivate, archived, namespace, name, large, actions,
 function PageTabs({ base, tabs }: { base: string; tabs: PageTab[] }) {
   const { pathname } = useLocation();
   const rest = pathname.slice(base.length + 1);
-  const current = (tab: PageTab) =>
-    [tab.path, ...(tab.also ?? [])].some((path) => rest === path || (!tab.exact && rest.startsWith(`${path}/`)));
+  const current = (tab: PageTab) => [tab.path, ...(tab.also ?? [])].some((path) => rest === path || (!tab.exact && rest.startsWith(`${path}/`)));
   return (
     <div className="mb-6 border-b border-line pb-3">
       <NavTabs label="Views" variant="pill">
-      {tabs.map((tab) => (
-        <Hint key={tab.path} label={tab.about}>
-          <NavTab variant="pill" to={`${base}/${tab.path}`} current={current(tab)} soon={tab.soon}>
-            {tab.label}
-          </NavTab>
-        </Hint>
-      ))}
+        {tabs.map((tab) => (
+          <Hint key={tab.path} label={tab.about}>
+            <NavTab variant="pill" to={`${base}/${tab.path}`} current={current(tab)} soon={tab.soon}>
+              {tab.label}
+            </NavTab>
+          </Hint>
+        ))}
       </NavTabs>
     </div>
   );
@@ -230,9 +246,7 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
               watching || stars || forking || (project && (pinned != null || access.can.manage_settings)) ? (
                 <>
                   {project && access.can.manage_settings && <AboutEditor project={project} action={`${base}?index`} />}
-                  {project && pinned != null && (
-                    <PinButton workspace={project.workspace} slug={project.slug} name={project.name} pinned={pinned} />
-                  )}
+                  {project && pinned != null && <PinButton workspace={project.workspace} slug={project.slug} name={project.name} pinned={pinned} />}
                   {watching && <WatchMenu action={`${base}/notifications`} level={watching.level} events={watching.events} />}
                   {forking && <ForkButton base={base} name={`${repo.namespace}/${repo.name}`} forking={forking} signedIn={signedIn} />}
                   {stars && <StarButton base={base} name={`${repo.namespace}/${repo.name}`} stars={stars} signedIn={signedIn} />}
@@ -242,8 +256,15 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
           />
           {/* What it is, where it lives and its topics, the same on every page of it. */}
           {description && <p className="mt-2 max-w-3xl text-sm text-muted">{description}</p>}
-          {project ? <LinkList links={{ ...project.links, homepage: project.links.homepage ?? site }} className="mt-2 flex flex-wrap gap-x-5 gap-y-2 space-y-0" /> : site && (
-            <a href={site} rel="noopener nofollow" className="mt-2 inline-flex items-center gap-1.5 text-sm text-accent hover:underline"><Link2 size={14} />{site.replace(/^https?:\/\//, "")}</a>
+          {project ? (
+            <LinkList links={{ ...project.links, homepage: project.links.homepage ?? site }} className="mt-2 flex flex-wrap gap-x-5 gap-y-2 space-y-0" />
+          ) : (
+            site && (
+              <a href={site} rel="noopener nofollow" className="mt-2 inline-flex items-center gap-1.5 text-sm text-accent hover:underline">
+                <Link2 size={14} />
+                {site.replace(/^https?:\/\//, "")}
+              </a>
+            )
           )}
           <Topics topics={repo.topics} className="mt-3" />
           <div className={signedIn ? "mt-3 md:hidden" : "mt-3"}>

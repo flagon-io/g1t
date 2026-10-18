@@ -33,14 +33,24 @@ export async function loader({ params, context, request }: Route.LoaderArgs): Pr
   return { folio: folio.value, versions: versions.value };
 }
 
-const KIND_LABELS: Record<FolioVersion["kind"], string> = { created: "Created", edit: "Edited", agent: "Edited by an agent", suggestion: "Suggestion accepted", proposal: "Proposal applied", restore: "Restored" };
+const KIND_LABELS: Record<FolioVersion["kind"], string> = {
+  created: "Created",
+  edit: "Edited",
+  agent: "Edited by an agent",
+  suggestion: "Suggestion accepted",
+  proposal: "Proposal applied",
+  restore: "Restored",
+};
 
 function DiffView({ lines }: { lines: DocDiffLine[] }) {
   if (!lines.length) return <p className="p-4 text-xs text-faint">No changes in the text.</p>;
   return (
     <div className="font-mono text-[0.75rem] leading-relaxed">
       {lines.map((l, i) => (
-        <div key={i} className={`flex gap-2 px-3 whitespace-pre-wrap ${l.op === "add" ? "bg-success/10 text-fg" : l.op === "del" ? "bg-danger/10 text-fg-soft line-through decoration-danger/50" : "text-muted"}`}>
+        <div
+          key={i}
+          className={`flex gap-2 px-3 whitespace-pre-wrap ${l.op === "add" ? "bg-success/10 text-fg" : l.op === "del" ? "bg-danger/10 text-fg-soft line-through decoration-danger/50" : "text-muted"}`}
+        >
           <span className="w-3 shrink-0 text-faint select-none">{l.op === "add" ? "+" : l.op === "del" ? "−" : " "}</span>
           <span className="min-w-0">{l.text || " "}</span>
         </div>
@@ -105,7 +115,12 @@ export default function FolioHistory({ loaderData, params }: Route.ComponentProp
           <ul className="space-y-px md:max-h-[calc(100dvh-14rem)] md:overflow-y-auto md:scrollbar-thin">
             {versions.map((v) => (
               <li key={v.id}>
-                <button type="button" onClick={() => setChosen(v.id)} aria-current={chosen === v.id} className={`w-full rounded-md px-2.5 py-2 text-left transition-colors ${chosen === v.id ? "bg-raised" : "hover:bg-raised/60"}`}>
+                <button
+                  type="button"
+                  onClick={() => setChosen(v.id)}
+                  aria-current={chosen === v.id}
+                  className={`w-full rounded-md px-2.5 py-2 text-left transition-colors ${chosen === v.id ? "bg-raised" : "hover:bg-raised/60"}`}
+                >
                   <span className="block text-xs font-medium text-fg" suppressHydrationWarning>
                     {new Date(v.created_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                   </span>

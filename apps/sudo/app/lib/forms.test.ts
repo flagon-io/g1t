@@ -113,7 +113,6 @@ test("a sales note is required, and not endless", () => {
   assert.equal(parseSalesNote("x".repeat(2001)).ok, false);
 });
 
-
 test("allowances: the plan without its price, pool shares, and staff's overrides", () => {
   assert.deepEqual(parseAllowances(form({})), {
     ok: true,
@@ -127,7 +126,9 @@ test("allowances: the plan without its price, pool shares, and staff's overrides
     },
   });
   assert.deepEqual(
-    parseAllowances(form({ plan: "on", oss: "5", trial: "2.50", agents: "20", runCap: "25", auditDays: "365", hold: "  Card  disputed;\nwaiting on the bank " })),
+    parseAllowances(
+      form({ plan: "on", oss: "5", trial: "2.50", agents: "20", runCap: "25", auditDays: "365", hold: "  Card  disputed;\nwaiting on the bank " }),
+    ),
     {
       ok: true,
       value: {

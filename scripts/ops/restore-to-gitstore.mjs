@@ -315,7 +315,11 @@ function liveRemote(liveRoot) {
     const at = `${api}/${namespace}/repos/${encodeURIComponent(name)}`;
     const info = await (await fetch(at, { headers: auth })).json().catch(() => ({}));
     const minted = await (
-      await fetch(`${at}/tokens`, { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify({ scope: "write", ttl: 3600 }) })
+      await fetch(`${at}/tokens`, {
+        method: "POST",
+        headers: { ...auth, "content-type": "application/json" },
+        body: JSON.stringify({ scope: "write", ttl: 3600 }),
+      })
     )
       .json()
       .catch(() => ({}));

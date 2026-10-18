@@ -18,7 +18,10 @@ test("a page runs only sudo's own scripts, by its nonce", () => {
   // Everything else as strict as an answer that is not a page.
   const rest = directives(CONTENT_SECURITY_POLICY);
   for (const [name, value] of rest) if (name !== "script-src") assert.equal(page.get(name), value, name);
-  assert.deepEqual([...page.keys()].filter((name) => !rest.has(name)), ["connect-src"]);
+  assert.deepEqual(
+    [...page.keys()].filter((name) => !rest.has(name)),
+    ["connect-src"],
+  );
 });
 
 test("an answer that is not a page runs nothing", () => {

@@ -12,10 +12,7 @@ import { accountsAdmin } from "~/lib/services.server";
 import { settle } from "~/lib/settle";
 import { requireStaff } from "~/lib/staff";
 
-export const meta: Route.MetaFunction = () => [
-  { title: "Deleted accounts · sudo" },
-  { name: "robots", content: "noindex, nofollow" },
-];
+export const meta: Route.MetaFunction = () => [{ title: "Deleted accounts · sudo" }, { name: "robots", content: "noindex, nofollow" }];
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   requireStaff(context);
@@ -105,8 +102,7 @@ function DeletedRow({ account, now, error }: { account: DeletedAccount; now: num
             </Link>
           </p>
           <p className="mt-1 text-sm text-muted">
-            Deleted by <span className="text-fg-soft">{account.went.staff ?? "the person"}</span>{" "}
-            <When at={account.deletedAt} time />
+            Deleted by <span className="text-fg-soft">{account.went.staff ?? "the person"}</span> <When at={account.deletedAt} time />
             {" · "}purged <When at={account.purgeAfter} time />
           </p>
           {account.went.reason && <p className="mt-1 text-sm text-muted">Reason: {account.went.reason}</p>}

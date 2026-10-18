@@ -10,17 +10,7 @@
  * the files, and while it is first being worked out the panel asks for it
  * again by itself (`about.json`).
  */
-import {
-  Activity,
-  BookOpen,
-  Eye,
-  Package as PackageIcon,
-  Plus,
-  Scale,
-  ShieldCheck,
-  Star,
-  Tag as TagIcon,
-} from "lucide-react";
+import { Activity, BookOpen, Eye, Package as PackageIcon, Plus, Scale, ShieldCheck, Star, Tag as TagIcon } from "lucide-react";
 import { type ReactNode, Suspense, useEffect, useState } from "react";
 import { Await, Link } from "react-router";
 
@@ -386,7 +376,13 @@ function LoadedSections({
       {deployments}
       <Contributors base={base} about={about} />
       <Section title="Languages">
-        {about.pending ? <Reading /> : about.languages.length > 0 ? <LanguageBar languages={about.languages} /> : <p className="text-sm text-muted">No code to count</p>}
+        {about.pending ? (
+          <Reading />
+        ) : about.languages.length > 0 ? (
+          <LanguageBar languages={about.languages} />
+        ) : (
+          <p className="text-sm text-muted">No code to count</p>
+        )}
       </Section>
     </>
   );

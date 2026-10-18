@@ -30,7 +30,12 @@ export default function ChatList() {
     const byRecent = (a: ChatSidebarEntry, b: ChatSidebarEntry) => (b.channel.last_message_at ?? "").localeCompare(a.channel.last_message_at ?? "");
     return [
       { title: "Starred", data: entries.filter((entry) => entry.starred).sort(byRecent) },
-      { title: "Channels", data: entries.filter((entry) => !entry.starred && entry.channel.kind === "channel").sort((a, b) => (a.channel.name ?? "").localeCompare(b.channel.name ?? "")) },
+      {
+        title: "Channels",
+        data: entries
+          .filter((entry) => !entry.starred && entry.channel.kind === "channel")
+          .sort((a, b) => (a.channel.name ?? "").localeCompare(b.channel.name ?? "")),
+      },
       { title: "Direct messages", data: entries.filter((entry) => !entry.starred && entry.channel.kind === "dm").sort(byRecent) },
     ].filter((section) => section.data.length > 0);
   }, [sidebar.data, search]);
@@ -91,7 +96,12 @@ export default function ChatList() {
             search ? (
               <Empty title="Nothing matches" />
             ) : (
-              <Empty icon={MessagesSquare} title="No conversations yet" body="Message a person, or join a channel." action={<Button title="New message" onPress={() => router.push("/chat/new")} />} />
+              <Empty
+                icon={MessagesSquare}
+                title="No conversations yet"
+                body="Message a person, or join a channel."
+                action={<Button title="New message" onPress={() => router.push("/chat/new")} />}
+              />
             )
           }
           ListFooterComponent={
@@ -153,7 +163,11 @@ function Conversation({ entry }: { entry: ChatSidebarEntry }) {
           <Text size="small" tone="muted" numberOfLines={1} style={{ flex: 1 }}>
             {dm ? (other?.kind === "agent" ? "Deleted agent" : `@${other?.name ?? ""}`) : (channel.topic ?? (entry.muted ? "Muted" : " "))}
           </Text>
-          {entry.mentions > 0 ? <Badge label={`@ ${entry.mentions}`} tone="accent" /> : loud ? <View style={[styles.dot, { backgroundColor: colors.accent }]} /> : null}
+          {entry.mentions > 0 ? (
+            <Badge label={`@ ${entry.mentions}`} tone="accent" />
+          ) : loud ? (
+            <View style={[styles.dot, { backgroundColor: colors.accent }]} />
+          ) : null}
         </View>
       </View>
     </Pressable>
@@ -161,7 +175,15 @@ function Conversation({ entry }: { entry: ChatSidebarEntry }) {
 }
 
 const styles = StyleSheet.create({
-  search: { flexDirection: "row", alignItems: "center", gap: space.sm, marginHorizontal: space.lg, marginTop: space.md, paddingHorizontal: space.md, borderRadius: radius.md },
+  search: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.sm,
+    marginHorizontal: space.lg,
+    marginTop: space.md,
+    paddingHorizontal: space.md,
+    borderRadius: radius.md,
+  },
   row: { flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.lg, paddingVertical: 10 },
   icon: { width: 40, height: 40, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
   online: { position: "absolute", right: -1, bottom: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2 },

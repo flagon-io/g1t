@@ -22,7 +22,9 @@ function readCard(href: string): Promise<Card | null> {
   let found = cards.get(href);
   if (!found) {
     found = fetch(href, { headers: { accept: "application/json" } })
-      .then((response) => (response.ok ? (response.json() as Promise<Card>) : response.status === 404 ? null : Promise.reject(new Error(String(response.status)))))
+      .then((response) =>
+        response.ok ? (response.json() as Promise<Card>) : response.status === 404 ? null : Promise.reject(new Error(String(response.status))),
+      )
       .catch(() => {
         cards.delete(href);
         return null;
@@ -173,8 +175,7 @@ function G1tCard() {
         </div>
       </div>
       <p className="leading-relaxed text-fg/90">
-        What g1t does on its own shows under this name: merges from the merge queue, automatic merges your settings allow,
-        and security updates.
+        What g1t does on its own shows under this name: merges from the merge queue, automatic merges your settings allow, and security updates.
       </p>
     </div>
   );

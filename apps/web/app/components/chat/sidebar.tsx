@@ -84,7 +84,8 @@ export function ChatSidebar({ slug: home, heading = true }: { slug: string; head
   }, [sidebar]);
   const entries = (sidebar?.entries ?? []).map((e) => (pins.has(e.channel.id) ? { ...e, starred: pins.get(e.channel.id)! } : e));
   // The open conversation stays listed even when it is an old one with an agent alone, which Jump to otherwise finds.
-  const currentId = entries.find((e) => pathname === channelPath(slug, e.channel) || pathname.startsWith(`${channelPath(slug, e.channel)}/`))?.channel.id ?? null;
+  const currentId =
+    entries.find((e) => pathname === channelPath(slug, e.channel) || pathname.startsWith(`${channelPath(slug, e.channel)}/`))?.channel.id ?? null;
   const shown = filterEntries(entries, filter, query, currentId);
   const { pinned, channels, publicChannels, dms } = sections(shown);
   const loading = !data;
@@ -229,31 +230,40 @@ export function ChatSidebar({ slug: home, heading = true }: { slug: string; head
             )}
             {(sidebar.elsewhere?.length ?? 0) > 0 && (
               <Section id="elsewhere" title="Other workspaces" folded={folded} onFold={fold}>
-                {sidebar.elsewhere!
-                  .filter((entry) => (filter === "all" || (filter === "unread" ? entry.unread > 0 : entry.mentions > 0)) && (!query || entry.channel.name?.includes(query.toLowerCase())))
+                {sidebar
+                  .elsewhere!.filter(
+                    (entry) =>
+                      (filter === "all" || (filter === "unread" ? entry.unread > 0 : entry.mentions > 0)) &&
+                      (!query || entry.channel.name?.includes(query.toLowerCase())),
+                  )
                   .map((entry) => (
                     <ElsewhereRow key={entry.channel.id} entry={entry} pathname={pathname} />
                   ))}
               </Section>
             )}
             {/* A guest has no direct messages here: those are for the workspace's members. */}
-            {!sidebar.guest && (<Section
-              id="people"
-              title="Direct messages"
-              folded={folded}
-              onFold={fold}
-              action={<NewMessageButton slug={slug} />}
-              keep={dms.filter(keepShown).map(conversation)}
-            >
-              {/* @g1t, before the first word to it: its direct message opens on first use. */}
-              {filter === "all" && !query && !entries.some(g1tEntry) && (
-                <ExtraRow to={`/${slug}/-/chat/dm/g1t`} icon={<MemberAvatar member={{ kind: "system", id: "g1t", name: "g1t", avatar: null }} size={18} ring="var(--chat-sidebar-bg)" />}>
-                  g1t
-                </ExtraRow>
-              )}
-              {dms.map(conversation)}
-              {dms.length === 0 && filter === "all" && !query && <Empty>Message a teammate.</Empty>}
-            </Section>)}
+            {!sidebar.guest && (
+              <Section
+                id="people"
+                title="Direct messages"
+                folded={folded}
+                onFold={fold}
+                action={<NewMessageButton slug={slug} />}
+                keep={dms.filter(keepShown).map(conversation)}
+              >
+                {/* @g1t, before the first word to it: its direct message opens on first use. */}
+                {filter === "all" && !query && !entries.some(g1tEntry) && (
+                  <ExtraRow
+                    to={`/${slug}/-/chat/dm/g1t`}
+                    icon={<MemberAvatar member={{ kind: "system", id: "g1t", name: "g1t", avatar: null }} size={18} ring="var(--chat-sidebar-bg)" />}
+                  >
+                    g1t
+                  </ExtraRow>
+                )}
+                {dms.map(conversation)}
+                {dms.length === 0 && filter === "all" && !query && <Empty>Message a teammate.</Empty>}
+              </Section>
+            )}
             {shown.length === 0 && (filter !== "all" || query) && (
               <p className="px-2 py-2 text-xs text-faint">{query ? "Nothing matches." : filter === "unread" ? "You're all caught up." : "No mentions."}</p>
             )}
@@ -379,7 +389,8 @@ function PinButton({ pinned, onPin, label }: { pinned: boolean; onPin: () => voi
           event.stopPropagation();
           onPin();
         }}
-        variant="secondary" size="icon"
+        variant="secondary"
+        size="icon"
         className="absolute top-1/2 right-1 hidden size-6 -translate-y-1/2 rounded text-faint group-hover/row:flex group-focus-within/row:flex hover:text-fg [@media(hover:none)]:hidden"
       >
         {pinned ? <PinOff size={13} /> : <Pin size={13} />}
@@ -427,17 +438,7 @@ function usePrefetchConversation(to: string) {
 }
 
 /** One channel or direct message: its mark, its name, its unread count, and a pin. */
-function ConversationRow({
-  entry,
-  slug,
-  pathname,
-  onPin,
-}: {
-  entry: ChatSidebarEntry;
-  slug: string;
-  pathname: string;
-  onPin: () => void;
-}) {
+function ConversationRow({ entry, slug, pathname, onPin }: { entry: ChatSidebarEntry; slug: string; pathname: string; onPin: () => void }) {
   const to = channelPath(slug, entry.channel);
   const current = pathname === to || pathname.startsWith(`${to}/`);
   const prefetch = usePrefetchConversation(to);
@@ -448,11 +449,11 @@ function ConversationRow({
   const former = agentsOnlyDm(entry);
   const icon =
     entry.channel.kind === "dm" && other ? (
-    // One person: their dot, cut out of the sidebar behind it.
-    <MemberAvatar member={other} size={18} presence={entry.others.length === 1} ring="var(--chat-sidebar-bg)" />
-  ) : (
-    <ChannelMark channel={entry.channel} />
-  );
+      // One person: their dot, cut out of the sidebar behind it.
+      <MemberAvatar member={other} size={18} presence={entry.others.length === 1} ring="var(--chat-sidebar-bg)" />
+    ) : (
+      <ChannelMark channel={entry.channel} />
+    );
   return (
     <li className="group/row relative">
       <RowMenu pinned={entry.starred} onPin={onPin} to={to}>
@@ -461,7 +462,13 @@ function ConversationRow({
           {...prefetch}
           aria-current={current ? "page" : undefined}
           className={`${ROW} ${
-            current ? "bg-sidebar-accent text-fg" : unread ? "text-fg hover:bg-sidebar-accent/60" : entry.muted || former ? "text-faint hover:bg-sidebar-accent/60 hover:text-muted" : "text-muted hover:bg-sidebar-accent/60 hover:text-fg"
+            current
+              ? "bg-sidebar-accent text-fg"
+              : unread
+                ? "text-fg hover:bg-sidebar-accent/60"
+                : entry.muted || former
+                  ? "text-faint hover:bg-sidebar-accent/60 hover:text-muted"
+                  : "text-muted hover:bg-sidebar-accent/60 hover:text-fg"
           }`}
         >
           <span className={`flex w-4.5 shrink-0 justify-center ${current || unread ? "text-muted" : "text-faint"} ${former ? "opacity-60" : ""}`}>{icon}</span>
@@ -533,7 +540,9 @@ function ElsewhereRow({ entry, pathname }: { entry: GuestChannel; pathname: stri
           <span className="ml-1.5 text-xs font-normal text-faint">{entry.workspace.name}</span>
         </span>
         {count > 0 && (
-          <span className={`min-w-5 shrink-0 rounded-full px-1.5 text-center text-[0.6875rem] leading-4.5 font-semibold tabular-nums ${entry.mentions > 0 ? "bg-accent text-bg" : "bg-line-strong text-fg"}`}>
+          <span
+            className={`min-w-5 shrink-0 rounded-full px-1.5 text-center text-[0.6875rem] leading-4.5 font-semibold tabular-nums ${entry.mentions > 0 ? "bg-accent text-bg" : "bg-line-strong text-fg"}`}
+          >
             {count}
           </span>
         )}

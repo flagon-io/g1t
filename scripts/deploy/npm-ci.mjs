@@ -21,7 +21,8 @@ export const WAITS_MS = [5_000, 15_000];
 export const STALL_MS = Number(process.env.G1T_NPM_STALL_MS) || 12 * 60_000;
 
 /** npm's words for a connection that failed: worth trying again. */
-const NETWORK = /\b(ECONNRESET|ECONNREFUSED|ETIMEDOUT|ESOCKETTIMEDOUT|EAI_AGAIN|EPIPE|ERR_SOCKET_TIMEOUT)\b|network aborted|socket hang up|network timeout|request to \S+ failed/i;
+const NETWORK =
+  /\b(ECONNRESET|ECONNREFUSED|ETIMEDOUT|ESOCKETTIMEDOUT|EAI_AGAIN|EPIPE|ERR_SOCKET_TIMEOUT)\b|network aborted|socket hang up|network timeout|request to \S+ failed/i;
 
 /**
  * Whether a failed install is worth running again: its output names a
@@ -72,7 +73,10 @@ function attempt(args, { stallMs, onLine }) {
 }
 
 /** Runs `npm ci` with `flags`, again when it fails in a way worth retrying. Resolves to its exit code. */
-export async function npmCi(flags, { attempts = ATTEMPTS, waits = WAITS_MS, stallMs = STALL_MS, run = attempt, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), log = console.error } = {}) {
+export async function npmCi(
+  flags,
+  { attempts = ATTEMPTS, waits = WAITS_MS, stallMs = STALL_MS, run = attempt, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), log = console.error } = {},
+) {
   const args = npmArgs(flags);
   for (let tries = 1; ; tries++) {
     const done = await run(args, { stallMs });

@@ -29,14 +29,8 @@ export async function action({ request, context }: Route.ActionArgs) {
   const user = requireUser(context, request);
   const form = await request.formData();
   const approve = form.get("decision") === "approve";
-  const result = await identity.deviceResolve(
-    String(form.get("code") ?? ""),
-    user,
-    approve,
-  );
-  return result.ok
-    ? { done: approve ? ("approved" as const) : ("denied" as const) }
-    : { error: result.error.message };
+  const result = await identity.deviceResolve(String(form.get("code") ?? ""), user, approve);
+  return result.ok ? { done: approve ? ("approved" as const) : ("denied" as const) } : { error: result.error.message };
 }
 
 export default function Device({ loaderData, actionData }: Route.ComponentProps) {
@@ -50,13 +44,9 @@ export default function Device({ loaderData, actionData }: Route.ComponentProps)
     return (
       <main className="mx-auto max-w-md pt-10 text-center">
         <Icon size={40} className={`mx-auto ${approved ? "text-success" : "text-muted"}`} />
-        <h1 className="mt-6 text-2xl font-semibold tracking-tight">
-          {approved ? "Connected" : "Request denied"}
-        </h1>
+        <h1 className="mt-6 text-2xl font-semibold tracking-tight">{approved ? "Connected" : "Request denied"}</h1>
         <p className="mt-2 text-muted">
-          {approved
-            ? "Go back to the application. It will finish signing in on its own."
-            : "Nothing was given access to your account."}
+          {approved ? "Go back to the application. It will finish signing in on its own." : "Nothing was given access to your account."}
         </p>
       </main>
     );
@@ -65,29 +55,20 @@ export default function Device({ loaderData, actionData }: Route.ComponentProps)
   return (
     <main className="mx-auto max-w-md pt-8">
       <KeyRound size={36} className="text-accent" />
-      <h1 className="mt-6 text-2xl font-semibold tracking-tight">
-        Connect an application
-      </h1>
+      <h1 className="mt-6 text-2xl font-semibold tracking-tight">Connect an application</h1>
 
       {pending ? (
         <>
           <p className="mt-2 text-muted">
-            <span className="font-medium text-fg">{pending.clientName}</span>{" "}
-            wants to act as{" "}
-            <span className="font-mono font-medium text-fg">{user.username}</span>{" "}
-            on g1t.
+            <span className="font-medium text-fg">{pending.clientName}</span> wants to act as{" "}
+            <span className="font-mono font-medium text-fg">{user.username}</span> on g1t.
           </p>
-          <p className="mt-6 text-sm text-muted">
-            Check that this code matches the one it is showing you:
-          </p>
+          <p className="mt-6 text-sm text-muted">Check that this code matches the one it is showing you:</p>
           <Card asChild className="mt-2 py-5 text-center font-mono text-3xl font-semibold tracking-[0.2em]">
-            <p>
-              {pending.userCode}
-            </p>
+            <p>{pending.userCode}</p>
           </Card>
           <p className="mt-4 text-sm text-muted">
-            Approving creates an access token with the full rights of your
-            account. You can delete it in settings at any time.
+            Approving creates an access token with the full rights of your account. You can delete it in settings at any time.
           </p>
           <Form method="post" className="mt-6 flex gap-3">
             <input type="hidden" name="code" value={pending.userCode} />
@@ -110,14 +91,7 @@ export default function Device({ loaderData, actionData }: Route.ComponentProps)
           </p>
           <Form method="get" className="mt-6 space-y-4">
             <Field label="Code">
-              <Input
-                name="code"
-                placeholder="XXXX-XXXX"
-                autoComplete="off"
-                autoCapitalize="characters"
-                required
-                autoFocus
-              />
+              <Input name="code" placeholder="XXXX-XXXX" autoComplete="off" autoCapitalize="characters" required autoFocus />
             </Field>
             <div className="*:w-full">
               <Button type="submit">Continue</Button>

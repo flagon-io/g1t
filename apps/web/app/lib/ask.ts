@@ -8,14 +8,36 @@ import type { AskEvent, AskPage, AskProposalState, AskSource, AskToolStatus } fr
 
 /** First path segments that are g1t's own pages, never a workspace. */
 const RESERVED = new Set([
-  "settings", "u", "auth", "oauth", "integrations", "new", "invite", "workspaces", "device", "verify",
-  "confirm-email", "login", "register", "logout", "forgot", "reset", "search", "status", "avatars", "docs", "-",
+  "settings",
+  "u",
+  "auth",
+  "oauth",
+  "integrations",
+  "new",
+  "invite",
+  "workspaces",
+  "device",
+  "verify",
+  "confirm-email",
+  "login",
+  "register",
+  "logout",
+  "forgot",
+  "reset",
+  "search",
+  "status",
+  "avatars",
+  "docs",
+  "-",
 ]);
 
 /** Where the person is: the page, and the repository, work item or pull request on it. */
 export function askPage(pathname: string): AskPage {
   const path = pathname.split(/[?#]/)[0] ?? "";
-  const parts = path.split("/").filter(Boolean).map((part) => decodeURIComponent(part));
+  const parts = path
+    .split("/")
+    .filter(Boolean)
+    .map((part) => decodeURIComponent(part));
   const page: AskPage = { path: path || "/" };
   const [owner, name, section, number] = parts;
   if (!owner || !name || RESERVED.has(owner.toLowerCase())) return page;
@@ -83,7 +105,9 @@ export function proposalSteps(proposal: Proposal): string {
       ? `${made}, turns on its deployments, then runs in your own harness and pushes the first version, which goes live on g1t.page.`
       : `${made}, then runs in your own harness and pushes the first version.`;
   }
-  return proposal.item ? "Runs in your own harness, with your skills, tied to the work item." : "Opens the work item, then runs in your own harness, tied to it.";
+  return proposal.item
+    ? "Runs in your own harness, with your skills, tied to the work item."
+    : "Opens the work item, then runs in your own harness, tied to it.";
 }
 
 /** What a proposal asks the session to do, in a line: "Implement #12 in acme/web". */

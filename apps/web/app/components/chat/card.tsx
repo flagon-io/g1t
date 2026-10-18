@@ -151,13 +151,7 @@ export function CardToasts() {
             {toast.ok ? <CircleCheck size={16} /> : <CircleAlert size={16} />}
           </span>
           <p className="min-w-0 grow">{toast.message}</p>
-          <Button
-            type="button"
-            aria-label="Dismiss"
-            onClick={() => dismissToast(toast.id)}
-            variant="ghost" size="icon"
-            className="size-6 text-faint"
-          >
+          <Button type="button" aria-label="Dismiss" onClick={() => dismissToast(toast.id)} variant="ghost" size="icon" className="size-6 text-faint">
             <X size={14} />
           </Button>
         </div>
@@ -205,7 +199,12 @@ export function CardBox({
         {CARD_ICONS[card.kind] ?? <Sparkles size={16} />}
       </span>
       <span className="min-w-0 grow">
-        <span className={cn("line-clamp-2 text-sm font-medium text-fg", href && "group-hover/head:underline group-hover/head:decoration-line-strong group-hover/head:underline-offset-2")}>
+        <span
+          className={cn(
+            "line-clamp-2 text-sm font-medium text-fg",
+            href && "group-hover/head:underline group-hover/head:decoration-line-strong group-hover/head:underline-offset-2",
+          )}
+        >
           {card.title}
         </span>
         {card.detail && <span className="mt-0.5 block truncate font-mono text-xs text-muted tabular-nums">{card.detail}</span>}
@@ -239,9 +238,7 @@ export function CardBox({
           {card.fields.map((field) => (
             <div key={field.label} className="min-w-0">
               <dt className="text-[0.6875rem] font-medium text-faint">{field.label}</dt>
-              <dd className="line-clamp-2 text-xs wrap-break-word text-fg-soft">
-                {field.value}
-              </dd>
+              <dd className="line-clamp-2 text-xs wrap-break-word text-fg-soft">{field.value}</dd>
             </div>
           ))}
         </dl>
@@ -289,11 +286,7 @@ function CardBody({ body, repo }: { body: string; repo?: string }) {
   const folded = folds && !open;
   return (
     <div className="mt-2.5 sm:pl-11">
-      <div
-        ref={box}
-        id={id}
-        className={cn("card-md relative rounded-lg border border-line/70 bg-bg/40 px-3 py-2", !open && "max-h-46 overflow-hidden")}
-      >
+      <div ref={box} id={id} className={cn("card-md relative rounded-lg border border-line/70 bg-bg/40 px-3 py-2", !open && "max-h-46 overflow-hidden")}>
         <Markdown source={body} repo={repoAt(repo)} />
         {folded && (
           <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-12 rounded-b-lg bg-linear-to-t from-surface to-transparent" />

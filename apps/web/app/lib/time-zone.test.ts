@@ -27,7 +27,10 @@ test("the zones to pick from are sorted, with UTC and a saved one always there",
   assert.ok(names.includes("UTC"));
   assert.ok(names.includes("America/Denver"));
   assert.ok(names.includes("Mars/Olympus_Mons"));
-  assert.deepEqual(names, [...names].sort((a, b) => a.localeCompare(b)));
+  assert.deepEqual(
+    names,
+    [...names].sort((a, b) => a.localeCompare(b)),
+  );
 });
 
 test("zones read as places, with their offset", () => {

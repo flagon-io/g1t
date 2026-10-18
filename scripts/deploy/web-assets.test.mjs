@@ -7,7 +7,12 @@ import { dirname, join, resolve } from "node:path";
 import { archiveAsset, archiveLiveAssets, assetReferences, publishWebAssets, readArchiveManifest, retryingFetch, verifyWebAssets } from "./web-assets.mjs";
 
 test("discover actual hashed assets without archiving icons, source maps or library defaults", () => {
-  assert.deepEqual(assetReferences('<link href="/assets/app-12345678.css"><img src="/apple-touch-icon.png"> import "./chunk-abcdefgh.js"; import "./elk-worker.min.js"; url(/assets/font-12345678.woff2)'), ["app-12345678.css", "chunk-abcdefgh.js", "font-12345678.woff2"]);
+  assert.deepEqual(
+    assetReferences(
+      '<link href="/assets/app-12345678.css"><img src="/apple-touch-icon.png"> import "./chunk-abcdefgh.js"; import "./elk-worker.min.js"; url(/assets/font-12345678.woff2)',
+    ),
+    ["app-12345678.css", "chunk-abcdefgh.js", "font-12345678.woff2"],
+  );
 });
 
 test("archive the old release's transitive chunks before replacing it", async () => {
@@ -18,7 +23,11 @@ test("archive the old release's transitive chunks before replacing it", async ()
     "/assets/lazy-12345678.js": 'import "./entry-12345678.js"',
   };
   const saved = [];
-  const total = await archiveLiveAssets("https://example.com", async (name) => saved.push(name), async (url) => new Response(responses[new URL(url).pathname]));
+  const total = await archiveLiveAssets(
+    "https://example.com",
+    async (name) => saved.push(name),
+    async (url) => new Response(responses[new URL(url).pathname]),
+  );
   assert.equal(total, 3);
   assert.deepEqual(saved.sort(), ["app-12345678.css", "entry-12345678.js", "lazy-12345678.js"]);
 });
@@ -26,73 +35,157 @@ test("archive the old release's transitive chunks before replacing it", async ()
 test("archive failures block cutover and immutable filename collisions are refused", async () => {
   const args = { name: "app-12345678.css", bytes: Buffer.from("body{}"), account: "account", bucket: "bucket", headers: {} };
   const calls = [];
-  await assert.rejects(archiveAsset({ ...args, fetchImpl: async (_url, init) => {
-    calls.push(init.method ?? "GET");
-    return new Response(null, { status: init.method === "PUT" ? 503 : 404 });
-  } }), /upload failed/);
+  await assert.rejects(
+    archiveAsset({
+      ...args,
+      fetchImpl: async (_url, init) => {
+        calls.push(init.method ?? "GET");
+        return new Response(null, { status: init.method === "PUT" ? 503 : 404 });
+      },
+    }),
+    /upload failed/,
+  );
   assert.deepEqual(calls, ["GET", "PUT"]);
-  await assert.rejects(archiveAsset({ ...args, fetchImpl: async (_url, init) => init.method === "PUT" ? Response.json({ success: true, result: { etag: "incorrect" } }) : new Response(null, { status: 404 }) }), /checksum mismatch/);
+  await assert.rejects(
+    archiveAsset({
+      ...args,
+      fetchImpl: async (_url, init) =>
+        init.method === "PUT" ? Response.json({ success: true, result: { etag: "incorrect" } }) : new Response(null, { status: 404 }),
+    }),
+    /checksum mismatch/,
+  );
   await assert.rejects(archiveAsset({ ...args, fetchImpl: async () => new Response(null, { headers: { etag: '"different"' } }) }), /collision/);
   const etag = `"${createHash("md5").update(args.bytes).digest("hex")}"`;
-  await archiveAsset({ ...args, fetchImpl: async (_url, init) => {
-    assert.notEqual(init.method, "PUT");
-    return new Response(null, { headers: { etag } });
-  } });
+  await archiveAsset({
+    ...args,
+    fetchImpl: async (_url, init) => {
+      assert.notEqual(init.method, "PUT");
+      return new Response(null, { headers: { etag } });
+    },
+  });
 });
 
 test("a missing live asset aborts the archive instead of saving an HTML error as CSS", async () => {
-  await assert.rejects(archiveLiveAssets("https://example.com", async () => assert.fail(), async (url) => new URL(url).pathname === "/"
-    ? new Response('/assets/app-12345678.css /assets/entry-12345678.js')
-    : new Response("not found", { headers: { "content-type": "text/html" } })), /unavailable/);
+  await assert.rejects(
+    archiveLiveAssets(
+      "https://example.com",
+      async () => assert.fail(),
+      async (url) =>
+        new URL(url).pathname === "/"
+          ? new Response("/assets/app-12345678.css /assets/entry-12345678.js")
+          : new Response("not found", { headers: { "content-type": "text/html" } }),
+    ),
+    /unavailable/,
+  );
 });
 
 test("a release manifest skips unchanged uploads without scanning deployment history", async () => {
   const bytes = Buffer.from("body{}");
   const etag = createHash("md5").update(bytes).digest("hex");
-  const index = await readArchiveManifest("https://provider/manifest", {}, async () => Response.json({ version: 1, assets: [["web-assets/assets/app-12345678.css", `"${etag}"`]] }));
-  await archiveAsset({ name: "app-12345678.css", bytes, account: "a", bucket: "b", headers: {}, index, fetchImpl: async () => assert.fail("unchanged asset should not be uploaded") });
+  const index = await readArchiveManifest("https://provider/manifest", {}, async () =>
+    Response.json({ version: 1, assets: [["web-assets/assets/app-12345678.css", `"${etag}"`]] }),
+  );
+  await archiveAsset({
+    name: "app-12345678.css",
+    bytes,
+    account: "a",
+    bucket: "b",
+    headers: {},
+    index,
+    fetchImpl: async () => assert.fail("unchanged asset should not be uploaded"),
+  });
   await assert.rejects(archiveAsset({ name: "app-12345678.css", bytes: Buffer.from("different"), account: "a", bucket: "b", headers: {}, index }), /collision/);
 });
 
 test("provider rate limits wait and retry; persistent failure remains a failure", async () => {
   const waits = [];
   let calls = 0;
-  const response = await retryingFetch(async () => new Response(null, { status: ++calls < 3 ? 429 : 200, headers: { "retry-after": "2" } }), async (ms) => waits.push(ms))("https://provider");
+  const response = await retryingFetch(
+    async () => new Response(null, { status: ++calls < 3 ? 429 : 200, headers: { "retry-after": "2" } }),
+    async (ms) => waits.push(ms),
+  )("https://provider");
   assert.equal(response.status, 200);
   assert.deepEqual(waits, [2000, 2000]);
   calls = 0;
-  assert.equal((await retryingFetch(async () => { calls++; return new Response(null, { status: 503 }); }, async () => {})("https://provider")).status, 503);
+  assert.equal(
+    (
+      await retryingFetch(
+        async () => {
+          calls++;
+          return new Response(null, { status: 503 });
+        },
+        async () => {},
+      )("https://provider")
+    ).status,
+    503,
+  );
   assert.equal(calls, 7);
 });
 
 test("cutover verifies old and new assets and rejects HTML fallback or wrong build", async () => {
   const css = "body{}";
-  const release = { origin: "https://example.com", manifest: "manifest-12345678.js", samples: [["web-assets/assets/app-old12345.css", `"${createHash("md5").update(css).digest("hex")}"`]] };
+  const release = {
+    origin: "https://example.com",
+    manifest: "manifest-12345678.js",
+    samples: [["web-assets/assets/app-old12345.css", `"${createHash("md5").update(css).digest("hex")}"`]],
+  };
   const page = '<link href="/assets/app-12345678.css"><script src="/assets/manifest-12345678.js"></script>';
   await verifyWebAssets(release, async (url) => new Response(new URL(url).pathname === "/" ? page : css));
-  await assert.rejects(verifyWebAssets(release, async (url) => new Response(new URL(url).pathname === "/" ? page : "error", { headers: { "content-type": "text/html" } }), { retryWaits: [] }), /asset check failed/);
-  await assert.rejects(verifyWebAssets(release, async () => new Response(page.replaceAll("12345678", "87654321")), { retryWaits: [] }), /expected build/);
+  await assert.rejects(
+    verifyWebAssets(release, async (url) => new Response(new URL(url).pathname === "/" ? page : "error", { headers: { "content-type": "text/html" } }), {
+      retryWaits: [],
+    }),
+    /asset check failed/,
+  );
+  await assert.rejects(
+    verifyWebAssets(release, async () => new Response(page.replaceAll("12345678", "87654321")), { retryWaits: [] }),
+    /expected build/,
+  );
 });
 
 test("cutover tolerates propagation delay but still requires the expected build and asset bytes", async () => {
   const css = "body{}";
-  const release = { origin: "https://example.com", manifest: "manifest-12345678.js", samples: [["web-assets/assets/app-old12345.css", `"${createHash("md5").update(css).digest("hex")}"`]] };
-  const page = '/assets/app-12345678.css /assets/manifest-12345678.js';
+  const release = {
+    origin: "https://example.com",
+    manifest: "manifest-12345678.js",
+    samples: [["web-assets/assets/app-old12345.css", `"${createHash("md5").update(css).digest("hex")}"`]],
+  };
+  const page = "/assets/app-12345678.css /assets/manifest-12345678.js";
   const waits = [];
   const logs = [];
   let pages = 0;
   let assets = 0;
-  await verifyWebAssets(release, async (url) => {
-    if (new URL(url).pathname === "/") return new Response(++pages === 1 ? page.replaceAll("12345678", "87654321") : page);
-    return ++assets === 1 ? new Response("not propagated", { status: 404 }) : new Response(css);
-  }, { retryWaits: [1, 2], wait: async (ms) => { waits.push(ms); }, onLine: (line) => logs.push(line) });
+  await verifyWebAssets(
+    release,
+    async (url) => {
+      if (new URL(url).pathname === "/") return new Response(++pages === 1 ? page.replaceAll("12345678", "87654321") : page);
+      return ++assets === 1 ? new Response("not propagated", { status: 404 }) : new Response(css);
+    },
+    {
+      retryWaits: [1, 2],
+      wait: async (ms) => {
+        waits.push(ms);
+      },
+      onLine: (line) => logs.push(line),
+    },
+  );
   assert.deepEqual(waits, [1, 2]);
   assert.equal(pages, 3);
   assert.equal(assets, 2);
   assert.match(logs[0], /expected manifest-12345678.js, observed manifest-87654321.js/);
   assert.match(logs[1], /asset check failed/);
   let attempts = 0;
-  await assert.rejects(verifyWebAssets(release, async () => { attempts++; return new Response(page.replaceAll("12345678", "87654321")); }, { retryWaits: [1, 2], wait: async () => {} }), /expected build/);
+  await assert.rejects(
+    verifyWebAssets(
+      release,
+      async () => {
+        attempts++;
+        return new Response(page.replaceAll("12345678", "87654321"));
+      },
+      { retryWaits: [1, 2], wait: async () => {} },
+    ),
+    /expected build/,
+  );
   assert.equal(attempts, 3, "a persistently wrong build must fail after bounded retries");
 });
 
@@ -101,9 +194,12 @@ test("1000 successive releases keep old tabs' assets and perform bounded increme
   const directory = join(cwd, "build/client/assets");
   await mkdir(directory, { recursive: true });
   await mkdir(join(cwd, "build/server"), { recursive: true });
-  await writeFile(join(cwd, "build/server/wrangler.json"), JSON.stringify({ account_id: "a", r2_buckets: [{ binding: "DOWNLOADS", bucket_name: "b" }], routes: [{ custom_domain: true, pattern: "example.com" }] }));
+  await writeFile(
+    join(cwd, "build/server/wrangler.json"),
+    JSON.stringify({ account_id: "a", r2_buckets: [{ binding: "DOWNLOADS", bucket_name: "b" }], routes: [{ custom_domain: true, pattern: "example.com" }] }),
+  );
   const objects = new Map();
-  const shared = 'export const shared = true;';
+  const shared = "export const shared = true;";
   let live = null;
   let apiCalls = 0;
   const fetchImpl = async (input, init = {}) => {

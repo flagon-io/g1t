@@ -90,8 +90,18 @@ export default function CodeScanning({ loaderData, params }: Route.ComponentProp
           <div className="flex flex-wrap items-end justify-between gap-3">
             <StateFilter counts={counts} value={filters.state} onChange={(state: AlertState) => set("state", state === "open" ? null : state)} />
             <div className="flex flex-wrap gap-2">
-              <FilterSelect label="Severity" value={filters.severity ?? "all"} options={SEVERITY_OPTIONS} onChange={(value) => set("severity", value === "all" ? null : (value as Severity))} />
-              <FilterSelect label="Tool" value={filters.tool ?? "all"} options={[["all", "Every tool"], ...tools.map((tool): [string, string] => [tool, tool])]} onChange={(value) => set("tool", value === "all" ? null : value)} />
+              <FilterSelect
+                label="Severity"
+                value={filters.severity ?? "all"}
+                options={SEVERITY_OPTIONS}
+                onChange={(value) => set("severity", value === "all" ? null : (value as Severity))}
+              />
+              <FilterSelect
+                label="Tool"
+                value={filters.tool ?? "all"}
+                options={[["all", "Every tool"], ...tools.map((tool): [string, string] => [tool, tool])]}
+                onChange={(value) => set("tool", value === "all" ? null : value)}
+              />
             </div>
           </div>
           {shown.length === 0 ? (

@@ -49,7 +49,13 @@ export async function shortCache<T>(key: string, ttlMs: number, load: () => Prom
   if (mustReadFresh()) {
     kept.delete(key);
     // What the data centre kept is older than what they just did.
-    if (cache) waitUntil(cache.delete(url).then(() => undefined, () => undefined));
+    if (cache)
+      waitUntil(
+        cache.delete(url).then(
+          () => undefined,
+          () => undefined,
+        ),
+      );
     return load();
   }
   const hit = kept.get(key);

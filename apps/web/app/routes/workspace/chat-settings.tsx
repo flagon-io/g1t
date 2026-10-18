@@ -81,9 +81,7 @@ export default function ChatSettingsPage({ loaderData, actionData }: Route.Compo
       <Header />
       {!owner && (
         <Card asChild radius="lg" className="mb-8 px-4 py-3 text-sm text-muted">
-          <p>
-            Only workspace owners can change these. They are shown so you know what members can do here.
-          </p>
+          <p>Only workspace owners can change these. They are shown so you know what members can do here.</p>
         </Card>
       )}
       <Form method="post" className="space-y-8">
@@ -110,8 +108,7 @@ export default function ChatSettingsPage({ loaderData, actionData }: Route.Compo
           <section className={SECTION}>
             <h2 className="font-medium">Renaming and archiving channels</h2>
             <p className="mt-1.5 text-xs text-faint">
-              Who can rename a channel, archive it, and bring it back. Any member of a channel can change its topic. #general is never renamed or
-              archived.
+              Who can rename a channel, archive it, and bring it back. Any member of a channel can change its topic. #general is never renamed or archived.
             </p>
             <div className="mt-5">
               <Choice
@@ -121,7 +118,11 @@ export default function ChatSettingsPage({ loaderData, actionData }: Route.Compo
                 value={settings.manage_channels}
                 onChange={(value) => set("manage_channels", value as ChannelManagers)}
                 options={[
-                  { value: "channel_owners", label: "Channel owners and workspace owners", description: "Whoever created a channel looks after it. The default." },
+                  {
+                    value: "channel_owners",
+                    label: "Channel owners and workspace owners",
+                    description: "Whoever created a channel looks after it. The default.",
+                  },
                   { value: "owners", label: "Workspace owners only" },
                 ]}
                 disabled={!owner}
@@ -170,7 +171,10 @@ export default function ChatSettingsPage({ loaderData, actionData }: Route.Compo
                       checked={defaults.has(channel.id)}
                       disabled={!owner}
                       onCheckedChange={(on) =>
-                        set("default_channels", on === true ? [...settings.default_channels, channel.id] : settings.default_channels.filter((id) => id !== channel.id))
+                        set(
+                          "default_channels",
+                          on === true ? [...settings.default_channels, channel.id] : settings.default_channels.filter((id) => id !== channel.id),
+                        )
                       }
                       label={
                         <span className="inline-flex items-center gap-1">

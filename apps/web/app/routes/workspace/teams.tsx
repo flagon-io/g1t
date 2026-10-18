@@ -22,10 +22,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // A workspace's teams are its members' business.
   const role = roleIn(viewer, params.owner);
   if (!role) throw data(null, { status: 404 });
-  const [teams, workspace] = await Promise.all([
-    identity.listTeams(viewer, params.owner).then(unwrap),
-    identity.getWorkspace(params.owner).catch(() => null),
-  ]);
+  const [teams, workspace] = await Promise.all([identity.listTeams(viewer, params.owner).then(unwrap), identity.getWorkspace(params.owner).catch(() => null)]);
   // Who may create one is the workspace's to say (its settings).
   return { teams, slug: params.owner.toLowerCase(), canCreate: mayCreateTeams(workspace?.teamCreation, role) };
 }
@@ -82,8 +79,8 @@ export default function WorkspaceTeams({ loaderData }: Route.ComponentProps) {
 
       {teams.length === 0 ? (
         <EmptyState title="No teams yet">
-          A team brings people together: a lead, a channel, and roles on repositories.
-          Mention it as <span className="font-mono text-fg">@{slug}/team</span>, or ask it to review a pull request.
+          A team brings people together: a lead, a channel, and roles on repositories. Mention it as <span className="font-mono text-fg">@{slug}/team</span>, or
+          ask it to review a pull request.
         </EmptyState>
       ) : mine.length + others.length === 0 ? (
         <Card asChild tone="plain" className="border-dashed px-4 py-8 text-center text-sm text-muted">

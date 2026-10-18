@@ -106,7 +106,12 @@ export function LinkFields({ links, compact = false }: { links: ProjectLinks; co
                 <Hint label="Remove this link">
                   <Button
                     type="button"
-                    onClick={() => setRows((current) => current.filter((one) => one.id !== row.id))} variant="ghost" size="inline" className="p-1.5 text-faint" aria-label={`Remove link ${index + 1}`}>
+                    onClick={() => setRows((current) => current.filter((one) => one.id !== row.id))}
+                    variant="ghost"
+                    size="inline"
+                    className="p-1.5 text-faint"
+                    aria-label={`Remove link ${index + 1}`}
+                  >
                     <X size={14} />
                   </Button>
                 </Hint>
@@ -261,7 +266,9 @@ export function AboutEditor({ project, action }: { project: Pick<Project, "descr
     <Dialog open={open} onOpenChange={setOpen}>
       <Hint label="Edit the description and links">
         <DialogTrigger asChild>
-          <Button variant="outline" size="sm" aria-label="Edit project details"><Pencil size={14} /> Edit details</Button>
+          <Button variant="outline" size="sm" aria-label="Edit project details">
+            <Pencil size={14} /> Edit details
+          </Button>
         </DialogTrigger>
       </Hint>
       <DialogContent className="max-w-xl">
@@ -273,12 +280,7 @@ export function AboutEditor({ project, action }: { project: Pick<Project, "descr
           <input type="hidden" name="intent" value="about" />
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-muted">Description</span>
-            <Input
-              name="description"
-              defaultValue={project.description ?? ""}
-              placeholder="What it is, in a line"
-              maxLength={200}
-            />
+            <Input name="description" defaultValue={project.description ?? ""} placeholder="What it is, in a line" maxLength={200} />
           </label>
           <LinkFields links={project.links} compact />
           {fetcher.data?.error && <p className="text-sm text-danger">{fetcher.data.error}</p>}

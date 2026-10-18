@@ -61,7 +61,14 @@ export default function SecurityAdvisoryEdit({ loaderData, actionData, params }:
       <Form method="post" className="space-y-4">
         <Card className="space-y-4 p-4">
           <Field label="Title">
-            <Input name="title" defaultValue={advisory?.title ?? ""} required maxLength={200} placeholder="Path traversal in the archive reader" {...notACredential()} />
+            <Input
+              name="title"
+              defaultValue={advisory?.title ?? ""}
+              required
+              maxLength={200}
+              placeholder="Path traversal in the archive reader"
+              {...notACredential()}
+            />
           </Field>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Severity">
@@ -73,7 +80,14 @@ export default function SecurityAdvisoryEdit({ loaderData, actionData, params }:
               />
             </Field>
             <Field label="CVE id" hint="When one was issued elsewhere.">
-              <Input name="cveId" defaultValue={advisory?.cveId ?? ""} placeholder="CVE-2026-12345" maxLength={32} className="font-mono" {...notACredential()} />
+              <Input
+                name="cveId"
+                defaultValue={advisory?.cveId ?? ""}
+                placeholder="CVE-2026-12345"
+                maxLength={32}
+                className="font-mono"
+                {...notACredential()}
+              />
             </Field>
           </div>
           <Field label="Description" hint="Markdown: what it is, how it is exploited, what to do. Needed before publishing.">
@@ -90,10 +104,24 @@ export default function SecurityAdvisoryEdit({ loaderData, actionData, params }:
               <Input name="package" defaultValue={advisory?.package ?? ""} maxLength={200} className="font-mono" {...notACredential()} />
             </Field>
             <Field label="Affected versions">
-              <Input name="affectedVersions" defaultValue={advisory?.affectedVersions ?? ""} placeholder=">= 1.2.0, < 1.4.1" maxLength={200} className="font-mono" {...notACredential()} />
+              <Input
+                name="affectedVersions"
+                defaultValue={advisory?.affectedVersions ?? ""}
+                placeholder=">= 1.2.0, < 1.4.1"
+                maxLength={200}
+                className="font-mono"
+                {...notACredential()}
+              />
             </Field>
             <Field label="Patched versions">
-              <Input name="patchedVersions" defaultValue={advisory?.patchedVersions ?? ""} placeholder=">= 1.4.1" maxLength={200} className="font-mono" {...notACredential()} />
+              <Input
+                name="patchedVersions"
+                defaultValue={advisory?.patchedVersions ?? ""}
+                placeholder=">= 1.4.1"
+                maxLength={200}
+                className="font-mono"
+                {...notACredential()}
+              />
             </Field>
           </div>
         </Card>
@@ -101,7 +129,14 @@ export default function SecurityAdvisoryEdit({ loaderData, actionData, params }:
           <p className="text-sm font-medium">Scoring and credits</p>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="CVSS vector">
-              <Input name="cvssVector" defaultValue={advisory?.cvssVector ?? ""} placeholder="CVSS:3.1/AV:N/AC:L/…" maxLength={200} className="font-mono" {...notACredential()} />
+              <Input
+                name="cvssVector"
+                defaultValue={advisory?.cvssVector ?? ""}
+                placeholder="CVSS:3.1/AV:N/AC:L/…"
+                maxLength={200}
+                className="font-mono"
+                {...notACredential()}
+              />
             </Field>
             <Field label="CVSS score" hint="0 to 10.">
               <Input name="cvssScore" type="number" step="0.1" min="0" max="10" defaultValue={advisory?.cvssScore ?? ""} className="font-mono" />

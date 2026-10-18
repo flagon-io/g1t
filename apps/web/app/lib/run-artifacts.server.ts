@@ -67,9 +67,7 @@ export async function readArtifact(run: string, name: string): Promise<Uint8Arra
   const base = `a/${run}/${name}`;
   const meta = await env.BLOBS.get<Meta>(base, "json");
   if (!meta) return null;
-  const parts = await Promise.all(
-    Array.from({ length: meta.chunks }, (_, index) => env.BLOBS.get(`${base}#${index}`, "arrayBuffer")),
-  );
+  const parts = await Promise.all(Array.from({ length: meta.chunks }, (_, index) => env.BLOBS.get(`${base}#${index}`, "arrayBuffer")));
   if (parts.some((part) => part == null)) return null;
   const out = new Uint8Array(meta.size);
   let offset = 0;

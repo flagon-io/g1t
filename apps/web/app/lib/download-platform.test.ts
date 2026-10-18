@@ -52,5 +52,12 @@ test("the file offered first is the platform's preferred kind, on the visitor's 
   assert.equal(featuredFile(files, "windows", "arm64"), files[6]);
   assert.deepEqual(alternateFiles(files, files[0]), [files[1], files[2]]);
   // A platform the release lacks.
-  assert.equal(featuredFile(files.filter((f) => f.platform !== "windows"), "windows", "x64"), null);
+  assert.equal(
+    featuredFile(
+      files.filter((f) => f.platform !== "windows"),
+      "windows",
+      "x64",
+    ),
+    null,
+  );
 });

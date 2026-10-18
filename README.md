@@ -119,51 +119,51 @@ An assistant can follow <https://g1t.sh/llms.txt>.
 
 ## Layout
 
-| Path | What it is | Language |
-| --- | --- | --- |
-| `apps/web` | The site: server-rendered React on a Worker. Holds no data. | TypeScript |
-| `apps/docs` | The documentation site, with the API explorer. | TypeScript |
-| `apps/api` | REST API and MCP server. | Rust |
-| `apps/desktop` | The desktop app (Tauri), with a runner inside. | Rust, TypeScript |
-| `apps/mobile` | The phone app (Expo). | TypeScript |
-| `apps/status` | The status page at `status.g1t.sh`. | TypeScript |
-| `apps/sudo` | g1t's own staff console. | TypeScript |
-| `services/identity` | Accounts, workspaces, sessions, keys, tokens and invites. | Rust |
-| `services/repos` | Repository registry, contents, forks, diffs, landing, git over HTTPS. | Rust |
-| `services/work` | Work items, pull requests, reviews, check runs, agent sessions, claims and the merge queue. | Rust |
-| `services/events` | The event bus and its log. | Rust |
-| `services/search` | Site-wide search and Explore. | Rust |
-| `services/billing` | Usage, the price book, limits, invoices and payments. | Rust |
-| `services/actions` | Workflows, runs, caches and self-hosted runners. | Rust |
-| `services/security` | Push protection findings, history scanning and dependency updates. | Rust |
-| `services/integrations` | AI providers, Ask, alerts, trackers and the GitHub App. | Rust |
-| `services/webhooks` | Webhook deliveries. | Rust |
-| `services/packages` | The package registries and container images. | Rust |
-| `services/runner` | Starts sandboxes for workflow jobs, builds and the merge queue. | TypeScript |
-| `services/projects` | Projects: what a workspace builds and runs, and where its code lives. | TypeScript |
-| `services/deployments` | Builds, previews and production on `g1t.page`. | TypeScript |
-| `services/pages` | Serves every app deployed on `g1t.page`, and custom domains. | TypeScript |
-| `services/telemetry` | Observability: OpenTelemetry ingest, logs, traces, metrics and errors. | TypeScript |
-| `services/chat` | Channels, direct messages, threads and their live sockets. | TypeScript |
-| `services/artifacts` | Docs: their spaces, sharing and live editing. | TypeScript |
-| `services/notify` | Notifications: each person's feed, live counts and browser push. | TypeScript |
-| `services/og` | Social cards at `og.g1t.sh`: a PNG per page, showing only what anyone may see. | TypeScript |
-| `crates/g1t` | The `g1t` command line. | Rust |
-| `crates/runner` | The program inside a sandbox, and the self-hosted runner: runs a workflow job or a build and reports back. | Rust |
-| `crates/contracts` | Types and service interfaces for the Rust services. | Rust |
-| `crates/kit` | Plumbing shared by Rust services on Workers. | Rust |
-| `crates/rules` | The rules engine for rulesets on branches and tags. | Rust |
-| `crates/blobstore` | Object storage: R2 on Cloudflare, any S3-compatible store self-hosted. | Rust |
-| `crates/actions` | Reads workflows and evaluates their expressions. | Rust |
-| `crates/scan` | Secret and lockfile scanning, shared by services. | Rust |
-| `crates/secrets` | Secrets at rest and signatures. | Rust |
-| `crates/sshd` | Git over SSH, bridged to Cloudflare Artifacts. Not deployed. | Rust |
-| `packages/contracts` | The same interfaces for TypeScript callers. | TypeScript |
-| `packages/theme` | Design tokens and the logo, shared by the site and the docs. | CSS |
-| `plugins/claude-code` | g1t's Claude Code plugin: hooks, skills and commands, published to `flagon-io/g1t-plugins` on every change. | JavaScript |
-| `plugins/codex` | Codex plugin: MCP server and work coordination skill, published to `flagon-io/g1t-plugins`. | JSON / Markdown |
-| `plugins/other-harnesses` | The AGENTS.md snippet for Codex, Cursor and other harnesses. | Markdown |
-| `deploy` | `stack.jsonc`, every deployable part and its resources; `self-host`, the Docker Compose version. | JSON, Docker Compose |
+| Path                      | What it is                                                                                                  | Language             |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------- |
+| `apps/web`                | The site: server-rendered React on a Worker. Holds no data.                                                 | TypeScript           |
+| `apps/docs`               | The documentation site, with the API explorer.                                                              | TypeScript           |
+| `apps/api`                | REST API and MCP server.                                                                                    | Rust                 |
+| `apps/desktop`            | The desktop app (Tauri), with a runner inside.                                                              | Rust, TypeScript     |
+| `apps/mobile`             | The phone app (Expo).                                                                                       | TypeScript           |
+| `apps/status`             | The status page at `status.g1t.sh`.                                                                         | TypeScript           |
+| `apps/sudo`               | g1t's own staff console.                                                                                    | TypeScript           |
+| `services/identity`       | Accounts, workspaces, sessions, keys, tokens and invites.                                                   | Rust                 |
+| `services/repos`          | Repository registry, contents, forks, diffs, landing, git over HTTPS.                                       | Rust                 |
+| `services/work`           | Work items, pull requests, reviews, check runs, agent sessions, claims and the merge queue.                 | Rust                 |
+| `services/events`         | The event bus and its log.                                                                                  | Rust                 |
+| `services/search`         | Site-wide search and Explore.                                                                               | Rust                 |
+| `services/billing`        | Usage, the price book, limits, invoices and payments.                                                       | Rust                 |
+| `services/actions`        | Workflows, runs, caches and self-hosted runners.                                                            | Rust                 |
+| `services/security`       | Push protection findings, history scanning and dependency updates.                                          | Rust                 |
+| `services/integrations`   | AI providers, Ask, alerts, trackers and the GitHub App.                                                     | Rust                 |
+| `services/webhooks`       | Webhook deliveries.                                                                                         | Rust                 |
+| `services/packages`       | The package registries and container images.                                                                | Rust                 |
+| `services/runner`         | Starts sandboxes for workflow jobs, builds and the merge queue.                                             | TypeScript           |
+| `services/projects`       | Projects: what a workspace builds and runs, and where its code lives.                                       | TypeScript           |
+| `services/deployments`    | Builds, previews and production on `g1t.page`.                                                              | TypeScript           |
+| `services/pages`          | Serves every app deployed on `g1t.page`, and custom domains.                                                | TypeScript           |
+| `services/telemetry`      | Observability: OpenTelemetry ingest, logs, traces, metrics and errors.                                      | TypeScript           |
+| `services/chat`           | Channels, direct messages, threads and their live sockets.                                                  | TypeScript           |
+| `services/artifacts`      | Docs: their spaces, sharing and live editing.                                                               | TypeScript           |
+| `services/notify`         | Notifications: each person's feed, live counts and browser push.                                            | TypeScript           |
+| `services/og`             | Social cards at `og.g1t.sh`: a PNG per page, showing only what anyone may see.                              | TypeScript           |
+| `crates/g1t`              | The `g1t` command line.                                                                                     | Rust                 |
+| `crates/runner`           | The program inside a sandbox, and the self-hosted runner: runs a workflow job or a build and reports back.  | Rust                 |
+| `crates/contracts`        | Types and service interfaces for the Rust services.                                                         | Rust                 |
+| `crates/kit`              | Plumbing shared by Rust services on Workers.                                                                | Rust                 |
+| `crates/rules`            | The rules engine for rulesets on branches and tags.                                                         | Rust                 |
+| `crates/blobstore`        | Object storage: R2 on Cloudflare, any S3-compatible store self-hosted.                                      | Rust                 |
+| `crates/actions`          | Reads workflows and evaluates their expressions.                                                            | Rust                 |
+| `crates/scan`             | Secret and lockfile scanning, shared by services.                                                           | Rust                 |
+| `crates/secrets`          | Secrets at rest and signatures.                                                                             | Rust                 |
+| `crates/sshd`             | Git over SSH, bridged to Cloudflare Artifacts. Not deployed.                                                | Rust                 |
+| `packages/contracts`      | The same interfaces for TypeScript callers.                                                                 | TypeScript           |
+| `packages/theme`          | Design tokens and the logo, shared by the site and the docs.                                                | CSS                  |
+| `plugins/claude-code`     | g1t's Claude Code plugin: hooks, skills and commands, published to `flagon-io/g1t-plugins` on every change. | JavaScript           |
+| `plugins/codex`           | Codex plugin: MCP server and work coordination skill, published to `flagon-io/g1t-plugins`.                 | JSON / Markdown      |
+| `plugins/other-harnesses` | The AGENTS.md snippet for Codex, Cursor and other harnesses.                                                | Markdown             |
+| `deploy`                  | `stack.jsonc`, every deployable part and its resources; `self-host`, the Docker Compose version.            | JSON, Docker Compose |
 
 Each service is its own Worker, and each one that keeps data has its own
 database. They call each other through service bindings and react to each
@@ -207,7 +207,7 @@ Then, once:
 
 1. Create the resources each part needs: D1 databases, queues, KV
    namespaces, R2 buckets and the Cloudflare Artifacts namespace (`npx wrangler d1
-   create <name>`, `npx wrangler queues create <name>`, and so on), and set
+create <name>`, `npx wrangler queues create <name>`, and so on), and set
    each part's secrets. `deploy/stack.jsonc` lists them all.
 2. Put your own `account_id`, database ids and hostnames in each
    `wrangler.jsonc`.

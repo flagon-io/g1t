@@ -25,12 +25,5 @@ export async function action({ request, context }: Route.ActionArgs) {
 }
 
 export default function InviteSettings({ loaderData }: Route.ComponentProps) {
-  return (
-    <InvitesSection
-      overview={loaderData.invites}
-      bringInto={loaderData.bringInto}
-      origin={loaderData.origin}
-      openOnLoad={loaderData.openOnLoad}
-    />
-  );
+  return <InvitesSection overview={loaderData.invites} bringInto={loaderData.bringInto} origin={loaderData.origin} openOnLoad={loaderData.openOnLoad} />;
 }

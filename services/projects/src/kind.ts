@@ -41,7 +41,19 @@ export function goFilesToRead(entries: string[]): string[] {
 const has = (files: RootFiles, name: string) => files.entries.includes(name);
 
 /** Frameworks that make a package.json an app. Hosting a server alone does not: a start script does. */
-const JS_APP_FRAMEWORKS = ["next", "astro", "nuxt", "@remix-run/dev", "@remix-run/node", "@react-router/dev", "@sveltejs/kit", "gatsby", "@angular/core", "expo", "react-scripts"];
+const JS_APP_FRAMEWORKS = [
+  "next",
+  "astro",
+  "nuxt",
+  "@remix-run/dev",
+  "@remix-run/node",
+  "@react-router/dev",
+  "@sveltejs/kit",
+  "gatsby",
+  "@angular/core",
+  "expo",
+  "react-scripts",
+];
 /** Documentation generators' configs: a root with one is documentation. */
 const DOCS_CONFIGS = ["mkdocs.yml", "mkdocs.yaml", "book.toml", "docusaurus.config.js", "docusaurus.config.ts", "docusaurus.config.mjs", "antora.yml"];
 /** Python frameworks that make a pyproject an app. */
@@ -199,9 +211,7 @@ export const RUNNABLE: readonly ProjectKind[] = ["app", "docs"];
  */
 export function resolveKind(facts: KindFacts): { kind: ProjectKind; reason: KindReason; runs: ProjectRuns | null } {
   const { kind, reason } = kindOf(facts);
-  const runs = RUNNABLE.includes(kind)
-    ? (facts.setting.runs ?? (facts.deploymentsOn ? "g1t" : facts.reportsProduction ? "elsewhere" : null))
-    : null;
+  const runs = RUNNABLE.includes(kind) ? (facts.setting.runs ?? (facts.deploymentsOn ? "g1t" : facts.reportsProduction ? "elsewhere" : null)) : null;
   return { kind, reason, runs };
 }
 

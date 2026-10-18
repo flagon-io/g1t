@@ -263,15 +263,15 @@ nothing but sudo binds to them.
    - Application name: `sudo`.
    - Session duration: short, such as 8 hours.
    - Public hostname: `sudo.g1t.sh` (path empty, so it covers everything).
-2. **Add a policy** (`g1t staff`): action *Allow*, include *Emails* → the
-   owner's address, and *Emails ending in* → `g1t.sh` for everyone with a
+2. **Add a policy** (`g1t staff`): action _Allow_, include _Emails_ → the
+   owner's address, and _Emails ending in_ → `g1t.sh` for everyone with a
    g1t address (the same entries as `STAFF_EMAILS`, where a domain is
-   written `@g1t.sh`). Add more staff here *and* in `STAFF_EMAILS`; either
+   written `@g1t.sh`). Add more staff here _and_ in `STAFF_EMAILS`; either
    one alone is not enough.
-3. Save, then open the application's **Overview** (or *Basic information*)
+3. Save, then open the application's **Overview** (or _Basic information_)
    and copy the **Application Audience (AUD) tag**.
 4. Find the **team domain** under **Zero Trust → Settings → Custom pages**
-   (or *Team name and domain*): it looks like `<team>.cloudflareaccess.com`.
+   (or _Team name and domain_): it looks like `<team>.cloudflareaccess.com`.
 5. Put both into `wrangler.jsonc`:
 
    ```jsonc

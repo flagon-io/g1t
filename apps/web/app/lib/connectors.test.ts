@@ -3,17 +3,7 @@ import { test } from "node:test";
 
 import { connectorsFor } from "@g1t/contracts/connectors";
 
-import {
-  arrange,
-  askHref,
-  categoriesWith,
-  categoryCounts,
-  categoryFilter,
-  groupByCategory,
-  matchesQuery,
-  monogram,
-  tileColor,
-} from "./connectors.ts";
+import { arrange, askHref, categoriesWith, categoryCounts, categoryFilter, groupByCategory, matchesQuery, monogram, tileColor } from "./connectors.ts";
 
 const workspace = connectorsFor("workspace");
 const personal = connectorsFor("personal");
@@ -30,7 +20,10 @@ test("the two contexts list different connectors", () => {
 
 test("a category shows only its own connectors, sorted into connected, available and soon", () => {
   const found = arrange(workspace, { category: "monitoring", query: "", connected: new Set(["sentry"]) });
-  assert.deepEqual(found.connected.map((view) => view.id), ["sentry"]);
+  assert.deepEqual(
+    found.connected.map((view) => view.id),
+    ["sentry"],
+  );
   assert.ok(found.available.some((view) => view.id === "datadog"));
   assert.ok(!found.available.some((view) => view.id === "sentry"), "connected is not also available");
   assert.ok(found.soon.some((view) => view.id === "pagerduty"));
@@ -44,8 +37,16 @@ test("all shows everything once", () => {
 
 test("search finds by name, description, tag and keyword, across every category", () => {
   const found = arrange(workspace, { category: "design", query: "resolve", connected: none });
-  assert.deepEqual(found.available.map((view) => view.id), ["sentry"], "a search is not held to the category");
-  assert.deepEqual(found.soon.map((view) => view.id), ["pagerduty"], "what is coming sorts after what works");
+  assert.deepEqual(
+    found.available.map((view) => view.id),
+    ["sentry"],
+    "a search is not held to the category",
+  );
+  assert.deepEqual(
+    found.soon.map((view) => view.id),
+    ["pagerduty"],
+    "what is coming sorts after what works",
+  );
   assert.ok(matchesQuery(personal.find((view) => view.id === "google-calendar")!, "in a meeting"));
   assert.ok(matchesQuery(workspace.find((view) => view.id === "incident-io")!, "incidentio"));
   assert.ok(matchesQuery(workspace.find((view) => view.id === "pagerduty")!, "opens WORK ITEMS"));
@@ -60,7 +61,10 @@ test("the navigation counts each category and leaves out empty ones", () => {
   const mine = categoriesWith(personal).map((category) => category.id);
   assert.ok(mine.includes("calendar"));
   const groups = groupByCategory(personal);
-  assert.equal(groups.reduce((sum, group) => sum + group.views.length, 0), personal.length);
+  assert.equal(
+    groups.reduce((sum, group) => sum + group.views.length, 0),
+    personal.length,
+  );
 });
 
 test("an unknown category is all of them", () => {

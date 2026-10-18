@@ -85,10 +85,7 @@ function Plate({
         strokeDasharray={dash}
         vectorEffect="non-scaling-stroke"
       />
-      {dots &&
-        corners.map(([cx, cy], index) => (
-          <circle key={index} cx={cx} cy={cy} r={1.6} fill={stroke} fillOpacity={Math.min(1, opacity + 0.3)} />
-        ))}
+      {dots && corners.map(([cx, cy], index) => <circle key={index} cx={cx} cy={cy} r={1.6} fill={stroke} fillOpacity={Math.min(1, opacity + 0.3)} />)}
     </g>
   );
 }
@@ -138,9 +135,7 @@ function Box({
       <polygon points={pts([b[1]!, b[2]!, t[2]!, t[1]!])} fill="var(--color-bg)" {...common} />
       <polygon points={pts([b[2]!, b[3]!, t[3]!, t[2]!])} fill="var(--color-bg)" {...common} />
       <polygon points={pts(t)} fill={top ?? "var(--color-surface)"} {...common} />
-      {glow && (
-        <polygon points={pts(t)} fill={tint(glow, 38)} className="art-lit" style={timing(dur, delay) as CSSProperties} />
-      )}
+      {glow && <polygon points={pts(t)} fill={tint(glow, 38)} className="art-lit" style={timing(dur, delay) as CSSProperties} />}
       {t.map(([cx, cy], index) => (
         <circle key={index} cx={cx} cy={cy} r={1.4} fill={stroke} fillOpacity={opacity} />
       ))}
@@ -220,8 +215,26 @@ function Packet({
 function Grid({ size, step = 20, opacity = 0.08, from = 0 }: { size: number; step?: number; opacity?: number; from?: number }) {
   const lines: ReactNode[] = [];
   for (let i = from; i <= size; i += step) {
-    lines.push(<Track key={`a${i}`} points={[[i, from], [i, size]]} opacity={opacity} />);
-    lines.push(<Track key={`b${i}`} points={[[from, i], [size, i]]} opacity={opacity} />);
+    lines.push(
+      <Track
+        key={`a${i}`}
+        points={[
+          [i, from],
+          [i, size],
+        ]}
+        opacity={opacity}
+      />,
+    );
+    lines.push(
+      <Track
+        key={`b${i}`}
+        points={[
+          [from, i],
+          [size, i],
+        ]}
+        opacity={opacity}
+      />,
+    );
   }
   return <g>{lines}</g>;
 }
@@ -272,19 +285,7 @@ function Label({
 }
 
 /** A label off to the side of a shape, joined to it by a short line. */
-function Callout({
-  at,
-  dx,
-  dy,
-  children,
-  tone = "var(--color-muted)",
-}: {
-  at: Point;
-  dx: number;
-  dy: number;
-  children: string;
-  tone?: string;
-}) {
+function Callout({ at, dx, dy, children, tone = "var(--color-muted)" }: { at: Point; dx: number; dy: number; children: string; tone?: string }) {
   const [x, y] = at;
   const end: Point = [x + dx, y + dy];
   return (
@@ -307,25 +308,22 @@ function Callout({
 }
 
 /** A flat, upright chip with words on it, such as an address. */
-function Chip({
-  at,
-  children,
-  tone,
-  dur,
-  delay,
-  width,
-}: {
-  at: Point;
-  children: string;
-  tone: string;
-  dur: number;
-  delay: number | string;
-  width: number;
-}) {
+function Chip({ at, children, tone, dur, delay, width }: { at: Point; children: string; tone: string; dur: number; delay: number | string; width: number }) {
   const [x, y] = at;
   return (
     <g className="art-pop" style={timing(dur, delay) as CSSProperties}>
-      <rect x={x} y={y - 9} width={width} height={14} rx={7} fill="var(--color-surface)" stroke={tone} strokeOpacity={0.55} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+      <rect
+        x={x}
+        y={y - 9}
+        width={width}
+        height={14}
+        rx={7}
+        fill="var(--color-surface)"
+        stroke={tone}
+        strokeOpacity={0.55}
+        strokeWidth={1}
+        vectorEffect="non-scaling-stroke"
+      />
       <circle cx={x + 8} cy={y - 2} r={2} fill={tone} />
       <text x={x + 14} y={y + 1} fill="var(--color-fg-soft)" fontSize={7.5} fontFamily="var(--font-mono)">
         {children}
@@ -343,14 +341,47 @@ export function QueueArt({ className }: { className?: string }) {
   const D = 7;
   const labels = ["MAIN + #41", "+ #44", "+ #46", "+ #48 ✕"];
   return (
-    <svg viewBox="-105 -38 240 182" className={className} role="img" aria-label="Pull requests stacking in the merge queue; the failing one goes back and main moves forward">
+    <svg
+      viewBox="-105 -38 240 182"
+      className={className}
+      role="img"
+      aria-label="Pull requests stacking in the merge queue; the failing one goes back and main moves forward"
+    >
       <FadedGrid id="queue" size={180} step={20} box={[-105, -38, 240, 182]} />
-      <Track points={[[0, 90], [190, 90]]} stroke={MINT} opacity={0.9} width={2} />
+      <Track
+        points={[
+          [0, 90],
+          [190, 90],
+        ]}
+        stroke={MINT}
+        opacity={0.9}
+        width={2}
+      />
       {[20, 40, 140, 160].map((x, index) => {
         const [cx, cy] = iso(x, 90);
-        return <circle key={x} cx={cx} cy={cy} r={2.4} fill={MINT} fillOpacity={index < 2 ? 0.6 : 1} className={index < 2 ? undefined : "art-pop"} style={index < 2 ? undefined : (timing(D, `${4.6 + (index - 2) * 0.4}s`) as CSSProperties)} />;
+        return (
+          <circle
+            key={x}
+            cx={cx}
+            cy={cy}
+            r={2.4}
+            fill={MINT}
+            fillOpacity={index < 2 ? 0.6 : 1}
+            className={index < 2 ? undefined : "art-pop"}
+            style={index < 2 ? undefined : (timing(D, `${4.6 + (index - 2) * 0.4}s`) as CSSProperties)}
+          />
+        );
       })}
-      <Packet points={[[80, 90], [190, 90]]} color={MINT} dur={D} delay="4.4s" size={3} />
+      <Packet
+        points={[
+          [80, 90],
+          [190, 90],
+        ]}
+        color={MINT}
+        dur={D}
+        delay="4.4s"
+        size={3}
+      />
       {[0, 1, 2, 3].map((level) => {
         const failed = level === 3;
         const tone = failed ? DANGER : level === 0 ? MINT : LAVENDER;
@@ -364,7 +395,19 @@ export function QueueArt({ className }: { className?: string }) {
           </g>
         );
       })}
-      <Plate x={50} y={50} w={60} d={60} z={10} stroke={MINT} opacity={0} fill={tint(MINT, 20)} dots={false} className="art-scan" style={timing(D, "3.2s") as CSSProperties} />
+      <Plate
+        x={50}
+        y={50}
+        w={60}
+        d={60}
+        z={10}
+        stroke={MINT}
+        opacity={0}
+        fill={tint(MINT, 20)}
+        dots={false}
+        className="art-scan"
+        style={timing(D, "3.2s") as CSSProperties}
+      />
     </svg>
   );
 }
@@ -378,26 +421,80 @@ export function WhyArt({ className }: { className?: string }) {
   const D = 7;
   const layers = ["COMMIT", "PULL REQUEST", "WORK ITEM", "SESSION"];
   return (
-    <svg viewBox="-112 -36 252 176" className={className} role="img" aria-label="A line in a file tracing back to its commit, pull request, work item and the coding agent's recorded session">
+    <svg
+      viewBox="-112 -36 252 176"
+      className={className}
+      role="img"
+      aria-label="A line in a file tracing back to its commit, pull request, work item and the coding agent's recorded session"
+    >
       <FadedGrid id="why" size={170} step={17} box={[-112, -36, 252, 176]} />
       <Plate x={30} y={30} w={90} d={110} stroke={LINE} opacity={0.4} />
       {[45, 58, 71, 97, 110, 123].map((y) => (
-        <Track key={y} points={[[40, y], [100, y]]} opacity={0.3} />
+        <Track
+          key={y}
+          points={[
+            [40, y],
+            [100, y],
+          ]}
+          opacity={0.3}
+        />
       ))}
-      <Track points={[[40, 84], [110, 84]]} stroke={MINT} opacity={0.9} width={2} />
-      <path d={isoPath([[40, 84], [110, 84]])} pathLength={100} fill="none" stroke={MINT} strokeWidth={5} strokeOpacity={0.25} strokeLinecap="round" className="art-lit" style={timing(D, 0) as CSSProperties} />
+      <Track
+        points={[
+          [40, 84],
+          [110, 84],
+        ]}
+        stroke={MINT}
+        opacity={0.9}
+        width={2}
+      />
+      <path
+        d={isoPath([
+          [40, 84],
+          [110, 84],
+        ])}
+        pathLength={100}
+        fill="none"
+        stroke={MINT}
+        strokeWidth={5}
+        strokeOpacity={0.25}
+        strokeLinecap="round"
+        className="art-lit"
+        style={timing(D, 0) as CSSProperties}
+      />
       {(() => {
         const [x1, y1] = iso(100, 84);
         const [x2, y2] = iso(100, 65, 82);
         return (
-          <line x1={x1} y1={y1} x2={x2} y2={y2} pathLength={100} stroke={LAVENDER} strokeOpacity={0.7} strokeWidth={1.2} strokeDasharray="100" className="art-draw" style={timing(D, "0.4s") as CSSProperties} />
+          <line
+            x1={x1}
+            y1={y1}
+            x2={x2}
+            y2={y2}
+            pathLength={100}
+            stroke={LAVENDER}
+            strokeOpacity={0.7}
+            strokeWidth={1.2}
+            strokeDasharray="100"
+            className="art-draw"
+            style={timing(D, "0.4s") as CSSProperties}
+          />
         );
       })()}
       {layers.map((name, level) => {
         const style = timing(D, `${(0.6 + level * 0.6).toFixed(1)}s`) as CSSProperties;
         return (
           <g key={name} className="art-rise" style={style}>
-            <Plate x={70} y={70 - level * 6} w={60} d={26} z={28 + level * 18} stroke={level === 3 ? LAVENDER : "var(--color-muted)"} opacity={0.6} fill="var(--color-bg)" />
+            <Plate
+              x={70}
+              y={70 - level * 6}
+              w={60}
+              d={26}
+              z={28 + level * 18}
+              stroke={level === 3 ? LAVENDER : "var(--color-muted)"}
+              opacity={0.6}
+              fill="var(--color-bg)"
+            />
             <Label x={134} y={70 - level * 6} z={28 + level * 18} tone={level === 3 ? LAVENDER : "var(--color-faint)"}>
               {name}
             </Label>
@@ -425,14 +522,41 @@ export function DeployArt({ className }: { className?: string }) {
     [90, 140],
   ];
   return (
-    <svg viewBox="-150 -62 272 222" className={className} role="img" aria-label="A build going out to many edge locations, with production and preview addresses appearing">
+    <svg
+      viewBox="-150 -62 272 222"
+      className={className}
+      role="img"
+      aria-label="A build going out to many edge locations, with production and preview addresses appearing"
+    >
       <FadedGrid id="deploy" size={200} step={20} from={-40} box={[-150, -62, 272, 222]} />
-      <Track points={[[-40, build.y + 8], [build.x, build.y + 8]]} stroke={MINT} opacity={0.9} width={2} />
-      <Packet points={[[-40, build.y + 8], [build.x, build.y + 8]]} color={MINT} dur={D} delay="0s" size={3} />
-      <Callout at={iso(-30, build.y + 8)} dx={-6} dy={18} tone={MINT}>MAIN</Callout>
+      <Track
+        points={[
+          [-40, build.y + 8],
+          [build.x, build.y + 8],
+        ]}
+        stroke={MINT}
+        opacity={0.9}
+        width={2}
+      />
+      <Packet
+        points={[
+          [-40, build.y + 8],
+          [build.x, build.y + 8],
+        ]}
+        color={MINT}
+        dur={D}
+        delay="0s"
+        size={3}
+      />
+      <Callout at={iso(-30, build.y + 8)} dx={-6} dy={18} tone={MINT}>
+        MAIN
+      </Callout>
       <Box x={build.x} y={build.y} w={16} d={16} h={14} stroke={PEACH} opacity={0.8} glow={PEACH} dur={D} delay="0.5s" />
       {sites.map(([x, y], index) => {
-        const path: Point[] = [[build.x + 16, build.y + 8], [x, y + 5]];
+        const path: Point[] = [
+          [build.x + 16, build.y + 8],
+          [x, y + 5],
+        ];
         return (
           <g key={index}>
             <Track points={path} stroke={LINE} opacity={0.14} dash="2 4" />
@@ -441,9 +565,15 @@ export function DeployArt({ className }: { className?: string }) {
           </g>
         );
       })}
-      <Chip at={[-138, -42]} tone={MINT} dur={D} delay="2.8s" width={112}>web-acme.g1t.page</Chip>
-      <Chip at={[-138, -22]} tone={LAVENDER} dur={D} delay="3.3s" width={152}>web-git-pr-41-acme.g1t.page</Chip>
-      <Chip at={[-138, -2]} tone={LAVENDER} dur={D} delay="3.8s" width={152}>web-git-pr-44-acme.g1t.page</Chip>
+      <Chip at={[-138, -42]} tone={MINT} dur={D} delay="2.8s" width={112}>
+        web-acme.g1t.page
+      </Chip>
+      <Chip at={[-138, -22]} tone={LAVENDER} dur={D} delay="3.3s" width={152}>
+        web-git-pr-41-acme.g1t.page
+      </Chip>
+      <Chip at={[-138, -2]} tone={LAVENDER} dur={D} delay="3.8s" width={152}>
+        web-git-pr-44-acme.g1t.page
+      </Chip>
     </svg>
   );
 }

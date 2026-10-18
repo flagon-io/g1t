@@ -55,7 +55,10 @@ export default function Requests({ loaderData, params }: Route.ComponentProps) {
         view={view}
         environments={facets?.environments ?? []}
         services={facets?.services ?? []}
-        search={{ placeholder: "Search: /checkout   status:502   region:AMS   deployment_id:…", hint: "Search the address and the error, or narrow by a field: status:502, method:POST, region:AMS" }}
+        search={{
+          placeholder: "Search: /checkout   status:502   region:AMS   deployment_id:…",
+          hint: "Search the address and the error, or narrow by a field: status:502, method:POST, region:AMS",
+        }}
       >
         <nav className="flex rounded-md border border-line p-0.5 text-sm" aria-label="Status">
           {STATUSES.map((s) => {
@@ -79,7 +82,10 @@ export default function Requests({ loaderData, params }: Route.ComponentProps) {
           to={href({ errors: errorsOnly ? null : "1" })}
           preventScrollReset
           aria-pressed={errorsOnly}
-          className={cn("inline-flex h-8 items-center rounded-md border px-2.5 text-xs", errorsOnly ? "border-danger/40 bg-danger/10 text-danger" : "border-line text-muted hover:text-fg")}
+          className={cn(
+            "inline-flex h-8 items-center rounded-md border px-2.5 text-xs",
+            errorsOnly ? "border-danger/40 bg-danger/10 text-danger" : "border-line text-muted hover:text-fg",
+          )}
         >
           Failed only
         </Link>
@@ -135,7 +141,11 @@ export default function Requests({ loaderData, params }: Route.ComponentProps) {
                             </span>
                           )}
                         </Link>
-                        {r.error && <p className="mt-0.5 truncate text-xs text-danger">{r.error.name}: {r.error.message}</p>}
+                        {r.error && (
+                          <p className="mt-0.5 truncate text-xs text-danger">
+                            {r.error.name}: {r.error.message}
+                          </p>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">

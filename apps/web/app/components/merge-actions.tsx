@@ -208,10 +208,7 @@ export function MergeButton({
           )}
         </div>
         <span className={`text-xs ${blocked ? "text-danger" : "text-muted"}`}>
-          {blocked ??
-            (pull.closes?.length
-              ? `Closes ${pull.closes.map((number) => `#${number}`).join(", ")}.`
-              : `Lands its commits on ${base}.`)}
+          {blocked ?? (pull.closes?.length ? `Closes ${pull.closes.map((number) => `#${number}`).join(", ")}.` : `Lands its commits on ${base}.`)}
           {blocked && auto && <span className="text-muted"> Or turn on auto-merge to land it once it can.</span>}
         </span>
       </div>
@@ -379,16 +376,16 @@ function ConfirmMerge({
       )}
       <div className="flex flex-wrap gap-2">
         <Hint label={blocked} disabled={blocked != null}>
-        <SubmitButton
-          variant="accent"
-          name="action"
-          disabled={blocked != null}
-          value={mode === "auto" ? "auto-merge-on" : "merge"}
-          pending={mode === "auto" ? "Enabling…" : "Merging…"}
-        >
-          {mode === "auto" ? <Zap size={15} /> : <GitMerge size={15} />}
-          {mode === "auto" ? "Confirm auto-merge" : `Confirm ${METHOD_INFO[method].action.replace(/^Create a /, "").toLowerCase()}`}
-        </SubmitButton>
+          <SubmitButton
+            variant="accent"
+            name="action"
+            disabled={blocked != null}
+            value={mode === "auto" ? "auto-merge-on" : "merge"}
+            pending={mode === "auto" ? "Enabling…" : "Merging…"}
+          >
+            {mode === "auto" ? <Zap size={15} /> : <GitMerge size={15} />}
+            {mode === "auto" ? "Confirm auto-merge" : `Confirm ${METHOD_INFO[method].action.replace(/^Create a /, "").toLowerCase()}`}
+          </SubmitButton>
         </Hint>
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
@@ -430,8 +427,7 @@ export function AutoMergeBanner({ auto, canChange }: { auto: AutoMerge; canChang
  */
 export function UpdateBranchButton({ head, base }: { head: string | null; base: string }) {
   const submit = useSubmit();
-  const update = (method: UpdateMethod) =>
-    submit({ action: "update", updateMethod: method, ...(head ? { expectedHead: head } : {}) }, { method: "post" });
+  const update = (method: UpdateMethod) => submit({ action: "update", updateMethod: method, ...(head ? { expectedHead: head } : {}) }, { method: "post" });
   return (
     <Form method="post" className="mt-2 flex">
       <input type="hidden" name="action" value="update" />
@@ -451,9 +447,7 @@ export function UpdateBranchButton({ head, base }: { head: string | null; base: 
           <DropdownMenuItem onSelect={() => update("merge")} className="items-start py-2">
             <span>
               <span className="block font-medium">Update with merge commit</span>
-              <span className="mt-0.5 block text-xs text-muted">
-                Merges {base} into the branch. Its commits stay as they are.
-              </span>
+              <span className="mt-0.5 block text-xs text-muted">Merges {base} into the branch. Its commits stay as they are.</span>
             </span>
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => update("rebase")} className="items-start py-2">
@@ -471,17 +465,7 @@ export function UpdateBranchButton({ head, base }: { head: string | null; base: 
 }
 
 /** A merged or closed pull request's branch: delete it, or restore it once deleted. */
-export function BranchAfterwards({
-  pull,
-  merged,
-  canChange,
-  error,
-}: {
-  pull: Pull;
-  merged: boolean;
-  canChange: boolean;
-  error?: string | null;
-}) {
+export function BranchAfterwards({ pull, merged, canChange, error }: { pull: Pull; merged: boolean; canChange: boolean; error?: string | null }) {
   if (!pull.branch || pull.fork) return null;
   const deleted = Boolean(pull.headBranchDeleted);
   return (

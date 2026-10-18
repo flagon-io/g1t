@@ -34,10 +34,7 @@ test("only a protected account is refused outright", () => {
   assert.equal(staffDeletionRefusal(deletion), null);
   const owner = { ...deletion, sole_owner_of: [sole("acme")] };
   assert.equal(staffDeletionRefusal(owner), null);
-  assert.equal(
-    staffDeletionRefusal({ ...owner, username: "g1t", protected: true }),
-    "g1t is protected and can never be deleted.",
-  );
+  assert.equal(staffDeletionRefusal({ ...owner, username: "g1t", protected: true }), "g1t is protected and can never be deleted.");
 });
 
 test("workspaces it owns alone go with it, said up front", () => {
@@ -73,10 +70,7 @@ test("the form needs a reason, the username, and the box ticked when workspaces 
   assert.equal(staffDeleteProblem(form), null);
   assert.equal(staffDeleteProblem({ ...form, reason: "" }), "Say why the account is being deleted.");
   assert.equal(staffDeleteProblem({ ...form, confirm: "grace" }), "Type ada to confirm.");
-  assert.equal(
-    staffDeleteProblem({ ...form, withWorkspaces: true }),
-    "Tick the box to say the workspaces it alone owns are deleted too.",
-  );
+  assert.equal(staffDeleteProblem({ ...form, withWorkspaces: true }), "Tick the box to say the workspaces it alone owns are deleted too.");
   assert.equal(staffDeleteProblem({ ...form, withWorkspaces: true, acknowledged: true }), null);
 });
 
@@ -92,7 +86,13 @@ test("workspaces deleted with the account are matched to their deletions", () =>
     restorable: true,
   };
   const gone = deletedWithAccount(
-    { ...went, deletedWorkspaces: [{ workspaceId: "wsp_1", slug: "ada" }, { workspaceId: "wsp_2", slug: "ada-labs" }] },
+    {
+      ...went,
+      deletedWorkspaces: [
+        { workspaceId: "wsp_1", slug: "ada" },
+        { workspaceId: "wsp_2", slug: "ada-labs" },
+      ],
+    },
     [waiting],
   );
   assert.deepEqual(gone, [

@@ -143,7 +143,9 @@ export function TemplateCard({ template, action }: { template: FolioTemplate; ac
         )}
       </span>
       <span className="mt-3 text-sm font-medium">{template.name}</span>
-      <span className="mt-1 grow text-xs leading-relaxed text-muted">{template.description || (template.builtin ? "" : `Saved by ${template.created_by?.display_name ?? "your workspace"}.`)}</span>
+      <span className="mt-1 grow text-xs leading-relaxed text-muted">
+        {template.description || (template.builtin ? "" : `Saved by ${template.created_by?.display_name ?? "your workspace"}.`)}
+      </span>
       <div className="mt-3 flex items-center gap-2">{action}</div>
     </Card>
   );

@@ -46,11 +46,11 @@ browsing setup instructions does not fetch provider settings each time.
 **Add a provider** lists them in three groups. A workspace can have any
 number of providers, from any mix of groups.
 
-| Group | Providers | What it needs |
-| --- | --- | --- |
-| Frontier labs | Anthropic, OpenAI, Google Gemini, xAI, Mistral, DeepSeek | An API key |
-| Model platforms | Azure OpenAI, OpenRouter, Groq, Together AI, Fireworks AI, Cerebras | An API key. Azure OpenAI also needs your resource's endpoint and the deployment's name. |
-| Self-hosted or your own gateway | Anthropic-compatible endpoint, OpenAI-compatible endpoint | A base URL over `https://`, and a key if it asks for one |
+| Group                           | Providers                                                           | What it needs                                                                           |
+| ------------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Frontier labs                   | Anthropic, OpenAI, Google Gemini, xAI, Mistral, DeepSeek            | An API key                                                                              |
+| Model platforms                 | Azure OpenAI, OpenRouter, Groq, Together AI, Fireworks AI, Cerebras | An API key. Azure OpenAI also needs your resource's endpoint and the deployment's name. |
+| Self-hosted or your own gateway | Anthropic-compatible endpoint, OpenAI-compatible endpoint           | A base URL over `https://`, and a key if it asks for one                                |
 
 **Self-hosted or your own gateway** is for a model you run yourself
 (vLLM, Ollama behind a tunnel) or a gateway in front of other providers
@@ -71,20 +71,20 @@ how. Most show a key only once, so copy it straight into g1t. The API is
 billed apart from a chat subscription: a Claude.ai or ChatGPT plan does
 not include it.
 
-| Provider | Where | How |
-| --- | --- | --- |
-| Anthropic | [platform.claude.com/settings/keys](https://platform.claude.com/settings/keys) | Sign in to the Claude Console and choose **Create key**. Add credits under **Billing**. |
-| OpenAI | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | Choose **Create new secret key**. Add credit under **Settings → Billing**. |
-| Google Gemini | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | Sign in with a Google account and choose **Create API key**. The free tier needs no card. |
-| xAI | [console.x.ai](https://console.x.ai) | Open **API Keys** and choose **Create API key**. Add credits under **Billing**. |
-| Mistral | [console.mistral.ai/api-keys](https://console.mistral.ai/api-keys) | Choose **Create new key**. Pick a plan under **Billing**; the free Experiment plan works. |
-| DeepSeek | [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys) | Choose **Create new API key**. Add a balance under **Top up**. |
-| Azure OpenAI | [portal.azure.com](https://portal.azure.com) | Open your Azure OpenAI resource, then **Resource Management → Keys and Endpoint**: copy **KEY 1** and the endpoint. Deployments are listed in the Azure AI Foundry portal. |
-| OpenRouter | [openrouter.ai/keys](https://openrouter.ai/keys) | Choose **Create Key**. Paid models need credits under **Credits**. |
-| Groq | [console.groq.com/keys](https://console.groq.com/keys) | Choose **Create API Key**. The free tier needs no card. |
-| Together AI | [api.together.ai/settings/api-keys](https://api.together.ai/settings/api-keys) | Copy the key shown there, or create one. |
-| Fireworks AI | [fireworks.ai/account/api-keys](https://fireworks.ai/account/api-keys) | Choose **Create API Key**. |
-| Cerebras | [cloud.cerebras.ai](https://cloud.cerebras.ai) | Open **API Keys** and choose **Generate API Key**. |
+| Provider      | Where                                                                          | How                                                                                                                                                                        |
+| ------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Anthropic     | [platform.claude.com/settings/keys](https://platform.claude.com/settings/keys) | Sign in to the Claude Console and choose **Create key**. Add credits under **Billing**.                                                                                    |
+| OpenAI        | [platform.openai.com/api-keys](https://platform.openai.com/api-keys)           | Choose **Create new secret key**. Add credit under **Settings → Billing**.                                                                                                 |
+| Google Gemini | [aistudio.google.com/apikey](https://aistudio.google.com/apikey)               | Sign in with a Google account and choose **Create API key**. The free tier needs no card.                                                                                  |
+| xAI           | [console.x.ai](https://console.x.ai)                                           | Open **API Keys** and choose **Create API key**. Add credits under **Billing**.                                                                                            |
+| Mistral       | [console.mistral.ai/api-keys](https://console.mistral.ai/api-keys)             | Choose **Create new key**. Pick a plan under **Billing**; the free Experiment plan works.                                                                                  |
+| DeepSeek      | [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys)       | Choose **Create new API key**. Add a balance under **Top up**.                                                                                                             |
+| Azure OpenAI  | [portal.azure.com](https://portal.azure.com)                                   | Open your Azure OpenAI resource, then **Resource Management → Keys and Endpoint**: copy **KEY 1** and the endpoint. Deployments are listed in the Azure AI Foundry portal. |
+| OpenRouter    | [openrouter.ai/keys](https://openrouter.ai/keys)                               | Choose **Create Key**. Paid models need credits under **Credits**.                                                                                                         |
+| Groq          | [console.groq.com/keys](https://console.groq.com/keys)                         | Choose **Create API Key**. The free tier needs no card.                                                                                                                    |
+| Together AI   | [api.together.ai/settings/api-keys](https://api.together.ai/settings/api-keys) | Copy the key shown there, or create one.                                                                                                                                   |
+| Fireworks AI  | [fireworks.ai/account/api-keys](https://fireworks.ai/account/api-keys)         | Choose **Create API Key**.                                                                                                                                                 |
+| Cerebras      | [cloud.cerebras.ai](https://cloud.cerebras.ai)                                 | Open **API Keys** and choose **Generate API Key**.                                                                                                                         |
 
 ### Anthropic Console workspace
 
@@ -137,15 +137,15 @@ Owners manage a workspace's AI through the API and MCP with a person's
 token (a workspace token cannot). Members can list the providers and read
 what Ask answers with.
 
-| MCP tool and action | Route |
-| --- | --- |
-| `ai` `list_providers` | `GET /workspaces/{workspace}/ai/providers` |
-| `ai` `add_provider` | `POST /workspaces/{workspace}/ai/providers` |
-| `ai` `update_provider` | `PATCH /workspaces/{workspace}/ai/providers/{id}` |
-| `ai` `test_provider` | `POST /workspaces/{workspace}/ai/providers/{id}/test` |
-| `ai` `remove_provider` | `DELETE /workspaces/{workspace}/ai/providers/{id}` |
-| `ai` `get_ask` | `GET /workspaces/{workspace}/ai/ask` |
-| `ai` `set_ask` | `PUT /workspaces/{workspace}/ai/ask` |
+| MCP tool and action    | Route                                                 |
+| ---------------------- | ----------------------------------------------------- |
+| `ai` `list_providers`  | `GET /workspaces/{workspace}/ai/providers`            |
+| `ai` `add_provider`    | `POST /workspaces/{workspace}/ai/providers`           |
+| `ai` `update_provider` | `PATCH /workspaces/{workspace}/ai/providers/{id}`     |
+| `ai` `test_provider`   | `POST /workspaces/{workspace}/ai/providers/{id}/test` |
+| `ai` `remove_provider` | `DELETE /workspaces/{workspace}/ai/providers/{id}`    |
+| `ai` `get_ask`         | `GET /workspaces/{workspace}/ai/ask`                  |
+| `ai` `set_ask`         | `PUT /workspaces/{workspace}/ai/ask`                  |
 
 ```sh
 curl -X POST https://api.g1t.sh/workspaces/acme/ai/providers   -H "Authorization: Bearer $G1T_TOKEN" -H "Content-Type: application/json"   -d '{"provider": "openai_endpoint", "name": "Our vLLM", "config": {"base_url": "https://llm.acme.dev/v1", "model": "qwen3-coder"}, "secret": "<key>"}'

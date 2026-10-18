@@ -8,7 +8,10 @@ test("the sidebar: two top-level links, then sections that fold", () => {
     NAV.map((group) => group.title),
     [null, "Customers", "Spend", "Revenue", "Platform", "Support", "Team"],
   );
-  assert.deepEqual(NAV[0].items.map((item) => item.to), ["/", "/reach-out"]);
+  assert.deepEqual(
+    NAV[0].items.map((item) => item.to),
+    ["/", "/reach-out"],
+  );
 });
 
 test("no section holds a single page, and every section has an icon", () => {
@@ -39,8 +42,29 @@ test("every item has its own path, a label and a line about it", () => {
 });
 
 test("the built pages are not marked soon", () => {
-  const built = navItems().filter((item) => !item.soon).map((item) => item.to);
-  assert.deepEqual(built, ["/", "/reach-out", "/workspaces", "/privacy", "/enterprises", "/invites", "/aliases", "/requests", "/overages", "/velocity", "/invoices", "/credits", "/stripe", "/costs", "/abuse", "/blocked-domains", "/incidents", "/audit"]);
+  const built = navItems()
+    .filter((item) => !item.soon)
+    .map((item) => item.to);
+  assert.deepEqual(built, [
+    "/",
+    "/reach-out",
+    "/workspaces",
+    "/privacy",
+    "/enterprises",
+    "/invites",
+    "/aliases",
+    "/requests",
+    "/overages",
+    "/velocity",
+    "/invoices",
+    "/credits",
+    "/stripe",
+    "/costs",
+    "/abuse",
+    "/blocked-domains",
+    "/incidents",
+    "/audit",
+  ]);
 });
 
 test("every soon page says what it will do, why, and what it will have", () => {
@@ -80,7 +104,6 @@ test("isCurrent: an item stays lit on the pages beneath it; / only on itself", (
   assert.ok(!isCurrent(workspaces, "/workspaces-old"));
   assert.ok(isCurrent({ to: "/x", also: ["/y"] }, "/y/z"));
 });
-
 
 test("open incidents show beside Incidents, and nothing waits beside Invites", () => {
   const incidents = navItems().find((item) => item.to === "/incidents")!;

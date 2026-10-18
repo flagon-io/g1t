@@ -45,7 +45,13 @@ test("the status page says times in the reader's zone, with UTC in datetime and 
     postmortem_published_at: null,
     updates: [{ id: "u1", at: AT, status: "investigating", text: "Looking." }],
   };
-  const options = { siteUrl: "https://g1t.sh", supportUrl: "https://g1t.sh/support", ogImage: "", selfUrl: "https://status.g1t.sh/incidents/abc", now: new Date(AT) };
+  const options = {
+    siteUrl: "https://g1t.sh",
+    supportUrl: "https://g1t.sh/support",
+    ogImage: "",
+    selfUrl: "https://status.g1t.sh/incidents/abc",
+    now: new Date(AT),
+  };
   const local = renderIncident(incident, null, new Map([["git", "Git"]]), { ...options, zone: "America/Los_Angeles" });
   assert.match(local, /<time datetime="2026-10-06T07:25:00.000Z" title="6 Oct 2026, 07:25 UTC">6 Oct 2026, 00:25 PDT<\/time>/);
   const utc = renderIncident(incident, null, new Map([["git", "Git"]]), options);

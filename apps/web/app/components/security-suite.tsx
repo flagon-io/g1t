@@ -78,16 +78,14 @@ export function ActivationPrompt({
       <div className="min-w-0 grow">
         <p className="font-medium">{feature} on private repositories comes with the g1t plan</p>
         <p className="mt-1.5 text-sm text-muted">
-          Security and quality has no price of its own. With the plan{price ? ` (${price} for the workspace)` : ""}, custom patterns,
-          validity checks, delegated bypass, code scanning, dependency review and the security overview are on for every private
-          repository in {workspace}, and their scans are charged at cost plus 20%, like everything g1t runs. Public repositories have all of it free, and secret scanning, push protection, vulnerability
-          alerts and security updates stay free everywhere.
+          Security and quality has no price of its own. With the plan{price ? ` (${price} for the workspace)` : ""}, custom patterns, validity checks, delegated
+          bypass, code scanning, dependency review and the security overview are on for every private repository in {workspace}, and their scans are charged at
+          cost plus 20%, like everything g1t runs. Public repositories have all of it free, and secret scanning, push protection, vulnerability alerts and
+          security updates stay free everywhere.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
           {isOwner ? (
-            <ButtonLink to={`/${workspace}/-/billing`}>
-              Start the plan
-            </ButtonLink>
+            <ButtonLink to={`/${workspace}/-/billing`}>Start the plan</ButtonLink>
           ) : (
             <span className="text-muted">An owner of {workspace} can start the plan in Billing.</span>
           )}
@@ -213,9 +211,7 @@ export function TrendChart({ points }: { points: TrendPoint[] }) {
       <figcaption className="flex flex-wrap items-baseline justify-between gap-2">
         <span className="text-sm font-medium">Open alerts, by day</span>
         <span className="text-xs text-muted" aria-live="polite">
-          {shown
-            ? `${shown.day}: ${SERIES.map((s) => `${shown[s.key]} ${s.label.toLowerCase()}`).join(", ")}`
-            : "No days yet"}
+          {shown ? `${shown.day}: ${SERIES.map((s) => `${shown[s.key]} ${s.label.toLowerCase()}`).join(", ")}` : "No days yet"}
         </span>
       </figcaption>
       <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted" aria-label="Legend">
@@ -247,7 +243,18 @@ export function TrendChart({ points }: { points: TrendPoint[] }) {
                 if (!value) return null;
                 const h = Math.max(1, (value / max) * (height - 8));
                 y -= h;
-                const rect = <rect key={series.key} x={x} y={y} width={bar} height={Math.max(0, h - gap)} rx={Math.min(2, bar / 2)} fill={series.color} opacity={hover == null || hover === at ? 1 : 0.55} />;
+                const rect = (
+                  <rect
+                    key={series.key}
+                    x={x}
+                    y={y}
+                    width={bar}
+                    height={Math.max(0, h - gap)}
+                    rx={Math.min(2, bar / 2)}
+                    fill={series.color}
+                    opacity={hover == null || hover === at ? 1 : 0.55}
+                  />
+                );
                 return rect;
               })}
               <title>{`${point.day}: ${SERIES.map((s) => `${point[s.key]} ${s.label.toLowerCase()}`).join(", ")}`}</title>
@@ -304,10 +311,7 @@ export function CoverageTable({ repos, owner }: { repos: RepoCoverage[]; owner: 
   if (repos.length === 0) {
     return (
       <Card asChild tone="plain" className="border-dashed px-4 py-6 text-sm text-muted">
-        <p>
-          No repository has been scanned yet. Each one is scanned on its next push to its default branch, or when its Security page
-          is first opened.
-        </p>
+        <p>No repository has been scanned yet. Each one is scanned on its next push to its default branch, or when its Security page is first opened.</p>
       </Card>
     );
   }
@@ -511,8 +515,8 @@ export function PatternEditor({ draft, action, onDone }: { draft: PatternDraft; 
         </label>
       </div>
       <p className="text-xs text-muted">
-        Patterns use the Rust regex syntax, which runs in time linear in the text: no look-around or back-references. Before and
-        after default to a line edge or a character that is not a letter or digit.
+        Patterns use the Rust regex syntax, which runs in time linear in the text: no look-around or back-references. Before and after default to a line edge or
+        a character that is not a letter or digit.
       </p>
       {saved && tests.length > 0 && (
         <ul className="space-y-1">
@@ -525,7 +529,8 @@ export function PatternEditor({ draft, action, onDone }: { draft: PatternDraft; 
         <Button
           type="button"
           disabled={save.state !== "idle" || !form.name.trim() || !form.pattern.trim()}
-          onClick={() => save.submit(fields(true), { method: "post", action })}>
+          onClick={() => save.submit(fields(true), { method: "post", action })}
+        >
           {save.state !== "idle" ? "Saving…" : form.published ? "Save" : "Publish"}
         </Button>
         <button
@@ -549,7 +554,8 @@ export function PatternEditor({ draft, action, onDone }: { draft: PatternDraft; 
             type="button"
             disabled={save.state !== "idle"}
             onClick={() => {
-              if (confirm(`Delete "${form.name}"? The alerts it found stay.`)) save.submit({ intent: "delete_pattern", id: form.id ?? "" }, { method: "post", action });
+              if (confirm(`Delete "${form.name}"? The alerts it found stay.`))
+                save.submit({ intent: "delete_pattern", id: form.id ?? "" }, { method: "post", action });
             }}
             variant="destructive"
             size="inline"
@@ -560,7 +566,14 @@ export function PatternEditor({ draft, action, onDone }: { draft: PatternDraft; 
         )}
       </div>
       {save.data?.error && <p className="text-sm text-danger">{save.data.error}</p>}
-      {save.data?.ok && (saved ? <p className="text-sm text-success">Saved{saved.pattern.state === "published" ? " and published: the history is scanned again for it" : " as a draft"}.</p> : <p className="text-sm text-success">Deleted. The alerts it found stay.</p>)}
+      {save.data?.ok &&
+        (saved ? (
+          <p className="text-sm text-success">
+            Saved{saved.pattern.state === "published" ? " and published: the history is scanned again for it" : " as a draft"}.
+          </p>
+        ) : (
+          <p className="text-sm text-success">Deleted. The alerts it found stay.</p>
+        ))}
       {dry.data?.error && <p className="text-sm text-danger">{dry.data.error}</p>}
       {dry.data?.dryRun && <DryRunResults dryRun={dry.data.dryRun} />}
     </div>

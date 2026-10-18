@@ -10,16 +10,7 @@ import { Link } from "react-router";
 import type { AdminIncident, ComponentImpact, IncidentSeverity, MaintenanceState } from "@g1t/contracts";
 
 import { Badge, Select } from "~/components/ui";
-import {
-  COMPONENT_IMPACTS,
-  IMPACT_TONE,
-  MAINTENANCE_TONE,
-  MAINTENANCE_WORD,
-  SEVERITY_TONE,
-  impactLabel,
-  phase,
-  severityLabel,
-} from "~/lib/incidents";
+import { COMPONENT_IMPACTS, IMPACT_TONE, MAINTENANCE_TONE, MAINTENANCE_WORD, SEVERITY_TONE, impactLabel, phase, severityLabel } from "~/lib/incidents";
 
 export function SeverityBadge({ severity }: { severity: IncidentSeverity }) {
   return <Badge tone={SEVERITY_TONE[severity]}>{severityLabel(severity)}</Badge>;

@@ -221,7 +221,14 @@ export function EveryWorkspaceDetachSection({
                   <input type="hidden" name="intent" value="test-detach-all" />
                   <input type="hidden" name="exclude" value={excludeValue} />
                   {preview.workspaces.some((w) => w.subscriptions > 0) && <CancelAtStripe />}
-                  <Field label="Confirm" hint={<>Type <span className="font-mono text-muted">{CONFIRM_ALL}</span> to detach every workspace listed. Each is kept in its audit log.</>}>
+                  <Field
+                    label="Confirm"
+                    hint={
+                      <>
+                        Type <span className="font-mono text-muted">{CONFIRM_ALL}</span> to detach every workspace listed. Each is kept in its audit log.
+                      </>
+                    }
+                  >
                     <Input name="confirmation" required placeholder={CONFIRM_ALL} className="font-mono" />
                   </Field>
                   <div className="flex justify-end">

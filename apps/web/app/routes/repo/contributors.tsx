@@ -1,4 +1,3 @@
-
 import type { Contributor, WeekCommits } from "@g1t/contracts";
 
 import type { Route } from "./+types/contributors";
@@ -89,8 +88,7 @@ export default function Contributors({ loaderData }: Route.ComponentProps) {
           Contributors <span className="font-normal text-faint">{contributors.total}</span>
         </h2>
         <p className="mt-1 text-sm text-muted">
-          Commits on the default branch by who made them: people by the addresses they confirmed, g1t as itself, anyone else by
-          the name on their commits.
+          Commits on the default branch by who made them: people by the addresses they confirmed, g1t as itself, anyone else by the name on their commits.
           {contributors.partial && ` The newest ${contributors.commits.toLocaleString("en-US")} commits are counted.`}
         </p>
       </div>

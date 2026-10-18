@@ -21,29 +21,26 @@ const same = (a: { namespace: string; name: string }, b: { namespace: string; na
  * workspace's and not pinned: it was opened just now, before the projects
  * service has heard.
  */
-export function recentWith(
-  recent: ShortcutProject[],
-  pinned: ShortcutProject[],
-  current: ShortcutProject | null,
-  workspace: string | null,
-): ShortcutProject[] {
+export function recentWith(recent: ShortcutProject[], pinned: ShortcutProject[], current: ShortcutProject | null, workspace: string | null): ShortcutProject[] {
   const here = current && workspace && current.namespace.toLowerCase() === workspace.toLowerCase() && !pinned.some((p) => same(p, current)) ? current : null;
   const rest = recent.filter((project) => !pinned.some((p) => same(p, project)) && !(here && same(project, here)));
   return [...(here ? [here] : []), ...rest].slice(0, MAX_RECENT);
 }
 
 /** One change to the viewer's pins, as a form posts it. */
-export type PinChange =
-  | { intent: "pin"; slug: string; position: number | null }
-  | { intent: "unpin"; slug: string }
-  | { intent: "reorder"; slugs: string[] };
+export type PinChange = { intent: "pin"; slug: string; position: number | null } | { intent: "unpin"; slug: string } | { intent: "reorder"; slugs: string[] };
 
 /** What a pin form asks for; null when it asks for nothing that makes sense. */
 export function pinFromForm(form: FormData): PinChange | null {
   const intent = form.get("intent");
-  const slug = String(form.get("slug") ?? "").trim().toLowerCase();
+  const slug = String(form.get("slug") ?? "")
+    .trim()
+    .toLowerCase();
   if (intent === "reorder") {
-    const slugs = form.getAll("slug").map((value) => String(value).trim().toLowerCase()).filter(Boolean);
+    const slugs = form
+      .getAll("slug")
+      .map((value) => String(value).trim().toLowerCase())
+      .filter(Boolean);
     return slugs.length > 0 && new Set(slugs).size === slugs.length ? { intent, slugs } : null;
   }
   if (!slug) return null;

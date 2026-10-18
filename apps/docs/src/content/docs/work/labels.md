@@ -13,19 +13,19 @@ chips, and you can filter either list by one.
 
 A new workspace starts with these:
 
-| Label | Color | Description |
-| --- | --- | --- |
-| `bug` | `d73a4a` | Something isn't working |
-| `documentation` | `0075ca` | Improvements or additions to documentation |
-| `duplicate` | `cfd3d7` | This work item or pull request already exists |
-| `enhancement` | `a2eeef` | New feature or request |
-| `good first issue` | `7057ff` | Good for newcomers |
-| `help wanted` | `008672` | Extra attention is needed |
-| `invalid` | `e4e669` | This doesn't seem right |
-| `question` | `d876e3` | Further information is requested |
-| `wontfix` | `ffffff` | This will not be worked on |
-| `dependencies` | `0366d6` | Updates a dependency |
-| `security` | `ee0701` | A security fix or a vulnerability |
+| Label              | Color    | Description                                   |
+| ------------------ | -------- | --------------------------------------------- |
+| `bug`              | `d73a4a` | Something isn't working                       |
+| `documentation`    | `0075ca` | Improvements or additions to documentation    |
+| `duplicate`        | `cfd3d7` | This work item or pull request already exists |
+| `enhancement`      | `a2eeef` | New feature or request                        |
+| `good first issue` | `7057ff` | Good for newcomers                            |
+| `help wanted`      | `008672` | Extra attention is needed                     |
+| `invalid`          | `e4e669` | This doesn't seem right                       |
+| `question`         | `d876e3` | Further information is requested              |
+| `wontfix`          | `ffffff` | This will not be worked on                    |
+| `dependencies`     | `0366d6` | Updates a dependency                          |
+| `security`         | `ee0701` | A security fix or a vulnerability             |
 
 Labels used to belong to each repository. When they moved to the
 workspace, labels with the same name became one, and the one made first
@@ -80,11 +80,11 @@ name or description.
 With the Write role in the workspace or higher you can (applying labels
 needs only Triage):
 
-| To | Do this |
-| --- | --- |
-| Make a label | **New label**: a name (lowercase, at most 50 characters), a description (at most 100), and a color. |
-| Change one | **Edit**. Renaming a label renames it on every work item and pull request that carries it, in every repository. |
-| Delete one | **Delete**. It comes off everything that carries it. This cannot be undone. |
+| To           | Do this                                                                                                         |
+| ------------ | --------------------------------------------------------------------------------------------------------------- |
+| Make a label | **New label**: a name (lowercase, at most 50 characters), a description (at most 100), and a color.             |
+| Change one   | **Edit**. Renaming a label renames it on every work item and pull request that carries it, in every repository. |
+| Delete one   | **Delete**. It comes off everything that carries it. This cannot be undone.                                     |
 
 Names are lowercase and unique in a workspace: `Bug` and `bug` are the
 same label.
@@ -100,13 +100,13 @@ same label.
 
 ## From the API
 
-| To | REST | MCP |
-| --- | --- | --- |
-| List labels | `GET /workspaces/{workspace}/labels` | `workspace` `list_labels` |
-| Make one | `POST /workspaces/{workspace}/labels` | `workspace` `create_label` |
-| Change one | `PATCH /workspaces/{workspace}/labels/{label}` | `workspace` `update_label` |
-| Delete one | `DELETE /workspaces/{workspace}/labels/{label}` | `workspace` `delete_label` |
-| Add the defaults | `POST /workspaces/{workspace}/labels/defaults` | `workspace` `add_default_labels` |
+| To               | REST                                            | MCP                              |
+| ---------------- | ----------------------------------------------- | -------------------------------- |
+| List labels      | `GET /workspaces/{workspace}/labels`            | `workspace` `list_labels`        |
+| Make one         | `POST /workspaces/{workspace}/labels`           | `workspace` `create_label`       |
+| Change one       | `PATCH /workspaces/{workspace}/labels/{label}`  | `workspace` `update_label`       |
+| Delete one       | `DELETE /workspaces/{workspace}/labels/{label}` | `workspace` `delete_label`       |
+| Add the defaults | `POST /workspaces/{workspace}/labels/defaults`  | `workspace` `add_default_labels` |
 
 URL-encode a label's spaces in a path: `good%20first%20issue`.
 

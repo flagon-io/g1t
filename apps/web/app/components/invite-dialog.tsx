@@ -88,7 +88,13 @@ export function InviteDialog({
               <FieldLabel htmlFor={messageId}>
                 Message <span className="font-normal text-faint">(optional)</span>
               </FieldLabel>
-              <Textarea id={messageId} name="message" maxLength={MAX_INVITE_MESSAGE} rows={3} placeholder={`A line for the email: why you'd like them in ${name}.`} />
+              <Textarea
+                id={messageId}
+                name="message"
+                maxLength={MAX_INVITE_MESSAGE}
+                rows={3}
+                placeholder={`A line for the email: why you'd like them in ${name}.`}
+              />
               <FieldDescription>Quoted in the invitation email, under your name.</FieldDescription>
             </Field>
             {error && <ErrorText>{error.error}</ErrorText>}
@@ -148,7 +154,10 @@ function WhoField() {
   return (
     <Field>
       <FieldLabel htmlFor={id}>Who</FieldLabel>
-      <Command shouldFilter={false} className="rounded-md border border-line bg-bg has-[input:focus-visible]:border-accent-dim has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-accent/25">
+      <Command
+        shouldFilter={false}
+        className="rounded-md border border-line bg-bg has-[input:focus-visible]:border-accent-dim has-[input:focus-visible]:ring-2 has-[input:focus-visible]:ring-accent/25"
+      >
         <CommandInput
           id={id}
           name="member"
@@ -193,8 +202,7 @@ function WhoField() {
           </>
         ) : chosen ? (
           <>
-            <AtSign size={12} className="shrink-0" />
-            @{chosen} gets the invitation in their notifications and by email.
+            <AtSign size={12} className="shrink-0" />@{chosen} gets the invitation in their notifications and by email.
           </>
         ) : (
           "People on g1t are offered as you type; an email address is sent as written."

@@ -119,7 +119,9 @@ function ToolRow({ step }: { step: ToolStep }) {
   const label = call ? <ToolLabel call={call} /> : <span className="text-muted">Result</span>;
   return (
     <li className="flex gap-2 py-0.5 text-xs">
-      <span className="flex h-4.5 w-4 shrink-0 items-center justify-center">{call ? <ToolIcon call={call} /> : <Wrench size={13} className="text-faint" />}</span>
+      <span className="flex h-4.5 w-4 shrink-0 items-center justify-center">
+        {call ? <ToolIcon call={call} /> : <Wrench size={13} className="text-faint" />}
+      </span>
       {long || step.results.length > 0 ? (
         <Collapsible open={open} onOpenChange={setOpen} className="min-w-0 grow">
           <CollapsibleTrigger className="flex w-full min-w-0 text-left text-xs">
@@ -211,7 +213,10 @@ function Entry({ entry, base }: { entry: SessionEntry; base?: string }) {
       <li className="flex items-center gap-2.5 px-4 py-2 text-xs text-muted">
         <Sparkles size={13} className="shrink-0 text-accent" />
         <span className="min-w-0 grow">
-          Used skill <Badge shape="tag" className="font-mono">{entry.text}</Badge>
+          Used skill{" "}
+          <Badge shape="tag" className="font-mono">
+            {entry.text}
+          </Badge>
         </span>
         <At at={entry.at} />
       </li>

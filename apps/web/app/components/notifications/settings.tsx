@@ -8,7 +8,17 @@ import { Card } from "../ui/card";
 import { RadioGroup, RadioOption } from "../ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
-import { desktopBridge, disablePush, enablePush, notifyStatus, permission, pushChoice, pushSupported, savePreferences, sendTest } from "../../lib/notify-client";
+import {
+  desktopBridge,
+  disablePush,
+  enablePush,
+  notifyStatus,
+  permission,
+  pushChoice,
+  pushSupported,
+  savePreferences,
+  sendTest,
+} from "../../lib/notify-client";
 
 const LEVELS: { level: NotifyLevel; label: string; detail: string }[] = [
   { level: "all", label: "Everything", detail: "Every message in conversations you're in, and everything in your notifications." },

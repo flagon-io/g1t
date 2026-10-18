@@ -14,7 +14,9 @@ import * as Y from "yjs";
 
 import { atLeast } from "./access.ts";
 
-export type ThreadResult = { ok: true; value: unknown; mentions?: string[]; text?: string; thread_id?: string } | { ok: false; code: "not_found" | "forbidden" | "invalid"; message: string };
+export type ThreadResult =
+  | { ok: true; value: unknown; mentions?: string[]; text?: string; thread_id?: string }
+  | { ok: false; code: "not_found" | "forbidden" | "invalid"; message: string };
 
 const MAX_BODY_BYTES = 64 * 1024;
 

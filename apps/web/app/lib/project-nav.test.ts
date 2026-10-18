@@ -7,11 +7,13 @@ import { ROADMAP } from "./roadmap.ts";
 
 test("code is not docs: a project never gets a Docs tab", () => {
   // Docs is its own workspace mode, filtered by project there.
-  assert.equal(ROADMAP.some((item) => item.section !== "Workspace" && /docs/i.test(item.key)), false);
+  assert.equal(
+    ROADMAP.some((item) => item.section !== "Workspace" && /docs/i.test(item.key)),
+    false,
+  );
   const nav = readFileSync(new URL("./project-nav.ts", import.meta.url), "utf8");
   assert.doesNotMatch(nav, /label: "Docs"|soon\("Code"\)/);
 });
-
 
 test("build configuration is discoverable under deployments only with integration access", () => {
   const writer = tabsFor("settings/deployments", true, { manage_integrations: true });
@@ -23,5 +25,8 @@ test("build configuration is discoverable under deployments only with integratio
 
 test("Storage is planned while implemented environments are no longer marked Soon", () => {
   assert.equal(ROADMAP.find((item) => item.key === "storage")?.section, "Project");
-  assert.equal(ROADMAP.some((item) => item.key === "environments"), false);
+  assert.equal(
+    ROADMAP.some((item) => item.key === "environments"),
+    false,
+  );
 });

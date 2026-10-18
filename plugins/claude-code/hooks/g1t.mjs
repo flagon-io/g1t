@@ -208,8 +208,7 @@ export function summarizeTool(name, input, cwd) {
     // Without the session the plugin gave a subagent's command.
     const command = i.command.replace(PREFIX, "");
     what = command.split("\n")[0] + (command.includes("\n") ? " …" : "");
-  }
-  else if (i.file_path || i.notebook_path) what = path(i.file_path ?? i.notebook_path);
+  } else if (i.file_path || i.notebook_path) what = path(i.file_path ?? i.notebook_path);
   else if (typeof i.pattern === "string") what = `${i.pattern}${i.path ? ` in ${path(i.path)}` : ""}`;
   else if (typeof i.url === "string") what = i.url;
   else if (typeof i.query === "string") what = i.query;
@@ -244,24 +243,23 @@ export function itemFromCommand(command) {
   return null;
 }
 
-export const isGitPush = (command) =>
-  typeof command === "string" && /(^|[\s;&|(])git(\s+-\S+(\s+[^-\s]\S*)?)*\s+push\b/.test(command);
+export const isGitPush = (command) => typeof command === "string" && /(^|[\s;&|(])git(\s+-\S+(\s+[^-\s]\S*)?)*\s+push\b/.test(command);
 
-export const isGitCommit = (command) =>
-  typeof command === "string" && /(^|[\s;&|(])git(\s+-\S+(\s+[^-\s]\S*)?)*\s+commit\b/.test(command);
+export const isGitCommit = (command) => typeof command === "string" && /(^|[\s;&|(])git(\s+-\S+(\s+[^-\s]\S*)?)*\s+commit\b/.test(command);
 
 /** The branch a command makes: git checkout -b X, git switch -c X, git branch X. */
 export function branchFromCommand(command) {
   if (typeof command !== "string") return null;
   const match =
-    /\bgit\s+(?:checkout\s+-[bB]|switch\s+-[cC]|switch\s+--create)\s+([^\s;&|]+)/.exec(command) ??
-    /\bgit\s+branch\s+(?!-)([^\s;&|]+)/.exec(command);
+    /\bgit\s+(?:checkout\s+-[bB]|switch\s+-[cC]|switch\s+--create)\s+([^\s;&|]+)/.exec(command) ?? /\bgit\s+branch\s+(?!-)([^\s;&|]+)/.exec(command);
   return match ? match[1] : null;
 }
 
 /** A subagent's harness id: the parent's, `/agent/`, and its id without Claude Code's `agent-` prefix. */
 export function subagentHarnessId(parent, agentId) {
-  return `${String(parent).trim()}/agent/${String(agentId).trim().replace(/^agent-/, "")}`;
+  return `${String(parent).trim()}/agent/${String(agentId)
+    .trim()
+    .replace(/^agent-/, "")}`;
 }
 
 /** The text of an Agent call's answer: its subagent's final message. */
@@ -417,7 +415,7 @@ export function plan(event, env = process.env) {
       // next tool is not shown what was just acknowledged.
       const acknowledged = SHELL_TOOLS.has(tool)
         ? /\backnowledge\b/.test(String(input.command ?? ""))
-        : (g1tTool(tool) === "session" && Array.isArray(input.acknowledge) && input.acknowledge.length > 0);
+        : g1tTool(tool) === "session" && Array.isArray(input.acknowledge) && input.acknowledge.length > 0;
       if (acknowledged) job.refreshUpdates = true;
       if (touch.length) job.steps.push({ args: ["session", "touch", ...touch] });
       return job;
@@ -595,7 +593,10 @@ function prune(dir) {
 // --- Agent calls and their subagents -----------------------------------
 
 /** A prompt's fingerprint, which pairs an Agent call with its subagent. */
-export const promptKey = (prompt) => createHash("sha256").update(String(prompt ?? "").trim()).digest("hex");
+export const promptKey = (prompt) =>
+  createHash("sha256")
+    .update(String(prompt ?? "").trim())
+    .digest("hex");
 
 /** The Agent calls waiting for their subagents, oldest first. */
 function pendingTasks(files) {
@@ -619,14 +620,17 @@ export function rememberTask(files, input, toolUseId = null) {
   const now = Date.now();
   // An Agent call refused or never started is forgotten after an hour.
   for (const task of pendingTasks(files)) if (now - task.at >= 3600 * 1000) rmSync(task.path, { force: true });
-  write(files.task(toolUseId || `${now}-${randomUUID()}`), JSON.stringify({
-    tool_use_id: toolUseId || null,
-    type: input?.subagent_type || null,
-    task: input?.description ? scrub(input.description, TASK_LIMIT) : null,
-    prompt: input?.prompt ? scrub(input.prompt, AGENT_PROMPT_LIMIT) : null,
-    key: input?.prompt ? promptKey(input.prompt) : null,
-    at: now,
-  }));
+  write(
+    files.task(toolUseId || `${now}-${randomUUID()}`),
+    JSON.stringify({
+      tool_use_id: toolUseId || null,
+      type: input?.subagent_type || null,
+      task: input?.description ? scrub(input.description, TASK_LIMIT) : null,
+      prompt: input?.prompt ? scrub(input.prompt, AGENT_PROMPT_LIMIT) : null,
+      key: input?.prompt ? promptKey(input.prompt) : null,
+      at: now,
+    }),
+  );
 }
 
 /** Takes a waiting task for one subagent only: renaming its file is atomic, so no two take the same one. */
@@ -703,7 +707,12 @@ export function subagentEvidence(paths) {
     const first = JSON.parse(firstLine(paths.transcript) ?? "");
     const content = first?.type === "user" ? first.message?.content : null;
     if (typeof content === "string") prompt = content;
-    else if (Array.isArray(content)) prompt = content.filter((b) => b?.type === "text" && typeof b.text === "string").map((b) => b.text).join("\n") || null;
+    else if (Array.isArray(content))
+      prompt =
+        content
+          .filter((b) => b?.type === "text" && typeof b.text === "string")
+          .map((b) => b.text)
+          .join("\n") || null;
   } catch {}
   return {
     toolUseId: typeof meta.toolUseId === "string" ? meta.toolUseId : null,
@@ -1079,7 +1088,9 @@ export function work(job, env = process.env) {
     }
   }
   let refreshUpdates = true;
-  try { refreshUpdates = job.refreshUpdates || Date.now() - statSync(files.updates(session)).mtimeMs > 10000; } catch {}
+  try {
+    refreshUpdates = job.refreshUpdates || Date.now() - statSync(files.updates(session)).mtimeMs > 10000;
+  } catch {}
   if (!job.end && refreshUpdates) {
     const out = cli(bin, ["api", "get_session", "-f", `id=${session}`, "-f", "after=4294967295"], { ...opts, timeout: 5000 });
     if (out.status === 0) {
@@ -1100,7 +1111,8 @@ export function work(job, env = process.env) {
 // --- the hooks ---------------------------------------------------------
 
 /** What every session is told about trailers, so commits find their way back. */
-const TRAILER = "Add the trailer `G1t-Session: $G1T_SESSION` to the commits you make (git commit --trailer), so g1t ties them to this session. A commit pushed straight to the default branch that finishes a work item says `Closes #N` in its message (`Part of #N` when it does only part of it): a bare `(#N)` only links it, and the item stays open.";
+const TRAILER =
+  "Add the trailer `G1t-Session: $G1T_SESSION` to the commits you make (git commit --trailer), so g1t ties them to this session. A commit pushed straight to the default branch that finishes a work item says `Closes #N` in its message (`Part of #N` when it does only part of it): a bare `(#N)` only links it, and the item stays open.";
 
 /**
  * What the agent is told of its session's title, once: g1t names the
@@ -1307,16 +1319,19 @@ export function hook(event, env = process.env) {
     return { output: { hookSpecificOutput: { hookEventName: "SubagentStart", additionalContext: subagentContext(item) } }, job };
   }
   const notice = late?.output.systemMessage ?? (name === "UserPromptSubmit" ? takeNotice(env) : null);
-  const context = [
-    late?.output.hookSpecificOutput?.additionalContext,
-    name === "UserPromptSubmit" ? updateContext(event, env) : null,
-  ]
+  const context = [late?.output.hookSpecificOutput?.additionalContext, name === "UserPromptSubmit" ? updateContext(event, env) : null]
     .filter(Boolean)
     .join("\n\n");
-  return { output: context || notice ? {
-    ...(notice ? { systemMessage: notice } : {}),
-    ...(context ? { hookSpecificOutput: { hookEventName: name, additionalContext: context } } : {}),
-  } : null, job };
+  return {
+    output:
+      context || notice
+        ? {
+            ...(notice ? { systemMessage: notice } : {}),
+            ...(context ? { hookSpecificOutput: { hookEventName: name, additionalContext: context } } : {}),
+          }
+        : null,
+    job,
+  };
 }
 
 /**

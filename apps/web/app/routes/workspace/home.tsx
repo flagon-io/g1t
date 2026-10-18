@@ -119,7 +119,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const onboarding = loadOnboarding(viewer, slug, !setupAsked).catch(() => null);
 
   // What needs you has no window: read at once, beside the last visit.
-  const missionP = code ? loadMissionControl(viewer, request, slug).then(({ value }) => value).catch(() => null) : Promise.resolve(null);
+  const missionP = code
+    ? loadMissionControl(viewer, request, slug)
+        .then(({ value }) => value)
+        .catch(() => null)
+    : Promise.resolve(null);
   const chatP = sidebarOrNull(slug, viewer);
   const notificationsP = inbox
     .list(viewer, { unread: true, limit: NOTIFICATIONS_READ })
@@ -128,9 +132,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const lastSeenP = windowKey === "last" ? loadLastVisit(viewer, slug).catch(() => undefined) : Promise.resolve(null);
 
   const waiting: Promise<Attention> = Promise.all([missionP, notificationsP, chatP])
-    .then(([mission, notifications, sidebar]) =>
-      attention({ slug, code, codeNeeds: mission?.needs ?? null, notifications, chat: sidebar?.entries ?? null }),
-    )
+    .then(([mission, notifications, sidebar]) => attention({ slug, code, codeNeeds: mission?.needs ?? null, notifications, chat: sidebar?.entries ?? null }))
     .catch(() => ({ rows: [], start: null, missing: ["Code", "Notifications", "Chat"] }));
 
   const span = spanFor(windowKey, now, await lastSeenP, tz);
@@ -142,9 +144,15 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const activityP = reposP.then((owned) => loadActivity(slug, span, owned)).catch(() => null);
   const chatActivityP = loadChatActivity(viewer, slug, span).catch(() => null);
   // Each push to a default branch, with the commits it brought: the projects the digest says were pushed to.
-  const pushesP = code ? Promise.all([activityP, reposP]).then(([activity, owned]) => loadDirectPushes(viewer, activity, owned, span)).catch(() => null) : Promise.resolve(null);
+  const pushesP = code
+    ? Promise.all([activityP, reposP])
+        .then(([activity, owned]) => loadDirectPushes(viewer, activity, owned, span))
+        .catch(() => null)
+    : Promise.resolve(null);
   const namesP = Promise.all([activityP, chatActivityP, deploysP, pushesP])
-    .then(([activity, chatActivity, deploys, pushes]) => loadNames([...actorKeys(activity, chatActivity, deploys), ...(pushes?.pushes ?? []).map((push) => push.actorKey)]))
+    .then(([activity, chatActivity, deploys, pushes]) =>
+      loadNames([...actorKeys(activity, chatActivity, deploys), ...(pushes?.pushes ?? []).map((push) => push.actorKey)]),
+    )
     .catch(() => ({}) as Record<string, string>);
 
   // What people did, from events and chat.
@@ -157,14 +165,27 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       const merges = codeWork && codeWork !== "no_access" ? landedIn(codeWork.pulls, span) : null;
       // Each push on its own where its project's pushes were read; the digest's one row a project elsewhere.
       const named = (key: string) => (key ? (names[key] ?? "someone") : "an import");
-      const each = pushes ? pushRows(pushes.pushes.map((push) => ({ ...push, by: named(push.actorKey) })), pushes.history, span) : [];
-      const fromActivity = landedFromActivity(activity, repoRefs(owned), names, slug).filter((row) => !(row.kind === "push" && pushes?.history[row.key.slice("push:".length)]));
+      const each = pushes
+        ? pushRows(
+            pushes.pushes.map((push) => ({ ...push, by: named(push.actorKey) })),
+            pushes.history,
+            span,
+          )
+        : [];
+      const fromActivity = landedFromActivity(activity, repoRefs(owned), names, slug).filter(
+        (row) => !(row.kind === "push" && pushes?.history[row.key.slice("push:".length)]),
+      );
       const all = merges == null && activity == null ? null : landed([merges ?? [], each, fromActivity]);
       // Whether each merge and push is live, and which pull requests a harness session made: read together.
       const [shipped, sessions] = all
         ? await Promise.all([
             loadShipped(viewer, slug, all).catch(() => null),
-            codeWork && codeWork !== "no_access" ? loadPullSessions(viewer, codeWork.pulls.filter((pull) => pull.status === "merged" && within(pull.mergedAt, span))).catch(() => null) : null,
+            codeWork && codeWork !== "no_access"
+              ? loadPullSessions(
+                  viewer,
+                  codeWork.pulls.filter((pull) => pull.status === "merged" && within(pull.mergedAt, span)),
+                ).catch(() => null)
+              : null,
           ])
         : [null, null];
       // Production builds only where no merge or push already says it went live (or failed).
@@ -183,9 +204,15 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // What g1t settled for you in the span, what shipped, and what still needs you.
   const settledP = loadSettled(viewer, span).catch(() => null);
   const away: Promise<Away | null> = Promise.all([settledP, happened, waiting])
-    .then(([settled, value, att]) => (settled == null ? null : awayOf({ settled: settledIn(settled, slug, code, span), landed: value?.landed ?? null, needs: att.rows.length })))
+    .then(([settled, value, att]) =>
+      settled == null ? null : awayOf({ settled: settledIn(settled, slug, code, span), landed: value?.landed ?? null, needs: att.rows.length }),
+    )
     .catch(() => null);
-  const workflowsP = code ? Promise.all([activityP, reposP]).then(([activity, owned]) => loadWorkflowRuns(viewer, activity, owned)).catch(() => null) : Promise.resolve(null);
+  const workflowsP = code
+    ? Promise.all([activityP, reposP])
+        .then(([activity, owned]) => loadWorkflowRuns(viewer, activity, owned))
+        .catch(() => null)
+    : Promise.resolve(null);
   const runningNow = Promise.all([deploysP, workflowsP])
     .then(([deploys, workflows]) => ({
       rows: running([runningWorkflows(workflows?.projects ?? []), runningDeploys(deploys?.overview ?? [], slug)]),
@@ -194,10 +221,19 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     .catch(() => ({ rows: [], missing: ["Workflows", "Deployments"] }));
   const spend = loadSpend(viewer, slug, span).catch(() => null);
   // What the workspace's work says: the pulse and the findings, for members who see Code.
-  const signal = code ? reposP.then((owned) => loadSignalData(viewer, slug, now, owned)).then((value) => (value ? dailySignal(value) : null)).catch(() => null) : null;
+  const signal = code
+    ? reposP
+        .then((owned) => loadSignalData(viewer, slug, now, owned))
+        .then((value) => (value ? dailySignal(value) : null))
+        .catch(() => null)
+    : null;
   // The projects the page watches, so it refreshes as they move (lib/home-live.ts).
   const watch: Promise<HomeRepo[]> = reposP
-    .then((owned) => (owned ?? []).slice(0, HOME_WATCH_MAX).map((repo) => ({ id: repo.id, path: `${repo.namespace}/${repo.name}`, defaultBranch: repo.defaultBranch || null })))
+    .then((owned) =>
+      (owned ?? [])
+        .slice(0, HOME_WATCH_MAX)
+        .map((repo) => ({ id: repo.id, path: `${repo.namespace}/${repo.name}`, defaultBranch: repo.defaultBranch || null })),
+    )
     .catch(() => []);
 
   return {
@@ -315,58 +351,58 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
         {/* 1. Where you're needed now, with the one to start with on top: no window. */}
         <div className="order-1 space-y-5 lg:col-start-1 lg:row-start-1">
-        {/* 1. The daily signal, then a box that asks g1t about any of it; the line under it is yours. */}
-        {(() => {
-          const line = (
-            <Suspense fallback={<Skeleton className="inline-block h-3.5 w-72 align-middle" />}>
-              <Await resolve={head}>
-                {([digest, happened, att]) => (
-                  <>
-                    <span className="text-fg-soft">{waitingSentence(att.rows.length)}</span> {spanSentence(span, digest, happened?.landed?.length ?? null)}
-                  </>
-                )}
-              </Await>
-            </Suspense>
-          );
-          const ask = <HomeAsk span={span} compact />;
-          // Without Code there is no work to read: the box leads, as it always has.
-          if (!signal)
-            return (
-              <header className="space-y-3">
-                <HomeAsk span={span} />
-                <p className="mx-auto max-w-2xl text-center text-sm leading-relaxed text-muted">{line}</p>
-              </header>
+          {/* 1. The daily signal, then a box that asks g1t about any of it; the line under it is yours. */}
+          {(() => {
+            const line = (
+              <Suspense fallback={<Skeleton className="inline-block h-3.5 w-72 align-middle" />}>
+                <Await resolve={head}>
+                  {([digest, happened, att]) => (
+                    <>
+                      <span className="text-fg-soft">{waitingSentence(att.rows.length)}</span> {spanSentence(span, digest, happened?.landed?.length ?? null)}
+                    </>
+                  )}
+                </Await>
+              </Suspense>
             );
-          return (
-            <Suspense fallback={<DailySignalSkeleton date={loaderData.date} />}>
-              <Await resolve={signal}>
-                {(value) => (
-                  <Boundary what="The daily signal">
-                    <DailySignal date={loaderData.date} view={value} line={line} footer={ask} />
-                  </Boundary>
-                )}
-              </Await>
-            </Suspense>
-          );
-        })()}
-        <div id="needed" className="scroll-mt-4">
-          <Card
-            title="Where you're needed"
-            hint="Everything waiting on you, however long ago it started"
-            link={{ label: "Notifications", to: "/notifications" }}
-          >
-            <Suspense fallback={<RowsSkeleton rows={4} />}>
-              {/* Each section's data says what did not answer; a section that fails to draw keeps that to itself. */}
-              <Await resolve={waiting}>
-                {(att) => (
-                  <Boundary what="Where you're needed">
-                    <NeedsList attention={att} now={now} />
-                  </Boundary>
-                )}
-              </Await>
-            </Suspense>
-          </Card>
-        </div>
+            const ask = <HomeAsk span={span} compact />;
+            // Without Code there is no work to read: the box leads, as it always has.
+            if (!signal)
+              return (
+                <header className="space-y-3">
+                  <HomeAsk span={span} />
+                  <p className="mx-auto max-w-2xl text-center text-sm leading-relaxed text-muted">{line}</p>
+                </header>
+              );
+            return (
+              <Suspense fallback={<DailySignalSkeleton date={loaderData.date} />}>
+                <Await resolve={signal}>
+                  {(value) => (
+                    <Boundary what="The daily signal">
+                      <DailySignal date={loaderData.date} view={value} line={line} footer={ask} />
+                    </Boundary>
+                  )}
+                </Await>
+              </Suspense>
+            );
+          })()}
+          <div id="needed" className="scroll-mt-4">
+            <Card
+              title="Where you're needed"
+              hint="Everything waiting on you, however long ago it started"
+              link={{ label: "Notifications", to: "/notifications" }}
+            >
+              <Suspense fallback={<RowsSkeleton rows={4} />}>
+                {/* Each section's data says what did not answer; a section that fails to draw keeps that to itself. */}
+                <Await resolve={waiting}>
+                  {(att) => (
+                    <Boundary what="Where you're needed">
+                      <NeedsList attention={att} now={now} />
+                    </Boundary>
+                  )}
+                </Await>
+              </Suspense>
+            </Card>
+          </div>
         </div>
 
         {/* 2. Now: what is running, what it cost, what settled by itself. */}

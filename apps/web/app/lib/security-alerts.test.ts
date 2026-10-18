@@ -83,8 +83,14 @@ test("likely test values are listed apart from real secrets", () => {
   const real = secret({ id: "sec_real" });
   const fake = secret({ id: "sec_fake", testValue: "AWS's documented example key" });
   const { real: shown, tests } = splitSecrets([fake, real]);
-  assert.deepEqual(shown.map((s) => s.id), ["sec_real"]);
-  assert.deepEqual(tests.map((s) => s.id), ["sec_fake"]);
+  assert.deepEqual(
+    shown.map((s) => s.id),
+    ["sec_real"],
+  );
+  assert.deepEqual(
+    tests.map((s) => s.id),
+    ["sec_fake"],
+  );
 });
 
 test("packages group their alerts and take the worst severity", () => {
@@ -93,7 +99,10 @@ test("packages group their alerts and take the worst severity", () => {
     vuln({ id: "vul_2", package: "express" }),
     vuln({ id: "vul_3", severity: "critical", fixedVersion: "4.17.3" }),
   ]);
-  assert.deepEqual(groups.map((g) => g.name), ["lodash", "express"]);
+  assert.deepEqual(
+    groups.map((g) => g.name),
+    ["lodash", "express"],
+  );
   assert.equal(worstSeverity(groups[0].vulns), "critical");
   assert.equal(highestFix(groups[0].vulns), "4.17.21");
 });
@@ -124,10 +133,7 @@ const row = (over: Partial<AlertActivity>): AlertActivity => ({
 });
 
 test("a secret's activity starts with when it was found", () => {
-  const entries = alertActivity(secret({ source: "push", status: "blocked", foundBy: "ana" }), [
-    row({}),
-    row({ id: "act_2", alertId: "sec_other" }),
-  ]);
+  const entries = alertActivity(secret({ source: "push", status: "blocked", foundBy: "ana" }), [row({}), row({ id: "act_2", alertId: "sec_other" })]);
   assert.deepEqual(
     entries.map((e) => [e.actor, e.text]),
     [
@@ -148,10 +154,9 @@ test("an older decision without a row is shown from the alert itself", () => {
   assert.equal(entries[0].actor, null);
   assert.deepEqual([entries[1].actor, entries[1].comment, entries[1].reason], ["ana", "Docs example.", "false_positive"]);
   // A row for the dismissal replaces it.
-  const covered = alertActivity(
-    secret({ status: "allowed", state: "dismissed", decidedBy: "ana", decidedAt: "2026-10-02T00:00:00Z" }),
-    [row({ actor: "ana" })],
-  );
+  const covered = alertActivity(secret({ status: "allowed", state: "dismissed", decidedBy: "ana", decidedAt: "2026-10-02T00:00:00Z" }), [
+    row({ actor: "ana" }),
+  ]);
   assert.equal(covered.filter((e) => e.text === "dismissed it").length, 1);
 });
 

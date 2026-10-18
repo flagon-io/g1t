@@ -13,16 +13,7 @@ import type { Pull, PullStatus, SessionEntry } from "./work";
  * the others are runs of the agents g1t once ran itself, kept so older
  * runs still read.
  */
-export type RunKind =
-  | "implement"
-  | "revise"
-  | "review"
-  | "answer"
-  | "update"
-  | "plan"
-  | "checks"
-  | "queue"
-  | "mergecheck";
+export type RunKind = "implement" | "revise" | "review" | "answer" | "update" | "plan" | "checks" | "queue" | "mergecheck";
 
 export const RUN_KINDS: RunKind[] = ["implement", "revise", "review", "answer", "update", "plan", "checks", "queue", "mergecheck"];
 

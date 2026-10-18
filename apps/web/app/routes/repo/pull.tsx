@@ -56,14 +56,7 @@ import { DetailsDisclosure, detailsSummary } from "../../components/details-disc
 import { BaseBranch } from "../../components/base-branch";
 import { LabelChip, LabelsBox, MilestoneBox } from "../../components/labels";
 import { Markdown } from "../../components/markdown";
-import {
-  ButtonLink,
-  CopyLine,
-  EmptyState,
-  ErrorText,
-  SubmitButton,
-  TimeAgo,
-} from "../../components/ui";
+import { ButtonLink, CopyLine, EmptyState, ErrorText, SubmitButton, TimeAgo } from "../../components/ui";
 import { AttachImages } from "../../components/attach-images";
 import { MentionTextarea } from "../../components/mention-textarea";
 import { Avatar } from "../../components/ui/avatar";
@@ -78,16 +71,7 @@ import { WorkflowStatuses } from "../../components/actions";
 import { AddCiPrompt } from "../../components/add-ci";
 import { AttemptsBox } from "../../components/attempts";
 import { type Attempt, attemptReview, otherAttempts, sharedPaths, splitOverlaps } from "../../lib/attempts";
-import {
-  CommentForm,
-  CommentList,
-  ItemIcon,
-  PeoplePicker,
-  PersonLink,
-  PullState,
-  TimelineItem,
-  verdicts,
-} from "../../components/work";
+import { CommentForm, CommentList, ItemIcon, PeoplePicker, PersonLink, PullState, TimelineItem, verdicts } from "../../components/work";
 import { ChecksSection, ConflictsSection, MergeabilityRow, runIdOf } from "../../components/merge-box";
 import { AutoMergeBanner, BranchAfterwards, MergeButton, UpdateBranchButton } from "../../components/merge-actions";
 import { METHOD_INFO, type MergeChoicesView, choicesFromService, choicesFromSettings, isMergeMethod } from "../../lib/merge";
@@ -146,9 +130,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 
   // Members of the workspace pick reviewers and assignees from its people;
   // what the viewer may do here goes by their role on the repository.
-  const member = (viewer?.workspaces ?? []).some(
-    (membership) => membership.slug === params.owner,
-  );
+  const member = (viewer?.workspaces ?? []).some((membership) => membership.slug === params.owner);
   // Everything starts at once. Only what the viewer's role decides waits
   // for the repository, which the layout is looking up in this request too
   // (lib/access.server.ts), and only what the pull request decides waits
@@ -165,9 +147,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const choicesFound =
     tab === "conversation"
       ? Promise.all([work.mergeChoices(viewer, path, number).catch(() => null), pullFound.catch(() => null)])
-          .then(([choices, found]) =>
-            found?.ok && (found.value.pull.status === "open" || found.value.pull.status === "draft") ? choices : null,
-          )
+          .then(([choices, found]) => (found?.ok && (found.value.pull.status === "open" || found.value.pull.status === "draft") ? choices : null))
           .catch(() => null)
       : Promise.resolve(null);
   const milestonesFound = work.listMilestones(params.owner.toLowerCase(), viewer);
@@ -189,9 +169,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     access.then(({ insider }) => (insider ? part(deployments.list(ref, viewer), "Its preview") : null)),
     // Whether the viewer hears of it, for the sidebar's Notifications.
     viewer
-      ? repoFor(context, params).then((found) =>
-          found.ok ? part(inbox.subscription(viewer, { repoId: found.value.id, number }), "Notifications") : null,
-        )
+      ? repoFor(context, params).then((found) => (found.ok ? part(inbox.subscription(viewer, { repoId: found.value.id, number }), "Notifications") : null))
       : null,
     // A member asks the workspace's teams to review, and mentions them.
     member ? part(identity.listTeams(viewer, params.owner), "Teams") : null,
@@ -200,9 +178,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     tab !== "changes" ? part(work.listDecisions({ repo: path, number }, viewer), "Decisions") : null,
     // The harness sessions tied to it in any way: with their subagents for
     // the Session tab, and in the conversation where each started.
-    tab === "session" || tab === "conversation"
-      ? part(work.listWorkSessions(path, viewer, { pull: number, subagents: tab === "session" }), "Sessions")
-      : null,
+    tab === "session" || tab === "conversation" ? part(work.listWorkSessions(path, viewer, { pull: number, subagents: tab === "session" }), "Sessions") : null,
   ]);
   if (!found.ok) {
     // Work items and pull requests share numbers: `#number` here may be a work item.
@@ -220,20 +196,18 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const runIds = [...new Set((found.value.statuses ?? []).map(runIdOf).filter((id) => id != null))].slice(0, 10);
   const workflowJobs =
     tab === "conversation" && pull.status !== "draft" && runIds.length > 0
-      ? Promise.all(runIds.map((id) => actions.run(path, viewer, id).catch(() => null))).then((runs) => {
-          const jobs: Record<string, Job[]> = {};
-          for (const run of runs) if (run?.ok) jobs[run.value.run.id] = run.value.jobs;
-          return jobs;
-        })
-        .catch(() => ({}) as Record<string, Job[]>)
+      ? Promise.all(runIds.map((id) => actions.run(path, viewer, id).catch(() => null)))
+          .then((runs) => {
+            const jobs: Record<string, Job[]> = {};
+            for (const run of runs) if (run?.ok) jobs[run.value.run.id] = run.value.jobs;
+            return jobs;
+          })
+          .catch(() => ({}) as Record<string, Job[]>)
       : Promise.resolve({} as Record<string, Job[]>);
   // No checks at all on an open pull request: whether that is because the
   // repository has no workflows, to offer a starter one.
   const unchecked =
-    tab === "conversation" &&
-    pull.status === "open" &&
-    (found.value.statuses ?? []).length === 0 &&
-    (found.value.requiredChecks ?? []).length === 0;
+    tab === "conversation" && pull.status === "open" && (found.value.statuses ?? []).length === 0 && (found.value.requiredChecks ?? []).length === 0;
   const [comparison, noChecks] = await Promise.all([
     // Its first screens sent with their lines, and files with comments on
     // their lines; the rest load as the reader reaches them. What is sent is
@@ -241,18 +215,16 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // The Changes tab's own part: when it fails, the pull request stays.
     tab === "changes"
       ? part(
-          repos
-            .compare(range.repoId, viewer, range.base, range.head, range.baseBranch, null, range.targetId)
-            .then(async (compared) =>
-              compared.ok
-                ? {
-                    ok: true as const,
-                    value: await highlightFirstFiles(
-                      firstScreens(compared.value, { eager: found.value.comments.flatMap((comment) => (comment.path ? [comment.path] : [])) }),
-                    ),
-                  }
-                : compared,
-            ),
+          repos.compare(range.repoId, viewer, range.base, range.head, range.baseBranch, null, range.targetId).then(async (compared) =>
+            compared.ok
+              ? {
+                  ok: true as const,
+                  value: await highlightFirstFiles(
+                    firstScreens(compared.value, { eager: found.value.comments.flatMap((comment) => (comment.path ? [comment.path] : [])) }),
+                  ),
+                }
+              : compared,
+          ),
           "The changes",
         )
       : null,
@@ -273,9 +245,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // The merge box opens on what the settings allow, then takes the
   // service's answer, with its messages, when it arrives.
   const settledChoices = mergeChoicesOf(settings.ok ? settings.value : null, found.value.behind);
-  const servedChoices = choicesFound.then((served) =>
-    served?.ok && served.value.methods.length > 0 ? choicesFromService(served.value) : settledChoices,
-  );
+  const servedChoices = choicesFound.then((served) => (served?.ok && served.value.methods.length > 0 ? choicesFromService(served.value) : settledChoices));
   const repoDefault = repo.ok ? repo.value.defaultBranch : "main";
   const viewerOwns = viewer != null && viewer.id === workOwner(pull).id;
   // The default branch's protection covers pull requests into it only.
@@ -316,20 +286,12 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     subscription,
     members: isFailed(members) ? members : members?.ok ? members.value.map((person) => person.username) : [],
     // `workspace/slug` and name of each team the viewer can see.
-    teams: isFailed(teamList)
-      ? teamList
-      : teamList?.ok
-        ? teamList.value.map((team) => ({ ref: `${team.workspace}/${team.slug}`, name: team.name }))
-        : [],
+    teams: isFailed(teamList) ? teamList : teamList?.ok ? teamList.value.map((team) => ({ ref: `${team.workspace}/${team.slug}`, name: team.name })) : [],
     // What the rules of the branch it merges into ask, as they stack; the
     // default branch's settings where the rules are not known.
     requireUpToDate: found.value.rules ? found.value.rules.strict : protectedBase && settings.ok && settings.value.requireUpToDate,
     mergeQueue: found.value.rules ? found.value.rules.merge_queue : protectedBase && settings.ok && settings.value.mergeQueue,
-    requiredApprovals: found.value.rules
-      ? found.value.rules.required_approvals
-      : protectedBase && settings.ok
-        ? settings.value.requiredApprovals
-        : 0,
+    requiredApprovals: found.value.rules ? found.value.rules.required_approvals : protectedBase && settings.ok ? settings.value.requiredApprovals : 0,
     canIgnoreChecks: found.value.rules ? found.value.rules.allow_bypass_on_merge : !settings.ok || settings.value.allowIgnoringChecks,
     noChecks,
     // Who may open the pull request that adds CI: anyone who can push.
@@ -414,10 +376,7 @@ function mergeChoicesOf(settings: RepoSettings | null, behind: boolean): MergeCh
  * Where this pull request is live: its preview (or its latest build, while
  * one is going or after one failed).
  */
-function deploymentOf(
-  list: { deployments: Deployment[]; live: LiveApp[] } | null,
-  number: number,
-): { preview: LiveApp | null; build: Deployment | null } {
+function deploymentOf(list: { deployments: Deployment[]; live: LiveApp[] } | null, number: number): { preview: LiveApp | null; build: Deployment | null } {
   const preview = list?.live.find((app) => app.kind === "preview" && app.number === number) ?? null;
   const build = list?.deployments.find((d) => d.kind === "preview" && d.number === number) ?? null;
   return { preview, build };
@@ -468,18 +427,24 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const picked = (field: string) => [
     ...form.getAll(field).map(String),
     // `@acme/backend` is asked as `acme/backend`.
-    ...String(form.get("others") ?? "").split(/[\s,]+/).map((name) => name.replace(/^@/, "")),
+    ...String(form.get("others") ?? "")
+      .split(/[\s,]+/)
+      .map((name) => name.replace(/^@/, "")),
   ];
   // Its labels, milestone and base, from the sidebar's menus and the header.
   // A reaction to the pull request or one of its comments, or taking one back.
   if (action === "react") {
     const content = REACTIONS.find((one) => one.content === form.get("content"))?.content;
     if (!content) return { error: "Pick a reaction.", action };
-    const reacted = await work.react(user, { repo: path, number }, {
-      commentId: String(form.get("comment") ?? "") || undefined,
-      content,
-      remove: form.get("remove") === "1",
-    });
+    const reacted = await work.react(
+      user,
+      { repo: path, number },
+      {
+        commentId: String(form.get("comment") ?? "") || undefined,
+        content,
+        remove: form.get("remove") === "1",
+      },
+    );
     return reacted.ok ? null : { error: reacted.error.message, action };
   }
   if (action === "labels") {
@@ -491,9 +456,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       user,
       path,
       number,
-      action === "milestone"
-        ? { milestone: Number(form.get("milestone")) || 0 }
-        : { base: String(form.get("base") ?? "") },
+      action === "milestone" ? { milestone: Number(form.get("milestone")) || 0 } : { base: String(form.get("base") ?? "") },
     );
     return changed.ok ? null : { error: changed.error.message, action };
   }
@@ -510,7 +473,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     if (update.outcome === "needs_agent") {
       return {
         action,
-        error: update.detail || "It and its base changed some of the same files, so it can't be updated here. Merge or rebase the base into the branch where you work on it, then push.",
+        error:
+          update.detail ||
+          "It and its base changed some of the same files, so it can't be updated here. Merge or rebase the base into the branch where you work on it, then push.",
       };
     }
     return {
@@ -540,8 +505,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   }
   // Its branch, once it merged or closed: deleted, or made again where it was.
   if (action === "delete-branch" || action === "restore-branch") {
-    const changed =
-      action === "delete-branch" ? await work.deleteHeadBranch(user, path, number) : await work.restoreHeadBranch(user, path, number);
+    const changed = action === "delete-branch" ? await work.deleteHeadBranch(user, path, number) : await work.restoreHeadBranch(user, path, number);
     return changed.ok ? null : { error: changed.error.message, action };
   }
   // A workflow run's failed jobs, run again. Who may is the actions service's call.
@@ -592,47 +556,38 @@ export async function action({ request, params, context }: Route.ActionArgs) {
           .catch(() => fail("unavailable", "g1t couldn't reach the repository to merge this. Try again in a moment."))
       : action === "unqueue"
         ? await work.removeFromQueue(user, path, number)
-      : action === "close"
-        ? await work.closePull(user, path, number)
-      : action === "reopen"
-        ? await work.reopenPull(user, path, number)
-      : action === "draft"
-        ? await work.convertPullToDraft(user, path, number)
-          : action === "reviewers"
-            ? await work.updatePull(user, path, number, { reviewers: picked("reviewer") })
-          : action === "assign"
-            ? await work.updatePull(user, path, number, { assignees: picked("assignee") })
-          : action === "comment"
-            ? await work.addComment(user, { repo: path, number }, {
-                body: String(form.get("body") ?? ""),
-                path: String(form.get("path") ?? "") || undefined,
-                line: line > 0 ? line : undefined,
-                verdict:
-                  verdict === "approve" || verdict === "request_changes" ? verdict : undefined,
-              })
-            : await work.readyPull(user, path, number, String(form.get("summary") ?? ""));
+        : action === "close"
+          ? await work.closePull(user, path, number)
+          : action === "reopen"
+            ? await work.reopenPull(user, path, number)
+            : action === "draft"
+              ? await work.convertPullToDraft(user, path, number)
+              : action === "reviewers"
+                ? await work.updatePull(user, path, number, { reviewers: picked("reviewer") })
+                : action === "assign"
+                  ? await work.updatePull(user, path, number, { assignees: picked("assignee") })
+                  : action === "comment"
+                    ? await work.addComment(
+                        user,
+                        { repo: path, number },
+                        {
+                          body: String(form.get("body") ?? ""),
+                          path: String(form.get("path") ?? "") || undefined,
+                          line: line > 0 ? line : undefined,
+                          verdict: verdict === "approve" || verdict === "request_changes" ? verdict : undefined,
+                        },
+                      )
+                    : await work.readyPull(user, path, number, String(form.get("summary") ?? ""));
   return result.ok ? null : { error: result.error.message, action };
 }
 
 /** How many, beside a tab's name, when there are any. */
 function TabCount({ n }: { n: number }) {
   if (n <= 0) return null;
-  return (
-    <span className="rounded-full bg-raised px-1.5 py-px text-xs tabular-nums text-muted ring-1 ring-line">
-      {n.toLocaleString("en-US")}
-    </span>
-  );
+  return <span className="rounded-full bg-raised px-1.5 py-px text-xs tabular-nums text-muted ring-1 ring-line">{n.toLocaleString("en-US")}</span>;
 }
 
-function TabLink({
-  to,
-  active,
-  children,
-}: {
-  to: string;
-  active: boolean;
-  children: React.ReactNode;
-}) {
+function TabLink({ to, active, children }: { to: string; active: boolean; children: React.ReactNode }) {
   return (
     <Link
       to={to}
@@ -640,9 +595,7 @@ function TabLink({
       aria-current={active ? "page" : undefined}
       className={
         "-mb-px flex min-h-11 items-center gap-2 border-b-2 px-2.5 pb-2.5 text-sm whitespace-nowrap transition-colors sm:min-h-0 sm:px-3 [&>svg]:hidden sm:[&>svg]:block " +
-        (active
-          ? "border-accent font-medium text-fg"
-          : "border-transparent text-muted hover:text-fg")
+        (active ? "border-accent font-medium text-fg" : "border-transparent text-muted hover:text-fg")
       }
     >
       {children}
@@ -653,21 +606,12 @@ function TabLink({
 /** One step of the session, on the timeline's rail. */
 function Entry({ entry, agent }: { entry: SessionEntry; agent: string }) {
   const isTool = entry.kind === "tool_call" || entry.kind === "tool_result";
-  const Icon =
-    entry.kind === "prompt"
-      ? User
-      : entry.kind === "note"
-        ? StickyNote
-        : isTool
-          ? Wrench
-          : Bot;
+  const Icon = entry.kind === "prompt" ? User : entry.kind === "note" ? StickyNote : isTool ? Wrench : Bot;
   return (
     <li className="relative pl-10">
       <span
         className={`absolute top-0.5 left-0 flex size-7 items-center justify-center rounded-full border bg-bg ${
-          entry.kind === "prompt"
-            ? "border-accent/50 text-accent"
-            : "border-line text-faint"
+          entry.kind === "prompt" ? "border-accent/50 text-accent" : "border-line text-faint"
         }`}
       >
         <Icon size={14} />
@@ -676,13 +620,8 @@ function Entry({ entry, agent }: { entry: SessionEntry; agent: string }) {
         <Card asChild radius="lg" className="group">
           <details>
             <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-1.5 text-sm">
-              <ChevronRight
-                size={14}
-                className="text-faint transition-transform group-open:rotate-90"
-              />
-              <span className="font-mono text-xs text-accent">
-                {entry.tool ?? "tool"}
-              </span>
+              <ChevronRight size={14} className="text-faint transition-transform group-open:rotate-90" />
+              <span className="font-mono text-xs text-accent">{entry.tool ?? "tool"}</span>
               <span className="truncate font-mono text-xs text-muted">
                 {entry.kind === "tool_result" ? "→ " : ""}
                 {entry.text.split("\n")[0]}
@@ -696,13 +635,7 @@ function Entry({ entry, agent }: { entry: SessionEntry; agent: string }) {
       ) : (
         <div>
           <p className="text-xs font-medium text-faint">
-            {entry.kind === "prompt"
-              ? "Prompt"
-              : entry.kind === "note"
-                ? "Note"
-                : entry.kind === "skill"
-                  ? `${agent} used a skill`
-                  : agent}
+            {entry.kind === "prompt" ? "Prompt" : entry.kind === "note" ? "Note" : entry.kind === "skill" ? `${agent} used a skill` : agent}
           </p>
           {entry.kind === "message" ? (
             <div className="mt-1">
@@ -713,9 +646,7 @@ function Entry({ entry, agent }: { entry: SessionEntry; agent: string }) {
               <Markdown source={entry.text} />
             </Card>
           ) : (
-            <p className="mt-1 text-[0.9375rem] leading-relaxed wrap-break-word whitespace-pre-wrap">
-              {entry.text}
-            </p>
+            <p className="mt-1 text-[0.9375rem] leading-relaxed wrap-break-word whitespace-pre-wrap">{entry.text}</p>
           )}
         </div>
       )}
@@ -735,22 +666,12 @@ function StatusBox({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex gap-3">
       <span className="hidden w-8 shrink-0 sm:block" />
-      <section className="min-w-0 grow divide-y divide-line overflow-hidden rounded-xl border border-line-strong bg-surface">
-        {children}
-      </section>
+      <section className="min-w-0 grow divide-y divide-line overflow-hidden rounded-xl border border-line-strong bg-surface">{children}</section>
     </div>
   );
 }
 
-function StatusRow({
-  icon,
-  title,
-  children,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  children?: React.ReactNode;
-}) {
+function StatusRow({ icon, title, children }: { icon: React.ReactNode; title: string; children?: React.ReactNode }) {
   return (
     <div className="flex gap-3 px-4 py-3 text-sm">
       <span className="mt-0.5 shrink-0">{icon}</span>
@@ -847,9 +768,11 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
       canRerunWorkflows={canMerge}
       settingsUrl={canProtect ? `${base}/settings/branches` : null}
       conflicting={mergeable === "conflicting" && !noChecks}
-      error={actionData?.action === "rerun-failed" || actionData?.action === "rerun-workflow" || actionData?.action === "rerun-dependency-review"
+      error={
+        actionData?.action === "rerun-failed" || actionData?.action === "rerun-workflow" || actionData?.action === "rerun-dependency-review"
           ? actionData.error
-          : null}
+          : null
+      }
       loading={loading}
     />
   );
@@ -898,15 +821,10 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
     canJudge: active && viewer != null && viewer.id !== workOwner(pull).id,
   };
   // Everyone whose review was asked for, then anyone who reviewed unasked.
-  const reviewerNames = [
-    ...new Set([...pull.reviewers, ...reviews.map(({ reviewer }) => reviewer)]),
-  ];
+  const reviewerNames = [...new Set([...pull.reviewers, ...reviews.map(({ reviewer }) => reviewer)])];
   const teamReviewers = pull.teamReviewers ?? [];
   // Teams to ask: the workspace's, and any asked already.
-  const teamChoices = [
-    ...teams,
-    ...teamReviewers.filter((ref) => !teams.some((team) => team.ref === ref)).map((ref) => ({ ref, name: ref })),
-  ];
+  const teamChoices = [...teams, ...teamReviewers.filter((ref) => !teams.some((team) => team.ref === ref)).map((ref) => ({ ref, name: ref }))];
   // Branch protection wants code owners' approval it does not have yet.
   const ownersMissing = codeOwners?.required && codeOwners.missing ? codeOwners.missing : null;
   // A catch-up: the click shows at once; the answer says whether it is done.
@@ -914,11 +832,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   const caughtUp = catchUp && "updated" in catchUp ? catchUp.updated : null;
   // Pushed already: followed until the pull request's head is the merge,
   // so its checks show starting again, for a minute at most.
-  const settling =
-    caughtUp != null && !caughtUp.already && pull.headCommit !== caughtUp.commit && Date.now() - caughtUp.at < 60_000;
+  const settling = caughtUp != null && !caughtUp.already && pull.headCommit !== caughtUp.commit && Date.now() - caughtUp.at < 60_000;
   // It is moving on its own (the merge queue, auto-merge), so the page will change.
-  const moving =
-    lifecycle != null && lifecycle.stage !== "ready" && lifecycle.stage !== "needs_you";
+  const moving = lifecycle != null && lifecycle.stage !== "ready" && lifecycle.stage !== "needs_you";
   // Whether it merges cleanly is being worked out, so the box will change.
   const probing = active && mergeable === "checking";
   const conflicting = active && mergeable === "conflicting";
@@ -963,15 +879,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted">
             <PullState status={pull.status} />
             <span className="flex items-center gap-2">
-              <Avatar
-                name={(pull.status === "merged" && pull.mergedBy) || opener.name}
-                size={18}
-              />
+              <Avatar name={(pull.status === "merged" && pull.mergedBy) || opener.name} size={18} />
               <span>
-                <PersonLink
-                  name={(pull.status === "merged" && pull.mergedBy) || opener.name}
-                  className="font-medium text-fg hover:underline"
-                />{" "}
+                <PersonLink name={(pull.status === "merged" && pull.mergedBy) || opener.name} className="font-medium text-fg hover:underline" />{" "}
                 {pull.status === "merged" ? "merged" : "wants to merge"}
                 {pull.branch && (
                   <>
@@ -998,12 +908,15 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
               </span>
             </span>
             {(pull.labels ?? []).map((name) => (
-              <LabelChip key={name} name={name} color={isFailed(loaderData.labels) ? undefined : loaderData.labels.find((label) => label.name === name)?.color} />
+              <LabelChip
+                key={name}
+                name={name}
+                color={isFailed(loaderData.labels) ? undefined : loaderData.labels.find((label) => label.name === name)?.color}
+              />
             ))}
             {opener.requestedBy && (
               <span className="text-xs">
-                requested by{" "}
-                <PersonLink name={opener.requestedBy} className="font-medium text-fg-soft hover:underline" />
+                requested by <PersonLink name={opener.requestedBy} className="font-medium text-fg-soft hover:underline" />
               </span>
             )}
             {/* A pull request from a branch was made by its author, not an agent;
@@ -1020,15 +933,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
           {reviews.length > 0 && (
             <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
               {reviews.map(({ reviewer, verdict }) => (
-                <span
-                  key={reviewer}
-                  className={`flex items-center gap-1.5 ${
-                    verdict === "approve" ? "text-success" : "text-danger"
-                  }`}
-                >
+                <span key={reviewer} className={`flex items-center gap-1.5 ${verdict === "approve" ? "text-success" : "text-danger"}`}>
                   {verdict === "approve" ? <CircleCheck size={15} /> : <CircleSlash size={15} />}
-                  {verdict === "approve" ? "Approved by" : "Changes requested by"}{" "}
-                  <span className="font-medium">{reviewer}</span>
+                  {verdict === "approve" ? "Approved by" : "Changes requested by"} <span className="font-medium">{reviewer}</span>
                 </span>
               ))}
             </p>
@@ -1071,17 +978,16 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   >
                     <ItemIcon item={item} />
                     <span className="shrink-0 text-muted">
-                      {pull.status === "merged" && item.resolutions.some((landed) => landed.pull === pull.number && landed.repo.toLowerCase() === `${params.owner}/${params.repo}`.toLowerCase())
+                      {pull.status === "merged" &&
+                      item.resolutions.some(
+                        (landed) => landed.pull === pull.number && landed.repo.toLowerCase() === `${params.owner}/${params.repo}`.toLowerCase(),
+                      )
                         ? "Landed"
                         : "For work item"}
                     </span>
                     <span className="truncate font-medium">{item.title}</span>
                     <span className="text-faint">#{item.number}</span>
-                    {item.pullCount > 1 && (
-                      <span className="ml-auto shrink-0 text-xs text-faint max-sm:hidden">
-                        1 of {item.pullCount} pull requests
-                      </span>
-                    )}
+                    {item.pullCount > 1 && <span className="ml-auto shrink-0 text-xs text-faint max-sm:hidden">1 of {item.pullCount} pull requests</span>}
                   </Link>
                 )}
                 <ItemRefs pull={pull} workspace={params.owner.toLowerCase()} />
@@ -1097,10 +1003,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                       {(pull.mergeCommit ?? pull.headCommit) && (
                         <>
                           in{" "}
-                          <Link
-                            to={`${base}/commit/${pull.mergeCommit ?? pull.headCommit}`}
-                            className="font-mono text-fg hover:text-accent hover:underline"
-                          >
+                          <Link to={`${base}/commit/${pull.mergeCommit ?? pull.headCommit}`} className="font-mono text-fg hover:text-accent hover:underline">
                             {(pull.mergeCommit ?? pull.headCommit)!.slice(0, 7)}
                           </Link>{" "}
                         </>
@@ -1113,10 +1016,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   <Card asChild className="mt-4 px-4 py-2.5 text-sm text-muted">
                     <p>
                       Closed because{" "}
-                      <Link
-                        to={`${base}/pull/${pull.supersededBy}`}
-                        className="font-medium text-fg hover:underline"
-                      >
+                      <Link to={`${base}/pull/${pull.supersededBy}`} className="font-medium text-fg hover:underline">
                         #{pull.supersededBy}
                       </Link>{" "}
                       was merged for this work item instead.
@@ -1133,19 +1033,14 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                     <ul className="mt-2 space-y-1.5">
                       {collisions.map((other) => (
                         <li key={other.number} className="flex flex-wrap items-baseline gap-x-2 text-muted">
-                          <Link
-                            to={`${base}/pull/${other.number}`}
-                            className="font-medium text-fg hover:underline"
-                          >
+                          <Link to={`${base}/pull/${other.number}`} className="font-medium text-fg hover:underline">
                             {other.title} <span className="font-normal text-faint">#{other.number}</span>
                           </Link>
                           <span className="font-mono text-xs">{other.paths.join(", ")}</span>
                         </li>
                       ))}
                     </ul>
-                    <p className="mt-2 text-xs text-faint">
-                      Whichever merges second will have to catch up, and may conflict.
-                    </p>
+                    <p className="mt-2 text-xs text-faint">Whichever merges second will have to catch up, and may conflict.</p>
                   </Card>
                 )}
               </div>
@@ -1194,7 +1089,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                     <section aria-label="Decisions">
                       <h3 className="text-sm font-medium">Decisions</h3>
                       <p className="mt-1 text-xs text-muted">
-                        Why it is the way it is, each with how sure it is: claimed by whoever recorded it, tested by a check or the merge queue, approved by a person.
+                        Why it is the way it is, each with how sure it is: claimed by whoever recorded it, tested by a check or the merge queue, approved by a
+                        person.
                       </p>
                       <div className="mt-3">
                         <DecisionList decisions={decisions} base={base} />
@@ -1209,8 +1105,8 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                       <Unavailable what={sessionPart.what} />
                     ) : session.length === 0 ? (
                       <EmptyState title="Nothing recorded yet">
-                        A coding agent's prompts, reasoning and tool calls appear here once
-                        it records them, through the g1t plugin, a harness session or record_session.
+                        A coding agent's prompts, reasoning and tool calls appear here once it records them, through the g1t plugin, a harness session or
+                        record_session.
                       </EmptyState>
                     ) : (
                       <ol className="relative space-y-5 before:absolute before:top-2 before:bottom-2 before:left-3.25 before:w-px before:bg-line">
@@ -1232,14 +1128,15 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         {opener.requestedBy ? (
                           <>
                             {" "}
-                            for{" "}
-                            <PersonLink name={opener.requestedBy} className="font-medium text-fg-soft hover:underline" />
+                            for <PersonLink name={opener.requestedBy} className="font-medium text-fg-soft hover:underline" />
                           </>
-                        ) : !pull.branch && (
-                          <>
-                            {" "}
-                            with <span className="font-mono text-xs">{pull.agent}</span>
-                          </>
+                        ) : (
+                          !pull.branch && (
+                            <>
+                              {" "}
+                              with <span className="font-mono text-xs">{pull.agent}</span>
+                            </>
+                          )
                         )}
                       </span>
                     }
@@ -1251,24 +1148,15 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                       </>
                     ) : (
                       <p className="text-sm text-muted">
-                        {working
-                          ? "No description yet. It is written when the pull request is marked ready for review."
-                          : "No description."}
+                        {working ? "No description yet. It is written when the pull request is marked ready for review." : "No description."}
                       </p>
                     )}
                     {canManage && pull.status === "open" && (
                       <details className="mt-3 border-t border-line pt-3 text-sm">
-                        <summary className="cursor-pointer text-xs text-faint hover:text-fg">
-                          Edit description
-                        </summary>
+                        <summary className="cursor-pointer text-xs text-faint hover:text-fg">Edit description</summary>
                         <Form method="post" className="mt-3 space-y-2">
                           <input type="hidden" name="action" value="describe" />
-                          <MentionTextarea
-                            name="summary"
-                            rows={6}
-                            placeholder="What changed and why"
-                            defaultValue={pull.body ?? ""}
-                          />
+                          <MentionTextarea name="summary" rows={6} placeholder="What changed and why" defaultValue={pull.body ?? ""} />
                           <SubmitButton match={{ action: "describe" }} pending="Saving…">
                             Save
                           </SubmitButton>
@@ -1305,8 +1193,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   {pull.status === "draft" && (
                     <StatusBox>
                       <StatusRow icon={<Loader size={16} className="text-faint" />} title="This is a draft">
-                        It is still being worked on. It can be reviewed and merged once it is
-                        marked ready.
+                        It is still being worked on. It can be reviewed and merged once it is marked ready.
                       </StatusRow>
                       {canManage && (
                         <Form method="post" className="space-y-2 px-4 py-3">
@@ -1328,7 +1215,9 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                           owners={codeOwners}
                           base={base}
                           branch={defaultBranch}
-                          errorsHref={canProtect ? `${base}/settings/branches#codeowners` : `${base}/blob/${encodeURIComponent(defaultBranch)}/${codeOwners.path}`}
+                          errorsHref={
+                            canProtect ? `${base}/settings/branches#codeowners` : `${base}/blob/${encodeURIComponent(defaultBranch)}/${codeOwners.path}`
+                          }
                         />
                       </div>
                     </div>
@@ -1387,27 +1276,16 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                           reviews.length === 0
                             ? "No reviews yet"
                             : reviews
-                                .map(
-                                  ({ reviewer, verdict }) =>
-                                    `${verdict === "approve" ? "Approved by" : "Changes requested by"} ${reviewer}`,
-                                )
+                                .map(({ reviewer, verdict }) => `${verdict === "approve" ? "Approved by" : "Changes requested by"} ${reviewer}`)
                                 .join(" · ")
                         }
                       >
                         {requiredApprovals > 0 &&
-                          `This repository requires ${requiredApprovals} approving ${
-                            requiredApprovals === 1 ? "review" : "reviews"
-                          } before merging.`}
+                          `This repository requires ${requiredApprovals} approving ${requiredApprovals === 1 ? "review" : "reviews"} before merging.`}
                       </StatusRow>
                       {codeOwners?.required && (
                         <StatusRow
-                          icon={
-                            ownersMissing ? (
-                              <CircleSlash size={16} className="text-warn" />
-                            ) : (
-                              <CircleCheck size={16} className="text-success" />
-                            )
-                          }
+                          icon={ownersMissing ? <CircleSlash size={16} className="text-warn" /> : <CircleCheck size={16} className="text-success" />}
                           title={ownersMissing ? "Waiting for code owners" : "Code owners approved"}
                         >
                           {ownersMissing ?? `Every file it changes has its owners' approval.`}{" "}
@@ -1423,9 +1301,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                         >
                           {behind
                             ? `${defaultBranch} has moved, so it is being brought up to date first. ${
-                                requiredChecks.length > 0
-                                  ? "It lands once the required checks pass on that commit."
-                                  : "It lands as soon as that is done."
+                                requiredChecks.length > 0 ? "It lands once the required checks pass on that commit." : "It lands as soon as that is done."
                               }`
                             : unchecked
                               ? `Brought up to date with ${defaultBranch}. It lands once ${awaitedChecks(requiredChecks)} on that commit.`
@@ -1444,34 +1320,24 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                       ) : probing ? (
                         <MergeabilityRow mergeable={mergeable} defaultBranch={defaultBranch} />
                       ) : behind ? (
-                        <StatusRow
-                          icon={<GitPullRequestArrow size={16} className="text-info" />}
-                          title="This branch is out-of-date with the base branch"
-                        >
+                        <StatusRow icon={<GitPullRequestArrow size={16} className="text-info" />} title="This branch is out-of-date with the base branch">
                           {mergeable === "clean" && `It has no conflicts with ${defaultBranch}. `}
                           {requireUpToDate
                             ? `The rules for ${defaultBranch} require pull requests to be up to date, so it has to be updated before it can merge.`
                             : "That does not stop it merging: it is brought up to date as part of the merge."}
-                          {canUpdate && (requireUpToDate || choices.suggestUpdate) && (
-                            <UpdateBranchButton head={pull.headCommit} base={defaultBranch} />
-                          )}
+                          {canUpdate && (requireUpToDate || choices.suggestUpdate) && <UpdateBranchButton head={pull.headCommit} base={defaultBranch} />}
                           {catchUp && "error" in catchUp && <ErrorText>{catchUp.error}</ErrorText>}
                         </StatusRow>
                       ) : (
                         (pull.headCommit || (catchUp && "error" in catchUp)) && (
                           <StatusRow
                             icon={<CircleCheck size={16} className="text-success" />}
-                            title={
-                              caughtUp && !caughtUp.already
-                                ? `Brought up to date with ${defaultBranch}`
-                                : `Up to date with ${defaultBranch}`
-                            }
+                            title={caughtUp && !caughtUp.already ? `Brought up to date with ${defaultBranch}` : `Up to date with ${defaultBranch}`}
                           >
                             {caughtUp && !caughtUp.already && (
                               <>
                                 Merged <span className="font-mono">{defaultBranch}</span> in as{" "}
-                                <span className="font-mono text-fg">{caughtUp.commit.slice(0, 7)}</span>. Its checks run
-                                again on the new commit.
+                                <span className="font-mono text-fg">{caughtUp.commit.slice(0, 7)}</span>. Its checks run again on the new commit.
                               </>
                             )}
                             {/* A catch-up refused or failed after the pull request stopped being behind. */}
@@ -1481,12 +1347,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                       )}
                       {active && rules && (rulesUnmet.length > 0 || rulesBypassable.length > 0 || rules.evaluate.length > 0) && (
                         <StatusRow
-                          icon={
-                            <Scale
-                              size={16}
-                              className={rulesUnmet.length > 0 ? "text-danger" : rulesBypassable.length > 0 ? "text-warn" : "text-info"}
-                            />
-                          }
+                          icon={<Scale size={16} className={rulesUnmet.length > 0 ? "text-danger" : rulesBypassable.length > 0 ? "text-warn" : "text-info"} />}
                           title={
                             rulesUnmet.length > 0
                               ? `Rules for ${defaultBranch} are not met yet`
@@ -1581,12 +1442,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                     </StatusBox>
                   )}
 
-                  <CommentForm
-                    author={viewer?.username ?? null}
-                    resetKey={comments.length}
-                    review={review}
-                    handles={teams.map((team) => `@${team.ref}`)}
-                  />
+                  <CommentForm author={viewer?.username ?? null} resetKey={comments.length} review={review} handles={teams.map((team) => `@${team.ref}`)} />
                   {canManage && (active || pull.status === "closed") && (
                     <Form method="post" className="flex flex-wrap justify-end gap-2">
                       {pull.status === "open" && (
@@ -1606,9 +1462,22 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                     </Form>
                   )}
                   {actionData &&
-                    !["merge", "comment", "rerun-failed", "rerun-workflow", "rerun-dependency-review", "update", "reviewers", "assign", "edit-comment", "delete-comment", "auto-merge-on", "auto-merge-off", "delete-branch", "restore-branch"].includes(
-                      String(actionData.action),
-                    ) && <ErrorText>{actionData.error}</ErrorText>}
+                    ![
+                      "merge",
+                      "comment",
+                      "rerun-failed",
+                      "rerun-workflow",
+                      "rerun-dependency-review",
+                      "update",
+                      "reviewers",
+                      "assign",
+                      "edit-comment",
+                      "delete-comment",
+                      "auto-merge-on",
+                      "auto-merge-off",
+                      "delete-branch",
+                      "restore-branch",
+                    ].includes(String(actionData.action)) && <ErrorText>{actionData.error}</ErrorText>}
                 </div>
               )}
               {actionData?.action === "comment" && (
@@ -1657,9 +1526,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                 {teamReviewers.map((team) => (
                   <TeamReviewer key={team} team={team} />
                 ))}
-                {reviewerNames.length === 0 && teamReviewers.length === 0 && (
-                  <li className="px-1 text-xs text-faint">No reviews requested yet.</li>
-                )}
+                {reviewerNames.length === 0 && teamReviewers.length === 0 && <li className="px-1 text-xs text-faint">No reviews requested yet.</li>}
               </ul>
               {pull.status === "open" && canManage && (
                 <div className="mt-3 space-y-2">
@@ -1706,9 +1573,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                   </details>
                 </div>
               )}
-              {actionData?.action === "reviewers" && (
-                <ErrorText>{actionData?.error}</ErrorText>
-              )}
+              {actionData?.action === "reviewers" && <ErrorText>{actionData?.error}</ErrorText>}
             </section>
 
             <section>
@@ -1722,9 +1587,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                     </span>
                   </li>
                 ))}
-                {pull.assignees.length === 0 && (
-                  <li className="px-1 text-xs text-faint">No one yet.</li>
-                )}
+                {pull.assignees.length === 0 && <li className="px-1 text-xs text-faint">No one yet.</li>}
               </ul>
               {viewer && canManage && active && (
                 <div className="mt-3 space-y-2">
@@ -1743,9 +1606,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                     </Form>
                   )}
                   <details>
-                    <summary className="cursor-pointer text-xs text-faint hover:text-fg">
-                      Assign people
-                    </summary>
+                    <summary className="cursor-pointer text-xs text-faint hover:text-fg">Assign people</summary>
                     <Form method="post" className="mt-2 space-y-2" key={pull.assignees.join()}>
                       <input type="hidden" name="action" value="assign" />
                       <PeoplePicker name="assignee" members={members} chosen={pull.assignees} />
@@ -1777,12 +1638,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
               <SidebarUnavailable title="Milestone" what={loaderData.milestones.what} />
             ) : (
               <Boundary what="Milestone">
-                <MilestoneBox
-                  milestones={loaderData.milestones}
-                  current={pull.milestone}
-                  canEdit={loaderData.canTriage}
-                  base={base}
-                />
+                <MilestoneBox milestones={loaderData.milestones} current={pull.milestone} canEdit={loaderData.canTriage} base={base} />
               </Boundary>
             )}
 
@@ -1811,9 +1667,7 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
                 </>
               ) : (
                 <>
-                  <p className="mt-1 text-xs text-muted">
-                    This fork belongs to the pull request. Pushes to it show up here.
-                  </p>
+                  <p className="mt-1 text-xs text-muted">This fork belongs to the pull request. Pushes to it show up here.</p>
                   <div className="mt-2">
                     <CopyLine text={`git clone ${remote}`} />
                   </div>
@@ -1859,15 +1713,7 @@ function SidebarUnavailable({ title, what }: { title: string; what: string }) {
 }
 
 /** Where the pull request's change is live, as GitHub shows a deployment. */
-function DeploymentCard({
-  preview,
-  build,
-  base,
-}: {
-  preview: LiveApp | null;
-  build: Deployment | null;
-  base: string;
-}) {
+function DeploymentCard({ preview, build, base }: { preview: LiveApp | null; build: Deployment | null; base: string }) {
   const building = build?.status === "queued" || build?.status === "building";
   const failed = build?.status === "failed";
   return (

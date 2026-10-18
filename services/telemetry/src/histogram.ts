@@ -9,9 +9,7 @@
 import type { Percentiles } from "@g1t/contracts/telemetry";
 
 /** Upper bounds, in milliseconds; the last bucket holds everything above the last bound. */
-export const BOUNDS_MS = [
-  1, 2, 3, 5, 7, 10, 15, 20, 30, 50, 75, 100, 150, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000, 7500, 10000, 15000, 30000, 60000,
-];
+export const BOUNDS_MS = [1, 2, 3, 5, 7, 10, 15, 20, 30, 50, 75, 100, 150, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000, 7500, 10000, 15000, 30000, 60000];
 
 export const BUCKETS = BOUNDS_MS.length + 1;
 

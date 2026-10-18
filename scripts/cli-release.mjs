@@ -81,7 +81,12 @@ export function manifest(dir, v, now = new Date()) {
   const text = `${JSON.stringify(body, null, 2)}\n`;
   writeFileSync(join(dir, "manifest.json"), text);
   writeFileSync(join(dir, "latest.json"), text);
-  writeFileSync(join(dir, "SHA256SUMS"), Object.values(files).map((f) => `${f.sha256}  ${f.name}`).join("\n") + "\n");
+  writeFileSync(
+    join(dir, "SHA256SUMS"),
+    Object.values(files)
+      .map((f) => `${f.sha256}  ${f.name}`)
+      .join("\n") + "\n",
+  );
   return body;
 }
 
@@ -94,13 +99,18 @@ export function manifest(dir, v, now = new Date()) {
 export function builderArgs({ root = ROOT, env = process.env, home = homedir() } = {}) {
   const registry = env.GITHUB_ACTIONS === "true" ? `${join(env.CARGO_HOME || join(home, ".cargo"), "registry").replaceAll("\\", "/")}` : "g1t-cargo-registry";
   return [
-    "-e", "CARGO_TARGET_DIR=/src/target/zig",
+    "-e",
+    "CARGO_TARGET_DIR=/src/target/zig",
     // The release key's public half, built into the CLI so `g1t upgrade`
     // can check releases (crates/g1t/src/commands/upgrade.rs).
     ...(env.G1T_RUNNER_RELEASE_KEY ? ["-e", `G1T_RUNNER_RELEASE_KEY=${env.G1T_RUNNER_RELEASE_KEY}`] : []),
-    "-v", `${root.replaceAll("\\", "/")}:/src`,
-    "-v", `${registry}:/usr/local/cargo/registry`,
-    "-w", "/src", BUILDER,
+    "-v",
+    `${root.replaceAll("\\", "/")}:/src`,
+    "-v",
+    `${registry}:/usr/local/cargo/registry`,
+    "-w",
+    "/src",
+    BUILDER,
   ];
 }
 
@@ -118,7 +128,9 @@ function build() {
   const v = version();
   const dir = outDir(v);
   mkdirSync(dir, { recursive: true });
-  const triples = Object.values(TARGETS).map((t) => t.triple).join(" ");
+  const triples = Object.values(TARGETS)
+    .map((t) => t.triple)
+    .join(" ");
   // One container builds every platform; its target folder is kept apart
   // from the host's so the two never mix.
   run("docker", ["run", "--rm", ...builderArgs(), "sh", "-c", builderScript(triples)], { env: { ...process.env, MSYS_NO_PATHCONV: "1" } });

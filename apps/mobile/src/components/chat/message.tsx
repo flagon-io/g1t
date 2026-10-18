@@ -41,8 +41,7 @@ export const Message = memo(function Message({ message, head, inThread, onLongPr
   const g1t = author.kind === "system";
   const failed = message.local === "failed";
 
-  const openThread = () =>
-    router.push({ pathname: "/chat/thread", params: { channel: message.channel_id, root: message.id } });
+  const openThread = () => router.push({ pathname: "/chat/thread", params: { channel: message.channel_id, root: message.id } });
 
   return (
     <Pressable
@@ -72,7 +71,11 @@ export const Message = memo(function Message({ message, head, inThread, onLongPr
             </Text>
           </View>
         ) : null}
-        {message.body ? <Markdown text={message.body} /> : g1t && message.answer && (message.answer.state === "thinking" || message.answer.state === "streaming") ? <Text tone="muted">Thinking…</Text> : null}
+        {message.body ? (
+          <Markdown text={message.body} />
+        ) : g1t && message.answer && (message.answer.state === "thinking" || message.answer.state === "streaming") ? (
+          <Text tone="muted">Thinking…</Text>
+        ) : null}
         {message.edited_at ? (
           <Text size="small" tone="faint">
             (edited)
@@ -150,7 +153,12 @@ function Card({ card, site }: { card: MessageCard; site: string }) {
       <Pressable disabled={!card.href} onPress={() => card.href && open(card.href)} style={{ gap: 4 }}>
         <View style={{ flexDirection: "row", gap: space.sm, alignItems: "flex-start" }}>
           <Text style={{ flex: 1, fontWeight: "700" }}>{card.title}</Text>
-          {card.state ? <Badge label={card.state} tone={/fail|stop|denied|error/i.test(card.state) ? "danger" : /merged|done|approved|passed/i.test(card.state) ? "success" : "accent"} /> : null}
+          {card.state ? (
+            <Badge
+              label={card.state}
+              tone={/fail|stop|denied|error/i.test(card.state) ? "danger" : /merged|done|approved|passed/i.test(card.state) ? "success" : "accent"}
+            />
+          ) : null}
         </View>
         {card.detail ? (
           <Text size="small" tone="muted">

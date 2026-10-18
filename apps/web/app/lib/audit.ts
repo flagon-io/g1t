@@ -4,14 +4,7 @@
  * Pure, so it can be tested; the server side is in audit.server.ts.
  */
 
-import type {
-  ActorKind,
-  AuditEntry,
-  AuditOutcome,
-  AuditQuery,
-  AuditVisibility,
-  Role,
-} from "@g1t/contracts";
+import type { ActorKind, AuditEntry, AuditOutcome, AuditQuery, AuditVisibility, Role } from "@g1t/contracts";
 
 /**
  * How much of a workspace's log a viewer sees: an owner everything; a
@@ -86,12 +79,7 @@ function nextDay(day: string): string {
 }
 
 /** What to ask the log for. `project` is a project's name in `workspace`, or `owner/name`. */
-export function toQuery(
-  workspace: string,
-  visibility: AuditVisibility,
-  filters: AuditFilters,
-  limit: number,
-): AuditQuery {
+export function toQuery(workspace: string, visibility: AuditVisibility, filters: AuditFilters, limit: number): AuditQuery {
   const project = filters.project.includes("/") ? filters.project : filters.project ? `${workspace}/${filters.project}` : null;
   return {
     workspace,

@@ -1,57 +1,57 @@
 {
-	"$schema": "../../node_modules/wrangler/config-schema.json",
-	"name": "g1t-actions",
-	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
-	"compatibility_date": "2026-09-26",
-	// Runs next to its database: moving a run along makes many queries in turn.
-	"placement": { "mode": "off" },
-	"main": "build/index.js",
-	"build": { "command": "node ../../scripts/build-rust-worker.mjs" },
-	// Reached only through service bindings.
-	"workers_dev": false,
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "g1t-actions",
-			"database_id": "95ccaa88-8e15-4b90-81e2-0d02d8ce869d",
-			"migrations_dir": "migrations"
-		}
-	],
-	// ACTIONS_KEY (secret): seals secrets at rest. Never regenerate it:
-	// secrets saved under the old key could no longer be opened.
-	"services": [
-		{ "binding": "REPOS", "service": "g1t-repos" },
-		{ "binding": "WORK", "service": "g1t-work" },
-		{ "binding": "IDENTITY", "service": "g1t-identity" },
-		{ "binding": "RUNNER", "service": "g1t-runner" },
-		{ "binding": "EVENTS", "service": "g1t-events" },
-		// A repository's secrets and variables belong to its project.
-		{ "binding": "PROJECTS", "service": "g1t-projects" },
-		// Self-hosted runners' time, recorded on usage at $0.
-		{ "binding": "BILLING", "service": "g1t-billing" },
-		// A job with an `environment:` makes its run's deployment there.
-		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
-		// Pages open on a repository hear its runs' jobs start and finish.
-		{ "binding": "NOTIFY", "service": "g1t-notify" }
-	],
-	// actions/cache entries and artifacts, which the API writes: deleted here when they
-	// are evicted or expire.
-	"r2_buckets": [{ "binding": "ACTIONS_CACHE", "bucket_name": "g1t-actions-cache" }],
-	// Every event on the bus: what starts workflows, and pushes that change them.
-	"queues": {
-		"consumers": [{ "queue": "g1t-events-actions", "max_batch_size": 10, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
-	},
-	// What g1t keeps and allows (src/limits.rs): days a finished job's log is
-	// kept (0: for good); what a workspace without the plan may keep in
-	// artifacts and the cache together, in bytes; and jobs it may have
-	// running on its self-hosted runners at once. 0 is no cap.
-	"vars": {
-		"LOG_RETENTION_DAYS": "90",
-		"FREE_ACTIONS_STORAGE_BYTES": "2147483648",
-		"FREE_SELF_HOSTED_JOBS": "4"
-	},
-	// Schedules, jobs waiting for room, and jobs whose runner went quiet.
-	"triggers": { "crons": ["* * * * *"] },
-	// Every log kept: few requests, and a failed job must be traceable.
-	"observability": { "enabled": true, "head_sampling_rate": 1 }
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "g1t-actions",
+  "account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+  "compatibility_date": "2026-09-26",
+  // Runs next to its database: moving a run along makes many queries in turn.
+  "placement": { "mode": "off" },
+  "main": "build/index.js",
+  "build": { "command": "node ../../scripts/build-rust-worker.mjs" },
+  // Reached only through service bindings.
+  "workers_dev": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "g1t-actions",
+      "database_id": "95ccaa88-8e15-4b90-81e2-0d02d8ce869d",
+      "migrations_dir": "migrations",
+    },
+  ],
+  // ACTIONS_KEY (secret): seals secrets at rest. Never regenerate it:
+  // secrets saved under the old key could no longer be opened.
+  "services": [
+    { "binding": "REPOS", "service": "g1t-repos" },
+    { "binding": "WORK", "service": "g1t-work" },
+    { "binding": "IDENTITY", "service": "g1t-identity" },
+    { "binding": "RUNNER", "service": "g1t-runner" },
+    { "binding": "EVENTS", "service": "g1t-events" },
+    // A repository's secrets and variables belong to its project.
+    { "binding": "PROJECTS", "service": "g1t-projects" },
+    // Self-hosted runners' time, recorded on usage at $0.
+    { "binding": "BILLING", "service": "g1t-billing" },
+    // A job with an `environment:` makes its run's deployment there.
+    { "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
+    // Pages open on a repository hear its runs' jobs start and finish.
+    { "binding": "NOTIFY", "service": "g1t-notify" },
+  ],
+  // actions/cache entries and artifacts, which the API writes: deleted here when they
+  // are evicted or expire.
+  "r2_buckets": [{ "binding": "ACTIONS_CACHE", "bucket_name": "g1t-actions-cache" }],
+  // Every event on the bus: what starts workflows, and pushes that change them.
+  "queues": {
+    "consumers": [{ "queue": "g1t-events-actions", "max_batch_size": 10, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }],
+  },
+  // What g1t keeps and allows (src/limits.rs): days a finished job's log is
+  // kept (0: for good); what a workspace without the plan may keep in
+  // artifacts and the cache together, in bytes; and jobs it may have
+  // running on its self-hosted runners at once. 0 is no cap.
+  "vars": {
+    "LOG_RETENTION_DAYS": "90",
+    "FREE_ACTIONS_STORAGE_BYTES": "2147483648",
+    "FREE_SELF_HOSTED_JOBS": "4",
+  },
+  // Schedules, jobs waiting for room, and jobs whose runner went quiet.
+  "triggers": { "crons": ["* * * * *"] },
+  // Every log kept: few requests, and a failed job must be traceable.
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
 }

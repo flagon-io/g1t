@@ -92,9 +92,7 @@ export function ConfirmDialog({
             </AlertDialogHeader>
             {children && <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted">{children}</ul>}
             {extra}
-            {confirm != null && (
-              <ConfirmName confirm={confirm} id={`${id}-confirm`} value={typed} onChange={(event) => setTyped(event.target.value)} />
-            )}
+            {confirm != null && <ConfirmName confirm={confirm} id={`${id}-confirm`} value={typed} onChange={(event) => setTyped(event.target.value)} />}
             <ErrorText>{error}</ErrorText>
             <AlertDialogFooter>
               <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
@@ -132,10 +130,7 @@ export function ArchivedBanner({ base, owner, settings }: { base: string; owner:
         </span>
       </p>
       {owner && (
-        <Link
-          to={`${base}/settings#danger-zone`}
-          className="shrink-0 pl-6.5 font-medium text-warn hover:underline sm:pl-0"
-        >
+        <Link to={`${base}/settings#danger-zone`} className="shrink-0 pl-6.5 font-medium text-warn hover:underline sm:pl-0">
           Unarchive
         </Link>
       )}

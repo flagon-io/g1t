@@ -64,7 +64,10 @@ export function reactionEmoji(input: unknown): ReactionEmoji {
 
 /** A custom emoji's name as kept: lowercase, without colons. */
 export function emojiName(input: unknown): { ok: true; name: string } | { ok: false; message: string } {
-  const name = (typeof input === "string" ? input : "").trim().replace(/^:+|:+$/g, "").toLowerCase();
+  const name = (typeof input === "string" ? input : "")
+    .trim()
+    .replace(/^:+|:+$/g, "")
+    .toLowerCase();
   if (name.length < 2 || name.length > 32) return { ok: false, message: "An emoji name is 2 to 32 characters." };
   if (!NAME.test(name)) return { ok: false, message: "An emoji name can only use lowercase letters, digits, -, _ and +." };
   if (STANDARD_SHORTCODES.has(name)) return { ok: false, message: `:${name}: is a standard emoji. Pick another name.` };

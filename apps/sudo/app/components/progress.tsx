@@ -78,9 +78,7 @@ export function Progress() {
   return (
     <div
       aria-hidden="true"
-      className={`pointer-events-none fixed inset-x-0 top-0 z-60 h-0.75 transition-opacity duration-300 ${
-        visible ? "opacity-100" : "opacity-0"
-      }`}
+      className={`pointer-events-none fixed inset-x-0 top-0 z-60 h-0.75 transition-opacity duration-300 ${visible ? "opacity-100" : "opacity-0"}`}
     >
       <div
         className="h-full w-0 bg-accent shadow-[0_0_10px_var(--color-accent)] transition-[width] duration-200 ease-out"

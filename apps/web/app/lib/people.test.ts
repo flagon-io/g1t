@@ -76,7 +76,10 @@ test("the directory lists people, in one search", () => {
   // Every entry is a person with their teams.
   const sofia = directoryEntries(directory, "sofia")[0]!;
   assert.deepEqual(Object.keys(sofia), ["person", "teams"]);
-  assert.deepEqual(sofia.teams.map((t) => t.slug), ["sales"]);
+  assert.deepEqual(
+    sofia.teams.map((t) => t.slug),
+    ["sales"],
+  );
 });
 
 test("forms read plainly", () => {

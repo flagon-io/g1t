@@ -74,8 +74,8 @@ export function ConfirmItIsYou({ pending, hasPassword }: { pending: NonNullable<
         </Form>
       ) : (
         <p className="mt-2 text-sm text-muted">
-          Your account signs in with GitHub only. Sign out, sign in with GitHub again, and make this change within 10
-          minutes. Or set a password with Forgot your password on the sign-in page.
+          Your account signs in with GitHub only. Sign out, sign in with GitHub again, and make this change within 10 minutes. Or set a password with Forgot
+          your password on the sign-in page.
         </p>
       )}
     </div>
@@ -138,9 +138,7 @@ export function EmailsSection({
                     {email.primary && <Badge size="md">Primary</Badge>}
                     {email.backup && <Badge size="md">Backup</Badge>}
                     {email.verified ? (
-                      <span>
-                        Confirmed {email.verifiedAt ? <TimeAgo at={email.verifiedAt} /> : null}
-                      </span>
+                      <span>Confirmed {email.verifiedAt ? <TimeAgo at={email.verifiedAt} /> : null}</span>
                     ) : (
                       <span className="text-warn">Unconfirmed: check your inbox for the link</span>
                     )}
@@ -178,9 +176,7 @@ export function EmailsSection({
 
       <div className="mt-8">
         <h2 className="font-medium">Backup address</h2>
-        <p className="mt-1 text-sm text-muted">
-          Security notices, such as a new address or a changed password, go to your primary and to this address.
-        </p>
+        <p className="mt-1 text-sm text-muted">Security notices, such as a new address or a changed password, go to your primary and to this address.</p>
         <Form method="post" className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
           <input type="hidden" name="intent" value="backup-email" />
           <div className="block grow">
@@ -198,9 +194,7 @@ export function EmailsSection({
           </SubmitButton>
         </Form>
         <Answer actionData={answerFor("backup-email")} />
-        {backups.length === 0 && (
-          <p className="mt-2 text-xs text-faint">Add and confirm a second address to choose a backup.</p>
-        )}
+        {backups.length === 0 && <p className="mt-2 text-xs text-faint">Add and confirm a second address to choose a backup.</p>}
       </div>
 
       <div className="mt-8">
@@ -212,8 +206,8 @@ export function EmailsSection({
             <span className="font-mono text-fg wrap-anywhere">{data.noreply}</span> instead of your primary address.
           </SwitchCard>
           <SwitchCard name="block" defaultChecked={data.blockPrivatePushes} title="Block pushes that expose my email">
-            While your address is private, a push is refused if a commit in it has one of your confirmed
-            addresses as its author or committer. Commit with your noreply address instead.
+            While your address is private, a push is refused if a commit in it has one of your confirmed addresses as its author or committer. Commit with your
+            noreply address instead.
           </SwitchCard>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-faint">

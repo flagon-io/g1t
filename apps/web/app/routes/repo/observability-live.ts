@@ -18,7 +18,5 @@ export async function loader({ context, request, params }: Route.LoaderArgs) {
   if (origin && origin !== new URL(request.url).origin) return new Response("Cross-origin socket refused", { status: 403 });
   const { projectId } = await observed(context, params, request);
   if (!env.TELEMETRY) return new Response("Observability is not set up here.", { status: 503 });
-  return env.TELEMETRY.fetch(
-    new Request(`https://telemetry/live?project_id=${encodeURIComponent(projectId)}`, { headers: { upgrade: "websocket" } }),
-  );
+  return env.TELEMETRY.fetch(new Request(`https://telemetry/live?project_id=${encodeURIComponent(projectId)}`, { headers: { upgrade: "websocket" } }));
 }

@@ -41,13 +41,7 @@
  * who is watching it, and hands each change to their feeds. See
  * docs.g1t.sh/guides/notifications/, "Pages that update live".
  */
-import {
-  NOTIFY_VIEWER_HEADER,
-  identityClient,
-  type FeedDelivery,
-  type ServiceBinding,
-  type Viewer,
-} from "@g1t/contracts";
+import { NOTIFY_VIEWER_HEADER, identityClient, type FeedDelivery, type ServiceBinding, type Viewer } from "@g1t/contracts";
 
 import { FEED_USERNAME_HEADER, FEED_USER_ID_HEADER, Feed, type FeedEnv } from "./feed.ts";
 import { cleanChannelId } from "./forget.ts";
@@ -199,9 +193,7 @@ async function answer(env: Env, method: string, args: any): Promise<Response> {
     case "presence":
       return Response.json(await stub.own({ user_id: userId, username: typeof args.username === "string" ? args.username : "" }));
     case "set_presence":
-      return Response.json(
-        await stub.setPresence({ user_id: userId, username: typeof args.username === "string" ? args.username : "" }, args.change ?? {}),
-      );
+      return Response.json(await stub.setPresence({ user_id: userId, username: typeof args.username === "string" ? args.username : "" }, args.change ?? {}));
     default:
       return new Response("Unknown method\n", { status: 404 });
   }
@@ -241,4 +233,3 @@ export default {
     return answer(env, match[1], args);
   },
 } satisfies ExportedHandler<Env>;
-

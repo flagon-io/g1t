@@ -120,14 +120,8 @@ export class WorkspaceMeter {
     if (workspace && workspace !== this.workspace()) this.setMeta("workspace", workspace);
     const n = Math.max(0, Math.round(bytes));
     if (!n) return;
-    this.sql.exec(
-      "INSERT INTO meter_days (day, bytes) VALUES (?, ?) ON CONFLICT (day) DO UPDATE SET bytes = bytes + excluded.bytes",
-      day(now), n,
-    );
-    this.sql.exec(
-      "INSERT INTO meter_months (month, bytes) VALUES (?, ?) ON CONFLICT (month) DO UPDATE SET bytes = bytes + excluded.bytes",
-      monthOf(now), n,
-    );
+    this.sql.exec("INSERT INTO meter_days (day, bytes) VALUES (?, ?) ON CONFLICT (day) DO UPDATE SET bytes = bytes + excluded.bytes", day(now), n);
+    this.sql.exec("INSERT INTO meter_months (month, bytes) VALUES (?, ?) ON CONFLICT (month) DO UPDATE SET bytes = bytes + excluded.bytes", monthOf(now), n);
     this.sql.exec("DELETE FROM meter_days WHERE day < ?", day(now - 40 * DAY_MS));
     if (this.standing() === "paid" && (await this.state.storage.getAlarm()) === null) {
       await this.state.storage.setAlarm(noteAt(now));

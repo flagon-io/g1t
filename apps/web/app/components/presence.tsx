@@ -15,13 +15,7 @@ import { useEmojiContext } from "./emoji/context";
 
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
-import {
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-} from "./ui/dropdown-menu";
+import { DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from "./ui/dropdown-menu";
 import { Hint } from "./ui/hint";
 import { Input } from "./ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -66,7 +60,17 @@ const DOT: Record<Exclude<Shown, "offline">, string> = {
  * The dot itself. `ring` is the colour behind it, so it sits cut out of
  * the avatar's corner; nothing shows for someone offline, or not known.
  */
-export function PresenceDot({ entry, size = 10, ring = "var(--color-bg)", className }: { entry: PresenceEntry | null; size?: number; ring?: string; className?: string }) {
+export function PresenceDot({
+  entry,
+  size = 10,
+  ring = "var(--color-bg)",
+  className,
+}: {
+  entry: PresenceEntry | null;
+  size?: number;
+  ring?: string;
+  className?: string;
+}) {
   const now = useMinute();
   const shown = shownAs(entry, now);
   if (shown === "offline") return null;
@@ -114,7 +118,17 @@ export function WithPresence({
  * or a button: no hint and no focus of its own, the words for screen
  * readers only.
  */
-export function StatusEmoji({ status, size = 14, className, inert = false }: { status: PersonStatus | null | undefined; size?: number; className?: string; inert?: boolean }) {
+export function StatusEmoji({
+  status,
+  size = 14,
+  className,
+  inert = false,
+}: {
+  status: PersonStatus | null | undefined;
+  size?: number;
+  className?: string;
+  inert?: boolean;
+}) {
   const now = useMinute();
   const { byName, usercontent } = useEmojiContext();
   const live = liveStatus(status, now);
@@ -212,7 +226,11 @@ export function PresenceSummary({ person, className }: { person: { id?: string |
       )}
       <p className="flex items-center gap-2">
         <span className="flex size-3.25 items-center justify-center">
-          {shown === "offline" ? <span className="size-2 rounded-full shadow-[inset_0_0_0_1.5px_var(--color-line-strong)]" /> : <PresenceDot entry={entry} size={9} ring="transparent" />}
+          {shown === "offline" ? (
+            <span className="size-2 rounded-full shadow-[inset_0_0_0_1.5px_var(--color-line-strong)]" />
+          ) : (
+            <PresenceDot entry={entry} size={9} ring="transparent" />
+          )}
         </span>
         {SHOWN_LABEL[shown]}
         {shown === "dnd" && entry.dnd_until && <span className="text-faint">{untilLabel(entry.dnd_until, new Date(now))}</span>}

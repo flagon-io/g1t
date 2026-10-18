@@ -20,11 +20,7 @@ import { Card } from "../../components/ui/card";
 import { FieldLabel, Field as FormField } from "../../components/ui/field";
 import { Input as TextInput } from "../../components/ui/input";
 import { actions, repos, work } from "../../lib/services.server";
-import {
-  assertSameOrigin,
-  getViewer,
-  requireUser,
-} from "../../lib/session.server";
+import { assertSameOrigin, getViewer, requireUser } from "../../lib/session.server";
 import { refusal, requireInsider } from "../../lib/access.server";
 import { Unavailable } from "../../components/boundary";
 import { isFailed, part } from "../../lib/partial";
@@ -58,11 +54,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     // How long workflow runs' artifacts are kept.
     retention: isFailed(retention) ? retention : retention.ok ? retention.value : { days: 14, maximum_allowed_days: 90 },
     // Whether work items can be filed from it; null when it was not answered.
-    issues: isFailed(settings)
-      ? settings
-      : settings.ok
-        ? { on: settings.value.workItemsEnabled ?? true, chosen: settings.value.hasWorkItems != null }
-        : null,
+    issues: isFailed(settings) ? settings : settings.ok ? { on: settings.value.workItemsEnabled ?? true, chosen: settings.value.hasWorkItems != null } : null,
     // How commits and work items are handled; null when it was not answered.
     pullSettings: isFailed(settings)
       ? settings
@@ -164,7 +156,9 @@ export async function action({ request, params, context }: Route.ActionArgs): Pr
         await repos.update(user, path, {
           website: text("website"),
           // Typed with commas or spaces between them; the service tidies the rest.
-          topics: text("topics").split(/[\s,]+/).filter(Boolean),
+          topics: text("topics")
+            .split(/[\s,]+/)
+            .filter(Boolean),
         }),
       );
   }
@@ -230,10 +224,7 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
           </Form>
         </Section>
 
-        <Section
-          title="Branches"
-          about="The branch everything lands on, and renaming branches."
-        >
+        <Section title="Branches" about="The branch everything lands on, and renaming branches.">
           {isFailed(branches) ? (
             <Unavailable what={branches.what} />
           ) : (
@@ -259,8 +250,7 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
             <span className="min-w-0 grow">
               <span className="block text-sm font-medium">Branches and merging</span>
               <span className="mt-0.5 block text-sm text-muted">
-                Merge methods and commit messages, auto-merge, deleting branches after merging, and the rules for{" "}
-                {repo.defaultBranch}.
+                Merge methods and commit messages, auto-merge, deleting branches after merging, and the rules for {repo.defaultBranch}.
               </span>
             </span>
             <ChevronRight size={16} className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5" />
@@ -278,8 +268,8 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
               <fieldset disabled={archived} className="min-w-0 space-y-3">
                 <input type="hidden" name="intent" value="features" />
                 <SettingToggle name="hasWorkItems" on={issues.on} title="Work items" disabled={archived}>
-                  File the workspace's work items from it: bugs, ideas and work to do. Turned off, no new work item can
-                  be filed from it; those filed already stay, and work items can still land in it as a target.
+                  File the workspace's work items from it: bugs, ideas and work to do. Turned off, no new work item can be filed from it; those filed already
+                  stay, and work items can still land in it as a target.
                   {repo.forkedFrom && !issues.chosen && " Off by default, as it was made as a fork."}
                 </SettingToggle>
                 {pullSettings && (
@@ -289,10 +279,9 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
                     title="Land work items with merged linked pull requests"
                     disabled={archived}
                   >
-                    When a pull request merges into {repo.defaultBranch}, the work items it is for or names after a closing
-                    keyword (<span className="font-mono text-xs">Fixes #12</span>,{" "}
-                    <span className="font-mono text-xs">Closes #12</span>) land here, and close once nothing else is left to land. Off,
-                    they stay open to be closed by hand.
+                    When a pull request merges into {repo.defaultBranch}, the work items it is for or names after a closing keyword (
+                    <span className="font-mono text-xs">Fixes #12</span>, <span className="font-mono text-xs">Closes #12</span>) land here, and close once
+                    nothing else is left to land. Off, they stay open to be closed by hand.
                   </SettingToggle>
                 )}
                 <div className="flex flex-wrap items-center gap-4 pt-1">
@@ -323,8 +312,8 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
                   disabled={archived}
                 >
                   Every commit made on g1t.sh, from editing a file to merging a pull request, carries a{" "}
-                  <span className="font-mono text-xs">Signed-off-by:</span> line for whoever made it: their statement
-                  that they may contribute it under the project's license, as the{" "}
+                  <span className="font-mono text-xs">Signed-off-by:</span> line for whoever made it: their statement that they may contribute it under the
+                  project's license, as the{" "}
                   <a
                     href="https://developercertificate.org/"
                     target="_blank"
@@ -342,8 +331,8 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
                   title="Allow comments on individual commits"
                   disabled={archived}
                 >
-                  Anyone who can read it may comment on a commit, or on one line of a file a commit changed, from the
-                  commit's page. Off, comments already made stay readable and no new ones can be added.
+                  Anyone who can read it may comment on a commit, or on one line of a file a commit changed, from the commit's page. Off, comments already made
+                  stay readable and no new ones can be added.
                 </SettingToggle>
                 <div className="flex flex-wrap items-center gap-4 pt-1">
                   <SubmitButton variant="outline" match={{ intent: "commits" }} pending="Saving…">
@@ -362,12 +351,7 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
 
         <Section id="archives" title="Archives" about="What the .zip and .tar.gz downloads of its code hold.">
           {/* Large file storage is not built yet: shown so the choice has its place. */}
-          <SwitchCard
-            name="includeLfsInArchives"
-            defaultChecked={false}
-            disabled
-            title="Include Git LFS objects in archives"
-          >
+          <SwitchCard name="includeLfsInArchives" defaultChecked={false} disabled title="Include Git LFS objects in archives">
             <Badge tone="neutral" size="sm" className="mr-1.5 align-middle">
               Coming soon
             </Badge>
@@ -385,15 +369,7 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
                 label="Days to keep artifacts"
                 hint={`1 to ${retention.maximum_allowed_days}. A workflow's retention-days can ask for fewer, never more. Artifacts already uploaded keep their expiry.`}
               >
-                <Input
-                  name="days"
-                  type="number"
-                  min={1}
-                  max={retention.maximum_allowed_days}
-                  required
-                  defaultValue={retention.days}
-                  className="w-28"
-                />
+                <Input name="days" type="number" min={1} max={retention.maximum_allowed_days} required defaultValue={retention.days} className="w-28" />
               </Field>
               <div className="flex flex-wrap items-center gap-4 pt-1">
                 <SubmitButton match={{ intent: "artifacts" }} pending="Saving…">
@@ -439,8 +415,7 @@ export default function RepoSettings({ loaderData, actionData }: Route.Component
               <p>Only an owner of the workspace can change who can see it: its member privileges keep that to owners.</p>
             ) : (
               <p>
-                Renaming it needs the Admin role, and changing who can see it an owner of the workspace, unless its member
-                privileges let repository admins.
+                Renaming it needs the Admin role, and changing who can see it an owner of the workspace, unless its member privileges let repository admins.
               </p>
             )}
             <LifecycleNote base={base} />
@@ -465,17 +440,7 @@ function LifecycleNote({ base }: { base: string }) {
 }
 
 /** The most branches and tags one push may update: off (0), or a number. */
-function PushLimitForm({
-  limit,
-  disabled,
-  owner,
-  result,
-}: {
-  limit: number;
-  disabled: boolean;
-  owner: boolean;
-  result: Outcome | undefined;
-}) {
+function PushLimitForm({ limit, disabled, owner, result }: { limit: number; disabled: boolean; owner: boolean; result: Outcome | undefined }) {
   const [on, setOn] = useState(limit > 0);
   return (
     <Form method="post" key={limit} className="space-y-3">
@@ -488,9 +453,8 @@ function PushLimitForm({
           disabled={disabled}
           title="Limit how many branches and tags can be updated in a single push"
         >
-          A push that creates, moves or deletes more than this many branches and tags at once is refused whole, so a
-          mistaken <span className="font-mono text-xs">git push --mirror</span> or{" "}
-          <span className="font-mono text-xs">--all</span> cannot rewrite the repository.
+          A push that creates, moves or deletes more than this many branches and tags at once is refused whole, so a mistaken{" "}
+          <span className="font-mono text-xs">git push --mirror</span> or <span className="font-mono text-xs">--all</span> cannot rewrite the repository.
         </SwitchCard>
         {on && (
           <FormField className="pl-4">
@@ -543,7 +507,9 @@ function RenameForm({
       <fieldset disabled={!owner || archived} className="min-w-0 space-y-3">
         <input type="hidden" name="intent" value="rename" />
         <FormField>
-          <FieldLabel htmlFor="repo-name" className="sr-only">Name</FieldLabel>
+          <FieldLabel htmlFor="repo-name" className="sr-only">
+            Name
+          </FieldLabel>
           <div className="flex flex-col gap-3 sm:flex-row">
             <TextInput
               id="repo-name"
@@ -566,14 +532,23 @@ function RenameForm({
             needs("administer")
           ) : changed ? (
             <>
-              It moves to <span className="font-mono break-all text-fg">g1t.sh/{repo.namespace}/{wanted}</span>. Links, git
-              remotes and API calls to <span className="font-mono break-all">g1t.sh/{repo.namespace}/{repo.name}</span>{" "}
+              It moves to{" "}
+              <span className="font-mono break-all text-fg">
+                g1t.sh/{repo.namespace}/{wanted}
+              </span>
+              . Links, git remotes and API calls to{" "}
+              <span className="font-mono break-all">
+                g1t.sh/{repo.namespace}/{repo.name}
+              </span>{" "}
               redirect there until a repository is made at the old address.
             </>
           ) : (
             <>
-              At <span className="font-mono break-all">g1t.sh/{repo.namespace}/{repo.name}</span>. After a rename, the old
-              address redirects to the new one.
+              At{" "}
+              <span className="font-mono break-all">
+                g1t.sh/{repo.namespace}/{repo.name}
+              </span>
+              . After a rename, the old address redirects to the new one.
             </>
           )}
         </p>
@@ -605,9 +580,7 @@ function DefaultBranchForm({
         <fieldset disabled={archived} className="min-w-0">
           <input type="hidden" name="intent" value="default-branch" />
           <p className="text-sm font-medium">Default branch</p>
-          <p className="mt-1 text-sm text-muted">
-            What the repository opens on, what pull requests target, and what branch protection covers.
-          </p>
+          <p className="mt-1 text-sm text-muted">What the repository opens on, what pull requests target, and what branch protection covers.</p>
           <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
             <Select name="branch" value={branch} onValueChange={setBranch} disabled={archived || options.length < 2}>
               <SelectTrigger aria-label="Default branch" className="font-mono sm:max-w-xs">
@@ -625,9 +598,7 @@ function DefaultBranchForm({
               {busy ? "Changing…" : "Change default branch"}
             </Button>
           </div>
-          {options.length < 2 && (
-            <p className="mt-2 text-xs text-faint">Push another branch to make it the default instead.</p>
-          )}
+          {options.length < 2 && <p className="mt-2 text-xs text-faint">Push another branch to make it the default instead.</p>}
           <div className="mt-2">
             <Status intent="default-branch" data={result} />
           </div>
@@ -763,9 +734,14 @@ function VisibilityAction({ full, isPrivate, fork, error }: { full: string; isPr
         </>
       ) : (
         <>
-          <li>Only people with access can see it: owners, members by the workspace's base permission, and people you add. Anyone else gets a page that says it does not exist.</li>
+          <li>
+            Only people with access can see it: owners, members by the workspace's base permission, and people you add. Anyone else gets a page that says it
+            does not exist.
+          </li>
           <li>It leaves search and Explore, and links to it stop showing a preview card.</li>
-          <li>Its storage counts toward the workspace's private storage. A free workspace has 1 GB, and making it private is refused when that would go over.</li>
+          <li>
+            Its storage counts toward the workspace's private storage. A free workspace has 1 GB, and making it private is refused when that would go over.
+          </li>
         </>
       )}
     </ConfirmDialog>
@@ -773,15 +749,7 @@ function VisibilityAction({ full, isPrivate, fork, error }: { full: string; isPr
 }
 
 /** A fork made an ordinary repository, with no parent. */
-function DetachAction({
-  full,
-  parent,
-  error,
-}: {
-  full: string;
-  parent: { namespace: string; name: string } | null;
-  error: string | null;
-}) {
+function DetachAction({ full, parent, error }: { full: string; parent: { namespace: string; name: string } | null; error: string | null }) {
   const from = parent ? `${parent.namespace}/${parent.name}` : "the repository it came from";
   return (
     <ConfirmDialog

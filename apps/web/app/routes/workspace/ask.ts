@@ -72,9 +72,19 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   let instruction = text("instruction");
   let built: Built | null = null;
   if (input?.new_repository === true) {
-    const made = before?.repo_url && before.default_branch
-      ? { repo_url: before.repo_url, default_branch: before.default_branch, production_url: before.production_url ?? null, deploy_error: before.deploy_error ?? null }
-      : await newRepository(user, namespace, name, { title: (title ?? text("title")) || name, isPrivate: input.private === true, deploy: input.deploy !== false });
+    const made =
+      before?.repo_url && before.default_branch
+        ? {
+            repo_url: before.repo_url,
+            default_branch: before.default_branch,
+            production_url: before.production_url ?? null,
+            deploy_error: before.deploy_error ?? null,
+          }
+        : await newRepository(user, namespace, name, {
+            title: (title ?? text("title")) || name,
+            isPrivate: input.private === true,
+            deploy: input.deploy !== false,
+          });
     if ("error" in made) {
       await kept.save({ starting_at: 0 });
       return Response.json({ error: made.error }, { status: 400 });
@@ -94,9 +104,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const started = result.value;
   const session_url = started.sessionUrl ?? (started.session ? sessionPath(namespace, started.session.id) : null);
   await kept.save(
-    started.handoff
-      ? { item: started.item }
-      : { item: started.item, started: true, session_url, provider_session_url: started.providerSessionUrl ?? null },
+    started.handoff ? { item: started.item } : { item: started.item, started: true, session_url, provider_session_url: started.providerSessionUrl ?? null },
   );
   return Response.json({
     item: started.item,

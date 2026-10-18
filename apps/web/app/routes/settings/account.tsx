@@ -51,7 +51,9 @@ export async function action({ request, context }: Route.ActionArgs) {
     // Identity unreachable is not a refusal: say so, and where else to ask.
     const result = await privacy.request(user).catch(() => null);
     if (!result) return { erasureError: "We could not record your request just now. Try again, or email support@g1t.sh." };
-    return result.ok ? { erasureNotice: `Request ${result.value.id} received. We will respond by ${result.value.due_at.slice(0, 10)}.` } : { erasureError: result.error.message };
+    return result.ok
+      ? { erasureNotice: `Request ${result.value.id} received. We will respond by ${result.value.due_at.slice(0, 10)}.` }
+      : { erasureError: result.error.message };
   }
   if (form.get("intent") !== "delete-account") return null;
   const password = String(form.get("password") ?? "");
@@ -84,9 +86,7 @@ export default function AccountSettings({ loaderData, actionData }: Route.Compon
         <h2 id="appearance-heading" className="font-medium">
           Appearance
         </h2>
-        <p className="mt-1 text-sm text-muted">
-          Light, dark, or Auto to follow your system. This browser remembers it.
-        </p>
+        <p className="mt-1 text-sm text-muted">Light, dark, or Auto to follow your system. This browser remembers it.</p>
         <ThemeSwitch className="mt-3 w-full max-w-xs" />
       </section>
       <section id="developer" aria-labelledby="developer-heading" className="scroll-mt-20">
@@ -99,26 +99,46 @@ export default function AccountSettings({ loaderData, actionData }: Route.Compon
         </div>
       </section>
       <section aria-labelledby="erasure-heading" className="space-y-3">
-        <h2 id="erasure-heading" className="font-medium">Erase my personal data</h2>
-        <p className="text-sm text-muted">Request erasure even if workspace ownership or billing prevents account closure. We review shared content and any records we must retain, then explain the outcome. This request does not immediately delete your account.</p>
-        {isFailed(loaderData.erasure) ? <Unavailable what="Your erasure request" /> : loaderData.erasure ? <p className="text-sm">Request {loaderData.erasure.id}: {loaderData.erasure.status}. Response due {loaderData.erasure.due_at.slice(0, 10)}.</p> : null}
-        {actionData?.erasureNotice && <p role="status" className="text-sm">{actionData.erasureNotice}</p>}
+        <h2 id="erasure-heading" className="font-medium">
+          Erase my personal data
+        </h2>
+        <p className="text-sm text-muted">
+          Request erasure even if workspace ownership or billing prevents account closure. We review shared content and any records we must retain, then explain
+          the outcome. This request does not immediately delete your account.
+        </p>
+        {isFailed(loaderData.erasure) ? (
+          <Unavailable what="Your erasure request" />
+        ) : loaderData.erasure ? (
+          <p className="text-sm">
+            Request {loaderData.erasure.id}: {loaderData.erasure.status}. Response due {loaderData.erasure.due_at.slice(0, 10)}.
+          </p>
+        ) : null}
+        {actionData?.erasureNotice && (
+          <p role="status" className="text-sm">
+            {actionData.erasureNotice}
+          </p>
+        )}
         <ErrorText>{actionData?.erasureError}</ErrorText>
-        {!isFailed(loaderData.erasure) && (!loaderData.erasure || ["completed", "refused"].includes(loaderData.erasure.status)) && <Form method="post">
-          <SubmitButton name="intent" value="request-erasure" pending="Recording request...">Request erasure</SubmitButton>
-        </Form>}
-        <p className="text-sm text-muted">For specific content, a request without signing in, or a question about an existing request, email <a href="mailto:support@g1t.sh" className="underline">support@g1t.sh</a>.</p>
+        {!isFailed(loaderData.erasure) && (!loaderData.erasure || ["completed", "refused"].includes(loaderData.erasure.status)) && (
+          <Form method="post">
+            <SubmitButton name="intent" value="request-erasure" pending="Recording request...">
+              Request erasure
+            </SubmitButton>
+          </Form>
+        )}
+        <p className="text-sm text-muted">
+          For specific content, a request without signing in, or a question about an existing request, email{" "}
+          <a href="mailto:support@g1t.sh" className="underline">
+            support@g1t.sh
+          </a>
+          .
+        </p>
       </section>
       <DangerZone>
         {isFailed(deletion) ? (
           <Unavailable what="What deleting your account would take" />
         ) : (
-          <DeleteAccountAction
-            username={username}
-            deletion={deletion}
-            hasPassword={hasPassword}
-            error={actionData?.deleteError}
-          />
+          <DeleteAccountAction username={username} deletion={deletion} hasPassword={hasPassword} error={actionData?.deleteError} />
         )}
       </DangerZone>
     </div>

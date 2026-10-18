@@ -40,28 +40,11 @@ const GROUPS: { title: string; events: string[] }[] = [
   },
   {
     title: "Pull requests",
-    events: [
-      "pull.opened",
-      "pull.ready",
-      "pull.converted_to_draft",
-      "pull.updated",
-      "pull.merge_requested",
-      "pull.merged",
-      "pull.closed",
-      "pull.reopened",
-    ],
+    events: ["pull.opened", "pull.ready", "pull.converted_to_draft", "pull.updated", "pull.merge_requested", "pull.merged", "pull.closed", "pull.reopened"],
   },
   {
     title: "Releases",
-    events: [
-      "release.created",
-      "release.published",
-      "release.released",
-      "release.prereleased",
-      "release.edited",
-      "release.unpublished",
-      "release.deleted",
-    ],
+    events: ["release.created", "release.published", "release.released", "release.prereleased", "release.edited", "release.unpublished", "release.deleted"],
   },
   {
     title: "Checks and the queue",
@@ -86,14 +69,7 @@ const GROUPS: { title: string; events: string[] }[] = [
   { title: "Sessions and decisions", events: ["session.started", "session.ended", "session.appended", "decision.recorded"] },
   {
     title: "Coordination",
-    events: [
-      "work.claimed",
-      "work.released",
-      "work.claim_expired",
-      "work.handoff_requested",
-      "dependency.changed",
-      "overlap.detected",
-    ],
+    events: ["work.claimed", "work.released", "work.claim_expired", "work.handoff_requested", "dependency.changed", "overlap.detected"],
   },
   { title: "Access", events: ["workspace.member_joined", "repo.collaborator_added", "repo.collaborator_removed", "repo.collaborator_role_changed"] },
   {
@@ -113,8 +89,7 @@ const GROUPS: { title: string; events: string[] }[] = [
 ];
 
 function StatusDot({ status }: { status: string | null }) {
-  const color =
-    status === "delivered" ? "bg-success" : status === "failed" ? "bg-danger" : status === "pending" ? "bg-warn" : "bg-faint";
+  const color = status === "delivered" ? "bg-success" : status === "failed" ? "bg-danger" : status === "pending" ? "bg-warn" : "bg-faint";
   return <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${color}`} />;
 }
 
@@ -141,11 +116,7 @@ function DeliveryRow({ delivery, manage }: { delivery: HookDelivery; manage: boo
         <StatusDot status={delivery.status} />
         <span className="font-mono text-[0.8125rem]">{delivery.event}</span>
         <span className="min-w-0 truncate text-xs text-muted">
-          {delivery.responseStatus != null
-            ? `${delivery.responseStatus}`
-            : delivery.error
-              ? delivery.error
-              : "Not yet sent"}
+          {delivery.responseStatus != null ? `${delivery.responseStatus}` : delivery.error ? delivery.error : "Not yet sent"}
           {delivery.attempts > 1 && ` · ${delivery.attempts} attempts`}
           {delivery.status === "pending" && delivery.nextAttemptAt && " · will try again"}
         </span>
@@ -162,9 +133,7 @@ function DeliveryRow({ delivery, manage }: { delivery: HookDelivery; manage: boo
           </pre>
         </div>
         <div className="min-w-0">
-          <p className="mb-1.5 text-xs font-medium text-muted">
-            Response{delivery.responseStatus != null && ` · ${delivery.responseStatus}`}
-          </p>
+          <p className="mb-1.5 text-xs font-medium text-muted">Response{delivery.responseStatus != null && ` · ${delivery.responseStatus}`}</p>
           <pre className="max-h-80 overflow-auto rounded-lg bg-surface p-3 font-mono text-xs ring-1 ring-line">
             <code>{delivery.error ?? (pretty(delivery.responseBody) || "No body.")}</code>
           </pre>
@@ -172,11 +141,7 @@ function DeliveryRow({ delivery, manage }: { delivery: HookDelivery; manage: boo
             <Form method="post" className="mt-3">
               <input type="hidden" name="intent" value="redeliver" />
               <input type="hidden" name="delivery" value={delivery.id} />
-              <SubmitButton
-                variant="outline"
-                match={{ intent: "redeliver", delivery: delivery.id }}
-                pending="Redelivering…"
-              >
+              <SubmitButton variant="outline" match={{ intent: "redeliver", delivery: delivery.id }} pending="Redelivering…">
                 <RotateCw size={14} />
                 Redeliver
               </SubmitButton>
@@ -247,16 +212,7 @@ function HookRow({ hook, open, deliveries, manage }: { hook: Hook; open: boolean
 function IconButton({ intent, id, label, children }: { intent: string; id: string; label: string; children: React.ReactNode }) {
   return (
     <Hint label={label}>
-      <SubmitButton
-        icon
-        name="intent"
-        value={intent}
-        match={{ id }}
-        aria-label={label}
-        variant="ghost"
-        size="inline"
-        className="p-2"
-      >
+      <SubmitButton icon name="intent" value={intent} match={{ id }} aria-label={label} variant="ghost" size="inline" className="p-2">
         {children}
       </SubmitButton>
     </Hint>
@@ -371,13 +327,7 @@ export function WebhooksPanel({
         <Card asChild className="overflow-hidden">
           <ul>
             {data.hooks.map((hook) => (
-              <HookRow
-                key={hook.id}
-                hook={hook}
-                open={data.open === hook.id}
-                deliveries={data.open === hook.id ? data.deliveries : []}
-                manage={manage}
-              />
+              <HookRow key={hook.id} hook={hook} open={data.open === hook.id} deliveries={data.open === hook.id ? data.deliveries : []} manage={manage} />
             ))}
           </ul>
         </Card>
@@ -386,9 +336,8 @@ export function WebhooksPanel({
       {/* Keyed to the webhook just added, so the form starts empty for the next. */}
       {manage && <AddWebhook key={created?.hook.id ?? "new"} />}
       <p className="text-xs text-faint">
-        Each delivery is an HTTPS POST of JSON with <code>X-G1t-Event</code>, <code>X-G1t-Delivery</code> and{" "}
-        <code>X-G1t-Signature-256</code>. One that is not answered with a 2xx is tried again after 1 minute, 5 minutes,
-        30 minutes, 2 hours and 5 hours.{" "}
+        Each delivery is an HTTPS POST of JSON with <code>X-G1t-Event</code>, <code>X-G1t-Delivery</code> and <code>X-G1t-Signature-256</code>. One that is not
+        answered with a 2xx is tried again after 1 minute, 5 minutes, 30 minutes, 2 hours and 5 hours.{" "}
         <a href="https://docs.g1t.sh/guides/webhooks/" className="text-muted underline underline-offset-4">
           How to check the signature
         </a>

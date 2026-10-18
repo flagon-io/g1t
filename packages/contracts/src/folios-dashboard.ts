@@ -107,7 +107,8 @@ export function dashboardOpError(op: unknown, queryError: (query: DatasetQuery) 
       const tile = op.tile;
       if (!isObject(tile)) return "upsert_tile needs a tile.";
       if (typeof tile.id !== "string" || tile.id.length === 0) return "A tile has an id.";
-      if (typeof tile.type !== "string" || !(DASHBOARD_TILE_TYPES as readonly string[]).includes(tile.type)) return `There is no tile type called ${String(tile.type)}.`;
+      if (typeof tile.type !== "string" || !(DASHBOARD_TILE_TYPES as readonly string[]).includes(tile.type))
+        return `There is no tile type called ${String(tile.type)}.`;
       if (typeof tile.title !== "string" || tile.title.length > 200) return "A tile's title is text of at most 200 characters.";
       if (tile.description !== undefined && typeof tile.description !== "string") return "A tile's description is text.";
       if (tile.type === "markdown") {
@@ -132,7 +133,8 @@ export function dashboardOpError(op: unknown, queryError: (query: DatasetQuery) 
         const error = queryError({ dataset: "work_items", measure: { op: "count" }, range: { from: range.from as string, to: range.to as string } });
         if (error) return error;
       }
-      if (filters.repos != null && !(Array.isArray(filters.repos) && filters.repos.every((repo) => typeof repo === "string"))) return "repos is a list of owner/name.";
+      if (filters.repos != null && !(Array.isArray(filters.repos) && filters.repos.every((repo) => typeof repo === "string")))
+        return "repos is a list of owner/name.";
       return null;
     }
     case "set_layout": {

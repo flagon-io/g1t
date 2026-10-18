@@ -35,7 +35,13 @@ test("the data centre that answered is read from cf-ray", async () => {
   const ray = async () => new Response("x", { headers: { "cf-ray": "8c1f2e3d4a5b6c7d-SJC" } });
   assert.equal((await step(ray, { url: "https://a/" })).colo, "SJC");
   assert.equal((await step(answer(200), { url: "https://a/" })).colo, undefined);
-  assert.equal(combine([{ ok: true, ms: 1 }, { ok: true, ms: 2, colo: "FRA" }]).colo, "FRA");
+  assert.equal(
+    combine([
+      { ok: true, ms: 1 },
+      { ok: true, ms: 2, colo: "FRA" },
+    ]).colo,
+    "FRA",
+  );
 });
 
 test("a slow answer is asked again at once: one slow answer is not slow, two are", async () => {
@@ -99,8 +105,20 @@ test("a step that cannot connect, or takes too long, fails with why", async () =
 });
 
 test("a check's steps: all must work, and it takes as long as the slowest", () => {
-  assert.deepEqual(combine([{ ok: true, ms: 10 }, { ok: true, ms: 30 }]), { ok: true, ms: 30 });
-  assert.deepEqual(combine([{ ok: true, ms: 10 }, { ok: false, ms: 5, error: "HTTP 500" }]), { ok: false, ms: 10, error: "HTTP 500" });
+  assert.deepEqual(
+    combine([
+      { ok: true, ms: 10 },
+      { ok: true, ms: 30 },
+    ]),
+    { ok: true, ms: 30 },
+  );
+  assert.deepEqual(
+    combine([
+      { ok: true, ms: 10 },
+      { ok: false, ms: 5, error: "HTTP 500" },
+    ]),
+    { ok: false, ms: 10, error: "HTTP 500" },
+  );
 });
 
 test("runCheck: billing without a binding, and a part with no check, are null", async () => {

@@ -20,7 +20,10 @@ test("each stack is found by what is at the root", () => {
     [["Makefile", "main.c"], ["make"]],
     [["README.md"], []],
     // A monorepo: Node and Rust, each with a job.
-    [["package.json", "package-lock.json", "Cargo.toml", "Makefile"], ["npm", "rust"]],
+    [
+      ["package.json", "package-lock.json", "Cargo.toml", "Makefile"],
+      ["npm", "rust"],
+    ],
   ];
   for (const [names, stacks] of cases) assert.deepEqual(detectStacks({ names }), stacks, names.join(" "));
 });
@@ -64,7 +67,9 @@ test("Rust, Go and an unknown project each get a workflow", () => {
 
 test("the workflow is well-formed: one job per stack, steps under each", () => {
   const { yaml } = starterWorkflow({ names: ["package.json", "pnpm-lock.yaml", "Cargo.toml"], packageJson: '{"scripts":{"lint":"x"}}' }, "main");
-  const jobs = yaml.split("\n").filter((line) => /^ {2}[a-z]+:$/.test(line) && !line.includes("pull_request") && !line.includes("push") && !line.includes("merge_group"));
+  const jobs = yaml
+    .split("\n")
+    .filter((line) => /^ {2}[a-z]+:$/.test(line) && !line.includes("pull_request") && !line.includes("push") && !line.includes("merge_group"));
   assert.deepEqual(jobs, ["  node:", "  rust:"]);
   // Every line is indented by an even number of spaces, as YAML here wants.
   for (const line of yaml.split("\n")) assert.equal((line.match(/^ */)?.[0].length ?? 0) % 2, 0, line);

@@ -60,9 +60,8 @@ export default function RepoInvitation({ loaderData, actionData, params }: Route
           No open invitation
         </h1>
         <p className="mt-3 text-sm leading-6 text-muted">
-          There is no invitation to <span className="font-mono text-fg">{full}</span> waiting for{" "}
-          <span className="font-mono text-fg">{viewer.username}</span>. It may have been accepted, declined, revoked, or
-          it expired; an invitation lasts 7 days. Ask whoever invited you to send another.
+          There is no invitation to <span className="font-mono text-fg">{full}</span> waiting for <span className="font-mono text-fg">{viewer.username}</span>.
+          It may have been accepted, declined, revoked, or it expired; an invitation lasts 7 days. Ask whoever invited you to send another.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <ButtonLink to={`/${full}`} variant="outline">
@@ -94,9 +93,8 @@ export default function RepoInvitation({ loaderData, actionData, params }: Route
         {invitation.invited_by ?? "Someone"} invited you to <span className="font-mono break-all">{invitation.repo}</span>
       </h1>
       <p className="mt-2 text-sm leading-6 text-muted">
-        Accepting gives you the <span className="text-fg">{REPO_ROLE_LABELS[invitation.role]}</span> role on this
-        repository: {REPO_ROLE_SUMMARIES[invitation.role].replace(/^./, (c) => c.toLowerCase())} You see this repository
-        only, not the rest of the {params.owner} workspace.
+        Accepting gives you the <span className="text-fg">{REPO_ROLE_LABELS[invitation.role]}</span> role on this repository:{" "}
+        {REPO_ROLE_SUMMARIES[invitation.role].replace(/^./, (c) => c.toLowerCase())} You see this repository only, not the rest of the {params.owner} workspace.
       </p>
       <dl className="mt-5 space-y-1 text-sm">
         {invitation.invited_by && (

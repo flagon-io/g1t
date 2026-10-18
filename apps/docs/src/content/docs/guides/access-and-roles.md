@@ -12,36 +12,36 @@ there, or someone outside the workspace, and it can give a
 
 ## The roles
 
-| Role | For |
-| --- | --- |
-| **Read** | Read and clone; open work items and pull requests, and comment. |
-| **Triage** | Read, and manage work items and pull requests: apply labels and milestones, assign, link repositories, close. |
-| **Write** | Triage, and push, merge, manage labels and milestones, and see security alerts. |
-| **Maintain** | Write, and manage the repository's settings and topics. |
-| **Admin** | Everything: branch protection and rulesets, webhooks, secrets, deployments, security settings, who has access, and the repository's name, visibility and archiving. |
+| Role         | For                                                                                                                                                                 |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Read**     | Read and clone; open work items and pull requests, and comment.                                                                                                     |
+| **Triage**   | Read, and manage work items and pull requests: apply labels and milestones, assign, link repositories, close.                                                       |
+| **Write**    | Triage, and push, merge, manage labels and milestones, and see security alerts.                                                                                     |
+| **Maintain** | Write, and manage the repository's settings and topics.                                                                                                             |
+| **Admin**    | Everything: branch protection and rulesets, webhooks, secrets, deployments, security settings, who has access, and the repository's name, visibility and archiving. |
 
 Each role has everything the one above it has.
 
 ## What each role can do
 
-| | Read | Triage | Write | Maintain | Admin |
-| --- | --- | --- | --- | --- | --- |
-| See code, work items and pull requests; clone and fetch | Yes | Yes | Yes | Yes | Yes |
-| Open work items and pull requests, and comment | Yes | Yes | Yes | Yes | Yes |
-| Apply labels and milestones; assign, close and reopen work items and pull requests; link repositories to work items | | Yes | Yes | Yes | Yes |
-| Push to branches that are not protected | | | Yes | Yes | Yes |
-| Merge pull requests and use the merge queue | | | Yes | Yes | Yes |
-| Create, edit and delete labels and milestones | | | Yes | Yes | Yes |
-| See and dismiss security alerts | | | Yes | Yes | Yes |
-| Start workflows | | | Yes | Yes | Yes |
-| Change the description, topics, and pull request settings | | | | Yes | Yes |
-| Change branch protection, rulesets and guardrails | | | | | Yes |
-| Change security settings, custom patterns and bypass reviews | | | | | Yes |
-| Manage webhooks, secrets, variables, deployments and domains | | | | | Yes |
-| Manage who has access, invitations and deploy keys | | | | | Yes |
-| Rename, archive and change the default branch | | | | | Yes |
-| Change visibility | | | | | Yes, if the [member privileges](/guides/workspaces/#member-privileges) allow |
-| Transfer or delete the repository | | | | | Owners, or Admins if the member privileges allow |
+|                                                                                                                     | Read | Triage | Write | Maintain | Admin                                                                        |
+| ------------------------------------------------------------------------------------------------------------------- | ---- | ------ | ----- | -------- | ---------------------------------------------------------------------------- |
+| See code, work items and pull requests; clone and fetch                                                             | Yes  | Yes    | Yes   | Yes      | Yes                                                                          |
+| Open work items and pull requests, and comment                                                                      | Yes  | Yes    | Yes   | Yes      | Yes                                                                          |
+| Apply labels and milestones; assign, close and reopen work items and pull requests; link repositories to work items |      | Yes    | Yes   | Yes      | Yes                                                                          |
+| Push to branches that are not protected                                                                             |      |        | Yes   | Yes      | Yes                                                                          |
+| Merge pull requests and use the merge queue                                                                         |      |        | Yes   | Yes      | Yes                                                                          |
+| Create, edit and delete labels and milestones                                                                       |      |        | Yes   | Yes      | Yes                                                                          |
+| See and dismiss security alerts                                                                                     |      |        | Yes   | Yes      | Yes                                                                          |
+| Start workflows                                                                                                     |      |        | Yes   | Yes      | Yes                                                                          |
+| Change the description, topics, and pull request settings                                                           |      |        |       | Yes      | Yes                                                                          |
+| Change branch protection, rulesets and guardrails                                                                   |      |        |       |          | Yes                                                                          |
+| Change security settings, custom patterns and bypass reviews                                                        |      |        |       |          | Yes                                                                          |
+| Manage webhooks, secrets, variables, deployments and domains                                                        |      |        |       |          | Yes                                                                          |
+| Manage who has access, invitations and deploy keys                                                                  |      |        |       |          | Yes                                                                          |
+| Rename, archive and change the default branch                                                                       |      |        |       |          | Yes                                                                          |
+| Change visibility                                                                                                   |      |        |       |          | Yes, if the [member privileges](/guides/workspaces/#member-privileges) allow |
+| Transfer or delete the repository                                                                                   |      |        |       |          | Owners, or Admins if the member privileges allow                             |
 
 Everyone can edit and delete their own comments. Maintain and Admin can
 edit and delete anyone's; see
@@ -140,10 +140,10 @@ You need the Admin role or higher on acme/rocket to do that.
 
 ### Git
 
-| | Needs |
-| --- | --- |
-| `git clone`, `fetch`, `pull` | Read |
-| `git push` | Write |
+|                              | Needs |
+| ---------------------------- | ----- |
+| `git clone`, `fetch`, `pull` | Read  |
+| `git push`                   | Write |
 
 A [protected branch](/guides/git/#protected-branches) refuses pushes from
 everyone, whatever their role, Admin included; changes reach it through
@@ -154,12 +154,12 @@ pull requests.
 The base permission is what every member of a workspace gets on every one
 of its repositories:
 
-| Base permission | Members get |
-| --- | --- |
-| **None** | Nothing beyond what is public. Members see only the private repositories they are given a role on. |
-| **Read** | Read on every repository. What a new workspace starts with. |
-| **Write** | Write on every repository. |
-| **Admin** | Admin on every repository. Transferring and deleting stay with owners unless the member privileges allow them. |
+| Base permission | Members get                                                                                                    |
+| --------------- | -------------------------------------------------------------------------------------------------------------- |
+| **None**        | Nothing beyond what is public. Members see only the private repositories they are given a role on.             |
+| **Read**        | Read on every repository. What a new workspace starts with.                                                    |
+| **Write**       | Write on every repository.                                                                                     |
+| **Admin**       | Admin on every repository. Transferring and deleting stay with owners unless the member privileges allow them. |
 
 Owners always have Admin, whatever it says. Only owners can change it:
 
@@ -226,10 +226,10 @@ be added. See [teams](/guides/teams/#repository-access).
 
 What happens depends on who they are:
 
-| Who | What happens |
-| --- | --- |
-| A member of the workspace | They have the role at once. It matters only where it is higher than the base permission. |
-| Someone else on g1t | They are sent an [invitation](#invitations) to accept. Typing the confirmed email address of someone on g1t does the same. |
+| Who                                  | What happens                                                                                                                             |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| A member of the workspace            | They have the role at once. It matters only where it is higher than the base permission.                                                 |
+| Someone else on g1t                  | They are sent an [invitation](#invitations) to accept. Typing the confirmed email address of someone on g1t does the same.               |
 | An email address with no g1t account | g1t emails an invite code that only that address can use. Signing up with it makes their account and accepts the invitation in one step. |
 
 An invite code to someone without an account costs nothing (it never
@@ -300,12 +300,12 @@ reach one repository: Read, or Write when it was added with write access,
 on that repository and no other. It is part of who has access, so managing
 deploy keys needs the Admin role:
 
-| Who | Can list, add and delete a repository's deploy keys |
-| --- | --- |
-| Someone with the Admin role on it, owners included | Yes |
-| Someone with Maintain or less | No |
-| A workspace's [access token](/guides/workspaces/#workspace-access-tokens) | Only when an owner gave it Admin |
-| A deploy key | No |
+| Who                                                                       | Can list, add and delete a repository's deploy keys |
+| ------------------------------------------------------------------------- | --------------------------------------------------- |
+| Someone with the Admin role on it, owners included                        | Yes                                                 |
+| Someone with Maintain or less                                             | No                                                  |
+| A workspace's [access token](/guides/workspaces/#workspace-access-tokens) | Only when an owner gave it Admin                    |
+| A deploy key                                                              | No                                                  |
 
 Adding one also needs a confirmed email address. A personal access token
 needs the `access:read` scope to list and read them, and `access:admin` to
@@ -317,24 +317,24 @@ Every route is in the [API reference](/reference/api/). Each is also an
 action of an [MCP tool](/reference/mcp/): `access` for a repository's
 people, its deploy keys and the base permission, `account` for invitations to you.
 
-| Route | MCP tool and action | What it does | Who |
-| --- | --- | --- | --- |
-| `GET /repos/{owner}/{name}/collaborators` | `access` `list_collaborators` | Everyone with access to a repository, their role and where it comes from. | Write |
-| `GET /repos/{owner}/{name}/collaborators/{username}/permission` | `access` `get_permission` | One person's role on a repository and what it lets them do. | Write, or about yourself |
-| `POST /repos/{owner}/{name}/collaborators` | `access` `add_collaborator` | Give someone a role. Body: `invitee` (a username or an email address) and `role`. Answers with `result`: `granted` or `invited`. | Admin |
-| `PATCH /repos/{owner}/{name}/collaborators/{username}` | `access` `update_collaborator` | Change someone's role, or a pending invitation's. Body: `role`. | Admin |
-| `DELETE /repos/{owner}/{name}/collaborators/{username}` | `access` `remove_collaborator` | Take away the role given to someone on the repository. | Admin, or yourself |
-| `GET /repos/{owner}/{name}/invitations` | `access` `list_invitations` | A repository's pending invitations. | Admin |
-| `DELETE /repos/{owner}/{name}/invitations/{id}` | `access` `revoke_invitation` | Withdraw a pending invitation. | Admin |
-| `GET /user/repository_invitations` | `account` `list_repository_invitations` | The invitations waiting for you. | You |
-| `PATCH /user/repository_invitations/{id}` | `account` `accept_repository_invitation` | Accept one. | You |
-| `DELETE /user/repository_invitations/{id}` | `account` `decline_repository_invitation` | Decline one. | You |
-| `PUT /workspaces/{workspace}/base_permission` | `access` `set_base_permission` | Set the base permission. Body: `base_permission`: `none`, `read`, `write` or `admin`. `PATCH /workspaces/{workspace}` (`workspace` `update`) takes `base_permission` too, with the `access:admin` scope. | Owners |
-| `GET /workspaces/{workspace}/outside_collaborators` | `access` `list_outside_collaborators` | A workspace's outside collaborators and the repositories each can reach. | Owners |
-| `GET /repos/{owner}/{name}/keys` | `access` `list_deploy_keys` | A repository's [deploy keys](/guides/git/#deploy-keys). | Admin |
-| `GET /repos/{owner}/{name}/keys/{id}` | `access` `get_deploy_key` | One deploy key. | Admin |
-| `POST /repos/{owner}/{name}/keys` | `access` `add_deploy_key` | Add a deploy key. Body: `title`, `key` and `read_only` (true unless you send false). | Admin |
-| `DELETE /repos/{owner}/{name}/keys/{id}` | `access` `remove_deploy_key` | Delete a deploy key. | Admin |
+| Route                                                           | MCP tool and action                       | What it does                                                                                                                                                                                             | Who                      |
+| --------------------------------------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| `GET /repos/{owner}/{name}/collaborators`                       | `access` `list_collaborators`             | Everyone with access to a repository, their role and where it comes from.                                                                                                                                | Write                    |
+| `GET /repos/{owner}/{name}/collaborators/{username}/permission` | `access` `get_permission`                 | One person's role on a repository and what it lets them do.                                                                                                                                              | Write, or about yourself |
+| `POST /repos/{owner}/{name}/collaborators`                      | `access` `add_collaborator`               | Give someone a role. Body: `invitee` (a username or an email address) and `role`. Answers with `result`: `granted` or `invited`.                                                                         | Admin                    |
+| `PATCH /repos/{owner}/{name}/collaborators/{username}`          | `access` `update_collaborator`            | Change someone's role, or a pending invitation's. Body: `role`.                                                                                                                                          | Admin                    |
+| `DELETE /repos/{owner}/{name}/collaborators/{username}`         | `access` `remove_collaborator`            | Take away the role given to someone on the repository.                                                                                                                                                   | Admin, or yourself       |
+| `GET /repos/{owner}/{name}/invitations`                         | `access` `list_invitations`               | A repository's pending invitations.                                                                                                                                                                      | Admin                    |
+| `DELETE /repos/{owner}/{name}/invitations/{id}`                 | `access` `revoke_invitation`              | Withdraw a pending invitation.                                                                                                                                                                           | Admin                    |
+| `GET /user/repository_invitations`                              | `account` `list_repository_invitations`   | The invitations waiting for you.                                                                                                                                                                         | You                      |
+| `PATCH /user/repository_invitations/{id}`                       | `account` `accept_repository_invitation`  | Accept one.                                                                                                                                                                                              | You                      |
+| `DELETE /user/repository_invitations/{id}`                      | `account` `decline_repository_invitation` | Decline one.                                                                                                                                                                                             | You                      |
+| `PUT /workspaces/{workspace}/base_permission`                   | `access` `set_base_permission`            | Set the base permission. Body: `base_permission`: `none`, `read`, `write` or `admin`. `PATCH /workspaces/{workspace}` (`workspace` `update`) takes `base_permission` too, with the `access:admin` scope. | Owners                   |
+| `GET /workspaces/{workspace}/outside_collaborators`             | `access` `list_outside_collaborators`     | A workspace's outside collaborators and the repositories each can reach.                                                                                                                                 | Owners                   |
+| `GET /repos/{owner}/{name}/keys`                                | `access` `list_deploy_keys`               | A repository's [deploy keys](/guides/git/#deploy-keys).                                                                                                                                                  | Admin                    |
+| `GET /repos/{owner}/{name}/keys/{id}`                           | `access` `get_deploy_key`                 | One deploy key.                                                                                                                                                                                          | Admin                    |
+| `POST /repos/{owner}/{name}/keys`                               | `access` `add_deploy_key`                 | Add a deploy key. Body: `title`, `key` and `read_only` (true unless you send false).                                                                                                                     | Admin                    |
+| `DELETE /repos/{owner}/{name}/keys/{id}`                        | `access` `remove_deploy_key`              | Delete a deploy key.                                                                                                                                                                                     | Admin                    |
 
 Changing who has access, answering an invitation and setting the base
 permission are for people, signed in or with a personal access token.
@@ -366,11 +366,11 @@ through the [teams API](/guides/teams/#through-the-api).
 A change to someone's role on a repository is sent to
 [webhooks](/guides/webhooks/) as one of:
 
-| Event | When |
-| --- | --- |
-| `repo.collaborator_added` | Someone was given a role on the repository, or accepted an invitation. |
-| `repo.collaborator_role_changed` | Their role changed. `data.role` and `data.previous_role`. |
-| `repo.collaborator_removed` | Their role was taken away. |
+| Event                            | When                                                                   |
+| -------------------------------- | ---------------------------------------------------------------------- |
+| `repo.collaborator_added`        | Someone was given a role on the repository, or accepted an invitation. |
+| `repo.collaborator_role_changed` | Their role changed. `data.role` and `data.previous_role`.              |
+| `repo.collaborator_removed`      | Their role was taken away.                                             |
 
 Each has `data.username`, `data.role` and `data.previous_role`.
 

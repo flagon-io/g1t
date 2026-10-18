@@ -89,11 +89,7 @@ export function environmentSummary(environment: Environment): string[] {
   const parts: string[] = [];
   const { reviewers } = environment;
   if (reviewers.length > 0) {
-    parts.push(
-      reviewers.length <= 2
-        ? `Reviewers: ${reviewers.map(reviewerLabel).join(", ")}`
-        : `${reviewers.length} reviewers`,
-    );
+    parts.push(reviewers.length <= 2 ? `Reviewers: ${reviewers.map(reviewerLabel).join(", ")}` : `${reviewers.length} reviewers`);
   }
   if (environment.waitMinutes > 0) parts.push(`Wait ${waitWords(environment.waitMinutes)}`);
   if (environment.branchPolicy === "protected") parts.push("Protected branches only");

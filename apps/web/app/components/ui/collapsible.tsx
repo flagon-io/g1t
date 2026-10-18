@@ -14,7 +14,10 @@ export function CollapsibleTrigger({ className, ...props }: ComponentProps<typeo
   return (
     <Primitive.Trigger
       data-slot="collapsible-trigger"
-      className={cn("group/collapsible inline-flex items-center gap-1.5 text-sm text-muted outline-none hover:text-fg focus-visible:ring-2 focus-visible:ring-accent [&_svg]:transition-transform data-[state=open]:[&_svg]:rotate-90", className)}
+      className={cn(
+        "group/collapsible inline-flex items-center gap-1.5 text-sm text-muted outline-none hover:text-fg focus-visible:ring-2 focus-visible:ring-accent [&_svg]:transition-transform data-[state=open]:[&_svg]:rotate-90",
+        className,
+      )}
       {...props}
     />
   );

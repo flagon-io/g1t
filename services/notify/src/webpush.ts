@@ -66,9 +66,7 @@ export type Vapid = { publicKey: string; privateKey: string; subject: string };
  */
 export async function vapidJwt(endpoint: string, vapid: Vapid, now = Date.now()): Promise<string> {
   const header = b64url(enc.encode(JSON.stringify({ typ: "JWT", alg: "ES256" })));
-  const claims = b64url(
-    enc.encode(JSON.stringify({ aud: new URL(endpoint).origin, exp: Math.floor(now / 1000) + 12 * 3600, sub: vapid.subject })),
-  );
+  const claims = b64url(enc.encode(JSON.stringify({ aud: new URL(endpoint).origin, exp: Math.floor(now / 1000) + 12 * 3600, sub: vapid.subject })));
   const key = await importPrivateKey(vapid.privateKey, vapid.publicKey, "sign");
   const signature = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, enc.encode(`${header}.${claims}`));
   return `${header}.${claims}.${b64url(new Uint8Array(signature))}`;
@@ -121,13 +119,13 @@ export async function encrypt(plaintext: Uint8Array, subscription: { p256dh: str
   }
   const salt = fixed?.salt ?? crypto.getRandomValues(new Uint8Array(16));
   const uaKey = await crypto.subtle.importKey("raw", buf(uaPublic), { name: "ECDH", namedCurve: "P-256" }, false, []);
-  const ecdhSecret = new Uint8Array(await crypto.subtle.deriveBits({ name: "ECDH", public: uaKey } as unknown as SubtleCryptoDeriveKeyAlgorithm, asPrivateKey, 256));
+  const ecdhSecret = new Uint8Array(
+    await crypto.subtle.deriveBits({ name: "ECDH", public: uaKey } as unknown as SubtleCryptoDeriveKeyAlgorithm, asPrivateKey, 256),
+  );
   const { cek, nonce } = await keys({ ecdhSecret, auth, uaPublic, asPublic, salt });
   const aes = await crypto.subtle.importKey("raw", buf(cek), "AES-GCM", false, ["encrypt"]);
   // The last (and only) record ends with the delimiter 0x02.
-  const record = new Uint8Array(
-    await crypto.subtle.encrypt({ name: "AES-GCM", iv: buf(nonce) }, aes, buf(concat(plaintext, new Uint8Array([2])))),
-  );
+  const record = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv: buf(nonce) }, aes, buf(concat(plaintext, new Uint8Array([2])))));
   const header = new Uint8Array(21);
   header.set(salt, 0);
   new DataView(header.buffer).setUint32(16, RECORD_SIZE);
@@ -143,7 +141,9 @@ export async function decrypt(body: Uint8Array, subscriber: { privateKey: string
   const record = body.slice(21 + idLength);
   const uaPrivate = await importPrivateKey(subscriber.privateKey, subscriber.publicKey, "ecdh");
   const asKey = await crypto.subtle.importKey("raw", buf(asPublic), { name: "ECDH", namedCurve: "P-256" }, false, []);
-  const ecdhSecret = new Uint8Array(await crypto.subtle.deriveBits({ name: "ECDH", public: asKey } as unknown as SubtleCryptoDeriveKeyAlgorithm, uaPrivate, 256));
+  const ecdhSecret = new Uint8Array(
+    await crypto.subtle.deriveBits({ name: "ECDH", public: asKey } as unknown as SubtleCryptoDeriveKeyAlgorithm, uaPrivate, 256),
+  );
   const { cek, nonce } = await keys({ ecdhSecret, auth: fromB64url(subscriber.auth), uaPublic: fromB64url(subscriber.publicKey), asPublic, salt });
   const aes = await crypto.subtle.importKey("raw", buf(cek), "AES-GCM", false, ["decrypt"]);
   const padded = new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: buf(nonce) }, aes, buf(record)));

@@ -747,7 +747,11 @@ export interface BillingAdminApi {
   overview(): Promise<Overview>;
   /** A workspace's sales record. */
   sales(workspace: string): Promise<SalesRecord>;
-  setSales(workspace: string, record: { stage: string; owner?: string | null; nextStep?: string | null; nextAt?: string | null }, by: string): Promise<Result<SalesRecord>>;
+  setSales(
+    workspace: string,
+    record: { stage: string; owner?: string | null; nextStep?: string | null; nextAt?: string | null },
+    by: string,
+  ): Promise<Result<SalesRecord>>;
   addNote(workspace: string, text: string, by: string): Promise<Result<SalesRecord>>;
   /** A workspace's invoices from g1t, for staff. */
   workspaceInvoices(workspace: string): Promise<WorkspaceInvoice[]>;
@@ -1046,13 +1050,7 @@ export interface BillingApi {
    * by card with 3-D Secure, or by bank transfer from $1,000. Owners only.
    * The payment's id comes back to `returnUrl` as `session`.
    */
-  checkout(
-    actor: User,
-    workspace: string,
-    amountCents: number,
-    returnUrl: string,
-    method?: "card" | "bank_transfer",
-  ): Promise<Result<{ url: string }>>;
+  checkout(actor: User, workspace: string, amountCents: number, returnUrl: string, method?: "card" | "bank_transfer"): Promise<Result<{ url: string }>>;
   /**
    * Stripe's hosted billing page for the workspace: card, invoices, billing
    * email and address. g1t never handles card numbers. Owners only.
@@ -1220,7 +1218,6 @@ export interface BillingApi {
   /** What the connected providers say the organization spent, by day, from `since` (`YYYY-MM-DD`, UTC). Members only. */
   providerCosts(workspace: string, viewer: Viewer, since: string): Promise<Result<ProviderCosts>>;
 }
-
 
 /** One slice of usage: what it was for, what it cost, how many runs. */
 export type UsageSlice = { key: string; micros: number; runs: number };

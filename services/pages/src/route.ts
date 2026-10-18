@@ -9,12 +9,7 @@ export const DOMAIN = "g1t.page";
 /** Where custom domains point (the Cloudflare for SaaS fallback origin). */
 export const FALLBACK = `domains.${DOMAIN}`;
 
-export type Route =
-  | { kind: "home" }
-  | { kind: "fallback" }
-  | { kind: "app"; label: string }
-  | { kind: "custom"; hostname: string }
-  | { kind: "invalid" };
+export type Route = { kind: "home" } | { kind: "fallback" } | { kind: "app"; label: string } | { kind: "custom"; hostname: string } | { kind: "invalid" };
 
 const LABEL = /^[a-z0-9-]{1,63}$/;
 const HOST = /^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/;
@@ -52,7 +47,13 @@ export function parseEntry(value: unknown): DomainEntry | null {
   const text = (v: unknown) => (typeof v === "string" ? v : null);
   const telemetry =
     t && typeof t === "object" && typeof t.project === "string"
-      ? { project: t.project, deployment: text(t.deployment), environment: text(t.environment), service: text(t.service) ?? entry.script, commit: text(t.commit) }
+      ? {
+          project: t.project,
+          deployment: text(t.deployment),
+          environment: text(t.environment),
+          service: text(t.service) ?? entry.script,
+          commit: text(t.commit),
+        }
       : null;
   return { script: entry.script, redirect, telemetry };
 }

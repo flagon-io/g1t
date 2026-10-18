@@ -2,7 +2,16 @@ import { Bot, Boxes, Cpu, Plus, ServerCog, ShieldAlert, Trash2 } from "lucide-re
 import { useEffect, useState } from "react";
 import { Form, Link } from "react-router";
 
-import { DESKTOP_LABEL, type RegistrationToken, RUNNER_DOWNLOADS, RUNNER_FILES, RUNNER_IMAGE, type Runner, type RunnerGroup, type RunnerIsolation } from "@g1t/contracts";
+import {
+  DESKTOP_LABEL,
+  type RegistrationToken,
+  RUNNER_DOWNLOADS,
+  RUNNER_FILES,
+  RUNNER_IMAGE,
+  type Runner,
+  type RunnerGroup,
+  type RunnerIsolation,
+} from "@g1t/contracts";
 
 import { sandboxRunHref, workflowRunHref } from "../lib/runners";
 import type { RunnersAction, RunnersData } from "../lib/runners.server";
@@ -130,14 +139,23 @@ export function RunnerRow({ runner, manage }: { runner: Runner; manage: boolean 
           {OS_NAMES[runner.os]} {runner.arch}
           {runner.version && <> · {runner.version}</>}
         </div>
-        <div className="mt-0.5">{runner.lastSeenAt ? <>Seen <TimeAgo at={runner.lastSeenAt} /></> : "Never seen"}</div>
+        <div className="mt-0.5">
+          {runner.lastSeenAt ? (
+            <>
+              Seen <TimeAgo at={runner.lastSeenAt} />
+            </>
+          ) : (
+            "Never seen"
+          )}
+        </div>
       </div>
       {manage && (
         <Form
           method="post"
           className="shrink-0"
           onSubmit={(event) => {
-            if (!confirm(`Remove ${runner.name}? Its credential stops working at once${runner.work ? ", and the job it is running fails" : ""}.`)) event.preventDefault();
+            if (!confirm(`Remove ${runner.name}? Its credential stops working at once${runner.work ? ", and the job it is running fails" : ""}.`))
+              event.preventDefault();
           }}
         >
           <input type="hidden" name="intent" value="remove" />
@@ -279,8 +297,8 @@ export function NewRunner({ token, groups, repoScoped }: { token: RegistrationTo
       <p className="text-xs text-faint">
         Each job runs in a container of its own; on Linux, run the Docker command under Sysbox so neither the runner nor its jobs reach the machine.{" "}
         <code className="font-mono">--no-docker</code>, which runs jobs on the machine itself, is deprecated. Add{" "}
-        <code className="font-mono">--labels gpu,cuda</code> for jobs to ask for, or <code className="font-mono">--ephemeral</code> for a runner that takes
-        one job and removes itself.{" "}
+        <code className="font-mono">--labels gpu,cuda</code> for jobs to ask for, or <code className="font-mono">--ephemeral</code> for a runner that takes one
+        job and removes itself.{" "}
         <a href="https://docs.g1t.sh/guides/self-hosted-runners/" className="underline underline-offset-2">
           Self-hosted runners
         </a>
@@ -334,7 +352,12 @@ export function Groups({
                       {editing === group.id ? "Close" : "Edit"}
                     </Button>
                     {!group.default && (
-                      <Form method="post" onSubmit={(event) => { if (!confirm(`Delete ${group.name}? Its runners join the default group.`)) event.preventDefault(); }}>
+                      <Form
+                        method="post"
+                        onSubmit={(event) => {
+                          if (!confirm(`Delete ${group.name}? Its runners join the default group.`)) event.preventDefault();
+                        }}
+                      >
                         <input type="hidden" name="intent" value="delete-group" />
                         <input type="hidden" name="id" value={group.id} />
                         <SubmitButton variant="outline" match={{ intent: "delete-group", id: group.id }} pending="Deleting…">
@@ -350,12 +373,15 @@ export function Groups({
           ))}
         </ul>
       </Card>
-      {manage && (editing === "new" ? <GroupForm group={null} repositories={repositories} /> : (
-        <Button type="button" variant="outline" onClick={() => setEditing("new")}>
-          <Plus size={15} />
-          New group
-        </Button>
-      ))}
+      {manage &&
+        (editing === "new" ? (
+          <GroupForm group={null} repositories={repositories} />
+        ) : (
+          <Button type="button" variant="outline" onClick={() => setEditing("new")}>
+            <Plus size={15} />
+            New group
+          </Button>
+        ))}
     </div>
   );
 }
@@ -415,9 +441,8 @@ export function RunnerSettingsForm({ data, manage, scope }: { data: RunnersData;
               Run g1t's work on self-hosted runners
             </span>
             <span className="mt-1 block text-sm text-muted">
-              Checks, merge checks and the merge queue run on your runners with these labels instead of g1t&apos;s sandboxes. The machine time is
-              free. Sandbox runs need Docker, or a
-              Linux runner.
+              Checks, merge checks and the merge queue run on your runners with these labels instead of g1t&apos;s sandboxes. The machine time is free. Sandbox
+              runs need Docker, or a Linux runner.
             </span>
             <span className="mt-3 block max-w-sm">
               <Input name="agentLabels" defaultValue={settings.agentLabels.join(", ")} disabled={!manage} aria-label="Labels for sandbox runs" />
@@ -433,8 +458,8 @@ export function RunnerSettingsForm({ data, manage, scope }: { data: RunnersData;
             Let pull requests from forks use self-hosted runners
           </span>
           <span className="mt-1 block text-sm text-muted">
-            Off by default, and best left off. Anyone who can open a pull request could then run any code on your machines, read what they can
-            reach, and leave something behind for the next job. Their jobs never get secrets either way.
+            Off by default, and best left off. Anyone who can open a pull request could then run any code on your machines, read what they can reach, and leave
+            something behind for the next job. Their jobs never get secrets either way.
           </span>
         </span>
         <Switch name="forks" checked={forks} onCheckedChange={setForks} disabled={!manage} />
@@ -482,16 +507,12 @@ export function RunnersPanel({
             <p>
               Your own machines, for jobs with <code className="font-mono text-fg">runs-on: self-hosted</code>. Their time is free on every plan.
             </p>
-            <p className="mt-2">
-              {data.runners.length === 0 ? "None yet." : `${online} of ${data.runners.length} online.`}
-            </p>
+            <p className="mt-2">{data.runners.length === 0 ? "None yet." : `${online} of ${data.runners.length} online.`}</p>
           </>
         }
       >
         {data.runners.length === 0 ? (
-          <EmptyState title="No self-hosted runners">
-            Add one below. It connects out to g1t; nothing needs to reach the machine.
-          </EmptyState>
+          <EmptyState title="No self-hosted runners">Add one below. It connects out to g1t; nothing needs to reach the machine.</EmptyState>
         ) : (
           <Card asChild divided>
             <ul>
@@ -527,7 +548,11 @@ export function RunnersPanel({
       >
         {/* Keyed to what is saved, so following the workspace again shows its settings, not the switches as they were. */}
         <RunnerSettingsForm
-          key={data.settings ? `${data.settings.inherited}:${data.settings.agentsOnSelfHosted}:${data.settings.forkPullRequests}:${data.settings.agentLabels.join(",")}` : "none"}
+          key={
+            data.settings
+              ? `${data.settings.inherited}:${data.settings.agentsOnSelfHosted}:${data.settings.forkPullRequests}:${data.settings.agentLabels.join(",")}`
+              : "none"
+          }
           data={data}
           manage={manage}
           scope={scope}

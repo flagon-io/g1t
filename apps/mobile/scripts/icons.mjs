@@ -20,7 +20,10 @@ const BACKGROUND = "#0f0f11";
 async function draw(file, { size, scale, color, background }) {
   const inner = Math.round(size * scale);
   const svg = Buffer.from(mark.replace(/#b6a8ff/g, color ?? "#b6a8ff").replace("<svg ", `<svg width="${inner}" height="${inner}" `));
-  const glyph = await sharp(svg, { density: 72 * (inner / 80) }).resize(inner, inner).png().toBuffer();
+  const glyph = await sharp(svg, { density: 72 * (inner / 80) })
+    .resize(inner, inner)
+    .png()
+    .toBuffer();
   await sharp({ create: { width: size, height: size, channels: 4, background: background ?? { r: 0, g: 0, b: 0, alpha: 0 } } })
     .composite([{ input: glyph, gravity: "centre" }])
     .png()

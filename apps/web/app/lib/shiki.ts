@@ -106,11 +106,7 @@ export function tokenRows(core: HighlighterCore, text: string, lang: string): Co
 /** Each line of `text` as HTML, coloured. */
 export function linesToHtml(core: HighlighterCore, text: string, lang: string): string[] {
   return tokenRows(core, text, lang).map((row) =>
-    row
-      .map((token) =>
-        token.color ? `<span style="color:${token.color}">${escape(token.content)}</span>` : escape(token.content),
-      )
-      .join(""),
+    row.map((token) => (token.color ? `<span style="color:${token.color}">${escape(token.content)}</span>` : escape(token.content))).join(""),
   );
 }
 
@@ -132,9 +128,7 @@ export async function highlightFile(file: FileDiff): Promise<HighlightedFile | n
     const hunks = file.hunks.map((hunk) => {
       const lines: HighlightedLine[] = hunk.lines.map((line) => ({ ...line }));
       for (const side of ["old", "new"] as const) {
-        const indexes = lines
-          .map((line, index) => (line.kind === (side === "old" ? "add" : "delete") ? -1 : index))
-          .filter((index) => index >= 0);
+        const indexes = lines.map((line, index) => (line.kind === (side === "old" ? "add" : "delete") ? -1 : index)).filter((index) => index >= 0);
         const html = linesToHtml(core, indexes.map((index) => lines[index]!.text).join("\n"), lang);
         html.forEach((row, n) => {
           const line = lines[indexes[n]!];

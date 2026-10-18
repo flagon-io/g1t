@@ -111,10 +111,7 @@ export default function Logs({ loaderData, params }: Route.ComponentProps) {
               to={levelHref(level)}
               preventScrollReset
               aria-pressed={levels.includes(level)}
-              className={cn(
-                "rounded px-2 py-0.5 text-xs capitalize",
-                levels.includes(level) ? "bg-raised text-fg" : "text-muted hover:text-fg",
-              )}
+              className={cn("rounded px-2 py-0.5 text-xs capitalize", levels.includes(level) ? "bg-raised text-fg" : "text-muted hover:text-fg")}
             >
               {level}
             </Link>
@@ -122,14 +119,18 @@ export default function Logs({ loaderData, params }: Route.ComponentProps) {
         </nav>
       </FilterBar>
       {state === "dropped" && <p className="mt-3 text-xs text-warn">The live connection dropped; reconnecting.</p>}
-      {dropped > 0 && <p className="mt-3 text-xs text-faint">{dropped.toLocaleString("en-US")} lines arrived faster than the page shows them; search to find them.</p>}
+      {dropped > 0 && (
+        <p className="mt-3 text-xs text-faint">{dropped.toLocaleString("en-US")} lines arrived faster than the page shows them; search to find them.</p>
+      )}
 
       <div className={cn("mt-4 transition-opacity", loading && "opacity-60")}>
         {!list ? (
           <Unavailable what="Logs" />
         ) : shown.length === 0 ? (
           <EmptyState title={view.q || levels.length ? "No lines match" : "No logs in this period"}>
-            {live ? "Following: new lines show here as they are written." : "Apps on g1t.page send what they write with console.log; anything else sends OpenTelemetry logs."}
+            {live
+              ? "Following: new lines show here as they are written."
+              : "Apps on g1t.page send what they write with console.log; anything else sends OpenTelemetry logs."}
           </EmptyState>
         ) : (
           <Card className="overflow-hidden">

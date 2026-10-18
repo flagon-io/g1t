@@ -53,7 +53,14 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // A member filters by the workspace's people; anyone else, by name in the address.
     member ? part(identity.listMembers(workspace, viewer), "The workspace's people") : null,
     // What is cooking now, over the list: a nicety, left out when Sessions cannot say.
-    work.listWorkspaceSessions(workspace, viewer, { shown: "live", sessionsOnly: true, repo: filters.repo ? shortPath(filters.repo, workspace) : undefined, limit: 30 }).catch(() => null),
+    work
+      .listWorkspaceSessions(workspace, viewer, {
+        shown: "live",
+        sessionsOnly: true,
+        repo: filters.repo ? shortPath(filters.repo, workspace) : undefined,
+        limit: 30,
+      })
+      .catch(() => null),
   ]);
   const live = cooking?.ok ? splitLive(cooking.value.sessions) : null;
   // Who may open one here, as New work item says (routes/workspace/work/new.tsx): a member; anyone else
@@ -76,7 +83,13 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     items: unwrap(items),
     labels: isFailed(labels) || !labels.ok ? null : labels.value,
     milestones: isFailed(milestones) || !milestones.ok ? null : milestones.value,
-    repos: isFailed(projects) || !projects.ok ? null : projects.value.filter((p) => p.workspace.toLowerCase() === workspace).map((p) => p.slug).sort(),
+    repos:
+      isFailed(projects) || !projects.ok
+        ? null
+        : projects.value
+            .filter((p) => p.workspace.toLowerCase() === workspace)
+            .map((p) => p.slug)
+            .sort(),
     people: members == null || isFailed(members) || !members.ok ? null : members.value.map((m) => m.username).sort(),
     labelsFailed: isFailed(labels),
     cooking: live ? { sessions: [...live.active, ...live.idle].slice(0, COOKING), total: live.active.length + live.idle.length } : null,
@@ -146,11 +159,9 @@ export default function WorkList({ loaderData }: Route.ComponentProps) {
       </div>
       <div className="mt-4">
         {items.length === 0 ? (
-          <EmptyState
-            title={emptyListTitle(filters, repoName)}
-          >
-            A work item says what should change: a feature, a bug, a chore. It belongs to the workspace and lands in the repositories it
-            names; people and their coding agents open pull requests for it.
+          <EmptyState title={emptyListTitle(filters, repoName)}>
+            A work item says what should change: a feature, a bug, a chore. It belongs to the workspace and lands in the repositories it names; people and their
+            coding agents open pull requests for it.
             {search && filtered(filters) && (
               <>
                 {" "}

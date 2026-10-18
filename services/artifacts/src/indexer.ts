@@ -83,7 +83,10 @@ async function allowance(db: D1Database, workspaceId: string, now: Date): Promis
     console.log("embedding budget of a free workspace used for the month", workspaceId);
     return 0;
   }
-  const used = await db.prepare("SELECT chunks FROM doc_embed_usage WHERE workspace_id = ? AND hour = ?").bind(workspaceId, hourOf(now)).first<{ chunks: number }>();
+  const used = await db
+    .prepare("SELECT chunks FROM doc_embed_usage WHERE workspace_id = ? AND hour = ?")
+    .bind(workspaceId, hourOf(now))
+    .first<{ chunks: number }>();
   return Math.max(0, EMBED_PER_HOUR - (used?.chunks ?? 0));
 }
 
@@ -144,7 +147,11 @@ export async function indexDoc(
         ),
       db.prepare("DELETE FROM doc_chunks_fts WHERE chunk_id = ?").bind(c.id),
       // Only beside a chunk row the database kept: an erased document's insert was ignored (migration 0010).
-      db.prepare("INSERT INTO doc_chunks_fts (chunk_id, space_id, doc_id, heading, text) SELECT ?1, ?2, ?3, ?4, ?5 WHERE EXISTS (SELECT 1 FROM doc_chunks WHERE id = ?1)").bind(c.id, doc.space_id, doc.doc_id, c.heading ?? "", c.text),
+      db
+        .prepare(
+          "INSERT INTO doc_chunks_fts (chunk_id, space_id, doc_id, heading, text) SELECT ?1, ?2, ?3, ?4, ?5 WHERE EXISTS (SELECT 1 FROM doc_chunks WHERE id = ?1)",
+        )
+        .bind(c.id, doc.space_id, doc.doc_id, c.heading ?? "", c.text),
     );
   }
   const keep = new Set(chunks.map((c) => c.id));
@@ -157,7 +164,14 @@ export async function indexDoc(
   if (!store || !embedder) return { chunks: chunks.length, embedded: 0, capped: false };
   if (await erasedSource(db, doc.kind === "page" ? "page" : null, doc.doc_id, doc.workspace_id)) return { chunks: 0, embedded: 0, capped: false };
   const result = await embedChanged(db, embedder, store, doc, chunks, old, byId, now);
-  await dropIfErased(db, store, doc.kind === "page" ? "page" : null, doc.doc_id, doc.workspace_id, chunks.map((c) => c.id));
+  await dropIfErased(
+    db,
+    store,
+    doc.kind === "page" ? "page" : null,
+    doc.doc_id,
+    doc.workspace_id,
+    chunks.map((c) => c.id),
+  );
   // Last, so a passage that moved from a place now gone could take its vector first.
   try {
     if (gone.some((r) => r.vector_hash)) await store.delete(gone.filter((r) => r.vector_hash).map((r) => r.id));
@@ -239,7 +253,10 @@ export async function forgetDocs(env: IndexEnv, which: { page_ids?: string[]; re
     const select = async (column: string, values: string[]) => {
       for (let i = 0; i < values.length; i += 90) {
         const part = values.slice(i, i + 90);
-        const rows = await db.prepare(`SELECT id FROM doc_chunks WHERE ${column} IN (${part.map(() => "?").join(",")})`).bind(...part).all<{ id: string }>();
+        const rows = await db
+          .prepare(`SELECT id FROM doc_chunks WHERE ${column} IN (${part.map(() => "?").join(",")})`)
+          .bind(...part)
+          .all<{ id: string }>();
         found.push(...rows.results.map((r) => r.id));
       }
     };
@@ -254,7 +271,10 @@ export async function forgetDocs(env: IndexEnv, which: { page_ids?: string[]; re
         console.error("docs could not drop passages from the index", found.length, String(error));
       }
     }
-    const statements = found.flatMap((id) => [db.prepare("DELETE FROM doc_chunks WHERE id = ?").bind(id), db.prepare("DELETE FROM doc_chunks_fts WHERE chunk_id = ?").bind(id)]);
+    const statements = found.flatMap((id) => [
+      db.prepare("DELETE FROM doc_chunks WHERE id = ?").bind(id),
+      db.prepare("DELETE FROM doc_chunks_fts WHERE chunk_id = ?").bind(id),
+    ]);
     for (let i = 0; i < statements.length; i += 80) await db.batch(statements.slice(i, i + 80));
   } catch (error) {
     console.error("docs could not forget passages", String(error));
@@ -266,13 +286,21 @@ type PageForIndex = { id: string; workspace_id: string; space_id: string; title:
 /** Indexes one page as it is saved now; forgets it when it is gone or in the trash. Never throws. */
 export async function indexPage(env: IndexEnv, pageId: string, now = new Date()): Promise<{ capped: boolean }> {
   try {
-    const page = await env.DB.prepare("SELECT id, workspace_id, space_id, title, markdown, archived_at FROM pages WHERE id = ?").bind(pageId).first<PageForIndex>();
+    const page = await env.DB.prepare("SELECT id, workspace_id, space_id, title, markdown, archived_at FROM pages WHERE id = ?")
+      .bind(pageId)
+      .first<PageForIndex>();
     if (!page || page.archived_at) {
       await forgetDocs(env, { page_ids: [pageId] });
       return { capped: false };
     }
     const { embedder, store } = adapters(env);
-    const result = await indexDoc(env.DB, embedder, store, { kind: "page", doc_id: page.id, workspace_id: page.workspace_id, space_id: page.space_id, title: page.title, markdown: page.markdown }, now);
+    const result = await indexDoc(
+      env.DB,
+      embedder,
+      store,
+      { kind: "page", doc_id: page.id, workspace_id: page.workspace_id, space_id: page.space_id, title: page.title, markdown: page.markdown },
+      now,
+    );
     if (result.capped) await startBackfill(env, page.workspace_id, { delaySeconds: CAP_DELAY_SECONDS });
     return { capped: result.capped };
   } catch (error) {
@@ -284,7 +312,16 @@ export async function indexPage(env: IndexEnv, pageId: string, now = new Date())
 type RepoFileForIndex = { space_id: string; path: string; title: string; markdown: string; workspace_id: string; repo_id: string };
 
 function repoDoc(row: RepoFileForIndex): IndexDoc {
-  return { kind: "repo_file", doc_id: repoFileId(row.space_id, row.path), workspace_id: row.workspace_id, space_id: row.space_id, title: row.title, markdown: row.markdown, repo_id: row.repo_id, path: row.path };
+  return {
+    kind: "repo_file",
+    doc_id: repoFileId(row.space_id, row.path),
+    workspace_id: row.workspace_id,
+    space_id: row.space_id,
+    title: row.title,
+    markdown: row.markdown,
+    repo_id: row.repo_id,
+    path: row.path,
+  };
 }
 
 /**
@@ -357,7 +394,9 @@ async function enqueue(env: IndexEnv, workspaceId: string, delaySeconds: number)
  * batch (or waits out the hour's cap) through the queue.
  */
 export async function runBackfill(env: IndexEnv, workspaceId: string, chain = true): Promise<{ done: boolean }> {
-  const run = await env.DB.prepare("SELECT cursor, finished_at, pages, files FROM doc_index_runs WHERE workspace_id = ?").bind(workspaceId).first<{ cursor: string | null; finished_at: string | null; pages: number; files: number }>();
+  const run = await env.DB.prepare("SELECT cursor, finished_at, pages, files FROM doc_index_runs WHERE workspace_id = ?")
+    .bind(workspaceId)
+    .first<{ cursor: string | null; finished_at: string | null; pages: number; files: number }>();
   if (!run || run.finished_at) return { done: true };
   const { embedder, store } = adapters(env);
   const cursor = run.cursor ?? "p:";
@@ -384,12 +423,21 @@ export async function runBackfill(env: IndexEnv, workspaceId: string, chain = tr
     if (!capped && rows.length < BACKFILL_BATCH) next = "f:";
   } else if (cursor.startsWith("p:")) {
     const rows = (
-      await env.DB.prepare("SELECT id, workspace_id, space_id, title, markdown, archived_at FROM pages WHERE workspace_id = ? AND archived_at IS NULL AND id > ? ORDER BY id LIMIT ?")
+      await env.DB.prepare(
+        "SELECT id, workspace_id, space_id, title, markdown, archived_at FROM pages WHERE workspace_id = ? AND archived_at IS NULL AND id > ? ORDER BY id LIMIT ?",
+      )
         .bind(workspaceId, cursor.slice(2), BACKFILL_BATCH)
         .all<PageForIndex>()
     ).results;
     for (const page of rows) {
-      const result = await indexDoc(env.DB, embedder, store, { kind: "page", doc_id: page.id, workspace_id: page.workspace_id, space_id: page.space_id, title: page.title, markdown: page.markdown });
+      const result = await indexDoc(env.DB, embedder, store, {
+        kind: "page",
+        doc_id: page.id,
+        workspace_id: page.workspace_id,
+        space_id: page.space_id,
+        title: page.title,
+        markdown: page.markdown,
+      });
       pages++;
       if (result.capped) {
         // This page again next time, after the hour: the cursor stays before it.
@@ -465,7 +513,10 @@ type FolioChunkRow = { id: string; seq: number; scope: string; hash: string; vec
 export async function indexFolio(env: IndexEnv, folioId: string, now = new Date()): Promise<{ capped: boolean }> {
   try {
     const db = env.DB;
-    const row = await db.prepare(`SELECT ${FOLIO_COLUMNS.replace("'' AS text", "text")} FROM folios WHERE id = ?`).bind(folioId).first<FolioRow>();
+    const row = await db
+      .prepare(`SELECT ${FOLIO_COLUMNS.replace("'' AS text", "text")} FROM folios WHERE id = ?`)
+      .bind(folioId)
+      .first<FolioRow>();
     if (!row || row.trashed_at) {
       await forgetFolios(env, [folioId]);
       return { capped: false };
@@ -491,12 +542,17 @@ export async function indexFolio(env: IndexEnv, folioId: string, now = new Date(
           )
           .bind(c.id, row.workspace_id, row.id, row.kind, scope, c.seq, c.heading, c.text, c.hash, at),
         db.prepare("DELETE FROM folio_chunks_fts WHERE chunk_id = ?").bind(c.id),
-        db.prepare("INSERT INTO folio_chunks_fts (chunk_id, scope, folio_id, heading, text) SELECT ?1, ?2, ?3, ?4, ?5 WHERE EXISTS (SELECT 1 FROM folio_chunks WHERE id = ?1)").bind(c.id, scope, row.id, c.heading ?? "", c.text),
+        db
+          .prepare(
+            "INSERT INTO folio_chunks_fts (chunk_id, scope, folio_id, heading, text) SELECT ?1, ?2, ?3, ?4, ?5 WHERE EXISTS (SELECT 1 FROM folio_chunks WHERE id = ?1)",
+          )
+          .bind(c.id, scope, row.id, c.heading ?? "", c.text),
       );
     }
     const keep = new Set(chunks.map((c) => c.id));
     const gone = old.filter((r) => !keep.has(r.id));
-    for (const r of gone) statements.push(db.prepare("DELETE FROM folio_chunks WHERE id = ?").bind(r.id), db.prepare("DELETE FROM folio_chunks_fts WHERE chunk_id = ?").bind(r.id));
+    for (const r of gone)
+      statements.push(db.prepare("DELETE FROM folio_chunks WHERE id = ?").bind(r.id), db.prepare("DELETE FROM folio_chunks_fts WHERE chunk_id = ?").bind(r.id));
     for (let i = 0; i < statements.length; i += 60) await db.batch(statements.slice(i, i + 60));
 
     const { embedder, store } = folioAdapters(env);
@@ -540,7 +596,15 @@ export async function indexFolio(env: IndexEnv, folioId: string, now = new Date(
           );
         }
         if (vectors.length) await store.upsert(vectors);
-        if (vectors.length) await dropIfErased(db, store, "folio", row.id, row.workspace_id, vectors.map((v) => v.id));
+        if (vectors.length)
+          await dropIfErased(
+            db,
+            store,
+            "folio",
+            row.id,
+            row.workspace_id,
+            vectors.map((v) => v.id),
+          );
         const hashOf = new Map(chunks.map((c) => [c.id, c.hash]));
         for (const v of vectors) done.push({ id: v.id, hash: hashOf.get(v.id)! });
       } catch (error) {
@@ -586,7 +650,10 @@ export async function forgetFolios(env: IndexEnv, ids: readonly string[]): Promi
         console.error("folios could not drop passages from the index", found.length, String(error));
       }
     }
-    const statements = found.flatMap((id) => [db.prepare("DELETE FROM folio_chunks WHERE id = ?").bind(id), db.prepare("DELETE FROM folio_chunks_fts WHERE chunk_id = ?").bind(id)]);
+    const statements = found.flatMap((id) => [
+      db.prepare("DELETE FROM folio_chunks WHERE id = ?").bind(id),
+      db.prepare("DELETE FROM folio_chunks_fts WHERE chunk_id = ?").bind(id),
+    ]);
     for (let i = 0; i < statements.length; i += 80) await db.batch(statements.slice(i, i + 80));
   } catch (error) {
     console.error("folios could not forget passages", String(error));
@@ -607,10 +674,15 @@ export async function erasedSource(db: D1Database, kind: "page" | "folio" | null
  * were being embedded found no chunk rows for them, so they are taken back
  * here. Throws when they cannot be, so the caller does not record them.
  */
-export async function dropIfErased(db: D1Database, store: VectorStore, kind: "page" | "folio" | null, id: string, workspaceId: string, ids: string[]): Promise<void> {
+export async function dropIfErased(
+  db: D1Database,
+  store: VectorStore,
+  kind: "page" | "folio" | null,
+  id: string,
+  workspaceId: string,
+  ids: string[],
+): Promise<void> {
   if (!ids.length || !(await erasedSource(db, kind, id, workspaceId))) return;
   await store.delete(ids);
-  await db.batch([
-    db.prepare(`DELETE FROM ${kind === "folio" ? "folio_chunks_fts WHERE folio_id" : "doc_chunks_fts WHERE doc_id"} = ?`).bind(id),
-  ]);
+  await db.batch([db.prepare(`DELETE FROM ${kind === "folio" ? "folio_chunks_fts WHERE folio_id" : "doc_chunks_fts WHERE doc_id"} = ?`).bind(id)]);
 }

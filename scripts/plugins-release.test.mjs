@@ -49,7 +49,10 @@ test("the build is the marketplace, the plugin without its tests, a README and t
   assert.ok(!files.some((f) => f.includes("test/") || f.endsWith(".test.mjs")), files.join(" "));
   const marketplace = JSON.parse(readFileSync(join(out, ".claude-plugin/marketplace.json"), "utf8"));
   assert.equal(marketplace.name, "g1t");
-  assert.deepEqual(marketplace.plugins.map((p) => [p.name, p.source, p.version]), [["g1t", "./plugins/g1t", version]]);
+  assert.deepEqual(
+    marketplace.plugins.map((p) => [p.name, p.source, p.version]),
+    [["g1t", "./plugins/g1t", version]],
+  );
   // The plugin's files are the source's, byte for byte.
   for (const f of files.filter((f) => f.startsWith(`${PUBLISHED}/`))) {
     assert.equal(readFileSync(join(out, f), "utf8"), readFileSync(join(ROOT, SOURCE, f.slice(PUBLISHED.length + 1)), "utf8"), f);
@@ -112,7 +115,10 @@ test("publishing: the first commit and tag, nothing when unchanged, a new versio
   assert.equal(first.tagged, true);
   assert.equal(git(remote, "rev-parse", "main").stdout.trim(), first.commit);
   assert.equal(git(remote, "rev-parse", `g1t--v${version}^{commit}`).stdout.trim(), first.commit);
-  assert.match(git(remote, "log", "-1", "--format=%an <%ae>%n%B", "main").stdout, /^g1t <g1t@users\.noreply\.g1t\.sh>\ng1t .*, from flagon-io\/g1t@aaaaaaaaaaaa/);
+  assert.match(
+    git(remote, "log", "-1", "--format=%an <%ae>%n%B", "main").stdout,
+    /^g1t <g1t@users\.noreply\.g1t\.sh>\ng1t .*, from flagon-io\/g1t@aaaaaaaaaaaa/,
+  );
   const listed = git(remote, "ls-tree", "-r", "--name-only", "main").stdout.trim().split("\n").sort();
   assert.deepEqual(listed, expectedFiles(root));
 
@@ -135,7 +141,7 @@ test("publishing: the first commit and tag, nothing when unchanged, a new versio
   // Codex releases have their own version gate; a Claude bump is not enough.
   writeFileSync(join(root, "plugins/codex/skills/work-on-g1t/SKILL.md"), "changed Codex skill\n");
   assert.throws(() => run("f".repeat(40)), /Codex plugin files changed without a version bump/);
-  editJson(root, "plugins/codex/plugin.json", p => ({ ...p, version: "0.1.1" }));
+  editJson(root, "plugins/codex/plugin.json", (p) => ({ ...p, version: "0.1.1" }));
   assert.equal(run("1".repeat(40)).changed, true);
 
   // The marketplace's own text may change without a new version.

@@ -47,9 +47,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       const { username, amount, note } = grant.value;
       const result = await identity.grantInvites(username, amount, note, staff.email);
       if (!result.ok) return data({ error: result.error.message, id: "grant" }, { status: 422 });
-      throw redirect(
-        invitesHref({ tab: "g1t", q: username, done: "granted", who: username, left: `${result.value.remaining} of ${result.value.limit}` }),
-      );
+      throw redirect(invitesHref({ tab: "g1t", q: username, done: "granted", who: username, left: `${result.value.remaining} of ${result.value.limit}` }));
     }
   }
   return data({ error: "Unknown action.", id: "" }, { status: 400 });
@@ -66,7 +64,12 @@ function statusBadge(invite: Invite) {
     case "awaiting_answer":
       return <Badge tone="lavender">Waiting for an answer</Badge>;
     case "redeemed":
-      return <Badge tone="mint">{invite.chargedTo === "user" ? "Joined" : "Used"}{invite.redeemedBy ? ` as ${invite.redeemedBy}` : ""}</Badge>;
+      return (
+        <Badge tone="mint">
+          {invite.chargedTo === "user" ? "Joined" : "Used"}
+          {invite.redeemedBy ? ` as ${invite.redeemedBy}` : ""}
+        </Badge>
+      );
     case "declined":
       return <Badge>Declined</Badge>;
     case "expired":
@@ -105,9 +108,7 @@ function InviteTable({ invites, actionData }: { invites: Invite[]; actionData: A
               <tr key={invite.id} id={invite.id} className="scroll-mt-20 border-t border-line align-top">
                 <td className="px-4 py-2 font-mono text-xs whitespace-nowrap">{invite.hint}…</td>
                 <td className="px-4 py-2">
-                  <span className="break-all">
-                    {invite.email ?? (invite.invitee ? `@${invite.invitee}` : <span className="text-faint">anyone</span>)}
-                  </span>
+                  <span className="break-all">{invite.email ?? (invite.invitee ? `@${invite.invitee}` : <span className="text-faint">anyone</span>)}</span>
                   <span className="block text-xs text-faint">{kindOf(invite)}</span>
                 </td>
                 <td className="px-4 py-2">
@@ -149,7 +150,10 @@ function InviteTable({ invites, actionData }: { invites: Invite[]; actionData: A
 function Grant({ actionData }: { actionData: ActionData }) {
   const error = actionData && "id" in actionData && actionData.id === "grant" ? actionData.error : null;
   return (
-    <Section title="Grant invites to g1t" description="Everyone has 20. Give a person more, or take some back with a negative number; kept with why and who granted them.">
+    <Section
+      title="Grant invites to g1t"
+      description="Everyone has 20. Give a person more, or take some back with a negative number; kept with why and who granted them."
+    >
       <form method="post" className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]">
         <input type="hidden" name="intent" value="grant" />
         <Field label="Username">

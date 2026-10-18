@@ -17,13 +17,7 @@ import type { AlertActivity, AlertState, DismissReason, SecretFinding, Severity,
  * `payment_required` failure saying how to start the plan.
  */
 
-export type PaidFeature =
-  | "custom_patterns"
-  | "validity_checks"
-  | "delegated_bypass"
-  | "code_scanning"
-  | "dependency_review"
-  | "security_overview";
+export type PaidFeature = "custom_patterns" | "validity_checks" | "delegated_bypass" | "code_scanning" | "dependency_review" | "security_overview";
 
 export type AlertType = "secret_scanning" | "code_scanning" | "vulnerability";
 
@@ -315,7 +309,13 @@ export interface SecuritySuiteApi {
   patterns(workspace: string, repo: RepoPath | null, viewer: Viewer): Promise<Result<PatternList>>;
   savePattern(actor: User, workspace: string, repo: RepoPath | null, pattern: PatternInput): Promise<Result<SavedPattern>>;
   deletePattern(actor: User, workspace: string, repo: RepoPath | null, id: string): Promise<Result<boolean>>;
-  dryRun(actor: User, workspace: string, repo: RepoPath | null, pattern: { pattern: string; before?: string | null; after?: string | null }, repos?: string[]): Promise<Result<DryRun>>;
+  dryRun(
+    actor: User,
+    workspace: string,
+    repo: RepoPath | null,
+    pattern: { pattern: string; before?: string | null; after?: string | null },
+    repos?: string[],
+  ): Promise<Result<DryRun>>;
   secretAlert(repo: RepoPath, id: string, viewer: Viewer): Promise<Result<SecretAlertDetail>>;
   bypass(actor: User, repo: RepoPath, id: string, reason: BypassReason, comment: string): Promise<Result<BypassResult>>;
   bypassRequests(workspace: string, viewer: Viewer, state?: string | null): Promise<Result<BypassRequest[]>>;
@@ -323,7 +323,14 @@ export interface SecuritySuiteApi {
   checkValidity(actor: User, repo: RepoPath, id: string): Promise<Result<SecretFinding>>;
   codeScanning(repo: RepoPath, viewer: Viewer): Promise<Result<CodeScanning>>;
   codeAlert(repo: RepoPath, number: number, viewer: Viewer): Promise<Result<CodeAlertDetail>>;
-  setCodeAlertState(actor: User, repo: RepoPath, number: number, state: "open" | "dismissed", reason: DismissReason | null, comment: string): Promise<Result<CodeAlert>>;
+  setCodeAlertState(
+    actor: User,
+    repo: RepoPath,
+    number: number,
+    state: "open" | "dismissed",
+    reason: DismissReason | null,
+    comment: string,
+  ): Promise<Result<CodeAlert>>;
   pullScanning(repo: RepoPath, number: number, viewer: Viewer): Promise<Result<PullScanning>>;
   /** The Dependency review check run again on an open pull request's head; its comment changes in place. */
   rerunDependencyReview(actor: User, repo: RepoPath, number: number): Promise<Result<DependencyReview>>;
@@ -371,8 +378,7 @@ export function securitySuiteClient(service: ServiceBinding): SecuritySuiteApi {
     checkValidity: (actor, repo, id) => call("check_validity", { actor, repo, id }),
     codeScanning: (repo, viewer) => call("code_scanning", { repo, viewer }),
     codeAlert: (repo, number, viewer) => call("code_alert", { repo, number, viewer }),
-    setCodeAlertState: (actor, repo, number, state, reason, comment) =>
-      call("set_code_alert_state", { actor, repo, number, state, reason, comment }),
+    setCodeAlertState: (actor, repo, number, state, reason, comment) => call("set_code_alert_state", { actor, repo, number, state, reason, comment }),
     pullScanning: (repo, number, viewer) => call("pull_code_scanning", { repo, number, viewer }),
     rerunDependencyReview: (actor, repo, number) => call("rerun_dependency_review", { repo, number, viewer: actor }),
     dependencyGraph: (repo, viewer) => call("dependency_graph", { repo, viewer }),

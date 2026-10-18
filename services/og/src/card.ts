@@ -108,11 +108,7 @@ function topBar(address: string, suffix?: string): Node {
     "div",
     { display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" },
     lockup(46, suffix),
-    h(
-      "div",
-      { display: "flex", fontFamily: MONO, fontSize: 22, color: COLOR.faint, whiteSpace: "nowrap" },
-      bound(address, 46),
-    ),
+    h("div", { display: "flex", fontFamily: MONO, fontSize: 22, color: COLOR.faint, whiteSpace: "nowrap" }, bound(address, 46)),
   );
 }
 
@@ -158,11 +154,7 @@ function fact(shapes: string, strong: string, rest: string): Node {
 }
 
 function plain(text: string, mono = false): Node {
-  return h(
-    "div",
-    { display: "flex", fontFamily: mono ? MONO : SANS, fontSize: mono ? 25 : 28, color: COLOR.muted },
-    text,
-  );
+  return h("div", { display: "flex", fontFamily: mono ? MONO : SANS, fontSize: mono ? 25 : 28, color: COLOR.muted }, text);
 }
 
 const dot = () => h("div", { display: "flex", fontSize: 28, color: COLOR.faint }, "·");
@@ -291,11 +283,7 @@ function brandCard(): Node {
         },
         TAGLINE,
       ),
-      h(
-        "div",
-        { display: "flex", marginTop: 40, fontFamily: MONO, fontSize: 26, color: COLOR.lavender },
-        "g1t.sh",
-      ),
+      h("div", { display: "flex", marginTop: 40, fontFamily: MONO, fontSize: 26, color: COLOR.lavender }, "g1t.sh"),
     ),
     rule(),
   );
@@ -337,10 +325,7 @@ export function cardTree(card: Card): Node {
       return frame({
         address: `g1t.sh/${card.slug}`,
         // The slug above the name, unless they are the same.
-        eyebrow: withIcon(
-          card.icon,
-          card.name.toLowerCase() === card.slug ? eyebrow("Workspace", false) : eyebrow(card.slug, true),
-        ),
+        eyebrow: withIcon(card.icon, card.name.toLowerCase() === card.slug ? eyebrow("Workspace", false) : eyebrow(card.slug, true)),
         title: title(card.name, 2),
         description: card.description,
         facts: [fact(ICON.box, n, noun)],
@@ -357,11 +342,7 @@ export function cardTree(card: Card): Node {
         eyebrow: withIcon(card.icon, card.name ? eyebrow(`@${card.username}`, true) : eyebrow("Profile", false), true),
         title: card.name ? title(card.name, 2) : repoTitle(card.username),
         description: card.bio,
-        facts: [
-          fact(ICON.merged, merged, mergedNoun),
-          fact(ICON.pull, pulls, pullNoun),
-          fact(ICON.item, items, itemNoun),
-        ],
+        facts: [fact(ICON.merged, merged, mergedNoun), fact(ICON.pull, pulls, pullNoun), fact(ICON.item, items, itemNoun)],
       });
     }
 

@@ -16,10 +16,7 @@ import { requireStaff, zoneContext } from "./lib/staff";
 import { THEME_COLOR, THEME_COOKIE, readTheme, themeAttribute, useThemeChoice } from "./lib/theme";
 import { readCookie } from "./lib/time";
 
-export const meta: Route.MetaFunction = () => [
-  { title: "sudo · g1t" },
-  { name: "robots", content: "noindex, nofollow" },
-];
+export const meta: Route.MetaFunction = () => [{ title: "sudo · g1t" }, { name: "robots", content: "noindex, nofollow" }];
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { email } = requireStaff(context);
@@ -31,14 +28,12 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     settle(admin.platformGuard()),
     settle(privacy.requests()),
   ]);
-  const counts: NavCounts = { incidents: incidents.ok ? incidents.value : 0, privacy: erasures.ok ? erasures.value.filter(r => !r.closed_at).length : 0 };
+  const counts: NavCounts = { incidents: incidents.ok ? incidents.value : 0, privacy: erasures.ok ? erasures.value.filter((r) => !r.closed_at).length : 0 };
   // Every page says times in this zone (components/ui.tsx `When`).
   const { zone, chosen } = context.get(zoneContext);
   // Margin alerts (billing's margin guard): a red bar on every page until they clear.
   const rank = ["overall", "margin", "leak"];
-  const margin = alerts.ok
-    ? alerts.value.filter((alert) => rank.includes(alert.kind)).sort((a, b) => rank.indexOf(a.kind) - rank.indexOf(b.kind))
-    : [];
+  const margin = alerts.ok ? alerts.value.filter((alert) => rank.includes(alert.kind)).sort((a, b) => rank.indexOf(a.kind) - rank.indexOf(b.kind)) : [];
   // g1t's own spend (billing's budget): the daily breaker open, or a comped
   // account's monthly budget used up. Red until it clears or staff act.
   const spend = caps.ok ? spendBanner(caps.value) : null;

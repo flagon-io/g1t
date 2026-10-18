@@ -46,7 +46,11 @@ function platform(): string {
  */
 export function PaletteKey({ className }: { className?: string }) {
   // The server cannot know the computer: it says ⌘K, and the browser corrects it.
-  const label = useSyncExternalStore(never, () => paletteKeyLabel(platform()), () => "⌘K");
+  const label = useSyncExternalStore(
+    never,
+    () => paletteKeyLabel(platform()),
+    () => "⌘K",
+  );
   return <Kbd className={cn(className, "pointer-coarse:hidden")}>{label}</Kbd>;
 }
 

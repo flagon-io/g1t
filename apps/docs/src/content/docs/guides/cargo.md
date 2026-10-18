@@ -137,10 +137,10 @@ error that says so.
 A crate linked to a repository has the repository's visibility; one of
 the workspace's own is private until an owner makes it public on its page.
 
-| The workspace's crates | Without a token | With a token |
-| --- | --- | --- |
-| All public | Cargo reads the index and downloads them. | The same; the token is sent to publish and yank. |
-| Some private | The registry answers `401`: Cargo needs a token for every crate in it, public ones too. | Cargo sends the token with every request, and sees the crates the token's owner may see. |
+| The workspace's crates | Without a token                                                                         | With a token                                                                             |
+| ---------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| All public             | Cargo reads the index and downloads them.                                               | The same; the token is sent to publish and yank.                                         |
+| Some private           | The registry answers `401`: Cargo needs a token for every crate in it, public ones too. | Cargo sends the token with every request, and sees the crates the token's owner may see. |
 
 Cargo first asks for the registry's `config.json` without a token. When
 the registry answers `401`, Cargo asks again with its token, and the
@@ -171,11 +171,11 @@ jobs:
       - run: cargo publish --registry acme
 ```
 
-| Variable | Is | Needed |
-| --- | --- | --- |
-| `CARGO_REGISTRIES_ACME_INDEX` | The registry's index, as `index` in `.cargo/config.toml`. | When no `.cargo/config.toml` names the registry. |
+| Variable                                    | Is                                                               | Needed                                                                                                                                              |
+| ------------------------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CARGO_REGISTRIES_ACME_INDEX`               | The registry's index, as `index` in `.cargo/config.toml`.        | When no `.cargo/config.toml` names the registry.                                                                                                    |
 | `CARGO_REGISTRIES_ACME_CREDENTIAL_PROVIDER` | `cargo:token`, as `credential-provider` in `.cargo/config.toml`. | When no `.cargo/config.toml` names the provider. Without one, Cargo refuses a registry with private crates, even with the token in the environment. |
-| `CARGO_REGISTRIES_ACME_TOKEN` | The token, for `cargo:token` to hand to the registry. | Always: `cargo publish` sends it, and Cargo sends it to read a registry with private crates. |
+| `CARGO_REGISTRIES_ACME_TOKEN`               | The token, for `cargo:token` to hand to the registry.            | Always: `cargo publish` sends it, and Cargo sends it to read a registry with private crates.                                                        |
 
 With the project's `.cargo/config.toml` from [above](#set-up-cargoconfigtoml)
 checked in, `CARGO_REGISTRIES_ACME_TOKEN` is all a workflow sets. The same
@@ -192,11 +192,11 @@ A `.crate` file is stored once, by its content.
 
 ## Errors
 
-| Error | Means |
-| --- | --- |
-| `401` | No token, or a wrong or expired one. Run `cargo login --registry acme` with a g1t access token, or set `CARGO_REGISTRIES_ACME_TOKEN`. |
+| Error                                                                     | Means                                                                                                                                                                                                                         |
+| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `401`                                                                     | No token, or a wrong or expired one. Run `cargo login --registry acme` with a g1t access token, or set `CARGO_REGISTRIES_ACME_TOKEN`.                                                                                         |
 | `authenticated registries require a credential-provider to be configured` | The workspace has private crates, and Cargo has no provider for its token. Add `credential-provider = "cargo:token"` to the registry in `.cargo/config.toml`, or set `CARGO_REGISTRIES_ACME_CREDENTIAL_PROVIDER=cargo:token`. |
-| `403` | Signed in, but your role or your token's scopes do not allow it, or the workspace is out of free package storage. The message says which. |
-| `404` | No such crate or version, or a private one you cannot see. |
-| `400` | The publish was refused: a name that is not valid or is taken, a version already published, or metadata Cargo did not send in full. The message says which. |
-| `413` | The publish is over 100 MB. Leave large files out with `exclude` or `include` in `Cargo.toml`, and check with `cargo package --list`. |
+| `403`                                                                     | Signed in, but your role or your token's scopes do not allow it, or the workspace is out of free package storage. The message says which.                                                                                     |
+| `404`                                                                     | No such crate or version, or a private one you cannot see.                                                                                                                                                                    |
+| `400`                                                                     | The publish was refused: a name that is not valid or is taken, a version already published, or metadata Cargo did not send in full. The message says which.                                                                   |
+| `413`                                                                     | The publish is over 100 MB. Leave large files out with `exclude` or `include` in `Cargo.toml`, and check with `cargo package --list`.                                                                                         |

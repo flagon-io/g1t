@@ -101,7 +101,13 @@ function push(label, dir, name) {
   const lines = readFileSync(trace, "utf8").split("\n");
   // The first ref line, with the capabilities after its NUL (`\0` in the trace).
   const advertised = lines.find((line) => /packet:.*< [0-9a-f]{40} \S+\\0/.test(line)) ?? "";
-  if (!advertised) console.log(lines.filter((line) => /report-status/.test(line)).slice(0, 3).join("\n"));
+  if (!advertised)
+    console.log(
+      lines
+        .filter((line) => /report-status/.test(line))
+        .slice(0, 3)
+        .join("\n"),
+    );
   const packing = lines.find((line) => /run_command: git pack-objects/.test(line)) ?? "";
   const timing = lines.filter((line) => /server-timing:/i.test(line) && /recv;dur=/.test(line)).join(" ");
   check(`${label}: the advertisement says no-thin`, /\bno-thin\b/.test(advertised), `...${advertised.slice(-48)}`);
@@ -146,7 +152,10 @@ try {
     git([...identity, "commit", "-q", "-am", "straight"], seed);
     const trace = join(work, "control.trace");
     git(["-c", `http.extraHeader=Authorization: Bearer ${token}`, "push", "-q", `${STORE}/git/acme--rocket.git`, "main"], seed, { GIT_TRACE: trace });
-    const packing = readFileSync(trace, "utf8").split("\n").find((line) => /run_command: git pack-objects/.test(line)) ?? "";
+    const packing =
+      readFileSync(trace, "utf8")
+        .split("\n")
+        .find((line) => /run_command: git pack-objects/.test(line)) ?? "";
     check("control: straight to the store, git packs with --thin", /--thin\b/.test(packing), packing.replace(/.*run_command: /, ""));
   }
 

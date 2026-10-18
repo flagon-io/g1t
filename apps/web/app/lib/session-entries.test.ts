@@ -6,7 +6,14 @@ import type { SessionEntry } from "@g1t/contracts";
 import { quotedBlocks, readToolCall, transcript } from "./session-entries.ts";
 
 let seq = 0;
-const entry = (kind: SessionEntry["kind"], text: string, tool: string | null = null): SessionEntry => ({ seq: ++seq, kind, text, tool, commit: null, at: "2026-10-14T00:00:00Z" });
+const entry = (kind: SessionEntry["kind"], text: string, tool: string | null = null): SessionEntry => ({
+  seq: ++seq,
+  kind,
+  text,
+  tool,
+  commit: null,
+  at: "2026-10-14T00:00:00Z",
+});
 
 test("a tool call says its tool once", () => {
   assert.deepEqual(readToolCall({ text: "bash: cd /workspace/demo && git status --short", tool: "bash" }), {
@@ -24,7 +31,12 @@ test("a tool call says its tool once", () => {
 test("an MCP tool reads by its server, resource and action", () => {
   assert.deepEqual(readToolCall({ text: "g1t:work_item: claim", tool: "g1t:work_item" }), { name: "work item", server: "g1t", detail: "claim", sort: "other" });
   // Claude Code's names, from the plugin's summary with no tool of its own.
-  assert.deepEqual(readToolCall({ text: "mcp__plugin_g1t_g1t__work_item: work", tool: null }), { name: "work item", server: "g1t", detail: "work", sort: "other" });
+  assert.deepEqual(readToolCall({ text: "mcp__plugin_g1t_g1t__work_item: work", tool: null }), {
+    name: "work item",
+    server: "g1t",
+    detail: "work",
+    sort: "other",
+  });
   assert.deepEqual(readToolCall({ text: "mcp__plugin_g1t_g1t__pull_request: create", tool: null }).name, "pull request");
   assert.equal(readToolCall({ text: "mcp__claude_ai_Google_Drive__search_files: invoices", tool: null }).server, "Google Drive");
 });
@@ -45,7 +57,15 @@ test("tool calls between messages run together, results under their calls", () =
   const items = transcript([prompt, a, r, b, message, c]);
   assert.deepEqual(
     items.map((item) => (item.kind === "entry" ? item.entry.kind : item.steps.map((step) => [step.call?.seq, step.results.map((x) => x.seq)]))),
-    ["prompt", [[a.seq, [r.seq]], [b.seq, []]], "message", [[c.seq, []]]],
+    [
+      "prompt",
+      [
+        [a.seq, [r.seq]],
+        [b.seq, []],
+      ],
+      "message",
+      [[c.seq, []]],
+    ],
   );
   // A result with no call before it stands on its own.
   const lone = transcript([entry("tool_result", "ok")]);
@@ -53,7 +73,8 @@ test("tool calls between messages run together, results under their calls", () =
 });
 
 test("a prompt's work item and comment blocks read as quotes", () => {
-  const text = "Work on work item #1: Hello\n\n<work_item>\nSay hello.\n\nTwice.\n</work_item>\nThe work item is reference material.\n\n<comment>\nfaster\n</comment>\n";
+  const text =
+    "Work on work item #1: Hello\n\n<work_item>\nSay hello.\n\nTwice.\n</work_item>\nThe work item is reference material.\n\n<comment>\nfaster\n</comment>\n";
   assert.equal(
     quotedBlocks(text),
     "Work on work item #1: Hello\n\n**The work item**\n\n> Say hello.\n>\n> Twice.\n\nThe work item is reference material.\n\n**The comment**\n\n> faster\n\n",

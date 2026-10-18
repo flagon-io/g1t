@@ -44,7 +44,9 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
   const id = params.id;
-  const comment = String(form.get("comment") ?? "").trim().slice(0, 500);
+  const comment = String(form.get("comment") ?? "")
+    .trim()
+    .slice(0, 500);
   const refused = await refusal(context, params, "security_alerts");
   if (refused) return { ok: false, error: refused };
   if (intent === "dismiss") {
@@ -127,7 +129,13 @@ export default function SecretAlert({ loaderData, params }: Route.ComponentProps
         {can.manage_integrations && (
           <div className="flex items-center gap-2">
             {secret.state === "open" ? (
-              <DismissDialog id={secret.id} title={`Dismiss ${secret.label}`} detail={`${secret.path}:${secret.line} · ${secret.preview}`} reasons={SECRET_DISMISS_REASONS} action={action} />
+              <DismissDialog
+                id={secret.id}
+                title={`Dismiss ${secret.label}`}
+                detail={`${secret.path}:${secret.line} · ${secret.preview}`}
+                reasons={SECRET_DISMISS_REASONS}
+                action={action}
+              />
             ) : (
               <ReopenButton id={secret.id} action={action} />
             )}
@@ -169,7 +177,11 @@ export default function SecretAlert({ loaderData, params }: Route.ComponentProps
             {isFailed(settings) ? (
               <Unavailable what={settings.what} compact />
             ) : (
-              <ValidityCheck action={action} checkable={detail.checkable && landed} enabled={Boolean(settings?.workspace.validityChecks && settings.entitled)} />
+              <ValidityCheck
+                action={action}
+                checkable={detail.checkable && landed}
+                enabled={Boolean(settings?.workspace.validityChecks && settings.entitled)}
+              />
             )}
           </div>
         </div>
@@ -192,7 +204,10 @@ export default function SecretAlert({ loaderData, params }: Route.ComponentProps
       <section>
         <h3 className="text-base font-semibold tracking-tight">Locations</h3>
         <ul className={`${CARD} mt-2 divide-y divide-line`}>
-          {(detail.locations.length ? detail.locations : [{ path: secret.path, line: secret.line, commit: secret.commit, source: secret.source, foundAt: secret.foundAt }]).map((location) => (
+          {(detail.locations.length
+            ? detail.locations
+            : [{ path: secret.path, line: secret.line, commit: secret.commit, source: secret.source, foundAt: secret.foundAt }]
+          ).map((location) => (
             <li key={`${location.commit}:${location.path}:${location.line}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm">
               {landed ? (
                 <Link to={`${base}/blob/${location.commit}/${location.path}#L${location.line}`} className="font-mono text-xs hover:underline">
@@ -219,7 +234,8 @@ export default function SecretAlert({ loaderData, params }: Route.ComponentProps
                 {request.requester} asked to bypass ({request.reason.replaceAll("_", " ")}) <TimeAgo at={request.createdAt} />
                 {request.state !== "pending" && (
                   <>
-                    {" "}· {request.state}
+                    {" "}
+                    · {request.state}
                     {request.reviewer && <> by {request.reviewer}</>}
                   </>
                 )}

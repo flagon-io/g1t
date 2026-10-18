@@ -109,9 +109,7 @@ export function projectQueryString(query: ProjectQuery, change: Partial<ProjectQ
 
 /** Whether anything narrows the list, beyond leaving archived projects out. */
 export function isFiltered(query: ProjectQuery): boolean {
-  return Boolean(
-    query.q || query.visibility !== "all" || query.kind !== "all" || query.language || query.deployments || query.archived !== "hide",
-  );
+  return Boolean(query.q || query.visibility !== "all" || query.kind !== "all" || query.language || query.deployments || query.archived !== "hide");
 }
 
 /** When it last changed: its own settings, or a push, whichever is later. */
@@ -147,8 +145,7 @@ const byName = (a: Listed, b: Listed) => a.name.localeCompare(b.name, undefined,
  */
 export function sortProjects(projects: Listed[], sort: ProjectSort, words: string[] = []): Listed[] {
   const first = words[0];
-  const leads = (project: Listed) =>
-    first != null && (project.name.toLowerCase().startsWith(first) || project.slug.startsWith(first)) ? 0 : 1;
+  const leads = (project: Listed) => (first != null && (project.name.toLowerCase().startsWith(first) || project.slug.startsWith(first)) ? 0 : 1);
   const order: Record<ProjectSort, (a: Listed, b: Listed) => number> = {
     name: byName,
     updated: (a, b) => lastUpdated(b).localeCompare(lastUpdated(a)),

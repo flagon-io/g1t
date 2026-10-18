@@ -264,8 +264,7 @@ export function inboxClient(events: ServiceBinding): InboxApi {
     mark: (username, args) => call("inbox_mark", { username, ...args }),
     thread: (viewer, id) => call("inbox_thread", { viewer, id }),
     subscription: (viewer, target) => call("inbox_subscription", { viewer, ...target }),
-    subscribe: (viewer, target, subscribed, ignored = false) =>
-      call("inbox_subscribe", { viewer, ...target, subscribed, ignored }),
+    subscribe: (viewer, target, subscribed, ignored = false) => call("inbox_subscribe", { viewer, ...target, subscribed, ignored }),
     watching: (username, repoId) => call("inbox_watching", { username, repoId }),
     watch: (username, repoId, repo, level, events = []) => call("inbox_watch", { username, repoId, repo, level, events }),
     watched: (username) => call("inbox_watched", { username }),

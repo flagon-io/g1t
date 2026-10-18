@@ -12,7 +12,21 @@
 import { BlockNoteSchema, createCodeBlockSpec, defaultBlockSpecs, defaultInlineContentSpecs } from "@blocknote/core";
 import { createReactBlockSpec, createReactInlineContentSpec } from "@blocknote/react";
 import { codeBlockOptions } from "@blocknote/code-block";
-import { AlertTriangle, Braces, CheckCircle2, CircleDot, FileCode2, FileText, GitPullRequest, Hash, Info, KeyRound, OctagonAlert, Package, Route } from "lucide-react";
+import {
+  AlertTriangle,
+  Braces,
+  CheckCircle2,
+  CircleDot,
+  FileCode2,
+  FileText,
+  GitPullRequest,
+  Hash,
+  Info,
+  KeyRound,
+  OctagonAlert,
+  Package,
+  Route,
+} from "lucide-react";
 import { useEffect, useId, useState, type ReactNode } from "react";
 
 import { citationHref } from "../../../lib/folios";
@@ -21,7 +35,13 @@ import { Button } from "../../ui/button";
 import { Card } from "../../ui/card";
 
 /** What an embed shows, from the site (`-/artifacts/api?embed=`). */
-export type EmbedCard = { kind: "item" | "pull" | "channel" | "project" | "page" | "link"; title: string; subtitle: string | null; state: string | null; href: string };
+export type EmbedCard = {
+  kind: "item" | "pull" | "channel" | "project" | "page" | "link";
+  title: string;
+  subtitle: string | null;
+  state: string | null;
+  href: string;
+};
 
 const CALLOUTS = {
   info: { icon: <Info size={16} />, ring: "border-info/30 bg-info/8", text: "text-info" },
@@ -96,7 +116,19 @@ function MermaidView({ code }: { code: string }) {
   return <div className="flex justify-center overflow-x-auto [&_svg]:max-w-full" dangerouslySetInnerHTML={{ __html: svg }} />;
 }
 
-function SourceEditor({ value, onChange, placeholder, mono = true, editable }: { value: string; onChange: (v: string) => void; placeholder: string; mono?: boolean; editable: boolean }) {
+function SourceEditor({
+  value,
+  onChange,
+  placeholder,
+  mono = true,
+  editable,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  mono?: boolean;
+  editable: boolean;
+}) {
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
   if (!editable) return null;
@@ -124,12 +156,25 @@ export const Mermaid = createReactBlockSpec(
           <div className="mb-2 flex items-center justify-between text-[0.6875rem] font-medium tracking-wide text-faint uppercase">
             <span>Diagram</span>
             {editor.isEditable && (
-              <Button type="button" onClick={() => setEditing(!editing)} variant="ghost" size="inline" className="rounded px-1.5 py-0.5 font-normal normal-case text-faint">
+              <Button
+                type="button"
+                onClick={() => setEditing(!editing)}
+                variant="ghost"
+                size="inline"
+                className="rounded px-1.5 py-0.5 font-normal normal-case text-faint"
+              >
                 {editing ? "Done" : "Edit source"}
               </Button>
             )}
           </div>
-          {editing && <SourceEditor editable value={block.props.code} placeholder="flowchart LR&#10;  A --> B" onChange={(code) => editor.updateBlock(block, { props: { code } })} />}
+          {editing && (
+            <SourceEditor
+              editable
+              value={block.props.code}
+              placeholder="flowchart LR&#10;  A --> B"
+              onChange={(code) => editor.updateBlock(block, { props: { code } })}
+            />
+          )}
           <div className={editing ? "mt-3" : ""}>
             <MermaidView code={block.props.code} />
           </div>
@@ -166,9 +211,20 @@ export const MathBlock = createReactBlockSpec(
       return (
         <div className="group/math my-1 w-full rounded-lg px-3 py-2 hover:bg-surface" contentEditable={false}>
           {editing ? (
-            <SourceEditor editable value={block.props.expression} placeholder="\int_0^1 x^2\,dx" onChange={(expression) => editor.updateBlock(block, { props: { expression } })} />
+            <SourceEditor
+              editable
+              value={block.props.expression}
+              placeholder="\int_0^1 x^2\,dx"
+              onChange={(expression) => editor.updateBlock(block, { props: { expression } })}
+            />
           ) : null}
-          <button type="button" className="block w-full text-left" disabled={!editor.isEditable} onClick={() => setEditing(!editing)} aria-label={editing ? "Done editing the formula" : "Edit the formula"}>
+          <button
+            type="button"
+            className="block w-full text-left"
+            disabled={!editor.isEditable}
+            onClick={() => setEditing(!editing)}
+            aria-label={editing ? "Done editing the formula" : "Edit the formula"}
+          >
             <MathView expression={block.props.expression} />
           </button>
         </div>
@@ -212,7 +268,9 @@ function EmbedView({ url, title }: { url: string; title: string }) {
       <span className={`shrink-0 ${tone}`}>{EMBED_ICONS[shown?.kind ?? "link"]}</span>
       <span className="min-w-0 grow">
         <span className="block truncate text-sm font-medium text-fg">{shown?.title ?? (title || url)}</span>
-        <span className="block truncate text-xs text-faint">{card === null ? "Loading…" : card === "missing" ? "You can't see this, or it's gone." : shown?.subtitle}</span>
+        <span className="block truncate text-xs text-faint">
+          {card === null ? "Loading…" : card === "missing" ? "You can't see this, or it's gone." : shown?.subtitle}
+        </span>
       </span>
       {state && <span className={`shrink-0 rounded-full px-2 py-0.5 text-[0.6875rem] font-medium capitalize ring-1 ring-current/30 ${tone}`}>{state}</span>}
     </a>
@@ -273,7 +331,13 @@ export const Mention = createReactInlineContentSpec(
           </a>
         );
       }
-      return <span className={`rounded px-1 py-px font-medium ${p.kind === "agent" ? "bg-[color-mix(in_srgb,var(--color-accent)_15%,transparent)] text-(--color-accent)" : "bg-info/12 text-info"}`}>@{p.name}</span>;
+      return (
+        <span
+          className={`rounded px-1 py-px font-medium ${p.kind === "agent" ? "bg-[color-mix(in_srgb,var(--color-accent)_15%,transparent)] text-(--color-accent)" : "bg-info/12 text-info"}`}
+        >
+          @{p.name}
+        </span>
+      );
     },
   },
 );
@@ -284,7 +348,9 @@ export const DateChip = createReactInlineContentSpec(
   {
     render: ({ inlineContent }) => {
       const at = new Date(`${inlineContent.props.date}T12:00:00`);
-      const label = Number.isNaN(at.getTime()) ? inlineContent.props.date : at.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+      const label = Number.isNaN(at.getTime())
+        ? inlineContent.props.date
+        : at.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
       return <span className="rounded bg-raised px-1 py-px text-[0.9em] text-fg-soft">{label}</span>;
     },
   },

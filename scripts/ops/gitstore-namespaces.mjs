@@ -96,7 +96,8 @@ export function standings(config, held, health, events = [], made = null) {
     if (set.max_repos && repos >= set.max_repos) warnings.push("at its max_repos: takes no new repositories while another can");
     if (Number(hour.rate_limited ?? 0) > 0) warnings.push(`${hour.rate_limited} calls rate limited in the last hour`);
     if (made && set.binding && !known) warnings.push("named in GITSTORE_NAMESPACES, but Cloudflare has no namespace of this name: make it before deploying");
-    if (set.eu && known && known.jurisdiction !== "eu") warnings.push(`named as the EU namespace, but Cloudflare says its jurisdiction is ${known.jurisdiction ?? "unrestricted"}`);
+    if (set.eu && known && known.jurisdiction !== "eu")
+      warnings.push(`named as the EU namespace, but Cloudflare says its jurisdiction is ${known.jurisdiction ?? "unrestricted"}`);
     if (fallback) warnings.push(`served from the fallback store lately (${fallback.calls} calls in the last hour)`);
     return {
       ...set,
@@ -216,17 +217,24 @@ async function main() {
     const rows = await d1(`SELECT m.*, r.namespace AS workspace, r.name FROM repo_moves m LEFT JOIN repos r ON r.id = m.repo_id
       ORDER BY m.queued_ms DESC LIMIT 50`);
     if (args.includes("--json")) console.log(JSON.stringify(rows, null, 2));
-    else for (const row of rows) console.log(`${row.id}  ${row.status.padEnd(8)}  ${row.workspace}/${row.name} -> ${row.to_namespace}${row.note ? `  (${row.note})` : ""}`);
+    else
+      for (const row of rows)
+        console.log(`${row.id}  ${row.status.padEnd(8)}  ${row.workspace}/${row.name} -> ${row.to_namespace}${row.note ? `  (${row.note})` : ""}`);
     return 0;
   }
 
   if (command === "move") {
     const [path, namespace] = args.slice(1);
-    const [workspace, name] = String(path ?? "").toLowerCase().split("/");
+    const [workspace, name] = String(path ?? "")
+      .toLowerCase()
+      .split("/");
     if (!workspace || !name || !namespace) throw new Error("usage: move <workspace/name> <namespace>");
     const config = configured(wranglerConfig());
-    if (!config.some((one) => one.namespace === namespace && one.bound)) throw new Error(`${namespace} is not a bound namespace in services/repos/wrangler.jsonc`);
-    const [repo] = await d1(`SELECT id, store FROM repos WHERE namespace = ${quoted(workspace)} AND name = ${quoted(name)} AND deleted_at IS NULL AND fork_of IS NULL`);
+    if (!config.some((one) => one.namespace === namespace && one.bound))
+      throw new Error(`${namespace} is not a bound namespace in services/repos/wrangler.jsonc`);
+    const [repo] = await d1(
+      `SELECT id, store FROM repos WHERE namespace = ${quoted(workspace)} AND name = ${quoted(name)} AND deleted_at IS NULL AND fork_of IS NULL`,
+    );
     if (!repo) throw new Error(`no repository ${workspace}/${name}`);
     if (namespaceOf(repo.store, config.find((one) => one.default)?.namespace) === namespace) throw new Error(`${workspace}/${name} is in ${namespace} already`);
     const id = `mov_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
@@ -238,12 +246,7 @@ async function main() {
 
   const config = configured(wranglerConfig());
   const cloudflare = args.includes("--cloudflare");
-  const [held, health, events, made] = await Promise.all([
-    readHeld(),
-    readHealth(),
-    cloudflare ? readEvents() : [],
-    cloudflare ? readNamespaces() : null,
-  ]);
+  const [held, health, events, made] = await Promise.all([readHeld(), readHealth(), cloudflare ? readEvents() : [], cloudflare ? readNamespaces() : null]);
   const rows = standings(config, held, health, events, made);
   if (args.includes("--json")) console.log(JSON.stringify(rows, null, 2));
   else console.log(table(rows));

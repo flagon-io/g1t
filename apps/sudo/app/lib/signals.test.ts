@@ -3,7 +3,19 @@ import { test } from "node:test";
 
 import type { Signal } from "@g1t/contracts";
 
-import { bySignalUrgency, countByKind, filterSignals, followUpsDue, isFollowUpDue, isSignalKind, parseWho, reachOutHref, signalMeta, stageMeta, today } from "./signals.ts";
+import {
+  bySignalUrgency,
+  countByKind,
+  filterSignals,
+  followUpsDue,
+  isFollowUpDue,
+  isSignalKind,
+  parseWho,
+  reachOutHref,
+  signalMeta,
+  stageMeta,
+  today,
+} from "./signals.ts";
 
 function signal(workspace: string, kind: string, valueMicros = 0, owner: string | null = null): Signal {
   return { workspace, kind: kind as Signal["kind"], detail: `${workspace} ${kind}`, valueMicros, stage: null, owner };
@@ -40,10 +52,22 @@ test("filter by kind, and by whose they are", () => {
     signal("d", "growing", 0, ""),
   ];
   const me = "me@g1t.sh";
-  assert.deepEqual(filterSignals(all, { kind: null, who: "all", me }).map((s) => s.workspace), ["a", "b", "c", "d"]);
-  assert.deepEqual(filterSignals(all, { kind: "at_limit", who: "all", me }).map((s) => s.workspace), ["a", "b"]);
-  assert.deepEqual(filterSignals(all, { kind: null, who: "unassigned", me }).map((s) => s.workspace), ["b", "d"]);
-  assert.deepEqual(filterSignals(all, { kind: null, who: "mine", me }).map((s) => s.workspace), ["a"]);
+  assert.deepEqual(
+    filterSignals(all, { kind: null, who: "all", me }).map((s) => s.workspace),
+    ["a", "b", "c", "d"],
+  );
+  assert.deepEqual(
+    filterSignals(all, { kind: "at_limit", who: "all", me }).map((s) => s.workspace),
+    ["a", "b"],
+  );
+  assert.deepEqual(
+    filterSignals(all, { kind: null, who: "unassigned", me }).map((s) => s.workspace),
+    ["b", "d"],
+  );
+  assert.deepEqual(
+    filterSignals(all, { kind: null, who: "mine", me }).map((s) => s.workspace),
+    ["a"],
+  );
   assert.deepEqual(filterSignals(all, { kind: "growing", who: "mine", me }), []);
 });
 
@@ -92,8 +116,14 @@ test("follow-ups due: today or earlier, open deals only, one per workspace, olde
   assert.ok(!isFollowUpDue(s("a", "2026-10-01", "won"), on));
   assert.ok(!isFollowUpDue(s("a", "2026-10-01", "lost"), on));
   assert.ok(isFollowUpDue(s("a", "2026-10-01", null), on));
-  const due = followUpsDue([s("b", "2026-10-03"), s("a", "2026-09-30", "contacted", "at_limit"), s("a", "2026-09-30", "contacted", "high_spend"), s("c", "2026-10-09")], on);
-  assert.deepEqual(due.map((x) => `${x.workspace}:${x.kind}`), ["a:at_limit", "b:growing"]);
+  const due = followUpsDue(
+    [s("b", "2026-10-03"), s("a", "2026-09-30", "contacted", "at_limit"), s("a", "2026-09-30", "contacted", "high_spend"), s("c", "2026-10-09")],
+    on,
+  );
+  assert.deepEqual(
+    due.map((x) => `${x.workspace}:${x.kind}`),
+    ["a:at_limit", "b:growing"],
+  );
   assert.equal(today(new Date("2026-10-04T23:59:00Z")), "2026-10-04");
   assert.equal(reachOutHref({ due: true }), "/reach-out?due=1");
   assert.equal(reachOutHref({ due: true, who: "mine" }), "/reach-out?due=1&who=mine");

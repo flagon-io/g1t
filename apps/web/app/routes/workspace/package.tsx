@@ -1,7 +1,15 @@
 import { BookOpen, Box, Trash2 } from "lucide-react";
 import { Link, data, redirect, useLocation, useNavigation } from "react-router";
 
-import { ECOSYSTEMS, type Ecosystem, type PackageGrantee, type PackageRole, type PackageSettings, type PackageVersion, PACKAGE_RESTORE_DAYS } from "@g1t/contracts";
+import {
+  ECOSYSTEMS,
+  type Ecosystem,
+  type PackageGrantee,
+  type PackageRole,
+  type PackageSettings,
+  type PackageVersion,
+  PACKAGE_RESTORE_DAYS,
+} from "@g1t/contracts";
 
 import type { Route } from "./+types/package";
 import { Markdown } from "../../components/markdown";
@@ -392,9 +400,7 @@ function VersionRow({
           fields={{ version: npm ? version.version : version.digest }}
           title={`Delete ${npm ? version.version : (version.tags[0] ?? shortDigest(version.digest))}?`}
           description={
-            npm
-              ? "Anyone installing this version gets an error from then on."
-              : "Anyone pulling it by this tag or digest gets an error from then on."
+            npm ? "Anyone installing this version gets an error from then on." : "Anyone pulling it by this tag or digest gets an error from then on."
           }
           submit="Delete version"
           busy="Deleting…"
@@ -407,7 +413,10 @@ function VersionRow({
           )}
         >
           <li>Its tags go with it.</li>
-          <li>An admin can restore it from the package's Settings for {PACKAGE_RESTORE_DAYS} days; until then its {npm ? "version" : "digest"} cannot be published again.</li>
+          <li>
+            An admin can restore it from the package's Settings for {PACKAGE_RESTORE_DAYS} days; until then its {npm ? "version" : "digest"} cannot be published
+            again.
+          </li>
         </ConfirmDialog>
       )}
     </li>

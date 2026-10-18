@@ -45,13 +45,7 @@
       ],
       "token": {
         "token_id": "tok_01kkntd3p2v8x6ym5r0c1q7a9e",
-        "scopes": [
-          "repo:read",
-          "work:read",
-          "work:write",
-          "pull_requests:read",
-          "pull_requests:write"
-        ]
+        "scopes": ["repo:read", "work:read", "work:write", "pull_requests:read", "pull_requests:write"]
       }
     },
     "notes": "`token` is what the access token you called with may do: its `scopes` (left out for full access) and `legacy` when it was made before tokens had scopes. A token reaches every workspace and repository whoever it acts as can; its scopes say what it may do there. See [Scopes](/guides/authentication/#scopes). `kind` is `user`, `workspace` for a [workspace access token](/guides/workspaces/#workspace-access-tokens), or `agent` for the token a g1t agent works with. For a workspace token, `username` is the workspace's slug and `workspaces` holds only that workspace. Each workspace carries its `base_permission`: what a member gets on each of its repositories (owners have Admin). Roles given on single repositories are in `grants`, each with `repo_id`, `workspace` and `role`; it is left out when there are none. See [Access and roles](/guides/access-and-roles/)."
@@ -147,9 +141,7 @@
         "username": "grace",
         "display_username": "grace",
         "role": "member",
-        "org_roles": [
-          "security_manager"
-        ],
+        "org_roles": ["security_manager"],
         "two_factor": false,
         "name": "Grace Hopper",
         "avatar": null
@@ -164,17 +156,13 @@
     },
     "request": {
       "role": "member",
-      "org_roles": [
-        "security_manager"
-      ]
+      "org_roles": ["security_manager"]
     },
     "response": {
       "username": "grace",
       "display_username": "grace",
       "role": "member",
-      "org_roles": [
-        "security_manager"
-      ],
+      "org_roles": ["security_manager"],
       "two_factor": null,
       "name": "Grace Hopper",
       "avatar": null
@@ -695,10 +683,7 @@
       "fork_of": null,
       "protected": true,
       "created_at": "2026-09-28T14:11:52.640Z",
-      "topics": [
-        "http",
-        "example"
-      ],
+      "topics": ["http", "example"],
       "website": "https://hello.g1t.page",
       "archived_at": null
     },
@@ -823,10 +808,7 @@
       "fork_of": null,
       "protected": true,
       "created_at": "2026-09-28T14:11:52.640Z",
-      "topics": [
-        "http",
-        "example"
-      ],
+      "topics": ["http", "example"],
       "website": "https://hello.g1t.page",
       "archived_at": null
     },
@@ -851,10 +833,7 @@
       "fork_of": null,
       "protected": true,
       "created_at": "2026-09-28T14:11:52.640Z",
-      "topics": [
-        "http",
-        "example"
-      ],
+      "topics": ["http", "example"],
       "website": "https://hello.g1t.page",
       "archived_at": null
     },
@@ -898,10 +877,7 @@
       "fork_of": null,
       "protected": true,
       "created_at": "2026-09-28T14:11:52.640Z",
-      "topics": [
-        "http",
-        "example"
-      ],
+      "topics": ["http", "example"],
       "website": "https://hello.g1t.page",
       "archived_at": null
     },
@@ -918,10 +894,7 @@
       "fork_of": null,
       "protected": true,
       "created_at": "2026-09-28T14:11:52.640Z",
-      "topics": [
-        "http",
-        "example"
-      ],
+      "topics": ["http", "example"],
       "website": "https://hello.g1t.page",
       "archived_at": "2026-10-05T09:30:00.000Z"
     },
@@ -938,10 +911,7 @@
       "fork_of": null,
       "protected": true,
       "created_at": "2026-09-28T14:11:52.640Z",
-      "topics": [
-        "http",
-        "example"
-      ],
+      "topics": ["http", "example"],
       "website": "https://hello.g1t.page",
       "archived_at": null
     },
@@ -990,10 +960,7 @@
       "fork_of": null,
       "protected": true,
       "created_at": "2026-09-28T14:11:52.640Z",
-      "topics": [
-        "http",
-        "example"
-      ],
+      "topics": ["http", "example"],
       "website": "https://hello.g1t.page",
       "archived_at": null
     },
@@ -1009,9 +976,7 @@
   "get_repo_settings": {
     "response": {
       "auto_merge": false,
-      "required_checks": [
-        "CI"
-      ],
+      "required_checks": ["CI"],
       "require_up_to_date": false,
       "required_approvals": 0,
       "count_agent_approvals": true,
@@ -1041,10 +1006,7 @@
   },
   "update_repo_settings": {
     "request": {
-      "required_checks": [
-        "CI",
-        "g1t / deploy"
-      ],
+      "required_checks": ["CI", "g1t / deploy"],
       "required_approvals": 1,
       "count_agent_approvals": false,
       "merge_queue": true,
@@ -1056,10 +1018,7 @@
     },
     "response": {
       "auto_merge": false,
-      "required_checks": [
-        "CI",
-        "g1t / deploy"
-      ],
+      "required_checks": ["CI", "g1t / deploy"],
       "require_up_to_date": false,
       "required_approvals": 1,
       "count_agent_approvals": false,
@@ -1092,11 +1051,7 @@
     "response": [
       {
         "name": "CI",
-        "events": [
-          "pull_request",
-          "merge_group",
-          "push"
-        ],
+        "events": ["pull_request", "merge_group", "push"],
         "last_seen": "2026-10-06T09:14:02.118Z"
       },
       {
@@ -1120,9 +1075,7 @@
       "ref": "main",
       "size": 412,
       "rules": 9,
-      "sections": [
-        "Docs"
-      ],
+      "sections": ["Docs"],
       "errors": [
         {
           "line": 4,
@@ -1171,9 +1124,7 @@
           "item_id": "wki_01m43shrzpfe49x74ga7sj1c6v",
           "workspace": "flagon-io",
           "number": 12,
-          "repo_ids": [
-            "rep_01m3m5q6p0e2qaw6mmjahk0qrr"
-          ],
+          "repo_ids": ["rep_01m3m5q6p0e2qaw6mmjahk0qrr"],
           "title": "Greeting should name the caller"
         }
       }
@@ -1193,9 +1144,7 @@
         "number": 12,
         "title": "Greeting should name the caller",
         "body": "Take a name from the first argument; fall back to world.",
-        "labels": [
-          "feature"
-        ],
+        "labels": ["feature"],
         "state": "open",
         "reason": null,
         "resolutions": [],
@@ -1235,12 +1184,8 @@
       "repo": "flagon-io/hello",
       "title": "Greeting should name the caller",
       "body": "Take a name from the first argument; fall back to world.",
-      "labels": [
-        "feature"
-      ],
-      "targets": [
-        "flagon-io/docs"
-      ]
+      "labels": ["feature"],
+      "targets": ["flagon-io/docs"]
     },
     "response": {
       "id": "wki_01m43shrzpfe49x74ga7sj1c6v",
@@ -1248,9 +1193,7 @@
       "number": 12,
       "title": "Greeting should name the caller",
       "body": "Take a name from the first argument; fall back to world.",
-      "labels": [
-        "feature"
-      ],
+      "labels": ["feature"],
       "state": "open",
       "reason": null,
       "resolutions": [],
@@ -1299,9 +1242,7 @@
         "number": 12,
         "title": "Greeting should name the caller",
         "body": "Take a name from the first argument; fall back to world.",
-        "labels": [
-          "feature"
-        ],
+        "labels": ["feature"],
         "state": "closed",
         "reason": "completed",
         "resolutions": [
@@ -1411,9 +1352,7 @@
             }
           ],
           "assignees": [],
-          "reviewers": [
-            "ana"
-          ],
+          "reviewers": ["ana"],
           "labels": [],
           "milestone": null,
           "base": "main",
@@ -1454,17 +1393,10 @@
   },
   "update_work_item": {
     "request": {
-      "labels": [
-        "feature",
-        "good first issue"
-      ],
-      "assignees": [
-        "syntaqx"
-      ],
+      "labels": ["feature", "good first issue"],
+      "assignees": ["syntaqx"],
       "milestone": 3,
-      "blocked_by": [
-        9
-      ]
+      "blocked_by": [9]
     },
     "response": {
       "id": "wki_01m43shrzpfe49x74ga7sj1c6v",
@@ -1472,10 +1404,7 @@
       "number": 12,
       "title": "Greeting should name the caller",
       "body": "Take a name from the first argument; fall back to world.",
-      "labels": [
-        "feature",
-        "good first issue"
-      ],
+      "labels": ["feature", "good first issue"],
       "state": "open",
       "reason": null,
       "resolutions": [],
@@ -1493,12 +1422,8 @@
       "closed_at": null,
       "pull_count": 0,
       "comment_count": 0,
-      "assignees": [
-        "syntaqx"
-      ],
-      "blocked_by": [
-        9
-      ],
+      "assignees": ["syntaqx"],
+      "blocked_by": [9],
       "agent": null,
       "milestone": {
         "number": 3,
@@ -1525,9 +1450,7 @@
       "number": 12,
       "title": "Greeting should name the caller",
       "body": "Take a name from the first argument; fall back to world.",
-      "labels": [
-        "feature"
-      ],
+      "labels": ["feature"],
       "state": "closed",
       "reason": "not_planned",
       "resolutions": [],
@@ -1568,9 +1491,7 @@
       "number": 12,
       "title": "Greeting should name the caller",
       "body": "Take a name from the first argument; fall back to world.",
-      "labels": [
-        "feature"
-      ],
+      "labels": ["feature"],
       "state": "open",
       "reason": null,
       "resolutions": [],
@@ -1718,16 +1639,12 @@
       {
         "content": "heart",
         "count": 1,
-        "users": [
-          "ana"
-        ]
+        "users": ["ana"]
       },
       {
         "content": "eyes",
         "count": 1,
-        "users": [
-          "g1t"
-        ]
+        "users": ["g1t"]
       }
     ],
     "notes": "Reacting twice the same way is one reaction. Without comment_id it reacts to the pull request's description."
@@ -1793,9 +1710,7 @@
           }
         ],
         "assignees": [],
-        "reviewers": [
-          "ana"
-        ],
+        "reviewers": ["ana"],
         "team_reviewers": [],
         "author": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
@@ -1901,12 +1816,8 @@
           }
         ],
         "assignees": [],
-        "reviewers": [
-          "ana"
-        ],
-        "team_reviewers": [
-          "flagon-io/backend"
-        ],
+        "reviewers": ["ana"],
+        "team_reviewers": ["flagon-io/backend"],
         "author": {
           "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
           "username": "syntaqx",
@@ -1928,9 +1839,7 @@
         "number": 12,
         "title": "Greeting should name the caller",
         "body": "Take a name from the first argument; fall back to world.",
-        "labels": [
-          "feature"
-        ],
+        "labels": ["feature"],
         "state": "open",
         "reason": null,
         "resolutions": [],
@@ -2042,12 +1951,8 @@
             "section": null,
             "line": 3,
             "pattern": "/src/",
-            "owners": [
-              "@flagon-io/backend"
-            ],
-            "files": [
-              "src/main.rs"
-            ],
+            "owners": ["@flagon-io/backend"],
+            "files": ["src/main.rs"],
             "optional": false,
             "required": 1,
             "approved_by": [],
@@ -2194,12 +2099,8 @@
       "number": 14
     },
     "request": {
-      "reviewers": [
-        "bo"
-      ],
-      "team_reviewers": [
-        "backend"
-      ]
+      "reviewers": ["bo"],
+      "team_reviewers": ["backend"]
     },
     "response": {
       "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
@@ -2231,13 +2132,8 @@
         }
       ],
       "assignees": [],
-      "reviewers": [
-        "ana",
-        "bo"
-      ],
-      "team_reviewers": [
-        "flagon-io/backend"
-      ],
+      "reviewers": ["ana", "bo"],
+      "team_reviewers": ["flagon-io/backend"],
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
         "username": "syntaqx",
@@ -2259,12 +2155,8 @@
       "number": 14
     },
     "request": {
-      "reviewers": [
-        "bo"
-      ],
-      "team_reviewers": [
-        "flagon-io/backend"
-      ]
+      "reviewers": ["bo"],
+      "team_reviewers": ["flagon-io/backend"]
     },
     "response": {
       "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
@@ -2296,9 +2188,7 @@
         }
       ],
       "assignees": [],
-      "reviewers": [
-        "ana"
-      ],
+      "reviewers": ["ana"],
       "team_reviewers": [],
       "author": {
         "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
@@ -2316,11 +2206,7 @@
   },
   "get_pull_request_merge_options": {
     "response": {
-      "methods": [
-        "merge",
-        "squash",
-        "rebase"
-      ],
+      "methods": ["merge", "squash", "rebase"],
       "default_method": "squash",
       "options": [
         {
@@ -2383,9 +2269,7 @@
       "merged_at": "2026-10-01T18:52:17.093Z",
       "merge_method": "squash",
       "merge_commit": "c41d7e2a9b0f3e5d7c9a1b3d5f7e9c0a2b4d6f81",
-      "closes": [
-        12
-      ],
+      "closes": [12],
       "superseded_by": null,
       "check_status": "passed",
       "files": [
@@ -2396,9 +2280,7 @@
         }
       ],
       "assignees": [],
-      "reviewers": [
-        "ana"
-      ],
+      "reviewers": ["ana"],
       "labels": [],
       "milestone": null,
       "base": "main",
@@ -2463,9 +2345,7 @@
         }
       ],
       "assignees": [],
-      "reviewers": [
-        "ana"
-      ],
+      "reviewers": ["ana"],
       "labels": [],
       "milestone": null,
       "base": "main",
@@ -2487,9 +2367,7 @@
         "enabled_by": "syntaqx",
         "enabled_at": "2026-10-01T18:44:09.310Z"
       },
-      "closes": [
-        12
-      ]
+      "closes": [12]
     },
     "notes": "A repository with `allow_auto_merge` off answers `422`, as does a method it or a rule for the base does not allow. A pull request that may already merge merges at once: check `status`. `auto_merge` is cleared when it merges or closes, when it is turned off, and when someone other than `enabled_by` pushes to it. See [Auto-merge](/guides/pull-requests/#auto-merge)."
   },
@@ -2524,9 +2402,7 @@
         }
       ],
       "assignees": [],
-      "reviewers": [
-        "ana"
-      ],
+      "reviewers": ["ana"],
       "labels": [],
       "milestone": null,
       "base": "main",
@@ -2542,9 +2418,7 @@
       "created_at": "2026-10-01T18:20:02.117Z",
       "updated_at": "2026-10-01T18:44:09.310Z",
       "auto_merge": null,
-      "closes": [
-        12
-      ]
+      "closes": [12]
     }
   },
   "delete_pull_request_head_branch": {
@@ -2575,9 +2449,7 @@
         }
       ],
       "assignees": [],
-      "reviewers": [
-        "ana"
-      ],
+      "reviewers": ["ana"],
       "labels": [],
       "milestone": null,
       "base": "main",
@@ -2594,9 +2466,7 @@
       "updated_at": "2026-10-01T18:53:02.415Z",
       "merge_method": "squash",
       "merge_commit": "c41d7e2a9b0f3e5d7c9a1b3d5f7e9c0a2b4d6f81",
-      "closes": [
-        12
-      ],
+      "closes": [12],
       "head_branch_deleted": true
     },
     "notes": "An open pull request answers `409`: close or merge it first. `head_branch_deleted` is then `true`; [restore it](/reference/api/pull-requests/restore-pull-request-head-branch/) at `head_commit`."
@@ -2629,9 +2499,7 @@
         }
       ],
       "assignees": [],
-      "reviewers": [
-        "ana"
-      ],
+      "reviewers": ["ana"],
       "labels": [],
       "milestone": null,
       "base": "main",
@@ -2648,9 +2516,7 @@
       "updated_at": "2026-10-02T09:10:44.902Z",
       "merge_method": "squash",
       "merge_commit": "c41d7e2a9b0f3e5d7c9a1b3d5f7e9c0a2b4d6f81",
-      "closes": [
-        12
-      ],
+      "closes": [12],
       "head_branch_deleted": false
     },
     "notes": "The branch is made again at `head_commit`. A branch of that name that exists again answers `409`."
@@ -3227,27 +3093,16 @@
           "number": 14,
           "title": "Name the caller in the greeting",
           "state": "open",
-          "via": [
-            "attached",
-            "branch"
-          ],
-          "session_ids": [
-            "ses_01m4b2c3d4e5f6g7h8j9k0m1n2"
-          ]
+          "via": ["attached", "branch"],
+          "session_ids": ["ses_01m4b2c3d4e5f6g7h8j9k0m1n2"]
         },
         {
           "kind": "item",
           "number": 12,
           "title": "Make the greeting name the caller",
           "state": "open",
-          "via": [
-            "attached",
-            "claim"
-          ],
-          "session_ids": [
-            "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
-            "ses_01m4b2d8x1y2z3a4b5c6d7e8f9"
-          ]
+          "via": ["attached", "claim"],
+          "session_ids": ["ses_01m4b2c3d4e5f6g7h8j9k0m1n2", "ses_01m4b2d8x1y2z3a4b5c6d7e8f9"]
         }
       ],
       "skills": [
@@ -3467,27 +3322,16 @@
           "number": 14,
           "title": "Name the caller in the greeting",
           "state": "open",
-          "via": [
-            "attached",
-            "branch"
-          ],
-          "session_ids": [
-            "ses_01m4b2c3d4e5f6g7h8j9k0m1n2"
-          ]
+          "via": ["attached", "branch"],
+          "session_ids": ["ses_01m4b2c3d4e5f6g7h8j9k0m1n2"]
         },
         {
           "kind": "item",
           "number": 12,
           "title": "Make the greeting name the caller",
           "state": "open",
-          "via": [
-            "attached",
-            "claim"
-          ],
-          "session_ids": [
-            "ses_01m4b2c3d4e5f6g7h8j9k0m1n2",
-            "ses_01m4b2d8x1y2z3a4b5c6d7e8f9"
-          ]
+          "via": ["attached", "claim"],
+          "session_ids": ["ses_01m4b2c3d4e5f6g7h8j9k0m1n2", "ses_01m4b2d8x1y2z3a4b5c6d7e8f9"]
         }
       ],
       "skills": [
@@ -3726,10 +3570,7 @@
         "number": 12,
         "title": "Greeting should name the caller",
         "body": "Take a name from the first argument; fall back to world.\n\n## Definition of done\n\n- `cargo test` passes.\n- The README shows the new usage.",
-        "labels": [
-          "feature",
-          "good first issue"
-        ],
+        "labels": ["feature", "good first issue"],
         "state": "open",
         "reason": null,
         "resolutions": [],
@@ -3747,12 +3588,8 @@
         "closed_at": null,
         "pull_count": 0,
         "comment_count": 0,
-        "assignees": [
-          "syntaqx"
-        ],
-        "blocked_by": [
-          9
-        ],
+        "assignees": ["syntaqx"],
+        "blocked_by": [9],
         "agent": null,
         "milestone": {
           "number": 3,
@@ -3775,10 +3612,7 @@
           }
         ]
       },
-      "definition_of_done": [
-        "`cargo test` passes.",
-        "The README shows the new usage."
-      ],
+      "definition_of_done": ["`cargo test` passes.", "The README shows the new usage."],
       "repos": [
         {
           "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
@@ -3786,9 +3620,7 @@
           "role": "origin",
           "legacy_number": null,
           "landed": false,
-          "required_checks": [
-            "CI"
-          ],
+          "required_checks": ["CI"],
           "pulls": [
             {
               "number": 14,
@@ -3815,9 +3647,7 @@
                   "number": 11,
                   "title": "Parse arguments with clap",
                   "item": 9,
-                  "paths": [
-                    "src/main.rs"
-                  ]
+                  "paths": ["src/main.rs"]
                 }
               ],
               "queue": null,
@@ -3835,9 +3665,7 @@
           "pulls": []
         }
       ],
-      "missing": [
-        "flagon-io/docs"
-      ],
+      "missing": ["flagon-io/docs"],
       "suggested_targets": [
         {
           "repo_id": "rep_01m3m5s0w4y6a8c0e2g4j6l8n0",
@@ -4049,18 +3877,9 @@
             "conclusion": "failure",
             "url": "https://g1t.sh/acme/web/actions/runs/run_01kpz8k0"
           },
-          "combination": [
-            11,
-            12,
-            14
-          ],
-          "other_pulls": [
-            11,
-            12
-          ],
-          "suspects": [
-            12
-          ],
+          "combination": [11, 12, 14],
+          "other_pulls": [11, 12],
+          "suspects": [12],
           "bisected": true,
           "landed": []
         },
@@ -4099,9 +3918,7 @@
           "name": "Ana Lima",
           "username": "ana"
         },
-        "parents": [
-          "4be1c0d9a2f3e4b5c6d7e8f90a1b2c3d4e5f6a7b"
-        ],
+        "parents": ["4be1c0d9a2f3e4b5c6d7e8f90a1b2c3d4e5f6a7b"],
         "authored_at": "2026-10-12T15:29:02Z"
       },
       "pull": {
@@ -4136,18 +3953,9 @@
               "conclusion": "failure",
               "url": "https://g1t.sh/acme/web/actions/runs/run_01kpz8k0"
             },
-            "combination": [
-              11,
-              12,
-              14
-            ],
-            "other_pulls": [
-              11,
-              12
-            ],
-            "suspects": [
-              12
-            ],
+            "combination": [11, 12, 14],
+            "other_pulls": [11, 12],
+            "suspects": [12],
             "bisected": true,
             "landed": []
           },
@@ -4187,11 +3995,7 @@
         "id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9np",
         "path": ".g1t/workflows/ci.yml",
         "name": "CI",
-        "events": [
-          "push",
-          "pull_request",
-          "workflow_dispatch"
-        ],
+        "events": ["push", "pull_request", "workflow_dispatch"],
         "state": "active",
         "error": null,
         "notes": [
@@ -4233,9 +4037,7 @@
         "id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9nq",
         "path": ".g1t/workflows/nightly.yml",
         "name": "Nightly",
-        "events": [
-          "schedule"
-        ],
+        "events": ["schedule"],
         "state": "disabled",
         "error": null,
         "notes": [],
@@ -4256,19 +4058,14 @@
       "id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9nr",
       "path": ".g1t/workflows/release.yml",
       "name": "Release",
-      "events": [
-        "workflow_dispatch"
-      ],
+      "events": ["workflow_dispatch"],
       "state": "active",
       "error": null,
       "notes": [],
       "dispatch": {
         "channel": {
           "type": "choice",
-          "options": [
-            "beta",
-            "stable"
-          ],
+          "options": ["beta", "stable"],
           "default": "beta"
         }
       },
@@ -4409,9 +4206,7 @@
           "run_id": "run_01kpx7b3c6d9e2f5g8h1j4k7mr",
           "key": "deploy",
           "name": "deploy",
-          "needs": [
-            "test"
-          ],
+          "needs": ["test"],
           "status": "completed",
           "conclusion": "skipped",
           "steps": [],
@@ -4642,9 +4437,7 @@
       "id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9nq",
       "path": ".g1t/workflows/nightly.yml",
       "name": "Nightly",
-      "events": [
-        "schedule"
-      ],
+      "events": ["schedule"],
       "state": "disabled",
       "error": null,
       "notes": [],
@@ -4660,9 +4453,7 @@
       "id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9nq",
       "path": ".g1t/workflows/nightly.yml",
       "name": "Nightly",
-      "events": [
-        "schedule"
-      ],
+      "events": ["schedule"],
       "state": "active",
       "error": null,
       "notes": [],
@@ -4678,9 +4469,7 @@
       "id": "wfl_01kpw2c5d8e1f4g7h0j3k6m9nq",
       "path": ".g1t/workflows/nightly.yml",
       "name": "Nightly",
-      "events": [
-        "schedule"
-      ],
+      "events": ["schedule"],
       "state": "disabled",
       "error": null,
       "notes": [],
@@ -4697,16 +4486,12 @@
         "value": null,
         "scope": "workspace",
         "updated_at": "2026-10-01T09:12:44.020Z",
-        "available_to": [
-          "workflows"
-        ],
+        "available_to": ["workflows"],
         "environments": [],
         "projects": [],
         "note": null,
         "updated_by": "syntaqx",
-        "brokered_hosts": [
-          "registry.npmjs.org"
-        ]
+        "brokered_hosts": ["registry.npmjs.org"]
       },
       {
         "id": "set_01kpv9q4r7s0t3v6w9x2y5z8ac",
@@ -4715,13 +4500,8 @@
         "value": null,
         "scope": "project",
         "updated_at": "2026-10-04T15:42:07.318Z",
-        "available_to": [
-          "workflows",
-          "deployments"
-        ],
-        "environments": [
-          "production"
-        ],
+        "available_to": ["workflows", "deployments"],
+        "environments": ["production"],
         "projects": [],
         "note": "Rotate in the Stripe dashboard.",
         "updated_by": "syntaqx",
@@ -4742,16 +4522,12 @@
         "value": null,
         "scope": "workspace",
         "updated_at": "2026-10-04T15:42:07.318Z",
-        "available_to": [
-          "workflows"
-        ],
+        "available_to": ["workflows"],
         "environments": [],
         "projects": [],
         "note": null,
         "updated_by": "syntaqx",
-        "brokered_hosts": [
-          "registry.npmjs.org"
-        ]
+        "brokered_hosts": ["registry.npmjs.org"]
       }
     ],
     "notes": "Values are never returned. A repository's list includes the workspace's rows that reach it, with `scope` set to `workspace`. Empty `environments` means every environment; empty `brokered_hosts`, a secret that is not brokered."
@@ -4762,13 +4538,8 @@
     },
     "request": {
       "value": "sk_live_…",
-      "available_to": [
-        "workflows",
-        "deployments"
-      ],
-      "environments": [
-        "production"
-      ]
+      "available_to": ["workflows", "deployments"],
+      "environments": ["production"]
     },
     "response": {
       "id": "set_01kpv9q4r7s0t3v6w9x2y5z8ac",
@@ -4777,13 +4548,8 @@
       "value": null,
       "scope": "project",
       "updated_at": "2026-10-04T15:42:07.318Z",
-      "available_to": [
-        "workflows",
-        "deployments"
-      ],
-      "environments": [
-        "production"
-      ],
+      "available_to": ["workflows", "deployments"],
+      "environments": ["production"],
       "projects": [],
       "note": null,
       "updated_by": "syntaqx",
@@ -4798,12 +4564,8 @@
     },
     "request": {
       "value": "npm_…",
-      "projects": [
-        "hello"
-      ],
-      "brokered_hosts": [
-        "registry.npmjs.org"
-      ]
+      "projects": ["hello"],
+      "brokered_hosts": ["registry.npmjs.org"]
     },
     "response": {
       "id": "set_01kpv9q4r7s0t3v6w9x2y5z8ac",
@@ -4812,18 +4574,12 @@
       "value": null,
       "scope": "workspace",
       "updated_at": "2026-10-04T15:42:07.318Z",
-      "available_to": [
-        "workflows"
-      ],
+      "available_to": ["workflows"],
       "environments": [],
-      "projects": [
-        "hello"
-      ],
+      "projects": ["hello"],
       "note": null,
       "updated_by": "syntaqx",
-      "brokered_hosts": [
-        "registry.npmjs.org"
-      ]
+      "brokered_hosts": ["registry.npmjs.org"]
     }
   },
   "delete_actions_secret": {
@@ -4848,10 +4604,7 @@
         "value": "20",
         "scope": "project",
         "updated_at": "2026-10-04T15:42:07.318Z",
-        "available_to": [
-          "workflows",
-          "deployments"
-        ],
+        "available_to": ["workflows", "deployments"],
         "environments": [],
         "projects": [],
         "note": null,
@@ -4872,10 +4625,7 @@
         "value": "20",
         "scope": "workspace",
         "updated_at": "2026-10-04T15:42:07.318Z",
-        "available_to": [
-          "workflows",
-          "deployments"
-        ],
+        "available_to": ["workflows", "deployments"],
         "environments": [],
         "projects": [],
         "note": null,
@@ -4895,10 +4645,7 @@
       "value": "20",
       "scope": "project",
       "updated_at": "2026-10-04T15:42:07.318Z",
-      "available_to": [
-        "workflows",
-        "deployments"
-      ],
+      "available_to": ["workflows", "deployments"],
       "environments": [],
       "projects": [],
       "note": null,
@@ -4921,10 +4668,7 @@
       "value": "20",
       "scope": "workspace",
       "updated_at": "2026-10-04T15:42:07.318Z",
-      "available_to": [
-        "workflows",
-        "deployments"
-      ],
+      "available_to": ["workflows", "deployments"],
       "environments": [],
       "projects": [],
       "note": null,
@@ -4945,10 +4689,7 @@
       "value": "22",
       "scope": "project",
       "updated_at": "2026-10-04T15:42:07.318Z",
-      "available_to": [
-        "workflows",
-        "deployments"
-      ],
+      "available_to": ["workflows", "deployments"],
       "environments": [],
       "projects": [],
       "note": null,
@@ -4970,10 +4711,7 @@
       "value": "22",
       "scope": "workspace",
       "updated_at": "2026-10-04T15:42:07.318Z",
-      "available_to": [
-        "workflows",
-        "deployments"
-      ],
+      "available_to": ["workflows", "deployments"],
       "environments": [],
       "projects": [],
       "note": null,
@@ -5001,12 +4739,7 @@
         "workspace": "flagon-io",
         "repo": null,
         "group": "Default",
-        "labels": [
-          "self-hosted",
-          "linux",
-          "x64",
-          "gpu"
-        ],
+        "labels": ["self-hosted", "linux", "x64", "gpu"],
         "os": "linux",
         "arch": "x64",
         "version": "0.2.0",
@@ -5031,11 +4764,7 @@
         "workspace": "flagon-io",
         "repo": null,
         "group": "Default",
-        "labels": [
-          "self-hosted",
-          "macos",
-          "arm64"
-        ],
+        "labels": ["self-hosted", "macos", "arm64"],
         "os": "macos",
         "arch": "arm64",
         "version": "0.2.0",
@@ -5061,12 +4790,7 @@
         "workspace": "flagon-io",
         "repo": null,
         "group": "Default",
-        "labels": [
-          "self-hosted",
-          "linux",
-          "x64",
-          "gpu"
-        ],
+        "labels": ["self-hosted", "linux", "x64", "gpu"],
         "os": "linux",
         "arch": "x64",
         "version": "0.2.0",
@@ -5091,11 +4815,7 @@
         "workspace": "flagon-io",
         "repo": null,
         "group": "Default",
-        "labels": [
-          "self-hosted",
-          "macos",
-          "arm64"
-        ],
+        "labels": ["self-hosted", "macos", "arm64"],
         "os": "macos",
         "arch": "arm64",
         "version": "0.2.0",
@@ -5152,10 +4872,7 @@
   "get_runner_settings": {
     "response": {
       "agents_on_self_hosted": false,
-      "agent_labels": [
-        "self-hosted",
-        "linux"
-      ],
+      "agent_labels": ["self-hosted", "linux"],
       "fork_pull_requests": false,
       "inherited": true
     }
@@ -5166,10 +4883,7 @@
     },
     "response": {
       "agents_on_self_hosted": true,
-      "agent_labels": [
-        "self-hosted",
-        "linux"
-      ],
+      "agent_labels": ["self-hosted", "linux"],
       "fork_pull_requests": false,
       "inherited": false
     }
@@ -5180,10 +4894,7 @@
     },
     "response": {
       "agents_on_self_hosted": false,
-      "agent_labels": [
-        "self-hosted",
-        "linux"
-      ],
+      "agent_labels": ["self-hosted", "linux"],
       "fork_pull_requests": false,
       "inherited": true
     }
@@ -5194,16 +4905,11 @@
     },
     "request": {
       "agents_on_self_hosted": true,
-      "agent_labels": [
-        "linux"
-      ]
+      "agent_labels": ["linux"]
     },
     "response": {
       "agents_on_self_hosted": true,
-      "agent_labels": [
-        "self-hosted",
-        "linux"
-      ],
+      "agent_labels": ["self-hosted", "linux"],
       "fork_pull_requests": false,
       "inherited": false
     },
@@ -5226,10 +4932,7 @@
         "id": "rng_01kq2m7r2a5d8g1j4m7p0s3v6z",
         "name": "GPU",
         "default": false,
-        "repositories": [
-          "hello",
-          "models"
-        ],
+        "repositories": ["hello", "models"],
         "runners": 1,
         "updated_at": "2026-10-05T11:20:00.000Z"
       }
@@ -5241,19 +4944,13 @@
     },
     "request": {
       "name": "GPU",
-      "repositories": [
-        "hello",
-        "models"
-      ]
+      "repositories": ["hello", "models"]
     },
     "response": {
       "id": "rng_01kq2m7r2a5d8g1j4m7p0s3v6z",
       "name": "GPU",
       "default": false,
-      "repositories": [
-        "hello",
-        "models"
-      ],
+      "repositories": ["hello", "models"],
       "runners": 1,
       "updated_at": "2026-10-05T11:20:00.000Z"
     }
@@ -5290,10 +4987,7 @@
         "workspace": "flagon-io",
         "repo": "flagon-io/hello",
         "url": "https://hooks.example.com/g1t",
-        "events": [
-          "git.push",
-          "pull.merged"
-        ],
+        "events": ["git.push", "pull.merged"],
         "active": true,
         "secret_hint": "…9c2e",
         "created_by": "syntaqx",
@@ -5314,10 +5008,7 @@
         "workspace": "flagon-io",
         "repo": null,
         "url": "https://hooks.example.com/g1t",
-        "events": [
-          "git.push",
-          "pull.merged"
-        ],
+        "events": ["git.push", "pull.merged"],
         "active": true,
         "secret_hint": "…9c2e",
         "created_by": "syntaqx",
@@ -5330,10 +5021,7 @@
   "create_webhook": {
     "request": {
       "url": "https://hooks.example.com/g1t",
-      "events": [
-        "git.push",
-        "pull.merged"
-      ]
+      "events": ["git.push", "pull.merged"]
     },
     "response": {
       "hook": {
@@ -5342,10 +5030,7 @@
         "workspace": "flagon-io",
         "repo": "flagon-io/hello",
         "url": "https://hooks.example.com/g1t",
-        "events": [
-          "git.push",
-          "pull.merged"
-        ],
+        "events": ["git.push", "pull.merged"],
         "active": true,
         "secret_hint": "…9c2e",
         "created_by": "syntaqx",
@@ -5371,9 +5056,7 @@
         "workspace": "flagon-io",
         "repo": null,
         "url": "https://hooks.example.com/g1t",
-        "events": [
-          "*"
-        ],
+        "events": ["*"],
         "active": true,
         "secret_hint": "…9c2e",
         "created_by": "syntaqx",
@@ -5398,10 +5081,7 @@
       "workspace": "flagon-io",
       "repo": "flagon-io/hello",
       "url": "https://hooks.example.com/g1t",
-      "events": [
-        "git.push",
-        "pull.merged"
-      ],
+      "events": ["git.push", "pull.merged"],
       "active": false,
       "secret_hint": "…9c2e",
       "created_by": "syntaqx",
@@ -5424,10 +5104,7 @@
       "workspace": "flagon-io",
       "repo": null,
       "url": "https://hooks.example.com/g1t",
-      "events": [
-        "git.push",
-        "pull.merged"
-      ],
+      "events": ["git.push", "pull.merged"],
       "active": false,
       "secret_hint": "…9c2e",
       "created_by": "syntaqx",
@@ -5634,9 +5311,7 @@
           "write_back": true,
           "site": "https://acme.atlassian.net",
           "email": "syntaqx@example.com",
-          "keys": [
-            "TECH"
-          ]
+          "keys": ["TECH"]
         },
         "secret_hint": "…x7Qe",
         "webhook_url": null,
@@ -5691,10 +5366,7 @@
       "config": {
         "site": "https://acme.atlassian.net",
         "email": "syntaqx@example.com",
-        "keys": [
-          "TECH",
-          "OPS"
-        ]
+        "keys": ["TECH", "OPS"]
       },
       "secret": "atlassian-api-token"
     },
@@ -5708,10 +5380,7 @@
         "write_back": true,
         "site": "https://acme.atlassian.net",
         "email": "syntaqx@example.com",
-        "keys": [
-          "TECH",
-          "OPS"
-        ]
+        "keys": ["TECH", "OPS"]
       },
       "secret_hint": "…oken",
       "webhook_url": null,
@@ -5757,11 +5426,7 @@
         "created_at": "2026-10-04T15:42:07.318Z",
         "last_used_at": "2026-10-14T09:12:44.051Z",
         "last_error": null,
-        "models": [
-          "claude-haiku-4-5",
-          "claude-sonnet-4-5",
-          "claude-opus-4-1"
-        ]
+        "models": ["claude-haiku-4-5", "claude-sonnet-4-5", "claude-opus-4-1"]
       },
       {
         "id": "ai_01kpx4n8r3g9s0v5w7x1z2a3bf",
@@ -5779,9 +5444,7 @@
         "created_at": "2026-10-14T10:03:51.902Z",
         "last_used_at": null,
         "last_error": null,
-        "models": [
-          "qwen3-coder"
-        ]
+        "models": ["qwen3-coder"]
       }
     ],
     "notes": "`group` is `labs`, `platforms` or `self_hosted`. `secret_hint` shows the end of the key; the key itself is never returned. `models` are those the provider offered when last checked. See [AI](/guides/ai/)."
@@ -5816,9 +5479,7 @@
       "created_at": "2026-10-14T10:03:51.902Z",
       "last_used_at": null,
       "last_error": null,
-      "models": [
-        "qwen3-coder"
-      ]
+      "models": ["qwen3-coder"]
     },
     "notes": "The key is checked as it is saved: one the provider refuses is refused with `422`, saying why. It is sealed and never returned; only its last four characters come back, as `secret_hint`."
   },
@@ -5843,11 +5504,7 @@
       "created_at": "2026-10-04T15:42:07.318Z",
       "last_used_at": "2026-10-14T09:12:44.051Z",
       "last_error": null,
-      "models": [
-        "claude-haiku-4-5",
-        "claude-sonnet-4-5",
-        "claude-opus-4-1"
-      ]
+      "models": ["claude-haiku-4-5", "claude-sonnet-4-5", "claude-opus-4-1"]
     },
     "notes": "The key is write-only. Use it to rotate a key: the new one replaces the old at once."
   },
@@ -6161,11 +5818,7 @@
       "display_username": "Ada",
       "role": "triage",
       "source": "direct",
-      "capabilities": [
-        "read",
-        "participate",
-        "triage"
-      ]
+      "capabilities": ["read", "participate", "triage"]
     },
     "notes": "`capabilities` lists what the role allows, in the table's order: `read`, `participate`, `triage`, `push`, `merge`, `run`, `manage_settings`, `manage_protection`, `manage_integrations`, `manage_access`, `administer` and `delete` (which also takes an owner of the workspace). `role` and `source` are null, and `capabilities` empty, for someone with no role. Refused with `403` below the Write role, unless you ask about yourself. See [Access and roles](/guides/access-and-roles/)."
   },
@@ -6442,9 +6095,7 @@
       "description": "The API and the services behind it.",
       "visibility": "visible",
       "parent": "engineering",
-      "members": [
-        "ana"
-      ]
+      "members": ["ana"]
     },
     "response": {
       "id": "team_01m52k8d3f7h1k5n9r3v7z1c5g",
@@ -6723,9 +6374,7 @@
       "count": 2,
       "skip_busy": true,
       "busy_at": 5,
-      "excluded": [
-        "syntaqx"
-      ]
+      "excluded": ["syntaqx"]
     },
     "response": {
       "id": "team_01m52k8d3f7h1k5n9r3v7z1c5g",
@@ -6746,9 +6395,7 @@
         "skip_busy": true,
         "busy_at": 5,
         "include_child_teams": false,
-        "excluded": [
-          "syntaqx"
-        ],
+        "excluded": ["syntaqx"],
         "notify_team": false
       },
       "members_count": 4,
@@ -7618,18 +7265,12 @@
     },
     "request": {
       "level": "custom",
-      "events": [
-        "pulls",
-        "deployments"
-      ]
+      "events": ["pulls", "deployments"]
     },
     "response": {
       "repo": "flagon-io/hello",
       "level": "custom",
-      "events": [
-        "pulls",
-        "deployments"
-      ],
+      "events": ["pulls", "deployments"],
       "subscribed": true,
       "ignored": false,
       "updated_at": "2026-10-07T10:06:00.000Z"
@@ -7723,15 +7364,7 @@
               "quantity": 1803,
               "micros": 7212000,
               "pending_micros": 0,
-              "daily": [
-                900000,
-                1200000,
-                800000,
-                1100000,
-                0,
-                2100000,
-                1112000
-              ],
+              "daily": [900000, 1200000, 800000, 1100000, 0, 2100000, 1112000],
               "allowance": null,
               "by_project": [
                 {
@@ -7756,15 +7389,7 @@
               "quantity": 23,
               "micros": 41000000,
               "pending_micros": 0,
-              "daily": [
-                3100000,
-                5200000,
-                4400000,
-                6000000,
-                0,
-                12400000,
-                9800000
-              ],
+              "daily": [3100000, 5200000, 4400000, 6000000, 0, 12400000, 9800000],
               "allowance": null,
               "by_project": [
                 {
@@ -7782,10 +7407,7 @@
           ]
         }
       ],
-      "projects": [
-        "flagon-io/g1t",
-        "flagon-io/hello"
-      ],
+      "projects": ["flagon-io/g1t", "flagon-io/hello"],
       "included": {
         "used": 20,
         "of": 20,
@@ -7821,12 +7443,7 @@
       "automatic": false,
       "spent_micros": 132450000,
       "max_amount_micros": 2000000000,
-      "alerts": [
-        50,
-        75,
-        90,
-        100
-      ],
+      "alerts": [50, 75, 90, 100],
       "pause_at_limit": true,
       "webhook": "https://ops.example.com/g1t/budget",
       "state": "ok",
@@ -7840,12 +7457,7 @@
     },
     "request": {
       "amount_micros": 500000000,
-      "alerts": [
-        50,
-        75,
-        90,
-        100
-      ],
+      "alerts": [50, 75, 90, 100],
       "webhook": "https://ops.example.com/g1t/budget"
     },
     "response": {
@@ -7854,12 +7466,7 @@
       "automatic": false,
       "spent_micros": 132450000,
       "max_amount_micros": 2000000000,
-      "alerts": [
-        50,
-        75,
-        90,
-        100
-      ],
+      "alerts": [50, 75, 90, 100],
       "pause_at_limit": true,
       "webhook": "https://ops.example.com/g1t/budget",
       "state": "ok",
@@ -8120,11 +7727,7 @@
       "workspace": "flagon-io"
     },
     "request": {
-      "projects": [
-        "lab-api",
-        "g1t",
-        "hello"
-      ]
+      "projects": ["lab-api", "g1t", "hello"]
     },
     "response": [
       {
@@ -8193,9 +7796,7 @@
             "username": "syntaqx"
           },
           "authored_at": "2026-10-12T22:04:11Z",
-          "parents": [
-            "75c6704f2b1a3c4d5e6f708192a3b4c5d6e7f809"
-          ],
+          "parents": ["75c6704f2b1a3c4d5e6f708192a3b4c5d6e7f809"],
           "html_url": "https://g1t.sh/flagon-io/g1t/commit/85c083a0e4b1d2c3f4a5b6c7d8e9f0a1b2c3d4e5"
         }
       ],
@@ -8208,9 +7809,7 @@
           "username": "syntaqx"
         },
         "authored_at": "2026-10-13T01:12:40Z",
-        "parents": [
-          "0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3"
-        ],
+        "parents": ["0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3"],
         "html_url": "https://g1t.sh/flagon-io/g1t/commit/5d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e"
       }
     }
@@ -8945,9 +8544,7 @@
           "pattern": "acme_[a-z0-9]{32}",
           "before": null,
           "after": null,
-          "test_strings": [
-            "ACME_KEY=acme_0123456789abcdef0123456789abcdef"
-          ],
+          "test_strings": ["ACME_KEY=acme_0123456789abcdef0123456789abcdef"],
           "state": "published",
           "created_by": "syntaqx",
           "created_at": "2026-10-06T09:14:02.118Z",
@@ -8975,9 +8572,7 @@
           "pattern": "acme_[a-z0-9]{32}",
           "before": null,
           "after": null,
-          "test_strings": [
-            "ACME_KEY=acme_0123456789abcdef0123456789abcdef"
-          ],
+          "test_strings": ["ACME_KEY=acme_0123456789abcdef0123456789abcdef"],
           "state": "published",
           "created_by": "syntaqx",
           "created_at": "2026-10-06T09:14:02.118Z",
@@ -8997,9 +8592,7 @@
     "request": {
       "pattern_name": "Acme API key",
       "pattern": "acme_[a-z0-9]{32}",
-      "test_strings": [
-        "ACME_KEY=acme_0123456789abcdef0123456789abcdef"
-      ],
+      "test_strings": ["ACME_KEY=acme_0123456789abcdef0123456789abcdef"],
       "publish": true
     },
     "response": {
@@ -9012,9 +8605,7 @@
         "pattern": "acme_[a-z0-9]{32}",
         "before": null,
         "after": null,
-        "test_strings": [
-          "ACME_KEY=acme_0123456789abcdef0123456789abcdef"
-        ],
+        "test_strings": ["ACME_KEY=acme_0123456789abcdef0123456789abcdef"],
         "state": "published",
         "created_by": "syntaqx",
         "created_at": "2026-10-06T09:14:02.118Z",
@@ -9022,12 +8613,7 @@
         "updated_at": "2026-10-06T09:14:02.118Z",
         "open_alerts": 0
       },
-      "tests": [
-        [
-          9,
-          46
-        ]
-      ]
+      "tests": [[9, 46]]
     },
     "notes": "`tests` gives, for each test string, where the pattern matched (start and end, in characters), or `null`. A pattern that does not compile, matches an empty string, or is too complex is refused with `422` and says why."
   },
@@ -9082,9 +8668,7 @@
         "pattern": "acme_[a-z0-9]{32,40}",
         "before": null,
         "after": null,
-        "test_strings": [
-          "ACME_KEY=acme_0123456789abcdef0123456789abcdef"
-        ],
+        "test_strings": ["ACME_KEY=acme_0123456789abcdef0123456789abcdef"],
         "state": "published",
         "created_by": "syntaqx",
         "created_at": "2026-10-06T09:14:02.118Z",
@@ -9092,12 +8676,7 @@
         "updated_at": "2026-10-06T09:14:02.118Z",
         "open_alerts": 0
       },
-      "tests": [
-        [
-          9,
-          46
-        ]
-      ]
+      "tests": [[9, 46]]
     }
   },
   "update_custom_pattern_for_workspace": {
@@ -9120,9 +8699,7 @@
         "pattern": "acme_[a-z0-9]{32}",
         "before": null,
         "after": null,
-        "test_strings": [
-          "ACME_KEY=acme_0123456789abcdef0123456789abcdef"
-        ],
+        "test_strings": ["ACME_KEY=acme_0123456789abcdef0123456789abcdef"],
         "state": "published",
         "created_by": "syntaqx",
         "created_at": "2026-10-06T09:14:02.118Z",
@@ -9130,12 +8707,7 @@
         "updated_at": "2026-10-06T09:14:02.118Z",
         "open_alerts": 0
       },
-      "tests": [
-        [
-          9,
-          46
-        ]
-      ]
+      "tests": [[9, 46]]
     }
   },
   "delete_custom_pattern": {
@@ -9190,9 +8762,7 @@
     },
     "request": {
       "pattern": "acme_[a-z0-9]{32}",
-      "repos": [
-        "hello"
-      ]
+      "repos": ["hello"]
     },
     "response": {
       "repos": [
@@ -9227,10 +8797,7 @@
         "rule_description": "Detected calls to child_process from a function argument.",
         "help": null,
         "help_uri": "https://semgrep.dev/r/javascript.lang.security.detect-child-process.detect-child-process",
-        "tags": [
-          "security",
-          "CWE-78"
-        ],
+        "tags": ["security", "CWE-78"],
         "level": "error",
         "security_severity": null,
         "severity": "high",
@@ -9277,10 +8844,7 @@
           "rule_description": "Detected calls to child_process from a function argument.",
           "help": null,
           "help_uri": "https://semgrep.dev/r/javascript.lang.security.detect-child-process.detect-child-process",
-          "tags": [
-            "security",
-            "CWE-78"
-          ],
+          "tags": ["security", "CWE-78"],
           "level": "error",
           "security_severity": null,
           "severity": "high",
@@ -9324,10 +8888,7 @@
         "rule_description": "Detected calls to child_process from a function argument.",
         "help": null,
         "help_uri": "https://semgrep.dev/r/javascript.lang.security.detect-child-process.detect-child-process",
-        "tags": [
-          "security",
-          "CWE-78"
-        ],
+        "tags": ["security", "CWE-78"],
         "level": "error",
         "security_severity": null,
         "severity": "high",
@@ -9393,10 +8954,7 @@
       "rule_description": "Detected calls to child_process from a function argument.",
       "help": null,
       "help_uri": "https://semgrep.dev/r/javascript.lang.security.detect-child-process.detect-child-process",
-      "tags": [
-        "security",
-        "CWE-78"
-      ],
+      "tags": ["security", "CWE-78"],
       "level": "error",
       "security_severity": null,
       "severity": "high",
@@ -9458,9 +9016,7 @@
     "response": {
       "id": "sar_01kq2scj9k0m1n2p3q4r5s6t7v",
       "processing_status": "complete",
-      "analyses": [
-        "ana_01kq2rbh8j9k0m1n2p3q4r5s6t"
-      ],
+      "analyses": ["ana_01kq2rbh8j9k0m1n2p3q4r5s6t"],
       "errors": [],
       "commit_sha": "4807077b296e6edbf410d55e72749d3e1170c291",
       "git_ref": "refs/heads/main",
@@ -9477,9 +9033,7 @@
     "response": {
       "id": "sar_01kq2scj9k0m1n2p3q4r5s6t7v",
       "processing_status": "complete",
-      "analyses": [
-        "ana_01kq2rbh8j9k0m1n2p3q4r5s6t"
-      ],
+      "analyses": ["ana_01kq2rbh8j9k0m1n2p3q4r5s6t"],
       "errors": [],
       "commit_sha": "4807077b296e6edbf410d55e72749d3e1170c291",
       "git_ref": "refs/heads/main",
@@ -9676,15 +9230,10 @@
         "documentNamespace": "https://g1t.sh/flagon-io/hello/sbom/sbom_01kq2tdk0m1n2p3q4r5s6t7v8w",
         "creationInfo": {
           "created": "2026-10-06T09:14:02Z",
-          "creators": [
-            "Tool: g1t",
-            "Organization: g1t"
-          ],
+          "creators": ["Tool: g1t", "Organization: g1t"],
           "comment": "Read from the repository's lockfiles on its default branch."
         },
-        "documentDescribes": [
-          "SPDXRef-Repository-flagon-io-hello"
-        ],
+        "documentDescribes": ["SPDXRef-Repository-flagon-io-hello"],
         "packages": [
           {
             "SPDXID": "SPDXRef-Repository-flagon-io-hello",
@@ -9844,9 +9393,7 @@
         "code_scanning_gate": "high",
         "dependency_review": true,
         "review_fail_on": "high",
-        "review_deny_licenses": [
-          "AGPL-3.0-only"
-        ],
+        "review_deny_licenses": ["AGPL-3.0-only"],
         "review_comment": true,
         "history_alerts": true,
         "private_vulnerability_reporting": false
@@ -9867,18 +9414,14 @@
     },
     "request": {
       "code_scanning_gate": "high",
-      "review_deny_licenses": [
-        "AGPL-3.0-only"
-      ]
+      "review_deny_licenses": ["AGPL-3.0-only"]
     },
     "response": {
       "settings": {
         "code_scanning_gate": "high",
         "dependency_review": true,
         "review_fail_on": "high",
-        "review_deny_licenses": [
-          "AGPL-3.0-only"
-        ],
+        "review_deny_licenses": ["AGPL-3.0-only"],
         "review_comment": true,
         "history_alerts": true,
         "private_vulnerability_reporting": true
@@ -9945,9 +9488,7 @@
         "affected_versions": ">= 1.2.0, < 1.4.1",
         "patched_versions": ">= 1.4.1",
         "state": "published",
-        "credits": [
-          "ana"
-        ],
+        "credits": ["ana"],
         "report_id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r",
         "created_by": "syntaqx",
         "created_at": "2026-10-06T09:14:02.118Z",
@@ -9980,9 +9521,7 @@
       "affected_versions": ">= 1.2.0, < 1.4.1",
       "patched_versions": ">= 1.4.1",
       "state": "published",
-      "credits": [
-        "ana"
-      ],
+      "credits": ["ana"],
       "report_id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r",
       "created_by": "syntaqx",
       "created_at": "2026-10-06T09:14:02.118Z",
@@ -10005,9 +9544,7 @@
       "package": "@flagon/hello",
       "affected_versions": ">= 1.2.0, < 1.4.1",
       "patched_versions": ">= 1.4.1",
-      "credits": [
-        "ana"
-      ]
+      "credits": ["ana"]
     },
     "response": {
       "id": "adv_01kq2p9f6g7h8j9k0m1n2p3q4r",
@@ -10025,9 +9562,7 @@
       "affected_versions": ">= 1.2.0, < 1.4.1",
       "patched_versions": ">= 1.4.1",
       "state": "draft",
-      "credits": [
-        "ana"
-      ],
+      "credits": ["ana"],
       "report_id": null,
       "created_by": "syntaqx",
       "created_at": "2026-10-06T09:14:02.118Z",
@@ -10064,9 +9599,7 @@
       "affected_versions": ">= 1.2.0, < 1.4.1",
       "patched_versions": ">= 1.4.1",
       "state": "draft",
-      "credits": [
-        "ana"
-      ],
+      "credits": ["ana"],
       "report_id": null,
       "created_by": "syntaqx",
       "created_at": "2026-10-06T09:14:02.118Z",
@@ -10101,9 +9634,7 @@
       "affected_versions": ">= 1.2.0, < 1.4.1",
       "patched_versions": ">= 1.4.1",
       "state": "published",
-      "credits": [
-        "ana"
-      ],
+      "credits": ["ana"],
       "report_id": null,
       "created_by": "syntaqx",
       "created_at": "2026-10-06T09:14:02.118Z",
@@ -10213,9 +9744,7 @@
         "affected_versions": null,
         "patched_versions": null,
         "state": "draft",
-        "credits": [
-          "finder@example.com"
-        ],
+        "credits": ["finder@example.com"],
         "report_id": "vrp_01kq2p9f6g7h8j9k0m1n2p3q4r",
         "created_by": "syntaqx",
         "created_at": "2026-10-06T09:14:02.118Z",
@@ -10402,25 +9931,16 @@
   },
   "add_work_item_labels": {
     "request": {
-      "labels": [
-        "help wanted"
-      ]
+      "labels": ["help wanted"]
     },
-    "response": [
-      "bug",
-      "help wanted"
-    ],
+    "response": ["bug", "help wanted"],
     "notes": "Returns its labels now, by name."
   },
   "set_work_item_labels": {
     "request": {
-      "labels": [
-        "bug"
-      ]
+      "labels": ["bug"]
     },
-    "response": [
-      "bug"
-    ]
+    "response": ["bug"]
   },
   "remove_work_item_labels": {
     "response": []
@@ -10429,9 +9949,7 @@
     "params": {
       "label": "help wanted"
     },
-    "response": [
-      "bug"
-    ]
+    "response": ["bug"]
   },
   "list_milestones": {
     "response": [
@@ -10522,10 +10040,7 @@
           "number": 12,
           "title": "Greeting should name the caller",
           "body": "Take a name from the first argument; fall back to world.",
-          "labels": [
-            "feature",
-            "good first issue"
-          ],
+          "labels": ["feature", "good first issue"],
           "state": "open",
           "reason": null,
           "resolutions": [],
@@ -10543,9 +10058,7 @@
           "closed_at": null,
           "pull_count": 0,
           "comment_count": 0,
-          "assignees": [
-            "syntaqx"
-          ],
+          "assignees": ["syntaqx"],
           "blocked_by": [],
           "agent": null,
           "milestone": {
@@ -10594,9 +10107,7 @@
             }
           ],
           "assignees": [],
-          "reviewers": [
-            "ana"
-          ],
+          "reviewers": ["ana"],
           "labels": [],
           "milestone": {
             "number": 3,
@@ -10621,9 +10132,7 @@
   "update_pull_request": {
     "request": {
       "base": "release/1.x",
-      "labels": [
-        "bug"
-      ]
+      "labels": ["bug"]
     },
     "response": {
       "id": "pr_01m43smh3vexsr5pmp60qwv0vs",
@@ -10655,12 +10164,8 @@
         }
       ],
       "assignees": [],
-      "reviewers": [
-        "ana"
-      ],
-      "labels": [
-        "bug"
-      ],
+      "reviewers": ["ana"],
+      "labels": ["bug"],
       "milestone": null,
       "base": "release/1.x",
       "author": {
@@ -10697,9 +10202,7 @@
         "target": "branch",
         "conditions": {
           "ref_name": {
-            "include": [
-              "~DEFAULT_BRANCH"
-            ],
+            "include": ["~DEFAULT_BRANCH"],
             "exclude": []
           }
         },
@@ -10763,10 +10266,7 @@
           {
             "type": "file_path_restriction",
             "parameters": {
-              "restricted_file_paths": [
-                ".g1t/workflows/**",
-                "CODEOWNERS"
-              ]
+              "restricted_file_paths": [".g1t/workflows/**", "CODEOWNERS"]
             },
             "applies_to": "agents"
           }
@@ -10785,19 +10285,12 @@
         "target": "branch",
         "conditions": {
           "ref_name": {
-            "include": [
-              "~DEFAULT_BRANCH",
-              "release/**"
-            ],
+            "include": ["~DEFAULT_BRANCH", "release/**"],
             "exclude": []
           },
           "repository": {
-            "include": [
-              "~ALL"
-            ],
-            "exclude": [
-              "sandbox-*"
-            ],
+            "include": ["~ALL"],
+            "exclude": ["sandbox-*"],
             "visibility": "any",
             "topics": []
           }
@@ -10816,12 +10309,7 @@
               "time_zone": "-05:00",
               "windows": [
                 {
-                  "days": [
-                    "mon",
-                    "tue",
-                    "wed",
-                    "thu"
-                  ],
+                  "days": ["mon", "tue", "wed", "thu"],
                   "start": "09:00",
                   "end": "17:00"
                 }
@@ -10863,9 +10351,7 @@
       "target": "branch",
       "conditions": {
         "ref_name": {
-          "include": [
-            "~DEFAULT_BRANCH"
-          ],
+          "include": ["~DEFAULT_BRANCH"],
           "exclude": []
         }
       },
@@ -10929,10 +10415,7 @@
         {
           "type": "file_path_restriction",
           "parameters": {
-            "restricted_file_paths": [
-              ".g1t/workflows/**",
-              "CODEOWNERS"
-            ]
+            "restricted_file_paths": [".g1t/workflows/**", "CODEOWNERS"]
           },
           "applies_to": "agents"
         }
@@ -10954,9 +10437,7 @@
       "target": "branch",
       "conditions": {
         "ref_name": {
-          "include": [
-            "~DEFAULT_BRANCH"
-          ],
+          "include": ["~DEFAULT_BRANCH"],
           "exclude": []
         }
       },
@@ -11020,10 +10501,7 @@
         {
           "type": "file_path_restriction",
           "parameters": {
-            "restricted_file_paths": [
-              ".g1t/workflows/**",
-              "CODEOWNERS"
-            ]
+            "restricted_file_paths": [".g1t/workflows/**", "CODEOWNERS"]
           },
           "applies_to": "agents"
         }
@@ -11040,9 +10518,7 @@
       "target": "branch",
       "conditions": {
         "ref_name": {
-          "include": [
-            "~DEFAULT_BRANCH"
-          ],
+          "include": ["~DEFAULT_BRANCH"],
           "exclude": []
         }
       },
@@ -11106,10 +10582,7 @@
         {
           "type": "file_path_restriction",
           "parameters": {
-            "restricted_file_paths": [
-              ".g1t/workflows/**",
-              "CODEOWNERS"
-            ]
+            "restricted_file_paths": [".g1t/workflows/**", "CODEOWNERS"]
           },
           "applies_to": "agents"
         }
@@ -11141,9 +10614,7 @@
       "target": "branch",
       "conditions": {
         "ref_name": {
-          "include": [
-            "~DEFAULT_BRANCH"
-          ],
+          "include": ["~DEFAULT_BRANCH"],
           "exclude": []
         }
       },
@@ -11207,10 +10678,7 @@
         {
           "type": "file_path_restriction",
           "parameters": {
-            "restricted_file_paths": [
-              ".g1t/workflows/**",
-              "CODEOWNERS"
-            ]
+            "restricted_file_paths": [".g1t/workflows/**", "CODEOWNERS"]
           },
           "applies_to": "agents"
         }
@@ -11302,12 +10770,7 @@
             "time_zone": "-05:00",
             "windows": [
               {
-                "days": [
-                  "mon",
-                  "tue",
-                  "wed",
-                  "thu"
-                ],
+                "days": ["mon", "tue", "wed", "thu"],
                 "start": "09:00",
                 "end": "17:00"
               }
@@ -11444,19 +10907,12 @@
         "target": "branch",
         "conditions": {
           "ref_name": {
-            "include": [
-              "~DEFAULT_BRANCH",
-              "release/**"
-            ],
+            "include": ["~DEFAULT_BRANCH", "release/**"],
             "exclude": []
           },
           "repository": {
-            "include": [
-              "~ALL"
-            ],
-            "exclude": [
-              "sandbox-*"
-            ],
+            "include": ["~ALL"],
+            "exclude": ["sandbox-*"],
             "visibility": "any",
             "topics": []
           }
@@ -11475,12 +10931,7 @@
               "time_zone": "-05:00",
               "windows": [
                 {
-                  "days": [
-                    "mon",
-                    "tue",
-                    "wed",
-                    "thu"
-                  ],
+                  "days": ["mon", "tue", "wed", "thu"],
                   "start": "09:00",
                   "end": "17:00"
                 }
@@ -11518,19 +10969,12 @@
       "target": "branch",
       "conditions": {
         "ref_name": {
-          "include": [
-            "~DEFAULT_BRANCH",
-            "release/**"
-          ],
+          "include": ["~DEFAULT_BRANCH", "release/**"],
           "exclude": []
         },
         "repository": {
-          "include": [
-            "~ALL"
-          ],
-          "exclude": [
-            "sandbox-*"
-          ],
+          "include": ["~ALL"],
+          "exclude": ["sandbox-*"],
           "visibility": "any",
           "topics": []
         }
@@ -11549,12 +10993,7 @@
             "time_zone": "-05:00",
             "windows": [
               {
-                "days": [
-                  "mon",
-                  "tue",
-                  "wed",
-                  "thu"
-                ],
+                "days": ["mon", "tue", "wed", "thu"],
                 "start": "09:00",
                 "end": "17:00"
               }
@@ -11587,19 +11026,12 @@
       "target": "branch",
       "conditions": {
         "ref_name": {
-          "include": [
-            "~DEFAULT_BRANCH",
-            "release/**"
-          ],
+          "include": ["~DEFAULT_BRANCH", "release/**"],
           "exclude": []
         },
         "repository": {
-          "include": [
-            "~ALL"
-          ],
-          "exclude": [
-            "sandbox-*"
-          ],
+          "include": ["~ALL"],
+          "exclude": ["sandbox-*"],
           "visibility": "any",
           "topics": []
         }
@@ -11618,12 +11050,7 @@
             "time_zone": "-05:00",
             "windows": [
               {
-                "days": [
-                  "mon",
-                  "tue",
-                  "wed",
-                  "thu"
-                ],
+                "days": ["mon", "tue", "wed", "thu"],
                 "start": "09:00",
                 "end": "17:00"
               }
@@ -11650,19 +11077,12 @@
       "target": "branch",
       "conditions": {
         "ref_name": {
-          "include": [
-            "~DEFAULT_BRANCH",
-            "release/**"
-          ],
+          "include": ["~DEFAULT_BRANCH", "release/**"],
           "exclude": []
         },
         "repository": {
-          "include": [
-            "~ALL"
-          ],
-          "exclude": [
-            "sandbox-*"
-          ],
+          "include": ["~ALL"],
+          "exclude": ["sandbox-*"],
           "visibility": "any",
           "topics": []
         }
@@ -11681,12 +11101,7 @@
             "time_zone": "-05:00",
             "windows": [
               {
-                "days": [
-                  "mon",
-                  "tue",
-                  "wed",
-                  "thu"
-                ],
+                "days": ["mon", "tue", "wed", "thu"],
                 "start": "09:00",
                 "end": "17:00"
               }
@@ -11727,19 +11142,12 @@
       "target": "branch",
       "conditions": {
         "ref_name": {
-          "include": [
-            "~DEFAULT_BRANCH",
-            "release/**"
-          ],
+          "include": ["~DEFAULT_BRANCH", "release/**"],
           "exclude": []
         },
         "repository": {
-          "include": [
-            "~ALL"
-          ],
-          "exclude": [
-            "sandbox-*"
-          ],
+          "include": ["~ALL"],
+          "exclude": ["sandbox-*"],
           "visibility": "any",
           "topics": []
         }
@@ -11758,12 +11166,7 @@
             "time_zone": "-05:00",
             "windows": [
               {
-                "days": [
-                  "mon",
-                  "tue",
-                  "wed",
-                  "thu"
-                ],
+                "days": ["mon", "tue", "wed", "thu"],
                 "start": "09:00",
                 "end": "17:00"
               }
@@ -12353,9 +11756,7 @@
             }
           }
         ],
-        "jobs": [
-          "Deploy the core services"
-        ],
+        "jobs": ["Deploy the core services"],
         "reviewed_by": null,
         "comment": null,
         "reviewed_at": null
@@ -12369,9 +11770,7 @@
       "id": "run_01kq9b3d5f7h9k1n3q5s7u9w1y"
     },
     "request": {
-      "environment_names": [
-        "production"
-      ],
+      "environment_names": ["production"],
       "state": "approved",
       "comment": "Release notes checked."
     },
@@ -12398,9 +11797,7 @@
             }
           }
         ],
-        "jobs": [
-          "Deploy the core services"
-        ],
+        "jobs": ["Deploy the core services"],
         "reviewed_by": "syntaqx",
         "comment": "Release notes checked.",
         "reviewed_at": "2026-10-08T09:22:15.871Z"
@@ -12585,10 +11982,7 @@
           "source_sha": "4f1c2a9e0b7d3c5a8e6f1b2d4c7a9e0f3b5d8c1a",
           "source_private": false,
           "mode": "required",
-          "repositories": [
-            "*",
-            "!sandbox-*"
-          ],
+          "repositories": ["*", "!sandbox-*"],
           "visibility": "all",
           "content": "name: Security scan\non: [push, pull_request]\njobs:\n  scan:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: ./scripts/scan.sh\n",
           "created_at": "2026-10-12T09:30:00Z",
@@ -12606,10 +12000,7 @@
       "name": "security-scan",
       "source": "flagon-io/policies/.g1t/workflows/security-scan.yml@main",
       "mode": "required",
-      "repositories": [
-        "*",
-        "!sandbox-*"
-      ]
+      "repositories": ["*", "!sandbox-*"]
     },
     "response": {
       "name": "security-scan",
@@ -12619,10 +12010,7 @@
       "source_sha": "4f1c2a9e0b7d3c5a8e6f1b2d4c7a9e0f3b5d8c1a",
       "source_private": false,
       "mode": "required",
-      "repositories": [
-        "*",
-        "!sandbox-*"
-      ],
+      "repositories": ["*", "!sandbox-*"],
       "visibility": "all",
       "content": "name: Security scan\non: [push, pull_request]\njobs:\n  scan:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: ./scripts/scan.sh\n",
       "created_at": "2026-10-12T09:30:00Z",
@@ -12647,10 +12035,7 @@
       "source_sha": "4f1c2a9e0b7d3c5a8e6f1b2d4c7a9e0f3b5d8c1a",
       "source_private": false,
       "mode": "required",
-      "repositories": [
-        "*",
-        "!sandbox-*"
-      ],
+      "repositories": ["*", "!sandbox-*"],
       "visibility": "all",
       "content": "name: Security scan\non: [push, pull_request]\njobs:\n  scan:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: ./scripts/scan.sh\n",
       "created_at": "2026-10-12T09:30:00Z",
@@ -12718,17 +12103,11 @@
     },
     "request": {
       "dismissed": true,
-      "skipped": [
-        "people",
-        "runner"
-      ]
+      "skipped": ["people", "runner"]
     },
     "response": {
       "dismissed_at": "2026-10-14T21:05:00.000Z",
-      "skipped": [
-        "people",
-        "runner"
-      ],
+      "skipped": ["people", "runner"],
       "updated_at": "2026-10-14T21:05:00.000Z"
     },
     "notes": "Dismissing it again keeps the first `dismissed_at`; `\"dismissed\": false` makes it open by itself again. A step that is not one of `ai`, `ask`, `code`, `harness`, `people` and `runner` is refused with `422`. Opening the guide again from the workspace's settings or its AI page changes nothing here."
@@ -12747,15 +12126,10 @@
         "created_by": null,
         "last_used_at": null,
         "expires_at": "2026-11-07T09:00:00.000Z",
-        "scopes": [
-          "repo:read",
-          "code:write"
-        ],
+        "scopes": ["repo:read", "code:write"],
         "workspace": "flagon-io",
         "repository_selection": "selected",
-        "repositories": [
-          "flagon-io/hello"
-        ],
+        "repositories": ["flagon-io/hello"],
         "permissions": {
           "code": "write",
           "repo": "read"
@@ -12781,15 +12155,10 @@
         "created_by": null,
         "last_used_at": null,
         "expires_at": "2026-11-07T09:00:00.000Z",
-        "scopes": [
-          "repo:read",
-          "code:write"
-        ],
+        "scopes": ["repo:read", "code:write"],
         "workspace": "flagon-io",
         "repository_selection": "selected",
-        "repositories": [
-          "flagon-io/hello"
-        ],
+        "repositories": ["flagon-io/hello"],
         "permissions": {
           "code": "write",
           "repo": "read"
@@ -12818,15 +12187,10 @@
       "created_by": null,
       "last_used_at": null,
       "expires_at": "2026-11-07T09:00:00.000Z",
-      "scopes": [
-        "repo:read",
-        "code:write"
-      ],
+      "scopes": ["repo:read", "code:write"],
       "workspace": "flagon-io",
       "repository_selection": "selected",
-      "repositories": [
-        "flagon-io/hello"
-      ],
+      "repositories": ["flagon-io/hello"],
       "permissions": {
         "code": "write",
         "repo": "read"
@@ -12997,9 +12361,7 @@
           "fork_of": null,
           "protected": true,
           "created_at": "2026-09-28T14:11:52.640Z",
-          "topics": [
-            "cli"
-          ],
+          "topics": ["cli"],
           "website": "https://hello.g1t.page",
           "archived_at": null
         },
@@ -14006,17 +13368,11 @@
         "digest": "sha256:9b2e4d6f8a0c1e3b5d7f9a2c4e6b8d0f1a3c5e7b9d2f4a6c8e0b1d3f5a7c9e2b",
         "size_in_bytes": 48211932,
         "download_count": 611,
-        "tags": [
-          "latest",
-          "v1.4.0"
-        ],
+        "tags": ["latest", "v1.4.0"],
         "media_type": "application/vnd.oci.image.index.v1+json",
         "artifact_type": null,
         "subject": null,
-        "platforms": [
-          "linux/amd64",
-          "linux/arm64"
-        ],
+        "platforms": ["linux/amd64", "linux/arm64"],
         "published_by": "ana",
         "created_at": "2026-10-08T14:05:20.000Z",
         "deprecated": null,
@@ -14040,9 +13396,7 @@
       "digest": "sha256:3c5e7b9d2f4a6c8e0b1d3f5a7c9e2b4d6f8a0c1e3b5d7f9a2c4e6b8d0f1a3c5e",
       "size_in_bytes": 97412,
       "download_count": 2204,
-      "tags": [
-        "latest"
-      ],
+      "tags": ["latest"],
       "media_type": null,
       "artifact_type": null,
       "subject": null,
@@ -14081,9 +13435,7 @@
       "digest": "sha256:7d9f2a4c6e8b0d1f3a5c7e9b2d4f6a8c0e1b3d5f7a9c2e4b6d8f0a1c3e5b7d9f",
       "size_in_bytes": 96880,
       "download_count": 41,
-      "tags": [
-        "beta"
-      ],
+      "tags": ["beta"],
       "media_type": null,
       "artifact_type": null,
       "subject": null,
@@ -14669,14 +14021,8 @@
         }
       ],
       "rows": [
-        [
-          "acme/web",
-          42
-        ],
-        [
-          "acme/api",
-          7
-        ]
+        ["acme/web", 42],
+        ["acme/api", 7]
       ],
       "truncated": false,
       "partial": false,
@@ -15264,10 +14610,7 @@
           "duration_us": 842000,
           "span_count": 6,
           "error_count": 1,
-          "services": [
-            "g1t-web",
-            "g1t-work"
-          ],
+          "services": ["g1t-web", "g1t-work"],
           "status": 500,
           "service": "g1t-web",
           "environment": "production",
@@ -15406,9 +14749,7 @@
         "kind": "histogram",
         "unit": "s",
         "description": "Duration of HTTP server requests.",
-        "services": [
-          "g1t-api"
-        ],
+        "services": ["g1t-api"],
         "last_us": 1791813800000000
       },
       {
@@ -15416,9 +14757,7 @@
         "kind": "gauge",
         "unit": "{message}",
         "description": "Messages waiting.",
-        "services": [
-          "g1t-work"
-        ],
+        "services": ["g1t-work"],
         "last_us": 1791813780000000
       }
     ]
@@ -15549,13 +14888,8 @@
         "id": "x7d2k9m4",
         "name": "Honeycomb",
         "endpoint": "https://api.honeycomb.io",
-        "signals": [
-          "traces",
-          "logs"
-        ],
-        "header_names": [
-          "x-honeycomb-team"
-        ],
+        "signals": ["traces", "logs"],
+        "header_names": ["x-honeycomb-team"],
         "enabled": true,
         "last_error": null,
         "last_sent_us": 1791813809000000
@@ -15571,10 +14905,7 @@
     "request": {
       "name": "Honeycomb",
       "endpoint": "https://api.honeycomb.io",
-      "signals": [
-        "traces",
-        "logs"
-      ],
+      "signals": ["traces", "logs"],
       "headers": {
         "x-honeycomb-team": "hcaik_…"
       }
@@ -15583,13 +14914,8 @@
       "id": "x7d2k9m4",
       "name": "Honeycomb",
       "endpoint": "https://api.honeycomb.io",
-      "signals": [
-        "traces",
-        "logs"
-      ],
-      "header_names": [
-        "x-honeycomb-team"
-      ],
+      "signals": ["traces", "logs"],
+      "header_names": ["x-honeycomb-team"],
       "enabled": true,
       "last_error": null,
       "last_sent_us": null
@@ -15609,13 +14935,8 @@
       "id": "x7d2k9m4",
       "name": "Honeycomb",
       "endpoint": "https://api.honeycomb.io",
-      "signals": [
-        "traces",
-        "logs"
-      ],
-      "header_names": [
-        "x-honeycomb-team"
-      ],
+      "signals": ["traces", "logs"],
+      "header_names": ["x-honeycomb-team"],
       "enabled": false,
       "last_error": null,
       "last_sent_us": 1791813809000000
@@ -15659,9 +14980,7 @@
         "config": {
           "idp_entity_id": "http://www.okta.com/exk1a2b3c4d5",
           "idp_sso_url": "https://flagon.okta.com/app/flagon_g1t/exk1a2b3c4d5/sso/saml",
-          "certificates": [
-            "MIICsDCCAZigAwIBAgICA+gwDQYJKoZIhvcNAQELBQAw"
-          ]
+          "certificates": ["MIICsDCCAZigAwIBAgICA+gwDQYJKoZIhvcNAQELBQAw"]
         },
         "has_client_secret": false,
         "certificates": [
@@ -15713,9 +15032,7 @@
         "config": {
           "idp_entity_id": "http://www.okta.com/exk1a2b3c4d5",
           "idp_sso_url": "https://flagon.okta.com/app/flagon_g1t/exk1a2b3c4d5/sso/saml",
-          "certificates": [
-            "MIICsDCCAZigAwIBAgICA+gwDQYJKoZIhvcNAQELBQAw"
-          ]
+          "certificates": ["MIICsDCCAZigAwIBAgICA+gwDQYJKoZIhvcNAQELBQAw"]
         },
         "has_client_secret": false,
         "certificates": [
@@ -15868,9 +15185,7 @@
         "number": 12,
         "title": "Greeting should name the caller",
         "body": "Take a name from the first argument; fall back to world.",
-        "labels": [
-          "feature"
-        ],
+        "labels": ["feature"],
         "state": "open",
         "reason": null,
         "resolutions": [],
@@ -15915,9 +15230,7 @@
       "number": 12,
       "title": "Greeting should name the caller",
       "body": "Take a name from the first argument; fall back to world.",
-      "labels": [
-        "feature"
-      ],
+      "labels": ["feature"],
       "state": "open",
       "reason": null,
       "resolutions": [],
@@ -15968,9 +15281,7 @@
       "number": 12,
       "title": "Greeting should name the caller",
       "body": "Take a name from the first argument; fall back to world.",
-      "labels": [
-        "feature"
-      ],
+      "labels": ["feature"],
       "state": "open",
       "reason": null,
       "resolutions": [],
@@ -16021,9 +15332,7 @@
           "landed": false
         }
       ],
-      "missing": [
-        "flagon-io/docs"
-      ]
+      "missing": ["flagon-io/docs"]
     },
     "notes": "`missing` lists the targets it has not landed in yet; with none, whatever closes it closes it."
   },
@@ -16131,16 +15440,12 @@
       {
         "content": "heart",
         "count": 1,
-        "users": [
-          "ana"
-        ]
+        "users": ["ana"]
       },
       {
         "content": "eyes",
         "count": 1,
-        "users": [
-          "g1t"
-        ]
+        "users": ["g1t"]
       }
     ],
     "notes": "Reacting twice the same way is one reaction. Without comment_id it reacts to the work item's description."
@@ -16163,18 +15468,9 @@
             "conclusion": "failure",
             "url": "https://g1t.sh/acme/web/actions/runs/run_01kpz8k0"
           },
-          "combination": [
-            11,
-            12,
-            14
-          ],
-          "other_pulls": [
-            11,
-            12
-          ],
-          "suspects": [
-            12
-          ],
+          "combination": [11, 12, 14],
+          "other_pulls": [11, 12],
+          "suspects": [12],
           "bisected": true,
           "landed": []
         },

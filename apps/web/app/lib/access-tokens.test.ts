@@ -74,10 +74,10 @@ test("a token reaches every workspace, or none, and may never expire", () => {
 });
 
 test("a workspace's own token holds nothing about a person, and reaches all or selected repositories", () => {
-  const parsed = tokenFromForm(
-    form({ name: "deploy", expires: "90", repository_selection: "public", "perm.code": "write", "perm.notifications": "write" }),
-    { workspaceOwned: true, owner: "acme" },
-  );
+  const parsed = tokenFromForm(form({ name: "deploy", expires: "90", repository_selection: "public", "perm.code": "write", "perm.notifications": "write" }), {
+    workspaceOwned: true,
+    owner: "acme",
+  });
   assert.ok(parsed.ok);
   assert.equal(parsed.value.owner, "acme");
   assert.equal(parsed.value.repositorySelection, "all");
@@ -143,7 +143,13 @@ test("lists read a token in a line", () => {
   assert.match(policyNote("acme", policy, false) ?? "", /must approve/);
   assert.equal(policyNote("acme", policy, true), null, "owners' own tokens never wait");
   assert.match(policyNote("acme", { ...policy, allowTokensForThisWorkspace: false }, true) ?? "", /does not allow/);
-  assert.deepEqual(keptOutOfAll([{ slug: "acme", policy: { ...policy, allowTokensForAllWorkspaces: false } }, { slug: "globex", policy }]), ["acme"]);
+  assert.deepEqual(
+    keptOutOfAll([
+      { slug: "acme", policy: { ...policy, allowTokensForAllWorkspaces: false } },
+      { slug: "globex", policy },
+    ]),
+    ["acme"],
+  );
 });
 
 test("old addresses of the token settings go to the current pages", () => {
@@ -155,14 +161,35 @@ test("old addresses of the token settings go to the current pages", () => {
 
 test("saving a token sends only what changed", () => {
   const token = {
-    id: "tok_1", name: "ci", createdAt: "", lastUsedAt: null, createdBy: null, legacy: false, expiresAt: null,
+    id: "tok_1",
+    name: "ci",
+    createdAt: "",
+    lastUsedAt: null,
+    createdBy: null,
+    legacy: false,
+    expiresAt: null,
     scopes: ["repo:read", "repo:write", "code:read", "code:write"],
-    workspace: "acme", repositorySelection: "selected" as const, repositories: ["acme/web"], description: null,
+    workspace: "acme",
+    repositorySelection: "selected" as const,
+    repositories: ["acme/web"],
+    description: null,
   };
-  const same = { owner: null, name: "", description: null, ttlSeconds: null, workspace: "acme", repositorySelection: "selected" as const, repositories: ["Acme/Web"], permissions: { repo: "write" as const, code: "write" as const } };
+  const same = {
+    owner: null,
+    name: "",
+    description: null,
+    ttlSeconds: null,
+    workspace: "acme",
+    repositorySelection: "selected" as const,
+    repositories: ["Acme/Web"],
+    permissions: { repo: "write" as const, code: "write" as const },
+  };
   assert.deepEqual(changesTo(token, same), {}, "the same permissions and repositories ask nothing again");
   assert.deepEqual(changesTo(token, { ...same, permissions: { repo: "write", code: "read" } }), { permissions: { repo: "write", code: "read" } });
-  assert.deepEqual(changesTo(token, { ...same, repositories: ["acme/web", "acme/api"] }), { repositorySelection: "selected", repositories: ["acme/web", "acme/api"] });
+  assert.deepEqual(changesTo(token, { ...same, repositories: ["acme/web", "acme/api"] }), {
+    repositorySelection: "selected",
+    repositories: ["acme/web", "acme/api"],
+  });
   assert.deepEqual(changesTo(token, { ...same, repositorySelection: "all", repositories: [] }), { repositorySelection: "all" });
   assert.deepEqual(changesTo(token, { ...same, name: "release", description: "ships" }), { name: "release", description: "ships" });
   assert.deepEqual(changesTo(token, { ...same, website: true }), { website: true });

@@ -3,8 +3,8 @@ title: Events
 description: How a state change in one service reaches every other that cares, through one log and a queue per subscriber, and how webhooks, live pages and followers read it.
 ---
 
-import Aside from '../../../components/Aside.astro';
-import Diagram from '../../../components/Diagram.astro';
+import Aside from "../../../components/Aside.astro";
+import Diagram from "../../../components/Diagram.astro";
 
 Every state change in g1t is published as an event: a push, a work item
 opened, a pull request merged, a workflow finished, a workspace renamed.
@@ -16,15 +16,15 @@ and the `events` service (`services/events`, Rust) delivers.
 Every event has the same shape, which follows CloudEvents
 (`crates/contracts/src/events.rs`, `packages/contracts/src/events.ts`):
 
-| Field | What it is |
-| --- | --- |
-| `id` | `evt_` and a UUIDv7: sortable by the time it was made |
-| `type` | Such as `git.push`, `pull.merged`, `workflow.completed` |
-| `source` | The service that published it |
-| `time` | When, in RFC 3339 |
-| `repoId` | The repository it is about, or none |
-| `actor` | The account that caused it, or none |
-| `data` | The type's own fields, in its contract |
+| Field    | What it is                                              |
+| -------- | ------------------------------------------------------- |
+| `id`     | `evt_` and a UUIDv7: sortable by the time it was made   |
+| `type`   | Such as `git.push`, `pull.merged`, `workflow.completed` |
+| `source` | The service that published it                           |
+| `time`   | When, in RFC 3339                                       |
+| `repoId` | The repository it is about, or none                     |
+| `actor`  | The account that caused it, or none                     |
+| `data`   | The type's own fields, in its contract                  |
 
 Coordination has its own events, published by `work`: sessions starting
 and ending, claims, hand-offs, dependencies, overlaps, and the merge
@@ -75,21 +75,21 @@ Each service that reacts to events has its own queue,
 (renames, transfers and deletions of repositories, workspaces and users),
 which every subscriber gets.
 
-| Queue | Read by | Gets |
-| --- | --- | --- |
-| `g1t-events-work` | `work` | `git.push`, `branch.renamed`, `repo.created`, `repo.archived`, `repo.default_branch_changed`, `pull.merged`, `comment.created` |
-| `g1t-events-runner` | `runner` | Pull request changes, `checks.completed`, `queue.changed`, `comment.created`, work item changes, `repo.archived` |
-| `g1t-events-actions` | `actions` | `git.push`, `git.deleted`, `pull.*`, `work_item.*`, `comment.*`, `release.*`, deployments, `workflow.completed`, `repo.archived` |
-| `g1t-events-webhooks` | `webhooks` | Everything |
-| `g1t-events-security` | `security` | `git.push`, pull request changes, `comment.created`, `repo.created`, `repo.visibility_changed` |
-| `g1t-events-search` | `search` | `git.push`, `repo.*`, `work_item.*`, `pull.*`, `user.*`, `workspace.*` |
-| `g1t-events-deployments` | `deployments` | Pushes, the pull request lifecycle, workspace deletion and restore, and deployment statuses (what each production deployment shipped) |
-| `g1t-events-projects` | `projects` | Repositories, packages and deployments |
-| `g1t-events-repos` | `repos` | `pull.merged`, `pull.closed`, `pull.reopened`, deletions and restores |
-| `g1t-events-packages` | `packages` | `git.push`, `repo.visibility_changed`, workspace and team changes |
-| `g1t-events-integrations` | `integrations` | `work_item.closed`, `pull.opened` |
-| `g1t-events-billing` | `billing` | Lifecycle events only |
-| `g1t-events-docs` | `artifacts` | `git.push`, `pull.merged` |
+| Queue                     | Read by        | Gets                                                                                                                                  |
+| ------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `g1t-events-work`         | `work`         | `git.push`, `branch.renamed`, `repo.created`, `repo.archived`, `repo.default_branch_changed`, `pull.merged`, `comment.created`        |
+| `g1t-events-runner`       | `runner`       | Pull request changes, `checks.completed`, `queue.changed`, `comment.created`, work item changes, `repo.archived`                      |
+| `g1t-events-actions`      | `actions`      | `git.push`, `git.deleted`, `pull.*`, `work_item.*`, `comment.*`, `release.*`, deployments, `workflow.completed`, `repo.archived`      |
+| `g1t-events-webhooks`     | `webhooks`     | Everything                                                                                                                            |
+| `g1t-events-security`     | `security`     | `git.push`, pull request changes, `comment.created`, `repo.created`, `repo.visibility_changed`                                        |
+| `g1t-events-search`       | `search`       | `git.push`, `repo.*`, `work_item.*`, `pull.*`, `user.*`, `workspace.*`                                                                |
+| `g1t-events-deployments`  | `deployments`  | Pushes, the pull request lifecycle, workspace deletion and restore, and deployment statuses (what each production deployment shipped) |
+| `g1t-events-projects`     | `projects`     | Repositories, packages and deployments                                                                                                |
+| `g1t-events-repos`        | `repos`        | `pull.merged`, `pull.closed`, `pull.reopened`, deletions and restores                                                                 |
+| `g1t-events-packages`     | `packages`     | `git.push`, `repo.visibility_changed`, workspace and team changes                                                                     |
+| `g1t-events-integrations` | `integrations` | `work_item.closed`, `pull.opened`                                                                                                     |
+| `g1t-events-billing`      | `billing`      | Lifecycle events only                                                                                                                 |
+| `g1t-events-docs`         | `artifacts`    | `git.push`, `pull.merged`                                                                                                             |
 
 A subscriber should treat every event as possibly delivered twice, and
 make its handling idempotent: most do it with a unique key on the event's
@@ -126,14 +126,14 @@ the same over MCP, with the `list_events` tool.
 `webhooks` reads every event and delivers those each subscription asks
 for:
 
-| | |
-| --- | --- |
-| **Request** | `POST` with JSON, to public addresses only, with a 10 second timeout. Anything but a 2xx is a failure. |
-| **Headers** | `x-g1t-event`, `x-g1t-delivery`, `x-g1t-hook`, and `x-g1t-signature-256: sha256=<HMAC-SHA256 of the body>` |
-| **Body** | `{ id, type, time, workspace, repository: { id, full_name }, actor: { id, username }, data }`, in snake_case |
-| **Retries** | After 1 minute, 5 minutes, 30 minutes, 2 hours and 5 hours: six attempts in about seven and a half hours |
-| **At most once** | A delivery is unique on the subscription and the event's `id` |
-| **Kept** | 14 days |
+|                  |                                                                                                              |
+| ---------------- | ------------------------------------------------------------------------------------------------------------ |
+| **Request**      | `POST` with JSON, to public addresses only, with a 10 second timeout. Anything but a 2xx is a failure.       |
+| **Headers**      | `x-g1t-event`, `x-g1t-delivery`, `x-g1t-hook`, and `x-g1t-signature-256: sha256=<HMAC-SHA256 of the body>`   |
+| **Body**         | `{ id, type, time, workspace, repository: { id, full_name }, actor: { id, username }, data }`, in snake_case |
+| **Retries**      | After 1 minute, 5 minutes, 30 minutes, 2 hours and 5 hours: six attempts in about seven and a half hours     |
+| **At most once** | A delivery is unique on the subscription and the event's `id`                                                |
+| **Kept**         | 14 days                                                                                                      |
 
 Each subscription's secret is sealed in D1. [Webhooks](/guides/webhooks/)
 shows how to check a signature.
@@ -142,11 +142,11 @@ shows how to check a signature.
 
 `notify` (TypeScript) keeps three kinds of Durable Object:
 
-| Object | One per | Holds |
-| --- | --- | --- |
-| `Feed` | Person | Their open tabs' sockets, notifications, counts and push subscriptions |
-| `Room` | Workspace | Who is here |
-| `Topic` | Repository | The pages open on it, told by `repo_changed` to refresh |
+| Object  | One per    | Holds                                                                  |
+| ------- | ---------- | ---------------------------------------------------------------------- |
+| `Feed`  | Person     | Their open tabs' sockets, notifications, counts and push subscriptions |
+| `Room`  | Workspace  | Who is here                                                            |
+| `Topic` | Repository | The pages open on it, told by `repo_changed` to refresh                |
 
 Sockets use the WebSocket Hibernation API, so an idle tab costs nothing
 while it waits. Browser push uses VAPID, and phones get Expo push; both are
@@ -157,8 +157,6 @@ sent to live 12 hours.
 Yjs document and saves them to D1 a few seconds after a burst of typing.
 
 <Aside title="Scheduled jobs">
-	Some work runs on a clock rather than on events: webhook retries every
-	minute, Actions schedules every minute, fork retirement hourly, backups
-	nightly, the event log's purge daily. Each service's `wrangler.jsonc`
-	lists its `crons`.
+  Some work runs on a clock rather than on events: webhook retries every minute, Actions schedules every minute, fork retirement hourly, backups nightly, the
+  event log's purge daily. Each service's `wrangler.jsonc` lists its `crons`.
 </Aside>

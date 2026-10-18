@@ -59,7 +59,15 @@ test("every preset says something and clears sensibly", () => {
 
 test("how someone shows: offline, away, active, and Do Not Disturb over either", () => {
   const now = NOW.getTime();
-  const entry = (over: Partial<PresenceEntry>): PresenceEntry => ({ user_id: "usr_1", username: "ana", presence: "active", dnd_until: null, status: null, at: 1, ...over });
+  const entry = (over: Partial<PresenceEntry>): PresenceEntry => ({
+    user_id: "usr_1",
+    username: "ana",
+    presence: "active",
+    dnd_until: null,
+    status: null,
+    at: 1,
+    ...over,
+  });
   assert.equal(shownAs(null, now), "offline");
   assert.equal(shownAs(entry({ presence: "offline", dnd_until: new Date(now + MIN).toISOString() }), now), "offline");
   assert.equal(shownAs(entry({ presence: "away" }), now), "away");

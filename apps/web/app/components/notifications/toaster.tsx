@@ -44,9 +44,7 @@ const STYLES = `
 function ActorAvatar({ notification }: { notification: FeedNotification }) {
   const { actor } = notification;
   if (actor.kind === "user" || actor.kind === "agent") {
-    return (
-<MemberAvatar member={{ kind: actor.kind, id: actor.id, name: actor.name, avatar: actor.avatar ?? null }} size={32} />
-    );
+    return <MemberAvatar member={{ kind: actor.kind, id: actor.id, name: actor.name, avatar: actor.avatar ?? null }} size={32} />;
   }
   return <Avatar name={actor.name} system={actor.id === "g1t"} square size={32} />;
 }
@@ -144,7 +142,8 @@ function ToastCard({ notification, paused }: { notification: FeedNotification; p
         type="button"
         aria-label="Dismiss"
         onClick={() => dismiss(notification.id)}
-        variant="ghost" size="icon"
+        variant="ghost"
+        size="icon"
         className="absolute top-2 right-2 size-6 text-faint opacity-0 transition-opacity group-hover/toast:opacity-100 focus-visible:opacity-100 max-sm:opacity-100"
       >
         <X size={14} />
@@ -186,13 +185,7 @@ function PushOffer() {
       >
         {busy ? "Turning on…" : "Turn on"}
       </Button>
-      <Button
-        type="button"
-        aria-label="No thanks"
-        onClick={declinePush}
-        variant="ghost" size="icon"
-        className="size-6 text-faint"
-      >
+      <Button type="button" aria-label="No thanks" onClick={declinePush} variant="ghost" size="icon" className="size-6 text-faint">
         <X size={14} />
       </Button>
     </div>

@@ -14,7 +14,17 @@ import { SelectField } from "../ui/select";
 
 const FIELD = "h-9 w-full rounded-md border border-line bg-bg px-3 text-sm outline-none focus:border-accent/60";
 
-export function RenameDialog({ open, onOpenChange, title, onSave }: { open: boolean; onOpenChange: (o: boolean) => void; title: string; onSave: (title: string) => Promise<Result<unknown>> }) {
+export function RenameDialog({
+  open,
+  onOpenChange,
+  title,
+  onSave,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  title: string;
+  onSave: (title: string) => Promise<Result<unknown>>;
+}) {
   const [value, setValue] = useState(title);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -42,7 +52,15 @@ export function RenameDialog({ open, onOpenChange, title, onSave }: { open: bool
             <DialogDescription>Its link keeps working: the address ends in its id.</DialogDescription>
           </DialogHeader>
           <div className="mt-4 space-y-3">
-            <input aria-label="Title" autoFocus maxLength={FOLIO_MAX_TITLE} placeholder="Untitled" value={value} onChange={(e) => setValue(e.target.value)} className={FIELD} />
+            <input
+              aria-label="Title"
+              autoFocus
+              maxLength={FOLIO_MAX_TITLE}
+              placeholder="Untitled"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              className={FIELD}
+            />
             {error && <ErrorText>{error}</ErrorText>}
           </div>
           <DialogFooter className="mt-4">
@@ -105,10 +123,14 @@ export function MoveDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Move “{folio.title || "Untitled"}”</DialogTitle>
-          <DialogDescription>Everything inside it moves with it. In a space, it follows the space&apos;s access unless it&apos;s set to only people invited.</DialogDescription>
+          <DialogDescription>
+            Everything inside it moves with it. In a space, it follows the space&apos;s access unless it&apos;s set to only people invited.
+          </DialogDescription>
         </DialogHeader>
         {places.length === 0 ? (
-          <p className="text-sm text-muted">There&apos;s nowhere you can move it: you can&apos;t add to any space, and only its owner can move it to their Private.</p>
+          <p className="text-sm text-muted">
+            There&apos;s nowhere you can move it: you can&apos;t add to any space, and only its owner can move it to their Private.
+          </p>
         ) : (
           <div className="space-y-3">
             <SelectField
@@ -125,7 +147,10 @@ export function MoveDialog({
               aria-label="Inside"
               value={parent}
               onValueChange={setParent}
-              options={[{ value: "", label: "At the top" }, ...docs.map((p) => ({ value: p.id, label: `${"  ".repeat(p.depth)}${p.icon ?? ""} ${p.title || "Untitled"}`.trim() }))]}
+              options={[
+                { value: "", label: "At the top" },
+                ...docs.map((p) => ({ value: p.id, label: `${"  ".repeat(p.depth)}${p.icon ?? ""} ${p.title || "Untitled"}`.trim() })),
+              ]}
               className="h-9 w-full"
             />
             {error && <ErrorText>{error}</ErrorText>}
@@ -153,7 +178,19 @@ export function MoveDialog({
 }
 
 /** Save as a template. From something not everyone can read, it says so first: the template is everyone's (plan section 4.3 rule 8). */
-export function TemplateDialog({ open, onOpenChange, title, widens, onSave }: { open: boolean; onOpenChange: (o: boolean) => void; title: string; widens: boolean; onSave: (name: string, description: string) => Promise<Result<unknown>> }) {
+export function TemplateDialog({
+  open,
+  onOpenChange,
+  title,
+  widens,
+  onSave,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  title: string;
+  widens: boolean;
+  onSave: (name: string, description: string) => Promise<Result<unknown>>;
+}) {
   const [name, setName] = useState(title);
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -171,9 +208,19 @@ export function TemplateDialog({ open, onOpenChange, title, widens, onSave }: { 
           <DialogDescription>Everyone in the workspace will be able to use this template.</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          {widens && <p className="rounded-md border border-warn/30 bg-warn/10 px-3 py-2 text-xs leading-relaxed text-warn">Not everyone in the workspace can open this now. Its content will be in the template, which everyone can use.</p>}
+          {widens && (
+            <p className="rounded-md border border-warn/30 bg-warn/10 px-3 py-2 text-xs leading-relaxed text-warn">
+              Not everyone in the workspace can open this now. Its content will be in the template, which everyone can use.
+            </p>
+          )}
           <input aria-label="Name" value={name} onChange={(e) => setName(e.target.value)} className={FIELD} />
-          <input aria-label="What it's for" placeholder="What it's for" value={description} onChange={(e) => setDescription(e.target.value)} className={FIELD} />
+          <input
+            aria-label="What it's for"
+            placeholder="What it's for"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className={FIELD}
+          />
           {error && <ErrorText>{error}</ErrorText>}
         </div>
         <DialogFooter>

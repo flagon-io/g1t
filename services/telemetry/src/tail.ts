@@ -132,7 +132,13 @@ export function readTail(events: readonly TraceItem[]): TailGroup[] {
         id: mark.id,
         half: "edge",
         ...(mark.app
-          ? { service: mark.app.service, environment: mark.app.environment, deployment_id: mark.app.deployment, commit_sha: mark.app.commit, source: "cloudflare" as const }
+          ? {
+              service: mark.app.service,
+              environment: mark.app.environment,
+              deployment_id: mark.app.deployment,
+              commit_sha: mark.app.commit,
+              source: "cloudflare" as const,
+            }
           : {}),
         time_us: time,
         duration_us: Math.round(item.wallTime * 1000),
@@ -227,7 +233,11 @@ export function readTail(events: readonly TraceItem[]): TailGroup[] {
       cpu_ms: item.cpuTime,
       trace_id,
       log_count: logs.length,
-      error: first ? { name: first.name, message: clip(first.message, 2048) } : item.outcome !== "ok" && item.outcome !== "canceled" ? { name: item.outcome, message: outcomeText(item.outcome) } : null,
+      error: first
+        ? { name: first.name, message: clip(first.message, 2048) }
+        : item.outcome !== "ok" && item.outcome !== "canceled"
+          ? { name: item.outcome, message: outcomeText(item.outcome) }
+          : null,
     });
     g.batch.bytes += sizeOf(g.halves[g.halves.length - 1]) + logs.reduce((n, l) => n + sizeOf(l), 0);
   }

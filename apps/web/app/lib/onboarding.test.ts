@@ -33,7 +33,10 @@ const fresh = { dismissed_at: null, skipped: [], updated_at: null };
 
 test("a new workspace has every step to do, in the guide's order", () => {
   const steps = stepsFrom(nothing, fresh);
-  assert.deepEqual(steps.map((step) => step.key), STEP_ORDER);
+  assert.deepEqual(
+    steps.map((step) => step.key),
+    STEP_ORDER,
+  );
   assert.ok(steps.every((step) => !step.done && !step.skipped));
   assert.equal(firstOpenStep(steps), "ai");
   assert.deepEqual(progressOf(steps), { settled: 0, total: 6, percent: 0 });

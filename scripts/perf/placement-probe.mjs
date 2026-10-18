@@ -139,7 +139,7 @@ async function deploy() {
     process.stdout.write(`deploying g1t-probe-${variant.name} ${JSON.stringify(variant.placement)} … `);
     const { code, out } = await wrangler(["deploy", "--config", "wrangler.json"], dir);
     const url = /https:\/\/g1t-probe-[\w-]+\.[\w-]+\.workers\.dev/.exec(out)?.[0];
-    console.log(code === 0 ? url ?? "deployed (no URL printed)" : "FAILED");
+    console.log(code === 0 ? (url ?? "deployed (no URL printed)") : "FAILED");
     if (code !== 0) console.log(out.split("\n").slice(-15).join("\n"));
     if (url) urls[variant.name] = url;
   }

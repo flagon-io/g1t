@@ -84,7 +84,11 @@ export function cloudflareVectors(index: Vectorize): VectorStore {
   return {
     async upsert(vectors) {
       for (let at = 0; at < vectors.length; at += UPSERT_BATCH) {
-        await index.upsert(vectors.slice(at, at + UPSERT_BATCH).map((v) => ({ id: v.id, values: v.values, metadata: v.metadata as unknown as Record<string, VectorizeVectorMetadata> })));
+        await index.upsert(
+          vectors
+            .slice(at, at + UPSERT_BATCH)
+            .map((v) => ({ id: v.id, values: v.values, metadata: v.metadata as unknown as Record<string, VectorizeVectorMetadata> })),
+        );
       }
     },
     async get(ids) {
@@ -102,7 +106,12 @@ export function cloudflareVectors(index: Vectorize): VectorStore {
       const filter: Record<string, unknown> = { workspace_id: options.filter.workspace_id };
       if (options.filter.space_ids) filter.space_id = { $in: options.filter.space_ids };
       if (options.filter.scopes) filter.scope = { $in: options.filter.scopes };
-      const found = await index.query(vector, { topK: options.topK, returnMetadata: "none", returnValues: false, filter: filter as VectorizeVectorMetadataFilter });
+      const found = await index.query(vector, {
+        topK: options.topK,
+        returnMetadata: "none",
+        returnValues: false,
+        filter: filter as VectorizeVectorMetadataFilter,
+      });
       return found.matches.map((m) => ({ id: m.id, score: m.score }));
     },
   };

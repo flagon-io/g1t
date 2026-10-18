@@ -9,22 +9,10 @@ import { exactTime, timeAgo } from "../../lib/time-ago";
 import { Button, type ButtonSize, type ButtonVariant, buttonVariants } from "./button";
 import { Hint } from "./hint";
 
-export function Field({
-  label,
-  hint,
-  htmlFor,
-  children,
-}: {
-  label: string;
-  hint?: ReactNode;
-  htmlFor?: string;
-  children: ReactNode;
-}) {
+export function Field({ label, hint, htmlFor, children }: { label: string; hint?: ReactNode; htmlFor?: string; children: ReactNode }) {
   return (
     <label className="block" htmlFor={htmlFor}>
-      <span className="mb-1.5 block text-sm font-medium text-muted">
-        {label}
-      </span>
+      <span className="mb-1.5 block text-sm font-medium text-muted">{label}</span>
       {children}
       {hint && <span className="mt-1.5 block text-xs text-faint">{hint}</span>}
     </label>
@@ -57,13 +45,7 @@ export function Input(props: ComponentProps<"input">) {
 }
 
 export function Textarea(props: ComponentProps<"textarea">) {
-  return (
-    <textarea
-      {...notACredential(props.autoComplete)}
-      {...props}
-      className={`${CONTROL} font-mono placeholder:font-sans`}
-    />
-  );
+  return <textarea {...notACredential(props.autoComplete)} {...props} className={`${CONTROL} font-mono placeholder:font-sans`} />;
 }
 
 /** One tab in the row under a repository's or a workspace's header. */
@@ -90,30 +72,20 @@ export function TabLink({
       end={end}
       className={({ isActive }) =>
         `-mb-px flex items-center gap-2 border-b-2 px-3 pb-3 text-sm whitespace-nowrap transition-colors ${
-          isActive || (also && pathname.startsWith(also + "/"))
-            ? "border-accent font-medium text-fg"
-            : "border-transparent text-muted hover:text-fg"
+          isActive || (also && pathname.startsWith(also + "/")) ? "border-accent font-medium text-fg" : "border-transparent text-muted hover:text-fg"
         }`
       }
     >
       {icon}
       {children}
-      {count != null && count > 0 && (
-        <span className="rounded-full bg-raised px-1.5 py-px text-xs text-muted">
-          {count}
-        </span>
-      )}
+      {count != null && count > 0 && <span className="rounded-full bg-raised px-1.5 py-px text-xs text-muted">{count}</span>}
     </NavLink>
   );
 }
 
 /** Soon, beside something that is coming: the same small pill in the sidebar and in tabs. */
 export function SoonPill() {
-  return (
-    <span className="shrink-0 rounded-full px-1.5 py-px text-[0.625rem] font-medium tracking-wide text-muted uppercase ring-1 ring-line">
-      Soon
-    </span>
-  );
+  return <span className="shrink-0 rounded-full px-1.5 py-px text-[0.625rem] font-medium tracking-wide text-muted uppercase ring-1 ring-line">Soon</span>;
 }
 
 /**
@@ -160,8 +132,7 @@ export function SubmitButton({
   /** An icon button: while it works, the spinner is all it shows. */
   icon?: boolean;
 }) {
-  const own =
-    typeof props.name === "string" && props.value != null ? { [props.name]: String(props.value) } : undefined;
+  const own = typeof props.name === "string" && props.value != null ? { [props.name]: String(props.value) } : undefined;
   const working = usePending({ ...own, ...match }, fetcher) || Boolean(busy);
   return (
     <button
@@ -320,13 +291,7 @@ export function TimeAgo({ at }: { at: string | number }) {
   );
 }
 
-export function EmptyState({
-  title,
-  children,
-}: {
-  title: string;
-  children?: ReactNode;
-}) {
+export function EmptyState({ title, children }: { title: string; children?: ReactNode }) {
   return (
     <div className="rounded-lg border border-dashed border-line px-6 py-12 text-center">
       <p className="font-medium">{title}</p>

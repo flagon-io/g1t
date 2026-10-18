@@ -1,16 +1,7 @@
 import { Info, Search, ShieldAlert, TriangleAlert } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 
-import {
-  PRESETS,
-  levelsOf,
-  permissionsOf,
-  presetScopes,
-  type Permissions,
-  type PresetId,
-  type ScopeLevel,
-  type ScopeResource,
-} from "@g1t/contracts/scopes";
+import { PRESETS, levelsOf, permissionsOf, presetScopes, type Permissions, type PresetId, type ScopeLevel, type ScopeResource } from "@g1t/contracts/scopes";
 import type { AccessToken, RepositorySelection, TokenPolicy } from "@g1t/contracts";
 
 import { cn } from "../lib/cn";
@@ -71,19 +62,14 @@ function PermissionRow({
         <label htmlFor={id} className="text-sm font-medium text-fg">
           {label}
         </label>
-        <p className={cn("mt-0.5 text-xs leading-snug", isDangerousLevel(value) ? "text-danger" : "text-faint")}>
-          {about ?? "No access."}
-        </p>
+        <p className={cn("mt-0.5 text-xs leading-snug", isDangerousLevel(value) ? "text-danger" : "text-faint")}>{about ?? "No access."}</p>
       </div>
       <SelectField
         id={id}
         name={`perm.${resource}`}
         value={value}
         onValueChange={(next) => onChange(next as ScopeLevel | "none")}
-        className={cn(
-          "w-full shrink-0 sm:w-48",
-          value !== "none" && (isDangerousLevel(value) ? "border-danger/50" : "border-accent/50"),
-        )}
+        className={cn("w-full shrink-0 sm:w-48", value !== "none" && (isDangerousLevel(value) ? "border-danger/50" : "border-accent/50"))}
         options={levels.map((level) => ({ value: level, label: levelLabel(resource, level) }))}
       />
     </div>
@@ -116,12 +102,7 @@ function RepositoryChoice({
   return (
     <fieldset className="space-y-3">
       <legend className="text-sm font-medium text-fg">Repository access</legend>
-      <RadioGroup
-        name="repository_selection"
-        value={selection}
-        onValueChange={(value) => onSelection(value as RepositorySelection)}
-        className="gap-2.5"
-      >
+      <RadioGroup name="repository_selection" value={selection} onValueChange={(value) => onSelection(value as RepositorySelection)} className="gap-2.5">
         <RadioOption value="all" label="All repositories" description={`Every repository of ${slug}, ones made later too.`} />
         <RadioOption value="selected" label="Only select repositories" description="Up to 50, chosen below." />
         {allowPublic && (
@@ -204,17 +185,13 @@ export function TokenForm({
   preset?: PresetId;
 }) {
   // Where it reaches. A personal token: every workspace (*), none (-), or one.
-  const initialReach = editing
-    ? editing.workspace ?? (editing.repositorySelection === "public" ? NO_WORKSPACE : ALL_WORKSPACES)
-    : ALL_WORKSPACES;
+  const initialReach = editing ? (editing.workspace ?? (editing.repositorySelection === "public" ? NO_WORKSPACE : ALL_WORKSPACES)) : ALL_WORKSPACES;
   const [reach, setReach] = useState<string>(initialReach);
   const one = workspaceOwned ? (slug ?? "") : reach !== ALL_WORKSPACES && reach !== NO_WORKSPACE ? reach : null;
   const chosen = workspaces.find((choice) => choice.slug === one) ?? null;
   const [selection, setSelection] = useState<RepositorySelection>(editing?.repositorySelection ?? "all");
   const [picked, setPicked] = useState<string[]>(editing?.repositories ?? []);
-  const [levels, setLevels] = useState<Permissions>(() =>
-    editing ? tokenPermissions(editing) : permissionsOf(presetScopes(preset) ?? null),
-  );
+  const [levels, setLevels] = useState<Permissions>(() => (editing ? tokenPermissions(editing) : permissionsOf(presetScopes(preset) ?? null)));
   const [website, setWebsite] = useState<boolean>(editing?.website ?? false);
 
   // The rules of the workspaces it would reach decide how long it may last.
@@ -260,7 +237,9 @@ export function TokenForm({
                 It works until someone deletes it. Prefer an expiration.
               </p>
             ) : (
-              !choices.never && <p className="text-xs text-faint">The workspaces it reaches allow at most {describeDays(choices.days[choices.days.length - 1]!)}.</p>
+              !choices.never && (
+                <p className="text-xs text-faint">The workspaces it reaches allow at most {describeDays(choices.days[choices.days.length - 1]!)}.</p>
+              )
             )}
           </div>
         )}
@@ -278,11 +257,13 @@ export function TokenForm({
         {!workspaceOwned &&
           (editing ? (
             <p className="rounded-md border border-line px-3 py-2 text-sm">
-              {reach === ALL_WORKSPACES
-                ? "All your workspaces"
-                : reach === NO_WORKSPACE
-                  ? "No workspace: your account and public repositories"
-                  : <span className="font-mono">{reach}</span>}
+              {reach === ALL_WORKSPACES ? (
+                "All your workspaces"
+              ) : reach === NO_WORKSPACE ? (
+                "No workspace: your account and public repositories"
+              ) : (
+                <span className="font-mono">{reach}</span>
+              )}
               <input type="hidden" name="workspace" value={reach} />
             </p>
           ) : (
@@ -345,13 +326,7 @@ export function TokenForm({
             </Hint>
           ))}
           <Hint label="Every permission, each at its highest level. A permission g1t adds later is added to the token by editing it.">
-            <Button
-              type="button"
-              onClick={chooseAll}
-              variant="outline"
-              size="inline"
-              className="rounded-full px-2.5 py-0.5 text-xs text-muted"
-            >
+            <Button type="button" onClick={chooseAll} variant="outline" size="inline" className="rounded-full px-2.5 py-0.5 text-xs text-muted">
               All
             </Button>
           </Hint>
@@ -395,15 +370,13 @@ export function TokenForm({
           </section>
         ))}
         {levels.workflow_files === "write" && (
-          <Note tone="warn">
-            Workflow files: write lets this token add and change workflow files, which run with the repository's secrets.
-          </Note>
+          <Note tone="warn">Workflow files: write lets this token add and change workflow files, which run with the repository's secrets.</Note>
         )}
         {workspaceOwned && levels.repo === "admin" && (
           <p className="flex items-start gap-2 rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-xs text-danger">
             <ShieldAlert size={14} className="mt-px shrink-0" />
-            Repositories: admin makes this token an admin of {slug}'s repositories: it can rename, archive and delete them
-            and change who has access, as far as its other permissions allow. Without it, it has Write, as a member does.
+            Repositories: admin makes this token an admin of {slug}'s repositories: it can rename, archive and delete them and change who has access, as far as
+            its other permissions allow. Without it, it has Write, as a member does.
           </p>
         )}
       </section>
@@ -425,17 +398,16 @@ export function TokenForm({
             label="Use the website as you"
             description={
               <>
-                Sent as <code className="font-mono">Authorization: Bearer</code> on each request, it signs g1t.sh in as you
-                without a password or a two-factor code. Tokens, two-factor authentication, your password, email addresses,
-                keys, deleting your account or a workspace, giving a workspace away and payment methods still need you to sign
-                in.
+                Sent as <code className="font-mono">Authorization: Bearer</code> on each request, it signs g1t.sh in as you without a password or a two-factor
+                code. Tokens, two-factor authentication, your password, email addresses, keys, deleting your account or a workspace, giving a workspace away and
+                payment methods still need you to sign in.
               </>
             }
           />
           {website && (
             <Note tone="warn">
-              The website does not hold this token to its permissions above: treat it as able to do anything you can in
-              the workspaces it reaches. Keep it as safe as your password, and give it an expiration.
+              The website does not hold this token to its permissions above: treat it as able to do anything you can in the workspaces it reaches. Keep it as
+              safe as your password, and give it an expiration.
             </Note>
           )}
         </section>

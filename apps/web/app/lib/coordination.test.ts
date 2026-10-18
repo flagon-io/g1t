@@ -119,8 +119,14 @@ test("Live now lists sessions heard from lately and folds away the idle, the lat
     session("ses_b", { state: "idle", title: "Tidy the README", lastSeenAt: "2026-10-12T10:00:00Z" }),
     session("ses_c", { state: "idle", lastSeenAt: "2026-10-12T10:10:00Z" }),
   ]);
-  assert.deepEqual(awake.map((one) => one.id), ["ses_a"]);
-  assert.deepEqual(idle.map((one) => one.id), ["ses_c", "ses_b"]);
+  assert.deepEqual(
+    awake.map((one) => one.id),
+    ["ses_a"],
+  );
+  assert.deepEqual(
+    idle.map((one) => one.id),
+    ["ses_c", "ses_b"],
+  );
   // A tab opened and never typed in is in neither; once it says what it is for, it shows.
   const opened = session("ses_d", { state: "active", title: null, startedAt: "2026-10-12T10:00:00Z", lastSeenAt: "2026-10-12T10:00:00Z" });
   assert.deepEqual(awakeAndIdle([opened]), { awake: [], idle: [] });
@@ -140,7 +146,10 @@ test("live work is grouped by work item, most recent first, with sessions on no 
       [2, 2, 0],
     ],
   );
-  assert.deepEqual(loose.map((one) => one.id), ["ses_b"]);
+  assert.deepEqual(
+    loose.map((one) => one.id),
+    ["ses_b"],
+  );
 });
 
 test("sessions on no work item are grouped by pull request, then by a branch of their own, then the rest together", () => {
@@ -157,7 +166,10 @@ test("sessions on no work item are grouped by pull request, then by a branch of 
     ],
     "main",
   );
-  assert.deepEqual(items.map((group) => group.item), [3]);
+  assert.deepEqual(
+    items.map((group) => group.item),
+    [3],
+  );
   assert.deepEqual(
     groups.map((group) => [group.kind === "pull" ? `#${group.pull}` : group.kind === "branch" ? group.branch : "none", group.sessions.map((one) => one.id)]),
     [
@@ -167,7 +179,10 @@ test("sessions on no work item are grouped by pull request, then by a branch of 
       ["none", ["ses_main", "ses_none"]],
     ],
   );
-  assert.deepEqual(loose.map((one) => one.id), ["ses_fix2", "ses_fix1", "ses_pr", "ses_main", "ses_none"]);
+  assert.deepEqual(
+    loose.map((one) => one.id),
+    ["ses_fix2", "ses_fix1", "ses_pr", "ses_main", "ses_none"],
+  );
   // Without the default branch known, its sessions are a branch's.
   assert.equal(liveByItem([], [session("ses_main", { branch: "main" })]).groups[0].kind, "branch");
 });
@@ -175,7 +190,14 @@ test("sessions on no work item are grouped by pull request, then by a branch of 
 test("a session is never title-less: its title, its first prompt's intent, its branch, or untitled", () => {
   assert.equal(sessionTitle({ title: "Rewrite the auth flow", branch: "auth", firstPrompt: "fix it" }), "Rewrite the auth flow");
   // A title that is only a pasted block's tag reads as none: the first prompt's words title it.
-  assert.equal(sessionTitle({ title: '<pasted_content id="5c50">', branch: "main", firstPrompt: '<pasted_content id="5c50">\nlog\n</pasted_content>\nship the runner setup' }), "Ship the runner setup");
+  assert.equal(
+    sessionTitle({
+      title: '<pasted_content id="5c50">',
+      branch: "main",
+      firstPrompt: '<pasted_content id="5c50">\nlog\n</pasted_content>\nship the runner setup',
+    }),
+    "Ship the runner setup",
+  );
   assert.equal(sessionTitle({ title: '<pasted_content id="5c50">', branch: "main", firstPrompt: null }), "Session on main");
   assert.equal(sessionTitle({ title: null, branch: "auth", firstPrompt: "fix the login redirect. It loops." }), "Fix the login redirect");
   assert.equal(sessionTitle({ title: "  ", branch: "auth", firstPrompt: "/clear" }), "Session on auth");
@@ -214,7 +236,13 @@ test("a prompt's intent is its first line or sentence, plain, clipped on a word"
 
 test("evidence is read as far as it goes", () => {
   const failed = decision("integration_failure", "2026-10-12T10:00:00Z", {
-    evidence: { commit: "abc1234", check: { name: "CI / merge_group", conclusion: "failure", url: "https://g1t.sh/acme/web/actions/runs/run_1" }, combination: [4, 5], suspects: [4], bisected: false },
+    evidence: {
+      commit: "abc1234",
+      check: { name: "CI / merge_group", conclusion: "failure", url: "https://g1t.sh/acme/web/actions/runs/run_1" },
+      combination: [4, 5],
+      suspects: [4],
+      bisected: false,
+    },
   });
   assert.deepEqual(evidenceOf(failed), {
     commit: "abc1234",
@@ -242,7 +270,9 @@ test("a failure stands until the pull request passes in the queue or merges, and
 });
 
 test("coordination events read as lines of the feed", () => {
-  const claimed = feedLine(event("work.claimed", { repoId: "rep_1", number: 2, item: 2, claim: claim(2, { actor: bo, harness: "codex" }), others: [claim(2)] }))!;
+  const claimed = feedLine(
+    event("work.claimed", { repoId: "rep_1", number: 2, item: 2, claim: claim(2, { actor: bo, harness: "codex" }), others: [claim(2)] }),
+  )!;
   assert.equal(claimed.who, "bo");
   assert.equal(claimed.harness, "codex");
   assert.equal(claimed.text, "claimed #2 (ana is on it too)");
@@ -250,8 +280,17 @@ test("coordination events read as lines of the feed", () => {
 
   const failed = feedLine(
     event("integration.failed", {
-      repoId: "rep_1", pullId: "pul_5", number: 5, pull: 5, item: 2, combination: [4, 5],
-      check: { name: "CI / merge_group", conclusion: "failure", url: null }, bisected: false, suspects: [4], otherPulls: [4], commit: null,
+      repoId: "rep_1",
+      pullId: "pul_5",
+      number: 5,
+      pull: 5,
+      item: 2,
+      combination: [4, 5],
+      check: { name: "CI / merge_group", conclusion: "failure", url: null },
+      bisected: false,
+      suspects: [4],
+      otherPulls: [4],
+      commit: null,
     }),
   )!;
   assert.equal(failed.who, null);
@@ -268,7 +307,14 @@ test("coordination events read as lines of the feed", () => {
   assert.equal(overlap.session, undefined);
 
   const sessions = feedLine(
-    event("overlap.detected", { repoId: "rep_1", sessionId: "ses_a", otherSessionId: "ses_b", otherActor: "bo", files: ["a.rs", "b.rs", "c.rs", "d.rs"], item: 2 }),
+    event("overlap.detected", {
+      repoId: "rep_1",
+      sessionId: "ses_a",
+      otherSessionId: "ses_b",
+      otherActor: "bo",
+      files: ["a.rs", "b.rs", "c.rs", "d.rs"],
+      item: 2,
+    }),
   )!;
   assert.equal(sessions.who, "bo");
   assert.equal(sessions.text, "touched the same files in a session as another session: a.rs, b.rs, c.rs and 1 more");
@@ -320,7 +366,13 @@ test("sessions become trees by their parents; one whose parent is missing is a r
   ]);
   const shape = (nodes: ReturnType<typeof sessionTree>): unknown[] => nodes.map((node) => [node.session.id, shape(node.children)]);
   assert.deepEqual(shape(roots), [
-    ["ses_root", [["ses_a", [["ses_a1", []]]], ["ses_b", []]]],
+    [
+      "ses_root",
+      [
+        ["ses_a", [["ses_a1", []]]],
+        ["ses_b", []],
+      ],
+    ],
     ["ses_orphan", []],
     ["ses_other", []],
   ]);
@@ -381,7 +433,12 @@ test("blocked_by is typed as numbers", () => {
 
 test("a session's pending updates read as the feed does, leaving out what it does not show", () => {
   const lines = pendingLines([
-    { id: "upd_1", kind: "work.claimed", at: "2026-10-14T10:00:00Z", data: { repoId: "rep_1", number: 4, item: 4, claim: claim(4, { actor: bo, harness: "codex" }) } },
+    {
+      id: "upd_1",
+      kind: "work.claimed",
+      at: "2026-10-14T10:00:00Z",
+      data: { repoId: "rep_1", number: 4, item: 4, claim: claim(4, { actor: bo, harness: "codex" }) },
+    },
     { id: "upd_2", kind: "session.progressed", at: "2026-10-14T10:00:01Z", data: {} },
   ]);
   assert.equal(lines.length, 1);

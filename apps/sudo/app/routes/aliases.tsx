@@ -92,7 +92,15 @@ export default function Aliases({ loaderData, actionData }: Route.ComponentProps
           <input type="hidden" name="intent" value="add" />
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Alias">
-              <Input name="alias" required maxLength={39} spellCheck={false} placeholder="acme-corp" defaultValue={adding?.values?.alias} className="font-mono" />
+              <Input
+                name="alias"
+                required
+                maxLength={39}
+                spellCheck={false}
+                placeholder="acme-corp"
+                defaultValue={adding?.values?.alias}
+                className="font-mono"
+              />
             </Field>
             <Field label="Leads to workspace">
               <Input

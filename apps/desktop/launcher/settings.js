@@ -37,8 +37,7 @@
 
   // What changes between Windows, macOS and Linux.
   function platform(name) {
-    byId("flash-label").textContent =
-      name === "macos" ? "Bounce the dock icon" : name === "windows" ? "Flash the taskbar icon" : "Ask for attention";
+    byId("flash-label").textContent = name === "macos" ? "Bounce the dock icon" : name === "windows" ? "Flash the taskbar icon" : "Ask for attention";
     // macOS keeps its menu bar at the top of the screen, whichever title bar the window has.
     if (name === "macos") byId("system-title-bar-note").textContent = "In place of g1t's own, which sits under the window's buttons.";
     if (name === "macos") byId("zoom-note").textContent = "The View menu changes it too: ⌘+, ⌘− and ⌘0.";
@@ -88,7 +87,6 @@
     return settings;
   }
 
-
   function save() {
     invoke("get_settings")
       .then(function (fresh) {
@@ -101,9 +99,16 @@
   }
 
   byId("open-runner").addEventListener("click", function () {
-    window.g1tBusy.run(byId("open-runner"), "open-runner", "", false, function () {
-      return invoke("runner_control", { action: "open_runner" });
-    }, fail);
+    window.g1tBusy.run(
+      byId("open-runner"),
+      "open-runner",
+      "",
+      false,
+      function () {
+        return invoke("runner_control", { action: "open_runner" });
+      },
+      fail,
+    );
   });
 
   SWITCHES.forEach(function (key) {
@@ -157,9 +162,10 @@
       })
       .catch(function (error) {
         var text = typeof error === "string" ? error : "";
-        status.textContent = /sending request|connect|dns|timed out/i.test(text) || !text
-          ? "Could not reach g1t.sh to check. Check your connection and try again."
-          : "Could not check: " + text;
+        status.textContent =
+          /sending request|connect|dns|timed out/i.test(text) || !text
+            ? "Could not reach g1t.sh to check. Check your connection and try again."
+            : "Could not check: " + text;
       })
       .then(function () {
         checking = false;
@@ -204,9 +210,16 @@
   });
 
   byId("change-server").addEventListener("click", function () {
-    window.g1tBusy.run(byId("change-server"), "change-server", "", false, function () {
-      return invoke("change_server");
-    }, fail);
+    window.g1tBusy.run(
+      byId("change-server"),
+      "change-server",
+      "",
+      false,
+      function () {
+        return invoke("change_server");
+      },
+      fail,
+    );
   });
 
   // Links out, in the system's browser (src/bridge.js does the same on the site).

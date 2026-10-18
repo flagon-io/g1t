@@ -64,9 +64,7 @@ export default function Forks({ loaderData, params }: Route.ComponentProps) {
       {descriptionsFailed && forks.length > 0 && <Unavailable compact what={descriptionsFailed.what} />}
       {forks.length === 0 ? (
         <EmptyState title="No forks yet">
-          {forkable
-            ? "Fork it into a workspace of yours to change it there, and it shows here."
-            : "It is private and forking it is off, so it has none."}
+          {forkable ? "Fork it into a workspace of yours to change it there, and it shows here." : "It is private and forking it is off, so it has none."}
         </EmptyState>
       ) : (
         <Card asChild tone="plain" divided className="overflow-hidden">
@@ -93,9 +91,7 @@ export default function Forks({ loaderData, params }: Route.ComponentProps) {
           </ul>
         </Card>
       )}
-      {forks.length === LISTED && (
-        <p className="text-center text-sm text-faint">The {LISTED} newest forks you can see.</p>
-      )}
+      {forks.length === LISTED && <p className="text-center text-sm text-faint">The {LISTED} newest forks you can see.</p>}
     </div>
   );
 }

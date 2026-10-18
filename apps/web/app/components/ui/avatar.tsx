@@ -217,7 +217,11 @@ export function AgentMarker({ size, ring = "var(--color-bg)", className, inline 
   // `inline`: the marker on its own in a line of text, beside what an agent made, rather than on an avatar's corner.
   if (inline) {
     return (
-      <span aria-hidden="true" className={`inline-flex shrink-0 items-center justify-center rounded-full bg-accent text-bg ${className ?? ""}`} style={{ width: size, height: size }}>
+      <span
+        aria-hidden="true"
+        className={`inline-flex shrink-0 items-center justify-center rounded-full bg-accent text-bg ${className ?? ""}`}
+        style={{ width: size, height: size }}
+      >
         <Bot size={Math.max(8, Math.round(size * 0.66))} strokeWidth={2.6} absoluteStrokeWidth={false} />
       </span>
     );

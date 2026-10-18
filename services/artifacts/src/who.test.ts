@@ -7,11 +7,15 @@ import type { WhoEnv } from "./who.ts";
 
 // Resolve the contracts package's bundler-style imports as production does.
 const bundle = await build({ entryPoints: [fileURLToPath(new URL("./who.ts", import.meta.url))], bundle: true, write: false, format: "esm", platform: "node" });
-const { Who, forgetKept }: typeof import("./who.ts") = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString("base64")}`);
+const { Who, forgetKept }: typeof import("./who.ts") = await import(
+  `data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString("base64")}`
+);
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
   return { promise, resolve };
 }
 
@@ -25,7 +29,7 @@ test("a cold request cannot make another request wait on its workspace I/O", asy
   const first = deferred<Response>();
   let calls = 0;
   const workspace = { id: "ws_cold", slug: "cold" };
-  const env = environment(async () => ++calls === 1 ? first.promise : Response.json(workspace));
+  const env = environment(async () => (++calls === 1 ? first.promise : Response.json(workspace)));
   const one = new Who(env);
   const pending = one.workspace("cold");
   assert.equal(one.workspace("cold"), pending, "deduplicate within one request");

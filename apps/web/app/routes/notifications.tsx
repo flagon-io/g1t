@@ -109,7 +109,11 @@ export default function NotificationsPage({ loaderData }: Route.ComponentProps) 
 
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="min-w-0 grow">
-          <InboxTabs tab={tab} counts={view === "inbox" ? counts : null} onChange={(next) => navigate(address({ tab: next === "all" ? null : next, before: null }))} />
+          <InboxTabs
+            tab={tab}
+            counts={view === "inbox" ? counts : null}
+            onChange={(next) => navigate(address({ tab: next === "all" ? null : next, before: null }))}
+          />
         </div>
         {/* Why you were told: a review asked of you, a mention, what you watch. */}
         <Select value={reason ?? "any"} onValueChange={(value) => navigate(address({ reason: value === "any" ? null : value, before: null }))}>

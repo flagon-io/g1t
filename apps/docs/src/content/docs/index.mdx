@@ -5,11 +5,11 @@ tableOfContents: false
 prev: false
 ---
 
-import { CardGrid } from '@astrojs/starlight/components';
-import Aside from '../../components/Aside.astro';
-import Card from '../../components/Card.astro';
-import LinkCard from '../../components/LinkCard.astro';
-import Status from '../../components/Status.astro';
+import { CardGrid } from "@astrojs/starlight/components";
+import Aside from "../../components/Aside.astro";
+import Card from "../../components/Card.astro";
+import LinkCard from "../../components/LinkCard.astro";
+import Status from "../../components/Status.astro";
 
 **Code** holds your repositories, work items and pull requests, with required
 checks, the merge queue and Actions. **Deployments** puts every pull
@@ -35,70 +35,69 @@ Anyone can sign up. Every feature on these pages is marked with where it
 stands:
 
 - <Status is="live" /> works on g1t.sh for every workspace.
-- <Status is="preview" /> works on g1t.sh, but is limited to some workspaces
-  or not finished. Its page says how.
-- <Status is="coming" /> is planned and not built yet. Nothing on a page
-  marked Coming works today.
+- <Status is="preview" /> works on g1t.sh, but is limited to some workspaces or not finished. Its page says how.
+- <Status is="coming" /> is planned and not built yet. Nothing on a page marked Coming works today.
 
 [What g1t can't do yet](/about/limitations/) lists the limits you can hit.
+
 </Aside>
 
 <CardGrid>
-	<LinkCard
-		title="Quickstart"
-		icon="rocket"
-		description="Sign up, push a repository, and have your coding agent open a pull request you merge, in a few minutes."
-		href="/quickstart/"
-	/>
-	<LinkCard
-		title="Connect an AI client"
-		icon="bot"
-		description="Coding agents, ChatGPT, Claude, Grok and open-source chat apps, working on your repositories with the access you grant."
-		href="/guides/bring-your-own-agent/"
-	/>
-	<LinkCard
-		title="Build and ship an app with an agent"
-		icon="ship"
-		description="Your agent creates the repository, pushes the app and merges its pull requests. You turn deployments on once, and every merge ships."
-		href="/guides/build-and-ship/"
-	/>
-	<LinkCard
-		title="Bring a repository"
-		icon="git-branch"
-		description="Push any git repository, or import one from another host, and your workflows run here."
-		href="/guides/github/"
-	/>
+  <LinkCard
+    title="Quickstart"
+    icon="rocket"
+    description="Sign up, push a repository, and have your coding agent open a pull request you merge, in a few minutes."
+    href="/quickstart/"
+  />
+  <LinkCard
+    title="Connect an AI client"
+    icon="bot"
+    description="Coding agents, ChatGPT, Claude, Grok and open-source chat apps, working on your repositories with the access you grant."
+    href="/guides/bring-your-own-agent/"
+  />
+  <LinkCard
+    title="Build and ship an app with an agent"
+    icon="ship"
+    description="Your agent creates the repository, pushes the app and merges its pull requests. You turn deployments on once, and every merge ships."
+    href="/guides/build-and-ship/"
+  />
+  <LinkCard
+    title="Bring a repository"
+    icon="git-branch"
+    description="Push any git repository, or import one from another host, and your workflows run here."
+    href="/guides/github/"
+  />
 </CardGrid>
 
 ## Code and Deployments
 
-| Feature | What it does | Status |
-| --- | --- | --- |
-| [Repositories](/guides/managing-repositories/) and [git](/guides/git/) | Public and private repositories over HTTPS. Pushing to a repository that does not exist creates it, private. | <Status is="live" /> |
-| [Work items](/work/work-items/) and [pull requests](/guides/pull-requests/) | Work items for the whole workspace, linked to the repositories they land in; pull requests, line comments, reviews, merge methods and auto-merge. | <Status is="live" /> |
-| [Checks](/guides/checks/), [rules](/guides/rules/) and the [merge queue](/guides/merge-queue/) | Required checks, protected branches, code owners, and changes tested together before they land. | <Status is="live" /> |
-| [Workflows](/guides/actions/) | Workflows from `.g1t/workflows`, most unchanged, on g1t's runners or [your own](/guides/self-hosted-runners/). | <Status is="live" /> |
-| [Forks](/guides/forking-repositories/) | Fork a repository into your workspace, keep it in sync, and propose changes back. | <Status is="live" /> |
-| [Packages](/guides/packages/) | npm, Cargo, Composer, Maven, NuGet, RubyGems, Go modules and container images. | <Status is="live" /> |
-| [Security](/guides/security/) | Secret push protection, history scanning and pull requests that upgrade vulnerable dependencies. | <Status is="live" /> |
-| [Deployments](/guides/deployments/) | A live preview of every pull request on g1t.page, production on merge, and custom domains. | <Status is="live" /> |
-| [Docker deployments](/guides/deployments/#docker-deployments) | Any app with a Dockerfile, or a Node.js, Python, Go, Ruby or PHP server, runs as a container that sleeps when no one visits. | <Status is="live" /> |
-| [Observability](/guides/observability/) | Requests, logs, traces, metrics and grouped errors, by deployment: from apps on g1t.page with nothing to set up, and from anywhere else over OpenTelemetry. | <Status is="live" /> |
-| [GitHub](/guides/github/) | Import repositories with every branch and tag, and their issues as work items. | <Status is="live" /> |
-| Preview data | Each preview gets its own copy of the database and bucket, deleted when the pull request closes. | <Status is="coming" /> |
-| Rollback and always on | One click back to any deploy, and container apps kept warm. | <Status is="coming" /> |
-| Git over SSH | `git@g1t.sh` remotes. Use HTTPS until then. | <Status is="coming" /> |
+| Feature                                                                                        | What it does                                                                                                                                                | Status                 |
+| ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| [Repositories](/guides/managing-repositories/) and [git](/guides/git/)                         | Public and private repositories over HTTPS. Pushing to a repository that does not exist creates it, private.                                                | <Status is="live" />   |
+| [Work items](/work/work-items/) and [pull requests](/guides/pull-requests/)                    | Work items for the whole workspace, linked to the repositories they land in; pull requests, line comments, reviews, merge methods and auto-merge.           | <Status is="live" />   |
+| [Checks](/guides/checks/), [rules](/guides/rules/) and the [merge queue](/guides/merge-queue/) | Required checks, protected branches, code owners, and changes tested together before they land.                                                             | <Status is="live" />   |
+| [Workflows](/guides/actions/)                                                                  | Workflows from `.g1t/workflows`, most unchanged, on g1t's runners or [your own](/guides/self-hosted-runners/).                                              | <Status is="live" />   |
+| [Forks](/guides/forking-repositories/)                                                         | Fork a repository into your workspace, keep it in sync, and propose changes back.                                                                           | <Status is="live" />   |
+| [Packages](/guides/packages/)                                                                  | npm, Cargo, Composer, Maven, NuGet, RubyGems, Go modules and container images.                                                                              | <Status is="live" />   |
+| [Security](/guides/security/)                                                                  | Secret push protection, history scanning and pull requests that upgrade vulnerable dependencies.                                                            | <Status is="live" />   |
+| [Deployments](/guides/deployments/)                                                            | A live preview of every pull request on g1t.page, production on merge, and custom domains.                                                                  | <Status is="live" />   |
+| [Docker deployments](/guides/deployments/#docker-deployments)                                  | Any app with a Dockerfile, or a Node.js, Python, Go, Ruby or PHP server, runs as a container that sleeps when no one visits.                                | <Status is="live" />   |
+| [Observability](/guides/observability/)                                                        | Requests, logs, traces, metrics and grouped errors, by deployment: from apps on g1t.page with nothing to set up, and from anywhere else over OpenTelemetry. | <Status is="live" />   |
+| [GitHub](/guides/github/)                                                                      | Import repositories with every branch and tag, and their issues as work items.                                                                              | <Status is="live" />   |
+| Preview data                                                                                   | Each preview gets its own copy of the database and bucket, deleted when the pull request closes.                                                            | <Status is="coming" /> |
+| Rollback and always on                                                                         | One click back to any deploy, and container apps kept warm.                                                                                                 | <Status is="coming" /> |
+| Git over SSH                                                                                   | `git@g1t.sh` remotes. Use HTTPS until then.                                                                                                                 | <Status is="coming" /> |
 
 ## Coding agents
 
-| Feature | What it does | Status |
-| --- | --- | --- |
-| [Connect an AI client](/guides/bring-your-own-agent/) | Coding agents and MCP chat apps sign in and work on g1t as you, with the access you give them. | <Status is="live" /> |
-| [The Claude Code plugin](/guides/claude-code-plugin/) | Records every Claude Code session in a g1t repository, gives Claude the work item's context, and adds g1t's MCP server, skills and commands. | <Status is="live" /> |
-| [The g1t CLI](/guides/cli/) | Work items, pull requests, checks, runs, workflows, secrets and logs from a terminal, a script or an agent's shell. | <Status is="live" /> |
-| [Sessions and claims](/work/sessions/) | Who is working on what, right now: each agent's session, the work item it claimed, and the files it shares with others. | <Status is="live" /> |
-| [Assign g1t](/guides/sessions/#assign-g1t-or-ask-it-in-the-thread) | Assign a work item to `g1t`, or mention `@g1t` in a thread, to start a session on the workspace's own Anthropic account. | <Status is="live" /> |
-| [Why-blame](/guides/why-blame/) | Any line traced to its commit, pull request, work item, and the agent's own account of why it changed. | <Status is="live" /> |
+| Feature                                                            | What it does                                                                                                                                 | Status               |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| [Connect an AI client](/guides/bring-your-own-agent/)              | Coding agents and MCP chat apps sign in and work on g1t as you, with the access you give them.                                               | <Status is="live" /> |
+| [The Claude Code plugin](/guides/claude-code-plugin/)              | Records every Claude Code session in a g1t repository, gives Claude the work item's context, and adds g1t's MCP server, skills and commands. | <Status is="live" /> |
+| [The g1t CLI](/guides/cli/)                                        | Work items, pull requests, checks, runs, workflows, secrets and logs from a terminal, a script or an agent's shell.                          | <Status is="live" /> |
+| [Sessions and claims](/work/sessions/)                             | Who is working on what, right now: each agent's session, the work item it claimed, and the files it shares with others.                      | <Status is="live" /> |
+| [Assign g1t](/guides/sessions/#assign-g1t-or-ask-it-in-the-thread) | Assign a work item to `g1t`, or mention `@g1t` in a thread, to start a session on the workspace's own Anthropic account.                     | <Status is="live" /> |
+| [Why-blame](/guides/why-blame/)                                    | Any line traced to its commit, pull request, work item, and the agent's own account of why it changed.                                       | <Status is="live" /> |
 
 ## The workspace
 
@@ -108,131 +107,127 @@ Code, Artifacts and Routines, the apps you pin, and Apps, People,
 Workspace and your account at its foot. On
 a phone it is a bar along the bottom.
 
-| Feature | What it does | Status |
-| --- | --- | --- |
-| [Chat](/guides/chat/) | Channels, direct messages and threads, live, and public channels anyone signed in to g1t can join. No seats and no history limit. | <Status is="live" /> |
-| [Home](/guides/home/) | The front page: where you're needed now, what happened since you were last here, what is running, and where to start. | <Status is="live" /> |
-| [Ask g1t](/guides/ask/) | Questions about your workspace, answered on the workspace's own AI provider, from Home, the Ask panel or a direct message to `@g1t`. | <Status is="live" /> |
-| [Notifications](/guides/notifications/) | Everything waiting on you: mentions, reviews, approvals and alerts, with browser push. | <Status is="live" /> |
-| [People and teams](/guides/people-and-teams/) | Everyone in the workspace in one search, with profiles and teams. Members, roles, nested teams and invites. | <Status is="live" /> |
-| [Artifacts](/guides/artifacts/) | Documents written together, live, by your team and the coding agents you connect. Private until you share them. | <Status is="live" /> |
-| [The desktop app](/guides/desktop/) | g1t in a window of its own for Windows, macOS and Linux, with notifications from your system. Unsigned during the alpha. | <Status is="preview" /> |
+| Feature                                                    | What it does                                                                                                                                                                    | Status                  |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| [Chat](/guides/chat/)                                      | Channels, direct messages and threads, live, and public channels anyone signed in to g1t can join. No seats and no history limit.                                               | <Status is="live" />    |
+| [Home](/guides/home/)                                      | The front page: where you're needed now, what happened since you were last here, what is running, and where to start.                                                           | <Status is="live" />    |
+| [Ask g1t](/guides/ask/)                                    | Questions about your workspace, answered on the workspace's own AI provider, from Home, the Ask panel or a direct message to `@g1t`.                                            | <Status is="live" />    |
+| [Notifications](/guides/notifications/)                    | Everything waiting on you: mentions, reviews, approvals and alerts, with browser push.                                                                                          | <Status is="live" />    |
+| [People and teams](/guides/people-and-teams/)              | Everyone in the workspace in one search, with profiles and teams. Members, roles, nested teams and invites.                                                                     | <Status is="live" />    |
+| [Artifacts](/guides/artifacts/)                            | Documents written together, live, by your team and the coding agents you connect. Private until you share them.                                                                 | <Status is="live" />    |
+| [The desktop app](/guides/desktop/)                        | g1t in a window of its own for Windows, macOS and Linux, with notifications from your system. Unsigned during the alpha.                                                        | <Status is="preview" /> |
 | [A runner in the desktop app](/guides/desktop/#the-runner) | Your workspace's self-hosted jobs on your computer while g1t is open, sandboxed by default. Checked end to end on Windows; built the same way, not yet run, on macOS and Linux. | <Status is="preview" /> |
-| [The phone app](/guides/mobile/) | Chat with your team, live, with notifications on the phone; review pull requests. Android first, not in the stores yet. | <Status is="preview" /> |
-| More kinds of artifact | Slides, designs and dashboards that keep the query behind every number. | <Status is="coming" /> |
+| [The phone app](/guides/mobile/)                           | Chat with your team, live, with notifications on the phone; review pull requests. Android first, not in the stores yet.                                                         | <Status is="preview" /> |
+| More kinds of artifact                                     | Slides, designs and dashboards that keep the query behind every number.                                                                                                         | <Status is="coming" />  |
 
 ## Extend and connect
 
-| Feature | What it does | Status |
-| --- | --- | --- |
-| [API](/reference/api/), [MCP](/reference/mcp/) and [webhooks](/guides/webhooks/) | Everything as a REST endpoint and an MCP tool, and a webhook for every event. | <Status is="live" /> |
-| [Integrations](/guides/integrations/) | The GitHub App, Sentry, Datadog, Jira, Linear and alerts. | <Status is="live" /> |
-| More integrations | Drive, Gmail, Calendar, Slack and Microsoft 365. | <Status is="coming" /> |
+| Feature                                                                          | What it does                                                                  | Status                 |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ---------------------- |
+| [API](/reference/api/), [MCP](/reference/mcp/) and [webhooks](/guides/webhooks/) | Everything as a REST endpoint and an MCP tool, and a webhook for every event. | <Status is="live" />   |
+| [Integrations](/guides/integrations/)                                            | The GitHub App, Sentry, Datadog, Jira, Linear and alerts.                     | <Status is="live" />   |
+| More integrations                                                                | Drive, Gmail, Calendar, Slack and Microsoft 365.                              | <Status is="coming" /> |
 
 ## Your account and workspace
 
-| Feature | What it does | Status |
-| --- | --- | --- |
-| [Accounts and sign-in](/guides/authentication/) | Open sign-up with an email address or GitHub, two-factor authentication, access tokens and OAuth apps. | <Status is="live" /> |
-| [Usage and billing](/guides/usage-and-billing/) | No seats. The forge and Chat are free; compute at what it costs, a spend limit, and itemised invoices. | <Status is="live" /> |
-| [Audit log](/guides/audit-log/) | Every change to the workspace, with export. | <Status is="live" /> |
-| [Run g1t yourself](/guides/self-hosting/) | The core forge in Docker. Hosted runners, deployments and billing are off in this version. | <Status is="preview" /> |
-| [Architecture](/architecture/overview/) | How g1t is built, service by service, for developers building on it, contributing to it or running it. | <Status is="live" /> |
-| Single sign-on | SAML or OIDC and SCIM, set up by each workspace for itself. | <Status is="coming" /> |
+| Feature                                         | What it does                                                                                           | Status                  |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ----------------------- |
+| [Accounts and sign-in](/guides/authentication/) | Open sign-up with an email address or GitHub, two-factor authentication, access tokens and OAuth apps. | <Status is="live" />    |
+| [Usage and billing](/guides/usage-and-billing/) | No seats. The forge and Chat are free; compute at what it costs, a spend limit, and itemised invoices. | <Status is="live" />    |
+| [Audit log](/guides/audit-log/)                 | Every change to the workspace, with export.                                                            | <Status is="live" />    |
+| [Run g1t yourself](/guides/self-hosting/)       | The core forge in Docker. Hosted runners, deployments and billing are off in this version.             | <Status is="preview" /> |
+| [Architecture](/architecture/overview/)         | How g1t is built, service by service, for developers building on it, contributing to it or running it. | <Status is="live" />    |
+| Single sign-on                                  | SAML or OIDC and SCIM, set up by each workspace for itself.                                            | <Status is="coming" />  |
 
 ## Bring a repository
 
 <CardGrid>
-	<LinkCard
-		title="Push any repository"
-		description="Push any git repository, rename .github to .g1t, and your workflows run here, most without changes."
-		href="/guides/actions/"
-	/>
-	<LinkCard
-		title="Import from another host"
-		description="Sign in with your existing git host, then import your repositories, private ones too."
-		href="/guides/github/"
-	/>
+  <LinkCard
+    title="Push any repository"
+    description="Push any git repository, rename .github to .g1t, and your workflows run here, most without changes."
+    href="/guides/actions/"
+  />
+  <LinkCard
+    title="Import from another host"
+    description="Sign in with your existing git host, then import your repositories, private ones too."
+    href="/guides/github/"
+  />
 </CardGrid>
 
 ## Look after a repository
 
 <CardGrid>
-	<LinkCard
-		title="Managing a repository"
-		description="See its languages, contributors, license and stars, rename it or a branch, change its default branch, make it public or private, archive it, and delete and restore it."
-		href="/guides/managing-repositories/"
-	/>
-	<LinkCard
-		title="Releases"
-		description="Publish a tag with a title and notes, keep drafts and pre-releases, and read the latest release from the API."
-		href="/guides/releases/"
-	/>
-	<LinkCard
-		title="Required checks"
-		description="Choose which workflow checks must pass before anything merges into the default branch, or add CI to a repository that has none."
-		href="/guides/pull-requests/#required-status-checks"
-	/>
-	<LinkCard
-		title="Checks"
-		description="See what CI, workflows and integrations say beside every commit, and report statuses and check runs with annotations from your own tools."
-		href="/guides/checks/"
-	/>
-	<LinkCard
-		title="Labels and milestones"
-		description="Say what work items and pull requests are with the workspace's colored labels, and gather them under milestones with due dates."
-		href="/work/labels/"
-	/>
-	<LinkCard
-		title="Pull requests into other branches"
-		description="Open a pull request into a release or feature branch, and change the branch one merges into."
-		href="/guides/base-branches/"
-	/>
-	<LinkCard
-		title="Dependency updates"
-		description="Keep npm, Cargo, Go and pip dependencies current with a dependabot.yml file, on the schedule you set."
-		href="/guides/dependency-updates/"
-	/>
-	<LinkCard
-		title="Access and roles"
-		description="Give people a role on a repository, invite outside collaborators, and set what every member gets."
-		href="/guides/access-and-roles/"
-	/>
-	<LinkCard
-		title="Deploy keys"
-		description="Let a server or a pipeline clone one repository, or push to it, with an SSH key that reaches nothing else."
-		href="/guides/git/#deploy-keys"
-	/>
-	<LinkCard
-		title="Teams"
-		description="Group people into teams, give a team a role on repositories, mention it, and have it pick who reviews."
-		href="/guides/teams/"
-	/>
-	<LinkCard
-		title="People and teams"
-		description="Find anyone in the workspace, see their teams and what they own."
-		href="/guides/people-and-teams/"
-	/>
-	<LinkCard
-		title="Report deployments"
-		description="See every deployment and environment in one place, report deployments from any CI, and require one before a merge."
-		href="/guides/deployments-api/"
-	/>
-	<LinkCard
-		title="Rules"
-		description="Protect branches and tags with rulesets: pull requests, checks, signed commits and merge windows."
-		href="/guides/rules/"
-	/>
-	<LinkCard
-		title="CODEOWNERS"
-		description="Say who owns which paths, ask them to review the changes to their files, and require their approval before a merge."
-		href="/guides/codeowners/"
-	/>
-	<LinkCard
-		title="Transferring a repository"
-		description="Move a repository to another workspace you own, while its old address keeps working."
-		href="/guides/transferring-repositories/"
-	/>
+  <LinkCard
+    title="Managing a repository"
+    description="See its languages, contributors, license and stars, rename it or a branch, change its default branch, make it public or private, archive it, and delete and restore it."
+    href="/guides/managing-repositories/"
+  />
+  <LinkCard
+    title="Releases"
+    description="Publish a tag with a title and notes, keep drafts and pre-releases, and read the latest release from the API."
+    href="/guides/releases/"
+  />
+  <LinkCard
+    title="Required checks"
+    description="Choose which workflow checks must pass before anything merges into the default branch, or add CI to a repository that has none."
+    href="/guides/pull-requests/#required-status-checks"
+  />
+  <LinkCard
+    title="Checks"
+    description="See what CI, workflows and integrations say beside every commit, and report statuses and check runs with annotations from your own tools."
+    href="/guides/checks/"
+  />
+  <LinkCard
+    title="Labels and milestones"
+    description="Say what work items and pull requests are with the workspace's colored labels, and gather them under milestones with due dates."
+    href="/work/labels/"
+  />
+  <LinkCard
+    title="Pull requests into other branches"
+    description="Open a pull request into a release or feature branch, and change the branch one merges into."
+    href="/guides/base-branches/"
+  />
+  <LinkCard
+    title="Dependency updates"
+    description="Keep npm, Cargo, Go and pip dependencies current with a dependabot.yml file, on the schedule you set."
+    href="/guides/dependency-updates/"
+  />
+  <LinkCard
+    title="Access and roles"
+    description="Give people a role on a repository, invite outside collaborators, and set what every member gets."
+    href="/guides/access-and-roles/"
+  />
+  <LinkCard
+    title="Deploy keys"
+    description="Let a server or a pipeline clone one repository, or push to it, with an SSH key that reaches nothing else."
+    href="/guides/git/#deploy-keys"
+  />
+  <LinkCard
+    title="Teams"
+    description="Group people into teams, give a team a role on repositories, mention it, and have it pick who reviews."
+    href="/guides/teams/"
+  />
+  <LinkCard title="People and teams" description="Find anyone in the workspace, see their teams and what they own." href="/guides/people-and-teams/" />
+  <LinkCard
+    title="Report deployments"
+    description="See every deployment and environment in one place, report deployments from any CI, and require one before a merge."
+    href="/guides/deployments-api/"
+  />
+  <LinkCard
+    title="Rules"
+    description="Protect branches and tags with rulesets: pull requests, checks, signed commits and merge windows."
+    href="/guides/rules/"
+  />
+  <LinkCard
+    title="CODEOWNERS"
+    description="Say who owns which paths, ask them to review the changes to their files, and require their approval before a merge."
+    href="/guides/codeowners/"
+  />
+  <LinkCard
+    title="Transferring a repository"
+    description="Move a repository to another workspace you own, while its old address keeps working."
+    href="/guides/transferring-repositories/"
+  />
 </CardGrid>
 
 ## Know the limits

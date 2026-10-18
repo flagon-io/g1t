@@ -136,7 +136,11 @@ function subscribe(listener: () => void): () => void {
 }
 
 export function useSoundSettings(): SoundSettings {
-  return useSyncExternalStore(subscribe, () => settings, () => DEFAULT_SOUND_SETTINGS);
+  return useSyncExternalStore(
+    subscribe,
+    () => settings,
+    () => DEFAULT_SOUND_SETTINGS,
+  );
 }
 
 /**
@@ -147,7 +151,11 @@ export async function saveSoundSettings(change: SoundSettingsChange): Promise<So
   const before = settings;
   applySoundSettings({ ...settings, ...change, sound_cues: { ...settings.sound_cues, ...change.sound_cues } });
   try {
-    const response = await fetch("/-/notify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intent: "sounds", change }) });
+    const response = await fetch("/-/notify", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ intent: "sounds", change }),
+    });
     if (!response.ok) throw new Error(`status ${response.status}`);
     const saved = (await response.json()) as SoundSettings;
     applySoundSettings(saved);

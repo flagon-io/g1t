@@ -108,9 +108,10 @@ function ContainerSizes({ offer, chosen }: { offer: ContainerOffer; chosen: stri
         />
       </Field>
       <p className="text-xs text-muted">
-        Charged by the minute while awake, at what Cloudflare charges g1t plus 20%, with every vCPU counted as busy; data a
-        container sends is {money(offer.egressGbMicros, { precise: true })} a GB.
-        {!offer.available && " Docker deployments are switched off on this g1t: a container build fails, or builds the site the project is without its Dockerfile."}
+        Charged by the minute while awake, at what Cloudflare charges g1t plus 20%, with every vCPU counted as busy; data a container sends is{" "}
+        {money(offer.egressGbMicros, { precise: true })} a GB.
+        {!offer.available &&
+          " Docker deployments are switched off on this g1t: a container build fails, or builds the site the project is without its Dockerfile."}
       </p>
     </div>
   );
@@ -134,15 +135,14 @@ export default function DeploymentSettings({ loaderData, actionData, params }: R
           <section>
             <h2 className="font-medium">Deployments are off</h2>
             <p className="mt-1 text-sm text-muted">
-              Deployments are opt-in for each project, and nothing builds or runs until you turn them on. Then g1t builds
-              production at{" "}
-              <span className="font-mono text-fg">{settings.productionUrl.replace("https://", "")}</span> and a preview for
-              every pull request. The workspace needs the g1t plan, under Billing.
+              Deployments are opt-in for each project, and nothing builds or runs until you turn them on. Then g1t builds production at{" "}
+              <span className="font-mono text-fg">{settings.productionUrl.replace("https://", "")}</span> and a preview for every pull request. The workspace
+              needs the g1t plan, under Billing.
             </p>
             {notDeploying ? (
               <p className="mt-4 text-sm text-muted">
-                This project is set to be something that doesn't deploy, such as a library or a tool. To deploy it, choose
-                App or site, hosted on g1t.page, under{" "}
+                This project is set to be something that doesn't deploy, such as a library or a tool. To deploy it, choose App or site, hosted on g1t.page,
+                under{" "}
                 <Link to={`${base}/settings#kind`} className="text-fg underline underline-offset-4">
                   General
                 </Link>{" "}
@@ -169,10 +169,14 @@ export default function DeploymentSettings({ loaderData, actionData, params }: R
               </Check>
             </div>
             <Check name="viaWorkflow" on={settings.viaWorkflow ?? false} title="Build with a workflow">
-              Build through a workflow g1t manages for this project, listed under Actions with its runs and logs. It runs on g1t's machines like any workflow, and a workflow named g1t in .g1t/workflows takes its place.
+              Build through a workflow g1t manages for this project, listed under Actions with its runs and logs. It runs on g1t's machines like any workflow,
+              and a workflow named g1t in .g1t/workflows takes its place.
             </Check>
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Build as" hint="Auto finds it from the project's files, preferring a site or a Worker to a container: a Wrangler config is Workers; a framework, a build script or an index.html is a site, even beside a Dockerfile; a Node.js server runs as a Worker; other servers, and Node.js servers that cannot run as a Worker, are containers. Choose Container to use the Dockerfile. The build's log says which it chose and why.">
+              <Field
+                label="Build as"
+                hint="Auto finds it from the project's files, preferring a site or a Worker to a container: a Wrangler config is Workers; a framework, a build script or an index.html is a site, even beside a Dockerfile; a Node.js server runs as a Worker; other servers, and Node.js servers that cannot run as a Worker, are containers. Choose Container to use the Dockerfile. The build's log says which it chose and why."
+              >
                 <SelectField name="buildAs" defaultValue={settings.buildAs ?? "auto"} aria-label="Build as" options={BUILD_AS_OPTIONS} />
               </Field>
               <Field label="Dockerfile" hint="For a container; Dockerfile or Containerfile is found by itself when empty.">
@@ -206,8 +210,8 @@ export default function DeploymentSettings({ loaderData, actionData, params }: R
           <section className="mt-10 rounded-xl border border-danger/30 p-5">
             <h2 className="text-sm font-medium">Turn off deployments</h2>
             <p className="mt-1 text-sm text-muted">
-              Takes production and every preview down now, and stops building. Nothing of this project's keeps
-              running or costing anything. The workspace's plan stays on; turn it off under Billing.
+              Takes production and every preview down now, and stops building. Nothing of this project's keeps running or costing anything. The workspace's plan
+              stays on; turn it off under Billing.
             </p>
             <Form method="post" className="mt-3">
               <SubmitButton variant="outline" name="intent" value="disable" pending="Turning off…">

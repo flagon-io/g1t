@@ -136,8 +136,7 @@ function publish(dryRun) {
     if (dryRun) console.log(`would put ${key}`);
     else run("npx", args, { cwd: join(ROOT, "apps/web") });
   };
-  const type = (name) =>
-    name.endsWith(".apk") ? "application/vnd.android.package-archive" : name.endsWith(".json") ? "application/json" : "text/plain";
+  const type = (name) => (name.endsWith(".apk") ? "application/vnd.android.package-archive" : name.endsWith(".json") ? "application/json" : "text/plain");
   // The version's files first; latest.json last, so the page never offers a file that is not there yet.
   for (const name of readdirSync(dir)) {
     if (name === "latest.json" || name === "build.json") continue;

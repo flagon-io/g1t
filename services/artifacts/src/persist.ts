@@ -4,7 +4,16 @@
  * newly mentioned in the page. Run by the room (src/room.ts), which owns
  * the live document; nothing here reads the document itself.
  */
-import { newId, notifyClient, type DocCitation, type DocVersionKind, type FeedNotification, type FolioKind, type FolioVersionKind, type ServiceBinding } from "@g1t/contracts";
+import {
+  newId,
+  notifyClient,
+  type DocCitation,
+  type DocVersionKind,
+  type FeedNotification,
+  type FolioKind,
+  type FolioVersionKind,
+  type ServiceBinding,
+} from "@g1t/contracts";
 
 import { publishDocEvent } from "./events.ts";
 import { fileStore, type FileStoreEnv } from "./files.ts";
@@ -44,7 +53,16 @@ export type Save = {
   workspace_slug: string | null;
 };
 
-type PageRow = { id: string; workspace_id: string; space_id: string; title: string; mentioned: string; markdown: string; slug: string; archived_at: string | null };
+type PageRow = {
+  id: string;
+  workspace_id: string;
+  space_id: string;
+  title: string;
+  mentioned: string;
+  markdown: string;
+  slug: string;
+  archived_at: string | null;
+};
 
 /** Saves; returns whether a version was recorded, and its id, and whether the Markdown changed (so the room indexes it again, src/indexer.ts). */
 export async function save(env: SaveEnv, input: Save, now = new Date()): Promise<{ version_id: string | null; changed: boolean }> {
@@ -60,21 +78,35 @@ export async function save(env: SaveEnv, input: Save, now = new Date()): Promise
   const statements: D1PreparedStatement[] = [];
   if (changed || last) {
     statements.push(
-      env.DB.prepare("UPDATE pages SET markdown = ?, updated_at = ?, updated_by = COALESCE(?, updated_by) WHERE id = ?").bind(input.markdown, at, last, page.id),
+      env.DB.prepare("UPDATE pages SET markdown = ?, updated_at = ?, updated_by = COALESCE(?, updated_by) WHERE id = ?").bind(
+        input.markdown,
+        at,
+        last,
+        page.id,
+      ),
     );
   }
   if (changed) {
     statements.push(env.DB.prepare("DELETE FROM pages_fts WHERE page_id = ?").bind(page.id));
     statements.push(env.DB.prepare("INSERT INTO pages_fts (page_id, title, body) VALUES (?, ?, ?)").bind(page.id, page.title, searchText(input.markdown)));
     statements.push(env.DB.prepare("DELETE FROM page_links WHERE from_page = ?").bind(page.id));
-    for (const to of linkedPageIds(input.markdown).filter((id) => id !== page.id).slice(0, 200)) {
+    for (const to of linkedPageIds(input.markdown)
+      .filter((id) => id !== page.id)
+      .slice(0, 200)) {
       statements.push(env.DB.prepare("INSERT OR IGNORE INTO page_links (from_page, to_page) VALUES (?, ?)").bind(page.id, to));
     }
     // What it cites, from its text; the header's own stay.
     statements.push(env.DB.prepare("DELETE FROM citations WHERE page_id = ? AND source = 'body'").bind(page.id));
     for (const c of input.citations) {
       statements.push(
-        env.DB.prepare("INSERT OR IGNORE INTO citations (page_id, repo, path, kind, label, ref, source) VALUES (?, ?, ?, ?, ?, ?, 'body')").bind(page.id, c.repo, c.path, c.kind, c.label ?? "", c.ref),
+        env.DB.prepare("INSERT OR IGNORE INTO citations (page_id, repo, path, kind, label, ref, source) VALUES (?, ?, ?, ?, ?, ?, 'body')").bind(
+          page.id,
+          c.repo,
+          c.path,
+          c.kind,
+          c.label ?? "",
+          c.ref,
+        ),
       );
     }
   }
@@ -109,7 +141,12 @@ export async function save(env: SaveEnv, input: Save, now = new Date()): Promise
   const editors = new Set(input.editor_names);
   const fresh = input.mentioned.filter((name) => !told.includes(name) && !editors.has(name));
   if (fresh.length || input.mentioned.length !== told.length) {
-    statements.push(env.DB.prepare("UPDATE pages SET mentioned = ? WHERE id = ?").bind(JSON.stringify([...new Set([...told.filter((id) => input.mentioned.includes(id)), ...fresh])]), page.id));
+    statements.push(
+      env.DB.prepare("UPDATE pages SET mentioned = ? WHERE id = ?").bind(
+        JSON.stringify([...new Set([...told.filter((id) => input.mentioned.includes(id)), ...fresh])]),
+        page.id,
+      ),
+    );
   }
   if (statements.length) await env.DB.batch(statements);
   // A version is what the rest of g1t hears of: at most every ten minutes of editing, and each agent edit, suggestion and restore.
@@ -172,7 +209,17 @@ export type SaveFolio = {
   workspace_slug: string | null;
 };
 
-type FolioSaveRow = { id: string; workspace_id: string; kind: FolioKind; title: string; text: string; preview: string | null; mentioned: string; space_id: string | null; trashed_at: string | null };
+type FolioSaveRow = {
+  id: string;
+  workspace_id: string;
+  kind: FolioKind;
+  title: string;
+  text: string;
+  preview: string | null;
+  mentioned: string;
+  space_id: string | null;
+  trashed_at: string | null;
+};
 
 /**
  * What a folio's room saves to D1 after a burst of edits: its text
@@ -181,10 +228,17 @@ type FolioSaveRow = { id: string; workspace_id: string; kind: FolioKind; title: 
  * indexes it again), and the people newly mentioned, whom the room tells
  * only if they can read the folio (src/folios/notify.ts).
  */
-export async function saveFolio(env: SaveFolioEnv, input: SaveFolio, now = new Date()): Promise<{ version_id: string | null; changed: boolean; mentioned: string[]; last: string | null }> {
+export async function saveFolio(
+  env: SaveFolioEnv,
+  input: SaveFolio,
+  now = new Date(),
+): Promise<{ version_id: string | null; changed: boolean; mentioned: string[]; last: string | null }> {
   const at = now.toISOString();
   const db = env.DB;
-  const folio = await db.prepare("SELECT id, workspace_id, kind, title, text, preview, mentioned, space_id, trashed_at FROM folios WHERE id = ?").bind(input.folio_id).first<FolioSaveRow>();
+  const folio = await db
+    .prepare("SELECT id, workspace_id, kind, title, text, preview, mentioned, space_id, trashed_at FROM folios WHERE id = ?")
+    .bind(input.folio_id)
+    .first<FolioSaveRow>();
   if (!folio) return { version_id: null, changed: false, mentioned: [], last: null };
   const r = input.rendition;
   const changed = folio.text !== r.text;
@@ -213,7 +267,9 @@ export async function saveFolio(env: SaveFolioEnv, input: SaveFolio, now = new D
     }
     for (const c of r.citations) {
       statements.push(
-        db.prepare("INSERT OR IGNORE INTO folio_citations (folio_id, repo, path, kind, label, ref, source) VALUES (?, ?, ?, ?, ?, ?, 'body')").bind(folio.id, c.repo, c.path, c.kind, c.label ?? "", c.ref),
+        db
+          .prepare("INSERT OR IGNORE INTO folio_citations (folio_id, repo, path, kind, label, ref, source) VALUES (?, ?, ?, ?, ?, ?, 'body')")
+          .bind(folio.id, c.repo, c.path, c.kind, c.label ?? "", c.ref),
       );
     }
   }
@@ -239,7 +295,17 @@ export async function saveFolio(env: SaveFolioEnv, input: SaveFolio, now = new D
     statements.push(
       db
         .prepare("INSERT INTO folio_versions (id, folio_id, created_at, kind, authors, note, text, state, state_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(versionId, folio.id, at, input.version?.kind ?? "edit", JSON.stringify([...new Set(authors)]), input.version?.note ?? null, r.text, state, stateKey),
+        .bind(
+          versionId,
+          folio.id,
+          at,
+          input.version?.kind ?? "edit",
+          JSON.stringify([...new Set(authors)]),
+          input.version?.note ?? null,
+          r.text,
+          state,
+          stateKey,
+        ),
     );
   }
   let told: string[] = [];
@@ -251,7 +317,11 @@ export async function saveFolio(env: SaveFolioEnv, input: SaveFolio, now = new D
   const editors = new Set(input.editor_names);
   const fresh = r.mentions.filter((name) => !told.includes(name) && !editors.has(name));
   if (fresh.length || r.mentions.length !== told.length) {
-    statements.push(db.prepare("UPDATE folios SET mentioned = ? WHERE id = ?").bind(JSON.stringify([...new Set([...told.filter((n) => r.mentions.includes(n)), ...fresh])]), folio.id));
+    statements.push(
+      db
+        .prepare("UPDATE folios SET mentioned = ? WHERE id = ?")
+        .bind(JSON.stringify([...new Set([...told.filter((n) => r.mentions.includes(n)), ...fresh])]), folio.id),
+    );
   }
   if (statements.length) await db.batch(statements);
   const kind = input.version?.kind ?? "edit";

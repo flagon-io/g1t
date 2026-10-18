@@ -151,45 +151,29 @@ export default function Pulls({ loaderData, params }: Route.ComponentProps) {
       <div className="mt-4">
         {pulls.length === 0 ? (
           <EmptyState
-            title={
-              filtered
-                ? `No ${state} pull requests match these filters`
-                : state === "open"
-                  ? "No open pull requests"
-                  : "No closed pull requests"
-            }
+            title={filtered ? `No ${state} pull requests match these filters` : state === "open" ? "No open pull requests" : "No closed pull requests"}
           >
-            A pull request proposes a change. Push a branch and open one, or
-            have your coding agent open one for a work item.
+            A pull request proposes a change. Push a branch and open one, or have your coding agent open one for a work item.
           </EmptyState>
         ) : (
           <Card asChild tone="plain" divided className="overflow-hidden">
             <ul>
               {pulls.map((pull) => (
                 <li key={pull.id}>
-                  <Link
-                    prefetch="intent"
-                    to={`${base}/pull/${pull.number}`}
-                    className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface"
-                  >
+                  <Link prefetch="intent" to={`${base}/pull/${pull.number}`} className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface">
                     <span className="mt-0.5">
                       <PullIcon status={pull.status} />
                     </span>
                     <span className="min-w-0 grow">
                       <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="min-w-0 truncate font-medium">{pull.title}</span>
-                        {pull.status === "draft" && (
-                          <Badge className="px-1.5 font-normal text-faint">
-                            draft
-                          </Badge>
-                        )}
+                        {pull.status === "draft" && <Badge className="px-1.5 font-normal text-faint">draft</Badge>}
                         {(pull.labels ?? []).map((name) => (
                           <LabelChip key={name} name={name} color={colors[name]} />
                         ))}
                       </span>
                       <span className="mt-0.5 block text-xs text-faint">
-                        #{pull.number} opened <TimeAgo at={pull.createdAt} /> by{" "}
-                        {openedBy(pull).name}
+                        #{pull.number} opened <TimeAgo at={pull.createdAt} /> by {openedBy(pull).name}
                         {pull.requestedBy && <> for {pull.requestedBy.username}</>}
                         {pull.item != null && <> · for #{pull.item}</>}
                         {pull.supersededBy != null && <> · superseded by #{pull.supersededBy}</>}
@@ -203,8 +187,7 @@ export default function Pulls({ loaderData, params }: Route.ComponentProps) {
                         {pull.base && defaultBranch && pull.base !== defaultBranch && (
                           <>
                             {" "}
-                            · <ArrowLeft size={11} className="inline" /> into{" "}
-                            <span className="font-mono">{pull.base}</span>
+                            · <ArrowLeft size={11} className="inline" /> into <span className="font-mono">{pull.base}</span>
                           </>
                         )}
                       </span>

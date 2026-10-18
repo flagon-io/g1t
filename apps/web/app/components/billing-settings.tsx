@@ -30,17 +30,7 @@ const FIELD =
  * it, new work that costs money stops: nothing is charged, card or not. An
  * owner can start the plan on the same billing from here.
  */
-export function ComplimentaryCard({
-  month,
-  owner,
-  enabled,
-  error,
-}: {
-  month: ComplimentaryMonth;
-  owner: boolean;
-  enabled: boolean;
-  error?: string;
-}) {
+export function ComplimentaryCard({ month, owner, enabled, error }: { month: ComplimentaryMonth; owner: boolean; enabled: boolean; error?: string }) {
   const taken = month.usedMicros + (month.pendingMicros ?? 0) + (month.heldMicros ?? 0);
   const resets = new Date(month.resetsAt).toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" });
   const charged = Boolean(month.chargePastAllowance);
@@ -109,8 +99,7 @@ export function ComplimentaryCard({
             Start the g1t plan instead
           </SubmitButton>
           <span className="text-xs text-faint">
-            $21 a month with usage past what is included charged, on this workspace's billing. Nothing changes until the first payment
-            goes through.
+            $21 a month with usage past what is included charged, on this workspace's billing. Nothing changes until the first payment goes through.
           </span>
         </Form>
       )}
@@ -172,7 +161,9 @@ export function PlanSummary({
       title={
         <>
           {plan?.title ?? "g1t"}
-          <span className={`rounded-full px-2 py-0.5 text-xs ${on && status.kind !== "past_due" && status.kind !== "canceling" ? "bg-success/15 text-success" : status.kind === "free" || status.kind === "trial" ? "border border-line text-muted" : "bg-warn/15 text-warn"}`}>
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs ${on && status.kind !== "past_due" && status.kind !== "canceling" ? "bg-success/15 text-success" : status.kind === "free" || status.kind === "trial" ? "border border-line text-muted" : "bg-warn/15 text-warn"}`}
+          >
             {status.kind === "canceling" && subscription?.periodEnd ? `Ends on ${endsOn(subscription.periodEnd)}` : status.label}
           </span>
         </>
@@ -203,7 +194,10 @@ export function PlanSummary({
               </span>
             </p>
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-line" role="presentation">
-              <div className="h-full rounded-full bg-accent" style={{ width: `${Math.min(100, (report.included.used / Math.max(1, report.included.of)) * 100)}%` }} />
+              <div
+                className="h-full rounded-full bg-accent"
+                style={{ width: `${Math.min(100, (report.included.used / Math.max(1, report.included.of)) * 100)}%` }}
+              />
             </div>
             <p className="mt-1.5 text-xs text-faint">Used first; starts again on the 1st. Unused usage does not carry over.</p>
           </div>
@@ -223,7 +217,13 @@ export function PlanSummary({
             <span className="text-muted">Upcoming invoice</span>
             <span className="text-lg font-semibold tabular-nums">{upcoming ? money(upcoming.totalMicros) : "—"}</span>
           </p>
-          <p className="text-xs text-faint">Including add-ons and usage, from g1t's ledger{upcoming ? `; the month closes ${new Date(upcoming.closesAt).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}` : ""}.</p>
+          <p className="text-xs text-faint">
+            Including add-ons and usage, from g1t's ledger
+            {upcoming
+              ? `; the month closes ${new Date(upcoming.closesAt).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}`
+              : ""}
+            .
+          </p>
           {upcoming && (
             <details className="mt-1.5">
               <summary className="cursor-pointer text-xs text-muted hover:text-fg">View upcoming invoice</summary>
@@ -242,7 +242,10 @@ export function PlanSummary({
         </div>
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        <Link to={`/${slug}/-/usage`} className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm text-fg/80 hover:border-line-strong hover:text-fg">
+        <Link
+          to={`/${slug}/-/usage`}
+          className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm text-fg/80 hover:border-line-strong hover:text-fg"
+        >
           <FileText size={14} /> Usage
         </Link>
         {owner && enabled && (status.kind === "free" || status.kind === "trial") && (
@@ -290,9 +293,9 @@ export function PlanSummary({
       )}
       {(status.kind === "free" || status.kind === "trial") && (
         <p className="mt-3 text-xs text-faint">
-          In its first month on the plan, a workspace can owe at most {wholeDollars(firstMonthMicros ?? 100_000_000)} of usage
-          not yet paid for, past what is included, so a stolen card cannot run up a bill. Work waits at whichever comes first:
-          that limit or your spend limit. After the first month, the limit grows as payments clear.
+          In its first month on the plan, a workspace can owe at most {wholeDollars(firstMonthMicros ?? 100_000_000)} of usage not yet paid for, past what is
+          included, so a stolen card cannot run up a bill. Work waits at whichever comes first: that limit or your spend limit. After the first month, the limit
+          grows as payments clear.
         </p>
       )}
       <ErrorText>{error}</ErrorText>
@@ -314,7 +317,12 @@ export function BudgetAlerts({ limit, owner, error }: { limit: Limit; owner: boo
   const spent = limit.spentMicros ?? 0;
   const of = limit.spendLimitMicros;
   return (
-    <Card id="budget" icon={<Bell size={16} />} title="Budget alerts" about="On usage past what the plan includes, measured against the spend limit above. Each alert is emailed to the owners once a month.">
+    <Card
+      id="budget"
+      icon={<Bell size={16} />}
+      title="Budget alerts"
+      about="On usage past what the plan includes, measured against the spend limit above. Each alert is emailed to the owners once a month."
+    >
       {of != null && (
         <div className="mt-3">
           <div className="flex justify-between text-sm">
@@ -324,10 +332,15 @@ export function BudgetAlerts({ limit, owner, error }: { limit: Limit; owner: boo
             </span>
           </div>
           <div className="relative mt-1.5 h-1.5 rounded-full bg-line" role="presentation">
-            <div className={`h-full rounded-full ${spent >= of ? "bg-danger" : spent * 4 >= of * 3 ? "bg-warn" : "bg-success"}`} style={{ width: `${Math.min(100, (spent / Math.max(1, of)) * 100)}%` }} />
-            {levels.filter((l) => l < 100).map((l) => (
-              <span key={l} className="absolute -top-0.5 h-2.5 w-px bg-fg/40" style={{ left: `${l}%` }} />
-            ))}
+            <div
+              className={`h-full rounded-full ${spent >= of ? "bg-danger" : spent * 4 >= of * 3 ? "bg-warn" : "bg-success"}`}
+              style={{ width: `${Math.min(100, (spent / Math.max(1, of)) * 100)}%` }}
+            />
+            {levels
+              .filter((l) => l < 100)
+              .map((l) => (
+                <span key={l} className="absolute -top-0.5 h-2.5 w-px bg-fg/40" style={{ left: `${l}%` }} />
+              ))}
           </div>
         </div>
       )}
@@ -350,7 +363,13 @@ export function BudgetAlerts({ limit, owner, error }: { limit: Limit; owner: boo
           </label>
           <label className="block">
             <span className="block text-xs text-muted">Webhook, told of each alert (optional)</span>
-            <input name="webhook" type="url" placeholder="https://hooks.example.com/g1t" defaultValue={limit.budgetWebhook ?? ""} className={`mt-1 ${FIELD} max-w-md`} />
+            <input
+              name="webhook"
+              type="url"
+              placeholder="https://hooks.example.com/g1t"
+              defaultValue={limit.budgetWebhook ?? ""}
+              className={`mt-1 ${FIELD} max-w-md`}
+            />
           </label>
           <SubmitButton variant="outline" match={{ intent: "budget" }} pending="Saving…">
             Save alerts
@@ -440,7 +459,8 @@ export function AddOns({ plan, security, error }: { plan: FeatureState | null; s
     rows.push({
       key: "security",
       name: security.plan.title,
-      about: "Custom patterns, validity checks, code scanning and dependency review on private repositories. No price of its own: scans are charged at cost plus 20%.",
+      about:
+        "Custom patterns, validity checks, code scanning and dependency review on private repositories. No price of its own: scans are charged at cost plus 20%.",
       price: "With the plan",
       on: security.on,
       label: security.on ? "On" : "Needs the plan",

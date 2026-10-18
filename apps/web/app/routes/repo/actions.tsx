@@ -52,9 +52,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     // the open-source pool on a public repository; members are told
     // before a run is refused for it. A note that cannot be read is left
     // out: it only warns ahead of a refusal that says the same itself.
-    member && found.ok
-      ? computeNoteFor(params.owner, "workflow", !found.value.isPrivate).catch(() => null)
-      : Promise.resolve(null),
+    member && found.ok ? computeNoteFor(params.owner, "workflow", !found.value.isPrivate).catch(() => null) : Promise.resolve(null),
   ]);
   return {
     workflows: isFailed(workflows) ? workflows : unwrap(workflows),
@@ -84,7 +82,9 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     if (key.startsWith("input.")) inputs[key.slice(6)] = value === "on" ? true : value;
   }
   // An unticked checkbox sends nothing: it is false.
-  for (const key of String(form.get("booleans") ?? "").split(",").filter(Boolean)) {
+  for (const key of String(form.get("booleans") ?? "")
+    .split(",")
+    .filter(Boolean)) {
     if (!(key in inputs)) inputs[key] = false;
   }
   const ref = String(form.get("ref") ?? "").trim() || undefined;
@@ -156,13 +156,7 @@ function InputField({ name, spec }: { name: string; spec: DispatchInput }) {
   );
   const control = "w-full rounded-md border border-line bg-bg px-2.5 py-1.5 text-sm outline-none focus:border-accent-dim";
   if (spec.type === "boolean") {
-    return (
-      <CheckboxOption
-        name={`input.${name}`}
-        defaultChecked={spec.default === true || spec.default === "true"}
-        label={spec.description || name}
-      />
-    );
+    return <CheckboxOption name={`input.${name}`} defaultChecked={spec.default === true || spec.default === "true"} label={spec.description || name} />;
   }
   if (spec.type === "choice" && spec.options) {
     return (
@@ -174,11 +168,13 @@ function InputField({ name, spec }: { name: string; spec: DispatchInput }) {
           </SelectTrigger>
           <SelectContent>
             {/* A Radix item cannot have the value "". */}
-            {spec.options.filter((option) => option !== "").map((option) => (
-              <SelectItem key={option} value={option}>
-                {option}
-              </SelectItem>
-            ))}
+            {spec.options
+              .filter((option) => option !== "")
+              .map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
           </SelectContent>
         </Select>
       </div>
@@ -218,8 +214,7 @@ function RunWorkflow({ workflow }: { workflow: Workflow }) {
       </Button>
       {open && (
         <Card asChild className="absolute right-0 z-20 mt-2 w-80 space-y-3 p-4 shadow-xl">
-          <Form
-            method="post">
+          <Form method="post">
             <input type="hidden" name="intent" value="dispatch" />
             <input type="hidden" name="workflow" value={workflow.id} />
             <input type="hidden" name="booleans" value={booleans.join(",")} />
@@ -265,9 +260,7 @@ function StatusBadge({ workflow, repo }: { workflow: Workflow; repo: string }) {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Create status badge</DialogTitle>
-          <DialogDescription>
-            A badge that shows how {workflow.name}'s latest finished run went. Paste it into a README.
-          </DialogDescription>
+          <DialogDescription>A badge that shows how {workflow.name}'s latest finished run went. Paste it into a README.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block">
@@ -317,7 +310,10 @@ function WorkflowHeader({ workflow, base, member, manage }: { workflow: Workflow
         <div className="min-w-0">
           <h3 className="text-lg font-semibold tracking-tight">{workflow.name}</h3>
           {archived ? (
-            <span className="inline-flex items-center gap-1 font-mono text-xs text-faint"><FileCode2 size={12} />{workflow.path}</span>
+            <span className="inline-flex items-center gap-1 font-mono text-xs text-faint">
+              <FileCode2 size={12} />
+              {workflow.path}
+            </span>
           ) : isManagedWorkflow(workflow.path) ? (
             <ManagedLine workflow={workflow} />
           ) : (
@@ -326,35 +322,40 @@ function WorkflowHeader({ workflow, base, member, manage }: { workflow: Workflow
               {workflow.path}
             </Link>
           )}
-          {workflow.events.length > 0 && (
-            <p className="mt-1.5 text-xs text-muted">On {workflow.events.map((e) => EVENT_WORDS[e] ?? e).join(", ")}</p>
-          )}
+          {workflow.events.length > 0 && <p className="mt-1.5 text-xs text-muted">On {workflow.events.map((e) => EVENT_WORDS[e] ?? e).join(", ")}</p>}
         </div>
         {!workflow.error && (
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge workflow={workflow} repo={base.slice(1)} />
             {member && workflow.dispatch && workflow.state === "active" && <RunWorkflow workflow={workflow} />}
-            {member && manage && workflow.managedBy?.mode !== "required" && <Form method="post">
-              <input type="hidden" name="intent" value="toggle" />
-              <input type="hidden" name="workflow" value={workflow.id} />
-              <input type="hidden" name="enabled" value={workflow.state === "active" ? "false" : "true"} />
-              <SubmitButton
-                variant="outline"
-                match={{ intent: "toggle", workflow: workflow.id }}
-                pending={workflow.state === "active" ? "Turning off…" : "Turning on…"}
-              >
-                {workflow.state === "active" ? "Turn off" : "Turn on"}
-              </SubmitButton>
-            </Form>}
+            {member && manage && workflow.managedBy?.mode !== "required" && (
+              <Form method="post">
+                <input type="hidden" name="intent" value="toggle" />
+                <input type="hidden" name="workflow" value={workflow.id} />
+                <input type="hidden" name="enabled" value={workflow.state === "active" ? "false" : "true"} />
+                <SubmitButton
+                  variant="outline"
+                  match={{ intent: "toggle", workflow: workflow.id }}
+                  pending={workflow.state === "active" ? "Turning off…" : "Turning on…"}
+                >
+                  {workflow.state === "active" ? "Turn off" : "Turn on"}
+                </SubmitButton>
+              </Form>
+            )}
           </div>
         )}
       </div>
       {archived ? (
         <p className="flex items-start gap-2 rounded-lg border border-line bg-surface px-3 py-3 text-sm text-muted">
           <Archive size={16} className="mt-0.5 shrink-0" />
-          <span><strong className="font-medium text-fg">Archived workflow.</strong> Its file was removed from the default branch. Past runs remain available below. Restore the file on the default branch to return it to the workflow list.</span>
+          <span>
+            <strong className="font-medium text-fg">Archived workflow.</strong> Its file was removed from the default branch. Past runs remain available below.
+            Restore the file on the default branch to return it to the workflow list.
+          </span>
         </p>
-      ) : workflow.error && <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{workflow.error}</p>}
+      ) : (
+        workflow.error && <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{workflow.error}</p>
+      )}
       {!archived && workflow.state === "disabled" && (
         <p className="rounded-lg bg-raised px-3 py-2 text-sm text-muted">Turned off: nothing starts it until someone with the Maintain role turns it on.</p>
       )}
@@ -423,8 +424,8 @@ export default function Actions({ loaderData, actionData, params }: Route.Compon
             Workflows
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Workflows in <code className="text-fg">.g1t/workflows</code>, written as GitHub Actions and run as GitHub runs
-            them. A run on a pull request counts as its checks.
+            Workflows in <code className="text-fg">.g1t/workflows</code>, written as GitHub Actions and run as GitHub runs them. A run on a pull request counts
+            as its checks.
           </p>
         </div>
         <a href="https://docs.g1t.sh/guides/actions/" className="text-sm text-muted underline underline-offset-4 hover:text-fg">
@@ -445,8 +446,8 @@ export default function Actions({ loaderData, actionData, params }: Route.Compon
             <AddCiPrompt owner={params.owner} repo={params.repo} canAdd={canPush} />
           </div>
           <EmptyState title="No workflows yet">
-            Coming from GitHub? Rename <code>.github</code> to <code>.g1t</code> and push: your workflows run here as they
-            are. g1t never reads <code>.github</code>.
+            Coming from GitHub? Rename <code>.github</code> to <code>.g1t</code> and push: your workflows run here as they are. g1t never reads{" "}
+            <code>.github</code>.
           </EmptyState>
           <div>
             <p className="font-mono text-xs text-faint">.g1t/workflows/ci.yml</p>
@@ -458,10 +459,7 @@ export default function Actions({ loaderData, actionData, params }: Route.Compon
       ) : (
         <div className="grid gap-8 lg:grid-cols-[14rem_1fr]">
           <nav aria-label="Workflows" className="space-y-0.5 text-sm">
-            <Link
-              to="?"
-              className={`block rounded-md px-2.5 py-1.5 ${!selected ? "bg-raised text-fg" : "text-muted hover:bg-raised/60 hover:text-fg"}`}
-            >
+            <Link to="?" className={`block rounded-md px-2.5 py-1.5 ${!selected ? "bg-raised text-fg" : "text-muted hover:bg-raised/60 hover:text-fg"}`}>
               All workflows
             </Link>
             {workflowsFailed && (
@@ -494,7 +492,11 @@ export default function Actions({ loaderData, actionData, params }: Route.Compon
               </Link>
             ))}
             {archived.length > 0 && (
-              <details key={archiveSelected ? "selected-archive" : "archive"} open={archiveSelected || undefined} className="group mt-3 border-t border-line pt-3">
+              <details
+                key={archiveSelected ? "selected-archive" : "archive"}
+                open={archiveSelected || undefined}
+                className="group mt-3 border-t border-line pt-3"
+              >
                 <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md px-2.5 py-2 text-muted hover:bg-raised/60 hover:text-fg [&::-webkit-details-marker]:hidden">
                   <ChevronRight size={14} className="shrink-0 transition-transform group-open:rotate-90" />
                   <span className="grow">Archived workflows</span>
@@ -502,10 +504,17 @@ export default function Actions({ loaderData, actionData, params }: Route.Compon
                 </summary>
                 <div className="mt-1 space-y-0.5">
                   {archived.map((w) => (
-                    <Link key={w.id} to={`?workflow=${w.id}`} aria-current={w.id === workflow?.id ? "page" : undefined}
-                      className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 ${w.id === workflow?.id ? "bg-raised text-fg" : "text-muted hover:bg-raised/60 hover:text-fg"}`}>
+                    <Link
+                      key={w.id}
+                      to={`?workflow=${w.id}`}
+                      aria-current={w.id === workflow?.id ? "page" : undefined}
+                      className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 ${w.id === workflow?.id ? "bg-raised text-fg" : "text-muted hover:bg-raised/60 hover:text-fg"}`}
+                    >
                       <Archive size={13} className="shrink-0 text-faint" />
-                      <span className="min-w-0 truncate">{w.name}<span className="block truncate font-mono text-[0.6875rem] text-faint">{w.path}</span></span>
+                      <span className="min-w-0 truncate">
+                        {w.name}
+                        <span className="block truncate font-mono text-[0.6875rem] text-faint">{w.path}</span>
+                      </span>
                     </Link>
                   ))}
                 </div>
@@ -526,7 +535,11 @@ export default function Actions({ loaderData, actionData, params }: Route.Compon
             <ErrorText>{actionData && "error" in actionData ? actionData.error : null}</ErrorText>
             {runs.length === 0 ? (
               <EmptyState title={archiveSelected ? "No retained runs" : "No runs yet"}>
-                {archiveSelected ? "This archived workflow has no runs to display." : workflow?.dispatch ? "Run it by hand, or wait for what starts it." : "Runs appear here when something starts one."}
+                {archiveSelected
+                  ? "This archived workflow has no runs to display."
+                  : workflow?.dispatch
+                    ? "Run it by hand, or wait for what starts it."
+                    : "Runs appear here when something starts one."}
               </EmptyState>
             ) : (
               <Card asChild className="overflow-hidden">

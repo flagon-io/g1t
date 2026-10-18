@@ -5,8 +5,8 @@ import { test } from "node:test";
 
 // A month-end source's figure reported after its month was charged or
 // closed: the production SQL of `late_correction` (src/storage.rs).
-const source = name => readFileSync(new URL(`../services/billing/src/${name}.rs`, import.meta.url), "utf8");
-const sqlFile = name => readFileSync(new URL(`../services/billing/src/${name}.sql`, import.meta.url), "utf8");
+const source = (name) => readFileSync(new URL(`../services/billing/src/${name}.rs`, import.meta.url), "utf8");
+const sqlFile = (name) => readFileSync(new URL(`../services/billing/src/${name}.sql`, import.meta.url), "utf8");
 const constant = (file, name) => {
   const match = source(file).match(new RegExp(`const ${name}: &str = "([\\s\\S]*?)";`));
   assert.ok(match, `${file}::${name}`);
@@ -15,7 +15,10 @@ const constant = (file, name) => {
 function database() {
   const db = new DatabaseSync(":memory:");
   const dir = new URL("../services/billing/migrations/", import.meta.url);
-  for (const name of readdirSync(dir).filter(n => n.endsWith(".sql")).sort()) db.exec(readFileSync(new URL(name, dir), "utf8"));
+  for (const name of readdirSync(dir)
+    .filter((n) => n.endsWith(".sql"))
+    .sort())
+    db.exec(readFileSync(new URL(name, dir), "utf8"));
   return db;
 }
 function batch(db, writes) {
@@ -35,7 +38,9 @@ const now = "2026-11-03T10:00:00.000Z";
 function late(db, id, workspace, newCost, charge, oldRaw, { plan = 0 } = {}) {
   const raise = constant("storage", "LATE_RAISE");
   const ledger = constant("storage", "LATE_LEDGER");
-  const balanceSql = source("storage").split("pub(crate) fn balance_if_posted(")[1].match(/\.prepare\(\s*"([\s\S]*?)"\s*,?\s*\)/)[1];
+  const balanceSql = source("storage")
+    .split("pub(crate) fn balance_if_posted(")[1]
+    .match(/\.prepare\(\s*"([\s\S]*?)"\s*,?\s*\)/)[1];
   const reference = `storage/${workspace}/2026-10/late/${newCost}`;
   const rows = batch(db, [
     [raise, [workspace, "storage", "2026-10", newCost, newCost, now, null, oldRaw]],
@@ -48,8 +53,9 @@ function late(db, id, workspace, newCost, charge, oldRaw, { plan = 0 } = {}) {
   return rows[1].length === 1;
 }
 function charged(db, workspace, cost) {
-  db.prepare("INSERT INTO pending_usage (workspace, source, month, charge_micros, cost_micros, updated_at, charged_at) VALUES (?, 'storage', '2026-10', ?, ?, ?, ?)")
-    .run(workspace, cost, cost, now, now);
+  db.prepare(
+    "INSERT INTO pending_usage (workspace, source, month, charge_micros, cost_micros, updated_at, charged_at) VALUES (?, 'storage', '2026-10', ?, ?, ?, ?)",
+  ).run(workspace, cost, cost, now, now);
 }
 const owed = (db, workspace) => db.prepare("SELECT balance_micros FROM accounts WHERE workspace=?").get(workspace)?.balance_micros ?? 0;
 

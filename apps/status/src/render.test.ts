@@ -38,9 +38,7 @@ function page(states: Record<string, "up" | "degraded" | "down">, incidents: Sta
   const current = new Map(
     Object.entries(states).map(([k, state]) => [k, { state, detail: state === "down" ? "Failed: HTTP 502" : "Answered in 80 ms", latency_ms: 80 }]),
   );
-  const days: DayRow[] = [
-    { component: "api", day: "2026-10-05", checks: 720, up: 719, degraded: 0, down: 1, latency_total: 71900, latency_count: 719 },
-  ];
+  const days: DayRow[] = [{ component: "api", day: "2026-10-05", checks: 720, up: 719, degraded: 0, down: 1, latency_total: 71900, latency_count: 719 }];
   return buildPage({ parts, current, checkedAt: "2026-10-05T11:59:40Z", days, incidents, maintenance, now: NOW });
 }
 
@@ -88,12 +86,7 @@ test("the page: banner, every part with its bar, and no incidents", () => {
 });
 
 test("an outage and an open incident are said at the top, escaped", () => {
-  const html = renderPage(
-    page({ site: "down", api: "up", git: "up", docs: "up" }, [
-      INCIDENT,
-    ]),
-    OPTIONS,
-  );
+  const html = renderPage(page({ site: "down", api: "up", git: "up", docs: "up" }, [INCIDENT]), OPTIONS);
   assert.match(html, /<h1>Major outage<\/h1>/);
   assert.match(html, /Happening now/);
   assert.ok(html.includes("Sign-in &lt;failing&gt;"));
@@ -125,7 +118,12 @@ test("every page follows the system's light or dark setting, with a switch kept 
 });
 
 test("the theme script picks the stored choice, else auto", () => {
-  for (const [stored, expected] of [["light", "light"], ["dark", "dark"], [null, "auto"], ["purple", "auto"]] as const) {
+  for (const [stored, expected] of [
+    ["light", "light"],
+    ["dark", "dark"],
+    [null, "auto"],
+    ["purple", "auto"],
+  ] as const) {
     const root = { dataset: {} as Record<string, string> };
     const run = new Function("localStorage", "document", THEME_SCRIPT);
     run({ getItem: (key: string) => (key === THEME_KEY ? stored : null) }, { documentElement: root });
@@ -133,7 +131,14 @@ test("the theme script picks the stored choice, else auto", () => {
   }
   // A browser that refuses storage still gets a page.
   const root = { dataset: {} as Record<string, string> };
-  new Function("localStorage", "document", THEME_SCRIPT)({ getItem: () => { throw new Error("denied"); } }, { documentElement: root });
+  new Function("localStorage", "document", THEME_SCRIPT)(
+    {
+      getItem: () => {
+        throw new Error("denied");
+      },
+    },
+    { documentElement: root },
+  );
   assert.equal(root.dataset.theme, "auto");
 });
 
@@ -167,7 +172,10 @@ test("maintenance: upcoming, then in progress with its parts under maintenance",
   const during = { ...OPTIONS, now: new Date("2026-10-06T02:30:00Z") };
   const model = buildPage({
     parts,
-    current: new Map([["git", { state: "down" as const, detail: "Failed: HTTP 503", latency_ms: null }], ["site", { state: "up" as const, detail: "ok", latency_ms: 1 }]]),
+    current: new Map([
+      ["git", { state: "down" as const, detail: "Failed: HTTP 503", latency_ms: null }],
+      ["site", { state: "up" as const, detail: "ok", latency_ms: 1 }],
+    ]),
     checkedAt: "2026-10-06T02:29:40Z",
     days: [],
     incidents: [],
@@ -183,7 +191,16 @@ test("maintenance: upcoming, then in progress with its parts under maintenance",
 test("an incident's page: every update, its parts' impact, and the postmortem once published", () => {
   const names = new Map([["site", "Website and sign-in"]]);
   const resolved = { ...INCIDENT, status: "resolved" as const, resolved_at: "2026-10-05T12:40:00Z", postmortem_published_at: "2026-10-06T09:00:00Z" };
-  const pm = { summary: "A deploy broke sign-in.", impact: "", timeline: "- 11:40 declared\n- 12:40 resolved", root_cause: "A <bad> cookie.", went_well: "", went_badly: "", action_items: "- Canary deploys", published_at: "2026-10-06T09:00:00Z" };
+  const pm = {
+    summary: "A deploy broke sign-in.",
+    impact: "",
+    timeline: "- 11:40 declared\n- 12:40 resolved",
+    root_cause: "A <bad> cookie.",
+    went_well: "",
+    went_badly: "",
+    action_items: "- Canary deploys",
+    published_at: "2026-10-06T09:00:00Z",
+  };
   const html = renderIncident(resolved, pm, names, { ...OPTIONS, selfUrl: resolved.url });
   assert.ok(html.includes('id="update-u1"'));
   assert.ok(html.includes("Website and sign-in"));
@@ -198,13 +215,16 @@ test("an incident's page: every update, its parts' impact, and the postmortem on
 });
 
 test("prose: paragraphs and lists, escaped", () => {
-  assert.equal(prose("One\ntwo\n\n- a\n- <b>"),"<p>One<br>two</p><ul><li>a</li><li>&lt;b&gt;</li></ul>");
+  assert.equal(prose("One\ntwo\n\n- a\n- <b>"), "<p>One<br>two</p><ul><li>a</li><li>&lt;b&gt;</li></ul>");
 });
 
 test("history: months newest first, empty ones said so", () => {
   const old = { ...INCIDENT, id: "old", started_at: "2026-08-10T00:00:00Z", resolved_at: "2026-08-10T01:00:00Z" };
   const groups = byMonth([INCIDENT, old], [MAINT]);
-  assert.deepEqual(groups.map((g) => g.month), ["2026-10", "2026-08"]);
+  assert.deepEqual(
+    groups.map((g) => g.month),
+    ["2026-10", "2026-08"],
+  );
   const html = renderHistory([INCIDENT, old], [MAINT], OPTIONS, 3);
   assert.ok(html.includes("October 2026") && html.includes("September 2026") && html.includes("August 2026"));
   assert.ok(html.includes("No incidents or maintenance."));
@@ -216,7 +236,11 @@ test("subscribe pages: the form, its parts, and a confirm button rather than a l
   const html = renderSubscribe(OPTIONS, [{ key: "git", name: "Git" }]);
   assert.ok(html.includes('name="components" value="git"') && html.includes('name="website"'));
   assert.ok(renderSubscribe({ ...OPTIONS, email: false }, []).includes("not available"));
-  const confirm = renderMessage(OPTIONS, { title: "Confirm", text: "One more step", form: { action: "/subscribe/confirm", fields: { token: 'a"b' }, button: "Confirm subscription" } });
+  const confirm = renderMessage(OPTIONS, {
+    title: "Confirm",
+    text: "One more step",
+    form: { action: "/subscribe/confirm", fields: { token: 'a"b' }, button: "Confirm subscription" },
+  });
   assert.ok(confirm.includes('method="post" action="/subscribe/confirm"') && confirm.includes('value="a&quot;b"'));
   assert.ok(renderMaintenance(MAINT, new Map([["git", "Git"]]), OPTIONS).includes("Affects Git"));
 });

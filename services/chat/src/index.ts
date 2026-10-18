@@ -189,7 +189,15 @@ type MessageRow = {
  * Workspaces no longer have agents; their old messages show under the name
  * kept here, else as a deleted agent.
  */
-type FormerAgentRow = { agent_id: string; workspace_id: string; handle: string; display_name: string; avatar_seed: string | null; look: string | null; deleted_at: string };
+type FormerAgentRow = {
+  agent_id: string;
+  workspace_id: string;
+  handle: string;
+  display_name: string;
+  avatar_seed: string | null;
+  look: string | null;
+  deleted_at: string;
+};
 
 /** What a method found out about the channel it was asked about; `role` null for a guest. */
 type Place = { slug: string; workspace: Workspace; channel: ChannelRow; member: MemberRow | null; role: Standing };
@@ -329,7 +337,11 @@ class Chat {
     const agentIds = principals.filter((p) => p.kind === "agent").map((p) => p.id);
     const unnamed = userIds.filter((id) => !this.usernames.has(id));
     const [named, people, former] = await Promise.all([
-      unnamed.length ? identityClient(this.env.IDENTITY).usernames(unnamed).catch(() => ({}) as Record<string, string>) : ({} as Record<string, string>),
+      unnamed.length
+        ? identityClient(this.env.IDENTITY)
+            .usernames(unnamed)
+            .catch(() => ({}) as Record<string, string>)
+        : ({} as Record<string, string>),
       userIds.length ? this.members(slug, workspace) : new Map<string, Member>(),
       agentIds.length ? this.formerAgents(agentIds) : new Map<string, FormerAgentRow>(),
     ]);
@@ -457,12 +469,7 @@ class Chat {
    * for anyone) or write in (`member`: one they are in). One they may not
    * read is not found, so its existence does not leak.
    */
-  private async place(
-    slug: string,
-    channelId: string,
-    viewer: Viewer,
-    need: "read" | "member",
-  ): Promise<Result<Place>> {
+  private async place(slug: string, channelId: string, viewer: Viewer, need: "read" | "member"): Promise<Result<Place>> {
     const found = await this.visitWorkspace(slug, viewer);
     if (!found.ok) return found;
     const { workspace, role } = found.value;
@@ -508,7 +515,10 @@ class Chat {
    * where no reaction is anyone's own.
    */
   private async toMessages(slug: string, workspace: Workspace, rows: MessageRow[], me: string | null = null): Promise<ChatMessage[]> {
-    const reactions = await this.reactionsOf(rows.filter((r) => !r.deleted_at).map((r) => r.id), me);
+    const reactions = await this.reactionsOf(
+      rows.filter((r) => !r.deleted_at).map((r) => r.id),
+      me,
+    );
     const reactors = [...reactions.values()].flatMap((list) => list.flatMap((r) => r.by));
     const profiles = await this.profiles(slug, workspace, [...rows.map((r) => r.author), ...reactors]);
     const at = Date.now();
@@ -522,9 +532,7 @@ class Chat {
       if (meta.reset) extra.reset = true;
       return {
         ...extra,
-        reactions: gone
-          ? []
-          : (reactions.get(row.id) ?? []).map((r) => ({ ...r, by: r.by.map((key) => profiles.get(key)!).filter(Boolean) })),
+        reactions: gone ? [] : (reactions.get(row.id) ?? []).map((r) => ({ ...r, by: r.by.map((key) => profiles.get(key)!).filter(Boolean) })),
         id: row.id,
         channel_id: row.channel_id,
         author: profiles.get(row.author)!,
@@ -545,16 +553,17 @@ class Chat {
   private async reactionsOf(ids: string[], me: string | null): Promise<Map<string, ReactionTally[]>> {
     if (!ids.length) return new Map();
     const rows = await this.db
-      .prepare(
-        "SELECT message_id, emoji, principal, created_at FROM reactions WHERE message_id IN (SELECT value FROM json_each(?))",
-      )
+      .prepare("SELECT message_id, emoji, principal, created_at FROM reactions WHERE message_id IN (SELECT value FROM json_each(?))")
       .bind(JSON.stringify(ids))
       .all<ReactionRow>();
     return tallyReactions(rows.results, me);
   }
 
   private async messageRow(channelId: string, id: string): Promise<MessageRow | null> {
-    return this.db.prepare("SELECT * FROM messages WHERE id = ? AND channel_id = ?").bind(String(id ?? ""), channelId).first<MessageRow>();
+    return this.db
+      .prepare("SELECT * FROM messages WHERE id = ? AND channel_id = ?")
+      .bind(String(id ?? ""), channelId)
+      .first<MessageRow>();
   }
 
   /** Sends a message as it now is to everyone looking at its channel. */
@@ -581,26 +590,16 @@ class Chat {
    * joined this way.
    */
   private async ensureGeneral(workspace: Workspace, me: string): Promise<void> {
-    const seen = await this.db
-      .prepare("SELECT 1 FROM general_joined WHERE workspace_id = ? AND principal = ?")
-      .bind(workspace.id, me)
-      .first();
+    const seen = await this.db.prepare("SELECT 1 FROM general_joined WHERE workspace_id = ? AND principal = ?").bind(workspace.id, me).first();
     if (seen) return;
     const at = now();
     await this.db
-      .prepare(
-        "INSERT OR IGNORE INTO channels (id, workspace_id, kind, name, topic, private, created_by, created_at) VALUES (?, ?, 'channel', ?, ?, 0, ?, ?)",
-      )
+      .prepare("INSERT OR IGNORE INTO channels (id, workspace_id, kind, name, topic, private, created_by, created_at) VALUES (?, ?, 'channel', ?, ?, 0, ?, ?)")
       .bind(newId("chn"), workspace.id, GENERAL, "Anything and everything for the whole workspace.", me, at)
       .run();
-    const general = await this.db
-      .prepare("SELECT * FROM channels WHERE workspace_id = ? AND name = ?")
-      .bind(workspace.id, GENERAL)
-      .first<ChannelRow>();
+    const general = await this.db.prepare("SELECT * FROM channels WHERE workspace_id = ? AND name = ?").bind(workspace.id, GENERAL).first<ChannelRow>();
     const statements = [
-      this.db
-        .prepare("INSERT OR IGNORE INTO general_joined (workspace_id, principal, joined_at) VALUES (?, ?, ?)")
-        .bind(workspace.id, me, at),
+      this.db.prepare("INSERT OR IGNORE INTO general_joined (workspace_id, principal, joined_at) VALUES (?, ?, ?)").bind(workspace.id, me, at),
     ];
     // The workspace's default channels (#general unless its owners chose
     // others): public and not archived only, whatever was kept.
@@ -696,12 +695,7 @@ class Chat {
     for (const row of dmOthers.results) others.set(row.channel_id, [...(others.get(row.channel_id) ?? []), row.principal]);
     const profiles = await this.profiles(slug, workspace, [me, ...dmOthers.results.map((r) => r.principal)]);
     const self = profiles.get(me) ?? null;
-    const counts = tally(
-      unread.results,
-      me,
-      self?.name ?? a.viewer!.username,
-      new Map(joined.results.map((row) => [row.id, row.last_read_id])),
-    );
+    const counts = tally(unread.results, me, self?.name ?? a.viewer!.username, new Map(joined.results.map((row) => [row.id, row.last_read_id])));
 
     const entries: ChatSidebarEntry[] = joined.results.map((row) => {
       const faces = (others.get(row.id) ?? []).map((key) => profiles.get(key)!).filter(Boolean);
@@ -859,10 +853,7 @@ class Chat {
     // Those who may add people see who is asked in and who asks to come in.
     const admits = isChannel && !!member && !!role;
     const [rows, settings, invited, requests] = await Promise.all([
-      this.db
-        .prepare("SELECT * FROM channel_members WHERE channel_id = ? ORDER BY joined_at, principal")
-        .bind(channel.id)
-        .all<MemberRow>(),
+      this.db.prepare("SELECT * FROM channel_members WHERE channel_id = ? ORDER BY joined_at, principal").bind(channel.id).all<MemberRow>(),
       this.settings(workspace),
       admits
         ? this.db
@@ -871,10 +862,7 @@ class Chat {
             .all<InvitationRow>()
         : { results: [] as InvitationRow[] },
       admits
-        ? this.db
-            .prepare("SELECT * FROM channel_requests WHERE channel_id = ? AND answered_at IS NULL ORDER BY created_at")
-            .bind(channel.id)
-            .all<RequestRow>()
+        ? this.db.prepare("SELECT * FROM channel_requests WHERE channel_id = ? AND answered_at IS NULL ORDER BY created_at").bind(channel.id).all<RequestRow>()
         : { results: [] as RequestRow[] },
     ]);
     const profiles = await this.profiles(slug, workspace, [
@@ -979,10 +967,7 @@ class Chat {
     }
     // Open to anyone on g1t: the workspace's owners decide that.
     if (visibility === "public" && role !== "owner") return fail("forbidden", "Only workspace owners can make a channel public.");
-    const taken = await this.db
-      .prepare("SELECT 1 FROM channels WHERE workspace_id = ? AND name = ?")
-      .bind(workspace.id, named.name)
-      .first();
+    const taken = await this.db.prepare("SELECT 1 FROM channels WHERE workspace_id = ? AND name = ?").bind(workspace.id, named.name).first();
     if (taken) return fail("conflict", `#${named.name} already exists.`);
     const me = userKey(a.viewer!);
     const row: ChannelRow = {
@@ -1037,10 +1022,7 @@ class Chat {
       return fail("invalid", `A direct message has at most ${MAX_DM_MEMBERS} people. Make a private channel instead.`);
     }
     const key = dmKey(members);
-    const existing = await this.db
-      .prepare("SELECT * FROM channels WHERE workspace_id = ? AND dm_key = ?")
-      .bind(workspace.id, key)
-      .first<ChannelRow>();
+    const existing = await this.db.prepare("SELECT * FROM channels WHERE workspace_id = ? AND dm_key = ?").bind(workspace.id, key).first<ChannelRow>();
     if (existing) return ok(toChannel(existing));
 
     for (const member of members) {
@@ -1053,16 +1035,11 @@ class Chat {
     }
     const at = now();
     await this.db
-      .prepare(
-        "INSERT OR IGNORE INTO channels (id, workspace_id, kind, private, dm_key, created_by, created_at) VALUES (?, ?, 'dm', 1, ?, ?, ?)",
-      )
+      .prepare("INSERT OR IGNORE INTO channels (id, workspace_id, kind, private, dm_key, created_by, created_at) VALUES (?, ?, 'dm', 1, ?, ?, ?)")
       .bind(newId("chn"), workspace.id, key, me, at)
       .run();
     // Read back by key: if two people opened it at once, both get the one that won.
-    const channel = await this.db
-      .prepare("SELECT * FROM channels WHERE workspace_id = ? AND dm_key = ?")
-      .bind(workspace.id, key)
-      .first<ChannelRow>();
+    const channel = await this.db.prepare("SELECT * FROM channels WHERE workspace_id = ? AND dm_key = ?").bind(workspace.id, key).first<ChannelRow>();
     if (!channel) return fail("conflict", "The direct message could not be opened. Try again.");
     await this.db.batch(members.map((member) => this.joinStatement(channel.id, member, "member", at)));
     return ok(toChannel(channel));
@@ -1092,7 +1069,11 @@ class Chat {
     await this.db.prepare("DELETE FROM channel_members WHERE channel_id = ? AND principal = ?").bind(channel.id, me).run();
     // Out of a private channel, they may no longer read it, live either.
     if (channel.private) {
-      this.defer(this.room(channel.id).drop(me).catch((error: unknown) => console.error("chat could not drop", me, error)));
+      this.defer(
+        this.room(channel.id)
+          .drop(me)
+          .catch((error: unknown) => console.error("chat could not drop", me, error)),
+      );
     }
     return ok(null);
   }
@@ -1128,9 +1109,7 @@ class Chat {
     // Asking them in again lifts a removal.
     await this.db.batch([
       this.db
-        .prepare(
-          "INSERT OR IGNORE INTO channel_invitations (id, channel_id, workspace_id, invitee, invited_by, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        )
+        .prepare("INSERT OR IGNORE INTO channel_invitations (id, channel_id, workspace_id, invitee, invited_by, created_at) VALUES (?, ?, ?, ?, ?, ?)")
         .bind(newId("civ"), channel.id, workspace.id, key, userKey(a.viewer!), at),
       this.db.prepare("DELETE FROM channel_removals WHERE channel_id = ? AND principal = ?").bind(channel.id, key),
     ]);
@@ -1175,7 +1154,11 @@ class Chat {
     await this.db.batch(statements);
     // Out of it, they read it live no longer, unless anyone may.
     if (channel.private || !inside) {
-      this.defer(this.room(channel.id).drop(key).catch((error: unknown) => console.error("chat could not drop", key, error)));
+      this.defer(
+        this.room(channel.id)
+          .drop(key)
+          .catch((error: unknown) => console.error("chat could not drop", key, error)),
+      );
     }
     return ok(null);
   }
@@ -1231,9 +1214,7 @@ class Chat {
       const inIt = !!(await this.db.prepare("SELECT 1 FROM channel_members WHERE channel_id = ? AND principal = ?").bind(channel.id, me).first());
       if (!mayRead(visibilityOf(channel), role, inIt)) {
         await this.db
-          .prepare(
-            "INSERT OR IGNORE INTO channel_requests (id, channel_id, workspace_id, requester, note, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-          )
+          .prepare("INSERT OR IGNORE INTO channel_requests (id, channel_id, workspace_id, requester, note, created_at) VALUES (?, ?, ?, ?, ?, ?)")
           .bind(newId("crq"), channel.id, workspace.id, me, requestNote(a.note), now())
           .run();
       }
@@ -1287,20 +1268,13 @@ class Chat {
     return ok(null);
   }
 
-  async setPreferences(a: {
-    workspace: string;
-    channel_id: string;
-    viewer: Viewer;
-    prefs: { starred?: boolean; muted?: boolean };
-  }): Promise<Result<null>> {
+  async setPreferences(a: { workspace: string; channel_id: string; viewer: Viewer; prefs: { starred?: boolean; muted?: boolean } }): Promise<Result<null>> {
     const found = await this.place(a.workspace, a.channel_id, a.viewer, "member");
     if (!found.ok) return found;
     const starred = typeof a.prefs?.starred === "boolean" ? (a.prefs.starred ? 1 : 0) : null;
     const muted = typeof a.prefs?.muted === "boolean" ? (a.prefs.muted ? 1 : 0) : null;
     await this.db
-      .prepare(
-        "UPDATE channel_members SET starred = COALESCE(?, starred), muted = COALESCE(?, muted) WHERE channel_id = ? AND principal = ?",
-      )
+      .prepare("UPDATE channel_members SET starred = COALESCE(?, starred), muted = COALESCE(?, muted) WHERE channel_id = ? AND principal = ?")
       .bind(starred, muted, found.value.channel.id, userKey(a.viewer!))
       .run();
     // Notify: the badge counts the conversation again, or leaves it out, in every tab.
@@ -1490,7 +1464,11 @@ class Chat {
       .bind(channelId, JSON.stringify(visitors))
       .run();
     for (const key of visitors) {
-      this.defer(this.room(channelId).drop(key).catch((error: unknown) => console.error("chat could not drop", key, error)));
+      this.defer(
+        this.room(channelId)
+          .drop(key)
+          .catch((error: unknown) => console.error("chat could not drop", key, error)),
+      );
     }
   }
 
@@ -1614,9 +1592,7 @@ class Chat {
         .bind(row.id, row.channel_id, author, row.kind, row.body, row.card, row.mentions, threadRoot, at, row.meta),
       this.db.prepare("UPDATE channels SET last_message_at = ? WHERE id = ?").bind(at, channel.id),
       // What you wrote, you have read.
-      this.db
-        .prepare("UPDATE channel_members SET last_read_id = ? WHERE channel_id = ? AND principal = ?")
-        .bind(row.id, channel.id, author),
+      this.db.prepare("UPDATE channel_members SET last_read_id = ? WHERE channel_id = ? AND principal = ?").bind(row.id, channel.id, author),
       this.db
         .prepare(
           `INSERT INTO chat_meter (workspace_id, day, messages, bytes) VALUES (?, ?, 1, ?)
@@ -1625,11 +1601,7 @@ class Chat {
         .bind(workspace.id, meterDay(at), bytesOf(row.body) + bytesOf(row.card ?? "")),
     ];
     if (threadRoot) {
-      statements.push(
-        this.db
-          .prepare("UPDATE messages SET reply_count = reply_count + 1, last_reply_at = ? WHERE id = ?")
-          .bind(at, threadRoot),
-      );
+      statements.push(this.db.prepare("UPDATE messages SET reply_count = reply_count + 1, last_reply_at = ? WHERE id = ?").bind(at, threadRoot));
     }
     await this.db.batch(statements);
 
@@ -1666,10 +1638,7 @@ class Chat {
     const input = { body: body.body, card: null, thread_root: a.message?.thread_root ?? null };
     const members = place.channel.kind === "dm" ? await this.memberKeys(place.channel.id) : [];
     // @g1t works for the workspace's members alone: a guest never starts an answer, wherever they are.
-    if (
-      !place.role ||
-      !startsAnswer({ channelKind: place.channel.kind, members, author: me, threadRoot: input.thread_root, card: false, body: input.body })
-    ) {
+    if (!place.role || !startsAnswer({ channelKind: place.channel.kind, members, author: me, threadRoot: input.thread_root, card: false, body: input.body })) {
       return this.write(place, me, input);
     }
     // A question for @g1t: kept with the page it was asked from, then answered.
@@ -1739,7 +1708,12 @@ class Chat {
     const found = await this.g1tPlace(a.workspace, a.channel_id, a.viewer);
     if (!found.ok) return found;
     await this.room(found.value.channel.id).stopAnswer();
-    const written = await this.write(found.value, G1T_KEY, { body: "New conversation", card: null, thread_root: null }, { meta: { reset: true }, notify: false });
+    const written = await this.write(
+      found.value,
+      G1T_KEY,
+      { body: "New conversation", card: null, thread_root: null },
+      { meta: { reset: true }, notify: false },
+    );
     if (written.ok) {
       // Their own mark is read.
       await this.db
@@ -1875,10 +1849,7 @@ class Chat {
     if (!body.ok) return fail("invalid", body.message);
     const at = now();
     const mentions = mentionsColumn(mentionedHandles(body.body));
-    await this.db
-      .prepare("UPDATE messages SET body = ?, mentions = ?, edited_at = ? WHERE id = ?")
-      .bind(body.body, mentions, at, row.id)
-      .run();
+    await this.db.prepare("UPDATE messages SET body = ?, mentions = ?, edited_at = ? WHERE id = ?").bind(body.body, mentions, at, row.id).run();
     const [message] = await this.toMessages(place.slug, place.workspace, [{ ...row, body: body.body, mentions, edited_at: at }]);
     this.broadcast(place.channel.id, { type: "message.updated", message });
     return ok(message);
@@ -1897,15 +1868,9 @@ class Chat {
     if (row.author !== me && !isOwner(a.viewer, a.workspace) && !g1tsInMine) {
       return fail("forbidden", "Only its author or a workspace owner can delete a message.");
     }
-    const statements = [
-      this.db
-        .prepare("UPDATE messages SET deleted_at = ?, body = '', card = NULL, mentions = '' WHERE id = ?")
-        .bind(now(), row.id),
-    ];
+    const statements = [this.db.prepare("UPDATE messages SET deleted_at = ?, body = '', card = NULL, mentions = '' WHERE id = ?").bind(now(), row.id)];
     if (row.thread_root) {
-      statements.push(
-        this.db.prepare("UPDATE messages SET reply_count = MAX(reply_count - 1, 0) WHERE id = ?").bind(row.thread_root),
-      );
+      statements.push(this.db.prepare("UPDATE messages SET reply_count = MAX(reply_count - 1, 0) WHERE id = ?").bind(row.thread_root));
     }
     await this.db.batch(statements);
     this.broadcast(place.channel.id, { type: "message.deleted", channel_id: place.channel.id, id: row.id });
@@ -1923,9 +1888,7 @@ class Chat {
     if (!id) return fail("invalid", "Say which message was read.");
     // Only forward: reading an old thread does not mark newer messages unread.
     const changed = await this.db
-      .prepare(
-        "UPDATE channel_members SET last_read_id = ?1 WHERE channel_id = ?2 AND principal = ?3 AND (last_read_id IS NULL OR last_read_id < ?1)",
-      )
+      .prepare("UPDATE channel_members SET last_read_id = ?1 WHERE channel_id = ?2 AND principal = ?3 AND (last_read_id IS NULL OR last_read_id < ?1)")
       .bind(id, channel.id, member.principal)
       .run();
     if (changed.meta.changes) {
@@ -1937,9 +1900,13 @@ class Chat {
       });
       // Notify: the read drops the counts in every tab of theirs.
       this.defer(
-        notifyRead(this.db, this.env.NOTIFY, { slug: found.value.slug, channel_id: channel.id, user_id: a.viewer!.id, username: a.viewer!.username, last_read_id: id }).catch(
-          (error) => console.error("chat could not notify a read", error),
-        ),
+        notifyRead(this.db, this.env.NOTIFY, {
+          slug: found.value.slug,
+          channel_id: channel.id,
+          user_id: a.viewer!.id,
+          username: a.viewer!.username,
+          last_read_id: id,
+        }).catch((error) => console.error("chat could not notify a read", error)),
       );
     }
     return ok(null);
@@ -1950,7 +1917,11 @@ class Chat {
   /** One message's reactions now, as `me` sees them. */
   private async reactionsFor(place: Place, messageId: string, me: string): Promise<ChatReaction[]> {
     const list = (await this.reactionsOf([messageId], me)).get(messageId) ?? [];
-    const profiles = await this.profiles(place.slug, place.workspace, list.flatMap((r) => r.by));
+    const profiles = await this.profiles(
+      place.slug,
+      place.workspace,
+      list.flatMap((r) => r.by),
+    );
     return list.map((r) => ({ ...r, by: r.by.map((key) => profiles.get(key)!).filter(Boolean) }));
   }
 
@@ -1967,10 +1938,7 @@ class Chat {
     if (!row || row.deleted_at) return fail("not_found", "No such message.");
     let changed = 0;
     if (remove) {
-      const done = await this.db
-        .prepare("DELETE FROM reactions WHERE message_id = ? AND principal = ? AND emoji = ?")
-        .bind(row.id, who, parsed.emoji)
-        .run();
+      const done = await this.db.prepare("DELETE FROM reactions WHERE message_id = ? AND principal = ? AND emoji = ?").bind(row.id, who, parsed.emoji).run();
       changed = done.meta.changes;
     } else {
       if (parsed.custom) {
@@ -2022,7 +1990,11 @@ class Chat {
   }
 
   private async toEmoji(slug: string, workspace: Workspace, rows: EmojiRow[]): Promise<CustomEmoji[]> {
-    const profiles = await this.profiles(slug, workspace, rows.map((r) => r.created_by));
+    const profiles = await this.profiles(
+      slug,
+      workspace,
+      rows.map((r) => r.created_by),
+    );
     return rows.map((row) => ({
       name: row.name,
       alias_of: row.alias_of,
@@ -2035,10 +2007,7 @@ class Chat {
   }
 
   private liveEmoji(workspace: Workspace, name: string): Promise<EmojiRow | null> {
-    return this.db
-      .prepare("SELECT * FROM custom_emoji WHERE workspace_id = ? AND name = ? AND deleted_at IS NULL")
-      .bind(workspace.id, name)
-      .first<EmojiRow>();
+    return this.db.prepare("SELECT * FROM custom_emoji WHERE workspace_id = ? AND name = ? AND deleted_at IS NULL").bind(workspace.id, name).first<EmojiRow>();
   }
 
   /** The workspace's own emoji: guests read them too, so what members react with draws for them; only members add. */
@@ -2047,10 +2016,7 @@ class Chat {
     if (!found.ok) return found;
     const { workspace } = found.value;
     const [rows, setting] = await Promise.all([
-      this.db
-        .prepare("SELECT * FROM custom_emoji WHERE workspace_id = ? AND deleted_at IS NULL ORDER BY name")
-        .bind(workspace.id)
-        .all<EmojiRow>(),
+      this.db.prepare("SELECT * FROM custom_emoji WHERE workspace_id = ? AND deleted_at IS NULL ORDER BY name").bind(workspace.id).all<EmojiRow>(),
       this.emojiUpload(workspace),
     ]);
     const role = roleOf(a.viewer, a.workspace);
@@ -2106,9 +2072,7 @@ class Chat {
   private async insertEmoji(row: EmojiRow): Promise<Result<null>> {
     try {
       await this.db
-        .prepare(
-          "INSERT INTO custom_emoji (workspace_id, name, alias_of, file, content_type, bytes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        )
+        .prepare("INSERT INTO custom_emoji (workspace_id, name, alias_of, file, content_type, bytes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
         .bind(row.workspace_id, row.name, row.alias_of, row.file, row.content_type, row.bytes, row.created_by, row.created_at)
         .run();
       return ok(null);
@@ -2126,7 +2090,10 @@ class Chat {
     if (!allowed.ok) return allowed;
     const named = emojiName(a.name);
     if (!named.ok) return fail("invalid", named.message);
-    const targetName = String(a.target ?? "").trim().replace(/^:+|:+$/g, "").toLowerCase();
+    const targetName = String(a.target ?? "")
+      .trim()
+      .replace(/^:+|:+$/g, "")
+      .toLowerCase();
     let target = await this.liveEmoji(workspace, targetName);
     // An alias of an alias names the emoji itself, so removing one never strands another.
     if (target?.alias_of) target = await this.liveEmoji(workspace, target.alias_of);
@@ -2143,7 +2110,10 @@ class Chat {
     const found = await this.viewerWorkspace(a.workspace, a.viewer);
     if (!found.ok) return found;
     const workspace = found.value;
-    const name = String(a.name ?? "").trim().replace(/^:+|:+$/g, "").toLowerCase();
+    const name = String(a.name ?? "")
+      .trim()
+      .replace(/^:+|:+$/g, "")
+      .toLowerCase();
     const row = await this.liveEmoji(workspace, name);
     if (!row) return fail("not_found", `This workspace has no :${name}: emoji.`);
     if (!mayRemove(row.created_by, userKey(a.viewer!), roleOf(a.viewer, a.workspace))) {
@@ -2151,9 +2121,7 @@ class Chat {
     }
     // An emoji goes with its aliases; an alias goes alone.
     await this.db
-      .prepare(
-        "UPDATE custom_emoji SET deleted_at = ?1 WHERE workspace_id = ?2 AND deleted_at IS NULL AND (name = ?3 OR (?4 = 0 AND alias_of = ?3))",
-      )
+      .prepare("UPDATE custom_emoji SET deleted_at = ?1 WHERE workspace_id = ?2 AND deleted_at IS NULL AND (name = ?3 OR (?4 = 0 AND alias_of = ?3))")
       .bind(now(), workspace.id, row.name, row.alias_of ? 1 : 0)
       .run();
     // Its image goes once nothing live shows it, in any workspace.

@@ -93,7 +93,12 @@ function StatusBadge({ status }: { status: DomainStatus }) {
 
 /** The www or apex twin of what is typed, for the pairing option's label. */
 function twinOf(input: string): string | null {
-  const host = input.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/[/?#].*$/, "").replace(/\.$/, "");
+  const host = input
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/[/?#].*$/, "")
+    .replace(/\.$/, "");
   if (!/^[a-z0-9.-]+\.[a-z0-9-]+$/.test(host)) return null;
   if (host.startsWith("www.")) return host.slice(4).includes(".") ? host.slice(4) : null;
   return host.split(".").length === 2 ? `www.${host}` : null;
@@ -133,8 +138,7 @@ export default function DomainSettings({ loaderData, actionData, params }: Route
           Serve production at a domain of your own, such as <span className="font-mono text-fg">example.com</span> or{" "}
           <span className="font-mono text-fg">www.example.com</span>, beside{" "}
           <span className="font-mono text-fg">{settings.productionUrl.replace("https://", "")}</span>. Point it at{" "}
-          <span className="font-mono text-fg">{target}</span>; g1t issues and renews its certificate. Redeploys never change
-          it.{" "}
+          <span className="font-mono text-fg">{target}</span>; g1t issues and renews its certificate. Redeploys never change it.{" "}
           <a href="https://docs.g1t.sh/guides/deployments/#custom-domains" className="text-fg hover:underline">
             How custom domains work
           </a>
@@ -191,8 +195,8 @@ export default function DomainSettings({ loaderData, actionData, params }: Route
             description="Most sites answer at both example.com and www.example.com; one serves the app and the other sends visitors to it, path and query kept."
           />
           <p className="mt-4 text-xs text-faint">
-            Each custom domain is {domainPrice(monthlyMicros)} a month on the g1t plan, its cost plus 20%, from the included usage
-            first. As many as you like: {used} in use across the workspace.
+            Each custom domain is {domainPrice(monthlyMicros)} a month on the g1t plan, its cost plus 20%, from the included usage first. As many as you like:{" "}
+            {used} in use across the workspace.
           </p>
         </Form>
       </Card>
@@ -201,13 +205,7 @@ export default function DomainSettings({ loaderData, actionData, params }: Route
         {domains.length === 0 ? (
           <EmptyState title="No custom domains yet">Add one above, then the DNS records it asks for.</EmptyState>
         ) : (
-          primary.map((domain) => (
-            <DomainCard
-              key={domain.id}
-              domain={domain}
-              redirects={domains.filter((d) => d.redirectTo === domain.hostname)}
-            />
-          ))
+          primary.map((domain) => <DomainCard key={domain.id} domain={domain} redirects={domains.filter((d) => d.redirectTo === domain.hostname)} />)
         )}
       </div>
     </div>
@@ -282,15 +280,13 @@ function Records({ domain }: { domain: Domain }) {
       ))}
       {domain.apex && (
         <p className="text-xs text-faint">
-          The apex (the bare domain) cannot have a plain CNAME. Use your provider's flattened CNAME or ALIAS record: a CNAME
-          at <span className="font-mono">@</span> on Cloudflare DNS, an ALIAS on DNSimple, NS1, Namecheap, Porkbun or Gandi,
-          or an ANAME on DNS Made Easy. Route 53's alias records cannot point outside AWS. If your provider has none of
-          these, add only the www domain here and forward the apex to it at your provider.
+          The apex (the bare domain) cannot have a plain CNAME. Use your provider's flattened CNAME or ALIAS record: a CNAME at{" "}
+          <span className="font-mono">@</span> on Cloudflare DNS, an ALIAS on DNSimple, NS1, Namecheap, Porkbun or Gandi, or an ANAME on DNS Made Easy. Route
+          53's alias records cannot point outside AWS. If your provider has none of these, add only the www domain here and forward the apex to it at your
+          provider.
         </p>
       )}
-      <p className="text-xs text-faint">
-        DNS changes can take a few minutes to an hour to be seen. The certificate is issued once the domain points here.
-      </p>
+      <p className="text-xs text-faint">DNS changes can take a few minutes to an hour to be seen. The certificate is issued once the domain points here.</p>
     </div>
   );
 }
@@ -335,8 +331,8 @@ function RemoveDomain({ domain }: { domain: Domain }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Remove {domain.hostname}?</AlertDialogTitle>
             <AlertDialogDescription>
-              It stops serving this project at once, and its certificate is given up. Any domain redirecting to it is
-              removed too. You can add it again later; its DNS records stay as you set them.
+              It stops serving this project at once, and its certificate is given up. Any domain redirecting to it is removed too. You can add it again later;
+              its DNS records stay as you set them.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

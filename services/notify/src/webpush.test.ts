@@ -12,16 +12,19 @@ const RFC = {
   uaPublic: "BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4",
   auth: "BTBZMqHH6r4Tts7J_aSIgg",
   salt: "DGv6ra1nlYgDCS1FRnbzlw",
-  body:
-    "DGv6ra1nlYgDCS1FRnbzlwAAEABBBP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A_yl95bQpu6cVPTpK4Mqgkf1CXztLVBSt2Ks3oZwbuwXPXLWyouBWLVWGNWQexSgSxsj_Qulcy4a-fN",
+  body: "DGv6ra1nlYgDCS1FRnbzlwAAEABBBP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A_yl95bQpu6cVPTpK4Mqgkf1CXztLVBSt2Ks3oZwbuwXPXLWyouBWLVWGNWQexSgSxsj_Qulcy4a-fN",
 };
 
 test("encryption reproduces RFC 8291's example byte for byte", async () => {
-  const body = await encrypt(new TextEncoder().encode(RFC.plaintext), { p256dh: RFC.uaPublic, auth: RFC.auth }, {
-    asPrivate: RFC.asPrivate,
-    asPublic: RFC.asPublic,
-    salt: fromB64url(RFC.salt),
-  });
+  const body = await encrypt(
+    new TextEncoder().encode(RFC.plaintext),
+    { p256dh: RFC.uaPublic, auth: RFC.auth },
+    {
+      asPrivate: RFC.asPrivate,
+      asPublic: RFC.asPublic,
+      salt: fromB64url(RFC.salt),
+    },
+  );
   assert.equal(b64url(body), RFC.body);
 });
 
@@ -84,7 +87,12 @@ test("a push is posted encrypted with its headers; 404 and 410 mean gone", async
     return new Response(null, { status: status.value });
   }) as unknown as typeof fetch;
   const subscription = { endpoint: "https://push.example/sub/1", p256dh: RFC.uaPublic, auth: RFC.auth };
-  const sent = await sendPush(subscription, { title: "hi" }, { vapid: { ...keys, subject: "https://g1t.sh" }, urgency: "high", topic: "chat:chn_1/x" }, fetcher);
+  const sent = await sendPush(
+    subscription,
+    { title: "hi" },
+    { vapid: { ...keys, subject: "https://g1t.sh" }, urgency: "high", topic: "chat:chn_1/x" },
+    fetcher,
+  );
   assert.deepEqual(sent, { endpoint: subscription.endpoint, status: 201, gone: false });
   const headers = seen[0].init.headers as Record<string, string>;
   assert.equal(headers["content-encoding"], "aes128gcm");

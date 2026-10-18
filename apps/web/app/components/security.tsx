@@ -73,7 +73,6 @@ const SEVERITY: Record<Severity, { label: string; tone: BadgeTone }> = {
   unknown: { label: "Unrated", tone: "neutral" },
 };
 
-
 export function SeverityBadge({ severity }: { severity: Severity }) {
   return <Badge tone={SEVERITY[severity].tone}>{SEVERITY[severity].label}</Badge>;
 }
@@ -123,15 +122,7 @@ const STATE_FILTERS: { state: AlertState; label: string; icon: ReactNode }[] = [
 ];
 
 /** Open, Dismissed and Fixed, with how many alerts each holds. */
-export function StateFilter({
-  counts,
-  value,
-  onChange,
-}: {
-  counts: Record<AlertState, number>;
-  value: AlertState;
-  onChange: (state: AlertState) => void;
-}) {
+export function StateFilter({ counts, value, onChange }: { counts: Record<AlertState, number>; value: AlertState; onChange: (state: AlertState) => void }) {
   return (
     <div role="group" aria-label="Filter alerts" className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
       {STATE_FILTERS.map(({ state, label, icon }) => (
@@ -140,9 +131,7 @@ export function StateFilter({
           type="button"
           aria-pressed={value === state}
           onClick={() => onChange(state)}
-          className={`inline-flex items-center gap-1.5 transition-colors ${
-            value === state ? "font-medium text-fg" : "text-muted hover:text-fg"
-          }`}
+          className={`inline-flex items-center gap-1.5 transition-colors ${value === state ? "font-medium text-fg" : "text-muted hover:text-fg"}`}
         >
           {icon}
           {counts[state]} {label}
@@ -219,9 +208,7 @@ export function DismissDialog({
             <textarea name="comment" rows={3} maxLength={500} placeholder="What someone reading this later should know." className={TEXTAREA} />
           </label>
           <div className="flex justify-end">
-            <Button
-              type="submit"
-              disabled={fetcher.state !== "idle" || !reason}>
+            <Button type="submit" disabled={fetcher.state !== "idle" || !reason}>
               {fetcher.state !== "idle" ? "Dismissing…" : "Dismiss alert"}
             </Button>
           </div>
@@ -412,9 +399,7 @@ function SecretItem({
               detail={`${where} · ${finding.preview}`}
               reasons={SECRET_DISMISS_REASONS}
               note={
-                finding.status === "blocked" && !finding.testValue
-                  ? "Dismissing it lets the same push through, unless you dismiss it as revoked."
-                  : undefined
+                finding.status === "blocked" && !finding.testValue ? "Dismissing it lets the same push through, unless you dismiss it as revoked." : undefined
               }
               action={action}
             />
@@ -460,15 +445,7 @@ export function SecretsList({
   canDismiss: boolean;
 }) {
   const item = (finding: SecretFinding) => (
-    <SecretItem
-      key={finding.id}
-      finding={finding}
-      activity={activity}
-      base={base}
-      action={action}
-      focused={finding.id === focus}
-      canDismiss={canDismiss}
-    />
+    <SecretItem key={finding.id} finding={finding} activity={activity} base={base} action={action} focused={finding.id === focus} canDismiss={canDismiss} />
   );
   if (secrets.length === 0) {
     return state === "open" ? (
@@ -496,8 +473,7 @@ export function SecretsList({
         <section>
           <h4 className="text-sm font-medium">Likely test values</h4>
           <p className="mt-0.5 mb-2 text-xs text-muted">
-            These look made for tests or documentation. They never block a push and are not counted as critical; dismiss them
-            to clear the list.
+            These look made for tests or documentation. They never block a push and are not counted as critical; dismiss them to clear the list.
           </p>
           <ul className={LIST}>{tests.map(item)}</ul>
         </section>
@@ -543,18 +519,25 @@ const PULL_ICON: Record<PullStatus, ReactNode> = {
 };
 
 /** Where g1t's security update for a package stands. */
-function UpdateStatus({ update, name, pulls, base }: {
-  update: SecurityUpdate;
-  name: string;
-  pulls: Record<number, PullInfo>;
-  base: string;
-}) {
+function UpdateStatus({ update, name, pulls, base }: { update: SecurityUpdate; name: string; pulls: Record<number, PullInfo>; base: string }) {
   const meta = UPDATE_STATES[update.state];
   const pull = update.pull != null ? pulls[update.pull] : undefined;
   const about: Record<SecurityUpdate["state"], ReactNode> = {
-    requested: <>A sandbox is raising {name} to {update.target}.</>,
-    open: <>It raises {name} to {update.target} and lands through your branch's required checks.</>,
-    merged: <>{name} was raised to {update.target}.</>,
+    requested: (
+      <>
+        A sandbox is raising {name} to {update.target}.
+      </>
+    ),
+    open: (
+      <>
+        It raises {name} to {update.target} and lands through your branch's required checks.
+      </>
+    ),
+    merged: (
+      <>
+        {name} was raised to {update.target}.
+      </>
+    ),
     closed: <>The pull request was closed without merging.</>,
     superseded: <>A newer update replaced it, or the package is no longer vulnerable, so g1t closed it.</>,
     needs_code: (
@@ -703,8 +686,7 @@ function PackageItem({
             <SeverityBadge severity={worstSeverity(group.vulns)} />
           </div>
           <p className="mt-1 text-xs text-faint wrap-anywhere">
-            {target ? <>Fixed in {target}</> : "No patched version"} · locked in{" "}
-            <span className="font-mono">{manifests.join(", ")}</span>
+            {target ? <>Fixed in {target}</> : "No patched version"} · locked in <span className="font-mono">{manifests.join(", ")}</span>
           </p>
         </div>
       </div>
@@ -784,9 +766,7 @@ function AdvisoryItem({
           <p className="mt-1 text-muted wrap-anywhere">{vuln.summary}</p>
         </div>
         {canDismiss && vuln.state !== "fixed" && (
-          <div className="flex shrink-0 items-center gap-1.5">
-            {vuln.state === "open" ? dismiss() : <ReopenButton id={vuln.id} action={action} />}
-          </div>
+          <div className="flex shrink-0 items-center gap-1.5">{vuln.state === "open" ? dismiss() : <ReopenButton id={vuln.id} action={action} />}</div>
         )}
       </div>
       {vuln.state === "open" && !vuln.fixedVersion && (
@@ -818,7 +798,14 @@ function AdvisoryItem({
 export function ScanSummary({
   scan,
 }: {
-  scan: { history: string; commitsScanned: number; historyFinishedAt: string | null; dependenciesScannedAt: string | null; dependenciesError: string | null; lockfiles: string[] };
+  scan: {
+    history: string;
+    commitsScanned: number;
+    historyFinishedAt: string | null;
+    dependenciesScannedAt: string | null;
+    dependenciesError: string | null;
+    lockfiles: string[];
+  };
 }) {
   const history =
     scan.history === "done" ? (

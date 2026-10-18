@@ -162,7 +162,9 @@ export function SessionProposal({
   const [available, setAvailable] = useState<boolean | null>(null);
   const [busy, setBusy] = useState<"start" | "copy" | null>(null);
   const [started, setStarted] = useState<Started | null>(
-    kept?.started ? { session_url: kept.session_url ?? null, provider_session_url: kept.provider_session_url ?? null, handoff: false, command: null, prompt: "" } : null,
+    kept?.started
+      ? { session_url: kept.session_url ?? null, provider_session_url: kept.provider_session_url ?? null, handoff: false, command: null, prompt: "" }
+      : null,
   );
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -173,7 +175,10 @@ export function SessionProposal({
   useEffect(() => {
     if (kept?.repo_url) setMade({ repo_url: kept.repo_url, production_url: kept.production_url ?? null, deploy_error: kept.deploy_error ?? null });
     if (kept?.started) {
-      setStarted((now) => now ?? { session_url: kept.session_url ?? null, provider_session_url: kept.provider_session_url ?? null, handoff: false, command: null, prompt: "" });
+      setStarted(
+        (now) =>
+          now ?? { session_url: kept.session_url ?? null, provider_session_url: kept.provider_session_url ?? null, handoff: false, command: null, prompt: "" },
+      );
     }
   }, [kept?.repo_url, kept?.production_url, kept?.deploy_error, kept?.started, kept?.session_url, kept?.provider_session_url]);
 
@@ -311,7 +316,10 @@ export function AskSources({ sources }: { sources: AskSource[] }) {
         {sources.map((source) => (
           <li key={source.url} className="min-w-0">
             <Hint label={source.url}>
-              <a href={source.url} className="group inline-flex max-w-64 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+              <a
+                href={source.url}
+                className="group inline-flex max-w-64 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
                 <Badge size="md" className="max-w-full group-hover:border-accent/40 group-hover:text-fg">
                   <span className="truncate">{source.title}</span>
                 </Badge>

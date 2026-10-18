@@ -27,37 +27,37 @@ gives their values out, so they cannot be copied across.
 
 ## What runs
 
-| On GitHub | On g1t |
-| --- | --- |
+| On GitHub                                                                                                                                                                                                                                                                                     | On g1t                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `on:` `push` (branches, tags, paths), `pull_request`, `pull_request_target`, `work_item`, `work_item_comment`, `pull_request_review`, `schedule`, `workflow_dispatch`, `workflow_run`, `merge_group`, `create`, `delete`, `repository_dispatch`, `release`, `deployment`, `deployment_status` | The same, from g1t's own pushes, pull requests, [work items](/work/work-items/) linked to the repository, comments, [releases](#releases), [deployments](#deployments) and [merge queue](/guides/merge-queue/). `work_item` and `work_item_comment` are g1t's own, in place of GitHub's `issues` and `issue_comment`, with `github.event.work_item` in place of `github.event.issue`; `work_item_comment` runs for comments on pull requests too, with `github.event.work_item.pull_request` set. A workflow on `issues` or `issue_comment` still reads, but starts nothing, and its page says to write `work_item` or `work_item_comment`. `create` starts on each new branch or tag, at its commit; `delete` on each branch or tag a push deletes, on the default branch's latest commit, with `github.event.ref` and `github.event.ref_type` naming what went. As on GitHub, neither takes `branches` or `tags` filters: a workflow on them runs for every branch and tag. `repository_dispatch` starts on [a dispatch event](#repository-dispatch). |
-| `jobs`, `needs`, `if`, `outputs`, `env`, `defaults`, `timeout-minutes`, `continue-on-error` | The same. |
-| `timeout-minutes` and `continue-on-error` on a step | The same, for `run:` and `uses:` steps alike. A `uses:` step's action is stopped at its limit, with every process it started; a step inside a composite action stops at its own limit or the `uses:` step's, whichever comes first. A step stopped this way fails, unless `continue-on-error` lets the job go on. |
-| `strategy.matrix` with `include` and `exclude`, `fail-fast`, `max-parallel`, a matrix from `fromJSON(needs.…)` | The same. |
-| `concurrency` with `cancel-in-progress`, for the workflow or for one job | The same: one run, or one job, of a group at a time. |
-| `permissions:` for the workflow or for one job, `read-all`, `write-all` | The same: they decide what [the job's token](#the-jobs-token) may do. |
-| `${{ }}` expressions: every operator, function and context | The same, including `hashFiles`, and `success()`, `failure()`, `always()` and `cancelled()` in `if:` (anywhere else they are an error, as on GitHub). |
-| `run:` with `bash`, `sh`, `python`, `pwsh` or a custom shell | The same, with GitHub's file for each: `.sh` for `bash` and `sh`, `.py` for `python`, `.ps1` for PowerShell (stopping at the first error, and exiting with the last program's code), `.cmd` for `cmd`, and no extension for another program. `python` runs `python`, or `python3` on a machine without it. |
-| JavaScript actions (`uses: owner/repo@v7`, `owner/repo/path@v7`) | Fetched from that repository on g1t when g1t has it and your repository may use it, otherwise from GitHub, and run as they are, on Node 24, the runtime current actions declare. An action that declares `node20` runs on Node 20 where the machine has one. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories) and [an action's pre and post](#an-actions-pre-and-post). |
-| Composite actions | The same. |
-| Reusable workflows (`jobs.<id>.uses: ./.g1t/workflows/build.yml`, or `owner/repo/.g1t/workflows/build.yml@v1` in another repository) | The same: `with:` inputs checked against their `type`, `secrets:` by name or `secrets: inherit`, `on.workflow_call` outputs, `strategy.matrix` on the calling job (one call for each combination), `concurrency` on the calling job, and up to ten levels of workflows with at most 50 different reusable workflows in a run. `.github/workflows/…` finds the workflow under `.g1t/` after the move. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories). |
-| `actions/checkout` | The action itself, at the version the step names, fetching from g1t with the job's token: every input and output, its post step that removes the credential, and a pull request's [test merge commit](#what-a-pull-requests-run-builds), which g1t keeps in the repository. In a job container without git it downloads the commit as a tarball from [`GET /repos/{owner}/{repo}/tarball/{ref}`](/reference/api/repositories/download-tarball-archive/), as on GitHub, up to 10,000 files and 24 MB. `lfs` finds no Git LFS files: g1t keeps none. |
-| `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH`, `GITHUB_STATE`, `GITHUB_STEP_SUMMARY` | The same. Step summaries show on the run's page; see [job summaries](#job-summaries). |
-| `::error::`, `::warning::`, `::notice::`, `::group::`, `::add-mask::`, `::echo::on` | The same: errors and warnings become annotations on the run, with their `file`, `line`, `col`, `endLine` and `endColumn`, and [masked](#masking-secrets) values stay hidden. |
-| Problem matchers (`::add-matcher::`, `::remove-matcher::`) | The same, so `actions/setup-node`, `setup-go` and `setup-python` turn compiler and linter output into annotations. See [problem matchers](#problem-matchers). |
-| `secrets.*`, `vars.*`, `secrets.GITHUB_TOKEN` | The same. `secrets.G1T_TOKEN` is [the job's own token](#the-jobs-token); `GITHUB_TOKEN` is its alias. |
-| `environment:` on a job | The job waits for the environment's [protection rules](#environments), then reads each key's row for that environment, as environment secrets work, and the run records a [deployment](/guides/deployments-api/#deployments-from-g1t-actions) to it. `url` gives the deployment its address; `deployment: false` reads the environment's values without making one. The name may be an expression. |
-| `actions/upload-artifact`, `actions/download-artifact`, `actions/upload-artifact/merge` | The same inputs and outputs as version 4: `retention-days`, `overwrite`, `compression-level`, `include-hidden-files`, `!` exclusions, download by `pattern` with `merge-multiple`, and from another run with `run-id` and `github-token`. Up to 5 GiB each; see [artifacts](#artifacts). |
-| `actions/cache`, `actions/cache/restore`, `actions/cache/save` | The actions themselves, at the version the step names, saving to and restoring from the repository's cache: kept per repository and branch, found by `key` or the newest under a `restore-keys` prefix. Up to 2 GiB each; see [the cache](#the-cache). |
-| Actions that cache through the toolkit, such as `actions/setup-node` with `cache: npm` or `Swatinem/rust-cache` | The same: they save to and restore from the repository's cache. See [actions built on the toolkit](#actions-built-on-the-toolkit). |
-| sccache with `SCCACHE_GHA_ENABLED` | The same: its entries go to the repository's cache. See [caching Rust builds](#caching-rust-builds). |
-| `permissions: id-token: write` | The job can ask for an OIDC token, and trade it for a cloud provider's credentials. See [OIDC tokens](#oidc-tokens). |
-| `docker build`, `push`, `run`, `login`, `compose`, Buildx | The same, with a Docker Engine of the job's own. See [Docker](#docker). |
-| `services:` | The same: each service starts before the steps, health checks are waited for, and it is reached at `localhost` on its port and by its name. |
-| `container:` | The same: every step runs inside the image. |
-| `uses: docker://image`, Docker actions (`runs.using: docker`) | The same: built from the action's Dockerfile or pulled, and run with GitHub's `/github/workspace` layout. |
-| `docker/setup-buildx-action`, `docker/build-push-action`, `docker/login-action` | The same. `setup-buildx-action` picks the job's own Engine as the builder. |
+| `jobs`, `needs`, `if`, `outputs`, `env`, `defaults`, `timeout-minutes`, `continue-on-error`                                                                                                                                                                                                   | The same.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `timeout-minutes` and `continue-on-error` on a step                                                                                                                                                                                                                                           | The same, for `run:` and `uses:` steps alike. A `uses:` step's action is stopped at its limit, with every process it started; a step inside a composite action stops at its own limit or the `uses:` step's, whichever comes first. A step stopped this way fails, unless `continue-on-error` lets the job go on.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `strategy.matrix` with `include` and `exclude`, `fail-fast`, `max-parallel`, a matrix from `fromJSON(needs.…)`                                                                                                                                                                                | The same.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `concurrency` with `cancel-in-progress`, for the workflow or for one job                                                                                                                                                                                                                      | The same: one run, or one job, of a group at a time.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `permissions:` for the workflow or for one job, `read-all`, `write-all`                                                                                                                                                                                                                       | The same: they decide what [the job's token](#the-jobs-token) may do.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `${{ }}` expressions: every operator, function and context                                                                                                                                                                                                                                    | The same, including `hashFiles`, and `success()`, `failure()`, `always()` and `cancelled()` in `if:` (anywhere else they are an error, as on GitHub).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `run:` with `bash`, `sh`, `python`, `pwsh` or a custom shell                                                                                                                                                                                                                                  | The same, with GitHub's file for each: `.sh` for `bash` and `sh`, `.py` for `python`, `.ps1` for PowerShell (stopping at the first error, and exiting with the last program's code), `.cmd` for `cmd`, and no extension for another program. `python` runs `python`, or `python3` on a machine without it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| JavaScript actions (`uses: owner/repo@v7`, `owner/repo/path@v7`)                                                                                                                                                                                                                              | Fetched from that repository on g1t when g1t has it and your repository may use it, otherwise from GitHub, and run as they are, on Node 24, the runtime current actions declare. An action that declares `node20` runs on Node 20 where the machine has one. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories) and [an action's pre and post](#an-actions-pre-and-post).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Composite actions                                                                                                                                                                                                                                                                             | The same.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Reusable workflows (`jobs.<id>.uses: ./.g1t/workflows/build.yml`, or `owner/repo/.g1t/workflows/build.yml@v1` in another repository)                                                                                                                                                          | The same: `with:` inputs checked against their `type`, `secrets:` by name or `secrets: inherit`, `on.workflow_call` outputs, `strategy.matrix` on the calling job (one call for each combination), `concurrency` on the calling job, and up to ten levels of workflows with at most 50 different reusable workflows in a run. `.github/workflows/…` finds the workflow under `.g1t/` after the move. See [actions and workflows from other repositories](#actions-and-workflows-from-other-repositories).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `actions/checkout`                                                                                                                                                                                                                                                                            | The action itself, at the version the step names, fetching from g1t with the job's token: every input and output, its post step that removes the credential, and a pull request's [test merge commit](#what-a-pull-requests-run-builds), which g1t keeps in the repository. In a job container without git it downloads the commit as a tarball from [`GET /repos/{owner}/{repo}/tarball/{ref}`](/reference/api/repositories/download-tarball-archive/), as on GitHub, up to 10,000 files and 24 MB. `lfs` finds no Git LFS files: g1t keeps none.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH`, `GITHUB_STATE`, `GITHUB_STEP_SUMMARY`                                                                                                                                                                                                           | The same. Step summaries show on the run's page; see [job summaries](#job-summaries).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `::error::`, `::warning::`, `::notice::`, `::group::`, `::add-mask::`, `::echo::on`                                                                                                                                                                                                           | The same: errors and warnings become annotations on the run, with their `file`, `line`, `col`, `endLine` and `endColumn`, and [masked](#masking-secrets) values stay hidden.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Problem matchers (`::add-matcher::`, `::remove-matcher::`)                                                                                                                                                                                                                                    | The same, so `actions/setup-node`, `setup-go` and `setup-python` turn compiler and linter output into annotations. See [problem matchers](#problem-matchers).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `secrets.*`, `vars.*`, `secrets.GITHUB_TOKEN`                                                                                                                                                                                                                                                 | The same. `secrets.G1T_TOKEN` is [the job's own token](#the-jobs-token); `GITHUB_TOKEN` is its alias.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `environment:` on a job                                                                                                                                                                                                                                                                       | The job waits for the environment's [protection rules](#environments), then reads each key's row for that environment, as environment secrets work, and the run records a [deployment](/guides/deployments-api/#deployments-from-g1t-actions) to it. `url` gives the deployment its address; `deployment: false` reads the environment's values without making one. The name may be an expression.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `actions/upload-artifact`, `actions/download-artifact`, `actions/upload-artifact/merge`                                                                                                                                                                                                       | The same inputs and outputs as version 4: `retention-days`, `overwrite`, `compression-level`, `include-hidden-files`, `!` exclusions, download by `pattern` with `merge-multiple`, and from another run with `run-id` and `github-token`. Up to 5 GiB each; see [artifacts](#artifacts).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `actions/cache`, `actions/cache/restore`, `actions/cache/save`                                                                                                                                                                                                                                | The actions themselves, at the version the step names, saving to and restoring from the repository's cache: kept per repository and branch, found by `key` or the newest under a `restore-keys` prefix. Up to 2 GiB each; see [the cache](#the-cache).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Actions that cache through the toolkit, such as `actions/setup-node` with `cache: npm` or `Swatinem/rust-cache`                                                                                                                                                                               | The same: they save to and restore from the repository's cache. See [actions built on the toolkit](#actions-built-on-the-toolkit).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| sccache with `SCCACHE_GHA_ENABLED`                                                                                                                                                                                                                                                            | The same: its entries go to the repository's cache. See [caching Rust builds](#caching-rust-builds).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `permissions: id-token: write`                                                                                                                                                                                                                                                                | The job can ask for an OIDC token, and trade it for a cloud provider's credentials. See [OIDC tokens](#oidc-tokens).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `docker build`, `push`, `run`, `login`, `compose`, Buildx                                                                                                                                                                                                                                     | The same, with a Docker Engine of the job's own. See [Docker](#docker).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `services:`                                                                                                                                                                                                                                                                                   | The same: each service starts before the steps, health checks are waited for, and it is reached at `localhost` on its port and by its name.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `container:`                                                                                                                                                                                                                                                                                  | The same: every step runs inside the image.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `uses: docker://image`, Docker actions (`runs.using: docker`)                                                                                                                                                                                                                                 | The same: built from the action's Dockerfile or pulled, and run with GitHub's `/github/workspace` layout.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `docker/setup-buildx-action`, `docker/build-push-action`, `docker/login-action`                                                                                                                                                                                                               | The same. `setup-buildx-action` picks the job's own Engine as the builder.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
-The **Actions** page of a workflow says, under *How this runs on g1t*,
+The **Actions** page of a workflow says, under _How this runs on g1t_,
 anything in it that runs differently.
 
 ### Not yet
@@ -115,14 +115,14 @@ files, so a workflow GitHub refuses is refused on g1t too, and one GitHub
 runs reads on g1t. When a workflow can't be read, its page says what is
 wrong, with the job and step, and no run starts from it.
 
-| You write | g1t says |
-| --- | --- |
-| A key GitHub doesn't have, at any level, such as `runs_on:` or `with:` on a `run:` step | It is unexpected, and lists the keys that place can have. |
-| A job without `runs-on` | The job has no `runs-on`. A job that calls a reusable workflow with `uses:` has no `runs-on` or `steps`. |
+| You write                                                                                                                     | g1t says                                                                                                                                          |
+| ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A key GitHub doesn't have, at any level, such as `runs_on:` or `with:` on a `run:` step                                       | It is unexpected, and lists the keys that place can have.                                                                                         |
+| A job without `runs-on`                                                                                                       | The job has no `runs-on`. A job that calls a reusable workflow with `uses:` has no `runs-on` or `steps`.                                          |
 | A job id that doesn't start with a letter or `_`, has characters other than letters, digits, `-` and `_`, or starts with `__` | It is not a job id GitHub accepts. Step ids follow the same rule. Two jobs, or two steps of a job, whose ids differ only in case are the same id. |
-| An event GitHub doesn't have, or a filter the event doesn't take, such as `types` on `push` | GitHub has no such event, or the event doesn't take that key. `branches` and `branches-ignore` (and `tags`, `paths`) can't both be on one event. |
-| A YAML merge key (`<<: *defaults`) | GitHub doesn't read merge keys. Anchors and aliases (`&steps` and `*steps`) work, as on GitHub, for a whole value. |
-| A `permissions` name GitHub's token doesn't have, such as `metadata` | It is unexpected. A name GitHub has that g1t has nothing behind yet reads, and grants nothing. |
+| An event GitHub doesn't have, or a filter the event doesn't take, such as `types` on `push`                                   | GitHub has no such event, or the event doesn't take that key. `branches` and `branches-ignore` (and `tags`, `paths`) can't both be on one event.  |
+| A YAML merge key (`<<: *defaults`)                                                                                            | GitHub doesn't read merge keys. Anchors and aliases (`&steps` and `*steps`) work, as on GitHub, for a whole value.                                |
+| A `permissions` name GitHub's token doesn't have, such as `metadata`                                                          | It is unexpected. A name GitHub has that g1t has nothing behind yet reads, and grants nothing.                                                    |
 
 ### g1t's own settings
 
@@ -134,8 +134,8 @@ GitHub refuses a workflow with `g1t:` in it, so use it only in
 - Each setting in it has a GitHub equivalent, written here, so that a
   workflow can be moved back to GitHub without it.
 
-| Setting | Where | What it does | On GitHub |
-| --- | --- | --- | --- |
+| Setting             | Where | What it does                                                                    | On GitHub                                       |
+| ------------------- | ----- | ------------------------------------------------------------------------------- | ----------------------------------------------- |
 | `deployment: false` | A job | The job reads its `environment:` values without the run recording a deployment. | `environment: { name: ..., deployment: false }` |
 
 g1t keeps any other key under `g1t:` as written, and does nothing with it
@@ -174,11 +174,11 @@ To add one:
    `acme/policies/.g1t/workflows/scan.yml@main`), a mode, and the
    repositories it runs in, then choose **Add workflow**.
 
-| Setting | Options |
-| --- | --- |
-| Mode | **Required**: it runs in every repository it targets. A workflow of the same `name:` in the repository does not run while it is required, and nobody in the repository can turn it off. **Default**: it runs where the repository has no workflow of the same `name:`, which runs in its place, and the repository's admins can turn it off on its Actions page. |
-| Repositories | **All repositories**, or names and patterns, one per line: `*` matches any characters, and `!name` leaves out what an earlier line took in. The last line that matches decides, without regard to case; only `!` lines means every repository but those. |
-| Visibility | Public and private repositories, public only, or private only. |
+| Setting      | Options                                                                                                                                                                                                                                                                                                                                                          |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mode         | **Required**: it runs in every repository it targets. A workflow of the same `name:` in the repository does not run while it is required, and nobody in the repository can turn it off. **Default**: it runs where the repository has no workflow of the same `name:`, which runs in its place, and the repository's admins can turn it off on its Actions page. |
+| Repositories | **All repositories**, or names and patterns, one per line: `*` matches any characters, and `!name` leaves out what an earlier line took in. The last line that matches decides, without regard to case; only `!` lines means every repository but those.                                                                                                         |
+| Visibility   | Public and private repositories, public only, or private only.                                                                                                                                                                                                                                                                                                   |
 
 g1t copies the source file when you save, at the commit its ref names
 then, and that copy runs until you copy it again with **Copy again** (or
@@ -212,12 +212,12 @@ else reports a check of that name.
 
 Through the API and MCP:
 
-| Route | MCP | |
-| --- | --- | --- |
-| [`GET /workspaces/{workspace}/actions/managed-workflows`](/reference/api/run-protection/list-workspace-managed-workflows/) | `workflow` `list_managed_workflows` | Each with its source, the commit it was copied at, its mode, repositories, visibility and the copy that runs. |
-| [`POST /workspaces/{workspace}/actions/managed-workflows`](/reference/api/run-protection/create-workspace-managed-workflow/) | `workflow` `add_managed_workflow` | `name`, `source`, `mode` (`required` or `default`), `repositories`, `visibility` (`all`, `public` or `private`). |
-| [`PATCH /workspaces/{workspace}/actions/managed-workflows/{workflow}`](/reference/api/run-protection/update-workspace-managed-workflow/) | `workflow` `update_managed_workflow` | Any of those; `refresh: true` copies the source again. |
-| [`DELETE /workspaces/{workspace}/actions/managed-workflows/{workflow}`](/reference/api/run-protection/delete-workspace-managed-workflow/) | `workflow` `remove_managed_workflow` | Its runs stay. |
+| Route                                                                                                                                     | MCP                                  |                                                                                                                  |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| [`GET /workspaces/{workspace}/actions/managed-workflows`](/reference/api/run-protection/list-workspace-managed-workflows/)                | `workflow` `list_managed_workflows`  | Each with its source, the commit it was copied at, its mode, repositories, visibility and the copy that runs.    |
+| [`POST /workspaces/{workspace}/actions/managed-workflows`](/reference/api/run-protection/create-workspace-managed-workflow/)              | `workflow` `add_managed_workflow`    | `name`, `source`, `mode` (`required` or `default`), `repositories`, `visibility` (`all`, `public` or `private`). |
+| [`PATCH /workspaces/{workspace}/actions/managed-workflows/{workflow}`](/reference/api/run-protection/update-workspace-managed-workflow/)  | `workflow` `update_managed_workflow` | Any of those; `refresh: true` copies the source again.                                                           |
+| [`DELETE /workspaces/{workspace}/actions/managed-workflows/{workflow}`](/reference/api/run-protection/delete-workspace-managed-workflow/) | `workflow` `remove_managed_workflow` | Its runs stay.                                                                                                   |
 
 Only owners can see and change them; a token needs `workspace:read` to
 list them and `workspace:admin` to change them.
@@ -230,20 +230,20 @@ at each time its cron lines name, in UTC:
 ```yaml
 on:
   schedule:
-    - cron: "0 9 * * mon"   # Mondays at 09:00 UTC
-    - cron: "*/30 * * * *"  # every 30 minutes
+    - cron: "0 9 * * mon" # Mondays at 09:00 UTC
+    - cron: "*/30 * * * *" # every 30 minutes
 ```
 
 Each line has five fields: minute, hour, day of month, month and day of
 the week. A field takes `*`, a number, a range `1-5`, a list `1,15` and a
 step `*/10`; days take `mon` to `sun`, and months `jan` to `dec`.
 
-| Rule | What happens |
-| --- | --- |
+| Rule                    | What happens                                                                                                                                                                                                                                                                                                                                         |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Every 5 minutes at most | A schedule more frequent than every 5 minutes, such as `* * * * *` or `*/2 * * * *`, runs every 5 minutes instead, on the five-minute marks (:00, :05, :10 and so on), at each mark that ends five minutes in which it would have run. A mark outside the hours, days or months the schedule names never runs: `* 9 * * *` runs from 09:00 to 09:55. |
-| No push for 60 days | Schedules pause in a repository that has had no push for 60 days. The next push to any branch resumes them. Other events and `workflow_dispatch` still start the workflow. |
-| Actions not paid for | When a scheduled run's job could not start because the workspace's plan, spend limit or the open-source pool does not cover it, that run fails and says why, and the workflow's schedule waits an hour before it tries again. |
-| Archived repository | Schedules wait until the repository is unarchived. |
+| No push for 60 days     | Schedules pause in a repository that has had no push for 60 days. The next push to any branch resumes them. Other events and `workflow_dispatch` still start the workflow.                                                                                                                                                                           |
+| Actions not paid for    | When a scheduled run's job could not start because the workspace's plan, spend limit or the open-source pool does not cover it, that run fails and says why, and the workflow's schedule waits an hour before it tries again.                                                                                                                        |
+| Archived repository     | Schedules wait until the repository is unarchived.                                                                                                                                                                                                                                                                                                   |
 
 ## Actions and workflows from other repositories
 
@@ -252,14 +252,14 @@ A step's `uses: owner/repo@ref` (or `owner/repo/path@ref`) and a job's
 g1t looks for it on g1t first, but a name means what it means on GitHub
 whenever GitHub has it:
 
-| The repository | What happens |
-| --- | --- |
-| On g1t and public: in your workspace, under `g1t/` (g1t's own), or with a name GitHub has no public repository of | Your workflows use it, from any workspace. |
-| On g1t, private, in your workspace, with **Access** set to *Accessible from repositories in* the workspace | Your private repositories' workflows use it. A job reads it with a read-only token for that repository alone, which ends with the job. |
-| On g1t, private, and not shared that way | The step or job fails, and says why. A private repository's actions are never used by a public repository's workflows, whose logs anyone can read, nor from another workspace. |
-| Under `g1t/`, and not one of g1t's own public repositories | The step or job fails, and says so. A `g1t/` name is never looked for on GitHub. |
-| Not on g1t, or private in a workspace you cannot see | An action comes from GitHub, at the commit its ref names there (see [actions from GitHub](#actions-from-github)); a reusable workflow is read from a public repository on GitHub. |
-| On g1t, public, in another workspace, with a name GitHub has a public repository of | GitHub's is used, as on GitHub: anyone can make a workspace, so a workspace called `actions` never answers for `actions/setup-node`. When g1t can't reach GitHub to tell, GitHub's is used too. |
+| The repository                                                                                                    | What happens                                                                                                                                                                                    |
+| ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| On g1t and public: in your workspace, under `g1t/` (g1t's own), or with a name GitHub has no public repository of | Your workflows use it, from any workspace.                                                                                                                                                      |
+| On g1t, private, in your workspace, with **Access** set to _Accessible from repositories in_ the workspace        | Your private repositories' workflows use it. A job reads it with a read-only token for that repository alone, which ends with the job.                                                          |
+| On g1t, private, and not shared that way                                                                          | The step or job fails, and says why. A private repository's actions are never used by a public repository's workflows, whose logs anyone can read, nor from another workspace.                  |
+| Under `g1t/`, and not one of g1t's own public repositories                                                        | The step or job fails, and says so. A `g1t/` name is never looked for on GitHub.                                                                                                                |
+| Not on g1t, or private in a workspace you cannot see                                                              | An action comes from GitHub, at the commit its ref names there (see [actions from GitHub](#actions-from-github)); a reusable workflow is read from a public repository on GitHub.               |
+| On g1t, public, in another workspace, with a name GitHub has a public repository of                               | GitHub's is used, as on GitHub: anyone can make a workspace, so a workspace called `actions` never answers for `actions/setup-node`. When g1t can't reach GitHub to tell, GitHub's is used too. |
 
 An owner that is a [workspace alias](/guides/workspaces/#workspace-aliases)
 is looked for under its workspace's slug, by the same rules, as if you had
@@ -314,10 +314,10 @@ the workspace of Flagon, Inc., which builds g1t: `g1t/deploy@v1` is the
 repository `flagon-io/deploy`, and its page and the job's log name it
 that way. Write `g1t/`; it keeps working wherever g1t's actions are kept.
 
-| Action | What it does |
-| --- | --- |
+| Action                                       | What it does                                                                                                                                                                                                                                                                                |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`g1t/deploy@v1`](https://g1t.sh/g1t/deploy) | Builds the checkout and puts it on [g1t.page](/guides/deployments/): production from the project's production branch, a preview from a pull request or another branch. The job needs `deployments: write`. See [deploying from a workflow](/guides/deployments/#deploying-from-a-workflow). |
-| [`g1t/detect@v1`](https://g1t.sh/g1t/detect) | Says what that build would find (`kind`, `install`, `build`, `output-dir`, `framework`) without building anything. |
+| [`g1t/detect@v1`](https://g1t.sh/g1t/detect) | Says what that build would find (`kind`, `install`, `build`, `output-dir`, `framework`) without building anything.                                                                                                                                                                          |
 
 g1t's reusable workflows are in `g1t/workflows` the same way, such as
 `g1t/workflows/.g1t/workflows/deploy.yml@v1`, which a
@@ -421,15 +421,15 @@ Workflows with `on: release` start when a release changes, at the commit
 its tag names (`GITHUB_REF` is `refs/tags/<tag>`). Each change is one or
 more activity types, which `types:` chooses among:
 
-| Change | Activity types |
-| --- | --- |
-| A draft made | `created` |
-| A release made and published | `created`, `published`, and `released` (or `prereleased` for a prerelease) |
-| A draft published | `published`, and `released` or `prereleased` |
-| A prerelease made a full release | `edited` and `released` |
-| Made a draft again | `unpublished` |
-| Title, notes or prerelease changed | `edited`, with `github.event.changes` holding the old title and notes |
-| Deleted (the tag stays) | `deleted` |
+| Change                             | Activity types                                                             |
+| ---------------------------------- | -------------------------------------------------------------------------- |
+| A draft made                       | `created`                                                                  |
+| A release made and published       | `created`, `published`, and `released` (or `prereleased` for a prerelease) |
+| A draft published                  | `published`, and `released` or `prereleased`                               |
+| A prerelease made a full release   | `edited` and `released`                                                    |
+| Made a draft again                 | `unpublished`                                                              |
+| Title, notes or prerelease changed | `edited`, with `github.event.changes` holding the old title and notes      |
+| Deleted (the tag stays)            | `deleted`                                                                  |
 
 ```yaml
 on:
@@ -488,15 +488,15 @@ that only runs `java`, `dotnet` or `ruby` needs no setup step. When it has
 one, the setup action finds the version that is already there and
 downloads nothing.
 
-| Language | Version | Where | Setup action |
-| --- | --- | --- | --- |
-| Java | Eclipse Temurin 21 (LTS), JDK | `JAVA_HOME` (also `JAVA_HOME_21_X64`), in `RUNNER_TOOL_CACHE` | `actions/setup-java` with `distribution: temurin` and `java-version: 21` uses it. Other versions and distributions are downloaded. |
-| .NET | SDK 8 (LTS) | `DOTNET_ROOT`, `/usr/share/dotnet` | `actions/setup-dotnet` with `dotnet-version: 8.0.x` keeps it when it is the newest 8.0 SDK, and installs other SDKs beside it. |
-| Ruby | 3.3, with Bundler | in `RUNNER_TOOL_CACHE` | `ruby/setup-ruby` with `ruby-version: '3.3'` (or a `.ruby-version` naming 3.3) uses it. |
-| Node | 24 | `/usr/local/bin` | `actions/setup-node` installs other versions. |
-| Python | 3.11 | `/usr/bin/python3` | `actions/setup-python` installs other versions. |
-| Go | 1.27 | `/usr/local/go` | `actions/setup-go` installs other versions. |
-| Rust | stable, with `rustfmt`, `clippy` and the `wasm32-unknown-unknown` target | `~/.cargo/bin` | `rustup` is there to add toolchains and targets. |
+| Language | Version                                                                  | Where                                                         | Setup action                                                                                                                       |
+| -------- | ------------------------------------------------------------------------ | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Java     | Eclipse Temurin 21 (LTS), JDK                                            | `JAVA_HOME` (also `JAVA_HOME_21_X64`), in `RUNNER_TOOL_CACHE` | `actions/setup-java` with `distribution: temurin` and `java-version: 21` uses it. Other versions and distributions are downloaded. |
+| .NET     | SDK 8 (LTS)                                                              | `DOTNET_ROOT`, `/usr/share/dotnet`                            | `actions/setup-dotnet` with `dotnet-version: 8.0.x` keeps it when it is the newest 8.0 SDK, and installs other SDKs beside it.     |
+| Ruby     | 3.3, with Bundler                                                        | in `RUNNER_TOOL_CACHE`                                        | `ruby/setup-ruby` with `ruby-version: '3.3'` (or a `.ruby-version` naming 3.3) uses it.                                            |
+| Node     | 24                                                                       | `/usr/local/bin`                                              | `actions/setup-node` installs other versions.                                                                                      |
+| Python   | 3.11                                                                     | `/usr/bin/python3`                                            | `actions/setup-python` installs other versions.                                                                                    |
+| Go       | 1.27                                                                     | `/usr/local/go`                                               | `actions/setup-go` installs other versions.                                                                                        |
+| Rust     | stable, with `rustfmt`, `clippy` and the `wasm32-unknown-unknown` target | `~/.cargo/bin`                                                | `rustup` is there to add toolchains and targets.                                                                                   |
 
 ```yaml
 steps:
@@ -521,13 +521,13 @@ The headers that gems and .NET need to build native code (`libyaml`,
 Installed in every sandbox, so a step can use them without installing
 anything first:
 
-| For | Tools |
-| --- | --- |
-| Processes and the system | `free`, `ps`, `top`, `kill`, `killall`, `pgrep`, `lsof`, `time`, `less`, `setfacl` |
-| The network | `curl`, `wget`, `ip`, `ping`, `dig`, `nslookup`, `nc`, `netstat`, `rsync`, `ssh`, `scp` |
-| Archives | `tar`, `gzip`, `pigz`, `bzip2`, `xz`, `zstd`, `lz4`, `brotli`, `zip`, `unzip`, `7z` |
-| Building | `make`, `gcc`, `g++`, `musl-gcc`, `pkg-config`, `autoconf`, `automake`, `libtool`, `bison`, `flex`, `cmake`, `ninja`, `patchelf` |
-| Everything else | `git`, Git LFS, `jq`, `ripgrep` (`rg`), `shellcheck`, `sqlite3`, `parallel`, `tree`, `file`, `gpg`, `python` (Python 3) |
+| For                      | Tools                                                                                                                            |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| Processes and the system | `free`, `ps`, `top`, `kill`, `killall`, `pgrep`, `lsof`, `time`, `less`, `setfacl`                                               |
+| The network              | `curl`, `wget`, `ip`, `ping`, `dig`, `nslookup`, `nc`, `netstat`, `rsync`, `ssh`, `scp`                                          |
+| Archives                 | `tar`, `gzip`, `pigz`, `bzip2`, `xz`, `zstd`, `lz4`, `brotli`, `zip`, `unzip`, `7z`                                              |
+| Building                 | `make`, `gcc`, `g++`, `musl-gcc`, `pkg-config`, `autoconf`, `automake`, `libtool`, `bison`, `flex`, `cmake`, `ninja`, `patchelf` |
+| Everything else          | `git`, Git LFS, `jq`, `ripgrep` (`rg`), `shellcheck`, `sqlite3`, `parallel`, `tree`, `file`, `gpg`, `python` (Python 3)          |
 
 Anything else is an `apt-get` away: run `sudo apt-get update` first, as on
 GitHub.
@@ -556,11 +556,11 @@ say; see [the job's token](#the-jobs-token). The
 
 A job runs on the standard machine unless its `runs-on` is `g1t-4core`:
 
-| `runs-on` | vCPUs | Memory | Disk | A minute |
-| --- | --- | --- | --- | --- |
-| `ubuntu-latest`, or any other Linux label | 2 | 8 GiB | 16 GB | $0.004 |
-| `g1t-2core` (a name of the standard machine) | 2 | 8 GiB | 16 GB | $0.004 |
-| `g1t-4core` | 4 | 12 GiB | 20 GB | $0.007 |
+| `runs-on`                                    | vCPUs | Memory | Disk  | A minute |
+| -------------------------------------------- | ----- | ------ | ----- | -------- |
+| `ubuntu-latest`, or any other Linux label    | 2     | 8 GiB  | 16 GB | $0.004   |
+| `g1t-2core` (a name of the standard machine) | 2     | 8 GiB  | 16 GB | $0.004   |
+| `g1t-4core`                                  | 4     | 12 GiB | 20 GB | $0.007   |
 
 ```yaml
 jobs:
@@ -669,16 +669,16 @@ jobs:
 
 ### What works
 
-| | On g1t's machines |
-| --- | --- |
-| `docker build`, `buildx build`, `run`, `exec`, `pull`, `push`, `login`, `compose` | Work as they do on GitHub's runners. The Engine, Buildx and Compose are current releases. |
-| `services:` | Pulled and started before the first step, with `env`, `ports`, `volumes`, `options` and `credentials`. Services with a health check are waited for; one that turns unhealthy fails the job with its log. Each service's log is printed when the job ends. `job.services.<id>.id`, `.network` and `.ports` are set. |
-| `container:` | Every `run` step and JavaScript action runs inside the image, with its `env`, `options`, `volumes` and `credentials`. The workspace, `RUNNER_TEMP` and the tool cache are mounted at the same paths as on g1t's runner. |
-| `uses: docker://image` | Pulled and run, with `with.args` and `with.entrypoint`. |
-| Docker actions | Built from the action's Dockerfile (or pulled, for `image: docker://…`), and run with its `args`, `env` and `entrypoint`, its inputs as `INPUT_*` variables, and `pre-entrypoint` and `post-entrypoint`. |
-| `docker/setup-buildx-action` | Selects the job's own Engine as the builder (BuildKit). Its `name`, `driver`, `platforms` and `nodes` outputs are set. `driver`, `driver-opts` and `buildkitd-*` are not used, and the log says so. |
-| `docker/build-push-action` | Works, with `push`, `load`, `tags`, `labels`, `build-args`, `secrets`, `target`, `provenance` and `sbom`. |
-| `docker/login-action` | Works, for g1t's registry, Docker Hub, GitHub's registry, Cloudflare's (`registry.cloudflare.com`) and any registry the job can reach. |
+|                                                                                   | On g1t's machines                                                                                                                                                                                                                                                                                                  |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `docker build`, `buildx build`, `run`, `exec`, `pull`, `push`, `login`, `compose` | Work as they do on GitHub's runners. The Engine, Buildx and Compose are current releases.                                                                                                                                                                                                                          |
+| `services:`                                                                       | Pulled and started before the first step, with `env`, `ports`, `volumes`, `options` and `credentials`. Services with a health check are waited for; one that turns unhealthy fails the job with its log. Each service's log is printed when the job ends. `job.services.<id>.id`, `.network` and `.ports` are set. |
+| `container:`                                                                      | Every `run` step and JavaScript action runs inside the image, with its `env`, `options`, `volumes` and `credentials`. The workspace, `RUNNER_TEMP` and the tool cache are mounted at the same paths as on g1t's runner.                                                                                            |
+| `uses: docker://image`                                                            | Pulled and run, with `with.args` and `with.entrypoint`.                                                                                                                                                                                                                                                            |
+| Docker actions                                                                    | Built from the action's Dockerfile (or pulled, for `image: docker://…`), and run with its `args`, `env` and `entrypoint`, its inputs as `INPUT_*` variables, and `pre-entrypoint` and `post-entrypoint`.                                                                                                           |
+| `docker/setup-buildx-action`                                                      | Selects the job's own Engine as the builder (BuildKit). Its `name`, `driver`, `platforms` and `nodes` outputs are set. `driver`, `driver-opts` and `buildkitd-*` are not used, and the log says so.                                                                                                                |
+| `docker/build-push-action`                                                        | Works, with `push`, `load`, `tags`, `labels`, `build-args`, `secrets`, `target`, `provenance` and `sbom`.                                                                                                                                                                                                          |
+| `docker/login-action`                                                             | Works, for g1t's registry, Docker Hub, GitHub's registry, Cloudflare's (`registry.cloudflare.com`) and any registry the job can reach.                                                                                                                                                                             |
 
 ### Services and the network
 
@@ -799,16 +799,16 @@ unless the job brings a cache:
 
 `actions/cache` keeps what a job saves for the repository's later jobs:
 
-| | |
-| --- | --- |
-| One entry | Up to 2 GiB, compressed. A larger one is not saved, and the job goes on. |
-| A repository's entries | Up to 10 GiB together. Saving past it removes the entries restored longest ago. |
-| A free workspace | Its cache and [artifacts](#artifacts), in every repository, up to 2 GiB together. Past it, a save is refused (the job goes on) until old entries expire or artifacts are deleted; on the g1t plan there is no such cap. |
-| How long | Until it has not been restored for 7 days, and at most 28 days after it was saved. A lookup (`lookup-only: true`) counts as a restore. |
-| Which branch | An entry belongs to the branch, tag or pull request whose run saved it. A run restores from its own, then from the branch its pull request merges into, then from the default branch. A tag's run reads its own tag's entries and the default branch's, never another tag's. |
-| Keys | Written once on each branch: saving under a key that exists there does nothing, and the step says the key is already cached. On each branch in turn, a restore finds its `key` exactly, else the newest entry whose key starts with its `key`, else the newest whose key starts with each of its `restore-keys` in order. |
-| `path` | Files and folders; globs, `**` included; `~/` is the home folder; a line starting with `!` leaves matching paths out. The same key saved for other paths is another entry. |
-| Compression | zstd. |
+|                        |                                                                                                                                                                                                                                                                                                                           |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| One entry              | Up to 2 GiB, compressed. A larger one is not saved, and the job goes on.                                                                                                                                                                                                                                                  |
+| A repository's entries | Up to 10 GiB together. Saving past it removes the entries restored longest ago.                                                                                                                                                                                                                                           |
+| A free workspace       | Its cache and [artifacts](#artifacts), in every repository, up to 2 GiB together. Past it, a save is refused (the job goes on) until old entries expire or artifacts are deleted; on the g1t plan there is no such cap.                                                                                                   |
+| How long               | Until it has not been restored for 7 days, and at most 28 days after it was saved. A lookup (`lookup-only: true`) counts as a restore.                                                                                                                                                                                    |
+| Which branch           | An entry belongs to the branch, tag or pull request whose run saved it. A run restores from its own, then from the branch its pull request merges into, then from the default branch. A tag's run reads its own tag's entries and the default branch's, never another tag's.                                              |
+| Keys                   | Written once on each branch: saving under a key that exists there does nothing, and the step says the key is already cached. On each branch in turn, a restore finds its `key` exactly, else the newest entry whose key starts with its `key`, else the newest whose key starts with each of its `restore-keys` in order. |
+| `path`                 | Files and folders; globs, `**` included; `~/` is the home folder; a line starting with `!` leaves matching paths out. The same key saved for other paths is another entry.                                                                                                                                                |
+| Compression            | zstd.                                                                                                                                                                                                                                                                                                                     |
 
 So a feature branch can read what `main` saved, but `main` never reads
 what a feature branch saved, and a pull request from outside the
@@ -861,28 +861,28 @@ A deleted entry's bytes go at once, and a run that restores its key finds
 nothing until one saves it again. Listing needs the Read role, deleting
 the Write role.
 
-| `workflow` action | Route |
-| --- | --- |
-| `list_caches` | `GET /repos/{owner}/{repo}/actions/caches`, with `key` (a prefix), `ref`, `sort` (`last_accessed_at`, `created_at` or `size_in_bytes`), `direction`, `page`, `per_page` |
-| `cache_usage` | `GET /repos/{owner}/{repo}/actions/cache/usage`: `active_caches_size_in_bytes`, `active_caches_count`, and `quota_bytes` |
-| `delete_caches` | `DELETE /repos/{owner}/{repo}/actions/caches?key=…`, with `ref`: answers with the entries deleted |
-| `delete_cache` | `DELETE /repos/{owner}/{repo}/actions/caches/{id}`: `204` |
+| `workflow` action | Route                                                                                                                                                                   |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_caches`     | `GET /repos/{owner}/{repo}/actions/caches`, with `key` (a prefix), `ref`, `sort` (`last_accessed_at`, `created_at` or `size_in_bytes`), `direction`, `page`, `per_page` |
+| `cache_usage`     | `GET /repos/{owner}/{repo}/actions/cache/usage`: `active_caches_size_in_bytes`, `active_caches_count`, and `quota_bytes`                                                |
+| `delete_caches`   | `DELETE /repos/{owner}/{repo}/actions/caches?key=…`, with `ref`: answers with the entries deleted                                                                       |
+| `delete_cache`    | `DELETE /repos/{owner}/{repo}/actions/caches/{id}`: `204`                                                                                                               |
 
 ## Artifacts
 
 `actions/upload-artifact` keeps files a job made with its run, for later
 jobs, other runs and people:
 
-| | |
-| --- | --- |
-| One artifact | Up to 5 GiB, zipped. |
-| A run's artifacts | Up to 10 GiB together. |
-| A free workspace | Its artifacts and [cache](#the-cache), in every repository, up to 2 GiB together. Past it, an upload fails and says so, until some expire or are deleted; on the g1t plan there is no such cap. |
-| How long | The repository's setting: 14 days unless someone with the Maintain role changes it under **Settings → Repository → Artifacts**, from 1 to 90 days. `retention-days` asks for fewer days, never more. |
-| Names | One artifact per name in a run. Uploading a name again fails, unless the upload says `overwrite: true`, which replaces it. A name is up to 256 characters, none of `" : < > \| * ? \ /`. |
-| `path` | Files, folders and globs, `**` included; a line starting with `!` leaves matching paths out. Files and folders whose names start with `.` are left out unless `include-hidden-files: true`. |
-| Compression | `compression-level` 0 (stored) to 9; 6 unless you say. |
-| Outputs | `artifact-id` (a number), `artifact-url` (its run's page) and `artifact-digest` (the SHA-256 of its zip). |
+|                   |                                                                                                                                                                                                      |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| One artifact      | Up to 5 GiB, zipped.                                                                                                                                                                                 |
+| A run's artifacts | Up to 10 GiB together.                                                                                                                                                                               |
+| A free workspace  | Its artifacts and [cache](#the-cache), in every repository, up to 2 GiB together. Past it, an upload fails and says so, until some expire or are deleted; on the g1t plan there is no such cap.      |
+| How long          | The repository's setting: 14 days unless someone with the Maintain role changes it under **Settings → Repository → Artifacts**, from 1 to 90 days. `retention-days` asks for fewer days, never more. |
+| Names             | One artifact per name in a run. Uploading a name again fails, unless the upload says `overwrite: true`, which replaces it. A name is up to 256 characters, none of `" : < > \| * ? \ /`.             |
+| `path`            | Files, folders and globs, `**` included; a line starting with `!` leaves matching paths out. Files and folders whose names start with `.` are left out unless `include-hidden-files: true`.          |
+| Compression       | `compression-level` 0 (stored) to 9; 6 unless you say.                                                                                                                                               |
+| Outputs           | `artifact-id` (a number), `artifact-url` (its run's page) and `artifact-digest` (the SHA-256 of its zip).                                                                                            |
 
 ```yaml
 - uses: actions/upload-artifact@v4
@@ -947,9 +947,9 @@ repository's cache.
 ## An action's pre and post
 
 A JavaScript action's `pre` runs before the job's first step, as on
-GitHub: each one is a step of its own, *Pre* and the step's name, in the
+GitHub: each one is a step of its own, _Pre_ and the step's name, in the
 order of the steps, when its `pre-if` holds (`always()` when it has
-none). Its `post` runs after the last step, *Post* and the step's name,
+none). Its `post` runs after the last step, _Post_ and the step's name,
 last first. What `pre` saves with `GITHUB_STATE` or `::save-state::`
 reaches the step's main as `STATE_<name>`, and what either saves reaches
 `post`.
@@ -959,7 +959,7 @@ job starts, so its `pre` is not run and the step warns, as on GitHub. An
 action inside a composite action runs its `pre` right before its main.
 
 A step that gives an input the action does not declare is warned of:
-*Unexpected input(s) 'foo', valid inputs are ['token', 'path']*. The
+_Unexpected input(s) 'foo', valid inputs are ['token', 'path']_. The
 step still runs.
 
 ## Problem matchers
@@ -978,7 +978,11 @@ place of the line in the log.
       "pattern": [
         {
           "regexp": "^(.+):(\\d+):(\\d+): (error|warning) (.*)$",
-          "file": 1, "line": 2, "column": 3, "severity": 4, "message": 5
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
         }
       ]
     }
@@ -1021,7 +1025,7 @@ limits and branch rules.
 3. Set `CARGO_INCREMENTAL: "0"`: sccache does not cache incremental
    builds, and a fresh checkout gains nothing from them.
 
-```yaml
+````yaml
 name: CI
 on:
   pull_request:
@@ -1055,19 +1059,19 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           sccache --show-stats | tee -a "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-```
+````
 
 What to expect:
 
-| | |
-| --- | --- |
-| What is cached | Every library crate (`rlib`): your workspace's crates and their dependencies. |
-| What is compiled each time | What rustc links: binaries, `cdylib` crates, proc macros, build scripts and test harnesses. |
-| Its entries | One per compiled crate, often thousands for a workspace, each a few KB to a few MB. They count toward the repository's 10 GiB like any other entry, and the ones not restored for 7 days are deleted. |
-| Branches | A pull request reads what the default branch saved. Run the workflow on pushes to the default branch too, as above, or each pull request's first run starts with an empty cache. |
-| Releases from tags | A tag's run reads the default branch's entries, but what it saves only that tag would ever read. Set `SCCACHE_GHA_RW_MODE: READ_ONLY` on a tag's run (`if [ "$GITHUB_REF_TYPE" = tag ]`) so it saves nothing: it still looks every crate up. |
-| Starting over | Set `SCCACHE_GHA_VERSION` to any new value. A new sccache release starts over by itself. |
-| If the cache cannot be reached | sccache refuses to start. Set `SCCACHE_IGNORE_SERVER_IO_ERROR: "1"` to have rustc run without it instead. |
+|                                |                                                                                                                                                                                                                                              |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| What is cached                 | Every library crate (`rlib`): your workspace's crates and their dependencies.                                                                                                                                                                |
+| What is compiled each time     | What rustc links: binaries, `cdylib` crates, proc macros, build scripts and test harnesses.                                                                                                                                                  |
+| Its entries                    | One per compiled crate, often thousands for a workspace, each a few KB to a few MB. They count toward the repository's 10 GiB like any other entry, and the ones not restored for 7 days are deleted.                                        |
+| Branches                       | A pull request reads what the default branch saved. Run the workflow on pushes to the default branch too, as above, or each pull request's first run starts with an empty cache.                                                             |
+| Releases from tags             | A tag's run reads the default branch's entries, but what it saves only that tag would ever read. Set `SCCACHE_GHA_RW_MODE: READ_ONLY` on a tag's run (`if [ "$GITHUB_REF_TYPE" = tag ]`) so it saves nothing: it still looks every crate up. |
+| Starting over                  | Set `SCCACHE_GHA_VERSION` to any new value. A new sccache release starts over by itself.                                                                                                                                                     |
+| If the cache cannot be reached | sccache refuses to start. Set `SCCACHE_IGNORE_SERVER_IO_ERROR: "1"` to have rustc run without it instead.                                                                                                                                    |
 
 sccache adds to `actions/cache` rather than replacing it: keep caching
 `~/.cargo/registry/cache` and `target/` keyed by `Cargo.lock`, so Cargo
@@ -1112,13 +1116,13 @@ curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
   "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://deploy.example.com" | jq -r .value
 ```
 
-| | |
-| --- | --- |
-| Issuer | `https://api.g1t.sh/actions/oidc` |
-| Discovery | `https://api.g1t.sh/actions/oidc/.well-known/openid-configuration` |
-| Keys | `https://api.g1t.sh/actions/oidc/.well-known/jwks`, RS256, each with its `kid` |
-| Lifetime | 5 minutes |
-| Audience | What the job asks for; `https://g1t.sh/<owner>` when it asks for none |
+|           |                                                                                |
+| --------- | ------------------------------------------------------------------------------ |
+| Issuer    | `https://api.g1t.sh/actions/oidc`                                              |
+| Discovery | `https://api.g1t.sh/actions/oidc/.well-known/openid-configuration`             |
+| Keys      | `https://api.g1t.sh/actions/oidc/.well-known/jwks`, RS256, each with its `kid` |
+| Lifetime  | 5 minutes                                                                      |
+| Audience  | What the job asks for; `https://g1t.sh/<owner>` when it asks for none          |
 
 A job without `id-token: write` has no `ACTIONS_ID_TOKEN_REQUEST_URL`, so
 a login action says it cannot find one; a token asked for anyway is
@@ -1132,33 +1136,33 @@ host (see [what a job can reach](#what-a-job-can-reach)); there is nothing
 to allow on g1t's side. Which repositories, branches and environments may
 take on a role is up to the trust policy you write on your cloud's side.
 
-| Cloud | Token exchange | Then |
-| --- | --- | --- |
-| AWS | `sts.<region>.amazonaws.com`, the region `aws-region` names | Each service the job uses, such as `s3.<region>.amazonaws.com` |
-| Google Cloud | `sts.googleapis.com`, `iamcredentials.googleapis.com` | Each API the job uses, such as `run.googleapis.com` |
-| Azure | `login.microsoftonline.com` | `management.azure.com`, and each service the job uses |
+| Cloud        | Token exchange                                              | Then                                                           |
+| ------------ | ----------------------------------------------------------- | -------------------------------------------------------------- |
+| AWS          | `sts.<region>.amazonaws.com`, the region `aws-region` names | Each service the job uses, such as `s3.<region>.amazonaws.com` |
+| Google Cloud | `sts.googleapis.com`, `iamcredentials.googleapis.com`       | Each API the job uses, such as `run.googleapis.com`            |
+| Azure        | `login.microsoftonline.com`                                 | `management.azure.com`, and each service the job uses          |
 
 ### Claims
 
 Each token carries the claims GitHub's do, so trust policies written for
 those read g1t's the same way.
 
-| Claim | Example |
-| --- | --- |
-| `sub` | `repo:acme/web:environment:production` for a job with an `environment:`; `repo:acme/web:pull_request` for a pull request's run; otherwise `repo:acme/web:ref:refs/heads/main` (or `refs/tags/v1.2.0`) |
-| `repository`, `repository_owner` | `acme/web`, `acme` |
-| `repository_id`, `repository_owner_id` | g1t's ids for them, such as `rep_01kpw0…` (not the numbers `github.repository_id` and `github.repository_owner_id` give, so trust policies already written keep matching) |
-| `repository_visibility` | `public` or `private` |
-| `ref`, `ref_type`, `ref_protected`, `sha` | `refs/heads/main`, `branch`, `"true"`, the commit |
-| `head_ref`, `base_ref` | A pull request's branches |
-| `environment` | The job's environment, when it has one |
-| `event_name` | `push`, `pull_request`, `workflow_dispatch`, … |
-| `workflow`, `workflow_ref`, `workflow_sha` | `Deploy`, `acme/web/.g1t/workflows/deploy.yml@refs/heads/main`, the commit |
-| `job_workflow_ref`, `job_workflow_sha` | The workflow that defines the job: a called workflow's own file |
-| `run_id`, `run_number`, `run_attempt` | `run_01kq9c…`, `"12"`, `"1"` |
-| `actor`, `actor_id` | Who started the run |
-| `runner_environment` | `github-hosted` on g1t's machines, `self-hosted` on yours |
-| `iss`, `aud`, `jti`, `iat`, `nbf`, `exp` | As in any OIDC token |
+| Claim                                      | Example                                                                                                                                                                                               |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sub`                                      | `repo:acme/web:environment:production` for a job with an `environment:`; `repo:acme/web:pull_request` for a pull request's run; otherwise `repo:acme/web:ref:refs/heads/main` (or `refs/tags/v1.2.0`) |
+| `repository`, `repository_owner`           | `acme/web`, `acme`                                                                                                                                                                                    |
+| `repository_id`, `repository_owner_id`     | g1t's ids for them, such as `rep_01kpw0…` (not the numbers `github.repository_id` and `github.repository_owner_id` give, so trust policies already written keep matching)                             |
+| `repository_visibility`                    | `public` or `private`                                                                                                                                                                                 |
+| `ref`, `ref_type`, `ref_protected`, `sha`  | `refs/heads/main`, `branch`, `"true"`, the commit                                                                                                                                                     |
+| `head_ref`, `base_ref`                     | A pull request's branches                                                                                                                                                                             |
+| `environment`                              | The job's environment, when it has one                                                                                                                                                                |
+| `event_name`                               | `push`, `pull_request`, `workflow_dispatch`, …                                                                                                                                                        |
+| `workflow`, `workflow_ref`, `workflow_sha` | `Deploy`, `acme/web/.g1t/workflows/deploy.yml@refs/heads/main`, the commit                                                                                                                            |
+| `job_workflow_ref`, `job_workflow_sha`     | The workflow that defines the job: a called workflow's own file                                                                                                                                       |
+| `run_id`, `run_number`, `run_attempt`      | `run_01kq9c…`, `"12"`, `"1"`                                                                                                                                                                          |
+| `actor`, `actor_id`                        | Who started the run                                                                                                                                                                                   |
+| `runner_environment`                       | `github-hosted` on g1t's machines, `self-hosted` on yours                                                                                                                                             |
+| `iss`, `aud`, `jti`, `iat`, `nbf`, `exp`   | As in any OIDC token                                                                                                                                                                                  |
 
 ### AWS
 
@@ -1177,17 +1181,19 @@ those read g1t's the same way.
    ```json
    {
      "Version": "2012-10-17",
-     "Statement": [{
-       "Effect": "Allow",
-       "Principal": { "Federated": "arn:aws:iam::123456789012:oidc-provider/api.g1t.sh/actions/oidc" },
-       "Action": "sts:AssumeRoleWithWebIdentity",
-       "Condition": {
-         "StringEquals": {
-           "api.g1t.sh/actions/oidc:aud": "sts.amazonaws.com",
-           "api.g1t.sh/actions/oidc:sub": "repo:acme/web:environment:production"
+     "Statement": [
+       {
+         "Effect": "Allow",
+         "Principal": { "Federated": "arn:aws:iam::123456789012:oidc-provider/api.g1t.sh/actions/oidc" },
+         "Action": "sts:AssumeRoleWithWebIdentity",
+         "Condition": {
+           "StringEquals": {
+             "api.g1t.sh/actions/oidc:aud": "sts.amazonaws.com",
+             "api.g1t.sh/actions/oidc:sub": "repo:acme/web:environment:production"
+           }
          }
        }
-     }]
+     ]
    }
    ```
 
@@ -1363,25 +1369,25 @@ until then its logs show without times.
 
 Each job's log reads as GitHub's does:
 
-| Step | What it shows |
-| --- | --- |
-| **Set up job** | The runner's version and name; the operating system; the runner image (`ImageOS` and `ImageVersion` when the machine's image sets them, and the software g1t's machines have); the machine (hosted or self-hosted, its architecture, CPUs and memory); what the job's [token](#the-jobs-token) may do, under **G1T_TOKEN Permissions**; the secret source; each action the job uses as it is downloaded, with the commit it resolved to (`Download action repository 'actions/setup-node@v4' (SHA:…)`); and the job's matrix. |
-| A `run:` step | A folded group, `Run` and the script's first line, holding the whole script, the shell it ran in (`shell: /usr/bin/bash -e {0}`) and its variables under `env:`, secrets masked. Then what it printed. |
-| A `uses:` step | A folded group, `Run owner/repo@ref`, holding its inputs under `with:` (an action's defaults among them) and its variables under `env:`. |
-| **Post** steps and **Stop containers** | An action's `post`, saving the cache, then the job's containers stopped, as on GitHub. |
-| **Complete job** | The job's outputs as they are set (`Set output 'version'`), and **Cleaning up orphan processes**: anything the steps started and left running is stopped (`Terminate orphan process: pid (1234) (node)`). The runner finds those processes by `RUNNER_TRACKING_ID`, as GitHub's does, so a process that unsets it is not found. Only on Linux. |
+| Step                                   | What it shows                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Set up job**                         | The runner's version and name; the operating system; the runner image (`ImageOS` and `ImageVersion` when the machine's image sets them, and the software g1t's machines have); the machine (hosted or self-hosted, its architecture, CPUs and memory); what the job's [token](#the-jobs-token) may do, under **G1T_TOKEN Permissions**; the secret source; each action the job uses as it is downloaded, with the commit it resolved to (`Download action repository 'actions/setup-node@v4' (SHA:…)`); and the job's matrix. |
+| A `run:` step                          | A folded group, `Run` and the script's first line, holding the whole script, the shell it ran in (`shell: /usr/bin/bash -e {0}`) and its variables under `env:`, secrets masked. Then what it printed.                                                                                                                                                                                                                                                                                                                        |
+| A `uses:` step                         | A folded group, `Run owner/repo@ref`, holding its inputs under `with:` (an action's defaults among them) and its variables under `env:`.                                                                                                                                                                                                                                                                                                                                                                                      |
+| **Post** steps and **Stop containers** | An action's `post`, saving the cache, then the job's containers stopped, as on GitHub.                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **Complete job**                       | The job's outputs as they are set (`Set output 'version'`), and **Cleaning up orphan processes**: anything the steps started and left running is stopped (`Terminate orphan process: pid (1234) (node)`). The runner finds those processes by `RUNNER_TRACKING_ID`, as GitHub's does, so a process that unsets it is not found. Only on Linux.                                                                                                                                                                                |
 
 ### The run's summary
 
 The summary holds, top to bottom:
 
-| Part | What it shows |
-| --- | --- |
-| The run | What triggered it and when, who, the commit and its branch (or pull request), how the run stands, how long it took in all, and how many artifacts it kept. |
-| The jobs graph | The workflow file and its event (`deploy.yml · on: push`), then every job and how they depend on each other. See [the jobs graph](#the-jobs-graph). |
-| Annotations | Every job's errors, warnings and notices, counted by kind, each with the job it came from. Folds away. |
-| Job summaries | What each job's steps wrote to `$GITHUB_STEP_SUMMARY`, under `<job> summary`. See [job summaries](#job-summaries). |
-| Artifacts | What the run kept, to download. The count in the run's card jumps here. |
+| Part           | What it shows                                                                                                                                              |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The run        | What triggered it and when, who, the commit and its branch (or pull request), how the run stands, how long it took in all, and how many artifacts it kept. |
+| The jobs graph | The workflow file and its event (`deploy.yml · on: push`), then every job and how they depend on each other. See [the jobs graph](#the-jobs-graph).        |
+| Annotations    | Every job's errors, warnings and notices, counted by kind, each with the job it came from. Folds away.                                                     |
+| Job summaries  | What each job's steps wrote to `$GITHUB_STEP_SUMMARY`, under `<job> summary`. See [job summaries](#job-summaries).                                         |
+| Artifacts      | What the run kept, to download. The count in the run's card jumps here.                                                                                    |
 
 Under **Run details** in the sidebar, **Workflow file** opens the
 workflow as it was at the run's commit.
@@ -1393,11 +1399,11 @@ nothing starts a row on the left, and each job sits one column to the
 right of the furthest job it needs. Within a column, jobs are ordered so
 that as few connectors as possible cross.
 
-| Node | How it shows |
-| --- | --- |
-| A job | Its status, its name and how long it took. Click it to open its steps and logs. |
-| A job that deploys | Its environment's address (`environment.url`), as a link, under its name. |
-| A matrix | One node with how many jobs it made (`test · 6 jobs`) and how they stand together. Click it to list each combination; click one to open it. |
+| Node                | How it shows                                                                                                                                                                                                                                                   |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A job               | Its status, its name and how long it took. Click it to open its steps and logs.                                                                                                                                                                                |
+| A job that deploys  | Its environment's address (`environment.url`), as a link, under its name.                                                                                                                                                                                      |
+| A matrix            | One node with how many jobs it made (`test · 6 jobs`) and how they stand together. Click it to list each combination; click one to open it.                                                                                                                    |
 | A reusable workflow | A box under the job that calls it, named with the called file, holding the called workflow's jobs laid out the same way; a matrix of calls shares one box, each call's jobs named with its combination. The jobs that need the calling job connect to the box. |
 
 Connectors run from a job to each job that needs it. They are red from a
@@ -1425,13 +1431,13 @@ steps wrote it. The card's title opens the job:
     echo "| unit | 41 | 0 |" >> "$GITHUB_STEP_SUMMARY"
 ```
 
-| What | How it works |
-| --- | --- |
+| What       | How it works                                                                                                                                                           |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Formatting | GitHub-flavoured Markdown: tables, task lists, alerts such as `> [!WARNING]`, code blocks, and the HTML GitHub allows. Scripts, styles and event handlers are removed. |
-| Secrets | Masked like the log, before the summary leaves the runner. |
-| Size | Up to 1 MiB a step. A larger summary is refused with an error in the step's log, as on GitHub. |
-| Steps | Up to 20 steps of a job keep a summary; later ones are dropped. |
-| Actions | A JavaScript action's `core.summary` writes to the same file, so it works unchanged. |
+| Secrets    | Masked like the log, before the summary leaves the runner.                                                                                                             |
+| Size       | Up to 1 MiB a step. A larger summary is refused with an error in the step's log, as on GitHub.                                                                         |
+| Steps      | Up to 20 steps of a job keep a summary; later ones are dropped.                                                                                                        |
+| Actions    | A JavaScript action's `core.summary` writes to the same file, so it works unchanged.                                                                                   |
 
 Summaries belong to their attempt: an earlier attempt keeps its own.
 
@@ -1439,10 +1445,10 @@ Summaries belong to their attempt: an earlier attempt keeps its own.
 
 When a run has finished, someone with the Write role can run it again:
 
-| Button | Runs again |
-| --- | --- |
-| **Re-run all jobs** | Every job. |
-| **Re-run failed jobs** | Jobs that did not succeed (failed, cancelled or skipped), and every job that needs one of them. |
+| Button                                | Runs again                                                                                                                                                           |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Re-run all jobs**                   | Every job.                                                                                                                                                           |
+| **Re-run failed jobs**                | Jobs that did not succeed (failed, cancelled or skipped), and every job that needs one of them.                                                                      |
 | The re-run button beside a job's name | That job, and every job that needs it. A job of a matrix runs again with the rest of its matrix; a job of a reusable workflow runs again with the job that calls it. |
 
 Jobs that are not run again keep how they ended, and their outputs reach
@@ -1462,11 +1468,11 @@ time cap of the attempt before it never stops it.
 Each re-run asks whether to **Enable debug logging**. The new attempt's
 jobs then run with:
 
-| Set | Effect |
-| --- | --- |
+| Set                                         | Effect                                                                   |
+| ------------------------------------------- | ------------------------------------------------------------------------ |
 | `RUNNER_DEBUG=1`, and `runner.debug` is `1` | Actions that check it, such as the toolkit's `core.isDebug()`, log more. |
-| `ACTIONS_STEP_DEBUG=true` | `::debug::` lines are shown in the log. |
-| `ACTIONS_RUNNER_DEBUG=true` | Set for actions that read it. |
+| `ACTIONS_STEP_DEBUG=true`                   | `::debug::` lines are shown in the log.                                  |
+| `ACTIONS_RUNNER_DEBUG=true`                 | Set for actions that read it.                                            |
 
 With debug logging, each step's log also says how its `if:` read:
 `Evaluating condition for step`, the expression, and the result. Setting a
@@ -1513,9 +1519,9 @@ The **Search logs** box above a job's steps shows only the lines that hold
 what you type, in any case, with each match marked and every step that has
 one opened. Lines inside folded groups are searched too.
 
-| Download | Where |
-| --- | --- |
-| One job's whole log, as text | The download button beside the job's name. |
+| Download                                | Where                                                                                                                                                              |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| One job's whole log, as text            | The download button beside the job's name.                                                                                                                         |
 | Every job's log of an attempt, as a zip | **Download logs** at the top of the run. The zip holds `1_<job>.txt` with each job's whole log, and a `<job>/` folder with `<step>_<step name>.txt` for each step. |
 
 A zip holds up to 24 MiB of logs; jobs past that are listed with a note
@@ -1537,10 +1543,10 @@ A badge shows how a workflow's latest finished run went: **passing**,
 The address is `https://g1t.sh/{workspace}/{repo}/actions/workflows/{file}/badge.svg`,
 where `{file}` is the workflow's file name in `.g1t/workflows/`. It takes:
 
-| Parameter | Shows |
-| --- | --- |
-| `branch` | Runs on that branch. Without it, the default branch's runs, or any branch's when the default branch has none. |
-| `event` | Runs started by that event, such as `push` or `pull_request`. |
+| Parameter | Shows                                                                                                         |
+| --------- | ------------------------------------------------------------------------------------------------------------- |
+| `branch`  | Runs on that branch. Without it, the default branch's runs, or any branch's when the default branch has none. |
+| `event`   | Runs started by that event, such as `push` or `pull_request`.                                                 |
 
 A public repository's badge loads for anyone and is cached for a minute.
 A private repository's loads only for someone who can see the repository,
@@ -1552,12 +1558,12 @@ Every secret's value is replaced with `***` wherever a job prints it, and
 so is every value a step masks with `::add-mask::`. Each is masked in the
 forms it shows up in:
 
-| Form | Example |
-| --- | --- |
-| As it is | `echo $API_KEY` |
-| Each of its lines on its own | `cat key.pem`, which prints a private key a line at a time |
-| Base64 | `echo -n $API_KEY \| base64`, or an `Authorization: Basic` header |
-| JSON-escaped | A secret holding quotes or newlines printed inside JSON |
+| Form                         | Example                                                           |
+| ---------------------------- | ----------------------------------------------------------------- |
+| As it is                     | `echo $API_KEY`                                                   |
+| Each of its lines on its own | `cat key.pem`, which prints a private key a line at a time        |
+| Base64                       | `echo -n $API_KEY \| base64`, or an `Authorization: Basic` header |
+| JSON-escaped                 | A secret holding quotes or newlines printed inside JSON           |
 
 Annotations' titles and messages, and step names, are masked the same way.
 A job output that holds a secret in any of those forms is left out, with
@@ -1595,13 +1601,13 @@ always the default branch: see
 As on GitHub, a `pull_request` run builds the pull request merged into
 its base branch, not its head alone:
 
-| | Is |
-| --- | --- |
-| `github.ref`, `GITHUB_REF` | `refs/pull/<number>/merge` |
-| `github.sha`, `GITHUB_SHA` | The test merge commit at `refs/pull/<number>/merge`: the head merged into the base branch's latest commit, its parents the base's commit and then the head, with the message `Merge <head> into <base>` |
-| `github.event.pull_request.head.sha` | The head commit |
-| `github.event.pull_request.merge_commit_sha` | The test merge commit |
-| `actions/checkout` with no `ref` | The test merge commit, fetched from the repository itself as `+<sha>:refs/remotes/pull/<number>/merge` |
+|                                              | Is                                                                                                                                                                                                      |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `github.ref`, `GITHUB_REF`                   | `refs/pull/<number>/merge`                                                                                                                                                                              |
+| `github.sha`, `GITHUB_SHA`                   | The test merge commit at `refs/pull/<number>/merge`: the head merged into the base branch's latest commit, its parents the base's commit and then the head, with the message `Merge <head> into <base>` |
+| `github.event.pull_request.head.sha`         | The head commit                                                                                                                                                                                         |
+| `github.event.pull_request.merge_commit_sha` | The test merge commit                                                                                                                                                                                   |
+| `actions/checkout` with no `ref`             | The test merge commit, fetched from the repository itself as `+<sha>:refs/remotes/pull/<number>/merge`                                                                                                  |
 
 The workflow files the run uses are read from the test merge commit too.
 Its status, its check runs and the run itself stay on the pull request's
@@ -1826,19 +1832,19 @@ jobs:
       - run: ./scripts/release.sh
 ```
 
-| Permission | `read` lets it | `write` also lets it |
-| --- | --- | --- |
-| `contents` | Clone and fetch with git, read the repository | Push, publish releases |
-| `pull-requests` | Read pull requests | Open, review, close and merge them |
-| `work` | Read the work items linked to the repository | Open, edit, comment on and close them |
-| `actions` | Read workflows, runs and logs | Run, cancel and re-run them |
-| `checks`, `statuses` | Read statuses and check runs | Report them |
-| `deployments`, `pages` | Read deployments | Report them |
-| `packages` | Pull packages | Push and publish them |
-| `security-events` | Read security alerts | Upload code scanning results, change alerts |
-| `metadata` | Always `read` | |
-| `id-token` | Nothing | Ask for an [OIDC token](#oidc-tokens) |
-| `discussions`, `attestations`, `models`, `repository-projects` | Nothing on g1t | Nothing on g1t |
+| Permission                                                     | `read` lets it                                | `write` also lets it                        |
+| -------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------- |
+| `contents`                                                     | Clone and fetch with git, read the repository | Push, publish releases                      |
+| `pull-requests`                                                | Read pull requests                            | Open, review, close and merge them          |
+| `work`                                                         | Read the work items linked to the repository  | Open, edit, comment on and close them       |
+| `actions`                                                      | Read workflows, runs and logs                 | Run, cancel and re-run them                 |
+| `checks`, `statuses`                                           | Read statuses and check runs                  | Report them                                 |
+| `deployments`, `pages`                                         | Read deployments                              | Report them                                 |
+| `packages`                                                     | Pull packages                                 | Push and publish them                       |
+| `security-events`                                              | Read security alerts                          | Upload code scanning results, change alerts |
+| `metadata`                                                     | Always `read`                                 |                                             |
+| `id-token`                                                     | Nothing                                       | Ask for an [OIDC token](#oidc-tokens)       |
+| `discussions`, `attestations`, `models`, `repository-projects` | Nothing on g1t                                | Nothing on g1t                              |
 
 GitHub's `issues` permission grants nothing on g1t, which has work items
 in place of issues; the workflow's page says to write `work` instead.
@@ -1863,10 +1869,10 @@ has access, whatever it asks for.
 **Without `permissions:`** a job gets the repository's default, which
 someone with the Admin role sets under **Settings → Actions**:
 
-| Repository | Default until someone chooses |
-| --- | --- |
-| Made before restricted tokens came in, in October 2026 | **Read and write**: every permission at `write`, as before |
-| Made since | The workspace's default for new repositories: **Read repository contents and packages** (`contents: read`, `packages: read`) unless an owner chose otherwise |
+| Repository                                             | Default until someone chooses                                                                                                                                |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Made before restricted tokens came in, in October 2026 | **Read and write**: every permission at `write`, as before                                                                                                   |
+| Made since                                             | The workspace's default for new repositories: **Read repository contents and packages** (`contents: read`, `packages: read`) unless an owner chose otherwise |
 
 The workspace's owners set that default, and a **maximum**, under the
 workspace's **Settings → Actions**: with a maximum of **Read only**, no
@@ -1895,13 +1901,13 @@ and records a [deployment](/guides/deployments-api/#deployments-from-g1t-actions
 to it. Give the environment protection rules, and such a job waits until
 they let it through, and only then gets the environment's secrets:
 
-| Rule | What it does |
-| --- | --- |
-| **Required reviewers** | Up to 6 people or teams. The job waits until one of them approves it. |
-| **Prevent self-review** | Whoever started the run cannot approve it, even as a reviewer. |
-| **Wait timer** | Minutes the job waits once it reaches the environment, up to 43,200 (30 days). |
+| Rule                             | What it does                                                                                                                                                                                                                                                                                                                                         |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Required reviewers**           | Up to 6 people or teams. The job waits until one of them approves it.                                                                                                                                                                                                                                                                                |
+| **Prevent self-review**          | Whoever started the run cannot approve it, even as a reviewer.                                                                                                                                                                                                                                                                                       |
+| **Wait timer**                   | Minutes the job waits once it reaches the environment, up to 43,200 (30 days).                                                                                                                                                                                                                                                                       |
 | **Deployment branches and tags** | **All branches**; **Protected branches only**, those the repository's [rules](/guides/rules/) protect, the default branch included; or **Selected branches and tags**, by pattern, such as `main`, `release/*` or `v*`. A job on any other ref fails, saying so. A pull request's run is on no branch, so it can deploy only where all branches may. |
-| **Allow admins to bypass** | On unless you turn it off: someone with the Admin role may approve without being a reviewer, which also skips the wait timer. |
+| **Allow admins to bypass**       | On unless you turn it off: someone with the Admin role may approve without being a reviewer, which also skips the wait timer.                                                                                                                                                                                                                        |
 
 To set them:
 
@@ -1978,11 +1984,11 @@ have written. By the repository's **approval policy**, its runs wait as
 page. Nothing runs before then: no job starts, and no token or secret is
 handed out.
 
-| Policy, under **Settings → Actions** | Whose pull requests' runs wait |
-| --- | --- |
-| **First-time contributors** | Someone outside the workspace who has not had a pull request merged here yet. |
+| Policy, under **Settings → Actions**   | Whose pull requests' runs wait                                                                                                 |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| **First-time contributors**            | Someone outside the workspace who has not had a pull request merged here yet.                                                  |
 | **Outside contributors** (the default) | Those, and everyone outside the workspace who cannot push here: pull requests from forks, and from people with Read or Triage. |
-| **All external contributors** | Everyone outside the workspace, [outside collaborators](/guides/access-and-roles/#outside-collaborators) with Write included. |
+| **All external contributors**          | Everyone outside the workspace, [outside collaborators](/guides/access-and-roles/#outside-collaborators) with Write included.  |
 
 Members' pull requests never wait. Each new push to the pull request waits again.
 A pull request from a branch of someone's
@@ -2031,13 +2037,13 @@ properties and 64 KB.
 What you can do with a repository's workflows follows your
 [role](/guides/access-and-roles/) on it:
 
-| | Needs |
-| --- | --- |
-| See workflows, runs and their logs | Read: on a public repository, anyone |
-| Run a workflow by hand, cancel or re-run a run, approve a pull request's run from outside | Write |
-| Approve or reject a job waiting for an environment | One of the environment's reviewers |
-| Enable or disable a workflow | Maintain |
-| The repository's secrets and variables, seeing them included; environments' rules; **Settings → Actions** | Admin |
+|                                                                                                           | Needs                                |
+| --------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| See workflows, runs and their logs                                                                        | Read: on a public repository, anyone |
+| Run a workflow by hand, cancel or re-run a run, approve a pull request's run from outside                 | Write                                |
+| Approve or reject a job waiting for an environment                                                        | One of the environment's reviewers   |
+| Enable or disable a workflow                                                                              | Maintain                             |
+| The repository's secrets and variables, seeing them included; environments' rules; **Settings → Actions** | Admin                                |
 
 Jobs run in g1t's sandboxes, so they need the
 [g1t plan](/guides/usage-and-billing/#the-g1t-plan) or
@@ -2063,44 +2069,44 @@ cannot run jobs before the first run.
 The routes follow the standard Actions REST shape, so existing scripts
 usually work once they point at `https://api.g1t.sh`.
 
-| `workflow` action | Route |
-| --- | --- |
-| `list` | `GET /repos/{owner}/{repo}/actions/workflows` |
-| `get` | `GET /repos/{owner}/{repo}/actions/workflows/{workflow}`, with `ref`: the workflow, with `source`, its file on that branch or tag |
-| `list_runs` | `GET /repos/{owner}/{repo}/actions/runs`, with `workflow`, `branch`, `event`, `pull`, `head_sha`, `status`, and `since` and `until` (RFC 3339) for when they were created |
-| `get_run` | `GET /repos/{owner}/{repo}/actions/runs/{id}` |
-| `job_logs` | `GET /repos/{owner}/{repo}/actions/jobs/{job}/logs?after=`, or `?format=text` for the whole log as plain text |
-| `get_run` with `attempt` | `GET /repos/{owner}/{repo}/actions/runs/{id}/attempts/{attempt}` |
-| No tool: a download | `GET /repos/{owner}/{repo}/actions/runs/{id}/logs`, or `…/attempts/{attempt}/logs`: every job's log as a zip |
-| `dispatch` | `POST /repos/{owner}/{repo}/actions/workflows/{workflow}/dispatches` with `ref` and `inputs` |
-| `cancel` | `POST /repos/{owner}/{repo}/actions/runs/{id}/cancel`; `…/force-cancel`, or `force`, to stop running jobs without their cleanup steps |
-| `rerun` | `POST …/runs/{id}/rerun`, or `…/rerun-failed-jobs`; one job and those that need it with `POST /repos/{owner}/{repo}/actions/jobs/{job}/rerun`. Each takes `enable_debug_logging` (or `debug`) |
-| `update` | `PUT …/workflows/{workflow}/enable` and `…/disable` |
-| `approve_run` | `POST /repos/{owner}/{repo}/actions/runs/{id}/approve` |
-| `pending_deployments` | `GET /repos/{owner}/{repo}/actions/runs/{id}/pending_deployments` |
-| `review_deployments` | `POST /repos/{owner}/{repo}/actions/runs/{id}/pending_deployments` with `environment_names`, `state` and `comment` |
-| `get_environment` | `GET /repos/{owner}/{repo}/environments/{environment}` |
-| `update_environment` | `PUT /repos/{owner}/{repo}/environments/{environment}` |
-| `delete_environment` | `DELETE /repos/{owner}/{repo}/environments/{environment}` |
-| `get_permissions`, `set_permissions` | `GET` and `PUT /repos/{owner}/{repo}/actions/permissions/workflow`, with `default_workflow_permissions` (`read`, `write` or `inherit`) and `can_approve_pull_request_reviews` |
-| `get_workspace_permissions`, `set_workspace_permissions` | `GET` and `PUT /workspaces/{workspace}/actions/permissions/workflow`, with `default_workflow_permissions`, `max_workflow_permissions` and `can_approve_pull_request_reviews` |
-| `get_approval_policy`, `set_approval_policy` | `GET` and `PUT /repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval` |
-| `get_access`, `set_access` | `GET` and `PUT /repos/{owner}/{repo}/actions/permissions/access`, with `access_level` (`none` or `organization`) |
-| `get_enabled`, `set_enabled` | `GET` and `PUT /repos/{owner}/{repo}/actions/permissions`, with `enabled`; see [Turn workflows on or off](#turn-workflows-on-or-off) |
-| `repository_dispatch` | `POST /repos/{owner}/{repo}/dispatches` with `event_type` and `client_payload` |
-| `list_artifacts` | `GET /repos/{owner}/{repo}/actions/artifacts`, with `name`, `page`, `per_page` |
-| `run_artifacts` | `GET …/actions/runs/{id}/artifacts`, with `name` |
-| `get_artifact` | `GET …/actions/artifacts/{artifact_id}` |
-| `download_artifact` | `GET …/actions/artifacts/{artifact_id}/zip`: a `302` to a link good for 10 minutes |
-| `delete_artifact` | `DELETE …/actions/artifacts/{artifact_id}` |
-| `artifact_retention`, `set_artifact_retention` | `GET` and `PUT …/actions/permissions/artifact-and-log-retention` with `days` (it sets artifacts' days only; logs are kept for 90 days) |
-| `list_caches`, `cache_usage`, `delete_caches`, `delete_cache` | `…/actions/caches` and `…/actions/cache/usage`; see [Seeing and deleting entries](#seeing-and-deleting-entries) |
+| `workflow` action                                             | Route                                                                                                                                                                                         |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list`                                                        | `GET /repos/{owner}/{repo}/actions/workflows`                                                                                                                                                 |
+| `get`                                                         | `GET /repos/{owner}/{repo}/actions/workflows/{workflow}`, with `ref`: the workflow, with `source`, its file on that branch or tag                                                             |
+| `list_runs`                                                   | `GET /repos/{owner}/{repo}/actions/runs`, with `workflow`, `branch`, `event`, `pull`, `head_sha`, `status`, and `since` and `until` (RFC 3339) for when they were created                     |
+| `get_run`                                                     | `GET /repos/{owner}/{repo}/actions/runs/{id}`                                                                                                                                                 |
+| `job_logs`                                                    | `GET /repos/{owner}/{repo}/actions/jobs/{job}/logs?after=`, or `?format=text` for the whole log as plain text                                                                                 |
+| `get_run` with `attempt`                                      | `GET /repos/{owner}/{repo}/actions/runs/{id}/attempts/{attempt}`                                                                                                                              |
+| No tool: a download                                           | `GET /repos/{owner}/{repo}/actions/runs/{id}/logs`, or `…/attempts/{attempt}/logs`: every job's log as a zip                                                                                  |
+| `dispatch`                                                    | `POST /repos/{owner}/{repo}/actions/workflows/{workflow}/dispatches` with `ref` and `inputs`                                                                                                  |
+| `cancel`                                                      | `POST /repos/{owner}/{repo}/actions/runs/{id}/cancel`; `…/force-cancel`, or `force`, to stop running jobs without their cleanup steps                                                         |
+| `rerun`                                                       | `POST …/runs/{id}/rerun`, or `…/rerun-failed-jobs`; one job and those that need it with `POST /repos/{owner}/{repo}/actions/jobs/{job}/rerun`. Each takes `enable_debug_logging` (or `debug`) |
+| `update`                                                      | `PUT …/workflows/{workflow}/enable` and `…/disable`                                                                                                                                           |
+| `approve_run`                                                 | `POST /repos/{owner}/{repo}/actions/runs/{id}/approve`                                                                                                                                        |
+| `pending_deployments`                                         | `GET /repos/{owner}/{repo}/actions/runs/{id}/pending_deployments`                                                                                                                             |
+| `review_deployments`                                          | `POST /repos/{owner}/{repo}/actions/runs/{id}/pending_deployments` with `environment_names`, `state` and `comment`                                                                            |
+| `get_environment`                                             | `GET /repos/{owner}/{repo}/environments/{environment}`                                                                                                                                        |
+| `update_environment`                                          | `PUT /repos/{owner}/{repo}/environments/{environment}`                                                                                                                                        |
+| `delete_environment`                                          | `DELETE /repos/{owner}/{repo}/environments/{environment}`                                                                                                                                     |
+| `get_permissions`, `set_permissions`                          | `GET` and `PUT /repos/{owner}/{repo}/actions/permissions/workflow`, with `default_workflow_permissions` (`read`, `write` or `inherit`) and `can_approve_pull_request_reviews`                 |
+| `get_workspace_permissions`, `set_workspace_permissions`      | `GET` and `PUT /workspaces/{workspace}/actions/permissions/workflow`, with `default_workflow_permissions`, `max_workflow_permissions` and `can_approve_pull_request_reviews`                  |
+| `get_approval_policy`, `set_approval_policy`                  | `GET` and `PUT /repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval`                                                                                                        |
+| `get_access`, `set_access`                                    | `GET` and `PUT /repos/{owner}/{repo}/actions/permissions/access`, with `access_level` (`none` or `organization`)                                                                              |
+| `get_enabled`, `set_enabled`                                  | `GET` and `PUT /repos/{owner}/{repo}/actions/permissions`, with `enabled`; see [Turn workflows on or off](#turn-workflows-on-or-off)                                                          |
+| `repository_dispatch`                                         | `POST /repos/{owner}/{repo}/dispatches` with `event_type` and `client_payload`                                                                                                                |
+| `list_artifacts`                                              | `GET /repos/{owner}/{repo}/actions/artifacts`, with `name`, `page`, `per_page`                                                                                                                |
+| `run_artifacts`                                               | `GET …/actions/runs/{id}/artifacts`, with `name`                                                                                                                                              |
+| `get_artifact`                                                | `GET …/actions/artifacts/{artifact_id}`                                                                                                                                                       |
+| `download_artifact`                                           | `GET …/actions/artifacts/{artifact_id}/zip`: a `302` to a link good for 10 minutes                                                                                                            |
+| `delete_artifact`                                             | `DELETE …/actions/artifacts/{artifact_id}`                                                                                                                                                    |
+| `artifact_retention`, `set_artifact_retention`                | `GET` and `PUT …/actions/permissions/artifact-and-log-retention` with `days` (it sets artifacts' days only; logs are kept for 90 days)                                                        |
+| `list_caches`, `cache_usage`, `delete_caches`, `delete_cache` | `…/actions/caches` and `…/actions/cache/usage`; see [Seeing and deleting entries](#seeing-and-deleting-entries)                                                                               |
 
 Secrets and variables have a tool of their own, `secret`:
 
-| `secret` action | Route |
-| --- | --- |
-| `list_secrets`, `set_secret`, `delete_secret` | `GET /repos/{owner}/{repo}/actions/secrets`, `PUT` and `DELETE …/secrets/{name}` |
+| `secret` action                                     | Route                                                                                             |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `list_secrets`, `set_secret`, `delete_secret`       | `GET /repos/{owner}/{repo}/actions/secrets`, `PUT` and `DELETE …/secrets/{name}`                  |
 | `list_variables`, `set_variable`, `delete_variable` | `GET` and `POST /repos/{owner}/{repo}/actions/variables`, `PATCH` and `DELETE …/variables/{name}` |
 
 Workspace secrets and variables are under

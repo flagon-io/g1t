@@ -16,7 +16,18 @@ import { Card } from "../ui/card";
 import { KindIcon } from "./kinds";
 
 /** What the site answers for one link (routes/workspace/folios/api.ts `unfurl`); null: not for this viewer. */
-type Card = { id: string; kind: FolioKind; title: string; icon: string | null; path: string; space: string | null; private: boolean; excerpt: string; edited_at: string; edited_by: string | null } | null;
+type Card = {
+  id: string;
+  kind: FolioKind;
+  title: string;
+  icon: string | null;
+  path: string;
+  space: string | null;
+  private: boolean;
+  excerpt: string;
+  edited_at: string;
+  edited_by: string | null;
+} | null;
 
 /** The most cards one message shows. */
 const MAX_CARDS = 3;
@@ -69,7 +80,10 @@ function Unfurl({ slug, id }: { slug: string; id: string }) {
     );
   }
   return (
-    <Link to={card.path} className="group flex items-start gap-2.5 rounded-lg border border-line bg-surface px-3 py-2 transition-colors hover:border-line-strong">
+    <Link
+      to={card.path}
+      className="group flex items-start gap-2.5 rounded-lg border border-line bg-surface px-3 py-2 transition-colors hover:border-line-strong"
+    >
       <KindIcon kind={card.kind} size={14} box={26} />
       <span className="min-w-0 grow">
         <span className="block truncate text-sm font-medium text-fg group-hover:text-accent">

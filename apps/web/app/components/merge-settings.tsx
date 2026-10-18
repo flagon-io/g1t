@@ -2,14 +2,7 @@ import { useRef, useState } from "react";
 
 import type { CommitMessageDefault, MergeMethod, RepoSettings } from "@g1t/contracts";
 
-import {
-  MERGE_METHODS,
-  MESSAGE_CHOICES,
-  METHOD_INFO,
-  PLACEHOLDERS,
-  SAMPLE_PULL,
-  defaultMessage,
-} from "../lib/merge";
+import { MERGE_METHODS, MESSAGE_CHOICES, METHOD_INFO, PLACEHOLDERS, SAMPLE_PULL, defaultMessage } from "../lib/merge";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -88,11 +81,16 @@ export function MergeMethodSettings({ settings, disabled }: { settings: Settings
         <div className="grow">
           <p className="text-sm font-medium">Default merge method</p>
           <p className="mt-1 text-sm text-muted">
-            Offered first on the merge button, and used by the API, the CLI and auto-merge when no method is named. A
-            person's last choice in this repository is offered to them first.
+            Offered first on the merge button, and used by the API, the CLI and auto-merge when no method is named. A person's last choice in this repository is
+            offered to them first.
           </p>
         </div>
-        <Select name="defaultMergeMethod" value={defaultMethod} onValueChange={(value) => setDefault(value as MergeMethod)} disabled={disabled || on.length < 2}>
+        <Select
+          name="defaultMergeMethod"
+          value={defaultMethod}
+          onValueChange={(value) => setDefault(value as MergeMethod)}
+          disabled={disabled || on.length < 2}
+        >
           <SelectTrigger size="sm" aria-label="Default merge method" className="w-full shrink-0 sm:w-52">
             <SelectValue />
           </SelectTrigger>
@@ -179,14 +177,7 @@ function MessageDefault({
           <div className="flex flex-wrap gap-1.5">
             {PLACEHOLDERS.map((placeholder) => (
               <Hint key={placeholder.name} label={placeholder.about}>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="xs"
-                  disabled={disabled}
-                  onClick={() => insert(placeholder.name)}
-                  className="font-mono"
-                >
+                <Button type="button" variant="outline" size="xs" disabled={disabled} onClick={() => insert(placeholder.name)} className="font-mono">
                   {`{${placeholder.name}}`}
                 </Button>
               </Hint>

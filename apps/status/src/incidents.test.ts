@@ -60,10 +60,7 @@ test("declaring is refused without what it needs", () => {
 });
 
 test("severities: SEV1 and SEV2 email subscribers by default", () => {
-  assert.deepEqual(
-    (["sev1", "sev2", "sev3", "sev4"] as const).map(notifyByDefault),
-    [true, true, false, false],
-  );
+  assert.deepEqual((["sev1", "sev2", "sev3", "sev4"] as const).map(notifyByDefault), [true, true, false, false]);
 });
 
 test("an update needs words when it is public; a note can be just a change", () => {
@@ -101,7 +98,13 @@ test("lifecycle: identified, then monitoring marks it mitigated, then resolved",
   assert.ok(a.ok);
   assert.equal(a.value.next.status, "identified");
   assert.equal(a.value.next.mitigated_at, null);
-  assert.deepEqual(a.value.entries.map((e) => [e.kind, e.public]), [["status", false], ["update", true]]);
+  assert.deepEqual(
+    a.value.entries.map((e) => [e.kind, e.public]),
+    [
+      ["status", false],
+      ["update", true],
+    ],
+  );
   assert.equal(a.value.entries[1]!.status, "identified");
   assert.equal(a.value.entries[0]!.text, "Investigating → Identified.");
 
@@ -133,11 +136,30 @@ test("lifecycle: a published incident's status changes only with public words", 
 });
 
 test("lifecycle: severity and impact changes are written on the timeline", () => {
-  const r = applyChange(open, change({ public: false, message: "", severity: "sev1", impacts: [{ key: "git", impact: "partial_outage" }, { key: "api", impact: "degraded" }] }), NOW, names);
+  const r = applyChange(
+    open,
+    change({
+      public: false,
+      message: "",
+      severity: "sev1",
+      impacts: [
+        { key: "git", impact: "partial_outage" },
+        { key: "api", impact: "degraded" },
+      ],
+    }),
+    NOW,
+    names,
+  );
   assert.ok(r.ok);
   assert.equal(r.value.next.severity, "sev1");
-  assert.deepEqual(r.value.next.components, [{ key: "git", impact: "partial_outage" }, { key: "api", impact: "degraded" }]);
-  assert.deepEqual(r.value.entries.map((e) => e.text), ["Severity SEV2 → SEV1.", "Git and repositories: Major outage → Partial outage.", "api: Operational → Degraded performance."]);
+  assert.deepEqual(r.value.next.components, [
+    { key: "git", impact: "partial_outage" },
+    { key: "api", impact: "degraded" },
+  ]);
+  assert.deepEqual(
+    r.value.entries.map((e) => e.text),
+    ["Severity SEV2 → SEV1.", "Git and repositories: Major outage → Partial outage.", "api: Operational → Degraded performance."],
+  );
 });
 
 test("lifecycle: drafts take notes but nothing public; dismissed takes nothing; the first touch acknowledges", () => {
@@ -153,7 +175,10 @@ test("lifecycle: drafts take notes but nothing public; dismissed takes nothing; 
 
 test("roles: each change is a line, and nobody is said plainly", () => {
   const r = applyRoles({ ...open, commander: "ana@g1t.sh" }, { commander: null, communications: "bo@g1t.sh", by: "x" }, NOW);
-  assert.deepEqual(r.entries.map((e) => e.text), ["Incident commander: nobody.", "Communications: bo@g1t.sh."]);
+  assert.deepEqual(
+    r.entries.map((e) => e.text),
+    ["Incident commander: nobody.", "Communications: bo@g1t.sh."],
+  );
   assert.equal(applyRoles(open, { commander: null, communications: null, by: "x" }, NOW).entries.length, 0);
 });
 
@@ -166,7 +191,14 @@ test("durations read plainly", () => {
 });
 
 test("maintenance: a window in the future, under 72 hours, on known parts", () => {
-  const m = { title: "Database upgrade", message: "Pushes pause for a few minutes.", components: ["git"], starts_at: "2026-10-06T02:00Z", ends_at: "2026-10-06T03:00Z", by: "x" };
+  const m = {
+    title: "Database upgrade",
+    message: "Pushes pause for a few minutes.",
+    components: ["git"],
+    starts_at: "2026-10-06T02:00Z",
+    ends_at: "2026-10-06T03:00Z",
+    by: "x",
+  };
   const checked = checkMaintenance(m, KNOWN, NOW);
   assert.ok(checked.ok && checked.value.ends_at === "2026-10-06T03:00:00.000Z");
   assert.equal(checkMaintenance({ ...m, ends_at: "2026-10-06T01:00Z" }, KNOWN, NOW).ok, false);
@@ -178,7 +210,16 @@ test("maintenance: a window in the future, under 72 hours, on known parts", () =
 });
 
 test("postmortems: published only with a summary and a cause; the draft is filled from the incident", () => {
-  const pm = checkPostmortem({ summary: "A deploy broke pushes.", impact: "", timeline: "", root_cause: "", went_well: "", went_badly: "", action_items: "", by: "x" });
+  const pm = checkPostmortem({
+    summary: "A deploy broke pushes.",
+    impact: "",
+    timeline: "",
+    root_cause: "",
+    went_well: "",
+    went_badly: "",
+    action_items: "",
+    by: "x",
+  });
   assert.ok(pm.ok);
   assert.match(postmortemReady(pm.value) ?? "", /caused/);
   assert.equal(postmortemReady({ ...pm.value, root_cause: "A missing index." }), null);
@@ -186,11 +227,25 @@ test("postmortems: published only with a summary and a cause; the draft is fille
   const timeline = [
     { id: "1", at: "2026-10-05T11:35:00Z", by: "x", kind: "declared" as const, public: false, status: null, text: "Declared SEV2.", notified: null },
     { id: "2", at: "2026-10-05T11:36:00Z", by: "x", kind: "acknowledged" as const, public: false, status: null, text: "Acknowledged.", notified: null },
-    { id: "3", at: "2026-10-05T11:40:00Z", by: "x", kind: "update" as const, public: true, status: "investigating" as const, text: "Pushes fail.\nLooking.", notified: 3 },
+    {
+      id: "3",
+      at: "2026-10-05T11:40:00Z",
+      by: "x",
+      kind: "update" as const,
+      public: true,
+      status: "investigating" as const,
+      text: "Pushes fail.\nLooking.",
+      notified: 3,
+    },
   ];
   assert.equal(timelineText(timeline), "- 5 Oct 11:35 UTC: Declared SEV2.\n- 5 Oct 11:40 UTC: Status page: Pushes fail. Looking.");
   const draft = postmortemDraft(
-    { started_at: "2026-10-05T11:30:00Z", resolved_at: "2026-10-05T12:40:00Z", components: [{ key: "git", impact: "major_outage" }], durations: { to_acknowledge: 300, to_mitigate: null, to_resolve: 4200 } },
+    {
+      started_at: "2026-10-05T11:30:00Z",
+      resolved_at: "2026-10-05T12:40:00Z",
+      components: [{ key: "git", impact: "major_outage" }],
+      durations: { to_acknowledge: 300, to_mitigate: null, to_resolve: 4200 },
+    },
     timeline,
     [{ id: "f", title: "Alert on push errors", owner: "ana@g1t.sh", done_at: null, created_at: "", created_by: "" }],
     names,

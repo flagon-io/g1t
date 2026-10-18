@@ -64,7 +64,12 @@ const EXTENSIONS: Record<string, string> = { "image/png": "png", "image/jpeg": "
 
 /** A file's name as its alt text: its own, or `image.png` for a pasted one that has none. */
 export function imageName(file: ImageFile): string {
-  const own = file.name.split(/[/\\]/).pop()?.replace(/[\u0000-\u001f\u007f]/g, "").trim() ?? "";
+  const own =
+    file.name
+      .split(/[/\\]/)
+      .pop()
+      ?.replace(/[\u0000-\u001f\u007f]/g, "")
+      .trim() ?? "";
   return own || `image.${EXTENSIONS[file.type.toLowerCase()] ?? "png"}`;
 }
 

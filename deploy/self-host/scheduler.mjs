@@ -62,8 +62,7 @@ export function matches(cron, date) {
   const dayMatches = days.has(date.getUTCDate());
   const weekdayMatches = weekdays.has(weekday) || (weekday === 0 && weekdays.has(7));
   // As cron does: when both day fields are restricted, either may match.
-  const day =
-    fields[2] !== "*" && fields[4] !== "*" ? dayMatches || weekdayMatches : dayMatches && weekdayMatches;
+  const day = fields[2] !== "*" && fields[4] !== "*" ? dayMatches || weekdayMatches : dayMatches && weekdayMatches;
   return minutes.has(date.getUTCMinutes()) && hours.has(date.getUTCHours()) && months.has(date.getUTCMonth() + 1) && day;
 }
 

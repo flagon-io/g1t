@@ -144,7 +144,9 @@ export class Feed extends DurableObject<FeedEnv> {
     this.sql.exec(`CREATE TABLE IF NOT EXISTS watching (repo_id TEXT PRIMARY KEY, until INTEGER NOT NULL)`);
   }
 
-  private erased(): boolean { return this.meta("erased") === "1"; }
+  private erased(): boolean {
+    return this.meta("erased") === "1";
+  }
 
   /** When `workspace` was purged (RFC 3339), if it was. */
   private workspaceErasedAt(workspace: string | null | undefined): string | null {
@@ -166,10 +168,26 @@ export class Feed extends DurableObject<FeedEnv> {
   async erase(userId: string): Promise<{ ok: boolean }> {
     // Keep cleanup references until remote removals succeed, so any failure is retryable.
     if (!this.erased()) {
-      this.setMeta("erase_rooms", JSON.stringify([...new Set([...this.memberOf(), ...this.workspaces(), ...this.sql.exec<{ workspace: string }>("SELECT workspace FROM visits UNION SELECT workspace FROM presence_rooms").toArray().map(r => r.workspace)])]));
+      this.setMeta(
+        "erase_rooms",
+        JSON.stringify([
+          ...new Set([
+            ...this.memberOf(),
+            ...this.workspaces(),
+            ...this.sql
+              .exec<{ workspace: string }>("SELECT workspace FROM visits UNION SELECT workspace FROM presence_rooms")
+              .toArray()
+              .map((r) => r.workspace),
+          ]),
+        ]),
+      );
       this.setMeta("erased", "1");
     }
-    for (const socket of this.ctx.getWebSockets()) { try { socket.close(4403, "Account erased"); } catch {} }
+    for (const socket of this.ctx.getWebSockets()) {
+      try {
+        socket.close(4403, "Account erased");
+      } catch {}
+    }
     await this.ctx.storage.deleteAlarm();
     const rooms = JSON.parse(this.meta("erase_rooms") ?? "[]") as string[];
     for (const workspace of rooms) {
@@ -182,7 +200,8 @@ export class Feed extends DurableObject<FeedEnv> {
       await this.env.TOPICS.get(this.env.TOPICS.idFromName(row.repo_id)).forget(userId);
     }
     this.ctx.storage.transactionSync(() => {
-      for (const table of ["notifications", "counts", "subscriptions", "devices", "visits", "watching", "presence_rooms"]) this.sql.exec(`DELETE FROM ${table}`);
+      for (const table of ["notifications", "counts", "subscriptions", "devices", "visits", "watching", "presence_rooms"])
+        this.sql.exec(`DELETE FROM ${table}`);
       this.sql.exec("DELETE FROM meta WHERE key != 'erased'");
     });
     return { ok: true };
@@ -208,9 +227,13 @@ export class Feed extends DurableObject<FeedEnv> {
     this.sql.exec("DELETE FROM counts WHERE workspace = ?", workspace);
     this.sql.exec("DELETE FROM visits WHERE workspace = ?", workspace);
     this.sql.exec("DELETE FROM presence_rooms WHERE workspace = ?", workspace);
-    this.setMeta("workspaces", JSON.stringify(this.memberOf().filter(w => w !== workspace)));
+    this.setMeta("workspaces", JSON.stringify(this.memberOf().filter((w) => w !== workspace)));
     // Force clients to reload counts instead of retaining the deleted workspace's snapshot.
-    for (const socket of this.ctx.getWebSockets()) { try { socket.close(1012, "Workspace erased"); } catch {} }
+    for (const socket of this.ctx.getWebSockets()) {
+      try {
+        socket.close(1012, "Workspace erased");
+      } catch {}
+    }
     return { ok: true };
   }
 
@@ -249,12 +272,17 @@ export class Feed extends DurableObject<FeedEnv> {
   }
 
   private workspaces(): string[] {
-    return this.sql.exec<{ workspace: string }>("SELECT DISTINCT workspace FROM counts").toArray().map((r) => r.workspace);
+    return this.sql
+      .exec<{ workspace: string }>("SELECT DISTINCT workspace FROM counts")
+      .toArray()
+      .map((r) => r.workspace);
   }
 
   private vapid(): Vapid | null {
     const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT } = this.env;
-    return VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY ? { publicKey: VAPID_PUBLIC_KEY, privateKey: VAPID_PRIVATE_KEY, subject: VAPID_SUBJECT || "https://g1t.sh" } : null;
+    return VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY
+      ? { publicKey: VAPID_PUBLIC_KEY, privateKey: VAPID_PRIVATE_KEY, subject: VAPID_SUBJECT || "https://g1t.sh" }
+      : null;
   }
 
   private subscriptionCount(): number {
@@ -302,7 +330,7 @@ export class Feed extends DurableObject<FeedEnv> {
 
   private memberOf(): string[] {
     try {
-      return cleanWorkspaces(JSON.parse(this.meta("workspaces") ?? "[]")).filter(workspace => !this.workspaceGone(workspace));
+      return cleanWorkspaces(JSON.parse(this.meta("workspaces") ?? "[]")).filter((workspace) => !this.workspaceGone(workspace));
     } catch {
       return [];
     }
@@ -579,7 +607,10 @@ export class Feed extends DurableObject<FeedEnv> {
   /** Pushes to every phone through Expo; drops the ones Expo says the app is gone from. */
   private async pushDevices(notification: FeedNotification, payload: PushPayload): Promise<number> {
     if (!this.phonePush()) return 0;
-    const tokens = this.sql.exec<{ token: string }>("SELECT token FROM devices").toArray().map((r) => r.token);
+    const tokens = this.sql
+      .exec<{ token: string }>("SELECT token FROM devices")
+      .toArray()
+      .map((r) => r.token);
     if (!tokens.length) return 0;
     const result = await sendExpo(tokens, payload, notification, { accessToken: this.env.EXPO_ACCESS_TOKEN });
     for (const token of result.gone) this.sql.exec("DELETE FROM devices WHERE token = ?", token);
@@ -613,11 +644,11 @@ export class Feed extends DurableObject<FeedEnv> {
       if (channel && workspace && item.notification && beforeForgetting(item.notification, this.meta(forgotKey(workspace, channel)))) continue;
       if (item.counts?.channel_id && workspace) {
         const before = this.sql
-          .exec<{ unread: number; mentions: number; muted: number }>(
-            "SELECT unread, mentions, muted FROM counts WHERE workspace = ? AND channel_id = ?",
-            workspace,
-            item.counts.channel_id,
-          )
+          .exec<{
+            unread: number;
+            mentions: number;
+            muted: number;
+          }>("SELECT unread, mentions, muted FROM counts WHERE workspace = ? AND channel_id = ?", workspace, item.counts.channel_id)
           .toArray()[0];
         const after = applyCounts(
           before ? { channel_id: item.counts.channel_id, unread: before.unread, mentions: before.mentions, muted: !!before.muted } : null,
@@ -672,10 +703,7 @@ export class Feed extends DurableObject<FeedEnv> {
     if (this.erased()) return { ok: true };
     const unread = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
     if (settled.length > 0) {
-      this.sql.exec(
-        "DELETE FROM notifications WHERE json_extract(json, '$.inbox_thread') IN (SELECT value FROM json_each(?))",
-        JSON.stringify(settled),
-      );
+      this.sql.exec("DELETE FROM notifications WHERE json_extract(json, '$.inbox_thread') IN (SELECT value FROM json_each(?))", JSON.stringify(settled));
     }
     if (unread === this.inboxUnread() && settled.length === 0) return { ok: true };
     this.setMeta("inbox_unread", String(unread));

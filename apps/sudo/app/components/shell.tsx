@@ -113,11 +113,7 @@ function countLabel(item: NavItem): string {
 }
 
 function SoonPill() {
-  return (
-    <span className="shrink-0 rounded-full px-1.5 py-px text-[0.625rem] font-medium tracking-wide text-muted uppercase ring-1 ring-line">
-      Soon
-    </span>
-  );
+  return <span className="shrink-0 rounded-full px-1.5 py-px text-[0.625rem] font-medium tracking-wide text-muted uppercase ring-1 ring-line">Soon</span>;
 }
 
 /** A top-level link, with its icon. */

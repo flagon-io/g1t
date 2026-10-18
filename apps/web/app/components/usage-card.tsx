@@ -57,11 +57,7 @@ export function UsageCard({ slug, glance, owner }: { slug: string; glance: Usage
           </div>
           <p className="mt-3 flex items-baseline justify-between gap-3">
             <span className="text-2xl font-semibold tracking-tight tabular-nums">{money(glance.spentMicros)}</span>
-            <span
-              className={`rounded-full px-2 py-0.5 text-xs ${
-                glance.kind === "forge" ? "border border-line text-muted" : "bg-accent/15 text-accent"
-              }`}
-            >
+            <span className={`rounded-full px-2 py-0.5 text-xs ${glance.kind === "forge" ? "border border-line text-muted" : "bg-accent/15 text-accent"}`}>
               {STANDING[glance.kind]}
             </span>
           </p>
@@ -92,9 +88,7 @@ export function UsageCard({ slug, glance, owner }: { slug: string; glance: Usage
               <span className="text-muted">On-demand charges</span>
               <span className="tabular-nums">
                 {money(glance.onDemand.micros)}
-                {glance.onDemand.limitMicros != null && (
-                  <span className="text-faint"> / {wholeDollars(glance.onDemand.limitMicros)}</span>
-                )}
+                {glance.onDemand.limitMicros != null && <span className="text-faint"> / {wholeDollars(glance.onDemand.limitMicros)}</span>}
               </span>
             </div>
           )}

@@ -53,51 +53,51 @@ own both workspaces, as on the site.
 
 ## When a transfer is refused
 
-| Response | Why | What to do |
-| --- | --- | --- |
-| `403 forbidden` | You do not own one of the two workspaces, or you are using a workspace token. | Ask an owner of both to transfer it, or use a personal token. |
-| `409 conflict` | The destination already has a repository with that name, or a recently deleted one held it. | Rename or move that repository first, or purge the deleted one. |
+| Response               | Why                                                                                                                                  | What to do                                                                  |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| `403 forbidden`        | You do not own one of the two workspaces, or you are using a workspace token.                                                        | Ask an owner of both to transfer it, or use a personal token.               |
+| `409 conflict`         | The destination already has a repository with that name, or a recently deleted one held it.                                          | Rename or move that repository first, or purge the deleted one.             |
 | `402 payment_required` | The repository is private, the destination is on no plan, and its private repositories would hold more than a free workspace's 1 GB. | Start the g1t plan in the destination, or make the repository public first. |
-| `422 invalid` | No destination, or the destination is the workspace it is already in. | Name another workspace. |
+| `422 invalid`          | No destination, or the destination is the workspace it is already in.                                                                | Name another workspace.                                                     |
 
 ## What moves
 
 Everything that belongs to the repository moves with it:
 
-| | |
-| --- | --- |
-| Code | Every branch and tag. The git data does not move or copy; only the address changes. |
-| Pull requests | With their numbers, comments, reviews, sessions and merge queue. A new pull request takes the new workspace's next number, always above the numbers the repository's pull requests already have. |
-| Workflows | Workflow runs, their jobs, logs and artifacts. |
-| Deployments | The repository's project, its deployments and its custom domains. See [deployments](#deployments). |
-| Its own settings | Merge rules, branch protection and guardrails. |
-| Its own secrets and variables | Set on the repository, they move with it. |
-| Its own webhooks | They now name the repository by its new path. |
+|                               |                                                                                                                                                                                                  |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Code                          | Every branch and tag. The git data does not move or copy; only the address changes.                                                                                                              |
+| Pull requests                 | With their numbers, comments, reviews, sessions and merge queue. A new pull request takes the new workspace's next number, always above the numbers the repository's pull requests already have. |
+| Workflows                     | Workflow runs, their jobs, logs and artifacts.                                                                                                                                                   |
+| Deployments                   | The repository's project, its deployments and its custom domains. See [deployments](#deployments).                                                                                               |
+| Its own settings              | Merge rules, branch protection and guardrails.                                                                                                                                                   |
+| Its own secrets and variables | Set on the repository, they move with it.                                                                                                                                                        |
+| Its own webhooks              | They now name the repository by its new path.                                                                                                                                                    |
 
 These belong to the old workspace and stay with it:
 
-| | |
-| --- | --- |
-| Work items | [Work items](/work/work-items/) belong to the workspace, so they stay in the old one, with their numbers. |
-| Labels and milestones | They are the workspace's, and stay with it. |
+|                                 |                                                                                                                               |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Work items                      | [Work items](/work/work-items/) belong to the workspace, so they stay in the old one, with their numbers.                     |
+| Labels and milestones           | They are the workspace's, and stay with it.                                                                                   |
 | Workspace secrets and variables | The old workspace's stop reaching the repository; the new workspace's start, if they reach every repository or name this one. |
-| Workspace webhooks | The old workspace's stop hearing about the repository; the new one's start. |
-| Integrations | Sentry, Datadog, Jira and Linear connections stay with their workspace. Connect them in the new one if you need them there. |
-| Workspace guardrails | The new workspace's apply from now on. |
-| The audit log | What happened before the transfer stays in the old workspace's log. Each workspace's log records the transfer itself. |
-| Billing history | See [billing](#billing). |
+| Workspace webhooks              | The old workspace's stop hearing about the repository; the new one's start.                                                   |
+| Integrations                    | Sentry, Datadog, Jira and Linear connections stay with their workspace. Connect them in the new one if you need them there.   |
+| Workspace guardrails            | The new workspace's apply from now on.                                                                                        |
+| The audit log                   | What happened before the transfer stays in the old workspace's log. Each workspace's log records the transfer itself.         |
+| Billing history                 | See [billing](#billing).                                                                                                      |
 
 ## Old addresses
 
 The old address keeps working, for as long as nothing else is made there:
 
-| | Behaviour |
-| --- | --- |
-| Web pages | A permanent redirect (`301`) to the same page at the new address, query string included. A private repository redirects only for people who can see it; anyone else gets a 404, as before. |
-| `git clone`, `fetch` and `pull` | Redirected to the new remote. Git follows it and prints a warning each time. |
-| `git push` | Redirected the same way: git asks for the push's refs at the old address, follows the redirect, and sends the push to the new one. |
-| API and MCP | A call that names the repository by its old path runs against it at its new path. |
-| `g1t.page` apps | The old app addresses redirect to the new ones for 90 days. |
+|                                 | Behaviour                                                                                                                                                                                  |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Web pages                       | A permanent redirect (`301`) to the same page at the new address, query string included. A private repository redirects only for people who can see it; anyone else gets a 404, as before. |
+| `git clone`, `fetch` and `pull` | Redirected to the new remote. Git follows it and prints a warning each time.                                                                                                               |
+| `git push`                      | Redirected the same way: git asks for the push's refs at the old address, follows the redirect, and sends the push to the new one.                                                         |
+| API and MCP                     | A call that names the repository by its old path runs against it at its new path.                                                                                                          |
+| `g1t.page` apps                 | The old app addresses redirect to the new ones for 90 days.                                                                                                                                |
 
 A redirect stops as soon as a repository is created at the old address,
 whether by the site, the API or a push that creates one. Update your

@@ -37,9 +37,7 @@ test("every scope is on the checklist exactly once, admin ones under Dangerous",
 });
 
 test("ticked boxes store the highest level of each resource", () => {
-  const parsed = scopesFromForm(
-    form({ scope: ["work:read", "work:write", "code:read", "agents:run", "memory:write", "bogus:read"] }),
-  );
+  const parsed = scopesFromForm(form({ scope: ["work:read", "work:write", "code:read", "agents:run", "memory:write", "bogus:read"] }));
   assert.deepEqual(parsed, { ok: true, value: ["code:read", "work:write"] });
   assert.deepEqual(normalizeScopes(["repo:read", "repo:admin", "repo:write"]), ["repo:admin"]);
 });
@@ -78,7 +76,13 @@ test("presets are recognised however their scopes are written", () => {
 test("a token's access reads plainly", () => {
   assert.equal(accessSummary({ scopes: null, legacy: true }), "Legacy · full access");
   assert.equal(accessSummary({ scopes: null, legacy: false }), "Full access");
-  assert.equal(accessSummary({ scopes: ["code:read", "code:write", "packages:write", "workflows:write", "checks:write", "deployments:write", "repo:read"], legacy: false }), "CI");
+  assert.equal(
+    accessSummary({
+      scopes: ["code:read", "code:write", "packages:write", "workflows:write", "checks:write", "deployments:write", "repo:read"],
+      legacy: false,
+    }),
+    "CI",
+  );
   assert.equal(accessSummary({ scopes: ["work:read", "work:write", "pull_requests:read"], legacy: false }), "2 scopes");
   assert.equal(accessSummary({ scopes: [], legacy: false }), "No scopes");
 });

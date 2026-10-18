@@ -14,8 +14,23 @@ test("iso projects the floor axes and lifts by z", () => {
 });
 
 test("pts and isoPath round to one decimal place", () => {
-  assert.equal(pts([[1.234, 5.678], [0, 0]]), "1.2,5.7 0.0,0.0");
-  assert.equal(isoPath([[0, 0], [10, 0]], 2), "M0.0 -2.0 L8.7 3.0");
+  assert.equal(
+    pts([
+      [1.234, 5.678],
+      [0, 0],
+    ]),
+    "1.2,5.7 0.0,0.0",
+  );
+  assert.equal(
+    isoPath(
+      [
+        [0, 0],
+        [10, 0],
+      ],
+      2,
+    ),
+    "M0.0 -2.0 L8.7 3.0",
+  );
 });
 
 test("stagger spreads starts evenly inside the loop", () => {

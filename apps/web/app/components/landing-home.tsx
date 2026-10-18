@@ -66,8 +66,9 @@ export function WhatChangedArt() {
       <HomeCard title="What changed" hint="In plain English, since I was last here">
         <div className="space-y-2 px-4 pb-3.5 text-[0.8125rem] leading-relaxed text-fg-soft">
           <p>
-            Two changes landed in <span className="font-medium text-fg">acme/web</span>. CSV exports now stream in batches of 1,000 rows, so the
-            largest accounts no longer time out; it went live 9 minutes after the merge queue merged it. Jordan pinned the build image's cache key, which fixed last night's failed deploy.
+            Two changes landed in <span className="font-medium text-fg">acme/web</span>. CSV exports now stream in batches of 1,000 rows, so the largest
+            accounts no longer time out; it went live 9 minutes after the merge queue merged it. Jordan pinned the build image's cache key, which fixed last
+            night's failed deploy.
           </p>
           <div className="flex flex-wrap items-center gap-1.5 border-t border-line pt-2.5">
             <Button type="button" variant="soft" size="xs" tabIndex={-1}>
@@ -84,11 +85,35 @@ export function WhatChangedArt() {
 
       <HomeCard title="Landed" hint="1 pull request merged · 1 push">
         {[
-          { title: "Stream CSV exports in batches", detail: "web#431 · by priya", push: false, ship: <Badge tone="success"><Rocket size={10} aria-hidden="true" />Live 9 min after merge</Badge> },
-          { title: "Pin the build image's cache key", detail: "web · 1 push by jordan", push: true, ship: <Badge tone="success"><Rocket size={10} aria-hidden="true" />Live 4 min after push</Badge> },
+          {
+            title: "Stream CSV exports in batches",
+            detail: "web#431 · by priya",
+            push: false,
+            ship: (
+              <Badge tone="success">
+                <Rocket size={10} aria-hidden="true" />
+                Live 9 min after merge
+              </Badge>
+            ),
+          },
+          {
+            title: "Pin the build image's cache key",
+            detail: "web · 1 push by jordan",
+            push: true,
+            ship: (
+              <Badge tone="success">
+                <Rocket size={10} aria-hidden="true" />
+                Live 4 min after push
+              </Badge>
+            ),
+          },
         ].map((row) => (
           <div key={row.title} className={ROW}>
-            {row.push ? <GitCommitHorizontal size={15} className="shrink-0 text-muted" aria-hidden="true" /> : <GitMerge size={15} className="shrink-0 text-merged" aria-hidden="true" />}
+            {row.push ? (
+              <GitCommitHorizontal size={15} className="shrink-0 text-muted" aria-hidden="true" />
+            ) : (
+              <GitMerge size={15} className="shrink-0 text-merged" aria-hidden="true" />
+            )}
             <div className="min-w-0 grow">
               <p className="truncate text-sm text-fg">{row.title}</p>
               <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
@@ -112,8 +137,12 @@ export function NeedsYouArt() {
     <Picture label="Home: Settled for you lists notifications that settled themselves and why, Where you're needed lists a pull request ready to merge and a review asked of you, and Start here opens the one to do first">
       <HomeCard title="Settled for you" hint="3 finished by themselves">
         <div className="flex flex-wrap gap-1.5 px-4 pb-3">
-          <Badge tone="success" size="md">3 notifications settled</Badge>
-          <Badge tone="warn" size="md">2 things still need you</Badge>
+          <Badge tone="success" size="md">
+            3 notifications settled
+          </Badge>
+          <Badge tone="warn" size="md">
+            2 things still need you
+          </Badge>
         </div>
         {[
           { title: "CI failed on main", why: "CI passed in run 330" },
@@ -131,8 +160,20 @@ export function NeedsYouArt() {
 
       <HomeCard title="Where you're needed">
         {[
-          { icon: <GitMerge size={15} className="shrink-0 text-success" aria-hidden="true" />, title: "Retry webhook deliveries with backoff", detail: "acme/web #433 · Ready to land when you merge it.", stake: "Ready to merge", action: "Open" },
-          { icon: <GitPullRequest size={15} className="shrink-0 text-info" aria-hidden="true" />, title: "Add audit log export", detail: "acme/web #435 · Your review", stake: "+212 −40", action: "Review" },
+          {
+            icon: <GitMerge size={15} className="shrink-0 text-success" aria-hidden="true" />,
+            title: "Retry webhook deliveries with backoff",
+            detail: "acme/web #433 · Ready to land when you merge it.",
+            stake: "Ready to merge",
+            action: "Open",
+          },
+          {
+            icon: <GitPullRequest size={15} className="shrink-0 text-info" aria-hidden="true" />,
+            title: "Add audit log export",
+            detail: "acme/web #435 · Your review",
+            stake: "+212 −40",
+            action: "Review",
+          },
         ].map((row) => (
           <div key={row.title} className={ROW}>
             {row.icon}

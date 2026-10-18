@@ -51,7 +51,15 @@ test("a log read chunk by chunk is the log read at once, wherever the chunks fal
   const whole = readLog(text);
   // Every cut, and many cuts, including inside a line and inside an escape code.
   for (let cut = 0; cut <= text.length; cut++) assert.deepEqual(shape(readInChunks(text, [cut])), shape(whole), `cut at ${cut}`);
-  assert.deepEqual(shape(readInChunks(text, Array.from({ length: text.length }, (_, i) => i))), shape(whole));
+  assert.deepEqual(
+    shape(
+      readInChunks(
+        text,
+        Array.from({ length: text.length }, (_, i) => i),
+      ),
+    ),
+    shape(whole),
+  );
   assert.equal(whole.lastAt, "2026-10-12T09:41:09.0000000Z");
   assert.deepEqual(whole.blocks, blocks(text));
 });
@@ -73,10 +81,16 @@ test("a line still being written shows, and is read once it ends", () => {
   let log = appendLog(emptyLog(), "one\ntw");
   assert.equal(log.lines.length, 1);
   assert.deepEqual(log.tail, { line: { kind: "text", text: "tw" }, number: 2 });
-  assert.deepEqual(searchStepLog(log, "TW").map((found) => found.number), [2]);
+  assert.deepEqual(
+    searchStepLog(log, "TW").map((found) => found.number),
+    [2],
+  );
   log = appendLog(log, "o\n");
   assert.equal(log.tail, undefined);
-  assert.deepEqual(log.lines.map((entry) => entry.line.text), ["one", "two"]);
+  assert.deepEqual(
+    log.lines.map((entry) => entry.line.text),
+    ["one", "two"],
+  );
   // A group's marker cut in two opens the group once it is whole.
   log = appendLog(log, "##[gro");
   assert.equal(log.tail, undefined, "half a marker is not a line");
@@ -110,7 +124,14 @@ test("a log's rows are its lines and groups' titles, open groups' lines under th
   assert.equal(searchStepLog(log, "b"), searchStepLog(log, " B "));
 });
 
-const LOG = ["Job: test", "##[group]Run cargo test", "cargo test --locked", "##[endgroup]", "test greet ... FAILED", "##[error]Process completed with exit code 101."].join("\n");
+const LOG = [
+  "Job: test",
+  "##[group]Run cargo test",
+  "cargo test --locked",
+  "##[endgroup]",
+  "test greet ... FAILED",
+  "##[error]Process completed with exit code 101.",
+].join("\n");
 
 test("a log reads as lines and folded groups, numbered past the group markers", () => {
   const parsed = blocks(LOG);
@@ -151,7 +172,14 @@ test("a run's archive has each job whole and a file per step, named as the API n
     done: true,
     omitted,
   });
-  const files = archiveFiles([job("test", [[0, "set up\n"], [1, "running\n"], [1, "ok\n"]]), job("deploy/x", [], true)]);
+  const files = archiveFiles([
+    job("test", [
+      [0, "set up\n"],
+      [1, "running\n"],
+      [1, "ok\n"],
+    ]),
+    job("deploy/x", [], true),
+  ]);
   assert.deepEqual(
     files.map((file) => file.path),
     ["1_test.txt", "test/0_Set up job.txt", "test/1_Run cargo test.txt", "2_deploy_x.txt"],
@@ -186,7 +214,11 @@ test("each line's time comes off the front, as GitHub's logs stamp it, and colou
     line: { kind: "text", text: "   Compiling g1t v0.2.0", at: "2026-10-12T09:41:09.0000000Z", ansi: "\u001b[1m\u001b[32m   Compiling\u001b[0m g1t v0.2.0" },
     number: 2,
   });
-  assert.deepEqual(parsed[2], { kind: "line", line: { kind: "error", text: "Process completed with exit code 1.", at: "2026-10-12T09:41:10.0000000Z" }, number: 3 });
+  assert.deepEqual(parsed[2], {
+    kind: "line",
+    line: { kind: "error", text: "Process completed with exit code 1.", at: "2026-10-12T09:41:10.0000000Z" },
+    number: 3,
+  });
   assert.deepEqual(parsed[3], { kind: "line", line: { kind: "text", text: "a line from before lines were stamped" }, number: 4 });
   // Search reads the plain text, never the time or the codes.
   assert.deepEqual(

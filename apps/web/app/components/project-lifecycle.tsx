@@ -51,9 +51,7 @@ export function ProjectDangerZone({
         {remove && <DeleteAction full={full} error={error("delete")} />}
       </DangerZone>
       {!remove && (
-        <p className="mt-4 text-sm text-muted">
-          Only an owner of the workspace can transfer or delete it: its member privileges keep that to owners.
-        </p>
+        <p className="mt-4 text-sm text-muted">Only an owner of the workspace can transfer or delete it: its member privileges keep that to owners.</p>
       )}
     </div>
   );
@@ -125,19 +123,14 @@ function DeleteAction({ full, error }: { full: string; error: string | null }) {
             </Button>
           }
         >
-          Its repository goes with it. It can be restored from the workspace's repositories for {RESTORE_DAYS} days, then
-          it is removed for good.
+          Its repository goes with it. It can be restored from the workspace's repositories for {RESTORE_DAYS} days, then it is removed for good.
         </DangerAction>
       )}
     >
+      <li>It disappears at once with its repository: its pages, git remote and API stop answering, for everyone, and its apps on g1t.page stop serving.</li>
       <li>
-        It disappears at once with its repository: its pages, git remote and API stop answering, for everyone, and its
-        apps on g1t.page stop serving.
-      </li>
-      <li>
-        Owners can restore it, as it was, from <span className="font-mono text-fg">{namespace}</span>'s Recently deleted
-        repositories for {RESTORE_DAYS} days, custom domains and settings included. After that it is removed for good,
-        its git data with it.
+        Owners can restore it, as it was, from <span className="font-mono text-fg">{namespace}</span>'s Recently deleted repositories for {RESTORE_DAYS} days,
+        custom domains and settings included. After that it is removed for good, its git data with it.
       </li>
       <li>Its name stays taken until then, so nothing else can be made at its address.</li>
     </ConfirmDialog>
@@ -149,15 +142,7 @@ function DeleteAction({ full, error }: { full: string; error: string | null }) {
  * may create one in. The dialog says what moves and what changes, and asks
  * for the full name.
  */
-function TransferAction({
-  repo,
-  destinations,
-  error,
-}: {
-  repo: string;
-  destinations: { slug: string; name: string }[];
-  error: string | null;
-}) {
+function TransferAction({ repo, destinations, error }: { repo: string; destinations: { slug: string; name: string }[]; error: string | null }) {
   const [open, setOpen] = useState(Boolean(error));
   const [to, setTo] = useState(destinations[0]?.slug ?? "");
   const [confirm, setConfirm] = useState("");
@@ -191,8 +176,8 @@ function TransferAction({
             <AlertDialogHeader>
               <AlertDialogTitle>Transfer {repo}</AlertDialogTitle>
               <AlertDialogDescription>
-                It keeps its name and moves with everything in it: code, work items, pull requests, workflow runs,
-                deployments, and its own secrets, variables and webhooks.
+                It keeps its name and moves with everything in it: code, work items, pull requests, workflow runs, deployments, and its own secrets, variables
+                and webhooks.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <FormField>
@@ -212,13 +197,16 @@ function TransferAction({
             </FormField>
             <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted">
               <li>
-                It moves to <span className="font-mono break-all text-fg">g1t.sh/{to}/{name}</span>. Links, git remotes
-                and API calls to <span className="font-mono break-all">g1t.sh/{repo}</span> redirect there until a
-                repository is made at the old address.
+                It moves to{" "}
+                <span className="font-mono break-all text-fg">
+                  g1t.sh/{to}/{name}
+                </span>
+                . Links, git remotes and API calls to <span className="font-mono break-all">g1t.sh/{repo}</span> redirect there until a repository is made at
+                the old address.
               </li>
               <li>
-                Apps it deploys move to <span className="font-mono">*.g1t.page</span> names with the new workspace; the
-                old ones redirect for 90 days. Custom domains follow.
+                Apps it deploys move to <span className="font-mono">*.g1t.page</span> names with the new workspace; the old ones redirect for 90 days. Custom
+                domains follow.
               </li>
               <li>The old workspace's secrets, webhooks and integrations stop reaching it; the new one's start.</li>
               <li>Usage from now on is charged to {to}. What it used before stays on the old workspace's bill.</li>

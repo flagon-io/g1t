@@ -7,12 +7,12 @@ A project is the thing you are building and running: a site, an API, a
 worker, a library. Every project has one **source**, where its code lives,
 and everything about running it belongs to the project:
 
-| Belongs to the project | Belongs to its repository |
-| --- | --- |
-| [Deployments](/guides/deployments/): production and previews | Branches and commits |
-| Its address on g1t.page | Work items and pull requests |
-| [Secrets and variables](/guides/secrets-and-variables/) | Review, merge rules and the [merge queue](/guides/merge-queue/) |
-| Its name, description and root directory | Webhooks |
+| Belongs to the project                                       | Belongs to its repository                                       |
+| ------------------------------------------------------------ | --------------------------------------------------------------- |
+| [Deployments](/guides/deployments/): production and previews | Branches and commits                                            |
+| Its address on g1t.page                                      | Work items and pull requests                                    |
+| [Secrets and variables](/guides/secrets-and-variables/)      | Review, merge rules and the [merge queue](/guides/merge-queue/) |
+| Its name, description and root directory                     | Webhooks                                                        |
 
 That split is what lets the code live anywhere while the project stays the
 same.
@@ -33,16 +33,16 @@ your [pinned and recent projects](/guides/workspaces/#pinned-and-recent-projects
 
 ## A project's pages
 
-| Page | Address | |
-| --- | --- | --- |
-| **Overview** | `g1t.sh/<workspace>/<project>` | What it is and its links; production wherever it is deployed, or for a library its packages; what is in progress, active branches, the latest commits, and its About. See [the overview](#the-overview). |
-| **Code** | `…/code` | The repository's files, commits and branches. |
-| **Work** | `g1t.sh/<workspace>/-/work?repo=<name>` | The workspace's [work items](/work/work-items/) linked to the repository. |
-| **Pull requests**, **Merge queue** | `…/pulls` and so on | As they always were. A pull request's **Session** tab is at `…/pull/<number>/session`. |
-| **Sessions** | `g1t.sh/<workspace>/-/work/sessions?repo=<name>` | The workspace's [sessions](/work/sessions/) in the repository. |
-| **Actions** | `…/actions` | [GitHub Actions workflows](/guides/actions/). |
-| **Deployments** | `…/deployments` | What is up now and every build. |
-| **Settings** | `…/settings` | See below. |
+| Page                               | Address                                          |                                                                                                                                                                                                          |
+| ---------------------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Overview**                       | `g1t.sh/<workspace>/<project>`                   | What it is and its links; production wherever it is deployed, or for a library its packages; what is in progress, active branches, the latest commits, and its About. See [the overview](#the-overview). |
+| **Code**                           | `…/code`                                         | The repository's files, commits and branches.                                                                                                                                                            |
+| **Work**                           | `g1t.sh/<workspace>/-/work?repo=<name>`          | The workspace's [work items](/work/work-items/) linked to the repository.                                                                                                                                |
+| **Pull requests**, **Merge queue** | `…/pulls` and so on                              | As they always were. A pull request's **Session** tab is at `…/pull/<number>/session`.                                                                                                                   |
+| **Sessions**                       | `g1t.sh/<workspace>/-/work/sessions?repo=<name>` | The workspace's [sessions](/work/sessions/) in the repository.                                                                                                                                           |
+| **Actions**                        | `…/actions`                                      | [GitHub Actions workflows](/guides/actions/).                                                                                                                                                            |
+| **Deployments**                    | `…/deployments`                                  | What is up now and every build.                                                                                                                                                                          |
+| **Settings**                       | `…/settings`                                     | See below.                                                                                                                                                                                               |
 
 Every address that pointed into a repository before still works: the
 project has the repository's name.
@@ -64,21 +64,21 @@ deployment settings together, with management controls shown according to
 your permissions. Hosted projects also offer **Redeploy** there. **Instant
 rollback** is marked **Soon** and disabled; it does not change production.
 
-| Part | What it shows |
-| --- | --- |
-| **What it is** | A badge, such as **App, deploys itself** or **Library**, beside its homepage and docs. People who can change its settings open the badge to change [what it is](#what-a-project-is) in one click. |
-| **Production** | [Production's picture](#productions-picture), which opens the live site, beside the rest. For an app [hosted on g1t.page](/guides/deployments/): its address, the commit it runs and when it went up; **Visit** and **Redeploy**. For an app that deploys itself: production's address and **Visit**, with its latest reported production deployment (and the workflow run that made it, when g1t Actions did) or the default branch's latest commit. For an app nobody has placed yet: one question, where it runs. |
-| **Packages** | For a library or a tool, in place of Production: the packages its repository publishes, each with its latest version and how to install it, or how to publish a first one. |
-| **Documentation**, **Homepage** | For docs, where they are read; for anything else, its homepage. |
-| **Facts** | Under production: its latest release (or, where the card does not already say it, production's state), how often checks pass, and either how many changes pass on the first try and what is open, or, for people with a role when [Observability](/guides/observability/) has data, requests and the error rate over the last day with how many errors are open. |
-| **Code** | One line to the repository: its name, default branch and when it was last pushed to, linking to **Code**. |
-| **Needs you** | For someone signed in: what is waiting on them, such as a failed production build or a pull request to merge or review. |
-| **Live now** | The people and coding agents working on it: each work item with its [claims and sessions](/work/claims-and-dependencies/), the harness each came from and who it acts for, and sessions on no work item yet. Work's [Sessions](/work/sessions/), filtered to the repository (`g1t.sh/<workspace>/-/work/sessions?repo=<name>`), has everything. With nobody working, people with a role see how to [connect a coding agent](/guides/bring-your-own-agent/). |
-| **Previews** | For people with a role: the pull requests' previews that are up. |
-| **Deployments** | Each environment's latest deployment and when. |
-| **Observability** | For people with a role, when there is data: the last day's requests, an hour a bar, latency, and the newest open errors. |
-| **About** | Its description, its [links](#links), what it is, and its latest release (its newest tag). People who can change its settings edit the description and links from here. |
-| **Health** | For people with a role, its recent builds; and its open work items by age. |
+| Part                            | What it shows                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **What it is**                  | A badge, such as **App, deploys itself** or **Library**, beside its homepage and docs. People who can change its settings open the badge to change [what it is](#what-a-project-is) in one click.                                                                                                                                                                                                                                                                                                                    |
+| **Production**                  | [Production's picture](#productions-picture), which opens the live site, beside the rest. For an app [hosted on g1t.page](/guides/deployments/): its address, the commit it runs and when it went up; **Visit** and **Redeploy**. For an app that deploys itself: production's address and **Visit**, with its latest reported production deployment (and the workflow run that made it, when g1t Actions did) or the default branch's latest commit. For an app nobody has placed yet: one question, where it runs. |
+| **Packages**                    | For a library or a tool, in place of Production: the packages its repository publishes, each with its latest version and how to install it, or how to publish a first one.                                                                                                                                                                                                                                                                                                                                           |
+| **Documentation**, **Homepage** | For docs, where they are read; for anything else, its homepage.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| **Facts**                       | Under production: its latest release (or, where the card does not already say it, production's state), how often checks pass, and either how many changes pass on the first try and what is open, or, for people with a role when [Observability](/guides/observability/) has data, requests and the error rate over the last day with how many errors are open.                                                                                                                                                     |
+| **Code**                        | One line to the repository: its name, default branch and when it was last pushed to, linking to **Code**.                                                                                                                                                                                                                                                                                                                                                                                                            |
+| **Needs you**                   | For someone signed in: what is waiting on them, such as a failed production build or a pull request to merge or review.                                                                                                                                                                                                                                                                                                                                                                                              |
+| **Live now**                    | The people and coding agents working on it: each work item with its [claims and sessions](/work/claims-and-dependencies/), the harness each came from and who it acts for, and sessions on no work item yet. Work's [Sessions](/work/sessions/), filtered to the repository (`g1t.sh/<workspace>/-/work/sessions?repo=<name>`), has everything. With nobody working, people with a role see how to [connect a coding agent](/guides/bring-your-own-agent/).                                                          |
+| **Previews**                    | For people with a role: the pull requests' previews that are up.                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **Deployments**                 | Each environment's latest deployment and when.                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **Observability**               | For people with a role, when there is data: the last day's requests, an hour a bar, latency, and the newest open errors.                                                                                                                                                                                                                                                                                                                                                                                             |
+| **About**                       | Its description, its [links](#links), what it is, and its latest release (its newest tag). People who can change its settings edit the description and links from here.                                                                                                                                                                                                                                                                                                                                              |
+| **Health**                      | For people with a role, its recent builds; and its open work items by age.                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 ### Production's picture
 
@@ -143,14 +143,14 @@ or remove it.
 
 A project is one of these, and its overview follows:
 
-| What it is | Its overview shows |
-| --- | --- |
-| **App or site, hosted on g1t.page** | g1t builds and hosts it: production on g1t.page, with previews and domains. |
+| What it is                          | Its overview shows                                                                                                                                                                                                                                                                                        |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **App or site, hosted on g1t.page** | g1t builds and hosts it: production on g1t.page, with previews and domains.                                                                                                                                                                                                                               |
 | **App or site that deploys itself** | Its own [workflows](/guides/deployments/#deploying-from-a-workflow) on g1t Actions, or another pipeline, deploy it to hosting of its own. Production at the address its deployments report or you give, with **Visit**. It is never asked to turn on Deployments; Deployment settings stay one link away. |
-| **Library or package** | The packages its repository publishes and how to install them. |
-| **Tool or CLI** | The same as a library: its packages and releases. |
-| **Documentation** | Where its docs are read. Docs can be published on g1t.page too, by turning on Deployments. |
-| **Something else** | Its homepage and links. |
+| **Library or package**              | The packages its repository publishes and how to install them.                                                                                                                                                                                                                                            |
+| **Tool or CLI**                     | The same as a library: its packages and releases.                                                                                                                                                                                                                                                         |
+| **Documentation**                   | Where its docs are read. Docs can be published on g1t.page too, by turning on Deployments.                                                                                                                                                                                                                |
+| **Something else**                  | Its homepage and links.                                                                                                                                                                                                                                                                                   |
 
 Its **Deployments** page stays in the sidebar whatever it is.
 
@@ -166,19 +166,20 @@ Until you say, g1t works it out for itself, in this order:
 3. If the files at the root of its default branch (or of its root
    directory) say what it is, it is that:
 
-   | File | Says |
-   | --- | --- |
-   | `wrangler.jsonc`, `wrangler.json` or `wrangler.toml` | An app. |
-   | `mkdocs.yml`, `book.toml`, `docusaurus.config.js` (or `.ts`, `.mjs`) or `antora.yml` | Documentation. |
-   | `composer.json` | A library when its `type` is anything but `project`, such as `library`; or it has no `type`, has `autoload`, and has no `public/index.php`. |
-   | `Cargo.toml` | A library when it builds a library (`[lib]` or `src/lib.rs`) and no binary (`[[bin]]` or `src/main.rs`). |
-   | `go.mod` | A library when no `.go` file at the root is `package main`. |
-   | `pyproject.toml` | A library when it has a build backend and depends on no app framework, such as Django, Flask or FastAPI. |
-   | `package.json` | A tool when it has `bin` and nothing to import (no `main`, `module` or `exports`); a library when it has `main`, `exports`, `module`, `files` or `bin`; either way only with no `start` or `dev` script and no app framework such as Next.js, Astro, Nuxt, Remix or SvelteKit. |
+   | File                                                                                 | Says                                                                                                                                                                                                                                                                           |
+   | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+   | `wrangler.jsonc`, `wrangler.json` or `wrangler.toml`                                 | An app.                                                                                                                                                                                                                                                                        |
+   | `mkdocs.yml`, `book.toml`, `docusaurus.config.js` (or `.ts`, `.mjs`) or `antora.yml` | Documentation.                                                                                                                                                                                                                                                                 |
+   | `composer.json`                                                                      | A library when its `type` is anything but `project`, such as `library`; or it has no `type`, has `autoload`, and has no `public/index.php`.                                                                                                                                    |
+   | `Cargo.toml`                                                                         | A library when it builds a library (`[lib]` or `src/lib.rs`) and no binary (`[[bin]]` or `src/main.rs`).                                                                                                                                                                       |
+   | `go.mod`                                                                             | A library when no `.go` file at the root is `package main`.                                                                                                                                                                                                                    |
+   | `pyproject.toml`                                                                     | A library when it has a build backend and depends on no app framework, such as Django, Flask or FastAPI.                                                                                                                                                                       |
+   | `package.json`                                                                       | A tool when it has `bin` and nothing to import (no `main`, `module` or `exports`); a library when it has `main`, `exports`, `module`, `files` or `bin`; either way only with no `start` or `dev` script and no app framework such as Next.js, Astro, Nuxt, Remix or SvelteKit. |
 
    The language's own manifest is read before `package.json`, which many
    projects carry only for tooling. An `index.html` at the root makes it
    an app.
+
 4. Anything else is an app.
 
 The files are read again on every push to the default branch.
@@ -228,19 +229,19 @@ to production's own domain if you have one.
 
 A project's **Settings** has a tab for each part:
 
-| Tab | What it holds |
-| --- | --- |
-| **General** | The project's name and description, its source, its **root directory**, [what it is](#what-a-project-is), its [links](#links), and its [production image](#uploading-an-image), and its danger zone: archive, [transfer](/guides/transferring-repositories/) and delete, which take its repository with it. Only projects have descriptions: a repository has none of its own, and search, link previews and lists of repositories show its project's. A fork's project starts with the description of the project it was forked from. |
-| **Deployments** | Production, previews, build command, output directory and idle days. See [Deployments](/guides/deployments/#settings). |
-| **Domains** | Custom domains for production. See [custom domains](/guides/deployments/#custom-domains). |
-| **Guardrails** | How long g1t's checks, merge queue and merge checks may run here. See [guardrails](/guides/guardrails/). |
-| **Repository** | The repository's name, website, [topics](/guides/search/#what-is-indexed) and default branch, and its danger zone: visibility, and detaching a fork. See [Managing a repository](/guides/managing-repositories/). |
-| **Access** | Who has a [role](/guides/access-and-roles/) on the repository, and invitations. |
-| **Branches and merging** | Auto-merge, the CODEOWNERS file's errors, and what the rules hold for the default branch. |
-| **Rules** | [Rulesets](/guides/rules/): branch and tag protection, [required status checks](/guides/pull-requests/#required-status-checks), approvals and the merge queue, with Insights. |
-| **Secrets and variables** | The project's rows. See [Secrets and variables](/guides/secrets-and-variables/). |
-| **Runners** | The project's own [self-hosted runners](/guides/self-hosted-runners/). |
-| **Webhooks** | The repository's [webhooks](/guides/webhooks/). |
+| Tab                       | What it holds                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **General**               | The project's name and description, its source, its **root directory**, [what it is](#what-a-project-is), its [links](#links), and its [production image](#uploading-an-image), and its danger zone: archive, [transfer](/guides/transferring-repositories/) and delete, which take its repository with it. Only projects have descriptions: a repository has none of its own, and search, link previews and lists of repositories show its project's. A fork's project starts with the description of the project it was forked from. |
+| **Deployments**           | Production, previews, build command, output directory and idle days. See [Deployments](/guides/deployments/#settings).                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| **Domains**               | Custom domains for production. See [custom domains](/guides/deployments/#custom-domains).                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **Guardrails**            | How long g1t's checks, merge queue and merge checks may run here. See [guardrails](/guides/guardrails/).                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **Repository**            | The repository's name, website, [topics](/guides/search/#what-is-indexed) and default branch, and its danger zone: visibility, and detaching a fork. See [Managing a repository](/guides/managing-repositories/).                                                                                                                                                                                                                                                                                                                      |
+| **Access**                | Who has a [role](/guides/access-and-roles/) on the repository, and invitations.                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **Branches and merging**  | Auto-merge, the CODEOWNERS file's errors, and what the rules hold for the default branch.                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **Rules**                 | [Rulesets](/guides/rules/): branch and tag protection, [required status checks](/guides/pull-requests/#required-status-checks), approvals and the merge queue, with Insights.                                                                                                                                                                                                                                                                                                                                                          |
+| **Secrets and variables** | The project's rows. See [Secrets and variables](/guides/secrets-and-variables/).                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **Runners**               | The project's own [self-hosted runners](/guides/self-hosted-runners/).                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| **Webhooks**              | The repository's [webhooks](/guides/webhooks/).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 The **root directory** says where in the repository the project lives,
 such as `apps/web`. Builds run there. Leave it empty for the whole
@@ -249,14 +250,14 @@ repository.
 Each tab needs a [role](/guides/access-and-roles/) on the project's
 repository:
 
-| Tab | Needs |
-| --- | --- |
-| **General**, **Dependencies**, **Branches and merging**, and on **Repository** its website and topics | Maintain |
-| **Rules**, **Guardrails** | Admin |
-| **Access**: seeing who has a role; changing it | Write; Admin |
-| **Deployments**, **Domains**, **Secrets and variables**, **Runners**, **Webhooks** | Admin |
-| On **Repository**: its name, default branch, and the danger zone (visibility); on **General**, archive | Admin |
-| Transfer and delete | An owner of the workspace |
+| Tab                                                                                                    | Needs                     |
+| ------------------------------------------------------------------------------------------------------ | ------------------------- |
+| **General**, **Dependencies**, **Branches and merging**, and on **Repository** its website and topics  | Maintain                  |
+| **Rules**, **Guardrails**                                                                              | Admin                     |
+| **Access**: seeing who has a role; changing it                                                         | Write; Admin              |
+| **Deployments**, **Domains**, **Secrets and variables**, **Runners**, **Webhooks**                     | Admin                     |
+| On **Repository**: its name, default branch, and the danger zone (visibility); on **General**, archive | Admin                     |
+| Transfer and delete                                                                                    | An owner of the workspace |
 
 Someone without the role does not see the tab.
 
@@ -302,10 +303,10 @@ project's. See the [API reference](/reference/api/).
 What a project is, where it runs and its links have routes of their own,
 and actions on the [MCP](/reference/mcp/) `workspace` tool:
 
-| Route | MCP action | |
-| --- | --- | --- |
-| `GET /workspaces/{workspace}/projects` | `list_projects` | The workspace's projects you can see. |
-| `GET /workspaces/{workspace}/projects/{project}` | `get_project` | One project, with `kind`, `runs`, `production_url`, `setting`, `detected` and `links`. |
+| Route                                              | MCP action       |                                                                                                                                            |
+| -------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /workspaces/{workspace}/projects`             | `list_projects`  | The workspace's projects you can see.                                                                                                      |
+| `GET /workspaces/{workspace}/projects/{project}`   | `get_project`    | One project, with `kind`, `runs`, `production_url`, `setting`, `detected` and `links`.                                                     |
 | `PATCH /workspaces/{workspace}/projects/{project}` | `update_project` | Changes `kind`, `runs`, `production_url`, `homepage`, `docs_url`, `links`, or its name, description or root directory. Needs `repo:write`. |
 
 Its g1t.page deployment settings, on the `workflow` tool, are at

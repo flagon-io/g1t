@@ -40,5 +40,12 @@ test("an address loaded again once is not loaded again", () => {
   assert.equal(reloadedBefore("/flagon-io/-/docs", storage(null)), false);
   // No storage, or storage that throws: nothing remembered.
   assert.equal(reloadedBefore("/flagon-io/-/docs", undefined), false);
-  assert.equal(reloadedBefore("/flagon-io/-/docs", { getItem: () => { throw new Error("denied"); } }), false);
+  assert.equal(
+    reloadedBefore("/flagon-io/-/docs", {
+      getItem: () => {
+        throw new Error("denied");
+      },
+    }),
+    false,
+  );
 });

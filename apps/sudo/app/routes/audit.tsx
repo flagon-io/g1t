@@ -75,7 +75,14 @@ export default function Audit({ loaderData }: Route.ComponentProps) {
       />
 
       <form method="get" action="/audit" className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center">
-        <Input name="by" type="search" defaultValue={by ?? ""} placeholder="Staff email, such as you@g1t.sh" aria-label="Made by" className="font-mono text-xs sm:w-72" />
+        <Input
+          name="by"
+          type="search"
+          defaultValue={by ?? ""}
+          placeholder="Staff email, such as you@g1t.sh"
+          aria-label="Made by"
+          className="font-mono text-xs sm:w-72"
+        />
         <Select name="action" defaultValue={action ?? ""} aria-label="Kind of change" className="sm:w-60">
           <option value="">Every kind of change</option>
           {Object.entries(AUDIT_ACTIONS).map(([value, label]) => (
@@ -144,7 +151,11 @@ export default function Audit({ loaderData }: Route.ComponentProps) {
                   {stripe && entry.by === "stripe" ? (
                     "Stripe"
                   ) : (
-                    <Link to={auditHref({ by: entry.by, action })} title={`Every change by ${entry.by}`} className="inline-flex min-w-0 items-center gap-1 hover:text-fg">
+                    <Link
+                      to={auditHref({ by: entry.by, action })}
+                      title={`Every change by ${entry.by}`}
+                      className="inline-flex min-w-0 items-center gap-1 hover:text-fg"
+                    >
                       <UserRound size={11} className="shrink-0" />
                       <span className="truncate font-mono">{entry.by.toLowerCase() === me.toLowerCase() ? "you" : entry.by}</span>
                     </Link>

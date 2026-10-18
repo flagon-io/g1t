@@ -183,16 +183,11 @@ process.on("exit", () => {
 });
 
 async function post(path: string, body: unknown): Promise<any> {
-  const response = await worker.fetch(
-    new Request(`https://deployments${path}`, { method: "POST", body: JSON.stringify(body) }),
-    w.env as never,
-    {} as never,
-  );
+  const response = await worker.fetch(new Request(`https://deployments${path}`, { method: "POST", body: JSON.stringify(body) }), w.env as never, {} as never);
   return { status: response.status, ...(await response.json()) };
 }
 
-const rows = (sql: string, ...params: unknown[]) =>
-  (w.state.sqlite.prepare(sql).all(...(params as never[])) as any[]).map((row) => ({ ...row }));
+const rows = (sql: string, ...params: unknown[]) => (w.state.sqlite.prepare(sql).all(...(params as never[])) as any[]).map((row) => ({ ...row }));
 
 const finish = (container: unknown) =>
   post("/jobs/dpl_1/finish", { token: TOKEN, worker: {}, detected: "container", framework: "node", container, buildSeconds: 20 });
@@ -244,7 +239,9 @@ test("a container app runs behind g1t's Worker, is metered by its own token, and
   assert.equal(binding("G1T_METER_URL").text, `https://api.g1t.sh/deployments/apps/${SCRIPT}/meter`);
   assert.deepEqual(binding("DATABASE_URL"), { type: "secret_text", name: "DATABASE_URL", text: "postgres://db" });
   assert.ok(calls.includes("POST /containers/applications"));
-  assert.deepEqual(rows("SELECT runtime, container_app_id, instance_type FROM apps"), [{ runtime: "container", container_app_id: "app1", instance_type: "basic" }]);
+  assert.deepEqual(rows("SELECT runtime, container_app_id, instance_type FROM apps"), [
+    { runtime: "container", container_app_id: "app1", instance_type: "basic" },
+  ]);
   assert.deepEqual(rows("SELECT detected, framework, image, status FROM deployments WHERE id = 'dpl_1'"), [
     { detected: "container", framework: "node", image: IMAGE, status: "ready" },
   ]);
@@ -272,7 +269,11 @@ test("a container app runs behind g1t's Worker, is metered by its own token, and
 
   // Taken down: its container first, then its Worker.
   calls = [];
-  await post("/rpc/take_down", { actor: { id: "usr_1", username: "a", kind: "user", workspaces: [{ slug: "acme", role: "owner" }] }, project: { workspace: "acme", slug: "web" }, branch: null });
+  await post("/rpc/take_down", {
+    actor: { id: "usr_1", username: "a", kind: "user", workspaces: [{ slug: "acme", role: "owner" }] },
+    project: { workspace: "acme", slug: "web" },
+    branch: null,
+  });
   const deleteApp = calls.indexOf("DELETE /containers/applications/app1");
   const deleteScript = calls.findIndex((call) => call.startsWith("DELETE /workers/dispatch/namespaces/g1t-deployments/scripts/web-acme"));
   assert.ok(deleteApp >= 0 && deleteScript > deleteApp, calls.join("\n"));
@@ -322,6 +323,10 @@ test("an app keeps the image it runs, the one before it and those still being bu
   await post("/jobs/dpl_2/finish", { token: TOKEN, detected: "container", container: { image: IMAGE, port: 3000 } });
   assert.deepEqual(registryTags, ["dpl_1", "dpl_2", "dpl_3"]);
   // Taken down, it takes its images with it, but a build still under way keeps its own.
-  await post("/rpc/take_down", { actor: { id: "usr_1", username: "a", kind: "user", workspaces: [{ slug: "acme", role: "owner" }] }, project: { workspace: "acme", slug: "web" }, branch: null });
+  await post("/rpc/take_down", {
+    actor: { id: "usr_1", username: "a", kind: "user", workspaces: [{ slug: "acme", role: "owner" }] },
+    project: { workspace: "acme", slug: "web" },
+    branch: null,
+  });
   assert.deepEqual(registryTags, ["dpl_3"]);
 });

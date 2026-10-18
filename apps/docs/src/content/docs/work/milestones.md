@@ -57,21 +57,21 @@ requests, newest first. On **Work** or **Pull requests**, choose
 With the Write role in the workspace or higher, on **Milestones** or a
 milestone's page (putting a work item in one needs only Triage):
 
-| To | Do this |
-| --- | --- |
-| Change its title, due date or description | **Edit**, on its page. |
-| Close it, once it is done | **Close**. **Reopen** opens it again. |
-| Delete it | **Delete**. What was in it stays as it is, in no milestone. This cannot be undone. |
+| To                                        | Do this                                                                            |
+| ----------------------------------------- | ---------------------------------------------------------------------------------- |
+| Change its title, due date or description | **Edit**, on its page.                                                             |
+| Close it, once it is done                 | **Close**. **Reopen** opens it again.                                              |
+| Delete it                                 | **Delete**. What was in it stays as it is, in no milestone. This cannot be undone. |
 
 ## From the API
 
-| To | REST | MCP |
-| --- | --- | --- |
-| List milestones | `GET /workspaces/{workspace}/milestones`, `state` to filter | `workspace` `list_milestones` |
-| Get one with its items | `GET /workspaces/{workspace}/milestones/{milestone}` | `workspace` `get_milestone` |
-| Make one | `POST /workspaces/{workspace}/milestones` | `workspace` `create_milestone` |
-| Change one | `PATCH /workspaces/{workspace}/milestones/{milestone}` | `workspace` `update_milestone` |
-| Delete one | `DELETE /workspaces/{workspace}/milestones/{milestone}` | `workspace` `delete_milestone` |
+| To                     | REST                                                        | MCP                            |
+| ---------------------- | ----------------------------------------------------------- | ------------------------------ |
+| List milestones        | `GET /workspaces/{workspace}/milestones`, `state` to filter | `workspace` `list_milestones`  |
+| Get one with its items | `GET /workspaces/{workspace}/milestones/{milestone}`        | `workspace` `get_milestone`    |
+| Make one               | `POST /workspaces/{workspace}/milestones`                   | `workspace` `create_milestone` |
+| Change one             | `PATCH /workspaces/{workspace}/milestones/{milestone}`      | `workspace` `update_milestone` |
+| Delete one             | `DELETE /workspaces/{workspace}/milestones/{milestone}`     | `workspace` `delete_milestone` |
 
 A milestone has `number`, `title`, `description`, `due_on` (`YYYY-MM-DD`),
 `state` (`open` or `closed`), `open_items` and `closed_items`. Send

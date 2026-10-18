@@ -39,10 +39,7 @@ export default function Forgot({ actionData }: Route.ComponentProps) {
     >
       {actionData?.sent ? (
         <Card asChild radius="lg" className="p-4 text-sm leading-6">
-          <p>
-            If that address belongs to an account, a reset link is on its way to
-            it. It works for one hour.
-          </p>
+          <p>If that address belongs to an account, a reset link is on its way to it. It works for one hour.</p>
         </Card>
       ) : (
         <Form method="post" className="space-y-4">

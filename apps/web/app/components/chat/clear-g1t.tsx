@@ -42,9 +42,8 @@ export function ClearG1tDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Clear your conversation with g1t?</AlertDialogTitle>
           <AlertDialogDescription>
-            Everything you and g1t said is deleted for good, in Ask and in Chat: your questions, g1t&apos;s answers with their steps and
-            sources, and the notifications they sent you. g1t won&apos;t remember any of it. An answer still coming is stopped and thrown
-            away. This can&apos;t be undone.
+            Everything you and g1t said is deleted for good, in Ask and in Chat: your questions, g1t&apos;s answers with their steps and sources, and the
+            notifications they sent you. g1t won&apos;t remember any of it. An answer still coming is stopped and thrown away. This can&apos;t be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
         {error && (

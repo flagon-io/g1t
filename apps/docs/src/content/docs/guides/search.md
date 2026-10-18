@@ -16,20 +16,20 @@ language or about a topic.
 
 There are two ways in:
 
-| Where | What it does |
-| --- | --- |
+| Where                                                                                     | What it does                                                                                                                                                                                                                                                                                                                                            |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Search or jump to…** at the top of the sidebar, or **⌘K** (Ctrl-K on Windows and Linux) | Opens the command palette. As you type it shows matching repositories, work items, pull requests and people, the pages you can go to, and rows that search all of g1t (the full results at [g1t.sh/search](https://g1t.sh/search)) or only code for what you typed. On a phone, where the sidebar is folded away, the magnifier in the top bar opens it |
-| A project's **Code** page | **Search this repository's code** searches the project's repository, with `repo:` filled in |
+| A project's **Code** page                                                                 | **Search this repository's code** searches the project's repository, with `repo:` filled in                                                                                                                                                                                                                                                             |
 
 The search page has a tab for each kind of result, each with its count:
 
-| Tab | Searches |
-| --- | --- |
-| **Repositories** | Each repository's name, workspace, its project's description, topics and the opening of its README |
-| **Code** | The file names and contents of every repository's default branch |
-| **Work items** | Work item titles and descriptions, in each workspace |
-| **Pull requests** | Pull request titles and descriptions |
-| **People** | Usernames and names of people, and the slugs, names and descriptions of workspaces |
+| Tab               | Searches                                                                                           |
+| ----------------- | -------------------------------------------------------------------------------------------------- |
+| **Repositories**  | Each repository's name, workspace, its project's description, topics and the opening of its README |
+| **Code**          | The file names and contents of every repository's default branch                                   |
+| **Work items**    | Work item titles and descriptions, in each workspace                                               |
+| **Pull requests** | Pull request titles and descriptions                                                               |
+| **People**        | Usernames and names of people, and the slugs, names and descriptions of workspaces                 |
 
 Results show the part that matched, highlighted. A code result shows the
 lines that matched with their line numbers, and each line links to that
@@ -41,13 +41,13 @@ stop at 1,000. Results come 20 to a page.
 Words match wherever they appear, in any order. A result has every word
 you type.
 
-| You type | It finds |
-| --- | --- |
-| `merge queue` | Results with both words, anywhere |
-| `"merge queue"` | The two words together, in this order |
-| `parse -legacy` | Results with `parse` and without `legacy` |
-| `pars` | In repositories, work items, pull requests and people, any word that starts with `pars`, such as `parser` |
-| `parse_query(` | In code, that exact run of characters, punctuation and all |
+| You type        | It finds                                                                                                  |
+| --------------- | --------------------------------------------------------------------------------------------------------- |
+| `merge queue`   | Results with both words, anywhere                                                                         |
+| `"merge queue"` | The two words together, in this order                                                                     |
+| `parse -legacy` | Results with `parse` and without `legacy`                                                                 |
+| `pars`          | In repositories, work items, pull requests and people, any word that starts with `pars`, such as `parser` |
+| `parse_query(`  | In code, that exact run of characters, punctuation and all                                                |
 
 Code is matched as text, the way you would find something in an editor:
 any run of three characters or more, inside words or across them. A code
@@ -59,19 +59,19 @@ limited to repositories with `repo:`.
 Put qualifiers anywhere in the query. Most can be left out with a leading
 `-`, such as `-label:wontfix`.
 
-| Qualifier | Narrows to | Applies to |
-| --- | --- | --- |
-| `repo:owner/name` | One repository. Give it more than once for several. A work item matches when the repository is linked to it, in any role | Repositories, code, work items, pull requests |
-| `org:acme` or `workspace:acme` | One workspace | Repositories, code, work items, pull requests |
-| `language:rust` | Code in a language, or repositories mostly written in it. `ts`, `js`, `py` and `cpp` are understood | Repositories, code |
-| `path:src/` | Code whose path contains `src/`. With `*`, a pattern: `path:*.rs`, `path:src/*/mod.rs` | Code |
-| `is:item` (or `is:items`), `is:pr` | Only work items, or only pull requests | Work items, pull requests |
-| `is:open`, `is:closed` | Work items and pull requests by state | Work items, pull requests |
-| `is:merged`, `is:draft` | Pull requests that were merged, or are still drafts | Pull requests |
-| `is:public`, `is:private` | Results from public or private repositories | Repositories, code, work items, pull requests |
-| `author:ana` | Opened by someone. What g1t opened is `author:g1t`, and shows who it was for | Work items, pull requests |
-| `label:bug` | With a label. Quote a label with spaces: `label:"good first issue"` | Work items, pull requests |
-| `type:code` | Which tab to open: `repositories`, `code`, `items`, `pulls` or `people` | All |
+| Qualifier                          | Narrows to                                                                                                               | Applies to                                    |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------- |
+| `repo:owner/name`                  | One repository. Give it more than once for several. A work item matches when the repository is linked to it, in any role | Repositories, code, work items, pull requests |
+| `org:acme` or `workspace:acme`     | One workspace                                                                                                            | Repositories, code, work items, pull requests |
+| `language:rust`                    | Code in a language, or repositories mostly written in it. `ts`, `js`, `py` and `cpp` are understood                      | Repositories, code                            |
+| `path:src/`                        | Code whose path contains `src/`. With `*`, a pattern: `path:*.rs`, `path:src/*/mod.rs`                                   | Code                                          |
+| `is:item` (or `is:items`), `is:pr` | Only work items, or only pull requests                                                                                   | Work items, pull requests                     |
+| `is:open`, `is:closed`             | Work items and pull requests by state                                                                                    | Work items, pull requests                     |
+| `is:merged`, `is:draft`            | Pull requests that were merged, or are still drafts                                                                      | Pull requests                                 |
+| `is:public`, `is:private`          | Results from public or private repositories                                                                              | Repositories, code, work items, pull requests |
+| `author:ana`                       | Opened by someone. What g1t opened is `author:g1t`, and shows who it was for                                             | Work items, pull requests                     |
+| `label:bug`                        | With a label. Quote a label with spaces: `label:"good first issue"`                                                      | Work items, pull requests                     |
+| `type:code`                        | Which tab to open: `repositories`, `code`, `items`, `pulls` or `people`                                                  | All                                           |
 
 Without a tab or `type:`, the qualifiers choose one: `path:` opens Code,
 `is:pr` opens Pull requests, `is:open`, `author:` or `label:` open Work items,
@@ -91,13 +91,13 @@ router repo:acme/web repo:acme/api
 
 Search is kept current as things change:
 
-| What | When it is indexed |
-| --- | --- |
-| A repository's name, topics and README | When it is created or its settings change, and on every push to its default branch |
-| A repository's description, which is its project's | When the project's name or description changes |
-| Code | On every push to the default branch: only the files the push changed |
-| Work items and pull requests | When they are opened, edited, assigned, closed, reopened, marked ready or merged; a work item also when a repository is linked to it or unlinked |
-| People and workspaces | When an account or a workspace is made, or its name, description or avatar changes |
+| What                                               | When it is indexed                                                                                                                               |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| A repository's name, topics and README             | When it is created or its settings change, and on every push to its default branch                                                               |
+| A repository's description, which is its project's | When the project's name or description changes                                                                                                   |
+| Code                                               | On every push to the default branch: only the files the push changed                                                                             |
+| Work items and pull requests                       | When they are opened, edited, assigned, closed, reopened, marked ready or merged; a work item also when a repository is linked to it or unlinked |
+| People and workspaces                              | When an account or a workspace is made, or its name, description or avatar changes                                                               |
 
 Code is indexed from default branches only. Some files are left out:
 
@@ -145,12 +145,12 @@ private results on their next search.
 
 [Explore](https://g1t.sh/explore) lists public projects only:
 
-| View | Shows |
-| --- | --- |
-| **Recently active** | Projects by their last push to the default branch |
-| **New** | Projects by when they were created |
-| **Languages** | The languages public projects are mostly written in, with how many; choose one to see its projects |
-| **Topics** | The topics public projects have, with how many; choose one to see its projects |
+| View                | Shows                                                                                              |
+| ------------------- | -------------------------------------------------------------------------------------------------- |
+| **Recently active** | Projects by their last push to the default branch                                                  |
+| **New**             | Projects by when they were created                                                                 |
+| **Languages**       | The languages public projects are mostly written in, with how many; choose one to see its projects |
+| **Topics**          | The topics public projects have, with how many; choose one to see its projects                     |
 
 A project's language is the one most of its indexed code is written in,
 leaving out prose and data such as Markdown, JSON and YAML. An

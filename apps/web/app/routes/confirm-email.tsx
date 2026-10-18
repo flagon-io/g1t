@@ -103,20 +103,18 @@ export default function ConfirmEmail({ loaderData, actionData }: Route.Component
 
       {address ? (
         <p className="mt-6 text-sm leading-6 text-muted">
-          We sent a 6-digit code to <span className="font-medium break-all text-fg">{address}</span>. Enter it here,
-          or follow the link in the email instead. Either one works.
+          We sent a 6-digit code to <span className="font-medium break-all text-fg">{address}</span>. Enter it here, or follow the link in the email instead.
+          Either one works.
         </p>
       ) : (
         <p className="mt-6 text-sm leading-6 text-muted">
-          Your account has no address to confirm: another g1t account confirmed the one you signed up with first.
-          Add the address you want to use below.
+          Your account has no address to confirm: another g1t account confirmed the one you signed up with first. Add the address you want to use below.
         </p>
       )}
 
       {said?.sent && (
         <p className="mt-4 flex items-start gap-2 rounded-lg border border-accent/30 bg-accent/5 p-3 text-sm" role="status">
-          <MailCheck size={16} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
-          A new code and link are on their way. The ones before stop working.
+          <MailCheck size={16} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />A new code and link are on their way. The ones before stop working.
         </p>
       )}
       {said?.changed && (

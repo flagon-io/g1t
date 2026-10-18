@@ -5,13 +5,13 @@ import { pageOwnsNavigation, pendingNavigationOwns, sidebarLocation } from "./na
 
 test("an old page loses navigation ownership as soon as a newer click starts", async () => {
   let finish!: (value: Response) => void;
-  const slow = new Promise<Response>((resolve) => { finish = resolve; });
-  const router = createMemoryRouter([
-    { path: "/home" },
-    { path: "/artifacts", loader: () => slow },
-    { path: "/code", loader: () => "latest" },
-    { path: "/old-redirect" },
-  ], { initialEntries: ["/home"] });
+  const slow = new Promise<Response>((resolve) => {
+    finish = resolve;
+  });
+  const router = createMemoryRouter(
+    [{ path: "/home" }, { path: "/artifacts", loader: () => slow }, { path: "/code", loader: () => "latest" }, { path: "/old-redirect" }],
+    { initialEntries: ["/home"] },
+  );
   try {
     const homeKey = router.state.location.key;
     assert.equal(pageOwnsNavigation(router.state, homeKey), true);
@@ -30,7 +30,9 @@ test("an old page loses navigation ownership as soon as a newer click starts", a
     assert.equal(pendingNavigationOwns(router.state.navigation, firstKey), false, "an old recovery timer must not fire");
     await router.navigate("/home");
     assert.equal(pageOwnsNavigation(router.state, homeKey), false, "returning to the same URL is a new visit");
-  } finally { router.dispose(); }
+  } finally {
+    router.dispose();
+  }
 });
 
 test("repeated clicks to the same path have different recovery owners", () => {
@@ -38,17 +40,22 @@ test("repeated clicks to the same path have different recovery owners", () => {
   assert.equal(pendingNavigationOwns({ state: "submitting", location: { key: "first-click" } }, "first-click"), false);
 });
 
-for (const [firstPath, latestPath] of [["/artifacts/one", "/artifacts/two"], ["/artifacts/one", "/code"]]) {
+for (const [firstPath, latestPath] of [
+  ["/artifacts/one", "/artifacts/two"],
+  ["/artifacts/one", "/code"],
+]) {
   test(`latest sidebar destination wins: ${firstPath} then ${latestPath}`, async () => {
     let finishFirst!: (value: string) => void;
     let finishLatest!: (value: string) => void;
-    const firstLoad = new Promise<string>((resolve) => { finishFirst = resolve; });
-    const latestLoad = new Promise<string>((resolve) => { finishLatest = resolve; });
-    const router = createMemoryRouter([
-      { path: "/home" },
-      { path: firstPath, loader: () => firstLoad },
-      { path: latestPath, loader: () => latestLoad },
-    ], { initialEntries: ["/home"] });
+    const firstLoad = new Promise<string>((resolve) => {
+      finishFirst = resolve;
+    });
+    const latestLoad = new Promise<string>((resolve) => {
+      finishLatest = resolve;
+    });
+    const router = createMemoryRouter([{ path: "/home" }, { path: firstPath, loader: () => firstLoad }, { path: latestPath, loader: () => latestLoad }], {
+      initialEntries: ["/home"],
+    });
     const seen: string[] = [];
     const unsubscribe = router.subscribe((state) => seen.push(sidebarLocation(state).pathname));
     try {
@@ -63,6 +70,9 @@ for (const [firstPath, latestPath] of [["/artifacts/one", "/artifacts/two"], ["/
       await latest;
       assert.equal(router.state.location.pathname, latestPath);
       assert.deepEqual(seen, [firstPath, latestPath, latestPath], "subscribers never see the stale destination again");
-    } finally { unsubscribe(); router.dispose(); }
+    } finally {
+      unsubscribe();
+      router.dispose();
+    }
   });
 }

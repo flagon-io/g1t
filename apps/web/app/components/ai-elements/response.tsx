@@ -66,7 +66,16 @@ function components(context: ResponseContext, origin: string, usercontent: strin
         const shown = /^https?:\/\/|^\//.test(label) ? `${where}#${target.number}` : children;
         const [namespace = "", name = ""] = where.split("/");
         const scope = target.kind === "item" ? { workspace: target.workspace } : { repo: { namespace, name } };
-        return <RefChip slug={context.slug} scope={scope} number={target.number} to={target.href} label={shown} kind={target.kind === "ref" ? undefined : target.kind} />;
+        return (
+          <RefChip
+            slug={context.slug}
+            scope={scope}
+            number={target.number}
+            to={target.href}
+            label={shown}
+            kind={target.kind === "ref" ? undefined : target.kind}
+          />
+        );
       }
       if (target?.kind === "commit") return <CommitChip href={target.href} sha={target.sha} />;
       if (target?.kind === "page") {
@@ -98,14 +107,22 @@ function components(context: ResponseContext, origin: string, usercontent: strin
       const ours = (address.startsWith("/") && !address.startsWith("//")) || address.startsWith(`${usercontent}/`) || address.startsWith(`${origin}/`);
       if (ours) return <img src={address} alt={alt ?? ""} loading="lazy" className="my-1 max-h-96 max-w-full rounded-lg border border-line" />;
       return (
-        <a href={address} target="_blank" rel="noopener noreferrer nofollow ugc" className="inline-flex items-center gap-1 text-accent underline-offset-2 hover:underline">
+        <a
+          href={address}
+          target="_blank"
+          rel="noopener noreferrer nofollow ugc"
+          className="inline-flex items-center gap-1 text-accent underline-offset-2 hover:underline"
+        >
           <ImageIcon size={13} />
           {alt || "Image"}
         </a>
       );
     },
     table: ({ children }) => (
-      <Table frameProps={{ role: "region", "aria-label": "Table", tabIndex: 0, className: "my-2 rounded-lg border border-line" }} className="min-w-max text-[0.8125rem] leading-snug sm:min-w-full">
+      <Table
+        frameProps={{ role: "region", "aria-label": "Table", tabIndex: 0, className: "my-2 rounded-lg border border-line" }}
+        className="min-w-max text-[0.8125rem] leading-snug sm:min-w-full"
+      >
         {children}
       </Table>
     ),
@@ -131,7 +148,9 @@ function components(context: ResponseContext, origin: string, usercontent: strin
     h6: ({ children }) => <p className="pt-1 font-semibold text-fg first:pt-0">{children}</p>,
     p: ({ children }) => <p>{children}</p>,
     strong: ({ children }) => <strong className="font-semibold text-fg">{children}</strong>,
-    ul: ({ children, className }) => <ul className={cn("space-y-1 pl-5 marker:text-faint", className?.includes("contains-task-list") ? "list-none pl-1" : "list-disc")}>{children}</ul>,
+    ul: ({ children, className }) => (
+      <ul className={cn("space-y-1 pl-5 marker:text-faint", className?.includes("contains-task-list") ? "list-none pl-1" : "list-disc")}>{children}</ul>
+    ),
     ol: ({ children, start }) => (
       <ol start={start} className="list-decimal space-y-1 pl-5 marker:text-faint">
         {children}
@@ -142,7 +161,13 @@ function components(context: ResponseContext, origin: string, usercontent: strin
     hr: () => <hr className="my-3 border-line" />,
     input: ({ checked, type }) =>
       type === "checkbox" ? (
-        <span aria-label={checked ? "Done" : "Not done"} className={cn("mr-1.5 inline-flex size-3.5 translate-y-0.5 items-center justify-center rounded-sm border", checked ? "border-accent bg-accent text-bg" : "border-line-strong")}>
+        <span
+          aria-label={checked ? "Done" : "Not done"}
+          className={cn(
+            "mr-1.5 inline-flex size-3.5 translate-y-0.5 items-center justify-center rounded-sm border",
+            checked ? "border-accent bg-accent text-bg" : "border-line-strong",
+          )}
+        >
           {checked && <Check size={10} strokeWidth={3} />}
         </span>
       ) : null,
@@ -168,7 +193,10 @@ export const MessageResponse = memo(
       }
     }, [site]);
     const drawn = useMemo(() => components(context, origin, usercontent), [context, origin, usercontent]);
-    const rehype = useMemo<PluggableList>(() => [...Object.values(defaultRehypePlugins), [rehypeReferences, { repo: context.repo ?? undefined, workspace: context.slug }]], [context.repo, context.slug]);
+    const rehype = useMemo<PluggableList>(
+      () => [...Object.values(defaultRehypePlugins), [rehypeReferences, { repo: context.repo ?? undefined, workspace: context.slug }]],
+      [context.repo, context.slug],
+    );
     return (
       <Streamdown
         mode={streaming ? "streaming" : "static"}

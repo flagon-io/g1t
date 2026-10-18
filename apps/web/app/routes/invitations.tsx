@@ -44,9 +44,7 @@ export default function Invitations({ loaderData, actionData }: Route.ComponentP
   return (
     <main className="mx-auto max-w-2xl px-4 py-12">
       <h1 className="text-xl font-semibold">Invitations</h1>
-      <p className="mt-2 text-sm text-muted">
-        Workspaces you are invited to join. You join one only when you accept; declining tells whoever invited you.
-      </p>
+      <p className="mt-2 text-sm text-muted">Workspaces you are invited to join. You join one only when you accept; declining tells whoever invited you.</p>
       {actionData?.declined !== undefined && (
         <p className="mt-4 text-sm text-muted" role="status">
           {declinedLine(actionData.declined)}
@@ -56,12 +54,7 @@ export default function Invitations({ loaderData, actionData }: Route.ComponentP
         {isFailed(invitations) ? (
           <Unavailable what="Your invitations" />
         ) : invitations.length > 0 ? (
-          <InvitationList
-            invitations={invitations}
-            error={actionData?.invitationError}
-            errorFor={actionData?.invitationId}
-            next={next}
-          />
+          <InvitationList invitations={invitations} error={actionData?.invitationError} errorFor={actionData?.invitationId} next={next} />
         ) : (
           <Card tone="plain" className="border-dashed px-6 py-10 text-center">
             <p className="text-sm font-medium">No invitations waiting</p>

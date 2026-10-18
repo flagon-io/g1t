@@ -179,7 +179,9 @@ export function updateLine(view: Pick<DesktopSettingsView, "updateReady" | "chec
 /** Why a check for updates didn't answer, in a line. */
 export function checkFailed(error: unknown): string {
   const text = typeof error === "string" ? error : error instanceof Error ? error.message : "";
-  return !text || /sending request|connect|dns|timed out/i.test(text) ? "Could not reach g1t.sh to check. Check your connection and try again." : `Could not check: ${text}`;
+  return !text || /sending request|connect|dns|timed out/i.test(text)
+    ? "Could not reach g1t.sh to check. Check your connection and try again."
+    : `Could not check: ${text}`;
 }
 
 /** The server, as its host: "g1t.sh". */

@@ -61,14 +61,14 @@ the [connection instructions](/guides/bring-your-own-agent/), or run
 Narrow it by repository, person, harness, kind and work item. The address
 keeps the filters, so a filtered view can be shared:
 
-| Filter | In the address |
-| --- | --- |
-| Repository | `?repo=web` |
-| Person | `?person=<username>` |
-| Harness | `?harness=codex`: `claude_code`, `claude_managed_agents`, `codex`, `cursor`, `copilot` or `other` |
-| Kind | `?kind=hosted` |
-| Work item | `?item=12`, shown as **On #12** |
-| Every session | `?state=recent` |
+| Filter        | In the address                                                                                    |
+| ------------- | ------------------------------------------------------------------------------------------------- |
+| Repository    | `?repo=web`                                                                                       |
+| Person        | `?person=<username>`                                                                              |
+| Harness       | `?harness=codex`: `claude_code`, `claude_managed_agents`, `codex`, `cursor`, `copilot` or `other` |
+| Kind          | `?kind=hosted`                                                                                    |
+| Work item     | `?item=12`, shown as **On #12**                                                                   |
+| Every session | `?state=recent`                                                                                   |
 
 A repository's sessions are Sessions filtered to it,
 `g1t.sh/<workspace>/-/work/sessions?repo=<name>`: a repository has no
@@ -80,12 +80,12 @@ sheet.
 Every kind of session is listed in this one place, and each has its own
 row in the sidebar:
 
-| Kind | Sidebar | Is |
-| --- | --- | --- |
-| `harness` | **People's harnesses** | A run of someone's own harness (Claude Code, Codex, Cursor, Copilot or another), with its [subagents](/guides/sessions/#subagents) under it. |
-| `hosted` | **Started on g1t** | A session started on g1t, from a work item or the web, on the workspace's Anthropic provider: harness `claude_managed_agents`. See [start a session on your Anthropic account](/guides/sessions/#start-a-session-on-your-anthropic-account). |
-| `agent` | **g1t's agent** | g1t's own agent at work on a pull request. Only the workspace's members see these. |
-| `recorded` | **Recorded on pull requests** | A session recorded on a pull request with no session of its own. It opens on the pull request's **Session** tab, `g1t.sh/<owner>/<repo>/pull/<number>/session`. |
+| Kind       | Sidebar                       | Is                                                                                                                                                                                                                                           |
+| ---------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `harness`  | **People's harnesses**        | A run of someone's own harness (Claude Code, Codex, Cursor, Copilot or another), with its [subagents](/guides/sessions/#subagents) under it.                                                                                                 |
+| `hosted`   | **Started on g1t**            | A session started on g1t, from a work item or the web, on the workspace's Anthropic provider: harness `claude_managed_agents`. See [start a session on your Anthropic account](/guides/sessions/#start-a-session-on-your-anthropic-account). |
+| `agent`    | **g1t's agent**               | g1t's own agent at work on a pull request. Only the workspace's members see these.                                                                                                                                                           |
+| `recorded` | **Recorded on pull requests** | A session recorded on a pull request with no session of its own. It opens on the pull request's **Session** tab, `g1t.sh/<owner>/<repo>/pull/<number>/session`.                                                                              |
 
 ### As it happens
 
@@ -102,11 +102,11 @@ reads itself again when you come back to it and once a minute.
 A session's `state` is worked out from when it was last heard from. Every
 heartbeat, update and recorded entry counts:
 
-| State | Means |
-| --- | --- |
-| `active` | Heard from in the last 15 minutes. |
-| `idle` | Not heard from for 15 minutes. It may still come back. |
-| `ended` | Ended by its harness, or not heard from for 30 minutes (`end_reason` `timed_out`). A heartbeat brings a timed-out session back; one its harness ended stays ended. |
+| State    | Means                                                                                                                                                              |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `active` | Heard from in the last 15 minutes.                                                                                                                                 |
+| `idle`   | Not heard from for 15 minutes. It may still come back.                                                                                                             |
+| `ended`  | Ended by its harness, or not heard from for 30 minutes (`end_reason` `timed_out`). A heartbeat brings a timed-out session back; one its harness ended stays ended. |
 
 A session its harness left behind, killed or never told to end, can be
 ended by hand: **End session** in its menu under Live now (on the project's
@@ -141,7 +141,7 @@ It shows:
 - **What it recorded**, as it records it: its prompt folded, its messages
   formatted as they were written, and the tool calls between them a line
   each (a command as code, a file by its path, a g1t tool by what it did,
-  such as *work item · claim*), more than three in a row folded into one
+  such as _work item · claim_), more than three in a row folded into one
   line that opens to them. A long command and what a tool gave back open
   under its line.
 
@@ -175,27 +175,27 @@ notes, the skills it uses, and its result when it ends. It never records
 what a tool gave back unless its harness sends it. It also says what it
 touched, each kept once:
 
-| `kind` | `value` |
-| --- | --- |
-| `file` | A file it wrote, from the repository's root. |
-| `commit` | A commit it made. |
-| `branch` | A branch it made or pushed. |
-| `pull` | A pull request it opened, by number. |
-| `item` | A work item it named or claimed, by its number in the workspace. |
+| `kind`   | `value`                                                          |
+| -------- | ---------------------------------------------------------------- |
+| `file`   | A file it wrote, from the repository's root.                     |
+| `commit` | A commit it made.                                                |
+| `branch` | A branch it made or pushed.                                      |
+| `pull`   | A pull request it opened, by number.                             |
+| `item`   | A work item it named or claimed, by its number in the workspace. |
 
 From these and the rest of what it records, g1t ties the session to the
 work items and pull requests it worked on, each in as many ways as it was
 (`via` in the session's `links`):
 
-| `via` | When |
-| --- | --- |
-| `attached` | It said it is on it, starting or updating. |
-| `claim` | It claimed the work item. |
-| `opened` | It opened the pull request. |
-| `branch` | It pushed the pull request's branch, also when the pull request is opened later. |
-| `commit` | It made the pull request's head commit. |
-| `trailer` | A commit pushed to the pull request's branch names it in a `G1t-Session: ses_…` trailer. |
-| `ref` | Its prompt, its task, its result or a subagent's names it as `#12`. |
+| `via`      | When                                                                                     |
+| ---------- | ---------------------------------------------------------------------------------------- |
+| `attached` | It said it is on it, starting or updating.                                               |
+| `claim`    | It claimed the work item.                                                                |
+| `opened`   | It opened the pull request.                                                              |
+| `branch`   | It pushed the pull request's branch, also when the pull request is opened later.         |
+| `commit`   | It made the pull request's head commit.                                                  |
+| `trailer`  | A commit pushed to the pull request's branch names it in a `G1t-Session: ses_…` trailer. |
+| `ref`      | Its prompt, its task, its result or a subagent's names it as `#12`.                      |
 
 A session's links cover its subagents too, and the work item and pull
 request pages list every session tied to them with its subagents. Put the
@@ -220,11 +220,11 @@ why-blame see them.
 A session records someone's own work as it happens, so g1t shows it by who
 is looking, on the site, the API, MCP and the CLI alike.
 
-| Who | Sees |
-| --- | --- |
-| Whoever ran it | All of it: its prompts, tool calls, what it touched and reported, its pending updates. |
-| A member of the repository's workspace | What it did: its title, tool calls, messages, notes, skills, what it touched, its subagents' tasks, prompts and reports, what it cost ([estimated at list price](/guides/sessions/#what-a-session-cost)), its pending updates. Not the prompts someone else typed, nor a tool's output (`tool_result`): those entries show as kept back. A title shows without swearing. |
-| Anyone else who may read the repository | That it runs: who runs it, in which harness, since when, its state and the work items and pull requests it is tied to. Nothing it recorded, touched, was asked or reported, nor its title, branch, model or cost. On a pull request's session, only g1t's own notes. |
+| Who                                     | Sees                                                                                                                                                                                                                                                                                                                                                                     |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Whoever ran it                          | All of it: its prompts, tool calls, what it touched and reported, its pending updates.                                                                                                                                                                                                                                                                                   |
+| A member of the repository's workspace  | What it did: its title, tool calls, messages, notes, skills, what it touched, its subagents' tasks, prompts and reports, what it cost ([estimated at list price](/guides/sessions/#what-a-session-cost)), its pending updates. Not the prompts someone else typed, nor a tool's output (`tool_result`): those entries show as kept back. A title shows without swearing. |
+| Anyone else who may read the repository | That it runs: who runs it, in which harness, since when, its state and the work items and pull requests it is tied to. Nothing it recorded, touched, was asked or reported, nor its title, branch, model or cost. On a pull request's session, only g1t's own notes.                                                                                                     |
 
 g1t's own agent's sessions are listed only for members.
 

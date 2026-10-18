@@ -1,50 +1,50 @@
 {
-	"$schema": "../../node_modules/wrangler/config-schema.json",
-	"name": "g1t-sudo",
-	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
-	"compatibility_date": "2026-09-26",
-	"placement": { "mode": "off" },
-	"main": "./workers/app.ts",
-	// Staff only: reachable at sudo.g1t.sh, behind Cloudflare Access, and
-	// nowhere else. No workers.dev address and no preview URLs, so there is
-	// no way round Access to the worker.
-	"routes": [{ "pattern": "sudo.g1t.sh", "custom_domain": true }],
-	"workers_dev": false,
-	"preview_urls": false,
-	// Even the stylesheet goes through the worker, which checks the Access
-	// token on every request before anything is served.
-	"assets": { "binding": "ASSETS", "run_worker_first": true },
-	// Billing's and identity's staff-only methods (admin_*). Nothing else
-	// binds to identity's admin_* methods. The event log, read-only, for
-	// `abuse.flagged` (Abuse & fraud).
-	"services": [
-		{ "binding": "BILLING", "service": "g1t-billing" },
-		{ "binding": "IDENTITY", "service": "g1t-identity" },
-		{ "binding": "EVENTS", "service": "g1t-events" },
-		// The status page's staff-only entrypoint: posting incidents to
-		// status.g1t.sh (apps/status). Only bindings reach it.
-		{ "binding": "STATUS", "service": "g1t-status", "entrypoint": "StatusAdmin" },
-		// Suspending a workspace and cleaning up after abuse: its self-hosted
-		// runners (actions' admin_runners and admin_remove_runners), its
-		// projects, and their telemetry ingest tokens.
-		{ "binding": "ACTIONS", "service": "g1t-actions" },
-		{ "binding": "PROJECTS", "service": "g1t-projects" },
-		{ "binding": "TELEMETRY", "service": "g1t-telemetry" }
-	],
-	"vars": {
-		// The Zero Trust team domain, such as `g1t.cloudflareaccess.com`.
-		"ACCESS_TEAM_DOMAIN": "syntaqx.cloudflareaccess.com",
-		// The Access application's Audience (AUD) tag.
-		"ACCESS_AUD": "5479fcf84130fc7ae68c207ae69a81b2aa17d97714443c6f1dddd058c530b8cf",
-		// Who may use sudo, comma separated. Access lets them in; this
-		// decides again, in case the Access policy is ever widened.
-		"STAFF_EMAILS": "syntaqx@gmail.com, @g1t.sh",
-		// Access service tokens let in as staff: `<client id>=<name>`, comma
-		// separated. Each acts, and is recorded, as `<name>@service.g1t.sh`.
-		// The Access application needs a Service Auth policy including it.
-		"STAFF_SERVICE_TOKENS": "434297ede60761875e84742d0486cf27.access=claude"
-	},
-	// Every log kept: staff only, few requests.
-	"observability": { "enabled": true, "head_sampling_rate": 1 },
-	"upload_source_maps": true
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "g1t-sudo",
+  "account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+  "compatibility_date": "2026-09-26",
+  "placement": { "mode": "off" },
+  "main": "./workers/app.ts",
+  // Staff only: reachable at sudo.g1t.sh, behind Cloudflare Access, and
+  // nowhere else. No workers.dev address and no preview URLs, so there is
+  // no way round Access to the worker.
+  "routes": [{ "pattern": "sudo.g1t.sh", "custom_domain": true }],
+  "workers_dev": false,
+  "preview_urls": false,
+  // Even the stylesheet goes through the worker, which checks the Access
+  // token on every request before anything is served.
+  "assets": { "binding": "ASSETS", "run_worker_first": true },
+  // Billing's and identity's staff-only methods (admin_*). Nothing else
+  // binds to identity's admin_* methods. The event log, read-only, for
+  // `abuse.flagged` (Abuse & fraud).
+  "services": [
+    { "binding": "BILLING", "service": "g1t-billing" },
+    { "binding": "IDENTITY", "service": "g1t-identity" },
+    { "binding": "EVENTS", "service": "g1t-events" },
+    // The status page's staff-only entrypoint: posting incidents to
+    // status.g1t.sh (apps/status). Only bindings reach it.
+    { "binding": "STATUS", "service": "g1t-status", "entrypoint": "StatusAdmin" },
+    // Suspending a workspace and cleaning up after abuse: its self-hosted
+    // runners (actions' admin_runners and admin_remove_runners), its
+    // projects, and their telemetry ingest tokens.
+    { "binding": "ACTIONS", "service": "g1t-actions" },
+    { "binding": "PROJECTS", "service": "g1t-projects" },
+    { "binding": "TELEMETRY", "service": "g1t-telemetry" },
+  ],
+  "vars": {
+    // The Zero Trust team domain, such as `g1t.cloudflareaccess.com`.
+    "ACCESS_TEAM_DOMAIN": "syntaqx.cloudflareaccess.com",
+    // The Access application's Audience (AUD) tag.
+    "ACCESS_AUD": "5479fcf84130fc7ae68c207ae69a81b2aa17d97714443c6f1dddd058c530b8cf",
+    // Who may use sudo, comma separated. Access lets them in; this
+    // decides again, in case the Access policy is ever widened.
+    "STAFF_EMAILS": "syntaqx@gmail.com, @g1t.sh",
+    // Access service tokens let in as staff: `<client id>=<name>`, comma
+    // separated. Each acts, and is recorded, as `<name>@service.g1t.sh`.
+    // The Access application needs a Service Auth policy including it.
+    "STAFF_SERVICE_TOKENS": "434297ede60761875e84742d0486cf27.access=claude",
+  },
+  // Every log kept: staff only, few requests.
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "upload_source_maps": true,
 }

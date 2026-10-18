@@ -96,8 +96,8 @@ export default function Overages({ loaderData, actionData }: Route.ComponentProp
         title="Overages"
         description={
           <>
-            Workspaces whose month went well past their usual (twice it, and $10 over), hit a spend spike, or asked for help. A goodwill credit
-            always returns g1t's margin on the overage and absorbs at most {usd(cap)} of real cost in one click, once per workspace in 12 months.
+            Workspaces whose month went well past their usual (twice it, and $10 over), hit a spend spike, or asked for help. A goodwill credit always returns
+            g1t's margin on the overage and absorbs at most {usd(cap)} of real cost in one click, once per workspace in 12 months.
           </>
         }
       />
@@ -110,7 +110,12 @@ export default function Overages({ loaderData, actionData }: Route.ComponentProp
           <Stat label="In the queue" value={String(queue.length)} hint={`${queue.filter((row) => row.request).length} asked for help`} />
           <Stat label="Over their usual" value={usd(totals.overage)} hint="This month, above each typical month" />
           <Stat label="g1t's margin in it" value={usd(totals.margin)} hint="Returned by any goodwill credit" />
-          <Stat label="Real cost, if all forgiven" value={usd(totals.absorbed)} hint="One-click credits still available" tone={totals.absorbed > 0 ? "warn" : undefined} />
+          <Stat
+            label="Real cost, if all forgiven"
+            value={usd(totals.absorbed)}
+            hint="One-click credits still available"
+            tone={totals.absorbed > 0 ? "warn" : undefined}
+          />
         </div>
       )}
       {review && <ReviewPanel review={review} cap={cap} />}
@@ -119,12 +124,7 @@ export default function Overages({ loaderData, actionData }: Route.ComponentProp
           <EmptyState title="No overages this month">Workspaces show up here when a month runs well past their usual, or a spike pauses them.</EmptyState>
         ) : (
           queue.map((row) => (
-            <OverageCard
-              key={row.workspace}
-              row={row}
-              cap={cap}
-              error={result && "error" in result && result.workspace === row.workspace ? result : null}
-            />
+            <OverageCard key={row.workspace} row={row} cap={cap} error={result && "error" in result && result.workspace === row.workspace ? result : null} />
           ))
         )}
       </div>
@@ -142,9 +142,8 @@ function ReviewPanel({ review, cap }: { review: Review; cap: number }) {
         g1t absorbs {usd(review.absorbedMicros)} of real cost
       </h2>
       <p className="mt-2 text-sm text-fg-soft">
-        A {usd(review.amountMicros)} credit to <span className="font-mono">{review.workspace}</span> is past the {usd(cap)} a goodwill credit
-        absorbs in one click. That is money g1t already paid Cloudflare. Say why, for whoever looks next; it goes in the
-        audit log with your email.
+        A {usd(review.amountMicros)} credit to <span className="font-mono">{review.workspace}</span> is past the {usd(cap)} a goodwill credit absorbs in one
+        click. That is money g1t already paid Cloudflare. Say why, for whoever looks next; it goes in the audit log with your email.
       </p>
       <form method="post" action={`${pathname}#review`} className="mt-4 space-y-3">
         <Hidden values={{ workspace: review.workspace, amount: review.amount, day: review.day, confirm: "yes" }} />
@@ -184,7 +183,11 @@ function OverageCard({ row, cap, error }: { row: Overage; cap: number; error: { 
             <Badge>{row.plan}</Badge>
             {spike && <Badge tone={spike.tone === "plain" ? "plain" : spike.tone}>{spike.label}</Badge>}
             {row.request && <Badge tone="warn">Asked for help</Badge>}
-            {!row.goodwillAvailable && <Badge tone="danger">Goodwill given{" "}<When at={row.lastGoodwillAt} /></Badge>}
+            {!row.goodwillAvailable && (
+              <Badge tone="danger">
+                Goodwill given <When at={row.lastGoodwillAt} />
+              </Badge>
+            )}
           </p>
           <p className="mt-0.5 text-xs text-faint">
             Typical month {usd(row.typicalMonthMicros)} · this month {usd(row.thisMonthMicros)} · cost to g1t {usd(row.costMicros)}
@@ -217,7 +220,9 @@ function OverageCard({ row, cap, error }: { row: Overage; cap: number; error: { 
                     <span className="min-w-0">
                       <span className="block wrap-break-word text-fg-soft">{entry.description}</span>
                       <span className="font-mono text-faint">
-                        {[entry.repo && (entry.number != null ? `${entry.repo}#${entry.number}` : entry.repo), entry.task, entry.model].filter(Boolean).join(" · ")}
+                        {[entry.repo && (entry.number != null ? `${entry.repo}#${entry.number}` : entry.repo), entry.task, entry.model]
+                          .filter(Boolean)
+                          .join(" · ")}
                       </span>
                     </span>
                     <span className="tabular shrink-0">{usd(-entry.amountMicros)}</span>
@@ -230,10 +235,7 @@ function OverageCard({ row, cap, error }: { row: Overage; cap: number; error: { 
         <div className="min-w-0 space-y-3">
           <ul className="space-y-2">
             {choices.map((choice) => (
-              <li
-                key={choice.label}
-                className={`rounded-md border px-3 py-2 text-sm ${choice.overCap ? "border-danger/50 bg-danger/8" : "border-line bg-bg"}`}
-              >
+              <li key={choice.label} className={`rounded-md border px-3 py-2 text-sm ${choice.overCap ? "border-danger/50 bg-danger/8" : "border-line bg-bg"}`}>
                 <p className="flex justify-between gap-3">
                   <span className="font-medium">{choice.label}</span>
                   <span className="tabular">{usd(choice.amount)}</span>
@@ -257,7 +259,13 @@ function OverageCard({ row, cap, error }: { row: Overage; cap: number; error: { 
               </Field>
             </div>
             <Field label="Reason" hint={row.goodwillAvailable ? "Needed past the one-click credit." : "Needed: a credit was given in the last 12 months."}>
-              <Textarea name="reason" rows={2} maxLength={500} defaultValue={error?.values.reason ?? ""} placeholder="e.g. A review loop ran overnight on a misconfigured workflow." />
+              <Textarea
+                name="reason"
+                rows={2}
+                maxLength={500}
+                defaultValue={error?.values.reason ?? ""}
+                placeholder="e.g. A review loop ran overnight on a misconfigured workflow."
+              />
             </Field>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs text-faint">On their statement as “{goodwillLine("YYYY-MM-DD")}”.</p>

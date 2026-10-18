@@ -1,7 +1,7 @@
 name: Anchors and aliases
 on:
   push:
-    branches: &branches [main, 'release/**']
+    branches: &branches [main, "release/**"]
   pull_request:
     branches: *branches
 jobs:

@@ -103,19 +103,18 @@ export function ComplimentarySection({
             />
           </Field>
           <Field label="Monthly fee $" hint="Recurring, invoiced by Stripe, apart from the allowance. Blank or 0: waived.">
-            <Input name="fee" inputMode="decimal" placeholder="Waived" defaultValue={values?.fee ?? (open?.feeCents ? dollarsField(open.feeCents * 10_000) : "")} />
+            <Input
+              name="fee"
+              inputMode="decimal"
+              placeholder="Waived"
+              defaultValue={values?.fee ?? (open?.feeCents ? dollarsField(open.feeCents * 10_000) : "")}
+            />
           </Field>
         </div>
         <fieldset className="space-y-2 text-sm">
           <legend className="mb-1 text-xs text-faint">Past the allowance</legend>
           <label className="flex cursor-pointer items-start gap-2.5">
-            <input
-              type="radio"
-              name="past"
-              value="stop"
-              defaultChecked={values ? values.past !== "charge" : !open?.chargePastAllowance}
-              className="mt-0.5"
-            />
+            <input type="radio" name="past" value="stop" defaultChecked={values ? values.past !== "charge" : !open?.chargePastAllowance} className="mt-0.5" />
             <span>
               <span className="block font-medium">New paid work stops</span>
               <span className="block text-xs text-muted">Nothing is ever charged. For partners g1t carries entirely.</span>
@@ -132,8 +131,8 @@ export function ComplimentarySection({
             <span>
               <span className="block font-medium">Their card is charged</span>
               <span className="block text-xs text-muted">
-                g1t covers the allowance; past it, usage is charged to the workspace's own card at the usual prices, up to its spend
-                limit. For employees and friends. Without a card, work stops until they add one.
+                g1t covers the allowance; past it, usage is charged to the workspace's own card at the usual prices, up to its spend limit. For employees and
+                friends. Without a card, work stops until they add one.
               </span>
             </span>
           </label>
@@ -146,7 +145,14 @@ export function ComplimentarySection({
           </span>
         </label>
         <Field label="Note" hint="Required. Why, for whoever looks next.">
-          <Textarea name="note" rows={2} required maxLength={500} defaultValue={values?.note ?? ""} placeholder="e.g. Design partner, $500 a month through Q1" />
+          <Textarea
+            name="note"
+            rows={2}
+            required
+            maxLength={500}
+            defaultValue={values?.note ?? ""}
+            placeholder="e.g. Design partner, $500 a month through Q1"
+          />
         </Field>
         <Field label={`Type ${workspace} to confirm`}>
           <Input name="confirmation" autoComplete="off" defaultValue="" />

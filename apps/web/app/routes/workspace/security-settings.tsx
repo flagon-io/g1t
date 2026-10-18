@@ -51,7 +51,10 @@ export default function WorkspaceSecuritySettings({ loaderData, params }: Route.
   const disabled = !owner;
   return (
     <div>
-      <WorkspaceSecurityHeading title="Security settings" about="How push protection treats bypasses, and whether g1t asks secrets' issuers if they still work, in every repository of the workspace." />
+      <WorkspaceSecurityHeading
+        title="Security settings"
+        about="How push protection treats bypasses, and whether g1t asks secrets' issuers if they still work, in every repository of the workspace."
+      />
       <WorkspaceSecurityTabs owner={params.owner} />
       {!view.activated && (
         <div className="mb-4">

@@ -16,10 +16,7 @@ export function CommandInput({ className, ...props }: ComponentProps<typeof Cmdk
   return (
     <div className="flex items-center gap-2 border-b border-line px-3" cmdk-input-wrapper="">
       <Search size={14} className="shrink-0 text-faint" />
-      <Cmdk.Input
-        className={cn("h-10 w-full bg-transparent text-sm outline-none placeholder:text-faint focus-visible:outline-none", className)}
-        {...props}
-      />
+      <Cmdk.Input className={cn("h-10 w-full bg-transparent text-sm outline-none placeholder:text-faint focus-visible:outline-none", className)} {...props} />
     </div>
   );
 }

@@ -40,5 +40,8 @@ test("recent leaves out what is pinned and keeps the latest few", () => {
     recentAfterPins(visited, ["b", "d"]).map((p) => p.id),
     ["a", "c", "e", "f", "g"],
   );
-  assert.deepEqual(recentAfterPins(visited, [], 2).map((p) => p.id), ["a", "b"]);
+  assert.deepEqual(
+    recentAfterPins(visited, [], 2).map((p) => p.id),
+    ["a", "b"],
+  );
 });

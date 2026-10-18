@@ -146,7 +146,9 @@ const THEMES = [
   {
     value: "light",
     label: "Light",
-    icon: ICON('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-17.07 1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>'),
+    icon: ICON(
+      '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-17.07 1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
+    ),
   },
   { value: "dark", label: "Dark", icon: ICON('<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>') },
 ];
@@ -454,7 +456,10 @@ export function renderMaintenance(m: StatusMaintenance, names: Map<string, strin
 }
 
 /** Months, newest first, each with its incidents and maintenance. */
-export function byMonth(incidents: StatusIncident[], maintenance: StatusMaintenance[]): { month: string; incidents: StatusIncident[]; maintenance: StatusMaintenance[] }[] {
+export function byMonth(
+  incidents: StatusIncident[],
+  maintenance: StatusMaintenance[],
+): { month: string; incidents: StatusIncident[]; maintenance: StatusMaintenance[] }[] {
   const months = new Map<string, { incidents: StatusIncident[]; maintenance: StatusMaintenance[] }>();
   const slot = (month: string) => months.get(month) ?? months.set(month, { incidents: [], maintenance: [] }).get(month)!;
   for (const i of incidents) slot(i.started_at.slice(0, 7)).incidents.push(i);
@@ -484,7 +489,9 @@ export function renderHistory(incidents: StatusIncident[], maintenance: StatusMa
           `<li class="line"><div class="line-head"><a href="/maintenance/${escape(m.id)}">${escape(m.title)}</a><span class="tag">Maintenance · ${MAINTENANCE_WORD[maintenanceState(m, now)]}</span></div><p class="meta">${maintenanceWindow(m)}</p></li>`,
       ) ?? []),
     ];
-    list.push(`<section class="month"><h2>${MONTH_NAMES[d.getUTCMonth()]} ${d.getUTCFullYear()}</h2>${items.length ? `<ul class="lines">${items.join("")}</ul>` : `<p class="none">No incidents or maintenance.</p>`}</section>`);
+    list.push(
+      `<section class="month"><h2>${MONTH_NAMES[d.getUTCMonth()]} ${d.getUTCFullYear()}</h2>${items.length ? `<ul class="lines">${items.join("")}</ul>` : `<p class="none">No incidents or maintenance.</p>`}</section>`,
+    );
   }
   const body = `<p class="crumbs"><a href="/">Status</a></p>
 <header class="page-head"><h1>History</h1></header>

@@ -122,19 +122,14 @@ export function ssoClient(identity: ServiceBinding) {
   return {
     settings: (actor: User, slug: string) => call<Result<SsoSettings>>("sso_settings", { actor, slug }),
     summary: (slug: string) => call<SsoSummary>("sso_summary", { slug }),
-    save: (actor: User, slug: string, input: SaveSso) =>
-      call<Result<SsoSettings>>("save_sso", { actor, slug, surface: "web", ...input }),
-    setRequired: (actor: User, slug: string, required: boolean) =>
-      call<Result<boolean>>("set_sso_required", { actor, slug, required, surface: "web" }),
+    save: (actor: User, slug: string, input: SaveSso) => call<Result<SsoSettings>>("save_sso", { actor, slug, surface: "web", ...input }),
+    setRequired: (actor: User, slug: string, required: boolean) => call<Result<boolean>>("set_sso_required", { actor, slug, required, surface: "web" }),
     remove: (actor: User, slug: string) => call<Result<boolean>>("delete_sso", { actor, slug, surface: "web" }),
-    unlink: (actor: User, slug: string, username: string) =>
-      call<Result<boolean>>("unlink_sso_identity", { actor, slug, username, surface: "web" }),
+    unlink: (actor: User, slug: string, username: string) => call<Result<boolean>>("unlink_sso_identity", { actor, slug, username, surface: "web" }),
     start: (input: { user: User; session_token: string; slug: string; redirect_uri: string; entity_id?: string | null; next: string }) =>
       call<Result<{ url: string; state: string | null; binding: string | null }>>("sso_start", input),
-    finish: (input: { slug: string; session_token: string; state: string; code: string }) =>
-      call<Result<SsoFinished>>("sso_finish", input),
-    saml: (slug: string, samlResponse: string, binding: string | null) =>
-      call<Result<SsoFinished>>("sso_saml", { slug, saml_response: samlResponse, binding }),
+    finish: (input: { slug: string; session_token: string; state: string; code: string }) => call<Result<SsoFinished>>("sso_finish", input),
+    saml: (slug: string, samlResponse: string, binding: string | null) => call<Result<SsoFinished>>("sso_saml", { slug, saml_response: samlResponse, binding }),
     metadata: (entityId: string, acsUrl: string) => call<string>("sso_metadata", { entity_id: entityId, acs_url: acsUrl }),
     enableScim: (actor: User, slug: string) => call<Result<{ token: string; hint: string }>>("enable_scim", { actor, slug, surface: "web" }),
     disableScim: (actor: User, slug: string) => call<Result<boolean>>("disable_scim", { actor, slug, surface: "web" }),

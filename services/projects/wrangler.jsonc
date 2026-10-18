@@ -1,43 +1,43 @@
 {
-	"$schema": "../../node_modules/wrangler/config-schema.json",
-	"name": "g1t-projects",
-	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
-	"compatibility_date": "2026-09-26",
-	"main": "./src/index.ts",
-	// Reached only through service bindings.
-	"workers_dev": false,
-	"placement": { "mode": "off" },
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "g1t-projects",
-			"database_id": "0af698be-2b60-4bd9-aa93-81e84828e991",
-			"migrations_dir": "migrations"
-		}
-	],
-	"services": [
-		{ "binding": "REPOS", "service": "g1t-repos" },
-		{ "binding": "IDENTITY", "service": "g1t-identity" },
-		// Whether a project is a library: the packages its repository
-		// publishes, and whether Deployments are on (asked once; after that
-		// deployments says when it changes).
-		{ "binding": "PACKAGES", "service": "g1t-packages" },
-		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
-		// A screenshot of a production deployed elsewhere, asked for when its
-		// address is set or changed and when a production deployment is
-		// reported for it (src/index.ts).
-		{ "binding": "SCREENSHOTS", "service": "g1t-og", "entrypoint": "Screenshots" },
-		{ "binding": "EVENTS", "service": "g1t-events" }
-	],
-	// Uploaded production images, under `production/<sha256>` in the same
-	// namespace as avatars, which the usercontent origin serves
-	// (src/production-image.ts).
-	"kv_namespaces": [{ "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" }],
-	// A repository created is given its own project; a production
-	// deployment reported from elsewhere asks for its screenshot.
-	"queues": {
-		"consumers": [{ "queue": "g1t-events-projects", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
-	},
-	// Logs of a tenth of requests: every repository page asks it.
-	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "g1t-projects",
+  "account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+  "compatibility_date": "2026-09-26",
+  "main": "./src/index.ts",
+  // Reached only through service bindings.
+  "workers_dev": false,
+  "placement": { "mode": "off" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "g1t-projects",
+      "database_id": "0af698be-2b60-4bd9-aa93-81e84828e991",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "services": [
+    { "binding": "REPOS", "service": "g1t-repos" },
+    { "binding": "IDENTITY", "service": "g1t-identity" },
+    // Whether a project is a library: the packages its repository
+    // publishes, and whether Deployments are on (asked once; after that
+    // deployments says when it changes).
+    { "binding": "PACKAGES", "service": "g1t-packages" },
+    { "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
+    // A screenshot of a production deployed elsewhere, asked for when its
+    // address is set or changed and when a production deployment is
+    // reported for it (src/index.ts).
+    { "binding": "SCREENSHOTS", "service": "g1t-og", "entrypoint": "Screenshots" },
+    { "binding": "EVENTS", "service": "g1t-events" },
+  ],
+  // Uploaded production images, under `production/<sha256>` in the same
+  // namespace as avatars, which the usercontent origin serves
+  // (src/production-image.ts).
+  "kv_namespaces": [{ "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" }],
+  // A repository created is given its own project; a production
+  // deployment reported from elsewhere asks for its screenshot.
+  "queues": {
+    "consumers": [{ "queue": "g1t-events-projects", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }],
+  },
+  // Logs of a tenth of requests: every repository page asks it.
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 },
 }

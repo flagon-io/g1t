@@ -7,10 +7,10 @@ description: Find anyone in a workspace, see their teams and what they own, and 
 teams they are on and what they own. Open it from **People** at the foot
 of the rail. Its sidebar has:
 
-| Page | Address | What it is |
-| --- | --- | --- |
+| Page         | Address                       | What it is                                                 |
+| ------------ | ----------------------------- | ---------------------------------------------------------- |
 | **Everyone** | `g1t.sh/<workspace>/-/people` | The [directory](#the-directory) of the workspace's people. |
-| **Teams** | `g1t.sh/<workspace>/-/teams` | The workspace's [teams](/guides/teams/). |
+| **Teams**    | `g1t.sh/<workspace>/-/teams`  | The workspace's [teams](/guides/teams/).                   |
 
 Only members of the workspace can open these pages. Who belongs, and
 inviting people, is the workspace's own business: **Members**,
@@ -51,10 +51,10 @@ time zone come from their account's
 [profile settings](/guides/authentication/); their title and what they own
 are set for this workspace.
 
-| Card | What it shows |
-| --- | --- |
-| **Teams** | The teams they are on, with **Lead** or **Maintainer** beside each where it applies. |
-| **Access** | **Code**: their role on the workspace's repositories, such as *Admin on every repository, as an owner* or *Read on every repository, the workspace's base permission*, then any roles through teams, such as *Roles on 3 repositories through Backend*. **Storage**: coming. |
+| Card       | What it shows                                                                                                                                                                                                                                                                |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Teams**  | The teams they are on, with **Lead** or **Maintainer** beside each where it applies.                                                                                                                                                                                         |
+| **Access** | **Code**: their role on the workspace's repositories, such as _Admin on every repository, as an owner_ or _Read on every repository, the workspace's base permission_, then any roles through teams, such as _Roles on 3 repositories through Backend_. **Storage**: coming. |
 
 **Message** opens your direct message with them in [Chat](/guides/chat/).
 
@@ -66,9 +66,9 @@ You can edit your own profile; owners can edit anyone's.
 2. Choose **Edit profile**.
 3. Change what you need, and save.
 
-| Field | Who sets it | Limits |
-| --- | --- | --- |
-| **Title** | The person, or an owner | Their job here, such as *Staff Engineer*. Up to 80 characters. |
+| Field             | Who sets it             | Limits                                                                                                   |
+| ----------------- | ----------------------- | -------------------------------------------------------------------------------------------------------- |
+| **Title**         | The person, or an owner | Their job here, such as _Staff Engineer_. Up to 80 characters.                                           |
 | **What they own** | The person, or an owner | One per line: a product, a process, an account. Up to 8, each up to 60 characters. Repeats are left out. |
 
 What you set here is shown in the directory and on their profile. Each
@@ -82,11 +82,11 @@ When someone leaves the workspace, any team they led has no lead.
 Who is in the workspace is a setting of the workspace, so it lives in
 [Workspace mode](/guides/workspaces/#workspace-mode), under **Access**:
 
-| Page | Address | What it is |
-| --- | --- | --- |
-| **Members** | `g1t.sh/<workspace>/-/members` | Everyone in the workspace and their roles, with search and filters; **Invite** (a dialog), changing roles, transferring ownership, outside collaborators and leaving. See [add people](/guides/workspaces/#add-people) and [change someone's role](/guides/workspaces/#change-someones-role). |
-| **Invitations** | `g1t.sh/<workspace>/-/members/invitations` | Every invitation to join, by where it stands: pending, accepted, declined, expired, revoked. Owners only. |
-| **Permissions** | `g1t.sh/<workspace>/-/permissions` | Who may do what, part by part, [the base permission](/guides/access-and-roles/#the-base-permission) included. Owners only. See [permissions](/guides/permissions/). |
+| Page            | Address                                    | What it is                                                                                                                                                                                                                                                                                    |
+| --------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Members**     | `g1t.sh/<workspace>/-/members`             | Everyone in the workspace and their roles, with search and filters; **Invite** (a dialog), changing roles, transferring ownership, outside collaborators and leaving. See [add people](/guides/workspaces/#add-people) and [change someone's role](/guides/workspaces/#change-someones-role). |
+| **Invitations** | `g1t.sh/<workspace>/-/members/invitations` | Every invitation to join, by where it stands: pending, accepted, declined, expired, revoked. Owners only.                                                                                                                                                                                     |
+| **Permissions** | `g1t.sh/<workspace>/-/permissions`         | Who may do what, part by part, [the base permission](/guides/access-and-roles/#the-base-permission) included. Owners only. See [permissions](/guides/permissions/).                                                                                                                           |
 
 ## Next
 

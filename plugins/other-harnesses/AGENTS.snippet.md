@@ -45,7 +45,7 @@ the same time; the `g1t` CLI is how you see them and how they see you.
   Reading is not acknowledgement. Repeat until the pending page is empty.
   With an older CLI, use `g1t api get_session -f id=SESSION_ID` and, after
   logging your decision, `g1t api record_session_entries -f id=SESSION_ID
-  -f "acknowledge[]=UPDATE_ID"`.
+-f "acknowledge[]=UPDATE_ID"`.
 - Without a shell, use MCP `session` actions `start`, `get`, `record`,
   `update`, and `end`. Keep the returned ID and pass it explicitly. To read
   pending updates without the transcript, call `get` with `after: 4294967295`.

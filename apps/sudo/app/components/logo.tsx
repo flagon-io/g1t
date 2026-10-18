@@ -23,14 +23,7 @@ const ICON = pixels(ONE, 0, true);
 /** Cells of 10 units, squares of 8, centred. */
 function Pixels({ of }: { of: Pixel[] }) {
   return of.map((p) => (
-    <rect
-      key={`${p.x}.${p.y}`}
-      x={p.x * 10 + 1}
-      y={p.y * 10 + 1}
-      width="8"
-      height="8"
-      fill={p.one ? "var(--color-accent)" : "currentColor"}
-    />
+    <rect key={`${p.x}.${p.y}`} x={p.x * 10 + 1} y={p.y * 10 + 1} width="8" height="8" fill={p.one ? "var(--color-accent)" : "currentColor"} />
   ));
 }
 

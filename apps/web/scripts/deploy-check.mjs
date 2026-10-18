@@ -32,34 +32,63 @@ export default { async fetch(request, env, ctx) {
   }
   return app.fetch(request, env, ctx);
 }};`;
-const files = [join(root, "index.js"), ...readdirSync(join(root, "assets")).filter((name) => name.endsWith(".js")).map((name) => join(root, "assets", name))];
-const runtime = new Miniflare(convertV4MiniflareOptions({
-  name: "web-deploy-check", cf: false, modulesRoot: root,
-  modules: [{ type: "ESModule", path: join(root, "deploy-check.mjs"), contents: seed }, ...files.map((path) => ({ type: "ESModule", path }))],
-  compatibilityDate: config.compatibility_date,
-  compatibilityFlags: config.compatibility_flags,
-  r2Buckets: ["DOWNLOADS"],
-  serviceBindings: {
-    IDENTITY: async () => Response.json(null),
-    PROJECTS: async (request) => {
-      const method = new URL(request.url).pathname.split("/").pop();
-      const args = await request.json();
-      if (method !== "get") return Response.json({ ok: true, value: [] });
-      if (args.slug !== "public") return Response.json({ ok: false, error: { code: "not_found", message: "Not found" } });
-      return Response.json({ ok: true, value: { source: { kind: "hosted", repo: { namespace: "acme", name: "public" } } } });
+const files = [
+  join(root, "index.js"),
+  ...readdirSync(join(root, "assets"))
+    .filter((name) => name.endsWith(".js"))
+    .map((name) => join(root, "assets", name)),
+];
+const runtime = new Miniflare(
+  convertV4MiniflareOptions({
+    name: "web-deploy-check",
+    cf: false,
+    modulesRoot: root,
+    modules: [{ type: "ESModule", path: join(root, "deploy-check.mjs"), contents: seed }, ...files.map((path) => ({ type: "ESModule", path }))],
+    compatibilityDate: config.compatibility_date,
+    compatibilityFlags: config.compatibility_flags,
+    r2Buckets: ["DOWNLOADS"],
+    serviceBindings: {
+      IDENTITY: async () => Response.json(null),
+      PROJECTS: async (request) => {
+        const method = new URL(request.url).pathname.split("/").pop();
+        const args = await request.json();
+        if (method !== "get") return Response.json({ ok: true, value: [] });
+        if (args.slug !== "public") return Response.json({ ok: false, error: { code: "not_found", message: "Not found" } });
+        return Response.json({ ok: true, value: { source: { kind: "hosted", repo: { namespace: "acme", name: "public" } } } });
+      },
+      DEPLOYMENTS: async (request) => {
+        const method = new URL(request.url).pathname.split("/").pop();
+        const args = await request.json();
+        assert.equal(method, "list_environments", "Public previews must not read member-only deployment lists");
+        assert.equal(args.viewer, null);
+        assert.equal(args.repo.name, "public");
+        const current = {
+          id: "dpl_live",
+          source: "g1t_page",
+          state: "success",
+          sha: "abcdef1234567",
+          environment_url: "https://public-acme.g1t.page",
+          updated_at: "2026-10-15T01:00:00Z",
+        };
+        return Response.json({
+          ok: true,
+          value: {
+            environments: [
+              {
+                name: "production",
+                production_environment: true,
+                updated_at: current.updated_at,
+                current,
+                latest: { ...current, id: "dpl_next", sha: "bbbbbbb", state: "in_progress" },
+              },
+            ],
+          },
+        });
+      },
+      SCREENSHOTS: { name: "web-deploy-check", entrypoint: "ScreenshotStub" },
     },
-    DEPLOYMENTS: async (request) => {
-      const method = new URL(request.url).pathname.split("/").pop();
-      const args = await request.json();
-      assert.equal(method, "list_environments", "Public previews must not read member-only deployment lists");
-      assert.equal(args.viewer, null);
-      assert.equal(args.repo.name, "public");
-      const current = { id: "dpl_live", source: "g1t_page", state: "success", sha: "abcdef1234567", environment_url: "https://public-acme.g1t.page", updated_at: "2026-10-15T01:00:00Z" };
-      return Response.json({ ok: true, value: { environments: [{ name: "production", production_environment: true, updated_at: current.updated_at, current, latest: { ...current, id: "dpl_next", sha: "bbbbbbb", state: "in_progress" } }] } });
-    },
-    SCREENSHOTS: { name: "web-deploy-check", entrypoint: "ScreenshotStub" },
-  },
-}));
+  }),
+);
 try {
   const origin = await runtime.ready;
   const request = (path, init) => fetch(new URL(path, origin), { ...init, signal: AbortSignal.timeout(15_000) });
@@ -71,7 +100,11 @@ try {
   assert.equal(await screenshot.text(), "production-preview");
   assert.equal((await request("/acme/private/production.jpg")).status, 404, "Unreadable projects never expose screenshots");
   console.log("Public production screenshots: anonymous access, private-project denial, and serving commit selection verified.");
-  for (const [path, destination] of [["/developers", "https://docs.g1t.sh/reference/developers/"], ["/openapi.json", "https://api.g1t.sh/openapi.json"], ["/mcp", "https://mcp.g1t.sh"]]) {
+  for (const [path, destination] of [
+    ["/developers", "https://docs.g1t.sh/reference/developers/"],
+    ["/openapi.json", "https://api.g1t.sh/openapi.json"],
+    ["/mcp", "https://mcp.g1t.sh"],
+  ]) {
     const answer = await request(path, { redirect: "manual" });
     assert.equal(answer.status, 308);
     assert.equal(answer.headers.get("location"), new URL(destination).href);
@@ -81,11 +114,23 @@ try {
     for (const accept of ["text/markdown", "text/html", "text/markdown"]) {
       const answer = await request(path, { headers: { accept } });
       assert.equal(answer.status, path === "/" ? 200 : 404);
-      assert.ok(answer.headers.get("vary")?.toLowerCase().split(",").map((value) => value.trim()).includes("accept"));
+      assert.ok(
+        answer.headers
+          .get("vary")
+          ?.toLowerCase()
+          .split(",")
+          .map((value) => value.trim())
+          .includes("accept"),
+      );
       assert.ok(answer.headers.get("content-type")?.startsWith(accept));
       const body = await answer.text();
-      if (accept === "text/markdown") { assert.match(body, /\[.*\]\(.*\/llms.txt\)/); assert.ok(body.length > 20); }
-      else { assert.match(body, /<html/); if (path === "/") assert.match(body, /rel="canonical"/); }
+      if (accept === "text/markdown") {
+        assert.match(body, /\[.*\]\(.*\/llms.txt\)/);
+        assert.ok(body.length > 20);
+      } else {
+        assert.match(body, /<html/);
+        if (path === "/") assert.match(body, /rel="canonical"/);
+      }
     }
   }
   assert.equal((await request("/", { headers: { accept: "application/json" } })).status, 406);

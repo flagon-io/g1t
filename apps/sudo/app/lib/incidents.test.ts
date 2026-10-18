@@ -33,7 +33,12 @@ const incident = (over: Record<string, unknown> = {}) =>
   }) as Parameters<typeof tabOf>[0] & Parameters<typeof phase>[0] & { title: string; severity: "sev2"; components: { key: string; impact: "major_outage" }[] };
 
 test("filters come from the address; unknown values are dropped", () => {
-  assert.deepEqual(parseFilters(new URLSearchParams("tab=drafts&severity=sev1&component=git&q=%20push%20")), { tab: "drafts", severity: "sev1", component: "git", q: "push" });
+  assert.deepEqual(parseFilters(new URLSearchParams("tab=drafts&severity=sev1&component=git&q=%20push%20")), {
+    tab: "drafts",
+    severity: "sev1",
+    component: "git",
+    q: "push",
+  });
   assert.deepEqual(parseFilters(new URLSearchParams("tab=nope&severity=sev9&component=%3Cx%3E")), { tab: "open", severity: null, component: null, q: "" });
   assert.equal(incidentsHref({ tab: "open" }), "/incidents");
   assert.equal(incidentsHref({ tab: "resolved", severity: "sev1", q: "a b" }), "/incidents?tab=resolved&severity=sev1&q=a+b");
@@ -44,7 +49,11 @@ test("tabs: open, drafts, and resolved (dismissed drafts included)", () => {
   assert.equal(tabOf(incident({ visibility: "draft" })), "drafts");
   assert.equal(tabOf(incident({ resolved_at: "2026-10-05T00:00:00Z" })), "resolved");
   assert.equal(tabOf(incident({ visibility: "dismissed", resolved_at: "2026-10-05T00:00:00Z" })), "resolved");
-  const list = [incident(), incident({ title: "Docs slow", severity: "sev3", components: [{ key: "docs", impact: "degraded" }] }), incident({ visibility: "draft" })];
+  const list = [
+    incident(),
+    incident({ title: "Docs slow", severity: "sev3", components: [{ key: "docs", impact: "degraded" }] }),
+    incident({ visibility: "draft" }),
+  ];
   const all = { tab: "open" as const, severity: null, component: null, q: "" };
   assert.equal(filterIncidents(list, all).length, 2);
   assert.equal(filterIncidents(list, { ...all, severity: "sev3" }).length, 1);
@@ -56,7 +65,15 @@ test("tabs: open, drafts, and resolved (dismissed drafts included)", () => {
 test("maintenance: live first by start, then finished newest first", () => {
   const m = (id: string, state: string, starts_at: string) => ({ id, state, starts_at, components: ["git"] }) as never;
   assert.deepEqual(
-    maintenanceList([m("done-old", "completed", "2026-09-01"), m("later", "scheduled", "2026-10-09"), m("done-new", "cancelled", "2026-10-01"), m("soon", "in_progress", "2026-10-05")], null).map((x: { id: string }) => x.id),
+    maintenanceList(
+      [
+        m("done-old", "completed", "2026-09-01"),
+        m("later", "scheduled", "2026-10-09"),
+        m("done-new", "cancelled", "2026-10-01"),
+        m("soon", "in_progress", "2026-10-05"),
+      ],
+      null,
+    ).map((x: { id: string }) => x.id),
     ["soon", "later", "done-new", "done-old"],
   );
 });
@@ -104,7 +121,10 @@ test("the status page's audit lines join the Audit log and link to their pages",
   assert.equal(accountPath(lines[1]!.account), "/incidents/maintenance/m1");
   assert.equal(accountName(lines[0]!.account), "Incident");
   const billing = [{ id: "b", account: "ws_acme", action: "terms", detail: "", by: "x", createdAt: "2026-10-05T11:00:00Z" }];
-  assert.deepEqual(mergeAudit(billing, lines).map((l) => l.id), ["status-a1", "b", "status-a2"]);
+  assert.deepEqual(
+    mergeAudit(billing, lines).map((l) => l.id),
+    ["status-a1", "b", "status-a2"],
+  );
   assert.equal(mergeAudit(billing, lines, 2).length, 2);
 });
 

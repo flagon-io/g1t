@@ -106,7 +106,12 @@ function hrefWith(workspace: string, current: Filters, change: Partial<Filters>)
 /** The packages a workspace publishes: filtered, sorted, or, with none yet, how to start. */
 export default function Packages({ loaderData, actionData }: Route.ComponentProps) {
   const { list, deleted, view, any, ecosystem, query, visibility, sort, workspace } = loaderData;
-  if (!any) return loaderData.member ? <ChooseRegistry workspace={workspace} /> : <EmptyState title="No public packages">This workspace has no packages you can view yet.</EmptyState>;
+  if (!any)
+    return loaderData.member ? (
+      <ChooseRegistry workspace={workspace} />
+    ) : (
+      <EmptyState title="No public packages">This workspace has no packages you can view yet.</EmptyState>
+    );
   if (view === "deleted") {
     if (isFailed(deleted)) return <Unavailable what={deleted.what} />;
     return <DeletedPackages workspace={workspace} deleted={deleted} outcome={actionData as Outcome | undefined} />;
@@ -291,8 +296,8 @@ function DeletedPackages({ workspace, deleted, outcome }: { workspace: string; d
       <div className="max-w-2xl">
         <h2 className="text-lg font-semibold tracking-tight">Deleted packages</h2>
         <p className="mt-1 text-sm text-muted">
-          Packages deleted in the last {PACKAGE_RESTORE_DAYS} days, with every version they had. Restore one to bring it back as it was;
-          until it is purged, nobody else can publish a package of its name.
+          Packages deleted in the last {PACKAGE_RESTORE_DAYS} days, with every version they had. Restore one to bring it back as it was; until it is purged,
+          nobody else can publish a package of its name.
         </p>
       </div>
       {outcome?.error && <ErrorText>{outcome.error}</ErrorText>}
@@ -373,10 +378,7 @@ function ChooseRegistry({ workspace }: { workspace: string }) {
                   <CopyLine prompt text={registry.start.replaceAll("<workspace>", workspace)} />
                 </div>
               )}
-              <a
-                href={`${DOCS}${registry.guide}`}
-                className="mt-3 inline-flex items-center gap-1 self-start text-sm text-fg-soft hover:text-fg"
-              >
+              <a href={`${DOCS}${registry.guide}`} className="mt-3 inline-flex items-center gap-1 self-start text-sm text-fg-soft hover:text-fg">
                 {registry.ready ? "Set it up" : "What's planned"} <ArrowUpRight size={13} />
               </a>
             </li>

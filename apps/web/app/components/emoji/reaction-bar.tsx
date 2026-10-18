@@ -67,26 +67,20 @@ export function AddReaction({ messageId, variant = "toolbar" }: { messageId: str
   if (!react) return null;
   const button =
     variant === "pill" ? (
-      <Button
-        type="button"
-        aria-label="Add a reaction"
-        variant="outline"
-        className="h-6 rounded-full bg-surface px-1.5 text-faint hover:bg-raised"
-      >
+      <Button type="button" aria-label="Add a reaction" variant="outline" className="h-6 rounded-full bg-surface px-1.5 text-faint hover:bg-raised">
         <SmilePlus size={14} />
       </Button>
     ) : (
-      <Button
-        type="button"
-        aria-label="Add a reaction"
-        variant="ghost"
-        size="icon-xs"
-      >
+      <Button type="button" aria-label="Add a reaction" variant="ghost" size="icon-xs">
         <SmilePlus size={15} />
       </Button>
     );
   return (
-    <EmojiPickerPopover onPick={(emoji) => react(messageId, emoji, true)} side={variant === "pill" ? "top" : "bottom"} align={variant === "pill" ? "start" : "end"}>
+    <EmojiPickerPopover
+      onPick={(emoji) => react(messageId, emoji, true)}
+      side={variant === "pill" ? "top" : "bottom"}
+      align={variant === "pill" ? "start" : "end"}
+    >
       <Hint label="Add a reaction">{button}</Hint>
     </EmojiPickerPopover>
   );

@@ -41,7 +41,8 @@ export function partsOf(container: Y.XmlElement): { content: Y.XmlElement | null
   let children: Y.XmlElement[] = [];
   for (const node of container.toArray()) {
     if (!(node instanceof Y.XmlElement)) continue;
-    if (node.nodeName === "blockGroup") children = node.toArray().filter((n): n is Y.XmlElement => n instanceof Y.XmlElement && n.nodeName === "blockContainer");
+    if (node.nodeName === "blockGroup")
+      children = node.toArray().filter((n): n is Y.XmlElement => n instanceof Y.XmlElement && n.nodeName === "blockContainer");
     else if (!content) content = node;
   }
   return { content, children };
@@ -83,7 +84,10 @@ function inlineNode(node: Y.XmlElement): string {
     return c ? citationMarkdown(c) : "";
   }
   // An unknown inline node: its text, if any.
-  return node.toArray().map((c) => (c instanceof Y.XmlText ? c.toString() : "")).join("");
+  return node
+    .toArray()
+    .map((c) => (c instanceof Y.XmlText ? c.toString() : ""))
+    .join("");
 }
 
 /** A content node's inline content as Markdown. */

@@ -79,11 +79,7 @@ export async function egress(
  * on every sandbox, and reached through `egress` for one whose requests
  * pass the Worker.
  */
-export async function abuse(
-  request: Request,
-  env: { SANDBOX: DurableObjectNamespace },
-  ctx: OutboundHandlerContext<unknown>,
-): Promise<Response> {
+export async function abuse(request: Request, env: { SANDBOX: DurableObjectNamespace }, ctx: OutboundHandlerContext<unknown>): Promise<Response> {
   let verdict: unknown = null;
   try {
     verdict = ((await request.json()) as { verdict?: unknown }).verdict ?? null;

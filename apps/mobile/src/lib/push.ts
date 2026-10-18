@@ -99,9 +99,7 @@ export async function registerForPush(client: Client, ask: boolean): Promise<Pus
 export async function unregisterPush(client: Client): Promise<void> {
   const token = await SecureStore.getItemAsync(TOKEN_KEY).catch(() => null);
   if (!token) return;
-  await client
-    .siteRaw("/-/notify", { method: "POST", body: JSON.stringify({ intent: "unregister_device", token }) })
-    .catch(() => undefined);
+  await client.siteRaw("/-/notify", { method: "POST", body: JSON.stringify({ intent: "unregister_device", token }) }).catch(() => undefined);
   await SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => undefined);
   await Notifications.setBadgeCountAsync(0).catch(() => undefined);
 }

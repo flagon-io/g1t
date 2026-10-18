@@ -210,7 +210,7 @@ the repository as its origin), a `mode`
   send the token and to commit as you (your username and noreply address),
   clones the repository and ties the clone to the session,
   so it works the way the work-on-item skill describes: `g1t work
-  view`, `g1t work claim`, `g1t pr create --item`, `g1t pr checks --watch`.
+view`, `g1t work claim`, `g1t pr create --item`, `g1t pr checks --watch`.
   It works on a branch and a pull request, except in a repository with no
   commits yet, where there is nothing to open one against: it pushes the
   first version straight to the default branch. To show a screenshot of its

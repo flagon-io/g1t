@@ -39,8 +39,7 @@ import { Input } from "./ui/input";
 import { SelectField } from "./ui/select";
 import { Skeleton } from "./ui/skeleton";
 
-const SELECT =
-  "h-8 rounded-md border border-line bg-bg px-2 text-sm text-fg outline-none transition-colors hover:border-line-strong focus:border-accent-dim";
+const SELECT = "h-8 rounded-md border border-line bg-bg px-2 text-sm text-fg outline-none transition-colors hover:border-line-strong focus:border-accent-dim";
 
 // --- Filters ------------------------------------------------------------------------
 
@@ -57,7 +56,12 @@ export type UsageFilters = {
 
 /** A multi-select as a disclosure of checkboxes, part of the filter form. */
 function MultiSelect({ name, label, options, chosen }: { name: string; label: string; options: { value: string; label: string }[]; chosen: string[] }) {
-  const summary = chosen.length === 0 ? `All ${label.toLowerCase()}` : chosen.length === 1 ? (options.find((o) => o.value === chosen[0])?.label ?? chosen[0]) : `${chosen.length} ${label.toLowerCase()}`;
+  const summary =
+    chosen.length === 0
+      ? `All ${label.toLowerCase()}`
+      : chosen.length === 1
+        ? (options.find((o) => o.value === chosen[0])?.label ?? chosen[0])
+        : `${chosen.length} ${label.toLowerCase()}`;
   return (
     <details className="group relative">
       <summary className={cn(SELECT, "flex cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden")}>
@@ -228,7 +232,9 @@ export function IncludedAndCredit({ report, billingHref }: { report: UsageReport
               </p>
             </>
           ) : (
-            <p className="mt-1 text-sm">{fullDiscount ? `${report.discountPercent}% discount from g1t` : report.plan === "enterprise" ? "Paid by an enterprise" : "On the g1t plan"}</p>
+            <p className="mt-1 text-sm">
+              {fullDiscount ? `${report.discountPercent}% discount from g1t` : report.plan === "enterprise" ? "Paid by an enterprise" : "On the g1t plan"}
+            </p>
           )}
         </div>
         <div className="bg-surface p-4">
@@ -315,7 +321,13 @@ export function UsageChart({
                 </Link>
               ))}
             </nav>
-            <Link to={cumulativeHref} preventScrollReset className="flex items-center gap-1.5 text-muted hover:text-fg" role="checkbox" aria-checked={cumulative}>
+            <Link
+              to={cumulativeHref}
+              preventScrollReset
+              className="flex items-center gap-1.5 text-muted hover:text-fg"
+              role="checkbox"
+              aria-checked={cumulative}
+            >
               <span className={cn("grid size-3.5 place-items-center rounded-sm border", cumulative ? "border-accent bg-accent text-bg" : "border-line-strong")}>
                 {cumulative && <span className="text-[0.6rem] leading-none">✓</span>}
               </span>
@@ -366,7 +378,10 @@ export function UsageChart({
                         />
                       ))}
                   </div>
-                  <div className="absolute inset-y-0 left-1/2 z-0 w-full -translate-x-1/2 rounded group-hover:bg-fg/4 group-focus-visible:bg-fg/6" aria-hidden="true" />
+                  <div
+                    className="absolute inset-y-0 left-1/2 z-0 w-full -translate-x-1/2 rounded group-hover:bg-fg/4 group-focus-visible:bg-fg/6"
+                    aria-hidden="true"
+                  />
                   <div
                     className={cn(
                       "pointer-events-none absolute bottom-full z-10 mb-2 hidden w-52 rounded-lg border border-line-strong bg-raised p-2.5 text-xs shadow-xl group-hover:block group-focus-visible:block",
@@ -461,7 +476,16 @@ export function AllowanceRing({ used, of }: { used: number; of: number }) {
   return (
     <svg viewBox="0 0 18 18" className="size-4 shrink-0 -rotate-90" aria-hidden="true">
       <circle cx="9" cy="9" r={r} fill="none" stroke="var(--g1t-line-strong)" strokeWidth="2.5" />
-      <circle cx="9" cy="9" r={r} fill="none" stroke={part >= 1 ? "var(--g1t-warn)" : "var(--g1t-success)"} strokeWidth="2.5" strokeDasharray={`${part * c} ${c}`} strokeLinecap="round" />
+      <circle
+        cx="9"
+        cy="9"
+        r={r}
+        fill="none"
+        stroke={part >= 1 ? "var(--g1t-warn)" : "var(--g1t-success)"}
+        strokeWidth="2.5"
+        strokeDasharray={`${part * c} ${c}`}
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
@@ -473,7 +497,8 @@ function MeterUsed({ meter }: { meter: MeterLine }) {
       <span className="flex items-center gap-1.5 sm:justify-end">
         <AllowanceRing used={meter.allowance.used} of={meter.allowance.of} />
         <span>
-          {quantity(meter.allowance.used, unit)} <span className="text-faint">/ {quantity(meter.allowance.of, unit).replace(/ (operations|entries)$/, "")} free</span>
+          {quantity(meter.allowance.used, unit)}{" "}
+          <span className="text-faint">/ {quantity(meter.allowance.of, unit).replace(/ (operations|entries)$/, "")} free</span>
         </span>
       </span>
     );
@@ -508,7 +533,9 @@ function MeterRow({ meter, color, projectHref }: { meter: MeterLine; color: stri
       </span>
       <span className="text-right tabular-nums">
         {money(meter.micros)}
-        {(meter.pendingMicros ?? 0) > 0 && <span className="block text-[0.6875rem] text-faint">{money(meter.pendingMicros ?? 0, { precise: true })} not yet closed</span>}
+        {(meter.pendingMicros ?? 0) > 0 && (
+          <span className="block text-[0.6875rem] text-faint">{money(meter.pendingMicros ?? 0, { precise: true })} not yet closed</span>
+        )}
       </span>
     </>
   );
@@ -582,7 +609,17 @@ export function Breakdown({
                 <li key={row.project || "none"} className="px-4 py-2.5 text-sm">
                   <div className="flex justify-between gap-3">
                     <span className="truncate font-medium">
-                      {row.project ? projectHref ? <Link to={projectHref(row.project)} className="hover:underline">{row.project}</Link> : row.project : "Not tied to a project"}
+                      {row.project ? (
+                        projectHref ? (
+                          <Link to={projectHref(row.project)} className="hover:underline">
+                            {row.project}
+                          </Link>
+                        ) : (
+                          row.project
+                        )
+                      ) : (
+                        "Not tied to a project"
+                      )}
                     </span>
                     <span className="tabular-nums">{money(row.micros)}</span>
                   </div>

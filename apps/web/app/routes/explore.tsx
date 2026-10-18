@@ -17,9 +17,7 @@ export function meta({ loaderData, ...args }: Route.MetaArgs) {
   const filter = loaderData?.language ?? (loaderData?.topic ? `#${loaderData.topic}` : null);
   return page(args, {
     title: filter ? `${filter} · Explore · g1t` : "Explore · g1t",
-    description: filter
-      ? `Public projects on g1t in ${filter}.`
-      : "Public projects on g1t: recently active, newly created, and by language and topic.",
+    description: filter ? `Public projects on g1t in ${filter}.` : "Public projects on g1t: recently active, newly created, and by language and topic.",
   });
 }
 
@@ -29,9 +27,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const language = url.searchParams.get("language")?.trim().toLowerCase() || null;
   const topic = url.searchParams.get("topic")?.trim().toLowerCase() || null;
   const pageNumber = Math.min(Math.max(Number(url.searchParams.get("page")) || 1, 1), 50);
-  const explore = await search
-    .explore(getViewer(context), { sort, language, topic, page: pageNumber })
-    .catch(() => null);
+  const explore = await search.explore(getViewer(context), { sort, language, topic, page: pageNumber }).catch(() => null);
   // Each one's homepage or production, and its description, from its project;
   // the page shows without them.
   const [links, about] = explore
@@ -218,11 +214,7 @@ export default function ExplorePage({ loaderData }: Route.ComponentProps) {
               <h2 className="text-xs font-medium text-faint">Languages</h2>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {explore.languages.map((facet) => (
-                  <Chip
-                    key={facet.name}
-                    to={href(current, { language: language === facet.name ? null : facet.name })}
-                    current={language === facet.name}
-                  >
+                  <Chip key={facet.name} to={href(current, { language: language === facet.name ? null : facet.name })} current={language === facet.name}>
                     <span className="font-mono">{facet.name}</span> <span className="text-faint">{facet.count}</span>
                   </Chip>
                 ))}
@@ -234,11 +226,7 @@ export default function ExplorePage({ loaderData }: Route.ComponentProps) {
               <h2 className="text-xs font-medium text-faint">Topics</h2>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {explore.topics.map((facet) => (
-                  <Chip
-                    key={facet.name}
-                    to={href(current, { topic: topic === facet.name ? null : facet.name })}
-                    current={topic === facet.name}
-                  >
+                  <Chip key={facet.name} to={href(current, { topic: topic === facet.name ? null : facet.name })} current={topic === facet.name}>
                     {facet.name} <span className="text-faint">{facet.count}</span>
                   </Chip>
                 ))}

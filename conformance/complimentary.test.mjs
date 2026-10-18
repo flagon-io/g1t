@@ -6,8 +6,8 @@ import { test } from "node:test";
 // Complimentary enrollment against the complete migrated schema, using the
 // production SQL: the allocation that posts usage, and the terms change as
 // `admin_set_complimentary` writes it.
-const source = name => readFileSync(new URL(`../services/billing/src/${name}.rs`, import.meta.url), "utf8");
-const sqlFile = name => readFileSync(new URL(`../services/billing/src/${name}.sql`, import.meta.url), "utf8");
+const source = (name) => readFileSync(new URL(`../services/billing/src/${name}.rs`, import.meta.url), "utf8");
+const sqlFile = (name) => readFileSync(new URL(`../services/billing/src/${name}.sql`, import.meta.url), "utf8");
 const constant = (file, name) => {
   const match = source(file).match(new RegExp(`const ${name}: &str = "([\\s\\S]*?)";`));
   assert.ok(match, `${file}::${name}`);
@@ -15,19 +15,26 @@ const constant = (file, name) => {
 };
 const prepares = (file, from, to) => {
   const text = source(file).split(from)[1].split(to)[0];
-  return [...text.matchAll(/\.prepare\(\s*"([\s\S]*?)"\s*,?\s*\)/g)].map(m => m[1]);
+  return [...text.matchAll(/\.prepare\(\s*"([\s\S]*?)"\s*,?\s*\)/g)].map((m) => m[1]);
 };
 const migrations = new URL("../services/billing/migrations/", import.meta.url);
-const names = readdirSync(migrations).filter(n => n.endsWith(".sql")).sort();
+const names = readdirSync(migrations)
+  .filter((n) => n.endsWith(".sql"))
+  .sort();
 function database(before = null) {
   const db = new DatabaseSync(":memory:");
-  for (const name of names.filter(n => before === null || n < before)) db.exec(readFileSync(new URL(name, migrations), "utf8"));
+  for (const name of names.filter((n) => before === null || n < before)) db.exec(readFileSync(new URL(name, migrations), "utf8"));
   return db;
 }
 function batch(db, writes) {
   db.exec("BEGIN");
-  try { for (const [sql, args] of writes) db.prepare(sql).run(...args); db.exec("COMMIT"); }
-  catch (e) { db.exec("ROLLBACK"); throw e; }
+  try {
+    for (const [sql, args] of writes) db.prepare(sql).run(...args);
+    db.exec("COMMIT");
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  }
 }
 const at = "2026-10-14T12:00:00.000Z";
 function usage(id, reference, workspace, gross, { plan = 10_000_000, trial = 1, given = 0, when = at } = {}) {
@@ -47,10 +54,14 @@ function usage(id, reference, workspace, gross, { plan = 10_000_000, trial = 1, 
 }
 const enrolledAt = "2026-10-01T00:00:00.000Z";
 function enroll(db, workspace, allowance, { unlimited = 0, overage = "stop" } = {}) {
-  db.prepare(`INSERT INTO complimentary (workspace, grant_id, status, allowance_micros, unlimited, fee_cents, note, created_by, created_at, created_ms, updated_by, updated_at, subscription_id, overage)
-              VALUES (?, ?, 'active', ?, ?, 0, 'partner', 'staff', ?, 0, 'staff', ?, ?, ?)`).run(workspace, `cmp_${workspace}`, allowance, unlimited, enrolledAt, enrolledAt, `sub_${workspace}`, overage);
-  db.prepare(`INSERT INTO complimentary_periods (id, workspace, grant_id, starts_at, allowance_micros, unlimited, fee_cents, note, created_by, created_at, overage)
-              VALUES (?, ?, ?, ?, ?, ?, 0, 'partner', 'staff', ?, ?)`).run(`p_${workspace}`, workspace, `cmp_${workspace}`, enrolledAt, allowance, unlimited, enrolledAt, overage);
+  db.prepare(
+    `INSERT INTO complimentary (workspace, grant_id, status, allowance_micros, unlimited, fee_cents, note, created_by, created_at, created_ms, updated_by, updated_at, subscription_id, overage)
+              VALUES (?, ?, 'active', ?, ?, 0, 'partner', 'staff', ?, 0, 'staff', ?, ?, ?)`,
+  ).run(workspace, `cmp_${workspace}`, allowance, unlimited, enrolledAt, enrolledAt, `sub_${workspace}`, overage);
+  db.prepare(
+    `INSERT INTO complimentary_periods (id, workspace, grant_id, starts_at, allowance_micros, unlimited, fee_cents, note, created_by, created_at, overage)
+              VALUES (?, ?, ?, ?, ?, ?, 0, 'partner', 'staff', ?, ?)`,
+  ).run(`p_${workspace}`, workspace, `cmp_${workspace}`, enrolledAt, allowance, unlimited, enrolledAt, overage);
 }
 const termsChange = prepares("complimentary", "// One batch: the open period closes", "self.audit(");
 function changeTerms(db, workspace, allowance, when, overage = "stop") {
@@ -61,7 +72,9 @@ function changeTerms(db, workspace, allowance, when, overage = "stop") {
     [termsChange[2], [workspace, allowance, 0, 0, "changed", "staff", when, JSON.stringify({ op: "terms", period: `p_${when}` }), overage]],
   ]);
 }
-const line = (db, id) => ({ ...db.prepare("SELECT amount_micros, credit_micros, gift_micros, trial_micros, oss_micros, given_micros FROM ledger WHERE id=?").get(id) });
+const line = (db, id) => ({
+  ...db.prepare("SELECT amount_micros, credit_micros, gift_micros, trial_micros, oss_micros, given_micros FROM ledger WHERE id=?").get(id),
+});
 const giftUsed = (db, workspace, month = "2026-10") =>
   db.prepare("SELECT used FROM allowance_use WHERE kind='complimentary' AND scope=? AND month=?").get(workspace, month)?.used ?? 0;
 
@@ -131,7 +144,9 @@ test("charged past the allowance: g1t pays the allowance, the workspace's own ca
   // No card yet: past the allowance it is g1t's, never a debt.
   batch(db, usage("z", "run/z", "friend", 12_000_000, { when: "2026-11-02T00:00:00.000Z" }));
   assert.deepEqual(line(db, "z"), { amount_micros: 0, credit_micros: 0, gift_micros: 10_000_000, trial_micros: 0, oss_micros: 0, given_micros: 2_000_000 });
-  db.prepare("INSERT INTO card_checks (workspace, setup_intent, payment_method, checked_by, checked_at) VALUES ('friend', 'seti_1', 'pm_1', 'owner', ?)").run(at);
+  db.prepare("INSERT INTO card_checks (workspace, setup_intent, payment_method, checked_by, checked_at) VALUES ('friend', 'seti_1', 'pm_1', 'owner', ?)").run(
+    at,
+  );
   batch(db, usage("a", "run/a", "friend", 6_000_000));
   batch(db, usage("b", "run/b", "friend", 7_000_000));
   // 4 of 7 from the allowance, 3 charged; nothing covered by g1t.
@@ -156,7 +171,9 @@ test("an enrollment's fee paid while enrolled is not evidence of the plan", () =
   db.prepare("INSERT INTO plan_payments (invoice_id, workspace, amount_micros, paid_at) VALUES ('in_fee', 'acme', 25000000, '2026-10-02T00:00:00.000Z')").run();
   assert.equal(evidence.get("acme", "2026-10-01", "2026-11-01", "2026-10").had, 0);
   // The conversion's first plan payment, made while the period is still open, is the plan.
-  db.prepare("INSERT INTO plan_payments (invoice_id, workspace, amount_micros, paid_at) VALUES ('in_plan', 'acme', 21000000, '2026-10-14T23:59:00.000Z')").run();
+  db.prepare(
+    "INSERT INTO plan_payments (invoice_id, workspace, amount_micros, paid_at) VALUES ('in_plan', 'acme', 21000000, '2026-10-14T23:59:00.000Z')",
+  ).run();
   assert.equal(evidence.get("acme", "2026-10-01", "2026-11-01", "2026-10").had, 1);
   db.close();
 });
@@ -186,14 +203,24 @@ test("an interrupted posting consumes no complimentary allowance", () => {
 test("one open period per workspace", () => {
   const db = database();
   enroll(db, "acme", 1);
-  assert.throws(() => db.prepare(`INSERT INTO complimentary_periods (id, workspace, grant_id, starts_at, allowance_micros, note, created_by, created_at)
-     VALUES ('second', 'acme', 'cmp_acme', ?, 1, 'x', 'staff', ?)`).run(at, at), /UNIQUE/);
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          `INSERT INTO complimentary_periods (id, workspace, grant_id, starts_at, allowance_micros, note, created_by, created_at)
+     VALUES ('second', 'acme', 'cmp_acme', ?, 1, 'x', 'staff', ?)`,
+        )
+        .run(at, at),
+    /UNIQUE/,
+  );
   db.close();
 });
 
 test("migration 0065 returns every workspace but flagon-io to Free, with an audit entry", () => {
   const db = database("0065");
-  const account = db.prepare("INSERT INTO billing_accounts (id, kind, name, terms_kind, discount_percent, team_granted, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, 'staff', ?)");
+  const account = db.prepare(
+    "INSERT INTO billing_accounts (id, kind, name, terms_kind, discount_percent, team_granted, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, 'staff', ?)",
+  );
   account.run("ws_flagon-io-x", "workspace", "flagon-io-x", "comped", 100, 0, at);
   db.prepare("UPDATE billing_accounts SET terms_kind='custom' WHERE id='ws_flagon-io'").run();
   account.run("ws_partner", "workspace", "partner", "comped", 100, 0, at);
@@ -202,18 +229,41 @@ test("migration 0065 returns every workspace but flagon-io to Free, with an audi
   db.prepare("INSERT INTO account_members (workspace, account_id, added_by, added_at) VALUES ('member', 'ent_x', 'staff', ?)").run(at);
   // One on an enterprise invoice still being made: kept, not a failed deploy.
   db.prepare("INSERT INTO account_members (workspace, account_id, added_by, added_at) VALUES ('invoicing', 'ent_y', 'staff', ?)").run(at);
-  db.prepare("INSERT INTO enterprise_invoice_attempts (account_id, id, payload, created_ms) VALUES ('ent_y', 'att', ?, 1)")
-    .run(JSON.stringify({ lines: [{ workspace: "invoicing", amountMicros: 1 }] }));
+  db.prepare("INSERT INTO enterprise_invoice_attempts (account_id, id, payload, created_ms) VALUES ('ent_y', 'att', ?, 1)").run(
+    JSON.stringify({ lines: [{ workspace: "invoicing", amountMicros: 1 }] }),
+  );
   const flagonBefore = db.prepare("SELECT * FROM billing_accounts WHERE id='ws_flagon-io'").get();
-  db.exec(readFileSync(new URL(names.find(n => n.startsWith("0065")), migrations), "utf8"));
-  const terms = Object.fromEntries(db.prepare("SELECT id, terms_kind, discount_percent, team_granted FROM billing_accounts").all().map(r => [r.id, [r.terms_kind, r.discount_percent, r.team_granted]]));
+  db.exec(
+    readFileSync(
+      new URL(
+        names.find((n) => n.startsWith("0065")),
+        migrations,
+      ),
+      "utf8",
+    ),
+  );
+  const terms = Object.fromEntries(
+    db
+      .prepare("SELECT id, terms_kind, discount_percent, team_granted FROM billing_accounts")
+      .all()
+      .map((r) => [r.id, [r.terms_kind, r.discount_percent, r.team_granted]]),
+  );
   assert.deepEqual({ ...db.prepare("SELECT * FROM billing_accounts WHERE id='ws_flagon-io'").get() }, { ...flagonBefore }, "flagon-io is untouched");
   assert.deepEqual(terms["ws_flagon-io-x"], ["standard", 0, 0], "only flagon-io itself is kept");
   assert.deepEqual(terms.ws_partner, ["standard", 0, 0]);
   assert.deepEqual(terms.ws_given, ["standard", 0, 0]);
   assert.deepEqual(terms.ws_plain, ["standard", 0, 0]);
-  assert.deepEqual(db.prepare("SELECT workspace FROM account_members").all().map(r => r.workspace), ["invoicing"]);
-  const audited = db.prepare("SELECT account FROM admin_actions WHERE by='billing' ORDER BY account").all().map(r => r.account);
+  assert.deepEqual(
+    db
+      .prepare("SELECT workspace FROM account_members")
+      .all()
+      .map((r) => r.workspace),
+    ["invoicing"],
+  );
+  const audited = db
+    .prepare("SELECT account FROM admin_actions WHERE by='billing' ORDER BY account")
+    .all()
+    .map((r) => r.account);
   assert.deepEqual(audited, ["ent_x", "ws_flagon-io-x", "ws_given", "ws_partner"]);
   db.close();
 });

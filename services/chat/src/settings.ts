@@ -80,9 +80,7 @@ export function permissionsFor(settings: ChatSettings, role: Role): ChatPermissi
  * given must be a value the setting takes. Default channels are checked
  * against the workspace's channels by the service.
  */
-export function settingsChange(
-  input: unknown,
-): { ok: true; change: Partial<ChatSettings> } | { ok: false; message: string } {
+export function settingsChange(input: unknown): { ok: true; change: Partial<ChatSettings> } | { ok: false; message: string } {
   if (!input || typeof input !== "object") return { ok: false, message: "Nothing to change." };
   const c = input as Record<string, unknown>;
   const change: Partial<ChatSettings> = {};

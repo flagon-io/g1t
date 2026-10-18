@@ -8,8 +8,11 @@ export function usePageNavigation() {
   const { key } = useLocation();
   const navigate = useNavigate();
   const owns = useCallback(() => context != null && pageOwnsNavigation(context.router.state, key), [context?.router, key]);
-  const automaticNavigate = useCallback((to: To, options?: NavigateOptions) => {
-    if (owns()) return navigate(to, options);
-  }, [navigate, owns]);
+  const automaticNavigate = useCallback(
+    (to: To, options?: NavigateOptions) => {
+      if (owns()) return navigate(to, options);
+    },
+    [navigate, owns],
+  );
   return { owns, navigate: automaticNavigate };
 }

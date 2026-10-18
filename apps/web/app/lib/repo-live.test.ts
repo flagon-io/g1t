@@ -66,7 +66,14 @@ test("the overview hears its own commit's checks, and every pull request's finis
 
 test("the files page follows refs, checks, releases and deployments", () => {
   const files = repoPages.files();
-  for (const c of [push("main"), push("other"), change("git.deleted", { ref: "refs/heads/old" }), change("status.created", { sha: "abc" }), change("release.published"), change("deployment_status.created")]) {
+  for (const c of [
+    push("main"),
+    push("other"),
+    change("git.deleted", { ref: "refs/heads/old" }),
+    change("status.created", { sha: "abc" }),
+    change("release.published"),
+    change("deployment_status.created"),
+  ]) {
     assert.equal(files(c), true, c.kind);
   }
   assert.equal(files(change("work_item.opened", { number: 3 })), false);
@@ -142,7 +149,18 @@ test("a pull request does not hear a work item that shares its number", () => {
 
 test("the Sessions page hears claims, sessions starting and ending, what the queue finds, and merges", () => {
   const page = repoPages.work();
-  for (const kind of ["work.claimed", "work.claim_expired", "session.started", "session.ended", "dependency.changed", "overlap.detected", "integration.failed", "decision.recorded", "queue.changed", "pull.merged"]) {
+  for (const kind of [
+    "work.claimed",
+    "work.claim_expired",
+    "session.started",
+    "session.ended",
+    "dependency.changed",
+    "overlap.detected",
+    "integration.failed",
+    "decision.recorded",
+    "queue.changed",
+    "pull.merged",
+  ]) {
     assert.equal(page(change(kind, { number: 3 })), true, kind);
   }
   assert.equal(page(change("session.progressed")), true, "a session going on");
@@ -200,7 +218,10 @@ test("a change waits a second for more, five at most, then refreshes", () => {
 
 test("never under someone typing, a dialog, or a navigation: it waits for them", () => {
   const due = { pendingSince: NOW - 10_000, lastChangeAt: NOW - 10_000, lastRunAt: null };
-  for (const held of [{ busy: true, navigating: false }, { busy: false, navigating: true }]) {
+  for (const held of [
+    { busy: true, navigating: false },
+    { busy: false, navigating: true },
+  ]) {
     assert.deepEqual(gate(due, { now: NOW, visible: true, ...held }), { action: "wait", ms: LIVE_HOLD_CHECK_MS });
   }
   assert.deepEqual(gate(due, { now: NOW, visible: true, busy: false, navigating: false }), { action: "run" });

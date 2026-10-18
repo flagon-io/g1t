@@ -20,13 +20,7 @@
  * and the few files it serves itself are left out here too. Every limit
  * fails open.
  */
-import {
-  type RateLimitBinding,
-  checkLimit,
-  clientAddress,
-  secretKey,
-  tooManyRequests,
-} from "@g1t/contracts/rate-limits";
+import { type RateLimitBinding, checkLimit, clientAddress, secretKey, tooManyRequests } from "@g1t/contracts/rate-limits";
 
 export type FrontDoorLimits = {
   WEB_ANONYMOUS_LIMIT?: RateLimitBinding;

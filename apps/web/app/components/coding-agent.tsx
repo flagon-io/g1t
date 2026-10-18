@@ -75,7 +75,12 @@ export function AgentCard({ agentId, children }: { agentId: string | null | unde
           </div>
           <p className="leading-relaxed text-fg/90">{agent.about}</p>
           <p className="text-[0.8125rem] text-muted">Not an account on g1t: known by the address on its commits.</p>
-          <a href={agent.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[0.8125rem] font-medium text-accent hover:underline">
+          <a
+            href={agent.url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-[0.8125rem] font-medium text-accent hover:underline"
+          >
             About {agent.name}
             <ExternalLink size={12} />
           </a>

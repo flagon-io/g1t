@@ -42,13 +42,7 @@ export default function WorkspaceIntegrationsDirectory({ loaderData }: Route.Com
   return (
     <div>
       <ScopeNote scope="workspace" workspace={slug} />
-      <ConnectorDirectory
-        scope="workspace"
-        views={connectorsFor("workspace")}
-        connected={connected}
-        workspace={slug}
-        canManage={owner}
-      />
+      <ConnectorDirectory scope="workspace" views={connectorsFor("workspace")} connected={connected} workspace={slug} canManage={owner} />
     </div>
   );
 }

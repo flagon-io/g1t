@@ -11,7 +11,14 @@ test("developer discovery aliases point at the installation's machine endpoints"
 });
 
 test("negotiation honors explicit types, quality, specificity, exclusions and browser defaults", () => {
-  for (const accept of [null, "*/*", "text/html", "text/html,application/xhtml+xml,*/*;q=0.8", "text/markdown;q=0, */*;q=1", "text/html;q=1,text/markdown;q=0.5"])
+  for (const accept of [
+    null,
+    "*/*",
+    "text/html",
+    "text/html,application/xhtml+xml,*/*;q=0.8",
+    "text/markdown;q=0, */*;q=1",
+    "text/html;q=1,text/markdown;q=0.5",
+  ])
     assert.equal(pageRepresentation(accept), "html", String(accept));
   for (const accept of ["text/markdown", "TEXT/MARKDOWN; charset=utf-8", "text/html;q=0.5,text/markdown;q=1", "text/markdown,*/*", "text/html;q=0,text/*"])
     assert.equal(pageRepresentation(accept), "markdown", accept);
@@ -20,7 +27,10 @@ test("negotiation honors explicit types, quality, specificity, exclusions and br
 });
 
 test("homepage and genuine 404 documents have Markdown with the right status, discovery links and Vary", async () => {
-  for (const [path, status] of [["/", 200], ["/__missing", 404]] as const) {
+  for (const [path, status] of [
+    ["/", 200],
+    ["/__missing", 404],
+  ] as const) {
     const headers = new Headers({ vary: "Accept-Encoding", "content-type": "text/html" });
     const answer = agentPage(new Request(`https://g1t.sh${path}`, { headers: { accept: "text/markdown" } }), status, headers)!;
     assert.equal(answer.status, status);

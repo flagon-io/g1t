@@ -12,7 +12,16 @@ test("an address is http or https, with https added when none is given", () => {
 });
 
 test("anything else is refused, naming what it is", () => {
-  for (const bad of ["javascript:alert(1)", "mailto:a@example.com", "ftp://example.com", "localhost:3000", "https://", "https://exa mple.com", "https://user@example.com", "https://.com"]) {
+  for (const bad of [
+    "javascript:alert(1)",
+    "mailto:a@example.com",
+    "ftp://example.com",
+    "localhost:3000",
+    "https://",
+    "https://exa mple.com",
+    "https://user@example.com",
+    "https://.com",
+  ]) {
     assert.equal(cleanUrl(bad).ok, false, bad);
   }
   assert.deepEqual(cleanUrl("ftp://x.io", "The homepage"), { ok: false, message: "The homepage is an http or https address." });

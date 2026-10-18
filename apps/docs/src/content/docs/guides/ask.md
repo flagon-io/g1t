@@ -45,10 +45,10 @@ rest through OpenAI's Chat Completions API.
 **Auto**, the default, picks one of the provider's models for each
 question, by a fixed rule and with no extra call to the provider:
 
-| The question | Auto answers with |
-| --- | --- |
-| A lookup: who has a work item, a link, how many pull requests are open | The provider's newest fast model: Haiku, a `mini` or `flash` model, an `instant` one |
-| One that needs several reads or reasoning: why or how something happened, what shipped, a day or a week summed up, a failure to diagnose, work to plan; a long question, several at once, or a long conversation | Its newest standard model: Sonnet, GPT, Gemini Pro, a `versatile` or `large` one |
+| The question                                                                                                                                                                                                     | Auto answers with                                                                    |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| A lookup: who has a work item, a link, how many pull requests are open                                                                                                                                           | The provider's newest fast model: Haiku, a `mini` or `flash` model, an `instant` one |
+| One that needs several reads or reasoning: why or how something happened, what shipped, a day or a week summed up, a failure to diagnose, work to plan; a long question, several at once, or a long conversation | Its newest standard model: Sonnet, GPT, Gemini Pro, a `versatile` or `large` one     |
 
 Auto tells models apart by the words in their names, from the list the
 provider gave when it was last tested, so it works the same for every
@@ -275,13 +275,13 @@ Everything in your direct message with g1t is deleted for good, in Ask
 and in Chat, on every device. It can't be undone, and g1t remembers none
 of it: the next question starts with nothing before it.
 
-| Deleted | Kept |
-| --- | --- |
-| Your questions, and the page each was asked from | The direct message itself, empty, so Ask and Chat open it as before |
-| g1t's answers, with their steps, sources and proposed sessions | Chat's daily count of messages and bytes for the workspace, which has no text and no names in it and is kept for billing |
-| Thread replies, reactions, "New conversation" marks, and deleted messages' empty places | Work items, pull requests and sessions you started from an answer: they are your workspace's, not the conversation's |
-| Your read mark and unread count for it | What your AI provider was sent to answer: it went to the provider, under your workspace's agreement with them |
-| The notifications its answers sent you, in g1t's notifications panel | Browser and phone notifications already shown on a device |
+| Deleted                                                                                 | Kept                                                                                                                     |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Your questions, and the page each was asked from                                        | The direct message itself, empty, so Ask and Chat open it as before                                                      |
+| g1t's answers, with their steps, sources and proposed sessions                          | Chat's daily count of messages and bytes for the workspace, which has no text and no names in it and is kept for billing |
+| Thread replies, reactions, "New conversation" marks, and deleted messages' empty places | Work items, pull requests and sessions you started from an answer: they are your workspace's, not the conversation's     |
+| Your read mark and unread count for it                                                  | What your AI provider was sent to answer: it went to the provider, under your workspace's agreement with them            |
+| The notifications its answers sent you, in g1t's notifications panel                    | Browser and phone notifications already shown on a device                                                                |
 
 An answer still being written when you clear is stopped and thrown away,
 not saved: it never comes back to the conversation, and it does not

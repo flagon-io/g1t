@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-
 import {
   INSTALL_COOKIE,
   STATE_COOKIE,
@@ -120,7 +119,15 @@ test("Connect GitHub links first, adds what is there, and installs only when not
   });
   assert.deepEqual(connectStep({ linked: true, justLinked: false, another: false, unadded: [{ id: 7, suspended: true }] }), { kind: "choose" });
   assert.deepEqual(
-    connectStep({ linked: true, justLinked: false, another: false, unadded: [{ id: 7, suspended: false }, { id: 8, suspended: false }] }),
+    connectStep({
+      linked: true,
+      justLinked: false,
+      another: false,
+      unadded: [
+        { id: 7, suspended: false },
+        { id: 8, suspended: false },
+      ],
+    }),
     { kind: "choose" },
   );
   assert.deepEqual(connectStep({ linked: true, justLinked: false, another: true, unadded: [{ id: 7, suspended: false }] }), { kind: "install" });

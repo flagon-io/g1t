@@ -13,9 +13,7 @@ test("cards kept about issues are about work items after the migration, run once
     db.exec(readFileSync(new URL(file, dir), "utf8"));
   }
   db.exec("INSERT INTO channels (id, workspace_id, kind, name, created_by, created_at) VALUES ('chn_1', 'wsp_1', 'channel', 'general', 'g1t', 'now')");
-  const insert = db.prepare(
-    "INSERT INTO messages (id, channel_id, author, kind, body, card, created_at) VALUES (?, 'chn_1', 'g1t', ?, '', ?, 'now')",
-  );
+  const insert = db.prepare("INSERT INTO messages (id, channel_id, author, kind, body, card, created_at) VALUES (?, 'chn_1', 'g1t', ?, '', ?, 'now')");
   insert.run("msg_1", "card", JSON.stringify({ kind: "issue", title: "Header", detail: null, state: "Open", href: null }));
   insert.run("msg_2", "card", JSON.stringify({ kind: "draft_issue", title: "Draft", detail: null, state: "Draft", href: null }));
   insert.run("msg_3", "card", JSON.stringify({ kind: "pull", title: "Fix", detail: null, state: null, href: null }));
@@ -23,9 +21,7 @@ test("cards kept about issues are about work items after the migration, run once
   const sql = readFileSync(new URL(MIGRATION, dir), "utf8");
   db.exec(sql);
   db.exec(sql);
-  const kinds = db
-    .prepare("SELECT id, json_extract(card, '$.kind') AS kind, json_extract(card, '$.title') AS title FROM messages ORDER BY id")
-    .all();
+  const kinds = db.prepare("SELECT id, json_extract(card, '$.kind') AS kind, json_extract(card, '$.title') AS title FROM messages ORDER BY id").all();
   assert.deepEqual(
     kinds.map((row) => [row.id, row.kind, row.title]),
     [

@@ -44,10 +44,7 @@ function IncidentRow({ incident, names, now }: { incident: AdminIncident; names:
   const open = incident.resolved_at == null;
   return (
     <li>
-      <Link
-        to={`/incidents/${incident.id}`}
-        className="group flex flex-col gap-2 px-4 py-3.5 hover:bg-raised/40 sm:flex-row sm:items-start sm:gap-4 sm:px-5"
-      >
+      <Link to={`/incidents/${incident.id}`} className="group flex flex-col gap-2 px-4 py-3.5 hover:bg-raised/40 sm:flex-row sm:items-start sm:gap-4 sm:px-5">
         <div className="flex shrink-0 items-center gap-2 sm:w-20 sm:pt-0.5">
           <SeverityBadge severity={incident.severity} />
         </div>
@@ -68,12 +65,14 @@ function IncidentRow({ incident, names, now }: { incident: AdminIncident; names:
             Started <When at={incident.started_at} time />
             {incident.commander && (
               <>
-                {" "}· IC <span className="font-mono">{incident.commander}</span>
+                {" "}
+                · IC <span className="font-mono">{incident.commander}</span>
               </>
             )}
             {incident.followups_open + incident.followups_done > 0 && (
               <>
-                {" "}· follow-ups {incident.followups_done}/{incident.followups_open + incident.followups_done}
+                {" "}
+                · follow-ups {incident.followups_done}/{incident.followups_open + incident.followups_done}
               </>
             )}
           </p>
@@ -140,10 +139,7 @@ export default function Incidents({ loaderData }: Route.ComponentProps) {
               <CalendarClock size={15} aria-hidden="true" />
               Schedule maintenance
             </ButtonLink>
-            <a
-              href={STATUS_PAGE}
-              className="inline-flex items-center gap-1.5 rounded-md px-2 py-2 text-sm text-muted hover:text-fg"
-            >
+            <a href={STATUS_PAGE} className="inline-flex items-center gap-1.5 rounded-md px-2 py-2 text-sm text-muted hover:text-fg">
               status.g1t.sh <ExternalLink size={13} aria-hidden="true" />
             </a>
           </div>
@@ -157,18 +153,19 @@ export default function Incidents({ loaderData }: Route.ComponentProps) {
       )}
 
       <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Open" value={counts.open} tone={counts.open ? "danger" : "mint"} hint={counts.drafts ? `${counts.drafts} draft${counts.drafts === 1 ? "" : "s"} waiting` : "No drafts waiting"} />
+        <Stat
+          label="Open"
+          value={counts.open}
+          tone={counts.open ? "danger" : "mint"}
+          hint={counts.drafts ? `${counts.drafts} draft${counts.drafts === 1 ? "" : "s"} waiting` : "No drafts waiting"}
+        />
         <Stat label="Maintenance ahead" value={counts.maintenance} hint="Scheduled or under way" />
         <Stat
           label="Median time to resolve"
           value={duration(median(recent.map((i) => i.durations.to_resolve)))}
           hint={`${recent.length} public incident${recent.length === 1 ? "" : "s"}, 90 days`}
         />
-        <Stat
-          label="Email subscribers"
-          value={board?.subscribers ?? "—"}
-          hint={board && !board.email ? "Email is off: feeds only" : "Confirmed addresses"}
-        />
+        <Stat label="Email subscribers" value={board?.subscribers ?? "—"} hint={board && !board.email ? "Email is off: feeds only" : "Confirmed addresses"} />
       </div>
 
       <nav aria-label="Incident lists" className="mt-6 flex gap-1 overflow-x-auto border-b border-line">
@@ -184,7 +181,9 @@ export default function Incidents({ loaderData }: Route.ComponentProps) {
               }`}
             >
               {tab.label}
-              <span className={`tabular rounded-full px-1.5 text-xs ${counts[tab.value] && tab.value !== "resolved" ? "bg-accent/15 text-accent" : "text-faint"}`}>
+              <span
+                className={`tabular rounded-full px-1.5 text-xs ${counts[tab.value] && tab.value !== "resolved" ? "bg-accent/15 text-accent" : "text-faint"}`}
+              >
                 {counts[tab.value]}
               </span>
             </Link>

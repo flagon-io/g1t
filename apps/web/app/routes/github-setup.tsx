@@ -74,10 +74,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   if (!visible.ok) return problem(visible.error.message, null, relink(visible.error.code));
   const found = visible.value.find((item) => item.id === installation);
   if (!found) {
-    return problem(
-      "Your GitHub account cannot see that installation. Install the app from your own GitHub account or an organization you manage.",
-      null,
-    );
+    return problem("Your GitHub account cannot see that installation. Install the app from your own GitHub account or an organization you manage.", null);
   }
   // One workspace of theirs: there is nothing to choose.
   if (owned.length === 1) {
@@ -164,10 +161,7 @@ export default function GithubSetup({ loaderData, actionData }: Route.ComponentP
       title="Connecting GitHub"
       subtitle="That did not work"
       footer={
-        <Link
-          to={loaderData.workspace ? `/new/github?workspace=${loaderData.workspace}` : "/new/github"}
-          className="text-fg underline underline-offset-4"
-        >
+        <Link to={loaderData.workspace ? `/new/github?workspace=${loaderData.workspace}` : "/new/github"} className="text-fg underline underline-offset-4">
           Back to Import from GitHub
         </Link>
       }

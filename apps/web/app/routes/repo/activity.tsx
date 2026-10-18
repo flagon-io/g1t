@@ -70,7 +70,14 @@ function describe(line: ActivityLine, base: string): { icon: ReactNode; text: Re
   switch (line.kind) {
     case "push":
       return line.created
-        ? { icon: <GitBranchPlus size={15} />, text: <>created {branch(line.branch)} at {commit(line.commit)}</> }
+        ? {
+            icon: <GitBranchPlus size={15} />,
+            text: (
+              <>
+                created {branch(line.branch)} at {commit(line.commit)}
+              </>
+            ),
+          }
         : {
             icon: <GitCommitHorizontal size={15} />,
             text: (
@@ -96,7 +103,14 @@ function describe(line: ActivityLine, base: string): { icon: ReactNode; text: Re
         ),
       };
     case "tag":
-      return { icon: <TagIcon size={15} />, text: <>tagged {branch(line.tag)} at {commit(line.commit)}</> };
+      return {
+        icon: <TagIcon size={15} />,
+        text: (
+          <>
+            tagged {branch(line.tag)} at {commit(line.commit)}
+          </>
+        ),
+      };
     case "merge":
       return {
         icon: <GitMerge size={15} />,
@@ -111,9 +125,23 @@ function describe(line: ActivityLine, base: string): { icon: ReactNode; text: Re
         ),
       };
     case "renamed":
-      return { icon: <GitBranch size={15} />, text: <>renamed <span className="font-mono text-[0.8125rem]">{line.from}</span> to {branch(line.to)}</> };
+      return {
+        icon: <GitBranch size={15} />,
+        text: (
+          <>
+            renamed <span className="font-mono text-[0.8125rem]">{line.from}</span> to {branch(line.to)}
+          </>
+        ),
+      };
     case "default":
-      return { icon: <GitBranch size={15} />, text: <>made {branch(line.to)} the default branch, in place of <span className="font-mono text-[0.8125rem]">{line.from}</span></> };
+      return {
+        icon: <GitBranch size={15} />,
+        text: (
+          <>
+            made {branch(line.to)} the default branch, in place of <span className="font-mono text-[0.8125rem]">{line.from}</span>
+          </>
+        ),
+      };
   }
 }
 
@@ -124,7 +152,13 @@ export default function ActivityPage({ loaderData, params }: Route.ComponentProp
     <div className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold tracking-tight">
-          Activity{branch && <> on <span className="font-mono text-base">{branch}</span></>}
+          Activity
+          {branch && (
+            <>
+              {" "}
+              on <span className="font-mono text-base">{branch}</span>
+            </>
+          )}
         </h2>
         <p className="mt-1 text-sm text-muted">
           {branch ? (
@@ -144,7 +178,9 @@ export default function ActivityPage({ loaderData, params }: Route.ComponentProp
         <Unavailable what={failed.what} />
       ) : lines.length === 0 ? (
         <EmptyState title={branch ? (next ? "Nothing on this branch here" : "No activity on this branch") : "No activity yet"}>
-          {branch && next ? "Nothing in this stretch of the repository's activity was about it. Look further back." : "Pushes and merges show here as they happen."}
+          {branch && next
+            ? "Nothing in this stretch of the repository's activity was about it. Look further back."
+            : "Pushes and merges show here as they happen."}
         </EmptyState>
       ) : (
         <Card asChild divided className="overflow-hidden">

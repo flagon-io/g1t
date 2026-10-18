@@ -97,7 +97,15 @@ export default function ScheduleMaintenance({ loaderData, actionData }: Route.Co
           </div>
         </Section>
         <Section title="Message" description="What will happen and what people will notice. Shown publicly.">
-          <Textarea name="message" rows={4} required maxLength={4000} aria-label="Message" defaultValue={v.message} placeholder="We are upgrading the database behind git. Pushes may pause for up to five minutes; clones and the website keep working." />
+          <Textarea
+            name="message"
+            rows={4}
+            required
+            maxLength={4000}
+            aria-label="Message"
+            defaultValue={v.message}
+            placeholder="We are upgrading the database behind git. Pushes may pause for up to five minutes; clones and the website keep working."
+          />
           <label className="mt-3 flex items-center gap-2 text-sm">
             <input type="checkbox" name="notify" defaultChecked className="accent-(--g1t-accent)" />
             Email subscribers now, when it starts, and when it ends

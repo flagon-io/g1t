@@ -180,9 +180,26 @@ export class Who {
       if (p.kind === "user") {
         const username = this.usernames.get(p.id) ?? null;
         const person = username ? people.get(username.toLowerCase()) : undefined;
-        out.set(principalKey(p), { ...p, name: username ?? "ghost", display_name: person?.name || username || "Former member", avatar: person?.avatar ?? null, role: null, title: null, avatar_seed: null });
+        out.set(principalKey(p), {
+          ...p,
+          name: username ?? "ghost",
+          display_name: person?.name || username || "Former member",
+          avatar: person?.avatar ?? null,
+          role: null,
+          title: null,
+          avatar_seed: null,
+        });
       } else {
-        out.set(principalKey(p), { ...p, name: p.id, display_name: "A deleted agent", avatar: null, role: null, title: null, avatar_seed: null, deleted: true });
+        out.set(principalKey(p), {
+          ...p,
+          name: p.id,
+          display_name: "A deleted agent",
+          avatar: null,
+          role: null,
+          title: null,
+          avatar_seed: null,
+          deleted: true,
+        });
       }
     }
     for (const key of keys) {
@@ -237,7 +254,10 @@ export class Who {
             .prepare("SELECT m.space_id, m.principal, m.role FROM space_members m JOIN spaces s ON s.id = m.space_id WHERE s.workspace_id = ?")
             .bind(workspace.id)
             .all<{ space_id: string; principal: string; role: DocRole }>(),
-          db.prepare("SELECT p.space_id, p.repo FROM space_projects p JOIN spaces s ON s.id = p.space_id WHERE s.workspace_id = ?").bind(workspace.id).all<{ space_id: string; repo: string }>(),
+          db
+            .prepare("SELECT p.space_id, p.repo FROM space_projects p JOIN spaces s ON s.id = p.space_id WHERE s.workspace_id = ?")
+            .bind(workspace.id)
+            .all<{ space_id: string; repo: string }>(),
         ]);
         return spaces.results.map((row) => ({
           row,
@@ -274,7 +294,9 @@ export class Who {
       defaultsMade.add(workspace.id);
       return;
     }
-    const taken = new Set((await db.prepare("SELECT slug FROM spaces WHERE workspace_id = ?").bind(workspace.id).all<{ slug: string }>()).results.map((r) => r.slug));
+    const taken = new Set(
+      (await db.prepare("SELECT slug FROM spaces WHERE workspace_id = ?").bind(workspace.id).all<{ slug: string }>()).results.map((r) => r.slug),
+    );
     await db
       .prepare(
         "INSERT OR IGNORE INTO spaces (id, workspace_id, slug, name, description, icon, kind, team, default_role, agent_mode, is_default, created_by, created_at) VALUES (?, ?, ?, 'General', 'Everything the whole workspace should know.', '📚', 'workspace', NULL, 'edit', 'suggest', 1, ?, ?)",

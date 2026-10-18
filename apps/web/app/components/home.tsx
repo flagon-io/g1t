@@ -222,7 +222,11 @@ export function NeedsList({ attention, now }: { attention: Attention; now: numbe
         <StartRow start={start} now={now} arrived={arrived.has(start.row.key)} />
       ) : (
         attention.rows.length === 0 && (
-          <Quiet>{missing.length > 0 ? "Nothing needs you in what could be read." : "Nothing needs you. Reviews, invitations and messages for you show here as soon as they arrive."}</Quiet>
+          <Quiet>
+            {missing.length > 0
+              ? "Nothing needs you in what could be read."
+              : "Nothing needs you. Reviews, invitations and messages for you show here as soon as they arrive."}
+          </Quiet>
         )
       )}
       {rows.length > 0 && (
@@ -570,7 +574,11 @@ function Agent({ change }: { change: LandedChange }) {
     <Tooltip>
       <TooltipTrigger asChild>
         {mark.to ? (
-          <Link to={mark.to} aria-label={label} className="relative z-10 inline-flex shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none">
+          <Link
+            to={mark.to}
+            aria-label={label}
+            className="relative z-10 inline-flex shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+          >
             {marker}
           </Link>
         ) : (
@@ -588,7 +596,14 @@ function Agent({ change }: { change: LandedChange }) {
 function ExplainButton({ change }: { change: LandedChange }) {
   return (
     <Hint label="Explain this change in plain English">
-      <Button type="button" variant="ghost" size="icon-xs" aria-label={`Explain ${change.title}`} onClick={() => askG1t(explainQuestion(change))} className="shrink-0 text-muted hover:text-accent">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        aria-label={`Explain ${change.title}`}
+        onClick={() => askG1t(explainQuestion(change))}
+        className="shrink-0 text-muted hover:text-accent"
+      >
         <Sparkles size={13} />
       </Button>
     </Hint>
@@ -684,7 +699,11 @@ export function LandedFeed({
       {!landed ? (
         <Quiet>Code didn&apos;t answer, so what landed can&apos;t be listed right now.</Quiet>
       ) : landed.length === 0 ? (
-        <Quiet>{missing.length > 0 ? "Nothing landed in what could be read." : "Nothing merged, pushed to a default branch, deployed to production or published in this span."}</Quiet>
+        <Quiet>
+          {missing.length > 0
+            ? "Nothing landed in what could be read."
+            : "Nothing merged, pushed to a default branch, deployed to production or published in this span."}
+        </Quiet>
       ) : byDay ? (
         landedByDay(landed, now, tz).map((day) => (
           <section key={day.key} aria-label={day.label} className="border-t border-line">
@@ -716,7 +735,11 @@ export function LandedFeed({
 export function SettledCard({ away, now }: { away: Away | null; now: number }) {
   const count = away?.settled.length ?? 0;
   return (
-    <Card title="Settled for you" hint={away ? (count > 0 ? `${count.toLocaleString("en-US")} finished by themselves` : "Nothing finished by itself") : undefined} link={{ label: "Done", to: "/notifications/done" }}>
+    <Card
+      title="Settled for you"
+      hint={away ? (count > 0 ? `${count.toLocaleString("en-US")} finished by themselves` : "Nothing finished by itself") : undefined}
+      link={{ label: "Done", to: "/notifications/done" }}
+    >
       {!away ? (
         <Quiet>Your notifications couldn&apos;t be read, so what settled can&apos;t be listed right now.</Quiet>
       ) : count === 0 ? null : (
@@ -824,7 +847,9 @@ export function RunningList({ rows, missing, now }: { rows: RunningRow[]; missin
   return (
     <>
       {rows.length === 0 ? (
-        <Quiet>{missing.length > 0 ? "Nothing is running in what could be read." : "Nothing is running. Workflow runs and builds show here while they go."}</Quiet>
+        <Quiet>
+          {missing.length > 0 ? "Nothing is running in what could be read." : "Nothing is running. Workflow runs and builds show here while they go."}
+        </Quiet>
       ) : (
         <Folded
           items={rows}

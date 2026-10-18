@@ -181,7 +181,12 @@ async function servePublic(env: Env, request: Request, ctx: ExecutionContext, re
     repository ? isStillPublic(env, repository) : Promise.resolve(true),
   ]);
   if (cached && !visible) {
-    ctx.waitUntil(cache.delete(key).then(() => undefined, () => undefined));
+    ctx.waitUntil(
+      cache.delete(key).then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
     return render();
   }
   const keptAt = Number(cached?.headers.get("x-g1t-kept-at") ?? 0);
@@ -191,9 +196,7 @@ async function servePublic(env: Env, request: Request, ctx: ExecutionContext, re
     // Only a plain answer for everyone: nothing that sets a cookie or says
     // it is private.
     const cacheable =
-      (fresh.status === 200 || fresh.status === 404) &&
-      !fresh.headers.has("set-cookie") &&
-      !/private|no-store/.test(fresh.headers.get("cache-control") ?? "");
+      (fresh.status === 200 || fresh.status === 404) && !fresh.headers.has("set-cookie") && !/private|no-store/.test(fresh.headers.get("cache-control") ?? "");
     if (cacheable) {
       const copy = new Response(fresh.clone().body, fresh);
       copy.headers.set("x-g1t-kept-at", String(Date.now()));
@@ -203,7 +206,13 @@ async function servePublic(env: Env, request: Request, ctx: ExecutionContext, re
     return fresh;
   };
   if (cached && keptAt > 0 && age < PUBLIC_STALE_SECONDS) {
-    if (age >= PUBLIC_FRESH_SECONDS) ctx.waitUntil(refresh().then(() => undefined, () => undefined));
+    if (age >= PUBLIC_FRESH_SECONDS)
+      ctx.waitUntil(
+        refresh().then(
+          () => undefined,
+          () => undefined,
+        ),
+      );
     const answer = new Response(cached.body, cached);
     answer.headers.delete("x-g1t-kept-at");
     answer.headers.delete("cache-control");

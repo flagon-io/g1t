@@ -104,9 +104,7 @@ const Line = memo(function Line({
           {n}
         </a>
       </td>
-      <td className="pr-4 whitespace-pre">
-        {html != null ? <span dangerouslySetInnerHTML={{ __html: html || " " }} /> : text || " "}
-      </td>
+      <td className="pr-4 whitespace-pre">{html != null ? <span dangerouslySetInnerHTML={{ __html: html || " " }} /> : text || " "}</td>
     </tr>
   );
 });

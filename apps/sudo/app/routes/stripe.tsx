@@ -124,7 +124,11 @@ export default function Stripe({ loaderData, actionData }: Route.ComponentProps)
                   </span>
                 ))}
                 {status.missingEvents.map((event) => (
-                  <span key={event} className="rounded border border-danger/40 bg-danger/5 px-1.5 py-0.5 font-mono text-xs text-danger" title="Billing handles this; the destination does not send it">
+                  <span
+                    key={event}
+                    className="rounded border border-danger/40 bg-danger/5 px-1.5 py-0.5 font-mono text-xs text-danger"
+                    title="Billing handles this; the destination does not send it"
+                  >
                     {event} missing
                   </span>
                 ))}

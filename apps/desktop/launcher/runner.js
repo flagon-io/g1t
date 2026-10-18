@@ -51,7 +51,18 @@
   function runnerStatus(runner) {
     var d = runner.diagnosis;
     var update = d.update || {};
-    return JSON.stringify([d.code, d.tone, d.title, d.cause, runner.chip.label, runner.enabled, runner.paused, update.checking, update.checked_at, update.ready]);
+    return JSON.stringify([
+      d.code,
+      d.tone,
+      d.title,
+      d.cause,
+      runner.chip.label,
+      runner.enabled,
+      runner.paused,
+      update.checking,
+      update.checked_at,
+      update.ready,
+    ]);
   }
 
   // One kind of job's, with the whole runner's.
@@ -74,15 +85,24 @@
       if (action.id === "choose_workspace") return byId("runnerWorkspace").focus();
       if (action.id === "choose_backend") return byId("runnerBackend").focus();
       if (action.confirm && !window.confirm(action.confirm)) return;
-      busy.run(button, key, status, !!action.waits, function () {
-        return invoke("runner_control", { action: action.id });
-      }, fail).then(function (done) {
-        if (!done || action.id.indexOf("copy_") !== 0) return;
-        button.textContent = "Copied";
-        setTimeout(function () {
-          button.textContent = action.label;
-        }, 2000);
-      });
+      busy
+        .run(
+          button,
+          key,
+          status,
+          !!action.waits,
+          function () {
+            return invoke("runner_control", { action: action.id });
+          },
+          fail,
+        )
+        .then(function (done) {
+          if (!done || action.id.indexOf("copy_") !== 0) return;
+          button.textContent = "Copied";
+          setTimeout(function () {
+            button.textContent = action.label;
+          }, 2000);
+        });
     });
     return button;
   }
@@ -251,9 +271,16 @@
     var status = kindStatus(kind, runner);
     if (busy.pressed(key, status)) busy.start(button);
     button.addEventListener("click", function () {
-      busy.run(button, key, status, true, function () {
-        return invoke("runner_control", { action: on ? "stop" : "start", capability: kind.id });
-      }, fail);
+      busy.run(
+        button,
+        key,
+        status,
+        true,
+        function () {
+          return invoke("runner_control", { action: on ? "stop" : "start", capability: kind.id });
+        },
+        fail,
+      );
     });
     return button;
   }
@@ -417,9 +444,16 @@
     var button = byId(id);
     button.addEventListener("click", function () {
       var status = current && current.runnerView ? runnerStatus(current.runnerView) : "";
-      busy.run(button, key, status, waits, function () {
-        return invoke("runner_control", { action: typeof action === "function" ? action() : action });
-      }, fail);
+      busy.run(
+        button,
+        key,
+        status,
+        waits,
+        function () {
+          return invoke("runner_control", { action: typeof action === "function" ? action() : action });
+        },
+        fail,
+      );
     });
   }
   control("runner-view", "view", "view_runners", false);
@@ -434,7 +468,9 @@
     byId("engine-dot").className = "dot " + runner.chip.tone;
     var label = byId("engine-label");
     if (label.textContent !== runner.chip.label) label.textContent = runner.chip.label;
-    var about = [runner.diagnosis.title, runner.version ? "g1t-runner " + runner.version : null, runner.workspace ? "for " + runner.workspace : null].filter(Boolean);
+    var about = [runner.diagnosis.title, runner.version ? "g1t-runner " + runner.version : null, runner.workspace ? "for " + runner.workspace : null].filter(
+      Boolean,
+    );
     byId("engine-sub").textContent = about.join(" · ");
     var toggle = byId("engine-toggle");
     var on = runner.enabled && !runner.paused;
@@ -444,13 +480,32 @@
     toggle.dataset.action = on ? "stop" : "start";
   }
 
-  control("engine-toggle", "engine", function () {
-    return byId("engine-toggle").dataset.action;
-  }, true);
+  control(
+    "engine-toggle",
+    "engine",
+    function () {
+      return byId("engine-toggle").dataset.action;
+    },
+    true,
+  );
 
   // Every setting, as the app has it now (the settings window changes the
   // rest), with the runner's own as they are on the page.
-  var KEPT = ["startHidden", "closeToTray", "notifications", "flash", "badge", "systemTitleBar", "autoUpdate", "zoom", "developerTools", "runner", "runnerBackend", "runnerWorkspace", "runnerCapabilities"];
+  var KEPT = [
+    "startHidden",
+    "closeToTray",
+    "notifications",
+    "flash",
+    "badge",
+    "systemTitleBar",
+    "autoUpdate",
+    "zoom",
+    "developerTools",
+    "runner",
+    "runnerBackend",
+    "runnerWorkspace",
+    "runnerCapabilities",
+  ];
   function save() {
     invoke("get_settings")
       .then(function (fresh) {

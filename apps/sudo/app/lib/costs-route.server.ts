@@ -60,7 +60,9 @@ export async function costsAction(request: Request, context: unknown) {
     throw back("run");
   }
   if (intent === "lift") {
-    const note = String(form.get("note") ?? "").trim().slice(0, 500);
+    const note = String(form.get("note") ?? "")
+      .trim()
+      .slice(0, 500);
     if (note.length < 5) return fail("lift", "Say why it is lifted, for whoever looks next.");
     const result = await settle(admin.liftBreaker(note, staff.email));
     if (!result.ok) return fail("lift", `Billing did not answer: ${result.error}`);
@@ -70,7 +72,9 @@ export async function costsAction(request: Request, context: unknown) {
   if (intent === "pause" || intent === "resume") {
     const level = parsePauseLevel(form.get("level"));
     if (!level) return fail("platform", "Pick compute, schedules, indexing or renders.");
-    const note = String(form.get("note") ?? "").trim().slice(0, 500);
+    const note = String(form.get("note") ?? "")
+      .trim()
+      .slice(0, 500);
     if (note.length < 5) return fail(`pause-${level}`, "Say why, for whoever looks next.");
     const result = await settle(admin.setPause(level, intent === "pause", note, staff.email));
     if (!result.ok) return fail(`pause-${level}`, `Billing did not answer: ${result.error}`);
@@ -80,7 +84,9 @@ export async function costsAction(request: Request, context: unknown) {
   if (intent === "decide") {
     const id = String(form.get("id") ?? "");
     const decision = form.get("decision") === "approve" ? "approve" : "reject";
-    const note = String(form.get("note") ?? "").trim().slice(0, 500);
+    const note = String(form.get("note") ?? "")
+      .trim()
+      .slice(0, 500);
     if (decision === "reject" && note.length < 5) return fail(`proposal-${id}`, "Say why it is rejected, for whoever measures it next.");
     const result = await admin.decideProposal(id, decision, note, staff.email);
     if (!result.ok) return fail(`proposal-${id}`, result.error.message);

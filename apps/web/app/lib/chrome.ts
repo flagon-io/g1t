@@ -86,8 +86,11 @@ export const PROJECT_OPERATIONS = ["secrets", "environments", "domains", "runner
 
 export const PAGE_NEEDS: Partial<Record<ProjectPage, Capability>> = {
   security: "push",
-  secrets: "manage_integrations", environments: "manage_integrations", domains: "manage_integrations",
-  runners: "manage_integrations", webhooks: "manage_integrations",
+  secrets: "manage_integrations",
+  environments: "manage_integrations",
+  domains: "manage_integrations",
+  runners: "manage_integrations",
+  webhooks: "manage_integrations",
 };
 
 /**
@@ -112,10 +115,7 @@ export function projectPages(member: boolean, can?: Partial<Abilities>): Project
     member && "daemons",
     member && "settings",
   ];
-  return pages.filter(
-    (page): page is ProjectPage =>
-      page !== false && (!can || !PAGE_NEEDS[page] || Boolean(can[PAGE_NEEDS[page]!])),
-  );
+  return pages.filter((page): page is ProjectPage => page !== false && (!can || !PAGE_NEEDS[page] || Boolean(can[PAGE_NEEDS[page]!])));
 }
 
 /**

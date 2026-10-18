@@ -178,7 +178,8 @@ export class Store {
     const put = (key: string, value: string) =>
       this.sql.exec("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value", key, value);
     if (change.retention_days !== undefined) {
-      if (!(RETENTION_CHOICES as readonly number[]).includes(change.retention_days)) throw new Error(`Retention is one of ${RETENTION_CHOICES.join(", ")} days.`);
+      if (!(RETENTION_CHOICES as readonly number[]).includes(change.retention_days))
+        throw new Error(`Retention is one of ${RETENTION_CHOICES.join(", ")} days.`);
       put("retention_days", String(change.retention_days));
     }
     if (change.deployments !== undefined) put("deployments", change.deployments ? "1" : "0");
@@ -278,12 +279,7 @@ export class Store {
    * OTLP is refused (`quota`), and tail events keep their requests without
    * logs. Returns the bytes kept, for the workspace's meter.
    */
-  async ingest(
-    batch: Batch,
-    halves: RequestHalf[] = [],
-    token?: string,
-    overQuota = false,
-  ): Promise<{ accepted: boolean; reason?: string; bytes?: number }> {
+  async ingest(batch: Batch, halves: RequestHalf[] = [], token?: string, overQuota = false): Promise<{ accepted: boolean; reason?: string; bytes?: number }> {
     if (token !== undefined && !(await this.checkToken(token))) return { accepted: false, reason: "token" };
     if (token === undefined && !this.settings().deployments) return { accepted: false, reason: "off" };
     if (overQuota) {
@@ -298,8 +294,19 @@ export class Store {
       this.sql.exec(
         `INSERT OR IGNORE INTO logs (id, time_us, severity_number, body, trace_id, span_id, request_id, attributes, service, environment, deployment_id, commit_sha, source)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        log.id, log.time_us, log.severity_number, log.body, log.trace_id, log.span_id, log.request_id, JSON.stringify(log.attributes),
-        log.service, log.environment, log.deployment_id, log.commit_sha, log.source,
+        log.id,
+        log.time_us,
+        log.severity_number,
+        log.body,
+        log.trace_id,
+        log.span_id,
+        log.request_id,
+        JSON.stringify(log.attributes),
+        log.service,
+        log.environment,
+        log.deployment_id,
+        log.commit_sha,
+        log.source,
       );
       live.push({ type: "log", log });
     }
@@ -308,9 +315,24 @@ export class Store {
         `INSERT OR REPLACE INTO spans (trace_id, span_id, parent_span_id, name, kind, start_us, duration_us, status, status_message, attributes, resource, events, links,
            service, environment, deployment_id, commit_sha, source)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        s.trace_id, s.span_id, s.parent_span_id, s.name, s.kind, s.start_us, s.duration_us, s.status, s.status_message,
-        JSON.stringify(s.attributes), JSON.stringify(s.resource), JSON.stringify(s.events), JSON.stringify(s.links),
-        s.service, s.environment, s.deployment_id, s.commit_sha, s.source,
+        s.trace_id,
+        s.span_id,
+        s.parent_span_id,
+        s.name,
+        s.kind,
+        s.start_us,
+        s.duration_us,
+        s.status,
+        s.status_message,
+        JSON.stringify(s.attributes),
+        JSON.stringify(s.resource),
+        JSON.stringify(s.events),
+        JSON.stringify(s.links),
+        s.service,
+        s.environment,
+        s.deployment_id,
+        s.commit_sha,
+        s.source,
       );
       live.push({ type: "span", span: s });
     }
@@ -318,9 +340,23 @@ export class Store {
       this.sql.exec(
         `INSERT INTO metric_points (name, kind, time_us, value, count, sum, min, max, bounds, counts, quantiles, monotonic, attributes, service, environment, deployment_id, source)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        m.name, m.kind, m.time_us, m.value, m.count, m.sum, m.min, m.max,
-        m.bounds ? JSON.stringify(m.bounds) : null, m.counts ? JSON.stringify(m.counts) : null, m.quantiles ? JSON.stringify(m.quantiles) : null,
-        m.monotonic ? 1 : 0, JSON.stringify(m.attributes), m.service, m.environment, m.deployment_id, m.source,
+        m.name,
+        m.kind,
+        m.time_us,
+        m.value,
+        m.count,
+        m.sum,
+        m.min,
+        m.max,
+        m.bounds ? JSON.stringify(m.bounds) : null,
+        m.counts ? JSON.stringify(m.counts) : null,
+        m.quantiles ? JSON.stringify(m.quantiles) : null,
+        m.monotonic ? 1 : 0,
+        JSON.stringify(m.attributes),
+        m.service,
+        m.environment,
+        m.deployment_id,
+        m.source,
       );
       const known = this.rows("SELECT services FROM metric_names WHERE name = ?", m.name)[0];
       const services = new Set<string>(json<string[]>(known?.services ?? null, []));
@@ -330,21 +366,33 @@ export class Store {
          ON CONFLICT (name) DO UPDATE SET kind = excluded.kind, unit = excluded.unit,
            description = CASE WHEN excluded.description = '' THEN metric_names.description ELSE excluded.description END,
            services = excluded.services, last_us = MAX(metric_names.last_us, excluded.last_us)`,
-        m.name, m.kind, m.unit, m.description, JSON.stringify([...services].slice(0, 50)), m.time_us,
+        m.name,
+        m.kind,
+        m.unit,
+        m.description,
+        JSON.stringify([...services].slice(0, 50)),
+        m.time_us,
       );
     }
     for (const e of batch.errors) await this.seeError(e);
 
-    const requestCount = halves.filter((h) => h.half === "edge").length + batch.requests.length + halves.filter((h) => h.half === "app" && h.trigger !== "fetch").length;
+    const requestCount =
+      halves.filter((h) => h.half === "edge").length + batch.requests.length + halves.filter((h) => h.half === "app" && h.trigger !== "fetch").length;
     this.sql.exec(
       `INSERT INTO usage (month, ingested_bytes, requests, logs, spans, metric_points) VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT (month) DO UPDATE SET ingested_bytes = ingested_bytes + excluded.ingested_bytes, requests = requests + excluded.requests,
          logs = logs + excluded.logs, spans = spans + excluded.spans, metric_points = metric_points + excluded.metric_points`,
-      month(), batch.bytes, requestCount, batch.logs.length, batch.spans.length, batch.metrics.length,
+      month(),
+      batch.bytes,
+      requestCount,
+      batch.logs.length,
+      batch.spans.length,
+      batch.metrics.length,
     );
     this.sql.exec(
       "INSERT INTO usage_days (day, ingested_bytes) VALUES (?, ?) ON CONFLICT (day) DO UPDATE SET ingested_bytes = ingested_bytes + excluded.ingested_bytes",
-      day(), batch.bytes,
+      day(),
+      batch.bytes,
     );
 
     // Requests go live (and to exports) whole: once both halves are in, or
@@ -389,10 +437,29 @@ export class Store {
          commit_sha = COALESCE(excluded.commit_sha, requests.commit_sha),
          edge = MAX(requests.edge, excluded.edge),
          app = MAX(requests.app, excluded.app)`,
-      h.id, h.time_us ?? Date.now() * 1000, h.duration_us ?? 0, h.trigger ?? "fetch", h.method ?? null, h.url ?? null, h.route ?? null,
-      h.status ?? null, h.outcome ?? "ok", h.cpu_ms ?? null, h.region ?? null, h.country ?? null, h.trace_id ?? null, h.log_count ?? 0,
-      h.error?.name ?? null, h.error?.message ?? null, h.service ?? "", h.environment ?? null, h.deployment_id ?? null, h.commit_sha ?? null,
-      h.source ?? "cloudflare", edge ? 1 : 0, edge ? 0 : 1,
+      h.id,
+      h.time_us ?? Date.now() * 1000,
+      h.duration_us ?? 0,
+      h.trigger ?? "fetch",
+      h.method ?? null,
+      h.url ?? null,
+      h.route ?? null,
+      h.status ?? null,
+      h.outcome ?? "ok",
+      h.cpu_ms ?? null,
+      h.region ?? null,
+      h.country ?? null,
+      h.trace_id ?? null,
+      h.log_count ?? 0,
+      h.error?.name ?? null,
+      h.error?.message ?? null,
+      h.service ?? "",
+      h.environment ?? null,
+      h.deployment_id ?? null,
+      h.commit_sha ?? null,
+      h.source ?? "cloudflare",
+      edge ? 1 : 0,
+      edge ? 0 : 1,
     );
   }
 
@@ -403,8 +470,17 @@ export class Store {
       this.sql.exec(
         `INSERT INTO error_groups (fingerprint, name, message, stack, service, environment, first_us, last_us, count, first_deployment_id, last_request_id, last_trace_id)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
-        fp, e.name.slice(0, 200), e.message.slice(0, 4096), e.stack?.slice(0, 16384) ?? null, e.service, e.environment, e.time_us, e.time_us,
-        e.deployment_id, e.request_id, e.trace_id,
+        fp,
+        e.name.slice(0, 200),
+        e.message.slice(0, 4096),
+        e.stack?.slice(0, 16384) ?? null,
+        e.service,
+        e.environment,
+        e.time_us,
+        e.time_us,
+        e.deployment_id,
+        e.request_id,
+        e.trace_id,
       );
       return;
     }
@@ -413,7 +489,11 @@ export class Store {
       `UPDATE error_groups SET count = count + 1, last_us = MAX(last_us, ?), last_request_id = COALESCE(?, last_request_id),
          last_trace_id = COALESCE(?, last_trace_id), stack = COALESCE(stack, ?), state = CASE WHEN state = 'resolved' THEN 'open' ELSE state END
        WHERE fingerprint = ?`,
-      e.time_us, e.request_id, e.trace_id, e.stack ?? null, fp,
+      e.time_us,
+      e.request_id,
+      e.trace_id,
+      e.stack ?? null,
+      fp,
     );
   }
 
@@ -473,7 +553,14 @@ export class Store {
     return this.exportRows().map(({ headers: _, ...rest }) => rest);
   }
 
-  putExport(input: { id?: string | null; name: string; endpoint: string; signals: TelemetryExport["signals"]; headers?: Record<string, string> | null; enabled: boolean }): TelemetryExport {
+  putExport(input: {
+    id?: string | null;
+    name: string;
+    endpoint: string;
+    signals: TelemetryExport["signals"];
+    headers?: Record<string, string> | null;
+    enabled: boolean;
+  }): TelemetryExport {
     const problem = exportEndpointProblem(input.endpoint);
     if (problem) throw new Error(problem);
     const signals = input.signals.filter((s) => s === "traces" || s === "logs" || s === "metrics");
@@ -490,7 +577,12 @@ export class Store {
       `INSERT INTO exports (id, name, endpoint, signals, headers, enabled) VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT (id) DO UPDATE SET name = excluded.name, endpoint = excluded.endpoint, signals = excluded.signals,
          headers = excluded.headers, enabled = excluded.enabled, last_error = NULL`,
-      id, input.name.trim().slice(0, 80) || "Export", input.endpoint.trim(), JSON.stringify(signals), JSON.stringify(headers), input.enabled ? 1 : 0,
+      id,
+      input.name.trim().slice(0, 80) || "Export",
+      input.endpoint.trim(),
+      JSON.stringify(signals),
+      JSON.stringify(headers),
+      input.enabled ? 1 : 0,
     );
     return this.exports().find((e) => e.id === id)!;
   }
@@ -528,7 +620,8 @@ export class Store {
       this.sql.exec("INSERT INTO meta (key, value) VALUES ('pruned', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value", String(Date.now()));
     }
     // Keep going while there is anything left to count or keep.
-    const pending = this.rows("SELECT 1 FROM requests LIMIT 1").length || this.rows("SELECT 1 FROM logs LIMIT 1").length || this.rows("SELECT 1 FROM spans LIMIT 1").length;
+    const pending =
+      this.rows("SELECT 1 FROM requests LIMIT 1").length || this.rows("SELECT 1 FROM logs LIMIT 1").length || this.rows("SELECT 1 FROM spans LIMIT 1").length;
     if (pending) await this.state.storage.setAlarm(Date.now() + 60_000);
   }
 
@@ -541,7 +634,12 @@ export class Store {
       for (const a of aggregate(rows)) {
         const before = this.rows(
           "SELECT latency, cpu FROM rollups WHERE minute = ? AND service = ? AND environment = ? AND deployment_id = ? AND method = ? AND route = ?",
-          a.minute, a.service, a.environment, a.deployment_id, a.method, a.route,
+          a.minute,
+          a.service,
+          a.environment,
+          a.deployment_id,
+          a.method,
+          a.route,
         )[0];
         const latency = encode(before ? addInto(decode(String(before.latency)), decode(a.latency)) : decode(a.latency));
         const cpu = encode(before ? addInto(decode(String(before.cpu)), decode(a.cpu)) : decode(a.cpu));
@@ -552,8 +650,22 @@ export class Store {
              requests = requests + excluded.requests, errors = errors + excluded.errors, s2 = s2 + excluded.s2, s3 = s3 + excluded.s3,
              s4 = s4 + excluded.s4, s5 = s5 + excluded.s5, latency = excluded.latency, cpu = excluded.cpu,
              commit_sha = COALESCE(excluded.commit_sha, rollups.commit_sha)`,
-          a.minute, a.service, a.environment, a.deployment_id, a.commit_sha, a.source, a.method, a.route, a.requests, a.errors,
-          a.s2, a.s3, a.s4, a.s5, latency, cpu,
+          a.minute,
+          a.service,
+          a.environment,
+          a.deployment_id,
+          a.commit_sha,
+          a.source,
+          a.method,
+          a.route,
+          a.requests,
+          a.errors,
+          a.s2,
+          a.s3,
+          a.s4,
+          a.s5,
+          latency,
+          cpu,
         );
       }
       const last = rows[rows.length - 1];
@@ -604,12 +716,12 @@ export class Store {
     const clauses: string[] = [];
     const args: SqlStorageValue[] = [];
     const col = (c: string) => `${prefix}${c}`;
-    if (f.from_us) clauses.push(`${col(time)} >= ?`), args.push(f.from_us);
-    if (f.to_us) clauses.push(`${col(time)} <= ?`), args.push(f.to_us);
-    if (f.services?.length) clauses.push(`${col("service")} IN (${f.services.map(() => "?").join(",")})`), args.push(...f.services);
-    if (f.environments?.length) clauses.push(`${col("environment")} IN (${f.environments.map(() => "?").join(",")})`), args.push(...f.environments);
-    if (f.deployment_id) clauses.push(`${col("deployment_id")} = ?`), args.push(f.deployment_id);
-    if (f.source) clauses.push(`${col("source")} = ?`), args.push(f.source);
+    if (f.from_us) (clauses.push(`${col(time)} >= ?`), args.push(f.from_us));
+    if (f.to_us) (clauses.push(`${col(time)} <= ?`), args.push(f.to_us));
+    if (f.services?.length) (clauses.push(`${col("service")} IN (${f.services.map(() => "?").join(",")})`), args.push(...f.services));
+    if (f.environments?.length) (clauses.push(`${col("environment")} IN (${f.environments.map(() => "?").join(",")})`), args.push(...f.environments));
+    if (f.deployment_id) (clauses.push(`${col("deployment_id")} = ?`), args.push(f.deployment_id));
+    if (f.source) (clauses.push(`${col("source")} = ?`), args.push(f.source));
     return { clauses, args };
   }
 
@@ -701,23 +813,30 @@ export class Store {
   requests(q: RequestQuery): Page<TelemetryRequest> {
     const { clauses, args } = this.filter(q, "time_us");
     const { words, pairs } = parseSearch(q.text);
-    this.pairs(pairs, ["method", "route", "status", "outcome", "region", "country", "trace_id", "service", "environment", "deployment_id", "commit_sha", "trigger"], clauses, args, "");
+    this.pairs(
+      pairs,
+      ["method", "route", "status", "outcome", "region", "country", "trace_id", "service", "environment", "deployment_id", "commit_sha", "trigger"],
+      clauses,
+      args,
+      "",
+    );
     // Software outside g1t.page often reports a route and no address: both are searched.
-    for (const w of words) clauses.push("(url LIKE ? OR route LIKE ? OR error_message LIKE ? OR error_name LIKE ?)"), args.push(`%${w}%`, `%${w}%`, `%${w}%`, `%${w}%`);
+    for (const w of words)
+      (clauses.push("(url LIKE ? OR route LIKE ? OR error_message LIKE ? OR error_name LIKE ?)"), args.push(`%${w}%`, `%${w}%`, `%${w}%`, `%${w}%`));
     if (q.status?.length) {
       const parts: string[] = [];
       for (const s of q.status) {
         const cls = /^([1-5])xx$/i.exec(s);
-        if (cls) parts.push("(status >= ? AND status < ?)"), args.push(Number(cls[1]) * 100, Number(cls[1]) * 100 + 100);
-        else if (/^\d{3}$/.test(s)) parts.push("status = ?"), args.push(Number(s));
+        if (cls) (parts.push("(status >= ? AND status < ?)"), args.push(Number(cls[1]) * 100, Number(cls[1]) * 100 + 100));
+        else if (/^\d{3}$/.test(s)) (parts.push("status = ?"), args.push(Number(s)));
       }
       if (parts.length) clauses.push(`(${parts.join(" OR ")})`);
     }
     if (q.errors_only) clauses.push(ERROR_SQL);
-    if (q.route) clauses.push("route = ?"), args.push(q.route);
-    if (q.min_duration_ms) clauses.push("duration_us >= ?"), args.push(q.min_duration_ms * 1000);
+    if (q.route) (clauses.push("route = ?"), args.push(q.route));
+    if (q.min_duration_ms) (clauses.push("duration_us >= ?"), args.push(q.min_duration_ms * 1000));
     const after = readCursor(q.cursor);
-    if (after) clauses.push("(time_us < ? OR (time_us = ? AND id < ?))"), args.push(after.time, after.time, after.id);
+    if (after) (clauses.push("(time_us < ? OR (time_us = ? AND id < ?))"), args.push(after.time, after.time, after.id));
     const limit = limitOf(q.limit);
     const rows = this.rows(
       `SELECT * FROM requests ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""} ORDER BY time_us DESC, id DESC LIMIT ?`,
@@ -740,25 +859,31 @@ export class Store {
     const { clauses, args } = this.filter(q, "time_us", "logs.");
     const { words, pairs } = parseSearch(q.text);
     const isLevel = ([k]: [string, string]) => k === "level" || k === "severity";
-    this.pairs(pairs.filter((p) => !isLevel(p)), ["trace_id", "span_id", "request_id", "service", "environment", "deployment_id", "commit_sha"], clauses, args, "logs.attributes");
+    this.pairs(
+      pairs.filter((p) => !isLevel(p)),
+      ["trace_id", "span_id", "request_id", "service", "environment", "deployment_id", "commit_sha"],
+      clauses,
+      args,
+      "logs.attributes",
+    );
     const levels = [...(q.severities ?? []), ...pairs.filter(isLevel).map(([, v]) => v.toLowerCase() as LogSeverity)];
     const ranges = levels.filter((l) => SEVERITY_FLOOR[l]).map((l) => SEVERITY_FLOOR[l]);
     if (ranges.length) {
       clauses.push(`(${ranges.map(() => "logs.severity_number BETWEEN ? AND ?").join(" OR ")})`);
       for (const [lo, hi] of ranges) args.push(lo, hi);
     }
-    if (q.trace_id) clauses.push("logs.trace_id = ?"), args.push(q.trace_id);
-    if (q.request_id) clauses.push("logs.request_id = ?"), args.push(q.request_id);
+    if (q.trace_id) (clauses.push("logs.trace_id = ?"), args.push(q.trace_id));
+    if (q.request_id) (clauses.push("logs.request_id = ?"), args.push(q.request_id));
     let from = "logs";
     if (words.length && this.fts) {
       from = "logs JOIN logs_fts ON logs_fts.rowid = logs.rowid";
       clauses.push("logs_fts MATCH ?");
       args.push(ftsQuery(words));
     } else {
-      for (const w of words) clauses.push("logs.body LIKE ?"), args.push(`%${w}%`);
+      for (const w of words) (clauses.push("logs.body LIKE ?"), args.push(`%${w}%`));
     }
     const after = readCursor(q.cursor);
-    if (after) clauses.push("(logs.time_us < ? OR (logs.time_us = ? AND logs.id < ?))"), args.push(after.time, after.time, after.id);
+    if (after) (clauses.push("(logs.time_us < ? OR (logs.time_us = ? AND logs.id < ?))"), args.push(after.time, after.time, after.id));
     const limit = limitOf(q.limit, 200, 1000);
     const rows = this.rows(
       `SELECT logs.* FROM ${from} ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""} ORDER BY logs.time_us DESC, logs.id DESC LIMIT ?`,
@@ -774,13 +899,13 @@ export class Store {
     const { clauses, args } = this.filter(q, "start_us");
     const { words, pairs } = parseSearch(q.text);
     this.pairs(pairs, ["name", "service", "environment", "deployment_id", "kind", "status"], clauses, args, "attributes");
-    for (const w of words) clauses.push("name LIKE ?"), args.push(`%${w}%`);
+    for (const w of words) (clauses.push("name LIKE ?"), args.push(`%${w}%`));
     const after = readCursor(q.cursor);
     const having: string[] = [];
     const havingArgs: SqlStorageValue[] = [];
     if (q.errors_only) having.push("SUM(status = 'error') > 0");
-    if (q.min_duration_ms) having.push("MAX(start_us + duration_us) - MIN(start_us) >= ?"), havingArgs.push(q.min_duration_ms * 1000);
-    if (after) having.push("(MIN(start_us) < ? OR (MIN(start_us) = ? AND trace_id < ?))"), havingArgs.push(after.time, after.time, after.id);
+    if (q.min_duration_ms) (having.push("MAX(start_us + duration_us) - MIN(start_us) >= ?"), havingArgs.push(q.min_duration_ms * 1000));
+    if (after) (having.push("(MIN(start_us) < ? OR (MIN(start_us) = ? AND trace_id < ?))"), havingArgs.push(after.time, after.time, after.id));
     const limit = limitOf(q.limit, 50, 200);
     const rows = this.rows(
       `SELECT trace_id, MIN(start_us) AS start_us, MAX(start_us + duration_us) - MIN(start_us) AS duration_us, COUNT(*) AS span_count,
@@ -807,7 +932,14 @@ export class Store {
         duration_us: end - start,
         span_count: Number(r.span_count) + (req ? 1 : 0),
         error_count: Number(r.error_count) + (req?.error ? 1 : 0),
-        services: [...new Set([...(req ? [req.service] : []), ...String(r.services ?? "").split(",").filter(Boolean)])],
+        services: [
+          ...new Set([
+            ...(req ? [req.service] : []),
+            ...String(r.services ?? "")
+              .split(",")
+              .filter(Boolean),
+          ]),
+        ],
         status: req?.status ?? numOrNull(json<Attributes>(first?.attributes ?? null, {})["http.response.status_code"] as SqlStorageValue),
         service: req?.service ?? String(first?.service ?? ""),
         environment: req?.environment ?? strOrNull(first?.environment ?? null),
@@ -872,8 +1004,10 @@ export class Store {
 
   errors(f: TelemetryFilter & { state?: ErrorGroup["state"] | null }): ErrorGroup[] {
     const { clauses, args } = this.filter({ ...f, deployment_id: null, source: null }, "last_us");
-    if (f.state) clauses.push("state = ?"), args.push(f.state);
-    return this.rows(`SELECT * FROM error_groups ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""} ORDER BY last_us DESC LIMIT 200`, ...args).map(errorOf);
+    if (f.state) (clauses.push("state = ?"), args.push(f.state));
+    return this.rows(`SELECT * FROM error_groups ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""} ORDER BY last_us DESC LIMIT 200`, ...args).map(
+      errorOf,
+    );
   }
 
   setError(fp: string, change: { state?: ErrorGroup["state"]; item?: number | null }): ErrorGroup | null {
@@ -968,16 +1102,20 @@ export class Store {
       `SELECT service FROM rollups WHERE minute >= ? AND service != '' GROUP BY service
        UNION SELECT service FROM spans WHERE start_us >= ? AND service != '' GROUP BY service
        UNION SELECT service FROM logs WHERE time_us >= ? AND service != '' GROUP BY service`,
-      Math.floor(since / MINUTE_US), since, since,
+      Math.floor(since / MINUTE_US),
+      since,
+      since,
     ).map((r) => String(r.service));
     const environments = this.rows(
       `SELECT environment FROM rollups WHERE minute >= ? AND environment != '' GROUP BY environment
        UNION SELECT environment FROM logs WHERE time_us >= ? AND environment IS NOT NULL GROUP BY environment`,
-      Math.floor(since / MINUTE_US), since,
+      Math.floor(since / MINUTE_US),
+      since,
     ).map((r) => String(r.environment));
     const keys = new Set<string>();
     for (const r of this.rows("SELECT attributes FROM logs ORDER BY time_us DESC LIMIT 500")) for (const k of Object.keys(json(r.attributes, {}))) keys.add(k);
-    for (const r of this.rows("SELECT attributes FROM spans ORDER BY start_us DESC LIMIT 500")) for (const k of Object.keys(json(r.attributes, {}))) keys.add(k);
+    for (const r of this.rows("SELECT attributes FROM spans ORDER BY start_us DESC LIMIT 500"))
+      for (const k of Object.keys(json(r.attributes, {}))) keys.add(k);
     return { services: [...new Set(services)].sort(), environments: [...new Set(environments)].sort(), attribute_keys: [...keys].sort().slice(0, 200) };
   }
 
@@ -1009,8 +1147,9 @@ export class Store {
       // The newest requests, not counted yet, are counted here as they stand.
       const { clauses: pc, args: pa } = this.filter({ ...f, from_us: lo, to_us: hi }, "time_us");
       pc.push("rolled = 0");
-      const pending = aggregate(this.rows(`SELECT * FROM requests WHERE ${pc.join(" AND ")} LIMIT 20000`, ...pa))
-        .filter((a) => (detail ? a.route !== "*" : a.route === "*")) as unknown as Row[];
+      const pending = aggregate(this.rows(`SELECT * FROM requests WHERE ${pc.join(" AND ")} LIMIT 20000`, ...pa)).filter((a) =>
+        detail ? a.route !== "*" : a.route === "*",
+      ) as unknown as Row[];
       return [...counted, ...pending];
     };
     const totalsOf = (rows: Row[]): TelemetryTotals => {
@@ -1042,7 +1181,17 @@ export class Store {
       const p = points.get(m)?.rows ?? [];
       const t = totalsOf(p);
       const s = (k: string) => p.reduce((n, r) => n + Number(r[k]), 0);
-      series.push({ time_us: m * MINUTE_US, requests: t.requests, errors: t.errors, status_2xx: s("s2"), status_3xx: s("s3"), status_4xx: s("s4"), status_5xx: s("s5"), latency: t.latency, cpu: t.cpu });
+      series.push({
+        time_us: m * MINUTE_US,
+        requests: t.requests,
+        errors: t.errors,
+        status_2xx: s("s2"),
+        status_3xx: s("s3"),
+        status_4xx: s("s4"),
+        status_5xx: s("s5"),
+        latency: t.latency,
+        cpu: t.cpu,
+      });
     }
 
     const routes = new Map<string, Row[]>();
@@ -1110,7 +1259,11 @@ export class Store {
 const ERROR_SQL = "(status >= 500 OR outcome NOT IN ('ok', 'canceled', 'responseStreamDisconnected') OR error_name IS NOT NULL)";
 
 function isError(status: number | null, outcome: string, errorName: SqlStorageValue): boolean {
-  return (status !== null && status >= 500) || !["ok", "canceled", "responseStreamDisconnected"].includes(outcome) || (errorName !== null && errorName !== undefined && errorName !== "");
+  return (
+    (status !== null && status >= 500) ||
+    !["ok", "canceled", "responseStreamDisconnected"].includes(outcome) ||
+    (errorName !== null && errorName !== undefined && errorName !== "")
+  );
 }
 
 function errorOf(r: Row): ErrorGroup {
@@ -1148,7 +1301,7 @@ export function histogramQuantile(bounds: number[], counts: number[], q: number)
   for (let i = 0; i < counts.length; i++) {
     if (seen + counts[i] >= rank) {
       const low = i === 0 ? 0 : bounds[i - 1];
-      const high = i < bounds.length ? bounds[i] : bounds[bounds.length - 1] ?? low;
+      const high = i < bounds.length ? bounds[i] : (bounds[bounds.length - 1] ?? low);
       return low + (high - low) * (counts[i] ? (rank - seen) / counts[i] : 0);
     }
     seen += counts[i];

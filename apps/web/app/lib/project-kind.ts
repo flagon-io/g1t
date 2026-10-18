@@ -47,7 +47,11 @@ export const KIND_CHOICE_SETS: Record<KindChoice, { kind: ProjectKind | "auto"; 
 /** The choices for "What it is" in a project's settings, in order. */
 export const KIND_CHOICES: { value: KindChoice; label: string; hint: string }[] = [
   { value: "auto", label: "Detect automatically", hint: "From whether Deployments are on, the packages it publishes and the files at its root." },
-  { value: "g1t", label: "App or site, hosted on g1t.page", hint: "g1t builds and hosts it: production on g1t.page from the default branch, and a preview for every pull request." },
+  {
+    value: "g1t",
+    label: "App or site, hosted on g1t.page",
+    hint: "g1t builds and hosts it: production on g1t.page from the default branch, and a preview for every pull request.",
+  },
   {
     value: "elsewhere",
     label: "App or site that deploys itself",

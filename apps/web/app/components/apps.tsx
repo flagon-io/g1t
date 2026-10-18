@@ -156,7 +156,11 @@ export function NoApps({ slug, onOpen, compact = false }: { slug: string; onOpen
       </span>
       <p className="mt-3 text-sm font-medium">No apps installed yet</p>
       <p className="mt-1 max-w-xs text-[0.8125rem] text-muted">Apps are the integrations your workspace connects. Each one you can use shows here.</p>
-      <Link to={`/${slug}/-/integrations`} onClick={onOpen} className="mt-4 inline-flex h-8 items-center gap-1.5 rounded-md bg-fg px-3 text-[0.8125rem] font-medium text-bg hover:bg-fg-hover">
+      <Link
+        to={`/${slug}/-/integrations`}
+        onClick={onOpen}
+        className="mt-4 inline-flex h-8 items-center gap-1.5 rounded-md bg-fg px-3 text-[0.8125rem] font-medium text-bg hover:bg-fg-hover"
+      >
         <Plug size={14} />
         Integrations
       </Link>
@@ -169,7 +173,17 @@ export function NoApps({ slug, onOpen, compact = false }: { slug: string; onOpen
  * that the person can use (read from the Apps page as it opens), and the
  * way to all of them and to Integrations.
  */
-export function AppsLauncher({ slug, pins, onToggle, onClose }: { slug: string; pins: PinnableApp[]; onToggle: (app: PinnableApp) => void; onClose: () => void }) {
+export function AppsLauncher({
+  slug,
+  pins,
+  onToggle,
+  onClose,
+}: {
+  slug: string;
+  pins: PinnableApp[];
+  onToggle: (app: PinnableApp) => void;
+  onClose: () => void;
+}) {
   const [query, setQuery] = useState("");
   const loader = useFetcher<{ apps: InstalledAppData[] | null }>();
   useEffect(() => {

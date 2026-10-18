@@ -52,7 +52,11 @@ function subscribe(listener: () => void) {
 /** The choice: the one made in this tab, else the one the page was drawn with (the cookie's). */
 export function useThemeChoice(drawn: ThemeChoice | undefined): ThemeChoice {
   const initial = drawn ?? DEFAULT_THEME;
-  return useSyncExternalStore(subscribe, () => chosen ?? initial, () => initial);
+  return useSyncExternalStore(
+    subscribe,
+    () => chosen ?? initial,
+    () => initial,
+  );
 }
 
 /**

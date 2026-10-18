@@ -35,4 +35,3 @@ export async function usageFor(slug: string, viewer: User | null): Promise<Usage
     trialMicros: book?.free?.trialWorkspaceMicros ?? DEFAULT_TRIAL_MICROS,
   });
 }
-

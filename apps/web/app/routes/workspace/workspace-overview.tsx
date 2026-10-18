@@ -84,7 +84,6 @@ async function loadGround(viewer: User, slug: string, now: number) {
   return found ? { ...shapeGround(found, groups, now), providers: providerQuarter(providers, found.range.quarter) } : null;
 }
 
-
 function Tile({ icon, label, value, to, action }: { icon: ReactNode; label: string; value: string; to: string; action: string }) {
   return (
     <Link to={to} className="group rounded-xl border border-line bg-surface p-4 transition-colors hover:border-line-strong">
@@ -107,11 +106,19 @@ export default function WorkspaceOverview({ loaderData }: Route.ComponentProps) 
       <OnboardingOnPage slug={slug} view={loaderData.onboarding} asked={loaderData.setupAsked} />
       {loaderData.ground && (
         <Suspense fallback={<GroundSkeleton />}>
-          <Await resolve={loaderData.ground}>{(ground) => (ground ? <GroundTruth slug={slug} ground={ground} /> : <Unavailable what="What the work says" />)}</Await>
+          <Await resolve={loaderData.ground}>
+            {(ground) => (ground ? <GroundTruth slug={slug} ground={ground} /> : <Unavailable what="What the work says" />)}
+          </Await>
         </Suspense>
       )}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Tile icon={<Users size={12} />} label="Members" value={members && !isFailed(members) ? String(members.length) : "—"} to={role === "owner" ? `/${slug}/-/members` : `/${slug}/-/people`} action={role === "owner" ? "Manage people" : "See everyone"} />
+        <Tile
+          icon={<Users size={12} />}
+          label="Members"
+          value={members && !isFailed(members) ? String(members.length) : "—"}
+          to={role === "owner" ? `/${slug}/-/members` : `/${slug}/-/people`}
+          action={role === "owner" ? "Manage people" : "See everyone"}
+        />
         <Tile icon={<Box size={12} />} label="Projects" value={projects == null ? "—" : String(projects)} to={`/${slug}/-/projects`} action="Open Code" />
       </div>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">

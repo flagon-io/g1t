@@ -85,18 +85,18 @@ export async function action({ request, context }: Route.ActionArgs) {
     if (!removed.ok) return { error: null, removeError: removed.error.message, results: [] };
     throw redirect("/new/github");
   }
-  const chosen = form.getAll("repo").map(Number).filter((id) => Number.isSafeInteger(id) && id > 0).slice(0, 20);
+  const chosen = form
+    .getAll("repo")
+    .map(Number)
+    .filter((id) => Number.isSafeInteger(id) && id > 0)
+    .slice(0, 20);
   if (chosen.length === 0) return { error: "Choose at least one repository.", results: [] };
   const issues = form.get("issues") === "on";
   // One at a time: each is a copy of a whole repository.
   const results: { id: number; ok: boolean; repo?: string; error?: string }[] = [];
   for (const githubRepoId of chosen) {
     const imported = await githubApp.import(user, workspace, { installationId, githubRepoId, issues });
-    results.push(
-      imported.ok
-        ? { id: githubRepoId, ok: true, repo: imported.value.repo }
-        : { id: githubRepoId, ok: false, error: imported.error.message },
-    );
+    results.push(imported.ok ? { id: githubRepoId, ok: true, repo: imported.value.repo } : { id: githubRepoId, ok: false, error: imported.error.message });
   }
   if (results.length === 1 && results[0].ok) throw redirect(`/${results[0].repo}`);
   return { error: null, results };
@@ -117,10 +117,9 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
       </span>
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">Import from GitHub</h1>
       <p className="mt-1.5 text-sm text-muted">
-        Bring repositories into <span className="font-mono text-fg">{workspace}</span> through g1t's GitHub App. You choose
-        which repositories it can see on GitHub; nothing else is read.
+        Bring repositories into <span className="font-mono text-fg">{workspace}</span> through g1t's GitHub App. You choose which repositories it can see on
+        GitHub; nothing else is read.
       </p>
-
 
       {!linked ? (
         <Card asChild tone="plain" radius="lg" className="mt-8 p-6">
@@ -185,10 +184,7 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
                           <input type="hidden" name="intent" value="add-installation" />
                           <input type="hidden" name="workspace" value={workspace} />
                           <input type="hidden" name="installation" value={item.id} />
-                          <SubmitButton
-                            pending="Adding…"
-                            match={{ intent: "add-installation", installation: String(item.id) }}
-                          >
+                          <SubmitButton pending="Adding…" match={{ intent: "add-installation", installation: String(item.id) }}>
                             Add to {workspaceName}
                           </SubmitButton>
                         </Form>
@@ -237,25 +233,25 @@ export default function NewFromGithub({ loaderData, actionData }: Route.Componen
                     </span>
                     {item.suspended && <Badge size="md">Suspended</Badge>}
                     <span className="ml-auto flex items-center gap-3">
-                    <a href={item.settingsUrl} className="whitespace-nowrap text-xs text-muted hover:text-fg">
-                      Choose repositories on GitHub
-                    </a>
-                    {owner && (
-                      <Form method="post">
-                        <input type="hidden" name="intent" value="remove-installation" />
-                        <input type="hidden" name="workspace" value={workspace} />
-                        <input type="hidden" name="installation" value={item.id} />
-                        <SubmitButton
-                          pending="Removing…"
-                          match={{ intent: "remove-installation", installation: String(item.id) }}
-                          variant="link"
-                          size="inline"
-                          className="gap-1 text-xs text-faint hover:text-danger"
-                        >
-                          Remove
-                        </SubmitButton>
-                      </Form>
-                    )}
+                      <a href={item.settingsUrl} className="whitespace-nowrap text-xs text-muted hover:text-fg">
+                        Choose repositories on GitHub
+                      </a>
+                      {owner && (
+                        <Form method="post">
+                          <input type="hidden" name="intent" value="remove-installation" />
+                          <input type="hidden" name="workspace" value={workspace} />
+                          <input type="hidden" name="installation" value={item.id} />
+                          <SubmitButton
+                            pending="Removing…"
+                            match={{ intent: "remove-installation", installation: String(item.id) }}
+                            variant="link"
+                            size="inline"
+                            className="gap-1 text-xs text-faint hover:text-danger"
+                          >
+                            Remove
+                          </SubmitButton>
+                        </Form>
+                      )}
                     </span>
                   </li>
                 ))}

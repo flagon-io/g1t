@@ -30,8 +30,7 @@ export function RegenerateToken({ name }: { name: string }) {
     <section className="rounded-xl border border-line p-4">
       <h2 className="text-sm font-medium">Regenerate this token</h2>
       <p className="mt-1 text-xs text-muted">
-        A new secret, with the same name, permissions and reach. Anything using the old one stops working at once, until you give it the new
-        one.
+        A new secret, with the same name, permissions and reach. Anything using the old one stops working at once, until you give it the new one.
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <SelectField aria-label="Expires" className="w-40" value={expires} onValueChange={setExpires} options={options} />
@@ -49,7 +48,8 @@ export function RegenerateToken({ name }: { name: string }) {
               <AlertDialogHeader>
                 <AlertDialogTitle>Regenerate {name}?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Its old secret stops working now. The new one is shown once, and {expires === "never" ? "does not expire" : `expires in ${describeDays(Number(expires))}`}.
+                  Its old secret stops working now. The new one is shown once, and{" "}
+                  {expires === "never" ? "does not expire" : `expires in ${describeDays(Number(expires))}`}.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

@@ -321,7 +321,9 @@ async function afterChecks(env: Env, ctx: { waitUntil(p: Promise<unknown>): void
   for (const m of await dueMaintenance(env.DB, now, origin)) {
     const ended = Date.parse(m.ends_at) <= now.getTime();
     const text = ended ? "The maintenance is complete." : "The maintenance has begun.";
-    const notified = m.notify ? await notify(env, ctx, m.components, { heading: `${ended ? "Completed" : "In progress"}: ${m.title}`, text, url: m.url }) : null;
+    const notified = m.notify
+      ? await notify(env, ctx, m.components, { heading: `${ended ? "Completed" : "In progress"}: ${m.title}`, text, url: m.url })
+      : null;
     await maintenanceUpdate(env.DB, m.id, ended ? "completed" : "in_progress", text, "status", notified, now, {
       action: ended ? "maintenance_completed" : "maintenance_started",
       detail: `${m.title} (on schedule)`,
@@ -344,7 +346,11 @@ async function afterChecks(env: Env, ctx: { waitUntil(p: Promise<unknown>): void
   const alertTo = (env.STATUS_ALERT_EMAIL ?? "").trim();
   const send = sender(env);
   if (found.draft.length) {
-    const core = new Set(parts(env).filter((p) => p.core).map((p) => p.key));
+    const core = new Set(
+      parts(env)
+        .filter((p) => p.core)
+        .map((p) => p.key),
+    );
     const title = draftTitle(found.draft.map((d) => ({ name: name(d.key), state: d.state })));
     const since = found.draft.map((d) => d.since).sort()[0]!;
     const said = found.draft.map((d) => troubleSentence(name(d.key), d, stamp(d.since), slowMs(d.key)));
@@ -379,7 +385,11 @@ async function afterChecks(env: Env, ctx: { waitUntil(p: Promise<unknown>): void
     console.warn(JSON.stringify({ event: "status.detected", id, parts: found.draft.map((d) => d.key), since }));
     if (alertTo && send) {
       const { text, html } = renderMail(alertLetter({ title, lines: said, link: sudo(id), ...(note ? { note } : {}) }));
-      ctx.waitUntil(send.send({ to: alertTo, subject: `[g1t status] ${title}`, text, html }).catch((e) => console.error(JSON.stringify({ event: "status.alert_failed", error: String(e) }))));
+      ctx.waitUntil(
+        send
+          .send({ to: alertTo, subject: `[g1t status] ${title}`, text, html })
+          .catch((e) => console.error(JSON.stringify({ event: "status.alert_failed", error: String(e) }))),
+      );
     }
   }
   // Detected drafts no one picked up, whose parts have stayed healthy long enough: dismissed, with a word to staff.
@@ -397,7 +407,11 @@ async function afterChecks(env: Env, ctx: { waitUntil(p: Promise<unknown>): void
     if (alertTo && send) {
       const letter = recoveredLetter({ title: d.title, text, link: sudo(d.id) });
       const { text: body, html } = renderMail(letter);
-      ctx.waitUntil(send.send({ to: alertTo, subject: `[g1t status] ${letter.heading}`, text: body, html }).catch((e) => console.error(JSON.stringify({ event: "status.alert_failed", error: String(e) }))));
+      ctx.waitUntil(
+        send
+          .send({ to: alertTo, subject: `[g1t status] ${letter.heading}`, text: body, html })
+          .catch((e) => console.error(JSON.stringify({ event: "status.alert_failed", error: String(e) }))),
+      );
     }
   }
   // Drafts still waiting for someone: the alert goes out again after 45 minutes, then every 6 hours.
@@ -415,7 +429,11 @@ async function afterChecks(env: Env, ctx: { waitUntil(p: Promise<unknown>): void
     if (!emailed) continue;
     const letter = staleLetter({ title: d.title, waiting: minutesWords(d.waiting_ms), link: sudo(d.id) });
     const { text: body, html } = renderMail(letter);
-    ctx.waitUntil(send!.send({ to: alertTo, subject: `[g1t status] ${letter.heading}`, text: body, html }).catch((e) => console.error(JSON.stringify({ event: "status.alert_failed", error: String(e) }))));
+    ctx.waitUntil(
+      send!
+        .send({ to: alertTo, subject: `[g1t status] ${letter.heading}`, text: body, html })
+        .catch((e) => console.error(JSON.stringify({ event: "status.alert_failed", error: String(e) }))),
+    );
   }
 }
 
@@ -561,23 +579,38 @@ async function subscriptions(request: Request, env: Env, ctx: ExecutionContext, 
     const email = normalizeEmail(data.get("email"));
     if (!email) return message("That is not an email address", "Go back and check it.", 400);
     if (await isLimited(env.STATUS_EMAIL_LIMIT, await secretKey("email", email))) return tooMany();
-    const chosen = chosenParts(data.getAll("components").map(String), parts(env).map((p) => p.key));
+    const chosen = chosenParts(
+      data.getAll("components").map(String),
+      parts(env).map((p) => p.key),
+    );
     const token = newToken();
     const { send } = await requestSubscription(env.DB, email, chosen, await hashToken(token), new Date(), CONFIRM_TTL_MS, RESEND_AFTER_MS);
     if (send) {
       const link = `${url.origin}/subscribe/confirm?token=${encodeURIComponent(token)}`;
       const { text, html: body } = renderMail(confirmLetter(link, chosen ? chosen.map((k) => names(env).get(k) ?? k) : null));
-      ctx.waitUntil(sender(env)!.send({ to: email, subject: "Confirm your subscription to g1t status", text, html: body }).catch((e) => console.error(JSON.stringify({ event: "status.confirm_failed", error: String(e) }))));
+      ctx.waitUntil(
+        sender(env)!
+          .send({ to: email, subject: "Confirm your subscription to g1t status", text, html: body })
+          .catch((e) => console.error(JSON.stringify({ event: "status.confirm_failed", error: String(e) }))),
+      );
     }
     return message("Check your inbox", "If the address is right, a confirmation link is on its way. It works for 24 hours.");
   }
   if (path === "/subscribe/confirm") {
     const token = url.searchParams.get("token") ?? (post ? String((await form(request)).get("token") ?? "") : "");
     if (!token) return message("That link is incomplete", "Copy the whole link from the email.", 400);
-    if (!post) return message("Confirm your subscription", "One more step: confirm to start getting emails about incidents and maintenance.", 200, { action: "/subscribe/confirm", fields: { token }, button: "Confirm subscription" });
+    if (!post)
+      return message("Confirm your subscription", "One more step: confirm to start getting emails about incidents and maintenance.", 200, {
+        action: "/subscribe/confirm",
+        fields: { token },
+        button: "Confirm subscription",
+      });
     const done = await confirmSubscription(env.DB, await hashToken(token), new Date());
     if (!done) return message("That link has expired", "Confirmation links work for 24 hours and once. Subscribe again for a new one.", 410);
-    return message("You are subscribed", `${done.email} will get an email when g1t posts an incident or maintenance${done.parts ? ` affecting ${done.parts.map((k) => names(env).get(k) ?? k).join(", ")}` : ""}. Every email has a link to unsubscribe.`);
+    return message(
+      "You are subscribed",
+      `${done.email} will get an email when g1t posts an incident or maintenance${done.parts ? ` affecting ${done.parts.map((k) => names(env).get(k) ?? k).join(", ")}` : ""}. Every email has a link to unsubscribe.`,
+    );
   }
   if (path === "/unsubscribe") {
     const token = url.searchParams.get("token") ?? (post ? String((await form(request)).get("token") ?? "") : "");
@@ -625,11 +658,16 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
 
   switch (path) {
     case "/":
-      return cached(request, ctx, async () => {
-        const page = await model(env, now, origin);
-        catchUp(env, ctx, page, now);
-        return html(renderPage(page, options), fresh());
-      }, options.zone);
+      return cached(
+        request,
+        ctx,
+        async () => {
+          const page = await model(env, now, origin);
+          catchUp(env, ctx, page, now);
+          return html(renderPage(page, options), fresh());
+        },
+        options.zone,
+      );
     case "/status.json":
       return cached(request, ctx, async () => {
         const page = await model(env, now, origin);
@@ -644,11 +682,16 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
         });
       });
     case "/history":
-      return cached(request, ctx, async () => {
-        const since = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11, 1));
-        const { incidents, maintenance } = await loadHistory(env.DB, since, origin);
-        return html(renderHistory(incidents, maintenance, options), fresh());
-      }, options.zone);
+      return cached(
+        request,
+        ctx,
+        async () => {
+          const since = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11, 1));
+          const { incidents, maintenance } = await loadHistory(env.DB, since, origin);
+          return html(renderHistory(incidents, maintenance, options), fresh());
+        },
+        options.zone,
+      );
     case "/feed.xml":
     case "/feed.json":
       return cached(request, ctx, async () => {
@@ -661,7 +704,13 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
           : Response.json(jsonFeed(items, feed), { headers: { "content-type": "application/feed+json; charset=utf-8", ...headers } });
       });
     case "/subscribe":
-      return html(renderSubscribe(options, parts(env).map(({ key, name }) => ({ key, name }))), fresh(300));
+      return html(
+        renderSubscribe(
+          options,
+          parts(env).map(({ key, name }) => ({ key, name })),
+        ),
+        fresh(300),
+      );
     case "/subscribe/confirm":
     case "/unsubscribe":
       return (await subscriptions(request, env, ctx, url, options))!;
@@ -679,17 +728,27 @@ async function handle(request: Request, env: Env, ctx: ExecutionContext): Promis
   }
   const incident = /^\/incidents\/([a-z0-9-]{1,64})$/.exec(path);
   if (incident) {
-    return cached(request, ctx, async () => {
-      const found = await loadPublicIncident(env.DB, incident[1]!, origin);
-      return found ? html(renderIncident(found.incident, found.postmortem, names(env), options), fresh()) : notFound();
-    }, options.zone);
+    return cached(
+      request,
+      ctx,
+      async () => {
+        const found = await loadPublicIncident(env.DB, incident[1]!, origin);
+        return found ? html(renderIncident(found.incident, found.postmortem, names(env), options), fresh()) : notFound();
+      },
+      options.zone,
+    );
   }
   const maintenance = /^\/maintenance\/([a-z0-9-]{1,64})$/.exec(path);
   if (maintenance) {
-    return cached(request, ctx, async () => {
-      const found = await loadPublicMaintenance(env.DB, maintenance[1]!, origin);
-      return found ? html(renderMaintenance(found, names(env), options), fresh()) : notFound();
-    }, options.zone);
+    return cached(
+      request,
+      ctx,
+      async () => {
+        const found = await loadPublicMaintenance(env.DB, maintenance[1]!, origin);
+        return found ? html(renderMaintenance(found, names(env), options), fresh()) : notFound();
+      },
+      options.zone,
+    );
   }
   const font = FONTS[path];
   if (font) {
@@ -750,7 +809,12 @@ export class StatusAdmin extends WorkerEntrypoint<Env> implements StatusAdminApi
   }
 
   /** Emails a public update to subscribers when asked; the count to keep with it. */
-  private async announce(incident: { id: string; title: string; components: { key: string; impact: string }[] }, status: keyof typeof INCIDENT_STATUS, text: string, wanted: boolean) {
+  private async announce(
+    incident: { id: string; title: string; components: { key: string; impact: string }[] },
+    status: keyof typeof INCIDENT_STATUS,
+    text: string,
+    wanted: boolean,
+  ) {
     if (!wanted) return null;
     const about = incident.components.filter((c) => c.impact !== "operational").map((c) => c.key);
     return notify(this.env, this.ctx, about, {
@@ -831,7 +895,10 @@ export class StatusAdmin extends WorkerEntrypoint<Env> implements StatusAdminApi
     const action = next.status === "resolved" && existing.status !== "resolved" ? "incident_resolved" : update ? "incident_update" : "incident_note";
     await saveIncident(this.env.DB, existing.id, next, lines, now, checked.value.by, {
       action,
-      detail: entries.map((e) => (e.kind === "update" || e.kind === "note" ? `${e.kind === "update" ? "Public" : "Note"}: ${e.text}` : e.text)).join(" ").slice(0, 500),
+      detail: entries
+        .map((e) => (e.kind === "update" || e.kind === "note" ? `${e.kind === "update" ? "Public" : "Note"}: ${e.text}` : e.text))
+        .join(" ")
+        .slice(0, 500),
     });
     return ok(await this.summary(existing.id));
   }
@@ -844,7 +911,10 @@ export class StatusAdmin extends WorkerEntrypoint<Env> implements StatusAdminApi
     const now = new Date();
     const { next, entries } = applyRoles(facts(existing), checked.value, now);
     if (!entries.length) return ok(await this.summary(existing.id));
-    await saveIncident(this.env.DB, existing.id, next, entries, now, checked.value.by, { action: "incident_roles", detail: entries.map((e) => e.text).join(" ") });
+    await saveIncident(this.env.DB, existing.id, next, entries, now, checked.value.by, {
+      action: "incident_roles",
+      detail: entries.map((e) => e.text).join(" "),
+    });
     return ok(await this.summary(existing.id));
   }
 
@@ -858,7 +928,12 @@ export class StatusAdmin extends WorkerEntrypoint<Env> implements StatusAdminApi
     const at = now.toISOString();
     const title = checked.value.title ?? existing.title;
     const next = { ...facts(existing), visibility: "public" as const, acknowledged_at: existing.acknowledged_at ?? at, title, published_at: at };
-    const notified = await this.announce({ id: existing.id, title, components: existing.components }, existing.status, checked.value.message, checked.value.notify);
+    const notified = await this.announce(
+      { id: existing.id, title, components: existing.components },
+      existing.status,
+      checked.value.message,
+      checked.value.notify,
+    );
     await saveIncident(
       this.env.DB,
       existing.id,
@@ -881,10 +956,19 @@ export class StatusAdmin extends WorkerEntrypoint<Env> implements StatusAdminApi
     if (existing.visibility !== "draft") return fail("conflict", "Only a draft can be dismissed; resolve a published incident instead.");
     const by = String(input?.by ?? "").trim();
     if (!by) return fail("invalid", "Who is making the change is missing.");
-    const reason = String(input?.reason ?? "").trim().slice(0, 500) || "No reason given.";
+    const reason =
+      String(input?.reason ?? "")
+        .trim()
+        .slice(0, 500) || "No reason given.";
     const now = new Date();
     const at = now.toISOString();
-    const next = { ...facts(existing), visibility: "dismissed" as const, status: "resolved" as const, acknowledged_at: existing.acknowledged_at ?? at, resolved_at: at };
+    const next = {
+      ...facts(existing),
+      visibility: "dismissed" as const,
+      status: "resolved" as const,
+      acknowledged_at: existing.acknowledged_at ?? at,
+      resolved_at: at,
+    };
     await saveIncident(this.env.DB, existing.id, next, [{ kind: "dismissed", public: false, status: null, text: `Dismissed: ${reason}` }], now, by, {
       action: "incident_dismissed",
       detail: `${existing.title}: ${reason}`,
@@ -962,7 +1046,9 @@ export class StatusAdmin extends WorkerEntrypoint<Env> implements StatusAdminApi
       v.message ||
       (v.action === "start" ? "The maintenance has begun." : v.action === "complete" ? "The maintenance is complete." : "This maintenance is cancelled.");
     const word = { update: "Update", start: "In progress", complete: "Completed", cancel: "Cancelled" }[v.action];
-    const notified = v.notify ? await notify(this.env, this.ctx, existing.components, { heading: `${word}: ${existing.title}`, text, url: existing.url }) : null;
+    const notified = v.notify
+      ? await notify(this.env, this.ctx, existing.components, { heading: `${word}: ${existing.title}`, text, url: existing.url })
+      : null;
     await maintenanceUpdate(this.env.DB, existing.id, state, text, v.by, notified, new Date(), {
       action: `maintenance_${v.action === "update" ? "update" : v.action === "start" ? "started" : v.action === "complete" ? "completed" : "cancelled"}`,
       detail: `${existing.title}: ${text}`,
@@ -975,4 +1061,3 @@ export class StatusAdmin extends WorkerEntrypoint<Env> implements StatusAdminApi
     return auditLog(this.env.DB, before);
   }
 }
-

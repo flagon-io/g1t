@@ -10,13 +10,13 @@ what goes further: patterns of your own, getting a blocked push through
 with a reason, having owners approve that, and asking a secret's issuer
 whether it still works.
 
-| Feature | Public repositories | Private repositories |
-| --- | --- | --- |
-| Secret scanning and push protection | Free | Free |
-| Bypass with a reason | Free | Free |
-| Custom patterns | Free | With the g1t plan |
-| Delegated bypass | Free | With the g1t plan |
-| Validity checks | Free | With the g1t plan |
+| Feature                             | Public repositories | Private repositories |
+| ----------------------------------- | ------------------- | -------------------- |
+| Secret scanning and push protection | Free                | Free                 |
+| Bypass with a reason                | Free                | Free                 |
+| Custom patterns                     | Free                | With the g1t plan    |
+| Delegated bypass                    | Free                | With the g1t plan    |
+| Validity checks                     | Free                | With the g1t plan    |
 
 See [What's free and what's paid](/guides/security/pricing/).
 
@@ -43,12 +43,12 @@ Push protection stays on whatever this says.
 `g1t.sh/<owner>/<project>/security/secret-scanning` lists the
 repository's secret alerts. Filter them by:
 
-| Filter | Values |
-| --- | --- |
-| State | Open (in the history, or blocked at a push), Dismissed, Fixed |
-| Type | Each kind of secret found, custom patterns by name |
-| Validity | Active, Inactive, Unknown, No check |
-| Bypassed | Bypassed, Not bypassed |
+| Filter   | Values                                                        |
+| -------- | ------------------------------------------------------------- |
+| State    | Open (in the history, or blocked at a push), Dismissed, Fixed |
+| Type     | Each kind of secret found, custom patterns by name            |
+| Validity | Active, Inactive, Unknown, No check                           |
+| Bypassed | Bypassed, Not bypassed                                        |
 
 Each alert has its own page with every place the secret was found (file,
 line and commit), what happened to it, its bypass requests, and its
@@ -120,11 +120,11 @@ remote:     to approve, if your workspace asks), then the same push goes through
 
 On the alert, choose **Bypass push protection** with a reason:
 
-| Reason | API value | The alert |
-| --- | --- | --- |
-| It's a false positive | `false_positive` | Closed as a false positive |
-| It's used in tests | `used_in_tests` | Closed as used in tests |
-| I'll fix it later | `will_fix_later` | Stays open, to be rotated; it counts as critical once it lands |
+| Reason                | API value        | The alert                                                      |
+| --------------------- | ---------------- | -------------------------------------------------------------- |
+| It's a false positive | `false_positive` | Closed as a false positive                                     |
+| It's used in tests    | `used_in_tests`  | Closed as used in tests                                        |
+| I'll fix it later     | `will_fix_later` | Stays open, to be rotated; it counts as critical once it lands |
 
 Then push again, unchanged. Anyone with Write may bypass. The bypass is
 recorded on the alert (who, when, the reason and your comment) and in the
@@ -155,27 +155,27 @@ alert's activity and the audit log (`secret_scanning.bypass_requested`,
 With **Validity checks** on in the workspace's Security settings, g1t asks
 a secret's issuer whether it still works, and marks the alert:
 
-| Validity | Meaning |
-| --- | --- |
-| Active | The issuer accepted it. Rotate it. |
-| Inactive | The issuer refused it: revoked, expired or never real. |
-| Unknown | The issuer could not say (an error, a rate limit), or the secret never landed, so it cannot be read again. |
-| No check | There is no safe way to ask about this kind of secret. |
+| Validity | Meaning                                                                                                    |
+| -------- | ---------------------------------------------------------------------------------------------------------- |
+| Active   | The issuer accepted it. Rotate it.                                                                         |
+| Inactive | The issuer refused it: revoked, expired or never real.                                                     |
+| Unknown  | The issuer could not say (an error, a rate limit), or the secret never landed, so it cannot be read again. |
+| No check | There is no safe way to ask about this kind of secret.                                                     |
 
 Each check is the issuer's own read-only identity call, made over HTTPS by
 the service that read the secret from your repository. The secret goes
 nowhere else, and is never stored:
 
-| Secret | Check |
-| --- | --- |
-| GitHub token | `GET https://api.github.com/user` |
-| GitLab personal access token | `GET https://gitlab.com/api/v4/personal_access_tokens/self` |
-| Stripe live key | `GET https://api.stripe.com/v1/balance` (a restricted key without access to it is still active) |
-| Slack token | `POST https://slack.com/api/auth.test` |
-| npm token | `GET https://registry.npmjs.org/-/whoami` |
-| OpenAI API key | `GET https://api.openai.com/v1/models` |
-| Anthropic API key | `GET https://api.anthropic.com/v1/models` |
-| SendGrid key | `GET https://api.sendgrid.com/v3/scopes` |
+| Secret                       | Check                                                                                           |
+| ---------------------------- | ----------------------------------------------------------------------------------------------- |
+| GitHub token                 | `GET https://api.github.com/user`                                                               |
+| GitLab personal access token | `GET https://gitlab.com/api/v4/personal_access_tokens/self`                                     |
+| Stripe live key              | `GET https://api.stripe.com/v1/balance` (a restricted key without access to it is still active) |
+| Slack token                  | `POST https://slack.com/api/auth.test`                                                          |
+| npm token                    | `GET https://registry.npmjs.org/-/whoami`                                                       |
+| OpenAI API key               | `GET https://api.openai.com/v1/models`                                                          |
+| Anthropic API key            | `GET https://api.anthropic.com/v1/models`                                                       |
+| SendGrid key                 | `GET https://api.sendgrid.com/v3/scopes`                                                        |
 
 Other formats have no check: an AWS access key cannot be checked without
 its secret key, a Slack webhook address would post a message, and the rest
@@ -186,20 +186,20 @@ issuer** on the alert.
 
 ## API and MCP
 
-| Route | What it does | Scope |
-| --- | --- | --- |
-| `GET /repos/{owner}/{name}/secret-scanning/alerts` | Lists alerts; filter with `state`, `secret_type`, `validity`, `bypassed`. | `security:read` |
-| `GET /workspaces/{workspace}/secret-scanning/alerts` | The same across a workspace. | `security:read` |
-| `GET /repos/{owner}/{name}/secret-scanning/alerts/{id}` | One alert with its locations, activity and requests. | `security:read` |
-| `PATCH /repos/{owner}/{name}/secret-scanning/alerts/{id}` | Dismisses (`state` `dismissed`, `reason`, `comment`) or reopens (`state` `open`). Admin. | `security:write` |
-| `GET /repos/{owner}/{name}/secret-scanning/alerts/{id}/locations` | Where the secret was found. | `security:read` |
-| `POST /repos/{owner}/{name}/secret-scanning/alerts/{id}/bypass` | Bypasses push protection with `reason`, or asks to. | `security:write` |
-| `POST /repos/{owner}/{name}/secret-scanning/alerts/{id}/validity` | Checks with the issuer. | `security:write` |
-| `GET /workspaces/{workspace}/secret-scanning/bypass-requests` | Bypass requests; filter with `state`, `repo`. | `security:read` |
-| `PATCH /workspaces/{workspace}/secret-scanning/bypass-requests/{id}` | `decision` `approve`, `deny` or `cancel`. | `security:write` |
-| `GET`, `POST /repos/{owner}/{name}/secret-scanning/custom-patterns` | Lists or creates patterns (also under `/workspaces/{workspace}`). | `security:read`, `security:write` |
-| `PATCH`, `DELETE …/custom-patterns/{id}` | Changes, publishes or deletes one. | `security:write` |
-| `POST …/custom-patterns/dry-run` | Runs a pattern over the default branch without saving it. | `security:write` |
+| Route                                                                | What it does                                                                             | Scope                             |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------- |
+| `GET /repos/{owner}/{name}/secret-scanning/alerts`                   | Lists alerts; filter with `state`, `secret_type`, `validity`, `bypassed`.                | `security:read`                   |
+| `GET /workspaces/{workspace}/secret-scanning/alerts`                 | The same across a workspace.                                                             | `security:read`                   |
+| `GET /repos/{owner}/{name}/secret-scanning/alerts/{id}`              | One alert with its locations, activity and requests.                                     | `security:read`                   |
+| `PATCH /repos/{owner}/{name}/secret-scanning/alerts/{id}`            | Dismisses (`state` `dismissed`, `reason`, `comment`) or reopens (`state` `open`). Admin. | `security:write`                  |
+| `GET /repos/{owner}/{name}/secret-scanning/alerts/{id}/locations`    | Where the secret was found.                                                              | `security:read`                   |
+| `POST /repos/{owner}/{name}/secret-scanning/alerts/{id}/bypass`      | Bypasses push protection with `reason`, or asks to.                                      | `security:write`                  |
+| `POST /repos/{owner}/{name}/secret-scanning/alerts/{id}/validity`    | Checks with the issuer.                                                                  | `security:write`                  |
+| `GET /workspaces/{workspace}/secret-scanning/bypass-requests`        | Bypass requests; filter with `state`, `repo`.                                            | `security:read`                   |
+| `PATCH /workspaces/{workspace}/secret-scanning/bypass-requests/{id}` | `decision` `approve`, `deny` or `cancel`.                                                | `security:write`                  |
+| `GET`, `POST /repos/{owner}/{name}/secret-scanning/custom-patterns`  | Lists or creates patterns (also under `/workspaces/{workspace}`).                        | `security:read`, `security:write` |
+| `PATCH`, `DELETE …/custom-patterns/{id}`                             | Changes, publishes or deletes one.                                                       | `security:write`                  |
+| `POST …/custom-patterns/dry-run`                                     | Runs a pattern over the default branch without saving it.                                | `security:write`                  |
 
 Over MCP, the [`security` tool](/reference/mcp/#security) has the actions
 `secret_alerts`, `secret_alert`, `update_secret_alert`, `secret_locations`,

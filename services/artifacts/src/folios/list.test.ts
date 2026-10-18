@@ -1,7 +1,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { MAX_PAGE_STATE, cleanCover, cleanIcon, cleanSource, cleanTarget, cleanTitle, decodeCursor, depthOf, encodeCursor, listLimit, pageState, sharedTops, subtreeHeight, treeNodes } from "./list.ts";
+import {
+  MAX_PAGE_STATE,
+  cleanCover,
+  cleanIcon,
+  cleanSource,
+  cleanTarget,
+  cleanTitle,
+  decodeCursor,
+  depthOf,
+  encodeCursor,
+  listLimit,
+  pageState,
+  sharedTops,
+  subtreeHeight,
+  treeNodes,
+} from "./list.ts";
 
 test("a page carries the saved document as base64, and none when there is none or it is too large", () => {
   assert.equal(pageState(null), null);
@@ -9,7 +24,10 @@ test("a page carries the saved document as base64, and none when there is none o
   const bytes = new Uint8Array(70_000).map((_, i) => i % 251);
   const carried = pageState(bytes.buffer);
   assert.ok(carried);
-  assert.deepEqual(Uint8Array.from(atob(carried!), (c) => c.charCodeAt(0)), bytes);
+  assert.deepEqual(
+    Uint8Array.from(atob(carried!), (c) => c.charCodeAt(0)),
+    bytes,
+  );
   // D1 may hand a BLOB back as an array of numbers.
   assert.equal(pageState([104, 105]), btoa("hi"));
   assert.equal(pageState(new Uint8Array(MAX_PAGE_STATE + 1).buffer), null);
@@ -22,7 +40,10 @@ test("titles, icons, covers and sources are cleaned", () => {
   assert.equal(cleanIcon("📐 extra words"), "📐 ex");
   assert.equal(cleanCover("gradient:3"), "gradient:3");
   assert.equal(cleanCover("javascript:alert(1)"), null);
-  assert.deepEqual(cleanSource({ title: "Launch thread", href: "/acme/-/chat/general?thread=1" }), { title: "Launch thread", href: "/acme/-/chat/general?thread=1" });
+  assert.deepEqual(cleanSource({ title: "Launch thread", href: "/acme/-/chat/general?thread=1" }), {
+    title: "Launch thread",
+    href: "/acme/-/chat/general?thread=1",
+  });
   assert.equal(cleanSource({ title: "x", href: "https://evil.example" }), null);
   assert.equal(cleanSource({ title: "x", href: "//evil.example" }), null);
   assert.deepEqual(cleanTarget({ kind: "section", heading: " Risks " }), { kind: "section", heading: "Risks" });

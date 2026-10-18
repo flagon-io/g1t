@@ -26,9 +26,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   if (!item || item.section !== "Workspace") throw data(null, { status: 404 });
   // What to use until then lives in each project, so list the projects.
   const listed = item.today ? await projects.list(params.owner, getViewer(context)).catch(() => null) : null;
-  const inProjects = listed?.ok
-    ? listed.value.map((project) => ({ name: project.name || project.slug, to: `/${project.workspace}/${project.slug}` }))
-    : [];
+  const inProjects = listed?.ok ? listed.value.map((project) => ({ name: project.name || project.slug, to: `/${project.workspace}/${project.slug}` })) : [];
   return { item, inProjects };
 }
 
@@ -36,12 +34,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 export default function WorkspaceSoon({ loaderData, params }: Route.ComponentProps) {
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
-      <SoonView
-        item={loaderData.item}
-        base={`/${params.owner}/-`}
-        inProjects={loaderData.inProjects}
-        newProject={`/new?workspace=${params.owner}`}
-      />
+      <SoonView item={loaderData.item} base={`/${params.owner}/-`} inProjects={loaderData.inProjects} newProject={`/new?workspace=${params.owner}`} />
     </div>
   );
 }

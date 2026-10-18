@@ -23,7 +23,10 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const slow = Number(search.get("slow")) || null;
   const cursor = search.get("cursor");
   const [list, facets] = await Promise.all([
-    soft(service.traces({ project_id: projectId, ...filter, text: view.q || null, errors_only: errorsOnly, min_duration_ms: slow, cursor, limit: 50 }), "traces"),
+    soft(
+      service.traces({ project_id: projectId, ...filter, text: view.q || null, errors_only: errorsOnly, min_duration_ms: slow, cursor, limit: 50 }),
+      "traces",
+    ),
     soft(service.facets({ project_id: projectId }), "facets"),
   ]);
   return { view, list, facets, errorsOnly, slow, cursor };
@@ -51,7 +54,10 @@ export default function Traces({ loaderData, params }: Route.ComponentProps) {
         view={view}
         environments={facets?.environments ?? []}
         services={facets?.services ?? []}
-        search={{ placeholder: "Search span names   service:api   http.route=/users/:id", hint: "Words in span names, a field such as service:api, or attribute=value" }}
+        search={{
+          placeholder: "Search span names   service:api   http.route=/users/:id",
+          hint: "Words in span names, a field such as service:api, or attribute=value",
+        }}
       >
         <nav className="flex rounded-md border border-line p-0.5 text-sm" aria-label="Slower than">
           {SLOW.map((ms) => (
@@ -70,7 +76,10 @@ export default function Traces({ loaderData, params }: Route.ComponentProps) {
           to={href({ errors: errorsOnly ? null : "1" })}
           preventScrollReset
           aria-pressed={errorsOnly}
-          className={cn("inline-flex h-8 items-center rounded-md border px-2.5 text-xs", errorsOnly ? "border-danger/40 bg-danger/10 text-danger" : "border-line text-muted hover:text-fg")}
+          className={cn(
+            "inline-flex h-8 items-center rounded-md border px-2.5 text-xs",
+            errorsOnly ? "border-danger/40 bg-danger/10 text-danger" : "border-line text-muted hover:text-fg",
+          )}
         >
           With errors
         </Link>
@@ -81,8 +90,8 @@ export default function Traces({ loaderData, params }: Route.ComponentProps) {
           <Unavailable what="Traces" />
         ) : list.items.length === 0 ? (
           <EmptyState title={cursor ? "No older traces" : "No traces in this period"}>
-            Traces come from OpenTelemetry spans. An app on g1t.page sends them as soon as it uses an OpenTelemetry SDK: its endpoint and token
-            are set for it. Software elsewhere sends them with an ingest token.{" "}
+            Traces come from OpenTelemetry spans. An app on g1t.page sends them as soon as it uses an OpenTelemetry SDK: its endpoint and token are set for it.
+            Software elsewhere sends them with an ingest token.{" "}
             <a href="https://docs.g1t.sh/guides/observability/#traces" className="text-accent hover:underline">
               How
             </a>

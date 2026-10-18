@@ -3,8 +3,8 @@ title: Build and ship an app with an agent
 description: Have Claude Code, with g1t's plugin, create a repository, push an app, open a pull request and merge it. Turn deployments on once, and every change after that ships through the same loop. What the agent does at each step, the access each needs, and what stays with you.
 ---
 
-import { Steps } from '@astrojs/starlight/components';
-import Aside from '../../../components/Aside.astro';
+import { Steps } from "@astrojs/starlight/components";
+import Aside from "../../../components/Aside.astro";
 
 Claude Code, with g1t's [plugin](/guides/claude-code-plugin/), can take an
 app from an empty folder to a merged pull request on g1t: it creates the
@@ -28,6 +28,7 @@ names in their place.
 
   [Claude Code plugin](/guides/claude-code-plugin/#install) covers
   installing both, and signing in the plugin's MCP server with `/mcp`.
+
 - **A workspace you can create repositories in.** Whoever creates a
   repository gets the Admin [role](/guides/access-and-roles/) on it, which
   turning deployments on needs.
@@ -38,11 +39,11 @@ names in their place.
 
 The agent acts as you, in one of two ways, and they carry different access:
 
-| | The g1t CLI | g1t's MCP tools |
-| --- | --- | --- |
-| Signed in by | `g1t auth login` | `/mcp`, **plugin:g1t:g1t** |
-| What it may do | Everything you can: the sign-in carries every scope, bounded by your roles | The [Agent preset](/guides/authentication/#presets), unless you change it: reading across g1t, creating repositories, and writing code, work items, pull requests and notifications |
-| Creates a repository | Yes | Yes, with `repo:create` |
+|                      | The g1t CLI                                                                | g1t's MCP tools                                                                                                                                                                     |
+| -------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Signed in by         | `g1t auth login`                                                           | `/mcp`, **plugin:g1t:g1t**                                                                                                                                                          |
+| What it may do       | Everything you can: the sign-in carries every scope, bounded by your roles | The [Agent preset](/guides/authentication/#presets), unless you change it: reading across g1t, creating repositories, and writing code, work items, pull requests and notifications |
+| Creates a repository | Yes                                                                        | Yes, with `repo:create`                                                                                                                                                             |
 
 The plugin's skills and hooks use the CLI, so Claude reaches for `g1t`
 commands first. A plugin signed in before the Agent preset gave
@@ -84,14 +85,10 @@ choose **Change access** on Claude Code, tick `repo:create` and choose
    git.
 
    <Aside title="Record the session from here">
-   The plugin records a session only when it starts in a working copy
-   whose remote is on g1t, and this folder had none when the session
-   started. Start Claude Code again with `claude --continue`: the
-   conversation carries on, and from then on the session is recorded, shows
-   in **Live now** on the workspace's **Sessions**, and is tied to the
-   commits and pull requests it makes. To record it all, create the
-   repository first yourself, `g1t repo create acme/my-app --clone`, and
-   start Claude Code in the clone.
+     The plugin records a session only when it starts in a working copy whose remote is on g1t, and this folder had none when the session started. Start Claude
+     Code again with `claude --continue`: the conversation carries on, and from then on the session is recorded, shows in **Live now** on the workspace's
+     **Sessions**, and is tied to the commits and pull requests it makes. To record it all, create the repository first yourself, `g1t repo create acme/my-app
+     --clone`, and start Claude Code in the clone.
    </Aside>
 
 2. **Open and merge a pull request**
@@ -107,14 +104,14 @@ choose **Change access** on Claude Code, tick `repo:create` and choose
 
    The agent works as the plugin's `/g1t:work-on-item` skill says:
 
-   | The agent | With the CLI | With MCP |
-   | --- | --- | --- |
-   | Opens a work item and claims it for this session | `g1t work claim --title "Add a contact page"` | `work_item` `claim` with a `title` |
-   | Makes a branch named for the work item, such as `1-contact-page`, and commits with the trailer `G1t-Session: $G1T_SESSION` | `git commit --trailer "G1t-Session: $G1T_SESSION"` | |
-   | Opens a draft pull request early | `g1t pr create --item 1 --draft --fill` | `pull_request` `create` with `item` |
-   | Watches the checks | `g1t pr checks --watch --fail-fast` | `pull_request` `get` |
-   | Marks it ready, with what changed and why | `g1t pr ready --summary "…"` | `pull_request` `ready` |
-   | Merges it | `g1t pr merge` | `pull_request` `merge` |
+   | The agent                                                                                                                  | With the CLI                                       | With MCP                            |
+   | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- | ----------------------------------- |
+   | Opens a work item and claims it for this session                                                                           | `g1t work claim --title "Add a contact page"`      | `work_item` `claim` with a `title`  |
+   | Makes a branch named for the work item, such as `1-contact-page`, and commits with the trailer `G1t-Session: $G1T_SESSION` | `git commit --trailer "G1t-Session: $G1T_SESSION"` |                                     |
+   | Opens a draft pull request early                                                                                           | `g1t pr create --item 1 --draft --fill`            | `pull_request` `create` with `item` |
+   | Watches the checks                                                                                                         | `g1t pr checks --watch --fail-fast`                | `pull_request` `get`                |
+   | Marks it ready, with what changed and why                                                                                  | `g1t pr ready --summary "…"`                       | `pull_request` `ready`              |
+   | Merges it                                                                                                                  | `g1t pr merge`                                     | `pull_request` `merge`              |
 
    `g1t work claim` prints `Opened #1 Add a contact page.` and
    `Claimed #1.`; `g1t pr merge` prints `Merged acme/my-app#2`. Merging
@@ -132,7 +129,6 @@ choose **Change access** on Claude Code, tick `repo:create` and choose
 
    This is yours to do, once. No API route or MCP tool turns deployments
    on, and none starts a plan.
-
    1. If the workspace is not on the g1t plan, an owner opens
       **Settings → Billing and plans**, `g1t.sh/acme/-/billing`, and
       chooses **Start the g1t plan**.
@@ -180,14 +176,14 @@ Required checks, approvals and the merge queue hold for the agent's pull
 requests exactly as for yours. An admin sets them under the repository's
 **Settings → Rules**; see [Rules](/guides/rules/).
 
-| The repository has | What the agent's merge does |
-| --- | --- |
-| A draft pull request | Refused until it is marked ready: `g1t pr ready`. |
-| [Required checks](/guides/checks/#required-checks) | Refused while one is failing or has not reported yet; the refusal names the first rule not met. `g1t pr merge --auto` (`pull_request` `enable_auto_merge`) has it merge on its own, as you, once they pass. |
-| Required approvals | Waits for someone else to approve. The agent works as you, and nobody approves their own pull request. |
-| A rule that it be up to date | Refused when the default branch has moved: `g1t pr update-branch`, then merge again. |
-| A required deployment | Waits for the pull request's head to deploy, such as its preview. |
-| The [merge queue](/guides/merge-queue/) | Adds it to the queue, which tests it with the pull requests ahead of it and lands it. The CLI says `acme/my-app#2 lands once it is brought up to date or through the merge queue`. If the queue takes it out, the agent is [told why](/guides/merge-queue/#who-is-told), and the plugin's `/g1t:fix-integration` skill fixes and queues it again. |
+| The repository has                                 | What the agent's merge does                                                                                                                                                                                                                                                                                                                       |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A draft pull request                               | Refused until it is marked ready: `g1t pr ready`.                                                                                                                                                                                                                                                                                                 |
+| [Required checks](/guides/checks/#required-checks) | Refused while one is failing or has not reported yet; the refusal names the first rule not met. `g1t pr merge --auto` (`pull_request` `enable_auto_merge`) has it merge on its own, as you, once they pass.                                                                                                                                       |
+| Required approvals                                 | Waits for someone else to approve. The agent works as you, and nobody approves their own pull request.                                                                                                                                                                                                                                            |
+| A rule that it be up to date                       | Refused when the default branch has moved: `g1t pr update-branch`, then merge again.                                                                                                                                                                                                                                                              |
+| A required deployment                              | Waits for the pull request's head to deploy, such as its preview.                                                                                                                                                                                                                                                                                 |
+| The [merge queue](/guides/merge-queue/)            | Adds it to the queue, which tests it with the pull requests ahead of it and lands it. The CLI says `acme/my-app#2 lands once it is brought up to date or through the merge queue`. If the queue takes it out, the agent is [told why](/guides/merge-queue/#who-is-told), and the plugin's `/g1t:fix-integration` skill fixes and queues it again. |
 
 The agent merges as you, so whatever you may bypass, it may too:
 `g1t pr merge --admin` (`ignore_checks` and `bypass_rules` on
@@ -198,19 +194,19 @@ to yourself, say so in the repository's `CLAUDE.md`, and leave
 
 ## What the agent can and can't do
 
-| | The agent | How | Needs |
-| --- | --- | --- | --- |
-| Create a repository | Yes | `g1t repo create`, or `repository` `create` | `repo:create`, which the Agent preset gives |
-| Push code | Yes | git, with the CLI's credentials (`g1t auth setup-git`) or an [access token](/guides/authentication/#access-tokens) | `code:write`; a workflow file also needs `workflow_files:write` |
-| Open and claim a work item | Yes | `g1t work claim`, or `work_item` `claim` | `work:write` |
-| Open a pull request and mark it ready | Yes | `g1t pr create` and `g1t pr ready`, or `pull_request` `create` and `ready` | `pull_requests:write` |
-| Watch checks and the preview | Yes | `g1t pr checks --watch`, or `pull_request` `get` | `pull_requests:read` |
-| Merge | Yes, within the repository's rules | `g1t pr merge`, or `pull_request` `merge` | `pull_requests:write`, and the Write role |
-| Approve its own pull request | No | Someone else approves | |
-| Read deployments, logs and errors | Yes | `g1t deploy list` and `g1t logs`, or `workflow` `list_deployments` and `observability` | `deployments:read`, `observability:read` |
-| Start the g1t plan | No | An owner, under **Settings → Billing and plans** | |
-| Turn deployments on or off, or change their settings | No | You, under the project's **Settings → Deployments**, with the Admin role, or by starting [Ask's card for a new repository](/guides/ask/#building-something-new) | |
-| Build production again | No | **Redeploy** on the project's overview, with the Write role, or a push to the default branch | |
+|                                                      | The agent                          | How                                                                                                                                                             | Needs                                                           |
+| ---------------------------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| Create a repository                                  | Yes                                | `g1t repo create`, or `repository` `create`                                                                                                                     | `repo:create`, which the Agent preset gives                     |
+| Push code                                            | Yes                                | git, with the CLI's credentials (`g1t auth setup-git`) or an [access token](/guides/authentication/#access-tokens)                                              | `code:write`; a workflow file also needs `workflow_files:write` |
+| Open and claim a work item                           | Yes                                | `g1t work claim`, or `work_item` `claim`                                                                                                                        | `work:write`                                                    |
+| Open a pull request and mark it ready                | Yes                                | `g1t pr create` and `g1t pr ready`, or `pull_request` `create` and `ready`                                                                                      | `pull_requests:write`                                           |
+| Watch checks and the preview                         | Yes                                | `g1t pr checks --watch`, or `pull_request` `get`                                                                                                                | `pull_requests:read`                                            |
+| Merge                                                | Yes, within the repository's rules | `g1t pr merge`, or `pull_request` `merge`                                                                                                                       | `pull_requests:write`, and the Write role                       |
+| Approve its own pull request                         | No                                 | Someone else approves                                                                                                                                           |                                                                 |
+| Read deployments, logs and errors                    | Yes                                | `g1t deploy list` and `g1t logs`, or `workflow` `list_deployments` and `observability`                                                                          | `deployments:read`, `observability:read`                        |
+| Start the g1t plan                                   | No                                 | An owner, under **Settings → Billing and plans**                                                                                                                |                                                                 |
+| Turn deployments on or off, or change their settings | No                                 | You, under the project's **Settings → Deployments**, with the Admin role, or by starting [Ask's card for a new repository](/guides/ask/#building-something-new) |                                                                 |
+| Build production again                               | No                                 | **Redeploy** on the project's overview, with the Write role, or a push to the default branch                                                                    |                                                                 |
 
 Scopes are explained under [scopes](/guides/authentication/#scopes);
 [MCP tools](/reference/mcp/) and the [CLI reference](/reference/cli/) list

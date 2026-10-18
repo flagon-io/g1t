@@ -566,17 +566,9 @@ export type ChatApi = {
   sidebar(workspace: string, viewer: User): Promise<Result<ChatSidebar>>;
   /** What was said in `[from, until)` (RFC 3339) where the viewer can read, counted. */
   activity(workspace: string, viewer: User, span: { from: string; until: string }): Promise<Result<ChatActivity>>;
-  channel(
-    workspace: string,
-    channelId: string,
-    viewer: User,
-  ): Promise<Result<ChannelDetail>>;
+  channel(workspace: string, channelId: string, viewer: User): Promise<Result<ChannelDetail>>;
   /** The same, found by its name in the workspace (`#general` or `general`), as the site's URLs name channels. */
-  channelByName(
-    workspace: string,
-    name: string,
-    viewer: User,
-  ): Promise<Result<ChannelDetail>>;
+  channelByName(workspace: string, name: string, viewer: User): Promise<Result<ChannelDetail>>;
   /**
    * Browse channels: every public channel, and the private ones the viewer
    * is in. With `archived`, the archived ones instead.
@@ -646,12 +638,7 @@ export type ChatApi = {
   edit(workspace: string, channelId: string, viewer: User, id: string, body: string): Promise<Result<ChatMessage>>;
   remove(workspace: string, channelId: string, viewer: User, id: string): Promise<Result<null>>;
   markRead(workspace: string, channelId: string, viewer: User, id: string): Promise<Result<null>>;
-  setPreferences(
-    workspace: string,
-    channelId: string,
-    viewer: User,
-    prefs: { starred?: boolean; muted?: boolean },
-  ): Promise<Result<null>>;
+  setPreferences(workspace: string, channelId: string, viewer: User, prefs: { starred?: boolean; muted?: boolean }): Promise<Result<null>>;
   /**
    * Reacts to a message with `emoji` (one Unicode emoji, or `:name:` for
    * one of the workspace's own). Once per member per emoji; at most 50
@@ -753,10 +740,8 @@ export function chatClient(service: ServiceBinding): ChatApi {
     openDm: (workspace, viewer, members) => call("open_dm", { workspace, viewer, members }),
     join: (workspace, channelId, viewer) => call("join", { workspace, channel_id: channelId, viewer }),
     leave: (workspace, channelId, viewer) => call("leave", { workspace, channel_id: channelId, viewer }),
-    invite: (workspace, channelId, viewer, member) =>
-      call("invite", { workspace, channel_id: channelId, viewer, member }),
-    removeMember: (workspace, channelId, viewer, member) =>
-      call("remove_member", { workspace, channel_id: channelId, viewer, member }),
+    invite: (workspace, channelId, viewer, member) => call("invite", { workspace, channel_id: channelId, viewer, member }),
+    removeMember: (workspace, channelId, viewer, member) => call("remove_member", { workspace, channel_id: channelId, viewer, member }),
     channelInvitations: (viewer) => call("channel_invitations", { viewer }),
     answerChannelInvitation: (viewer, id, accept) => call("answer_channel_invitation", { viewer, id, accept }),
     requestAccess: (workspace, name, viewer, note) => call("request_access", { workspace, name, viewer, note }),
@@ -776,12 +761,9 @@ export function chatClient(service: ServiceBinding): ChatApi {
     edit: (workspace, channelId, viewer, id, body) => call("edit", { workspace, channel_id: channelId, viewer, id, body }),
     remove: (workspace, channelId, viewer, id) => call("remove", { workspace, channel_id: channelId, viewer, id }),
     markRead: (workspace, channelId, viewer, id) => call("mark_read", { workspace, channel_id: channelId, viewer, id }),
-    setPreferences: (workspace, channelId, viewer, prefs) =>
-      call("set_preferences", { workspace, channel_id: channelId, viewer, prefs }),
-    react: (workspace, channelId, viewer, messageId, emoji) =>
-      call("react", { workspace, channel_id: channelId, viewer, message_id: messageId, emoji }),
-    unreact: (workspace, channelId, viewer, messageId, emoji) =>
-      call("unreact", { workspace, channel_id: channelId, viewer, message_id: messageId, emoji }),
+    setPreferences: (workspace, channelId, viewer, prefs) => call("set_preferences", { workspace, channel_id: channelId, viewer, prefs }),
+    react: (workspace, channelId, viewer, messageId, emoji) => call("react", { workspace, channel_id: channelId, viewer, message_id: messageId, emoji }),
+    unreact: (workspace, channelId, viewer, messageId, emoji) => call("unreact", { workspace, channel_id: channelId, viewer, message_id: messageId, emoji }),
     listEmoji: (workspace, viewer) => call("list_emoji", { workspace, viewer }),
     addEmoji: (workspace, viewer, name, file) => call("add_emoji", { workspace, viewer, name, file }),
     aliasEmoji: (workspace, viewer, name, target) => call("alias_emoji", { workspace, viewer, name, target }),

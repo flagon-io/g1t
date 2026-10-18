@@ -9,10 +9,39 @@
 /** Countries whose visitors are asked before analytics runs. */
 const ASK_FIRST = new Set([
   // The EU.
-  "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU",
-  "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE",
+  "AT",
+  "BE",
+  "BG",
+  "HR",
+  "CY",
+  "CZ",
+  "DK",
+  "EE",
+  "FI",
+  "FR",
+  "DE",
+  "GR",
+  "HU",
+  "IE",
+  "IT",
+  "LV",
+  "LT",
+  "LU",
+  "MT",
+  "NL",
+  "PL",
+  "PT",
+  "RO",
+  "SK",
+  "SI",
+  "ES",
+  "SE",
   // The rest of the EEA, the UK and Switzerland.
-  "IS", "LI", "NO", "GB", "CH",
+  "IS",
+  "LI",
+  "NO",
+  "GB",
+  "CH",
 ]);
 
 /** Whether a visitor from `country` (ISO 3166 alpha-2, as Cloudflare gives it) is asked first. */

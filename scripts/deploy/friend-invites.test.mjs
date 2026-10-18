@@ -28,7 +28,9 @@ const SQL = { ...statements("invites.rs"), ...statements(join("invites", "friend
 function migrated() {
   const db = new DatabaseSync(":memory:");
   const dir = join(ROOT, "services", "identity", "migrations");
-  for (const file of readdirSync(dir).filter((name) => name.endsWith(".sql")).sort()) {
+  for (const file of readdirSync(dir)
+    .filter((name) => name.endsWith(".sql"))
+    .sort()) {
     db.exec(readFileSync(join(dir, file), "utf8"));
   }
   return db;
@@ -64,7 +66,22 @@ test("twenty invites each: the twenty-first is refused in the statement that wri
   // Somebody else's are their own.
   assert.ok(invite(db, "usr_cy", "friend1@example.com"));
   // Invitations into a workspace never count.
-  db.prepare(SQL.INSERT).run("inv_ws", "hash_ws", "g1t-wxyz", null, "x@example.com", "account", "wsp_1", "usr_bo", null, "none", EARLIER, LATER, null, "member");
+  db.prepare(SQL.INSERT).run(
+    "inv_ws",
+    "hash_ws",
+    "g1t-wxyz",
+    null,
+    "x@example.com",
+    "account",
+    "wsp_1",
+    "usr_bo",
+    null,
+    "none",
+    EARLIER,
+    LATER,
+    null,
+    "member",
+  );
   assert.equal(used(db, "usr_bo"), LIMIT);
 });
 

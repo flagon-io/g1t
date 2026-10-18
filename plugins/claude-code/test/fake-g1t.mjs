@@ -26,9 +26,7 @@ const olderThan = (a, b) => {
  * version, it is the newest.
  */
 export function refusal(args, contract = CONTRACT, version = null) {
-  const command = contract.commands
-    .filter((c) => c.command.every((word, i) => args[i] === word))
-    .sort((a, b) => b.command.length - a.command.length)[0];
+  const command = contract.commands.filter((c) => c.command.every((word, i) => args[i] === word)).sort((a, b) => b.command.length - a.command.length)[0];
   if (!command || args.length === 0) return `not a command: ${args.join(" ")}`;
   const name = command.command.join(" ") || "g1t";
   const rest = args.slice(command.command.length);

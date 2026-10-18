@@ -26,7 +26,10 @@ export function BreadcrumbLink({ asChild, className, ...props }: ComponentProps<
   return (
     <Comp
       data-slot="breadcrumb-link"
-      className={cn("truncate rounded-md px-1.5 py-1 outline-none transition-colors hover:bg-raised hover:text-fg focus-visible:ring-2 focus-visible:ring-accent", className)}
+      className={cn(
+        "truncate rounded-md px-1.5 py-1 outline-none transition-colors hover:bg-raised hover:text-fg focus-visible:ring-2 focus-visible:ring-accent",
+        className,
+      )}
       {...props}
     />
   );
@@ -55,7 +58,13 @@ export function BreadcrumbSeparator({ children, className, ...props }: Component
 
 export function BreadcrumbEllipsis({ className, ...props }: ComponentProps<"span">) {
   return (
-    <span data-slot="breadcrumb-ellipsis" role="presentation" aria-hidden="true" className={cn("flex size-8 items-center justify-center", className)} {...props}>
+    <span
+      data-slot="breadcrumb-ellipsis"
+      role="presentation"
+      aria-hidden="true"
+      className={cn("flex size-8 items-center justify-center", className)}
+      {...props}
+    >
       <MoreHorizontal size={16} />
       <span className="sr-only">More</span>
     </span>

@@ -88,12 +88,12 @@ that branch, whoever opened it. Someone with the Admin
 [role](/guides/access-and-roles/) sets them under the
 repository's **Settings → Rules**:
 
-| Rule | What it does |
-| --- | --- |
+| Rule                                  | What it does                                                                                                                                                                                                                                      |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Require a pull request before merging | Refuses pushes to the branch, so changes reach it only by merging. Sets the approvals a merge needs, whether approvals before the latest push count, and whether [code owners](/guides/codeowners/#require-review-from-code-owners) must approve. |
-| Require status checks to pass | The checks that must pass on a pull request's head before it merges, whether it must be up to date with the branch first, whether someone who may merge can bypass the checks, and optionally only when some paths change. |
-| Require the merge queue | See [merge queue](/guides/merge-queue/). |
-| Require deployments to succeed | A pull request's head must have deployed to these environments. |
+| Require status checks to pass         | The checks that must pass on a pull request's head before it merges, whether it must be up to date with the branch first, whether someone who may merge can bypass the checks, and optionally only when some paths change.                        |
+| Require the merge queue               | See [merge queue](/guides/merge-queue/).                                                                                                                                                                                                          |
+| Require deployments to succeed        | A pull request's head must have deployed to these environments.                                                                                                                                                                                   |
 
 [Rules](/guides/rules/#rules) lists every rule, including those for
 sensitive paths and merge windows.
@@ -119,12 +119,12 @@ Type a job's name to require it: the list offers the names of statuses.
 Each job's latest attempt counts. One that was skipped passes the check,
 and one that was cancelled fails it.
 
-| What reported it | What the merge does |
-| --- | --- |
-| A status that failed | Refused: "The required check CI failed." |
-| A status still pending | Held: "The required check CI has not finished." |
-| Nothing yet | Held: "The required check CI has not reported on its latest commit." |
-| Success | Allowed |
+| What reported it       | What the merge does                                                  |
+| ---------------------- | -------------------------------------------------------------------- |
+| A status that failed   | Refused: "The required check CI failed."                             |
+| A status still pending | Held: "The required check CI has not finished."                      |
+| Nothing yet            | Held: "The required check CI has not reported on its latest commit." |
+| Success                | Allowed                                                              |
 
 The same rule holds wherever a pull request merges: the merge button,
 [`merge_pull_request`](/reference/api/pull-requests/merge-pull-request/),
@@ -286,11 +286,11 @@ the repository whose branch was deleted: push the branch again first.
 
 ### From the API
 
-| To | Call | MCP |
-| --- | --- | --- |
-| Convert to a draft | `POST /repos/{owner}/{name}/pulls/{number}/draft` | `pull_request` with `"action": "draft"` |
-| Close | `POST /repos/{owner}/{name}/pulls/{number}/close`, or `PATCH /repos/{owner}/{name}/pulls/{number}` with `"state": "closed"` | `pull_request` with `"action": "close"` |
-| Reopen | `POST /repos/{owner}/{name}/pulls/{number}/reopen`, or `PATCH /repos/{owner}/{name}/pulls/{number}` with `"state": "open"` | `pull_request` with `"action": "reopen"` |
+| To                 | Call                                                                                                                        | MCP                                      |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| Convert to a draft | `POST /repos/{owner}/{name}/pulls/{number}/draft`                                                                           | `pull_request` with `"action": "draft"`  |
+| Close              | `POST /repos/{owner}/{name}/pulls/{number}/close`, or `PATCH /repos/{owner}/{name}/pulls/{number}` with `"state": "closed"` | `pull_request` with `"action": "close"`  |
+| Reopen             | `POST /repos/{owner}/{name}/pulls/{number}/reopen`, or `PATCH /repos/{owner}/{name}/pulls/{number}` with `"state": "open"`  | `pull_request` with `"action": "reopen"` |
 
 Each answers with the pull request as it is now. Converting publishes
 `pull.converted_to_draft` and reopening publishes `pull.reopened`, with the
@@ -401,13 +401,13 @@ The commit's author and anyone mentioned are notified.
 You can edit and delete your own commit comments; anyone with the Maintain
 [role](/guides/access-and-roles/) or higher can delete anyone's.
 
-| To | API | MCP (`repository`) |
-| --- | --- | --- |
-| List a repository's, newest first | `GET /repos/{owner}/{name}/comments` (`page`, 30 a page) | `list_commit_comments` |
-| List a commit's, oldest first | `GET /repos/{owner}/{name}/commits/{sha}/comments` | `commit_comments` |
-| Comment | `POST /repos/{owner}/{name}/commits/{sha}/comments` with `body`, and `path` and `line` for a line | `comment_on_commit` |
-| Edit | `PATCH /repos/{owner}/{name}/comments/{comment_id}` with `body` | `edit_commit_comment` |
-| Delete | `DELETE /repos/{owner}/{name}/comments/{comment_id}`, which answers `204` | `delete_commit_comment` |
+| To                                | API                                                                                               | MCP (`repository`)      |
+| --------------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------- |
+| List a repository's, newest first | `GET /repos/{owner}/{name}/comments` (`page`, 30 a page)                                          | `list_commit_comments`  |
+| List a commit's, oldest first     | `GET /repos/{owner}/{name}/commits/{sha}/comments`                                                | `commit_comments`       |
+| Comment                           | `POST /repos/{owner}/{name}/commits/{sha}/comments` with `body`, and `path` and `line` for a line | `comment_on_commit`     |
+| Edit                              | `PATCH /repos/{owner}/{name}/comments/{comment_id}` with `body`                                   | `edit_commit_comment`   |
+| Delete                            | `DELETE /repos/{owner}/{name}/comments/{comment_id}`, which answers `204`                         | `delete_commit_comment` |
 
 Reading needs the `repo:read` scope; commenting, editing and deleting need
 `work:write`, as comments on work items do. Each publishes
@@ -424,12 +424,12 @@ first.
 
 ### Merge methods
 
-| Method | Name in the API | What lands on the base |
-| --- | --- | --- |
-| Create a merge commit | `merge` | Every commit of the branch, and a merge commit on top whose parents are the base and the branch. |
-| Squash and merge | `squash` | One new commit holding everything the pull request changed, authored by whoever the pull request is for (its author, or whoever asked g1t for it), with you as committer and a `Co-authored-by:` trailer for every other author of its commits. |
-| Rebase and merge | `rebase` | Each commit of the branch, made again on top of the base in order, keeping its author, date and message, with you as committer and a new hash. Merge commits and commits the base already has are left out. The base moves to the last of them. |
-| Fast-forward | `fast_forward` | Nothing new: the base moves to the branch's head, the exact commit its checks ran on. Only possible when the branch contains the base's head; [update the branch](#keeping-it-up-to-date) first otherwise. |
+| Method                | Name in the API | What lands on the base                                                                                                                                                                                                                          |
+| --------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Create a merge commit | `merge`         | Every commit of the branch, and a merge commit on top whose parents are the base and the branch.                                                                                                                                                |
+| Squash and merge      | `squash`        | One new commit holding everything the pull request changed, authored by whoever the pull request is for (its author, or whoever asked g1t for it), with you as committer and a `Co-authored-by:` trailer for every other author of its commits. |
+| Rebase and merge      | `rebase`        | Each commit of the branch, made again on top of the base in order, keeping its author, date and message, with you as committer and a new hash. Merge commits and commits the base already has are left out. The base moves to the last of them. |
+| Fast-forward          | `fast_forward`  | Nothing new: the base moves to the branch's head, the exact commit its checks ran on. Only possible when the branch contains the base's head; [update the branch](#keeping-it-up-to-date) first otherwise.                                      |
 
 A repository chooses the methods it allows, and which one is offered first,
 in its [settings](/guides/managing-repositories/#pull-requests). A
@@ -462,28 +462,28 @@ A merge commit and a squash commit get a message. You can write it in the
 merge box before you confirm, or with `commit_title` and `commit_message`
 in the API. Otherwise the repository's default decides:
 
-| Default | Merge commit | Squash commit |
-| --- | --- | --- |
-| `default` | **Merge pull request #12 from *owner/branch***, with its title below | Its title with its number, **Greet the caller (#12)**; with more than one commit, a list of their subjects below |
-| `pull_title` | Its title, with its number: **Greet the caller (#12)** | The same |
-| `pull_title_and_description` | Its title, with its number, and its description below | The same |
-| `pull_title_and_commits` | Not offered | Its title, with its number, and each commit's message below |
-| `custom` | The repository's merge commit template | The repository's squash commit template |
+| Default                      | Merge commit                                                         | Squash commit                                                                                                    |
+| ---------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `default`                    | **Merge pull request #12 from _owner/branch_**, with its title below | Its title with its number, **Greet the caller (#12)**; with more than one commit, a list of their subjects below |
+| `pull_title`                 | Its title, with its number: **Greet the caller (#12)**               | The same                                                                                                         |
+| `pull_title_and_description` | Its title, with its number, and its description below                | The same                                                                                                         |
+| `pull_title_and_commits`     | Not offered                                                          | Its title, with its number, and each commit's message below                                                      |
+| `custom`                     | The repository's merge commit template                               | The repository's squash commit template                                                                          |
 
 A template is the whole message, its first line the title. These
 placeholders are filled in:
 
-| Placeholder | Becomes |
-| --- | --- |
-| `{title}` | The pull request's title |
-| `{number}` | Its number, without `#` |
-| `{body}` | Its description |
-| `{branch}` | The branch it merges from |
-| `{head_repo}` | The repository that branch is in, as `owner/name` |
-| `{base}` | The branch it merges into |
-| `{author}` | Its author's username |
-| `{commits}` | Its commits' subjects, one `* subject` line each |
-| `{items}` | The work items it lands on, as `#12, #14` |
+| Placeholder    | Becomes                                                            |
+| -------------- | ------------------------------------------------------------------ |
+| `{title}`      | The pull request's title                                           |
+| `{number}`     | Its number, without `#`                                            |
+| `{body}`       | Its description                                                    |
+| `{branch}`     | The branch it merges from                                          |
+| `{head_repo}`  | The repository that branch is in, as `owner/name`                  |
+| `{base}`       | The branch it merges into                                          |
+| `{author}`     | Its author's username                                              |
+| `{commits}`    | Its commits' subjects, one `* subject` line each                   |
+| `{items}`      | The work items it lands on, as `#12, #14`                          |
 | `{co_authors}` | A `Co-authored-by:` line for each author of its commits, each once |
 
 ```text
@@ -577,15 +577,15 @@ branch a rule protects from deletion are never deleted.
 
 ### From the API and the CLI
 
-| To | API | MCP (`pull_request`) | CLI |
-| --- | --- | --- | --- |
-| Merge | `POST /repos/{owner}/{name}/pulls/{number}/merge` with `merge_method`, `commit_title`, `commit_message`, `sha`, `delete_branch` | `merge` | `g1t pr merge 12 --squash` |
-| Turn on auto-merge | `PUT /repos/{owner}/{name}/pulls/{number}/auto-merge` with `merge_method`, `commit_title`, `commit_message` | `enable_auto_merge` | `g1t pr merge 12 --auto --squash` |
-| Turn off auto-merge | `DELETE /repos/{owner}/{name}/pulls/{number}/auto-merge` | `disable_auto_merge` | `g1t pr merge 12 --disable-auto` |
-| Update its branch | `PUT /repos/{owner}/{name}/pulls/{number}/update-branch` with `update_method`, `expected_head_sha` | `update_branch` | `g1t pr update-branch 12 --rebase` |
-| Delete its branch | `DELETE /repos/{owner}/{name}/pulls/{number}/head-branch` | `delete_branch` | `g1t pr merge 12 --delete-branch`, as it merges |
-| Restore its branch | `POST /repos/{owner}/{name}/pulls/{number}/head-branch/restore` | `restore_branch` | |
-| See how it may merge | `GET /repos/{owner}/{name}/pulls/{number}/merge-options` | `merge_options` | |
+| To                   | API                                                                                                                             | MCP (`pull_request`) | CLI                                             |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------- | -------------------- | ----------------------------------------------- |
+| Merge                | `POST /repos/{owner}/{name}/pulls/{number}/merge` with `merge_method`, `commit_title`, `commit_message`, `sha`, `delete_branch` | `merge`              | `g1t pr merge 12 --squash`                      |
+| Turn on auto-merge   | `PUT /repos/{owner}/{name}/pulls/{number}/auto-merge` with `merge_method`, `commit_title`, `commit_message`                     | `enable_auto_merge`  | `g1t pr merge 12 --auto --squash`               |
+| Turn off auto-merge  | `DELETE /repos/{owner}/{name}/pulls/{number}/auto-merge`                                                                        | `disable_auto_merge` | `g1t pr merge 12 --disable-auto`                |
+| Update its branch    | `PUT /repos/{owner}/{name}/pulls/{number}/update-branch` with `update_method`, `expected_head_sha`                              | `update_branch`      | `g1t pr update-branch 12 --rebase`              |
+| Delete its branch    | `DELETE /repos/{owner}/{name}/pulls/{number}/head-branch`                                                                       | `delete_branch`      | `g1t pr merge 12 --delete-branch`, as it merges |
+| Restore its branch   | `POST /repos/{owner}/{name}/pulls/{number}/head-branch/restore`                                                                 | `restore_branch`     |                                                 |
+| See how it may merge | `GET /repos/{owner}/{name}/pulls/{number}/merge-options`                                                                        | `merge_options`      |                                                 |
 
 Give `sha` (`--match-head-commit` in the CLI) with the head commit you
 reviewed, and the merge is refused with `409` if anything was pushed since.
@@ -675,7 +675,7 @@ or higher, for a branch of the repository; whoever can push to the fork,
 for a branch of a fork) can update it, two ways:
 
 - **Merge.** g1t merges `main` into the branch. The merge commit is named
-  **Merge main into *branch***, has the pull request's head and `main`'s
+  **Merge main into _branch_**, has the pull request's head and `main`'s
   head as its parents, and is authored and pushed as you.
 - **Rebase.** g1t makes each of the branch's commits again on top of
   `main`'s head and moves the branch there. Its history is rewritten, so
@@ -702,21 +702,21 @@ nothing was pushed. On the MCP server it is the `pull_request` tool's
 
 `GET /repos/{owner}/{name}/pulls/{number}` returns, besides the pull request:
 
-| Field | What it is |
-| --- | --- |
-| `statuses` | What each workflow run, and anything else that reports statuses, said about its head, with a link to the run. |
-| `required_checks` | Each check the default branch requires, as it stands on the head: `name`, `state` (`success`, `failure`, `pending`, or `expected` when nothing has reported it yet), `description` and `target_url`. Empty when none are required. |
-| `checks` | The latest record against its head from g1t itself, such as the merge queue taking it out, with `earlier_checks` before it. |
-| `mergeable` | `clean`, `conflicting`, `checking` or `unknown`. |
-| `conflicts` | When conflicting, the files that conflict. |
-| `behind` | Whether its target has moved on without it. |
-| `merge_method`, `merge_commit` | Once merged: how, and the commit its base was left at. |
-| `auto_merge` | When auto-merge is on: `method`, `commit_title`, `commit_message`, `enabled_by` and `enabled_at`. |
-| `item` | The number of the work item it was made for. |
-| `closes`, `parts` | The work items it lands on when it merges into the default branch, and the ones it is part of. |
-| `head_branch_deleted` | Whether its branch was deleted after it merged or closed. |
-| `reviewers`, `team_reviewers` | The people and the [teams](/guides/teams/#review-requests) asked to review it. |
-| `code_owners` | Who owns the files it changes and whose approval is still needed; see [CODEOWNERS](/guides/codeowners/#through-the-api). Absent when its target has no CODEOWNERS file. |
+| Field                          | What it is                                                                                                                                                                                                                         |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `statuses`                     | What each workflow run, and anything else that reports statuses, said about its head, with a link to the run.                                                                                                                      |
+| `required_checks`              | Each check the default branch requires, as it stands on the head: `name`, `state` (`success`, `failure`, `pending`, or `expected` when nothing has reported it yet), `description` and `target_url`. Empty when none are required. |
+| `checks`                       | The latest record against its head from g1t itself, such as the merge queue taking it out, with `earlier_checks` before it.                                                                                                        |
+| `mergeable`                    | `clean`, `conflicting`, `checking` or `unknown`.                                                                                                                                                                                   |
+| `conflicts`                    | When conflicting, the files that conflict.                                                                                                                                                                                         |
+| `behind`                       | Whether its target has moved on without it.                                                                                                                                                                                        |
+| `merge_method`, `merge_commit` | Once merged: how, and the commit its base was left at.                                                                                                                                                                             |
+| `auto_merge`                   | When auto-merge is on: `method`, `commit_title`, `commit_message`, `enabled_by` and `enabled_at`.                                                                                                                                  |
+| `item`                         | The number of the work item it was made for.                                                                                                                                                                                       |
+| `closes`, `parts`              | The work items it lands on when it merges into the default branch, and the ones it is part of.                                                                                                                                     |
+| `head_branch_deleted`          | Whether its branch was deleted after it merged or closed.                                                                                                                                                                          |
+| `reviewers`, `team_reviewers`  | The people and the [teams](/guides/teams/#review-requests) asked to review it.                                                                                                                                                     |
+| `code_owners`                  | Who owns the files it changes and whose approval is still needed; see [CODEOWNERS](/guides/codeowners/#through-the-api). Absent when its target has no CODEOWNERS file.                                                            |
 
 A coding agent sees the same through the `pull_request` tool's `get`
 action.

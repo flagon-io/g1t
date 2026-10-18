@@ -99,7 +99,13 @@ function InviteFriendDialog({
               <FieldLabel htmlFor={`${id}-message`}>
                 Message <span className="font-normal text-faint">(optional)</span>
               </FieldLabel>
-              <Textarea id={`${id}-message`} name="message" maxLength={MAX_INVITE_MESSAGE} rows={3} placeholder="A line for the email: what you'd like to build together." />
+              <Textarea
+                id={`${id}-message`}
+                name="message"
+                maxLength={MAX_INVITE_MESSAGE}
+                rows={3}
+                placeholder="A line for the email: what you'd like to build together."
+              />
               <FieldDescription>Quoted in the email, under your name.</FieldDescription>
             </Field>
             {bringInto.length > 0 && (
@@ -180,7 +186,14 @@ function InviteMenu({ invite, origin, onDone }: { invite: Invite; origin: string
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" aria-label={`Manage the invite for ${invite.email ?? invite.hint}`} variant="ghost" size="inline" className="p-1.5 text-faint max-sm:p-2.5" disabled={fetcher.state !== "idle"}>
+        <Button
+          type="button"
+          aria-label={`Manage the invite for ${invite.email ?? invite.hint}`}
+          variant="ghost"
+          size="inline"
+          className="p-1.5 text-faint max-sm:p-2.5"
+          disabled={fetcher.state !== "idle"}
+        >
           <Ellipsis size={16} />
         </Button>
       </DropdownMenuTrigger>
@@ -204,7 +217,11 @@ function InviteMenu({ invite, origin, onDone }: { invite: Invite; origin: string
           Send again
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem disabled={!can.revoke} className="text-danger" onSelect={() => fetcher.submit({ intent: "revoke-invite", id: invite.id }, { method: "post" })}>
+        <DropdownMenuItem
+          disabled={!can.revoke}
+          className="text-danger"
+          onSelect={() => fetcher.submit({ intent: "revoke-invite", id: invite.id }, { method: "post" })}
+        >
           <X />
           Revoke
         </DropdownMenuItem>
@@ -259,7 +276,11 @@ export function InvitesSection({
         <div className="min-w-0 grow">
           <p className="text-sm font-medium tabular-nums">{remainingLine(allowance)}</p>
           {allowance.limit > 0 && (
-            <Progress value={(allowance.used / allowance.limit) * 100} aria-label={`${allowance.used} of ${allowance.limit} invites used`} className="mt-2 max-w-sm" />
+            <Progress
+              value={(allowance.used / allowance.limit) * 100}
+              aria-label={`${allowance.used} of ${allowance.limit} invites used`}
+              className="mt-2 max-w-sm"
+            />
           )}
           <p className="mt-2 text-xs text-faint">
             {out ? G1T_INVITES.outNote : G1T_INVITES.comesBack}
@@ -342,7 +363,14 @@ export function InvitesSection({
           </Table>
         </Card>
       )}
-      {notice && (notice.tone === "ok" ? <p className="-mt-3 text-sm text-muted" role="status">{notice.text}</p> : <ErrorText>{notice.text}</ErrorText>)}
+      {notice &&
+        (notice.tone === "ok" ? (
+          <p className="-mt-3 text-sm text-muted" role="status">
+            {notice.text}
+          </p>
+        ) : (
+          <ErrorText>{notice.text}</ErrorText>
+        ))}
     </section>
   );
 }

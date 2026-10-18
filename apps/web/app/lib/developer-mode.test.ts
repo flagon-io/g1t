@@ -30,7 +30,10 @@ test("whatever was thrown is described", () => {
   assert.equal(thrown.kind, "TypeError");
   assert.equal(thrown.message, "x is undefined");
   const response = describeError({ status: 500, statusText: "Internal Server Error", data: "the sidebar could not be read" });
-  assert.deepEqual([response.kind, response.status, response.message, response.data], ["Response", 500, "500 Internal Server Error", "the sidebar could not be read"]);
+  assert.deepEqual(
+    [response.kind, response.status, response.message, response.data],
+    ["Response", 500, "500 Internal Server Error", "the sidebar could not be read"],
+  );
   assert.deepEqual([describeError("plain").kind, describeError("plain").message], ["string", "plain"]);
 });
 
@@ -58,5 +61,7 @@ test("one report says what failed, where, when and on which build", () => {
   ]) {
     assert.ok(report.includes(line), `${line} in:\n${report}`);
   }
-  assert.ok(debugReport({ url: "/", at: null, error, routes: [], build: "b", userAgent: "", navigation: "document" }).includes("Time: (not yet in the browser)"));
+  assert.ok(
+    debugReport({ url: "/", at: null, error, routes: [], build: "b", userAgent: "", navigation: "document" }).includes("Time: (not yet in the browser)"),
+  );
 });

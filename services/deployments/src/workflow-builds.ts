@@ -20,11 +20,7 @@ export type RunFacts = {
 };
 
 /** What a run deploys: production, a branch's preview, or a pull request's (its branch looked up). */
-export type RunTarget =
-  | { kind: "production" }
-  | { kind: "branch"; branch: string }
-  | { kind: "pull"; number: number }
-  | { error: string };
+export type RunTarget = { kind: "production" } | { kind: "branch"; branch: string } | { kind: "pull"; number: number } | { error: string };
 
 /** Why a token that cannot write deployments is refused, where nothing lets it through. */
 export const NEEDS_WRITE = "The job's token needs `deployments: write` in the workflow's or job's `permissions:`.";
@@ -34,10 +30,7 @@ export const NEEDS_WRITE = "The job's token needs `deployments: write` in the wo
  * token for `repo`; otherwise why not. `writes` says whether it may write
  * deployments: one that may not is let through only by `readOnlyAllowed`.
  */
-export function jobOf(
-  actor: User | null | undefined,
-  repo: RepoPath,
-): { runId: string; jobId: string; writes: boolean } | { error: string } {
+export function jobOf(actor: User | null | undefined, repo: RepoPath): { runId: string; jobId: string; writes: boolean } | { error: string } {
   const token = actor?.token;
   if (!token?.job?.run_id || !token.job.job_id) {
     return { error: "Only a g1t Actions job's token (G1T_TOKEN) can open a g1t.page build." };

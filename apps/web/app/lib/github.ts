@@ -92,11 +92,7 @@ export function notYetAdded<T extends SeenInstallation>(seen: T[], workspace: st
 }
 
 /** Where "Connect GitHub" goes next for a workspace owner. */
-export type ConnectStep =
-  | { kind: "link" }
-  | { kind: "add"; installation: number }
-  | { kind: "choose" }
-  | { kind: "install" };
+export type ConnectStep = { kind: "link" } | { kind: "add"; installation: number } | { kind: "choose" } | { kind: "install" };
 
 /**
  * One click connects GitHub to a workspace: the person's GitHub account is
@@ -106,12 +102,7 @@ export type ConnectStep =
  * `another` is an owner asking to install on one more account; `justLinked`
  * stops a link that did not take from sending them round again.
  */
-export function connectStep(input: {
-  linked: boolean;
-  justLinked: boolean;
-  another: boolean;
-  unadded: { id: number; suspended: boolean }[];
-}): ConnectStep {
+export function connectStep(input: { linked: boolean; justLinked: boolean; another: boolean; unadded: { id: number; suspended: boolean }[] }): ConnectStep {
   if (!input.linked) return input.justLinked ? { kind: "choose" } : { kind: "link" };
   if (input.another) return { kind: "install" };
   const usable = input.unadded.filter((item) => !item.suspended);
@@ -147,9 +138,7 @@ export function setupChoices(
  * from the installations a workspace has recorded: nothing until there is
  * one, then the accounts it is on and any that GitHub has suspended.
  */
-export function githubConnected(
-  installations: { account: string; suspended: boolean }[],
-): { detail: string; problem: string | null; manage: null } | null {
+export function githubConnected(installations: { account: string; suspended: boolean }[]): { detail: string; problem: string | null; manage: null } | null {
   if (installations.length === 0) return null;
   const suspended = installations.find((installation) => installation.suspended);
   return {

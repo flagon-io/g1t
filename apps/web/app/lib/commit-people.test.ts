@@ -123,6 +123,12 @@ test("a coding agent is shown as itself by the address on its commit, never by i
     {},
   );
   assert.equal(commit.coAuthors[0]?.kind, "agent");
-  assert.deepEqual(contributorPerson({ kind: "agent", name: "Claude", agent: "claude" }), { kind: "agent", name: "Claude", username: null, avatar: null, agent: "claude" });
+  assert.deepEqual(contributorPerson({ kind: "agent", name: "Claude", agent: "claude" }), {
+    kind: "agent",
+    name: "Claude",
+    username: null,
+    avatar: null,
+    agent: "claude",
+  });
   assert.equal(contributorPerson({ kind: "agent", name: "Robo", agent: "unknown-agent" }).kind, "author", "an id this site doesn't know is an author");
 });

@@ -270,7 +270,9 @@ export async function appendRunnerImage({
   const manifestBytes = Buffer.from(JSON.stringify(runnerManifest(manifest.json, { config, layer })));
   const digest = sha256(manifestBytes);
 
-  onLine(`${target.tag}: the binary's layer ${layer.digest.slice(7, 19)}, ${(layer.size / 1e6).toFixed(1)} MB, on ${manifest.json.layers.length} layers of the base`);
+  onLine(
+    `${target.tag}: the binary's layer ${layer.digest.slice(7, 19)}, ${(layer.size / 1e6).toFixed(1)} MB, on ${manifest.json.layers.length} layers of the base`,
+  );
   for (let attempt = 1; ; attempt++) {
     try {
       if (await client.putBlob(layer.bytes, layer.digest)) onLine(`uploaded the binary's layer`);

@@ -238,7 +238,11 @@ export default function BoardPage({ loaderData }: Route.ComponentProps) {
           </ButtonLink>
         )}
       </div>
-      {unavailable.length > 0 && <p className="mt-3 text-xs text-warn">{unavailable.join(", ")} could not be loaded just now, so this board is partial: some work items may be missing, or stand a column early.</p>}
+      {unavailable.length > 0 && (
+        <p className="mt-3 text-xs text-warn">
+          {unavailable.join(", ")} could not be loaded just now, so this board is partial: some work items may be missing, or stand a column early.
+        </p>
+      )}
       {capped.length > 0 && <p className="mt-2 text-xs text-muted">{capped.join(" ")}</p>}
 
       {total === 0 ? (

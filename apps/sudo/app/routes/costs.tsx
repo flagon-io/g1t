@@ -7,7 +7,21 @@ import type { Route } from "./+types/costs";
 import { DaysChart } from "~/components/costs";
 import { CostsHeader, chip, costsHref } from "~/components/costs-header";
 import { Badge, Button, Field, Input, Notice, Section, Stat, When } from "~/components/ui";
-import { PAUSE_LEVELS, capPercent, count, daySeries, givenParts as givenBy, marginOnPrice, marginTone, parseBucket, percentLabel, spendRows, subscriptionsOver, thresholdShare, whoPaid } from "~/lib/costs";
+import {
+  PAUSE_LEVELS,
+  capPercent,
+  count,
+  daySeries,
+  givenParts as givenBy,
+  marginOnPrice,
+  marginTone,
+  parseBucket,
+  percentLabel,
+  spendRows,
+  subscriptionsOver,
+  thresholdShare,
+  whoPaid,
+} from "~/lib/costs";
 import { type CostsActionResult, costsAction, costsLoader } from "~/lib/costs-route.server";
 import { usd } from "~/lib/money";
 
@@ -38,14 +52,24 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
       </main>
     );
   }
-  const bucket = parseBucket(loaderData.bucket, report.products.map((p) => p.bucket));
+  const bucket = parseBucket(
+    loaderData.bucket,
+    report.products.map((p) => p.bucket),
+  );
   const product = report.products.find((p) => p.bucket === bucket) ?? null;
   const series = daySeries(report.days, report.since, report.until, bucket);
   const floor = report.settings.marginFloorPercent;
   const open = report.proposals.filter((p) => p.status === "open");
   return (
     <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
-      <CostsHeader page="costs" range={range} report={report} done={done} runError={failed?.section === "run" ? failed.error : null} description={description} />
+      <CostsHeader
+        page="costs"
+        range={range}
+        report={report}
+        done={done}
+        runError={failed?.section === "run" ? failed.error : null}
+        description={description}
+      />
 
       <Statement report={report} floor={floor} range={range} proposals={open.length} />
 
@@ -67,7 +91,12 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
             All of g1t
           </Link>
           {report.products.map((p) => (
-            <Link key={p.bucket} to={costsHref("costs", range, p.bucket)} aria-current={p.bucket === bucket ? "page" : undefined} className={chip(p.bucket === bucket)}>
+            <Link
+              key={p.bucket}
+              to={costsHref("costs", range, p.bucket)}
+              aria-current={p.bucket === bucket ? "page" : undefined}
+              className={chip(p.bucket === bucket)}
+            >
               {p.title}
             </Link>
           ))}
@@ -118,7 +147,9 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
                       {p.overhead ? (
                         <span className="text-faint">—</span>
                       ) : (
-                        <Badge tone={tone === "mint" ? "mint" : tone === "warn" ? "warn" : tone === "danger" ? "danger" : "plain"}>{percentLabel(p.marginPercent)}</Badge>
+                        <Badge tone={tone === "mint" ? "mint" : tone === "warn" ? "warn" : tone === "danger" ? "danger" : "plain"}>
+                          {percentLabel(p.marginPercent)}
+                        </Badge>
                       )}
                     </td>
                   </tr>
@@ -180,7 +211,6 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
           </p>
         )}
       </Section>
-
     </main>
   );
 }
@@ -197,7 +227,16 @@ function CapMeter({ label, used, cap, hint }: { label: string; used: number; cap
         </span>
       </div>
       {/* Drawn as SVG, its width an attribute: the page's style policy blocks a style attribute. */}
-      <svg viewBox="0 0 100 4" preserveAspectRatio="none" className="mt-2 block h-1.5 w-full" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(percent)} aria-label={label}>
+      <svg
+        viewBox="0 0 100 4"
+        preserveAspectRatio="none"
+        className="mt-2 block h-1.5 w-full"
+        role="meter"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(percent)}
+        aria-label={label}
+      >
         <rect x="0" y="0" width="100" height="4" rx="2" className="fill-line" />
         {percent > 0 && <rect x="0" y="0" width={Math.max(2, percent)} height="4" rx="2" className={tone} />}
       </svg>
@@ -266,7 +305,16 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
       tone: "muted",
     },
     ...(unmapped > 0
-      ? [{ title: "Not mapped", note: "Billed by Cloudflare, charged for by nothing yet", in: null, cost: unmapped, result: -unmapped, tone: "danger" as const }]
+      ? [
+          {
+            title: "Not mapped",
+            note: "Billed by Cloudflare, charged for by nothing yet",
+            in: null,
+            cost: unmapped,
+            result: -unmapped,
+            tone: "danger" as const,
+          },
+        ]
       : []),
     {
       title: "Given away",
@@ -352,7 +400,9 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
               <td className="px-4 py-2.5 sm:px-5">
                 <span className="font-medium text-fg">All in</span>
                 <span className="block text-xs text-faint">
-                  {given > 0 ? `${usd(given, { cents: true })} of the cost was given away on purpose; without it, ${usd(net + given, { signed: true, cents: true })}` : "Everything above"}
+                  {given > 0
+                    ? `${usd(given, { cents: true })} of the cost was given away on purpose; without it, ${usd(net + given, { signed: true, cents: true })}`
+                    : "Everything above"}
                 </span>
               </td>
               <td className="tabular px-4 py-2.5 text-right font-medium">{usd(moneyIn, { cents: true })}</td>
@@ -363,9 +413,9 @@ function Statement({ report, floor, range, proposals }: { report: CostsReport; f
         </table>
       </div>
       <p className="mt-2 text-xs text-faint">
-        Credits from g1t, {report.since} to {report.until}: {usd(o.creditsGivenMicros ?? 0, { cents: true })} given, {usd(o.creditsUsedMicros ?? 0, { cents: true })}{" "}
-        spent on usage. What promotional and goodwill credit paid for is given away above, never money in; refunds took{" "}
-        {usd(o.creditsRefundedMicros ?? 0, { cents: true })} off money in on the days they refund.{" "}
+        Credits from g1t, {report.since} to {report.until}: {usd(o.creditsGivenMicros ?? 0, { cents: true })} given,{" "}
+        {usd(o.creditsUsedMicros ?? 0, { cents: true })} spent on usage. What promotional and goodwill credit paid for is given away above, never money in;
+        refunds took {usd(o.creditsRefundedMicros ?? 0, { cents: true })} off money in on the days they refund.{" "}
         <Link to="/credits" className="underline underline-offset-2">
           Every credit
         </Link>
@@ -404,7 +454,14 @@ function SpendSection({ caps, range, error }: { caps: CostsReport["caps"]; range
           hint={
             caps.tripped ? (
               <span className="text-danger">
-                Breaker open{caps.trippedAt ? <> since <When at={caps.trippedAt} time /></> : null}: new work g1t pays for waits until 00:00 UTC.
+                Breaker open
+                {caps.trippedAt ? (
+                  <>
+                    {" "}
+                    since <When at={caps.trippedAt} time />
+                  </>
+                ) : null}
+                : new work g1t pays for waits until 00:00 UTC.
               </span>
             ) : caps.liftedBy ? (
               <>
@@ -424,9 +481,7 @@ function SpendSection({ caps, range, error }: { caps: CostsReport["caps"]; range
             cap={b.ceilingMicros}
             hint={
               <>
-                {b.ceilingMicros > 0 && b.usedMicros >= b.ceilingMicros ? (
-                  <span className="text-danger">Used up: new work on it is refused. </span>
-                ) : null}
+                {b.ceilingMicros > 0 && b.usedMicros >= b.ceilingMicros ? <span className="text-danger">Used up: new work on it is refused. </span> : null}
                 {b.defaultCeiling ? "The default budget (COMPED_MONTHLY_CEILING_MICROS)" : "Its own budget, in its terms"}. Raise it on{" "}
                 <Link to={`/workspaces/${encodeURIComponent(b.name)}#billing`} className="underline underline-offset-2">
                   its account
@@ -490,9 +545,9 @@ function SpendSection({ caps, range, error }: { caps: CostsReport["caps"]; range
         </table>
       </div>
       <p className="mt-3 text-xs text-muted">
-        Why this differs from the statement above: this is {caps.month} so far, the statement the last {range} days. The statement takes Cloudflare&apos;s bill as the
-        cost of what Cloudflare runs, so sandboxes and builds inside Cloudflare&apos;s included usage cost nothing there, and here what the price book says they
-        cost. Cloudflare&apos;s subscriptions are counted the same way in both: each day its billing cycle&apos;s share of the month&apos;s price.
+        Why this differs from the statement above: this is {caps.month} so far, the statement the last {range} days. The statement takes Cloudflare&apos;s bill
+        as the cost of what Cloudflare runs, so sandboxes and builds inside Cloudflare&apos;s included usage cost nothing there, and here what the price book
+        says they cost. Cloudflare&apos;s subscriptions are counted the same way in both: each day its billing cycle&apos;s share of the month&apos;s price.
         {(caps.resetMicros ?? 0) > 0 && (
           <>
             {" "}
@@ -506,22 +561,13 @@ function SpendSection({ caps, range, error }: { caps: CostsReport["caps"]; range
   );
 }
 
-
 /**
  * The platform pause and the hourly usage watch (billing's platform.rs;
  * docs.g1t.sh/guides/deploy-to-cloudflare/#spend-guardrails): four levels
  * staff can pause across g1t, what Cloudflare counted in the last hour
  * against each threshold, and the last day's breaches.
  */
-function PlatformSection({
-  guard,
-  unavailable,
-  failed,
-}: {
-  guard: PlatformGuard | null;
-  unavailable: string | null;
-  failed: CostsActionResult | null;
-}) {
+function PlatformSection({ guard, unavailable, failed }: { guard: PlatformGuard | null; unavailable: string | null; failed: CostsActionResult | null }) {
   return (
     <Section
       className="mt-6"
@@ -535,15 +581,16 @@ function PlatformSection({
         <>
           {!guard.can_read && (
             <div className="mb-4">
-              <Notice tone="warn">Billing has no Cloudflare token with Account Analytics Read, so the hourly watch reads nothing. The pause still works.</Notice>
+              <Notice tone="warn">
+                Billing has no Cloudflare token with Account Analytics Read, so the hourly watch reads nothing. The pause still works.
+              </Notice>
             </div>
           )}
           {(guard.blind ?? []).length > 0 && (
             <div className="mb-4">
               <Notice tone="warn">
                 The watcher can&apos;t see: {(guard.blind ?? []).map((b) => b.key).join(", ")}
-                {guard.last_run ? ` (the run for ${guard.last_run})` : ""}. Their metrics are not watched until it is fixed; three runs in a row email
-                staff.
+                {guard.last_run ? ` (the run for ${guard.last_run})` : ""}. Their metrics are not watched until it is fixed; three runs in a row email staff.
                 <ul className="mt-2 space-y-1 text-xs">
                   {(guard.blind ?? []).map((b) => (
                     <li key={b.key}>
@@ -589,7 +636,13 @@ function PlatformSection({
                     <input type="hidden" name="intent" value={paused ? "resume" : "pause"} />
                     <input type="hidden" name="level" value={level} />
                     <Field label={paused ? "Why resume it" : "Why pause it"} hint="Recorded in the audit log.">
-                      <Input name="note" required minLength={5} maxLength={500} placeholder={paused ? "e.g. Fixed the loop in search" : "e.g. KV lists runaway"} />
+                      <Input
+                        name="note"
+                        required
+                        minLength={5}
+                        maxLength={500}
+                        placeholder={paused ? "e.g. Fixed the loop in search" : "e.g. KV lists runaway"}
+                      />
                     </Field>
                     <Button type="submit" variant={paused ? "primary" : "danger"}>
                       {paused ? "Resume" : "Pause"}

@@ -84,7 +84,6 @@ test("the phone's project strip lights the page a path is under", () => {
   assert.equal(projectPageAt("pulse"), null);
 });
 
-
 test("project operations keep their place in navigation and require integration access", () => {
   const operations = ["secrets", "environments", "domains", "runners", "webhooks"] as const;
   for (const operation of operations) {

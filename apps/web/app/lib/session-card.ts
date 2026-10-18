@@ -25,5 +25,11 @@ const CHIPS: Record<string, SessionChip> = {
 
 /** A session card's state chip; a state it does not know reads quietly. */
 export function sessionChip(state: string | null | undefined): SessionChip {
-  return CHIPS[String(state ?? "").trim().toLowerCase()] ?? { tone: "neutral", live: false };
+  return (
+    CHIPS[
+      String(state ?? "")
+        .trim()
+        .toLowerCase()
+    ] ?? { tone: "neutral", live: false }
+  );
 }

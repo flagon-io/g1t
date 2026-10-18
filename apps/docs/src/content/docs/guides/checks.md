@@ -19,14 +19,14 @@ how long it took, and a **Details** link.
 
 ## Where checks show
 
-| Page | Where |
-| --- | --- |
-| **Code** | Beside the latest commit, above the files |
-| **Commits** | Beside each commit |
-| A commit's page | Beside its hash |
-| **Branches** | Beside each branch's latest commit |
-| **Tags** | Beside each tagged commit |
-| A pull request | Beside its head commit, in the sidebar; its merge box lists them too |
+| Page                 | Where                                                                                                          |
+| -------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **Code**             | Beside the latest commit, above the files                                                                      |
+| **Commits**          | Beside each commit                                                                                             |
+| A commit's page      | Beside its hash                                                                                                |
+| **Branches**         | Beside each branch's latest commit                                                                             |
+| **Tags**             | Beside each tagged commit                                                                                      |
+| A pull request       | Beside its head commit, in the sidebar; its merge box lists them too                                           |
 | A project's overview | For an app that deploys itself and has reported no deployment, beside the latest commit in its production card |
 
 A page reads the checks of all its commits at once, after the page itself
@@ -36,14 +36,14 @@ has loaded: each mark shows a placeholder until they arrive.
 
 There are two ways to report a check. Use either, or both.
 
-| | A status | A check run |
-| --- | --- | --- |
-| What it is | A state for one context on a commit, such as `ci/build` | One run of one check, with a life of its own |
-| States | `pending`, `success`, `failure`, `error` | `status`: `queued`, `in_progress`, `completed`; once completed, a `conclusion`: `success`, `failure`, `neutral`, `cancelled`, `skipped`, `timed_out` or `action_required` |
-| Report | A short `description` and a `target_url` | A `title`, a Markdown `summary` and `text`, up to 1,000 annotations on lines of files, and up to 3 buttons |
-| On g1t | Listed with a link to `target_url` | Its own page under the repository, linked from the list |
-| Set again | Replaces the context's status on that commit | Update the same run, or create a new one |
-| Use it for | A quick pass or fail from any tool | Test, lint and scan results someone needs to read |
+|            | A status                                                | A check run                                                                                                                                                               |
+| ---------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| What it is | A state for one context on a commit, such as `ci/build` | One run of one check, with a life of its own                                                                                                                              |
+| States     | `pending`, `success`, `failure`, `error`                | `status`: `queued`, `in_progress`, `completed`; once completed, a `conclusion`: `success`, `failure`, `neutral`, `cancelled`, `skipped`, `timed_out` or `action_required` |
+| Report     | A short `description` and a `target_url`                | A `title`, a Markdown `summary` and `text`, up to 1,000 annotations on lines of files, and up to 3 buttons                                                                |
+| On g1t     | Listed with a link to `target_url`                      | Its own page under the repository, linked from the list                                                                                                                   |
+| Set again  | Replaces the context's status on that commit            | Update the same run, or create a new one                                                                                                                                  |
+| Use it for | A quick pass or fail from any tool                      | Test, lint and scan results someone needs to read                                                                                                                         |
 
 Every job of a [workflow](/guides/actions/) run is a check run, named
 `Workflow / job (event)` in the list, such as `CI / test (push)`, and its
@@ -67,12 +67,12 @@ curl -X POST https://api.g1t.sh/repos/<workspace>/<repo>/statuses/<sha> \
   }'
 ```
 
-| Field | Required | What it is |
-| --- | --- | --- |
-| `state` | Yes | `pending`, `success`, `failure` or `error`. `error` counts as a failure. |
-| `context` | No | What reports it, such as `ci/build`; `default` when left out. At most 100 characters. |
-| `description` | No | A short word on it, at most 140 characters. |
-| `target_url` | No | Where to see more: an `http` or `https` address. |
+| Field         | Required | What it is                                                                            |
+| ------------- | -------- | ------------------------------------------------------------------------------------- |
+| `state`       | Yes      | `pending`, `success`, `failure` or `error`. `error` counts as a failure.              |
+| `context`     | No       | What reports it, such as `ci/build`; `default` when left out. At most 100 characters. |
+| `description` | No       | A short word on it, at most 140 characters.                                           |
+| `target_url`  | No       | Where to see more: an `http` or `https` address.                                      |
 
 [`create_commit_status`](/reference/api/checks/create-commit-status/)
 returns the status. Set a context again to replace it: report `pending`
@@ -121,25 +121,25 @@ Giving a `conclusion` completes the run; `started_at` and `completed_at`
 are filled in when you leave them out. A run can also be created already
 completed, in one call.
 
-| Field | What it is |
-| --- | --- |
-| `name` | The check's name, at most 100 characters. Required to create one. |
-| `head_sha` | The commit it is about. Required to create one. |
-| `status` | `queued` (the default), `in_progress` or `completed`. |
-| `conclusion` | `success`, `failure`, `neutral`, `cancelled`, `skipped`, `timed_out` or `action_required`. |
-| `started_at`, `completed_at` | When it started and ended, in RFC 3339. |
-| `details_url` | Your own page for it. |
-| `external_id` | Your own id for it. |
-| `output` | `title`, `summary` and `text` (Markdown, at most 65,535 characters each) and `annotations`. |
-| `actions` | Up to 3 buttons: `label` (20 characters), `description` (40) and `identifier` (20). |
-| `app` | Who reports it, such as `Codecov`. By default, your token's name. |
+| Field                        | What it is                                                                                  |
+| ---------------------------- | ------------------------------------------------------------------------------------------- |
+| `name`                       | The check's name, at most 100 characters. Required to create one.                           |
+| `head_sha`                   | The commit it is about. Required to create one.                                             |
+| `status`                     | `queued` (the default), `in_progress` or `completed`.                                       |
+| `conclusion`                 | `success`, `failure`, `neutral`, `cancelled`, `skipped`, `timed_out` or `action_required`.  |
+| `started_at`, `completed_at` | When it started and ended, in RFC 3339.                                                     |
+| `details_url`                | Your own page for it.                                                                       |
+| `external_id`                | Your own id for it.                                                                         |
+| `output`                     | `title`, `summary` and `text` (Markdown, at most 65,535 characters each) and `annotations`. |
+| `actions`                    | Up to 3 buttons: `label` (20 characters), `description` (40) and `identifier` (20).         |
+| `app`                        | Who reports it, such as `Codecov`. By default, your token's name.                           |
 
 ### A minimal reporter
 
 This script runs a command and reports it as a check run, from any CI that
 has `curl` and `jq`:
 
-```sh
+````sh
 #!/bin/sh
 # check.sh <name> <command…>: report a command as a g1t check run.
 set -u
@@ -156,7 +156,7 @@ curl -sf -X PATCH "$api/check-runs/$id" -H "$auth" -H "Content-Type: application
   -d "$(jq -n --arg c "$conclusion" --arg log "$(printf '%s' "$output" | tail -c 60000)" \
     '{conclusion: $c, output: {title: $c, summary: ("```\n" + $log + "\n```")}}')" > /dev/null
 [ "$conclusion" = success ]
-```
+````
 
 ```sh
 G1T_REPO=acme/web G1T_SHA=$(git rev-parse HEAD) ./check.sh lint npm run lint
@@ -222,15 +222,15 @@ A [required status check](/guides/pull-requests/#required-status-checks),
 in branch protection or a [ruleset](/guides/rules/), is met by a status of
 its name or a check run of its name alike:
 
-| What reported it | Counts as |
-| --- | --- |
-| A status `success` | Passing |
-| A status `failure` or `error` | Failing |
-| A status `pending` | Running: the merge waits |
-| A check run not yet completed | Running: the merge waits |
-| A check run completed `success`, `neutral` or `skipped` | Passing |
-| A check run completed `failure`, `cancelled`, `timed_out` or `action_required` | Failing |
-| Nothing yet | Expected: the merge waits |
+| What reported it                                                               | Counts as                 |
+| ------------------------------------------------------------------------------ | ------------------------- |
+| A status `success`                                                             | Passing                   |
+| A status `failure` or `error`                                                  | Failing                   |
+| A status `pending`                                                             | Running: the merge waits  |
+| A check run not yet completed                                                  | Running: the merge waits  |
+| A check run completed `success`, `neutral` or `skipped`                        | Passing                   |
+| A check run completed `failure`, `cancelled`, `timed_out` or `action_required` | Failing                   |
+| Nothing yet                                                                    | Expected: the merge waits |
 
 A workflow is required by its name, such as `CI`, which all its jobs
 report under. To require only what was reported through the API, pin the
@@ -250,42 +250,42 @@ workflow job's run runs again, which also needs `workflows:write`.
 
 [Webhooks](/guides/webhooks/) can be sent:
 
-| Event | When |
-| --- | --- |
-| `status.created` | A status was set on a commit, through the API or by g1t: a workflow run, a deploy. |
-| `check_run.created` | A check run was reported. |
-| `check_run.completed` | A check run completed. |
-| `check_run.rerequested` | Someone asked for a check run to run again. |
-| `check_run.requested_action` | Someone pressed one of a check run's buttons. |
-| `check_suite.completed` | Every latest check run of a suite completed. |
-| `check_suite.rerequested` | Someone asked for a check suite to run again. |
+| Event                        | When                                                                               |
+| ---------------------------- | ---------------------------------------------------------------------------------- |
+| `status.created`             | A status was set on a commit, through the API or by g1t: a workflow run, a deploy. |
+| `check_run.created`          | A check run was reported.                                                          |
+| `check_run.completed`        | A check run completed.                                                             |
+| `check_run.rerequested`      | Someone asked for a check run to run again.                                        |
+| `check_run.requested_action` | Someone pressed one of a check run's buttons.                                      |
+| `check_suite.completed`      | Every latest check run of a suite completed.                                       |
+| `check_suite.rerequested`    | Someone asked for a check suite to run again.                                      |
 
 These are left out of a repository's timeline.
 
 ## Who can report checks
 
-| | Can |
-| --- | --- |
-| Anyone who can read the repository | See its checks, and read them through the API with `checks:read` (no token for a public repository) |
-| The Write role and up, with `checks:write` | Report statuses and check runs, and ask for them to run again |
-| A workflow job, with `G1T_TOKEN` and `checks: write` or `statuses: write` | The same, in its repository |
+|                                                                           | Can                                                                                                 |
+| ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Anyone who can read the repository                                        | See its checks, and read them through the API with `checks:read` (no token for a public repository) |
+| The Write role and up, with `checks:write`                                | Report statuses and check runs, and ask for them to run again                                       |
+| A workflow job, with `G1T_TOKEN` and `checks: write` or `statuses: write` | The same, in its repository                                                                         |
 
 ## From the API and MCP
 
-| Route | Operation |
-| --- | --- |
-| `POST /repos/{owner}/{name}/statuses/{sha}` | [`create_commit_status`](/reference/api/checks/create-commit-status/) |
-| `GET /repos/{owner}/{name}/commits/{ref}/statuses` | [`list_commit_statuses`](/reference/api/checks/list-commit-statuses/) |
-| `GET /repos/{owner}/{name}/commits/{ref}/status` | [`get_combined_status`](/reference/api/checks/get-combined-status/) |
-| `POST /repos/{owner}/{name}/check-runs` | [`create_check_run`](/reference/api/checks/create-check-run/) |
-| `PATCH /repos/{owner}/{name}/check-runs/{id}` | [`update_check_run`](/reference/api/checks/update-check-run/) |
-| `GET /repos/{owner}/{name}/check-runs/{id}` | [`get_check_run`](/reference/api/checks/get-check-run/) |
-| `GET /repos/{owner}/{name}/check-runs/{id}/annotations` | [`list_check_run_annotations`](/reference/api/checks/list-check-run-annotations/) |
-| `POST /repos/{owner}/{name}/check-runs/{id}/rerequest` | [`rerequest_check_run`](/reference/api/checks/rerequest-check-run/) |
-| `GET /repos/{owner}/{name}/commits/{ref}/check-runs` | [`list_check_runs_for_ref`](/reference/api/checks/list-check-runs-for-ref/) |
-| `GET /repos/{owner}/{name}/commits/{ref}/check-suites` | [`list_check_suites_for_ref`](/reference/api/checks/list-check-suites-for-ref/) |
-| `GET /repos/{owner}/{name}/check-suites/{id}` | [`get_check_suite`](/reference/api/checks/get-check-suite/) |
-| `POST /repos/{owner}/{name}/check-suites/{id}/rerequest` | [`rerequest_check_suite`](/reference/api/checks/rerequest-check-suite/) |
+| Route                                                    | Operation                                                                         |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `POST /repos/{owner}/{name}/statuses/{sha}`              | [`create_commit_status`](/reference/api/checks/create-commit-status/)             |
+| `GET /repos/{owner}/{name}/commits/{ref}/statuses`       | [`list_commit_statuses`](/reference/api/checks/list-commit-statuses/)             |
+| `GET /repos/{owner}/{name}/commits/{ref}/status`         | [`get_combined_status`](/reference/api/checks/get-combined-status/)               |
+| `POST /repos/{owner}/{name}/check-runs`                  | [`create_check_run`](/reference/api/checks/create-check-run/)                     |
+| `PATCH /repos/{owner}/{name}/check-runs/{id}`            | [`update_check_run`](/reference/api/checks/update-check-run/)                     |
+| `GET /repos/{owner}/{name}/check-runs/{id}`              | [`get_check_run`](/reference/api/checks/get-check-run/)                           |
+| `GET /repos/{owner}/{name}/check-runs/{id}/annotations`  | [`list_check_run_annotations`](/reference/api/checks/list-check-run-annotations/) |
+| `POST /repos/{owner}/{name}/check-runs/{id}/rerequest`   | [`rerequest_check_run`](/reference/api/checks/rerequest-check-run/)               |
+| `GET /repos/{owner}/{name}/commits/{ref}/check-runs`     | [`list_check_runs_for_ref`](/reference/api/checks/list-check-runs-for-ref/)       |
+| `GET /repos/{owner}/{name}/commits/{ref}/check-suites`   | [`list_check_suites_for_ref`](/reference/api/checks/list-check-suites-for-ref/)   |
+| `GET /repos/{owner}/{name}/check-suites/{id}`            | [`get_check_suite`](/reference/api/checks/get-check-suite/)                       |
+| `POST /repos/{owner}/{name}/check-suites/{id}/rerequest` | [`rerequest_check_suite`](/reference/api/checks/rerequest-check-suite/)           |
 
 [`list_check_runs_for_ref`](/reference/api/checks/list-check-runs-for-ref/)
 gives each name's latest run and each workflow's latest run per event;

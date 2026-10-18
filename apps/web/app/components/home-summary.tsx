@@ -33,7 +33,17 @@ async function chatApi<T>(slug: string, body: Record<string, unknown>): Promise<
   }
 }
 
-function LiveSocket({ slug, channelId, onEvent, onReconnect }: { slug: string; channelId: string; onEvent: (event: ChatLiveEvent) => void; onReconnect: () => void }) {
+function LiveSocket({
+  slug,
+  channelId,
+  onEvent,
+  onReconnect,
+}: {
+  slug: string;
+  channelId: string;
+  onEvent: (event: ChatLiveEvent) => void;
+  onReconnect: () => void;
+}) {
   useChatLive(slug, channelId, onEvent, onReconnect);
   return null;
 }
@@ -57,12 +67,18 @@ export default function HomeSummary({ slug, question, onDone }: { slug: string; 
       const setup = await fetch(`/${slug}/-/ask`, { headers: { accept: "application/json" } })
         .then((response) => response.json() as Promise<{ ok: boolean; value?: AskSetup; owner: boolean }>)
         .catch(() => null);
-      if (!setup?.ok || !setup.value) return setState({ step: "problem", message: "Ask could not be reached. Try again in a moment.", setup: false, owner: false });
+      if (!setup?.ok || !setup.value)
+        return setState({ step: "problem", message: "Ask could not be reached. Try again in a moment.", setup: false, owner: false });
       if (setup.value.problem) return setState({ step: "problem", message: setup.value.problem, setup: true, owner: setup.owner });
       const opened = await chatApi<{ channel: { id: string } }>(slug, { intent: "g1t_dm" });
       if (!opened.ok) return setState({ step: "problem", message: opened.error.message, setup: false, owner: false });
       const channelId = opened.value.channel.id;
-      const saved = await chatApi<ChatMessage>(slug, { intent: "post", channel_id: channelId, body: question, page: { ...askPage(pathname), time_zone: browserTimeZone() } });
+      const saved = await chatApi<ChatMessage>(slug, {
+        intent: "post",
+        channel_id: channelId,
+        body: question,
+        page: { ...askPage(pathname), time_zone: browserTimeZone() },
+      });
       if (!saved.ok) return setState({ step: "problem", message: saved.error.message, setup: false, owner: false });
       setState({ step: "answering", channelId, questionId: saved.value.id });
     })();
@@ -92,9 +108,12 @@ export default function HomeSummary({ slug, question, onDone }: { slug: string; 
     }
   }, [channelId, slug]);
 
-  const onEvent = useCallback((event: ChatLiveEvent) => {
-    if (channelId) setMessages((now) => applyLive(now, event, channelId));
-  }, [channelId]);
+  const onEvent = useCallback(
+    (event: ChatLiveEvent) => {
+      if (channelId) setMessages((now) => applyLive(now, event, channelId));
+    },
+    [channelId],
+  );
 
   // Read until the answer is finished: the socket brings it as it streams, this makes sure of it.
   useEffect(() => {

@@ -33,8 +33,7 @@ function environmentsLabel(environments: string[]): string {
   return environments.map((env) => env.charAt(0).toUpperCase() + env.slice(1)).join(", ");
 }
 
-const SELECT =
-  "rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none transition-colors hover:border-line-strong focus:border-accent-dim";
+const SELECT = "rounded-md border border-line bg-bg px-3 py-2 text-sm outline-none transition-colors hover:border-line-strong focus:border-accent-dim";
 
 export function SecretsPanel({
   data,
@@ -57,10 +56,7 @@ export function SecretsPanel({
   const [query, setQuery] = useState("");
   const [type, setType] = useState("all");
   const [environment, setEnvironment] = useState("all");
-  const environments = useMemo(
-    () => [...new Set([...KNOWN_ENVIRONMENTS, ...data.rows.flatMap((r) => r.environments)])],
-    [data.rows],
-  );
+  const environments = useMemo(() => [...new Set([...KNOWN_ENVIRONMENTS, ...data.rows.flatMap((r) => r.environments)])], [data.rows]);
   const shown = data.rows.filter(
     (r) =>
       (!query || r.name.toLowerCase().includes(query.toLowerCase()) || r.note?.toLowerCase().includes(query.toLowerCase())) &&
@@ -93,9 +89,9 @@ export function SecretsPanel({
 
       <Card asChild radius="lg" className="mt-4 px-4 py-2.5 text-xs text-muted">
         <p>
-          Built in: workflows get <code className="text-fg">secrets.G1T_TOKEN</code>, the workspace's own token for
-          the run, with <code className="text-fg">secrets.GITHUB_TOKEN</code> as its alias. The merge
-          queue never reads secrets or variables, and runs for people outside the workspace get no secrets.
+          Built in: workflows get <code className="text-fg">secrets.G1T_TOKEN</code>, the workspace's own token for the run, with{" "}
+          <code className="text-fg">secrets.GITHUB_TOKEN</code> as its alias. The merge queue never reads secrets or variables, and runs for people outside the
+          workspace get no secrets.
         </p>
       </Card>
 
@@ -117,8 +113,12 @@ export function SecretsPanel({
           <SelectContent align="end">
             <SelectItem value="all">All types</SelectItem>
             <SelectSeparator />
-            <SelectItem value="secret" icon={<Lock />}>Secret</SelectItem>
-            <SelectItem value="variable" icon={<SlidersHorizontal />}>Config</SelectItem>
+            <SelectItem value="secret" icon={<Lock />}>
+              Secret
+            </SelectItem>
+            <SelectItem value="variable" icon={<SlidersHorizontal />}>
+              Config
+            </SelectItem>
           </SelectContent>
         </Select>
         <Select value={environment} onValueChange={setEnvironment}>
@@ -138,10 +138,14 @@ export function SecretsPanel({
       </div>
 
       <ErrorText>{data.error}</ErrorText>
-      {!editing && !adding && <div className="mt-2"><ErrorText>{action?.error}</ErrorText></div>}
+      {!editing && !adding && (
+        <div className="mt-2">
+          <ErrorText>{action?.error}</ErrorText>
+        </div>
+      )}
 
       <div className="mt-6 space-y-8">
-        {(scope === "project" ? ["project", "workspace"] as const : ["workspace"] as const).map((section) => {
+        {(scope === "project" ? (["project", "workspace"] as const) : (["workspace"] as const)).map((section) => {
           const rows = shown.filter((r) => r.scope === section);
           const total = data.rows.filter((r) => r.scope === section).length;
           return (
@@ -149,20 +153,63 @@ export function SecretsPanel({
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h2 className="text-sm font-semibold">{section === "project" ? "Project secrets and variables" : "Workspace secrets and variables"}</h2>
-                  {scope === "project" && section === "workspace" && <p className="mt-1 text-xs text-muted">Inherited values shared with this project. A project key replaces the workspace value for its readers, even outside its selected environments.</p>}
+                  {scope === "project" && section === "workspace" && (
+                    <p className="mt-1 text-xs text-muted">
+                      Inherited values shared with this project. A project key replaces the workspace value for its readers, even outside its selected
+                      environments.
+                    </p>
+                  )}
                 </div>
-                {scope === "project" && section === "workspace" && workspacePath && <ButtonLink to={workspacePath} variant="outline">View workspace variables</ButtonLink>}
+                {scope === "project" && section === "workspace" && workspacePath && (
+                  <ButtonLink to={workspacePath} variant="outline">
+                    View workspace variables
+                  </ButtonLink>
+                )}
               </div>
               {rows.length === 0 ? (
-                <EmptyState title={total > 0 ? "Nothing matches these filters" : section === "project" ? "No project secrets or variables" : "No workspace secrets or variables"} />
+                <EmptyState
+                  title={
+                    total > 0
+                      ? "Nothing matches these filters"
+                      : section === "project"
+                        ? "No project secrets or variables"
+                        : "No workspace secrets or variables"
+                  }
+                />
               ) : (
                 <Card className="min-w-0 overflow-hidden">
                   <Table className="min-w-[850px] table-fixed" frameProps={{ tabIndex: 0, role: "region", "aria-label": `${section} secrets and variables` }}>
-                    <colgroup><col style={{ width: "32%" }} /><col style={{ width: "19%" }} /><col style={{ width: "18%" }} /><col style={{ width: "10%" }} /><col style={{ width: "11%" }} /><col style={{ width: "10%" }} /></colgroup>
-                    <TableHeader><TableRow>
-                      <TableHead>Name / value</TableHead><TableHead>Environments</TableHead><TableHead>Used by</TableHead><TableHead>Type</TableHead><TableHead>Updated</TableHead><TableHead><span className="sr-only">Actions</span></TableHead>
-                    </TableRow></TableHeader>
-                    <TableBody>{rows.map((r) => <Row key={r.id} row={r} inherited={r.scope !== scope} manage={manage} override={scope === "project" ? settingOverride(r, data.rows) : null} />)}</TableBody>
+                    <colgroup>
+                      <col style={{ width: "32%" }} />
+                      <col style={{ width: "19%" }} />
+                      <col style={{ width: "18%" }} />
+                      <col style={{ width: "10%" }} />
+                      <col style={{ width: "11%" }} />
+                      <col style={{ width: "10%" }} />
+                    </colgroup>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name / value</TableHead>
+                        <TableHead>Environments</TableHead>
+                        <TableHead>Used by</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Updated</TableHead>
+                        <TableHead>
+                          <span className="sr-only">Actions</span>
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {rows.map((r) => (
+                        <Row
+                          key={r.id}
+                          row={r}
+                          inherited={r.scope !== scope}
+                          manage={manage}
+                          override={scope === "project" ? settingOverride(r, data.rows) : null}
+                        />
+                      ))}
+                    </TableBody>
                   </Table>
                 </Card>
               )}
@@ -185,88 +232,85 @@ function Row({ row, inherited, manage, override }: { row: Setting; inherited: bo
   return (
     <TableRow>
       <TableCell className="align-middle">
-      <div className="min-w-0">
-        <div className="flex min-w-0 items-center gap-2">
-          <p className="min-w-0 break-all font-mono text-[0.8125rem]">{row.name}</p>
-          {secret && hosts.length > 0 && (
-            <Hint label={`Filled in for ${hosts.join(", ")}`}>
-              <Badge tone="accent">
-                Brokered
-                <span className="sr-only">: filled in for {hosts.join(", ")}</span>
-              </Badge>
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="min-w-0 break-all font-mono text-[0.8125rem]">{row.name}</p>
+            {secret && hosts.length > 0 && (
+              <Hint label={`Filled in for ${hosts.join(", ")}`}>
+                <Badge tone="accent">
+                  Brokered
+                  <span className="sr-only">: filled in for {hosts.join(", ")}</span>
+                </Badge>
+              </Hint>
+            )}
+          </div>
+          {row.note && (
+            <Hint label={row.note}>
+              <p className="truncate text-xs text-faint">{row.note}</p>
             </Hint>
           )}
+          {override && <p className="mt-1 text-xs text-accent">{override}</p>}
+          {!secret && row.value != null && <p className="truncate font-mono text-xs text-muted">{row.value}</p>}
         </div>
-        {row.note && (
-          <Hint label={row.note}>
-            <p className="truncate text-xs text-faint">{row.note}</p>
-          </Hint>
-        )}
-        {override && <p className="mt-1 text-xs text-accent">{override}</p>}
-        {!secret && row.value != null && <p className="truncate font-mono text-xs text-muted">{row.value}</p>}
-      </div>
       </TableCell>
       <TableCell className="align-middle break-words text-muted">{environmentsLabel(row.environments)}</TableCell>
       <TableCell className="align-middle text-xs text-muted">{row.availableTo.map((r) => READERS[r] ?? r).join(", ")}</TableCell>
-      <TableCell className="align-middle text-xs text-muted"><span className="flex items-center gap-1.5">
-        {secret ? <Lock size={13} className="shrink-0" /> : <SlidersHorizontal size={13} className="shrink-0" />}{secret ? "Secret" : "Config"}
-      </span></TableCell>
-      <TableCell className="align-middle text-xs text-faint"><TimeAgo at={row.updatedAt} /></TableCell>
-      <TableCell className="align-middle"><div className="flex flex-wrap items-center justify-end gap-1">
-        {!inherited && (
-          <>
-            {row.projects.length > 0 && (
-              <Hint label={row.projects.join(", ")}>
-                <span className="mr-1 text-xs text-faint">
-                  {row.projects.length} {row.projects.length === 1 ? "project" : "projects"}
-                  <span className="sr-only">: {row.projects.join(", ")}</span>
-                </span>
-              </Hint>
-            )}
-            {manage && (
-              <>
-                <Link
-                  to={`?edit=${row.id}`}
-                  aria-label={`Edit ${row.name}`}
-                  className="rounded-md p-1.5 text-faint max-sm:p-2.5 transition-colors hover:bg-raised hover:text-fg"
-                >
-                  <Pencil size={14} />
-                </Link>
-                <Form method="post">
-                  <input type="hidden" name="intent" value="delete" />
-                  <input type="hidden" name="id" value={row.id} />
-                  <input type="hidden" name="name" value={row.name} />
-                  <SubmitButton
-                    icon
-                    match={{ intent: "delete", id: row.id }}
-                    aria-label={`Remove ${row.name}`}
-                    variant="ghost"
-                    size="inline"
-                    className="p-1.5 text-faint max-sm:p-2.5 hover:text-danger"
+      <TableCell className="align-middle text-xs text-muted">
+        <span className="flex items-center gap-1.5">
+          {secret ? <Lock size={13} className="shrink-0" /> : <SlidersHorizontal size={13} className="shrink-0" />}
+          {secret ? "Secret" : "Config"}
+        </span>
+      </TableCell>
+      <TableCell className="align-middle text-xs text-faint">
+        <TimeAgo at={row.updatedAt} />
+      </TableCell>
+      <TableCell className="align-middle">
+        <div className="flex flex-wrap items-center justify-end gap-1">
+          {!inherited && (
+            <>
+              {row.projects.length > 0 && (
+                <Hint label={row.projects.join(", ")}>
+                  <span className="mr-1 text-xs text-faint">
+                    {row.projects.length} {row.projects.length === 1 ? "project" : "projects"}
+                    <span className="sr-only">: {row.projects.join(", ")}</span>
+                  </span>
+                </Hint>
+              )}
+              {manage && (
+                <>
+                  <Link
+                    to={`?edit=${row.id}`}
+                    aria-label={`Edit ${row.name}`}
+                    className="rounded-md p-1.5 text-faint max-sm:p-2.5 transition-colors hover:bg-raised hover:text-fg"
                   >
-                    <Trash2 size={14} />
-                  </SubmitButton>
-                </Form>
-              </>
-            )}
-          </>
-        )}
-      </div></TableCell>
+                    <Pencil size={14} />
+                  </Link>
+                  <Form method="post">
+                    <input type="hidden" name="intent" value="delete" />
+                    <input type="hidden" name="id" value={row.id} />
+                    <input type="hidden" name="name" value={row.name} />
+                    <SubmitButton
+                      icon
+                      match={{ intent: "delete", id: row.id }}
+                      aria-label={`Remove ${row.name}`}
+                      variant="ghost"
+                      size="inline"
+                      className="p-1.5 text-faint max-sm:p-2.5 hover:text-danger"
+                    >
+                      <Trash2 size={14} />
+                    </SubmitButton>
+                  </Form>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      </TableCell>
     </TableRow>
   );
 }
 
-function Drawer({
-  row,
-  scope,
-  projects,
-  error,
-}: {
-  row: Setting | undefined;
-  scope: "project" | "workspace";
-  projects: string[];
-  error: string | undefined;
-}) {
+function Drawer({ row, scope, projects, error }: { row: Setting | undefined; scope: "project" | "workspace"; projects: string[]; error: string | undefined }) {
   const editing = !!row;
   const [type, setType] = useState<"secret" | "config">(row?.kind === "variable" ? "config" : "secret");
   const [some, setSome] = useState(!!row && row.environments.length > 0);
@@ -280,7 +324,10 @@ function Drawer({
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/50" role="dialog" aria-modal="true" aria-label={editing ? "Edit" : "Add"}>
       <Link to="?" aria-label="Close" className="grow" />
-      <Form method="post" className="flex h-full w-full max-w-xl flex-col border-l border-line bg-bg pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-2xl">
+      <Form
+        method="post"
+        className="flex h-full w-full max-w-xl flex-col border-l border-line bg-bg pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-2xl"
+      >
         <div className="flex items-center justify-between border-b border-line px-6 py-4">
           <h3 className="font-semibold">{editing ? `Edit ${row.name}` : "Add a secret or variable"}</h3>
           <Link to="?" aria-label="Close" className="flex items-center justify-center rounded-md p-1.5 text-faint hover:bg-raised hover:text-fg max-sm:size-10">
@@ -293,13 +340,7 @@ function Drawer({
 
           <fieldset>
             <legend className="mb-2 text-sm font-medium text-muted">Type</legend>
-            <RadioGroup
-              name="type"
-              value={type}
-              onValueChange={(value) => setType(value as typeof type)}
-              aria-label="Type"
-              className="gap-3 sm:grid-cols-2"
-            >
+            <RadioGroup name="type" value={type} onValueChange={(value) => setType(value as typeof type)} aria-label="Type" className="gap-3 sm:grid-cols-2">
               {(
                 [
                   ["secret", "Secret", "You can't read it again after saving. For passwords, API keys and tokens.", <Lock key="i" />],
@@ -307,19 +348,10 @@ function Drawer({
                 ] as const
               ).map(([value, title, text, icon]) => (
                 // A secret's value is sealed: it can never become config.
-                <RadioCard
-                  key={value}
-                  value={value}
-                  title={title}
-                  description={text}
-                  icon={icon}
-                  disabled={value === "config" && row?.kind === "secret"}
-                />
+                <RadioCard key={value} value={value} title={title} description={text} icon={icon} disabled={value === "config" && row?.kind === "secret"} />
               ))}
             </RadioGroup>
-            {row?.kind === "variable" && (
-              <p className="mt-2 text-xs text-faint">Config can become a secret; a secret cannot become config.</p>
-            )}
+            {row?.kind === "variable" && <p className="mt-2 text-xs text-faint">Config can become a secret; a secret cannot become config.</p>}
           </fieldset>
 
           <label className="block">
@@ -345,9 +377,7 @@ function Drawer({
               name="value"
               rows={type === "secret" ? 3 : 2}
               defaultValue={row?.kind === "variable" ? (row.value ?? "") : ""}
-              placeholder={
-                editing && row.kind === "secret" ? "Leave empty to keep the current value" : "Enter a value"
-              }
+              placeholder={editing && row.kind === "secret" ? "Leave empty to keep the current value" : "Enter a value"}
               autoComplete="off"
               spellCheck={false}
               className={`${field} font-mono`}
@@ -405,23 +435,12 @@ function Drawer({
               {some && (
                 <div className="ml-6 space-y-2">
                   {KNOWN_ENVIRONMENTS.map((env) => (
-                    <CheckboxOption
-                      key={env}
-                      name="env"
-                      value={env}
-                      defaultChecked={row?.environments.includes(env)}
-                      label={environmentsLabel([env])}
-                    />
+                    <CheckboxOption key={env} name="env" value={env} defaultChecked={row?.environments.includes(env)} label={environmentsLabel([env])} />
                   ))}
-                  <input
-                    name="envCustom"
-                    defaultValue={custom.join(", ")}
-                    placeholder="Others, comma-separated: staging, qa"
-                    className={field}
-                  />
+                  <input name="envCustom" defaultValue={custom.join(", ")} placeholder="Others, comma-separated: staging, qa" className={field} />
                   <p className="text-xs text-faint">
-                    Deployments are production and preview; a workflow job reads the row for its{" "}
-                    <code>environment:</code>, and rows for all environments otherwise.
+                    Deployments are production and preview; a workflow job reads the row for its <code>environment:</code>, and rows for all environments
+                    otherwise.
                   </p>
                 </div>
               )}

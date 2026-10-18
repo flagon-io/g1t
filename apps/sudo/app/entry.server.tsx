@@ -11,12 +11,7 @@ import { makeNonce, pagePolicy } from "./lib/guard";
  * names that nonce and nothing else (lib/guard.ts). workers/app.ts keeps
  * the policy set here.
  */
-export default async function handleRequest(
-  request: Request,
-  responseStatusCode: number,
-  responseHeaders: Headers,
-  routerContext: EntryContext,
-) {
+export default async function handleRequest(request: Request, responseStatusCode: number, responseHeaders: Headers, routerContext: EntryContext) {
   let status = responseStatusCode;
   const nonce = makeNonce();
   const body = await renderToReadableStream(<ServerRouter context={routerContext} url={request.url} nonce={nonce} />, {

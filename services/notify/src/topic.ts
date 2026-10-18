@@ -60,10 +60,7 @@ export class Topic extends DurableObject<TopicEnv> {
     return this.tell(changes.length, (feed) => feed.workspaceChanged(key, changes));
   }
 
-  private async tell(
-    count: number,
-    send: (feed: DurableObjectStub<Feed>, watcher: { user_id: string; repo: string }) => Promise<boolean>,
-  ): Promise<number> {
+  private async tell(count: number, send: (feed: DurableObjectStub<Feed>, watcher: { user_id: string; repo: string }) => Promise<boolean>): Promise<number> {
     const feeds = this.env.FEEDS;
     if (!feeds || !count) return 0;
     const now = Date.now();

@@ -110,7 +110,12 @@ export function dayGroups<T>(items: readonly T[], at: (item: T) => string, zone:
           ? "Today"
           : key === yesterday
             ? "Yesterday"
-            : new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "short", day: "numeric", ...(key.slice(0, 4) === year ? {} : { year: "numeric" }) }).format(date);
+            : new Intl.DateTimeFormat("en-US", {
+                timeZone: "UTC",
+                month: "short",
+                day: "numeric",
+                ...(key.slice(0, 4) === year ? {} : { year: "numeric" }),
+              }).format(date);
       group = { key, label, items: [] };
       out.push(group);
     }
@@ -170,7 +175,10 @@ export function canDo(role: DocRole | null | undefined, need: DocRole): boolean 
 
 /** How many words a doc has, and the minutes it takes to read. */
 export function readingTime(markdown: string): { words: number; minutes: number } {
-  const words = markdown.replace(/```[\s\S]*?```/g, " ").split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+  const words = markdown
+    .replace(/```[\s\S]*?```/g, " ")
+    .split(/\s+/)
+    .filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
   return { words, minutes: Math.max(1, Math.round(words / 230)) };
 }
 

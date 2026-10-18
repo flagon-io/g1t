@@ -38,26 +38,50 @@ const throwing = {
 
 test("a choice is remembered and read back", () => {
   const store = memory();
-  assert.equal(writeAgentChoice(() => store, "codex"), true);
+  assert.equal(
+    writeAgentChoice(() => store, "codex"),
+    true,
+  );
   assert.equal(store.map.get(AGENT_STORAGE_KEY), "codex");
-  assert.equal(readAgentChoice(() => store), "codex");
+  assert.equal(
+    readAgentChoice(() => store),
+    "codex",
+  );
 });
 
 test("no choice, an unknown one, or storage that throws falls back to the default", () => {
-  assert.equal(readAgentChoice(() => memory()), DEFAULT_AGENT);
+  assert.equal(
+    readAgentChoice(() => memory()),
+    DEFAULT_AGENT,
+  );
   const store = memory();
   store.setItem(AGENT_STORAGE_KEY, "notepad");
-  assert.equal(readAgentChoice(() => store), DEFAULT_AGENT);
-  assert.equal(readAgentChoice(() => throwing), DEFAULT_AGENT);
-  assert.equal(readAgentChoice(() => null), DEFAULT_AGENT);
+  assert.equal(
+    readAgentChoice(() => store),
+    DEFAULT_AGENT,
+  );
+  assert.equal(
+    readAgentChoice(() => throwing),
+    DEFAULT_AGENT,
+  );
+  assert.equal(
+    readAgentChoice(() => null),
+    DEFAULT_AGENT,
+  );
   assert.equal(
     readAgentChoice(() => {
       throw new Error("no localStorage");
     }),
     DEFAULT_AGENT,
   );
-  assert.equal(writeAgentChoice(() => throwing, "cursor"), false);
-  assert.equal(writeAgentChoice(() => null, "cursor"), false);
+  assert.equal(
+    writeAgentChoice(() => throwing, "cursor"),
+    false,
+  );
+  assert.equal(
+    writeAgentChoice(() => null, "cursor"),
+    false,
+  );
 });
 
 test("every toggle on the page follows the last choice", () => {
@@ -120,12 +144,24 @@ test("the first configured provider supplies the default without reordering", ()
 
 test("explicit choices beat provider defaults, and defaults are not saved as choices", () => {
   const store = memory();
-  assert.equal(readAgentChoice(() => store, "codex"), "codex");
-  assert.equal(readAgentChoice(() => store, "gemini"), "gemini");
+  assert.equal(
+    readAgentChoice(() => store, "codex"),
+    "codex",
+  );
+  assert.equal(
+    readAgentChoice(() => store, "gemini"),
+    "gemini",
+  );
   assert.equal(store.map.size, 0);
   writeAgentChoice(() => store, "cursor");
-  assert.equal(readAgentChoice(() => store, "codex"), "cursor");
-  assert.equal(readAgentChoice(() => throwing, "gemini"), "gemini");
+  assert.equal(
+    readAgentChoice(() => store, "codex"),
+    "cursor",
+  );
+  assert.equal(
+    readAgentChoice(() => throwing, "gemini"),
+    "gemini",
+  );
 });
 
 test("chat clients have distinct setup instructions and LibreChat uses per-user OAuth", () => {

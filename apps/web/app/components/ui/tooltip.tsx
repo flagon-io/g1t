@@ -22,12 +22,7 @@ export function Tooltip(props: ComponentProps<typeof Primitive.Root>) {
 
 export const TooltipTrigger = Primitive.Trigger;
 
-export function TooltipContent({
-  className,
-  sideOffset = 6,
-  children,
-  ...props
-}: ComponentProps<typeof Primitive.Content>) {
+export function TooltipContent({ className, sideOffset = 6, children, ...props }: ComponentProps<typeof Primitive.Content>) {
   return (
     <Primitive.Portal>
       <Primitive.Content

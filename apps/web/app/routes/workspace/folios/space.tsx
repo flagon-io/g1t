@@ -45,7 +45,12 @@ export default function SpacePage({ loaderData, params }: Route.ComponentProps) 
   const starting = useNavigation().state !== "idle";
   const joined = (layout?.sidebar?.spaces ?? []).some((s) => s.id === space.id);
   const joinable = space.kind === "workspace" && !space.is_default;
-  const who = space.kind === "workspace" ? `Everyone in the workspace (${space.default_role ? DOC_ROLE_LABELS[space.default_role].toLowerCase() : "listed members only"})` : space.kind === "team" ? `The ${space.team} team, and members added to it` : "Only its members";
+  const who =
+    space.kind === "workspace"
+      ? `Everyone in the workspace (${space.default_role ? DOC_ROLE_LABELS[space.default_role].toLowerCase() : "listed members only"})`
+      : space.kind === "team"
+        ? `The ${space.team} team, and members added to it`
+        : "Only its members";
   return (
     <div className="mx-auto max-w-5xl">
       <div className="flex flex-wrap items-start gap-4">
@@ -62,13 +67,23 @@ export default function SpacePage({ loaderData, params }: Route.ComponentProps) 
         </div>
         <div className="flex items-center gap-2">
           {joinable && (
-            <Button type="button" disabled={busy} onClick={() => send(joined ? "leave_space" : "join_space", { space_id: space.id })} variant="outline" className="px-3 disabled:opacity-60 font-normal">
+            <Button
+              type="button"
+              disabled={busy}
+              onClick={() => send(joined ? "leave_space" : "join_space", { space_id: space.id })}
+              variant="outline"
+              className="px-3 disabled:opacity-60 font-normal"
+            >
               {joined ? "Leave" : "Join"}
             </Button>
           )}
           {canDo(space.viewer_role, "manage") && (
             <Hint label="Space settings">
-              <Link to={`${spacePath(slug, space.slug)}/settings`} aria-label="Space settings" className="flex size-9 items-center justify-center rounded-md border border-line text-muted hover:border-line-strong hover:bg-surface hover:text-fg">
+              <Link
+                to={`${spacePath(slug, space.slug)}/settings`}
+                aria-label="Space settings"
+                className="flex size-9 items-center justify-center rounded-md border border-line text-muted hover:border-line-strong hover:bg-surface hover:text-fg"
+              >
                 <Settings size={16} />
               </Link>
             </Hint>
@@ -92,7 +107,11 @@ export default function SpacePage({ loaderData, params }: Route.ComponentProps) 
         {!list ? (
           <EmptyState title="Artifacts didn't answer">Try again in a moment.</EmptyState>
         ) : list.items.length === 0 ? (
-          <EmptyState title="Nothing here yet">{canDo(space.viewer_role, "edit") ? "Start a doc with New doc, or move something here from its ⋯ menu." : "When someone adds an artifact here, it shows up for you."}</EmptyState>
+          <EmptyState title="Nothing here yet">
+            {canDo(space.viewer_role, "edit")
+              ? "Start a doc with New doc, or move something here from its ⋯ menu."
+              : "When someone adds an artifact here, it shows up for you."}
+          </EmptyState>
         ) : (
           <FolioDays slug={slug} items={list.items} zone={zone} onError={setFailed} />
         )}

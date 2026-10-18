@@ -126,7 +126,11 @@ export class CustomHostnames {
       if (errors.some((error) => NOT_ENABLED_CODES.has(error.code)) || /ssl for saas|not.*(entitled|provisioned)/i.test(why)) {
         throw new NotEnabled(why);
       }
-      throw new Refused(`Cloudflare answered ${response.status}: ${why}`, response.status, errors.map((e) => e.code));
+      throw new Refused(
+        `Cloudflare answered ${response.status}: ${why}`,
+        response.status,
+        errors.map((e) => e.code),
+      );
     }
     return answer.result as T;
   }

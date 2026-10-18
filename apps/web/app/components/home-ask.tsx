@@ -56,7 +56,10 @@ export function HomeAsk({ span, compact = false }: { span: AskSpan; compact?: bo
     }
   };
   return (
-    <section aria-labelledby="home-ask" className={compact ? "flex w-full flex-col gap-3" : "mx-auto flex w-full max-w-3xl flex-col items-center gap-5 pt-4 pb-2 md:pt-8"}>
+    <section
+      aria-labelledby="home-ask"
+      className={compact ? "flex w-full flex-col gap-3" : "mx-auto flex w-full max-w-3xl flex-col items-center gap-5 pt-4 pb-2 md:pt-8"}
+    >
       {compact ? (
         <h2 id="home-ask" className="text-sm font-semibold text-fg">
           Ask about any of this
@@ -136,53 +139,60 @@ export function WhatChangedCard({ slug, span, tz }: { slug: string; span: AskSpa
 
   return (
     <div ref={card} className="scroll-mt-4 border-t border-line">
-        <div className="px-5 py-3.5">
-          {!asked ? (
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <p className="grow text-sm text-muted">
-                <span className="font-medium text-fg">What changed, in plain English.</span> g1t reads the commits, pull requests, deploys and conversations {label} and
-                tells you what changed, why, and what is live.
-              </p>
-              <Button type="button" variant="accent" size="sm" onClick={summarize} onPointerEnter={() => void loadSummary()} className="shrink-0 self-start sm:self-auto">
-                <Sparkles size={14} />
-                Summarize
-              </Button>
-            </div>
-          ) : (
-            <>
-              <Suspense
-                fallback={
-                  <div className="space-y-2.5">
-                    <Skeleton className="h-3.5 w-11/12" />
-                    <Skeleton className="h-3.5 w-3/4" />
-                  </div>
-                }
-              >
-                <HomeSummary key={asked.at} slug={slug} question={asked.question} onDone={onDone} />
-              </Suspense>
-              {done && (
-                <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
-                  <Button type="button" variant="soft" size="sm" onClick={openAsk}>
-                    <MarkGlyph className="h-3" />
-                    Ask a follow-up
-                  </Button>
-                  <Button type="button" variant="ghost" size="sm" onClick={summarize}>
-                    <RotateCcw size={13} />
-                    Summarize again
-                  </Button>
-                  {done.channelId && (
-                    <Button asChild variant="ghost" size="sm" className="sm:ml-auto">
-                      <Link to={`/${slug}/-/chat/dm/${done.channelId}`}>
-                        <MessageSquare size={13} />
-                        In your direct message with g1t
-                      </Link>
-                    </Button>
-                  )}
+      <div className="px-5 py-3.5">
+        {!asked ? (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <p className="grow text-sm text-muted">
+              <span className="font-medium text-fg">What changed, in plain English.</span> g1t reads the commits, pull requests, deploys and conversations{" "}
+              {label} and tells you what changed, why, and what is live.
+            </p>
+            <Button
+              type="button"
+              variant="accent"
+              size="sm"
+              onClick={summarize}
+              onPointerEnter={() => void loadSummary()}
+              className="shrink-0 self-start sm:self-auto"
+            >
+              <Sparkles size={14} />
+              Summarize
+            </Button>
+          </div>
+        ) : (
+          <>
+            <Suspense
+              fallback={
+                <div className="space-y-2.5">
+                  <Skeleton className="h-3.5 w-11/12" />
+                  <Skeleton className="h-3.5 w-3/4" />
                 </div>
-              )}
-            </>
-          )}
-        </div>
+              }
+            >
+              <HomeSummary key={asked.at} slug={slug} question={asked.question} onDone={onDone} />
+            </Suspense>
+            {done && (
+              <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+                <Button type="button" variant="soft" size="sm" onClick={openAsk}>
+                  <MarkGlyph className="h-3" />
+                  Ask a follow-up
+                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={summarize}>
+                  <RotateCcw size={13} />
+                  Summarize again
+                </Button>
+                {done.channelId && (
+                  <Button asChild variant="ghost" size="sm" className="sm:ml-auto">
+                    <Link to={`/${slug}/-/chat/dm/${done.channelId}`}>
+                      <MessageSquare size={13} />
+                      In your direct message with g1t
+                    </Link>
+                  </Button>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

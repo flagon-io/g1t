@@ -63,12 +63,12 @@ g1t takes up to four entries (the rule's `max_entries_to_build`) from the
 front of the queue and tests them all at once, speculatively. Each entry's
 state is the one before it with that entry landed on top, in queue order:
 
-| Entry | Tested as |
-| --- | --- |
-| 1st | `main` + #41 |
-| 2nd | `main` + #41 + #44 |
-| 3rd | `main` + #41 + #44 + #46 |
-| 4th | `main` + #41 + #44 + #46 + #47 |
+| Entry | Tested as                      |
+| ----- | ------------------------------ |
+| 1st   | `main` + #41                   |
+| 2nd   | `main` + #41 + #44             |
+| 3rd   | `main` + #41 + #44 + #46       |
+| 4th   | `main` + #41 + #44 + #46 + #47 |
 
 Each entry is landed on the state ahead of it by its own
 [merge method](/guides/pull-requests/#merge-methods), exactly as merging it
@@ -190,15 +190,15 @@ in them, are tested again without it rather than taken out with it.
 The entry that answers for a failure leaves the queue, and g1t works out
 what it failed with:
 
-| What happened | Who it failed with (`suspects`) |
-| --- | --- |
-| Tested on `main` alone, and its own checks fail on its head too | Nobody: the change is the cause. |
-| Tested on `main` alone, though its own checks pass on its head | Nobody: the change answers for it, and the note names what landed on `main` since it branched (`landed`), [below](#when-main-moved-under-it). |
-| Its own checks fail on its head too | Nobody: the change is the cause. |
-| It conflicts with an entry ahead | That entry, and the conflicting files. |
-| A required check did not report, or the state could not be built | Nobody: the note says what to fix. |
-| Its own checks pass, one entry ahead | That entry. |
-| Its own checks pass, several entries ahead | Found by building smaller combinations, below. |
+| What happened                                                    | Who it failed with (`suspects`)                                                                                                               |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tested on `main` alone, and its own checks fail on its head too  | Nobody: the change is the cause.                                                                                                              |
+| Tested on `main` alone, though its own checks pass on its head   | Nobody: the change answers for it, and the note names what landed on `main` since it branched (`landed`), [below](#when-main-moved-under-it). |
+| Its own checks fail on its head too                              | Nobody: the change is the cause.                                                                                                              |
+| It conflicts with an entry ahead                                 | That entry, and the conflicting files.                                                                                                        |
+| A required check did not report, or the state could not be built | Nobody: the note says what to fix.                                                                                                            |
+| Its own checks pass, one entry ahead                             | That entry.                                                                                                                                   |
+| Its own checks pass, several entries ahead                       | Found by building smaller combinations, below.                                                                                                |
 
 ### When `main` moved under it
 
@@ -313,13 +313,13 @@ refreshes on its own while anything is queued.
 **In the queue** lists the entries in order, starting from `main`'s commit.
 Each shows:
 
-| | |
-| --- | --- |
-| State | **Waiting**, **Testing** or **Passed**. |
-| Tested as | `main` and the pull requests merged into it, such as `main + #41 + #44`. |
-| Checks | How its state's checks stand, linked to the `merge_group` workflow run on the tested commit (each run by name when there are several). |
-| Who | The person or coding agent who made the pull request, and who queued it. |
-| Commit | The tested state's commit. |
+|           |                                                                                                                                        |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| State     | **Waiting**, **Testing** or **Passed**.                                                                                                |
+| Tested as | `main` and the pull requests merged into it, such as `main + #41 + #44`.                                                               |
+| Checks    | How its state's checks stand, linked to the `merge_group` workflow run on the tested commit (each run by name when there are several). |
+| Who       | The person or coding agent who made the pull request, and who queued it.                                                               |
+| Commit    | The tested state's commit.                                                                                                             |
 
 **Recently** lists the last 20 that left the queue: **Landed**, **Failed**
 or **Removed**. A failed entry shows why.
@@ -354,18 +354,18 @@ curl https://api.g1t.sh/repos/acme/web/queue
 }
 ```
 
-| Field | |
-| --- | --- |
-| `enabled` | Whether the repository merges through the queue. |
-| `active` | The entries waiting to land, in order. |
-| `recent` | Those that landed or left, newest first. |
-| `state` | `waiting`, `testing`, `passed`, `failed`, `landed` or `removed`. |
-| `ahead` | The pull requests merged ahead of it in the state being tested. Empty when it was tested on `main` alone. |
-| `base_commit` | The commit of `main` the state was built on. |
-| `combined_commit` | The tested state. |
-| `results` | What building the state recorded, each with `command`, `passed` and `output`. The workflow runs on it are on its commit, `combined_commit`. |
-| `error` | Why it failed: a conflict, a workflow that failed on it, a required check that did not report, or what could not be built. |
-| `enqueued_by` | Who added it: a username, or `g1t` when it was merged automatically. |
+| Field             |                                                                                                                                             |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`         | Whether the repository merges through the queue.                                                                                            |
+| `active`          | The entries waiting to land, in order.                                                                                                      |
+| `recent`          | Those that landed or left, newest first.                                                                                                    |
+| `state`           | `waiting`, `testing`, `passed`, `failed`, `landed` or `removed`.                                                                            |
+| `ahead`           | The pull requests merged ahead of it in the state being tested. Empty when it was tested on `main` alone.                                   |
+| `base_commit`     | The commit of `main` the state was built on.                                                                                                |
+| `combined_commit` | The tested state.                                                                                                                           |
+| `results`         | What building the state recorded, each with `command`, `passed` and `output`. The workflow runs on it are on its commit, `combined_commit`. |
+| `error`           | Why it failed: a conflict, a workflow that failed on it, a required check that did not report, or what could not be built.                  |
+| `enqueued_by`     | Who added it: a username, or `g1t` when it was merged automatically.                                                                        |
 
 An agent working on a pull request learns of a failure without polling the
 queue: from the `integration.failed` event, from the note in the pull

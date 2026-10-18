@@ -30,7 +30,12 @@ export function readFilters(url: URL, fixedProject?: string): UsageFilters {
     from,
     until,
     products: q.getAll("product").filter((p) => known.has(p)),
-    projects: fixedProject ? [fixedProject] : q.getAll("project").filter((p) => /^[a-z0-9._-]+\/[a-z0-9._-]+$/i.test(p)).map((p) => p.toLowerCase()),
+    projects: fixedProject
+      ? [fixedProject]
+      : q
+          .getAll("project")
+          .filter((p) => /^[a-z0-9._-]+\/[a-z0-9._-]+$/i.test(p))
+          .map((p) => p.toLowerCase()),
     group: group === "project" && !fixedProject ? "project" : group === "day" ? "day" : "product",
     grain: grain === "day" || grain === "week" || grain === "month" ? grain : defaultGrain(from, until),
     cumulative: q.get("cumulative") === "1",
@@ -112,9 +117,9 @@ export function UsageView({
       />
       <Breakdown report={report} group={filters.group as GroupBy} columns={cols} projectHref={fixedProject ? undefined : (project) => `/${project}/usage`} />
       <p className="text-xs text-faint">
-        Every amount is usage at price: what was charged, plus what included usage, credit or a discount paid for it, to the cent; under a
-        cent reads &lt;$0.01. Storage, git operations, scans and search are metered through the month and counted in it as they go; they
-        are charged when it closes, on the same terms as the rest.
+        Every amount is usage at price: what was charged, plus what included usage, credit or a discount paid for it, to the cent; under a cent reads &lt;$0.01.
+        Storage, git operations, scans and search are metered through the month and counted in it as they go; they are charged when it closes, on the same terms
+        as the rest.
       </p>
     </div>
   );

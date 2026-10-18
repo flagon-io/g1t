@@ -16,13 +16,7 @@ import {
 } from "@g1t/contracts";
 
 import { cn } from "../lib/cn";
-import {
-  accessSummary,
-  everyScope,
-  impliedBy,
-  matchingPreset,
-  normalizeScopes,
-} from "../lib/token-scopes";
+import { accessSummary, everyScope, impliedBy, matchingPreset, normalizeScopes } from "../lib/token-scopes";
 import { Badge } from "./ui/badge";
 import { Hint } from "./ui/hint";
 
@@ -33,15 +27,7 @@ import { Hint } from "./ui/hint";
 // lower levels a higher one includes. `lib/token-scopes.ts` reads it back.
 
 /** One box. Greyed out and ticked when a higher level of its resource is ticked. */
-function ScopeBox({
-  scope,
-  ticked,
-  onToggle,
-}: {
-  scope: Scope;
-  ticked: readonly Scope[];
-  onToggle: (scope: Scope, on: boolean) => void;
-}) {
+function ScopeBox({ scope, ticked, onToggle }: { scope: Scope; ticked: readonly Scope[]; onToggle: (scope: Scope, on: boolean) => void }) {
   const by = impliedBy(ticked, scope);
   const checked = by !== null || ticked.includes(scope);
   return (
@@ -62,12 +48,15 @@ function ScopeBox({
               isDangerous(scope) ? "checked:border-danger checked:bg-danger" : "checked:border-accent checked:bg-accent",
             )}
           />
-          <Check size={12} strokeWidth={3} aria-hidden className="pointer-events-none absolute inset-0 m-auto hidden text-bg peer-checked:block peer-disabled:opacity-50" />
+          <Check
+            size={12}
+            strokeWidth={3}
+            aria-hidden
+            className="pointer-events-none absolute inset-0 m-auto hidden text-bg peer-checked:block peer-disabled:opacity-50"
+          />
         </span>
         <span className="min-w-0">
-          <span className={cn("block font-mono text-[0.8125rem]", isDangerous(scope) ? "text-danger" : "text-fg", by && "opacity-60")}>
-            {scope}
-          </span>
+          <span className={cn("block font-mono text-[0.8125rem]", isDangerous(scope) ? "text-danger" : "text-fg", by && "opacity-60")}>{scope}</span>
           <span className="block text-xs leading-snug text-faint">{describeScope(scope)}</span>
           {by && <span className="sr-only">Included in {by}</span>}
         </span>
@@ -97,9 +86,7 @@ export function ScopeChecklist({
   const [full, setFull] = useState(allowFull && !only && initial === null);
   const [ticked, setTicked] = useState<Scope[]>(() => (initial === null ? everyScope() : normalizeScopes(initial)));
   const shown = (scope: Scope) => !only || only.includes(scope);
-  const groups = SCOPE_GROUPS.map((group) => ({ ...group, scopes: group.scopes.filter(shown) })).filter(
-    (group) => group.scopes.length > 0,
-  );
+  const groups = SCOPE_GROUPS.map((group) => ({ ...group, scopes: group.scopes.filter(shown) })).filter((group) => group.scopes.length > 0);
   const dangerous = DANGEROUS_SCOPES.filter(shown);
   const preset: PresetId | null = full ? "full" : matchingPreset(ticked);
   const count = full ? null : normalizeScopes(ticked).length;
@@ -150,17 +137,14 @@ export function ScopeChecklist({
               </button>
             </Hint>
           ))}
-          <span className="ml-auto text-xs text-faint">
-            {count === null ? "Everything you can do" : count === 1 ? "1 scope" : `${count} scopes`}
-          </span>
+          <span className="ml-auto text-xs text-faint">{count === null ? "Everything you can do" : count === 1 ? "1 scope" : `${count} scopes`}</span>
         </div>
       )}
 
       {full && (
         <p className="flex items-start gap-2 rounded-md border border-danger/40 bg-danger/5 px-3 py-2 text-xs text-danger">
           <TriangleAlert size={14} className="mt-px shrink-0" />
-          Full access can do everything you can, including scopes added later. Untick anything to
-          narrow it.
+          Full access can do everything you can, including scopes added later. Untick anything to narrow it.
         </p>
       )}
 
@@ -186,8 +170,7 @@ export function ScopeChecklist({
             Dangerous
           </p>
           <p className="mt-0.5 mb-1 text-xs text-faint">
-            Hard to undo, or decides who can reach what. Tick these only for something you trust as
-            much as yourself.
+            Hard to undo, or decides who can reach what. Tick these only for something you trust as much as yourself.
           </p>
           <div className="grid gap-x-6 sm:grid-cols-2">
             {dangerous.map((scope) => (
@@ -201,13 +184,7 @@ export function ScopeChecklist({
 }
 
 /** An application's access in a list: what it may do. */
-export function AccessSummary({
-  holder,
-  className,
-}: {
-  holder: { scopes: readonly string[] | null; legacy: boolean };
-  className?: string;
-}) {
+export function AccessSummary({ holder, className }: { holder: { scopes: readonly string[] | null; legacy: boolean }; className?: string }) {
   const summary = accessSummary(holder);
   const preset = matchingPreset(holder.scopes);
   const scopes = holder.scopes && !preset ? normalizeScopes(holder.scopes) : [];

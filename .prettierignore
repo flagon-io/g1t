@@ -7,3 +7,9 @@ build/
 .react-router/
 *.lock
 package-lock.json
+# Test fixtures: kept byte for byte as they were captured.
+**/fixtures/
+*.fixtures.json
+*_fixtures.json
+# Prettier's MDX printer changes this page again on every run.
+apps/docs/src/content/docs/guides/self-hosted-runners.mdx

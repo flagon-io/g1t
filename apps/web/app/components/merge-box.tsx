@@ -141,19 +141,20 @@ export function LogViewer({ text }: { text: string }) {
       <Hint label="Copy the output">
         <Button
           type="button"
-          aria-label="Copy the output" variant="outline" size="inline" className="absolute top-1.5 right-3 z-10 bg-surface p-1.5 text-faint" onClick={() => {
+          aria-label="Copy the output"
+          variant="outline"
+          size="inline"
+          className="absolute top-1.5 right-3 z-10 bg-surface p-1.5 text-faint"
+          onClick={() => {
             void navigator.clipboard.writeText(stripAnsi(body));
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
-          }}>
+          }}
+        >
           {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
         </Button>
       </Hint>
-      {cut && (
-        <p className="border-b border-line px-3 py-1.5 text-xs text-faint">
-          Showing the end of the output. Earlier lines were not kept.
-        </p>
-      )}
+      {cut && <p className="border-b border-line px-3 py-1.5 text-xs text-faint">Showing the end of the output. Earlier lines were not kept.</p>}
       <div className="max-h-96 overflow-auto py-1.5 font-mono text-xs leading-5">
         {lines.map((line, index) => (
           <div key={index} className="flex gap-3 pr-12 pl-2 hover:bg-raised/40">
@@ -189,8 +190,7 @@ type Standing = "passed" | "failed" | "running" | "queued" | "skipped";
 function StandingIcon({ standing, size = 15 }: { standing: Standing; size?: number }) {
   if (standing === "passed") return <CircleCheck size={size} className="shrink-0 text-success" aria-label="Passed" />;
   if (standing === "failed") return <CircleX size={size} className="shrink-0 text-danger" aria-label="Failed" />;
-  if (standing === "running")
-    return <LoaderCircle size={size} className="shrink-0 animate-spin text-warn" aria-label="Running" />;
+  if (standing === "running") return <LoaderCircle size={size} className="shrink-0 animate-spin text-warn" aria-label="Running" />;
   if (standing === "skipped") return <CircleAlert size={size} className="shrink-0 text-faint" aria-label="Skipped" />;
   return <LoaderCircle size={size} className="shrink-0 text-faint" aria-label="Queued" />;
 }
@@ -293,11 +293,7 @@ export function requiredSummary(required: RequiredCheck[]): { title: string; sub
   const failing = count("failure");
   const running = count("pending");
   const expected = count("expected");
-  const sub = [
-    failing > 0 && `${failing} failing`,
-    running > 0 && `${running} running`,
-    expected > 0 && `${expected} not reported yet`,
-  ]
+  const sub = [failing > 0 && `${failing} failing`, running > 0 && `${running} running`, expected > 0 && `${expected} not reported yet`]
     .filter(Boolean)
     .join(", ");
   return {
@@ -403,16 +399,9 @@ export function ChecksSection({
     : settled
       ? [others, pull.headCommit && `on ${pull.headCommit.slice(0, 7)}`].filter(Boolean).join(" · ")
       : [others, "none are required, so none hold the merge"].filter(Boolean).join(" · ");
-  const standing: Standing = summary
-    ? summary.standing
-    : failed > 0
-      ? "failed"
-      : pending > 0
-        ? "running"
-        : "passed";
+  const standing: Standing = summary ? summary.standing : failed > 0 ? "failed" : pending > 0 ? "running" : "passed";
 
-  const commitPath = (sha: string) =>
-    pull.fork ? `/${pull.fork.namespace}/${pull.fork.name}/commit/${sha}` : `${base}/commit/${sha}`;
+  const commitPath = (sha: string) => (pull.fork ? `/${pull.fork.namespace}/${pull.fork.name}/commit/${sha}` : `${base}/commit/${sha}`);
   const older = run != null && pull.headCommit != null && run.headCommit !== pull.headCommit;
   const failedRuns = statuses.filter((status) => statusStanding(status) === "failed" && runIdOf(status));
   // g1t's own Dependency review check, which anyone who may start runs can
@@ -438,9 +427,8 @@ export function ChecksSection({
           {sub && <p className="mt-0.5 text-xs text-muted">{sub}</p>}
           {held && (
             <p className="mt-0.5 text-xs text-muted">
-              It conflicts with the branch it merges into, so workflows that run on{" "}
-              <code className="font-mono">pull_request</code> do not start for it: they build the pull request
-              merged into that branch, and there is no such merge. They run again once the conflicts are resolved.
+              It conflicts with the branch it merges into, so workflows that run on <code className="font-mono">pull_request</code> do not start for it: they
+              build the pull request merged into that branch, and there is no such merge. They run again once the conflicts are resolved.
             </p>
           )}
           {!summary && !settled && settingsUrl && (
@@ -459,11 +447,7 @@ export function ChecksSection({
                 <input type="hidden" name="action" value="rerun-workflow" />
                 <input type="hidden" name="run" value={runIdOf(status) ?? ""} />
                 <Hint label={`Re-run the failed jobs of ${status.context}`}>
-                  <SubmitButton
-                    variant="outline"
-                    match={{ action: "rerun-workflow", run: runIdOf(status) ?? "" }}
-                    pending="Re-running…"
-                  >
+                  <SubmitButton variant="outline" match={{ action: "rerun-workflow", run: runIdOf(status) ?? "" }} pending="Re-running…">
                     <RotateCw size={13} />
                     Re-run failed jobs{failedRuns.length > 1 ? ` of ${status.context}` : ""}
                   </SubmitButton>
@@ -504,9 +488,7 @@ export function ChecksSection({
                   </>
                 }
                 detail={
-                  check.state === "expected"
-                    ? "Waiting for status to be reported"
-                    : (check.description ?? (check.state === "pending" ? "running" : undefined))
+                  check.state === "expected" ? "Waiting for status to be reported" : (check.description ?? (check.state === "pending" ? "running" : undefined))
                 }
                 to={onSite(check.targetUrl)}
               />
@@ -574,8 +556,7 @@ export function ChecksSection({
             {older && !queueFailed && (
               <p className="mx-4 my-1.5 flex items-start gap-2 rounded-md bg-warn/10 px-2.5 py-1.5 text-xs text-warn">
                 <TriangleAlert size={13} className="mt-0.5 shrink-0" />
-                These ran on an older commit, before the latest push,{" "}
-                <span className="font-mono">{pull.headCommit?.slice(0, 7)}</span>.
+                These ran on an older commit, before the latest push, <span className="font-mono">{pull.headCommit?.slice(0, 7)}</span>.
               </p>
             )}
             {run.error && (
@@ -601,13 +582,7 @@ export function ChecksSection({
                 <li key={before.id} className="flex items-center gap-2 text-muted">
                   <StandingIcon
                     size={13}
-                    standing={
-                      before.status === "passed"
-                        ? "passed"
-                        : before.status === "queued" || before.status === "running"
-                          ? "queued"
-                          : "failed"
-                    }
+                    standing={before.status === "passed" ? "passed" : before.status === "queued" || before.status === "running" ? "queued" : "failed"}
                   />
                   <Link to={commitPath(before.headCommit)} className="font-mono hover:text-fg">
                     {before.headCommit.slice(0, 7)}
@@ -635,14 +610,7 @@ export function ChecksSection({
 // --- Mergeability ---------------------------------------------------------
 
 /** How to resolve the conflicts by hand, step by step, for a branch or a fork. */
-export function commandLineSteps(
-  pull: Pull,
-  owner: string,
-  repo: string,
-  defaultBranch: string,
-  files: string[],
-  site = "https://g1t.sh",
-): string[] {
+export function commandLineSteps(pull: Pull, owner: string, repo: string, defaultBranch: string, files: string[], site = "https://g1t.sh"): string[] {
   const upstream = `${site}/${owner}/${repo}.git`;
   const add = files.length > 0 && files.length <= 6 ? `git add ${files.join(" ")}` : "git add -A";
   // A branch of someone's fork of the repository: fetched from and pushed to the fork.
@@ -704,8 +672,8 @@ export function ConflictsSection({
         <div className="min-w-0 grow">
           <p className="text-sm font-medium">This branch has conflicts that must be resolved</p>
           <p className="mt-0.5 text-sm text-muted">
-            Merging <span className="font-mono">{defaultBranch}</span> into it stops on{" "}
-            {conflicts.length === 1 ? "one file" : `${conflicts.length} files`}. It cannot merge until they are resolved.
+            Merging <span className="font-mono">{defaultBranch}</span> into it stops on {conflicts.length === 1 ? "one file" : `${conflicts.length} files`}. It
+            cannot merge until they are resolved.
           </p>
           {conflicts.length > 0 && (
             <>
@@ -713,10 +681,7 @@ export function ConflictsSection({
               <ul className="mt-1.5 space-y-1">
                 {conflicts.map((path) => (
                   <li key={path}>
-                    <Link
-                      to={`${changesUrl}#file-${path}`}
-                      className="font-mono text-xs text-fg hover:text-danger hover:underline"
-                    >
+                    <Link to={`${changesUrl}#file-${path}`} className="font-mono text-xs text-fg hover:text-danger hover:underline">
                       {path}
                     </Link>
                   </li>
@@ -735,9 +700,7 @@ export function ConflictsSection({
                   </Button>
                 </span>
               </TooltipTrigger>
-              <TooltipContent>
-                An editor for conflicts in the browser is coming. Until then, use the command line.
-              </TooltipContent>
+              <TooltipContent>An editor for conflicts in the browser is coming. Until then, use the command line.</TooltipContent>
             </Tooltip>
           </div>
           {error && (
@@ -745,41 +708,37 @@ export function ConflictsSection({
               <ErrorText>{error}</ErrorText>
             </div>
           )}
-            <details className="group mt-3">
-              <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-muted hover:text-fg">
-                <Terminal size={13} />
-                Resolve on the command line
-                <ChevronRight size={13} className="transition-transform group-open:rotate-90" />
-              </summary>
-              <ol className="mt-2 space-y-2 text-xs text-muted">
-                {steps.map((step, index) => (
-                  <li key={step}>
-                    <p className="mb-1">
-                      {index + 1}.{" "}
-                      {step.startsWith("git add")
-                        ? "Fix the conflicts in each file, removing the conflict markers, then commit the merge:"
-                        : step.startsWith("git push")
-                          ? "Push it. The pull request updates, and its checks run again:"
-                          : step.includes("merge") || step.includes("pull")
-                            ? `Merge ${defaultBranch} in. Git stops on the conflicting files:`
-                            : step.startsWith("git clone")
-                              ? pull.headRepo && !pull.fork
-                                ? `Clone the branch from ${pull.headRepo.namespace}/${pull.headRepo.name}, the fork it is in:`
-                                : "Clone the pull request's fork:"
-                              : step.startsWith("git checkout")
-                                ? "Check out the pull request's branch:"
-                                : "Get the latest of both:"}
-                    </p>
-                    <CopyLine text={step} prompt />
-                  </li>
-                ))}
-              </ol>
-              {pull.fork && (
-                <p className="mt-2 text-xs text-faint">
-                  A pull request's fork takes pushes from whoever opened it.
-                </p>
-              )}
-            </details>
+          <details className="group mt-3">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-muted hover:text-fg">
+              <Terminal size={13} />
+              Resolve on the command line
+              <ChevronRight size={13} className="transition-transform group-open:rotate-90" />
+            </summary>
+            <ol className="mt-2 space-y-2 text-xs text-muted">
+              {steps.map((step, index) => (
+                <li key={step}>
+                  <p className="mb-1">
+                    {index + 1}.{" "}
+                    {step.startsWith("git add")
+                      ? "Fix the conflicts in each file, removing the conflict markers, then commit the merge:"
+                      : step.startsWith("git push")
+                        ? "Push it. The pull request updates, and its checks run again:"
+                        : step.includes("merge") || step.includes("pull")
+                          ? `Merge ${defaultBranch} in. Git stops on the conflicting files:`
+                          : step.startsWith("git clone")
+                            ? pull.headRepo && !pull.fork
+                              ? `Clone the branch from ${pull.headRepo.namespace}/${pull.headRepo.name}, the fork it is in:`
+                              : "Clone the pull request's fork:"
+                            : step.startsWith("git checkout")
+                              ? "Check out the pull request's branch:"
+                              : "Get the latest of both:"}
+                  </p>
+                  <CopyLine text={step} prompt />
+                </li>
+              ))}
+            </ol>
+            {pull.fork && <p className="mt-2 text-xs text-faint">A pull request's fork takes pushes from whoever opened it.</p>}
+          </details>
         </div>
       </div>
     </div>
@@ -787,13 +746,7 @@ export function ConflictsSection({
 }
 
 /** Whether the change merges cleanly, when that is not a conflict. */
-export function MergeabilityRow({
-  mergeable,
-  defaultBranch,
-}: {
-  mergeable: Mergeable;
-  defaultBranch: string;
-}) {
+export function MergeabilityRow({ mergeable, defaultBranch }: { mergeable: Mergeable; defaultBranch: string }) {
   if (mergeable === "checking") {
     return (
       <div className="flex gap-3 px-4 py-3 text-sm">
@@ -801,8 +754,7 @@ export function MergeabilityRow({
         <div>
           <p className="font-medium">Checking whether this merges cleanly…</p>
           <p className="mt-0.5 text-muted">
-            It and <span className="font-mono">{defaultBranch}</span> changed some of the same files, so g1t is merging
-            the two in a sandbox to see.
+            It and <span className="font-mono">{defaultBranch}</span> changed some of the same files, so g1t is merging the two in a sandbox to see.
           </p>
         </div>
       </div>

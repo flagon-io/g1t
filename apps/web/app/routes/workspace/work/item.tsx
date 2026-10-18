@@ -98,9 +98,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     part(work.getWork(workspace, number, viewer), "Work"),
     // Its claims that ended, shown muted under the active ones: history
     // the panel can do without when it cannot be read.
-    Promise.all(
-      (["released", "expired", "handed_off"] as const).map((state) => work.listClaims(workspace, viewer, { state, item: number }).catch(() => null)),
-    ),
+    Promise.all((["released", "expired", "handed_off"] as const).map((state) => work.listClaims(workspace, viewer, { state, item: number }).catch(() => null))),
     // Whether a member can start a session on the workspace's Anthropic
     // account: the button is simply not offered when this cannot be read.
     member ? agentSessions.setup(workspace, viewer).catch(() => null) : null,
@@ -123,9 +121,9 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     viewer ? part(inbox.subscription(viewer, { itemId: item.id, number }), "Notifications") : null,
     // Every session tied to it in its repositories, with their subagents, for the Work panel's trees.
     part(
-      Promise.all(
-        item.repos.slice(0, 6).map((linked) => work.listWorkSessions(pathOf(linked.path), viewer, { item: number, subagents: true })),
-      ).then((lists) => lists.flatMap((list) => (list.ok ? list.value : []))),
+      Promise.all(item.repos.slice(0, 6).map((linked) => work.listWorkSessions(pathOf(linked.path), viewer, { item: number, subagents: true }))).then((lists) =>
+        lists.flatMap((list) => (list.ok ? list.value : [])),
+      ),
       "Sessions",
     ),
   ]);
@@ -137,7 +135,10 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     repos:
       projects == null || isFailed(projects) || !projects.ok
         ? null
-        : projects.value.filter((p) => p.workspace.toLowerCase() === workspace).map((p) => p.slug).sort(),
+        : projects.value
+            .filter((p) => p.workspace.toLowerCase() === workspace)
+            .map((p) => p.slug)
+            .sort(),
     ...found.value,
     workspace,
     viewer,
@@ -319,7 +320,9 @@ function RepoPullLine({ repo, pull, full }: { repo: string; pull: WorkPull; full
             {pull.title} <span className="font-normal text-faint">#{pull.number}</span>
           </span>
           <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
-            <span className={merged ? "font-medium text-merged" : ""}>{outcome({ status: pull.status, mergedBy: full?.mergedBy, supersededBy: full?.supersededBy })}</span>
+            <span className={merged ? "font-medium text-merged" : ""}>
+              {outcome({ status: pull.status, mergedBy: full?.mergedBy, supersededBy: full?.supersededBy })}
+            </span>
             <span>· {pull.author.username}</span>
             {full && <ChangeSize files={full.files} />}
             <CheckBadge status={pull.checkStatus} />
@@ -359,7 +362,13 @@ function RepoCard({ repo, pulls, full, canLink }: { repo: ItemRepo; pulls: WorkP
         )}
         <RoleBadge role={repo.role} />
         {repo.legacyNumber != null && (
-          <Hint label={repo.path ? `It was ${repo.path}#${repo.legacyNumber} before work items, and that still leads here.` : `It was #${repo.legacyNumber} there before work items.`}>
+          <Hint
+            label={
+              repo.path
+                ? `It was ${repo.path}#${repo.legacyNumber} before work items, and that still leads here.`
+                : `It was #${repo.legacyNumber} there before work items.`
+            }
+          >
             <span className="shrink-0 text-xs text-faint">was #{repo.legacyNumber}</span>
           </Hint>
         )}
@@ -432,8 +441,8 @@ function LinkRepository({
           <DialogHeader>
             <DialogTitle>Link a repository</DialogTitle>
             <DialogDescription>
-              A target is where the work is meant to land: the item closes once every target has landed. Touched marks one it reached
-              without having to land there.
+              A target is where the work is meant to land: the item closes once every target has landed. Touched marks one it reached without having to land
+              there.
             </DialogDescription>
           </DialogHeader>
           {repos == null ? (
@@ -589,7 +598,11 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
                     to={landed.pull != null ? `/${landed.repo}/pull/${landed.pull}` : `/${landed.repo}/commit/${landed.commit ?? ""}`}
                     className="flex items-start gap-3 rounded-xl border border-merged/40 bg-merged/5 px-4 py-3 text-sm transition-colors hover:border-merged/70"
                   >
-                    {landed.pull != null ? <GitMerge size={18} className="mt-0.5 shrink-0 text-merged" /> : <GitCommitHorizontal size={18} className="mt-0.5 shrink-0 text-merged" />}
+                    {landed.pull != null ? (
+                      <GitMerge size={18} className="mt-0.5 shrink-0 text-merged" />
+                    ) : (
+                      <GitCommitHorizontal size={18} className="mt-0.5 shrink-0 text-merged" />
+                    )}
                     <span className="min-w-0">
                       Landed in <span className="font-mono font-medium">{landed.repo}</span> by{" "}
                       {landed.pull != null ? (
@@ -627,7 +640,12 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
                 )}
                 {canLink && (
                   <span className="max-sm:hidden">
-                    <LinkRepository workspace={workspace} repos={loaderData.repos} linked={item.repos.map((repo) => repo.path.toLowerCase())} error={linkError} />
+                    <LinkRepository
+                      workspace={workspace}
+                      repos={loaderData.repos}
+                      linked={item.repos.map((repo) => repo.path.toLowerCase())}
+                      error={linkError}
+                    />
                   </span>
                 )}
               </span>
@@ -680,7 +698,9 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
             </div>
           )}
 
-          {failure && <IntegrationFailure className="mt-4" failure={failure} base={failureBase} pullHref={pullHref} fixed={resolution?.passed ?? resolution?.fix} />}
+          {failure && (
+            <IntegrationFailure className="mt-4" failure={failure} base={failureBase} pullHref={pullHref} fixed={resolution?.passed ?? resolution?.fix} />
+          )}
 
           {isFailed(loaderData.coordination) ? (
             <>

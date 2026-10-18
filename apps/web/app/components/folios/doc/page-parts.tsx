@@ -39,7 +39,17 @@ function targetLabel(s: DocSuggestion): string {
   }
 }
 
-export function SuggestionCard({ suggestion, canDecide, onDecide, compact = false }: { suggestion: DocSuggestion; canDecide: boolean; onDecide: (id: string, decision: "accept" | "reject") => void; compact?: boolean }) {
+export function SuggestionCard({
+  suggestion,
+  canDecide,
+  onDecide,
+  compact = false,
+}: {
+  suggestion: DocSuggestion;
+  canDecide: boolean;
+  onDecide: (id: string, decision: "accept" | "reject") => void;
+  compact?: boolean;
+}) {
   const [open, setOpen] = useState(!compact);
   const s = suggestion;
   return (
@@ -84,7 +94,44 @@ export function SuggestionCard({ suggestion, canDecide, onDecide, compact = fals
 
 // ── Icon ──────────────────────────────────────────────────────────────────
 
-const EMOJI = ["📄", "📘", "📚", "📝", "📐", "🧭", "🗺️", "🚀", "🛠️", "🧰", "🧪", "🐛", "🔒", "🔑", "⚙️", "📦", "🧩", "🎯", "📈", "📊", "🗓️", "⏱️", "✅", "⚠️", "🔥", "🩹", "💡", "🧠", "🤖", "👋", "🤝", "💬", "📣", "🏁", "🌱", "⭐"];
+const EMOJI = [
+  "📄",
+  "📘",
+  "📚",
+  "📝",
+  "📐",
+  "🧭",
+  "🗺️",
+  "🚀",
+  "🛠️",
+  "🧰",
+  "🧪",
+  "🐛",
+  "🔒",
+  "🔑",
+  "⚙️",
+  "📦",
+  "🧩",
+  "🎯",
+  "📈",
+  "📊",
+  "🗓️",
+  "⏱️",
+  "✅",
+  "⚠️",
+  "🔥",
+  "🩹",
+  "💡",
+  "🧠",
+  "🤖",
+  "👋",
+  "🤝",
+  "💬",
+  "📣",
+  "🏁",
+  "🌱",
+  "⭐",
+];
 
 export function IconPicker({ value, onChange, children }: { value: string | null; onChange: (icon: string | null) => void; children: ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -117,7 +164,13 @@ export function IconPicker({ value, onChange, children }: { value: string | null
             setOpen(false);
           }}
         >
-          <input value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="Any emoji" aria-label="Any emoji" className="h-8 min-w-0 grow rounded-md border border-line bg-bg px-2 text-sm outline-none focus:border-accent/60" />
+          <input
+            value={custom}
+            onChange={(e) => setCustom(e.target.value)}
+            placeholder="Any emoji"
+            aria-label="Any emoji"
+            className="h-8 min-w-0 grow rounded-md border border-line bg-bg px-2 text-sm outline-none focus:border-accent/60"
+          />
           <Button type="submit" variant="secondary" size="xs" className="h-8 font-normal">
             Use
           </Button>
@@ -175,7 +228,8 @@ export function Discussion({
               <Face who={who} size={22} />
               <div className="min-w-0 grow">
                 <p className="text-xs">
-                  <span className="font-medium text-fg">{who.display_name}</span> <span className="text-faint">{c.created_at ? <TimeAgo at={c.created_at} /> : null}</span>
+                  <span className="font-medium text-fg">{who.display_name}</span>{" "}
+                  <span className="text-faint">{c.created_at ? <TimeAgo at={c.created_at} /> : null}</span>
                 </p>
                 <p className="mt-0.5 text-sm leading-relaxed whitespace-pre-wrap text-fg-soft">{c.text}</p>
               </div>
@@ -192,8 +246,20 @@ export function Discussion({
             if (text && (await onReply(t.id, text))) setReplies((r) => ({ ...r, [t.id]: "" }));
           }}
         >
-          <input value={replies[t.id] ?? ""} onChange={(e) => setReplies((r) => ({ ...r, [t.id]: e.target.value }))} placeholder="Reply" aria-label="Reply" className="h-8 min-w-0 grow bg-transparent text-sm outline-none placeholder:text-faint" />
-          <Button type="button" onClick={() => onResolve(t.id, !t.resolved)} variant="link" size="inline" className="text-xs text-faint hover:text-fg font-normal">
+          <input
+            value={replies[t.id] ?? ""}
+            onChange={(e) => setReplies((r) => ({ ...r, [t.id]: e.target.value }))}
+            placeholder="Reply"
+            aria-label="Reply"
+            className="h-8 min-w-0 grow bg-transparent text-sm outline-none placeholder:text-faint"
+          />
+          <Button
+            type="button"
+            onClick={() => onResolve(t.id, !t.resolved)}
+            variant="link"
+            size="inline"
+            className="text-xs text-faint hover:text-fg font-normal"
+          >
             {t.resolved ? "Reopen" : "Resolve"}
           </Button>
         </form>
@@ -209,7 +275,13 @@ export function Discussion({
       <ul className="mt-4 space-y-3">{open.map(thread)}</ul>
       {resolved.length > 0 && (
         <>
-          <Button type="button" onClick={() => setShowResolved(!showResolved)} variant="link" size="inline" className="mt-3 text-xs text-faint hover:text-fg font-normal">
+          <Button
+            type="button"
+            onClick={() => setShowResolved(!showResolved)}
+            variant="link"
+            size="inline"
+            className="mt-3 text-xs text-faint hover:text-fg font-normal"
+          >
             {showResolved ? "Hide" : "Show"} {resolved.length} resolved
           </Button>
           {showResolved && <ul className="mt-3 space-y-3">{resolved.map(thread)}</ul>}

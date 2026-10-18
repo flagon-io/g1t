@@ -74,7 +74,12 @@ export function RefCardBody({ url, where, number }: { url: string; where: string
       </div>
     );
   }
-  if (!card) return <p className="text-xs text-muted">Nothing you can see is numbered #{number} in {where}.</p>;
+  if (!card)
+    return (
+      <p className="text-xs text-muted">
+        Nothing you can see is numbered #{number} in {where}.
+      </p>
+    );
   return (
     <div className="flex gap-2.5">
       <span className="mt-0.5">

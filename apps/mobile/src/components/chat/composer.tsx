@@ -52,7 +52,12 @@ export function Composer({
   };
 
   return (
-    <View style={[styles.bar, { borderTopColor: colors.line, backgroundColor: colors.surface, paddingBottom: keyboard ? space.sm : Math.max(insets.bottom, space.sm) }]}>
+    <View
+      style={[
+        styles.bar,
+        { borderTopColor: colors.line, backgroundColor: colors.surface, paddingBottom: keyboard ? space.sm : Math.max(insets.bottom, space.sm) },
+      ]}
+    >
       <TextInput
         value={text}
         onChangeText={(next) => {
@@ -80,7 +85,24 @@ export function Composer({
 }
 
 const styles = StyleSheet.create({
-  bar: { flexDirection: "row", alignItems: "flex-end", gap: space.sm, paddingHorizontal: space.md, paddingTop: space.sm, borderTopWidth: StyleSheet.hairlineWidth },
-  input: { flex: 1, minHeight: 40, maxHeight: 160, borderRadius: radius.lg, borderWidth: 1, paddingHorizontal: space.md, paddingTop: 10, paddingBottom: 10, fontSize: 15 },
+  bar: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: space.sm,
+    paddingHorizontal: space.md,
+    paddingTop: space.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  input: {
+    flex: 1,
+    minHeight: 40,
+    maxHeight: 160,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    paddingHorizontal: space.md,
+    paddingTop: 10,
+    paddingBottom: 10,
+    fontSize: 15,
+  },
   send: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
 });

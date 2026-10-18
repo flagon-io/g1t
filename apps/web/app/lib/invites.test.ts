@@ -48,8 +48,14 @@ test("the Invitations page sorts every state under one filter, and counts them",
   assert.equal(invitationFilterOf("revoked"), "revoked");
   assert.deepEqual(invitationCounts(invites), { all: 7, pending: 3, accepted: 1, declined: 1, expired: 1, revoked: 1 });
   assert.equal(filterInvitations(invites, "all").length, 7);
-  assert.deepEqual(filterInvitations(invites, "pending").map((invite) => invite.status), ["pending", "awaiting_confirmation", "awaiting_answer"]);
-  assert.deepEqual(filterInvitations(invites, "accepted").map((invite) => invite.status), ["redeemed"]);
+  assert.deepEqual(
+    filterInvitations(invites, "pending").map((invite) => invite.status),
+    ["pending", "awaiting_confirmation", "awaiting_answer"],
+  );
+  assert.deepEqual(
+    filterInvitations(invites, "accepted").map((invite) => invite.status),
+    ["redeemed"],
+  );
   // The query names a filter, or means All.
   assert.equal(invitationFilter("pending"), "pending");
   assert.equal(invitationFilter("failed"), "all");
@@ -216,7 +222,10 @@ test("an invite's page names the invite it is", () => {
   assert.match(join.about, /invitation to join Flagon, Inc\., which you accept or decline/);
   assert.match(join.about, /You do not have a g1t account yet, so it also lets you make one/);
   // Someone with an account, or signed in, just accepts.
-  assert.match(invitePageCopy({ ...base, kind: "workspace", workspace: { name: "Flagon, Inc." }, hasAccount: true }, false).about, /Accepting joins you to Flagon, Inc\./);
+  assert.match(
+    invitePageCopy({ ...base, kind: "workspace", workspace: { name: "Flagon, Inc." }, hasAccount: true }, false).about,
+    /Accepting joins you to Flagon, Inc\./,
+  );
   assert.equal(invitePageCopy({ ...base, invitedBy: null }, false).before, "The g1t team invited you to g1t");
 });
 

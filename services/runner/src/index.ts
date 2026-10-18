@@ -378,9 +378,7 @@ export class AttemptSandbox extends Container<RunnerEnv> {
       if (brokering && run.kind === "actions") {
         await this.setOutboundHandler("egress", { job: { id: run.jobId, token: run.token } });
       } else if (this.env.EGRESS?.trim().toLowerCase() !== "off") {
-        await this.setOutboundByHost(ABUSE_HOST, "abuse").catch((error: unknown) =>
-          console.log("abuse reports not routed", String(error)),
-        );
+        await this.setOutboundByHost(ABUSE_HOST, "abuse").catch((error: unknown) => console.log("abuse reports not routed", String(error)));
       }
       const harness = guard && !build ? harnessEnv(guard, vars) : {};
       // Once any of its traffic is intercepted, Cloudflare passes all of it
@@ -685,10 +683,7 @@ export class AttemptSandbox extends Container<RunnerEnv> {
     const why = flagged ? ABUSE_MESSAGE : ((await this.ctx.storage.get<string>("stopReason")) ?? null);
     // Stopped by g1t, it failed whatever exit code the library passed on.
     const short = stoppedShort(exitCode, why);
-    await this.closeRun(
-      short ? "failed" : "succeeded",
-      short ? (why ?? `The sandbox exited with ${exitCode}.`) : undefined,
-    );
+    await this.closeRun(short ? "failed" : "succeeded", short ? (why ?? `The sandbox exited with ${exitCode}.`) : undefined);
     await this.settleStopped(started);
     await this.ctx.storage.delete("started");
     if (!short) return;
@@ -868,7 +863,10 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
     // API passes on as it came (broker-relay.ts).
     if (request.method === "POST" && pathname === "/rpc/broker") {
       try {
-        return await relay(request, relayDeps(this.env.ACTIONS, (upstream) => forward(upstream)));
+        return await relay(
+          request,
+          relayDeps(this.env.ACTIONS, (upstream) => forward(upstream)),
+        );
       } catch (error) {
         console.log("broker relay failed", String(error));
         return Response.json({ error: { code: "unavailable", message: "g1t could not relay the request." } }, { status: 503 });
@@ -920,10 +918,7 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
     // machine's rate, which is what it is charged.
     const limit = estimateMinutes(minutes, ent);
     const microsPerSecond = standardMicros * priceScale(instance);
-    const estimateMicros = Math.max(
-      sandboxEstimateMicros(limit, microsPerSecond),
-      runnerMinutes(limit * 60) * instance.microsPerMinute,
-    );
+    const estimateMicros = Math.max(sandboxEstimateMicros(limit, microsPerSecond), runnerMinutes(limit * 60) * instance.microsPerMinute);
     const admission = await compute.admit({ workspace, repo, public: isPublic, kind, estimateMicros }, ent);
     if (!admission.ok) return { ok: false, code: admission.code, message: admission.message };
     return {
@@ -1042,9 +1037,7 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
         kind: "deploy",
         deployId: job.deployId,
         token: job.token,
-        reservation: job.reservation
-          ? { id: job.reservation, workspace, microsPerSecond: job.microsPerSecond ?? 0 }
-          : null,
+        reservation: job.reservation ? { id: job.reservation, workspace, microsPerSecond: job.microsPerSecond ?? 0 } : null,
         limits: { minutes: job.maxRunMinutes ?? null },
         // For as long as its read token lasts.
         build: { kind: "deploy", minutes: DEPLOY_TOKEN_TTL_SECONDS / 60 },
@@ -1345,9 +1338,7 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
       });
       const remote = (path: RepoPath) => `https://g1t.sh/${path.namespace}/${path.name}.git`;
       // One sandbox per pair of commits: asking twice starts nothing twice.
-      const sandbox = this.env.SANDBOX.get(
-        this.env.SANDBOX.idFromName(`mergecheck-${job.pullId}-${job.head}-${job.base}`),
-      );
+      const sandbox = this.env.SANDBOX.get(this.env.SANDBOX.idFromName(`mergecheck-${job.pullId}-${job.head}-${job.base}`));
       await sandbox.run({
         kind: "mergecheck",
         pullId: job.pullId,
@@ -1386,19 +1377,14 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
     const found = await repos.get(repo, actor).catch(() => null);
     if (!found) return null;
     if (!found.ok) {
-      return found.error.code === "not_found"
-        ? fail("not_found", `There is no repository at ${repo.namespace}/${repo.name}, or it was deleted.`)
-        : null;
+      return found.error.code === "not_found" ? fail("not_found", `There is no repository at ${repo.namespace}/${repo.name}, or it was deleted.`) : null;
     }
     const status = await repos.statusById(found.value.id).catch(() => null);
     if (status?.deleted) {
       return fail("not_found", `${found.value.namespace}/${found.value.name} was deleted. An owner can restore it from the workspace's settings.`);
     }
     if (status?.archived || found.value.archivedAt) {
-      return fail(
-        "forbidden",
-        `${found.value.namespace}/${found.value.name} is archived, so it is read-only. An owner can unarchive it in its settings.`,
-      );
+      return fail("forbidden", `${found.value.namespace}/${found.value.name} is archived, so it is read-only. An owner can unarchive it in its settings.`);
     }
     return null;
   }

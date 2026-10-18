@@ -1,76 +1,76 @@
 {
-	"$schema": "../../node_modules/wrangler/config-schema.json",
-	"name": "g1t",
-	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
-	"compatibility_date": "2026-09-26",
-	// AsyncLocalStorage, for per-request timings and D1 bookmarks
-	// (app/lib/perf.server.ts).
-	"compatibility_flags": ["nodejs_als"],
-	// Where it runs (CONTRIBUTING.md, "Speed"). Off runs it in the data centre
-	// nearest the visitor; scripts/perf/placement-probe.mjs measures the
-	// alternatives and `apply` changes every Worker's at once.
-	"placement": { "mode": "off" },
-	"main": "./workers/app.ts",
-	// g1tusercontent.com: repository files and avatars, on an origin of
-	// their own that never sees g1t.sh's cookies (workers/usercontent.ts).
-	"routes": [
-		{ "pattern": "g1t.sh", "custom_domain": true },
-		{ "pattern": "g1tusercontent.com", "custom_domain": true }
-	],
-	// The site holds no data of its own; everything goes through services.
-	// GitHub Actions artifacts, as the API keeps them, for download from a run.
-	// Uploaded avatars (g1t-avatars), served at /avatars/<sha256>. Read
-	// only here: the identity service checks and writes them.
-	"kv_namespaces": [
-		{ "binding": "BLOBS", "id": "16a4232cb746418db53782aa068be693" },
-		{ "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" }
-	],
-	// The self-hosted runner's releases, served at /downloads/runner/
-	// (routes/downloads-runner.ts); published by scripts/runner-release.mjs.
-	"r2_buckets": [{ "binding": "DOWNLOADS", "bucket_name": "g1t-downloads" }],
-	"services": [
-		{ "binding": "IDENTITY", "service": "g1t-identity" },
-		{ "binding": "REPOS", "service": "g1t-repos" },
-		// The package registries, on g1t.sh/v2/ (workers/app.ts).
-		{ "binding": "PACKAGES", "service": "g1t-packages" },
-		{ "binding": "WORK", "service": "g1t-work" },
-		{ "binding": "BILLING", "service": "g1t-billing" },
-		{ "binding": "EVENTS", "service": "g1t-events" },
-		{ "binding": "INTEGRATIONS", "service": "g1t-integrations" },
-		{ "binding": "WEBHOOKS", "service": "g1t-webhooks" },
-		{ "binding": "ACTIONS", "service": "g1t-actions" },
-		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
-		{ "binding": "PROJECTS", "service": "g1t-projects" },
-		{ "binding": "SECURITY", "service": "g1t-security" },
-		{ "binding": "SEARCH", "service": "g1t-search" },
-		// Chat: channels, direct messages and the live socket (services/chat).
-		{ "binding": "CHAT", "service": "g1t-chat" },
-		// Artifacts: spaces, artifacts, each one's live socket, and files in them (services/artifacts).
-		{ "binding": "ARTIFACTS", "service": "g1t-artifacts" },
-		// Live notifications, counts and browser push: each tab's feed socket (services/notify).
-		{ "binding": "NOTIFY", "service": "g1t-notify" },
-		// Observability: each project's requests, logs, traces, metrics and errors, and its live tail (services/telemetry).
-		{ "binding": "TELEMETRY", "service": "g1t-telemetry" },
-		// Production screenshots for a project's overview (services/og).
-		{ "binding": "SCREENSHOTS", "service": "g1t-og", "entrypoint": "Screenshots" }
-	],
-	// The front door's limits (app/lib/front-door-limits.ts). Every id and
-	// limit is in RATE_LIMITS (packages/contracts/src/rate-limits.ts), which
-	// the tests check this against. Self-hosted, without them, nothing is limited.
-	"ratelimits": [
-		{ "name": "WEB_ANONYMOUS_LIMIT", "namespace_id": "4201", "simple": { "limit": 600, "period": 60 } },
-		{ "name": "WEB_HEAVY_LIMIT", "namespace_id": "4202", "simple": { "limit": 30, "period": 60 } },
-		{ "name": "WEB_SESSION_LIMIT", "namespace_id": "4203", "simple": { "limit": 1200, "period": 60 } },
-		{ "name": "WEB_ADDRESS_LIMIT", "namespace_id": "4204", "simple": { "limit": 3000, "period": 60 } },
-		{ "name": "GIT_ANONYMOUS_LIMIT", "namespace_id": "4205", "simple": { "limit": 120, "period": 60 } },
-		{ "name": "GIT_SIGNED_LIMIT", "namespace_id": "4206", "simple": { "limit": 1200, "period": 60 } },
-		{ "name": "WEB_TOKEN_LIMIT", "namespace_id": "4207", "simple": { "limit": 1000, "period": 60 } }
-	],
-	// Logs of a tenth of requests: every page view is one, too many to keep all.
-	// Cloudflare Turnstile on email sign-up (app/lib/turnstile.ts): the
-	// widget's public site key here, and its secret as the TURNSTILE_SECRET
-	// secret. Either one empty turns it off.
-	"vars": { "TURNSTILE_SITE_KEY": "0x4AAAAAAFWhRDwKfGS3CEvZ" },
-	"observability": { "enabled": true, "head_sampling_rate": 0.1 },
-	"upload_source_maps": true
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "g1t",
+  "account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+  "compatibility_date": "2026-09-26",
+  // AsyncLocalStorage, for per-request timings and D1 bookmarks
+  // (app/lib/perf.server.ts).
+  "compatibility_flags": ["nodejs_als"],
+  // Where it runs (CONTRIBUTING.md, "Speed"). Off runs it in the data centre
+  // nearest the visitor; scripts/perf/placement-probe.mjs measures the
+  // alternatives and `apply` changes every Worker's at once.
+  "placement": { "mode": "off" },
+  "main": "./workers/app.ts",
+  // g1tusercontent.com: repository files and avatars, on an origin of
+  // their own that never sees g1t.sh's cookies (workers/usercontent.ts).
+  "routes": [
+    { "pattern": "g1t.sh", "custom_domain": true },
+    { "pattern": "g1tusercontent.com", "custom_domain": true },
+  ],
+  // The site holds no data of its own; everything goes through services.
+  // GitHub Actions artifacts, as the API keeps them, for download from a run.
+  // Uploaded avatars (g1t-avatars), served at /avatars/<sha256>. Read
+  // only here: the identity service checks and writes them.
+  "kv_namespaces": [
+    { "binding": "BLOBS", "id": "16a4232cb746418db53782aa068be693" },
+    { "binding": "AVATARS", "id": "e627b571f07047e187c03e1fc2b3bbdd" },
+  ],
+  // The self-hosted runner's releases, served at /downloads/runner/
+  // (routes/downloads-runner.ts); published by scripts/runner-release.mjs.
+  "r2_buckets": [{ "binding": "DOWNLOADS", "bucket_name": "g1t-downloads" }],
+  "services": [
+    { "binding": "IDENTITY", "service": "g1t-identity" },
+    { "binding": "REPOS", "service": "g1t-repos" },
+    // The package registries, on g1t.sh/v2/ (workers/app.ts).
+    { "binding": "PACKAGES", "service": "g1t-packages" },
+    { "binding": "WORK", "service": "g1t-work" },
+    { "binding": "BILLING", "service": "g1t-billing" },
+    { "binding": "EVENTS", "service": "g1t-events" },
+    { "binding": "INTEGRATIONS", "service": "g1t-integrations" },
+    { "binding": "WEBHOOKS", "service": "g1t-webhooks" },
+    { "binding": "ACTIONS", "service": "g1t-actions" },
+    { "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
+    { "binding": "PROJECTS", "service": "g1t-projects" },
+    { "binding": "SECURITY", "service": "g1t-security" },
+    { "binding": "SEARCH", "service": "g1t-search" },
+    // Chat: channels, direct messages and the live socket (services/chat).
+    { "binding": "CHAT", "service": "g1t-chat" },
+    // Artifacts: spaces, artifacts, each one's live socket, and files in them (services/artifacts).
+    { "binding": "ARTIFACTS", "service": "g1t-artifacts" },
+    // Live notifications, counts and browser push: each tab's feed socket (services/notify).
+    { "binding": "NOTIFY", "service": "g1t-notify" },
+    // Observability: each project's requests, logs, traces, metrics and errors, and its live tail (services/telemetry).
+    { "binding": "TELEMETRY", "service": "g1t-telemetry" },
+    // Production screenshots for a project's overview (services/og).
+    { "binding": "SCREENSHOTS", "service": "g1t-og", "entrypoint": "Screenshots" },
+  ],
+  // The front door's limits (app/lib/front-door-limits.ts). Every id and
+  // limit is in RATE_LIMITS (packages/contracts/src/rate-limits.ts), which
+  // the tests check this against. Self-hosted, without them, nothing is limited.
+  "ratelimits": [
+    { "name": "WEB_ANONYMOUS_LIMIT", "namespace_id": "4201", "simple": { "limit": 600, "period": 60 } },
+    { "name": "WEB_HEAVY_LIMIT", "namespace_id": "4202", "simple": { "limit": 30, "period": 60 } },
+    { "name": "WEB_SESSION_LIMIT", "namespace_id": "4203", "simple": { "limit": 1200, "period": 60 } },
+    { "name": "WEB_ADDRESS_LIMIT", "namespace_id": "4204", "simple": { "limit": 3000, "period": 60 } },
+    { "name": "GIT_ANONYMOUS_LIMIT", "namespace_id": "4205", "simple": { "limit": 120, "period": 60 } },
+    { "name": "GIT_SIGNED_LIMIT", "namespace_id": "4206", "simple": { "limit": 1200, "period": 60 } },
+    { "name": "WEB_TOKEN_LIMIT", "namespace_id": "4207", "simple": { "limit": 1000, "period": 60 } },
+  ],
+  // Logs of a tenth of requests: every page view is one, too many to keep all.
+  // Cloudflare Turnstile on email sign-up (app/lib/turnstile.ts): the
+  // widget's public site key here, and its secret as the TURNSTILE_SECRET
+  // secret. Either one empty turns it off.
+  "vars": { "TURNSTILE_SITE_KEY": "0x4AAAAAAFWhRDwKfGS3CEvZ" },
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 },
+  "upload_source_maps": true,
 }

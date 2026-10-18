@@ -8,15 +8,15 @@ reads need no credentials. Private reads and writes require authorization.
 
 ## Choose an interface
 
-| Resource | Start here |
-| --- | --- |
-| REST API | [g1t API reference](/reference/api/) and the [interactive explorer](/api/reference/) |
+| Resource              | Start here                                                                                                 |
+| --------------------- | ---------------------------------------------------------------------------------------------------------- |
+| REST API              | [g1t API reference](/reference/api/) and the [interactive explorer](/api/reference/)                       |
 | OpenAPI specification | [JSON schema for the REST API](https://api.g1t.sh/openapi.json), including each operation's required scope |
-| Authentication | [g1t authentication and scopes](/guides/authentication/) |
-| MCP | [g1t MCP tools](/reference/mcp/) at `https://mcp.g1t.sh`; authentication stays required |
-| CLI | [Install the official g1t CLI](/guides/cli/) and read the [command reference](/reference/cli/) |
-| Compatibility | [g1t API versioning and deprecation policy](/reference/versioning/) |
-| Agent instructions | [llms.txt](https://g1t.sh/llms.txt) and the [full agent guide](https://g1t.sh/agents.md) |
+| Authentication        | [g1t authentication and scopes](/guides/authentication/)                                                   |
+| MCP                   | [g1t MCP tools](/reference/mcp/) at `https://mcp.g1t.sh`; authentication stays required                    |
+| CLI                   | [Install the official g1t CLI](/guides/cli/) and read the [command reference](/reference/cli/)             |
+| Compatibility         | [g1t API versioning and deprecation policy](/reference/versioning/)                                        |
+| Agent instructions    | [llms.txt](https://g1t.sh/llms.txt) and the [full agent guide](https://g1t.sh/agents.md)                   |
 
 For a language client, use the REST API directly or generate a client from
 OpenAPI. g1t does not currently publish a standalone official language SDK.

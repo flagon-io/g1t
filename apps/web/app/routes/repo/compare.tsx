@@ -78,11 +78,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // The changes are a part: the commits above them stay when they fail.
   const compared = await part(repos.compare(found.id, viewer, mergeBase, head), "The changes");
   // Its first screens with their lines; the rest load as they are reached.
-  const comparison: HighlightedComparison | Failed | null = isFailed(compared)
-    ? compared
-    : compared.ok
-      ? firstScreens(compared.value)
-      : null;
+  const comparison: HighlightedComparison | Failed | null = isFailed(compared) ? compared : compared.ok ? firstScreens(compared.value) : null;
   return { base, head, branches, comparison, commits, same: false };
 }
 
@@ -124,18 +120,11 @@ export default function Compare({ loaderData, params }: Route.ComponentProps) {
           <RefPicker name="base" label="base" value={base} branches={branches} />
           <ArrowLeft size={14} className="text-faint" aria-hidden="true" />
           <RefPicker name="head" label="compare" value={head} branches={branches} />
-          <Button
-            type="submit"
-            variant="outline"
-            className="h-8 px-3 text-fg/90 hover:bg-raised font-normal"
-          >
+          <Button type="submit" variant="outline" className="h-8 px-3 text-fg/90 hover:bg-raised font-normal">
             Compare
           </Button>
           {head && !same && commits.length > 0 && (
-            <ButtonLink
-              to={`${repoBase}/pulls/new?branch=${encodeURIComponent(head)}&base=${encodeURIComponent(base)}`}
-              variant="accent"
-            >
+            <ButtonLink to={`${repoBase}/pulls/new?branch=${encodeURIComponent(head)}&base=${encodeURIComponent(base)}`} variant="accent">
               <GitPullRequest size={15} />
               Open a pull request
             </ButtonLink>
@@ -149,7 +138,9 @@ export default function Compare({ loaderData, params }: Route.ComponentProps) {
       ) : same ? (
         <EmptyState title="Nothing to compare">Both sides are {base}. Choose another branch to compare with it.</EmptyState>
       ) : commits.length === 0 ? (
-        <EmptyState title={`${base} has everything ${head} has`}>There is nothing on {head} to bring into {base}.</EmptyState>
+        <EmptyState title={`${base} has everything ${head} has`}>
+          There is nothing on {head} to bring into {base}.
+        </EmptyState>
       ) : (
         <>
           <section>
@@ -184,7 +175,12 @@ export default function Compare({ loaderData, params }: Route.ComponentProps) {
           {isFailed(comparison) ? (
             <Unavailable what={comparison.what} />
           ) : comparison ? (
-            <DiffView comparison={comparison} repo={repoBase} fileBase={`${repoBase}/blob/${encodeURIComponent(head)}`} empty="The two sides have the same files." />
+            <DiffView
+              comparison={comparison}
+              repo={repoBase}
+              fileBase={`${repoBase}/blob/${encodeURIComponent(head)}`}
+              empty="The two sides have the same files."
+            />
           ) : (
             <p className="text-sm text-muted">The changes could not be read just now. The commits above are what {head} adds.</p>
           )}

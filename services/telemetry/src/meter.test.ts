@@ -14,7 +14,13 @@ function state() {
   const box = { alarm: null as number | null };
   const sql = {
     exec(query: string, ...args: unknown[]) {
-      if (!args.length && query.trim().split(";").filter((q) => q.trim()).length > 1) {
+      if (
+        !args.length &&
+        query
+          .trim()
+          .split(";")
+          .filter((q) => q.trim()).length > 1
+      ) {
         db.exec(query);
         return { toArray: () => [] };
       }

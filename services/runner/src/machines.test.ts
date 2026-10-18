@@ -31,10 +31,7 @@ test("each label in the machine catalogue runs in its own class, bound and sized
     "standard-4": { vcpu: 4, memory_mib: 12 * 1024, disk_mb: 20_000 },
   };
   // Every class has a label, and every label a class.
-  assert.deepEqual(
-    INSTANCE_TYPES.map((instance) => instance.sandboxClass).sort(),
-    config.containers.map((container) => container.class_name).sort(),
-  );
+  assert.deepEqual(INSTANCE_TYPES.map((instance) => instance.sandboxClass).sort(), config.containers.map((container) => container.class_name).sort());
   for (const instance of INSTANCE_TYPES) {
     const type = config.containers.find((c) => c.class_name === instance.sandboxClass)?.instance_type;
     const size = typeof type === "string" ? named[type] : undefined;

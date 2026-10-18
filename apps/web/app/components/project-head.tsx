@@ -151,7 +151,9 @@ export function ElsewhereHead({
                     <StatusDot status={deploymentStatus(deployment.state)} />
                     <span className="inline-flex items-center gap-1 font-mono">
                       <GitCommitHorizontal size={13} className="text-faint" />
-                      <Link to={`${base}/commit/${deployment.sha}`} className="hover:text-fg">{deployment.sha.slice(0, 7)}</Link>
+                      <Link to={`${base}/commit/${deployment.sha}`} className="hover:text-fg">
+                        {deployment.sha.slice(0, 7)}
+                      </Link>
                     </span>
                     <span>
                       {deployment.state === "success" ? "Deployed" : "Updated"} <TimeAgo at={deployment.created_at} />
@@ -176,10 +178,13 @@ export function ElsewhereHead({
           ) : canChange ? (
             <>
               <p className="mt-2 text-lg font-medium">Where is production?</p>
-              <p className="mt-1 max-w-lg text-sm text-muted">
-                {project.name} deploys itself. Give production's address, and this card links to it.
-              </p>
-              <AddressForm field="productionUrl" placeholder="https://example.com" label="Production's address" extra={{ intent: "kind", choice: "elsewhere" }} />
+              <p className="mt-1 max-w-lg text-sm text-muted">{project.name} deploys itself. Give production's address, and this card links to it.</p>
+              <AddressForm
+                field="productionUrl"
+                placeholder="https://example.com"
+                label="Production's address"
+                extra={{ intent: "kind", choice: "elsewhere" }}
+              />
             </>
           ) : (
             <p className="mt-2 text-sm text-muted">Deploys itself.</p>
@@ -217,8 +222,8 @@ export function WhereItRuns({ project, base, canChange, canDeploy }: Head) {
       <HeadLabel icon={<Rocket />}>Production</HeadLabel>
       <p className="mt-2 text-lg font-medium">Where does {project.name} run?</p>
       <p className="mt-1 max-w-xl text-sm text-muted">
-        Say once, and this page follows: production where it is deployed, or its packages and releases if it isn't
-        deployed at all. <span className="text-faint">{project.detected.reason.detail}</span>
+        Say once, and this page follows: production where it is deployed, or its packages and releases if it isn't deployed at all.{" "}
+        <span className="text-faint">{project.detected.reason.detail}</span>
       </p>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {canDeploy && (
@@ -227,12 +232,7 @@ export function WhereItRuns({ project, base, canChange, canDeploy }: Head) {
             Deploy on g1t
           </ButtonLink>
         )}
-        <Button
-          type="button"
-          onClick={() => setElsewhere((open) => !open)}
-          aria-expanded={elsewhere}
-          variant="outline"
-        >
+        <Button type="button" onClick={() => setElsewhere((open) => !open)} aria-expanded={elsewhere} variant="outline">
           <Globe size={14} />
           It deploys itself
         </Button>
@@ -254,7 +254,12 @@ export function WhereItRuns({ project, base, canChange, canDeploy }: Head) {
         </DropdownMenu>
       </div>
       {elsewhere && (
-        <AddressForm field="productionUrl" placeholder="Production's address, such as https://example.com" label="Production's address" extra={{ intent: "kind", choice: "elsewhere" }} />
+        <AddressForm
+          field="productionUrl"
+          placeholder="Production's address, such as https://example.com"
+          label="Production's address"
+          extra={{ intent: "kind", choice: "elsewhere" }}
+        />
       )}
       {fetcher.data?.error && <p className="mt-2 text-xs text-danger">{fetcher.data.error}</p>}
     </div>

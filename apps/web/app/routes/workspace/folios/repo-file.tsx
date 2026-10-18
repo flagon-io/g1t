@@ -45,9 +45,14 @@ export default function RepoDocFile({ loaderData, params }: Route.ComponentProps
   const encode = (path: string) => path.split("/").map(encodeURIComponent).join("/");
   return (
     <div>
-      <div data-page-head="sticky" className="sticky top-(--topbar-h) z-20 -mx-4 flex h-14 items-center gap-3 border-b border-line bg-bg/90 px-4 backdrop-blur sm:-mx-6 sm:px-5 lg:-mx-8">
+      <div
+        data-page-head="sticky"
+        className="sticky top-(--topbar-h) z-20 -mx-4 flex h-14 items-center gap-3 border-b border-line bg-bg/90 px-4 backdrop-blur sm:-mx-6 sm:px-5 lg:-mx-8"
+      >
         <div className="min-w-0 grow">
-          <Crumbs items={[{ label: "Artifacts", to: `/${slug}/-/artifacts` }, { label: space.repo }, ...file.path.split("/").map((part) => ({ label: part }))]} />
+          <Crumbs
+            items={[{ label: "Artifacts", to: `/${slug}/-/artifacts` }, { label: space.repo }, ...file.path.split("/").map((part) => ({ label: part }))]}
+          />
         </div>
         <Link to={file.code_href} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line px-2.5 text-xs text-fg/85 hover:bg-raised">
           <PencilLine size={13} /> Edit in Code

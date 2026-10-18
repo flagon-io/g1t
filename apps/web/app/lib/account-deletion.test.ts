@@ -18,20 +18,14 @@ const sole = (slug: string) => ({ slug, name: slug, members: 3, billing: null, p
 
 test("the dialog lists only what the account has", () => {
   assert.deepEqual(whatAccountDeletionTakes(nothing), []);
-  assert.deepEqual(
-    whatAccountDeletionTakes({ ...nothing, workspaces: 2, repositories: 1, tokens: 3, ssh_keys: 1, applications: 2 }),
-    [
-      "Your membership of 2 workspaces",
-      "Your role on 1 repository you were added to",
-      "3 access tokens",
-      "1 SSH key",
-      "2 connected applications",
-    ],
-  );
-  assert.deepEqual(whatAccountDeletionTakes({ ...nothing, workspaces: 1, tokens: 1 }), [
-    "Your membership of 1 workspace",
-    "1 access token",
+  assert.deepEqual(whatAccountDeletionTakes({ ...nothing, workspaces: 2, repositories: 1, tokens: 3, ssh_keys: 1, applications: 2 }), [
+    "Your membership of 2 workspaces",
+    "Your role on 1 repository you were added to",
+    "3 access tokens",
+    "1 SSH key",
+    "2 connected applications",
   ]);
+  assert.deepEqual(whatAccountDeletionTakes({ ...nothing, workspaces: 1, tokens: 1 }), ["Your membership of 1 workspace", "1 access token"]);
 });
 
 test("owning a workspace alone stands in the way, and names it", () => {

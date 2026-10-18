@@ -572,11 +572,7 @@ export default function ChatEditor({ draftKey, placeholder, people, onSend, onTy
         className={`rounded-xl border border-line-strong bg-surface transition-colors focus-within:border-accent/35 focus-within:ring-4 focus-within:ring-accent/6 ${disabled ? "opacity-60" : ""}`}
       >
         {toolbar && (
-          <div
-            role="toolbar"
-            aria-label="Formatting"
-            className="flex items-center gap-0.5 overflow-x-auto border-b border-line px-1.5 py-1 scrollbar-none"
-          >
+          <div role="toolbar" aria-label="Formatting" className="flex items-center gap-0.5 overflow-x-auto border-b border-line px-1.5 py-1 scrollbar-none">
             {tool("Bold", <Bold size={15} strokeWidth={2.4} />, state?.bold, () => chain().toggleBold().run())}
             {tool("Italic", <Italic size={15} />, state?.italic, () => chain().toggleItalic().run())}
             {tool("Strikethrough", <Strikethrough size={15} />, state?.strike, () => chain().toggleStrike().run())}
@@ -647,14 +643,7 @@ export default function ChatEditor({ draftKey, placeholder, people, onSend, onTy
           </Hint>
           <EmojiPickerPopover side="top" align="start" onPick={(picked) => editor?.chain().focus().insertContent({ type: "text", text: picked }).run()}>
             <Hint label="Add an emoji">
-              <Button
-                type="button"
-                aria-label="Add an emoji"
-                disabled={disabled || !editor}
-                variant="ghost"
-                size="icon-xs"
-                className="text-faint"
-              >
+              <Button type="button" aria-label="Add an emoji" disabled={disabled || !editor} variant="ghost" size="icon-xs" className="text-faint">
                 <Smile size={15} />
               </Button>
             </Hint>
@@ -665,13 +654,7 @@ export default function ChatEditor({ draftKey, placeholder, people, onSend, onTy
                 <kbd className="font-sans">Esc</kbd> to cancel · <kbd className="font-sans">Enter</kbd> to save
               </span>
               <span className="ml-auto flex items-center gap-1.5">
-                <Button
-                  type="button"
-                  onClick={onCancel}
-                  variant="outline"
-                  size="sm"
-                  className="rounded-lg px-3 text-fg-soft hover:bg-raised"
-                >
+                <Button type="button" onClick={onCancel} variant="outline" size="sm" className="rounded-lg px-3 text-fg-soft hover:bg-raised">
                   Cancel
                 </Button>
                 <Button
@@ -717,7 +700,13 @@ function ShortcutList() {
     <Popover>
       <Hint label="Formatting shortcuts">
         <PopoverTrigger asChild>
-          <Button variant="ghost" size="icon-sm" aria-label="Formatting shortcuts" onMouseDown={(event) => event.preventDefault()} className="ml-auto text-faint sm:size-7">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Formatting shortcuts"
+            onMouseDown={(event) => event.preventDefault()}
+            className="ml-auto text-faint sm:size-7"
+          >
             <Keyboard size={15} />
           </Button>
         </PopoverTrigger>

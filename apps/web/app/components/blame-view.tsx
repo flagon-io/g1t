@@ -1,14 +1,4 @@
-import {
-  ArrowUpRight,
-  CircleDot,
-  Scale,
-  GitCommitHorizontal,
-  GitPullRequest,
-  MessagesSquare,
-  Sparkles,
-  Terminal,
-  X,
-} from "lucide-react";
+import { ArrowUpRight, CircleDot, Scale, GitCommitHorizontal, GitPullRequest, MessagesSquare, Sparkles, Terminal, X } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useFetcher } from "react-router";
 
@@ -45,10 +35,7 @@ export function BlameView({
   html: string[] | null;
   blame: ShownBlame;
 }) {
-  const commits = useMemo(
-    () => new Map<string, ShownCommit>(blame.commits.map((commit) => [commit.hash, commit])),
-    [blame.commits],
-  );
+  const commits = useMemo(() => new Map<string, ShownCommit>(blame.commits.map((commit) => [commit.hash, commit])), [blame.commits]);
   // Newer commits are brighter: rank them by when they were written.
   const age = useMemo(() => {
     const sorted = [...blame.commits].sort((a, b) => b.authoredAt.localeCompare(a.authoredAt));
@@ -57,9 +44,7 @@ export function BlameView({
   }, [blame.commits]);
   // The run of lines picked, and the line clicked, under which the
   // explanation opens.
-  const [picked, setPicked] = useState<{ commit: string; start: number; end: number; line: number } | null>(
-    null,
-  );
+  const [picked, setPicked] = useState<{ commit: string; start: number; end: number; line: number } | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const why = useFetcher<typeof whyLoader>();
 
@@ -100,8 +85,7 @@ export function BlameView({
     <div>
       <p className="flex items-center gap-2 border-b border-line px-4 py-2 text-xs text-muted">
         <Sparkles size={13} className="text-accent" />
-        Pick any line to see why it is the way it is: the commit, the pull request and work item it
-        came from, and what the agent was thinking.
+        Pick any line to see why it is the way it is: the commit, the pull request and work item it came from, and what the agent was thinking.
       </p>
       <div className="overflow-x-auto">
         <table className="w-full border-collapse font-mono text-[0.8125rem] leading-6">
@@ -139,18 +123,11 @@ export function BlameView({
                       )}
                     </td>
                     <td className="w-1 p-0" aria-hidden="true">
-                      <span
-                        className="block h-6 w-0.5 bg-accent"
-                        style={{ opacity: 0.15 + bright * 0.85 }}
-                      />
+                      <span className="block h-6 w-0.5 bg-accent" style={{ opacity: 0.15 + bright * 0.85 }} />
                     </td>
                     <td className="w-12 px-2 text-right text-faint select-none">{line}</td>
                     <td className="pr-4 pl-2 whitespace-pre">
-                      {html?.[line - 1] != null ? (
-                        <span dangerouslySetInnerHTML={{ __html: html[line - 1] || " " }} />
-                      ) : (
-                        lines[line - 1] || " "
-                      )}
+                      {html?.[line - 1] != null ? <span dangerouslySetInnerHTML={{ __html: html[line - 1] || " " }} /> : lines[line - 1] || " "}
                     </td>
                   </tr>,
                 );
@@ -160,13 +137,7 @@ export function BlameView({
                     <tr key={`why-${line}`}>
                       <td colSpan={4} className="border-y border-line bg-bg/60 px-3 py-3 font-sans whitespace-normal md:pl-80">
                         <div className="max-w-2xl overflow-hidden rounded-xl border border-accent/30 bg-surface shadow-xl shadow-black/40">
-                          <WhyPanel
-                            base={base}
-                            picked={picked}
-                            loading={why.state === "loading"}
-                            data={why.data}
-                            onClose={close}
-                          />
+                          <WhyPanel base={base} picked={picked} loading={why.state === "loading"} data={why.data} onClose={close} />
                         </div>
                       </td>
                     </tr>,
@@ -207,17 +178,8 @@ function WhyPanel({
     <div>
       <header className="flex items-center gap-2 border-b border-line px-4 py-3">
         <Sparkles size={15} className="text-accent" />
-        <span className="grow text-sm font-medium">
-          Why line{picked.start === picked.end ? ` ${picked.start}` : `s ${picked.start}–${picked.end}`}
-        </span>
-        <Button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          variant="ghost"
-          size="inline"
-          className="rounded p-1 text-faint"
-        >
+        <span className="grow text-sm font-medium">Why line{picked.start === picked.end ? ` ${picked.start}` : `s ${picked.start}–${picked.end}`}</span>
+        <Button type="button" onClick={onClose} aria-label="Close" variant="ghost" size="inline" className="rounded p-1 text-faint">
           <X size={14} />
         </Button>
       </header>
@@ -255,10 +217,7 @@ function WhyPanel({
                 <GitPullRequest size={13} />
                 Arrived in
               </p>
-              <Link
-                to={`${base}/pull/${current.pull.number}`}
-                className="mt-1.5 block font-medium hover:text-accent"
-              >
+              <Link to={`${base}/pull/${current.pull.number}`} className="mt-1.5 block font-medium hover:text-accent">
                 {current.pull.title} <span className="font-normal text-faint">#{current.pull.number}</span>
               </Link>
               <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
@@ -271,15 +230,16 @@ function WhyPanel({
                     {current.pull.requestedBy && <span>for {current.pull.requestedBy}</span>}
                   </>
                 ) : (
-                  <span>by {current.pull.author} with {current.pull.agent}</span>
+                  <span>
+                    by {current.pull.author} with {current.pull.agent}
+                  </span>
                 )}
                 {current.pull.mergedBy && <span>· merged by {current.pull.mergedBy}</span>}
               </p>
             </section>
           ) : (
             <section className="p-4 text-xs text-muted">
-              Pushed straight to the branch, not through a pull request, so there is no
-              conversation behind it.
+              Pushed straight to the branch, not through a pull request, so there is no conversation behind it.
             </section>
           )}
 
@@ -289,10 +249,7 @@ function WhyPanel({
                 <CircleDot size={13} />
                 What was asked for
               </p>
-              <Link
-                to={itemPath(current.item.workspace, current.item.number)}
-                className="mt-1.5 block font-medium hover:text-accent"
-              >
+              <Link to={itemPath(current.item.workspace, current.item.number)} className="mt-1.5 block font-medium hover:text-accent">
                 {current.item.title} <span className="font-normal text-faint">#{current.item.number}</span>
               </Link>
               {current.item.body && (
@@ -314,10 +271,7 @@ function WhyPanel({
               {current.steps
                 .filter((step) => step.kind === "message")
                 .map((step) => (
-                  <blockquote
-                    key={step.seq}
-                    className="mt-3 border-l-2 border-accent/50 pl-3 text-[0.8125rem] whitespace-pre-line text-fg/90"
-                  >
+                  <blockquote key={step.seq} className="mt-3 border-l-2 border-accent/50 pl-3 text-[0.8125rem] whitespace-pre-line text-fg/90">
                     {step.text}
                   </blockquote>
                 ))}
@@ -340,10 +294,7 @@ function WhyPanel({
                   </ol>
                 </details>
               )}
-              <Link
-                to={`${base}/pull/${current.pull.number}/session`}
-                className="mt-4 inline-flex items-center gap-1 text-xs text-accent hover:underline"
-              >
+              <Link to={`${base}/pull/${current.pull.number}/session`} className="mt-4 inline-flex items-center gap-1 text-xs text-accent hover:underline">
                 The whole session
                 <ArrowUpRight size={12} />
               </Link>
@@ -370,9 +321,7 @@ function WhyDecisions({ decisions, base }: { decisions: WhyData["decisions"]; ba
         <Scale size={13} />
         How it was decided
       </p>
-      {failure && (
-        <IntegrationFailure className="mt-3" failure={failure} base={base} fixed={answered?.fix ?? answered?.passed} />
-      )}
+      {failure && <IntegrationFailure className="mt-3" failure={failure} base={base} fixed={answered?.fix ?? answered?.passed} />}
       <ol className="mt-3 space-y-3">
         {decisions
           .filter((decision) => decision !== failure)

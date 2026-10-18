@@ -135,9 +135,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     entitlementsError: plan.ok ? null : plan.error,
     overage: overages.ok ? (overages.value.find((row) => row.workspace === slug) ?? null) : null,
     forgiveCap: (book.ok && book.value.free?.overageForgiveCostMicros) || 50_000_000,
-    credits: credits.ok
-      ? { grants: credits.value.grants, leftMicros: credits.value.grants.reduce((sum, grant) => sum + grant.leftMicros, 0) }
-      : null,
+    credits: credits.ok ? { grants: credits.value.grants, leftMicros: credits.value.grants.reduce((sum, grant) => sum + grant.leftMicros, 0) } : null,
     creditsError: credits.ok ? null : credits.error,
     complimentary: complimentary.ok ? complimentary.value : null,
     complimentaryError: complimentary.ok ? null : complimentary.error,
@@ -262,7 +260,10 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
         <ul className="flex gap-1 border-b border-line text-sm">
           {SECTIONS.map((section) => (
             <li key={section.id}>
-              <a href={`#${section.id}`} className="block border-b-2 border-transparent px-2.5 py-2 whitespace-nowrap text-muted transition-colors hover:border-line-strong hover:text-fg">
+              <a
+                href={`#${section.id}`}
+                className="block border-b-2 border-transparent px-2.5 py-2 whitespace-nowrap text-muted transition-colors hover:border-line-strong hover:text-fg"
+              >
                 {section.label}
               </a>
             </li>
@@ -393,9 +394,7 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
 
         <div className="space-y-6">
           <BillingLinkSection link={link} pathname={pathname} error={error("billing-link")} />
-          {!billedTo && !fullDiscount(terms) && (
-            <GoodwillForm overage={overage} cap={forgiveCap} pathname={pathname} error={error("goodwill")} />
-          )}
+          {!billedTo && !fullDiscount(terms) && <GoodwillForm overage={overage} cap={forgiveCap} pathname={pathname} error={error("goodwill")} />}
           <PaymentForm workspace={slug} pathname={pathname} error={error("payment")} />
           <CreditForm workspaces={[slug]} pathname={pathname} error={error("credit")} />
           {!billedTo && !fullDiscount(terms) && <ResetBillingForm workspace={slug} pathname={pathname} error={error("reset")} />}
@@ -430,7 +429,14 @@ function LimitCard({ limit, terms, billedTo }: { limit: Limit; terms: Terms; bil
   if (billedTo) {
     lines.push({ label: "Limit", value: <>{billedTo.name}'s, shared by every workspace it pays for</> });
   } else if (!fullDiscount(terms)) {
-    lines.push({ label: "From trust", value: <>{usd(limit.trustCeilingMicros)}. {trustAbout(limit.trust)}</> });
+    lines.push({
+      label: "From trust",
+      value: (
+        <>
+          {usd(limit.trustCeilingMicros)}. {trustAbout(limit.trust)}
+        </>
+      ),
+    });
   }
   if (terms.ceilingMicros != null) lines.push({ label: "Custom limit", value: usd(terms.ceilingMicros) });
   if (!billedTo && !fullDiscount(terms)) {
@@ -447,12 +453,7 @@ function LimitCard({ limit, terms, billedTo }: { limit: Limit; terms: Terms; bil
     if (limit.availableMicros !== undefined) {
       lines.push({
         label: "Available",
-        value:
-          limit.availableMicros == null ? (
-            "No ceiling"
-          ) : (
-            <>Up to {usd(limit.availableMicros)}: the most owners may set; past it, they contact g1t</>
-          ),
+        value: limit.availableMicros == null ? "No ceiling" : <>Up to {usd(limit.availableMicros)}: the most owners may set; past it, they contact g1t</>,
       });
     }
   }
@@ -460,9 +461,7 @@ function LimitCard({ limit, terms, billedTo }: { limit: Limit; terms: Terms; bil
 
   return (
     <div className="rounded-lg border border-line bg-surface px-4 py-3 sm:col-span-2">
-      <p className="mb-2 text-xs text-muted">
-        Usage this month against the limit{billedTo && <> · shared with every workspace {billedTo.name} pays for</>}
-      </p>
+      <p className="mb-2 text-xs text-muted">Usage this month against the limit{billedTo && <> · shared with every workspace {billedTo.name} pays for</>}</p>
       <ExposureBar limit={limit} wide />
       {lines.length > 0 && (
         <dl className="mt-3 space-y-1 text-xs">

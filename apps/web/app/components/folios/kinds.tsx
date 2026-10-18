@@ -76,7 +76,15 @@ export const FOLIO_KIND_UI: Record<FolioKind, FolioKindUi> = {
   },
   slides: { label: FOLIO_KIND_LABELS.slides, icon: Presentation, tone: "text-warn bg-warn/12", ready: false, mobileEditable: false, Body: null },
   design: { label: FOLIO_KIND_LABELS.design, icon: PenTool, tone: "text-merged bg-merged/12", ready: false, mobileEditable: false, Body: null },
-  dashboard: { label: FOLIO_KIND_LABELS.dashboard, icon: LayoutDashboard, tone: "text-success bg-success/12", ready: false, beta: true, mobileEditable: false, Body: null },
+  dashboard: {
+    label: FOLIO_KIND_LABELS.dashboard,
+    icon: LayoutDashboard,
+    tone: "text-success bg-success/12",
+    ready: false,
+    beta: true,
+    mobileEditable: false,
+    Body: null,
+  },
 };
 
 /** A kind's icon in its colour on a soft square, as list rows and tiles show it. */

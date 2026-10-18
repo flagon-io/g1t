@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { PATIENCE_MS, REFRESH_PATIENCE_MS, installResilientFetch, isNetworkFailure, keepTrying, refreshesCurrent, retriable, retryDelay, watchBuildNavigation } from "./resilient-fetch.ts";
+import {
+  PATIENCE_MS,
+  REFRESH_PATIENCE_MS,
+  installResilientFetch,
+  isNetworkFailure,
+  keepTrying,
+  refreshesCurrent,
+  retriable,
+  retryDelay,
+  watchBuildNavigation,
+} from "./resilient-fetch.ts";
 import { reconnectDelay } from "./reconnect.ts";
 
 const ORIGIN = "https://g1t.sh";
@@ -11,7 +21,13 @@ test("only an active navigation carries its build; fetchers, refreshes and write
   const calls: Headers[] = [];
   const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
   let late: Promise<Response> | undefined;
-  const browser = { location: new URL("https://g1t.sh/edit"), fetch: async (_input: unknown, init?: RequestInit) => { calls.push(new Headers(init?.headers)); return late ?? new Response(null); } };
+  const browser = {
+    location: new URL("https://g1t.sh/edit"),
+    fetch: async (_input: unknown, init?: RequestInit) => {
+      calls.push(new Headers(init?.headers));
+      return late ?? new Response(null);
+    },
+  };
   Object.defineProperty(globalThis, "window", { value: browser, configurable: true });
   let destination: { pathname: string; search: string } | undefined;
   const stop = watchBuildNavigation(() => destination);
@@ -24,10 +40,15 @@ test("only an active navigation carries its build; fetchers, refreshes and write
     await browser.fetch("/next.data?tab=one", { method: "POST" });
     await browser.fetch("/edit.data");
     await browser.fetch("https://external.example/next.data?tab=one");
-    assert.deepEqual(calls.map((headers) => headers.get("x-g1t-build")), [null, "old-build", null, null, null, null]);
+    assert.deepEqual(
+      calls.map((headers) => headers.get("x-g1t-build")),
+      [null, "old-build", null, null, null, null],
+    );
     for (const path of ["/next.data?tab=one", "/__manifest?paths=/next"]) {
       let finish!: (response: Response) => void;
-      late = new Promise<Response>((resolve) => { finish = resolve; });
+      late = new Promise<Response>((resolve) => {
+        finish = resolve;
+      });
       const controller = new AbortController();
       const abandoned = browser.fetch(path, { signal: controller.signal });
       // A transport can finish after the second click canceled the first.

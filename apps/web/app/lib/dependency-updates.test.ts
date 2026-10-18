@@ -51,7 +51,15 @@ test("an entry's status", () => {
 
 test("rules read as one line", () => {
   assert.equal(
-    groupText({ name: "lint", appliesTo: "version-updates", patterns: ["eslint*"], excludePatterns: ["eslint-old"], updateTypes: ["minor"], dependencyType: "development", groupBy: null }),
+    groupText({
+      name: "lint",
+      appliesTo: "version-updates",
+      patterns: ["eslint*"],
+      excludePatterns: ["eslint-old"],
+      updateTypes: ["minor"],
+      dependencyType: "development",
+      groupBy: null,
+    }),
     "lint: eslint* · not eslint-old · development · minor",
   );
   assert.equal(

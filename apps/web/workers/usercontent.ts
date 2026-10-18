@@ -108,7 +108,12 @@ async function serveRaw(env: Env, request: Request, method: string, file: NonNul
 async function serveAvatar(env: Env, ctx: ExecutionContext, method: string, key: string, origin: string): Promise<Response> {
   // The Workers runtime's own cache, which the DOM types do not know.
   const cache = (caches as unknown as { default: Cache }).default;
-  const path = key.startsWith("emoji/") || key.startsWith("attachments/") ? key : key.startsWith("production/") ? `production-images/${key.slice("production/".length)}` : `avatars/${key}`;
+  const path =
+    key.startsWith("emoji/") || key.startsWith("attachments/")
+      ? key
+      : key.startsWith("production/")
+        ? `production-images/${key.slice("production/".length)}`
+        : `avatars/${key}`;
   const cacheKey = new Request(`${origin}/${path}`, { method: "GET" });
   const cached = await cache.match(cacheKey);
   if (cached) {

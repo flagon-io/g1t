@@ -55,9 +55,7 @@ test("a run asks Wrangler for the handler, and a slow one is not doubled", async
   assert.equal(await run("http://127.0.0.1:8787", job, { fetch: slow }), false);
   finish();
   assert.equal(await first, true);
-  assert.deepEqual(asked, [
-    { url: "http://127.0.0.1:8787/cdn-cgi/local/explorer/api/local/scheduled?worker=g1t-webhooks", body: { cron: "* * * * *" } },
-  ]);
+  assert.deepEqual(asked, [{ url: "http://127.0.0.1:8787/cdn-cgi/local/explorer/api/local/scheduled?worker=g1t-webhooks", body: { cron: "* * * * *" } }]);
   const failing = async () => new Response(JSON.stringify({ success: true, result: { outcome: "exception" } }));
   assert.equal(await run("http://127.0.0.1:8787", job, { fetch: failing }), false);
 });

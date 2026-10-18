@@ -9,7 +9,16 @@ import { useFoliosAction, useFoliosData } from "../../../components/folios/actio
 import { Face, SectionTitle } from "../../../components/folios/parts";
 import { SpaceForm, initialSpace, spaceInput } from "../../../components/folios/space-form";
 import { ErrorText } from "../../../components/ui";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../../../components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../../components/ui/alert-dialog";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
 import { SelectField } from "../../../components/ui/select";
@@ -25,7 +34,11 @@ export function meta({ loaderData: loaded, params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Settings · ${loaded?.space.name ?? "Space"} · Artifacts · ${params.owner} · g1t` });
 }
 
-export async function loader({ params, context, request }: Route.LoaderArgs): Promise<{ space: DocSpace; members: DocSpaceMember[]; teams: { slug: string; name: string }[] | Failed }> {
+export async function loader({
+  params,
+  context,
+  request,
+}: Route.LoaderArgs): Promise<{ space: DocSpace; members: DocSpaceMember[]; teams: { slug: string; name: string }[] | Failed }> {
   const viewer = requireUser(context, request);
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
   const slug = params.owner.toLowerCase();
@@ -35,7 +48,11 @@ export async function loader({ params, context, request }: Route.LoaderArgs): Pr
   const [found, teams] = await Promise.all([docs.space(slug, params.space, viewer), part(identity.listTeams(viewer, slug), "This space's settings")]);
   if (!found.ok) throw data(null, { status: 404 });
   if (found.value.space.viewer_role !== "manage") throw data(null, { status: 403 });
-  return { space: found.value.space, members: found.value.members, teams: isFailed(teams) ? teams : teams.ok ? teams.value.map((t) => ({ slug: t.slug, name: t.name })) : [] };
+  return {
+    space: found.value.space,
+    members: found.value.members,
+    teams: isFailed(teams) ? teams : teams.ok ? teams.value.map((t) => ({ slug: t.slug, name: t.name })) : [],
+  };
 }
 
 const ROLE_OPTIONS = DOC_ROLES.map((r) => ({ value: r, label: DOC_ROLE_LABELS[r], description: DOC_ROLE_SUMMARIES[r] }));
@@ -95,7 +112,9 @@ export default function SpaceSettings({ loaderData, params }: Route.ComponentPro
             <Share2 size={16} className="mt-0.5 shrink-0 text-faint" />
             <span className="min-w-0 grow">
               <span className="block text-sm text-fg">Editors can share</span>
-              <span className="mt-0.5 block text-xs leading-relaxed text-faint">People who can edit what's in this space can also share it with others, up to Can edit. Off: only people with full access can share.</span>
+              <span className="mt-0.5 block text-xs leading-relaxed text-faint">
+                People who can edit what's in this space can also share it with others, up to Can edit. Off: only people with full access can share.
+              </span>
             </span>
             <Switch
               checked={space.editors_can_share}
@@ -132,8 +151,20 @@ export default function SpaceSettings({ loaderData, params }: Route.ComponentPro
                   <span className="block truncate text-sm">{m.display_name}</span>
                   <span className="block text-xs text-faint">{m.kind === "team" ? "Team" : m.kind === "agent" ? "Agent" : `@${m.name}`}</span>
                 </span>
-                <SelectField aria-label={`${m.display_name}'s role`} value={m.role} onValueChange={(role) => people.send("set_member", { space_id: space.id, member: m.key, role })} options={ROLE_OPTIONS} className="h-8 w-40" />
-                <Button type="button" onClick={() => people.send("set_member", { space_id: space.id, member: m.key, role: null })} variant="link" size="inline" className="text-xs text-faint hover:text-danger font-normal">
+                <SelectField
+                  aria-label={`${m.display_name}'s role`}
+                  value={m.role}
+                  onValueChange={(role) => people.send("set_member", { space_id: space.id, member: m.key, role })}
+                  options={ROLE_OPTIONS}
+                  className="h-8 w-40"
+                />
+                <Button
+                  type="button"
+                  onClick={() => people.send("set_member", { space_id: space.id, member: m.key, role: null })}
+                  variant="link"
+                  size="inline"
+                  className="text-xs text-faint hover:text-danger font-normal"
+                >
                   Remove
                 </Button>
               </li>
@@ -142,7 +173,14 @@ export default function SpaceSettings({ loaderData, params }: Route.ComponentPro
           </ul>
         </Card>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <SelectField aria-label="Person or team" value={adding} onValueChange={setAdding} placeholder="Add a person or team" options={candidates} className="h-9 min-w-64 grow" />
+          <SelectField
+            aria-label="Person or team"
+            value={adding}
+            onValueChange={setAdding}
+            placeholder="Add a person or team"
+            options={candidates}
+            className="h-9 min-w-64 grow"
+          />
           <SelectField aria-label="Their role" value={addRole} onValueChange={(r) => setAddRole(r as DocRole)} options={ROLE_OPTIONS} className="h-9 w-40" />
           <Button
             type="button"
@@ -168,13 +206,16 @@ export default function SpaceSettings({ loaderData, params }: Route.ComponentPro
 
       <section className="mt-12 rounded-xl border border-danger/30 p-5">
         <h2 className="text-sm font-semibold">Archive this space</h2>
-        <p className="mt-1 text-xs leading-relaxed text-muted">It leaves the sidebar and search. What's in it, its history and comments are kept, and it comes back from the Spaces page.</p>
+        <p className="mt-1 text-xs leading-relaxed text-muted">
+          It leaves the sidebar and search. What's in it, its history and comments are kept, and it comes back from the Spaces page.
+        </p>
         <Button type="button" variant="destructive" onClick={() => setArchiving(true)} className="mt-3">
           <Archive size={14} /> Archive space
         </Button>
         <h2 className="mt-6 text-sm font-semibold">Delete this space</h2>
         <p className="mt-1 text-xs leading-relaxed text-muted">
-          Everything in it goes to the trash, where anyone who could edit it can restore it for 30 days. The space itself, its members and settings are gone for good.
+          Everything in it goes to the trash, where anyone who could edit it can restore it for 30 days. The space itself, its members and settings are gone for
+          good.
           {space.is_default ? " A workspace needs no General space; none takes its place." : ""}
         </p>
         <Button type="button" variant="destructive" onClick={() => setDeleting(true)} className="mt-3">
@@ -186,7 +227,8 @@ export default function SpaceSettings({ loaderData, params }: Route.ComponentPro
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {space.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              {inside === null ? "Everything in it goes" : inside === 1 ? "The artifact in it goes" : `The ${inside} artifacts in it go`} to the trash, where anyone who could edit it can restore it for 30 days. The space can&apos;t be brought back.
+              {inside === null ? "Everything in it goes" : inside === 1 ? "The artifact in it goes" : `The ${inside} artifacts in it go`} to the trash, where
+              anyone who could edit it can restore it for 30 days. The space can&apos;t be brought back.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

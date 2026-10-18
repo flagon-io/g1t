@@ -317,7 +317,11 @@ export const EMAIL_REASONS: { reason: InboxReason; label: string; detail: string
     label: "Security alerts",
     detail: "Critical and high alerts, a push of yours that push protection refused, a vulnerability report, and your security digest.",
   },
-  { reason: "state_change", label: "What you follow closes or merges", detail: "A work item or pull request you're subscribed to was closed, reopened or merged." },
+  {
+    reason: "state_change",
+    label: "What you follow closes or merges",
+    detail: "A work item or pull request you're subscribed to was closed, reopened or merged.",
+  },
   { reason: "author", label: "News on your work", detail: "An approval, changes asked for, or g1t finishing what you asked for." },
   { reason: "comment", label: "Conversations you're in", detail: "Comments on work items and pull requests you commented on." },
   { reason: "manual", label: "Threads you subscribed to", detail: "Activity on work items and pull requests you subscribed to by hand." },

@@ -21,7 +21,14 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   if (!roleIn(viewer, params.owner)) throw data(null, { status: 404 });
   // Who to ask is beside what the page says: without it, the page says that much.
   const members = await part(identity.listMembers(params.owner, viewer), "The workspace's owners");
-  const owners = isFailed(members) ? members : members.ok ? members.value.filter((m) => m.role === "owner").slice(0, 4).map((m) => m.username) : [];
+  const owners = isFailed(members)
+    ? members
+    : members.ok
+      ? members.value
+          .filter((m) => m.role === "owner")
+          .slice(0, 4)
+          .map((m) => m.username)
+      : [];
   const from = new URL(request.url).searchParams.get("from");
   // Only a path on this site, shown as text.
   return { owners, from: from && /^\/[^/]/.test(from) ? from.split("?")[0] : null };
@@ -50,18 +57,20 @@ export default function CodeAccess({ loaderData, params }: Route.ComponentProps)
         <div className="mt-4 flex justify-center">
           <Unavailable what={owners.what} compact />
         </div>
-      ) : owners.length > 0 && (
-        <p className="mt-4 text-sm text-muted">
-          Owners:{" "}
-          {owners.map((owner, index) => (
-            <span key={owner}>
-              {index > 0 && ", "}
-              <Link to={`/u/${owner}`} className="font-medium text-fg hover:text-accent">
-                @{owner}
-              </Link>
-            </span>
-          ))}
-        </p>
+      ) : (
+        owners.length > 0 && (
+          <p className="mt-4 text-sm text-muted">
+            Owners:{" "}
+            {owners.map((owner, index) => (
+              <span key={owner}>
+                {index > 0 && ", "}
+                <Link to={`/u/${owner}`} className="font-medium text-fg hover:text-accent">
+                  @{owner}
+                </Link>
+              </span>
+            ))}
+          </p>
+        )
       )}
       <div className="mt-8 flex justify-center gap-2">
         <Link

@@ -59,7 +59,15 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   if (intent === "dismiss") {
     const reason = String(form.get("reason") ?? "");
     if (!REASONS.has(reason)) return { ok: false, error: "Choose a reason." };
-    const done = await security.dismiss(user, repo, id, reason as DismissReason, String(form.get("comment") ?? "").trim().slice(0, 500));
+    const done = await security.dismiss(
+      user,
+      repo,
+      id,
+      reason as DismissReason,
+      String(form.get("comment") ?? "")
+        .trim()
+        .slice(0, 500),
+    );
     return done.ok ? { ok: true } : { ok: false, error: done.error.message };
   }
   if (intent === "reopen") {
@@ -98,17 +106,32 @@ export default function SecretScanning({ loaderData, params }: Route.ComponentPr
         <div className="flex flex-wrap items-end justify-between gap-3">
           <StateFilter counts={counts} value={filters.state} onChange={(state: AlertState) => set("state", state === "open" ? null : state)} />
           <div className="flex flex-wrap gap-2">
-            <FilterSelect label="Type" value={filters.type ?? "all"} options={[["all", "All types"], ...secretTypes(overview.secrets)]} onChange={(value) => set("type", value === "all" ? null : value)} />
+            <FilterSelect
+              label="Type"
+              value={filters.type ?? "all"}
+              options={[["all", "All types"], ...secretTypes(overview.secrets)]}
+              onChange={(value) => set("type", value === "all" ? null : value)}
+            />
             <FilterSelect
               label="Validity"
               value={filters.validity ?? "all"}
-              options={[["all", "Any"], ["active", "Active"], ["inactive", "Inactive"], ["unknown", "Unknown"], ["unsupported", "No check"]]}
+              options={[
+                ["all", "Any"],
+                ["active", "Active"],
+                ["inactive", "Inactive"],
+                ["unknown", "Unknown"],
+                ["unsupported", "No check"],
+              ]}
               onChange={(value) => set("validity", value === "all" ? null : value)}
             />
             <FilterSelect
               label="Bypassed"
               value={filters.bypassed == null ? "all" : String(filters.bypassed)}
-              options={[["all", "Either"], ["true", "Bypassed"], ["false", "Not bypassed"]]}
+              options={[
+                ["all", "Either"],
+                ["true", "Bypassed"],
+                ["false", "Not bypassed"],
+              ]}
               onChange={(value) => set("bypassed", value === "all" ? null : value)}
             />
           </div>
@@ -123,8 +146,8 @@ export default function SecretScanning({ loaderData, params }: Route.ComponentPr
           canDismiss={can.manage_integrations}
         />
         <p className="text-xs text-faint">
-          Not a real secret, such as a test fixture? Add <code>g1t:allow-secret</code> in a comment on its line, or dismiss the
-          alert. Dismissing takes the Admin role and is recorded with your name and reason.
+          Not a real secret, such as a test fixture? Add <code>g1t:allow-secret</code> in a comment on its line, or dismiss the alert. Dismissing takes the
+          Admin role and is recorded with your name and reason.
         </p>
       </section>
 
@@ -137,7 +160,10 @@ export default function SecretScanning({ loaderData, params }: Route.ComponentPr
             <p className="mt-1 text-sm text-muted">Formats of your own, found by push protection and history scans with the built-in ones.</p>
           </div>
           {!isFailed(patterns) && patterns.entitled && can.manage_integrations && (
-            <Link to={`${base}/security/secret-scanning/patterns`} className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm hover:border-line-strong">
+            <Link
+              to={`${base}/security/secret-scanning/patterns`}
+              className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm hover:border-line-strong"
+            >
               <Plus size={14} /> New pattern
             </Link>
           )}
@@ -148,9 +174,7 @@ export default function SecretScanning({ loaderData, params }: Route.ComponentPr
           <ActivationPrompt workspace={params.owner} feature="Custom patterns" monthlyCents={price} isOwner={owner} />
         ) : own.length + inherited.length === 0 ? (
           <Card asChild tone="plain" className="border-dashed px-4 py-6 text-sm text-muted">
-            <p>
-              No custom patterns yet. Add one for your own tokens' format, try it on test strings and a dry run, then publish it.
-            </p>
+            <p>No custom patterns yet. Add one for your own tokens' format, try it on test strings and a dry run, then publish it.</p>
           </Card>
         ) : (
           <ul className={`${CARD} divide-y divide-line`}>

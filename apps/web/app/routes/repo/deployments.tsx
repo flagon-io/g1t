@@ -1,16 +1,4 @@
-import {
-  ArrowUpRight,
-  ChevronLeft,
-  ChevronRight,
-  ExternalLink,
-  GitBranch,
-  GitCommitHorizontal,
-  Globe,
-  Rocket,
-  RotateCw,
-  Terminal,
-  Trash2,
-} from "lucide-react";
+import { ArrowUpRight, ChevronLeft, ChevronRight, ExternalLink, GitBranch, GitCommitHorizontal, Globe, Rocket, RotateCw, Terminal, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Form, Link } from "react-router";
 
@@ -88,9 +76,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // cannot be read), and the deployments service refuses a deploy the plan
   // does not cover.
   const plans = orElse(features, null);
-  const plan = plans?.ok
-    ? (plans.value.find((state) => state.plan.feature === "plan" || state.plan.feature === "deployments") ?? null)
-    : null;
+  const plan = plans?.ok ? (plans.value.find((state) => state.plan.feature === "plan" || state.plan.feature === "deployments") ?? null) : null;
   // g1t.page hosting, for the workspace's members: null when it is not
   // theirs to see, Failed when it could not be read.
   const pages = isFailed(settings)
@@ -172,13 +158,11 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
           <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
             <Rocket size={18} className="text-accent" />
             Deployments
-            {total > 0 && (
-              <span className="rounded-full bg-line px-2 py-px text-xs font-medium tabular-nums text-muted">{total.toLocaleString("en-US")}</span>
-            )}
+            {total > 0 && <span className="rounded-full bg-line px-2 py-px text-xs font-medium tabular-nums text-muted">{total.toLocaleString("en-US")}</span>}
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Where this repository runs, and every deployment to it: builds on g1t.page, g1t Actions jobs with an environment,
-            and deployments reported from any other CI.
+            Where this repository runs, and every deployment to it: builds on g1t.page, g1t Actions jobs with an environment, and deployments reported from any
+            other CI.
           </p>
         </div>
         {productionUrl && (
@@ -202,9 +186,7 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
         <Unavailable what="Deployments" />
       ) : !environments && !list && !environmentsFailed && !listFailed ? (
         <Card asChild className="p-6 text-sm text-muted">
-          <p>
-            Deployments could not be loaded just now. Reload the page to try again.
-          </p>
+          <p>Deployments could not be loaded just now. Reload the page to try again.</p>
         </Card>
       ) : !any ? (
         <Start base={base} pages={pages} can={can} owner={params.owner} planNeeded={planNeeded} />
@@ -285,27 +267,14 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
 }
 
 /** Nothing has deployed yet: the two ways to start. */
-function Start({
-  base,
-  pages,
-  can,
-  owner,
-  planNeeded,
-}: {
-  base: string;
-  pages: Pages | null;
-  can: Loaded["can"];
-  owner: string;
-  planNeeded: boolean;
-}) {
+function Start({ base, pages, can, owner, planNeeded }: { base: string; pages: Pages | null; can: Loaded["can"]; owner: string; planNeeded: boolean }) {
   return (
     <Card asChild>
       <section>
         <div className="border-b border-line px-6 py-5">
           <h2 className="font-medium">No deployments yet</h2>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Host it here on g1t.page, or deploy it wherever it runs and report each deployment. Either way they show here, by
-            environment.
+            Host it here on g1t.page, or deploy it wherever it runs and report each deployment. Either way they show here, by environment.
           </p>
         </div>
         <div className="grid divide-y divide-line md:grid-cols-2 md:divide-x md:divide-y-0">
@@ -316,8 +285,7 @@ function Start({
             </h3>
             {!pages ? (
               <p className="mt-1.5 text-sm text-muted">
-                Members of the workspace can turn on hosting: production from the default branch, and a live preview for every
-                pull request.
+                Members of the workspace can turn on hosting: production from the default branch, and a live preview for every pull request.
               </p>
             ) : planNeeded ? (
               <PlanNeeded plan={pages.plan} owner={owner} quiet />
@@ -331,13 +299,11 @@ function Start({
               Report deployments from your CI
             </h3>
             <p className="mt-1.5 text-sm text-muted">
-              A g1t Actions job with an <code className="font-mono text-fg">environment:</code> reports its deployment by
-              itself. From any other CI, create a deployment and its statuses with the API.
+              A g1t Actions job with an <code className="font-mono text-fg">environment:</code> reports its deployment by itself. From any other CI, create a
+              deployment and its statuses with the API.
             </p>
             <Card asChild tone="bg" radius="lg" className="mt-3 overflow-x-auto p-3 font-mono text-xs leading-relaxed text-muted">
-              <pre>
-                {"jobs:\n  deploy:\n    environment:\n      name: production\n      url: https://example.com"}
-              </pre>
+              <pre>{"jobs:\n  deploy:\n    environment:\n      name: production\n      url: https://example.com"}</pre>
             </Card>
             <a href={API_GUIDE} className="mt-3 inline-flex items-center gap-1 text-sm text-accent hover:underline">
               Reporting deployments <ArrowUpRight size={13} />
@@ -558,9 +524,7 @@ function History({
       <div className="mt-3">
         {!list ? (
           <Card asChild className="p-6 text-sm text-muted">
-            <p>
-              The history could not be loaded just now. Reload the page to try again.
-            </p>
+            <p>The history could not be loaded just now. Reload the page to try again.</p>
           </Card>
         ) : rows.length === 0 ? (
           <Card tone="plain" radius="lg" className="border-dashed px-6 py-12 text-center">
@@ -644,10 +608,7 @@ function History({
 function HistoryRow({ deployment, base }: { deployment: RepoDeployment; base: string }) {
   return (
     <li>
-      <Link
-        to={`${base}/deployments/${deployment.id}`}
-        className="flex items-start gap-3 px-4 py-3 text-sm transition-colors hover:bg-surface"
-      >
+      <Link to={`${base}/deployments/${deployment.id}`} className="flex items-start gap-3 px-4 py-3 text-sm transition-colors hover:bg-surface">
         <span className="mt-0.5">
           <DeploymentStateIcon state={deployment.state} size={16} />
         </span>
@@ -693,8 +654,7 @@ function PagesOn({ pages, base, can }: { pages: Pages; base: string; can: Loaded
   return (
     <>
       <p className="mt-1 max-w-2xl text-sm text-muted">
-        Every pull request gets a live preview on g1t.page, and the default branch goes to production on each push. Apps run
-        only while someone visits them.{" "}
+        Every pull request gets a live preview on g1t.page, and the default branch goes to production on each push. Apps run only while someone visits them.{" "}
         <a href="https://docs.g1t.sh/guides/deployments/" className="text-fg hover:underline">
           How it works
         </a>
@@ -768,14 +728,13 @@ function PagesOff({ pages, base, can, quiet }: { pages: Pages; base: string; can
     <>
       <p className="mt-1.5 max-w-2xl text-sm text-muted">
         {quiet ? "This repository can also be hosted here. " : ""}
-        Once on, production goes up at <span className="font-mono text-fg wrap-anywhere">{host(pages.settings.productionUrl)}</span>{" "}
-        and every open pull request gets its own preview. Workers projects (a{" "}
-        <code className="font-mono text-fg">wrangler.jsonc</code>) and static sites deploy without configuration.
+        Once on, production goes up at <span className="font-mono text-fg wrap-anywhere">{host(pages.settings.productionUrl)}</span> and every open pull request
+        gets its own preview. Workers projects (a <code className="font-mono text-fg">wrangler.jsonc</code>) and static sites deploy without configuration.
       </p>
       {pages.notDeploying ? (
         <p className="mt-4 max-w-2xl text-sm text-muted">
-          This project is set to be something that doesn't deploy here, such as a library, a tool or an app that
-          deploys itself. To host it on g1t.page, choose App or site, hosted on g1t.page, in{" "}
+          This project is set to be something that doesn't deploy here, such as a library, a tool or an app that deploys itself. To host it on g1t.page, choose
+          App or site, hosted on g1t.page, in{" "}
           <Link to={`${base}/settings#kind`} className="text-fg underline underline-offset-4">
             its settings
           </Link>{" "}
@@ -784,13 +743,7 @@ function PagesOff({ pages, base, can, quiet }: { pages: Pages; base: string; can
       ) : (
         <Form method="post" className="mt-4">
           <Hint label={whyNot(can, "manage_integrations")} disabled={!can.manage_integrations}>
-            <SubmitButton
-              variant={quiet ? "outline" : "accent"}
-              name="intent"
-              value="enable"
-              pending="Turning on…"
-              disabled={!can.manage_integrations}
-            >
+            <SubmitButton variant={quiet ? "outline" : "accent"} name="intent" value="enable" pending="Turning on…" disabled={!can.manage_integrations}>
               <Rocket size={14} />
               Turn on g1t.page hosting
             </SubmitButton>
@@ -806,8 +759,8 @@ function PlanNeeded({ plan, owner, quiet }: { plan: FeatureState | null; owner: 
     <div className={quiet ? "mt-1.5" : "mt-2 rounded-xl border border-accent/30 bg-accent/5 p-6"}>
       {!quiet && <h2 className="font-medium">Deployments are part of a paid plan</h2>}
       <p className="max-w-2xl text-sm text-muted">
-        Hosting on g1t.page is part of a paid plan. Turn on Deployments for the {owner} workspace and every project in it can
-        have a preview for each pull request and production on g1t.page.
+        Hosting on g1t.page is part of a paid plan. Turn on Deployments for the {owner} workspace and every project in it can have a preview for each pull
+        request and production on g1t.page.
         {plan && ` $${(plan.plan.monthlyCents / 100).toFixed(0)} a month, including:`}
       </p>
       {plan && (

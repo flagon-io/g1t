@@ -260,14 +260,7 @@ export const MAX_INVITE_MESSAGE = 500;
  * `awaiting_answer`: the account it made is confirmed, and the workspace it
  * names waits for the person to accept or decline. `declined`: they said no.
  */
-export type InviteStatus =
-  | "pending"
-  | "awaiting_confirmation"
-  | "awaiting_answer"
-  | "redeemed"
-  | "declined"
-  | "expired"
-  | "revoked";
+export type InviteStatus = "pending" | "awaiting_confirmation" | "awaiting_answer" | "redeemed" | "declined" | "expired" | "revoked";
 
 /** One invite. Mirrors `Invite` in `crates/contracts/src/identity.rs`. */
 export type Invite = {
@@ -603,9 +596,7 @@ export type DeviceStart = {
 
 export type DeviceRequest = { userCode: string; clientName: string };
 
-export type DeviceClaim =
-  | { status: "pending" | "denied" | "expired" }
-  | { status: "approved"; token: string; user: User };
+export type DeviceClaim = { status: "pending" | "denied" | "expired" } | { status: "approved"; token: string; user: User };
 
 /** What the site passes on once a person has approved an application. */
 export type OAuthApproval = {
@@ -719,11 +710,7 @@ export interface IdentityApi extends AccessClient, TeamsClient, PeopleClient, De
    * password. Wrong passwords are counted against the account and `client`
    * (the visitor's IP address); past a limit nothing is checked for a while.
    */
-  signIn(
-    username: string,
-    password: string,
-    client?: string | null,
-  ): Promise<Result<{ user: User; sessionToken: string; twoFactorChallenge?: string | null }>>;
+  signIn(username: string, password: string, client?: string | null): Promise<Result<{ user: User; sessionToken: string; twoFactorChallenge?: string | null }>>;
   /**
    * The second step of signing in, for an account with two-factor
    * authentication: the challenge `signIn` returned, and a code from the
@@ -868,17 +855,9 @@ export interface IdentityApi extends AccessClient, TeamsClient, PeopleClient, De
   /** A workspace's rules for personal access tokens. Members only. */
   getTokenPolicy(slug: string, viewer: Viewer): Promise<Result<TokenPolicy>>;
   /** Owners only, as people. `maxLifetimeDays` of 0 removes the limit. */
-  setTokenPolicy(
-    actor: User,
-    slug: string,
-    change: Partial<Omit<TokenPolicy, "updatedBy" | "updatedAt">>,
-  ): Promise<Result<TokenPolicy>>;
+  setTokenPolicy(actor: User, slug: string, change: Partial<Omit<TokenPolicy, "updatedBy" | "updatedAt">>): Promise<Result<TokenPolicy>>;
   /** The members' tokens that can reach a workspace. Owners only. */
-  listMemberTokens(
-    actor: User,
-    slug: string,
-    filter?: { status?: TokenStatus },
-  ): Promise<Result<MemberToken[]>>;
+  listMemberTokens(actor: User, slug: string, filter?: { status?: TokenStatus }): Promise<Result<MemberToken[]>>;
   /** Approve or deny a token waiting for approval. Owners only. */
   reviewTokenRequest(actor: User, slug: string, id: string, approve: boolean, reason?: string | null): Promise<Result<MemberToken>>;
   /** Take a member's token out of the workspace. Owners only. */
@@ -1021,12 +1000,7 @@ export interface IdentityApi extends AccessClient, TeamsClient, PeopleClient, De
    * the token expires and is left out of token lists. Tokens people make
    * use `createToken`.
    */
-  createAccessToken(
-    user: User,
-    name: string,
-    ttlSeconds?: number,
-    grant?: TokenGrant & { listed?: boolean },
-  ): Promise<{ token: string; info: AccessToken }>;
+  createAccessToken(user: User, name: string, ttlSeconds?: number, grant?: TokenGrant & { listed?: boolean }): Promise<{ token: string; info: AccessToken }>;
   removeAccessToken(user: User, id: string): Promise<void>;
   /**
    * A token for one sandbox run: it acts as the agent on behalf of
@@ -1039,7 +1013,6 @@ export interface IdentityApi extends AccessClient, TeamsClient, PeopleClient, De
   /** Ends a sandbox's run credentials, by hash or by run. Never touches another token. */
   revokeRunCredentials(target: { tokenHashes?: string[]; runId?: string | null }): Promise<boolean>;
 }
-
 
 /**
  * What a scoped token may do: these operations, in this repository. Run

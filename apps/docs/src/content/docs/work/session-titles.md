@@ -13,12 +13,12 @@ and changes only when the work does.
 Each title says where it came from (`title_source`) and when it settled
 (`title_settled_at`):
 
-| Source | What it is |
-| --- | --- |
-| `prompt` | Provisional: what its first prompt asked for (its first line or sentence, without pasted text, image placeholders, code or markdown). Shown muted. |
-| `item`, `pull`, `summary` | Settled by g1t from the session's record: a work item's title, a pull request's, or a summary of the work. |
-| `agent` | Its harness or agent named it (`title` on start or update, `g1t session attach --title`). |
-| `person` | Someone renamed it on its page: pinned. |
+| Source                    | What it is                                                                                                                                         |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prompt`                  | Provisional: what its first prompt asked for (its first line or sentence, without pasted text, image placeholders, code or markdown). Shown muted. |
+| `item`, `pull`, `summary` | Settled by g1t from the session's record: a work item's title, a pull request's, or a summary of the work.                                         |
+| `agent`                   | Its harness or agent named it (`title` on start or update, `g1t session attach --title`).                                                          |
+| `person`                  | Someone renamed it on its page: pinned.                                                                                                            |
 
 A session with no title yet is called what its first prompt was for, else
 **Session on** its branch, else **Untitled session**. A title that is only

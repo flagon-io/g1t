@@ -5,22 +5,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { SwitchCard } from "./ui/switch";
 
 /** A group of settings: its name and what it is for on the left, the settings on the right. */
-export function SettingsSection({
-  id,
-  title,
-  about,
-  children,
-}: {
-  id?: string;
-  title: string;
-  about: ReactNode;
-  children: ReactNode;
-}) {
+export function SettingsSection({ id, title, about, children }: { id?: string; title: string; about: ReactNode; children: ReactNode }) {
   return (
-    <section
-      id={id}
-      className="grid gap-x-10 gap-y-4 border-t border-line pt-8 first:border-t-0 first:pt-0 lg:grid-cols-[16rem_1fr]"
-    >
+    <section id={id} className="grid gap-x-10 gap-y-4 border-t border-line pt-8 first:border-t-0 first:pt-0 lg:grid-cols-[16rem_1fr]">
       <div>
         <h2 className="font-medium">{title}</h2>
         <p className="mt-1 text-sm text-muted">{about}</p>
@@ -31,19 +18,7 @@ export function SettingsSection({
 }
 
 /** A setting that is on or off, with what it means. */
-export function SettingToggle({
-  name,
-  on,
-  title,
-  disabled,
-  children,
-}: {
-  name: string;
-  on: boolean;
-  title: string;
-  disabled?: boolean;
-  children: ReactNode;
-}) {
+export function SettingToggle({ name, on, title, disabled, children }: { name: string; on: boolean; title: string; disabled?: boolean; children: ReactNode }) {
   return (
     <SwitchCard name={name} defaultChecked={on} title={title} disabled={disabled}>
       {children}

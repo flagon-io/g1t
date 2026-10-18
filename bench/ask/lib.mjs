@@ -46,7 +46,10 @@ function readSecretFile(path) {
   if (!existsSync(path)) return null;
   // Either the bare value or a `token: value` line.
   const text = readFileSync(path, "utf8").trim();
-  const value = text.replace(/^\s*token:\s*/i, "").split(/\r?\n/)[0].trim();
+  const value = text
+    .replace(/^\s*token:\s*/i, "")
+    .split(/\r?\n/)[0]
+    .trim();
   return remember(value) || null;
 }
 
@@ -95,9 +98,7 @@ export function knownSecrets() {
 export function redact(text) {
   let out = String(text ?? "");
   for (const secret of SECRETS) out = out.split(secret).join("[REDACTED]");
-  return out
-    .replace(/\bsk-ant-[A-Za-z0-9_-]{8,}/g, "sk-ant-[REDACTED]")
-    .replace(/\bg1t_[A-Za-z0-9_-]{16,}/g, "g1t_[REDACTED]");
+  return out.replace(/\bsk-ant-[A-Za-z0-9_-]{8,}/g, "sk-ant-[REDACTED]").replace(/\bg1t_[A-Za-z0-9_-]{16,}/g, "g1t_[REDACTED]");
 }
 
 // --- g1t ------------------------------------------------------------------
@@ -243,7 +244,12 @@ export async function ask(workspace, { messages, page }, { timeoutMs = 180_000 }
       const last = index === questions.length - 1;
       const asked = performance.now();
       // Marked, so the person whose direct message it is can tell the bench's questions from their own.
-      const posted = await chatApi(workspace, { intent: "post", channel_id: channel, body: `${TEST_PREFIX}${question.content}`, page: last ? (page ?? null) : null });
+      const posted = await chatApi(workspace, {
+        intent: "post",
+        channel_id: channel,
+        body: `${TEST_PREFIX}${question.content}`,
+        page: last ? (page ?? null) : null,
+      });
       result.status = posted.ok ? 200 : 400;
       if (!posted.ok) throw new Error(posted.error?.message ?? "could not post");
       const mine = posted.value.id;

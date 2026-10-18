@@ -18,8 +18,7 @@ import { spawnSync } from "node:child_process";
 
 export const WORKER_BUILD_VERSION = "0.8.7";
 
-const run = (command, args, options = {}) =>
-  spawnSync(command, args, { stdio: "inherit", shell: process.platform === "win32", ...options });
+const run = (command, args, options = {}) => spawnSync(command, args, { stdio: "inherit", shell: process.platform === "win32", ...options });
 
 /** The installed worker-build's version, or null. */
 export function installedVersion() {

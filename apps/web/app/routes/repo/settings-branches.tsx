@@ -22,13 +22,7 @@ import { requireCapability, requireInsider } from "../../lib/access.server";
 import { Unavailable } from "../../components/boundary";
 import { isFailed, part } from "../../lib/partial";
 
-const COMMIT_MESSAGE_DEFAULTS: CommitMessageDefault[] = [
-  "default",
-  "pull_title",
-  "pull_title_and_description",
-  "pull_title_and_commits",
-  "custom",
-];
+const COMMIT_MESSAGE_DEFAULTS: CommitMessageDefault[] = ["default", "pull_title", "pull_title_and_description", "pull_title_and_commits", "custom"];
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Branches and merging · ${params.owner}/${params.repo} · g1t` });
@@ -84,8 +78,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     return typeof value === "string" && COMMIT_MESSAGE_DEFAULTS.includes(value as CommitMessageDefault) ? (value as CommitMessageDefault) : fallback;
   };
   // A template is posted only while it is shown; otherwise the saved one stays.
-  const template = (name: string, fallback: string | null) =>
-    form.has(name) ? String(form.get(name) ?? "").trim() || null : fallback;
+  const template = (name: string, fallback: string | null) => (form.has(name) ? String(form.get(name) ?? "").trim() || null : fallback);
   const allowed = {
     allowMergeCommit: on("allowMergeCommit"),
     allowSquashMerge: on("allowSquashMerge"),
@@ -129,10 +122,7 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
         </div>
       )}
       <div className="max-w-4xl space-y-8">
-        <Section
-          title="Branch protection"
-          about={`What holds for ${branch} and every other branch is set by rulesets, across the workspace.`}
-        >
+        <Section title="Branch protection" about={`What holds for ${branch} and every other branch is set by rulesets, across the workspace.`}>
           <Link
             to={`${base}/settings/rules`}
             className="group flex items-start gap-3 rounded-xl border border-line p-4 transition-colors hover:border-line-strong hover:bg-surface"
@@ -171,15 +161,9 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
           </Link>
         </Section>
 
-        <Section
-          id="codeowners"
-          title="CODEOWNERS"
-          about={`Who owns which files, read from ${branch}. Owners are asked to review changes to their files.`}
-        >
+        <Section id="codeowners" title="CODEOWNERS" about={`Who owns which files, read from ${branch}. Owners are asked to review changes to their files.`}>
           <Suspense fallback={<CodeownersReportSkeleton />}>
-            <Await resolve={codeowners}>
-              {(report) => <CodeownersReportPanel report={report} base={base} branch={branch} />}
-            </Await>
+            <Await resolve={codeowners}>{(report) => <CodeownersReportPanel report={report} base={base} branch={branch} />}</Await>
           </Suspense>
         </Section>
 
@@ -195,28 +179,26 @@ export default function BranchSettings({ loaderData, actionData }: Route.Compone
 
             <Section id="updating-branches" title="Updating branches" about="Bringing a pull request's branch up to date with its base.">
               <Toggle name="suggestUpdatingBranches" on={settings.suggestUpdatingBranches} title="Always suggest updating pull request branches">
-                Whenever a pull request's base has commits its branch does not, offer to bring the branch up to date, with
-                a merge commit or a rebase, even when nothing requires it. Off, the offer shows only when a rule requires
-                pull requests to be up to date.
+                Whenever a pull request's base has commits its branch does not, offer to bring the branch up to date, with a merge commit or a rebase, even when
+                nothing requires it. Off, the offer shows only when a rule requires pull requests to be up to date.
               </Toggle>
             </Section>
 
             <Section id="auto-merge" title="Auto-merge" about="Pull requests that merge on their own once everything they need is met.">
               <Toggle name="allowAutoMerge" on={settings.allowAutoMerge} title="Allow auto-merge">
-                Whoever may merge a pull request can turn on auto-merge for it with the method and message they choose:
-                it merges, as them, the moment its required reviews and checks pass.
+                Whoever may merge a pull request can turn on auto-merge for it with the method and message they choose: it merges, as them, the moment its
+                required reviews and checks pass.
               </Toggle>
               <Toggle name="autoMerge" on={settings.autoMerge} title="Land pull requests g1t sees through when ready">
-                A pull request g1t is seeing through for a work item lands without anyone pressing merge once every rule of
-                its branch is met, its required checks included. A ruleset can turn this off for some branches. Off, it
-                waits for a member to merge it.
+                A pull request g1t is seeing through for a work item lands without anyone pressing merge once every rule of its branch is met, its required
+                checks included. A ruleset can turn this off for some branches. Off, it waits for a member to merge it.
               </Toggle>
             </Section>
 
             <Section id="after-merging" title="After merging" about="What happens to a pull request's branch once it lands.">
               <Toggle name="deleteBranchOnMerge" on={settings.deleteBranchOnMerge} title="Automatically delete head branches">
-                A pull request's branch is deleted once it merges. Whoever merges can keep it that time, and a deleted
-                branch can be restored from its pull request.
+                A pull request's branch is deleted once it merges. Whoever merges can keep it that time, and a deleted branch can be restored from its pull
+                request.
               </Toggle>
             </Section>
 

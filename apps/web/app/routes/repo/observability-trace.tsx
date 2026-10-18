@@ -77,7 +77,11 @@ export default function Trace({ loaderData, params }: Route.ComponentProps) {
             <span>Span</span>
             <div className="relative h-4">
               {[0, 0.25, 0.5, 0.75, 1].map((f) => (
-                <span key={f} className={cn("absolute", f === 1 ? "right-0" : f === 0 ? "left-0" : "-translate-x-1/2")} style={f > 0 && f < 1 ? { left: `${f * 100}%` } : undefined}>
+                <span
+                  key={f}
+                  className={cn("absolute", f === 1 ? "right-0" : f === 0 ? "left-0" : "-translate-x-1/2")}
+                  style={f > 0 && f < 1 ? { left: `${f * 100}%` } : undefined}
+                >
                   {duration((total * f) / 1000)}
                 </span>
               ))}
@@ -104,7 +108,10 @@ export default function Trace({ loaderData, params }: Route.ComponentProps) {
                     </span>
                     <span className="relative block h-4">
                       <span
-                        className={cn("absolute top-1/2 h-2.5 -translate-y-1/2 rounded-[3px]", span.status === "error" && "ring-2 ring-danger ring-offset-1 ring-offset-bg")}
+                        className={cn(
+                          "absolute top-1/2 h-2.5 -translate-y-1/2 rounded-[3px]",
+                          span.status === "error" && "ring-2 ring-danger ring-offset-1 ring-offset-bg",
+                        )}
                         style={{ left: `${left}%`, width: `${width}%`, background: color(span.service) }}
                       />
                       <span
@@ -121,7 +128,9 @@ export default function Trace({ loaderData, params }: Route.ComponentProps) {
           </ol>
         </Card>
 
-        <Card className="min-w-0 self-start p-4 lg:sticky lg:top-4">{chosen ? <SpanDetail span={chosen} /> : <p className="text-sm text-muted">Choose a span.</p>}</Card>
+        <Card className="min-w-0 self-start p-4 lg:sticky lg:top-4">
+          {chosen ? <SpanDetail span={chosen} /> : <p className="text-sm text-muted">Choose a span.</p>}
+        </Card>
       </div>
 
       <section className="mt-6" aria-labelledby="logs-title">

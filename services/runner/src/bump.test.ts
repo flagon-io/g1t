@@ -25,7 +25,15 @@ test("a well-formed update can start", () => {
 });
 
 test("the branch must be a security update's", () => {
-  for (const branch of ["main", "g1t/security/", "feature/g1t/security/x", "g1t/security/a..b", "g1t/security/a b", "g1t/security/a:b", "g1t/security/x.lock"]) {
+  for (const branch of [
+    "main",
+    "g1t/security/",
+    "feature/g1t/security/x",
+    "g1t/security/a..b",
+    "g1t/security/a b",
+    "g1t/security/a:b",
+    "g1t/security/x.lock",
+  ]) {
     assert.match(bumpProblem({ ...args, branch }, PREFIX) ?? "", /starts with g1t\/security\//, branch);
   }
 });
@@ -94,7 +102,25 @@ test("a version update names any branch git takes", () => {
   for (const branch of ["main", "dependabot/npm/lodash-4.17.21", "deps"]) {
     assert.equal(bumpProblem({ ...update, branch }, PREFIX), null, branch);
   }
-  for (const branch of ["", "a b", "a..b", "a~1", "a^", "a:b", "a?", "a*", "a[b", "a\\b", "a@{1}", "-x", "/x", "refs/heads/x", "x/", "x.lock", "x".repeat(201)]) {
+  for (const branch of [
+    "",
+    "a b",
+    "a..b",
+    "a~1",
+    "a^",
+    "a:b",
+    "a?",
+    "a*",
+    "a[b",
+    "a\\b",
+    "a@{1}",
+    "-x",
+    "/x",
+    "refs/heads/x",
+    "x/",
+    "x.lock",
+    "x".repeat(201),
+  ]) {
     assert.match(bumpProblem({ ...update, branch }, PREFIX) ?? "", /not a branch name/, branch);
   }
   assert.equal(isBranchName("deps/npm/lodash"), true);
@@ -121,7 +147,11 @@ test("a version update's packages, strategy and registries are checked", () => {
   assert.match(bumpProblem({ ...update, registries: [{ ...registry, scopes: ["acme"] }] }, PREFIX) ?? "", /not an npm scope/);
   assert.match(bumpProblem({ ...update, registries: Array.from({ length: 21 }, () => registry) }, PREFIX) ?? "", /at most 20 private registries/);
   for (const type of ["cargo-registry", "python-index", "goproxy-server"]) {
-    assert.equal(bumpProblem({ ...update, registries: [{ type, url: "https://r.acme.dev/x", username: "u", password: "p", replacesBase: true }] }, PREFIX), null, type);
+    assert.equal(
+      bumpProblem({ ...update, registries: [{ type, url: "https://r.acme.dev/x", username: "u", password: "p", replacesBase: true }] }, PREFIX),
+      null,
+      type,
+    );
   }
 });
 

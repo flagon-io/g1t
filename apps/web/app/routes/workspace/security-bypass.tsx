@@ -38,7 +38,15 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   const form = await request.formData();
   const decision = String(form.get("decision") ?? "");
   if (decision !== "approve" && decision !== "deny" && decision !== "cancel") return { ok: false, error: "Choose approve or deny." };
-  const done = await securitySuite.reviewBypass(user, params.owner, String(form.get("id") ?? ""), decision, String(form.get("comment") ?? "").trim().slice(0, 500));
+  const done = await securitySuite.reviewBypass(
+    user,
+    params.owner,
+    String(form.get("id") ?? ""),
+    decision,
+    String(form.get("comment") ?? "")
+      .trim()
+      .slice(0, 500),
+  );
   return done.ok ? { ok: true } : { ok: false, error: done.error.message };
 }
 
@@ -94,22 +102,29 @@ export default function BypassRequests({ loaderData, params }: Route.ComponentPr
         <FilterSelect
           label="State"
           value={STATES.has(state) ? state : "all"}
-          options={[["pending", "Pending"], ["approved", "Approved"], ["denied", "Denied"], ["cancelled", "Cancelled"], ["all", "All"]]}
+          options={[
+            ["pending", "Pending"],
+            ["approved", "Approved"],
+            ["denied", "Denied"],
+            ["cancelled", "Cancelled"],
+            ["all", "All"],
+          ]}
           onChange={(value) => setSearch(value === "pending" ? {} : { state: value }, { replace: true })}
         />
       </div>
       {requests.length === 0 ? (
         <Card asChild tone="plain" className="border-dashed px-4 py-6 text-sm text-muted">
-          <p>
-            No {state === "all" ? "" : `${state} `}requests. Delegated bypass is turned on in this workspace's Security settings.
-          </p>
+          <p>No {state === "all" ? "" : `${state} `}requests. Delegated bypass is turned on in this workspace's Security settings.</p>
         </Card>
       ) : (
         <ul className="space-y-3">
           {requests.map((request) => (
             <li key={request.id} className={`${CARD} p-4`}>
               <div className="flex flex-wrap items-center gap-2">
-                <Link to={`/${request.workspace}/${request.repo}/security/secret-scanning/${request.secretId}`} className="text-sm font-medium first-letter:uppercase hover:underline">
+                <Link
+                  to={`/${request.workspace}/${request.repo}/security/secret-scanning/${request.secretId}`}
+                  className="text-sm font-medium first-letter:uppercase hover:underline"
+                >
                   {request.label}
                 </Link>
                 <Badge tone={STATE_TONE[request.state]}>{request.state}</Badge>

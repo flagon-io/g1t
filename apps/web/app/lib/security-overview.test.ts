@@ -40,7 +40,12 @@ test("every feature is one row with a status word and one thing to do", () => {
     ],
   );
   // No policy: a pull request adds one, for someone who can push.
-  assert.deepEqual(rows[0].action, { kind: "post", label: "Set up a security policy", action: "/acme/rocket/security/policy/setup", pending: "Opening a pull request…" });
+  assert.deepEqual(rows[0].action, {
+    kind: "post",
+    label: "Set up a security policy",
+    action: "/acme/rocket/security/policy/setup",
+    pending: "Opening a pull request…",
+  });
   // Code scanning not set up: the starter workflow, for an admin on an entitled repository.
   assert.equal(rows[5].action?.kind, "post");
   // Switches are for admins; the words say what they switch.
@@ -53,7 +58,9 @@ test("every feature is one row with a status word and one thing to do", () => {
 });
 
 test("what is on reads as enabled, with a link to it", () => {
-  const rows = overviewRows(facts({ policyPath: "SECURITY.md", reporting: true, advisories: 2, codeScanning: { configured: true, analyses: 3, entitled: true } }));
+  const rows = overviewRows(
+    facts({ policyPath: "SECURITY.md", reporting: true, advisories: 2, codeScanning: { configured: true, analyses: 3, entitled: true } }),
+  );
   assert.equal(rows[0].status, "enabled");
   assert.deepEqual(rows[0].action, { kind: "link", label: "View policy", to: "/acme/rocket/blob/HEAD/SECURITY.md" });
   assert.equal(rows[1].about, "2 published advisories tell people who depend on this repository what to do.");

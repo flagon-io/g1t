@@ -52,7 +52,15 @@ function fakes() {
 }
 
 const section = (name: string) => `## ${name}\n\n${Array.from({ length: 60 }, (_, i) => `${name.toLowerCase()}${i}`).join(" ")}.`;
-const page = (markdown: string, over: Partial<IndexDoc> = {}): IndexDoc => ({ kind: "page", doc_id: "pag_1", workspace_id: "w1", space_id: "s1", title: "Ops", markdown, ...over });
+const page = (markdown: string, over: Partial<IndexDoc> = {}): IndexDoc => ({
+  kind: "page",
+  doc_id: "pag_1",
+  workspace_id: "w1",
+  space_id: "s1",
+  title: "Ops",
+  markdown,
+  ...over,
+});
 
 test("a page's passages are stored, embedded once, and only changed ones again", async () => {
   const db = fakeD1();
@@ -84,7 +92,9 @@ test("a passage that only moved keeps its vector; gone passages leave the index"
   assert.equal(r.embedded, 0);
   assert.equal(f.embeddedCount(), before);
   assert.deepEqual([...f.vectors.keys()].sort(), ["pag_1:0", "pag_1:1"]);
-  const rows = await db.prepare("SELECT id, heading, hash = vector_hash AS current FROM doc_chunks ORDER BY seq").all<{ id: string; heading: string; current: number }>();
+  const rows = await db
+    .prepare("SELECT id, heading, hash = vector_hash AS current FROM doc_chunks ORDER BY seq")
+    .all<{ id: string; heading: string; current: number }>();
   assert.deepEqual(
     rows.results.map((x) => [x.id, x.heading, x.current]),
     [
@@ -108,13 +118,22 @@ test("embedding stops at the hourly cap and the rest waits, kept for words", asy
   const db = fakeD1();
   const f = fakes();
   const at = new Date("2026-10-09T10:15:00Z");
-  await db.prepare("INSERT INTO doc_embed_usage (workspace_id, hour, chunks, tokens) VALUES ('w1', '2026-10-09T10', ?, 0)").bind(EMBED_PER_HOUR - 1).run();
+  await db
+    .prepare("INSERT INTO doc_embed_usage (workspace_id, hour, chunks, tokens) VALUES ('w1', '2026-10-09T10', ?, 0)")
+    .bind(EMBED_PER_HOUR - 1)
+    .run();
   const r = await indexDoc(db, f.embedder, f.store, page([section("One"), section("Two"), section("Three")].join("\n\n")), at);
   assert.deepEqual(r, { chunks: 3, embedded: 1, capped: true });
   const waiting = await db.prepare("SELECT COUNT(*) AS n FROM doc_chunks WHERE vector_hash IS NULL OR vector_hash <> hash").first<{ n: number }>();
   assert.equal(waiting!.n, 2);
   // The next hour, a save picks up the rest.
-  const later = await indexDoc(db, f.embedder, f.store, page([section("One"), section("Two"), section("Three")].join("\n\n")), new Date("2026-10-09T11:01:00Z"));
+  const later = await indexDoc(
+    db,
+    f.embedder,
+    f.store,
+    page([section("One"), section("Two"), section("Three")].join("\n\n")),
+    new Date("2026-10-09T11:01:00Z"),
+  );
   assert.deepEqual(later, { chunks: 3, embedded: 2, capped: false });
 });
 
@@ -142,7 +161,16 @@ test("without an embedder, passages are kept for words only", async () => {
 test("a project's docs file is indexed with its repository", async () => {
   const db = fakeD1();
   const f = fakes();
-  await indexDoc(db, f.embedder, f.store, { kind: "repo_file", doc_id: "rf_x", workspace_id: "w1", space_id: "rds_1", title: "Setup", markdown: `# Setup\n\n${section("Install")}`, repo_id: "r1", path: "docs/setup.md" });
+  await indexDoc(db, f.embedder, f.store, {
+    kind: "repo_file",
+    doc_id: "rf_x",
+    workspace_id: "w1",
+    space_id: "rds_1",
+    title: "Setup",
+    markdown: `# Setup\n\n${section("Install")}`,
+    repo_id: "r1",
+    path: "docs/setup.md",
+  });
   assert.deepEqual(f.vectors.get("rf_x:0")!.metadata, { workspace_id: "w1", space_id: "rds_1", kind: "repo_file", repo_file_id: "rf_x", repo_id: "r1" });
   const row = await db.prepare("SELECT page_id, repo_file_id, path, heading FROM doc_chunks").first<Record<string, unknown>>();
   assert.deepEqual({ ...row }, { page_id: null, repo_file_id: "rf_x", path: "docs/setup.md", heading: "Install" });

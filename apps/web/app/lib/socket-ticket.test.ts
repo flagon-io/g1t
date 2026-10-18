@@ -139,12 +139,24 @@ test("a session's page opens its sockets at once and adds no ticket; a token's p
 
     setLiveViaToken(false);
     const opened: string[] = [];
-    openLive(CHAT, () => ({ channel: "ch_1" }), (address) => opened.push(address), () => false);
+    openLive(
+      CHAT,
+      () => ({ channel: "ch_1" }),
+      (address) => opened.push(address),
+      () => false,
+    );
     assert.deepEqual(opened, ["wss://g1t.sh/acme/-/chat/live?channel=ch_1"], "synchronously, with no ticket");
     assert.deepEqual(asked, []);
 
     setLiveViaToken(true);
-    const viaToken = await new Promise<string>((resolve) => openLive("/-/live", () => ({ workspace: "acme" }), resolve, () => false));
+    const viaToken = await new Promise<string>((resolve) =>
+      openLive(
+        "/-/live",
+        () => ({ workspace: "acme" }),
+        resolve,
+        () => false,
+      ),
+    );
     assert.equal(viaToken, "wss://g1t.sh/-/live?workspace=acme&ticket=st1.abc");
     assert.deepEqual(asked, ["/-/live/ticket?path=%2F-%2Flive"]);
     // The page's copy of the route and parameter, as the server has them.
@@ -153,7 +165,12 @@ test("a session's page opens its sockets at once and adds no ticket; a token's p
 
     // Closed while the ticket was on its way: nothing opens.
     let late = false;
-    openLive(CHAT, () => ({}), () => (late = true), () => true);
+    openLive(
+      CHAT,
+      () => ({}),
+      () => (late = true),
+      () => true,
+    );
     await new Promise((resolve) => setTimeout(resolve, 10));
     assert.equal(late, false);
 
@@ -162,10 +179,22 @@ test("a session's page opens its sockets at once and adds no ticket; a token's p
     asked.length = 0;
     offerTicket(CHAT, { ticket: "st1.minted", expires_at: new Date(Date.now() + 50_000).toISOString() });
     const minted: string[] = [];
-    openLive(CHAT, () => ({ channel: "ch_2" }), (address) => minted.push(address), () => false);
+    openLive(
+      CHAT,
+      () => ({ channel: "ch_2" }),
+      (address) => minted.push(address),
+      () => false,
+    );
     assert.deepEqual(minted, ["wss://g1t.sh/acme/-/chat/live?channel=ch_2&ticket=st1.minted"], "synchronously, from the offered ticket");
     assert.deepEqual(asked, []);
-    const again = await new Promise<string>((resolve) => openLive(CHAT, () => ({ channel: "ch_2" }), resolve, () => false));
+    const again = await new Promise<string>((resolve) =>
+      openLive(
+        CHAT,
+        () => ({ channel: "ch_2" }),
+        resolve,
+        () => false,
+      ),
+    );
     assert.equal(again, "wss://g1t.sh/acme/-/chat/live?channel=ch_2&ticket=st1.abc", "the next socket asks, as the offer was used");
     assert.deepEqual(asked, [`/-/live/ticket?path=${encodeURIComponent(CHAT)}`]);
     offerTicket(CHAT, { ticket: "st1.stale", expires_at: new Date(Date.now() + 2_000).toISOString() });

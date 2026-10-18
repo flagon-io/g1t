@@ -18,10 +18,7 @@ export function loader({ request }: Route.LoaderArgs) {
 export async function action({ request }: Route.ActionArgs) {
   assertSameOrigin(request);
   const form = await request.formData();
-  const result = await identity.resetPassword(
-    String(form.get("token") ?? ""),
-    String(form.get("password") ?? ""),
-  );
+  const result = await identity.resetPassword(String(form.get("token") ?? ""), String(form.get("password") ?? ""));
   if (!result.ok) return { error: result.error.message };
   throw redirect("/login?reset=1");
 }
@@ -40,14 +37,7 @@ export default function Reset({ loaderData, actionData }: Route.ComponentProps) 
       <Form method="post" className="space-y-4">
         <input type="hidden" name="token" value={loaderData.token} />
         <Field label="New password" hint="At least 10 characters.">
-          <Input
-            name="password"
-            type="password"
-            autoComplete="new-password"
-            required
-            minLength={10}
-            autoFocus
-          />
+          <Input name="password" type="password" autoComplete="new-password" required minLength={10} autoFocus />
         </Field>
         <ErrorText>{actionData?.error}</ErrorText>
         <div className="pt-2 *:w-full">

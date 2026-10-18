@@ -80,8 +80,8 @@ export function CostsHeader({
         {runError && <Notice tone="error">{runError}</Notice>}
         {report && !report.configured && (
           <Notice tone="warn">
-            Billing cannot read Cloudflare's bill: set the <code className="font-mono">CLOUDFLARE_BILLING_TOKEN</code> secret on g1t-billing (Account:
-            Billing Read and Account Analytics Read). Until then the figures are g1t's own, and Cloudflare's cost shows as nothing.
+            Billing cannot read Cloudflare's bill: set the <code className="font-mono">CLOUDFLARE_BILLING_TOKEN</code> secret on g1t-billing (Account: Billing
+            Read and Account Analytics Read). Until then the figures are g1t's own, and Cloudflare's cost shows as nothing.
           </Notice>
         )}
         {here.map((alert) => (

@@ -1,15 +1,15 @@
 {
-	"$schema": "../gen/schemas/desktop-schema.json",
-	"identifier": "runner",
-	"description": "The Runner window, a page bundled with the app (launcher/runner.html): the runner on its own, apart from the settings. Its commands answer only the windows they name (src/bridge.rs).",
-	"windows": ["runner"],
-	"permissions": [
-		"core:default",
-		"allow-get-settings",
-		"allow-save-settings",
-		"allow-open-url",
-		"allow-window-control",
-		"allow-runner-status",
-		"allow-runner-control"
-	]
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "runner",
+  "description": "The Runner window, a page bundled with the app (launcher/runner.html): the runner on its own, apart from the settings. Its commands answer only the windows they name (src/bridge.rs).",
+  "windows": ["runner"],
+  "permissions": [
+    "core:default",
+    "allow-get-settings",
+    "allow-save-settings",
+    "allow-open-url",
+    "allow-window-control",
+    "allow-runner-status",
+    "allow-runner-control"
+  ]
 }

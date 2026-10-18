@@ -42,9 +42,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const dueAll = followUpsDue(every, on);
   // Follow-ups due: one line per workspace whose next step is due.
   const all = due ? dueAll : every;
-  const people = new Map(
-    (workspaces.ok ? workspaces.value : []).map((workspace) => [workspace.slug, { name: workspace.name, owners: workspace.owners }]),
-  );
+  const people = new Map((workspaces.ok ? workspaces.value : []).map((workspace) => [workspace.slug, { name: workspace.name, owners: workspace.owners }]));
   const forWho = filterSignals(all, { kind: null, who, me: staff.email });
   const rows = filterSignals(forWho, { kind, who: "all", me: staff.email }).map((signal) => ({
     signal,
@@ -158,10 +156,10 @@ export default function ReachOut({ loaderData }: Route.ComponentProps) {
             {due && rows.length === 0 && total > 0
               ? "No next steps are due. Set one on a workspace's Sales section and it shows up here on its day."
               : total === 0
-              ? "Workspaces show up here when they stop, come close to their limit, are declined, grow, or pay for the first time."
-              : who === "mine"
-                ? "No signals for workspaces you own. Take one from Unassigned by setting yourself as its owner on its Sales section."
-                : "Try another filter."}
+                ? "Workspaces show up here when they stop, come close to their limit, are declined, grow, or pay for the first time."
+                : who === "mine"
+                  ? "No signals for workspaces you own. Take one from Unassigned by setting yourself as its owner on its Sales section."
+                  : "Try another filter."}
           </EmptyState>
         </div>
       ) : (

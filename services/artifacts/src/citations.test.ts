@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { bodyCitations, citationHref, citationMarkdown, citationsFromMarkdown, cleanCitation, cleanDescribes, cleanPath, touchedPaths, touches } from "./citations.ts";
+import {
+  bodyCitations,
+  citationHref,
+  citationMarkdown,
+  citationsFromMarkdown,
+  cleanCitation,
+  cleanDescribes,
+  cleanPath,
+  touchedPaths,
+  touches,
+} from "./citations.ts";
 
 test("paths are kept tidy, and unsafe ones refused", () => {
   assert.equal(cleanPath("/src//export.ts/"), "src/export.ts");
@@ -37,18 +47,25 @@ test("a change touches a cited file, anything under a cited folder, and what a g
   assert.ok(touches("docs/?.md", "docs/a.md"));
   assert.ok(!touches("docs/?.md", "docs/ab.md"));
   assert.ok(!touches("a.b/*.ts", "aXb/x.ts"));
-  assert.deepEqual(touchedPaths([{ path: "src/export" }, { path: "*.toml" }], ["README.md", "src/export/csv.ts", "Cargo.toml"]), ["src/export/csv.ts", "Cargo.toml"]);
+  assert.deepEqual(touchedPaths([{ path: "src/export" }, { path: "*.toml" }], ["README.md", "src/export/csv.ts", "Cargo.toml"]), [
+    "src/export/csv.ts",
+    "Cargo.toml",
+  ]);
 });
 
 test("a citation links to the code at the commit it was cited at", () => {
   assert.equal(citationHref({ repo: "acme/web", path: "src/export.ts", ref: "abc1234" }), "/acme/web/blob/abc1234/src/export.ts");
   assert.equal(citationHref({ repo: "acme/web", path: "src/export", ref: null }), "/acme/web/tree/HEAD/src/export");
   assert.equal(citationHref({ repo: "acme/web", path: "src/**/*.sql", ref: null }), "/acme/web/tree/HEAD/src");
-  assert.equal(citationMarkdown({ repo: "acme/web", path: "src/export.ts", ref: "abc1234", kind: "env", label: "EXPORT_BUCKET" }), "[`EXPORT_BUCKET`](/acme/web/blob/abc1234/src/export.ts)");
+  assert.equal(
+    citationMarkdown({ repo: "acme/web", path: "src/export.ts", ref: "abc1234", kind: "env", label: "EXPORT_BUCKET" }),
+    "[`EXPORT_BUCKET`](/acme/web/blob/abc1234/src/export.ts)",
+  );
 });
 
 test("links to code in a page are citations too, a chip's own link once", () => {
-  const md = "See [`exportCsv`](/acme/web/blob/abc1234/src/export.ts) and [the folder](/acme/web/tree/main/src/jobs) and [elsewhere](https://example.com/a/b/blob/x/y.ts) and [on g1t](https://g1t.sh/acme/api/blob/main/src/lib.rs#L10).";
+  const md =
+    "See [`exportCsv`](/acme/web/blob/abc1234/src/export.ts) and [the folder](/acme/web/tree/main/src/jobs) and [elsewhere](https://example.com/a/b/blob/x/y.ts) and [on g1t](https://g1t.sh/acme/api/blob/main/src/lib.rs#L10).";
   assert.deepEqual(
     citationsFromMarkdown(md).map((c) => [c.repo, c.path, c.ref]),
     [
@@ -70,6 +87,8 @@ test("links to code in a page are citations too, a chip's own link once", () => 
 });
 
 test("the header's Describes list is tidy and short", () => {
-  assert.deepEqual(cleanDescribes([{ repo: "Acme/Web", path: "/src/export/" }, { repo: "acme/web", path: "src/export" }, { repo: "x", path: "y" }, "nope"]), [{ repo: "acme/web", path: "src/export" }]);
+  assert.deepEqual(cleanDescribes([{ repo: "Acme/Web", path: "/src/export/" }, { repo: "acme/web", path: "src/export" }, { repo: "x", path: "y" }, "nope"]), [
+    { repo: "acme/web", path: "src/export" },
+  ]);
   assert.equal(cleanDescribes(Array.from({ length: 40 }, (_, i) => ({ repo: "acme/web", path: `f${i}` }))).length, 20);
 });

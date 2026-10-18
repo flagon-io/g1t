@@ -5,7 +5,18 @@ import type { CostsReport, PriceProposal } from "@g1t/contracts";
 import type { Route } from "./+types/costs-bill";
 import { CostsHeader } from "~/components/costs-header";
 import { Badge, Button, EmptyState, Field, Input, Notice, Section, When } from "~/components/ui";
-import { basisLabel, billReadNote, countLabel, cycleHeadline, driftLabel, percentLabel, proposalOutcome, unitDollars, unpricedMeters, versionCells } from "~/lib/costs";
+import {
+  basisLabel,
+  billReadNote,
+  countLabel,
+  cycleHeadline,
+  driftLabel,
+  percentLabel,
+  proposalOutcome,
+  unitDollars,
+  unpricedMeters,
+  versionCells,
+} from "~/lib/costs";
 import { type CostsActionResult, costsAction, costsLoader } from "~/lib/costs-route.server";
 import { dollarsField, usd } from "~/lib/money";
 
@@ -100,7 +111,11 @@ export default function CostsBill({ loaderData, actionData }: Route.ComponentPro
         )}
       </Section>
 
-      <Section className="mt-6" title="Price versions" description="Every price as it was and will be. A version never changes once written; each charge records the version it was made at.">
+      <Section
+        className="mt-6"
+        title="Price versions"
+        description="Every price as it was and will be. A version never changes once written; each charge records the version it was made at."
+      >
         <div className="-mx-4 overflow-x-auto sm:-mx-5">
           <table className="w-full min-w-176 text-sm">
             <thead>
@@ -176,7 +191,9 @@ export default function CostsBill({ loaderData, actionData }: Route.ComponentPro
                       {countLabel(l.quantity)} <span className="text-xs text-faint">{l.unit}</span>
                     </td>
                     <td className="tabular px-4 py-2.5 text-right">{usd(l.costMicros)}</td>
-                    <td className="px-4 py-2.5 sm:pr-5">{l.bucket ? <span className="text-fg-soft">{l.bucket}</span> : <Badge tone="danger">Not mapped</Badge>}</td>
+                    <td className="px-4 py-2.5 sm:pr-5">
+                      {l.bucket ? <span className="text-fg-soft">{l.bucket}</span> : <Badge tone="danger">Not mapped</Badge>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -293,8 +310,8 @@ function ProposalRow({ proposal: p, error }: { proposal: PriceProposal; error: s
         </div>
       </div>
       <p className="tabular mt-1.5 text-sm">
-        Cost {unitDollars(p.currentCostMicros)} → <span className={rise ? "text-warn" : "text-success"}>{unitDollars(p.proposedCostMicros)}</span> per {p.unit || "unit"}{" "}
-        <span className="text-faint">({percentLabel(p.changePercent, { signed: true })})</span>
+        Cost {unitDollars(p.currentCostMicros)} → <span className={rise ? "text-warn" : "text-success"}>{unitDollars(p.proposedCostMicros)}</span> per{" "}
+        {p.unit || "unit"} <span className="text-faint">({percentLabel(p.changePercent, { signed: true })})</span>
       </p>
       <p className="mt-1 text-xs text-muted">{p.reason}</p>
       <p className="mt-1 text-xs text-faint">

@@ -58,7 +58,18 @@ function sources(over: Partial<CardSources> = {}): CardSources & { asked: { view
           total: 1,
           commits: 3,
           weeks: [],
-          contributors: [{ kind: "user", name: "ada", username: "ada", avatar: "cafe", commits: 3, firstAt: "2026-09-01T00:00:00Z", lastAt: new Date(NOW - 3 * DAY).toISOString(), weeks: [] }],
+          contributors: [
+            {
+              kind: "user",
+              name: "ada",
+              username: "ada",
+              avatar: "cafe",
+              commits: 3,
+              firstAt: "2026-09-01T00:00:00Z",
+              lastAt: new Date(NOW - 3 * DAY).toISOString(),
+              weeks: [],
+            },
+          ],
         },
       };
     },

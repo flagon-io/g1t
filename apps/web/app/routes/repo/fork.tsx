@@ -60,11 +60,15 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const user = requireUser(context, request);
   const form = await request.formData();
   const text = (name: string) => String(form.get(name) ?? "").trim();
-  const result = await repos.fork(user, { namespace: params.owner, name: params.repo }, {
-    namespace: text("workspace"),
-    name: tidyName(text("name")) || undefined,
-    defaultBranchOnly: form.get("defaultBranchOnly") != null,
-  });
+  const result = await repos.fork(
+    user,
+    { namespace: params.owner, name: params.repo },
+    {
+      namespace: text("workspace"),
+      name: tidyName(text("name")) || undefined,
+      defaultBranchOnly: form.get("defaultBranchOnly") != null,
+    },
+  );
   if (!result.ok) return { error: result.error.message };
   throw redirect(`/${result.value.namespace}/${result.value.name}`);
 }
@@ -85,20 +89,18 @@ export default function Fork({ loaderData, actionData }: Route.ComponentProps) {
         <div className="min-w-0">
           <h2 className="text-lg font-semibold tracking-tight">Fork {full}</h2>
           <p className="mt-1 text-sm text-muted">
-            A copy of its code in a workspace of yours, to change as you like. It remembers where it came from, so you can
-            bring in what lands there and open pull requests back to it.
+            A copy of its code in a workspace of yours, to change as you like. It remembers where it came from, so you can bring in what lands there and open
+            pull requests back to it.
           </p>
         </div>
       </div>
 
       {!source.forkable ? (
-        <p className="mt-8 text-sm text-muted">
-          {full} is private, and its admins have not allowed forking it. They can in its settings.
-        </p>
+        <p className="mt-8 text-sm text-muted">{full} is private, and its admins have not allowed forking it. They can in its settings.</p>
       ) : destinations.length === 0 ? (
         <p className="mt-8 text-sm text-muted">
-          None of your workspaces lets you make a {source.isPrivate ? "private" : "public"} repository, so there is nowhere
-          to fork it. Ask an owner of one to allow it in its member privileges, or create a workspace of your own.
+          None of your workspaces lets you make a {source.isPrivate ? "private" : "public"} repository, so there is nowhere to fork it. Ask an owner of one to
+          allow it in its member privileges, or create a workspace of your own.
         </p>
       ) : (
         <Form method="post" className="mt-8 space-y-6">
@@ -161,7 +163,10 @@ export default function Fork({ loaderData, actionData }: Route.ComponentProps) {
           />
 
           <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted">
-            <li>Its code is copied, and its project starts with this one's description. Its settings, secrets, variables, rules, webhooks, deployments, work items and pull requests are not.</li>
+            <li>
+              Its code is copied, and its project starts with this one's description. Its settings, secrets, variables, rules, webhooks, deployments, work items
+              and pull requests are not.
+            </li>
             <li>Workflows do not run in the fork until you turn Actions on, and filing work items from it starts off.</li>
             <li>Its size counts toward the storage of the workspace it goes in.{source.isPrivate ? " A free workspace may not have room for it." : ""}</li>
           </ul>

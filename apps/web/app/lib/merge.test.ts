@@ -38,10 +38,7 @@ const asPair = (text: { title: string; message: string }) => [text.title, text.m
 test("a merge commit names where it came from by default", () => {
   assert.deepEqual(asPair(defaultMessage("merge", "default", null, facts())), ["Merge pull request #12 from ana/forks", "Add forks"]);
   assert.deepEqual(asPair(defaultMessage("merge", "pull_title", null, facts())), ["Add forks (#12)", ""]);
-  assert.deepEqual(asPair(defaultMessage("merge", "pull_title_and_description", null, facts())), [
-    "Add forks (#12)",
-    "Forks are ordinary repositories.",
-  ]);
+  assert.deepEqual(asPair(defaultMessage("merge", "pull_title_and_description", null, facts())), ["Add forks (#12)", "Forks are ordinary repositories."]);
   // Listing commits is for squashes: a merge falls back to its default.
   assert.deepEqual(defaultMessage("merge", "pull_title_and_commits", null, facts()), defaultMessage("merge", "default", null, facts()));
 });
@@ -112,10 +109,10 @@ test("choices from settings leave the message to the service", () => {
 });
 
 test("the allowed methods follow the settings, fast-forward included", () => {
-  assert.deepEqual(
-    allowedMethods({ allowMergeCommit: false, allowSquashMerge: true, allowRebaseMerge: false, allowFastForward: true }),
-    ["squash", "fast_forward"],
-  );
+  assert.deepEqual(allowedMethods({ allowMergeCommit: false, allowSquashMerge: true, allowRebaseMerge: false, allowFastForward: true }), [
+    "squash",
+    "fast_forward",
+  ]);
   assert.ok(isMergeMethod("fast_forward"));
   assert.ok(!isMergeMethod("octopus"));
 });

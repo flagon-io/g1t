@@ -69,8 +69,7 @@ export async function actOnSecrets(owner: SettingsOwner, actor: User, form: Form
   }
   const availableTo = form.getAll("availableTo").map(String) as SettingReader[];
   if (availableTo.length === 0) return { error: "Choose who reads it: Workflows, Deployments, or both." };
-  const linked =
-    "workspace" in owner && form.get("reach") === "some" ? form.getAll("project").map(String) : [];
+  const linked = "workspace" in owner && form.get("reach") === "some" ? form.getAll("project").map(String) : [];
   // A secret is brokered when it names hosts; unticked, it stops being.
   const brokeredHosts =
     kind === "secret"

@@ -1,56 +1,56 @@
 {
-	"$schema": "../../node_modules/wrangler/config-schema.json",
-	"name": "g1t-api",
-	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
-	"compatibility_date": "2026-09-26",
-	"placement": { "mode": "off" },
-	"main": "build/index.js",
-	"build": { "command": "node ../../scripts/build-rust-worker.mjs" },
-	"workers_dev": false,
-	// One Worker, two hostnames: REST on api, MCP on mcp. Both are thin
-	// adapters over the same operations.
-	"routes": [
-		{ "pattern": "api.g1t.sh", "custom_domain": true },
-		{ "pattern": "mcp.g1t.sh", "custom_domain": true }
-	],
-	"services": [
-		{ "binding": "IDENTITY", "service": "g1t-identity" },
-		{ "binding": "REPOS", "service": "g1t-repos" },
-		{ "binding": "WORK", "service": "g1t-work" },
-		{ "binding": "EVENTS", "service": "g1t-events" },
-		{ "binding": "RUNNER", "service": "g1t-runner" },
-		{ "binding": "BILLING", "service": "g1t-billing" },
-		{ "binding": "INTEGRATIONS", "service": "g1t-integrations" },
-		{ "binding": "WEBHOOKS", "service": "g1t-webhooks" },
-		{ "binding": "ACTIONS", "service": "g1t-actions" },
-		// Builds of deployments report through here.
-		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
-		// Observability: a project's requests, logs, traces, errors and
-		// metrics, and OTLP sent to /otlp/v1/{traces,logs,metrics}.
-		{ "binding": "TELEMETRY", "service": "g1t-telemetry" },
-		{ "binding": "SEARCH", "service": "g1t-search" },
-		// Secret and dependency alerts: list_security_alerts and dismissing them.
-		{ "binding": "SECURITY", "service": "g1t-security" },
-		// A person's pinned projects: list_pinned_projects and changing them.
-		{ "binding": "PROJECTS", "service": "g1t-projects" },
-		// Packages: list_packages, their settings, deleting and restoring them.
-		{ "binding": "PACKAGES", "service": "g1t-packages" },
-		// Artifacts (folios): the artifact tool and /workspaces/{ws}/artifacts.
-		{ "binding": "ARTIFACTS", "service": "g1t-artifacts" }
-	],
-	// GitHub Actions artifacts older runners kept, in chunks, with KV's own
-	// expiry, read until it passes (and cache
-	// entries saved before the cache moved to R2, until they expire).
-	"kv_namespaces": [{ "binding": "BLOBS", "id": "16a4232cb746418db53782aa068be693" }],
-	// actions/cache entries (`c/`) and artifacts (`a/`), uploaded in parts. The actions
-	// service lists them and decides what is kept (services/actions/src/cache.rs).
-	"r2_buckets": [{ "binding": "ACTIONS_CACHE", "bucket_name": "g1t-actions-cache" }],
-	// REST and MCP requests (src/limits.rs): per token, or per address
-	// without one. Ids and limits: RATE_LIMITS in packages/contracts.
-	"ratelimits": [
-		{ "name": "API_ANONYMOUS_LIMIT", "namespace_id": "4401", "simple": { "limit": 60, "period": 60 } },
-		{ "name": "API_TOKEN_LIMIT", "namespace_id": "4402", "simple": { "limit": 1000, "period": 60 } }
-	],
-	// Logs of a tenth of requests: agents call it constantly.
-	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "g1t-api",
+  "account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+  "compatibility_date": "2026-09-26",
+  "placement": { "mode": "off" },
+  "main": "build/index.js",
+  "build": { "command": "node ../../scripts/build-rust-worker.mjs" },
+  "workers_dev": false,
+  // One Worker, two hostnames: REST on api, MCP on mcp. Both are thin
+  // adapters over the same operations.
+  "routes": [
+    { "pattern": "api.g1t.sh", "custom_domain": true },
+    { "pattern": "mcp.g1t.sh", "custom_domain": true },
+  ],
+  "services": [
+    { "binding": "IDENTITY", "service": "g1t-identity" },
+    { "binding": "REPOS", "service": "g1t-repos" },
+    { "binding": "WORK", "service": "g1t-work" },
+    { "binding": "EVENTS", "service": "g1t-events" },
+    { "binding": "RUNNER", "service": "g1t-runner" },
+    { "binding": "BILLING", "service": "g1t-billing" },
+    { "binding": "INTEGRATIONS", "service": "g1t-integrations" },
+    { "binding": "WEBHOOKS", "service": "g1t-webhooks" },
+    { "binding": "ACTIONS", "service": "g1t-actions" },
+    // Builds of deployments report through here.
+    { "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
+    // Observability: a project's requests, logs, traces, errors and
+    // metrics, and OTLP sent to /otlp/v1/{traces,logs,metrics}.
+    { "binding": "TELEMETRY", "service": "g1t-telemetry" },
+    { "binding": "SEARCH", "service": "g1t-search" },
+    // Secret and dependency alerts: list_security_alerts and dismissing them.
+    { "binding": "SECURITY", "service": "g1t-security" },
+    // A person's pinned projects: list_pinned_projects and changing them.
+    { "binding": "PROJECTS", "service": "g1t-projects" },
+    // Packages: list_packages, their settings, deleting and restoring them.
+    { "binding": "PACKAGES", "service": "g1t-packages" },
+    // Artifacts (folios): the artifact tool and /workspaces/{ws}/artifacts.
+    { "binding": "ARTIFACTS", "service": "g1t-artifacts" },
+  ],
+  // GitHub Actions artifacts older runners kept, in chunks, with KV's own
+  // expiry, read until it passes (and cache
+  // entries saved before the cache moved to R2, until they expire).
+  "kv_namespaces": [{ "binding": "BLOBS", "id": "16a4232cb746418db53782aa068be693" }],
+  // actions/cache entries (`c/`) and artifacts (`a/`), uploaded in parts. The actions
+  // service lists them and decides what is kept (services/actions/src/cache.rs).
+  "r2_buckets": [{ "binding": "ACTIONS_CACHE", "bucket_name": "g1t-actions-cache" }],
+  // REST and MCP requests (src/limits.rs): per token, or per address
+  // without one. Ids and limits: RATE_LIMITS in packages/contracts.
+  "ratelimits": [
+    { "name": "API_ANONYMOUS_LIMIT", "namespace_id": "4401", "simple": { "limit": 60, "period": 60 } },
+    { "name": "API_TOKEN_LIMIT", "namespace_id": "4402", "simple": { "limit": 1000, "period": 60 } },
+  ],
+  // Logs of a tenth of requests: agents call it constantly.
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 },
 }

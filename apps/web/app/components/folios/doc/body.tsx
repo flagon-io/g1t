@@ -26,7 +26,9 @@ import { EditorSkeleton } from "./editor-skeleton";
 import { Discussion, IconPicker, SuggestionCard, type PageThread } from "./page-parts";
 
 /** The BlockNote editor, loaded only in the browser: the server renders the doc's Markdown instead. */
-const DocEditor = lazy((): Promise<{ default: ComponentType<DocEditorProps> }> => (import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import("./editor")));
+const DocEditor = lazy(
+  (): Promise<{ default: ComponentType<DocEditorProps> }> => (import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import("./editor")),
+);
 
 function useHydrated() {
   const [hydrated, setHydrated] = useState(false);
@@ -83,7 +85,12 @@ export default function DocBody({ slug, page, folio, live, role, showComments, o
         onRole(event.role);
         if (!event.role) navigate(`/${slug}/-/artifacts`);
       } else if (event.type === "suggestion.created") setSuggestions((was) => [...was.filter((s) => s.id !== event.suggestion.id), event.suggestion]);
-      else if (event.type === "suggestion.updated") setSuggestions((was) => (event.suggestion.status === "open" ? was.map((s) => (s.id === event.suggestion.id ? event.suggestion : s)) : was.filter((s) => s.id !== event.suggestion.id)));
+      else if (event.type === "suggestion.updated")
+        setSuggestions((was) =>
+          event.suggestion.status === "open"
+            ? was.map((s) => (s.id === event.suggestion.id ? event.suggestion : s))
+            : was.filter((s) => s.id !== event.suggestion.id),
+        );
       else if (event.type === "version.created" || event.type === "folio.staleness" || event.type === "folio.access") void revalidator.revalidate();
     },
     [navigate, slug, revalidator, onFolio, onRole],
@@ -110,14 +117,24 @@ export default function DocBody({ slug, page, folio, live, role, showComments, o
       const id = key.slice(at + 1);
       if (layout?.me.key === key) return { kind: "user", id, name: layout.me.name, display_name: layout.me.display_name, avatar: layout.me.avatar };
       const found = names.get(key);
-      return { kind, id, name: found?.name ?? "someone", display_name: found?.display_name ?? (kind === "agent" ? "A deleted agent" : "Someone"), avatar: found?.avatar ?? null };
+      return {
+        kind,
+        id,
+        name: found?.name ?? "someone",
+        display_name: found?.display_name ?? (kind === "agent" ? "A deleted agent" : "Someone"),
+        avatar: found?.avatar ?? null,
+      };
     },
     [layout, names],
   );
 
   const threadRequest = async (path: string, method: string, body: unknown) => {
     try {
-      const r = await fetch(`/${slug}/-/artifacts/threads/${folio.id}${path}`, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const r = await fetch(`/${slug}/-/artifacts/threads/${folio.id}${path}`, {
+        method,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
       if (!r.ok) {
         const result = (await r.json().catch(() => null)) as { error?: { message?: string } } | null;
         onError(result?.error?.message ?? "That comment didn't go through.");
@@ -160,7 +177,14 @@ export default function DocBody({ slug, page, folio, live, role, showComments, o
           <div className="group">
             {folio.icon && (
               <IconPicker value={folio.icon} onChange={(icon) => editable && send("update", { change: { icon } })}>
-                <Button type="button" disabled={!editable} aria-label="Change the icon" variant="ghost" size="inline" className="-ml-1 mb-2 rounded-lg p-1 text-5xl leading-none disabled:hover:bg-transparent">
+                <Button
+                  type="button"
+                  disabled={!editable}
+                  aria-label="Change the icon"
+                  variant="ghost"
+                  size="inline"
+                  className="-ml-1 mb-2 rounded-lg p-1 text-5xl leading-none disabled:hover:bg-transparent"
+                >
                   {folio.icon}
                 </Button>
               </IconPicker>

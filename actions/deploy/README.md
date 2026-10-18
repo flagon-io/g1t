@@ -35,24 +35,24 @@ says what is built and when.
 
 ## Inputs
 
-| Input | Default | |
-| --- | --- | --- |
-| `project` | The repository's one project with Deployments on | The project's slug. Needed when the repository has several. |
-| `root-dir` | The project's setting | Where the project is in the checkout. |
-| `build-command` | The project's setting, else what the build finds | What builds it. |
-| `output-dir` | The project's setting, else the folder the framework writes, else the first of `dist`, `build`, `out`, `public`, `_site`, `.output/public` | The folder a static build writes. |
-| `build-as` | The project's setting, else `auto` | What it is built as: `auto`, `static`, `workers` or `docker`. A container is built with the `docker` on the job's `PATH`. |
-| `dockerfile` | The project's setting, else `Dockerfile` or `Containerfile` | The Dockerfile a container is built from, relative to the project. |
-| `sha` | The run's commit | The commit this is a build of, for its `g1t / deploy` check. |
-| `token` | `${{ github.token }}` | The job's own token. It needs `deployments: write`; any other token is refused. |
+| Input           | Default                                                                                                                                    |                                                                                                                           |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `project`       | The repository's one project with Deployments on                                                                                           | The project's slug. Needed when the repository has several.                                                               |
+| `root-dir`      | The project's setting                                                                                                                      | Where the project is in the checkout.                                                                                     |
+| `build-command` | The project's setting, else what the build finds                                                                                           | What builds it.                                                                                                           |
+| `output-dir`    | The project's setting, else the folder the framework writes, else the first of `dist`, `build`, `out`, `public`, `_site`, `.output/public` | The folder a static build writes.                                                                                         |
+| `build-as`      | The project's setting, else `auto`                                                                                                         | What it is built as: `auto`, `static`, `workers` or `docker`. A container is built with the `docker` on the job's `PATH`. |
+| `dockerfile`    | The project's setting, else `Dockerfile` or `Containerfile`                                                                                | The Dockerfile a container is built from, relative to the project.                                                        |
+| `sha`           | The run's commit                                                                                                                           | The commit this is a build of, for its `g1t / deploy` check.                                                              |
+| `token`         | `${{ github.token }}`                                                                                                                      | The job's own token. It needs `deployments: write`; any other token is refused.                                           |
 
 ## Outputs
 
-| Output | |
-| --- | --- |
-| `url` | Where the app is served. |
-| `deployment-id` | The build's id, `dpl_…`. |
-| `kind` | `production` or `preview`. |
+| Output          |                            |
+| --------------- | -------------------------- |
+| `url`           | Where the app is served.   |
+| `deployment-id` | The build's id, `dpl_…`.   |
+| `kind`          | `production` or `preview`. |
 
 ## How it works
 

@@ -57,12 +57,7 @@ export async function answered(what: string, response: Response): Promise<void> 
  * runner never fetches the container, so to the library every sandbox looks
  * idle). Without a cap or a start time, `sleepAfter` applies.
  */
-export function withinTimeCap(
-  started: number | null | undefined,
-  capMinutes: number | null | undefined,
-  now: number,
-  graceSeconds: number,
-): boolean {
+export function withinTimeCap(started: number | null | undefined, capMinutes: number | null | undefined, now: number, graceSeconds: number): boolean {
   if (typeof started !== "number" || typeof capMinutes !== "number" || capMinutes <= 0) return false;
   return now < started + (capMinutes * 60 + graceSeconds) * 1000;
 }

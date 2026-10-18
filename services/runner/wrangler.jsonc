@@ -1,108 +1,108 @@
 {
-	"$schema": "../../node_modules/wrangler/config-schema.json",
-	"name": "g1t-runner",
-	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
-	"compatibility_date": "2026-09-26",
-	"main": "./src/index.ts",
-	"workers_dev": false,
-	// One image (the base plus the runner binary), on two named instance
-	// types: standard-3 (2 vCPU, 8 GiB, 16 GB of disk) for the standard
-	// machine and g1t-2core, which is kept as a name of it so workflows that
-	// ask for it keep working, and standard-4 (4 vCPU, 12 GiB, 20 GB) for
-	// g1t-4core. At these max_instances, 40 sandboxes at once hold 100 vCPU,
-	// 360 GiB and 680 GB, well inside the account's limits for live
-	// instances (1,500 vCPU, 6 TiB of memory). crates/contracts
-	// (INSTANCE_TYPES) and services/billing (keeper.rs) say the same sizes.
-	// scripts/deploy.mjs deploys with each image set to the reference it
-	// built and pushed ("The runner's images" in
-	// docs.g1t.sh/guides/deploy-to-cloudflare/), so a deploy builds
-	// nothing; "./Dockerfile" here is for building by hand.
-	"containers": [
-		{
-			"class_name": "AttemptSandbox",
-			"image": "./Dockerfile",
-			// Workflow jobs with `runs-on: ubuntu-latest` (and every other
-			// hosted label), and all other work: 2 vCPU, 8 GiB, 16 GB.
-			"instance_type": "standard-3",
-			"max_instances": 20,
-			// A deploy that changes the image or these settings replaces every
-			// idle sandbox at once (scripts/deploy.mjs passes
-			// --containers-rollout=immediate). Ones that are busy are given
-			// this long, in seconds, to finish first, so shipping g1t does not
-			// kill work in the middle.
-			"rollout_active_grace_period": 7200
-		},
-		{
-			// Workflow jobs with `runs-on: g1t-2core`: the standard machine.
-			"class_name": "Sandbox2Core",
-			"image": "./Dockerfile",
-			"instance_type": "standard-3",
-			"max_instances": 10,
-			"rollout_active_grace_period": 7200
-		},
-		{
-			// Workflow jobs with `runs-on: g1t-4core`: 4 vCPU, 12 GiB, 20 GB.
-			"class_name": "Sandbox4Core",
-			"image": "./Dockerfile",
-			"instance_type": "standard-4",
-			"max_instances": 10,
-			"rollout_active_grace_period": 7200
-		}
-	],
-	"durable_objects": {
-		"bindings": [
-			{ "name": "SANDBOX", "class_name": "AttemptSandbox" },
-			{ "name": "SANDBOX_2CORE", "class_name": "Sandbox2Core" },
-			{ "name": "SANDBOX_4CORE", "class_name": "Sandbox4Core" }
-		]
-	},
-	"migrations": [
-		{ "tag": "v1", "new_sqlite_classes": ["AttemptSandbox"] },
-		{ "tag": "v2", "new_sqlite_classes": ["Sandbox2Core", "Sandbox4Core"] },
-		{ "tag": "v3", "new_sqlite_classes": ["AgentComputer"] },
-		// Workspace agents' computers are gone, and with them their objects.
-		{ "tag": "v4", "deleted_classes": ["AgentComputer"] }
-	],
-	"services": [
-		{ "binding": "IDENTITY", "service": "g1t-identity" },
-		{ "binding": "REPOS", "service": "g1t-repos" },
-		{ "binding": "WORK", "service": "g1t-work" },
-		{ "binding": "BILLING", "service": "g1t-billing" },
-		{ "binding": "ACTIONS", "service": "g1t-actions" },
-		{ "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
-		// The event bus: abuse.flagged, when a sandbox looks like it is mining.
-		{ "binding": "EVENTS", "service": "g1t-events" }
-	],
-	// A sweep for lifecycle steps whose trigger was missed or whose sandbox
-	// died before reporting, which also starts queued nightly backups.
-	"triggers": { "crons": ["*/5 * * * *"] },
-	// Events it reacts to: a pull request that may now merge by its
-	// repository's settings, a merge check or the merge queue to start.
-	"queues": {
-		"consumers": [{ "queue": "g1t-events-runner", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
-	},
-	"vars": {
-		"CLOUDFLARE_ACCOUNT_ID": "1e6f2cffa3f445920836e8ebe446bb58",
-		// Sandboxes reach the internet directly. A workflow job that may be
-		// given brokered secrets passes its HTTP(S) through this Worker, which
-		// fills them in. "off" passes nothing through it: stand-ins then go
-		// out unfilled.
-		"EGRESS": "on",
-		// Sandboxes stop themselves when they look like they are mining
-		// (crates/runner abuse.rs). "off" turns the CPU watch off; miners
-		// named in commands are refused either way.
-		"ABUSE_WATCH": "on",
-		// Each workflow job gets a Docker Engine of its own, inside its
-		// sandbox, started the first time a step uses Docker or the job has
-		// `services:` or `container:` (crates/runner docker/). "off" gives
-		// jobs none.
-		"DOCKER": "on",
-		// Nightly backups (src/backup.ts): each sweep starts this many of the
-		// backups the repos service queued, with at most BACKUPS_RUNNING at
-		// once. "0" starts none.
-		"BACKUPS_PER_SWEEP": "4",
-		"BACKUPS_RUNNING": "6"
-	},
-	// Every log kept: few requests, and a failed run must be traceable.
-	"observability": { "enabled": true, "head_sampling_rate": 1 }
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "g1t-runner",
+  "account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+  "compatibility_date": "2026-09-26",
+  "main": "./src/index.ts",
+  "workers_dev": false,
+  // One image (the base plus the runner binary), on two named instance
+  // types: standard-3 (2 vCPU, 8 GiB, 16 GB of disk) for the standard
+  // machine and g1t-2core, which is kept as a name of it so workflows that
+  // ask for it keep working, and standard-4 (4 vCPU, 12 GiB, 20 GB) for
+  // g1t-4core. At these max_instances, 40 sandboxes at once hold 100 vCPU,
+  // 360 GiB and 680 GB, well inside the account's limits for live
+  // instances (1,500 vCPU, 6 TiB of memory). crates/contracts
+  // (INSTANCE_TYPES) and services/billing (keeper.rs) say the same sizes.
+  // scripts/deploy.mjs deploys with each image set to the reference it
+  // built and pushed ("The runner's images" in
+  // docs.g1t.sh/guides/deploy-to-cloudflare/), so a deploy builds
+  // nothing; "./Dockerfile" here is for building by hand.
+  "containers": [
+    {
+      "class_name": "AttemptSandbox",
+      "image": "./Dockerfile",
+      // Workflow jobs with `runs-on: ubuntu-latest` (and every other
+      // hosted label), and all other work: 2 vCPU, 8 GiB, 16 GB.
+      "instance_type": "standard-3",
+      "max_instances": 20,
+      // A deploy that changes the image or these settings replaces every
+      // idle sandbox at once (scripts/deploy.mjs passes
+      // --containers-rollout=immediate). Ones that are busy are given
+      // this long, in seconds, to finish first, so shipping g1t does not
+      // kill work in the middle.
+      "rollout_active_grace_period": 7200,
+    },
+    {
+      // Workflow jobs with `runs-on: g1t-2core`: the standard machine.
+      "class_name": "Sandbox2Core",
+      "image": "./Dockerfile",
+      "instance_type": "standard-3",
+      "max_instances": 10,
+      "rollout_active_grace_period": 7200,
+    },
+    {
+      // Workflow jobs with `runs-on: g1t-4core`: 4 vCPU, 12 GiB, 20 GB.
+      "class_name": "Sandbox4Core",
+      "image": "./Dockerfile",
+      "instance_type": "standard-4",
+      "max_instances": 10,
+      "rollout_active_grace_period": 7200,
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "SANDBOX", "class_name": "AttemptSandbox" },
+      { "name": "SANDBOX_2CORE", "class_name": "Sandbox2Core" },
+      { "name": "SANDBOX_4CORE", "class_name": "Sandbox4Core" },
+    ],
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["AttemptSandbox"] },
+    { "tag": "v2", "new_sqlite_classes": ["Sandbox2Core", "Sandbox4Core"] },
+    { "tag": "v3", "new_sqlite_classes": ["AgentComputer"] },
+    // Workspace agents' computers are gone, and with them their objects.
+    { "tag": "v4", "deleted_classes": ["AgentComputer"] },
+  ],
+  "services": [
+    { "binding": "IDENTITY", "service": "g1t-identity" },
+    { "binding": "REPOS", "service": "g1t-repos" },
+    { "binding": "WORK", "service": "g1t-work" },
+    { "binding": "BILLING", "service": "g1t-billing" },
+    { "binding": "ACTIONS", "service": "g1t-actions" },
+    { "binding": "DEPLOYMENTS", "service": "g1t-deployments" },
+    // The event bus: abuse.flagged, when a sandbox looks like it is mining.
+    { "binding": "EVENTS", "service": "g1t-events" },
+  ],
+  // A sweep for lifecycle steps whose trigger was missed or whose sandbox
+  // died before reporting, which also starts queued nightly backups.
+  "triggers": { "crons": ["*/5 * * * *"] },
+  // Events it reacts to: a pull request that may now merge by its
+  // repository's settings, a merge check or the merge queue to start.
+  "queues": {
+    "consumers": [{ "queue": "g1t-events-runner", "max_batch_size": 20, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }],
+  },
+  "vars": {
+    "CLOUDFLARE_ACCOUNT_ID": "1e6f2cffa3f445920836e8ebe446bb58",
+    // Sandboxes reach the internet directly. A workflow job that may be
+    // given brokered secrets passes its HTTP(S) through this Worker, which
+    // fills them in. "off" passes nothing through it: stand-ins then go
+    // out unfilled.
+    "EGRESS": "on",
+    // Sandboxes stop themselves when they look like they are mining
+    // (crates/runner abuse.rs). "off" turns the CPU watch off; miners
+    // named in commands are refused either way.
+    "ABUSE_WATCH": "on",
+    // Each workflow job gets a Docker Engine of its own, inside its
+    // sandbox, started the first time a step uses Docker or the job has
+    // `services:` or `container:` (crates/runner docker/). "off" gives
+    // jobs none.
+    "DOCKER": "on",
+    // Nightly backups (src/backup.ts): each sweep starts this many of the
+    // backups the repos service queued, with at most BACKUPS_RUNNING at
+    // once. "0" starts none.
+    "BACKUPS_PER_SWEEP": "4",
+    "BACKUPS_RUNNING": "6",
+  },
+  // Every log kept: few requests, and a failed run must be traceable.
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
 }

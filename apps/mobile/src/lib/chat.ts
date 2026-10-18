@@ -82,7 +82,9 @@ export function useMessages(channelId: string, thread: string | null = null) {
 // ── The cache, as messages arrive ───────────────────────────────────────────
 
 function updatePages(queries: QueryClient, key: readonly unknown[], change: (messages: Shown[], index: number) => Shown[]) {
-  queries.setQueryData<Pages>(key, (data) => (data ? { ...data, pages: data.pages.map((page, index) => ({ ...page, messages: change(page.messages, index) })) } : data));
+  queries.setQueryData<Pages>(key, (data) =>
+    data ? { ...data, pages: data.pages.map((page, index) => ({ ...page, messages: change(page.messages, index) })) } : data,
+  );
 }
 
 /** A message, put where it belongs: replacing itself, or its local copy, or added as the newest. */
@@ -123,7 +125,16 @@ function patchMessage(queries: QueryClient, workspace: string, channelId: string
 }
 
 /** A reaction added or taken away, by the viewer (`mine`) or someone else, on a message in the cache. */
-function applyReaction(queries: QueryClient, workspace: string, channelId: string, messageId: string, emoji: string, member: MemberProfile | null, added: boolean, mine: boolean) {
+function applyReaction(
+  queries: QueryClient,
+  workspace: string,
+  channelId: string,
+  messageId: string,
+  emoji: string,
+  member: MemberProfile | null,
+  added: boolean,
+  mine: boolean,
+) {
   patchMessage(queries, workspace, channelId, messageId, (message) => {
     const reactions = [...(message.reactions ?? [])];
     const at = reactions.findIndex((one) => one.emoji === emoji);
@@ -229,7 +240,8 @@ export function useChatActions(channelId: string) {
   });
 
   const edit = useMutation({
-    mutationFn: ({ message, body }: { message: ChatMessage; body: string }) => sendIntent<ChatMessage>(client, slug, "edit", { channel_id: channelId, id: message.id, body }),
+    mutationFn: ({ message, body }: { message: ChatMessage; body: string }) =>
+      sendIntent<ChatMessage>(client, slug, "edit", { channel_id: channelId, id: message.id, body }),
     onSuccess: (message) => upsertMessage(queries, slug, message),
   });
 
@@ -307,45 +319,51 @@ export function useChannelLive(channelId: string) {
 
   useEffect(() => {
     if (!slug || !channelId) return;
-    const socket = openSocket(client, `/${encodeURIComponent(slug)}/-/chat/live`, { channel: channelId }, {
-      onStatus: setStatus,
-      onReconnect: () => void queries.invalidateQueries({ queryKey: ["chat", slug, "messages", channelId] }),
-      onMessage: (data) => {
-        const live = data as ChatLiveEvent;
-        switch (live.type) {
-          case "message.created":
-          case "message.updated":
-            upsertMessage(queries, slug, keepMine(queries, slug, live.message));
-            setTyping((now) => now.filter((one) => one.member.id !== live.message.author.id));
-            break;
-          case "message.deleted":
-            removeMessage(queries, slug, live.channel_id, live.id);
-            break;
-          case "message.streaming":
-            // @g1t's answer as it is written: the text so far, in place.
-            updatePages(queries, chatKeys.messages(slug, live.channel_id, null), (messages) =>
-              messages.map((one) => (one.id === live.id ? { ...one, body: live.body, answer: live.answer } : one)),
-            );
-            break;
-          case "reaction.added":
-          case "reaction.removed":
-            if (live.member.id !== me.id) applyReaction(queries, slug, live.channel_id, live.message_id, live.emoji, live.member, live.type === "reaction.added", false);
-            break;
-          case "typing":
-            if (live.member.id === me.id) break;
-            setTyping((now) => [...now.filter((one) => one.member.id !== live.member.id), { member: live.member, until: Date.parse(live.until) }]);
-            break;
-          case "channel.updated":
-            void queries.invalidateQueries({ queryKey: chatKeys.sidebar(slug) });
-            break;
-          case "channel.cleared":
-            // The person cleared their conversation with @g1t (in the site): nothing in it is left.
-            updatePages(queries, chatKeys.messages(slug, live.channel_id, null), () => []);
-            void queries.invalidateQueries({ queryKey: chatKeys.sidebar(slug) });
-            break;
-        }
+    const socket = openSocket(
+      client,
+      `/${encodeURIComponent(slug)}/-/chat/live`,
+      { channel: channelId },
+      {
+        onStatus: setStatus,
+        onReconnect: () => void queries.invalidateQueries({ queryKey: ["chat", slug, "messages", channelId] }),
+        onMessage: (data) => {
+          const live = data as ChatLiveEvent;
+          switch (live.type) {
+            case "message.created":
+            case "message.updated":
+              upsertMessage(queries, slug, keepMine(queries, slug, live.message));
+              setTyping((now) => now.filter((one) => one.member.id !== live.message.author.id));
+              break;
+            case "message.deleted":
+              removeMessage(queries, slug, live.channel_id, live.id);
+              break;
+            case "message.streaming":
+              // @g1t's answer as it is written: the text so far, in place.
+              updatePages(queries, chatKeys.messages(slug, live.channel_id, null), (messages) =>
+                messages.map((one) => (one.id === live.id ? { ...one, body: live.body, answer: live.answer } : one)),
+              );
+              break;
+            case "reaction.added":
+            case "reaction.removed":
+              if (live.member.id !== me.id)
+                applyReaction(queries, slug, live.channel_id, live.message_id, live.emoji, live.member, live.type === "reaction.added", false);
+              break;
+            case "typing":
+              if (live.member.id === me.id) break;
+              setTyping((now) => [...now.filter((one) => one.member.id !== live.member.id), { member: live.member, until: Date.parse(live.until) }]);
+              break;
+            case "channel.updated":
+              void queries.invalidateQueries({ queryKey: chatKeys.sidebar(slug) });
+              break;
+            case "channel.cleared":
+              // The person cleared their conversation with @g1t (in the site): nothing in it is left.
+              updatePages(queries, chatKeys.messages(slug, live.channel_id, null), () => []);
+              void queries.invalidateQueries({ queryKey: chatKeys.sidebar(slug) });
+              break;
+          }
+        },
       },
-    });
+    );
     send.current = socket.send;
     return () => {
       send.current = null;

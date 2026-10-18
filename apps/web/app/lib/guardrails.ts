@@ -2,7 +2,9 @@ import type { GuardrailSettings, RunKind } from "@g1t/contracts";
 
 /** A number from a field; empty means inherit. Not a number is kept, to be refused. */
 function amount(value: FormDataEntryValue | null): number | null {
-  const text = String(value ?? "").trim().replace(/^\$/, "");
+  const text = String(value ?? "")
+    .trim()
+    .replace(/^\$/, "");
   if (!text) return null;
   const number = Number(text);
   return Number.isFinite(number) ? number : Number.NaN;

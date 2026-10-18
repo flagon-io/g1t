@@ -262,7 +262,10 @@ test("a push counts only when it ends with a digest, and is tried again", async 
   assert.equal(pushedDigest({ code: 0, out: "error from registry: blob unknown to registry" }), null);
   assert.equal(pushedDigest({ code: 1, out: `digest: ${digest}` }), null);
   assert.equal(pushedDigest({ code: 0, out: "Pushed" }), null);
-  const answers = [{ code: 1, out: "error from registry: blob unknown to registry" }, { code: 0, out: `x: digest: ${digest} size: 1` }];
+  const answers = [
+    { code: 1, out: "error from registry: blob unknown to registry" },
+    { code: 0, out: `x: digest: ${digest} size: 1` },
+  ];
   assert.equal(await pushImage("r/x:y", { run: async () => answers.shift() }), digest);
   await assert.rejects(pushImage("r/x:y", { attempts: 2, run: async () => ({ code: 0, out: "blob unknown" }) }), /docker push r\/x:y failed/);
 });
@@ -328,7 +331,8 @@ test("path dependencies agree with Cargo's own resolved graph", (t) => {
 test("every import that leaves a unit's folder is covered by its dependencies or inputs", () => {
   for (const u of stack.units) {
     for (const { file, target } of outsideImports(ROOT, u)) {
-      const covered = u.dependsOn.some((dir) => target.startsWith(`${dir}/`)) || u.inputs.some((input) => target === input || target.startsWith(input.replace(/\.ts$/, "")));
+      const covered =
+        u.dependsOn.some((dir) => target.startsWith(`${dir}/`)) || u.inputs.some((input) => target === input || target.startsWith(input.replace(/\.ts$/, "")));
       assert.ok(covered, `${file} imports ${target}, which ${u.id}'s manifest entry does not name`);
     }
   }
@@ -342,7 +346,10 @@ test("a shared crate's change reaches every unit built from it, and no other", (
   assert.deepEqual(ids(stack.units, ["crates/scan/src/lib.rs"]), ["repos", "work", "security", "runner"]);
   assert.deepEqual(ids(stack.units, ["crates/secrets/src/lib.rs"]), ["identity", "repos", "billing", "integrations", "webhooks", "actions"]);
   const kit = ids(stack.units, ["crates/kit/src/lib.rs"]);
-  assert.deepEqual(kit, stack.units.filter((u) => u.kind === "rust-worker").map((u) => u.id));
+  assert.deepEqual(
+    kit,
+    stack.units.filter((u) => u.kind === "rust-worker").map((u) => u.id),
+  );
   assert.deepEqual(ids(stack.units, ["crates/runner/src/main.rs"]), ["runner"]);
 });
 
@@ -377,8 +384,9 @@ const sources = (files) => ({
 test("a Rust file compiled only for tests is found from what declares it", () => {
   const crate = ["crates/x"];
   const tree = sources({
-    "crates/x/src/lib.rs": "pub mod api;\nmod store;\n#[cfg(test)]\nmod tests;\n#[cfg(test)] pub(crate) mod fixtures;\n#[cfg(any(test, feature = \"x\"))]\nmod both;\n",
-    "crates/x/src/api.rs": "mod wire;\n#[cfg(test)]\n#[path = \"api_tests.rs\"]\nmod tests;\n",
+    "crates/x/src/lib.rs":
+      'pub mod api;\nmod store;\n#[cfg(test)]\nmod tests;\n#[cfg(test)] pub(crate) mod fixtures;\n#[cfg(any(test, feature = "x"))]\nmod both;\n',
+    "crates/x/src/api.rs": 'mod wire;\n#[cfg(test)]\n#[path = "api_tests.rs"]\nmod tests;\n',
     "crates/x/src/api/wire.rs": "",
     "crates/x/src/api_tests.rs": "use super::*;",
     "crates/x/src/store/mod.rs": "#[cfg(test)]\nmod memory;\n",
@@ -390,7 +398,13 @@ test("a Rust file compiled only for tests is found from what declares it", () =>
     "crates/x/src/bin/tool.rs": "",
   });
   const only = (file) => testOnlySource(file, crate, tree);
-  for (const file of ["crates/x/src/tests.rs", "crates/x/src/fixtures/mod.rs", "crates/x/src/api_tests.rs", "crates/x/src/store/memory.rs", "crates/x/src/store/memory/deep.rs"]) {
+  for (const file of [
+    "crates/x/src/tests.rs",
+    "crates/x/src/fixtures/mod.rs",
+    "crates/x/src/api_tests.rs",
+    "crates/x/src/store/memory.rs",
+    "crates/x/src/store/memory/deep.rs",
+  ]) {
     assert.ok(only(file), file);
   }
   // Built: roots, ordinary modules, a cfg that is not only test, a file
@@ -425,18 +439,33 @@ test("decide: a change only to tests deploys nothing", () => {
   const units = ["actions", "billing", "runner"].map(unit);
   const live = { actions: { sha: OLD }, billing: { sha: OLD }, runner: { sha: OLD } };
   const files = {
-    [`${HEAD}:services/billing/src/compute.rs`]: "#[cfg(test)]\n#[path = \"compute_tests.rs\"]\nmod tests;\n",
+    [`${HEAD}:services/billing/src/compute.rs`]: '#[cfg(test)]\n#[path = "compute_tests.rs"]\nmod tests;\n',
     [`${HEAD}:services/billing/src/lib.rs`]: "mod compute;\n",
   };
   const gitApi = {
     ...fakeGit(["crates/actions/tests/repository_workflows.rs", "services/billing/src/compute_tests.rs"]),
     show: (sha, path) => files[`${sha}:${path}`] ?? "",
-    list: (sha, dir) => Object.keys(files).map((k) => k.slice(sha.length + 1)).filter((p) => p.startsWith(`${dir}/`)).concat(dir === "services/billing/src" ? ["services/billing/src/compute_tests.rs"] : []),
+    list: (sha, dir) =>
+      Object.keys(files)
+        .map((k) => k.slice(sha.length + 1))
+        .filter((p) => p.startsWith(`${dir}/`))
+        .concat(dir === "services/billing/src" ? ["services/billing/src/compute_tests.rs"] : []),
   };
   const decisions = decide(units, { live, head: HEAD, gitApi });
-  assert.deepEqual(decisions.map((d) => [d.unit.id, d.deploy, d.image]), [["actions", false, false], ["billing", false, false], ["runner", false, false]]);
+  assert.deepEqual(
+    decisions.map((d) => [d.unit.id, d.deploy, d.image]),
+    [
+      ["actions", false, false],
+      ["billing", false, false],
+      ["runner", false, false],
+    ],
+  );
   // With a source that ships beside them, only that is listed.
-  const mixed = decide([unit("billing")], { live, head: HEAD, gitApi: { ...gitApi, changed: () => ["services/billing/src/compute_tests.rs", "services/billing/src/compute.rs"] } });
+  const mixed = decide([unit("billing")], {
+    live,
+    head: HEAD,
+    gitApi: { ...gitApi, changed: () => ["services/billing/src/compute_tests.rs", "services/billing/src/compute.rs"] },
+  });
   assert.deepEqual([mixed[0].deploy, mixed[0].files], [true, ["services/billing/src/compute.rs"]]);
 });
 
@@ -444,7 +473,10 @@ test("own folders, declared inputs and root files", () => {
   assert.deepEqual(ids(stack.units, ["services/pages/src/index.ts"]), ["pages"]);
   assert.deepEqual(ids(stack.units, ["apps/web/app/lib/roadmap.ts"]), ["og", "web"]);
   assert.deepEqual(ids(stack.units, ["LICENSE", "README.md", "deploy/stack.jsonc"]), []);
-  assert.deepEqual(ids(stack.units, ["scripts/build-rust-worker.mjs"]), stack.units.filter((u) => u.kind === "rust-worker").map((u) => u.id));
+  assert.deepEqual(
+    ids(stack.units, ["scripts/build-rust-worker.mjs"]),
+    stack.units.filter((u) => u.kind === "rust-worker").map((u) => u.id),
+  );
   // services/events is not a prefix of services/eventsx.
   assert.equal(touches(unit("events"), ["services/eventsx/a.rs"]), null);
 });
@@ -563,7 +595,13 @@ test("decide: Cargo.lock counts only where it reaches", () => {
   const units = [unit("events"), unit("webhooks")];
   const live = { events: { sha: OLD }, webhooks: { sha: OLD } };
   const decisions = decide(units, { live, head: HEAD, gitApi: fakeGit(["Cargo.lock"], { locks }) });
-  assert.deepEqual(decisions.map((d) => [d.unit.id, d.deploy]), [["events", false], ["webhooks", true]]);
+  assert.deepEqual(
+    decisions.map((d) => [d.unit.id, d.deploy]),
+    [
+      ["events", false],
+      ["webhooks", true],
+    ],
+  );
 });
 
 test("decide: the runner's image rebuilds only when what it is built from changed", () => {
@@ -593,13 +631,19 @@ test("the plan as data: migrations, and each stage's units in jobs that share a 
   // Eleven Rust workers go to three jobs; a unit whose image rebuilds gets its own.
   const core = stack.units.filter((u) => u.stage === "core");
   const jobs = buildGroups(core, ["runner"]);
-  assert.deepEqual(jobs.filter((j) => j.rust).map((j) => j.units.split(",").length), [4, 4, 3]);
+  assert.deepEqual(
+    jobs.filter((j) => j.rust).map((j) => j.units.split(",").length),
+    [4, 4, 3],
+  );
   assert.ok(jobs.some((j) => j.group === "runner-image" && j.units === "runner" && j.image && !j.rust));
   assert.ok(!jobs.find((j) => j.group === "ts").units.includes("runner"));
 });
 
 test("units are picked by short name, folder or Worker name", () => {
-  assert.deepEqual(pick(stack, ["billing,services/web".replace("services/web", "apps/web"), "g1t-api"]).map((u) => u.id), ["billing", "web", "api"]);
+  assert.deepEqual(
+    pick(stack, ["billing,services/web".replace("services/web", "apps/web"), "g1t-api"]).map((u) => u.id),
+    ["billing", "web", "api"],
+  );
   assert.throws(() => pick(stack, ["nope"]), /No unit called nope/);
 });
 
@@ -607,8 +651,17 @@ test("a CI job installs only what its units need", () => {
   const npm = npmWorkspace();
   assert.deepEqual(npmCiArgs([unit("events"), unit("repos")], npm), ["ci", "--prefer-offline", "--no-audit", "--no-fund", "--workspaces=false"]);
   assert.deepEqual(npmCiArgs([unit("events"), unit("status")], npm), [
-    "ci", "--prefer-offline", "--no-audit", "--no-fund", "--include-workspace-root",
-    "-w", "@g1t/contracts", "-w", "@g1t/status", "-w", "@g1t/theme",
+    "ci",
+    "--prefer-offline",
+    "--no-audit",
+    "--no-fund",
+    "--include-workspace-root",
+    "-w",
+    "@g1t/contracts",
+    "-w",
+    "@g1t/status",
+    "-w",
+    "@g1t/theme",
   ]);
 });
 
@@ -637,7 +690,15 @@ test("the live commit: the live version's, looking through secret changes", () =
   assert.equal(liveCommit(status("v2"), versions).sha, OLD);
   assert.equal(liveCommit(status("v3"), versions).sha, null);
   assert.match(liveCommit(status("v9"), versions).why, /not among/);
-  const split = liveCommit({ versions: [{ version_id: "v1", percentage: 10 }, { version_id: "v2", percentage: 90 }] }, versions);
+  const split = liveCommit(
+    {
+      versions: [
+        { version_id: "v1", percentage: 10 },
+        { version_id: "v2", percentage: 90 },
+      ],
+    },
+    versions,
+  );
   assert.equal(split.sha, OLD);
   assert.equal(split.split, true);
 });
@@ -679,7 +740,13 @@ const SCRIPT = "/accounts/acct/workers/scripts/g1t-events";
 const deploymentsAnswer = (id) =>
   ok({
     deployments: [
-      { id: "d2", source: "wrangler", strategy: "percentage", versions: [{ version_id: id, percentage: 100 }], annotations: { "workers/triggered_by": "deployment" } },
+      {
+        id: "d2",
+        source: "wrangler",
+        strategy: "percentage",
+        versions: [{ version_id: id, percentage: 100 }],
+        annotations: { "workers/triggered_by": "deployment" },
+      },
       { id: "d1", source: "wrangler", strategy: "percentage", versions: [{ version_id: "v1", percentage: 100 }] },
     ],
   });
@@ -687,14 +754,20 @@ const versionsAnswer = ok({ items: [version("v1", 1, annotation(OLD).message), v
 
 test("the API's answers: the live commit as Wrangler's would give it", async () => {
   const calls = [];
-  const fetchImpl = fakeFetch({ [`GET ${SCRIPT}/deployments`]: [200, deploymentsAnswer("v2")], [`GET ${SCRIPT}/versions?deployable=true`]: [200, versionsAnswer] }, calls);
+  const fetchImpl = fakeFetch(
+    { [`GET ${SCRIPT}/deployments`]: [200, deploymentsAnswer("v2")], [`GET ${SCRIPT}/versions?deployable=true`]: [200, versionsAnswer] },
+    calls,
+  );
   const found = await readLive(unit("events"), { auth: AUTH, fetchImpl });
   assert.equal(found.sha, OLD);
   assert.equal(found.version, "v2");
   assert.equal(found.at, "2026-10-05T00:00:00Z");
   assert.equal(calls[0].init.headers.authorization, "Bearer t");
   // The same as liveCommit over what Wrangler printed.
-  assert.deepEqual(liveFromApi("w", deploymentsAnswer("v2").result, versionsAnswer.result), liveCommit(deploymentsAnswer("v2").result.deployments[0], versionsAnswer.result.items));
+  assert.deepEqual(
+    liveFromApi("w", deploymentsAnswer("v2").result, versionsAnswer.result),
+    liveCommit(deploymentsAnswer("v2").result.deployments[0], versionsAnswer.result.items),
+  );
   // Versions that cannot be read: the live one is not among them.
   assert.match(liveFromApi("w", deploymentsAnswer("v2").result, null).why, /not among/);
   // No deployment at all is an error, as `deployments status` made it.
@@ -739,19 +812,31 @@ test("pending migrations: the folder's files less the names in d1_migrations", a
   assert.ok(files.length > 2 && files.every((f) => f.endsWith(".sql")));
   assert.deepEqual(files, [...files].sort());
 
-  assert.deepEqual(pendingAgainst(["0001_a.sql", "0002_b.sql", "0003_c.sql"], [{ results: [{ name: "0001_a.sql" }, { name: "0002_b.sql" }], success: true, meta: {} }]), ["0003_c.sql"]);
+  assert.deepEqual(
+    pendingAgainst(["0001_a.sql", "0002_b.sql", "0003_c.sql"], [{ results: [{ name: "0001_a.sql" }, { name: "0002_b.sql" }], success: true, meta: {} }]),
+    ["0003_c.sql"],
+  );
   assert.deepEqual(pendingAgainst(["0001_a.sql"], [{ results: [], success: true }]), ["0001_a.sql"]);
 
   const query = `POST /accounts/acct/d1/database/${db.id}/query`;
   const calls = [];
   const applied = files.slice(0, -1).map((name, i) => ({ name, id: i + 1 }));
-  const found = await pendingMigrations(events, { auth: AUTH, fetchImpl: fakeFetch({ [query]: [200, ok([{ results: applied, success: true, meta: {} }])] }, calls) });
+  const found = await pendingMigrations(events, {
+    auth: AUTH,
+    fetchImpl: fakeFetch({ [query]: [200, ok([{ results: applied, success: true, meta: {} }])] }, calls),
+  });
   assert.deepEqual(found, { pending: files.slice(-1) });
   assert.match(JSON.parse(calls[0].init.body).sql, /^SELECT name FROM "d1_migrations"/);
-  const upToDate = await pendingMigrations(events, { auth: AUTH, fetchImpl: fakeFetch({ [query]: [200, ok([{ results: files.map((name) => ({ name })) }])] }) });
+  const upToDate = await pendingMigrations(events, {
+    auth: AUTH,
+    fetchImpl: fakeFetch({ [query]: [200, ok([{ results: files.map((name) => ({ name })) }])] }),
+  });
   assert.deepEqual(upToDate, { pending: [] });
   // A database never migrated has no table: everything is pending.
-  const fresh = await pendingMigrations(events, { auth: AUTH, fetchImpl: fakeFetch({ [query]: [400, refused(7500, "no such table: d1_migrations: SQLITE_ERROR")] }) });
+  const fresh = await pendingMigrations(events, {
+    auth: AUTH,
+    fetchImpl: fakeFetch({ [query]: [400, refused(7500, "no such table: d1_migrations: SQLITE_ERROR")] }),
+  });
   assert.deepEqual(fresh, { pending: files });
   const denied = await pendingMigrations(events, { auth: AUTH, fetchImpl: fakeFetch({ [query]: [400, refused(10000, "Authentication error")] }) });
   assert.match(denied.error, /Authentication error/);
@@ -776,7 +861,10 @@ test("the pool runs everything, no more than its limit at once", async () => {
 test("self-hosting builds every Rust service the manifest says it runs", () => {
   const dockerfile = readFileSync(join(ROOT, "deploy/self-host/Dockerfile"), "utf8");
   const loops = [...dockerfile.matchAll(/for service in ([a-z ]+); do/g)].map((m) => m[1].trim().split(/\s+/).sort());
-  const wanted = stack.units.filter((u) => u.self_host === "run" && u.kind === "rust-worker").map((u) => u.path.split("/").pop()).sort();
+  const wanted = stack.units
+    .filter((u) => u.self_host === "run" && u.kind === "rust-worker")
+    .map((u) => u.path.split("/").pop())
+    .sort();
   assert.ok(loops.length >= 2);
   for (const loop of loops) assert.deepEqual(loop, wanted);
 });
@@ -808,7 +896,12 @@ test("resolveStack works on a manifest with no workspace crates or packages", ()
 });
 
 test("decide: a commit older than what runs is never deployed by accident, even forced; --rollback means it", () => {
-  const newer = { has: () => true, changed: () => ["services/events/src/lib.rs"], show: () => "", isAncestor: (older, newer) => older === HEAD && newer === OLD };
+  const newer = {
+    has: () => true,
+    changed: () => ["services/events/src/lib.rs"],
+    show: () => "",
+    isAncestor: (older, newer) => older === HEAD && newer === OLD,
+  };
   const refused = decide([unit("events")], { live: { events: { sha: OLD } }, head: HEAD, force: true, gitApi: newer });
   assert.equal(refused[0].deploy, false);
   assert.match(refused[0].reason, /newer than this commit/);
@@ -826,7 +919,16 @@ test("a deploy by hand reports to the repository on g1t, and a workflow's does n
   assert.equal(deployToken({ G1T_DEPLOY_TOKEN: " g1t_x \n" }, "/nowhere"), "g1t_x");
   assert.equal(deployToken({}, "/nowhere"), null);
   let called = false;
-  const settle = await reportDeployment({ head: "abc", subject: "s", units: ["web"], log: () => {}, env: { GITHUB_ACTIONS: "true", G1T_DEPLOY_TOKEN: "t" }, fetchImpl: () => { called = true; } });
+  const settle = await reportDeployment({
+    head: "abc",
+    subject: "s",
+    units: ["web"],
+    log: () => {},
+    env: { GITHUB_ACTIONS: "true", G1T_DEPLOY_TOKEN: "t" },
+    fetchImpl: () => {
+      called = true;
+    },
+  });
   assert.equal(settle, null);
   assert.equal(called, false);
 });
@@ -857,8 +959,8 @@ test("a failed wrangler command is reported by its error, not its trace", () => 
 
 test("Cloudflare failing is tried again; a mistake in what is deployed is not", () => {
   assert.equal(retryableDeploy(API_FAILED), true);
-  assert.equal(retryableDeploy("✘ [ERROR] Build failed with 1 error:\n  src/index.ts:3:7: ERROR: Could not resolve \"./nope\""), false);
-  assert.equal(retryableDeploy("✘ [ERROR] Processing wrangler.jsonc configuration:\n  - \"main\" is not a valid path"), false);
+  assert.equal(retryableDeploy('✘ [ERROR] Build failed with 1 error:\n  src/index.ts:3:7: ERROR: Could not resolve "./nope"'), false);
+  assert.equal(retryableDeploy('✘ [ERROR] Processing wrangler.jsonc configuration:\n  - "main" is not a valid path'), false);
   assert.equal(retryableDeploy("fetch failed: ECONNRESET"), true);
 });
 

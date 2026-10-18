@@ -55,7 +55,11 @@ export function Owners({ owners, compact = false }: { owners: AdminOwner[]; comp
   return (
     <ul className="flex flex-wrap gap-2">
       {owners.map((owner) => (
-        <li key={owner.username} title={owner.email ?? "No email"} className="inline-flex items-center gap-1.5 rounded-md border border-line bg-bg px-2 py-1 text-xs">
+        <li
+          key={owner.username}
+          title={owner.email ?? "No email"}
+          className="inline-flex items-center gap-1.5 rounded-md border border-line bg-bg px-2 py-1 text-xs"
+        >
           <Avatar name={owner.username} size={14} square={false} />
           <span className="font-mono">{owner.username}</span>
           {owner.email && <span className="text-faint">{owner.email}</span>}
@@ -123,8 +127,8 @@ export function ReviewPanel({ review, pathname }: { review: Review; pathname: st
         </div>
         {fullDiscount(review.after) && (
           <p className="mt-3 text-sm text-warn">
-            A 100% discount: nothing will be charged{review.after.until ? ` until ${review.after.until.slice(0, 10)}` : ""}. The workspace's
-            statement still shows its usage at price, with the discount beside it.
+            A 100% discount: nothing will be charged{review.after.until ? ` until ${review.after.until.slice(0, 10)}` : ""}. The workspace's statement still
+            shows its usage at price, with the discount beside it.
           </p>
         )}
       </>
@@ -133,8 +137,8 @@ export function ReviewPanel({ review, pathname }: { review: Review; pathname: st
     title = `Bill ${review.workspace} to ${review.targetName}?`;
     body = (
       <p className="text-sm text-muted">
-        From now on <span className="font-mono text-fg">{review.workspace}</span>'s usage is billed to{" "}
-        <span className="text-fg">{review.targetName}</span> and counts against its limit and terms, not its own.
+        From now on <span className="font-mono text-fg">{review.workspace}</span>'s usage is billed to <span className="text-fg">{review.targetName}</span> and
+        counts against its limit and terms, not its own.
       </p>
     );
   } else if (review.intent === "detach") {
@@ -142,8 +146,8 @@ export function ReviewPanel({ review, pathname }: { review: Review; pathname: st
     danger = true;
     body = (
       <p className="text-sm text-muted">
-        <span className="font-mono text-fg">{review.workspace}</span> goes back to paying for itself, on its own terms and the limit
-        its trust gives it. It may stop at once if its own limit is lower than what it owes.
+        <span className="font-mono text-fg">{review.workspace}</span> goes back to paying for itself, on its own terms and the limit its trust gives it. It may
+        stop at once if its own limit is lower than what it owes.
       </p>
     );
   } else if (review.intent === "billing-email") {
@@ -165,11 +169,13 @@ export function ReviewPanel({ review, pathname }: { review: Review; pathname: st
     confirm = "Send the invoice";
     body = (
       <ul className="list-disc space-y-1 pl-5 text-sm text-muted">
-        <li>Makes one Stripe invoice, with a line for each of its {review.workspaces} workspace{review.workspaces === 1 ? "" : "s"} for what it owes now.</li>
+        <li>
+          Makes one Stripe invoice, with a line for each of its {review.workspaces} workspace{review.workspaces === 1 ? "" : "s"} for what it owes now.
+        </li>
         <li>Net 30: due in 30 days.</li>
         <li>
-          Stripe emails it to <span className="font-mono text-fg">{review.email ?? "the invoice email (none set yet)"}</span>, with a link to
-          pay on Stripe's page.
+          Stripe emails it to <span className="font-mono text-fg">{review.email ?? "the invoice email (none set yet)"}</span>, with a link to pay on Stripe's
+          page.
         </li>
       </ul>
     );
@@ -178,9 +184,9 @@ export function ReviewPanel({ review, pathname }: { review: Review; pathname: st
     confirm = "Make the link";
     body = (
       <p className="text-sm text-muted">
-        Opens a one-time session on Stripe's billing page for <span className="font-mono text-fg">{review.workspace}</span>'s
-        customer, where they update their card and see their invoices. Anyone with the link can use it until it expires, so send it
-        only to the workspace's owner. Making it is recorded with your email.
+        Opens a one-time session on Stripe's billing page for <span className="font-mono text-fg">{review.workspace}</span>'s customer, where they update their
+        card and see their invoices. Anyone with the link can use it until it expires, so send it only to the workspace's owner. Making it is recorded with your
+        email.
       </p>
     );
   }
@@ -245,15 +251,26 @@ export function TermsForm({ terms, pathname, error }: { terms: Terms; pathname: 
               Custom
             </Segment>
           </div>
-          <p className="mt-1.5 text-xs text-faint">Off usage charges. This does not change an existing Stripe subscription's monthly fee. A full discount requires ending that subscription first.</p>
+          <p className="mt-1.5 text-xs text-faint">
+            Off usage charges. This does not change an existing Stripe subscription's monthly fee. A full discount requires ending that subscription first.
+          </p>
         </fieldset>
         <div className="when-custom">
           <Field label="Custom discount %" hint="A whole percent, 1 to 100.">
-            <Input name="discount" inputMode="numeric" pattern="\d{1,3}" placeholder="30" defaultValue={values?.discount ?? (preset === "custom" ? String(current) : "")} />
+            <Input
+              name="discount"
+              inputMode="numeric"
+              pattern="\d{1,3}"
+              placeholder="30"
+              defaultValue={values?.discount ?? (preset === "custom" ? String(current) : "")}
+            />
           </Field>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Limit $" hint="Unpaid usage allowed; blank: trust decides. At 100%: g1t's monthly budget at cost; blank: $150; zero: unlimited. This is not a monthly usage credit.">
+          <Field
+            label="Limit $"
+            hint="Unpaid usage allowed; blank: trust decides. At 100%: g1t's monthly budget at cost; blank: $150; zero: unlimited. This is not a monthly usage credit."
+          >
             <Input name="ceiling" inputMode="decimal" placeholder="By trust" defaultValue={values?.ceiling ?? dollarsField(terms.ceilingMicros)} />
           </Field>
           <Field label="Until" hint="Blank: no end. UTC.">
@@ -337,9 +354,7 @@ export function AllowancesForm({
           <input type="checkbox" name="plan" defaultChecked={values ? values.plan === "on" : current.plan} className="mt-0.5" />
           <span>
             <span className="block font-medium">The g1t plan, without its price</span>
-            <span className="block text-xs text-muted">
-              Its included usage, storage and caps, with no $21 a month. Usage past it is charged as usual.
-            </span>
+            <span className="block text-xs text-muted">Its included usage, storage and caps, with no $21 a month. Usage past it is charged as usual.</span>
           </span>
         </label>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -462,11 +477,7 @@ export function CreditForm({ workspaces, pathname, error }: { workspaces: string
   const kind = values?.kind ?? "promotional";
   const expires = values?.expires ?? "none";
   return (
-    <Section
-      id="credit"
-      title="Give credit"
-      description="Added to the balance at once and spent before anything paid in advance. The owners are emailed."
-    >
+    <Section id="credit" title="Give credit" description="Added to the balance at once and spent before anything paid in advance. The owners are emailed.">
       {workspaces.length === 0 ? (
         <p className="text-sm text-muted">Add a workspace first: credit goes to a workspace.</p>
       ) : (
@@ -558,7 +569,14 @@ export function CreditForm({ workspaces, pathname, error }: { workspaces: string
               label="Confirm"
               hint={
                 <>
-                  Over $100 only: type the workspace's slug{single && <> (<span className="font-mono text-muted">{single}</span>)</>}.
+                  Over $100 only: type the workspace's slug
+                  {single && (
+                    <>
+                      {" "}
+                      (<span className="font-mono text-muted">{single}</span>)
+                    </>
+                  )}
+                  .
                 </>
               }
             >
@@ -631,7 +649,12 @@ export function CreditList({
               )}
             </p>
             <p className="mt-0.5 text-sm wrap-break-word">
-              {grant.kind === "refund" && grant.refundFor && <span className="text-muted">For {grant.refundFor}{grant.refundDay ? ` (${grant.refundDay})` : ""}: </span>}
+              {grant.kind === "refund" && grant.refundFor && (
+                <span className="text-muted">
+                  For {grant.refundFor}
+                  {grant.refundDay ? ` (${grant.refundDay})` : ""}:{" "}
+                </span>
+              )}
               {grant.note}
             </p>
             <p className="mt-0.5 flex flex-wrap items-center gap-x-1 font-mono text-xs text-faint">
@@ -655,7 +678,13 @@ export function CreditList({
                   <input type="hidden" name="id" value={grant.id} />
                   {showWorkspace && <input type="hidden" name="workspace" value={grant.workspace} />}
                   <Field label="Why" hint={`Takes ${usd(grant.leftMicros, { cents: true })} off the balance. Kept in the audit log.`} className="flex-1">
-                    <Input name="reason" required maxLength={500} placeholder="e.g. Given to the wrong workspace" defaultValue={failed ? (error?.values?.reason ?? "") : ""} />
+                    <Input
+                      name="reason"
+                      required
+                      maxLength={500}
+                      placeholder="e.g. Given to the wrong workspace"
+                      defaultValue={failed ? (error?.values?.reason ?? "") : ""}
+                    />
                   </Field>
                   <Button type="submit" variant="danger" className="shrink-0">
                     Revoke {usd(grant.leftMicros, { cents: true })}
@@ -697,7 +726,11 @@ export function CreditsSection({
           : "Credits from g1t, with what is left of each."
       }
     >
-      {unavailable ? <Notice tone="warn">Billing did not answer for credits: {unavailable}</Notice> : <CreditList grants={credits?.grants ?? []} pathname={pathname} error={error} />}
+      {unavailable ? (
+        <Notice tone="warn">Billing did not answer for credits: {unavailable}</Notice>
+      ) : (
+        <CreditList grants={credits?.grants ?? []} pathname={pathname} error={error} />
+      )}
     </Section>
   );
 }
@@ -721,7 +754,14 @@ export function ResetBillingForm({ workspace, pathname, error }: { workspace: st
         <input type="hidden" name="intent" value="reset" />
         {error && <Notice tone="error">{error.error}</Notice>}
         <Field label="Why" hint="Required. Kept in the audit log.">
-          <Textarea name="note" rows={2} required maxLength={500} placeholder="e.g. Test workspace, starting the customer walk-through again" defaultValue={values?.note ?? ""} />
+          <Textarea
+            name="note"
+            rows={2}
+            required
+            maxLength={500}
+            placeholder="e.g. Test workspace, starting the customer walk-through again"
+            defaultValue={values?.note ?? ""}
+          />
         </Field>
         <Field
           label="Confirm"
@@ -750,21 +790,9 @@ export function ResetBillingForm({ workspace, pathname, error }: { workspace: st
  * Card details, invoices and receipts live on Stripe's own billing page.
  * sudo never shows a card field: staff send the customer a link instead.
  */
-export function BillingLinkSection({
-  link,
-  pathname,
-  error,
-}: {
-  link: BillingLink | null;
-  pathname: string;
-  error: SectionError;
-}) {
+export function BillingLinkSection({ link, pathname, error }: { link: BillingLink | null; pathname: string; error: SectionError }) {
   return (
-    <Section
-      id="billing-link"
-      title="Stripe billing page"
-      description="Where the customer updates their card and sees invoices. g1t never takes card numbers."
-    >
+    <Section id="billing-link" title="Stripe billing page" description="Where the customer updates their card and sees invoices. g1t never takes card numbers.">
       {error && (
         <div className="mb-4">
           <Notice tone="error">{error.error}</Notice>
@@ -873,8 +901,6 @@ export function LedgerSection({
     </Section>
   );
 }
-
-
 
 export function AuditSection({ audit, description = "Every change made in sudo, and by whom." }: { audit: AdminAction[]; description?: ReactNode }) {
   return (

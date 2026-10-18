@@ -138,10 +138,18 @@ export function CommentBar({ busy, onSend, onMore }: { busy: boolean; onSend: (b
   const ready = text.trim().length > 0 && !busy;
   const send = () => {
     if (!ready) return;
-    void onSend(text.trim()).then(() => setText(""), () => undefined);
+    void onSend(text.trim()).then(
+      () => setText(""),
+      () => undefined,
+    );
   };
   return (
-    <View style={[styles.bar, { borderTopColor: colors.line, backgroundColor: colors.surface, paddingBottom: keyboard ? space.sm : Math.max(insets.bottom, space.sm) }]}>
+    <View
+      style={[
+        styles.bar,
+        { borderTopColor: colors.line, backgroundColor: colors.surface, paddingBottom: keyboard ? space.sm : Math.max(insets.bottom, space.sm) },
+      ]}
+    >
       <Pressable accessibilityRole="button" accessibilityLabel="More actions" onPress={onMore} style={[styles.round, { backgroundColor: colors.raised }]}>
         <Ellipsis size={20} color={colors.fg} />
       </Pressable>
@@ -170,7 +178,24 @@ const styles = StyleSheet.create({
   chip: { flexDirection: "row", alignItems: "center", gap: 4, borderWidth: 1, borderRadius: radius.full, paddingHorizontal: space.sm, paddingVertical: 1 },
   row: { flexDirection: "row", gap: space.md, paddingHorizontal: space.lg, paddingVertical: space.md, borderBottomWidth: StyleSheet.hairlineWidth },
   meta: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 },
-  bar: { flexDirection: "row", alignItems: "flex-end", gap: space.sm, paddingHorizontal: space.md, paddingTop: space.sm, borderTopWidth: StyleSheet.hairlineWidth },
-  input: { flex: 1, minHeight: 40, maxHeight: 140, borderRadius: radius.lg, borderWidth: 1, paddingHorizontal: space.md, paddingTop: 10, paddingBottom: 10, fontSize: 15 },
+  bar: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: space.sm,
+    paddingHorizontal: space.md,
+    paddingTop: space.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  input: {
+    flex: 1,
+    minHeight: 40,
+    maxHeight: 140,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    paddingHorizontal: space.md,
+    paddingTop: 10,
+    paddingBottom: 10,
+    fontSize: 15,
+  },
   round: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
 });

@@ -16,7 +16,12 @@ export function actorOf(key: string | null | undefined): string | null {
   return at > 0 ? key.slice(at + 1) || null : null;
 }
 
-export async function publishDocEvent<T extends DocEventType>(events: ServiceBinding | undefined, type: T, data: EventPayloads[T] & DocPageEventData, actor: string | null): Promise<void> {
+export async function publishDocEvent<T extends DocEventType>(
+  events: ServiceBinding | undefined,
+  type: T,
+  data: EventPayloads[T] & DocPageEventData,
+  actor: string | null,
+): Promise<void> {
   if (!events) return;
   try {
     await eventsClient(events).publish([{ type, source: "docs", repoId: null, actor: actorOf(actor), data } as never]);

@@ -9,14 +9,23 @@ type Tag = Record<string, string>;
 
 test("public landing pages opt into a canonical without affecting other routes", () => {
   const args = { location: { pathname: "/features/" }, matches: [{ id: "root", loaderData: { addresses: { site: "https://forge.example", og: null } } }] };
-  assert.deepEqual(page(args, { title: "Features", canonical: true }).find((tag) => "rel" in tag && tag.rel === "canonical"), { tagName: "link", rel: "canonical", href: "https://forge.example/features" });
-  assert.equal(page(args, { title: "Features" }).find((tag) => "rel" in tag && tag.rel === "canonical"), undefined);
+  assert.deepEqual(
+    page(args, { title: "Features", canonical: true }).find((tag) => "rel" in tag && tag.rel === "canonical"),
+    { tagName: "link", rel: "canonical", href: "https://forge.example/features" },
+  );
+  assert.equal(
+    page(args, { title: "Features" }).find((tag) => "rel" in tag && tag.rel === "canonical"),
+    undefined,
+  );
 });
 
 test("the homepage declares its canonical URL using the installation's origin", () => {
   for (const site of ["https://g1t.sh", "https://forge.example"]) {
     const descriptors = page({ location: { pathname: "/" }, matches: [{ id: "root", loaderData: { addresses: { site, og: null } } }] }, { title: "g1t" });
-    assert.deepEqual(descriptors.find((tag) => "rel" in tag && tag.rel === "canonical"), { tagName: "link", rel: "canonical", href: `${site}/` });
+    assert.deepEqual(
+      descriptors.find((tag) => "rel" in tag && tag.rel === "canonical"),
+      { tagName: "link", rel: "canonical", href: `${site}/` },
+    );
   }
 });
 

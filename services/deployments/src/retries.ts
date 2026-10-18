@@ -51,12 +51,7 @@ export type RetryDecision =
  * them stop; fewer wait `afterMs`, doubled for each failure after the
  * first. With `backoff` off (an event's delivery) only stopping applies.
  */
-export function retryDecision(
-  history: PastBuild[],
-  now: number,
-  afterMs: number,
-  options: { backoff?: boolean; max?: number } = {},
-): RetryDecision {
+export function retryDecision(history: PastBuild[], now: number, afterMs: number, options: { backoff?: boolean; max?: number } = {}): RetryDecision {
   const last = history[0];
   if (!last) return { kind: "build" };
   const max = options.max ?? MAX_IDENTICAL_FAILURES;

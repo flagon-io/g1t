@@ -64,7 +64,10 @@ export function FolioHeader({
   ];
   return (
     // Right under the top bar, edge to edge, and one block with it (data-page-head in components/shell.tsx).
-    <div data-page-head="sticky" className="sticky top-(--topbar-h) z-20 -mx-4 flex h-14 items-center gap-2 border-b border-line bg-bg/90 px-4 backdrop-blur sm:-mx-6 sm:px-5 lg:-mx-8">
+    <div
+      data-page-head="sticky"
+      className="sticky top-(--topbar-h) z-20 -mx-4 flex h-14 items-center gap-2 border-b border-line bg-bg/90 px-4 backdrop-blur sm:-mx-6 sm:px-5 lg:-mx-8"
+    >
       <div className="min-w-0 grow">
         <Crumbs items={crumbs} />
       </div>
@@ -78,9 +81,21 @@ export function FolioHeader({
         // A quiet dot: green once the room is in step with this page, faint
         // until then. The page is readable and editable either way; what is
         // typed before the room answers goes to it then (provider.ts).
-        <Hint label={status === "synced" ? "Live: everyone's changes show as they happen." : status === "closed" ? "No longer live." : "Connecting to the live document…"}>
-          <span className="flex size-8 shrink-0 items-center justify-center" tabIndex={0} aria-label={status === "synced" ? "Live" : status === "closed" ? "Not live" : "Connecting"} data-live={status}>
-            <span className={`size-2 rounded-full ${status === "synced" ? "bg-success" : status === "closed" ? "bg-line" : "bg-faint/50 animate-pulse"}`} aria-hidden="true" />
+        <Hint
+          label={
+            status === "synced" ? "Live: everyone's changes show as they happen." : status === "closed" ? "No longer live." : "Connecting to the live document…"
+          }
+        >
+          <span
+            className="flex size-8 shrink-0 items-center justify-center"
+            tabIndex={0}
+            aria-label={status === "synced" ? "Live" : status === "closed" ? "Not live" : "Connecting"}
+            data-live={status}
+          >
+            <span
+              className={`size-2 rounded-full ${status === "synced" ? "bg-success" : status === "closed" ? "bg-line" : "bg-faint/50 animate-pulse"}`}
+              aria-hidden="true"
+            />
           </span>
         </Hint>
       )}
@@ -97,12 +112,27 @@ export function FolioHeader({
         </span>
       )}
       {actions}
-      <Button type="button" onClick={() => setSharing(true)} variant="outline" size="sm" className="text-xs text-fg/85 hover:bg-raised max-md:size-10 max-md:justify-center max-md:px-0 font-normal" aria-label="Share">
+      <Button
+        type="button"
+        onClick={() => setSharing(true)}
+        variant="outline"
+        size="sm"
+        className="text-xs text-fg/85 hover:bg-raised max-md:size-10 max-md:justify-center max-md:px-0 font-normal"
+        aria-label="Share"
+      >
         <Share2 size={13} /> <span className="max-md:hidden">Share</span>
       </Button>
       {comments && (
         <Hint label={comments.open ? "Hide comments" : "Comments"}>
-          <Button type="button" onClick={comments.onToggle} aria-pressed={comments.open} aria-label="Comments" variant="ghost" size="icon-sm" className="text-faint max-md:size-10">
+          <Button
+            type="button"
+            onClick={comments.onToggle}
+            aria-pressed={comments.open}
+            aria-label="Comments"
+            variant="ghost"
+            size="icon-sm"
+            className="text-faint max-md:size-10"
+          >
             <MessageSquare size={16} />
           </Button>
         </Hint>

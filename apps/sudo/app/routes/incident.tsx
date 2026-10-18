@@ -94,12 +94,19 @@ export async function action({ params, request, context }: Route.ActionArgs) {
     return back(status === "resolved" ? "resolved" : isPublic ? "update" : "note");
   }
   if (intent === "roles") {
-    const r = await unwrap(statusAdmin.roles(id, { commander: text(form, "commander") || null, communications: text(form, "communications") || null, by: staff.email }));
+    const r = await unwrap(
+      statusAdmin.roles(id, { commander: text(form, "commander") || null, communications: text(form, "communications") || null, by: staff.email }),
+    );
     return !r.ok ? failed(r.error) : back("roles", "#roles");
   }
   if (intent === "publish") {
     const r = await unwrap(
-      statusAdmin.publish(id, { title: text(form, "title") || null, message: String(form.get("message") ?? ""), notify: form.get("notify") === "on", by: staff.email }),
+      statusAdmin.publish(id, {
+        title: text(form, "title") || null,
+        message: String(form.get("message") ?? ""),
+        notify: form.get("notify") === "on",
+        by: staff.email,
+      }),
     );
     return !r.ok ? failed(r.error) : back("published");
   }
@@ -178,15 +185,18 @@ function Header({ incident, now }: { incident: AdminIncidentDetail; now: string 
       </div>
       <h1 className="mt-2 text-2xl font-semibold tracking-tight wrap-break-word">{incident.title}</h1>
       <p className="mt-1 text-sm text-muted">
-        Impact began <When at={incident.started_at} time /> · declared by <span className="font-mono text-xs">{incident.created_by === "status" ? "the checks" : incident.created_by}</span>
+        Impact began <When at={incident.started_at} time /> · declared by{" "}
+        <span className="font-mono text-xs">{incident.created_by === "status" ? "the checks" : incident.created_by}</span>
         {incident.commander && (
           <>
-            {" "}· IC <span className="font-mono text-xs">{incident.commander}</span>
+            {" "}
+            · IC <span className="font-mono text-xs">{incident.commander}</span>
           </>
         )}
         {incident.communications && (
           <>
-            {" "}· comms <span className="font-mono text-xs">{incident.communications}</span>
+            {" "}
+            · comms <span className="font-mono text-xs">{incident.communications}</span>
           </>
         )}
       </p>
@@ -197,7 +207,11 @@ function Header({ incident, now }: { incident: AdminIncidentDetail; now: string 
           tone={open ? "warn" : "mint"}
           hint={open ? `${severityLabel(incident.severity)} · ${statusLabel(incident.status)}` : <When at={incident.resolved_at} time />}
         />
-        <Timer label="To acknowledge" value={duration(d.to_acknowledge)} hint={incident.acknowledged_at ? <When at={incident.acknowledged_at} time /> : "Not yet"} />
+        <Timer
+          label="To acknowledge"
+          value={duration(d.to_acknowledge)}
+          hint={incident.acknowledged_at ? <When at={incident.acknowledged_at} time /> : "Not yet"}
+        />
         <Timer label="To mitigate" value={duration(d.to_mitigate)} hint={incident.mitigated_at ? <When at={incident.mitigated_at} time /> : "At monitoring"} />
         <Timer label="To resolve" value={duration(d.to_resolve)} hint={incident.resolved_at ? <When at={incident.resolved_at} time /> : "Still open"} />
       </div>
@@ -209,7 +223,11 @@ function UpdateForm({ incident, components, error }: { incident: AdminIncidentDe
   const draft = incident.visibility === "draft";
   const current = new Map(incident.components.map((c) => [c.key, c.impact]));
   return (
-    <Section id="update" title={draft ? "Add a note" : "Post an update"} description={draft ? "Drafts take notes and changes; publish it to post publicly." : "A public update goes on the status page; a note stays here."}>
+    <Section
+      id="update"
+      title={draft ? "Add a note" : "Post an update"}
+      description={draft ? "Drafts take notes and changes; publish it to post publicly." : "A public update goes on the status page; a note stays here."}
+    >
       <form method="post" action="#update" className="space-y-4">
         <input type="hidden" name="intent" value="update" />
         {error && <Notice tone="error">{error}</Notice>}
@@ -255,7 +273,12 @@ function UpdateForm({ incident, components, error }: { incident: AdminIncidentDe
           </div>
         </details>
         <Field label="Message">
-          <Textarea name="message" rows={4} maxLength={4000} placeholder={draft ? "What you found, for the team." : "What changed, in a sentence or two, for the people affected."} />
+          <Textarea
+            name="message"
+            rows={4}
+            maxLength={4000}
+            placeholder={draft ? "What you found, for the team." : "What changed, in a sentence or two, for the people affected."}
+          />
         </Field>
         <div className="flex flex-wrap items-center justify-between gap-3">
           {!draft ? (
@@ -302,7 +325,9 @@ export default function Incident({ loaderData, actionData }: Route.ComponentProp
 
       <div className="mt-4 space-y-3">
         {done && <Notice tone="ok">{done}</Notice>}
-        {failed && !["update", "roles", "followup_add", "followup_set", "resolve", "publish", "dismiss"].includes(failed.intent) && <Notice tone="error">{failed.error}</Notice>}
+        {failed && !["update", "roles", "followup_add", "followup_set", "resolve", "publish", "dismiss"].includes(failed.intent) && (
+          <Notice tone="error">{failed.error}</Notice>
+        )}
       </div>
 
       {incident.visibility === "draft" && (
@@ -374,7 +399,14 @@ export default function Incident({ loaderData, actionData }: Route.ComponentProp
               <form method="post" action="#resolve" className="space-y-3">
                 <input type="hidden" name="intent" value="resolve" />
                 {errorFor("resolve") && <Notice tone="error">{errorFor("resolve")}</Notice>}
-                <Textarea name="message" rows={3} required maxLength={4000} aria-label="Resolution update" placeholder="Pushes work again. A bad deploy was rolled back; nothing was lost." />
+                <Textarea
+                  name="message"
+                  rows={3}
+                  required
+                  maxLength={4000}
+                  aria-label="Resolution update"
+                  placeholder="Pushes work again. A bad deploy was rolled back; nothing was lost."
+                />
                 <label className="flex items-center gap-2 text-sm">
                   <input type="checkbox" name="notify" defaultChecked={notifyByDefault(incident.severity)} className="accent-(--g1t-accent)" />
                   Email subscribers
@@ -387,7 +419,12 @@ export default function Incident({ loaderData, actionData }: Route.ComponentProp
           )}
 
           {!open && isPublic && (
-            <Section title="Postmortem" description={incident.postmortem_published_at ? "Published on the incident's page." : incident.postmortem ? "Drafted, not published." : "Not started."}>
+            <Section
+              title="Postmortem"
+              description={
+                incident.postmortem_published_at ? "Published on the incident's page." : incident.postmortem ? "Drafted, not published." : "Not started."
+              }
+            >
               <div className="flex flex-wrap items-center gap-2">
                 <Link to={`/incidents/${incident.id}/postmortem`} className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline">
                   <FileText size={14} aria-hidden="true" />

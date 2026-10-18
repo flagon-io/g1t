@@ -50,7 +50,10 @@ test("the Work list's filters come from its address", () => {
 
 test("the filters go back into the address in one order, leaving out what is unset", () => {
   assert.equal(workQuery({ state: "open" }), "");
-  assert.equal(workQuery({ state: "closed", label: "bug", repo: "web", role: "target", milestone: 2, assignee: "ana" }), "state=closed&repo=web&role=target&label=bug&milestone=2&assignee=ana");
+  assert.equal(
+    workQuery({ state: "closed", label: "bug", repo: "web", role: "target", milestone: 2, assignee: "ana" }),
+    "state=closed&repo=web&role=target&label=bug&milestone=2&assignee=ana",
+  );
   // A role without a repository means nothing.
   assert.equal(workQuery({ role: "target" }), "");
   const current = workFilters(query("repo=web&label=bug"));

@@ -10,34 +10,34 @@ directories deep and outside `node_modules`, `vendor`, `target`, `dist`
 and the like. From them come the dependency graph, its SBOM, vulnerability
 alerts and [security updates](/guides/security/#security-updates).
 
-| Feature | Public repositories | Private repositories |
-| --- | --- | --- |
-| Dependency graph and SBOM | Free | Free |
-| Vulnerability alerts and security updates | Free | Free |
-| Dependency review | Free | With the g1t plan |
+| Feature                                   | Public repositories | Private repositories |
+| ----------------------------------------- | ------------------- | -------------------- |
+| Dependency graph and SBOM                 | Free                | Free                 |
+| Vulnerability alerts and security updates | Free                | Free                 |
+| Dependency review                         | Free                | With the g1t plan    |
 
 ## The dependency graph
 
 `g1t.sh/<owner>/<project>/security/dependency-graph` lists every package the
 lockfiles resolve, per lockfile, with:
 
-| Column | |
-| --- | --- |
-| Relationship | **Direct** (the project asks for it) or **transitive** (another package does), where the lockfile says; **not said** where it does not. |
-| Development | Whether it is for development or tests only, where the lockfile says. |
-| License | The license the lockfile records (npm's lockfiles do; most others do not). |
-| Vulnerabilities | Open vulnerability alerts on that version. |
+| Column          |                                                                                                                                         |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Relationship    | **Direct** (the project asks for it) or **transitive** (another package does), where the lockfile says; **not said** where it does not. |
+| Development     | Whether it is for development or tests only, where the lockfile says.                                                                   |
+| License         | The license the lockfile records (npm's lockfiles do; most others do not).                                                              |
+| Vulnerabilities | Open vulnerability alerts on that version.                                                                                              |
 
 What each lockfile says:
 
-| Lockfile | Direct or transitive | Development | License |
-| --- | --- | --- | --- |
-| `package-lock.json` (v2, v3) | From the project's and its workspaces' own `dependencies` | Yes | Yes |
-| `pnpm-lock.yaml` | From `importers` (or the top-level lists in older files) | Yes | No |
-| `Cargo.lock` | From the dependencies of the workspace's own crates | No | No |
-| `go.mod` | `// indirect` marks transitive | No | No |
-| `requirements.txt` | Every line is direct, unless pip-compile wrote it: then its `# via` notes say | No | No |
-| `yarn.lock`, `go.sum`, `poetry.lock`, `package-lock.json` v1 | Not said | v1 only | No |
+| Lockfile                                                     | Direct or transitive                                                          | Development | License |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------- | ----------- | ------- |
+| `package-lock.json` (v2, v3)                                 | From the project's and its workspaces' own `dependencies`                     | Yes         | Yes     |
+| `pnpm-lock.yaml`                                             | From `importers` (or the top-level lists in older files)                      | Yes         | No      |
+| `Cargo.lock`                                                 | From the dependencies of the workspace's own crates                           | No          | No      |
+| `go.mod`                                                     | `// indirect` marks transitive                                                | No          | No      |
+| `requirements.txt`                                           | Every line is direct, unless pip-compile wrote it: then its `# via` notes say | No          | No      |
+| `yarn.lock`, `go.sum`, `poetry.lock`, `package-lock.json` v1 | Not said                                                                      | v1 only     | No      |
 
 ## Exporting an SBOM
 
@@ -95,12 +95,12 @@ same comment.
 
 In the repository's **Security settings**:
 
-| Setting | Default | |
-| --- | --- | --- |
-| Dependency review | On | Whether pull requests get the check. |
-| Fail on vulnerabilities of | High severity or higher | Critical, high, medium, any severity, or never. |
-| Licenses not allowed | None | SPDX ids, such as `GPL-3.0-only, AGPL-3.0-only`. An `OR` expression passes when any side is allowed. |
-| Comment the summary | On | Whether the review comments on the pull request. |
+| Setting                    | Default                 |                                                                                                      |
+| -------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------- |
+| Dependency review          | On                      | Whether pull requests get the check.                                                                 |
+| Fail on vulnerabilities of | High severity or higher | Critical, high, medium, any severity, or never.                                                      |
+| Licenses not allowed       | None                    | SPDX ids, such as `GPL-3.0-only, AGPL-3.0-only`. An `OR` expression passes when any side is allowed. |
+| Comment the summary        | On                      | Whether the review comments on the pull request.                                                     |
 
 Licenses come from the lockfile, so only npm's packages can be refused for
 one today.
@@ -123,16 +123,16 @@ be dismissed with a reason and reopened.
 
 ## API and MCP
 
-| Route | What it does | Scope |
-| --- | --- | --- |
-| `GET /repos/{owner}/{name}/dependency-graph` | The graph, per lockfile. | `security:read` |
-| `GET /repos/{owner}/{name}/dependency-graph/sbom` | The SPDX document, in `sbom`. | `security:read` |
-| `GET /repos/{owner}/{name}/dependency-graph/compare/{basehead}` | What changed between two commits, and whether it passes review. | `security:read` |
+| Route                                                               | What it does                                                                | Scope            |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------- | ---------------- |
+| `GET /repos/{owner}/{name}/dependency-graph`                        | The graph, per lockfile.                                                    | `security:read`  |
+| `GET /repos/{owner}/{name}/dependency-graph/sbom`                   | The SPDX document, in `sbom`.                                               | `security:read`  |
+| `GET /repos/{owner}/{name}/dependency-graph/compare/{basehead}`     | What changed between two commits, and whether it passes review.             | `security:read`  |
 | `POST /repos/{owner}/{name}/pulls/{number}/dependency-review/rerun` | Runs a pull request's Dependency review check again and returns the review. | `security:write` |
-| `GET /repos/{owner}/{name}/vulnerability-alerts` | Lists alerts; filter with `state`, `severity`, `ecosystem`, `package`. | `security:read` |
-| `GET /workspaces/{workspace}/vulnerability-alerts` | The same across a workspace. | `security:read` |
-| `GET /repos/{owner}/{name}/vulnerability-alerts/{id}` | One alert. | `security:read` |
-| `PATCH /repos/{owner}/{name}/vulnerability-alerts/{id}` | `state` `dismissed` with `reason` and `comment`, or `open`. | `security:write` |
+| `GET /repos/{owner}/{name}/vulnerability-alerts`                    | Lists alerts; filter with `state`, `severity`, `ecosystem`, `package`.      | `security:read`  |
+| `GET /workspaces/{workspace}/vulnerability-alerts`                  | The same across a workspace.                                                | `security:read`  |
+| `GET /repos/{owner}/{name}/vulnerability-alerts/{id}`               | One alert.                                                                  | `security:read`  |
+| `PATCH /repos/{owner}/{name}/vulnerability-alerts/{id}`             | `state` `dismissed` with `reason` and `comment`, or `open`.                 | `security:write` |
 
 Over MCP, the [`security` tool](/reference/mcp/#security) has
 `dependency_graph`, `sbom`, `compare_dependencies`, `rerun_dependency_review`, `vulnerability_alerts`,

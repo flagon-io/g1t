@@ -12,7 +12,8 @@ import { cn } from "../lib/cn";
 import { Hint } from "./ui/hint";
 
 const BOX = "inline-flex h-8 shrink-0 items-center overflow-hidden rounded-md border border-line text-[0.8125rem]";
-const FACE = "inline-flex h-full items-center gap-1.5 px-2.5 text-fg/80 outline-none hover:bg-surface hover:text-fg focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent";
+const FACE =
+  "inline-flex h-full items-center gap-1.5 px-2.5 text-fg/80 outline-none hover:bg-surface hover:text-fg focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent";
 
 /** What the header knows about its forks: how many (at most 100 counted) and whether it can be forked. */
 export type Forking = {

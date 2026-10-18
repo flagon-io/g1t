@@ -131,9 +131,9 @@ export default function WorkspaceAi({ loaderData, actionData }: Route.ComponentP
         {owner && <GettingStartedButton slug={slug} />}
       </div>
       <p className="mt-1.5 mb-6 border-b border-line pb-6 text-sm text-muted">
-        The models g1t works with in {slug}, on your own keys: Ask and @g1t in Chat answer with one, and an Anthropic key
-        starts sessions on work items. Use a frontier lab or a platform, or a model you host yourself. g1t hosts no model for
-        this and bills nothing for it: what it costs is on your provider's bill.
+        The models g1t works with in {slug}, on your own keys: Ask and @g1t in Chat answer with one, and an Anthropic key starts sessions on work items. Use a
+        frontier lab or a platform, or a model you host yourself. g1t hosts no model for this and bills nothing for it: what it costs is on your provider's
+        bill.
       </p>
       {justAdded && <Added connection={justAdded} />}
       <ErrorText>{askError || addError ? null : error}</ErrorText>
@@ -154,9 +154,7 @@ export default function WorkspaceAi({ loaderData, actionData }: Route.ComponentP
           Providers
         </h2>
         {connections.length === 0 ? (
-          <p className="mb-4 text-sm text-muted">
-            {owner ? "None yet. Add one below." : `None yet. An owner of ${slug} can add one.`}
-          </p>
+          <p className="mb-4 text-sm text-muted">{owner ? "None yet. Add one below." : `None yet. An owner of ${slug} can add one.`}</p>
         ) : (
           <Card asChild divided className="mb-4 overflow-hidden">
             <ul>
@@ -240,9 +238,7 @@ function ProviderRow({
           </Form>
         )}
       </div>
-      {tested?.id === connection.id && (
-        <p className={`mt-3 text-sm ${tested.ok ? "text-success" : "text-danger"}`}>{tested.message}</p>
-      )}
+      {tested?.id === connection.id && <p className={`mt-3 text-sm ${tested.ok ? "text-success" : "text-danger"}`}>{tested.message}</p>}
       {connection.lastError && (
         <p className="mt-3 flex items-start gap-2 text-xs text-warn">
           <AlertTriangle size={13} className="mt-0.5 shrink-0" />
@@ -287,8 +283,7 @@ function AskSetting({
         <p className="mt-1 text-xs text-muted">The top bar's Ask, and @g1t in Chat, answer with this provider and model.</p>
         {setup?.provider_id && !setup.problem && (
           <p className="mt-3 text-sm">
-            Answers with <span className="font-medium">{setup.provider_name}</span> ·{" "}
-            <span className="font-mono text-[0.8125rem]">{modelLabel(setup)}</span>
+            Answers with <span className="font-medium">{setup.provider_name}</span> · <span className="font-mono text-[0.8125rem]">{modelLabel(setup)}</span>
           </p>
         )}
         {setup?.problem && <p className="mt-3 text-sm text-warn">{setup.problem}</p>}
@@ -434,9 +429,7 @@ function AddForm({ provider, slug, error }: { provider: AiProvider; slug: string
         <div className="flex items-center gap-3">
           <AiProviderMark provider={provider} />
           <div className="grow">
-            <h3 className="font-medium">
-              Add {isEndpoint(provider) ? `an ${AI_PROVIDERS[provider].label}` : AI_PROVIDERS[provider].label}
-            </h3>
+            <h3 className="font-medium">Add {isEndpoint(provider) ? `an ${AI_PROVIDERS[provider].label}` : AI_PROVIDERS[provider].label}</h3>
             <p className="text-xs text-muted">{AI_PROVIDER_LOOKS[provider].blurb}</p>
           </div>
           <Link to={`/${slug}/-/ai`} className="rounded-md p-1.5 text-faint hover:bg-raised hover:text-fg" aria-label="Close">
@@ -476,4 +469,3 @@ function Added({ connection }: { connection: AiConnection }) {
     </div>
   );
 }
-

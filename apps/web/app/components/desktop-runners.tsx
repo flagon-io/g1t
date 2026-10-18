@@ -5,9 +5,28 @@ import { Link } from "react-router";
 import type { DesktopBackend, DesktopDiagnosis, DesktopRunner, DesktopUpdate, Runner } from "@g1t/contracts";
 
 import { useBusy } from "../lib/busy";
-import { BACKEND_LABEL, type DesktopRunnerAction, type DesktopRunnerCapability, type DesktopRunnerView, desktopRunner, jobHref, kindStatusKey, runnerStatusKey, useDesktopRunner } from "../lib/desktop-runner";
+import {
+  BACKEND_LABEL,
+  type DesktopRunnerAction,
+  type DesktopRunnerCapability,
+  type DesktopRunnerView,
+  desktopRunner,
+  jobHref,
+  kindStatusKey,
+  runnerStatusKey,
+  useDesktopRunner,
+} from "../lib/desktop-runner";
 import { EmptyState, TimeAgo } from "./ui";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./ui/alert-dialog";
 import { Badge, type BadgeTone } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -41,7 +60,10 @@ export const ICON: Record<string, ReactNode> = {
 
 /** How a kind of job keeps each job from the computer, and what that means. */
 const ISOLATION: Record<string, { label: string; hint: string }> = {
-  "nested-container": { label: "Fresh container in its VM", hint: "Each job runs in a fresh container inside the runner's own Linux VM, and is removed after." },
+  "nested-container": {
+    label: "Fresh container in its VM",
+    hint: "Each job runs in a fresh container inside the runner's own Linux VM, and is removed after.",
+  },
   vm: { label: "A VM of its own", hint: "Each job runs in a VM of its own, such as a Windows Sandbox, discarded after." },
 };
 
@@ -134,7 +156,14 @@ export function Actions({
   return (
     <>
       {actions.map((action, at) => (
-        <ActionButton key={action.id} action={action} variant={primary && at === 0 ? "secondary" : "outline"} status={status} working={working} onError={onError} />
+        <ActionButton
+          key={action.id}
+          action={action}
+          variant={primary && at === 0 ? "secondary" : "outline"}
+          status={status}
+          working={working}
+          onError={onError}
+        />
       ))}
     </>
   );
@@ -288,7 +317,9 @@ export function KindCard({
       {capability.about && <p className="text-sm text-muted">{capability.about}</p>}
       {capability.job && (
         <div className="rounded-lg bg-raised px-3 py-2 text-sm">
-          <span className="block text-[0.6875rem] font-medium tracking-wide text-muted uppercase">{capability.job.kind === "agent" ? "Sandbox run" : "Running"}</span>
+          <span className="block text-[0.6875rem] font-medium tracking-wide text-muted uppercase">
+            {capability.job.kind === "agent" ? "Sandbox run" : "Running"}
+          </span>
           {href ? (
             <Link to={href} className="font-medium text-fg underline-offset-4 hover:underline">
               {capability.job.name}
@@ -370,8 +401,11 @@ export function DesktopRunners({ desktops, slug, runners = [] }: { desktops: Des
   if (rows.length === 0) {
     return (
       <EmptyState title="No desktops yet">
-        The <Link to="/download" className="underline underline-offset-2">g1t desktop app</Link> runs this workspace&apos;s self-hosted jobs while it&apos;s open, sandboxed, with nothing to set up.
-        Open it signed in as an owner of {slug}.
+        The{" "}
+        <Link to="/download" className="underline underline-offset-2">
+          g1t desktop app
+        </Link>{" "}
+        runs this workspace&apos;s self-hosted jobs while it&apos;s open, sandboxed, with nothing to set up. Open it signed in as an owner of {slug}.
       </EmptyState>
     );
   }

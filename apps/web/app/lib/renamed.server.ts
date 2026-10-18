@@ -41,12 +41,7 @@ export async function redirectIfRenamed(request: Request, slug: string): Promise
  * there. A private repository's new address is never shown to someone who
  * cannot see it; they get the 404 as before.
  */
-export async function redirectIfTransferred(
-  request: Request,
-  owner: string,
-  repo: string,
-  viewer: Viewer,
-): Promise<void> {
+export async function redirectIfTransferred(request: Request, owner: string, repo: string, viewer: Viewer): Promise<void> {
   let now: { namespace: string; name: string } | null = null;
   try {
     now = await repos.resolvePath({ namespace: owner, name: repo });

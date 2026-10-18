@@ -1,16 +1,4 @@
-import {
-  ChevronDown,
-  ChevronRight,
-  Columns2,
-  FileDiff as FileIcon,
-  FileMinus,
-  FilePlus,
-  Files,
-  Folder,
-  MessageSquarePlus,
-  Rows3,
-  Search,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, Columns2, FileDiff as FileIcon, FileMinus, FilePlus, Files, Folder, MessageSquarePlus, Rows3, Search } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Form, Link } from "react-router";
 
@@ -102,12 +90,7 @@ export function Stat({ additions, deletions }: { additions: number; deletions: n
       <span className="text-danger">−{deletions}</span>
       <span className="hidden gap-px sm:flex" aria-hidden="true">
         {Array.from({ length: 5 }, (_, i) => (
-          <span
-            key={i}
-            className={`size-2 rounded-xs ${
-              total === 0 ? "bg-line" : i < green ? "bg-success" : "bg-danger"
-            }`}
-          />
+          <span key={i} className={`size-2 rounded-xs ${total === 0 ? "bg-line" : i < green ? "bg-success" : "bg-danger"}`} />
         ))}
       </span>
     </span>
@@ -148,19 +131,7 @@ function Code({ line }: { line: HighlightedLine | null }) {
 }
 
 /** The comments on a line and, when open, the box to add one. */
-function Thread({
-  path,
-  line,
-  comments,
-  open,
-  onClose,
-}: {
-  path: string;
-  line: number;
-  comments: Comment[];
-  open: boolean;
-  onClose: () => void;
-}) {
+function Thread({ path, line, comments, open, onClose }: { path: string; line: number; comments: Comment[]; open: boolean; onClose: () => void }) {
   // The box stays, saying it is posting, until the new comment shows above it.
   const count = useRef(comments.length);
   useEffect(() => {
@@ -199,7 +170,8 @@ function CommentButton({ line, onClick }: { line: number; onClick: (event: React
       type="button"
       aria-label={`Comment on line ${line}`}
       onClick={onClick}
-      variant="accent" size="icon"
+      variant="accent"
+      size="icon"
       className="absolute top-0 -right-2.5 z-10 hidden size-5 rounded group-hover:flex focus-visible:flex pointer-coarse:-right-1 pointer-coarse:flex pointer-coarse:size-7"
     >
       <MessageSquarePlus size={12} />
@@ -227,9 +199,7 @@ function UnifiedRows({ file, comments, canComment }: FileProps) {
               return (
                 <Fragment key={index}>
                   <tr className={`group ${ROW_STYLES[line.kind]}`}>
-                    <td className={`w-9 px-1 text-right select-none sm:w-12 sm:px-2 ${GUTTER_STYLES[line.kind]}`}>
-                      {line.old}
-                    </td>
+                    <td className={`w-9 px-1 text-right select-none sm:w-12 sm:px-2 ${GUTTER_STYLES[line.kind]}`}>{line.old}</td>
                     <td
                       // A tap on the number comments on the line: a touch screen has no hover for the button.
                       onClick={canComment && line.new != null ? () => setWriting(open ? null : line.new) : undefined}
@@ -246,9 +216,7 @@ function UnifiedRows({ file, comments, canComment }: FileProps) {
                         />
                       )}
                     </td>
-                    <td className={`w-4 text-center select-none sm:w-5 ${fileToneFor(line.kind)}`}>
-                      {MARKERS[line.kind]}
-                    </td>
+                    <td className={`w-4 text-center select-none sm:w-5 ${fileToneFor(line.kind)}`}>{MARKERS[line.kind]}</td>
                     <td className="pr-4 whitespace-pre">
                       <Code line={line} />
                     </td>
@@ -256,13 +224,7 @@ function UnifiedRows({ file, comments, canComment }: FileProps) {
                   {(here.length > 0 || open) && line.new != null && (
                     <tr>
                       <td colSpan={4} className="border-y border-line bg-surface p-3">
-                        <Thread
-                          path={file.path}
-                          line={line.new}
-                          comments={here}
-                          open={open}
-                          onClose={() => setWriting(null)}
-                        />
+                        <Thread path={file.path} line={line.new} comments={here} open={open} onClose={() => setWriting(null)} />
                       </td>
                     </tr>
                   )}
@@ -350,13 +312,7 @@ function SplitRows({ file, comments, canComment }: FileProps) {
                   {(here.length > 0 || open) && line != null && (
                     <tr>
                       <td colSpan={4} className="border-y border-line bg-surface p-3">
-                        <Thread
-                          path={file.path}
-                          line={line}
-                          comments={here}
-                          open={open}
-                          onClose={() => setWriting(null)}
-                        />
+                        <Thread path={file.path} line={line} comments={here} open={open} onClose={() => setWriting(null)} />
                       </td>
                     </tr>
                   )}
@@ -411,11 +367,7 @@ function NotLoaded({
     );
   }
   return (
-    <div
-      aria-busy="true"
-      className="px-4 py-3 text-xs text-faint"
-      style={{ height: Math.max(3, Math.min(deferred.lines ?? 3, LARGE_FILE_LINES)) * LINE_PX }}
-    >
+    <div aria-busy="true" className="px-4 py-3 text-xs text-faint" style={{ height: Math.max(3, Math.min(deferred.lines ?? 3, LARGE_FILE_LINES)) * LINE_PX }}>
       Loading the diff…
     </div>
   );
@@ -597,13 +549,13 @@ function FileSection({
         id={`file-${file.path}`}
         data-diff-file={file.path}
         // Lands below the site bar and the change's toolbar, whatever their height.
-       
       >
         <header
           // Sticks under the change's toolbar (its height is --diff-toolbar), not behind it.
           className={`sticky top-[calc(var(--topbar-h)+var(--diff-toolbar,0px))] z-20 flex items-center gap-2 border-line bg-surface/95 px-2 py-2 backdrop-blur sm:gap-2.5 sm:px-3 ${
             collapsed ? "rounded-xl" : "rounded-t-xl border-b"
-          }`}>
+          }`}
+        >
           <Button
             type="button"
             onClick={onToggle}
@@ -638,11 +590,7 @@ function FileSection({
               <Link to={`${fileBase}/${file.path}`} className="rounded px-1.5 py-0.5 text-muted hover:bg-raised hover:text-fg">
                 View
               </Link>
-              <Link
-                to={`${fileBase}/${file.path}?blame=1`}
-                rel="nofollow"
-                className="rounded px-1.5 py-0.5 text-muted hover:bg-raised hover:text-fg"
-              >
+              <Link to={`${fileBase}/${file.path}?blame=1`} rel="nofollow" className="rounded px-1.5 py-0.5 text-muted hover:bg-raised hover:text-fg">
                 Blame
               </Link>
             </span>
@@ -652,11 +600,7 @@ function FileSection({
               viewed ? "border-accent/40 bg-accent/10 text-accent" : "border-line text-muted hover:text-fg"
             }`}
           >
-            <Checkbox
-              checked={viewed}
-              onCheckedChange={(checked) => onViewed(checked === true)}
-              className="size-3.5 rounded-sm [&_svg]:size-2.5"
-            />
+            <Checkbox checked={viewed} onCheckedChange={(checked) => onViewed(checked === true)} className="size-3.5 rounded-sm [&_svg]:size-2.5" />
             <span className="sr-only sm:not-sr-only">Viewed</span>
           </label>
         </header>
@@ -687,9 +631,7 @@ function FileSection({
             ) : file.hunks.length === 0 ? (
               <p className="px-4 py-6 text-sm text-muted">No line changes{file.status === "added" ? ": an empty file" : ""}.</p>
             ) : (
-              <div className="overflow-x-auto">
-                {layout === "split" ? <SplitRows {...props} /> : <UnifiedRows {...props} />}
-              </div>
+              <div className="overflow-x-auto">{layout === "split" ? <SplitRows {...props} /> : <UnifiedRows {...props} />}</div>
             )}
           </div>
         )}
@@ -708,7 +650,7 @@ function treeOf(files: HighlightedFile[]): TreeNode[] {
     let node = root;
     parts.forEach((part, index) => {
       const path = parts.slice(0, index + 1).join("/");
-      let child = node.children.find((c) => c.name === part && !c.file === (index < parts.length - 1));
+      let child = node.children.find((c) => c.name === part && !c.file === index < parts.length - 1);
       if (!child) {
         child = { name: part, path, children: [] };
         if (index === parts.length - 1) child.file = file;
@@ -723,9 +665,7 @@ function treeOf(files: HighlightedFile[]): TreeNode[] {
       const only = current.children[0]!;
       current = { ...only, name: `${current.name}/${only.name}` };
     }
-    const children = current.children
-      .map(squash)
-      .sort((a, b) => Number(!!a.file) - Number(!!b.file) || a.name.localeCompare(b.name));
+    const children = current.children.map(squash).sort((a, b) => Number(!!a.file) - Number(!!b.file) || a.name.localeCompare(b.name));
     return { ...current, children };
   };
   return squash(root).children;
@@ -750,10 +690,7 @@ function Tree({
         if (!node.file) {
           return (
             <li key={node.path}>
-              <p
-                className="flex items-center gap-1.5 truncate py-1 font-mono text-xs text-faint"
-                style={{ paddingLeft: depth * 12 + 8 }}
-              >
+              <p className="flex items-center gap-1.5 truncate py-1 font-mono text-xs text-faint" style={{ paddingLeft: depth * 12 + 8 }}>
                 <Folder size={13} className="shrink-0" />
                 {node.name}
               </p>
@@ -811,9 +748,7 @@ export function DiffView({
   const { truncated } = comparison;
   const files: HighlightedFile[] = comparison.files;
   // The commits compared, so a file fetched later is the same change's.
-  const source = repo
-    ? `${repo}/diff-files.json?base=${comparison.base ?? ""}&head=${encodeURIComponent(comparison.head)}`
-    : null;
+  const source = repo ? `${repo}/diff-files.json?base=${comparison.base ?? ""}&head=${encodeURIComponent(comparison.head)}` : null;
   // A file linked to (`#file-<path>`) loads at once and opens, wherever it is.
   const [wanted, setWanted] = useState<string | null>(null);
   const ahead = useMemo(() => filesAhead(files), [files]);
@@ -890,9 +825,7 @@ export function DiffView({
 
   const shownFiles = useMemo(() => {
     const words = filter.toLowerCase().split(/\s+/).filter(Boolean);
-    return words.length === 0
-      ? files
-      : files.filter((file) => words.every((word) => file.path.toLowerCase().includes(word)));
+    return words.length === 0 ? files : files.filter((file) => words.every((word) => file.path.toLowerCase().includes(word)));
   }, [files, filter]);
   const tree = useMemo(() => treeOf(shownFiles), [shownFiles]);
 
@@ -904,9 +837,7 @@ export function DiffView({
       return next;
     });
     setActive(path);
-    requestAnimationFrame(() =>
-      document.getElementById(`file-${path}`)?.scrollIntoView({ behavior, block: "start" }),
-    );
+    requestAnimationFrame(() => document.getElementById(`file-${path}`)?.scrollIntoView({ behavior, block: "start" }));
   }, []);
 
   // After the viewed files are folded away (above), so a linked one opens.
@@ -931,9 +862,7 @@ export function DiffView({
     if (sections.length === 0) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        const top = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        const top = entries.filter((entry) => entry.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
         if (top) setActive((top.target as HTMLElement).dataset.diffFile ?? null);
       },
       { rootMargin: "-112px 0px -60% 0px" },
@@ -968,9 +897,7 @@ export function DiffView({
 
   if (files.length === 0) {
     return (
-      <EmptyState title="No changes">
-        {empty ?? "Nothing has been pushed to this pull request yet, or it matches the branch it would merge into."}
-      </EmptyState>
+      <EmptyState title="No changes">{empty ?? "Nothing has been pushed to this pull request yet, or it matches the branch it would merge into."}</EmptyState>
     );
   }
   const additions = files.reduce((sum, file) => sum + file.additions, 0);
@@ -992,10 +919,7 @@ export function DiffView({
         )}
         <span className="flex items-center gap-2 text-xs text-muted">
           <span className="h-1.5 w-20 overflow-hidden rounded-full bg-line">
-            <span
-              className="block h-full rounded-full bg-accent transition-all"
-              style={{ width: `${(viewed.size / files.length) * 100}%` }}
-            />
+            <span className="block h-full rounded-full bg-accent transition-all" style={{ width: `${(viewed.size / files.length) * 100}%` }} />
           </span>
           {viewed.size}/{files.length} viewed
         </span>
@@ -1072,7 +996,10 @@ export function DiffView({
                 className="h-10 w-full rounded-md border border-line bg-bg pr-3 pl-8 text-sm outline-none placeholder:text-faint focus:border-accent-dim"
               />
             </div>
-            <nav aria-label="Files changed" className="min-h-0 grow overflow-y-auto px-2 py-2 [&_button]:min-h-10 [&_button]:text-[0.8125rem] [&_p]:min-h-8 [&_p]:text-[0.8125rem]">
+            <nav
+              aria-label="Files changed"
+              className="min-h-0 grow overflow-y-auto px-2 py-2 [&_button]:min-h-10 [&_button]:text-[0.8125rem] [&_p]:min-h-8 [&_p]:text-[0.8125rem]"
+            >
               <Tree
                 nodes={tree}
                 depth={0}
@@ -1112,16 +1039,13 @@ export function DiffView({
                 data-1p-ignore
                 className="h-8 w-full rounded-md border border-line bg-surface/60 pr-7 pl-7 text-xs outline-none placeholder:text-faint focus:border-accent-dim"
               />
-              <kbd className="absolute top-1/2 right-2 -translate-y-1/2 rounded border border-line px-1 font-mono text-[0.625rem] text-faint">
-                t
-              </kbd>
+              <kbd className="absolute top-1/2 right-2 -translate-y-1/2 rounded border border-line px-1 font-mono text-[0.625rem] text-faint">t</kbd>
             </div>
             <nav className="mt-2 min-h-0 overflow-y-auto pb-2">
               <Tree nodes={tree} depth={0} active={active} viewed={viewed} onPick={jump} />
             </nav>
             <p className="mt-auto border-t border-line pt-2 text-[0.6875rem] text-faint">
-              <kbd className="font-mono">j</kbd>/<kbd className="font-mono">k</kbd> next and previous file,{" "}
-              <kbd className="font-mono">v</kbd> mark viewed
+              <kbd className="font-mono">j</kbd>/<kbd className="font-mono">k</kbd> next and previous file, <kbd className="font-mono">v</kbd> mark viewed
             </p>
           </aside>
         )}
@@ -1149,9 +1073,7 @@ export function DiffView({
             />
           ))}
           {shownFiles.length === 0 && <p className="py-8 text-center text-sm text-muted">No file matches.</p>}
-          {truncated && (
-            <p className="text-center text-sm text-muted">More files changed than one page lists: these are the first {files.length}.</p>
-          )}
+          {truncated && <p className="text-center text-sm text-muted">More files changed than one page lists: these are the first {files.length}.</p>}
         </div>
       </div>
     </div>

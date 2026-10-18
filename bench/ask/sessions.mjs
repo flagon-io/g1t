@@ -70,17 +70,30 @@ async function preflight() {
   add("claude CLI", claude.status === 0, claude.status === 0 ? claude.stdout.trim() : "not on PATH");
 
   const g1tBin = process.env.G1T_BIN ?? which("g1t");
-  add("g1t CLI (the plugin records through it)", g1tBin, g1tBin ?? "not on PATH and no G1T_BIN: install it from g1t.sh/download or `cargo build -p g1t` and set G1T_BIN");
+  add(
+    "g1t CLI (the plugin records through it)",
+    g1tBin,
+    g1tBin ?? "not on PATH and no G1T_BIN: install it from g1t.sh/download or `cargo build -p g1t` and set G1T_BIN",
+  );
 
   const pluginDir = join(ROOT, "plugins", "claude-code");
   if (flags.installed) {
     const list = spawnSync("claude", ["plugin", "list"], { encoding: "utf8" });
-    add("g1t plugin installed", /\bg1t\b/.test(list.stdout ?? ""), "claude plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git && claude plugin install g1t@g1t");
+    add(
+      "g1t plugin installed",
+      /\bg1t\b/.test(list.stdout ?? ""),
+      "claude plugin marketplace add https://g1t.sh/flagon-io/g1t-plugins.git && claude plugin install g1t@g1t",
+    );
   } else add("g1t plugin (--plugin-dir)", existsSync(join(pluginDir, ".claude-plugin", "plugin.json")), pluginDir);
 
   const hooks = existsSync(join(pluginDir, "hooks", "hooks.json")) ? JSON.parse(readFileSync(join(pluginDir, "hooks", "hooks.json"), "utf8")) : {};
   const subagentHooks = ["SubagentStart", "SubagentStop"].filter((h) => hooks.hooks?.[h]);
-  add("plugin records subagents (SubagentStart/SubagentStop hooks)", subagentHooks.length === 2, subagentHooks.length ? subagentHooks.join(", ") : "the plugin has no subagent hooks yet", false);
+  add(
+    "plugin records subagents (SubagentStart/SubagentStop hooks)",
+    subagentHooks.length === 2,
+    subagentHooks.length ? subagentHooks.join(", ") : "the plugin has no subagent hooks yet",
+    false,
+  );
 
   add("G1T_TOKEN", creds.api, creds.api ? "found" : "export G1T_TOKEN or put it in ~/.bashrc");
   add("site token (.credentials/g1t_token.txt)", creds.web, creds.web ? "found" : "missing");
@@ -88,12 +101,21 @@ async function preflight() {
 
   const repo = await api(`/repos/${REPO}`);
   const description = repo.data?.description ?? repo.data?.repository?.description ?? "";
-  add(`test repository ${REPO}`, repo.status === 200 && /test|scratch|lab/i.test(`${REPO} ${description}`), repo.status === 200 ? `"${description}"` : `API ${repo.status}`);
+  add(
+    `test repository ${REPO}`,
+    repo.status === 200 && /test|scratch|lab/i.test(`${REPO} ${description}`),
+    repo.status === 200 ? `"${description}"` : `API ${repo.status}`,
+  );
 
   // Does the server know child sessions yet? The session tool's schema says.
   const schema = await mcpSchema("session");
   const parentField = schema ? ["parent_id", "parent_session_id", "parent", "agent_id"].find((f) => schema.includes(`"${f}"`)) : null;
-  add("server: sessions take a parent (child sessions)", parentField, parentField ? `session tool has ${parentField}` : "the session tool has no parent field yet", false);
+  add(
+    "server: sessions take a parent (child sessions)",
+    parentField,
+    parentField ? `session tool has ${parentField}` : "the session tool has no parent field yet",
+    false,
+  );
 
   return { rows, ready: rows.filter((r) => r.blocking).every((r) => r.ok), pluginDir, g1tBin };
 }
@@ -102,7 +124,12 @@ async function mcpSchema(tool) {
   try {
     const response = await fetch("https://mcp.g1t.sh", {
       method: "POST",
-      headers: { authorization: `Bearer ${apiTokenValue()}`, "content-type": "application/json", accept: "application/json, text/event-stream", "user-agent": "g1t-ask-bench/1" },
+      headers: {
+        authorization: `Bearer ${apiTokenValue()}`,
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        "user-agent": "g1t-ask-bench/1",
+      },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
     });
     const json = await response.json();
@@ -145,7 +172,10 @@ function childEnv(extra = {}) {
 function runClaude({ cwd, issue, pluginDir, out }) {
   const mcpConfig = join(out, "mcp.json");
   // The token stays in the environment: Claude Code expands ${G1T_TOKEN}.
-  writeFileSync(mcpConfig, JSON.stringify({ mcpServers: { g1t: { type: "http", url: "https://mcp.g1t.sh", headers: { Authorization: "Bearer ${G1T_TOKEN}" } } } }, null, 2));
+  writeFileSync(
+    mcpConfig,
+    JSON.stringify({ mcpServers: { g1t: { type: "http", url: "https://mcp.g1t.sh", headers: { Authorization: "Bearer ${G1T_TOKEN}" } } } }, null, 2),
+  );
   const args = [
     "-p",
     prompt(issue),
@@ -191,12 +221,23 @@ function readStream(events) {
   for (const e of events) {
     for (const block of e.message?.content ?? []) {
       if (block.type === "tool_use" && (block.name === "Agent" || block.name === "Task")) {
-        subagents.push({ id: block.id, type: block.input?.subagent_type, description: block.input?.description, prompt: String(block.input?.prompt ?? "").slice(0, 400) });
+        subagents.push({
+          id: block.id,
+          type: block.input?.subagent_type,
+          description: block.input?.description,
+          prompt: String(block.input?.prompt ?? "").slice(0, 400),
+        });
       }
     }
   }
   const result = events.findLast((e) => e.type === "result");
-  return { sessionId: init?.session_id ?? result?.session_id ?? null, subagents, result: result ? { subtype: result.subtype, cost_usd: result.total_cost_usd, turns: result.num_turns, text: String(result.result ?? "").slice(0, 2000) } : null };
+  return {
+    sessionId: init?.session_id ?? result?.session_id ?? null,
+    subagents,
+    result: result
+      ? { subtype: result.subtype, cost_usd: result.total_cost_usd, turns: result.num_turns, text: String(result.result ?? "").slice(0, 2000) }
+      : null,
+  };
 }
 
 // --- the checks ----------------------------------------------------------------------
@@ -207,7 +248,11 @@ async function verify({ sessionId, harnessSessionId, issue, pull, subagents = []
   const sessions = await mcp("session", { action: "list", repo: REPO }).catch((e) => ({ error: e.message }));
   const list = Array.isArray(sessions) ? sessions : [];
   const session = list.find((s) => s.id === sessionId) ?? list.find((s) => harnessSessionId && s.harness_session_id === harnessSessionId) ?? null;
-  add("a session exists for the run", session, session ? `${session.id} (${session.harness}, ${session.state})` : `none of ${list.length} sessions on ${REPO} is ${sessionId ?? harnessSessionId}`);
+  add(
+    "a session exists for the run",
+    session,
+    session ? `${session.id} (${session.harness}, ${session.state})` : `none of ${list.length} sessions on ${REPO} is ${sessionId ?? harnessSessionId}`,
+  );
   if (!session) return checks;
   issue ??= session.issue;
   add("the session is linked to the issue", issue && session.issue === issue, `session issue ${session.issue ?? "none"}, expected ${issue ?? "?"}`);
@@ -215,16 +260,31 @@ async function verify({ sessionId, harnessSessionId, issue, pull, subagents = []
   // Children: whatever the server calls the parent link.
   const parentOf = (s) => s.parent_id ?? s.parent_session_id ?? s.parent?.id ?? s.parent ?? null;
   const children = list.filter((s) => parentOf(s) === session.id);
-  add("subagents appear as child sessions", children.length > 0, children.length ? `${children.length}: ${children.map((c) => c.id).join(", ")}` : `no session names ${session.id} as its parent${list.some((s) => parentOf(s)) ? "" : " (no session has a parent field at all)"}`);
-  if (subagents.length) add("one child per subagent the run spawned", children.length >= subagents.length, `${children.length} children for ${subagents.length} subagents`);
+  add(
+    "subagents appear as child sessions",
+    children.length > 0,
+    children.length
+      ? `${children.length}: ${children.map((c) => c.id).join(", ")}`
+      : `no session names ${session.id} as its parent${list.some((s) => parentOf(s)) ? "" : " (no session has a parent field at all)"}`,
+  );
+  if (subagents.length)
+    add("one child per subagent the run spawned", children.length >= subagents.length, `${children.length} children for ${subagents.length} subagents`);
   const detail = await mcp("session", { action: "get", repo: REPO, id: session.id }).catch(() => null);
   for (const child of children) {
     const task = child.title ?? child.task ?? child.description;
     const result = child.result ?? child.summary ?? child.end_reason;
-    add(`child ${child.id} has its task and result`, task && result, `task ${task ? `"${String(task).slice(0, 80)}"` : "missing"}; result ${result ? `"${String(result).slice(0, 80)}"` : "missing"}`);
+    add(
+      `child ${child.id} has its task and result`,
+      task && result,
+      `task ${task ? `"${String(task).slice(0, 80)}"` : "missing"}; result ${result ? `"${String(result).slice(0, 80)}"` : "missing"}`,
+    );
   }
   const entries = detail?.entries ?? [];
-  add("the session recorded tool calls", entries.some((e) => e.kind === "tool_call"), `${entries.length} entries`);
+  add(
+    "the session recorded tool calls",
+    entries.some((e) => e.kind === "tool_call"),
+    `${entries.length} entries`,
+  );
 
   // The pull request, and its link back to the issue and session.
   let pr = pull ?? session.pull ?? null;
@@ -246,10 +306,15 @@ async function verify({ sessionId, harnessSessionId, issue, pull, subagents = []
     return { status: response.status, html: response.ok ? await response.text() : "" };
   };
   const work = await page(`/${REPO}/work`);
-  add("the Work page shows the session", work.status === 200 && work.html.includes(session.id), `status ${work.status}${work.html.includes(session.id) ? "" : `, no ${session.id} on the page`}`);
+  add(
+    "the Work page shows the session",
+    work.status === 200 && work.html.includes(session.id),
+    `status ${work.status}${work.html.includes(session.id) ? "" : `, no ${session.id} on the page`}`,
+  );
   const sessionPage = await page(`/${REPO}/work/sessions/${session.id}`);
   add("the session's page loads", sessionPage.status === 200, `status ${sessionPage.status}`);
-  for (const child of children) add(`the session's page shows child ${child.id}`, sessionPage.html.includes(child.id) || (child.title && sessionPage.html.includes(child.title)), "");
+  for (const child of children)
+    add(`the session's page shows child ${child.id}`, sessionPage.html.includes(child.id) || (child.title && sessionPage.html.includes(child.title)), "");
   if (issue) {
     const issuePage = await page(`/${REPO}/issues/${issue}`);
     add("the issue's Work panel shows the session", issuePage.status === 200 && issuePage.html.includes(session.id), `status ${issuePage.status}`);
@@ -267,7 +332,11 @@ async function main() {
 
   if (VERIFY) {
     if (!flags.session) throw new Error("--verify needs --session ses_…");
-    const checks = await verify({ sessionId: String(flags.session), issue: flags.issue ? Number(flags.issue) : undefined, pull: flags.pull ? Number(flags.pull) : undefined });
+    const checks = await verify({
+      sessionId: String(flags.session),
+      issue: flags.issue ? Number(flags.issue) : undefined,
+      pull: flags.pull ? Number(flags.pull) : undefined,
+    });
     return report(out, { mode: "verify", preflight: pre.rows, checks });
   }
 
@@ -289,7 +358,9 @@ async function main() {
     const run = await runClaude({ cwd: join(scratch, "repo"), issue, pluginDir: pre.pluginDir, out });
     writeFileSync(join(out, "stream.jsonl"), redact(run.events.map((e) => JSON.stringify(e)).join("\n")));
     const stream = readStream(run.events);
-    say(`Claude Code exited ${run.code}: session ${stream.sessionId}, ${stream.subagents.length} subagents, ${stream.result?.turns ?? "?"} turns, $${stream.result?.cost_usd?.toFixed?.(2) ?? "?"}`);
+    say(
+      `Claude Code exited ${run.code}: session ${stream.sessionId}, ${stream.subagents.length} subagents, ${stream.result?.turns ?? "?"} turns, $${stream.result?.cost_usd?.toFixed?.(2) ?? "?"}`,
+    );
     // The plugin's hooks record in the background: give them a moment.
     await new Promise((done) => setTimeout(done, 8000));
     const sessions = await mcp("session", { action: "list", repo: REPO }).catch(() => []);

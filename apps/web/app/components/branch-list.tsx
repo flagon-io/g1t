@@ -46,13 +46,7 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Combobox } from "./ui/combobox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Field, FieldDescription, FieldError, FieldLabel } from "./ui/field";
 import { Hint } from "./ui/hint";
 import { Input } from "./ui/input";
@@ -228,17 +222,7 @@ function useBranchAction(done: (data: BranchActionData) => void) {
 }
 
 /** Renaming a branch, with what it does to pull requests, addresses and clones. */
-function RenameDialog({
-  row,
-  main,
-  open,
-  onOpenChange,
-}: {
-  row: BranchRowData;
-  main: string;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
+function RenameDialog({ row, main, open, onOpenChange }: { row: BranchRowData; main: string; open: boolean; onOpenChange: (open: boolean) => void }) {
   const [to, setTo] = useState(row.name);
   const [error, setError] = useState<string | null>(null);
   const fetcher = useBranchAction((data) => {
@@ -266,9 +250,7 @@ function RenameDialog({
             <DialogTitle>Rename {row.name}</DialogTitle>
             <DialogDescription>
               {openPull ? (
-                <>
-                  Pull request #{openPull.number} from it follows it to the new name, and stays open.{" "}
-                </>
+                <>Pull request #{openPull.number} from it follows it to the new name, and stays open. </>
               ) : (
                 <>Open pull requests from it follow it to the new name. </>
               )}
@@ -406,10 +388,7 @@ function DeleteButton({ row, context }: { row: BranchRowData; context: BranchLis
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="border border-danger/40 bg-transparent text-danger hover:border-danger hover:bg-danger/10"
-              onClick={remove}
-            >
+            <AlertDialogAction className="border border-danger/40 bg-transparent text-danger hover:border-danger hover:bg-danger/10" onClick={remove}>
               Delete branch
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -493,9 +472,7 @@ function BranchRow({ row, context }: { row: BranchRowData; context: BranchListCo
           <TableCell className="align-middle max-md:hidden">
             <Updated row={row} base={base} />
           </TableCell>
-          <TableCell className="align-middle max-md:hidden">
-            {sha ? <CommitChecksBadge checks={checks} sha={sha} className="size-6" /> : null}
-          </TableCell>
+          <TableCell className="align-middle max-md:hidden">{sha ? <CommitChecksBadge checks={checks} sha={sha} className="size-6" /> : null}</TableCell>
           <TableCell className="align-middle max-md:hidden">
             {isDefault ? <span className="text-xs text-faint">Default</span> : <DriftBars drift={row.drift} scale={scale} main={main} />}
           </TableCell>
@@ -589,7 +566,9 @@ export function NewBranchDialog({
         <fetcher.Form method="post" className="grid gap-4">
           <DialogHeader>
             <DialogTitle>Create a branch</DialogTitle>
-            <DialogDescription>It starts at the same commit as the branch, tag or commit you pick. Push to it, or open a pull request from it.</DialogDescription>
+            <DialogDescription>
+              It starts at the same commit as the branch, tag or commit you pick. Push to it, or open a pull request from it.
+            </DialogDescription>
           </DialogHeader>
           <input type="hidden" name="intent" value="create" />
           <input type="hidden" name="from" value={source} />
@@ -695,7 +674,8 @@ export function ProtectCallout({ base, main, dismissKey }: { base: string; main:
       <div className="min-w-0 grow basis-60">
         <AlertTitle>{main} isn’t protected</AlertTitle>
         <AlertDescription>
-          Anyone who can push can push straight to it or force-push over it. Add a ruleset to require pull requests and passing checks before anything lands on it.
+          Anyone who can push can push straight to it or force-push over it. Add a ruleset to require pull requests and passing checks before anything lands on
+          it.
         </AlertDescription>
       </div>
       <div className="flex shrink-0 items-center gap-2">

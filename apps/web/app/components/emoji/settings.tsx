@@ -43,8 +43,8 @@ export function EmojiSettings({ slug, list, usercontent, meId }: { slug: string;
       <div className="space-y-8">
         <div>
           <p className="max-w-2xl text-sm text-muted">
-            Emoji everyone in {slug} can use in messages and reactions, as <code className="font-mono text-fg-soft">:name:</code>. Images are PNG, GIF or
-            WebP, up to {MAX_EMOJI_BYTES / 1024} KB and {MAX_EMOJI_SIDE}×{MAX_EMOJI_SIDE} pixels; square ones look best.
+            Emoji everyone in {slug} can use in messages and reactions, as <code className="font-mono text-fg-soft">:name:</code>. Images are PNG, GIF or WebP,
+            up to {MAX_EMOJI_BYTES / 1024} KB and {MAX_EMOJI_SIDE}×{MAX_EMOJI_SIDE} pixels; square ones look best.
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -97,7 +97,13 @@ export function EmojiSettings({ slug, list, usercontent, meId }: { slug: string;
             ) : (
               <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
                 {shown.map((emoji) => (
-                  <EmojiCard key={emoji.name} slug={slug} emoji={emoji} usercontent={usercontent} removable={list.can_manage || (emoji.created_by.kind === "user" && emoji.created_by.id === meId)} />
+                  <EmojiCard
+                    key={emoji.name}
+                    slug={slug}
+                    emoji={emoji}
+                    usercontent={usercontent}
+                    removable={list.can_manage || (emoji.created_by.kind === "user" && emoji.created_by.id === meId)}
+                  />
                 ))}
               </ul>
             )}
@@ -188,7 +194,9 @@ function UploadSetting({ slug, value }: { slug: string; value: EmojiUpload }) {
           <h2 id="emoji-upload" className="text-sm font-medium text-fg">
             Who can add emoji: {value === "admins" ? "owners only" : "any member"}
           </h2>
-          <p className="mt-1 text-xs text-muted">Whoever added an emoji, and owners, can remove it. Who can add them is one of the workspace&apos;s chat settings.</p>
+          <p className="mt-1 text-xs text-muted">
+            Whoever added an emoji, and owners, can remove it. Who can add them is one of the workspace&apos;s chat settings.
+          </p>
         </div>
         <Link
           to={`/${slug}/-/settings/chat`}
@@ -216,7 +224,8 @@ async function inspect(file: File): Promise<Chosen> {
   if (!["image/png", "image/gif", "image/webp"].includes(file.type)) problem = "Use a PNG, GIF or WebP image.";
   else if (file.size > MAX_EMOJI_BYTES) problem = `This image is ${Math.ceil(file.size / 1024)} KB; the most is ${MAX_EMOJI_BYTES / 1024} KB.`;
   else if (!size.width) problem = "This file couldn’t be read as an image.";
-  else if (size.width > MAX_EMOJI_SIDE || size.height > MAX_EMOJI_SIDE) problem = `This image is ${size.width}×${size.height}; the most is ${MAX_EMOJI_SIDE}×${MAX_EMOJI_SIDE}.`;
+  else if (size.width > MAX_EMOJI_SIDE || size.height > MAX_EMOJI_SIDE)
+    problem = `This image is ${size.width}×${size.height}; the most is ${MAX_EMOJI_SIDE}×${MAX_EMOJI_SIDE}.`;
   return { file, url, ...size, problem };
 }
 
@@ -256,9 +265,12 @@ export function UploadDialog({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetcher.state, fetcher.data]);
-  useEffect(() => () => {
-    if (chosen) URL.revokeObjectURL(chosen.url);
-  }, [chosen]);
+  useEffect(
+    () => () => {
+      if (chosen) URL.revokeObjectURL(chosen.url);
+    },
+    [chosen],
+  );
 
   const clean = cleanEmojiName(name);
   const nameProblem = name ? emojiNameProblem(clean, taken, standard) : null;
@@ -272,7 +284,12 @@ export function UploadDialog({
     const seen = await inspect(file);
     setChosen(seen);
     // The file's name suggests the emoji's, until a name is typed.
-    if (!named) setName(cleanEmojiName(file.name.replace(/\.[a-z0-9]+$/i, "")).replace(/[^a-z0-9_+-]/g, "").slice(0, 32));
+    if (!named)
+      setName(
+        cleanEmojiName(file.name.replace(/\.[a-z0-9]+$/i, ""))
+          .replace(/[^a-z0-9_+-]/g, "")
+          .slice(0, 32),
+      );
   };
 
   const submit = () => {
@@ -289,7 +306,9 @@ export function UploadDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Add an emoji</DialogTitle>
-          <DialogDescription>PNG, GIF or WebP, up to {MAX_EMOJI_BYTES / 1024} KB and {MAX_EMOJI_SIDE}×{MAX_EMOJI_SIDE}. Animated GIFs play.</DialogDescription>
+          <DialogDescription>
+            PNG, GIF or WebP, up to {MAX_EMOJI_BYTES / 1024} KB and {MAX_EMOJI_SIDE}×{MAX_EMOJI_SIDE}. Animated GIFs play.
+          </DialogDescription>
         </DialogHeader>
         <input ref={input} type="file" accept={ACCEPT} onChange={onFile} className="sr-only" tabIndex={-1} aria-hidden />
         <button
@@ -303,8 +322,12 @@ export function UploadDialog({
             <>
               <img src={preview} alt="" className="size-16 object-contain" />
               <span className="text-xs text-muted">
-                {chosen ? `${chosen.width}×${chosen.height} · ${Math.ceil(chosen.file.size / 1024)} KB` : initial ? `${initial.width}×${initial.height} · ${Math.ceil(initial.bytes / 1024)} KB` : ""} ·{" "}
-                <span className="text-accent">Choose another</span>
+                {chosen
+                  ? `${chosen.width}×${chosen.height} · ${Math.ceil(chosen.file.size / 1024)} KB`
+                  : initial
+                    ? `${initial.width}×${initial.height} · ${Math.ceil(initial.bytes / 1024)} KB`
+                    : ""}{" "}
+                · <span className="text-accent">Choose another</span>
               </span>
             </>
           ) : (

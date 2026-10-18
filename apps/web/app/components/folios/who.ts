@@ -23,4 +23,3 @@ export async function whoAre(slug: string, keys: string[]): Promise<Map<string, 
   }
   return new Map(keys.map((k) => [k, known.get(k)!]).filter(([, w]) => !!w) as [string, Who][]);
 }
-

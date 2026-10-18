@@ -40,7 +40,14 @@ const report = {
 
 /** The same month's statement: the ledger's lines only, which is why Home no longer reads its total for the month. */
 const statement = {
-  groups: [{ key: "2026-10-09", label: "", chargedMicros: 0, lines: [{ kind: "Sandboxes", count: 3, chargedMicros: 0, costMicros: 8_670_000, priceMicros: 10_401_000 }] }],
+  groups: [
+    {
+      key: "2026-10-09",
+      label: "",
+      chargedMicros: 0,
+      lines: [{ kind: "Sandboxes", count: 3, chargedMicros: 0, costMicros: 8_670_000, priceMicros: 10_401_000 }],
+    },
+  ],
   totals: { chargedMicros: 0, paidMicros: 0, costMicros: 8_670_000, entries: 3, priceMicros: 10_401_000 },
 } satisfies Pick<Statement, "groups" | "totals">;
 

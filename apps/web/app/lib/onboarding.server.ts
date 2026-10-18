@@ -24,7 +24,7 @@ export function guideIsFor(viewer: Viewer, slug: string): viewer is User {
 /** The g1t CLI names the token it signs in with `g1t CLI on <machine>` (crates/g1t, `g1t auth login`). */
 const CLI_TOKEN = /^g1t CLI\b/;
 
-const settle = <T,>(promise: Promise<T>): Promise<T | null> => promise.catch(() => null);
+const settle = <T>(promise: Promise<T>): Promise<T | null> => promise.catch(() => null);
 
 /** The facts each step is judged by, and the providers and Ask's setup the AI steps show. */
 async function factsFor(user: User, slug: string): Promise<{ facts: OnboardingFacts; connections: AiConnection[] | null; ask: AskSetup | null }> {

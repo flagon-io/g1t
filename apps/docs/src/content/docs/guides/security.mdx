@@ -3,7 +3,7 @@ title: Security
 description: How g1t keeps secrets out of your repositories, finds vulnerable dependencies, and opens the pull requests that fix them.
 ---
 
-import Aside from '../../../components/Aside.astro';
+import Aside from "../../../components/Aside.astro";
 
 Every project has a **Security** section at `g1t.sh/<owner>/<project>/security`.
 It shows what g1t has found, and what is being done about each alert:
@@ -38,13 +38,13 @@ Alerts are the workspace's to fix, so the Security page needs a
 [role](/guides/access-and-roles/) on the repository, whether the project
 is public or private:
 
-| | Needs |
-| --- | --- |
-| See alerts, **Re-scan now** | Write |
-| **Dismiss** or **Reopen** an alert: a secret, a dependency or code scanning | Write |
-| **Bypass** push protection for a blocked secret | Write (or a request, with [delegated bypass](/guides/security/secret-protection/#delegated-bypass)) |
-| **Security updates** on or off, **Set up code scanning**, **Set up a security policy** | Maintain |
-| **Security settings**, **Custom patterns**, reviewing bypass requests, writing and publishing advisories, reviewing reports | Admin |
+|                                                                                                                             | Needs                                                                                               |
+| --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| See alerts, **Re-scan now**                                                                                                 | Write                                                                                               |
+| **Dismiss** or **Reopen** an alert: a secret, a dependency or code scanning                                                 | Write                                                                                               |
+| **Bypass** push protection for a blocked secret                                                                             | Write (or a request, with [delegated bypass](/guides/security/secret-protection/#delegated-bypass)) |
+| **Security updates** on or off, **Set up code scanning**, **Set up a security policy**                                      | Maintain                                                                                            |
+| **Security settings**, **Custom patterns**, reviewing bypass requests, writing and publishing advisories, reviewing reports | Admin                                                                                               |
 
 A workspace's [security managers](/guides/workspaces/#roles-that-add-to-a-member)
 can do all of this on every repository in it, and change the workspace's
@@ -64,16 +64,16 @@ The **Overview** is one row per feature, in three groups, each with a
 status word (**Enabled**, **Disabled**, **Needs setup** or **Coming**), a
 line on what it does, and the one thing to do about it:
 
-| Group | Row | Status | To the right |
-| --- | --- | --- | --- |
-| Policy | **Security policy** | Enabled when a `SECURITY.md` (or `.github/SECURITY.md`, `docs/SECURITY.md`) is on the default branch; Needs setup otherwise. | **View policy**, or **Set up a security policy**, which opens a pull request with a starting one. |
-| Findings | **Dependency alerts** | Enabled. | **View alerts**. |
-| Findings | **Security updates** | Enabled or Disabled. | The switch, for Maintain and up. The same switch is on **Vulnerabilities** and in **Settings**. |
-| Findings | **Code scanning** | Enabled once an analysis was uploaded; Needs setup before. | **View alerts**, or **Set up code scanning**. |
-| Findings | **Secret scanning** | Enabled; push protection is always on. | **View alerts**. |
-| Findings | **Code quality** | Coming: not built yet. | |
-| Reporting | **Security advisories** | Enabled. | **Manage advisories** or **View advisories**. |
-| Reporting | **Private vulnerability reporting** | Enabled or Disabled. | The switch, for Admins and security managers. |
+| Group     | Row                                 | Status                                                                                                                       | To the right                                                                                      |
+| --------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Policy    | **Security policy**                 | Enabled when a `SECURITY.md` (or `.github/SECURITY.md`, `docs/SECURITY.md`) is on the default branch; Needs setup otherwise. | **View policy**, or **Set up a security policy**, which opens a pull request with a starting one. |
+| Findings  | **Dependency alerts**               | Enabled.                                                                                                                     | **View alerts**.                                                                                  |
+| Findings  | **Security updates**                | Enabled or Disabled.                                                                                                         | The switch, for Maintain and up. The same switch is on **Vulnerabilities** and in **Settings**.   |
+| Findings  | **Code scanning**                   | Enabled once an analysis was uploaded; Needs setup before.                                                                   | **View alerts**, or **Set up code scanning**.                                                     |
+| Findings  | **Secret scanning**                 | Enabled; push protection is always on.                                                                                       | **View alerts**.                                                                                  |
+| Findings  | **Code quality**                    | Coming: not built yet.                                                                                                       |                                                                                                   |
+| Reporting | **Security advisories**             | Enabled.                                                                                                                     | **Manage advisories** or **View advisories**.                                                     |
+| Reporting | **Private vulnerability reporting** | Enabled or Disabled.                                                                                                         | The switch, for Admins and security managers.                                                     |
 
 Below the rows, the open alerts are counted by severity: critical, high,
 medium, low and unrated. The counts are:
@@ -95,34 +95,34 @@ dismissed alert is not counted. Below the counts:
 **Secret scanning** and **Vulnerabilities** list each alert. Filter either
 by state:
 
-| State | Meaning |
-| --- | --- |
-| Open | Needs attention. |
-| Dismissed | Someone dismissed it with a reason. |
-| Fixed | The secret was revoked, or the vulnerable version is no longer resolved by any lockfile. |
+| State     | Meaning                                                                                  |
+| --------- | ---------------------------------------------------------------------------------------- |
+| Open      | Needs attention.                                                                         |
+| Dismissed | Someone dismissed it with a reason.                                                      |
+| Fixed     | The secret was revoked, or the vulnerable version is no longer resolved by any lockfile. |
 
 ## Secret scanning
 
 g1t looks for credentials whose format their issuer made recognisable, so a
 match is nearly always a real secret or a fake made to look like one:
 
-| What | What it looks like |
-| --- | --- |
-| AWS access keys | `AKIA`, `ASIA`, `ABIA` or `ACCA` and 16 more characters |
-| AWS secret access keys | 40 characters on a line that names an AWS secret |
-| GitHub tokens | `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_` |
-| GitLab tokens | `glpat-`, `gloas-`, `glrt-`, `glptt-`, `gldt-` |
-| Stripe live keys | `sk_live_`, `rk_live_` (test keys are left alone) |
-| Slack tokens | `xoxb-`, `xoxp-`, `xoxa-`, `xoxr-`, `xoxs-`, `xoxe-` |
-| Slack webhooks | `https://hooks.slack.com/services/` addresses |
-| Google API keys | `AIza` and 35 more characters |
-| Anthropic API keys | `sk-ant-` |
-| OpenAI API keys | `sk-proj-`, `sk-svcacct-`, `sk-admin-`, and older `sk-` keys |
-| Private keys | A PEM `BEGIN … PRIVATE KEY` header followed by the key |
-| Service-role JWTs | A JWT whose claims carry `service_role` |
-| npm tokens | `npm_` |
-| g1t tokens | `g1t_` and 40 hex characters |
-| SendGrid keys | `SG.` and two dotted parts |
+| What                   | What it looks like                                           |
+| ---------------------- | ------------------------------------------------------------ |
+| AWS access keys        | `AKIA`, `ASIA`, `ABIA` or `ACCA` and 16 more characters      |
+| AWS secret access keys | 40 characters on a line that names an AWS secret             |
+| GitHub tokens          | `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`        |
+| GitLab tokens          | `glpat-`, `gloas-`, `glrt-`, `glptt-`, `gldt-`               |
+| Stripe live keys       | `sk_live_`, `rk_live_` (test keys are left alone)            |
+| Slack tokens           | `xoxb-`, `xoxp-`, `xoxa-`, `xoxr-`, `xoxs-`, `xoxe-`         |
+| Slack webhooks         | `https://hooks.slack.com/services/` addresses                |
+| Google API keys        | `AIza` and 35 more characters                                |
+| Anthropic API keys     | `sk-ant-`                                                    |
+| OpenAI API keys        | `sk-proj-`, `sk-svcacct-`, `sk-admin-`, and older `sk-` keys |
+| Private keys           | A PEM `BEGIN … PRIVATE KEY` header followed by the key       |
+| Service-role JWTs      | A JWT whose claims carry `service_role`                      |
+| npm tokens             | `npm_`                                                       |
+| g1t tokens             | `g1t_` and 40 hex characters                                 |
+| SendGrid keys          | `SG.` and two dotted parts                                   |
 
 Placeholders made of a handful of characters, such as `ghp_xxxxxxxx…`, are
 not reported. Lockfiles, and files under `node_modules/` and `vendor/`, are
@@ -247,12 +247,12 @@ adds a secret is refused either way.
 Choose **Dismiss**, pick a reason, and add a comment if you like (up to 500
 characters):
 
-| Reason | API value | What happens |
-| --- | --- | --- |
-| False positive | `false_positive` | Dismissed. Pushes carrying the secret go through. |
-| Used in tests | `used_in_tests` | Dismissed. Pushes carrying the secret go through. |
-| Revoked | `revoked` | Fixed. The secret was real and has been revoked or rotated. |
-| Won't fix | `wont_fix` | Dismissed. Pushes carrying the secret go through. |
+| Reason         | API value        | What happens                                                |
+| -------------- | ---------------- | ----------------------------------------------------------- |
+| False positive | `false_positive` | Dismissed. Pushes carrying the secret go through.           |
+| Used in tests  | `used_in_tests`  | Dismissed. Pushes carrying the secret go through.           |
+| Revoked        | `revoked`        | Fixed. The secret was real and has been revoked or rotated. |
+| Won't fix      | `wont_fix`       | Dismissed. Pushes carrying the secret go through.           |
 
 Who dismissed it, when, the reason and the comment are kept in the alert's
 activity log. **Reopen** puts the alert back to open; a secret that never
@@ -263,12 +263,12 @@ landed goes back to blocking pushes.
 g1t reads these lockfiles on the default branch, up to four directories
 deep, skipping `node_modules`, `vendor`, `target`, `dist` and `build`:
 
-| Ecosystem | Files |
-| --- | --- |
-| npm | `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock` |
-| Cargo | `Cargo.lock` |
-| Go | `go.mod` (or `go.sum` where there is no `go.mod`) |
-| Python | `poetry.lock`, and pinned lines (`name==1.2.3`) in `requirements.txt` |
+| Ecosystem | Files                                                                 |
+| --------- | --------------------------------------------------------------------- |
+| npm       | `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`                    |
+| Cargo     | `Cargo.lock`                                                          |
+| Go        | `go.mod` (or `go.sum` where there is no `go.mod`)                     |
+| Python    | `poetry.lock`, and pinned lines (`name==1.2.3`) in `requirements.txt` |
 
 It reads them on every push to the default branch and again every day, and
 asks OSV about every package at the exact version locked. Each advisory
@@ -281,13 +281,13 @@ version. A vulnerability that a later scan no longer finds is marked fixed.
 Dismissing a dependency alert needs the Write role. Pick a reason, and add
 a comment if you like (up to 500 characters):
 
-| Reason | API value |
-| --- | --- |
-| A fix has already been started | `fix_started` |
-| No bandwidth to fix this | `no_bandwidth` |
-| Risk is tolerable to this project | `tolerable_risk` |
-| This alert is inaccurate or incorrect | `inaccurate` |
-| Vulnerable code is not actually used | `not_used` |
+| Reason                                | API value        |
+| ------------------------------------- | ---------------- |
+| A fix has already been started        | `fix_started`    |
+| No bandwidth to fix this              | `no_bandwidth`   |
+| Risk is tolerable to this project     | `tolerable_risk` |
+| This alert is inaccurate or incorrect | `inaccurate`     |
+| Vulnerable code is not actually used  | `not_used`       |
 
 A dismissed vulnerability that a later scan finds again stays dismissed
 until someone reopens it. The activity log keeps who dismissed it, when,
@@ -322,15 +322,15 @@ prefix, assignees and reviewers.
 
 Each alert shows its update's status and links the pull request:
 
-| Status | Meaning |
-| --- | --- |
-| Making the change | The sandbox is raising the version. |
-| Open | The pull request is open. |
-| Merged | The pull request merged. |
-| Closed | The pull request was closed without merging. |
-| Superseded | A newer security update for the same package replaced it, or the alerts it fixes were fixed another way or dismissed. |
-| Needs code changes | An earlier update that g1t opened a work item for. g1t closes that work item, and the update shows as failed. |
-| Failed | The update could not be made. |
+| Status             | Meaning                                                                                                               |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| Making the change  | The sandbox is raising the version.                                                                                   |
+| Open               | The pull request is open.                                                                                             |
+| Merged             | The pull request merged.                                                                                              |
+| Closed             | The pull request was closed without merging.                                                                          |
+| Superseded         | A newer security update for the same package replaced it, or the alerts it fixes were fixed another way or dismissed. |
+| Needs code changes | An earlier update that g1t opened a work item for. g1t closes that work item, and the update shows as failed.         |
+| Failed             | The update could not be made.                                                                                         |
 
 ### When an update is no longer needed
 
@@ -374,15 +374,15 @@ the default branch. See
 
 How each lockfile is changed:
 
-| Lockfile | How the version is raised |
-| --- | --- |
+| Lockfile            | How the version is raised                                                                                                                                                               |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `package-lock.json` | `npm install --package-lock-only --ignore-scripts` for a direct dependency, keeping its range style; for an indirect one, `npm update`, then an `overrides` entry if that is not enough |
-| `pnpm-lock.yaml` | `pnpm update --lockfile-only`, then `pnpm.overrides` if needed |
-| `yarn.lock` | `yarn up` (Yarn 2 and later) or `yarn upgrade` (Yarn 1), then `resolutions` if needed |
-| `Cargo.lock` | `cargo update -p <package> --precise <version>` |
-| `go.mod`, `go.sum` | `go get <module>@<version>`, then `go mod tidy` |
-| `poetry.lock` | `poetry add <package>@^<version> --lock`, or `poetry update --lock` for an indirect one |
-| `requirements.txt` | The `==` pin is rewritten |
+| `pnpm-lock.yaml`    | `pnpm update --lockfile-only`, then `pnpm.overrides` if needed                                                                                                                          |
+| `yarn.lock`         | `yarn up` (Yarn 2 and later) or `yarn upgrade` (Yarn 1), then `resolutions` if needed                                                                                                   |
+| `Cargo.lock`        | `cargo update -p <package> --precise <version>`                                                                                                                                         |
+| `go.mod`, `go.sum`  | `go get <module>@<version>`, then `go mod tidy`                                                                                                                                         |
+| `poetry.lock`       | `poetry add <package>@^<version> --lock`, or `poetry update --lock` for an indirect one                                                                                                 |
+| `requirements.txt`  | The `==` pin is rewritten                                                                                                                                                               |
 
 Install scripts never run. A lockfile the sandbox cannot change this way,
 such as a `requirements.txt` that pins with `--hash`, is handled as
@@ -429,11 +429,11 @@ an account: no one can sign in to it, and the name cannot be registered.
 
 ## API and MCP
 
-| Route | What it does | Scope |
-| --- | --- | --- |
-| `GET /repos/{owner}/{name}/security/alerts` | Lists alerts. Filter with `state` (`open`, `dismissed`, `fixed`) and `kind`. | `repo:read` |
-| `POST /repos/{owner}/{name}/security/alerts/{id}/dismiss` | Dismisses an alert, with `reason` and an optional `comment`. | `repo:admin` |
-| `POST /repos/{owner}/{name}/security/alerts/{id}/reopen` | Reopens a dismissed alert. | `repo:admin` |
+| Route                                                     | What it does                                                                 | Scope        |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------- | ------------ |
+| `GET /repos/{owner}/{name}/security/alerts`               | Lists alerts. Filter with `state` (`open`, `dismissed`, `fixed`) and `kind`. | `repo:read`  |
+| `POST /repos/{owner}/{name}/security/alerts/{id}/dismiss` | Dismisses an alert, with `reason` and an optional `comment`.                 | `repo:admin` |
+| `POST /repos/{owner}/{name}/security/alerts/{id}/reopen`  | Reopens a dismissed alert.                                                   | `repo:admin` |
 
 `reason` is one of the API values in the tables above. Over MCP, the
 [`repository` tool](/reference/mcp/#repository) has the actions

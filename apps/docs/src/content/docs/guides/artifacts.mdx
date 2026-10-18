@@ -3,9 +3,9 @@ title: Artifacts
 description: Make docs with your workspace, live. Keep them private, share them with people and teams, put them in spaces, or open them to the workspace. Comments, suggestions, docs that cite code, history, templates, search and Markdown export.
 ---
 
-import { Steps } from '@astrojs/starlight/components';
-import Soon from '../../../components/Soon.astro';
-import Aside from '../../../components/Aside.astro';
+import { Steps } from "@astrojs/starlight/components";
+import Soon from "../../../components/Soon.astro";
+import Aside from "../../../components/Aside.astro";
 
 **Artifacts are what your workspace makes together**: docs now, and slides,
 designs and dashboards soon. Your team edits them live, and the coding
@@ -19,22 +19,22 @@ plan.
 
 ## How it fits together
 
-| | |
-| --- | --- |
-| **Artifacts** | A doc today. Each has one owner, the person who made it, and an address that ends in its id. |
-| **Private** | What you make starts in your **Private** section, where only you can see it. A lock on it means only you can open it. |
-| **Sharing** | Share an artifact with people and teams, each with a role, or open it to everyone in the workspace or to anyone in it with the link. |
-| **Spaces** | Where a team, a project or a topic keeps its artifacts. What is in a space follows the space's access, unless it's set to only people invited. |
+|               |                                                                                                                                                |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Artifacts** | A doc today. Each has one owner, the person who made it, and an address that ends in its id.                                                   |
+| **Private**   | What you make starts in your **Private** section, where only you can see it. A lock on it means only you can open it.                          |
+| **Sharing**   | Share an artifact with people and teams, each with a role, or open it to everyone in the workspace or to anyone in it with the link.           |
+| **Spaces**    | Where a team, a project or a topic keeps its artifacts. What is in a space follows the space's access, unless it's set to only people invited. |
 
 ## Home
 
 Home lists every artifact you can open, newest first, grouped by the day it
 was last edited in your time zone: **Today**, **Yesterday**, then the date.
 
-| Tab | Shows |
-| --- | --- |
-| **All** | Everything you can open. |
-| **Yours** | What you own. |
+| Tab                 | Shows                                                                                           |
+| ------------------- | ----------------------------------------------------------------------------------------------- |
+| **All**             | Everything you can open.                                                                        |
+| **Yours**           | What you own.                                                                                   |
 | **Shared with you** | What other people shared with you, newest share first, and link-shared artifacts you've opened. |
 
 - **Search** (press <kbd>/</kbd>) matches words and meaning: "how do we roll
@@ -57,16 +57,16 @@ Slides, Design and Dashboards say **Coming soon**.
 
 ## The sidebar
 
-| Section | What's there |
-| --- | --- |
-| **Search**, **Home**, **Templates** | As they say. **+** at the top makes a new artifact. |
-| **Favorites** | What you starred. |
-| **Spaces** | The spaces you've joined, your team spaces and the members-only spaces you're in, each with its tree. **+** browses spaces or makes one. |
-| **Private** | Your artifacts in no space. Only you see this section. |
-| **Shared** | The highest artifact of each tree someone shared with you. |
-| **Possibly out of date** | Docs whose cited code changed. Shown when there are any. |
-| **Projects' docs** | Repositories' `docs/` folders, read-only. |
-| **Trash** | What was moved to the trash, with how many. |
+| Section                             | What's there                                                                                                                             |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| **Search**, **Home**, **Templates** | As they say. **+** at the top makes a new artifact.                                                                                      |
+| **Favorites**                       | What you starred.                                                                                                                        |
+| **Spaces**                          | The spaces you've joined, your team spaces and the members-only spaces you're in, each with its tree. **+** browses spaces or makes one. |
+| **Private**                         | Your artifacts in no space. Only you see this section.                                                                                   |
+| **Shared**                          | The highest artifact of each tree someone shared with you.                                                                               |
+| **Possibly out of date**            | Docs whose cited code changed. Shown when there are any.                                                                                 |
+| **Projects' docs**                  | Repositories' `docs/` folders, read-only.                                                                                                |
+| **Trash**                           | What was moved to the trash, with how many.                                                                                              |
 
 The sidebar follows every change at once: an artifact you move to the trash
 leaves it, one you restore comes back, and the count beside **Trash** moves
@@ -88,12 +88,12 @@ is the folder.
 
 </Steps>
 
-| Role | Can |
-| --- | --- |
-| **Can view** | Read it, its history and its comments. |
-| **Can comment** | Read, and comment on passages or the whole doc. |
-| **Can edit** | Write and organize it, accept or reject suggestions, restore versions, and move it to the trash. |
-| **Full access** | Edit, share it, change its general access, and delete it from the trash for good. |
+| Role            | Can                                                                                              |
+| --------------- | ------------------------------------------------------------------------------------------------ |
+| **Can view**    | Read it, its history and its comments.                                                           |
+| **Can comment** | Read, and comment on passages or the whole doc.                                                  |
+| **Can edit**    | Write and organize it, accept or reject suggestions, restore versions, and move it to the trash. |
+| **Full access** | Edit, share it, change its general access, and delete it from the trash for good.                |
 
 **Who has access** lists the owner, everyone it's shared with directly (change
 their role, or **Remove access**), and anyone who has access from a doc it's
@@ -142,11 +142,11 @@ know. Make more from **+** beside **Spaces** in the sidebar, then **New
 space**. No space has to exist: a workspace can have none at all, and
 artifacts in no space live in their owners' **Private**.
 
-| Who it's for | Who can open it |
-| --- | --- |
+| Who it's for                         | Who can open it                                                              |
+| ------------------------------------ | ---------------------------------------------------------------------------- |
 | **Open** (everyone in the workspace) | Every member, with the space's base role. Join it to see it in your sidebar. |
-| **Team** | Members of that team, with the space's base role. |
-| **Members only** | The people and teams listed in the space, and nobody else. |
+| **Team**                             | Members of that team, with the space's base role.                            |
+| **Members only**                     | The people and teams listed in the space, and nobody else.                   |
 
 **Browse spaces** lists every space you can open; **Join** or **Leave** an
 open one. Whoever makes a space has full access to it. Workspace owners have
@@ -163,10 +163,10 @@ someone else's full access.
 Both are at the bottom of a space's **Settings**, for people with full access
 to the space; workspace owners can also delete any space they can open.
 
-| | What happens |
-| --- | --- |
-| **Archive space** | It leaves the sidebar and search. Everything in it is kept. **Browse spaces** lists it under **Archived**, where **Restore** brings it back as it was, or **Delete** deletes it. |
-| **Delete space** | Everything in it goes to the trash together, where anyone who could edit an artifact restores it as usual for 30 days. The space itself, its members and settings are gone for good. |
+|                   | What happens                                                                                                                                                                         |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Archive space** | It leaves the sidebar and search. Everything in it is kept. **Browse spaces** lists it under **Archived**, where **Restore** brings it back as it was, or **Delete** deletes it.     |
+| **Delete space**  | Everything in it goes to the trash together, where anyone who could edit an artifact restores it as usual for 30 days. The space itself, its members and settings are gone for good. |
 
 Any space can be archived or deleted, **General** included. A workspace whose
 General space is deleted has no General space; none takes its place, and
@@ -179,21 +179,21 @@ in its owner's **Private**.
 Make a doc, give it a title, and press **Enter** to start writing. Type `/`
 anywhere for the block menu.
 
-| Block | How to add it | In Markdown |
-| --- | --- | --- |
-| Text, Heading 1–3 | `/text`, `/h1`, or type `#`, `##`, `###` and a space | `#`, `##`, `###` |
-| Bulleted, numbered and to-do lists | `/bullet`, `/numbered`, `/todo`, or type `-`, `1.`, `[]` | `-`, `1.`, `- [ ]` |
-| Toggle | `/toggle` | `<details>` |
-| Quote | `/quote`, or type `>` | `>` |
-| Callout (info, warning, success) | `/callout`, `/warning`, `/tip` | `> [!NOTE]`, `> [!WARNING]`, `> [!TIP]` |
-| Code, with syntax highlighting | `/code`, or type ` ``` ` and a language | fenced code |
-| Table | `/table` | GitHub tables |
-| Image, video, audio, file | `/image`, `/video`, `/audio`, `/file` | `![]()`, links |
-| Diagram | `/diagram` or `/mermaid` | ` ```mermaid ` |
-| Math | `/math` or `/latex` | `$$ … $$` |
-| Embed from g1t | `/embed`, then the address of a work item, pull request, channel, project or artifact | a link |
-| Date | `/date` | the date |
-| Cite code | `/cite`: a repository, a path, and what there the doc describes | a link to the file |
+| Block                              | How to add it                                                                         | In Markdown                             |
+| ---------------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------- |
+| Text, Heading 1–3                  | `/text`, `/h1`, or type `#`, `##`, `###` and a space                                  | `#`, `##`, `###`                        |
+| Bulleted, numbered and to-do lists | `/bullet`, `/numbered`, `/todo`, or type `-`, `1.`, `[]`                              | `-`, `1.`, `- [ ]`                      |
+| Toggle                             | `/toggle`                                                                             | `<details>`                             |
+| Quote                              | `/quote`, or type `>`                                                                 | `>`                                     |
+| Callout (info, warning, success)   | `/callout`, `/warning`, `/tip`                                                        | `> [!NOTE]`, `> [!WARNING]`, `> [!TIP]` |
+| Code, with syntax highlighting     | `/code`, or type ` ``` ` and a language                                               | fenced code                             |
+| Table                              | `/table`                                                                              | GitHub tables                           |
+| Image, video, audio, file          | `/image`, `/video`, `/audio`, `/file`                                                 | `![]()`, links                          |
+| Diagram                            | `/diagram` or `/mermaid`                                                              | ` ```mermaid `                          |
+| Math                               | `/math` or `/latex`                                                                   | `$$ … $$`                               |
+| Embed from g1t                     | `/embed`, then the address of a work item, pull request, channel, project or artifact | a link                                  |
+| Date                               | `/date`                                                                               | the date                                |
+| Cite code                          | `/cite`: a repository, a path, and what there the doc describes                       | a link to the file                      |
 
 - **`@`** mentions a person. **`[[`** links to another artifact
   by title; it lists yours under **Linked from**.
@@ -221,10 +221,10 @@ is asked of its room the first time it opens, and kept from then on, so it
 opens as fast as any other from the second time. The dot in the header says
 where things stand:
 
-| Dot | Meaning |
-| --- | --- |
-| Faint, pulsing | Connecting to the live room. You can already read and edit. |
-| Green | Live: everyone's changes show as they happen. |
+| Dot                            | Meaning                                                                |
+| ------------------------------ | ---------------------------------------------------------------------- |
+| Faint, pulsing                 | Connecting to the live room. You can already read and edit.            |
+| Green                          | Live: everyone's changes show as they happen.                          |
 | **Offline, changes will sync** | The connection dropped; your changes are kept and sent when it's back. |
 
 A doc that was never saved since this started, or one far larger than usual,
@@ -276,16 +276,16 @@ version, so nothing is lost. Restoring needs edit access.
 Choose where a new one goes (Private, or a space you can add to), then **Use
 template**.
 
-| Template | For |
-| --- | --- |
-| **Meeting notes** | Attendees, agenda, decisions, action items. |
-| **Spec / RFC** | Problem, goals and non-goals, design, alternatives, rollout, open questions. |
-| **Decision record** | Context, the decision, options compared, consequences. |
-| **Runbook** | Symptoms, checks, the fix, when to escalate. |
-| **Onboarding** | A new teammate's first day and week, people to know, links. |
-| **Project brief** | Why, what done looks like, scope, team, milestones, risks. |
-| **Postmortem** | Severity, timeline, root cause, what went well and badly, action items. |
-| **Weekly update** | Shipped, in progress, next, blocked. |
+| Template            | For                                                                          |
+| ------------------- | ---------------------------------------------------------------------------- |
+| **Meeting notes**   | Attendees, agenda, decisions, action items.                                  |
+| **Spec / RFC**      | Problem, goals and non-goals, design, alternatives, rollout, open questions. |
+| **Decision record** | Context, the decision, options compared, consequences.                       |
+| **Runbook**         | Symptoms, checks, the fix, when to escalate.                                 |
+| **Onboarding**      | A new teammate's first day and week, people to know, links.                  |
+| **Project brief**   | Why, what done looks like, scope, team, milestones, risks.                   |
+| **Postmortem**      | Severity, timeline, root cause, what went well and badly, action items.      |
+| **Weekly update**   | Shipped, in progress, next, blocked.                                         |
 
 **⋯ → Save as template** saves any artifact as your workspace's. Everyone in
 the workspace can use it, so the dialog warns you when not everyone can open

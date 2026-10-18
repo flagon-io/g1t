@@ -44,11 +44,7 @@ export function AvatarField({
                 busy ? "pointer-events-none opacity-50" : ""
               }`}
             >
-              {uploading ? (
-                <LoaderCircle size={15} aria-hidden="true" className="animate-spin" />
-              ) : (
-                <ImageUp size={15} />
-              )}
+              {uploading ? <LoaderCircle size={15} aria-hidden="true" className="animate-spin" /> : <ImageUp size={15} />}
               {uploading ? "Uploading…" : image ? "Upload a new image" : "Upload an image"}
               <input
                 type="file"

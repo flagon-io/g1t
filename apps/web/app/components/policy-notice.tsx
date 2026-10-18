@@ -14,14 +14,9 @@ export function PolicyNotice({ held }: { held: PolicyHold[] }) {
   // Single sign-on is one workspace's at a time: the first that asks for it.
   const sso = held.find((hold) => hold.gap === "sso");
   return (
-    <div
-      role="alert"
-      className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-warn/30 bg-warn/10 px-4 py-2 text-center text-sm"
-    >
+    <div role="alert" className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-warn/30 bg-warn/10 px-4 py-2 text-center text-sm">
       <ShieldAlert size={15} aria-hidden="true" className="hidden shrink-0 text-warn sm:block" />
-      <span>
-        {held.map((hold) => hold.reason).join(" ")}
-      </span>
+      <span>{held.map((hold) => hold.reason).join(" ")}</span>
       {twoFactor && (
         <Link to="/settings/two-factor" className="font-medium underline underline-offset-4">
           Turn on two-factor authentication

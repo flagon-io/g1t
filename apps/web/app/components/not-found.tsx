@@ -23,8 +23,7 @@ export function NotFound({ data }: { data?: unknown }) {
   const workspace = user ? (root?.shell?.workspace ?? null) : null;
   // Something missing inside a project the viewer can see: back to it.
   const project = root?.shell?.repo ?? null;
-  const inProject =
-    project != null && pathname.toLowerCase().startsWith(`/${project.namespace}/${project.name}/`.toLowerCase());
+  const inProject = project != null && pathname.toLowerCase().startsWith(`/${project.namespace}/${project.name}/`.toLowerCase());
   const kind = missingKind(data, pathname);
   const copy = notFoundCopy(kind, user?.username);
   const here = pathname + search;
@@ -53,9 +52,7 @@ export function NotFound({ data }: { data?: unknown }) {
       </div>
 
       <p className="mt-6 hidden text-sm text-faint sm:block">
-        Looking for something? Press{" "}
-        <kbd className="rounded bg-raised px-1.5 py-0.5 font-mono text-[0.6875rem] text-muted ring-1 ring-line">⌘K</kbd>{" "}
-        to search.
+        Looking for something? Press <kbd className="rounded bg-raised px-1.5 py-0.5 font-mono text-[0.6875rem] text-muted ring-1 ring-line">⌘K</kbd> to search.
       </p>
 
       {copy.signIn && (
@@ -69,18 +66,9 @@ export function NotFound({ data }: { data?: unknown }) {
 
       {copy.signedInAs && (
         // Signing out, then in again, comes back here.
-        <Form
-          method="post"
-          action={`/logout?next=${encodeURIComponent(withNext("/login", here))}`}
-          className="mt-3 text-xs text-faint"
-        >
+        <Form method="post" action={`/logout?next=${encodeURIComponent(withNext("/login", here))}`} className="mt-3 text-xs text-faint">
           Signed in as <span className="font-mono text-muted">@{copy.signedInAs}</span> ·{" "}
-          <SubmitButton
-            pending="Signing out…"
-            variant="link"
-            size="inline"
-            className="gap-1 text-muted hover:text-fg"
-          >
+          <SubmitButton pending="Signing out…" variant="link" size="inline" className="gap-1 text-muted hover:text-fg">
             Switch account
           </SubmitButton>
         </Form>

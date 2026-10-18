@@ -43,8 +43,18 @@ export function cleanCitation(raw: Partial<DocCitation> | null | undefined, sour
   const path = cleanPath(raw.path);
   if (!repo || !path) return null;
   const kind = KINDS.has(raw.kind as DocCitationKind) ? (raw.kind as DocCitationKind) : "path";
-  const label = kind === "path" ? null : String(raw.label ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_LABEL) || null;
-  const ref = /^[0-9a-f]{7,64}$/i.test(String(raw.ref ?? "")) ? String(raw.ref).toLowerCase() : /^[A-Za-z0-9._/-]{1,100}$/.test(String(raw.ref ?? "")) ? String(raw.ref) : null;
+  const label =
+    kind === "path"
+      ? null
+      : String(raw.label ?? "")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, MAX_LABEL) || null;
+  const ref = /^[0-9a-f]{7,64}$/i.test(String(raw.ref ?? ""))
+    ? String(raw.ref).toLowerCase()
+    : /^[A-Za-z0-9._/-]{1,100}$/.test(String(raw.ref ?? ""))
+      ? String(raw.ref)
+      : null;
   return { repo, path, kind, label, ref, source };
 }
 
@@ -78,11 +88,7 @@ export function globRoot(path: string): string {
 export function citationHref(c: Pick<DocCitation, "repo" | "path" | "ref">): string {
   const ref = encodeURIComponent(c.ref || "HEAD");
   const glob = isGlob(c.path);
-  const path = (glob ? globRoot(c.path) : c.path)
-    .split("/")
-    .filter(Boolean)
-    .map(encodeURIComponent)
-    .join("/");
+  const path = (glob ? globRoot(c.path) : c.path).split("/").filter(Boolean).map(encodeURIComponent).join("/");
   const kind = glob || !/\.[A-Za-z0-9]{1,10}$/.test(c.path) ? "tree" : "blob";
   return `/${c.repo}/${kind}/${ref}${path ? `/${path}` : ""}`;
 }

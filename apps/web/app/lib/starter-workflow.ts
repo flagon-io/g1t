@@ -158,12 +158,7 @@ function job(stack: Stack, facts: RootFacts): { key: string; name: string; steps
       return {
         key: "go",
         name: "Go",
-        steps: [
-          uses("actions/setup-go@v5", undefined, { "go-version-file": "go.mod" }),
-          run("go vet ./..."),
-          run("go build ./..."),
-          run("go test ./..."),
-        ],
+        steps: [uses("actions/setup-go@v5", undefined, { "go-version-file": "go.mod" }), run("go vet ./..."), run("go build ./..."), run("go test ./...")],
       };
     case "uv":
       return {
@@ -172,9 +167,7 @@ function job(stack: Stack, facts: RootFacts): { key: string; name: string; steps
         steps: [uses("astral-sh/setup-uv@v6"), run("uv sync"), run("uv run pytest")],
       };
     case "python": {
-      const install = has("requirements.txt")
-        ? "pip install -r requirements.txt pytest"
-        : "pip install -e . pytest";
+      const install = has("requirements.txt") ? "pip install -r requirements.txt pytest" : "pip install -e . pytest";
       return {
         key: "python",
         name: "Python",
@@ -185,10 +178,7 @@ function job(stack: Stack, facts: RootFacts): { key: string; name: string; steps
       return {
         key: "ruby",
         name: "Ruby",
-        steps: [
-          uses("ruby/setup-ruby@v1", undefined, { "bundler-cache": "true" }),
-          run(has("Rakefile") ? "bundle exec rake" : "bundle exec rspec"),
-        ],
+        steps: [uses("ruby/setup-ruby@v1", undefined, { "bundler-cache": "true" }), run(has("Rakefile") ? "bundle exec rake" : "bundle exec rspec")],
       };
     case "maven":
       return {
@@ -260,7 +250,10 @@ export function starterWorkflow(facts: RootFacts, defaultBranch: string): { yaml
 
 /** What the pull request that adds it says. */
 export function starterDescription(stacks: Stack[], defaultBranch: string): string {
-  const found = stacks.length > 0 ? `g1t found ${stacks.map(stackLabel).join(", ")} at the root and wrote a job for each.` : "g1t could not tell how this project is built, so the job is a placeholder: replace its last step with the commands that build and test it.";
+  const found =
+    stacks.length > 0
+      ? `g1t found ${stacks.map(stackLabel).join(", ")} at the root and wrote a job for each.`
+      : "g1t could not tell how this project is built, so the job is a placeholder: replace its last step with the commands that build and test it.";
   return [
     `Adds \`${STARTER_PATH}\`, a workflow named **${STARTER_CHECK}** that runs on every pull request, on pushes to \`${defaultBranch}\`, and on the merge queue. ${found}`,
     "Its runs are this repository's checks: they show on every pull request, whoever or whatever opened it.",

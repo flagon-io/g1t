@@ -17,7 +17,7 @@ test("a project's docs are Markdown under docs/ and the README at the root", () 
 });
 
 test("a file's title is its front matter's, its first heading, or its name", () => {
-  assert.equal(repoDocTitle("docs/a.md", "---\ntitle: \"Setting up\"\n---\n# Other"), "Setting up");
+  assert.equal(repoDocTitle("docs/a.md", '---\ntitle: "Setting up"\n---\n# Other'), "Setting up");
   assert.equal(repoDocTitle("docs/a.md", "Intro\n\n# The **real** title\n"), "The real title");
   assert.equal(repoDocTitle("docs/getting-started.md", "no heading"), "Getting started");
   assert.equal(repoDocTitle("README.md", "text"), "README");

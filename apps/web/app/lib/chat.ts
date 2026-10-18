@@ -15,9 +15,7 @@ export const GROUP_GAP_MS = 5 * 60 * 1000;
 /** A message on its way: shown at once, then swapped for what the service saved. */
 export type ShownMessage = ChatMessage & { pending?: boolean; failed?: boolean; client_id?: string };
 
-export type TimelineRow =
-  | { kind: "day"; key: string; label: string }
-  | { kind: "message"; key: string; message: ShownMessage; head: boolean };
+export type TimelineRow = { kind: "day"; key: string; label: string } | { kind: "message"; key: string; message: ShownMessage; head: boolean };
 
 function sameAuthor(a: ChatMessage["author"], b: ChatMessage["author"]): boolean {
   return a.kind === b.kind && a.id === b.id;
@@ -87,7 +85,12 @@ export function mergeMessages(current: ShownMessage[], incoming: ShownMessage[])
     const had = byId.get(key);
     if (!had || !message.pending || had.pending) byId.set(key, message);
   }
-  const saved = new Set([...byId.values()].filter((m) => !m.pending).map((m) => m.client_id).filter(Boolean));
+  const saved = new Set(
+    [...byId.values()]
+      .filter((m) => !m.pending)
+      .map((m) => m.client_id)
+      .filter(Boolean),
+  );
   return [...byId.values()]
     .filter((message) => !(message.pending && message.client_id && saved.has(message.client_id)))
     .sort((a, b) => (a.pending === b.pending ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : a.pending ? 1 : -1));
@@ -125,7 +128,14 @@ export function mentionQuery(text: string, caret: number, people: readonly Menti
     const name = person.name.toLowerCase();
     if (name === typed) continue;
     if (name.startsWith(typed)) first.push(person);
-    else if (typed && person.display_name.toLowerCase().split(/\s+/).some((word) => word.startsWith(typed))) then.push(person);
+    else if (
+      typed &&
+      person.display_name
+        .toLowerCase()
+        .split(/\s+/)
+        .some((word) => word.startsWith(typed))
+    )
+      then.push(person);
   }
   const options = [...first, ...then].slice(0, MAX_MENTIONS);
   return options.length > 0 ? { start, typed, options } : null;

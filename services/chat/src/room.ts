@@ -247,12 +247,16 @@ export class ChannelRoom extends DurableObject<RoomEnv> {
     await this.ctx.storage.put("erased", true);
     await this.clear(channelId);
     await this.ctx.storage.deleteAlarm();
-    for (const socket of this.ctx.getWebSockets()) { try { socket.close(4403, "Conversation erased"); } catch {} }
+    for (const socket of this.ctx.getWebSockets()) {
+      try {
+        socket.close(4403, "Conversation erased");
+      } catch {}
+    }
   }
 
   /** Whether the question a job answers has been deleted by a clear. */
   private async questionGone(job: AnswerJob): Promise<boolean> {
-    if (await this.ctx.storage.get("erased") || await this.ctx.storage.get(`erased:user:${job.actor.id}`)) return true;
+    if ((await this.ctx.storage.get("erased")) || (await this.ctx.storage.get(`erased:user:${job.actor.id}`))) return true;
     if (!job.question_id) return false;
     const row = await this.env.DB.prepare("SELECT id FROM messages WHERE id = ?").bind(job.question_id).first<{ id: string }>();
     return !row;
@@ -266,9 +270,7 @@ export class ChannelRoom extends DurableObject<RoomEnv> {
 
   /** Saves an answer as it is now. */
   private async store(id: string, body: string, answer: ChatAnswer): Promise<void> {
-    await this.env.DB.prepare("UPDATE messages SET body = ?, meta = ? WHERE id = ? AND deleted_at IS NULL")
-      .bind(body, metaColumn({ answer }), id)
-      .run();
+    await this.env.DB.prepare("UPDATE messages SET body = ?, meta = ? WHERE id = ? AND deleted_at IS NULL").bind(body, metaColumn({ answer }), id).run();
   }
 
   /** A question taken over before its answer started: its empty message goes. */
@@ -293,7 +295,11 @@ export class ChannelRoom extends DurableObject<RoomEnv> {
     const at = new Date().toISOString();
     const [saved] = await this.env.DB.batch([
       this.env.DB.prepare("UPDATE messages SET body = ?, meta = ? WHERE id = ?").bind(body, metaColumn({ answer }), message.id),
-      this.env.DB.prepare("UPDATE channels SET last_message_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM messages WHERE id = ?)").bind(at, channel.id, message.id),
+      this.env.DB.prepare("UPDATE channels SET last_message_at = ? WHERE id = ? AND EXISTS (SELECT 1 FROM messages WHERE id = ?)").bind(
+        at,
+        channel.id,
+        message.id,
+      ),
     ]);
     // Its message is gone: the conversation was cleared meanwhile. Nobody is shown or told it.
     if (saved && saved.meta && saved.meta.changes === 0) return;
@@ -303,14 +309,20 @@ export class ChannelRoom extends DurableObject<RoomEnv> {
       this.env.DB,
       this.env.NOTIFY,
       // The person's name only matters for mentions, which g1t's answers do not notify by.
-      async (keys) => new Map(keys.map((key) => [key, key === G1T_KEY ? G1T_PROFILE : ({ kind: "user", id: key.slice(5), name: "", display_name: "", avatar: null, role: null } as MemberProfile)])),
+      async (keys) =>
+        new Map(
+          keys.map((key) => [
+            key,
+            key === G1T_KEY ? G1T_PROFILE : ({ kind: "user", id: key.slice(5), name: "", display_name: "", avatar: null, role: null } as MemberProfile),
+          ]),
+        ),
       { slug: job.slug, channel, row: { id: message.id, author: G1T_KEY, body, thread_root: null, created_at: message.created_at }, handles: [] },
     ).catch((error) => console.error("chat could not notify about", message.id, error));
   }
 
   override async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> {
     const who = socket.deserializeAttachment() as RoomMember | null;
-    if (!who || await this.ctx.storage.get("erased") || await this.ctx.storage.get(`erased:${principalKey(who.member)}`)) return;
+    if (!who || (await this.ctx.storage.get("erased")) || (await this.ctx.storage.get(`erased:${principalKey(who.member)}`))) return;
     // The only thing a client says over the socket: it is typing
     // (`{"type":"typing","channel_id":"<id>"}`, at most every 3 s).
     // Everything else (posting, reading) goes through the site, which

@@ -44,9 +44,7 @@ export function bySignalUrgency(signals: Signal[]): Signal[] {
     .map((signal, index) => ({ signal, index }))
     .sort(
       (a, b) =>
-        (RANK.get(a.signal.kind) ?? RANK.size) - (RANK.get(b.signal.kind) ?? RANK.size) ||
-        b.signal.valueMicros - a.signal.valueMicros ||
-        a.index - b.index,
+        (RANK.get(a.signal.kind) ?? RANK.size) - (RANK.get(b.signal.kind) ?? RANK.size) || b.signal.valueMicros - a.signal.valueMicros || a.index - b.index,
     )
     .map(({ signal }) => signal);
 }

@@ -178,11 +178,41 @@ export type PackagesApi = {
   restorePackage(actor: User, workspace: string, ecosystem: Ecosystem, name: string, surface?: AuditSurface): Promise<Result<PackageSummary>>;
   /** A deleted version, by its id or version. */
   restoreVersion(actor: User, workspace: string, ecosystem: Ecosystem, name: string, version: string, surface?: AuditSurface): Promise<Result<PackageVersion>>;
-  setAccess(actor: User, workspace: string, ecosystem: Ecosystem, name: string, who: PackageGrantee, role: PackageRole, surface?: AuditSurface): Promise<Result<PackageAccess[]>>;
-  removeAccess(actor: User, workspace: string, ecosystem: Ecosystem, name: string, who: PackageGrantee, surface?: AuditSurface): Promise<Result<PackageAccess[]>>;
+  setAccess(
+    actor: User,
+    workspace: string,
+    ecosystem: Ecosystem,
+    name: string,
+    who: PackageGrantee,
+    role: PackageRole,
+    surface?: AuditSurface,
+  ): Promise<Result<PackageAccess[]>>;
+  removeAccess(
+    actor: User,
+    workspace: string,
+    ecosystem: Ecosystem,
+    name: string,
+    who: PackageGrantee,
+    surface?: AuditSurface,
+  ): Promise<Result<PackageAccess[]>>;
   /** A repository of the workspace, by name or `owner/name`. */
-  setActionsAccess(actor: User, workspace: string, ecosystem: Ecosystem, name: string, repo: string, role: "read" | "write", surface?: AuditSurface): Promise<Result<ActionsAccess[]>>;
-  removeActionsAccess(actor: User, workspace: string, ecosystem: Ecosystem, name: string, repo: string, surface?: AuditSurface): Promise<Result<ActionsAccess[]>>;
+  setActionsAccess(
+    actor: User,
+    workspace: string,
+    ecosystem: Ecosystem,
+    name: string,
+    repo: string,
+    role: "read" | "write",
+    surface?: AuditSurface,
+  ): Promise<Result<ActionsAccess[]>>;
+  removeActionsAccess(
+    actor: User,
+    workspace: string,
+    ecosystem: Ecosystem,
+    name: string,
+    repo: string,
+    surface?: AuditSurface,
+  ): Promise<Result<ActionsAccess[]>>;
   /** For billing. */
   storage(workspace: string): Promise<PackageStorage>;
   /** For billing: every workspace with packages, from one query. */

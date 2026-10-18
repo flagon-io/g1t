@@ -30,7 +30,13 @@ test("in a channel, a mention notifies the person named even when muted; the res
 });
 
 test("a reply notifies the people in its thread unless they muted the conversation", () => {
-  const out = recipients({ author: "user:u1", channelKind: "channel", people: [ana, bo, cy], mentioned: [], thread: new Set(["user:u1", "user:u2", "user:u3"]) });
+  const out = recipients({
+    author: "user:u1",
+    channelKind: "channel",
+    people: [ana, bo, cy],
+    mentioned: [],
+    thread: new Set(["user:u1", "user:u2", "user:u3"]),
+  });
   assert.deepEqual(kinds(out), { u2: "thread_reply", u3: null });
 });
 
@@ -91,4 +97,3 @@ test("counts after a read: what is left past the mark, mentions included, never 
   assert.deepEqual(countsAfterRead(rows, "c", "user:u1", "ana", "m2"), { unread: 2, mentions: 1 });
   assert.deepEqual(countsAfterRead([], "c", "user:u1", "ana", "m9"), { unread: 0, mentions: 0 });
 });
-

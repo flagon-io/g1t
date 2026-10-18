@@ -82,9 +82,7 @@ async function refsOf(dir) {
 /** The refs that differ between `want` and `have`: [{ ref, want, have }], `null` for absent. */
 export function compareRefs(want, have) {
   const names = [...new Set([...Object.keys(want), ...Object.keys(have)])].sort();
-  return names
-    .filter((ref) => want[ref] !== have[ref])
-    .map((ref) => ({ ref, want: want[ref] ?? null, have: have[ref] ?? null }));
+  return names.filter((ref) => want[ref] !== have[ref]).map((ref) => ({ ref, want: want[ref] ?? null, have: have[ref] ?? null }));
 }
 
 /** The branch HEAD should name: one at HEAD's commit, `main` or `master` first. */

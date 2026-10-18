@@ -62,7 +62,14 @@ function channel(db: DatabaseSync, id: string, kind: "channel" | "dm", members: 
   }
 }
 
-function say(db: DatabaseSync, channelId: string, id: string, author: string, body: string, extra: { meta?: string; thread_root?: string; deleted?: boolean } = {}) {
+function say(
+  db: DatabaseSync,
+  channelId: string,
+  id: string,
+  author: string,
+  body: string,
+  extra: { meta?: string; thread_root?: string; deleted?: boolean } = {},
+) {
   db.prepare("INSERT INTO messages (id, channel_id, author, body, thread_root, created_at, deleted_at, meta) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
     id,
     channelId,
@@ -75,7 +82,8 @@ function say(db: DatabaseSync, channelId: string, id: string, author: string, bo
   );
 }
 
-const answer = (text: string) => JSON.stringify({ answer: { state: "done", steps: [{ type: "tool", id: "t1", label: "Read pull request #7", status: "done", summary: text }] } });
+const answer = (text: string) =>
+  JSON.stringify({ answer: { state: "done", steps: [{ type: "tool", id: "t1", label: "Read pull request #7", status: "done", summary: text }] } });
 
 /** Ana's direct message with g1t, Ben's, and a channel they share. */
 function workspace() {
@@ -144,7 +152,10 @@ test("clearing again, or an empty conversation, deletes nothing and is no error"
 test("after a clear, what g1t reads holds none of the old conversation", async () => {
   const d1 = workspace();
   const db = d1.raw;
-  const read = () => db.prepare("SELECT id, author, kind, body, meta, deleted_at FROM messages WHERE channel_id = 'chn_ana_g1t' AND thread_root IS NULL ORDER BY id").all() as SaidRow[];
+  const read = () =>
+    db
+      .prepare("SELECT id, author, kind, body, meta, deleted_at FROM messages WHERE channel_id = 'chn_ana_g1t' AND thread_root IS NULL ORDER BY id")
+      .all() as SaidRow[];
   // Before: a question after the mark would still read nothing of before it, but the history is there.
   say(db, "chn_ana_g1t", "msg_06", ANA, "And before that?");
   assert.ok(read().some((row) => row.body.includes("swordfish")));

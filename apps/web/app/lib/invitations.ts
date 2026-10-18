@@ -10,15 +10,12 @@ type Shown = { role: "owner" | "member"; expiresAt: string };
 export function invitationLine(invitation: Shown, now = Date.now()): string {
   const role = invitation.role === "owner" ? "an owner" : "a member";
   const days = Math.ceil((new Date(invitation.expiresAt).getTime() - now) / (24 * 60 * 60 * 1000));
-  const until =
-    days <= 1 ? "It expires within a day." : `It works for ${days} more days.`;
+  const until = days <= 1 ? "It expires within a day." : `It works for ${days} more days.`;
   return `invited you to join as ${role}. ${until}`;
 }
 
 /** What the page says once an invitation was declined. */
 export function declinedLine(workspace: string | null | undefined): string {
   const name = workspace?.trim();
-  return name
-    ? `You declined the invitation to ${name}. Whoever sent it has been told.`
-    : "You declined the invitation. Whoever sent it has been told.";
+  return name ? `You declined the invitation to ${name}. Whoever sent it has been told.` : "You declined the invitation. Whoever sent it has been told.";
 }

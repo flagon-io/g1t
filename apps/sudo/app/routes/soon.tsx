@@ -93,11 +93,7 @@ export default function Soon({ loaderData }: Route.ComponentProps) {
       )}
 
       {(prices || pricesError) && (
-        <Section
-          title="The price book today"
-          description={prices ? "Read-only." : undefined}
-          className="mt-8"
-        >
+        <Section title="The price book today" description={prices ? "Read-only." : undefined} className="mt-8">
           {pricesError ? (
             <Notice tone="warn">Billing did not answer for prices: {pricesError}</Notice>
           ) : prices && prices.prices.length > 0 ? (
@@ -142,8 +138,8 @@ export default function Soon({ loaderData }: Route.ComponentProps) {
       )}
 
       <p className="mt-10 border-t border-line pt-5 text-xs text-faint">
-        Part of the back office g1t is building for itself: one place for sales, support and finance, on the same data as the
-        product, with every change recorded.
+        Part of the back office g1t is building for itself: one place for sales, support and finance, on the same data as the product, with every change
+        recorded.
       </p>
     </main>
   );

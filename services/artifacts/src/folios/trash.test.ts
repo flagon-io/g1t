@@ -31,18 +31,16 @@ function fakeD1(): D1Database & { raw: DatabaseSync } {
 const AT = "2026-10-11T12:00:00.000Z";
 
 function space(db: DatabaseSync, id: string, over: Partial<{ slug: string; is_default: number; archived_at: string | null; deleted_at: string | null }> = {}) {
-  db.prepare("INSERT INTO spaces (id, workspace_id, slug, name, kind, default_role, is_default, created_by, created_at, archived_at, deleted_at) VALUES (?, 'wsp_1', ?, ?, 'workspace', 'edit', ?, 'user:ana', ?, ?, ?)").run(
-    id,
-    over.slug ?? id,
-    id,
-    over.is_default ?? 0,
-    AT,
-    over.archived_at ?? null,
-    over.deleted_at ?? null,
-  );
+  db.prepare(
+    "INSERT INTO spaces (id, workspace_id, slug, name, kind, default_role, is_default, created_by, created_at, archived_at, deleted_at) VALUES (?, 'wsp_1', ?, ?, 'workspace', 'edit', ?, 'user:ana', ?, ?, ?)",
+  ).run(id, over.slug ?? id, id, over.is_default ?? 0, AT, over.archived_at ?? null, over.deleted_at ?? null);
 }
 
-function folio(db: DatabaseSync, id: string, over: Partial<{ space_id: string | null; parent_id: string | null; path: string; trashed_at: string | null }> = {}) {
+function folio(
+  db: DatabaseSync,
+  id: string,
+  over: Partial<{ space_id: string | null; parent_id: string | null; path: string; trashed_at: string | null }> = {},
+) {
   const path = over.path ?? `/${id}/`;
   db.prepare(
     "INSERT INTO folios (id, workspace_id, kind, title, owner, space_id, parent_id, position, acl_root, path, created_by, created_at, updated_at, edited_at, trashed_at) VALUES (?, 'wsp_1', 'doc', ?, 'user:ana', ?, ?, 1, ?, ?, 'user:ana', ?, ?, ?, ?)",
@@ -107,7 +105,11 @@ test("deleting a space trashes what is in it together, frees its address and kee
   assert.equal((db.prepare("SELECT trashed_at FROM folios WHERE id = 'old'").get() as { trashed_at: string }).trashed_at, "2026-10-01T00:00:00.000Z");
   assert.deepEqual(ids(db, "SELECT id FROM folios WHERE trashed_at IS NULL"), ["elsewhere", "private"]);
   // The row stays, marked, its address freed; the other space's joins stay.
-  const row = db.prepare("SELECT slug, deleted_at, deleted_by FROM spaces WHERE id = 'spc_eng'").get() as { slug: string; deleted_at: string; deleted_by: string };
+  const row = db.prepare("SELECT slug, deleted_at, deleted_by FROM spaces WHERE id = 'spc_eng'").get() as {
+    slug: string;
+    deleted_at: string;
+    deleted_by: string;
+  };
   assert.deepEqual({ ...row }, { slug: "engineering~spc_eng", deleted_at: AT, deleted_by: "user:ana" });
   assert.deepEqual(ids(db, "SELECT space_id AS id FROM space_joins"), ["spc_other"]);
   // A new space takes the address.

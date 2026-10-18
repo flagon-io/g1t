@@ -15,9 +15,7 @@ export type LineKind = "text" | "error" | "warning" | "notice" | "debug" | "comm
  * it had any.
  */
 export type Line = { kind: LineKind; text: string; at?: string; ansi?: string };
-export type Block =
-  | { kind: "line"; line: Line; number: number }
-  | { kind: "group"; title: string; lines: { line: Line; number: number }[]; at?: string };
+export type Block = { kind: "line"; line: Line; number: number } | { kind: "group"; title: string; lines: { line: Line; number: number }[]; at?: string };
 
 /** The time GitHub's logs stamp at the start of a line: `2026-10-12T09:41:07.1234567Z `. */
 const STAMP = /^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z) /;
@@ -177,9 +175,7 @@ export function searchLog(text: string, query: string): Numbered[] {
  * each group's title, with the lines of the groups in `open` (by their
  * index in `blocks`) under it.
  */
-export type Row =
-  | { kind: "line"; entry: Numbered }
-  | { kind: "group"; block: number; title: string; at?: string; open: boolean; size: number };
+export type Row = { kind: "line"; entry: Numbered } | { kind: "group"; block: number; title: string; at?: string; open: boolean; size: number };
 
 export function logRows(log: StepLog, open: ReadonlySet<number>): Row[] {
   const rows: Row[] = [];

@@ -12,22 +12,7 @@
  * (`-/onboarding`, identity's `set_onboarding`), so it stops opening by
  * itself; nothing else is lost.
  */
-import {
-  ArrowLeft,
-  ArrowRight,
-  Bot,
-  Check,
-  CircleDashed,
-  Code2,
-  ExternalLink,
-  GitBranch,
-  KeyRound,
-  Laptop,
-  Plus,
-  Rocket,
-  Sparkles,
-  Users,
-} from "lucide-react";
+import { ArrowLeft, ArrowRight, Bot, Check, CircleDashed, Code2, ExternalLink, GitBranch, KeyRound, Laptop, Plus, Rocket, Sparkles, Users } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useFetcher } from "react-router";
 
@@ -36,15 +21,7 @@ import { type AiConnection, type AiProvider, type OnboardingStep, AI_PROVIDERS }
 import { AI_PROVIDER_GROUPS, AI_PROVIDER_LOOKS, aiProvidersIn } from "../lib/ai-providers";
 import { autoOffered, defaultModel, modelOptions } from "../lib/ask-model";
 import { cn } from "../lib/cn";
-import {
-  type OnboardingStepView,
-  type OnboardingView,
-  STEP_ORDER,
-  finished,
-  firstOpenStep,
-  opensByItself,
-  progressOf,
-} from "../lib/onboarding";
+import { type OnboardingStepView, type OnboardingView, STEP_ORDER, finished, firstOpenStep, opensByItself, progressOf } from "../lib/onboarding";
 import { AgentSetup } from "./agent-setup";
 import { AiProviderMark } from "./connectors";
 import { ModelProviderFields } from "./model-providers";
@@ -203,21 +180,14 @@ function GuideSkeleton() {
   );
 }
 
-function Guide({
-  view,
-  step,
-  onStep,
-  onFinish,
-}: {
-  view: OnboardingView;
-  step: OnboardingStep;
-  onStep: (step: OnboardingStep) => void;
-  onFinish: () => void;
-}) {
+function Guide({ view, step, onStep, onFinish }: { view: OnboardingView; step: OnboardingStep; onStep: (step: OnboardingStep) => void; onFinish: () => void }) {
   const { steps, slug } = view;
   const progress = progressOf(steps);
   const done = finished(steps);
-  const index = Math.max(0, steps.findIndex((s) => s.key === step));
+  const index = Math.max(
+    0,
+    steps.findIndex((s) => s.key === step),
+  );
   const here = steps[index]!;
   return (
     <Tabs value={step} onValueChange={(value) => onStep(value as OnboardingStep)} orientation="vertical" className="contents">
@@ -247,9 +217,7 @@ function Guide({
             </TabsTrigger>
           ))}
         </TabsList>
-        <p className="border-t border-line px-5 py-3 text-xs leading-relaxed text-faint">
-          Closing this puts it away. Open it again from Settings or AI.
-        </p>
+        <p className="border-t border-line px-5 py-3 text-xs leading-relaxed text-faint">Closing this puts it away. Open it again from Settings or AI.</p>
       </aside>
 
       {/* The step at hand. On a touch screen its buttons are a finger's
@@ -298,17 +266,7 @@ function Guide({
  * to go to it (green done, lavender here, dimmed skipped), under the
  * workspace's name and the step's place.
  */
-function StepStrip({
-  view,
-  index,
-  onStep,
-  done,
-}: {
-  view: OnboardingView;
-  index: number;
-  onStep: (step: OnboardingStep) => void;
-  done: boolean;
-}) {
+function StepStrip({ view, index, onStep, done }: { view: OnboardingView; index: number; onStep: (step: OnboardingStep) => void; done: boolean }) {
   const { steps } = view;
   const progress = progressOf(steps);
   return (
@@ -316,9 +274,7 @@ function StepStrip({
       <p className="flex min-w-0 items-baseline gap-1.5 text-xs text-muted tabular-nums">
         <span className="truncate font-medium text-fg">{view.name}</span>
         <span aria-hidden="true">·</span>
-        <span className="shrink-0">
-          {done ? "All set" : `Step ${index + 1} of ${steps.length} · ${progress.settled} done`}
-        </span>
+        <span className="shrink-0">{done ? "All set" : `Step ${index + 1} of ${steps.length} · ${progress.settled} done`}</span>
       </p>
       <ol className="-mx-0.5 flex">
         {steps.map((s, i) => (
@@ -495,7 +451,11 @@ function ProviderRow({ slug, connection }: { slug: string; connection: AiConnect
         <div className="min-w-0 grow">
           <p className="truncate text-sm font-medium">{connection.name}</p>
           <p className="text-xs text-muted sm:truncate">
-            {[AI_PROVIDERS[connection.provider].label, connection.models.length > 0 && `${connection.models.length} models`, connection.secretHint && `key ${connection.secretHint}`]
+            {[
+              AI_PROVIDERS[connection.provider].label,
+              connection.models.length > 0 && `${connection.models.length} models`,
+              connection.secretHint && `key ${connection.secretHint}`,
+            ]
               .filter(Boolean)
               .join(" · ")}
           </p>
@@ -764,7 +724,9 @@ function Signed({ on, children }: { on: boolean | null; children: ReactNode }) {
 function Numbered({ n, title, children }: { n: number; title: string; children: ReactNode }) {
   return (
     <li className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-x-3 gap-y-2">
-      <Badge shape="mark" className="tabular-nums">{n}</Badge>
+      <Badge shape="mark" className="tabular-nums">
+        {n}
+      </Badge>
       <p className="self-center text-sm font-medium">{title}</p>
       <div className="col-start-2 space-y-2 max-sm:col-span-2 max-sm:col-start-1">{children}</div>
     </li>
@@ -800,8 +762,8 @@ function HarnessStep({ view }: { view: OnboardingView }) {
         </Numbered>
         <Numbered n={3} title="Approve access in your browser">
           <p className="text-sm text-muted">
-            Follow your client's sign-in instructions, review the permissions, and approve the access you want it to have.
-            You can change or revoke access in Settings &gt; Connected applications.
+            Follow your client's sign-in instructions, review the permissions, and approve the access you want it to have. You can change or revoke access in
+            Settings &gt; Connected applications.
           </p>
         </Numbered>
       </ol>
@@ -823,8 +785,7 @@ function PeopleStep({ view }: { view: OnboardingView }) {
         <Alert tone="info">
           <AlertTitle>Workspace invites come with the plan</AlertTitle>
           <AlertDescription>
-            Start the plan to invite your team into {view.name}. Until then, you can invite a friend to g1t with one of your own
-            invites.
+            Start the plan to invite your team into {view.name}. Until then, you can invite a friend to g1t with one of your own invites.
           </AlertDescription>
         </Alert>
         <div className="flex flex-wrap gap-2">

@@ -43,7 +43,10 @@ test("what a library publishes comes before an image, released ones first", () =
     pkg({ name: "empty", versions: 0, updated_at: "2026-10-04T00:00:00Z" }),
     pkg({}),
   ];
-  assert.deepEqual(libraryPackages(list).map((p) => p.name), ["psr/log", "empty", "img"]);
+  assert.deepEqual(
+    libraryPackages(list).map((p) => p.name),
+    ["psr/log", "empty", "img"],
+  );
   assert.equal(hasRelease(list), true);
   assert.equal(hasRelease([pkg({ versions: 0 })]), false);
   assert.equal(hasRelease([]), false);
@@ -95,7 +98,10 @@ test("links show homepage, docs, then the rest, never twice", () => {
     ],
   );
   // Production's address already shows on the page: the homepage pointing there is left out.
-  assert.deepEqual(linksToShow(links, ["https://g1t.sh"]).map((link) => link.type), ["docs", "custom"]);
+  assert.deepEqual(
+    linksToShow(links, ["https://g1t.sh"]).map((link) => link.type),
+    ["docs", "custom"],
+  );
   assert.equal(bare("https://g1t.sh/docs/"), "g1t.sh/docs");
 });
 
@@ -139,7 +145,11 @@ test("cards show production, else the homepage or docs", () => {
 
 test("custom links are read from a form's rows, blank rows left out", () => {
   const form = new FormData();
-  for (const [label, url] of [["Status", "status.g1t.sh"], ["", ""], ["", "npmjs.com/x"]]) {
+  for (const [label, url] of [
+    ["Status", "status.g1t.sh"],
+    ["", ""],
+    ["", "npmjs.com/x"],
+  ]) {
     form.append("linkLabel", label!);
     form.append("linkUrl", url!);
   }

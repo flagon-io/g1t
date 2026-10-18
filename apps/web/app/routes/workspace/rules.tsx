@@ -50,8 +50,8 @@ export default function WorkspaceRules({ loaderData, params }: Route.ComponentPr
       <header className="mb-6 border-b border-line pb-5">
         <h1 className="text-lg font-semibold tracking-tight">Rules</h1>
         <p className="mt-1 text-sm text-muted">
-          Rulesets that hold across {params.owner}'s repositories: which branches and tags they cover, who may bypass them, and what a pull
-          request needs before it merges. Each repository's own rulesets stack with these.
+          Rulesets that hold across {params.owner}'s repositories: which branches and tags they cover, who may bypass them, and what a pull request needs before
+          it merges. Each repository's own rulesets stack with these.
         </p>
       </header>
       <nav className="mb-6 flex gap-1 border-b border-line" aria-label="Rules">
@@ -85,7 +85,11 @@ export default function WorkspaceRules({ loaderData, params }: Route.ComponentPr
           />
         </section>
       ) : evaluations ? (
-        <InsightsView page={evaluations} showRepository olderHref={evaluations.next ? `${rulesPath(base, "insights")}?before=${encodeURIComponent(evaluations.next)}` : null} />
+        <InsightsView
+          page={evaluations}
+          showRepository
+          olderHref={evaluations.next ? `${rulesPath(base, "insights")}?before=${encodeURIComponent(evaluations.next)}` : null}
+        />
       ) : (
         <p className="text-sm text-muted">Insights could not be read just now.</p>
       )}

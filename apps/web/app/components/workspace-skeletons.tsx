@@ -90,12 +90,19 @@ export function OverviewSkeleton() {
 export function WorkspacePageSkeleton({ page }: { page: WorkspacePageKey }) {
   if (page === "overview") return <OverviewSkeleton />;
   if (page === "projects") return <ProjectsSkeleton />;
-  if (page === "insights") return <div aria-busy="true" aria-label="Loading insights" className="space-y-6">
-    <Skeleton className="h-10 w-80 max-w-full rounded-md" />
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}</div>
-    <Skeleton className="h-48 rounded-xl" />
-    <SkeletonRows rows={6} className="rounded-xl border border-line bg-surface" />
-  </div>;
+  if (page === "insights")
+    return (
+      <div aria-busy="true" aria-label="Loading insights" className="space-y-6">
+        <Skeleton className="h-10 w-80 max-w-full rounded-md" />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }, (_, i) => (
+            <Skeleton key={i} className="h-24 rounded-xl" />
+          ))}
+        </div>
+        <Skeleton className="h-48 rounded-xl" />
+        <SkeletonRows rows={6} className="rounded-xl border border-line bg-surface" />
+      </div>
+    );
   return (
     <div aria-busy="true" aria-label="Loading" className="space-y-4">
       <Skeleton className="h-3.5 w-2/3 max-w-xl" />

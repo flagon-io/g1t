@@ -14,16 +14,51 @@ const RESERVED = ["g1t.page", "g1t.sh", "g1t.dev"];
  * directly under one of these is an apex (`shop.co.uk`), not a subdomain.
  */
 const MULTI_LABEL_SUFFIXES = new Set([
-  "co.uk", "org.uk", "me.uk", "ltd.uk", "plc.uk", "net.uk", "ac.uk", "gov.uk",
-  "com.au", "net.au", "org.au", "edu.au", "id.au",
-  "co.nz", "net.nz", "org.nz",
-  "co.jp", "ne.jp", "or.jp",
-  "co.za", "org.za",
-  "com.br", "net.br", "org.br",
-  "com.mx", "org.mx",
-  "com.ar", "com.co", "com.tr", "com.sg", "com.hk", "com.tw", "com.cn", "com.my", "com.ph",
-  "co.in", "net.in", "org.in", "co.id", "co.il", "co.kr", "or.kr",
-  "com.es", "com.pl", "com.ua",
+  "co.uk",
+  "org.uk",
+  "me.uk",
+  "ltd.uk",
+  "plc.uk",
+  "net.uk",
+  "ac.uk",
+  "gov.uk",
+  "com.au",
+  "net.au",
+  "org.au",
+  "edu.au",
+  "id.au",
+  "co.nz",
+  "net.nz",
+  "org.nz",
+  "co.jp",
+  "ne.jp",
+  "or.jp",
+  "co.za",
+  "org.za",
+  "com.br",
+  "net.br",
+  "org.br",
+  "com.mx",
+  "org.mx",
+  "com.ar",
+  "com.co",
+  "com.tr",
+  "com.sg",
+  "com.hk",
+  "com.tw",
+  "com.cn",
+  "com.my",
+  "com.ph",
+  "co.in",
+  "net.in",
+  "org.in",
+  "co.id",
+  "co.il",
+  "co.kr",
+  "or.kr",
+  "com.es",
+  "com.pl",
+  "com.ua",
 ]);
 
 const LABEL = /^(?!-)[a-z0-9-]{1,63}(?<!-)$/;
@@ -36,9 +71,14 @@ export type HostnameCheck = { ok: true; hostname: string } | { ok: false; reason
  * label; never a wildcard, an IP address or one of g1t's own domains.
  */
 export function checkHostname(input: string): HostnameCheck {
-  let text = String(input ?? "").trim().toLowerCase();
+  let text = String(input ?? "")
+    .trim()
+    .toLowerCase();
   // What people paste: a URL, or a hostname with a path or a trailing dot.
-  text = text.replace(/^[a-z][a-z0-9+.-]*:\/\//, "").replace(/[/?#].*$/, "").replace(/\.$/, "");
+  text = text
+    .replace(/^[a-z][a-z0-9+.-]*:\/\//, "")
+    .replace(/[/?#].*$/, "")
+    .replace(/\.$/, "");
   if (!text) return { ok: false, reason: "Enter a domain, such as example.com or www.example.com." };
   if (text.includes("*")) return { ok: false, reason: "Wildcard domains are not supported yet; add each hostname on its own." };
   if (/:\d+$/.test(text)) return { ok: false, reason: "Leave out the port: apps are served on 443." };

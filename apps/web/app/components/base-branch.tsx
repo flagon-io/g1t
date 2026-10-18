@@ -67,11 +67,7 @@ export function BaseBranch({
           <Command>
             <CommandInput placeholder="Find a branch to merge into" />
             <CommandList>
-              {names.data ? (
-                <CommandEmpty>No branch by that name.</CommandEmpty>
-              ) : (
-                <p className="px-3 py-4 text-sm text-faint">Reading branches…</p>
-              )}
+              {names.data ? <CommandEmpty>No branch by that name.</CommandEmpty> : <p className="px-3 py-4 text-sm text-faint">Reading branches…</p>}
               <CommandGroup heading="Merge into">
                 {(names.data?.branches ?? [])
                   .filter((branch) => branch !== head)

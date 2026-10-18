@@ -42,8 +42,7 @@ export function StatusIcon({ status, conclusion, of = "run", environment, size =
     ) : (
       <Hourglass size={size} className="shrink-0 text-warn" aria-label={held} />
     );
-  if (status !== "completed")
-    return <Clock size={size} className="shrink-0 text-faint" aria-label={status === "pending" ? "Waiting its turn" : "Queued"} />;
+  if (status !== "completed") return <Clock size={size} className="shrink-0 text-faint" aria-label={status === "pending" ? "Waiting its turn" : "Queued"} />;
   switch (conclusion) {
     case "success":
       return (
@@ -129,13 +128,14 @@ function LineText({ text, ansi, query }: { text: string; ansi?: string; query: s
     <>
       {pieces.map((piece, index) => {
         const look = spanLook(piece.style);
-        const drawn = look.className || look.style ? (
-          <span className={look.className} style={look.style}>
-            {piece.text}
-          </span>
-        ) : (
-          piece.text
-        );
+        const drawn =
+          look.className || look.style ? (
+            <span className={look.className} style={look.style}>
+              {piece.text}
+            </span>
+          ) : (
+            piece.text
+          );
         return piece.match ? (
           <mark key={index} className="rounded-sm bg-accent/30 text-fg">
             {drawn}
@@ -157,10 +157,7 @@ const LogLine = memo(function LogLine({ line, number, query = "", timestamps = f
   const ansi = line.ansi?.replace(label, "");
   const id = anchor ? `${anchor}:${number}` : undefined;
   return (
-    <div
-      id={id}
-      className={`flex scroll-mt-24 gap-4 px-4 hover:bg-raised/40 ${targeted ? "bg-accent/15" : line.kind === "error" ? "bg-danger/5" : ""}`}
-    >
+    <div id={id} className={`flex scroll-mt-24 gap-4 px-4 hover:bg-raised/40 ${targeted ? "bg-accent/15" : line.kind === "error" ? "bg-danger/5" : ""}`}>
       {id ? (
         <a href={`#${id}`} className="w-8 shrink-0 select-none text-right text-faint/70 hover:text-fg hover:underline">
           {number}
@@ -185,12 +182,7 @@ const LogLine = memo(function LogLine({ line, number, query = "", timestamps = f
 /** Whether a line would draw the same: a log that grows keeps its lines, but a search finds them again. */
 function sameLine(a: LogLineProps, b: LogLineProps): boolean {
   return (
-    a.number === b.number &&
-    a.query === b.query &&
-    a.timestamps === b.timestamps &&
-    a.anchor === b.anchor &&
-    a.targeted === b.targeted &&
-    a.line === b.line
+    a.number === b.number && a.query === b.query && a.timestamps === b.timestamps && a.anchor === b.anchor && a.targeted === b.targeted && a.line === b.line
   );
 }
 
@@ -516,7 +508,6 @@ export function Notes({ notes }: { notes: WorkflowNote[] }) {
     </Card>
   );
 }
-
 
 /** What workflow runs said about a pull request's head, each linking to its run. */
 export function WorkflowStatuses({ statuses }: { statuses: CommitStatus[] }) {

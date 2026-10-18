@@ -37,11 +37,7 @@ async function telemetryTokens(slug: string): Promise<{ project: { id: string; s
 export async function loader({ params, request, context }: Route.LoaderArgs) {
   requireStaff(context);
   const slug = slugOf(params.slug);
-  const [detail, runners, tokens] = await Promise.all([
-    settle(identity.workspace(slug)),
-    settle(runnersAdmin.list(slug)),
-    settle(telemetryTokens(slug)),
-  ]);
+  const [detail, runners, tokens] = await Promise.all([settle(identity.workspace(slug)), settle(runnersAdmin.list(slug)), settle(telemetryTokens(slug))]);
   if (detail.ok && !detail.value) throw data(`There is no workspace called ${slug}.`, { status: 404 });
   const done = new URL(request.url).searchParams.get("done");
   const DONE: Record<string, string> = {
@@ -124,7 +120,10 @@ export default function WorkspaceAbuse({ loaderData, actionData }: Route.Compone
       <Link to={`/workspaces/${slug}`} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
         <ArrowLeft size={14} /> {slug}
       </Link>
-      <PageHeader title="Suspend and clean up" description={`What staff can stop in ${slug} after abuse: the workspace itself, its self-hosted runners, and its projects' telemetry tokens.`} />
+      <PageHeader
+        title="Suspend and clean up"
+        description={`What staff can stop in ${slug} after abuse: the workspace itself, its self-hosted runners, and its projects' telemetry tokens.`}
+      />
       <div className="mt-5 space-y-3 empty:hidden">
         {done && <Notice tone="ok">{done}</Notice>}
         {error && <Notice tone="warn">Identity did not answer: {error}</Notice>}
@@ -154,7 +153,12 @@ export default function WorkspaceAbuse({ loaderData, actionData }: Route.Compone
         )}
       </Section>
 
-      <Section id="runners" title="Self-hosted runners" description="Removing a runner fails what it was running and stops its credential at once. Removing all of them also ends the registration tokens the workspace has out." className="mt-6">
+      <Section
+        id="runners"
+        title="Self-hosted runners"
+        description="Removing a runner fails what it was running and stops its credential at once. Removing all of them also ends the registration tokens the workspace has out."
+        className="mt-6"
+      >
         {runnersError && <Notice tone="warn">Actions did not answer: {runnersError}</Notice>}
         {errorFor("runners") && <Notice tone="error">{errorFor("runners")}</Notice>}
         {runners.length === 0 ? (
@@ -162,7 +166,11 @@ export default function WorkspaceAbuse({ loaderData, actionData }: Route.Compone
         ) : (
           <div className="space-y-2">
             {runners.map((runner) => (
-              <Form method="post" key={runner.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-sm">
+              <Form
+                method="post"
+                key={runner.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-sm"
+              >
                 <span className="min-w-0">
                   <span className="font-mono">{runner.name}</span>
                   {runner.repo && <span className="text-muted"> · {runner.repo}</span>}
@@ -189,7 +197,12 @@ export default function WorkspaceAbuse({ loaderData, actionData }: Route.Compone
         )}
       </Section>
 
-      <Section id="telemetry" title="Telemetry ingest tokens" description="Tokens people made to send OpenTelemetry to a project. Revoking one refuses anything sent with it from then on. g1t's own token for its deployments is not listed." className="mt-6">
+      <Section
+        id="telemetry"
+        title="Telemetry ingest tokens"
+        description="Tokens people made to send OpenTelemetry to a project. Revoking one refuses anything sent with it from then on. g1t's own token for its deployments is not listed."
+        className="mt-6"
+      >
         {tokensError && <Notice tone="warn">Projects or telemetry did not answer: {tokensError}</Notice>}
         {tokens.every((row) => row.tokens.length === 0) ? (
           <EmptyState title="No ingest tokens">No project in {slug} has one.</EmptyState>

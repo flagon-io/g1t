@@ -57,14 +57,12 @@ export default function ApplicationSettings({ loaderData, actionData }: Route.Co
                   <div className="min-w-0 grow basis-60">
                     <p className="truncate text-sm font-medium">{application.clientName}</p>
                     <p className="text-xs text-faint">
-                      Connected <TimeAgo at={application.createdAt} /> · last used{" "}
-                      <TimeAgo at={application.lastUsedAt} />
+                      Connected <TimeAgo at={application.createdAt} /> · last used <TimeAgo at={application.lastUsedAt} />
                     </p>
                     <AccessSummary holder={application} />
                     {legacy && (
                       <p className="mt-1.5 text-xs text-warn">
-                        Signed in before applications asked for scopes, so it can do everything you can.
-                        Narrow it to what it needs.
+                        Signed in before applications asked for scopes, so it can do everything you can. Narrow it to what it needs.
                       </p>
                     )}
                   </div>
@@ -82,8 +80,7 @@ export default function ApplicationSettings({ loaderData, actionData }: Route.Co
                     <input type="hidden" name="intent" value="update-application" />
                     <input type="hidden" name="id" value={application.id} />
                     <p className="text-sm text-muted">
-                      {application.clientName} stays signed in. What it may do changes at once, and its
-                      next refresh keeps the change.
+                      {application.clientName} stays signed in. What it may do changes at once, and its next refresh keeps the change.
                     </p>
                     <ScopeChecklist initial={application.scopes} />
                     {actionData?.editing === application.id && <ErrorText>{actionData.error}</ErrorText>}

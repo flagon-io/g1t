@@ -163,7 +163,9 @@ let navigationLocation: () => NavigationLocation | undefined = () => undefined;
 /** Read router state synchronously: React effects run after a navigation's fetch starts. */
 export function watchBuildNavigation(read: () => NavigationLocation | undefined) {
   navigationLocation = read;
-  return () => { if (navigationLocation === read) navigationLocation = () => undefined; };
+  return () => {
+    if (navigationLocation === read) navigationLocation = () => undefined;
+  };
 }
 
 /** Wraps the browser's `fetch` so the router's reads survive a moment offline. Browser only; once. */

@@ -48,7 +48,8 @@ export function zoneAbbr(date: Date, tz: string): string {
   if (tz === "UTC" || tz === "Etc/UTC" || tz === "Etc/GMT") return "UTC";
   let offset = "";
   for (const locale of ["en-US", "en-GB"]) {
-    const name = new Intl.DateTimeFormat(locale, { timeZone: tz, timeZoneName: "short" }).formatToParts(date).find((p) => p.type === "timeZoneName")?.value ?? "";
+    const name =
+      new Intl.DateTimeFormat(locale, { timeZone: tz, timeZoneName: "short" }).formatToParts(date).find((p) => p.type === "timeZoneName")?.value ?? "";
     if (name && !/^(GMT|UTC)[+-−]/.test(name)) return name;
     offset ||= name;
   }
@@ -83,7 +84,16 @@ export function when(at: Date, tz: string, time: boolean): { text: string; zone:
 /** Minutes the zone is ahead of UTC at that moment. */
 function offsetMinutes(ms: number, tz: string): number {
   const p = Object.fromEntries(
-    new Intl.DateTimeFormat("en-US", { timeZone: tz, year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric", hourCycle: "h23" })
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      minute: "numeric",
+      second: "numeric",
+      hourCycle: "h23",
+    })
       .formatToParts(new Date(ms))
       .map((x) => [x.type, Number(x.value)]),
   );

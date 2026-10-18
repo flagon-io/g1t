@@ -46,9 +46,7 @@ export default function ProjectUsage({ loaderData }: Route.ComponentProps) {
       >
         {/* A report that never arrives says so below the page's heading. */}
         <Await resolve={report} errorElement={<Unavailable what="Usage" />}>
-          {(loaded) => (
-            <UsageView slug={slug} owner={owner} filters={filters} url={url} report={loaded.report} error={loaded.error} fixedProject={project} />
-          )}
+          {(loaded) => <UsageView slug={slug} owner={owner} filters={filters} url={url} report={loaded.report} error={loaded.error} fixedProject={project} />}
         </Await>
       </Suspense>
     </div>

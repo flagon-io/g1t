@@ -94,5 +94,5 @@ the session is already recorded on g1t.
    stays open.
 9. **Let go.** If you stop before it is done, hand it off rather than
    leaving a claim to expire: `g1t work handoff N --note "where it stands,
-   what is left, what to watch out for"`. Name any target repository it
+what is left, what to watch out for"`. Name any target repository it
    has not landed in yet.

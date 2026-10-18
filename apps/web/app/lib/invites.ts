@@ -23,7 +23,13 @@ export function cleanCode(raw: string | null | undefined): string {
   let text = (raw ?? "").trim();
   const param = /[?&]invite=([^&#\s]+)/i.exec(text);
   if (param) text = decodeURIComponent(param[1]!);
-  else if (/^https?:\/\//i.test(text)) text = text.replace(/[?#].*$/, "").split("/").filter(Boolean).pop() ?? "";
+  else if (/^https?:\/\//i.test(text))
+    text =
+      text
+        .replace(/[?#].*$/, "")
+        .split("/")
+        .filter(Boolean)
+        .pop() ?? "";
   return text.replace(/\s+/g, "").slice(0, 80);
 }
 
@@ -141,10 +147,7 @@ type Previewed = {
  * on g1t" is a workspace invitation, which also makes the account of
  * someone who has none.
  */
-export function invitePageCopy(
-  invite: Previewed,
-  signedIn: boolean,
-): { before: string; place: string | null; after: string; about: string } {
+export function invitePageCopy(invite: Previewed, signedIn: boolean): { before: string; place: string | null; after: string; about: string } {
   const from = invite.invitedBy ? `@${invite.invitedBy.username}` : "The g1t team";
   const signingUp = !signedIn && !invite.hasAccount && invite.kind === "account";
   const g1t = "g1t is where a team and the coding agents it already uses ship code";
@@ -155,9 +158,7 @@ export function invitePageCopy(
       place: name,
       after: " on g1t",
       about: `This is an invitation to join ${name}, which you accept or decline. ${
-        signingUp
-          ? `You do not have a g1t account yet, so it also lets you make one: make it below, then join ${name}.`
-          : `Accepting joins you to ${name}.`
+        signingUp ? `You do not have a g1t account yet, so it also lets you make one: make it below, then join ${name}.` : `Accepting joins you to ${name}.`
       }`,
     };
   }
@@ -263,9 +264,7 @@ export function inviteFor(invite: Listed): string {
  * (an account, and no workspace), or an invitation to join a workspace.
  */
 export function inviteKind(invite: { workspace: string | null }): { kind: "g1t" | "workspace"; label: string } {
-  return invite.workspace
-    ? { kind: "workspace", label: `Invite to join ${invite.workspace}` }
-    : { kind: "g1t", label: "Invite to g1t" };
+  return invite.workspace ? { kind: "workspace", label: `Invite to join ${invite.workspace}` } : { kind: "g1t", label: "Invite to g1t" };
 }
 
 // --- Invite a friend ----------------------------------------------------------
@@ -287,14 +286,12 @@ export const G1T_INVITES = {
   /** The account menu's entry and the page's button. */
   action: "Invite a friend",
   /** The dialog's description. */
-  dialog:
-    "They get an email from you with a link to sign up. Their account starts with a workspace of its own, and the invite works for 30 days.",
+  dialog: "They get an email from you with a link to sign up. Their account starts with a workspace of its own, and the invite works for 30 days.",
   /** Under the count. */
   comesBack: "A revoked invite that was never used comes back to you.",
   /** The off-by-default box that also invites the person to a workspace. */
   alsoJoin: "Also invite them to a workspace",
-  alsoJoinHint:
-    "Once their account is made, they get an invitation to the workspace to accept or decline. Left off, the invite is to g1t only.",
+  alsoJoinHint: "Once their account is made, they get an invitation to the workspace to accept or decline. Left off, the invite is to g1t only.",
   /** When none are left: on the disabled button. */
   out: "You have used all your invites. Your friends can still sign up at g1t.sh without one.",
   /** When none are left: under the count, which says so already. */

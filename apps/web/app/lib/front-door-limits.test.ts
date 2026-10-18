@@ -2,14 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import {
-  LIMIT_PERIOD_SECONDS,
-  RATE_LIMITS,
-  type RateLimitBinding,
-  checkLimit,
-  isLimited,
-  secretKey,
-} from "@g1t/contracts/rate-limits";
+import { LIMIT_PERIOD_SECONDS, RATE_LIMITS, type RateLimitBinding, checkLimit, isLimited, secretKey } from "@g1t/contracts/rate-limits";
 
 import { archiveLink, gitLimited, heavy, pageLimited, sessionCookie, unlimited, usercontentLimited } from "./front-door-limits.ts";
 
@@ -150,7 +143,16 @@ test("costly pages are recognised", () => {
     assert.ok(heavy(path), path);
   }
   // A running job's live log is asked for every second; it counts as a page.
-  for (const path of ["/", "/acme/rocket", "/acme/rocket/actions", "/acme/rocket/issues/1", "/acme/search", "/acme/rocket/security", "/acme/rocket/security/reports", "/acme/rocket/actions/jobs/job_1/log"]) {
+  for (const path of [
+    "/",
+    "/acme/rocket",
+    "/acme/rocket/actions",
+    "/acme/rocket/issues/1",
+    "/acme/search",
+    "/acme/rocket/security",
+    "/acme/rocket/security/reports",
+    "/acme/rocket/actions/jobs/job_1/log",
+  ]) {
     assert.ok(!heavy(path), path);
   }
 });
@@ -176,11 +178,7 @@ test("every wrangler.jsonc declares the rate limits RATE_LIMITS lists, and only 
   for (const worker of workers) {
     const declared = readJsonc(`../../../../${worker}/wrangler.jsonc`).ratelimits ?? [];
     const listed = Object.entries(RATE_LIMITS).filter(([, spec]) => spec.worker === worker);
-    assert.deepEqual(
-      declared.map((binding) => binding.name).sort(),
-      listed.map(([name]) => name).sort(),
-      `${worker}'s bindings`,
-    );
+    assert.deepEqual(declared.map((binding) => binding.name).sort(), listed.map(([name]) => name).sort(), `${worker}'s bindings`);
     for (const [name, spec] of listed) {
       const binding = declared.find((b) => b.name === name)!;
       assert.equal(Number(binding.namespace_id), spec.namespaceId, `${name}'s namespace id`);

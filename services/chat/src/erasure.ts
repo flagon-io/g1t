@@ -21,7 +21,8 @@ const CHANNELS = 25;
  */
 export async function purgePersonalData(env: Env, args: Erasure): Promise<{ ok: boolean; pending?: boolean }> {
   if (!args?.id || !["user", "workspace"].includes(args.kind)) throw new Error("Invalid purge subject");
-  const db = env.DB, key = `user:${args.id}`;
+  const db = env.DB,
+    key = `user:${args.id}`;
   // The channels to visit are listed once, in the transaction that writes
   // the tombstone: a retry works through the list instead of scanning
   // every message again, and the list can never be skipped.
@@ -29,15 +30,23 @@ export async function purgePersonalData(env: Env, args: Erasure): Promise<{ ok: 
   await db.batch([
     args.kind === "workspace"
       ? db.prepare(`INSERT OR IGNORE INTO purge_channels SELECT ?1, id FROM channels WHERE workspace_id = ?1 AND ${unseeded}`).bind(args.id)
-      : db.prepare(`INSERT OR IGNORE INTO purge_channels SELECT ?1, id FROM channels WHERE (created_by = ?2 OR id IN (SELECT channel_id FROM channel_members WHERE principal = ?2 UNION SELECT channel_id FROM messages WHERE author = ?2)) AND ${unseeded}`).bind(args.id, key),
+      : db
+          .prepare(
+            `INSERT OR IGNORE INTO purge_channels SELECT ?1, id FROM channels WHERE (created_by = ?2 OR id IN (SELECT channel_id FROM channel_members WHERE principal = ?2 UNION SELECT channel_id FROM messages WHERE author = ?2)) AND ${unseeded}`,
+          )
+          .bind(args.id, key),
     db.prepare("INSERT OR IGNORE INTO erased_subjects (id, kind) VALUES (?, ?)").bind(args.id, args.kind),
   ]);
   let budget = BUDGET;
-  const channels = (await db.prepare("SELECT channel_id FROM purge_channels WHERE subject_id = ? LIMIT ?").bind(args.id, CHANNELS).all<{ channel_id: string }>()).results;
+  const channels = (
+    await db.prepare("SELECT channel_id FROM purge_channels WHERE subject_id = ? LIMIT ?").bind(args.id, CHANNELS).all<{ channel_id: string }>()
+  ).results;
   for (const { channel_id: id } of channels) {
     if (budget <= 0) break;
     const channel = await db.prepare("SELECT kind FROM channels WHERE id = ?").bind(id).first<{ kind: string }>();
-    const members = (await db.prepare("SELECT principal FROM channel_members WHERE channel_id = ?").bind(id).all<{ principal: string }>()).results.map(r => r.principal);
+    const members = (await db.prepare("SELECT principal FROM channel_members WHERE channel_id = ?").bind(id).all<{ principal: string }>()).results.map(
+      (r) => r.principal,
+    );
     const destroy = args.kind === "workspace" || (channel?.kind === "dm" && g1tDmPerson(members) === key);
     // References stay in purge_channels until both the room and database confirm cleanup.
     await env.ROOMS.get(env.ROOMS.idFromName(id)).erase(id, destroy ? null : key);
@@ -51,7 +60,10 @@ export async function purgePersonalData(env: Env, args: Erasure): Promise<{ ok: 
         ]);
         const changes = Number(gone?.meta?.changes ?? 0);
         budget -= Math.max(changes, 1);
-        if (changes < CHUNK) { left = false; break; }
+        if (changes < CHUNK) {
+          left = false;
+          break;
+        }
       }
       if (left) break;
       await clearConversation(db, id);
@@ -64,7 +76,11 @@ export async function purgePersonalData(env: Env, args: Erasure): Promise<{ ok: 
       await db.batch([
         db.prepare("UPDATE messages SET author = ? WHERE channel_id = ? AND author = ?").bind(GHOST, id, key),
         db.prepare("DELETE FROM channel_members WHERE channel_id = ? AND principal = ?").bind(id, key),
-        db.prepare("UPDATE channels SET created_by = CASE WHEN created_by = ?2 THEN ?3 ELSE created_by END, dm_key = CASE WHEN kind = 'dm' THEN NULL ELSE dm_key END WHERE id = ?1").bind(id, key, GHOST),
+        db
+          .prepare(
+            "UPDATE channels SET created_by = CASE WHEN created_by = ?2 THEN ?3 ELSE created_by END, dm_key = CASE WHEN kind = 'dm' THEN NULL ELSE dm_key END WHERE id = ?1",
+          )
+          .bind(id, key, GHOST),
       ]);
       budget -= 1;
     }
@@ -83,12 +99,17 @@ export async function purgePersonalData(env: Env, args: Erasure): Promise<{ ok: 
       db.prepare("DELETE FROM channel_removals WHERE principal = ?1 OR removed_by = ?1").bind(key),
     ]);
   } else {
-    const files = (await db.prepare("SELECT DISTINCT file FROM custom_emoji WHERE workspace_id = ? AND file IS NOT NULL").bind(args.id).all<{ file: string }>()).results;
+    const files = (await db.prepare("SELECT DISTINCT file FROM custom_emoji WHERE workspace_id = ? AND file IS NOT NULL").bind(args.id).all<{ file: string }>())
+      .results;
     for (const { file } of files) {
       const used = await db.prepare("SELECT 1 FROM custom_emoji WHERE workspace_id != ? AND file = ? LIMIT 1").bind(args.id, file).first();
       if (!used) await env.AVATARS.delete(`emoji/${file}`);
     }
-    await db.batch(["general_joined", "custom_emoji", "chat_settings", "former_agents", "chat_meter", "channel_invitations", "channel_requests"].map(table => db.prepare(`DELETE FROM ${table} WHERE workspace_id = ?`).bind(args.id)));
+    await db.batch(
+      ["general_joined", "custom_emoji", "chat_settings", "former_agents", "chat_meter", "channel_invitations", "channel_requests"].map((table) =>
+        db.prepare(`DELETE FROM ${table} WHERE workspace_id = ?`).bind(args.id),
+      ),
+    );
   }
   return { ok: true };
 }

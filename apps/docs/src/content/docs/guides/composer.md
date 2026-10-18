@@ -35,11 +35,11 @@ works; each name is one package in a workspace.
 
 ## Versions
 
-| In git | Version |
-| --- | --- |
-| A tag that reads as a version: `v1.2.0`, `1.2.0`, `2.0.0-RC1`, `1.0.0-beta.2` | That version (`v1.2.0`) |
-| A branch | `dev-<branch>`; a branch named like a version, `1.x`, is `1.x-dev` |
-| The default branch | Its `dev-` version, marked as the default branch |
+| In git                                                                        | Version                                                            |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| A tag that reads as a version: `v1.2.0`, `1.2.0`, `2.0.0-RC1`, `1.0.0-beta.2` | That version (`v1.2.0`)                                            |
+| A branch                                                                      | `dev-<branch>`; a branch named like a version, `1.x`, is `1.x-dev` |
+| The default branch                                                            | Its `dev-` version, marked as the default branch                   |
 
 Each version's requirements, autoloading and the rest are read from the
 `composer.json` at that tag or branch, so a version installs exactly what

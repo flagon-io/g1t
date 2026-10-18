@@ -1,69 +1,69 @@
 {
-	"$schema": "../../node_modules/wrangler/config-schema.json",
-	"name": "g1t-events",
-	"account_id": "1e6f2cffa3f445920836e8ebe446bb58",
-	"compatibility_date": "2026-09-26",
-	// Runs next to its database: a request makes several queries in turn,
-	// and each would otherwise cross the distance to it.
-	"placement": { "mode": "off" },
-	"main": "build/index.js",
-	"build": { "command": "node ../../scripts/build-rust-worker.mjs" },
-	"workers_dev": false,
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "g1t-events",
-			"database_id": "dd889749-0d01-4c94-8b9b-d789dec1c0e4",
-			"migrations_dir": "migrations"
-		}
-	],
-	"queues": {
-		"producers": [
-			{ "binding": "BUS", "queue": "g1t-events" },
-			// One queue per subscribing service, so each consumes, retries
-			// and scales on its own. Bindings named SUBSCRIBER_* receive
-			// the event types g1t_contracts::subscribers routes to them.
-			{ "binding": "SUBSCRIBER_WORK", "queue": "g1t-events-work" },
-			{ "binding": "SUBSCRIBER_RUNNER", "queue": "g1t-events-runner" },
-			{ "binding": "SUBSCRIBER_INTEGRATIONS", "queue": "g1t-events-integrations" },
-			{ "binding": "SUBSCRIBER_WEBHOOKS", "queue": "g1t-events-webhooks" },
-			{ "binding": "SUBSCRIBER_ACTIONS", "queue": "g1t-events-actions" },
-			{ "binding": "SUBSCRIBER_DEPLOYMENTS", "queue": "g1t-events-deployments" },
-			{ "binding": "SUBSCRIBER_PROJECTS", "queue": "g1t-events-projects" },
-			{ "binding": "SUBSCRIBER_REPOS", "queue": "g1t-events-repos" },
-			{ "binding": "SUBSCRIBER_BILLING", "queue": "g1t-events-billing" },
-			{ "binding": "SUBSCRIBER_SECURITY", "queue": "g1t-events-security" },
-			{ "binding": "SUBSCRIBER_SEARCH", "queue": "g1t-events-search" },
-			{ "binding": "SUBSCRIBER_PACKAGES", "queue": "g1t-events-packages" },
-			// Pages that cite code a merge changed, and projects' docs folders
-			// (services/artifacts/src/staleness.ts). Create it once:
-			//   npx wrangler queues create g1t-events-docs
-			{ "binding": "SUBSCRIBER_DOCS", "queue": "g1t-events-docs" }
-		],
-		"consumers": [{ "queue": "g1t-events", "max_batch_size": 100, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }]
-	},
-	// Each workspace's audit log keeps as many days as billing says (7 free,
-	// 90 on the plan, or what staff set), asked for over this binding.
-	// The inbox (src/inbox.rs) reads what each event names from work, where
-	// its repository is from repos, and who acted from identity; listing
-	// asks repos which repositories the person can still read.
-	"services": [
-		{ "binding": "BILLING", "service": "g1t-billing" },
-		{ "binding": "WORK", "service": "g1t-work" },
-		{ "binding": "REPOS", "service": "g1t-repos" },
-		{ "binding": "IDENTITY", "service": "g1t-identity" },
-		// Each new inbox item, told live in the person's tabs and pushed, and
-		// what changed in each repository, for the pages open on it (services/notify).
-		{ "binding": "NOTIFY", "service": "g1t-notify" }
-	],
-	// Once a day, audit entries older than AUDIT_MAX_DAYS are removed for
-	// everyone (keep it at least billing's AUDIT_MAX_DAYS), then each
-	// workspace's older than its own days. Only workspaces with entries
-	// older than AUDIT_MIN_DAYS, the shortest any plan keeps, are asked about.
-	// At 08:00 UTC the security digests that are due go out (src/security_digest.rs):
-	// daily ones every day, weekly ones on Monday.
-	"triggers": { "crons": ["41 3 * * *", "0 8 * * *"] },
-	"vars": { "AUDIT_MAX_DAYS": "400", "AUDIT_MIN_DAYS": "7" },
-	// Logs of a tenth of requests: every change in g1t is an event.
-	"observability": { "enabled": true, "head_sampling_rate": 0.1 }
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "g1t-events",
+  "account_id": "1e6f2cffa3f445920836e8ebe446bb58",
+  "compatibility_date": "2026-09-26",
+  // Runs next to its database: a request makes several queries in turn,
+  // and each would otherwise cross the distance to it.
+  "placement": { "mode": "off" },
+  "main": "build/index.js",
+  "build": { "command": "node ../../scripts/build-rust-worker.mjs" },
+  "workers_dev": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "g1t-events",
+      "database_id": "dd889749-0d01-4c94-8b9b-d789dec1c0e4",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "queues": {
+    "producers": [
+      { "binding": "BUS", "queue": "g1t-events" },
+      // One queue per subscribing service, so each consumes, retries
+      // and scales on its own. Bindings named SUBSCRIBER_* receive
+      // the event types g1t_contracts::subscribers routes to them.
+      { "binding": "SUBSCRIBER_WORK", "queue": "g1t-events-work" },
+      { "binding": "SUBSCRIBER_RUNNER", "queue": "g1t-events-runner" },
+      { "binding": "SUBSCRIBER_INTEGRATIONS", "queue": "g1t-events-integrations" },
+      { "binding": "SUBSCRIBER_WEBHOOKS", "queue": "g1t-events-webhooks" },
+      { "binding": "SUBSCRIBER_ACTIONS", "queue": "g1t-events-actions" },
+      { "binding": "SUBSCRIBER_DEPLOYMENTS", "queue": "g1t-events-deployments" },
+      { "binding": "SUBSCRIBER_PROJECTS", "queue": "g1t-events-projects" },
+      { "binding": "SUBSCRIBER_REPOS", "queue": "g1t-events-repos" },
+      { "binding": "SUBSCRIBER_BILLING", "queue": "g1t-events-billing" },
+      { "binding": "SUBSCRIBER_SECURITY", "queue": "g1t-events-security" },
+      { "binding": "SUBSCRIBER_SEARCH", "queue": "g1t-events-search" },
+      { "binding": "SUBSCRIBER_PACKAGES", "queue": "g1t-events-packages" },
+      // Pages that cite code a merge changed, and projects' docs folders
+      // (services/artifacts/src/staleness.ts). Create it once:
+      //   npx wrangler queues create g1t-events-docs
+      { "binding": "SUBSCRIBER_DOCS", "queue": "g1t-events-docs" },
+    ],
+    "consumers": [{ "queue": "g1t-events", "max_batch_size": 100, "max_batch_timeout": 1, "max_retries": 3, "dead_letter_queue": "g1t-events-dlq" }],
+  },
+  // Each workspace's audit log keeps as many days as billing says (7 free,
+  // 90 on the plan, or what staff set), asked for over this binding.
+  // The inbox (src/inbox.rs) reads what each event names from work, where
+  // its repository is from repos, and who acted from identity; listing
+  // asks repos which repositories the person can still read.
+  "services": [
+    { "binding": "BILLING", "service": "g1t-billing" },
+    { "binding": "WORK", "service": "g1t-work" },
+    { "binding": "REPOS", "service": "g1t-repos" },
+    { "binding": "IDENTITY", "service": "g1t-identity" },
+    // Each new inbox item, told live in the person's tabs and pushed, and
+    // what changed in each repository, for the pages open on it (services/notify).
+    { "binding": "NOTIFY", "service": "g1t-notify" },
+  ],
+  // Once a day, audit entries older than AUDIT_MAX_DAYS are removed for
+  // everyone (keep it at least billing's AUDIT_MAX_DAYS), then each
+  // workspace's older than its own days. Only workspaces with entries
+  // older than AUDIT_MIN_DAYS, the shortest any plan keeps, are asked about.
+  // At 08:00 UTC the security digests that are due go out (src/security_digest.rs):
+  // daily ones every day, weekly ones on Monday.
+  "triggers": { "crons": ["41 3 * * *", "0 8 * * *"] },
+  "vars": { "AUDIT_MAX_DAYS": "400", "AUDIT_MIN_DAYS": "7" },
+  // Logs of a tenth of requests: every change in g1t is an event.
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 },
 }

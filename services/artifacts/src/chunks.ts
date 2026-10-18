@@ -86,7 +86,14 @@ function sections(markdown: string, title: string): Section[] {
     first = false;
     while (path.length && path[path.length - 1]!.level >= level) path.pop();
     path.push({ level, text });
-    out.push({ heading: path.map((p) => p.text).filter(Boolean).join(HEADING_SEPARATOR) || null, lines: [] });
+    out.push({
+      heading:
+        path
+          .map((p) => p.text)
+          .filter(Boolean)
+          .join(HEADING_SEPARATOR) || null,
+      lines: [],
+    });
   }
   return out;
 }
@@ -167,7 +174,10 @@ export function chunkMarkdown(markdown: string, title = ""): Chunk[] {
   for (const piece of pieces) {
     const last = merged[merged.length - 1];
     if (last && last.text.length < MIN_CHARS) {
-      const joined = piece.heading && piece.heading !== last.heading ? `${last.text}\n\n**${piece.heading.split(HEADING_SEPARATOR).pop()}**\n\n${piece.text}` : `${last.text}\n\n${piece.text}`;
+      const joined =
+        piece.heading && piece.heading !== last.heading
+          ? `${last.text}\n\n**${piece.heading.split(HEADING_SEPARATOR).pop()}**\n\n${piece.text}`
+          : `${last.text}\n\n${piece.text}`;
       if (joined.length <= MAX_CHARS) {
         last.text = joined;
         if (!last.heading) last.heading = piece.heading;
@@ -181,7 +191,10 @@ export function chunkMarkdown(markdown: string, title = ""): Chunk[] {
     const last = merged[merged.length - 1]!;
     const before = merged[merged.length - 2]!;
     if (last.text.length < MIN_CHARS && before.text.length + last.text.length + 40 <= MAX_CHARS) {
-      before.text = last.heading && last.heading !== before.heading ? `${before.text}\n\n**${last.heading.split(HEADING_SEPARATOR).pop()}**\n\n${last.text}` : `${before.text}\n\n${last.text}`;
+      before.text =
+        last.heading && last.heading !== before.heading
+          ? `${before.text}\n\n**${last.heading.split(HEADING_SEPARATOR).pop()}**\n\n${last.text}`
+          : `${before.text}\n\n${last.text}`;
       merged.pop();
     }
   }

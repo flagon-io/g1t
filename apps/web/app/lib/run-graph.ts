@@ -165,8 +165,7 @@ export function columns(units: Unit[]): Map<string, number> {
 function links(units: Unit[], column: Map<string, number>): [string, string][] {
   const out: [string, string][] = [];
   for (const unit of units)
-    for (const need of unique(unit.needs))
-      if (need !== unit.key && column.has(need) && column.get(need)! < column.get(unit.key)!) out.push([need, unit.key]);
+    for (const need of unique(unit.needs)) if (need !== unit.key && column.has(need) && column.get(need)! < column.get(unit.key)!) out.push([need, unit.key]);
   return out;
 }
 
@@ -277,14 +276,7 @@ export function connector(x1: number, y1: number, x2: number, y2: number): strin
   const mx = Math.max(x1 + 8, x2 - GRAPH.columnGap / 2);
   const r = Math.min(8, Math.abs(y2 - y1) / 2, mx - x1, x2 - mx);
   const down = y2 > y1 ? 1 : -1;
-  return [
-    `M${x1} ${y1}`,
-    `H${mx - r}`,
-    `Q${mx} ${y1} ${mx} ${y1 + down * r}`,
-    `V${y2 - down * r}`,
-    `Q${mx} ${y2} ${mx + r} ${y2}`,
-    `H${x2}`,
-  ].join("");
+  return [`M${x1} ${y1}`, `H${mx - r}`, `Q${mx} ${y1} ${mx} ${y1 + down * r}`, `V${y2 - down * r}`, `Q${mx} ${y2} ${mx + r} ${y2}`, `H${x2}`].join("");
 }
 
 function edgeState(from: Unit, to: Unit): EdgeState {

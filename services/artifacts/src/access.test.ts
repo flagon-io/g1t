@@ -22,7 +22,13 @@ test("team spaces give the team's members their base role, and nobody else anyth
 });
 
 test("a listing raises a role but never lowers it", () => {
-  const raised: SpaceRules = { ...team, members: [{ principal: "user:u1", role: "manage" }, { principal: "user:u2", role: "view" }] };
+  const raised: SpaceRules = {
+    ...team,
+    members: [
+      { principal: "user:u1", role: "manage" },
+      { principal: "user:u2", role: "view" },
+    ],
+  };
   assert.equal(roleOf(raised, ana), "manage");
   assert.equal(roleOf(raised, bo), "view");
   const lowered: SpaceRules = { ...workspace, members: [{ principal: "user:u2", role: "view" }] };

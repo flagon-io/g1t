@@ -128,7 +128,8 @@ export const repoPages = {
    */
   overview(sha?: string | null): RepoMatch {
     return (change) =>
-      (change.kind === "checks.completed" || isCheckOn(change, sha ? [sha] : null)) ||
+      change.kind === "checks.completed" ||
+      isCheckOn(change, sha ? [sha] : null) ||
       ["release", "deployment", "deployment_status", "work", "pull", "review"].includes(family(change)) ||
       SESSION_KINDS.includes(change.kind);
   },
@@ -146,7 +147,8 @@ export const repoPages = {
   },
   /** The pull requests list: pull requests and what is said and checked on them. */
   pulls(): RepoMatch {
-    return (change) => ["pull", "review", "checks", "queue"].includes(family(change)) || (family(change) === "comment" && change.number != null) || isCheck(change);
+    return (change) =>
+      ["pull", "review", "checks", "queue"].includes(family(change)) || (family(change) === "comment" && change.number != null) || isCheck(change);
   },
   /**
    * A pull request: its own changes (commits, reviews, comments, checks,
@@ -260,7 +262,10 @@ export function gate(state: GateState, input: GateInput): GateDecision {
   const quiet = input.now - (state.lastChangeAt ?? state.pendingSince);
   const waited = input.now - state.pendingSince;
   const since = state.lastRunAt == null ? Infinity : input.now - state.lastRunAt;
-  const ms = Math.max(quiet < LIVE_DEBOUNCE_MS && waited < LIVE_MAX_WAIT_MS ? Math.min(LIVE_DEBOUNCE_MS - quiet, LIVE_MAX_WAIT_MS - waited) : 0, (input.gap ?? LIVE_MIN_GAP_MS) - since);
+  const ms = Math.max(
+    quiet < LIVE_DEBOUNCE_MS && waited < LIVE_MAX_WAIT_MS ? Math.min(LIVE_DEBOUNCE_MS - quiet, LIVE_MAX_WAIT_MS - waited) : 0,
+    (input.gap ?? LIVE_MIN_GAP_MS) - since,
+  );
   return ms > 0 ? { action: "wait", ms } : { action: "run" };
 }
 

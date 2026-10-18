@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { USERNAME_PATTERN, canonicalUsername, isActionOwnerName, isClaimableName, isReservedName, isValidNamespace, isValidUsername, shownUsername } from "./names.ts";
+import {
+  USERNAME_PATTERN,
+  canonicalUsername,
+  isActionOwnerName,
+  isClaimableName,
+  isReservedName,
+  isValidNamespace,
+  isValidUsername,
+  shownUsername,
+} from "./names.ts";
 
 test("usernames take letters of either case, digits and single hyphens, up to 39", () => {
   for (const good of ["ana", "Ana", "ANA-Lopez", "a", "A1", "x".repeat(39)]) assert.ok(isValidUsername(good), good);

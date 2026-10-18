@@ -5,14 +5,7 @@ import type { AlertState, DismissReason } from "@g1t/contracts";
 
 import type { Route } from "./+types/security";
 import { page } from "../../lib/meta";
-import {
-  type PullInfo,
-  ScanSummary,
-  SeverityCountsGrid,
-  StateFilter,
-  type UpgradeFix,
-  VulnerabilityList,
-} from "../../components/security";
+import { type PullInfo, ScanSummary, SeverityCountsGrid, StateFilter, type UpgradeFix, VulnerabilityList } from "../../components/security";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Hint } from "../../components/ui/hint";
@@ -40,8 +33,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const { access } = await requireInsider(context, params, "security_alerts");
   const repo = { namespace: params.owner, name: params.repo };
   const overview = unwrap(await security.overview(repo, viewer));
-  const unique = (numbers: (number | null | undefined)[]) =>
-    [...new Set(numbers.filter((n): n is number => n != null))].slice(0, MAX_FIXES);
+  const unique = (numbers: (number | null | undefined)[]) => [...new Set(numbers.filter((n): n is number => n != null))].slice(0, MAX_FIXES);
   // Security updates' pull requests, for their live status.
   const pullNumbers = unique(overview.vulnerabilities.map((vuln) => vuln.update?.pull));
   // Older upgrade work items, from before g1t opened pull requests itself.
@@ -101,7 +93,9 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   if (intent === "dismiss") {
     const reason = String(form.get("reason") ?? "");
     if (!DISMISS_REASONS.has(reason)) return { ok: false, error: "Choose a reason." };
-    const comment = String(form.get("comment") ?? "").trim().slice(0, 500);
+    const comment = String(form.get("comment") ?? "")
+      .trim()
+      .slice(0, 500);
     const dismissed = await security.dismiss(user, repo, id, reason as DismissReason, comment);
     return dismissed.ok ? { ok: true } : { ok: false, error: dismissed.error.message };
   }
@@ -138,8 +132,7 @@ export default function ProjectSecurity({ loaderData, params }: Route.ComponentP
     next.delete("finding");
     setSearch(next, { replace: true, preventScrollReset: true });
   };
-  const setState = (value: AlertState) =>
-    navigate((next) => (value === "open" ? next.delete("state") : next.set("state", value)));
+  const setState = (value: AlertState) => navigate((next) => (value === "open" ? next.delete("state") : next.set("state", value)));
   return (
     <div className="max-w-5xl">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -149,21 +142,14 @@ export default function ProjectSecurity({ loaderData, params }: Route.ComponentP
             Vulnerabilities
           </h2>
           <p className="mt-1.5 max-w-2xl text-sm text-muted">
-            Every package the lockfiles resolve is checked for known vulnerabilities, on every push to the default branch and
-            daily.{" "}
-            With security updates on, g1t opens a pull request to upgrade each one that has a fix.
+            Every package the lockfiles resolve is checked for known vulnerabilities, on every push to the default branch and daily. With security updates on,
+            g1t opens a pull request to upgrade each one that has a fix.
           </p>
         </div>
         {can.run && (
           <rescan.Form method="post" action={action}>
             <input type="hidden" name="intent" value="rescan" />
-            <Button
-              type="submit"
-              disabled={rescan.state !== "idle"}
-              variant="outline"
-              size="sm"
-              className="gap-2 px-3 text-sm font-normal"
-            >
+            <Button type="submit" disabled={rescan.state !== "idle"} variant="outline" size="sm" className="gap-2 px-3 text-sm font-normal">
               <RefreshCw size={14} className={rescan.state !== "idle" ? "animate-spin" : ""} />
               {rescan.state !== "idle" ? "Scanning…" : "Re-scan now"}
             </Button>
@@ -211,8 +197,7 @@ export default function ProjectSecurity({ loaderData, params }: Route.ComponentP
               <span className="min-w-0">
                 <span className="block text-sm font-medium">Security updates</span>
                 <span className="mt-1 block text-sm text-muted">
-                  Open a pull request to upgrade each vulnerable dependency that has a fix. It lands through your branch's
-                  required checks.
+                  Open a pull request to upgrade each vulnerable dependency that has a fix. It lands through your branch's required checks.
                 </span>
                 {upkeep.data?.error && <span className="mt-1 block text-xs text-danger">{upkeep.data.error}</span>}
               </span>

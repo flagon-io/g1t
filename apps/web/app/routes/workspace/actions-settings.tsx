@@ -130,8 +130,8 @@ function ManagedWorkflowDialog({ workspace, workflow }: { workspace: string; wor
         <DialogHeader>
           <DialogTitle>{workflow ? `Edit ${workflow.workflowName}` : "Add a workflow"}</DialogTitle>
           <DialogDescription>
-            It runs in each repository it targets as that repository's own workflow, with its token and secrets. g1t copies
-            the file when you save, and that copy runs until you copy it again.
+            It runs in each repository it targets as that repository's own workflow, with its token and secrets. g1t copies the file when you save, and that
+            copy runs until you copy it again.
           </DialogDescription>
         </DialogHeader>
         <fetcher.Form method="post" className="space-y-4">
@@ -145,12 +145,7 @@ function ManagedWorkflowDialog({ workspace, workflow }: { workspace: string; wor
             </Field>
           )}
           <Field label="Source" hint={`A workflow file in one of ${workspace}'s repositories, at a branch, tag or commit.`}>
-            <Input
-              name="source"
-              required
-              defaultValue={workflow?.source}
-              placeholder={`${workspace}/policies/.g1t/workflows/scan.yml@main`}
-            />
+            <Input name="source" required defaultValue={workflow?.source} placeholder={`${workspace}/policies/.g1t/workflows/scan.yml@main`} />
           </Field>
           <div className="space-y-2">
             <p className="text-sm font-medium text-muted">Mode</p>
@@ -171,7 +166,11 @@ function ManagedWorkflowDialog({ workspace, workflow }: { workspace: string; wor
             <p className="text-sm font-medium text-muted">Repositories</p>
             <RadioGroup name="target" value={target} onValueChange={setTarget} className="gap-3">
               <RadioOption value="all" label="All repositories" />
-              <RadioOption value="selected" label="Repositories that match" description="Names or patterns, one per line. * matches any characters; !name leaves one out." />
+              <RadioOption
+                value="selected"
+                label="Repositories that match"
+                description="Names or patterns, one per line. * matches any characters; !name leaves one out."
+              />
             </RadioGroup>
             {target === "selected" && (
               <Textarea
@@ -243,9 +242,7 @@ function ManagedWorkflowCard({ workspace, workflow }: { workspace: string; workf
                 <input type="hidden" name="name" value={workflow.name} />
                 <AlertDialogHeader>
                   <AlertDialogTitle>Remove {workflow.workflowName}?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    It stops running in {workspace}'s repositories. Its runs stay.
-                  </AlertDialogDescription>
+                  <AlertDialogDescription>It stops running in {workspace}'s repositories. Its runs stay.</AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
@@ -286,9 +283,8 @@ function ManagedWorkflows({ workspace, managed }: { workspace: string; managed: 
             Workflows this workspace manages
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Workflows that run in {workspace}'s repositories without a file in them, each as{" "}
-            <code className="font-mono text-xs">managed/&lt;name&gt;.yml</code>. Each repository's Actions page lists them, managed by{" "}
-            {workspace}.
+            Workflows that run in {workspace}'s repositories without a file in them, each as <code className="font-mono text-xs">managed/&lt;name&gt;.yml</code>
+            . Each repository's Actions page lists them, managed by {workspace}.
           </p>
         </div>
         <ManagedWorkflowDialog workspace={workspace} />
@@ -320,8 +316,7 @@ export default function WorkspaceActionsSettingsPage({ loaderData, actionData, p
         <h1 className="text-xl font-semibold tracking-tight">Actions</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted">
           What the token of each workflow job in this workspace's repositories may do when its workflow writes no{" "}
-          <code className="font-mono text-xs">permissions:</code>. Each repository can choose for itself under its Settings,
-          Actions, within these limits.
+          <code className="font-mono text-xs">permissions:</code>. Each repository can choose for itself under its Settings, Actions, within these limits.
         </p>
       </header>
       <Form method="post" className="max-w-4xl space-y-8">
@@ -333,16 +328,13 @@ export default function WorkspaceActionsSettingsPage({ loaderData, actionData, p
                 label="Read repository contents and packages"
                 description={
                   <>
-                    <code className="font-mono">contents: read</code> and <code className="font-mono">packages: read</code>.
-                    The default.
+                    <code className="font-mono">contents: read</code> and <code className="font-mono">packages: read</code>. The default.
                   </>
                 }
               />
               <RadioOption value="write" label="Read and write" description="Every permission a job's token can have." />
             </RadioGroup>
-            <p className="text-sm text-muted">
-              Repositories made before restricted tokens keep read and write until someone chooses otherwise.
-            </p>
+            <p className="text-sm text-muted">Repositories made before restricted tokens keep read and write until someone chooses otherwise.</p>
           </Section>
 
           <Section title="Most a repository may choose" about="No repository's default goes past this.">
@@ -356,10 +348,7 @@ export default function WorkspaceActionsSettingsPage({ loaderData, actionData, p
             </RadioGroup>
           </Section>
 
-          <Section
-            title="Pull requests"
-            about="Whether a job's token may open pull requests and approve them. Off by default."
-          >
+          <Section title="Pull requests" about="Whether a job's token may open pull requests and approve them. Off by default.">
             <CheckboxOption
               name="canApprovePullRequests"
               defaultChecked={settings.canApprovePullRequests}
@@ -385,8 +374,8 @@ export default function WorkspaceActionsSettingsPage({ loaderData, actionData, p
         <section className="max-w-4xl border-t border-line pt-8">
           <h2 className="font-medium">Workflows this workspace manages</h2>
           <p className="mt-1 text-sm text-muted">
-            Only the workspace's owners can see and change the workflows it runs in its repositories. Each repository's Actions
-            page lists the ones that run there.
+            Only the workspace's owners can see and change the workflows it runs in its repositories. Each repository's Actions page lists the ones that run
+            there.
           </p>
         </section>
       )}

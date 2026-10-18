@@ -72,7 +72,23 @@ import { codingAgentById } from "@g1t/contracts/coding-agents";
 
 import { cn } from "../lib/cn";
 import { WORK_KINDS, WORK_LABEL, type WorkKind } from "../lib/home";
-import { CHECKS, type CursorTarget, type Frame, LOOP_MS, PILLS, SESSION, SETTLED, SUMMARY_WORDS, type SessionEntry, STILLS, type Scene, frameAt, pillAt, pillProgress, sameFrame } from "../lib/tour";
+import {
+  CHECKS,
+  type CursorTarget,
+  type Frame,
+  LOOP_MS,
+  PILLS,
+  SESSION,
+  SETTLED,
+  SUMMARY_WORDS,
+  type SessionEntry,
+  STILLS,
+  type Scene,
+  frameAt,
+  pillAt,
+  pillProgress,
+  sameFrame,
+} from "../lib/tour";
 import { AgentBadge, AgentMark } from "./coding-agent";
 import { MarkGlyph } from "./logo";
 
@@ -195,7 +211,10 @@ function useTourClock(): Clock {
 
 /** The pill a frame belongs to, from what it shows (the clock's time is not React state). */
 function pillOf(frame: Frame): number {
-  return Math.max(0, PILLS.findIndex((pill) => pill.scene === frame.scene));
+  return Math.max(
+    0,
+    PILLS.findIndex((pill) => pill.scene === frame.scene),
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -228,7 +247,10 @@ function WithAgent() {
 function PresenceDot({ away, ring = "var(--tour-side)" }: { away?: boolean; ring?: string }) {
   return (
     <span
-      className={cn("absolute -right-0.5 -bottom-0.5 size-1.75 rounded-full", away ? "bg-(--tour-side) shadow-[inset_0_0_0_1.5px_var(--color-faint)]" : "bg-success")}
+      className={cn(
+        "absolute -right-0.5 -bottom-0.5 size-1.75 rounded-full",
+        away ? "bg-(--tour-side) shadow-[inset_0_0_0_1.5px_var(--color-faint)]" : "bg-success",
+      )}
       style={{ boxShadow: `0 0 0 1.5px ${ring}${away ? ", inset 0 0 0 1.5px var(--color-faint)" : ""}` }}
     />
   );
@@ -321,7 +343,14 @@ function Rail({ frame }: { frame: Frame }) {
       </div>
       <div className="mt-2.5 flex w-full flex-col items-center gap-1.5 px-1">
         {RAIL.map((item) => (
-          <RailItem key={item.key} icon={item.icon} label={item.label} on={!!item.scenes?.includes(scene)} target={item.target} badge={item.key === "inbox" ? unread : item.badge} />
+          <RailItem
+            key={item.key}
+            icon={item.icon}
+            label={item.label}
+            on={!!item.scenes?.includes(scene)}
+            target={item.target}
+            badge={item.key === "inbox" ? unread : item.badge}
+          />
         ))}
       </div>
       <div className="mt-auto flex w-full flex-col items-center gap-1.5 px-1">
@@ -348,7 +377,9 @@ function TopBar({ crumbs }: { crumbs: { label: string; mono?: boolean }[] }) {
         {crumbs.map((crumb, index) => (
           <Fragment key={crumb.label}>
             {index > 0 && <span className="text-line-strong">/</span>}
-            <span className={cn("truncate", index === crumbs.length - 1 ? "font-medium text-fg" : "text-muted", crumb.mono && "font-mono text-[12px]")}>{crumb.label}</span>
+            <span className={cn("truncate", index === crumbs.length - 1 ? "font-medium text-fg" : "text-muted", crumb.mono && "font-mono text-[12px]")}>
+              {crumb.label}
+            </span>
           </Fragment>
         ))}
       </span>
@@ -391,7 +422,13 @@ function SideLabel({ children, fold = true }: { children: ReactNode; fold?: bool
 
 function SideRow({ on, children, bold }: { on?: boolean; children: ReactNode; bold?: boolean }) {
   return (
-    <div className={cn("flex h-7 items-center gap-2 rounded-md px-2 text-[12px]", on ? "bg-raised text-fg" : bold ? "text-fg" : "text-muted", bold && "font-semibold")}>
+    <div
+      className={cn(
+        "flex h-7 items-center gap-2 rounded-md px-2 text-[12px]",
+        on ? "bg-raised text-fg" : bold ? "text-fg" : "text-muted",
+        bold && "font-semibold",
+      )}
+    >
       {children}
     </div>
   );
@@ -412,11 +449,7 @@ function SideSearch({ children, keys }: { children: ReactNode; keys?: boolean })
 
 function ChatSide() {
   // As the app has it: direct messages with people, the latest first.
-  const dms: { who: string; away?: boolean; status?: string }[] = [
-    { who: "Dana" },
-    { who: "Jordan" },
-    { who: "Alex", away: true, status: "🗓️" },
-  ];
+  const dms: { who: string; away?: boolean; status?: string }[] = [{ who: "Dana" }, { who: "Jordan" }, { who: "Alex", away: true, status: "🗓️" }];
   return (
     <>
       <SideHead action={<SquarePen size={14} />}>Chat</SideHead>
@@ -620,7 +653,10 @@ function PullHead({ frame, tab }: { frame: Frame; tab: "conversation" | "session
             <span
               key={item.key}
               data-tour={item.target}
-              className={cn("-mb-px flex items-center gap-1.5 border-b-2 px-2.5 pb-2", on ? "border-accent font-medium text-fg" : "border-transparent text-muted")}
+              className={cn(
+                "-mb-px flex items-center gap-1.5 border-b-2 px-2.5 pb-2",
+                on ? "border-accent font-medium text-fg" : "border-transparent text-muted",
+              )}
             >
               {item.icon}
               {item.label}
@@ -645,8 +681,8 @@ function CodeMain({ frame }: { frame: Frame }) {
           <div className="flex gap-3 text-[12.5px] leading-[1.6] text-fg-soft">
             <Face who="Priya" size={24} />
             <p>
-              Exports loaded every row before sending the first byte, so big accounts hit the 60 s limit. Rows now stream in
-              batches of 1,000. A 200,000-row account takes 3.1 s. Fixes the timeout Dana reported in <span className="text-accent">#web</span>.
+              Exports loaded every row before sending the first byte, so big accounts hit the 60 s limit. Rows now stream in batches of 1,000. A 200,000-row
+              account takes 3.1 s. Fixes the timeout Dana reported in <span className="text-accent">#web</span>.
             </p>
           </div>
           <Card className="overflow-hidden">
@@ -822,8 +858,20 @@ const HOME_ROW = "flex items-center gap-2.5 border-t border-line px-4 py-2";
 
 /** What still waits on Priya once the notifications above settle: her pull request in review, and a review asked of her. */
 const STAYING = [
-  { icon: <GitPullRequest size={14} className="text-success" />, title: "Stream CSV exports in batches", detail: "acme/web #431 · Checks running · Dana is reviewing", stake: "Yours", action: "Open" },
-  { icon: <GitPullRequest size={14} className="text-info" />, title: "Add audit log export", detail: "acme/web #435 · Your review", stake: "+212 −40", action: "Review" },
+  {
+    icon: <GitPullRequest size={14} className="text-success" />,
+    title: "Stream CSV exports in batches",
+    detail: "acme/web #431 · Checks running · Dana is reviewing",
+    stake: "Yours",
+    action: "Open",
+  },
+  {
+    icon: <GitPullRequest size={14} className="text-info" />,
+    title: "Add audit log export",
+    detail: "acme/web #435 · Your review",
+    stake: "+212 −40",
+    action: "Review",
+  },
 ];
 
 /** A row of Where you're needed that settles while you look: it says why, then leaves the list. */
@@ -838,15 +886,33 @@ function SettlingRow({ row, settled, cleared, index }: { row: (typeof SETTLED)[n
       <div className="min-h-0 overflow-hidden">
         <div className={cn(HOME_ROW, index === 0 && "border-t-0", "transition-colors duration-500", settled && "bg-success/5")}>
           <span key={settled ? "done" : "open"} className="tour-pop shrink-0">
-            {settled ? <CheckCheck size={14} className="text-success" /> : index === 0 ? <Rocket size={14} className="text-danger" /> : <PlayCircle size={14} className="text-warn" />}
+            {settled ? (
+              <CheckCheck size={14} className="text-success" />
+            ) : index === 0 ? (
+              <Rocket size={14} className="text-danger" />
+            ) : (
+              <PlayCircle size={14} className="text-warn" />
+            )}
           </span>
           <div className="min-w-0 grow">
-            <p className={cn("truncate text-[12px] font-semibold transition-colors duration-500", settled ? "text-muted line-through decoration-faint" : "text-fg")}>{row.title}</p>
+            <p
+              className={cn(
+                "truncate text-[12px] font-semibold transition-colors duration-500",
+                settled ? "text-muted line-through decoration-faint" : "text-fg",
+              )}
+            >
+              {row.title}
+            </p>
             <p key={settled ? "why" : "detail"} className={cn("tour-fade truncate text-[10.5px]", settled ? "text-success" : "text-muted")}>
               {settled ? `Settled · ${row.why}` : row.detail}
             </p>
           </div>
-          <span className={cn("shrink-0 rounded-md border border-line-strong px-2 py-1 text-[10.5px] text-fg transition-opacity duration-300", settled && "opacity-0")}>
+          <span
+            className={cn(
+              "shrink-0 rounded-md border border-line-strong px-2 py-1 text-[10.5px] text-fg transition-opacity duration-300",
+              settled && "opacity-0",
+            )}
+          >
             {index === 0 ? "See the build" : "Look"}
           </span>
         </div>
@@ -881,8 +947,20 @@ function NeededCard({ frame, phone }: { frame: Frame; phone?: boolean }) {
 function StartCard({ frame }: { frame: Frame }) {
   const deploy = frame.settled === 0;
   const pick = deploy
-    ? { icon: <Rocket size={14} className="text-danger" />, title: SETTLED[0].title, next: "See the build", why: "Production is serving an older build until this is fixed, so it comes before anything else.", button: "See the build" }
-    : { icon: <GitPullRequest size={14} className="text-success" />, title: STAYING[0].title, next: "Lands when Dana approves", why: "Dana's report in #web is waiting on it. Once its checks pass and she approves, the merge queue lands it.", button: "Open pull request" };
+    ? {
+        icon: <Rocket size={14} className="text-danger" />,
+        title: SETTLED[0].title,
+        next: "See the build",
+        why: "Production is serving an older build until this is fixed, so it comes before anything else.",
+        button: "See the build",
+      }
+    : {
+        icon: <GitPullRequest size={14} className="text-success" />,
+        title: STAYING[0].title,
+        next: "Lands when Dana approves",
+        why: "Dana's report in #web is waiting on it. Once its checks pass and she approves, the merge queue lands it.",
+        button: "Open pull request",
+      };
   return (
     <HomeCard
       title={
@@ -943,7 +1021,12 @@ function WhatChangedCardMock({ frame }: { frame: Frame }) {
               <Rich text={text} targets={{ "#431": "home-pr" }} />
               {!frame.summarized && <span className="tour-caret ml-0.5 inline-block h-3.5 w-1.5 translate-y-0.5 rounded-[1px] bg-accent" />}
             </p>
-            <div className={cn("mt-3 flex items-center gap-1.5 border-t border-line pt-2.5 transition-opacity duration-500", frame.summarized ? "opacity-100" : "opacity-0")}>
+            <div
+              className={cn(
+                "mt-3 flex items-center gap-1.5 border-t border-line pt-2.5 transition-opacity duration-500",
+                frame.summarized ? "opacity-100" : "opacity-0",
+              )}
+            >
               <span className="inline-flex h-6 items-center gap-1.5 rounded-md bg-accent/10 px-2 text-[10.5px] font-medium text-fg ring-1 ring-accent/20 ring-inset">
                 <MarkGlyph className="h-2.5" />
                 Ask a follow-up
@@ -1034,7 +1117,9 @@ function LandedCardMock() {
     <HomeCard title="Landed" hint="1 pull request merged · 1 push">
       {rows.map((row) => (
         <div key={row.title} className={HOME_ROW}>
-          <span className="shrink-0">{row.agent ? <GitMerge size={14} className="text-merged" /> : <GitCommitHorizontal size={14} className="text-muted" />}</span>
+          <span className="shrink-0">
+            {row.agent ? <GitMerge size={14} className="text-merged" /> : <GitCommitHorizontal size={14} className="text-muted" />}
+          </span>
           <div className="min-w-0 grow">
             <p className="flex min-w-0 items-center gap-1.5 text-[12px] text-fg">
               <span className="truncate">{row.title}</span>
@@ -1088,7 +1173,10 @@ function HomeMain({ frame, phone = false }: { frame: Frame; phone?: boolean }) {
     <div ref={viewport} className="h-full overflow-hidden">
       <div
         ref={content}
-        className={cn("relative transition-transform duration-1000 ease-[cubic-bezier(.45,.05,.2,1)] motion-reduce:transition-none", phone ? "space-y-3 px-3 pt-4 pb-4" : "space-y-4 px-6 pt-5 pb-6")}
+        className={cn(
+          "relative transition-transform duration-1000 ease-[cubic-bezier(.45,.05,.2,1)] motion-reduce:transition-none",
+          phone ? "space-y-3 px-3 pt-4 pb-4" : "space-y-4 px-6 pt-5 pb-6",
+        )}
         style={{ transform: offset ? `translateY(${-offset}px)` : undefined }}
       >
         <div className={cn("mx-auto flex flex-col items-center", phone ? "gap-2.5" : "max-w-xl gap-3")}>
@@ -1155,7 +1243,10 @@ function Cursor({ frame, canvas, scale }: { frame: Frame; canvas: React.RefObjec
   return (
     <div
       aria-hidden="true"
-      className={cn("pointer-events-none absolute top-0 left-0 z-20 transition-[transform,opacity] duration-900 ease-[cubic-bezier(.45,.05,.2,1)]", frame.cursorShown ? "opacity-100" : "opacity-0")}
+      className={cn(
+        "pointer-events-none absolute top-0 left-0 z-20 transition-[transform,opacity] duration-900 ease-[cubic-bezier(.45,.05,.2,1)]",
+        frame.cursorShown ? "opacity-100" : "opacity-0",
+      )}
       style={{ transform: `translate(${at.x}px, ${at.y}px)` }}
     >
       <span
@@ -1218,7 +1309,11 @@ function Desktop({ frame, reduced }: { frame: Frame; reduced: boolean }) {
     home: <HomeMain frame={frame} />,
   };
   return (
-    <div ref={outer} className="relative w-full overflow-hidden rounded-2xl text-fg shadow-2xl shadow-black/50 ring-1 ring-line scheme-dark" style={{ aspectRatio: `${W} / ${H}` }}>
+    <div
+      ref={outer}
+      className="relative w-full overflow-hidden rounded-2xl text-fg shadow-2xl shadow-black/50 ring-1 ring-line scheme-dark"
+      style={{ aspectRatio: `${W} / ${H}` }}
+    >
       <div
         ref={canvas}
         className="absolute top-0 left-0 flex origin-top-left bg-bg text-left"
@@ -1312,7 +1407,9 @@ function Phone({ frame }: { frame: Frame }) {
             const on = tab.scenes.includes(frame.scene);
             return (
               <span key={tab.label} className="flex flex-col items-center justify-center gap-0.5">
-                <span className={cn("flex h-6 w-10 items-center justify-center rounded-full", on ? "bg-[#2c2c33] text-[#ededef]" : "text-muted")}>{tab.icon}</span>
+                <span className={cn("flex h-6 w-10 items-center justify-center rounded-full", on ? "bg-[#2c2c33] text-[#ededef]" : "text-muted")}>
+                  {tab.icon}
+                </span>
                 <span className={cn("text-[9.5px] font-medium", on ? "text-[#ededef]" : "text-faint")}>{tab.label}</span>
               </span>
             );
@@ -1407,7 +1504,12 @@ function PhoneCode({ frame }: { frame: Frame }) {
           })}
         </ul>
       </Card>
-      <pre className={cn("overflow-hidden rounded-xl border border-line bg-surface py-1.5 font-mono text-[10.5px] leading-[1.7] transition-opacity duration-500", frame.diff ? "opacity-100" : "opacity-0")}>
+      <pre
+        className={cn(
+          "overflow-hidden rounded-xl border border-line bg-surface py-1.5 font-mono text-[10.5px] leading-[1.7] transition-opacity duration-500",
+          frame.diff ? "opacity-100" : "opacity-0",
+        )}
+      >
         {DIFF.slice(1).map((line, index) => (
           <div key={index} className={cn("truncate px-3", line.sign === "+" ? "bg-success/10 text-success" : "bg-danger/10 text-danger")}>
             {line.sign} {line.text.trim()}
@@ -1494,9 +1596,7 @@ export function ProductTour({ className }: { className?: string }) {
                 className="absolute inset-0 origin-left bg-accent/15"
                 style={{ transform: `scaleX(${clock.reduced && on ? 1 : 0})` }}
               />
-              <span className="relative flex items-center justify-center gap-1.5">
-                {pill.label}
-              </span>
+              <span className="relative flex items-center justify-center gap-1.5">{pill.label}</span>
             </button>
           );
         })}

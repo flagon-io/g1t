@@ -9,21 +9,20 @@
  * workspaces shown are only those the viewer could know about anyway (see
  * `profile_workspaces` in services/identity/src/profiles.rs).
  */
-import {
-  CalendarDays,
-  CircleDot,
-  GitMerge,
-  GitPullRequest,
-  LayoutGrid,
-  Link2,
-  MapPin,
-  Pencil,
-  Star,
-} from "lucide-react";
+import { CalendarDays, CircleDot, GitMerge, GitPullRequest, LayoutGrid, Link2, MapPin, Pencil, Star } from "lucide-react";
 import type { ReactNode } from "react";
 import { Form, Link, redirect, useNavigate, useSearchParams } from "react-router";
 
-import { type Authored, type AuthoredItem, type AuthoredSort, type AuthoredState, type Contributions, type Profile, type StarredRepo, shownUsername } from "@g1t/contracts";
+import {
+  type Authored,
+  type AuthoredItem,
+  type AuthoredSort,
+  type AuthoredState,
+  type Contributions,
+  type Profile,
+  type StarredRepo,
+  shownUsername,
+} from "@g1t/contracts";
 
 import type { Route } from "./+types/user";
 import { page } from "../lib/meta";
@@ -67,7 +66,8 @@ export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   if (!profile) return page(args, { title: `${params.username} · g1t` });
   return page(args, {
     title: `${displayName(profile)} · g1t`,
-    description: profile.bio || `${profile.name ?? shownUsername(profile)} (@${shownUsername(profile)}) on g1t: their pull requests, work items and workspaces.`,
+    description:
+      profile.bio || `${profile.name ?? shownUsername(profile)} (@${shownUsername(profile)}) on g1t: their pull requests, work items and workspaces.`,
     // What the card shows, so it is drawn again when any of it changes.
     version: [profile.name, profile.bio, profile.avatar, loaderData.publicCounts],
   });
@@ -98,10 +98,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   const sort = pick(query.get("sort"), ["updated", "oldest"] as const satisfies AuthoredSort[]);
   const repo = query.get("repo")?.trim() || undefined;
   const before = query.get("before") || undefined;
-  const filter =
-    tab === "overview"
-      ? { limit: RECENT }
-      : { kind: tab === "pulls" ? ("pull" as const) : ("item" as const), state, repo, sort, before };
+  const filter = tab === "overview" ? { limit: RECENT } : { kind: tab === "pulls" ? ("pull" as const) : ("item" as const), state, repo, sort, before };
 
   // Only real memberships, and only those the viewer could see anyway.
   const workspaces = identity
@@ -200,15 +197,11 @@ function PersonColumn({
         <div className="min-w-0 md:mt-5">
           {profile.name ? (
             <>
-              <h1 className="text-2xl leading-tight font-semibold tracking-tight wrap-anywhere">
-                {profile.name}
-              </h1>
+              <h1 className="text-2xl leading-tight font-semibold tracking-tight wrap-anywhere">{profile.name}</h1>
               <p className="mt-0.5 font-mono text-base text-muted">@{shownUsername(profile)}</p>
             </>
           ) : (
-            <h1 className="font-mono text-2xl leading-tight font-semibold tracking-tight wrap-anywhere">
-              {shownUsername(profile)}
-            </h1>
+            <h1 className="font-mono text-2xl leading-tight font-semibold tracking-tight wrap-anywhere">{shownUsername(profile)}</h1>
           )}
           {profile.pronouns && <p className="mt-1 text-sm text-faint">{profile.pronouns}</p>}
         </div>
@@ -233,12 +226,7 @@ function PersonColumn({
         )}
         {profile.website && (
           <Detail icon={<Link2 size={15} />}>
-            <a
-              href={profile.website}
-              rel="nofollow ugc noopener noreferrer me"
-              target="_blank"
-              className="text-fg wrap-anywhere hover:underline"
-            >
+            <a href={profile.website} rel="nofollow ugc noopener noreferrer me" target="_blank" className="text-fg wrap-anywhere hover:underline">
               {profile.website.replace(/^https:\/\//, "").replace(/\/$/, "")}
             </a>
           </Detail>
@@ -253,26 +241,23 @@ function PersonColumn({
             <Unavailable what="Workspaces" compact />
           </div>
         </div>
-      ) : workspaces.length > 0 && (
-        <div className="mt-6 border-t border-line pt-5">
-          <h2 className="text-sm font-medium">Workspaces</h2>
-          <ul className="mt-3 space-y-1">
-            {workspaces.map((workspace) => (
-              <li key={workspace.slug}>
-                <Link
-                  to={`/${workspace.slug}`}
-                  className="-mx-2 flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-surface"
-                >
-                  <Avatar name={workspace.slug} image={workspace.avatar} size={22} square />
-                  <span className="min-w-0 truncate">{workspace.name}</span>
-                  {workspace.name !== workspace.slug && (
-                    <span className="ml-auto shrink-0 truncate font-mono text-xs text-faint">{workspace.slug}</span>
-                  )}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
+      ) : (
+        workspaces.length > 0 && (
+          <div className="mt-6 border-t border-line pt-5">
+            <h2 className="text-sm font-medium">Workspaces</h2>
+            <ul className="mt-3 space-y-1">
+              {workspaces.map((workspace) => (
+                <li key={workspace.slug}>
+                  <Link to={`/${workspace.slug}`} className="-mx-2 flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-surface">
+                    <Avatar name={workspace.slug} image={workspace.avatar} size={22} square />
+                    <span className="min-w-0 truncate">{workspace.name}</span>
+                    {workspace.name !== workspace.slug && <span className="ml-auto shrink-0 truncate font-mono text-xs text-faint">{workspace.slug}</span>}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )
       )}
     </aside>
   );
@@ -289,15 +274,7 @@ function Detail({ icon, children }: { icon: ReactNode; children: ReactNode }) {
 
 // --- Tabs ------------------------------------------------------------------------
 
-function ProfileTabs({
-  username,
-  tab,
-  counts,
-}: {
-  username: string;
-  tab: Tab;
-  counts: Authored["counts"];
-}) {
+function ProfileTabs({ username, tab, counts }: { username: string; tab: Tab; counts: Authored["counts"] }) {
   const item = (value: Tab, label: string, icon: ReactNode, count?: number) => (
     <Link
       to={profilePath(username, value)}
@@ -309,9 +286,7 @@ function ProfileTabs({
     >
       {icon}
       {label}
-      {count != null && count > 0 && (
-        <span className="rounded-full bg-raised px-1.5 py-px text-xs text-muted">{count}</span>
-      )}
+      {count != null && count > 0 && <span className="rounded-full bg-raised px-1.5 py-px text-xs text-muted">{count}</span>}
     </Link>
   );
   return (
@@ -372,13 +347,8 @@ function Overview({ profile, activity, failed, contributions }: Data) {
     <div className="space-y-8">
       {isFailed(contributions) ? (
         <Unavailable what="Contributions" />
-      ) : contributions && (
-        <ContributionCalendar
-          days={contributions.days}
-          total={contributions.total}
-          today={contributions.today}
-          from={contributions.from}
-        />
+      ) : (
+        contributions && <ContributionCalendar days={contributions.days} total={contributions.total} today={contributions.today} from={contributions.from} />
       )}
       <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Stat
@@ -407,9 +377,7 @@ function Overview({ profile, activity, failed, contributions }: Data) {
           {failed ? (
             <EmptyState title="Activity could not be loaded">Try again in a moment.</EmptyState>
           ) : items.length === 0 ? (
-            <EmptyState title={`No activity from ${who} yet`}>
-              Pull requests and work items @{profile.username} opens that you can see show up here.
-            </EmptyState>
+            <EmptyState title={`No activity from ${who} yet`}>Pull requests and work items @{profile.username} opens that you can see show up here.</EmptyState>
           ) : (
             <>
               <ItemList items={items} />
@@ -437,10 +405,7 @@ function Overview({ profile, activity, failed, contributions }: Data) {
 
 function Stat({ label, value, icon, to }: { label: string; value: number; icon: ReactNode; to: string }) {
   return (
-    <Link
-      to={to}
-      className="block rounded-xl border border-line bg-surface/50 px-4 py-3.5 transition-colors hover:border-line-strong hover:bg-surface"
-    >
+    <Link to={to} className="block rounded-xl border border-line bg-surface/50 px-4 py-3.5 transition-colors hover:border-line-strong hover:bg-surface">
       <dt className="flex items-center gap-2 text-xs text-muted">
         {icon}
         {label}
@@ -463,11 +428,7 @@ function ItemList({ items }: { items: AuthoredItem[] }) {
       <ul>
         {items.map((item) => (
           <li key={`${item.kind}:${item.repo ? `${item.repo.namespace}/${item.repo.name}` : item.workspace}#${item.number}`}>
-            <Link
-              prefetch="intent"
-              to={itemUrl(item)}
-              className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface"
-            >
+            <Link prefetch="intent" to={itemUrl(item)} className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface">
               <span className="mt-0.5">
                 {item.kind === "pull" ? (
                   <PullIcon status={item.status ?? (item.state === "open" ? "open" : "closed")} />
@@ -478,11 +439,7 @@ function ItemList({ items }: { items: AuthoredItem[] }) {
               <span className="min-w-0 grow">
                 <span className="flex items-center gap-2">
                   <span className="truncate font-medium">{item.title}</span>
-                  {item.draft && (
-                    <Badge className="px-1.5 font-normal text-faint">
-                      draft
-                    </Badge>
-                  )}
+                  {item.draft && <Badge className="px-1.5 font-normal text-faint">draft</Badge>}
                 </span>
                 <span className="mt-0.5 block truncate text-xs text-faint">
                   <span className="font-mono text-muted">
@@ -530,9 +487,7 @@ function WorkList({ profile, tab, filter, activity, failed }: Data) {
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_220px]">
       <div className="min-w-0 lg:order-1">
         {failed ? (
-          <EmptyState title={`${pulls ? "Pull requests" : "Work items"} could not be loaded`}>
-            Try again in a moment.
-          </EmptyState>
+          <EmptyState title={`${pulls ? "Pull requests" : "Work items"} could not be loaded`}>Try again in a moment.</EmptyState>
         ) : activity.items.length === 0 ? (
           filtered || filter.before ? (
             <EmptyState title={`No ${noun} match these filters`}>
@@ -580,17 +535,7 @@ function WorkList({ profile, tab, filter, activity, failed }: Data) {
  * the list from the server, from the first page. Without script, the
  * form's Apply button does the same.
  */
-function FilterAside({
-  tab,
-  filter,
-  activity,
-  username,
-}: {
-  tab: Tab;
-  filter: Data["filter"];
-  activity: Authored;
-  username: string;
-}) {
+function FilterAside({ tab, filter, activity, username }: { tab: Tab; filter: Data["filter"]; activity: Authored; username: string }) {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const set = (key: string, value: string | null) => {
@@ -620,37 +565,20 @@ function FilterAside({
       <Card asChild tone="plain" className="space-y-5 p-4 lg:sticky lg:top-20">
         <Form method="get" action={profilePath(username, tab)}>
           <FilterGroup title="Type">
-            <RadioGroup
-              value={tab}
-              onValueChange={(value) => void navigate(profilePath(username, value), { preventScrollReset: true })}
-              aria-label="Type"
-            >
+            <RadioGroup value={tab} onValueChange={(value) => void navigate(profilePath(username, value), { preventScrollReset: true })} aria-label="Type">
               <RadioOption value="pulls" label={<Counted label="Pull requests" count={counts.pulls} />} />
               <RadioOption value="items" label={<Counted label="Work items" count={counts.items} />} />
             </RadioGroup>
           </FilterGroup>
           <FilterGroup title="State">
-            <RadioGroup
-              name="state"
-              value={filter.state ?? "all"}
-              onValueChange={(value) => set("state", value === "all" ? null : value)}
-              aria-label="State"
-            >
+            <RadioGroup name="state" value={filter.state ?? "all"} onValueChange={(value) => set("state", value === "all" ? null : value)} aria-label="State">
               {states.map((state) => (
-                <RadioOption
-                  key={state.value}
-                  value={state.value}
-                  label={<Counted label={state.label} count={state.count} />}
-                />
+                <RadioOption key={state.value} value={state.value} label={<Counted label={state.label} count={state.count} />} />
               ))}
             </RadioGroup>
           </FilterGroup>
           <FilterGroup title="Repository">
-            <Select
-              name="repo"
-              value={filter.repo ?? "all"}
-              onValueChange={(value) => set("repo", value === "all" ? null : value)}
-            >
+            <Select name="repo" value={filter.repo ?? "all"} onValueChange={(value) => set("repo", value === "all" ? null : value)}>
               <SelectTrigger size="sm" aria-label="Repository">
                 <SelectValue />
               </SelectTrigger>

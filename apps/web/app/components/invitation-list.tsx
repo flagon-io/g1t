@@ -34,8 +34,7 @@ export function InvitationList({
               <Avatar name={invitation.workspace.slug} image={invitation.workspace.avatar} size={32} square />
               <div className="min-w-0 grow basis-48">
                 <p className="text-sm font-medium">
-                  {invitation.workspace.name}{" "}
-                  <span className="font-mono text-xs font-normal text-faint">{invitation.workspace.slug}</span>
+                  {invitation.workspace.name} <span className="font-mono text-xs font-normal text-faint">{invitation.workspace.slug}</span>
                 </p>
                 <p className="mt-0.5 text-xs text-muted">
                   {invitation.invitedBy ? (

@@ -117,8 +117,8 @@ export function SoundSettingsSection({ initial }: { initial: SoundSettings | nul
           Sounds &amp; notifications
         </h2>
         <p className="mt-1 text-sm text-muted">
-          What you hear when chat moves, on every device you sign in on. Nothing sounds for the conversation you're looking at, for your own
-          messages, or in a muted conversation.
+          What you hear when chat moves, on every device you sign in on. Nothing sounds for the conversation you're looking at, for your own messages, or in a
+          muted conversation.
         </p>
       </div>
 
@@ -129,7 +129,9 @@ export function SoundSettingsSection({ initial }: { initial: SoundSettings | nul
           </span>
           <div className="min-w-0 grow">
             <p className="text-sm font-medium text-fg">Sounds</p>
-            <p className="mt-0.5 text-xs text-muted">{off ? "Off. Chat is silent; counts and pop-ups still show." : "On. A short sound for what is for you."}</p>
+            <p className="mt-0.5 text-xs text-muted">
+              {off ? "Off. Chat is silent; counts and pop-ups still show." : "On. A short sound for what is for you."}
+            </p>
           </div>
           <Switch checked={settings.sounds_enabled} onCheckedChange={(on) => void save({ sounds_enabled: on })} aria-label="Sounds" />
         </div>
@@ -192,30 +194,30 @@ export function SoundSettingsSection({ initial }: { initial: SoundSettings | nul
           {CUES.map((cue) => {
             const { label, detail } = CUE[cue];
             return (
-            <li key={cue} className="flex items-center gap-3 px-4 py-2.5">
-              <Hint label={`Play ${label.toLowerCase()}`}>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon-xs"
-                  aria-label={`Play ${label.toLowerCase()}`}
-                  onClick={() => preview(cue, settings.sound_set, settings.sound_volume)}
-                >
-                  <Play size={13} />
-                </Button>
-              </Hint>
-              <div className="min-w-0 grow">
-                <p className="text-sm text-fg">{label}</p>
-                <p className="truncate text-xs text-muted">{detail}</p>
-              </div>
-              <Switch
-                size="sm"
-                checked={cueOn(settings, cue)}
-                disabled={off}
-                onCheckedChange={(on) => void save({ sound_cues: { [cue]: on } })}
-                aria-label={label}
-              />
-            </li>
+              <li key={cue} className="flex items-center gap-3 px-4 py-2.5">
+                <Hint label={`Play ${label.toLowerCase()}`}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-xs"
+                    aria-label={`Play ${label.toLowerCase()}`}
+                    onClick={() => preview(cue, settings.sound_set, settings.sound_volume)}
+                  >
+                    <Play size={13} />
+                  </Button>
+                </Hint>
+                <div className="min-w-0 grow">
+                  <p className="text-sm text-fg">{label}</p>
+                  <p className="truncate text-xs text-muted">{detail}</p>
+                </div>
+                <Switch
+                  size="sm"
+                  checked={cueOn(settings, cue)}
+                  disabled={off}
+                  onCheckedChange={(on) => void save({ sound_cues: { [cue]: on } })}
+                  aria-label={label}
+                />
+              </li>
             );
           })}
         </ul>

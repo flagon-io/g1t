@@ -75,9 +75,7 @@ export type TeamRef = { slug: string; name: string };
  * hosted agents, kept only so old data parses; identity never answers with
  * one and no team can be given one.
  */
-export type TeamLead =
-  | { kind: "user"; username: string; name: string | null; avatar: string | null }
-  | { kind: "agent"; agent_id: string };
+export type TeamLead = { kind: "user"; username: string; name: string | null; avatar: string | null } | { kind: "agent"; agent_id: string };
 
 /** A team's chat channel: its id, and its name (without `#`) when it was chosen. */
 export type TeamChannel = { id: string; name: string };

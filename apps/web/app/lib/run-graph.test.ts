@@ -1,18 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import {
-  GRAPH,
-  type GraphJob,
-  baseName,
-  columns,
-  connector,
-  crossings,
-  groupJobs,
-  layoutRun,
-  orderColumns,
-  standingOf,
-} from "./run-graph.ts";
+import { GRAPH, type GraphJob, baseName, columns, connector, crossings, groupJobs, layoutRun, orderColumns, standingOf } from "./run-graph.ts";
 
 let next = 0;
 function job(key: string, needs: string[] = [], more: Partial<GraphJob> = {}): GraphJob {
@@ -58,7 +47,16 @@ test("ordering a column by its needs takes out a crossing", () => {
     ["b", "x"],
     ["a", "y"],
   ];
-  assert.equal(crossings([["a", "b"], ["x", "y"]], edges), 1);
+  assert.equal(
+    crossings(
+      [
+        ["a", "b"],
+        ["x", "y"],
+      ],
+      edges,
+    ),
+    1,
+  );
   const order = orderColumns(units, column);
   assert.deepEqual(order, [
     ["a", "b"],
@@ -165,13 +163,10 @@ test("a called workflow's jobs sit in a box under the job calling it", () => {
   assert.ok(pack.x > compile.x && pack.x + pack.w <= box.x + box.w);
   assert.ok(compile.y >= box.y + GRAPH.groupHead);
   assert.ok(deploy.x >= box.x + box.w + GRAPH.columnGap);
-  assert.deepEqual(
-    layout.edges.map((edge) => [edge.from, edge.to]).sort(),
-    [
-      ["build", "deploy"],
-      ["build/compile", "build/package"],
-    ],
-  );
+  assert.deepEqual(layout.edges.map((edge) => [edge.from, edge.to]).sort(), [
+    ["build", "deploy"],
+    ["build/compile", "build/package"],
+  ]);
   assert.equal(layout.width, deploy.x + deploy.w + GRAPH.margin);
 });
 
@@ -216,14 +211,8 @@ test("an empty run lays out as nothing", () => {
 
 test("a matrix whose jobs deploy to one address shows it once", () => {
   const url = "https://g1t.sh";
-  const shared = layoutRun([
-    job("core", [], { name: "core (a)", environmentUrl: url }),
-    job("core", [], { name: "core (b)", environmentUrl: url }),
-  ]);
+  const shared = layoutRun([job("core", [], { name: "core (a)", environmentUrl: url }), job("core", [], { name: "core (b)", environmentUrl: url })]);
   assert.equal(shared.nodes[0]!.h, GRAPH.nodeHeight + GRAPH.urlHeight);
-  const mixed = layoutRun([
-    job("core", [], { name: "core (a)", environmentUrl: url }),
-    job("core", [], { name: "core (b)", environmentUrl: null }),
-  ]);
+  const mixed = layoutRun([job("core", [], { name: "core (a)", environmentUrl: url }), job("core", [], { name: "core (b)", environmentUrl: null })]);
   assert.equal(mixed.nodes[0]!.h, GRAPH.nodeHeight);
 });

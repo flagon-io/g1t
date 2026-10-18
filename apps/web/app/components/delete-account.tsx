@@ -72,8 +72,7 @@ export function DeleteAccountAction({
               <Card asChild key={workspace.slug} radius="lg" className="px-3 py-2">
                 <li>
                   <p className="text-fg">
-                    <span className="font-medium">{workspace.name}</span>{" "}
-                    <span className="font-mono text-xs text-faint">{workspace.slug}</span>
+                    <span className="font-medium">{workspace.name}</span> <span className="font-mono text-xs text-faint">{workspace.slug}</span>
                   </p>
                   <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs">
                     {workspace.members > 1 ? (
@@ -93,8 +92,8 @@ export function DeleteAccountAction({
         </>
       ) : (
         <>
-          You sign out everywhere and leave every workspace at once. Your account is kept for {ACCOUNT_RESTORE_DAYS}{" "}
-          days, and support can restore it until then.
+          You sign out everywhere and leave every workspace at once. Your account is kept for {ACCOUNT_RESTORE_DAYS} days, and support can restore it until
+          then.
         </>
       )}
       <AlertDialog
@@ -110,8 +109,8 @@ export function DeleteAccountAction({
             <AlertDialogHeader>
               <AlertDialogTitle>Delete your account?</AlertDialogTitle>
               <AlertDialogDescription>
-                Everything you sign in with stops working now. For {ACCOUNT_RESTORE_DAYS} days, support can restore
-                your account; after that it is gone for good.
+                Everything you sign in with stops working now. For {ACCOUNT_RESTORE_DAYS} days, support can restore your account; after that it is gone for
+                good.
               </AlertDialogDescription>
             </AlertDialogHeader>
             {goes.length > 0 ? (
@@ -129,12 +128,12 @@ export function DeleteAccountAction({
               <li>You leave every workspace, team and repository. Workspaces you share keep everything in them.</li>
               <li>Your profile is no longer found, and nobody can add you to anything.</li>
               <li>
-                To get it back within {ACCOUNT_RESTORE_DAYS} days, write to support from one of its addresses. After
-                that your addresses, keys, profile and settings are removed for good.
+                To get it back within {ACCOUNT_RESTORE_DAYS} days, write to support from one of its addresses. After that your addresses, keys, profile and
+                settings are removed for good.
               </li>
               <li>
-                What you wrote stays where it is: work items, pull requests, comments and reviews show as{" "}
-                <span className="font-mono text-fg">ghost</span> once it is removed.
+                What you wrote stays where it is: work items, pull requests, comments and reviews show as <span className="font-mono text-fg">ghost</span> once
+                it is removed.
               </li>
               <li>
                 The username <span className="font-mono text-fg">{username}</span> is never given to anyone else.
@@ -149,8 +148,7 @@ export function DeleteAccountAction({
               </FormField>
             ) : (
               <p className="text-sm text-muted">
-                Your account signs in with GitHub only: sign out, sign in with GitHub again, and delete it within 10
-                minutes.
+                Your account signs in with GitHub only: sign out, sign in with GitHub again, and delete it within 10 minutes.
               </p>
             )}
             <ErrorText>{error}</ErrorText>

@@ -41,22 +41,13 @@ export function SelectTrigger({
     >
       {children}
       <Primitive.Icon asChild>
-        <ChevronDown
-          size={15}
-          className="text-faint transition-transform duration-200 group-data-[state=open]/select:rotate-180"
-        />
+        <ChevronDown size={15} className="text-faint transition-transform duration-200 group-data-[state=open]/select:rotate-180" />
       </Primitive.Icon>
     </Primitive.Trigger>
   );
 }
 
-export function SelectContent({
-  className,
-  children,
-  position = "popper",
-  sideOffset = 6,
-  ...props
-}: ComponentProps<typeof Primitive.Content>) {
+export function SelectContent({ className, children, position = "popper", sideOffset = 6, ...props }: ComponentProps<typeof Primitive.Content>) {
   return (
     <Primitive.Portal>
       <Primitive.Content
@@ -71,11 +62,7 @@ export function SelectContent({
         {...props}
       >
         <SelectScrollUpButton />
-        <Primitive.Viewport
-          className={cn("p-1", position === "popper" && "max-h-80 scroll-my-1")}
-        >
-          {children}
-        </Primitive.Viewport>
+        <Primitive.Viewport className={cn("p-1", position === "popper" && "max-h-80 scroll-my-1")}>{children}</Primitive.Viewport>
         <SelectScrollDownButton />
       </Primitive.Content>
     </Primitive.Portal>
@@ -83,12 +70,7 @@ export function SelectContent({
 }
 
 export function SelectLabel({ className, ...props }: ComponentProps<typeof Primitive.Label>) {
-  return (
-    <Primitive.Label
-      className={cn("px-2 pt-2 pb-1 text-[0.6875rem] font-medium tracking-wide text-faint uppercase", className)}
-      {...props}
-    />
-  );
+  return <Primitive.Label className={cn("px-2 pt-2 pb-1 text-[0.6875rem] font-medium tracking-wide text-faint uppercase", className)} {...props} />;
 }
 
 /**
@@ -119,9 +101,7 @@ export function SelectItem({
             <span className="truncate">{children}</span>
           </span>
         </Primitive.ItemText>
-        {description && (
-          <span className={cn("mt-0.5 text-xs leading-snug text-faint", icon != null && "pl-6")}>{description}</span>
-        )}
+        {description && <span className={cn("mt-0.5 text-xs leading-snug text-faint", icon != null && "pl-6")}>{description}</span>}
       </span>
       <span className="absolute top-2 right-2 flex size-4 items-center justify-center">
         <Primitive.ItemIndicator>
@@ -138,10 +118,7 @@ export function SelectSeparator({ className, ...props }: ComponentProps<typeof P
 
 export function SelectScrollUpButton({ className, ...props }: ComponentProps<typeof Primitive.ScrollUpButton>) {
   return (
-    <Primitive.ScrollUpButton
-      className={cn("flex cursor-default items-center justify-center py-1 text-faint", className)}
-      {...props}
-    >
+    <Primitive.ScrollUpButton className={cn("flex cursor-default items-center justify-center py-1 text-faint", className)} {...props}>
       <ChevronUp size={14} />
     </Primitive.ScrollUpButton>
   );
@@ -149,10 +126,7 @@ export function SelectScrollUpButton({ className, ...props }: ComponentProps<typ
 
 export function SelectScrollDownButton({ className, ...props }: ComponentProps<typeof Primitive.ScrollDownButton>) {
   return (
-    <Primitive.ScrollDownButton
-      className={cn("flex cursor-default items-center justify-center py-1 text-faint", className)}
-      {...props}
-    >
+    <Primitive.ScrollDownButton className={cn("flex cursor-default items-center justify-center py-1 text-faint", className)} {...props}>
       <ChevronDown size={14} />
     </Primitive.ScrollDownButton>
   );

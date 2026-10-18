@@ -3,18 +3,7 @@ import { test } from "node:test";
 
 import type { AuditEntry } from "@g1t/contracts";
 
-import {
-  actorLabel,
-  exportName,
-  filterHref,
-  parseFilters,
-  retainedSince,
-  ruleLabel,
-  targetLabel,
-  toCsv,
-  toQuery,
-  visibilityFor,
-} from "./audit.ts";
+import { actorLabel, exportName, filterHref, parseFilters, retainedSince, ruleLabel, targetLabel, toCsv, toQuery, visibilityFor } from "./audit.ts";
 
 const entry: AuditEntry = {
   id: "aud_1",
@@ -48,9 +37,7 @@ test("owners see everything, members their projects, others nothing", () => {
 });
 
 test("filters are read from the address, and nonsense is dropped", () => {
-  const filters = parseFilters(
-    new URLSearchParams("actor=syntaqx&outcome=maybe&kind=agent&from=2026-10-01&to=yesterday&project=rocket"),
-  );
+  const filters = parseFilters(new URLSearchParams("actor=syntaqx&outcome=maybe&kind=agent&from=2026-10-01&to=yesterday&project=rocket"));
   assert.equal(filters.actor, "syntaqx");
   assert.equal(filters.outcome, "");
   // Agents are no longer a filter: an old link's kind=agent is dropped.

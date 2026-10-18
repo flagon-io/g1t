@@ -13,19 +13,14 @@ test("what goes lists only what the workspace holds", () => {
     "3 live apps, taken offline",
     "Access for 1 member; their own accounts stay",
   ]);
-  assert.deepEqual(whatGoes({ ...nothing, repositories: 4 }, 0), [
-    "4 repositories, with their work items, pull requests and workflow runs",
-  ]);
+  assert.deepEqual(whatGoes({ ...nothing, repositories: 4 }, 0), ["4 repositories, with their work items, pull requests and workflow runs"]);
 });
 
 test("only billing or protection stands in the way", () => {
   assert.equal(deletionRefusal("acme", null), null);
   assert.equal(deletionRefusal("acme", { ...nothing, repositories: 9, projects: 2 }), null);
   assert.equal(deletionRefusal("acme", { ...nothing, billing: "Pay first." }), "Pay first.");
-  assert.equal(
-    deletionRefusal("flagon-io", { ...nothing, billing: "Pay first.", protected: true }),
-    "flagon-io is protected and can never be deleted.",
-  );
+  assert.equal(deletionRefusal("flagon-io", { ...nothing, billing: "Pay first.", protected: true }), "flagon-io is protected and can never be deleted.");
 });
 
 test("the slug confirms in any case, and nothing else does", () => {

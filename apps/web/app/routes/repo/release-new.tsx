@@ -20,8 +20,14 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const { viewer, repo } = await requireRepo(context, params, "push");
   const path = { namespace: params.owner, name: params.repo };
   const [tags, branches] = await Promise.all([
-    repos.tags(path, viewer).then((found) => (found.ok ? found.value.map((tag) => tag.name) : [])).catch(() => []),
-    repos.branches(path, viewer).then((found) => (found.ok ? found.value.map((branch) => branch.name) : [])).catch(() => []),
+    repos
+      .tags(path, viewer)
+      .then((found) => (found.ok ? found.value.map((tag) => tag.name) : []))
+      .catch(() => []),
+    repos
+      .branches(path, viewer)
+      .then((found) => (found.ok ? found.value.map((branch) => branch.name) : []))
+      .catch(() => []),
   ]);
   return { tags, branches, defaultBranch: repo.defaultBranch };
 }
@@ -33,14 +39,18 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const text = (key: string) => String(form.get(key) ?? "").trim();
   const tagName = text("tag");
   if (!tagName) return data({ error: "Choose a tag, or name a new one." }, { status: 400 });
-  const created = await repos.createRelease(user, { namespace: params.owner, name: params.repo }, {
-    tagName,
-    target: text("target") || null,
-    name: text("name") || null,
-    body: String(form.get("body") ?? ""),
-    draft: form.get("intent") === "draft",
-    prerelease: form.get("prerelease") === "on",
-  });
+  const created = await repos.createRelease(
+    user,
+    { namespace: params.owner, name: params.repo },
+    {
+      tagName,
+      target: text("target") || null,
+      name: text("name") || null,
+      body: String(form.get("body") ?? ""),
+      draft: form.get("intent") === "draft",
+      prerelease: form.get("prerelease") === "on",
+    },
+  );
   if (!created.ok) return data({ error: created.error.message }, { status: 400 });
   throw redirect(`/${params.owner}/${params.repo}/releases/tag/${encodeTag(created.value.tagName)}`);
 }

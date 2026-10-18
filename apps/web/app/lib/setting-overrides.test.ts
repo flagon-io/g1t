@@ -3,7 +3,17 @@ import { test } from "node:test";
 import type { Setting } from "@g1t/contracts";
 import { settingOverride } from "./setting-overrides.ts";
 
-const workspace: Setting = { id: "w", name: "TOKEN", kind: "secret", scope: "workspace", value: null, updatedAt: "", environments: [], availableTo: ["workflows", "deployments"], projects: [] };
+const workspace: Setting = {
+  id: "w",
+  name: "TOKEN",
+  kind: "secret",
+  scope: "workspace",
+  value: null,
+  updatedAt: "",
+  environments: [],
+  availableTo: ["workflows", "deployments"],
+  projects: [],
+};
 const project: Setting = { ...workspace, id: "p", scope: "project" };
 
 test("full overrides remain visible on both scopes", () => {
@@ -13,17 +23,27 @@ test("full overrides remain visible on both scopes", () => {
 
 test("environment-restricted project keys still suppress workspace fallback", () => {
   assert.equal(settingOverride(workspace, [workspace, { ...project, environments: ["production"] }]), "Overridden by project");
-  assert.equal(settingOverride({ ...workspace, environments: ["production"] }, [workspace, { ...project, environments: ["preview"] }]), "Overridden by project");
+  assert.equal(
+    settingOverride({ ...workspace, environments: ["production"] }, [workspace, { ...project, environments: ["preview"] }]),
+    "Overridden by project",
+  );
 });
 
 test("only shared readers are overridden", () => {
   assert.equal(settingOverride(workspace, [workspace, { ...project, availableTo: ["workflows"] }]), "Partially overridden: Workflows");
-  assert.equal(settingOverride(workspace, [workspace, { ...project, availableTo: ["workflows"] }, { ...project, availableTo: ["deployments"] }]), "Overridden by project");
+  assert.equal(
+    settingOverride(workspace, [workspace, { ...project, availableTo: ["workflows"] }, { ...project, availableTo: ["deployments"] }]),
+    "Overridden by project",
+  );
 });
 
 test("different names, kinds and readers do not override", () => {
   const scoped = { ...workspace, availableTo: ["workflows"] };
-  for (const other of [{ ...project, name: "OTHER" }, { ...project, kind: "variable" }, { ...project, availableTo: ["deployments"] }]) {
+  for (const other of [
+    { ...project, name: "OTHER" },
+    { ...project, kind: "variable" },
+    { ...project, availableTo: ["deployments"] },
+  ]) {
     assert.equal(settingOverride(scoped, [scoped, other]), null);
   }
 });

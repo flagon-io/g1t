@@ -130,7 +130,10 @@ export default function SignIn() {
             {hosted ? (
               <Pressable onPress={() => setMode("server")} hitSlop={10}>
                 <Text size="small" tone="faint">
-                  Using your own g1t? <Text size="small" tone="accent">Sign in there</Text>
+                  Using your own g1t?{" "}
+                  <Text size="small" tone="accent">
+                    Sign in there
+                  </Text>
                 </Text>
               </Pressable>
             ) : (

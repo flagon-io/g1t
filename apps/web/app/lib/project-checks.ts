@@ -7,7 +7,11 @@ export function projectCheckSections(head: string | null | undefined, branch: st
 }
 
 /** A retry of the same SHA is still a separate attempt, including when no deployment ID was returned. */
-export function hasSeparateAttempt(currentId: string | null | undefined, servingSha: string | null | undefined, latest: { id: string; sha: string; state: string }): boolean {
+export function hasSeparateAttempt(
+  currentId: string | null | undefined,
+  servingSha: string | null | undefined,
+  latest: { id: string; sha: string; state: string },
+): boolean {
   if (!servingSha) return false;
   return currentId ? latest.id !== currentId : latest.sha !== servingSha || latest.state !== "success";
 }

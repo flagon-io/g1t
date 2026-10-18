@@ -159,7 +159,11 @@ test("each request gets an id and continues the caller's trace, or starts one", 
 });
 
 test("an app's own entry carries what its requests are filed under", () => {
-  const entry = parseEntry({ script: "web-acme", redirect: null, telemetry: { project: "prj_1", deployment: "dep_1", environment: "production", service: "web", commit: "abc" } });
+  const entry = parseEntry({
+    script: "web-acme",
+    redirect: null,
+    telemetry: { project: "prj_1", deployment: "dep_1", environment: "production", service: "web", commit: "abc" },
+  });
   assert.deepEqual(entry?.telemetry, { project: "prj_1", deployment: "dep_1", environment: "production", service: "web", commit: "abc" });
   assert.equal(parseEntry({ script: "web-acme", redirect: null })?.telemetry, null);
 });

@@ -244,7 +244,13 @@ export function useLive(options: LiveOptions): Live {
   const check = useCallback(() => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
-    const decision = gate(state.current, { now: Date.now(), visible: visibleNow(), busy: busyNow(), navigating: latest.current.navigating, gap: latest.current.options.gap });
+    const decision = gate(state.current, {
+      now: Date.now(),
+      visible: visibleNow(),
+      busy: busyNow(),
+      navigating: latest.current.navigating,
+      gap: latest.current.options.gap,
+    });
     if (decision.action === "run") run();
     else if (decision.action === "wait") timer.current = setTimeout(check, decision.ms);
     // "hold": out of view; coming back into view (`back` below) asks again.

@@ -5,21 +5,7 @@
  * request's merge box lists. Used by a repository's Settings → Rules and a
  * workspace's.
  */
-import {
-  Bot,
-  Download,
-  FileUp,
-  GitBranch,
-  Plus,
-  ShieldAlert,
-  ShieldCheck,
-  ShieldOff,
-  Tag,
-  Trash2,
-  TriangleAlert,
-  Users,
-  X,
-} from "lucide-react";
+import { Bot, Download, FileUp, GitBranch, Plus, ShieldAlert, ShieldCheck, ShieldOff, Tag, Trash2, TriangleAlert, Users, X } from "lucide-react";
 import { type ReactNode, useMemo, useRef, useState } from "react";
 import { Form, Link } from "react-router";
 
@@ -118,7 +104,12 @@ export function PatternList({
               {!disabled && (
                 <Button
                   type="button"
-                  aria-label={`Remove ${patternLabel(value)}`} variant="ghost" size="inline" className="rounded p-0.5 text-faint hover:bg-surface" onClick={() => onChange(values.filter((other) => other !== value))}>
+                  aria-label={`Remove ${patternLabel(value)}`}
+                  variant="ghost"
+                  size="inline"
+                  className="rounded p-0.5 text-faint hover:bg-surface"
+                  onClick={() => onChange(values.filter((other) => other !== value))}
+                >
                   <X size={13} />
                 </Button>
               )}
@@ -149,7 +140,12 @@ export function PatternList({
             .map((option) => (
               <Button
                 key={option.value}
-                type="button" variant="outline" size="inline" className="rounded-full border-dashed px-2.5 py-1 text-xs text-muted" onClick={() => add(option.value)}>
+                type="button"
+                variant="outline"
+                size="inline"
+                className="rounded-full border-dashed px-2.5 py-1 text-xs text-muted"
+                onClick={() => add(option.value)}
+              >
                 + {option.label}
               </Button>
             ))}
@@ -324,7 +320,14 @@ function PeriodList({
             onChange={(event) => onChange(periods.map((one, at) => (at === index ? { ...one, reason: event.target.value } : one)))}
           />
           {!disabled && (
-            <Button type="button" aria-label={`Remove ${label.toLowerCase()} ${index + 1}`} variant="ghost" size="inline" className="rounded p-1 text-faint" onClick={() => onChange(periods.filter((_, at) => at !== index))}>
+            <Button
+              type="button"
+              aria-label={`Remove ${label.toLowerCase()} ${index + 1}`}
+              variant="ghost"
+              size="inline"
+              className="rounded p-1 text-faint"
+              onClick={() => onChange(periods.filter((_, at) => at !== index))}
+            >
               <X size={14} />
             </Button>
           )}
@@ -351,17 +354,7 @@ function PeriodList({
 }
 
 /** The parameters of one rule, as fields. */
-function Parameters({
-  entry,
-  onChange,
-  seen,
-  disabled,
-}: {
-  entry: RuleEntry;
-  onChange: (entry: RuleEntry) => void;
-  seen: SeenCheck[];
-  disabled?: boolean;
-}) {
+function Parameters({ entry, onChange, seen, disabled }: { entry: RuleEntry; onChange: (entry: RuleEntry) => void; seen: SeenCheck[]; disabled?: boolean }) {
   // Each case narrows `entry` and writes back its own parameters.
   const set = (parameters: object) => onChange({ ...entry, parameters } as RuleEntry);
   switch (entry.type) {
@@ -370,11 +363,41 @@ function Parameters({
       const methods: MergeMethod[] = ["merge", "squash", "rebase", "fast_forward"];
       return (
         <div className="divide-y divide-line">
-          <NumberField label="Required approvals" min={0} max={10} value={p.required_approvals} disabled={disabled} onChange={(value) => set({ ...p, required_approvals: value })} />
-          <Toggle title="An agent's approval counts" about="Off: approvals must come from people." checked={p.count_agent_approvals} disabled={disabled} onChange={(value) => set({ ...p, count_agent_approvals: value })} />
-          <Toggle title="Dismiss approvals when new commits are pushed" checked={p.dismiss_stale_reviews_on_push} disabled={disabled} onChange={(value) => set({ ...p, dismiss_stale_reviews_on_push: value })} />
-          <Toggle title="Require review from code owners" about="The owners of every file it changes, as CODEOWNERS names them, approve." checked={p.require_code_owner_review} disabled={disabled} onChange={(value) => set({ ...p, require_code_owner_review: value })} />
-          <Toggle title="Require approval of the most recent push" about="Someone other than whoever pushed last approves after that push." checked={p.require_last_push_approval} disabled={disabled} onChange={(value) => set({ ...p, require_last_push_approval: value })} />
+          <NumberField
+            label="Required approvals"
+            min={0}
+            max={10}
+            value={p.required_approvals}
+            disabled={disabled}
+            onChange={(value) => set({ ...p, required_approvals: value })}
+          />
+          <Toggle
+            title="An agent's approval counts"
+            about="Off: approvals must come from people."
+            checked={p.count_agent_approvals}
+            disabled={disabled}
+            onChange={(value) => set({ ...p, count_agent_approvals: value })}
+          />
+          <Toggle
+            title="Dismiss approvals when new commits are pushed"
+            checked={p.dismiss_stale_reviews_on_push}
+            disabled={disabled}
+            onChange={(value) => set({ ...p, dismiss_stale_reviews_on_push: value })}
+          />
+          <Toggle
+            title="Require review from code owners"
+            about="The owners of every file it changes, as CODEOWNERS names them, approve."
+            checked={p.require_code_owner_review}
+            disabled={disabled}
+            onChange={(value) => set({ ...p, require_code_owner_review: value })}
+          />
+          <Toggle
+            title="Require approval of the most recent push"
+            about="Someone other than whoever pushed last approves after that push."
+            checked={p.require_last_push_approval}
+            disabled={disabled}
+            onChange={(value) => set({ ...p, require_last_push_approval: value })}
+          />
           {p.allow_direct_pushes && (
             <Toggle
               title="Still allow pushes straight to the branch"
@@ -397,9 +420,7 @@ function Parameters({
                   onCheckedChange={(checked) =>
                     set({
                       ...p,
-                      allowed_merge_methods: checked
-                        ? [...p.allowed_merge_methods, method]
-                        : p.allowed_merge_methods.filter((other) => other !== method),
+                      allowed_merge_methods: checked ? [...p.allowed_merge_methods, method] : p.allowed_merge_methods.filter((other) => other !== method),
                     })
                   }
                 />
@@ -444,7 +465,14 @@ function Parameters({
                       }
                     />
                     {!disabled && (
-                      <Button type="button" aria-label={`Stop requiring ${check.context}`} variant="ghost" size="inline" className="rounded p-1 text-faint" onClick={() => set({ ...p, checks: p.checks.filter((_, at) => at !== index) })}>
+                      <Button
+                        type="button"
+                        aria-label={`Stop requiring ${check.context}`}
+                        variant="ghost"
+                        size="inline"
+                        className="rounded p-1 text-faint"
+                        onClick={() => set({ ...p, checks: p.checks.filter((_, at) => at !== index) })}
+                      >
                         <X size={14} />
                       </Button>
                     )}
@@ -465,8 +493,20 @@ function Parameters({
             </div>
           </div>
           <div className="divide-y divide-line">
-            <Toggle title="Require branches to be up to date before merging" about="What merges is exactly what was checked." checked={p.strict} disabled={disabled} onChange={(value) => set({ ...p, strict: value })} />
-            <Toggle title="Let someone who may merge bypass these checks" about="They tick a box as they merge, and the pull request says who did." checked={p.allow_bypass_on_merge} disabled={disabled} onChange={(value) => set({ ...p, allow_bypass_on_merge: value })} />
+            <Toggle
+              title="Require branches to be up to date before merging"
+              about="What merges is exactly what was checked."
+              checked={p.strict}
+              disabled={disabled}
+              onChange={(value) => set({ ...p, strict: value })}
+            />
+            <Toggle
+              title="Let someone who may merge bypass these checks"
+              about="They tick a box as they merge, and the pull request says who did."
+              checked={p.allow_bypass_on_merge}
+              disabled={disabled}
+              onChange={(value) => set({ ...p, allow_bypass_on_merge: value })}
+            />
           </div>
           <div>
             <p className="text-sm text-fg">Only when these paths change</p>
@@ -480,10 +520,40 @@ function Parameters({
       const p = entry.parameters;
       return (
         <div className="divide-y divide-line">
-          <NumberField label="Pull requests tested at once" min={1} max={20} value={p.max_entries_to_build} disabled={disabled} onChange={(value) => set({ ...p, max_entries_to_build: value })} />
-          <NumberField label="Smallest batch to start" min={1} max={20} value={p.min_entries_to_merge} disabled={disabled} onChange={(value) => set({ ...p, min_entries_to_merge: value })} />
-          <NumberField label="Wait for a batch to fill, at most" min={0} max={360} value={p.min_entries_wait_minutes} suffix="min" disabled={disabled} onChange={(value) => set({ ...p, min_entries_wait_minutes: value })} />
-          <NumberField label="Check timeout" min={5} max={360} value={p.check_response_timeout_minutes} suffix="min" disabled={disabled} onChange={(value) => set({ ...p, check_response_timeout_minutes: value })} />
+          <NumberField
+            label="Pull requests tested at once"
+            min={1}
+            max={20}
+            value={p.max_entries_to_build}
+            disabled={disabled}
+            onChange={(value) => set({ ...p, max_entries_to_build: value })}
+          />
+          <NumberField
+            label="Smallest batch to start"
+            min={1}
+            max={20}
+            value={p.min_entries_to_merge}
+            disabled={disabled}
+            onChange={(value) => set({ ...p, min_entries_to_merge: value })}
+          />
+          <NumberField
+            label="Wait for a batch to fill, at most"
+            min={0}
+            max={360}
+            value={p.min_entries_wait_minutes}
+            suffix="min"
+            disabled={disabled}
+            onChange={(value) => set({ ...p, min_entries_wait_minutes: value })}
+          />
+          <NumberField
+            label="Check timeout"
+            min={5}
+            max={360}
+            value={p.check_response_timeout_minutes}
+            suffix="min"
+            disabled={disabled}
+            onChange={(value) => set({ ...p, check_response_timeout_minutes: value })}
+          />
         </div>
       );
     }
@@ -508,11 +578,30 @@ function Parameters({
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <Choice label="How it compares" value={p.operator} options={OPERATORS} disabled={disabled} onChange={(operator) => set({ ...p, operator })} />
-            <Input aria-label="Pattern" value={p.pattern} disabled={disabled} placeholder={p.operator === "regex" ? "^(feat|fix)(\\(.+\\))?: " : "@acme.com"} className="w-64 grow font-mono text-[0.8125rem]" onChange={(event) => set({ ...p, pattern: event.target.value })} />
+            <Input
+              aria-label="Pattern"
+              value={p.pattern}
+              disabled={disabled}
+              placeholder={p.operator === "regex" ? "^(feat|fix)(\\(.+\\))?: " : "@acme.com"}
+              className="w-64 grow font-mono text-[0.8125rem]"
+              onChange={(event) => set({ ...p, pattern: event.target.value })}
+            />
           </div>
           <div className="flex flex-wrap items-center gap-4">
-            <CheckboxOption label="Must not match" checked={p.negate} disabled={disabled} onCheckedChange={(checked) => set({ ...p, negate: checked === true })} />
-            <Input aria-label="What people call it" value={p.name} disabled={disabled} placeholder="Name it, e.g. Conventional commits" className="w-64 grow" onChange={(event) => set({ ...p, name: event.target.value })} />
+            <CheckboxOption
+              label="Must not match"
+              checked={p.negate}
+              disabled={disabled}
+              onCheckedChange={(checked) => set({ ...p, negate: checked === true })}
+            />
+            <Input
+              aria-label="What people call it"
+              value={p.name}
+              disabled={disabled}
+              placeholder="Name it, e.g. Conventional commits"
+              className="w-64 grow"
+              onChange={(event) => set({ ...p, name: event.target.value })}
+            />
           </div>
           {p.operator === "regex" && <p className="text-xs text-muted">Runs on a linear-time engine: no look-around or back-references.</p>}
         </div>
@@ -547,20 +636,63 @@ function Parameters({
         />
       );
     case "max_file_size":
-      return <NumberField label="Largest file" min={1} max={100} suffix="MB" value={entry.parameters.max_file_size_mb} disabled={disabled} onChange={(max_file_size_mb) => set({ max_file_size_mb })} />;
+      return (
+        <NumberField
+          label="Largest file"
+          min={1}
+          max={100}
+          suffix="MB"
+          value={entry.parameters.max_file_size_mb}
+          disabled={disabled}
+          onChange={(max_file_size_mb) => set({ max_file_size_mb })}
+        />
+      );
     case "max_file_path_length":
-      return <NumberField label="Longest path" min={1} max={4096} suffix="characters" value={entry.parameters.max_file_path_length} disabled={disabled} onChange={(max_file_path_length) => set({ max_file_path_length })} />;
+      return (
+        <NumberField
+          label="Longest path"
+          min={1}
+          max={4096}
+          suffix="characters"
+          value={entry.parameters.max_file_path_length}
+          disabled={disabled}
+          onChange={(max_file_path_length) => set({ max_file_path_length })}
+        />
+      );
     case "max_files_changed":
-      return <NumberField label="Most files one commit changes" min={1} max={100000} value={entry.parameters.max_files} disabled={disabled} onChange={(max_files) => set({ max_files })} />;
+      return (
+        <NumberField
+          label="Most files one commit changes"
+          min={1}
+          max={100000}
+          value={entry.parameters.max_files}
+          disabled={disabled}
+          onChange={(max_files) => set({ max_files })}
+        />
+      );
     case "path_review": {
       const p = entry.parameters;
       return (
         <div className="space-y-2">
           <PatternList label="Sensitive paths" values={p.paths} placeholder="infra/**" disabled={disabled} onChange={(paths) => set({ ...p, paths })} />
-          <NumberField label="Approvals from people" min={1} max={10} value={p.required_approvals} disabled={disabled} onChange={(required_approvals) => set({ ...p, required_approvals })} />
+          <NumberField
+            label="Approvals from people"
+            min={1}
+            max={10}
+            value={p.required_approvals}
+            disabled={disabled}
+            onChange={(required_approvals) => set({ ...p, required_approvals })}
+          />
           <label className="flex items-center justify-between gap-4 py-1.5">
             <span className="text-sm text-fg">From the team</span>
-            <Input aria-label="Team" value={p.team ?? ""} disabled={disabled} placeholder="Anyone, or workspace/team" className="w-56" onChange={(event) => set({ ...p, team: event.target.value || null })} />
+            <Input
+              aria-label="Team"
+              value={p.team ?? ""}
+              disabled={disabled}
+              placeholder="Anyone, or workspace/team"
+              className="w-56"
+              onChange={(event) => set({ ...p, team: event.target.value || null })}
+            />
           </label>
         </div>
       );
@@ -571,7 +703,14 @@ function Parameters({
         <div className="space-y-4">
           <label className="flex items-center justify-between gap-4">
             <span className="text-sm text-fg">Time zone, as an offset from UTC</span>
-            <Input aria-label="Time zone" value={p.time_zone} disabled={disabled} placeholder="UTC or +02:00" className="w-32" onChange={(event) => set({ ...p, time_zone: event.target.value })} />
+            <Input
+              aria-label="Time zone"
+              value={p.time_zone}
+              disabled={disabled}
+              placeholder="UTC or +02:00"
+              className="w-32"
+              onChange={(event) => set({ ...p, time_zone: event.target.value })}
+            />
           </label>
           <div>
             <p className="text-sm text-fg">Weekly hours when merging is open</p>
@@ -588,12 +727,17 @@ function Parameters({
                           type="button"
                           aria-pressed={on}
                           disabled={disabled}
-                          className={cn("rounded-md border px-2 py-1 text-xs", on ? "border-accent/50 bg-accent/10 text-accent" : "border-line text-muted hover:text-fg")}
+                          className={cn(
+                            "rounded-md border px-2 py-1 text-xs",
+                            on ? "border-accent/50 bg-accent/10 text-accent" : "border-line text-muted hover:text-fg",
+                          )}
                           onClick={() =>
                             set({
                               ...p,
                               windows: p.windows.map((one, at) =>
-                                at === index ? { ...one, days: on ? one.days.filter((other) => other !== day) : DAYS.filter((d) => d === day || one.days.includes(d)) } : one,
+                                at === index
+                                  ? { ...one, days: on ? one.days.filter((other) => other !== day) : DAYS.filter((d) => d === day || one.days.includes(d)) }
+                                  : one,
                               ),
                             })
                           }
@@ -603,18 +747,43 @@ function Parameters({
                       );
                     })}
                   </div>
-                  <Input type="time" aria-label="Opens" value={window.start} disabled={disabled} className="w-28" onChange={(event) => set({ ...p, windows: p.windows.map((one, at) => (at === index ? { ...one, start: event.target.value } : one)) })} />
+                  <Input
+                    type="time"
+                    aria-label="Opens"
+                    value={window.start}
+                    disabled={disabled}
+                    className="w-28"
+                    onChange={(event) => set({ ...p, windows: p.windows.map((one, at) => (at === index ? { ...one, start: event.target.value } : one)) })}
+                  />
                   <span className="text-sm text-muted">to</span>
-                  <Input type="time" aria-label="Closes" value={window.end} disabled={disabled} className="w-28" onChange={(event) => set({ ...p, windows: p.windows.map((one, at) => (at === index ? { ...one, end: event.target.value } : one)) })} />
+                  <Input
+                    type="time"
+                    aria-label="Closes"
+                    value={window.end}
+                    disabled={disabled}
+                    className="w-28"
+                    onChange={(event) => set({ ...p, windows: p.windows.map((one, at) => (at === index ? { ...one, end: event.target.value } : one)) })}
+                  />
                   {!disabled && (
-                    <Button type="button" aria-label={`Remove window ${index + 1}`} variant="ghost" size="inline" className="rounded p-1 text-faint" onClick={() => set({ ...p, windows: p.windows.filter((_, at) => at !== index) })}>
+                    <Button
+                      type="button"
+                      aria-label={`Remove window ${index + 1}`}
+                      variant="ghost"
+                      size="inline"
+                      className="rounded p-1 text-faint"
+                      onClick={() => set({ ...p, windows: p.windows.filter((_, at) => at !== index) })}
+                    >
                       <X size={14} />
                     </Button>
                   )}
                 </Card>
               ))}
               {!disabled && (
-                <Button type="button" variant="outline" onClick={() => set({ ...p, windows: [...p.windows, { days: ["mon", "tue", "wed", "thu", "fri"], start: "09:00", end: "17:00" }] })}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => set({ ...p, windows: [...p.windows, { days: ["mon", "tue", "wed", "thu", "fri"], start: "09:00", end: "17:00" }] })}
+                >
                   <Plus size={14} /> Weekly hours
                 </Button>
               )}
@@ -635,7 +804,13 @@ function Parameters({
       const p = entry.parameters;
       return (
         <div className="divide-y divide-line">
-          <Toggle title="Agents' ready changes may merge here by themselves" about="The repository's auto-merge setting must be on too." checked={p.allowed} disabled={disabled} onChange={(allowed) => set({ ...p, allowed })} />
+          <Toggle
+            title="Agents' ready changes may merge here by themselves"
+            about="The repository's auto-merge setting must be on too."
+            checked={p.allowed}
+            disabled={disabled}
+            onChange={(allowed) => set({ ...p, allowed })}
+          />
         </div>
       );
     }
@@ -677,9 +852,22 @@ function RuleCard({
             <p className="mt-0.5 text-sm text-muted">{info?.about}</p>
           </div>
           <div className="flex items-center gap-2">
-            <Choice label={`Whose changes ${info?.label ?? entry.type} holds for`} value={entry.applies_to} options={APPLIES} disabled={disabled} onChange={(applies_to) => onChange({ ...entry, applies_to })} />
+            <Choice
+              label={`Whose changes ${info?.label ?? entry.type} holds for`}
+              value={entry.applies_to}
+              options={APPLIES}
+              disabled={disabled}
+              onChange={(applies_to) => onChange({ ...entry, applies_to })}
+            />
             {!disabled && (
-              <Button type="button" aria-label={`Remove ${info?.label ?? entry.type}`} variant="ghost" size="inline" className="p-1.5 text-faint hover:bg-bg hover:text-danger" onClick={onRemove}>
+              <Button
+                type="button"
+                aria-label={`Remove ${info?.label ?? entry.type}`}
+                variant="ghost"
+                size="inline"
+                className="p-1.5 text-faint hover:bg-bg hover:text-danger"
+                onClick={onRemove}
+              >
                 <Trash2 size={15} />
               </Button>
             )}
@@ -715,7 +903,13 @@ function BypassList({ actors, onChange, disabled }: { actors: BypassActor[]; onC
         {actors.map((actor, index) => (
           <Card asChild key={index} tone="plain" radius="lg" className="flex flex-wrap items-center gap-2 p-2">
             <li>
-              <Choice label="Who" value={actor.kind} options={KINDS} disabled={disabled} onChange={(kind) => update(index, { kind, value: kind === "role" ? "admin" : "" })} />
+              <Choice
+                label="Who"
+                value={actor.kind}
+                options={KINDS}
+                disabled={disabled}
+                onChange={(kind) => update(index, { kind, value: kind === "role" ? "admin" : "" })}
+              />
               {actor.kind === "role" ? (
                 <Choice
                   label="Role"
@@ -732,7 +926,14 @@ function BypassList({ actors, onChange, disabled }: { actors: BypassActor[]; onC
               ) : actor.kind === "g1t" ? (
                 <span className="grow text-sm text-muted">g1t itself (the merge queue, security updates)</span>
               ) : (
-                <Input aria-label="Who, by name" value={actor.value} disabled={disabled} placeholder={KINDS.find((kind) => kind.value === actor.kind)?.placeholder} className="w-48 grow" onChange={(event) => update(index, { value: event.target.value })} />
+                <Input
+                  aria-label="Who, by name"
+                  value={actor.value}
+                  disabled={disabled}
+                  placeholder={KINDS.find((kind) => kind.value === actor.kind)?.placeholder}
+                  className="w-48 grow"
+                  onChange={(event) => update(index, { value: event.target.value })}
+                />
               )}
               <Choice
                 label="When"
@@ -745,7 +946,14 @@ function BypassList({ actors, onChange, disabled }: { actors: BypassActor[]; onC
                 onChange={(mode) => update(index, { mode })}
               />
               {!disabled && (
-                <Button type="button" aria-label={`Remove ${describeBypassActor(actor)}`} variant="ghost" size="inline" className="rounded p-1 text-faint" onClick={() => onChange(actors.filter((_, at) => at !== index))}>
+                <Button
+                  type="button"
+                  aria-label={`Remove ${describeBypassActor(actor)}`}
+                  variant="ghost"
+                  size="inline"
+                  className="rounded p-1 text-faint"
+                  onClick={() => onChange(actors.filter((_, at) => at !== index))}
+                >
                   <X size={14} />
                 </Button>
               )}
@@ -755,7 +963,8 @@ function BypassList({ actors, onChange, disabled }: { actors: BypassActor[]; onC
       </ul>
       {hasG1t && (
         <p className="flex items-start gap-2 text-xs text-warn">
-          <TriangleAlert size={13} className="mt-px shrink-0" /> g1t itself (the merge queue, security updates) bypasses these rules. Coding agents obey rules exactly as the people they act for do.
+          <TriangleAlert size={13} className="mt-px shrink-0" /> g1t itself (the merge queue, security updates) bypasses these rules. Coding agents obey rules
+          exactly as the people they act for do.
         </p>
       )}
       {!disabled && (
@@ -787,7 +996,12 @@ function download(ruleset: RulesetSpec) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${(ruleset.name || "ruleset").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "ruleset"}.json`;
+  link.download = `${
+    (ruleset.name || "ruleset")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "ruleset"
+  }.json`;
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -829,251 +1043,270 @@ export function RulesetForm({
   const fromBranchProtection = existing?.source === "branch_protection";
   return (
     <>
-    <Form method="post" className="space-y-6">
-      <input type="hidden" name="intent" value="save" />
-      <input type="hidden" name="ruleset" value={JSON.stringify(spec)} />
-      {fromBranchProtection && (
-        <p className="flex items-start gap-2 rounded-lg border border-info/30 bg-info/5 p-3 text-sm text-muted">
-          <ShieldCheck size={15} className="mt-0.5 shrink-0 text-info" />
-          Made from this repository's branch protection settings, holding exactly what they held. The pull request, status check and merge
-          queue rules here are also what Settings → Branches and the settings API read and write.
-        </p>
-      )}
-      <section className="grid gap-4 md:grid-cols-[1fr_auto]">
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-medium text-muted">Name</span>
-          <Input name="name" value={spec.name} disabled={disabled} maxLength={100} placeholder="Protect main" required onChange={(event) => update({ name: event.target.value })} />
-        </label>
-        <div>
-          <span className="mb-1.5 block text-sm font-medium text-muted">Targets</span>
-          <div className="flex rounded-md border border-line p-0.5" role="radiogroup" aria-label="Targets">
-            {(["branch", "tag"] as const).map((target) => (
-              <button
-                key={target}
-                type="button"
-                role="radio"
-                aria-checked={spec.target === target}
-                disabled={disabled}
-                className={cn("flex items-center gap-1.5 rounded px-3 py-1.5 text-sm", spec.target === target ? "bg-surface text-fg" : "text-muted hover:text-fg")}
-                onClick={() =>
-                  update({
-                    target,
-                    conditions: { ...spec.conditions, ref_name: { include: target === "tag" ? [] : [DEFAULT_BRANCH], exclude: [] } },
-                    rules: spec.rules.filter((rule) => ruleInfo(rule.type)?.targets.includes(target)),
-                  })
-                }
-              >
-                {target === "branch" ? <GitBranch size={14} /> : <Tag size={14} />}
-                {target === "branch" ? "Branches" : "Tags"}
-              </button>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <Block title="Enforcement" about="Try a ruleset in evaluate first: Insights shows what it would have refused.">
-        <RadioGroup value={spec.enforcement} onValueChange={(value) => update({ enforcement: value as Enforcement })} disabled={disabled} className="grid gap-3 sm:grid-cols-3">
-          {(Object.keys(ENFORCEMENT) as Enforcement[]).map((enforcement) => (
-            <RadioOption key={enforcement} value={enforcement} label={ENFORCEMENT[enforcement].label} description={ENFORCEMENT[enforcement].about} />
-          ))}
-        </RadioGroup>
-      </Block>
-
-      <Block
-        title={spec.target === "branch" ? "Branches" : "Tags"}
-        about={
-          <>
-            Names it holds for: fnmatch patterns, <code>*</code> within a segment and <code>**</code> across them.
-            {repositoryLabel ? ` Default branch follows ${repositoryLabel}'s default branch if it is renamed.` : ""}
-          </>
-        }
-      >
-        <div>
-          <p className="mb-2 text-sm text-fg">Include</p>
-          <PatternList
-            label="Include"
-            values={spec.conditions.ref_name.include}
-            placeholder={spec.target === "branch" ? "release/*" : "v*"}
-            quick={
-              spec.target === "branch"
-                ? [
-                    { value: DEFAULT_BRANCH, label: "Default branch" },
-                    { value: ALL, label: "All branches" },
-                  ]
-                : [{ value: ALL, label: "All tags" }]
-            }
-            disabled={disabled}
-            onChange={(include) => update({ conditions: { ...spec.conditions, ref_name: { ...spec.conditions.ref_name, include } } })}
-          />
-        </div>
-        <div>
-          <p className="mb-2 text-sm text-fg">Exclude</p>
-          <PatternList
-            label="Exclude"
-            values={spec.conditions.ref_name.exclude}
-            placeholder={spec.target === "branch" ? "dependabot/**" : "v*-rc*"}
-            disabled={disabled}
-            onChange={(exclude) => update({ conditions: { ...spec.conditions, ref_name: { ...spec.conditions.ref_name, exclude } } })}
-          />
-        </div>
-      </Block>
-
-      {level === "workspace" && spec.conditions.repository && (
-        <Block title="Repositories" about="Which of the workspace's repositories it holds in.">
-          <div>
-            <p className="mb-2 text-sm text-fg">Names to include</p>
-            <PatternList
-              label="Repositories to include"
-              values={spec.conditions.repository.include}
-              placeholder="api-*"
-              quick={[{ value: ALL, label: "All repositories" }]}
+      <Form method="post" className="space-y-6">
+        <input type="hidden" name="intent" value="save" />
+        <input type="hidden" name="ruleset" value={JSON.stringify(spec)} />
+        {fromBranchProtection && (
+          <p className="flex items-start gap-2 rounded-lg border border-info/30 bg-info/5 p-3 text-sm text-muted">
+            <ShieldCheck size={15} className="mt-0.5 shrink-0 text-info" />
+            Made from this repository's branch protection settings, holding exactly what they held. The pull request, status check and merge queue rules here
+            are also what Settings → Branches and the settings API read and write.
+          </p>
+        )}
+        <section className="grid gap-4 md:grid-cols-[1fr_auto]">
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-muted">Name</span>
+            <Input
+              name="name"
+              value={spec.name}
               disabled={disabled}
-              onChange={(include) => update({ conditions: { ...spec.conditions, repository: { ...spec.conditions.repository!, include } } })}
-            />
-          </div>
-          <div>
-            <p className="mb-2 text-sm text-fg">Names to exclude</p>
-            <PatternList
-              label="Repositories to exclude"
-              values={spec.conditions.repository.exclude}
-              placeholder="sandbox-*"
-              disabled={disabled}
-              onChange={(exclude) => update({ conditions: { ...spec.conditions, repository: { ...spec.conditions.repository!, exclude } } })}
-            />
-          </div>
-          <label className="flex items-center justify-between gap-4">
-            <span className="text-sm text-fg">Visibility</span>
-            <Choice
-              label="Visibility"
-              value={spec.conditions.repository.visibility}
-              disabled={disabled}
-              options={[
-                { value: "any", label: "Public and private" },
-                { value: "public", label: "Public only" },
-                { value: "private", label: "Private only" },
-              ]}
-              onChange={(visibility) => update({ conditions: { ...spec.conditions, repository: { ...spec.conditions.repository!, visibility } } })}
+              maxLength={100}
+              placeholder="Protect main"
+              required
+              onChange={(event) => update({ name: event.target.value })}
             />
           </label>
           <div>
-            <p className="text-sm text-fg">Topics</p>
-            <p className="mb-2 text-xs text-muted">Only repositories carrying one of these. Empty: any.</p>
+            <span className="mb-1.5 block text-sm font-medium text-muted">Targets</span>
+            <div className="flex rounded-md border border-line p-0.5" role="radiogroup" aria-label="Targets">
+              {(["branch", "tag"] as const).map((target) => (
+                <button
+                  key={target}
+                  type="button"
+                  role="radio"
+                  aria-checked={spec.target === target}
+                  disabled={disabled}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded px-3 py-1.5 text-sm",
+                    spec.target === target ? "bg-surface text-fg" : "text-muted hover:text-fg",
+                  )}
+                  onClick={() =>
+                    update({
+                      target,
+                      conditions: { ...spec.conditions, ref_name: { include: target === "tag" ? [] : [DEFAULT_BRANCH], exclude: [] } },
+                      rules: spec.rules.filter((rule) => ruleInfo(rule.type)?.targets.includes(target)),
+                    })
+                  }
+                >
+                  {target === "branch" ? <GitBranch size={14} /> : <Tag size={14} />}
+                  {target === "branch" ? "Branches" : "Tags"}
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <Block title="Enforcement" about="Try a ruleset in evaluate first: Insights shows what it would have refused.">
+          <RadioGroup
+            value={spec.enforcement}
+            onValueChange={(value) => update({ enforcement: value as Enforcement })}
+            disabled={disabled}
+            className="grid gap-3 sm:grid-cols-3"
+          >
+            {(Object.keys(ENFORCEMENT) as Enforcement[]).map((enforcement) => (
+              <RadioOption key={enforcement} value={enforcement} label={ENFORCEMENT[enforcement].label} description={ENFORCEMENT[enforcement].about} />
+            ))}
+          </RadioGroup>
+        </Block>
+
+        <Block
+          title={spec.target === "branch" ? "Branches" : "Tags"}
+          about={
+            <>
+              Names it holds for: fnmatch patterns, <code>*</code> within a segment and <code>**</code> across them.
+              {repositoryLabel ? ` Default branch follows ${repositoryLabel}'s default branch if it is renamed.` : ""}
+            </>
+          }
+        >
+          <div>
+            <p className="mb-2 text-sm text-fg">Include</p>
             <PatternList
-              label="Topics"
-              values={spec.conditions.repository.topics}
-              placeholder="payments"
-              mono={false}
+              label="Include"
+              values={spec.conditions.ref_name.include}
+              placeholder={spec.target === "branch" ? "release/*" : "v*"}
+              quick={
+                spec.target === "branch"
+                  ? [
+                      { value: DEFAULT_BRANCH, label: "Default branch" },
+                      { value: ALL, label: "All branches" },
+                    ]
+                  : [{ value: ALL, label: "All tags" }]
+              }
               disabled={disabled}
-              onChange={(topics) => update({ conditions: { ...spec.conditions, repository: { ...spec.conditions.repository!, topics } } })}
+              onChange={(include) => update({ conditions: { ...spec.conditions, ref_name: { ...spec.conditions.ref_name, include } } })}
+            />
+          </div>
+          <div>
+            <p className="mb-2 text-sm text-fg">Exclude</p>
+            <PatternList
+              label="Exclude"
+              values={spec.conditions.ref_name.exclude}
+              placeholder={spec.target === "branch" ? "dependabot/**" : "v*-rc*"}
+              disabled={disabled}
+              onChange={(exclude) => update({ conditions: { ...spec.conditions, ref_name: { ...spec.conditions.ref_name, exclude } } })}
             />
           </div>
         </Block>
-      )}
 
-      <Block title="Bypass list" about="Who these rules do not hold for. Nobody bypasses unless listed: agents, g1t's included, obey rules as people do.">
-        <BypassList actors={spec.bypass_actors} disabled={disabled} onChange={(bypass_actors) => update({ bypass_actors })} />
-      </Block>
+        {level === "workspace" && spec.conditions.repository && (
+          <Block title="Repositories" about="Which of the workspace's repositories it holds in.">
+            <div>
+              <p className="mb-2 text-sm text-fg">Names to include</p>
+              <PatternList
+                label="Repositories to include"
+                values={spec.conditions.repository.include}
+                placeholder="api-*"
+                quick={[{ value: ALL, label: "All repositories" }]}
+                disabled={disabled}
+                onChange={(include) => update({ conditions: { ...spec.conditions, repository: { ...spec.conditions.repository!, include } } })}
+              />
+            </div>
+            <div>
+              <p className="mb-2 text-sm text-fg">Names to exclude</p>
+              <PatternList
+                label="Repositories to exclude"
+                values={spec.conditions.repository.exclude}
+                placeholder="sandbox-*"
+                disabled={disabled}
+                onChange={(exclude) => update({ conditions: { ...spec.conditions, repository: { ...spec.conditions.repository!, exclude } } })}
+              />
+            </div>
+            <label className="flex items-center justify-between gap-4">
+              <span className="text-sm text-fg">Visibility</span>
+              <Choice
+                label="Visibility"
+                value={spec.conditions.repository.visibility}
+                disabled={disabled}
+                options={[
+                  { value: "any", label: "Public and private" },
+                  { value: "public", label: "Public only" },
+                  { value: "private", label: "Private only" },
+                ]}
+                onChange={(visibility) => update({ conditions: { ...spec.conditions, repository: { ...spec.conditions.repository!, visibility } } })}
+              />
+            </label>
+            <div>
+              <p className="text-sm text-fg">Topics</p>
+              <p className="mb-2 text-xs text-muted">Only repositories carrying one of these. Empty: any.</p>
+              <PatternList
+                label="Topics"
+                values={spec.conditions.repository.topics}
+                placeholder="payments"
+                mono={false}
+                disabled={disabled}
+                onChange={(topics) => update({ conditions: { ...spec.conditions, repository: { ...spec.conditions.repository!, topics } } })}
+              />
+            </div>
+          </Block>
+        )}
 
-      <Block title="Rules" about="Every rule holds at once, and with every other ruleset that targets the same branch: the most restrictive wins. Each can hold for everyone, only agents' changes, or only people's.">
-        {spec.rules.length === 0 && <p className="text-sm text-muted">No rules yet.</p>}
-        <ul className="space-y-3">
-          {spec.rules.map((entry, index) => (
-            <RuleCard
-              key={`${entry.type}-${index}`}
-              entry={entry}
-              seen={seen}
-              disabled={disabled}
-              onChange={(changed) => update({ rules: spec.rules.map((one, at) => (at === index ? changed : one)) })}
-              onRemove={() => update({ rules: spec.rules.filter((_, at) => at !== index) })}
-            />
-          ))}
-        </ul>
-        {editable && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button type="button" variant="outline">
-                <Plus size={14} /> Add a rule
+        <Block title="Bypass list" about="Who these rules do not hold for. Nobody bypasses unless listed: agents, g1t's included, obey rules as people do.">
+          <BypassList actors={spec.bypass_actors} disabled={disabled} onChange={(bypass_actors) => update({ bypass_actors })} />
+        </Block>
+
+        <Block
+          title="Rules"
+          about="Every rule holds at once, and with every other ruleset that targets the same branch: the most restrictive wins. Each can hold for everyone, only agents' changes, or only people's."
+        >
+          {spec.rules.length === 0 && <p className="text-sm text-muted">No rules yet.</p>}
+          <ul className="space-y-3">
+            {spec.rules.map((entry, index) => (
+              <RuleCard
+                key={`${entry.type}-${index}`}
+                entry={entry}
+                seen={seen}
+                disabled={disabled}
+                onChange={(changed) => update({ rules: spec.rules.map((one, at) => (at === index ? changed : one)) })}
+                onRemove={() => update({ rules: spec.rules.filter((_, at) => at !== index) })}
+              />
+            ))}
+          </ul>
+          {editable && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="outline">
+                  <Plus size={14} /> Add a rule
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="max-h-[60vh] w-80 overflow-y-auto">
+                {RULE_GROUPS.map((group, groupIndex) => {
+                  const rules = addable.filter((info) => info.group === group.id);
+                  if (rules.length === 0) return null;
+                  return (
+                    <div key={group.id}>
+                      {groupIndex > 0 && <DropdownMenuSeparator />}
+                      <DropdownMenuLabel>{group.label}</DropdownMenuLabel>
+                      {rules.map((info) => (
+                        <DropdownMenuItem key={info.type} onSelect={() => update({ rules: [...spec.rules, newRule(info.type as RuleType)] })}>
+                          <span className="min-w-0">
+                            <span className="block text-sm">{info.label}</span>
+                            <span className="block text-xs text-muted">{info.about}</span>
+                          </span>
+                        </DropdownMenuItem>
+                      ))}
+                    </div>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </Block>
+
+        <div className="sticky bottom-(--tabbar-h) in-data-[keyboard=open]:bottom-0 -mx-4 flex flex-wrap items-center gap-3 border-t border-line bg-bg/90 px-4 py-4 backdrop-blur">
+          {editable && (
+            <SubmitButton pending="Saving…" match={{ intent: "save" }}>
+              {existing ? "Save changes" : "Create ruleset"}
+            </SubmitButton>
+          )}
+          <Link to={backHref} className="text-sm text-muted hover:text-fg">
+            {editable ? "Cancel" : "Back to rules"}
+          </Link>
+          <span className="grow" />
+          <Button type="button" variant="outline" onClick={() => download(spec)}>
+            <Download size={14} /> Export JSON
+          </Button>
+          {editable && (
+            <>
+              <input
+                ref={file}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={async (event) => {
+                  const chosen = event.target.files?.[0];
+                  event.target.value = "";
+                  if (!chosen) return;
+                  try {
+                    setSpec(importRuleset(await chosen.text(), level));
+                    setImported(`Imported ${chosen.name}. Check it, then save.`);
+                  } catch (problem) {
+                    setImported(problem instanceof Error ? problem.message : "That file could not be read.");
+                  }
+                }}
+              />
+              <Button type="button" variant="outline" onClick={() => file.current?.click()}>
+                <FileUp size={14} /> Import JSON
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="max-h-[60vh] w-80 overflow-y-auto">
-              {RULE_GROUPS.map((group, groupIndex) => {
-                const rules = addable.filter((info) => info.group === group.id);
-                if (rules.length === 0) return null;
-                return (
-                  <div key={group.id}>
-                    {groupIndex > 0 && <DropdownMenuSeparator />}
-                    <DropdownMenuLabel>{group.label}</DropdownMenuLabel>
-                    {rules.map((info) => (
-                      <DropdownMenuItem key={info.type} onSelect={() => update({ rules: [...spec.rules, newRule(info.type as RuleType)] })}>
-                        <span className="min-w-0">
-                          <span className="block text-sm">{info.label}</span>
-                          <span className="block text-xs text-muted">{info.about}</span>
-                        </span>
-                      </DropdownMenuItem>
-                    ))}
-                  </div>
-                );
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </Block>
-
-      <div className="sticky bottom-(--tabbar-h) in-data-[keyboard=open]:bottom-0 -mx-4 flex flex-wrap items-center gap-3 border-t border-line bg-bg/90 px-4 py-4 backdrop-blur">
-        {editable && (
-          <SubmitButton pending="Saving…" match={{ intent: "save" }}>
-            {existing ? "Save changes" : "Create ruleset"}
-          </SubmitButton>
-        )}
-        <Link to={backHref} className="text-sm text-muted hover:text-fg">
-          {editable ? "Cancel" : "Back to rules"}
-        </Link>
-        <span className="grow" />
-        <Button type="button" variant="outline" onClick={() => download(spec)}>
-          <Download size={14} /> Export JSON
-        </Button>
-        {editable && (
-          <>
-            <input
-              ref={file}
-              type="file"
-              accept="application/json,.json"
-              className="hidden"
-              onChange={async (event) => {
-                const chosen = event.target.files?.[0];
-                event.target.value = "";
-                if (!chosen) return;
-                try {
-                  setSpec(importRuleset(await chosen.text(), level));
-                  setImported(`Imported ${chosen.name}. Check it, then save.`);
-                } catch (problem) {
-                  setImported(problem instanceof Error ? problem.message : "That file could not be read.");
-                }
-              }}
-            />
-            <Button type="button" variant="outline" onClick={() => file.current?.click()}>
-              <FileUp size={14} /> Import JSON
-            </Button>
-          </>
-        )}
-        {imported && <p className="w-full text-sm text-muted">{imported}</p>}
-        <div className="w-full">
-          <ErrorText>{error}</ErrorText>
-        </div>
-      </div>
-    </Form>
-    {editable && existing && (
-      <Form method="post" className="mt-8 rounded-xl border border-danger/30 p-4">
-        <input type="hidden" name="intent" value="delete" />
-        <h2 className="font-medium">Delete this ruleset</h2>
-        <p className="mt-1 text-sm text-muted">Its rules stop holding at once. Its evaluations stay in Insights.</p>
-        <div className="mt-3">
-          <SubmitButton variant="destructive" pending="Deleting…" match={{ intent: "delete" }}>
-            <Trash2 size={14} /> Delete ruleset
-          </SubmitButton>
+            </>
+          )}
+          {imported && <p className="w-full text-sm text-muted">{imported}</p>}
+          <div className="w-full">
+            <ErrorText>{error}</ErrorText>
+          </div>
         </div>
       </Form>
-    )}
+      {editable && existing && (
+        <Form method="post" className="mt-8 rounded-xl border border-danger/30 p-4">
+          <input type="hidden" name="intent" value="delete" />
+          <h2 className="font-medium">Delete this ruleset</h2>
+          <p className="mt-1 text-sm text-muted">Its rules stop holding at once. Its evaluations stay in Insights.</p>
+          <div className="mt-3">
+            <SubmitButton variant="destructive" pending="Deleting…" match={{ intent: "delete" }}>
+              <Trash2 size={14} /> Delete ruleset
+            </SubmitButton>
+          </div>
+        </Form>
+      )}
     </>
   );
 }
@@ -1084,9 +1317,16 @@ function RulesetRow({ ruleset, href, inherited }: { ruleset: Ruleset; href: stri
   const agents = ruleset.rules.some((rule) => rule.applies_to === "agents" || ruleInfo(rule.type)?.group === "agents");
   return (
     <li>
-      <Link to={href} className="group flex flex-wrap items-start gap-3 rounded-xl border border-line p-4 transition-colors hover:border-line-strong hover:bg-surface">
+      <Link
+        to={href}
+        className="group flex flex-wrap items-start gap-3 rounded-xl border border-line p-4 transition-colors hover:border-line-strong hover:bg-surface"
+      >
         <span className="mt-0.5 shrink-0 text-muted">
-          {ruleset.enforcement === "disabled" ? <ShieldOff size={16} /> : <ShieldCheck size={16} className={ruleset.enforcement === "active" ? "text-accent" : "text-info"} />}
+          {ruleset.enforcement === "disabled" ? (
+            <ShieldOff size={16} />
+          ) : (
+            <ShieldCheck size={16} className={ruleset.enforcement === "active" ? "text-accent" : "text-info"} />
+          )}
         </span>
         <span className="min-w-0 grow basis-48">
           <span className="flex flex-wrap items-center gap-2">
@@ -1125,7 +1365,11 @@ export function RulesetList({
   empty: ReactNode;
 }) {
   if (rulesets.length === 0) {
-    return <Card tone="plain" className="border-dashed p-8 text-center text-sm text-muted">{empty}</Card>;
+    return (
+      <Card tone="plain" className="border-dashed p-8 text-center text-sm text-muted">
+        {empty}
+      </Card>
+    );
   }
   return (
     <ul className="space-y-2">
@@ -1188,7 +1432,16 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: "da
   return (
     <Card tone="plain" className="p-3">
       <p className="text-xs text-muted">{label}</p>
-      <p className={cn("mt-1 text-xl font-semibold tabular-nums", tone === "danger" && "text-danger", tone === "info" && "text-info", tone === "warn" && "text-warn")}>{value}</p>
+      <p
+        className={cn(
+          "mt-1 text-xl font-semibold tabular-nums",
+          tone === "danger" && "text-danger",
+          tone === "info" && "text-info",
+          tone === "warn" && "text-warn",
+        )}
+      >
+        {value}
+      </p>
     </Card>
   );
 }
@@ -1309,8 +1562,7 @@ export function ViolationList({ violations, tone = "danger" }: { violations: Vio
         <li key={index} className="flex items-start gap-2 text-sm">
           <ShieldAlert size={14} className={cn("mt-0.5 shrink-0", tone === "danger" ? "text-danger" : tone === "info" ? "text-info" : "text-warn")} />
           <span className="min-w-0">
-            <span className="text-fg">{violation.message}</span>{" "}
-            {violation.remedy && <span className="text-muted">{violation.remedy}</span>}
+            <span className="text-fg">{violation.message}</span> {violation.remedy && <span className="text-muted">{violation.remedy}</span>}
             <span className="mt-0.5 block text-xs text-faint">
               {ruleInfo(violation.rule)?.label ?? violation.rule} · {violation.ruleset_name}
             </span>

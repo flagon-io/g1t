@@ -22,11 +22,11 @@ OpenCode, work on g1t from wherever they run. They connect over
 person who connected them, and go through the same pull requests, checks,
 reviews and rules as everyone else.
 
-| | What it is |
-| --- | --- |
-| **Work item** | What should change: a feature, a bug, a chore. It belongs to the workspace and can land in several repositories. |
-| **Pull request** | A proposed change to one repository, on a branch or in a working copy of its own. Usually made for a work item. |
-| **Session** | One run of a coding agent: its prompts, reasoning and tool calls, tied to the work item and pull request it worked on. |
+|                  | What it is                                                                                                             |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **Work item**    | What should change: a feature, a bug, a chore. It belongs to the workspace and can land in several repositories.       |
+| **Pull request** | A proposed change to one repository, on a branch or in a working copy of its own. Usually made for a work item.        |
+| **Session**      | One run of a coding agent: its prompts, reasoning and tool calls, tied to the work item and pull request it worked on. |
 
 One work item can have several pull requests, in one repository or in
 several, each from a different person or agent, and g1t keeps track of
@@ -84,12 +84,12 @@ as visible as the repository it came from.
 [Forks and working copies](/concepts/forks/) explains when each is the
 better choice.
 
-| Status | Meaning |
-| --- | --- |
-| `draft` | Still being worked on. A pull request in a working copy starts here. |
-| `open` | Ready for review, with a description of what changed and why. |
-| `merged` | Landed on its base branch. |
-| `closed` | Closed without merging. |
+| Status   | Meaning                                                              |
+| -------- | -------------------------------------------------------------------- |
+| `draft`  | Still being worked on. A pull request in a working copy starts here. |
+| `open`   | Ready for review, with a description of what changed and why.        |
+| `merged` | Landed on its base branch.                                           |
+| `closed` | Closed without merging.                                              |
 
 A pull request is normally opened **for a work item**. It can also stand
 alone, with its own title, for a change nobody filed a work item about.
@@ -170,9 +170,9 @@ When many changes are in flight, some touch the same files. g1t tracks
 which files each pull request changes, from every push, and shows on a
 pull request which others in progress change the same ones.
 
-Two pull requests for the *same* work item in one repository are expected
+Two pull requests for the _same_ work item in one repository are expected
 to overlap: they are alternatives, and one will be merged. Two for
-*different* work items are
+_different_ work items are
 heading for a conflict, and g1t says so while the work is still going on,
 not when the second one tries to merge. Agents get the same list from the
 `pull_request` tool's `get` action, as `overlaps`, so they can keep their

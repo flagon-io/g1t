@@ -1,13 +1,4 @@
-import {
-  AlertTriangle,
-  Check,
-  Copy,
-  Info,
-  Lightbulb,
-  Link2,
-  MessageSquareWarning,
-  OctagonAlert,
-} from "lucide-react";
+import { AlertTriangle, Check, Copy, Info, Lightbulb, Link2, MessageSquareWarning, OctagonAlert } from "lucide-react";
 import type { Root } from "hast";
 import type { Components } from "react-markdown";
 import { type ReactNode, createContext, isValidElement, useContext, useEffect, useMemo, useRef, useState } from "react";
@@ -144,13 +135,7 @@ function CodeBlock({ language, code }: { language: string | null; code: string }
   return (
     <div className="group relative">
       <pre ref={block}>
-        <code>
-          {html
-            ? html.map((line, index) => (
-                <span key={index} className="block" dangerouslySetInnerHTML={{ __html: line || " " }} />
-              ))
-            : code}
-        </code>
+        <code>{html ? html.map((line, index) => <span key={index} className="block" dangerouslySetInnerHTML={{ __html: line || " " }} />) : code}</code>
       </pre>
       <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
         {language && <span className="font-mono text-[0.6875rem] text-faint">{language}</span>}
@@ -245,11 +230,7 @@ function MarkdownLink({ href = "", children, node }: { href?: string; children?:
   }
   if (ref) {
     return (
-      <Link
-        to={href}
-        prefetch="intent"
-        className={ref === "commit" ? "font-mono text-[0.9em]" : ref === "mention" ? "font-medium" : ""}
-      >
+      <Link to={href} prefetch="intent" className={ref === "commit" ? "font-mono text-[0.9em]" : ref === "mention" ? "font-medium" : ""}>
         {children}
       </Link>
     );

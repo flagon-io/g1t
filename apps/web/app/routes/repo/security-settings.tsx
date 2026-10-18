@@ -74,7 +74,19 @@ export async function action({ params, context, request }: Route.ActionArgs) {
 const SELECT = "w-full sm:w-72";
 
 /** A setting that is on or off, with the words on what it does, as a card. */
-function SettingSwitch({ name, title, children, defaultChecked, disabled }: { name: string; title: string; children: ReactNode; defaultChecked: boolean; disabled: boolean }) {
+function SettingSwitch({
+  name,
+  title,
+  children,
+  defaultChecked,
+  disabled,
+}: {
+  name: string;
+  title: string;
+  children: ReactNode;
+  defaultChecked: boolean;
+  disabled: boolean;
+}) {
   return (
     <label className={`${CARD} flex items-start justify-between gap-4 p-4 ${disabled ? "opacity-60" : ""}`}>
       <span className="min-w-0">
@@ -141,8 +153,8 @@ export default function SecuritySettings({ loaderData, params }: Route.Component
             defaultChecked={settings.privateVulnerabilityReporting}
             disabled={locked}
           >
-            Anyone who can see this repository can report a vulnerability to its maintainers privately from its Security tab; on a public repository, without
-            an account, with an email address. The owners and security managers are told at once.
+            Anyone who can see this repository can report a vulnerability to its maintainers privately from its Security tab; on a public repository, without an
+            account, with an email address. The owners and security managers are told at once.
           </SettingSwitch>
         </fieldset>
         <fieldset disabled={disabled} className={`${CARD} space-y-3 p-4 disabled:opacity-60`}>
@@ -164,8 +176,8 @@ export default function SecuritySettings({ loaderData, params }: Route.Component
             <span>
               <span className="block text-sm font-medium">Dependency review</span>
               <span className="mt-1 block text-sm text-muted">
-                Pull requests that change a lockfile get the Dependency review check, which fails when they add a package with a
-                known vulnerability or a license you do not allow.
+                Pull requests that change a lockfile get the Dependency review check, which fails when they add a package with a known vulnerability or a
+                license you do not allow.
               </span>
             </span>
             <Switch name="dependencyReview" defaultChecked={settings.dependencyReview} className="mt-0.5" />
@@ -202,9 +214,7 @@ export default function SecuritySettings({ loaderData, params }: Route.Component
         </fieldset>
         <div className="flex flex-wrap items-center gap-3">
           <Hint label={whyNot(can, "manage_settings")} disabled={!can.manage_settings}>
-            <Button
-              type="submit"
-              disabled={locked || fetcher.state !== "idle"}>
+            <Button type="submit" disabled={locked || fetcher.state !== "idle"}>
               {fetcher.state !== "idle" ? "Saving…" : "Save"}
             </Button>
           </Hint>

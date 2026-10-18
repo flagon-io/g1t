@@ -24,5 +24,12 @@ test("only the rows on screen and a little around them are drawn", () => {
   // The log above or below the screen draws a few rows at the near end.
   assert.deepEqual(windowOf(starts, -5000, -4000, 200), [0, 20]);
   assert.deepEqual(windowOf(starts, end + 4000, end + 5000, 200), [49_980, 50_000]);
-  assert.deepEqual(windowOf(rowStarts(0, () => undefined), 0, 100), [0, 0]);
+  assert.deepEqual(
+    windowOf(
+      rowStarts(0, () => undefined),
+      0,
+      100,
+    ),
+    [0, 0],
+  );
 });

@@ -378,7 +378,22 @@ function SubagentTree({ nodes, base, touched, now }: { nodes: SessionNode[]; bas
 
 /** One harness session: who ran it, where, what it worked on, its subagents, what it touched and what it recorded. */
 export default function WorkSessionPage({ loaderData, actionData }: Route.ComponentProps) {
-  const { session, entries, updates = [], children = [], touched = [], links = [], skills = [], root, canStop, canEnd, consoleUrl, limited, workspace, repo } = loaderData;
+  const {
+    session,
+    entries,
+    updates = [],
+    children = [],
+    touched = [],
+    links = [],
+    skills = [],
+    root,
+    canStop,
+    canEnd,
+    consoleUrl,
+    limited,
+    workspace,
+    repo,
+  } = loaderData;
   const base = `/${repo}`;
   const [ending, setEnding] = useState(false);
   const now = Date.now();
@@ -437,7 +452,11 @@ export default function WorkSessionPage({ loaderData, actionData }: Route.Compon
           </Badge>
         )}
         <HarnessBadge harness={session.harness} />
-        {session.model && <Badge shape="tag" className="font-mono">{session.model}</Badge>}
+        {session.model && (
+          <Badge shape="tag" className="font-mono">
+            {session.model}
+          </Badge>
+        )}
         <SessionStateBadge state={session.state} />
         {canStop && (
           <Form method="post">
@@ -610,14 +629,18 @@ export default function WorkSessionPage({ loaderData, actionData }: Route.Compon
 
       {updates.length > 0 && (
         <Section title="Awaiting agent acknowledgement" aside={`${updates.length}${updates.length === 100 ? "+" : ""} pending`}>
-          <p className="mb-3 text-sm text-muted">What others did that concerns this session, which its agent has not said it considered yet. Acknowledging records that it was considered, not that anything was resolved.</p>
+          <p className="mb-3 text-sm text-muted">
+            What others did that concerns this session, which its agent has not said it considered yet. Acknowledging records that it was considered, not that
+            anything was resolved.
+          </p>
           <CoordinationFeed lines={pendingLines(updates)} base={base} />
         </Section>
       )}
       <Section title="What it recorded" aside={limited ? undefined : `${entries.length} entries, ${tools} tool calls`}>
         {limited ? (
           <EmptyState title="Shown to the workspace's members">
-            What a session records is the work of whoever runs it, as it happens. Members of {workspace} see it; anyone else sees that it runs, who runs it and what it is tied to.
+            What a session records is the work of whoever runs it, as it happens. Members of {workspace} see it; anyone else sees that it runs, who runs it and
+            what it is tied to.
           </EmptyState>
         ) : entries.length === 0 ? (
           <EmptyState title="Nothing recorded yet">Prompts, messages, tool calls, skills and notes show here as the session records them.</EmptyState>

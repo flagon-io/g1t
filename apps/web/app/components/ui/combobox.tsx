@@ -100,9 +100,7 @@ export function Combobox({
                     {option.icon}
                     <span className="truncate">{option.label}</span>
                   </span>
-                  {option.description && (
-                    <span className={cn("mt-0.5 text-xs text-faint", option.icon != null && "pl-6")}>{option.description}</span>
-                  )}
+                  {option.description && <span className={cn("mt-0.5 text-xs text-faint", option.icon != null && "pl-6")}>{option.description}</span>}
                 </span>
                 {option.value === value && <Check className="absolute top-2 right-2 size-3.5! text-accent!" />}
               </CommandItem>

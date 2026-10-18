@@ -27,7 +27,10 @@ test("every AI provider is shown, once, in a group", () => {
 test("AI providers are the workspace's AI settings, not integrations", () => {
   // None is in the integrations directory.
   const ai = new Set<string>(Object.keys(AI_PROVIDERS));
-  assert.deepEqual(CONNECTORS.filter((connector) => connector.provider && ai.has(connector.provider)), []);
+  assert.deepEqual(
+    CONNECTORS.filter((connector) => connector.provider && ai.has(connector.provider)),
+    [],
+  );
   assert.equal(providerPage("alerts"), "integrations/alerts");
   assert.equal(providerPage("tracker"), "integrations/trackers");
   assert.equal(sectionKind("models"), null);

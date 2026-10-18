@@ -50,7 +50,11 @@ export default function DependencyGraph({ loaderData, params }: Route.ComponentP
         about="Every package the lockfiles on the default branch resolve: direct or transitive where the lockfile says, for development or not, and its license where the lockfile records one. Read again on every push to the default branch, and daily."
         actions={
           graph.dependencies.length > 0 ? (
-            <a href={`${base}/security/dependency-graph/sbom.json`} download className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm hover:border-line-strong">
+            <a
+              href={`${base}/security/dependency-graph/sbom.json`}
+              download
+              className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-sm hover:border-line-strong"
+            >
               <Download size={14} /> Export SBOM (SPDX)
             </a>
           ) : null
@@ -59,8 +63,8 @@ export default function DependencyGraph({ loaderData, params }: Route.ComponentP
       {graph.manifests.length === 0 ? (
         <Card asChild tone="plain" className="border-dashed px-4 py-6 text-sm text-muted">
           <p>
-            No lockfiles on the default branch. g1t reads package-lock.json, pnpm-lock.yaml, yarn.lock, Cargo.lock, go.mod, go.sum,
-            requirements.txt and poetry.lock.
+            No lockfiles on the default branch. g1t reads package-lock.json, pnpm-lock.yaml, yarn.lock, Cargo.lock, go.mod, go.sum, requirements.txt and
+            poetry.lock.
           </p>
         </Card>
       ) : (
@@ -85,11 +89,21 @@ export default function DependencyGraph({ loaderData, params }: Route.ComponentP
                 className="h-8 rounded-md border border-line bg-bg px-2.5 text-[0.8125rem] text-fg outline-none hover:border-line-strong focus:border-accent-dim"
               />
             </label>
-            <FilterSelect label="Lockfile" value={manifest} options={[["all", "Every lockfile"], ...graph.manifests.map((item): [string, string] => [item.path, item.path])]} onChange={(value) => set("manifest", value)} />
+            <FilterSelect
+              label="Lockfile"
+              value={manifest}
+              options={[["all", "Every lockfile"], ...graph.manifests.map((item): [string, string] => [item.path, item.path])]}
+              onChange={(value) => set("manifest", value)}
+            />
             <FilterSelect
               label="Relationship"
               value={relationship}
-              options={[["all", "Any"], ["direct", "Direct"], ["transitive", "Transitive"], ["unknown", "Not said"]]}
+              options={[
+                ["all", "Any"],
+                ["direct", "Direct"],
+                ["transitive", "Transitive"],
+                ["unknown", "Not said"],
+              ]}
               onChange={(value) => set("relationship", value)}
             />
           </div>

@@ -22,9 +22,7 @@ export function chatActivity(rows: ActivityRow[], span: { from: string; until: s
     channels.add(row.channel_id);
     byAuthor.set(row.author, (byAuthor.get(row.author) ?? 0) + n);
   }
-  const authors = [...byAuthor]
-    .map(([key, count]) => ({ key, messages: count }))
-    .sort((a, b) => b.messages - a.messages || a.key.localeCompare(b.key));
+  const authors = [...byAuthor].map(([key, count]) => ({ key, messages: count })).sort((a, b) => b.messages - a.messages || a.key.localeCompare(b.key));
   return { from: span.from, until: span.until, messages, channels: channels.size, authors };
 }
 

@@ -8,21 +8,21 @@
 export type Tab = { label: string; groups: string[] };
 
 export const TABS: Tab[] = [
-	{ label: 'Get started', groups: ['Get started', 'About'] },
-	{ label: 'Work', groups: ['Work'] },
-	{ label: 'Coding agents', groups: ['Coding agents'] },
-	{ label: 'Chat', groups: ['Chat'] },
-	{ label: 'Code', groups: ['Landing changes', 'Security'] },
-	{ label: 'Projects', groups: ['Projects'] },
-	{ label: 'Workspaces', groups: ['Workspaces', 'Connect your tools'] },
-	{ label: 'Self-hosting', groups: ['Run g1t yourself'] },
-	{ label: 'Architecture', groups: ['Architecture'] },
-	{ label: 'API reference', groups: [] },
+  { label: "Get started", groups: ["Get started", "About"] },
+  { label: "Work", groups: ["Work"] },
+  { label: "Coding agents", groups: ["Coding agents"] },
+  { label: "Chat", groups: ["Chat"] },
+  { label: "Code", groups: ["Landing changes", "Security"] },
+  { label: "Projects", groups: ["Projects"] },
+  { label: "Workspaces", groups: ["Workspaces", "Connect your tools"] },
+  { label: "Self-hosting", groups: ["Run g1t yourself"] },
+  { label: "Architecture", groups: ["Architecture"] },
+  { label: "API reference", groups: [] },
 ];
 
 const API = TABS[TABS.length - 1];
 
 /** The tab that holds the sidebar group with this label. */
 export function tabForGroup(label: string): Tab {
-	return TABS.find((tab) => tab.groups.includes(label)) ?? API;
+  return TABS.find((tab) => tab.groups.includes(label)) ?? API;
 }

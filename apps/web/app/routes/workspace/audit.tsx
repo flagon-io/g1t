@@ -85,13 +85,12 @@ export default function WorkspaceAudit({ loaderData }: Route.ComponentProps) {
   return (
     <div>
       <p className="max-w-3xl text-sm text-muted">
-        Every change people, apps and workspace tokens make through the API, MCP and git: who did it, on whose behalf, with which
-        credential, to what, and whether it was allowed. Refusals name the rule that refused them.
+        Every change people, apps and workspace tokens make through the API, MCP and git: who did it, on whose behalf, with which credential, to what, and
+        whether it was allowed. Refusals name the rule that refused them.
         {role === "owner"
           ? " As an owner you see the whole workspace."
           : " As a member you see what was done to the workspace's projects, and what was done by you or on your behalf."}
-        {retention != null &&
-          ` The log goes back ${retention} days, and exports the same; older entries are deleted each day.`}
+        {retention != null && ` The log goes back ${retention} days, and exports the same; older entries are deleted each day.`}
       </p>
 
       <Card asChild className="mt-6 p-4">
@@ -154,11 +153,7 @@ export default function WorkspaceAudit({ loaderData }: Route.ComponentProps) {
                 Clear filters
               </Link>
             )}
-            {filters.run && (
-              <span className="font-mono text-xs text-muted">
-                Run {filters.run}
-              </span>
-            )}
+            {filters.run && <span className="font-mono text-xs text-muted">Run {filters.run}</span>}
             <span className="grow" />
             <ButtonLink variant="outline" to={exportHref("csv")} reloadDocument>
               <Download size={14} />

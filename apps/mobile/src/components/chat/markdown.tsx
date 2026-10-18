@@ -109,7 +109,11 @@ function BlockView({ block, muted }: { block: Block; muted?: boolean }) {
                 {row.map((cell, cellIndex) => (
                   <Text
                     key={cellIndex}
-                    style={[base, styles.cell, { borderColor: colors.line, fontWeight: rowIndex === 0 ? "600" : "400", textAlign: block.align[cellIndex] ?? "left" }]}
+                    style={[
+                      base,
+                      styles.cell,
+                      { borderColor: colors.line, fontWeight: rowIndex === 0 ? "600" : "400", textAlign: block.align[cellIndex] ?? "left" },
+                    ]}
                   >
                     <Spans spans={cell} />
                   </Text>
@@ -178,7 +182,11 @@ function Spans({ spans }: { spans: Span[] }) {
             );
           case "ref":
             return (
-              <Text key={index} style={{ color: colors.accent }} onPress={() => here && router.push(refRoute(refContext(span.repo, here), span.number) as never)}>
+              <Text
+                key={index}
+                style={{ color: colors.accent }}
+                onPress={() => here && router.push(refRoute(refContext(span.repo, here), span.number) as never)}
+              >
                 {span.repo ? `${span.repo}#${span.number}` : `#${span.number}`}
               </Text>
             );
@@ -192,5 +200,11 @@ const styles = StyleSheet.create({
   codeBlock: { borderWidth: 1, borderRadius: radius.sm, padding: space.sm },
   quote: { borderLeftWidth: 3, paddingLeft: space.sm, gap: space.xs },
   table: { borderWidth: 1, borderRadius: radius.sm },
-  cell: { paddingHorizontal: space.sm, paddingVertical: 4, minWidth: 80, borderRightWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth },
+  cell: {
+    paddingHorizontal: space.sm,
+    paddingVertical: 4,
+    minWidth: 80,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
 });

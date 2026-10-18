@@ -73,7 +73,10 @@ export function isCommit(ref: string): boolean {
 const encoder = new TextEncoder();
 
 function base64url(bytes: ArrayBuffer): string {
-  return btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return btoa(String.fromCharCode(...new Uint8Array(bytes)))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
 }
 
 function fromBase64url(text: string): Uint8Array<ArrayBuffer> | null {

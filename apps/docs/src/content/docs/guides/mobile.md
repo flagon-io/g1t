@@ -48,13 +48,13 @@ keeps you signed in.
 
 The bar along the bottom is the site's phone bar:
 
-| Tab | What is on it |
-| --- | --- |
-| **Home** | Coming. Opens Home on the site meanwhile. |
-| **Work** | The workspace's work items, their Board and the sessions working on them: **Items**, **Board** and **Sessions** at its top. For every member, Code access or not. See [Work](#work) and [Sessions](#sessions). |
-| **Chat** | Your starred conversations, channels and direct messages, with what is unread, moving live. See [Chat](#chat). |
-| **Notifications** | Coming. Opens your notifications on the site meanwhile; messages to you already arrive [on the phone](#notifications). |
-| **More** | **Explore** first, which opens on the site, then **Code**, for members with Code access; whether this phone gets notifications, your workspaces, how you signed in, and **Sign out**. |
+| Tab               | What is on it                                                                                                                                                                                                  |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Home**          | Coming. Opens Home on the site meanwhile.                                                                                                                                                                      |
+| **Work**          | The workspace's work items, their Board and the sessions working on them: **Items**, **Board** and **Sessions** at its top. For every member, Code access or not. See [Work](#work) and [Sessions](#sessions). |
+| **Chat**          | Your starred conversations, channels and direct messages, with what is unread, moving live. See [Chat](#chat).                                                                                                 |
+| **Notifications** | Coming. Opens your notifications on the site meanwhile; messages to you already arrive [on the phone](#notifications).                                                                                         |
+| **More**          | **Explore** first, which opens on the site, then **Code**, for members with Code access; whether this phone gets notifications, your workspaces, how you signed in, and **Sign out**.                          |
 
 **Code**, under **More**, is the workspace's repositories, each with its
 pull requests and its **Work**: the work items linked to it. A pull
@@ -181,18 +181,18 @@ A `g1t://` link opens the app, as it opens [the desktop app](/guides/desktop/#li
 `g1t://acme/-/chat/dm/chn_1` is that conversation. The app shows the
 pages it has screens for:
 
-| Link | Opens |
-| --- | --- |
-| `g1t://<workspace>/-/work`, with the list's filters (`?repo=web&label=bug`) | Work, filtered as the link says |
-| `g1t://<workspace>/-/work/<number>` | The work item |
-| `g1t://<workspace>/-/work/new` | A new work item |
-| `g1t://<workspace>/-/work/board` | Work, on the Board |
-| `g1t://<workspace>/-/work/sessions`, with its filters (`?state=live&repo=web`) | Work, on Sessions |
-| `g1t://<workspace>/-/work/sessions/<id>` | The session |
-| `g1t://<workspace>/-/chat`, `…/-/chat/<channel>`, `…/-/chat/dm/<id>` | Chat, or the conversation, in that workspace |
-| `g1t://<owner>/<repo>` | The repository |
-| `g1t://<owner>/<repo>/pull/<number>` | The pull request |
-| `g1t://<owner>/<repo>/issues/<number>` | What that old issue number names in the repository: the work item the issue became, or a pull request. The app asks g1t, as the site does. `…/issues` and `…/issues/new` open Work filtered to the repository, and a new work item from it. |
+| Link                                                                           | Opens                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `g1t://<workspace>/-/work`, with the list's filters (`?repo=web&label=bug`)    | Work, filtered as the link says                                                                                                                                                                                                             |
+| `g1t://<workspace>/-/work/<number>`                                            | The work item                                                                                                                                                                                                                               |
+| `g1t://<workspace>/-/work/new`                                                 | A new work item                                                                                                                                                                                                                             |
+| `g1t://<workspace>/-/work/board`                                               | Work, on the Board                                                                                                                                                                                                                          |
+| `g1t://<workspace>/-/work/sessions`, with its filters (`?state=live&repo=web`) | Work, on Sessions                                                                                                                                                                                                                           |
+| `g1t://<workspace>/-/work/sessions/<id>`                                       | The session                                                                                                                                                                                                                                 |
+| `g1t://<workspace>/-/chat`, `…/-/chat/<channel>`, `…/-/chat/dm/<id>`           | Chat, or the conversation, in that workspace                                                                                                                                                                                                |
+| `g1t://<owner>/<repo>`                                                         | The repository                                                                                                                                                                                                                              |
+| `g1t://<owner>/<repo>/pull/<number>`                                           | The pull request                                                                                                                                                                                                                            |
+| `g1t://<owner>/<repo>/issues/<number>`                                         | What that old issue number names in the repository: the work item the issue became, or a pull request. The app asks g1t, as the site does. `…/issues` and `…/issues/new` open Work filtered to the repository, and a new work item from it. |
 
 The same paths as `https://g1t.sh/…` links, such as
 `https://g1t.sh/<workspace>/-/work/<number>` or
@@ -226,12 +226,12 @@ The sign-in screen then says **Signing in to g1t.example.com**, with
 **Change** and **Use g1t.sh**. Switching signs you out of the g1t you were
 on.
 
-| Your g1t | What to know |
-| --- | --- |
-| Reached by the phone | `PUBLIC_URL` and `API_URL` must be addresses the phone can open. `localhost` on a phone is the phone itself: use your computer's address on the network, or a domain. |
-| `https` | Store builds of the app open `https` addresses only, as Android requires. A development build also opens `http`, for a g1t on your own network. |
-| Notifications | Work with no setup: your g1t sends them through Expo's push service, as g1t.sh does. To keep notifications' words off Expo's, Google's and Apple's services, set `PHONE_PUSH=off` ([self-hosting](/guides/self-hosting/#the-phone-app)); the app then says your g1t sends no notifications, and Chat still updates while it is open. |
-| Older versions | A g1t from before the phone app does not let the app's sign-in into Chat. Upgrade it, or sign in with an access token that has **Use the website as you**. |
+| Your g1t             | What to know                                                                                                                                                                                                                                                                                                                         |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Reached by the phone | `PUBLIC_URL` and `API_URL` must be addresses the phone can open. `localhost` on a phone is the phone itself: use your computer's address on the network, or a domain.                                                                                                                                                                |
+| `https`              | Store builds of the app open `https` addresses only, as Android requires. A development build also opens `http`, for a g1t on your own network.                                                                                                                                                                                      |
+| Notifications        | Work with no setup: your g1t sends them through Expo's push service, as g1t.sh does. To keep notifications' words off Expo's, Google's and Apple's services, set `PHONE_PUSH=off` ([self-hosting](/guides/self-hosting/#the-phone-app)); the app then says your g1t sends no notifications, and Chat still updates while it is open. |
+| Older versions       | A g1t from before the phone app does not let the app's sign-in into Chat. Upgrade it, or sign in with an access token that has **Use the website as you**.                                                                                                                                                                           |
 
 ## What's not there yet
 
@@ -256,11 +256,11 @@ Router, in TypeScript, sharing types with the site through
 `@g1t/contracts`. It builds with EAS Build. `apps/mobile/README.md` has
 the commands for running it on a phone and the first-time setup.
 
-| Build | Command | What it makes |
-| --- | --- | --- |
+| Build       | Command                                              | What it makes                                                                    |
+| ----------- | ---------------------------------------------------- | -------------------------------------------------------------------------------- |
 | Development | `eas build --profile development --platform android` | An APK of `g1t (dev)` (`sh.g1t.app.dev`) that loads its code from your computer. |
-| Preview | `npm run build:android:apk -w @g1t/mobile` | An APK of `g1t` (`sh.g1t.app.preview`) to install on testers' phones. |
-| Production | `npm run build:android -w @g1t/mobile` | An Android App Bundle of `g1t` (`sh.g1t.app`) for Google Play. |
+| Preview     | `npm run build:android:apk -w @g1t/mobile`           | An APK of `g1t` (`sh.g1t.app.preview`) to install on testers' phones.            |
+| Production  | `npm run build:android -w @g1t/mobile`               | An Android App Bundle of `g1t` (`sh.g1t.app`) for Google Play.                   |
 
 The three install side by side. `eas submit --platform android` sends
 the latest production build to Google Play's internal testing track as a
@@ -277,10 +277,10 @@ at `g1t.sh/downloads/mobile/<version>/` and points `mobile/latest.json`
 at it, which the download page reads. `scripts/mobile-release.mjs` does
 the same by hand (`build`, `fetch`, `manifest`, `publish`).
 
-| Secret or variable | What it is |
-| --- | --- |
-| `EXPO_TOKEN` | An Expo access token with access to the g1t project, from expo.dev |
-| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | As the deploy has them |
+| Secret or variable                              | What it is                                                         |
+| ----------------------------------------------- | ------------------------------------------------------------------ |
+| `EXPO_TOKEN`                                    | An Expo access token with access to the g1t project, from expo.dev |
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | As the deploy has them                                             |
 
 Most changes need no release: `eas update --channel preview` in
 `apps/mobile` sends the app's new code to every installed copy of that

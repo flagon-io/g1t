@@ -42,7 +42,10 @@ export class Room extends DurableObject<RoomEnv> {
    */
   async eraseMembers(): Promise<string[]> {
     this.sql.exec("INSERT OR REPLACE INTO meta (key, value) VALUES ('purged_at', ?)", String(Date.now()));
-    return this.sql.exec<{ user_id: string }>("SELECT user_id FROM people").toArray().map(r => r.user_id);
+    return this.sql
+      .exec<{ user_id: string }>("SELECT user_id FROM people")
+      .toArray()
+      .map((r) => r.user_id);
   }
 
   /** Takes one person off the purged workspace's list, once their feed is cleared. Not a ban: they may join a new one. */

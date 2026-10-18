@@ -244,8 +244,8 @@ export function EndSessionDialog({
             <AlertDialogTitle>End {sessionTitle(session)}?</AlertDialogTitle>
             <AlertDialogDescription>
               For a session its harness left behind: killed, or never told to end. It shows as ended by hand by you
-              {subagents > 0 ? `, and its ${subagents === 1 ? "subagent" : "subagents"} still going end with it` : ""}. Its claims stay until they are
-              released or expire. If its harness is still running, the session comes back the next time it is heard from.
+              {subagents > 0 ? `, and its ${subagents === 1 ? "subagent" : "subagents"} still going end with it` : ""}. Its claims stay until they are released
+              or expire. If its harness is still running, the session comes back the next time it is heard from.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {error && (
@@ -392,11 +392,7 @@ export function TimelineSession({ session, base }: { session: WorkSession; base:
         </>
       }
       aside={
-        <Link
-          to={sessionPath(workspaceOf(base), session.id)}
-          prefetch="intent"
-          className="inline-flex items-center gap-1 text-xs text-faint hover:text-fg"
-        >
+        <Link to={sessionPath(workspaceOf(base), session.id)} prefetch="intent" className="inline-flex items-center gap-1 text-xs text-faint hover:text-fg">
           <Activity size={12} />
           View session
         </Link>
@@ -513,7 +509,15 @@ export function SessionTreeList({
  * button opening a dialog that asks what kind of work and for anything to
  * add, posting `start-session` to the work item's action.
  */
-export function StartSessionDialog({ setup, repo, error }: { setup: AgentSessionsSetup; /** The repository it works in, `owner/name`. */ repo?: string; error?: string | null }) {
+export function StartSessionDialog({
+  setup,
+  repo,
+  error,
+}: {
+  setup: AgentSessionsSetup;
+  /** The repository it works in, `owner/name`. */ repo?: string;
+  error?: string | null;
+}) {
   const [open, setOpen] = useState(Boolean(error));
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -652,7 +656,12 @@ export function DecisionLine({ decision, base, pullHref }: { decision: Decision;
           {evidence.combination.length > 1 && (
             <span className="inline-flex items-center gap-1.5">
               · tested as{" "}
-              <Combination numbers={evidence.combination} base={base} pullHref={pullHref} culprit={decision.kind === "integration_failure" ? decision.pull : null} />
+              <Combination
+                numbers={evidence.combination}
+                base={base}
+                pullHref={pullHref}
+                culprit={decision.kind === "integration_failure" ? decision.pull : null}
+              />
             </span>
           )}
           {evidence.check && decision.kind === "integration_failure" && (
@@ -745,8 +754,7 @@ export function IntegrationFailure({
         <p className="text-xs">
           {evidence.suspects.length > 0 ? (
             <>
-              Fails with{" "}
-              <NumberedText text={evidence.suspects.map((n) => `#${n}`).join(", ")} base={base} pullHref={pullHref} />
+              Fails with <NumberedText text={evidence.suspects.map((n) => `#${n}`).join(", ")} base={base} pullHref={pullHref} />
               {evidence.bisected ? ", narrowed down by building smaller combinations." : "."}
             </>
           ) : (
@@ -930,11 +938,7 @@ export function ItemWorkPanel({
 
         {(sessions.length > 0 || start) && (
           <PanelPart title="Sessions" action={start}>
-            {sessions.length === 0 ? (
-              <p className="text-xs text-faint">None yet.</p>
-            ) : (
-              <SessionTreeList nodes={sessions} base={base} showBranch={false} />
-            )}
+            {sessions.length === 0 ? <p className="text-xs text-faint">None yet.</p> : <SessionTreeList nodes={sessions} base={base} showBranch={false} />}
             {trees.length > sessions.length && (
               <p className="mt-2 text-xs text-muted">
                 <Link to={sessionsPath(work.item.workspace, { state: "recent", item: String(work.item.number) })} className="hover:text-fg hover:underline">
@@ -959,7 +963,14 @@ export function ItemWorkPanel({
           ) : (
             <ul className="space-y-2">
               {work.blockedBy.map((blocker) => (
-                <DependencyLine key={blocker.number} workspace={work.item.workspace} number={blocker.number} title={blocker.title} state={blocker.state} detail={blockerDetail(blocker)} />
+                <DependencyLine
+                  key={blocker.number}
+                  workspace={work.item.workspace}
+                  number={blocker.number}
+                  title={blocker.title}
+                  state={blocker.state}
+                  detail={blockerDetail(blocker)}
+                />
               ))}
             </ul>
           )}
@@ -1079,7 +1090,11 @@ function LiveGroupHeading({
     return (
       <div className="flex items-center gap-2.5 px-4 py-3">
         <GitBranch size={16} className="shrink-0 text-muted" />
-        <Link to={`${base}/tree/${encodeURIComponent(group.branch)}`} prefetch="intent" className="min-w-0 truncate font-mono text-sm font-medium hover:text-accent">
+        <Link
+          to={`${base}/tree/${encodeURIComponent(group.branch)}`}
+          prefetch="intent"
+          className="min-w-0 truncate font-mono text-sm font-medium hover:text-accent"
+        >
           {group.branch}
         </Link>
         <span className="ml-auto shrink-0 text-xs text-faint">No work item yet</span>
@@ -1234,7 +1249,9 @@ export function StartHere({ title }: { title: string }) {
       </div>
       <Dialog>
         <DialogTrigger asChild>
-          <Button variant="outline" size="sm"><Bot size={14} /> Connect an agent</Button>
+          <Button variant="outline" size="sm">
+            <Bot size={14} /> Connect an agent
+          </Button>
         </DialogTrigger>
         <DialogContent className="max-w-xl">
           <DialogHeader>
@@ -1243,7 +1260,9 @@ export function StartHere({ title }: { title: string }) {
           </DialogHeader>
           <AgentSetup />
           <p className="text-xs text-muted">Ask your agent to claim a work item and record its session so the team can follow along.</p>
-          <a href="https://docs.g1t.sh/guides/bring-your-own-agent/" className="text-sm text-accent hover:underline">Connection guide &rarr;</a>
+          <a href="https://docs.g1t.sh/guides/bring-your-own-agent/" className="text-sm text-accent hover:underline">
+            Connection guide &rarr;
+          </a>
         </DialogContent>
       </Dialog>
     </Card>

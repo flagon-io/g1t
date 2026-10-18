@@ -42,9 +42,7 @@ export async function principalsFrom(slug: string, viewer: User, fields: string[
   const members = usernames.length > 0 ? await identity.listMembers(slug, viewer).catch(() => null) : null;
   const known = new Set(members?.ok ? members.value.map((m) => m.username.toLowerCase()) : []);
   const people = await Promise.all(
-    usernames
-      .filter((name) => known.has(name) && name !== viewer.username.toLowerCase())
-      .map((name) => identity.userByUsername(name).catch(() => null)),
+    usernames.filter((name) => known.has(name) && name !== viewer.username.toLowerCase()).map((name) => identity.userByUsername(name).catch(() => null)),
   );
   return people.filter((user): user is User => user != null).map((user) => ({ kind: "user" as const, id: user.id }));
 }
@@ -55,7 +53,11 @@ export async function principalsFrom(slug: string, viewer: User, fields: string[
  * for anything that is not a person's account.
  */
 export async function personFrom(field: string): Promise<Principal | null> {
-  const name = field.replace(/^user:/, "").replace(/^@/, "").trim().toLowerCase();
+  const name = field
+    .replace(/^user:/, "")
+    .replace(/^@/, "")
+    .trim()
+    .toLowerCase();
   if (!name || name.startsWith("usr_")) return null;
   const user = await identity.userByUsername(name).catch(() => null);
   return user && (user.kind ?? "user") === "user" ? { kind: "user", id: user.id } : null;

@@ -23,8 +23,7 @@ const MAX_STEP_CHARS = 600;
 function stepsFor(session: SessionEntry[], hash: string, file: string): SessionEntry[] {
   // The sandbox notes each push: "Pushed b1c42490059b." The work behind a
   // commit runs from the push before it to the push that carried it.
-  const pushed = (entry: SessionEntry) =>
-    entry.kind === "note" ? /^Pushed ([0-9a-f]{7,40})/.exec(entry.text)?.[1] ?? null : null;
+  const pushed = (entry: SessionEntry) => (entry.kind === "note" ? (/^Pushed ([0-9a-f]{7,40})/.exec(entry.text)?.[1] ?? null) : null);
   const end = session.findIndex((entry) => {
     const pushedHash = pushed(entry);
     return entry.commit === hash || (pushedHash != null && hash.startsWith(pushedHash));
@@ -36,11 +35,7 @@ function stepsFor(session: SessionEntry[], hash: string, file: string): SessionE
     window = session.slice(start + 1, end + 1);
   }
   const name = file.split("/").pop() ?? file;
-  const useful = window.filter(
-    (entry) =>
-      entry.kind === "message" ||
-      (entry.kind === "tool_call" && (entry.text.includes(file) || entry.text.includes(name))),
-  );
+  const useful = window.filter((entry) => entry.kind === "message" || (entry.kind === "tool_call" && (entry.text.includes(file) || entry.text.includes(name))));
   const touching = useful.filter((entry) => entry.text.includes(name));
   const chosen = (touching.length > 0 ? [...touching, ...useful.filter((e) => e.kind === "message")] : useful)
     .filter((entry, index, all) => all.findIndex((other) => other.seq === entry.seq) === index)
@@ -62,10 +57,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
   const path = { namespace: params.owner, name: params.repo };
   const file = new URL(request.url).searchParams.get("path") ?? "";
   if (!/^[0-9a-f]{40}$/i.test(params.hash)) throw data(null, { status: 404 });
-  const [log, pull] = await Promise.all([
-    repos.log(path, viewer, params.hash, 1),
-    pullForCommit(path, viewer, params.hash),
-  ]);
+  const [log, pull] = await Promise.all([repos.log(path, viewer, params.hash, 1), pullForCommit(path, viewer, params.hash)]);
   const commit = await showOneCommit(log.ok ? log.value[0] : undefined);
   if (!commit) throw data(null, { status: 404 });
   if (!pull) return { commit, pull: null, item: null, steps: [] as SessionEntry[], decisions: [] as Decision[] };
@@ -75,7 +67,9 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
     // The decisions behind it, oldest first: on its work item and every pull
     // request for it (the other proposals, the failed combination, the fix,
     // the approval and the merge), or on the pull request alone.
-    work.listDecisions(pull.item != null ? { workspace: params.owner.toLowerCase(), number: pull.item } : { repo: path, number: pull.number }, viewer).catch(() => null),
+    work
+      .listDecisions(pull.item != null ? { workspace: params.owner.toLowerCase(), number: pull.item } : { repo: path, number: pull.number }, viewer)
+      .catch(() => null),
   ]);
   const item = detail.ok ? detail.value.item : null;
   return {

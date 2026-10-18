@@ -30,7 +30,9 @@ export default function NewConversation() {
   const members = useQuery({
     queryKey: ["workspace", slug, "members"],
     queryFn: () =>
-      client.api<{ username: string; display_username?: string; name?: string | null; avatar?: string | null }[]>(`/workspaces/${encodeURIComponent(slug)}/members`),
+      client.api<{ username: string; display_username?: string; name?: string | null; avatar?: string | null }[]>(
+        `/workspaces/${encodeURIComponent(slug)}/members`,
+      ),
     enabled: !!slug,
   });
 
@@ -91,7 +93,12 @@ export default function NewConversation() {
           keyboardShouldPersistTaps="handled"
           ListHeaderComponent={
             <>
-              <Row leading={<Hash size={20} color={colors.accent} />} title="Make a channel" subtitle="A conversation for a team or a topic" onPress={() => setMaking(true)} />
+              <Row
+                leading={<Hash size={20} color={colors.accent} />}
+                title="Make a channel"
+                subtitle="A conversation for a team or a topic"
+                onPress={() => setMaking(true)}
+              />
               <SectionHeader title="People" />
             </>
           }
@@ -149,7 +156,15 @@ export default function NewConversation() {
 }
 
 const styles = StyleSheet.create({
-  search: { flexDirection: "row", alignItems: "center", gap: space.sm, marginHorizontal: space.lg, marginTop: space.md, paddingHorizontal: space.md, borderRadius: radius.md },
+  search: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.sm,
+    marginHorizontal: space.lg,
+    marginTop: space.md,
+    paddingHorizontal: space.md,
+    borderRadius: radius.md,
+  },
   person: { flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.lg, paddingVertical: 10 },
   check: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, alignItems: "center", justifyContent: "center" },
 });

@@ -70,13 +70,18 @@ export default function Repository() {
         <FlatList
           data={work.items}
           keyExtractor={(item) => item.id}
-          refreshControl={<RefreshControl refreshing={work.isRefetching && !work.isFetchingNextPage} onRefresh={() => work.refetch()} tintColor={colors.accent} />}
+          refreshControl={
+            <RefreshControl refreshing={work.isRefetching && !work.isFetchingNextPage} onRefresh={() => work.refetch()} tintColor={colors.accent} />
+          }
           onEndReached={() => work.hasNextPage && !work.isFetchingNextPage && work.fetchNextPage()}
           onEndReachedThreshold={0.5}
           ListFooterComponent={work.isFetchingNextPage ? <ActivityIndicator color={colors.accent} style={{ padding: space.lg }} /> : null}
           ListEmptyComponent={<Empty icon={ListTodo} title={`No ${state} work items`} body={`Work items linked to ${repo} show here.`} />}
           renderItem={({ item }) => (
-            <ItemRow item={item} onPress={() => router.push({ pathname: "/work/[number]", params: { number: String(item.number), workspace: item.workspace } })} />
+            <ItemRow
+              item={item}
+              onPress={() => router.push({ pathname: "/work/[number]", params: { number: String(item.number), workspace: item.workspace } })}
+            />
           )}
         />
       )}

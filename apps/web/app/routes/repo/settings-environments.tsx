@@ -105,16 +105,15 @@ function EnvironmentList({ environments, badName }: { environments: Environment[
   return (
     <div className="max-w-4xl space-y-8">
       <p className="max-w-3xl text-sm text-muted">
-        A job that names an environment with <code className="font-mono text-xs text-fg/85">environment:</code> waits
-        until the environment's protection rules let it through, and only then gets the environment's secrets. Rules can
-        ask for a review, hold jobs for a wait timer, and limit which branches and tags deploy.
+        A job that names an environment with <code className="font-mono text-xs text-fg/85">environment:</code> waits until the environment's protection rules
+        let it through, and only then gets the environment's secrets. Rules can ask for a review, hold jobs for a wait timer, and limit which branches and tags
+        deploy.
       </p>
 
       <section className="space-y-3">
         {environments.length === 0 ? (
           <EmptyState title="No environments yet">
-            An environment appears here once a workflow, a job or a secret names it. You can also add rules to one by name
-            below.
+            An environment appears here once a workflow, a job or a secret names it. You can also add rules to one by name below.
           </EmptyState>
         ) : (
           <Card asChild divided className="overflow-hidden">
@@ -169,9 +168,7 @@ function EnvironmentList({ environments, badName }: { environments: Environment[
             Add rules
           </Button>
         </Form>
-        {badName !== null && (
-          <ErrorText>{`“${badName}” cannot be an environment's name: use lowercase letters, digits, - and _, up to 40.`}</ErrorText>
-        )}
+        {badName !== null && <ErrorText>{`“${badName}” cannot be an environment's name: use lowercase letters, digits, - and _, up to 40.`}</ErrorText>}
       </Section>
     </div>
   );
@@ -182,17 +179,7 @@ type Row<T> = T & { id: number };
 let nextRow = 0;
 const rows = <T,>(items: T[]): Row<T>[] => items.map((item) => ({ ...item, id: nextRow++ }));
 
-function EnvironmentEditor({
-  environment,
-  base,
-  saved,
-  error,
-}: {
-  environment: Environment;
-  base: string;
-  saved: boolean;
-  error: string | null | undefined;
-}) {
+function EnvironmentEditor({ environment, base, saved, error }: { environment: Environment; base: string; saved: boolean; error: string | null | undefined }) {
   const [reviewers, setReviewers] = useState<Row<EnvironmentReviewer>[]>(() => rows(environment.reviewers));
   const [patterns, setPatterns] = useState<Row<BranchPattern>[]>(() =>
     rows(environment.branchPatterns.length > 0 ? environment.branchPatterns : [{ name: "", type: "branch" }]),
@@ -213,18 +200,15 @@ function EnvironmentEditor({
           {environment.protected ? <Badge tone="accent">Protected</Badge> : <Badge>No rules</Badge>}
         </h2>
         <p className="max-w-3xl text-sm text-muted">
-          Jobs with <code className="font-mono text-xs text-fg/85">environment: {environment.name}</code> wait until these
-          rules let them through, and only then get its secrets.
+          Jobs with <code className="font-mono text-xs text-fg/85">environment: {environment.name}</code> wait until these rules let them through, and only then
+          get its secrets.
           {!environment.protected && " Nothing holds them until you save rules."}
         </p>
       </div>
 
       <Form method="post" className="space-y-8">
         <input type="hidden" name="environment" value={environment.name} />
-        <Section
-          title="Required reviewers"
-          about={`Up to ${MAX_ENVIRONMENT_REVIEWERS} people or teams. A job waits until one of them approves it.`}
-        >
+        <Section title="Required reviewers" about={`Up to ${MAX_ENVIRONMENT_REVIEWERS} people or teams. A job waits until one of them approves it.`}>
           {reviewers.length > 0 ? (
             <ul className="space-y-2">
               {reviewers.map((reviewer, index) => (
@@ -253,18 +237,13 @@ function EnvironmentEditor({
                       maxLength={100}
                     />
                   </div>
-                  <RemoveRow
-                    label={`Remove reviewer ${index + 1}`}
-                    onClick={() => setReviewers((list) => list.filter((row) => row.id !== reviewer.id))}
-                  />
+                  <RemoveRow label={`Remove reviewer ${index + 1}`} onClick={() => setReviewers((list) => list.filter((row) => row.id !== reviewer.id))} />
                 </li>
               ))}
             </ul>
           ) : (
             <Card asChild tone="plain" className="border-dashed px-4 py-3 text-sm text-muted">
-              <p>
-                No reviewers: jobs need no approval to deploy here.
-              </p>
+              <p>No reviewers: jobs need no approval to deploy here.</p>
             </Card>
           )}
           <div className="flex flex-wrap items-center gap-3">
@@ -290,15 +269,7 @@ function EnvironmentEditor({
         <Section title="Wait timer" about="Minutes a job waits once it reaches the environment. 0 means no wait.">
           <label className="block max-w-56">
             <span className="mb-1.5 block text-sm font-medium text-muted">Minutes</span>
-            <Input
-              type="number"
-              name="waitMinutes"
-              min={0}
-              max={MAX_WAIT_MINUTES}
-              step={1}
-              defaultValue={environment.waitMinutes}
-              inputMode="numeric"
-            />
+            <Input type="number" name="waitMinutes" min={0} max={MAX_WAIT_MINUTES} step={1} defaultValue={environment.waitMinutes} inputMode="numeric" />
             <span className="mt-1.5 block text-xs text-faint">From 0 to {MAX_WAIT_MINUTES.toLocaleString("en-US")} (30 days).</span>
           </label>
         </Section>
@@ -306,7 +277,11 @@ function EnvironmentEditor({
         <Section title="Deployment branches and tags" about="Which branches and tags may run jobs that deploy here. A job on any other fails, saying so.">
           <RadioGroup name="branchPolicy" value={policy} onValueChange={(value) => setPolicy(value as Environment["branchPolicy"])}>
             <RadioOption value="all" label="All branches" description="Any branch or tag can deploy here." />
-            <RadioOption value="protected" label="Protected branches only" description="Only branches the repository's rules protect, the default branch included." />
+            <RadioOption
+              value="protected"
+              label="Protected branches only"
+              description="Only branches the repository's rules protect, the default branch included."
+            />
             <RadioOption
               value="selected"
               label="Selected branches and tags"
@@ -342,18 +317,11 @@ function EnvironmentEditor({
                         maxLength={255}
                       />
                     </div>
-                    <RemoveRow
-                      label={`Remove pattern ${index + 1}`}
-                      onClick={() => setPatterns((list) => list.filter((row) => row.id !== pattern.id))}
-                    />
+                    <RemoveRow label={`Remove pattern ${index + 1}`} onClick={() => setPatterns((list) => list.filter((row) => row.id !== pattern.id))} />
                   </li>
                 ))}
               </ul>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setPatterns((list) => [...list, ...rows<BranchPattern>([{ name: "", type: "branch" }])])}
-              >
+              <Button type="button" variant="outline" onClick={() => setPatterns((list) => [...list, ...rows<BranchPattern>([{ name: "", type: "branch" }])])}>
                 <Plus size={14} />
                 Add a pattern
               </Button>
@@ -392,14 +360,7 @@ function EnvironmentEditor({
 function RemoveRow({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <Hint label={label}>
-      <Button
-        type="button"
-        aria-label={label}
-        onClick={onClick}
-        variant="ghost"
-        size="icon"
-        className="hover:text-danger"
-      >
+      <Button type="button" aria-label={label} onClick={onClick} variant="ghost" size="icon" className="hover:text-danger">
         <Trash2 size={14} />
       </Button>
     </Hint>
@@ -424,8 +385,7 @@ function RemoveRules({ name }: { name: string }) {
               <AlertDialogHeader>
                 <AlertDialogTitle>Remove the rules for {name}?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Its reviewers, wait timer and branch limits are given up, and jobs that name it no longer wait. Its
-                  secrets stay.
+                  Its reviewers, wait timer and branch limits are given up, and jobs that name it no longer wait. Its secrets stay.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

@@ -19,7 +19,10 @@ export type FolioStaleEnv = StaleEnv & { FOLIOS?: DurableObjectNamespace<FolioRo
 
 /** Whether any live folio cites the repository. */
 export async function foliosCite(db: D1Database, repo: string): Promise<boolean> {
-  const row = await db.prepare("SELECT 1 AS yes FROM folio_citations c JOIN folios f ON f.id = c.folio_id WHERE c.repo = ? AND f.trashed_at IS NULL LIMIT 1").bind(repo).first<{ yes: number }>();
+  const row = await db
+    .prepare("SELECT 1 AS yes FROM folio_citations c JOIN folios f ON f.id = c.folio_id WHERE c.repo = ? AND f.trashed_at IS NULL LIMIT 1")
+    .bind(repo)
+    .first<{ yes: number }>();
   return !!row;
 }
 
@@ -45,9 +48,22 @@ export async function recordFolioChanges(env: FolioStaleEnv, change: Change, now
         .prepare(
           "INSERT INTO folio_changes (folio_id, repo, repo_id, commit_sha, pull_number, pull_title, paths, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (folio_id, repo, commit_sha) DO NOTHING RETURNING folio_id",
         )
-        .bind(folioId, change.repo, change.repo_id, change.commit, change.pull?.number ?? null, change.pull?.title ?? null, JSON.stringify(touched), now.toISOString()),
+        .bind(
+          folioId,
+          change.repo,
+          change.repo_id,
+          change.commit,
+          change.pull?.number ?? null,
+          change.pull?.title ?? null,
+          JSON.stringify(touched),
+          now.toISOString(),
+        ),
       ...(change.pull
-        ? [db.prepare("UPDATE folio_changes SET pull_number = ?, pull_title = ? WHERE folio_id = ? AND repo = ? AND commit_sha = ?").bind(change.pull.number, change.pull.title, folioId, change.repo, change.commit)]
+        ? [
+            db
+              .prepare("UPDATE folio_changes SET pull_number = ?, pull_title = ? WHERE folio_id = ? AND repo = ? AND commit_sha = ?")
+              .bind(change.pull.number, change.pull.title, folioId, change.repo, change.commit),
+          ]
         : []),
     ]);
     if (inserted?.results.length) fresh.push(folioId);
@@ -60,12 +76,28 @@ type Row = { id: string; workspace_id: string; kind: "doc" | "slides" | "design"
 
 async function tellOf(env: FolioStaleEnv, change: Change, ids: string[], hits: Map<string, string[]>): Promise<void> {
   const db = env.DB;
-  const rows = (await db.prepare("SELECT id, workspace_id, kind, space_id, title, owner FROM folios WHERE id IN (SELECT value FROM json_each(?))").bind(JSON.stringify(ids)).all<Row>()).results;
+  const rows = (
+    await db
+      .prepare("SELECT id, workspace_id, kind, space_id, title, owner FROM folios WHERE id IN (SELECT value FROM json_each(?))")
+      .bind(JSON.stringify(ids))
+      .all<Row>()
+  ).results;
   const slugs = await identityClient(env.IDENTITY)
     .usernames([...new Set(rows.map((r) => r.workspace_id))])
     .catch(() => ({}) as Record<string, string>);
-  const ownerIds = [...new Set(rows.map((r) => r.owner).filter((k) => k.startsWith("user:")).map((k) => k.slice(5)))];
-  const people = ownerIds.length ? await identityClient(env.IDENTITY).usersForAudience(ownerIds).catch(() => [] as User[]) : [];
+  const ownerIds = [
+    ...new Set(
+      rows
+        .map((r) => r.owner)
+        .filter((k) => k.startsWith("user:"))
+        .map((k) => k.slice(5)),
+    ),
+  ];
+  const people = ownerIds.length
+    ? await identityClient(env.IDENTITY)
+        .usersForAudience(ownerIds)
+        .catch(() => [] as User[])
+    : [];
   const [namespace, name] = change.repo.split("/") as [string, string];
   const canRead = new Set<string>();
   if (env.REPOS) {
@@ -98,7 +130,9 @@ async function tellOf(env: FolioStaleEnv, change: Change, ids: string[], hits: M
               kind: "inbox",
               workspace: slug,
               title: `${row.title || "Untitled"} may be out of date`,
-              body: known ? `${what} changed ${paths.slice(0, 3).join(", ")}${paths.length > 3 ? ` and ${paths.length - 3} more` : ""}` : "A change to code this cites was merged.",
+              body: known
+                ? `${what} changed ${paths.slice(0, 3).join(", ")}${paths.length > 3 ? ` and ${paths.length - 3} more` : ""}`
+                : "A change to code this cites was merged.",
               href,
               actor: { kind: "system", id: "g1t", name: "g1t", avatar: null, avatar_seed: null },
               created_at: new Date().toISOString(),

@@ -52,7 +52,11 @@ export function filterOf(view: View, now = Date.now()): TelemetryFilter {
 }
 
 /** The address of `path` with the view, changed by `change` (null drops a parameter). */
-export function viewHref(path: string, view: View, change: Partial<Record<"range" | "env" | "service" | "deployment" | "q" | string, string | null>> = {}): string {
+export function viewHref(
+  path: string,
+  view: View,
+  change: Partial<Record<"range" | "env" | "service" | "deployment" | "q" | string, string | null>> = {},
+): string {
   const params = new URLSearchParams();
   const base: Record<string, string | null> = {
     range: view.range === DEFAULT_RANGE ? null : view.range,
@@ -199,7 +203,14 @@ export function otelEnv(endpoint: string, service: string, token: string): strin
  * read here for lines that did not come through it.
  */
 export function matchesLog(
-  log: { severity: LogSeverity; body: string; environment: string | null; service: string; deployment_id: string | null; attributes: Record<string, unknown> } & Record<string, unknown>,
+  log: {
+    severity: LogSeverity;
+    body: string;
+    environment: string | null;
+    service: string;
+    deployment_id: string | null;
+    attributes: Record<string, unknown>;
+  } & Record<string, unknown>,
   view: View,
   levels: LogSeverity[],
 ): boolean {
@@ -222,7 +233,19 @@ export function matchesLog(
 
 /** The work item made for an error group, for a person or an agent to take: what happened, how often, since when, and where to look. */
 export function errorItem(
-  group: { name: string; message: string; stack: string | null; count: number; first_us: number; last_us: number; service: string; environment: string | null; first_deployment_id: string | null; last_request_id: string | null; last_trace_id: string | null },
+  group: {
+    name: string;
+    message: string;
+    stack: string | null;
+    count: number;
+    first_us: number;
+    last_us: number;
+    service: string;
+    environment: string | null;
+    first_deployment_id: string | null;
+    last_request_id: string | null;
+    last_trace_id: string | null;
+  },
   pageUrl: string,
 ): { title: string; body: string } {
   const title = `${group.name}: ${group.message}`.replace(/\s+/g, " ").slice(0, 120);

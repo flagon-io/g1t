@@ -281,9 +281,7 @@ export type RepoAccess = {
   can_manage: boolean;
 };
 
-export type Added =
-  | { result: "granted"; collaborator: Collaborator }
-  | { result: "invited"; invitation: RepoInvitation };
+export type Added = { result: "granted"; collaborator: Collaborator } | { result: "invited"; invitation: RepoInvitation };
 
 export type PermissionInfo = {
   username: string;

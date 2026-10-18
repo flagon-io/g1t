@@ -59,7 +59,7 @@ test("a limit request needs an amount, a reason and a monthly spend; an overage 
     ok: true,
     value: { kind: "limit", amountMicros: 5_000_000_000, reason: "A launch", expectedMonthlyMicros: 3_000_000_000 },
   });
-  assert.equal(parseLimitRequest({ kind: "limit", amount: "5000", reason: "" , expected: "1" }).ok, false);
+  assert.equal(parseLimitRequest({ kind: "limit", amount: "5000", reason: "", expected: "1" }).ok, false);
   assert.equal(parseLimitRequest({ kind: "limit", reason: "x", expected: "1" }).ok, false);
   assert.deepEqual(parseLimitRequest({ kind: "overage", reason: "A loop ran all night" }), {
     ok: true,
@@ -130,13 +130,28 @@ test("the overview's Usage card reads the month by what pays", () => {
     ],
   };
   const entitlements = { includedMicros: 10_000_000, includedUsedMicros: 10_000_000, trialMicrosLeft: 0 };
-  const plan = usageGlance({ usage, status: { kind: "paid", label: "" }, entitlements, limit: { spentMicros: 4_000_000, spendLimitMicros: 200_000_000 }, trialMicros: 5_000_000 });
+  const plan = usageGlance({
+    usage,
+    status: { kind: "paid", label: "" },
+    entitlements,
+    limit: { spentMicros: 4_000_000, spendLimitMicros: 200_000_000 },
+    trialMicros: 5_000_000,
+  });
   assert.equal(plan.kind, "plan");
   assert.deepEqual(plan.credit, { label: "Included usage", usedMicros: 10_000_000, ofMicros: 10_000_000 });
   assert.deepEqual(plan.onDemand, { micros: 4_000_000, limitMicros: 200_000_000 });
   // Most first, and nothing that cost nothing.
-  assert.deepEqual(plan.lines.map((line) => line.label), ["Making changes", "Reviews"]);
-  const trial = usageGlance({ usage, status: { kind: "trial", label: "" }, entitlements: { ...entitlements, trialMicrosLeft: 1_500_000 }, limit: null, trialMicros: 5_000_000 });
+  assert.deepEqual(
+    plan.lines.map((line) => line.label),
+    ["Making changes", "Reviews"],
+  );
+  const trial = usageGlance({
+    usage,
+    status: { kind: "trial", label: "" },
+    entitlements: { ...entitlements, trialMicrosLeft: 1_500_000 },
+    limit: null,
+    trialMicros: 5_000_000,
+  });
   assert.deepEqual(trial.credit, { label: "Trial credit", usedMicros: 3_500_000, ofMicros: 5_000_000 });
   assert.equal(trial.onDemand, null);
   assert.equal(usageGlance({ usage, status: { kind: "comped", label: "" }, entitlements, limit: null, trialMicros: 0 }).kind, "comped");
@@ -254,4 +269,3 @@ test("budget alerts keep the levels ticked, highest first", async () => {
   assert.equal(parseBudgetAlerts({ alerts: [], webhook: "http://x.test" }).ok, false);
   assert.deepEqual(parseBudgetAlerts({ alerts: [], webhook: "https://hooks.acme.test/g1t" }).ok, true);
 });
-

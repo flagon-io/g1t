@@ -16,30 +16,28 @@
 // Add --test-scheduled to `wrangler dev` to run the sweep with
 // `curl "http://localhost:8790/cdn-cgi/handler/scheduled?cron=37+*+*+*+*"`.
 {
-	"name": "g1t-packages",
-	"main": "../build/index.js",
-	"compatibility_date": "2026-09-26",
-	"d1_databases": [
-		{ "binding": "DB", "database_name": "g1t-packages", "database_id": "local", "migrations_dir": "../migrations" }
-	],
-	"r2_buckets": [{ "binding": "BLOBS", "bucket_name": "g1t-packages" }],
-	// Low, so the 429 can be seen by hand: about 30 requests a minute.
-	"ratelimits": [
-		{ "name": "ANONYMOUS_LIMIT", "namespace_id": "1", "simple": { "limit": 30, "period": 60 } },
-		{ "name": "SIGNED_LIMIT", "namespace_id": "2", "simple": { "limit": 5000, "period": 60 } }
-	],
-	"services": [
-		{ "binding": "IDENTITY", "service": "g1t-packages-stubs" },
-		{ "binding": "REPOS", "service": "g1t-packages-stubs" },
-		{ "binding": "EVENTS", "service": "g1t-packages-stubs" },
-		{ "binding": "BILLING", "service": "g1t-packages-stubs" }
-	],
-	"vars": {
-		"BLOB_STORE": "r2",
-		"MAX_REQUEST_BYTES": "100000000",
-		"REGISTRY_HOST": "localhost:8790",
-		"STORAGE_LIMITS": "on",
-		"PACKAGES_TOKEN_SECRET": "a-local-secret-that-is-long-enough-to-sign"
-	},
-	"triggers": { "crons": ["37 * * * *"] }
+  "name": "g1t-packages",
+  "main": "../build/index.js",
+  "compatibility_date": "2026-09-26",
+  "d1_databases": [{ "binding": "DB", "database_name": "g1t-packages", "database_id": "local", "migrations_dir": "../migrations" }],
+  "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "g1t-packages" }],
+  // Low, so the 429 can be seen by hand: about 30 requests a minute.
+  "ratelimits": [
+    { "name": "ANONYMOUS_LIMIT", "namespace_id": "1", "simple": { "limit": 30, "period": 60 } },
+    { "name": "SIGNED_LIMIT", "namespace_id": "2", "simple": { "limit": 5000, "period": 60 } },
+  ],
+  "services": [
+    { "binding": "IDENTITY", "service": "g1t-packages-stubs" },
+    { "binding": "REPOS", "service": "g1t-packages-stubs" },
+    { "binding": "EVENTS", "service": "g1t-packages-stubs" },
+    { "binding": "BILLING", "service": "g1t-packages-stubs" },
+  ],
+  "vars": {
+    "BLOB_STORE": "r2",
+    "MAX_REQUEST_BYTES": "100000000",
+    "REGISTRY_HOST": "localhost:8790",
+    "STORAGE_LIMITS": "on",
+    "PACKAGES_TOKEN_SECRET": "a-local-secret-that-is-long-enough-to-sign",
+  },
+  "triggers": { "crons": ["37 * * * *"] },
 }

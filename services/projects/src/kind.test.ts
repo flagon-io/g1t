@@ -1,17 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import {
-  type KindFacts,
-  type RootFiles,
-  detectKind,
-  goFilesToRead,
-  kindSetting,
-  neverRuns,
-  nextSetting,
-  resolveKind,
-  runsSetting,
-} from "./kind.ts";
+import { type KindFacts, type RootFiles, detectKind, goFilesToRead, kindSetting, neverRuns, nextSetting, resolveKind, runsSetting } from "./kind.ts";
 
 const root = (text: Record<string, string>, more: Partial<RootFiles> = {}): RootFiles => ({
   entries: [...Object.keys(text), ...(more.entries ?? [])],
@@ -59,10 +49,10 @@ test("package.json: an entry point without a start or dev script is a library", 
 });
 
 test("Cargo: a library and no binary is a library", () => {
-  assert.equal(detectKind(root({ "Cargo.toml": "[package]\nname = \"x\"\n\n[lib]\n" }, { entries: ["src/"], src: ["lib.rs"] })).kind, "library");
-  assert.equal(detectKind(root({ "Cargo.toml": "[package]\nname = \"x\"\n" }, { entries: ["src/"], src: ["lib.rs"] })).kind, "library");
+  assert.equal(detectKind(root({ "Cargo.toml": '[package]\nname = "x"\n\n[lib]\n' }, { entries: ["src/"], src: ["lib.rs"] })).kind, "library");
+  assert.equal(detectKind(root({ "Cargo.toml": '[package]\nname = "x"\n' }, { entries: ["src/"], src: ["lib.rs"] })).kind, "library");
   assert.equal(detectKind(root({ "Cargo.toml": "[package]\n[lib]\n" }, { entries: ["src/"], src: ["lib.rs", "main.rs"] })).kind, "app");
-  assert.equal(detectKind(root({ "Cargo.toml": "[package]\n[lib]\n[[bin]]\nname = \"x\"\n" })).kind, "app");
+  assert.equal(detectKind(root({ "Cargo.toml": '[package]\n[lib]\n[[bin]]\nname = "x"\n' })).kind, "app");
 });
 
 test("Go: a module with no package main at its root is a library", () => {

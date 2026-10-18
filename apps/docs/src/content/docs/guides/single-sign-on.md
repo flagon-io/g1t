@@ -26,19 +26,18 @@ Owners only, at **Workspace → Access → Single sign-on**,
    one with neither.
 2. In your provider, create an app with the addresses the page shows:
 
-   | | |
-   | --- | --- |
-   | Redirect URI (OpenID Connect, OAuth 2.0) | `https://g1t.sh/auth/sso/<workspace-id>/callback` |
-   | Entity id, audience (SAML) | `https://g1t.sh/auth/sso/<workspace-id>/metadata` |
-   | Assertion consumer service URL, HTTP-POST (SAML) | `https://g1t.sh/auth/sso/<workspace-id>/saml` |
-   | Metadata (SAML) | `https://g1t.sh/auth/sso/<workspace-id>/metadata` |
+   |                                                  |                                                   |
+   | ------------------------------------------------ | ------------------------------------------------- |
+   | Redirect URI (OpenID Connect, OAuth 2.0)         | `https://g1t.sh/auth/sso/<workspace-id>/callback` |
+   | Entity id, audience (SAML)                       | `https://g1t.sh/auth/sso/<workspace-id>/metadata` |
+   | Assertion consumer service URL, HTTP-POST (SAML) | `https://g1t.sh/auth/sso/<workspace-id>/saml`     |
+   | Metadata (SAML)                                  | `https://g1t.sh/auth/sso/<workspace-id>/metadata` |
 
    They name the workspace by its id (`wsp_…`), which never changes, so
    renaming the workspace leaves your provider's setup as it is. The page
    shows them with the id filled in.
 
 3. Copy what the provider gives you back into the page:
-
    - **OpenID Connect**: the issuer (where its
      `/.well-known/openid-configuration` lives), the client id and the
      client secret. Scopes default to `openid email profile`.
@@ -156,14 +155,14 @@ Recorded in the workspace's [audit log](/guides/audit-log/):
 Owners can do all of it with an access token, through the REST API or the
 `workspace` tool's actions on the MCP server:
 
-| | REST | MCP action | Scope |
-| --- | --- | --- | --- |
-| Read it, with where to point the provider | `GET /workspaces/{workspace}/sso` | `get_sso` | `workspace:read` |
-| Set it up or change it | `PUT /workspaces/{workspace}/sso` | `configure_sso` | `workspace:admin` |
-| Require it, or stop | `PUT /workspaces/{workspace}/sso/required` | `set_sso_required` | `workspace:admin` |
-| Remove it | `DELETE /workspaces/{workspace}/sso` | `delete_sso` | `workspace:admin` |
-| The linked people | `GET /workspaces/{workspace}/sso/identities` | `list_sso_identities` | `access:read` |
-| Unlink someone | `DELETE /workspaces/{workspace}/sso/identities/{username}` | `unlink_sso_identity` | `access:admin` |
+|                                           | REST                                                       | MCP action            | Scope             |
+| ----------------------------------------- | ---------------------------------------------------------- | --------------------- | ----------------- |
+| Read it, with where to point the provider | `GET /workspaces/{workspace}/sso`                          | `get_sso`             | `workspace:read`  |
+| Set it up or change it                    | `PUT /workspaces/{workspace}/sso`                          | `configure_sso`       | `workspace:admin` |
+| Require it, or stop                       | `PUT /workspaces/{workspace}/sso/required`                 | `set_sso_required`    | `workspace:admin` |
+| Remove it                                 | `DELETE /workspaces/{workspace}/sso`                       | `delete_sso`          | `workspace:admin` |
+| The linked people                         | `GET /workspaces/{workspace}/sso/identities`               | `list_sso_identities` | `access:read`     |
+| Unlink someone                            | `DELETE /workspaces/{workspace}/sso/identities/{username}` | `unlink_sso_identity` | `access:admin`    |
 
 `configure_sso` takes `protocol` (`oidc`, `oauth2` or `saml`) and the
 protocol's fields as the page names them: `issuer`, `client_id`,
@@ -200,12 +199,12 @@ who is not any more:
 To turn it on, open **Single sign-on → SCIM provisioning** and choose
 **Turn on SCIM**. Give your provider:
 
-| | |
-| --- | --- |
-| SCIM base URL (tenant URL) | `https://api.g1t.sh/scim/v2/<workspace-id>` |
-| Authentication | Bearer token: the SCIM token, shown once |
-| Unique identifier | `userName` |
-| Supported | Create, update (PUT and PATCH), deactivate and delete users; filtering by `userName`, `externalId`, `id` or `emails.value` |
+|                            |                                                                                                                            |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| SCIM base URL (tenant URL) | `https://api.g1t.sh/scim/v2/<workspace-id>`                                                                                |
+| Authentication             | Bearer token: the SCIM token, shown once                                                                                   |
+| Unique identifier          | `userName`                                                                                                                 |
+| Supported                  | Create, update (PUT and PATCH), deactivate and delete users; filtering by `userName`, `externalId`, `id` or `emails.value` |
 
 Whoever signs in through your provider is matched to the person it
 assigned by a stable id it gave (the SAML NameID, OpenID's `sub`, and for

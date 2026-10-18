@@ -188,11 +188,7 @@ export type HookOwner = { workspace: string; repo?: RepoPath };
 
 export interface WebhooksApi {
   list(viewer: Viewer, owner: HookOwner): Promise<Result<Hook[]>>;
-  create(
-    actor: User,
-    owner: HookOwner,
-    input: { url: string; events?: string[]; secret?: string },
-  ): Promise<Result<{ hook: Hook; secret: string | null }>>;
+  create(actor: User, owner: HookOwner, input: { url: string; events?: string[]; secret?: string }): Promise<Result<{ hook: Hook; secret: string | null }>>;
   update(actor: User, owner: HookOwner, id: string, input: { url?: string; events?: string[]; active?: boolean }): Promise<Result<Hook>>;
   delete(actor: User, owner: HookOwner, id: string): Promise<Result<boolean>>;
   ping(actor: User, owner: HookOwner, id: string): Promise<Result<HookDelivery>>;

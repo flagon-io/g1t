@@ -10,17 +10,7 @@ import { Form } from "react-router";
 
 import type { Credits, Entitlements, Limit, LimitRequest, UsageAlert } from "@g1t/contracts";
 
-import {
-  CREDIT_KIND,
-  PREPAY,
-  alertText,
-  alertTone,
-  creditLine,
-  requestStatus,
-  share,
-  shortDay,
-  spendRange,
-} from "../lib/billing";
+import { CREDIT_KIND, PREPAY, alertText, alertTone, creditLine, requestStatus, share, shortDay, spendRange } from "../lib/billing";
 import { money, wholeDollars } from "../lib/money";
 import { type Failed, isFailed } from "../lib/partial";
 import { Unavailable } from "./boundary";
@@ -224,8 +214,7 @@ export function SpendLimitCard({ limit, owner, error }: { limit: Limit; owner: b
     >
       {limit.account.startsWith("ent_") && (
         <p className="mt-2 text-sm text-muted">
-          Paid for by the <span className="font-medium text-fg">{limit.accountName}</span> enterprise: these figures are for all of its
-          workspaces together.
+          Paid for by the <span className="font-medium text-fg">{limit.accountName}</span> enterprise: these figures are for all of its workspaces together.
         </p>
       )}
       <div className="grid gap-x-8 sm:grid-cols-2">
@@ -250,9 +239,9 @@ export function SpendLimitCard({ limit, owner, error }: { limit: Limit; owner: b
       </div>
       {limit.firstMonth && spendLimit != null && (limit.trustCeilingMicros ?? limit.ceilingMicros) != null && (
         <p className="mt-4 text-sm text-muted">
-          In the first month, work waits at whichever comes first: {wholeDollars(spendLimit)} charged this month (your spend
-          limit), or {wholeDollars(limit.trustCeilingMicros ?? limit.ceilingMicros ?? 0)} not yet paid for (the first month's
-          limit). The card is charged as usage nears it, which makes room again.
+          In the first month, work waits at whichever comes first: {wholeDollars(spendLimit)} charged this month (your spend limit), or{" "}
+          {wholeDollars(limit.trustCeilingMicros ?? limit.ceilingMicros ?? 0)} not yet paid for (the first month's limit). The card is charged as usage nears
+          it, which makes room again.
         </p>
       )}
       {limit.message && <p className="mt-4 text-sm">{limit.message}</p>}
@@ -263,16 +252,16 @@ export function SpendLimitCard({ limit, owner, error }: { limit: Limit; owner: b
             "No ceiling: set any limit."
           ) : (
             <>
-              You can set up to <span className="font-medium tabular-nums">{wholeDollars(range.selfServeMicros)}</span> yourself: the
-              highest limit this workspace has had{(limit.prepaidMicros ?? 0) > 0 ? ", plus what is prepaid" : ""}.
+              You can set up to <span className="font-medium tabular-nums">{wholeDollars(range.selfServeMicros)}</span> yourself: the highest limit this
+              workspace has had{(limit.prepaidMicros ?? 0) > 0 ? ", plus what is prepaid" : ""}.
             </>
           )}
         </p>
         <p className="mt-1 text-muted">
           {range.raiseOnceMicros != null ? (
             <>
-              Once, you can raise it yourself to <span className="tabular-nums text-fg">{wholeDollars(range.raiseOnceMicros)}</span>.
-              Past that, prepay or use Raise my limit.
+              Once, you can raise it yourself to <span className="tabular-nums text-fg">{wholeDollars(range.raiseOnceMicros)}</span>. Past that, prepay or use
+              Raise my limit.
             </>
           ) : range.raisedAt ? (
             <>The one-time raise was used on {new Date(range.raisedAt).toLocaleDateString()}. Prepay or use Raise my limit for more.</>
@@ -443,7 +432,9 @@ export function CreditsCard({ credits }: { credits: Credits }) {
           <li key={grant.id} className={`px-3.5 py-2.5 text-sm ${grant.state === "open" ? "" : "text-muted"}`}>
             <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className={`tabular-nums ${grant.state === "open" ? "font-medium" : ""}`}>{creditLine(grant)}</span>
-              <Badge size="md" className="py-px">{CREDIT_KIND[grant.kind]}</Badge>
+              <Badge size="md" className="py-px">
+                {CREDIT_KIND[grant.kind]}
+              </Badge>
             </p>
             <p className="mt-0.5 text-xs text-faint">
               {grant.kind === "refund" && grant.refundFor ? `For ${grant.refundFor}. ` : ""}
@@ -456,17 +447,7 @@ export function CreditsCard({ credits }: { credits: Credits }) {
   );
 }
 
-export function PrepayCard({
-  prepaidMicros,
-  owner,
-  live,
-  error,
-}: {
-  prepaidMicros: number;
-  owner: boolean;
-  live: boolean;
-  error?: string;
-}) {
+export function PrepayCard({ prepaidMicros, owner, live, error }: { prepaidMicros: number; owner: boolean; live: boolean; error?: string }) {
   return (
     <Card
       id="prepay"
@@ -508,8 +489,7 @@ export function PrepayCard({
             </label>
           </RadioGroup>
           <p className="text-xs text-faint">
-            No fee on top, by card or bank transfer. Tax is added where it applies, from your billing address; what you prepay is credited
-            in full.
+            No fee on top, by card or bank transfer. Tax is added where it applies, from your billing address; what you prepay is credited in full.
           </p>
           {!live && <p className="text-xs text-faint">Test mode: card 4242 4242 4242 4242, any future date and code.</p>}
           <ErrorText>{error}</ErrorText>

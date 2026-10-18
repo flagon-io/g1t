@@ -35,8 +35,14 @@ test("labels are found by name or description", () => {
     { name: "bug", description: "Something isn't working" },
     { name: "good first issue", description: "Good for newcomers" },
   ];
-  assert.deepEqual(matchLabels(labels, "first").map((l) => l.name), ["good first issue"]);
-  assert.deepEqual(matchLabels(labels, "working").map((l) => l.name), ["bug"]);
+  assert.deepEqual(
+    matchLabels(labels, "first").map((l) => l.name),
+    ["good first issue"],
+  );
+  assert.deepEqual(
+    matchLabels(labels, "working").map((l) => l.name),
+    ["bug"],
+  );
   assert.equal(matchLabels(labels, "  ").length, 2);
   assert.equal(tidyLabelName("  Good   First Issue "), "good first issue");
 });

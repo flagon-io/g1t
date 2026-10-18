@@ -657,7 +657,14 @@ export type EventPayloads = {
    * all). Like `folio.*`, published with no `repoId` and never offered to
    * webhooks; `name` is null for a members-only space.
    */
-  "doc.space.deleted": { workspace: string; workspaceId: string; spaceId: string; name: string | null; kind: "workspace" | "team" | "private"; trashed: number };
+  "doc.space.deleted": {
+    workspace: string;
+    workspaceId: string;
+    spaceId: string;
+    name: string | null;
+    kind: "workspace" | "team" | "private";
+    trashed: number;
+  };
 };
 
 /**

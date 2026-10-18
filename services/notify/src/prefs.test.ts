@@ -4,7 +4,20 @@ import { test } from "node:test";
 import type { FeedNotification } from "@g1t/contracts";
 
 import { applyCounts, totals } from "./counts.ts";
-import { STALE_MS, anyFocused, cleanCard, cleanNotification, decide, levelFor, mergePreferences, pushActions, pushPayload, readPreferences, settledThreads, wants } from "./prefs.ts";
+import {
+  STALE_MS,
+  anyFocused,
+  cleanCard,
+  cleanNotification,
+  decide,
+  levelFor,
+  mergePreferences,
+  pushActions,
+  pushPayload,
+  readPreferences,
+  settledThreads,
+  wants,
+} from "./prefs.ts";
 
 const NOW = 1_800_000_000_000;
 const dms = { level: "dms_mentions" as const, workspaces: {} };

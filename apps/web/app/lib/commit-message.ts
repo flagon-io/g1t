@@ -51,8 +51,7 @@ export type MessagePart =
   | { kind: "session"; text: string; id: string };
 
 // `#12` and `acme/web#12`, but not `a#12` or a link's `/page#12`; a full hash on its own; a session's id.
-const REFERENCE =
-  /(?<![\w/#.-])(?:([A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9._-]+))?#(\d+)\b|\b([0-9a-f]{40})\b|\b(ses_[0-9a-z]{10,60})\b/g;
+const REFERENCE = /(?<![\w/#.-])(?:([A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9._-]+))?#(\d+)\b|\b([0-9a-f]{40})\b|\b(ses_[0-9a-z]{10,60})\b/g;
 
 /** Splits text into its references and the text between them; `Closes #12` keeps `Closes ` as text. */
 export function messageParts(text: string): MessagePart[] {

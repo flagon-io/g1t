@@ -4,16 +4,7 @@
  * their worst severity, what each security update state means, and each
  * alert's activity as a list of entries. Pure, so it is tested on its own.
  */
-import type {
-  AlertActivity,
-  AlertState,
-  DismissReason,
-  SecretFinding,
-  SecurityUpdate,
-  Severity,
-  UpdateState,
-  Vulnerability,
-} from "@g1t/contracts";
+import type { AlertActivity, AlertState, DismissReason, SecretFinding, SecurityUpdate, Severity, UpdateState, Vulnerability } from "@g1t/contracts";
 
 /** Most severe first, as the contracts list them; here so the tests need no build of the contracts. */
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "unknown"];

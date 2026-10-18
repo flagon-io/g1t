@@ -96,11 +96,23 @@ const merged = (daysAgo: number, mergedBy: string | null, number = 1): Merged =>
 test("a push to the default branch counts a person's own commits, not merges or g1t's", () => {
   const c = (hash: string, email: string, parents = 1) => ({ hash, author: { name: "g1t", email }, parents: Array(parents).fill("p") });
   // Every commit is named "g1t": the name decides nothing, the address does.
-  const history = [c("e", "chase@example.com"), c("d", "agent@g1t.sh"), c("m", "chase@example.com", 2), c("b", "chase@example.com"), c("a", "chase@example.com")];
+  const history = [
+    c("e", "chase@example.com"),
+    c("d", "agent@g1t.sh"),
+    c("m", "chase@example.com", 2),
+    c("b", "chase@example.com"),
+    c("a", "chase@example.com"),
+  ];
   const byG1t = (commit: { author: { email: string } }) => commit.author.email === "agent@g1t.sh";
-  assert.deepEqual(pushedCommits(history, "a", byG1t).map((x) => x.hash), ["e", "b"]);
+  assert.deepEqual(
+    pushedCommits(history, "a", byG1t).map((x) => x.hash),
+    ["e", "b"],
+  );
   // Where it pointed before was not read: everything read counts.
-  assert.deepEqual(pushedCommits(history, "zz", byG1t).map((x) => x.hash), ["e", "b", "a"]);
+  assert.deepEqual(
+    pushedCommits(history, "zz", byG1t).map((x) => x.hash),
+    ["e", "b", "a"],
+  );
 });
 
 test("who pushed is the account that signed in, not the name on the commits", () => {
@@ -162,7 +174,17 @@ test("a change merged automatically when g1t merged it", () => {
 
 test("the week is seven days of landed changes, with the week before", () => {
   const week = weekOf(
-    [merged(0, "g1t"), merged(0, "syntaqx"), merged(0, "syntaqx", 2), merged(1, "g1t", 3), merged(1, "g1t"), merged(6, "g1t"), merged(8, "g1t"), merged(10, "alex"), merged(20, "g1t")],
+    [
+      merged(0, "g1t"),
+      merged(0, "syntaqx"),
+      merged(0, "syntaqx", 2),
+      merged(1, "g1t", 3),
+      merged(1, "g1t"),
+      merged(6, "g1t"),
+      merged(8, "g1t"),
+      merged(10, "alex"),
+      merged(20, "g1t"),
+    ],
     NOW,
     "UTC",
   );

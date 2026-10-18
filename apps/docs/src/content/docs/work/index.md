@@ -29,11 +29,11 @@ recorded as a session while it works: see
 
 **Work** is in the left rail, third, after **Home** and **Explore**:
 
-| Rail | Is |
-| --- | --- |
-| **Home** | What needs you, across the workspace. See [Home](/guides/home/). |
+| Rail        | Is                                                                                                |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| **Home**    | What needs you, across the workspace. See [Home](/guides/home/).                                  |
 | **Explore** | Public repositories and people beyond your workspaces. See [Search and Explore](/guides/search/). |
-| **Work** | Work items and sessions, at `g1t.sh/<workspace>/-/work`. |
+| **Work**    | Work items and sessions, at `g1t.sh/<workspace>/-/work`.                                          |
 
 Then **Chat**, **Code** (for members with Code access), **Artifacts**,
 **Routines** and the apps you pinned. Work is there for every member of
@@ -51,24 +51,24 @@ A project has no Work tab of its own: from one, the command palette
 Work's sidebar has its work items first, then its sessions. Each row is a
 view kept in the address, so you can share it.
 
-| Row | Opens |
-| --- | --- |
-| **Open** | The [Work list](#the-work-list): the open work items. |
-| **Assigned to you** | The open work items assigned to you, `?assignee=<you>`. |
-| **Closed** | The closed ones, `?state=closed`. |
-| **Board** | The [Board](/work/board/): the backlog as it moves, from Backlog to Done. |
-| **New work item** | A new work item; see [file a work item](/work/work-items/#file-a-work-item). |
-| **Labels** | The workspace's [labels](/work/labels/). |
-| **Milestones** | The workspace's [milestones](/work/milestones/). |
+| Row                 | Opens                                                                        |
+| ------------------- | ---------------------------------------------------------------------------- |
+| **Open**            | The [Work list](#the-work-list): the open work items.                        |
+| **Assigned to you** | The open work items assigned to you, `?assignee=<you>`.                      |
+| **Closed**          | The closed ones, `?state=closed`.                                            |
+| **Board**           | The [Board](/work/board/): the backlog as it moves, from Backlog to Done.    |
+| **New work item**   | A new work item; see [file a work item](/work/work-items/#file-a-work-item). |
+| **Labels**          | The workspace's [labels](/work/labels/).                                     |
+| **Milestones**      | The workspace's [milestones](/work/milestones/).                             |
 
 Under **Sessions**:
 
-| Row | Opens |
-| --- | --- |
-| **Live now** | [Sessions](/work/sessions/): what is going now, the merge queue, what just landed and what happened. |
-| **Every session** | Every session, most recently heard from first, live or ended. |
-| **Yours** | The sessions you ran, `?person=<you>`. |
-| **People's harnesses**, **Started on g1t**, **g1t's agent**, **Recorded on pull requests** | Each [kind of session](/work/sessions/#kinds-of-session) alone. |
+| Row                                                                                        | Opens                                                                                                |
+| ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| **Live now**                                                                               | [Sessions](/work/sessions/): what is going now, the merge queue, what just landed and what happened. |
+| **Every session**                                                                          | Every session, most recently heard from first, live or ended.                                        |
+| **Yours**                                                                                  | The sessions you ran, `?person=<you>`.                                                               |
+| **People's harnesses**, **Started on g1t**, **g1t's agent**, **Recorded on pull requests** | Each [kind of session](/work/sessions/#kinds-of-session) alone.                                      |
 
 ## The Work list
 
@@ -83,14 +83,14 @@ target or touched; see [repositories and their roles](/work/work-items/#reposito
 by label, milestone and assignee. On a phone they are in one **Filters**
 sheet. The address keeps them:
 
-| Filter | In the address |
-| --- | --- |
-| State | `?state=closed` (open unless you say) |
-| Repository | `?repo=web`, or `?repo=acme/web` |
-| Its role | `?repo=web&role=target`: `origin`, `target` or `touched` |
-| Label | `?label=bug` |
-| Milestone | `?milestone=3` |
-| Assignee | `?assignee=ana`, or `?assignee=@me` |
+| Filter     | In the address                                           |
+| ---------- | -------------------------------------------------------- |
+| State      | `?state=closed` (open unless you say)                    |
+| Repository | `?repo=web`, or `?repo=acme/web`                         |
+| Its role   | `?repo=web&role=target`: `origin`, `target` or `touched` |
+| Label      | `?label=bug`                                             |
+| Milestone  | `?milestone=3`                                           |
+| Assignee   | `?assignee=ana`, or `?assignee=@me`                      |
 
 `?q=` takes the same filters as words, quotes around a name with spaces:
 `?q=is:closed label:"good first issue" repo:web role:target`.

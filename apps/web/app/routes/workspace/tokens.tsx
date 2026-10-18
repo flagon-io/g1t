@@ -42,8 +42,7 @@ export default function WorkspaceTokens({ loaderData }: Route.ComponentProps) {
       <div className="min-w-0 space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <p className="max-w-lg text-sm text-muted">
-            Each token has permissions, a level for each resource, and reaches all of {slug}'s repositories or the ones
-            chosen.
+            Each token has permissions, a level for each resource, and reaches all of {slug}'s repositories or the ones chosen.
           </p>
           {owner && (
             <ButtonLink to={`/${slug}/-/tokens/new`}>
@@ -68,12 +67,11 @@ export default function WorkspaceTokens({ loaderData }: Route.ComponentProps) {
             <h3 className="font-medium">What a token can do</h3>
             <ul className="mt-2 list-disc space-y-1.5 pl-4 text-muted">
               <li>
-                What its permissions allow, in this workspace only, with Write on its repositories, as a member: push, open
-                and merge pull requests, manage work items. Admin only with Repositories: admin.
+                What its permissions allow, in this workspace only, with Write on its repositories, as a member: push, open and merge pull requests, manage work
+                items. Admin only with Repositories: admin.
               </li>
               <li>
-                It acts as <span className="font-mono text-fg">{slug}</span>, so what it does is shown as the workspace's
-                doing.
+                It acts as <span className="font-mono text-fg">{slug}</span>, so what it does is shown as the workspace's doing.
               </li>
               <li>It keeps working when the person who made it leaves.</li>
               <li>It cannot manage people, tokens or other workspaces.</li>

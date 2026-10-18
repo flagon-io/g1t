@@ -191,11 +191,7 @@ const isWorkspaceId = (actor: string) => actor.startsWith("wsp_");
 
 /** The account ids among `actors` to look up by name, once each. */
 export function actorIds(actors: (string | null)[]): string[] {
-  return [
-    ...new Set(
-      actors.filter((actor): actor is string => actor != null && isAccountId(actor) && !(actor in G1T_ACTORS) && !isWorkspaceId(actor)),
-    ),
-  ];
+  return [...new Set(actors.filter((actor): actor is string => actor != null && isAccountId(actor) && !(actor in G1T_ACTORS) && !isWorkspaceId(actor)))];
 }
 
 /**
@@ -223,8 +219,7 @@ export type ActivityGroup = {
   count: number;
 };
 
-const sameRepo = (a: RepoPath, b: RepoPath) =>
-  a.namespace.toLowerCase() === b.namespace.toLowerCase() && a.name.toLowerCase() === b.name.toLowerCase();
+const sameRepo = (a: RepoPath, b: RepoPath) => a.namespace.toLowerCase() === b.namespace.toLowerCase() && a.name.toLowerCase() === b.name.toLowerCase();
 
 /**
  * Groups items, newest first, so that a run of things one actor did in one
@@ -361,7 +356,11 @@ export function passRate(results: boolean[]): number | null {
  * say nothing about the code. A run passed on the first try when its first
  * attempt is the one that passed.
  */
-export function runHealth(runs: { attempt: number; status: string; conclusion: string | null }[]): { passRate: number | null; firstPass: { rate: number | null; of: number }; checkRuns: number } {
+export function runHealth(runs: { attempt: number; status: string; conclusion: string | null }[]): {
+  passRate: number | null;
+  firstPass: { rate: number | null; of: number };
+  checkRuns: number;
+} {
   const decided = runs.filter((run) => run.status === "completed" && (run.conclusion === "success" || run.conclusion === "failure"));
   const passed = decided.map((run) => run.conclusion === "success");
   const first = decided.filter((run) => run.conclusion === "success" && run.attempt <= 1).length;
@@ -369,10 +368,7 @@ export function runHealth(runs: { attempt: number; status: string; conclusion: s
 }
 
 /** How long from a work item being opened to its change landing, for each that did, in ms. */
-export function itemToMerge(
-  opened: { repo: string; number: number; at: number }[],
-  merged: { repo: string; item: number | null; at: number }[],
-): number[] {
+export function itemToMerge(opened: { repo: string; number: number; at: number }[], merged: { repo: string; item: number | null; at: number }[]): number[] {
   const openedAt = new Map(opened.map((o) => [`${o.repo}#${o.number}`, o.at]));
   const spans: number[] = [];
   for (const m of merged) {

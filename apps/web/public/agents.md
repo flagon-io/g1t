@@ -111,21 +111,19 @@ Do not assume that billing or external integrations are sandboxed.
    OpenCode, in `opencode.json`:
 
    ```json
-   { "mcp": { "g1t": { "type": "remote", "url": "https://mcp.g1t.sh", "oauth": false,
-     "headers": { "Authorization": "Bearer {env:G1T_TOKEN}" } } } }
+   { "mcp": { "g1t": { "type": "remote", "url": "https://mcp.g1t.sh", "oauth": false, "headers": { "Authorization": "Bearer {env:G1T_TOKEN}" } } } }
    ```
 
    Cursor, in `.cursor/mcp.json`:
 
    ```json
-   { "mcpServers": { "g1t": { "url": "https://mcp.g1t.sh",
-     "headers": { "Authorization": "Bearer ${env:G1T_TOKEN}" } } } }
+   { "mcpServers": { "g1t": { "url": "https://mcp.g1t.sh", "headers": { "Authorization": "Bearer ${env:G1T_TOKEN}" } } } }
    ```
 
    Without the header, a client that supports MCP authorization signs the
    person in through their browser instead (Claude Code: `/mcp`, then
    choose g1t, or `plugin:g1t:g1t` with g1t's plugin; Codex: `codex mcp login g1t`; OpenCode: `opencode mcp auth
-   g1t`; Cursor: when it first connects). The MCP server always needs one
+g1t`; Cursor: when it first connects). The MCP server always needs one
    or the other.
 
 5. **Create a workspace** if `GET /user` shows none. A workspace owns

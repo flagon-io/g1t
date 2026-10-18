@@ -80,10 +80,7 @@ export function instanceTypeOf(value: unknown): string {
  * a digest in its app's own repository and nothing else, with the port
  * it listens on.
  */
-export function pushedImage(
-  value: unknown,
-  repository: string,
-): { image: string; digest: string; port: number; sizeBytes: number } | null {
+export function pushedImage(value: unknown, repository: string): { image: string; digest: string; port: number; sizeBytes: number } | null {
   if (!value || typeof value !== "object") return null;
   const report = value as Record<string, unknown>;
   const image = typeof report.image === "string" ? report.image : "";
@@ -237,7 +234,8 @@ export function containerCost(rows: ContainerMeter[], costs: ContainerCosts): { 
     bytes += Math.max(0, row.egress_bytes);
   }
   const hours = Math.round((seconds / 3600) * 10) / 10;
-  const detail = seconds || bytes ? `${hours.toLocaleString("en-US")} container hours and ${(Math.round(bytes / 1e7) / 100).toLocaleString("en-US")} GB sent` : null;
+  const detail =
+    seconds || bytes ? `${hours.toLocaleString("en-US")} container hours and ${(Math.round(bytes / 1e7) / 100).toLocaleString("en-US")} GB sent` : null;
   return { micros: Math.ceil(micros), seconds, detail };
 }
 

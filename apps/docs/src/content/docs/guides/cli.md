@@ -85,13 +85,13 @@ script again.
 Each release is a single file per platform, at
 `https://g1t.sh/downloads/cli/latest/`:
 
-| Platform | File |
-| --- | --- |
-| Linux, x64 | `g1t-linux-x64` |
-| Linux, ARM | `g1t-linux-arm64` |
-| macOS, Apple silicon | `g1t-macos-arm64` |
-| macOS, Intel | `g1t-macos-x64` |
-| Windows, x64 | `g1t-windows-x64.exe` |
+| Platform             | File                  |
+| -------------------- | --------------------- |
+| Linux, x64           | `g1t-linux-x64`       |
+| Linux, ARM           | `g1t-linux-arm64`     |
+| macOS, Apple silicon | `g1t-macos-arm64`     |
+| macOS, Intel         | `g1t-macos-x64`       |
+| Windows, x64         | `g1t-windows-x64.exe` |
 
 ```sh
 curl -fsSLo g1t https://g1t.sh/downloads/cli/latest/g1t-linux-x64
@@ -145,12 +145,12 @@ there is none, as on most servers, it goes in the [config
 file](#settings-and-environment), readable only by you; `--insecure-storage`
 puts it there on purpose.
 
-| Command | What it does |
-| --- | --- |
+| Command           | What it does                                                                                                                                             |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `g1t auth status` | Each account you are signed in as, on each host, whether its token still works, and its scopes. Exits `4` when the active account's token does not work. |
-| `g1t auth token` | Prints the token in use, for another program. |
-| `g1t auth logout` | Forgets an account's token. |
-| `g1t auth switch` | Makes another signed-in account on the same host the active one. |
+| `g1t auth token`  | Prints the token in use, for another program.                                                                                                            |
+| `g1t auth logout` | Forgets an account's token.                                                                                                                              |
+| `g1t auth switch` | Makes another signed-in account on the same host the active one.                                                                                         |
 
 ### G1T_TOKEN
 
@@ -455,18 +455,18 @@ g1t session heartbeat
 g1t session end --reason done
 ```
 
-| Command | What it does |
-| --- | --- |
-| `g1t session start` | Starts a session and prints its id. `--harness` (`claude_code`, `codex`, `cursor`, `copilot` or `other`; `claude-code` works too), `--harness-session-id`, `--item`, `--pull`, `--branch` (the current one by default) and `--title`. Starting again with the same `--harness-session-id` returns the same session. For a subagent, `--parent` (the session that started it), `--agent-type`, `--task`, `--prompt` and `--model`; a subagent's session is not kept as the working copy's (nor is one with `--no-remember`). |
-| `g1t session heartbeat` | Says the session is still working, and renews its claims. A session with no heartbeat for 15 minutes reads as idle, and after 30 minutes as ended; a heartbeat brings it back. |
-| `g1t session log TEXT` | Records a note. `--kind` takes `note`, `prompt`, `message`, `tool_call` (or `tool-call`) or `skill` (a skill's name), `--tool` names the tool, and `--key` makes recording the same entry twice do nothing. `-` reads the text from stdin; put `--` before text that starts with a dash. |
-| `g1t session attach` | Points the session at an `--item`, a `--pull`, a `--branch` or its latest `--head-commit`, or gives it a `--title`: what it is for, which replaces the title it had. |
-| `g1t session touch` | Says what the session touched: `--file PATH`, `--commit SHA`, `--branch NAME`, `--pull N` (one it opened), `--item N`, each repeatable. Ties the session to the pull requests and work items they lead to; a file another active session touched too is an `overlap.detected` for both. |
-| `g1t session updates [ID]` | What other sessions did that concerns this one (claims, overlaps, dependency changes, decisions, merge queue results), oldest first, up to 100. Reading never clears them. It first says which files the working copy changed, so overlapping edits are noticed (`G1T_TOUCH=0` turns that off). |
-| `g1t session acknowledge ID... --note TEXT` | Records your decision about those updates (what changes in your plan, or why nothing does) and clears exactly the IDs given, for this session only; `--session` names another of yours. Saying the same again does nothing. |
-| `g1t session end` | Ends it, with an optional `--reason` and `--result` (what it reported; `-` reads it from stdin), and forgets it. Its subagents still going end with it. |
-| `g1t session list` | The repository's sessions; `--state active`, `--item`, `--pull` (any session tied to it), `--path` (those that touched a file, or a folder ending in `/`), `--subagents` to list subagents under the sessions that started them. `--workspace` (this repository's workspace) or `--workspace SLUG` lists the sessions of every repository of a workspace instead, narrowed by `--harness`, `--person`, `--in NAME` (a repository of it), `--state`, `--item` and `--subagents`; see [the Sessions page](/work/sessions/). |
-| `g1t session view [ID]` | A session and what it recorded, its subagents and their results, the work items and pull requests it worked on, and the skills used; the current one without an id. |
+| Command                                     | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `g1t session start`                         | Starts a session and prints its id. `--harness` (`claude_code`, `codex`, `cursor`, `copilot` or `other`; `claude-code` works too), `--harness-session-id`, `--item`, `--pull`, `--branch` (the current one by default) and `--title`. Starting again with the same `--harness-session-id` returns the same session. For a subagent, `--parent` (the session that started it), `--agent-type`, `--task`, `--prompt` and `--model`; a subagent's session is not kept as the working copy's (nor is one with `--no-remember`). |
+| `g1t session heartbeat`                     | Says the session is still working, and renews its claims. A session with no heartbeat for 15 minutes reads as idle, and after 30 minutes as ended; a heartbeat brings it back.                                                                                                                                                                                                                                                                                                                                              |
+| `g1t session log TEXT`                      | Records a note. `--kind` takes `note`, `prompt`, `message`, `tool_call` (or `tool-call`) or `skill` (a skill's name), `--tool` names the tool, and `--key` makes recording the same entry twice do nothing. `-` reads the text from stdin; put `--` before text that starts with a dash.                                                                                                                                                                                                                                    |
+| `g1t session attach`                        | Points the session at an `--item`, a `--pull`, a `--branch` or its latest `--head-commit`, or gives it a `--title`: what it is for, which replaces the title it had.                                                                                                                                                                                                                                                                                                                                                        |
+| `g1t session touch`                         | Says what the session touched: `--file PATH`, `--commit SHA`, `--branch NAME`, `--pull N` (one it opened), `--item N`, each repeatable. Ties the session to the pull requests and work items they lead to; a file another active session touched too is an `overlap.detected` for both.                                                                                                                                                                                                                                     |
+| `g1t session updates [ID]`                  | What other sessions did that concerns this one (claims, overlaps, dependency changes, decisions, merge queue results), oldest first, up to 100. Reading never clears them. It first says which files the working copy changed, so overlapping edits are noticed (`G1T_TOUCH=0` turns that off).                                                                                                                                                                                                                             |
+| `g1t session acknowledge ID... --note TEXT` | Records your decision about those updates (what changes in your plan, or why nothing does) and clears exactly the IDs given, for this session only; `--session` names another of yours. Saying the same again does nothing.                                                                                                                                                                                                                                                                                                 |
+| `g1t session end`                           | Ends it, with an optional `--reason` and `--result` (what it reported; `-` reads it from stdin), and forgets it. Its subagents still going end with it.                                                                                                                                                                                                                                                                                                                                                                     |
+| `g1t session list`                          | The repository's sessions; `--state active`, `--item`, `--pull` (any session tied to it), `--path` (those that touched a file, or a folder ending in `/`), `--subagents` to list subagents under the sessions that started them. `--workspace` (this repository's workspace) or `--workspace SLUG` lists the sessions of every repository of a workspace instead, narrowed by `--harness`, `--person`, `--in NAME` (a repository of it), `--state`, `--item` and `--subagents`; see [the Sessions page](/work/sessions/).   |
+| `g1t session view [ID]`                     | A session and what it recorded, its subagents and their results, the work items and pull requests it worked on, and the skills used; the current one without an id.                                                                                                                                                                                                                                                                                                                                                         |
 
 The id is kept in `.git/g1t/session`, in the working copy's own git
 directory, so each worktree has its own. `G1T_SESSION` overrides it, for
@@ -551,13 +551,13 @@ g1t work events --follow --item 12
 g1t work events --follow --type integration.failed --type overlap.detected --json
 ```
 
-| Flag | |
-| --- | --- |
-| `--type`, `-t` | Only events of this type, such as `work.claimed`; repeat for more. |
-| `--item`, `-i` | Only events about this work item or pull request; repeat for more. |
-| `--since`, `-s` | Only events since then: `15m`, `2h`, `1d`, or an RFC 3339 time. |
-| `--after` | Start after this event id, to resume where an earlier follow stopped. |
-| `--limit`, `-L` | How many past events to show first; 20 by default. |
+| Flag            |                                                                       |
+| --------------- | --------------------------------------------------------------------- |
+| `--type`, `-t`  | Only events of this type, such as `work.claimed`; repeat for more.    |
+| `--item`, `-i`  | Only events about this work item or pull request; repeat for more.    |
+| `--since`, `-s` | Only events since then: `15m`, `2h`, `1d`, or an RFC 3339 time.       |
+| `--after`       | Start after this event id, to resume where an earlier follow stopped. |
+| `--limit`, `-L` | How many past events to show first; 20 by default.                    |
 
 Each event is one line: its time, type, work item or pull request, a summary
 and its id. With `--json`, each is one compact JSON object on a line of its
@@ -597,7 +597,7 @@ g1t pr list --json number,title,check_status
 ```
 
 ```json
-[{"check_status":"passed","number":14,"title":"Greeting should name the caller"}]
+[{ "check_status": "passed", "number": 14, "title": "Greeting should name the caller" }]
 ```
 
 The fields are the API's own, named as in the [API reference](/reference/api/)
@@ -622,13 +622,13 @@ otherwise.
 
 ### Exit codes
 
-| Code | Meaning |
-| --- | --- |
-| `0` | It worked. |
-| `1` | It failed: the API refused it, the network failed, checks or a run failed. |
-| `2` | The command was used wrongly: an unknown flag, a missing argument, a JSON field that does not exist. |
-| `4` | Signing in is needed, or the token was refused. |
-| `8` | Checks are still running (`g1t pr checks` without `--watch`). |
+| Code | Meaning                                                                                              |
+| ---- | ---------------------------------------------------------------------------------------------------- |
+| `0`  | It worked.                                                                                           |
+| `1`  | It failed: the API refused it, the network failed, checks or a run failed.                           |
+| `2`  | The command was used wrongly: an unknown flag, a missing argument, a JSON field that does not exist. |
+| `4`  | Signing in is needed, or the token was refused.                                                      |
+| `8`  | Checks are still running (`g1t pr checks` without `--watch`).                                        |
 
 An error is one line on stderr, starting `g1t:`. When a token lacks a
 [scope](/guides/authentication/#scopes) the call needs, the line names it.
@@ -732,16 +732,16 @@ g1t completion powershell >> $PROFILE
 in `config.json`, in `~/.config/g1t` (`%APPDATA%\g1t` on Windows;
 `$XDG_CONFIG_HOME/g1t` when that is set).
 
-| Variable | |
-| --- | --- |
-| `G1T_TOKEN` | A token to use instead of the stored one. |
-| `G1T_HOST` | The host to use when no repository names one. |
-| `G1T_REPO` | The repository, as `[HOST/]OWNER/NAME`. |
-| `G1T_WORKSPACE` | The workspace `g1t work` works on, as `--workspace` says. |
-| `G1T_CONFIG_DIR` | Where to keep `config.json`. |
-| `G1T_KEYRING` | `off` keeps tokens out of the system's credential store. |
-| `G1T_PROMPT_DISABLED` | Never ask anything. |
-| `G1T_EDITOR`, `VISUAL`, `EDITOR` | The editor for bodies and summaries. |
-| `G1T_BROWSER`, `BROWSER` | The browser `--web` and `g1t browse` open. |
-| `NO_COLOR` | Plain output at a terminal too. |
-| `G1T_DEBUG` | Print each request's method, address and status on stderr. |
+| Variable                         |                                                            |
+| -------------------------------- | ---------------------------------------------------------- |
+| `G1T_TOKEN`                      | A token to use instead of the stored one.                  |
+| `G1T_HOST`                       | The host to use when no repository names one.              |
+| `G1T_REPO`                       | The repository, as `[HOST/]OWNER/NAME`.                    |
+| `G1T_WORKSPACE`                  | The workspace `g1t work` works on, as `--workspace` says.  |
+| `G1T_CONFIG_DIR`                 | Where to keep `config.json`.                               |
+| `G1T_KEYRING`                    | `off` keeps tokens out of the system's credential store.   |
+| `G1T_PROMPT_DISABLED`            | Never ask anything.                                        |
+| `G1T_EDITOR`, `VISUAL`, `EDITOR` | The editor for bodies and summaries.                       |
+| `G1T_BROWSER`, `BROWSER`         | The browser `--web` and `g1t browse` open.                 |
+| `NO_COLOR`                       | Plain output at a terminal too.                            |
+| `G1T_DEBUG`                      | Print each request's method, address and status on stderr. |

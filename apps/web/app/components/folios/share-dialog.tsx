@@ -5,7 +5,16 @@
  * invited, and open it to the workspace or to anyone in it with the link.
  * People who can't share see it read-only.
  */
-import { DOC_ROLE_LABELS, FOLIO_GENERAL_ROLES, type DocRole, type Folio, type FolioAccessChange, type FolioAccessList, type FolioGeneralAccess, type FolioGeneralRole } from "@g1t/contracts";
+import {
+  DOC_ROLE_LABELS,
+  FOLIO_GENERAL_ROLES,
+  type DocRole,
+  type Folio,
+  type FolioAccessChange,
+  type FolioAccessList,
+  type FolioGeneralAccess,
+  type FolioGeneralRole,
+} from "@g1t/contracts";
 import { Check, Globe, Link2, Lock, Users } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
@@ -25,7 +34,19 @@ const ROLES: DocRole[] = ["view", "comment", "edit", "manage"];
 
 type Candidate = { value: string; label: string; kind: "user" | "team"; name: string };
 
-export function ShareDialog({ slug, folio, open, onOpenChange, onChanged }: { slug: string; folio: Pick<Folio, "id" | "title" | "path" | "space" | "parent_id" | "viewer_role">; open: boolean; onOpenChange: (o: boolean) => void; onChanged?: () => void }) {
+export function ShareDialog({
+  slug,
+  folio,
+  open,
+  onOpenChange,
+  onChanged,
+}: {
+  slug: string;
+  folio: Pick<Folio, "id" | "title" | "path" | "space" | "parent_id" | "viewer_role">;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  onChanged?: () => void;
+}) {
   const layout = useFoliosData();
   const [access, setAccess] = useState<FolioAccessList | null>(null);
   const [teams, setTeams] = useState<{ slug: string; name: string }[]>([]);
@@ -67,7 +88,9 @@ export function ShareDialog({ slug, folio, open, onOpenChange, onChanged }: { sl
   const listed = new Set([...(access?.rows ?? []).map((r) => r.principal), access ? `user:${access.owner.id}` : ""]);
   const candidates: Candidate[] = useMemo(
     () => [
-      ...(layout?.mentionables ?? []).map((m): Candidate => ({ value: `username:${m.name}`, label: `${m.display_name} (@${m.name})`, kind: "user", name: m.name })),
+      ...(layout?.mentionables ?? []).map(
+        (m): Candidate => ({ value: `username:${m.name}`, label: `${m.display_name} (@${m.name})`, kind: "user", name: m.name }),
+      ),
       ...teams.map((t): Candidate => ({ value: `team:${t.slug}`, label: `${t.name} (team)`, kind: "team", name: t.slug })),
     ],
     [layout?.mentionables, teams],
@@ -95,18 +118,37 @@ export function ShareDialog({ slug, folio, open, onOpenChange, onChanged }: { sl
       <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle className="truncate pr-6">Share “{folio.title || "Untitled"}”</DialogTitle>
-          <DialogDescription>{canShare ? "People you add get a notification with a link." : `Only people with full access can change who can open it. Ask ${access?.owner.display_name ?? "its owner"} to share it.`}</DialogDescription>
+          <DialogDescription>
+            {canShare
+              ? "People you add get a notification with a link."
+              : `Only people with full access can change who can open it. Ask ${access?.owner.display_name ?? "its owner"} to share it.`}
+          </DialogDescription>
         </DialogHeader>
 
         {canShare && (
           <div className="space-y-2">
             <div className="flex flex-wrap gap-2">
-              <Combobox options={offered.map((c) => ({ value: c.value, label: c.label }))} value={who} onValueChange={setWho} placeholder="Add people or teams" searchPlaceholder="Search the workspace" emptyText="Nobody else to add." className="h-9 min-w-0 grow basis-56" />
+              <Combobox
+                options={offered.map((c) => ({ value: c.value, label: c.label }))}
+                value={who}
+                onValueChange={setWho}
+                placeholder="Add people or teams"
+                searchPlaceholder="Search the workspace"
+                emptyText="Nobody else to add."
+                className="h-9 min-w-0 grow basis-56"
+              />
               <SelectField aria-label="Their role" value={role} onValueChange={(r) => setRole(r as DocRole)} options={roleOptions} className="h-9 w-36" />
             </div>
             {who && (
               <div className="flex gap-2">
-                <input aria-label="Message" placeholder="Add a message (optional)" value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} className="h-9 min-w-0 grow rounded-md border border-line bg-bg px-3 text-sm outline-none focus:border-accent/60" />
+                <input
+                  aria-label="Message"
+                  placeholder="Add a message (optional)"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  maxLength={2000}
+                  className="h-9 min-w-0 grow rounded-md border border-line bg-bg px-3 text-sm outline-none focus:border-accent/60"
+                />
                 <Button type="button" variant="accent" disabled={busy} onClick={invite}>
                   Invite
                 </Button>
@@ -131,7 +173,12 @@ export function ShareDialog({ slug, folio, open, onOpenChange, onChanged }: { sl
             </div>
           ) : (
             <ul className="max-h-64 space-y-0.5 overflow-y-auto scrollbar-thin">
-              <Row face={<Face who={access.owner} size={26} />} name={access.owner.display_name} sub={`@${access.owner.name}`} end={<span className="text-xs text-faint">Owner</span>} />
+              <Row
+                face={<Face who={access.owner} size={26} />}
+                name={access.owner.display_name}
+                sub={`@${access.owner.name}`}
+                end={<span className="text-xs text-faint">Owner</span>}
+              />
               {access.rows.map((r) => {
                 const face = r.profile.kind === "team" ? <TeamFace /> : <Face who={r.profile} size={26} />;
                 const sub = r.profile.kind === "team" ? "Team" : r.profile.kind === "agent" ? "Agent" : `@${r.profile.name}`;
@@ -148,7 +195,11 @@ export function ShareDialog({ slug, folio, open, onOpenChange, onChanged }: { sl
                           <SelectField
                             aria-label={`${r.profile.display_name}'s access`}
                             value={r.role}
-                            onValueChange={(v) => (v === "remove" ? change({ op: "revoke", principal: r.principal }) : change({ op: "grant", principal: r.principal, role: v as DocRole }))}
+                            onValueChange={(v) =>
+                              v === "remove"
+                                ? change({ op: "revoke", principal: r.principal })
+                                : change({ op: "grant", principal: r.principal, role: v as DocRole })
+                            }
                             options={[...roleOptions, { value: "remove", label: "Remove access" }]}
                             className="h-8 w-36"
                           />
@@ -168,7 +219,11 @@ export function ShareDialog({ slug, folio, open, onOpenChange, onChanged }: { sl
                     sub={
                       <>
                         From{" "}
-                        <Link to={from.kind === "folio" ? from.path : `/${slug}/-/artifacts`} onClick={() => onOpenChange(false)} className="text-muted hover:text-fg hover:underline">
+                        <Link
+                          to={from.kind === "folio" ? from.path : `/${slug}/-/artifacts`}
+                          onClick={() => onOpenChange(false)}
+                          className="text-muted hover:text-fg hover:underline"
+                        >
                           {from.kind === "folio" ? from.title : from.kind === "space" ? from.name : "its owner"}
                         </Link>
                       </>
@@ -186,7 +241,9 @@ export function ShareDialog({ slug, folio, open, onOpenChange, onChanged }: { sl
             <h3 className="text-xs font-medium text-faint">General access</h3>
             {(folio.space || folio.parent_id) && (
               <div className="flex items-start gap-3">
-                <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-raised text-muted">{access.inherit ? <Users size={15} /> : <Lock size={15} />}</span>
+                <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-raised text-muted">
+                  {access.inherit ? <Users size={15} /> : <Lock size={15} />}
+                </span>
                 <div className="min-w-0 grow">
                   <SelectField
                     aria-label="Follows its space or parent"
@@ -194,14 +251,29 @@ export function ShareDialog({ slug, folio, open, onOpenChange, onChanged }: { sl
                     value={access.inherit ? "inherit" : "restrict"}
                     onValueChange={(v) => change({ op: "inherit", inherit: v === "inherit" })}
                     options={[
-                      { value: "inherit", label: access.inherited_from ? `Everyone in ${access.inherited_from.name}` : folio.space ? `Everyone in ${folio.space.name}` : "Follows the doc it's in" },
+                      {
+                        value: "inherit",
+                        label: access.inherited_from
+                          ? `Everyone in ${access.inherited_from.name}`
+                          : folio.space
+                            ? `Everyone in ${folio.space.name}`
+                            : "Follows the doc it's in",
+                      },
                       { value: "restrict", label: "Only people invited" },
                     ]}
                     className="h-8 w-full max-w-xs"
                   />
                   <p className="mt-1 text-xs text-faint">
                     {access.inherit ? "Whoever can open " : "Access stops here: whoever can open "}
-                    {folio.parent_id ? "the doc it's in" : folio.space ? <Link to={spacePath(slug, folio.space.slug)} className="hover:text-fg hover:underline">{folio.space.name}</Link> : "its space"}
+                    {folio.parent_id ? (
+                      "the doc it's in"
+                    ) : folio.space ? (
+                      <Link to={spacePath(slug, folio.space.slug)} className="hover:text-fg hover:underline">
+                        {folio.space.name}
+                      </Link>
+                    ) : (
+                      "its space"
+                    )}
                     {access.inherit ? " can open this, with the same role." : " can't open this unless invited."}
                   </p>
                 </div>
@@ -209,13 +281,19 @@ export function ShareDialog({ slug, folio, open, onOpenChange, onChanged }: { sl
             )}
             {root ? (
               <div className="flex items-start gap-3">
-                <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-raised text-muted">{general === "workspace" ? <Globe size={15} /> : general === "link" ? <Link2 size={15} /> : <Lock size={15} />}</span>
+                <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-raised text-muted">
+                  {general === "workspace" ? <Globe size={15} /> : general === "link" ? <Link2 size={15} /> : <Lock size={15} />}
+                </span>
                 <div className="flex min-w-0 grow flex-wrap items-center gap-2">
                   <SelectField
                     aria-label="General access"
                     disabled={!manager || busy}
                     value={general}
-                    onValueChange={(v) => change(v === "none" ? { op: "general", access: "none", role: null } : { op: "general", access: v as FolioGeneralAccess, role: generalRole })}
+                    onValueChange={(v) =>
+                      change(
+                        v === "none" ? { op: "general", access: "none", role: null } : { op: "general", access: v as FolioGeneralAccess, role: generalRole },
+                      )
+                    }
                     options={[
                       { value: "none", label: "Restricted" },
                       { value: "workspace", label: `Everyone in ${layout?.slug ?? "the workspace"}` },
@@ -234,12 +312,18 @@ export function ShareDialog({ slug, folio, open, onOpenChange, onChanged }: { sl
                     />
                   )}
                   <p className="w-full text-xs text-faint">
-                    {general === "none" ? "Only the people above can open it." : general === "workspace" ? "Every member can find and open it." : "Members who open the link can. It isn't listed or searchable until they do."}
+                    {general === "none"
+                      ? "Only the people above can open it."
+                      : general === "workspace"
+                        ? "Every member can find and open it."
+                        : "Members who open the link can. It isn't listed or searchable until they do."}
                   </p>
                 </div>
               </div>
             ) : (
-              <p className="text-xs text-faint">It follows the doc it&apos;s in. Change who else can open it there, or choose &ldquo;Only people invited&rdquo;.</p>
+              <p className="text-xs text-faint">
+                It follows the doc it&apos;s in. Change who else can open it there, or choose &ldquo;Only people invited&rdquo;.
+              </p>
             )}
             <div className="flex items-center gap-3">
               <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-raised text-faint">

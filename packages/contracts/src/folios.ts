@@ -163,7 +163,20 @@ export function linkedFolioIds(text: string): string[] {
 }
 
 /** Segments the site's routes use under `-/artifacts/`: never a folio. */
-export const FOLIO_ROUTE_SEGMENTS: readonly string[] = ["live", "api", "query", "threads", "upload", "export", "new", "templates", "trash", "stale", "spaces", "repo"];
+export const FOLIO_ROUTE_SEGMENTS: readonly string[] = [
+  "live",
+  "api",
+  "query",
+  "threads",
+  "upload",
+  "export",
+  "new",
+  "templates",
+  "trash",
+  "stale",
+  "spaces",
+  "repo",
+];
 
 // ── Folios ────────────────────────────────────────────────────────────
 
@@ -707,14 +720,31 @@ export type FoliosApi = {
    */
   deleteSpace(workspace: string, viewer: User, spaceId: string): Promise<Result<{ trashed: number }>>;
 
-  search(workspace: string, viewer: User, query: { q: string; kinds?: FolioKind[] | null; space_id?: string | null; project?: string | null; owner?: string | null; mode?: "words" | "hybrid" | null; limit?: number | null }): Promise<Result<FolioSearchHit[]>>;
+  search(
+    workspace: string,
+    viewer: User,
+    query: {
+      q: string;
+      kinds?: FolioKind[] | null;
+      space_id?: string | null;
+      project?: string | null;
+      owner?: string | null;
+      mode?: "words" | "hybrid" | null;
+      limit?: number | null;
+    },
+  ): Promise<Result<FolioSearchHit[]>>;
   versions(workspace: string, viewer: User, folioId: string): Promise<Result<FolioVersion[]>>;
   version(workspace: string, viewer: User, folioId: string, versionId: string): Promise<Result<FolioVersionDetail>>;
   restoreVersion(workspace: string, viewer: User, folioId: string, versionId: string): Promise<Result<FolioVersion>>;
   templates(workspace: string, viewer: User, kind?: FolioKind | null): Promise<Result<FolioTemplate[]>>;
   saveTemplate(workspace: string, viewer: User, input: { folio_id: string; name: string; description?: string | null }): Promise<Result<FolioTemplate>>;
   deleteTemplate(workspace: string, viewer: User, templateId: string): Promise<Result<boolean>>;
-  export(workspace: string, viewer: User, folioId: string, format?: "markdown" | "json" | null): Promise<Result<{ filename: string; content_type: string; body: string }>>;
+  export(
+    workspace: string,
+    viewer: User,
+    folioId: string,
+    format?: "markdown" | "json" | null,
+  ): Promise<Result<{ filename: string; content_type: string; body: string }>>;
 
   suggestions(workspace: string, viewer: User, folioId: string): Promise<Result<FolioSuggestion[]>>;
   decideSuggestion(workspace: string, viewer: User, suggestionId: string, decision: "accept" | "reject"): Promise<Result<FolioSuggestion>>;
@@ -776,7 +806,8 @@ export function foliosClient(service: ServiceBinding): FoliosApi {
     deleteTemplate: (workspace, viewer, templateId) => call("delete_folio_template", { workspace, viewer, template_id: templateId }),
     export: (workspace, viewer, folioId, format) => call("export_folio", { workspace, viewer, folio_id: folioId, format: format ?? null }),
     suggestions: (workspace, viewer, folioId) => call("folio_suggestions", { workspace, viewer, folio_id: folioId }),
-    decideSuggestion: (workspace, viewer, suggestionId, decision) => call("decide_folio_suggestion", { workspace, viewer, suggestion_id: suggestionId, decision }),
+    decideSuggestion: (workspace, viewer, suggestionId, decision) =>
+      call("decide_folio_suggestion", { workspace, viewer, suggestion_id: suggestionId, decision }),
     proposals: (workspace, viewer, folioId) => call("folio_proposals", { workspace, viewer, folio_id: folioId }),
     decideProposal: (workspace, viewer, proposalId, decision) => call("decide_folio_proposal", { workspace, viewer, proposal_id: proposalId, decision }),
     thread: (workspace, viewer, folioId, action) => call("folio_thread", { workspace, viewer, folio_id: folioId, action }),

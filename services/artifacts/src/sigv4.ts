@@ -58,7 +58,10 @@ export function uriEncode(value: string): string {
 
 /** `20150830T123600Z`. */
 export function amzDate(date: Date): string {
-  return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  return date
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\.\d{3}/, "");
 }
 
 function canonicalPath(pathname: string, double: boolean): string {

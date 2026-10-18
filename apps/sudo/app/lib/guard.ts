@@ -89,9 +89,7 @@ p{margin:0;color:#a0a0a8}code{color:#ededef;font-family:ui-monospace,SFMono-Regu
 let styleHash: Promise<string> | null = null;
 
 function hashOfStyle(): Promise<string> {
-  styleHash ??= crypto.subtle
-    .digest("SHA-256", new TextEncoder().encode(DENIED_STYLE))
-    .then((digest) => btoa(String.fromCharCode(...new Uint8Array(digest))));
+  styleHash ??= crypto.subtle.digest("SHA-256", new TextEncoder().encode(DENIED_STYLE)).then((digest) => btoa(String.fromCharCode(...new Uint8Array(digest))));
   return styleHash;
 }
 

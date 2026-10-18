@@ -43,14 +43,14 @@ Shared types and catalogs come from `@g1t/contracts` (by subpath, such as
 
 ## How it talks to g1t
 
-| What | Where | How it is signed in |
-| --- | --- | --- |
-| Who you are, your workspaces | `GET {api}/user` | `Authorization: Bearer g1t_…` |
-| Work | `{api}/workspaces/<workspace>/work…`, `…/labels`, `…/milestones` REST | the same |
-| Code | `{api}/repos…` REST | the same |
-| Chat | `{site}/<workspace>/-/chat/api` and its live socket, as the site's own pages use them | the same header, with `chat:*` ([below](#chat-with-the-apps-sign-in)); a socket gets a ticket from `{site}/-/live/ticket` first |
-| Notifications | `{site}/-/notify` and the feed socket `{site}/-/live` | the same, with `notifications:*` |
-| Sign-in | `{api}/.well-known/oauth-authorization-server`, `{site}/oauth/authorize`, `{api}/oauth/token` | OAuth 2.1, PKCE (S256), public client |
+| What                         | Where                                                                                         | How it is signed in                                                                                                             |
+| ---------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Who you are, your workspaces | `GET {api}/user`                                                                              | `Authorization: Bearer g1t_…`                                                                                                   |
+| Work                         | `{api}/workspaces/<workspace>/work…`, `…/labels`, `…/milestones` REST                         | the same                                                                                                                        |
+| Code                         | `{api}/repos…` REST                                                                           | the same                                                                                                                        |
+| Chat                         | `{site}/<workspace>/-/chat/api` and its live socket, as the site's own pages use them         | the same header, with `chat:*` ([below](#chat-with-the-apps-sign-in)); a socket gets a ticket from `{site}/-/live/ticket` first |
+| Notifications                | `{site}/-/notify` and the feed socket `{site}/-/live`                                         | the same, with `notifications:*`                                                                                                |
+| Sign-in                      | `{api}/.well-known/oauth-authorization-server`, `{site}/oauth/authorize`, `{api}/oauth/token` | OAuth 2.1, PKCE (S256), public client                                                                                           |
 
 The OAuth client is not registered anywhere: its id encodes its name and
 redirect (`encodeOAuthClient`), so `g1t for Android` with
@@ -67,12 +67,12 @@ asks for `chat:read`, `chat:write`, `notifications:read` and
 (OAuth or personal, without "Use the website as you") on these alone
 (`apps/web/app/lib/website-token.ts`, `scopedRoute` and `socketUser`):
 
-| Route | Needs |
-| --- | --- |
-| `GET`, `POST /<ws>/-/chat/api` | `chat:read`, `chat:write` |
-| `GET /<ws>/-/chat/person/<username>` | `chat:read` |
-| `GET /-/live/ticket` for `/<ws>/-/chat/live` and `/-/live` | `chat:read` |
-| `GET`, `POST /-/notify` | `notifications:read`, `notifications:write` |
+| Route                                                      | Needs                                       |
+| ---------------------------------------------------------- | ------------------------------------------- |
+| `GET`, `POST /<ws>/-/chat/api`                             | `chat:read`, `chat:write`                   |
+| `GET /<ws>/-/chat/person/<username>`                       | `chat:read`                                 |
+| `GET /-/live/ticket` for `/<ws>/-/chat/live` and `/-/live` | `chat:read`                                 |
+| `GET`, `POST /-/notify`                                    | `notifications:read`, `notifications:write` |
 
 A full-access token does not count: it reaches Chat only with the website
 permission.

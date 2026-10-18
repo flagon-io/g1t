@@ -15,7 +15,7 @@ export const QUALIFIERS: { example: string; means: string }[] = [
   { example: "is:open  is:closed  is:merged", means: "Work items and pull requests by state" },
   { example: "author:ana", means: "Opened by someone" },
   { example: "label:bug", means: "Work items and pull requests with a label" },
-  { example: "\"exact phrase\"", means: "These words together, in this order" },
+  { example: '"exact phrase"', means: "These words together, in this order" },
   { example: "-word  -label:wontfix", means: "Leave out what has it" },
 ];
 

@@ -60,7 +60,11 @@ test("descendants and ancestors", () => {
 });
 
 test("export paths follow the tree and stay unique", () => {
-  const paths = exportPaths([...rows, { id: "e", parent_id: null, position: 4000, title: "alpha" }, { id: "f", parent_id: null, position: 5000, title: "a/b: c?" }]);
+  const paths = exportPaths([
+    ...rows,
+    { id: "e", parent_id: null, position: 4000, title: "alpha" },
+    { id: "f", parent_id: null, position: 5000, title: "a/b: c?" },
+  ]);
   assert.equal(paths.get("a"), "Alpha.md");
   assert.equal(paths.get("c"), "Alpha/Child.md");
   assert.equal(paths.get("d"), "Alpha/Child/Deep.md");

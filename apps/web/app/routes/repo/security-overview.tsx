@@ -292,7 +292,9 @@ export default function SecurityOverview({ loaderData, params }: Route.Component
                     <Badge tone={policy ? "success" : "neutral"}>{policy ? "Published" : "None yet"}</Badge>
                   </div>
                   <p className="mt-1 text-sm text-muted">
-                    {policy ? `${policy} says how to report a vulnerability and which versions are supported.` : "This repository has not published a security policy."}
+                    {policy
+                      ? `${policy} says how to report a vulnerability and which versions are supported.`
+                      : "This repository has not published a security policy."}
                   </p>
                 </div>
                 {policy && (
@@ -385,8 +387,8 @@ export default function SecurityOverview({ loaderData, params }: Route.Component
         {/* Without code scanning's alerts, the counts above are of the rest. */}
         {codeFailed && <Unavailable what="Code scanning alerts" compact />}
         <p className="text-xs text-faint">
-          Open alerts of every kind by severity ({SEVERITY_LABEL.critical.toLowerCase()} to {SEVERITY_LABEL.low.toLowerCase()}). A secret in the history
-          that looks real counts as critical; blocked pushes and likely test values do not.
+          Open alerts of every kind by severity ({SEVERITY_LABEL.critical.toLowerCase()} to {SEVERITY_LABEL.low.toLowerCase()}). A secret in the history that
+          looks real counts as critical; blocked pushes and likely test values do not.
         </p>
         <ScanSummary scan={overview.scan} />
       </section>

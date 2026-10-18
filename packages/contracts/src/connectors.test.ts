@@ -20,7 +20,10 @@ test("every connector has a unique id, a category and a scope", () => {
 
 test("every category has connectors, and an available one in each scope it has is set up somewhere", () => {
   for (const category of CONNECTOR_CATEGORIES) {
-    assert.ok(CONNECTORS.some((connector) => connector.category === category.id), category.id);
+    assert.ok(
+      CONNECTORS.some((connector) => connector.category === category.id),
+      category.id,
+    );
   }
   for (const scope of ["workspace", "personal"] as const) {
     for (const view of connectorsFor(scope)) {
@@ -38,7 +41,11 @@ test("every integration provider is an available connector, and no AI provider i
   }
   // AI providers are each workspace's AI settings, at -/ai, not integrations.
   for (const provider of Object.keys(AI_PROVIDERS)) {
-    assert.equal(CONNECTORS.find((c) => (c.provider as string) === provider || c.id === provider.replace(/_/g, "-")), undefined, provider);
+    assert.equal(
+      CONNECTORS.find((c) => (c.provider as string) === provider || c.id === provider.replace(/_/g, "-")),
+      undefined,
+      provider,
+    );
   }
 });
 

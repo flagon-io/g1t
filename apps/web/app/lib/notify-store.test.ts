@@ -47,14 +47,23 @@ test("toasts: newest last, at most three, never twice", () => {
   assert.equal(toasts.length, 1);
   for (const id of ["2", "3", "4"]) toasts = addToast(toasts, note(id, { channel_id: `c${id}`, href: `/acme/-/chat/c${id}` }), away, Number(id));
   assert.equal(toasts.length, MAX_TOASTS);
-  assert.deepEqual(toasts.map((t) => t.notification.id), ["2", "3", "4"]);
-  assert.deepEqual(dismissToast(toasts, "3").map((t) => t.notification.id), ["2", "4"]);
+  assert.deepEqual(
+    toasts.map((t) => t.notification.id),
+    ["2", "3", "4"],
+  );
+  assert.deepEqual(
+    dismissToast(toasts, "3").map((t) => t.notification.id),
+    ["2", "4"],
+  );
 });
 
 test("a newer message in the same conversation replaces its toast", () => {
   let toasts = addToast([], note("1"), away, 1);
   toasts = addToast(toasts, note("2"), away, 2);
-  assert.deepEqual(toasts.map((t) => t.notification.id), ["2"]);
+  assert.deepEqual(
+    toasts.map((t) => t.notification.id),
+    ["2"],
+  );
 });
 
 test("no toast for the conversation on screen, by page or by channel; inbox items always", () => {
@@ -102,13 +111,27 @@ test("reading a conversation here zeroes it at once", () => {
   const after = markReadLocally(counts(), "a");
   assert.equal(after.chat_unread, 1);
   assert.equal(after.chat_mentions, 0);
-  assert.deepEqual(after.per_channel.map((c) => c.channel_id), ["b"]);
+  assert.deepEqual(
+    after.per_channel.map((c) => c.channel_id),
+    ["b"],
+  );
   assert.equal(markReadLocally(counts(), "zzz").chat_unread, 4);
 });
 
 const entry = (id: string, unread: number, mentions = 0): ChatSidebarEntry =>
   ({
-    channel: { id, workspace_id: "w", kind: "channel", name: id, topic: null, private: false, created_by: { kind: "user", id: "u" }, created_at: "", archived_at: null, last_message_at: null },
+    channel: {
+      id,
+      workspace_id: "w",
+      kind: "channel",
+      name: id,
+      topic: null,
+      private: false,
+      created_by: { kind: "user", id: "u" },
+      created_at: "",
+      archived_at: null,
+      last_message_at: null,
+    },
     title: id,
     others: [],
     starred: false,
@@ -120,7 +143,14 @@ const entry = (id: string, unread: number, mentions = 0): ChatSidebarEntry =>
 test("the sidebar takes the feed's counts once they are complete, and spots conversations it does not list", () => {
   const entries = [entry("a", 0), entry("b", 5), entry("c", 2)];
   const shown = overlayEntries(entries, counts());
-  assert.deepEqual(shown.map((e) => [e.unread, e.mentions]), [[3, 1], [1, 0], [0, 0]]);
+  assert.deepEqual(
+    shown.map((e) => [e.unread, e.mentions]),
+    [
+      [3, 1],
+      [1, 0],
+      [0, 0],
+    ],
+  );
   assert.equal(overlayEntries(entries, counts({ complete: false })), entries);
   const same = [entry("a", 3, 1), entry("b", 1)];
   assert.equal(overlayEntries(same, counts()), same);
@@ -150,10 +180,22 @@ test("browser notifications are offered once, after a DM or mention, never after
 });
 
 test("reconnecting waits a jittered, growing time, never past half a minute", () => {
-  assert.equal(reconnectDelay(0, () => 0), 500);
-  assert.equal(reconnectDelay(0, () => 1), 1000);
-  assert.equal(reconnectDelay(3, () => 1), 8000);
-  assert.equal(reconnectDelay(50, () => 1), 30_000);
+  assert.equal(
+    reconnectDelay(0, () => 0),
+    500,
+  );
+  assert.equal(
+    reconnectDelay(0, () => 1),
+    1000,
+  );
+  assert.equal(
+    reconnectDelay(3, () => 1),
+    8000,
+  );
+  assert.equal(
+    reconnectDelay(50, () => 1),
+    30_000,
+  );
   const spread = new Set(Array.from({ length: 20 }, () => reconnectDelay(4)));
   assert.ok(spread.size > 1);
 });
@@ -184,14 +226,20 @@ const capCard = {
 
 test("a card's notification offers its links alone: nothing answers its other buttons", () => {
   const n = note("approval:ses_1:2000000", { kind: "approval", channel_id: null, card: capCard });
-  assert.deepEqual(notificationActions(n).map((a) => a.id), ["open"]);
+  assert.deepEqual(
+    notificationActions(n).map((a) => a.id),
+    ["open"],
+  );
   assert.deepEqual(notificationActions(note("m1")), []);
 });
 
 test("recent notifications are kept newest first, once each", () => {
   const a = note("a", { created_at: "2026-10-08T00:00:01Z" });
   const b = note("b", { created_at: "2026-10-08T00:00:02Z" });
-  assert.deepEqual(addRecent([a], [b, a]).map((n) => n.id), ["b", "a"]);
+  assert.deepEqual(
+    addRecent([a], [b, a]).map((n) => n.id),
+    ["b", "a"],
+  );
   const many = Array.from({ length: RECENT_KEPT + 5 }, (_, i) => note(`n${i}`, { created_at: new Date(Date.UTC(2026, 9, 8, 0, 0, i)).toISOString() }));
   assert.equal(addRecent([], many).length, RECENT_KEPT);
 });
@@ -203,8 +251,14 @@ test("the panel waits on the newest notification per card, for a day, until it i
   const draft = note("msg_d", { kind: "approval", workspace: "side", card: { ...capCard, message_id: "msg_draft" }, created_at: "2026-10-09T11:30:00Z" });
   const stale = note("msg_s", { kind: "approval", card: { ...capCard, message_id: "msg_stale" }, created_at: new Date(now - WAITING_MS - 1).toISOString() });
   const recent = addRecent([], [older, newer, draft, stale, note("plain")]);
-  assert.deepEqual(waitingCards(recent, new Set(), now).map((n) => n.id), ["msg_d", "approval:ses_1:2000000"]);
-  assert.deepEqual(waitingCards(recent, new Set(), now, "Acme").map((n) => n.id), ["approval:ses_1:2000000"]);
+  assert.deepEqual(
+    waitingCards(recent, new Set(), now).map((n) => n.id),
+    ["msg_d", "approval:ses_1:2000000"],
+  );
+  assert.deepEqual(
+    waitingCards(recent, new Set(), now, "Acme").map((n) => n.id),
+    ["approval:ses_1:2000000"],
+  );
   // Acting on the newest puts the card away; the older one about it does not come back.
   assert.deepEqual(waitingCards(recent, new Set(["approval:ses_1:2000000"]), now, "acme"), []);
 });

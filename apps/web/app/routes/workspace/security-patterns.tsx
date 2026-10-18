@@ -69,18 +69,12 @@ export default function WorkspacePatterns({ loaderData, params }: Route.Componen
       <WorkspaceSecurityTabs owner={params.owner} />
       {!list.entitled && (
         <p className="mb-4 rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-sm text-warn">
-          This workspace is not on the g1t plan, which Security and quality comes with: its patterns run on public repositories only.
-          An owner can start the plan in Billing.
+          This workspace is not on the g1t plan, which Security and quality comes with: its patterns run on public repositories only. An owner can start the
+          plan in Billing.
         </p>
       )}
       {owner && editing === null && (
-        <Button
-          type="button"
-          onClick={() => setEditing("new")}
-          variant="outline"
-          size="sm"
-          className="mb-4 px-3 text-sm font-normal"
-        >
+        <Button type="button" onClick={() => setEditing("new")} variant="outline" size="sm" className="mb-4 px-3 text-sm font-normal">
           <Plus size={14} /> New pattern
         </Button>
       )}
@@ -92,7 +86,11 @@ export default function WorkspacePatterns({ loaderData, params }: Route.Componen
               Close
             </Button>
           </div>
-          <PatternEditor key={editing === "new" ? "new" : editing.id} action={`/${params.owner}/-/security/patterns`} draft={draftOf(editing === "new" ? null : editing)} />
+          <PatternEditor
+            key={editing === "new" ? "new" : editing.id}
+            action={`/${params.owner}/-/security/patterns`}
+            draft={draftOf(editing === "new" ? null : editing)}
+          />
         </section>
       )}
       {list.patterns.length === 0 ? (
@@ -114,7 +112,13 @@ export default function WorkspacePatterns({ loaderData, params }: Route.Componen
                 {pattern.openAlerts} open {pattern.openAlerts === 1 ? "alert" : "alerts"}
               </span>
               {owner && (
-                <Button type="button" onClick={() => setEditing(pattern)} variant="outline" size="inline" className="px-2.5 py-1 text-xs text-muted font-normal">
+                <Button
+                  type="button"
+                  onClick={() => setEditing(pattern)}
+                  variant="outline"
+                  size="inline"
+                  className="px-2.5 py-1 text-xs text-muted font-normal"
+                >
                   Edit
                 </Button>
               )}

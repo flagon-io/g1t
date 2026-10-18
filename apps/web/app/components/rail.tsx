@@ -12,14 +12,7 @@ import { Avatar } from "./ui/avatar";
 import { Card } from "./ui/card";
 import { Kbd } from "./ui/kbd";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarSeparator } from "./ui/sidebar";
 import { type PinnableApp, appOf, railApps } from "../lib/apps";
@@ -50,7 +43,12 @@ function RailLink({ to, label, icon, current, badge }: { to: string; label: stri
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild size="icon" isActive={current} tooltip={label}>
-        <Link to={to} prefetch="intent" aria-current={current ? "page" : undefined} aria-label={badge && badge.count > 0 ? `${label}, ${badge.count} unread` : label}>
+        <Link
+          to={to}
+          prefetch="intent"
+          aria-current={current ? "page" : undefined}
+          aria-label={badge && badge.count > 0 ? `${label}, ${badge.count} unread` : label}
+        >
           {icon}
           {badge && <CountBadge count={badge.count} loud={badge.loud} />}
         </Link>

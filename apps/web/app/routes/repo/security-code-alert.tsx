@@ -39,7 +39,16 @@ export async function action({ params, context, request }: Route.ActionArgs) {
   if (intent === "dismiss") {
     const reason = String(form.get("reason") ?? "");
     if (!REASONS.has(reason)) return { ok: false, error: "Choose a reason." };
-    const done = await securitySuite.setCodeAlertState(user, repo, number, "dismissed", reason as DismissReason, String(form.get("comment") ?? "").trim().slice(0, 500));
+    const done = await securitySuite.setCodeAlertState(
+      user,
+      repo,
+      number,
+      "dismissed",
+      reason as DismissReason,
+      String(form.get("comment") ?? "")
+        .trim()
+        .slice(0, 500),
+    );
     return done.ok ? { ok: true } : { ok: false, error: done.error.message };
   }
   if (intent === "reopen") {
@@ -62,11 +71,15 @@ export default function CodeAlertPage({ loaderData, params }: Route.ComponentPro
       </Link>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h2 className="text-xl font-semibold tracking-tight wrap-break-word">{alert.ruleName && alert.ruleName !== alert.ruleId ? alert.ruleName : shortRule(alert.ruleId)}</h2>
+          <h2 className="text-xl font-semibold tracking-tight wrap-break-word">
+            {alert.ruleName && alert.ruleName !== alert.ruleId ? alert.ruleName : shortRule(alert.ruleId)}
+          </h2>
           <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-muted">
             <span>#{alert.number}</span>
             <SeverityBadge severity={alert.severity} />
-            <Badge tone={alert.state === "open" ? "warn" : "neutral"}>{alert.state === "open" ? "Open" : alert.state === "fixed" ? "Fixed" : "Dismissed"}</Badge>
+            <Badge tone={alert.state === "open" ? "warn" : "neutral"}>
+              {alert.state === "open" ? "Open" : alert.state === "fixed" ? "Fixed" : "Dismissed"}
+            </Badge>
             {alert.dismissedReason && <Badge>{dismissLabel(alert.dismissedReason)}</Badge>}
             <span>{alert.tool}</span>
           </p>
@@ -74,7 +87,13 @@ export default function CodeAlertPage({ loaderData, params }: Route.ComponentPro
         {can.push && (
           <div className="flex items-center gap-2">
             {alert.state === "open" ? (
-              <DismissDialog id={alert.id} title={`Dismiss alert #${alert.number}`} detail={`${where ?? alert.ruleId}`} reasons={CODE_DISMISS_REASONS} action={action} />
+              <DismissDialog
+                id={alert.id}
+                title={`Dismiss alert #${alert.number}`}
+                detail={`${where ?? alert.ruleId}`}
+                reasons={CODE_DISMISS_REASONS}
+                action={action}
+              />
             ) : alert.state === "dismissed" ? (
               <ReopenButton id={alert.id} action={action} />
             ) : null}

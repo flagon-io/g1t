@@ -70,7 +70,13 @@ export function replayable(request: Request): boolean {
  */
 export function resumeFrom(request: Request, response: Response): { validator: string; length: number } | null {
   if (request.method !== "GET" || request.headers.has("range") || response.status !== 200 || response.body === null) return null;
-  if (!(response.headers.get("accept-ranges") ?? "").toLowerCase().split(/[,\s]+/).includes("bytes")) return null;
+  if (
+    !(response.headers.get("accept-ranges") ?? "")
+      .toLowerCase()
+      .split(/[,\s]+/)
+      .includes("bytes")
+  )
+    return null;
   const length = plainLength(response);
   if (length === null || length === 0) return null;
   const etag = response.headers.get("etag");

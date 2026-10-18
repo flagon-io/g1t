@@ -79,38 +79,95 @@ export function SpaceForm({
     <form onSubmit={submit} className="space-y-6">
       <Row label="Name">
         <div className="flex gap-2">
-          <input aria-label="Icon (an emoji)" value={v.icon} onChange={(e) => set("icon", e.target.value)} placeholder="📚" maxLength={8} className={`${FIELD} w-14 text-center`} />
-          <input aria-label="Name" required value={v.name} onChange={(e) => set("name", e.target.value)} placeholder="Engineering" maxLength={80} className={FIELD} />
+          <input
+            aria-label="Icon (an emoji)"
+            value={v.icon}
+            onChange={(e) => set("icon", e.target.value)}
+            placeholder="📚"
+            maxLength={8}
+            className={`${FIELD} w-14 text-center`}
+          />
+          <input
+            aria-label="Name"
+            required
+            value={v.name}
+            onChange={(e) => set("name", e.target.value)}
+            placeholder="Engineering"
+            maxLength={80}
+            className={FIELD}
+          />
         </div>
       </Row>
       <Row label="Description" hint="One line on what belongs here.">
-        <input aria-label="Description" value={v.description} onChange={(e) => set("description", e.target.value)} maxLength={300} placeholder="Specs, runbooks and decisions for the platform team" className={FIELD} />
+        <input
+          aria-label="Description"
+          value={v.description}
+          onChange={(e) => set("description", e.target.value)}
+          maxLength={300}
+          placeholder="Specs, runbooks and decisions for the platform team"
+          className={FIELD}
+        />
       </Row>
       <Row label="Address" hint="In the space's links. Left empty, it comes from the name.">
-        <input aria-label="Address" value={v.slug} onChange={(e) => set("slug", e.target.value.toLowerCase())} placeholder="engineering" pattern="[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?" className={`${FIELD} font-mono`} />
+        <input
+          aria-label="Address"
+          value={v.slug}
+          onChange={(e) => set("slug", e.target.value.toLowerCase())}
+          placeholder="engineering"
+          pattern="[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?"
+          className={`${FIELD} font-mono`}
+        />
       </Row>
-      <Row label="Who it's for" hint={isDefault ? "The General space is always the whole workspace's." : "Members-only spaces are only their members'. Not even owners see them unless added."}>
+      <Row
+        label="Who it's for"
+        hint={
+          isDefault
+            ? "The General space is always the whole workspace's."
+            : "Members-only spaces are only their members'. Not even owners see them unless added."
+        }
+      >
         <SelectField
           aria-label="Who it's for"
           value={v.kind}
           disabled={isDefault}
           onValueChange={(kind) => set("kind", kind as DocSpaceKind)}
-          options={(["workspace", "team", "private"] as DocSpaceKind[]).filter((k) => k !== "team" || teams.length > 0).map((k) => ({ value: k, label: DOC_SPACE_KIND_LABELS[k] }))}
+          options={(["workspace", "team", "private"] as DocSpaceKind[])
+            .filter((k) => k !== "team" || teams.length > 0)
+            .map((k) => ({ value: k, label: DOC_SPACE_KIND_LABELS[k] }))}
           className="h-9 w-full"
         />
       </Row>
       {v.kind === "team" && (
         <Row label="Team">
-          <SelectField aria-label="Team" value={v.team} onValueChange={(team) => set("team", team)} placeholder="Choose a team" options={teams.map((t) => ({ value: t.slug, label: t.name }))} className="h-9 w-full" />
+          <SelectField
+            aria-label="Team"
+            value={v.team}
+            onValueChange={(team) => set("team", team)}
+            placeholder="Choose a team"
+            options={teams.map((t) => ({ value: t.slug, label: t.name }))}
+            className="h-9 w-full"
+          />
         </Row>
       )}
       {v.kind !== "private" && (
         <Row label={v.kind === "team" ? "The team can" : "Everyone can"} hint="Members you add below can be given more.">
-          <SelectField aria-label="What they can do" value={v.default_role} onValueChange={(r) => set("default_role", r as DocRole)} options={roles} className="h-9 w-full" />
+          <SelectField
+            aria-label="What they can do"
+            value={v.default_role}
+            onValueChange={(r) => set("default_role", r as DocRole)}
+            options={roles}
+            className="h-9 w-full"
+          />
         </Row>
       )}
       <Row label="Projects" hint="owner/name, comma separated. Artifacts can be filtered by project.">
-        <input aria-label="Projects" value={v.projects} onChange={(e) => set("projects", e.target.value)} placeholder="acme/web, acme/api" className={`${FIELD} font-mono`} />
+        <input
+          aria-label="Projects"
+          value={v.projects}
+          onChange={(e) => set("projects", e.target.value)}
+          placeholder="acme/web, acme/api"
+          className={`${FIELD} font-mono`}
+        />
       </Row>
       {error && <ErrorText>{error}</ErrorText>}
       <div className="flex justify-end">

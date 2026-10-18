@@ -34,10 +34,10 @@ which time caps were set, changed or cleared.
 How long each kind of run may take, in minutes. By default:
 
 | Kind of run | Minutes |
-| --- | --- |
-| Checks | 45 |
-| Merge queue | 45 |
-| Merge check | 10 |
+| ----------- | ------- |
+| Checks      | 45      |
+| Merge queue | 45      |
+| Merge check | 10      |
 
 At most 240 minutes. A run that reaches its time cap fails, with
 "Stopped: it reached its time cap of 45 minutes." The sandbox is stopped
