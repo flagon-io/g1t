@@ -1,6 +1,7 @@
-//! What sessions touched, and the issues and pull requests they worked on.
+//! What sessions touched, and the work items and pull requests they worked
+//! on.
 //!
-//! A session is tied to an issue or pull request in as many ways as it
+//! A session is tied to a work item or pull request in as many ways as it
 //! was (`LinkVia`): attached when it started or updated, a claim it made,
 //! a pull request it opened or a branch or commit of one, a
 //! `G1t-Session:` trailer on a commit pushed to one, and `#N` in its
@@ -21,6 +22,7 @@ use worker::Result;
 
 use super::updates::push_delivery;
 use super::{SESSION_COLUMNS, SessionRow};
+use crate::items::Named;
 use crate::Work;
 
 /// The start (`?2` characters) of the first prompt each session in `?1`
@@ -34,17 +36,18 @@ pub(crate) const FIRST_PROMPTS: &str = "SELECT session_id, text FROM (
 
 /// The most `#N` of one text looked up.
 const MAX_REFS: usize = 10;
-/// The most issues and pull requests a session's links name.
+/// The most work items and pull requests a session's links name.
 const MAX_LINKED: usize = 40;
 /// The most commits of one push read for trailers.
 const MAX_TRAILER_COMMITS: u32 = 20;
 /// The most subagents a tree shows.
 pub(crate) const MAX_TREE: u32 = 200;
 
-/// Ties session `?1` of repository `?2` to issue or pull request (`?3`)
-/// `?4` by way of `?5`, at `?6`; nothing when it is tied that way already.
-pub(crate) const INSERT_LINK: &str = "INSERT INTO session_links (session_id, repo_id, kind, number, via, at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT DO NOTHING";
+/// Ties session `?1` of repository `?2` to pull request `?4` (`?3` `pull`,
+/// `?7` empty) or work item `?7` (`?3` `item`, `?4` 0) by way of `?5`, at
+/// `?6`; nothing when it is tied that way already.
+pub(crate) const INSERT_LINK: &str = "INSERT INTO session_links (session_id, repo_id, kind, number, via, at, item_id)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ON CONFLICT DO NOTHING";
 
 /// Records that session `?1` of repository `?2` touched (`?3`) `?4`, at
 /// `?5`; returns it only the first time.
@@ -175,7 +178,9 @@ struct NumberOnly {
 pub(crate) struct LinkRow {
     session_id: String,
     kind: String,
-    number: u32,
+    /// A pull request's number, or a work item's in its workspace.
+    #[serde(default)]
+    number: Option<u32>,
     via: String,
 }
 
@@ -200,38 +205,52 @@ struct SkillRow {
     uses: u32,
 }
 
-fn kind_name(kind: LinkKind) -> &'static str {
-    match kind {
-        LinkKind::Issue => "issue",
-        LinkKind::Pull => "pull",
-    }
-}
-
 impl Work {
-    /// Ties `session_id` to an issue or pull request one way. Never fails
-    /// what it follows: a problem is logged.
-    pub(crate) async fn link(&self, session_id: &str, repo_id: &str, kind: LinkKind, number: u32, via: LinkVia) {
+    /// Ties `session_id` to a pull request or a work item one way. Never
+    /// fails what it follows: a problem is logged.
+    async fn link(&self, session_id: &str, repo_id: &str, kind: LinkKind, number: u32, item_id: &str, via: LinkVia) {
         let at = rfc3339(now_ms());
         let linked = async {
             self.db
                 .prepare(INSERT_LINK)
-                .bind(&[session_id.into(), repo_id.into(), kind_name(kind).into(), number.into(), via.as_str().into(), at.into()])?
+                .bind(&[
+                    session_id.into(),
+                    repo_id.into(),
+                    kind.as_str().into(),
+                    number.into(),
+                    via.as_str().into(),
+                    at.into(),
+                    item_id.into(),
+                ])?
                 .run()
                 .await
         };
         if let Err(error) = linked.await {
-            worker::console_error!("session {session_id}: not tied to {} #{number}: {error}", kind_name(kind));
+            worker::console_error!("session {session_id}: not tied to {} #{number}{item_id}: {error}", kind.as_str());
         }
     }
 
-    /// Ties a session to the issues and pull requests `#N` in `text` names
-    /// that the repository has.
+    /// Ties `session_id` to pull request `number` of `repo_id` one way.
+    pub(crate) async fn link_pull(&self, session_id: &str, repo_id: &str, number: u32, via: LinkVia) {
+        self.link(session_id, repo_id, LinkKind::Pull, number, "", via).await;
+    }
+
+    /// Ties `session_id`, of `repo_id`, to work item `item_id` one way.
+    pub(crate) async fn link_item(&self, session_id: &str, repo_id: &str, item_id: &str, via: LinkVia) {
+        self.link(session_id, repo_id, LinkKind::Item, 0, item_id, via).await;
+    }
+
+    /// Ties a session to what `#N` in `text` names, read in its repository
+    /// (`refs`): one of its pull requests, or a work item of its workspace.
     pub(crate) async fn link_refs(&self, session_id: &str, repo_id: &str, text: &str) -> Result<()> {
+        let Some(workspace) = self.repo_workspace(repo_id).await? else {
+            return Ok(());
+        };
         for number in refs_in(text).into_iter().take(MAX_REFS) {
-            if self.issue(repo_id, number).await?.is_some() {
-                self.link(session_id, repo_id, LinkKind::Issue, number, LinkVia::Ref).await;
-            } else if self.pull(repo_id, number).await?.is_some() {
-                self.link(session_id, repo_id, LinkKind::Pull, number, LinkVia::Ref).await;
+            match self.lookup_ref(Some(repo_id), &workspace, number).await?.named(true) {
+                Some(Named::PullHere) => self.link_pull(session_id, repo_id, number, LinkVia::Ref).await,
+                Some(Named::Item(id)) => self.link_item(session_id, repo_id, &id, LinkVia::Ref).await,
+                _ => {}
             }
         }
         Ok(())
@@ -250,7 +269,7 @@ impl Work {
             .await?
             .results::<NumberOnly>()?;
         for pull in pulls {
-            self.link(session_id, repo_id, LinkKind::Pull, pull.number, LinkVia::Branch).await;
+            self.link_pull(session_id, repo_id, pull.number, LinkVia::Branch).await;
         }
         Ok(())
     }
@@ -266,7 +285,7 @@ impl Work {
             .await?
             .results::<NumberOnly>()?;
         for pull in pulls {
-            self.link(session_id, repo_id, LinkKind::Pull, pull.number, LinkVia::Commit).await;
+            self.link_pull(session_id, repo_id, pull.number, LinkVia::Commit).await;
         }
         Ok(())
     }
@@ -275,9 +294,23 @@ impl Work {
     /// tells it and the other sessions on the same files that they
     /// overlap. Returns how many were new.
     pub(crate) async fn record_touches(&self, session: &Session, touches: &[NewTouch]) -> Result<u32> {
-        let touches = tidy_touches(touches);
+        let mut touches = tidy_touches(touches);
         if touches.is_empty() {
             return Ok(0);
+        }
+        // A work item is kept by its id: named by its number in the
+        // repository's workspace, one that is none is left out.
+        if touches.iter().any(|touch| touch.kind == TouchKind::Item) {
+            let workspace = self.repo_workspace(&session.repo_id).await?.unwrap_or_default();
+            let mut kept = Vec::with_capacity(touches.len());
+            for mut touch in touches {
+                if touch.kind == TouchKind::Item {
+                    let Some(held) = self.item(&workspace, touch.value.parse().unwrap_or_default()).await? else { continue };
+                    touch.value = held.item.id;
+                }
+                kept.push(touch);
+            }
+            touches = kept;
         }
         let at = rfc3339(now_ms());
         let mut statements = Vec::with_capacity(touches.len());
@@ -302,12 +335,8 @@ impl Work {
         for touch in &new {
             let number = touch.value.parse::<u32>().ok();
             match (touch.kind, number) {
-                (TouchKind::Pull, Some(number)) => self.link(&session.id, &session.repo_id, LinkKind::Pull, number, LinkVia::Opened).await,
-                (TouchKind::Issue, Some(number)) => {
-                    if self.issue(&session.repo_id, number).await?.is_some() {
-                        self.link(&session.id, &session.repo_id, LinkKind::Issue, number, LinkVia::Ref).await;
-                    }
-                }
+                (TouchKind::Pull, Some(number)) => self.link_pull(&session.id, &session.repo_id, number, LinkVia::Opened).await,
+                (TouchKind::Item, _) => self.link_item(&session.id, &session.repo_id, &touch.value, LinkVia::Ref).await,
                 (TouchKind::Branch, _) => self.link_branch(&session.id, &session.repo_id, &touch.value).await?,
                 (TouchKind::Commit, _) => self.link_commit(&session.id, &session.repo_id, &touch.value).await?,
                 (TouchKind::File, _) => files.push(touch.value.clone()),
@@ -360,21 +389,21 @@ impl Work {
             let other = other.at(now_ms());
             let ours = SessionOverlapDetected {
                 repo_id: session.repo_id.clone(),
-                number: session.pull.or(session.issue),
+                number: session.pull.or(session.item),
                 session_id: session.id.clone(),
                 other_session_id: other.id.clone(),
                 other_actor: other.actor.username.clone(),
                 files: files.clone(),
-                issue: session.issue,
-                other_issue: other.issue,
+                item: session.item,
+                other_item: other.item,
             };
             let theirs = SessionOverlapDetected {
-                number: other.pull.or(other.issue),
+                number: other.pull.or(other.item),
                 session_id: other.id.clone(),
                 other_session_id: session.id.clone(),
                 other_actor: session.actor.username.clone(),
-                issue: other.issue,
-                other_issue: session.issue,
+                item: other.item,
+                other_item: session.item,
                 ..ours.clone()
             };
             // The pair is noticed once, and each side told, in one change.
@@ -473,10 +502,15 @@ impl Work {
     /// What a tree of sessions touched, its links, and the skills it used.
     pub(crate) async fn tree_facts(&self, repo_id: &str, ids: &[String]) -> Result<(Vec<SessionTouch>, Vec<SessionLink>, Vec<SessionSkill>)> {
         let ids_json = serde_json::to_string(ids)?;
+        // A work item touched is shown by its number.
         let touches = self
             .db
             .prepare(
-                "SELECT session_id, kind, value, at FROM session_touches
+                "SELECT session_id, kind,
+                   CASE WHEN kind = 'item'
+                     THEN COALESCE((SELECT CAST(number AS TEXT) FROM work_items WHERE id = session_touches.value), value)
+                     ELSE value END AS value,
+                   at FROM session_touches
                  WHERE session_id IN (SELECT value FROM json_each(?)) ORDER BY at, rowid LIMIT 1000",
             )
             .bind(&[ids_json.as_str().into()])?
@@ -495,7 +529,10 @@ impl Work {
         let records: Vec<LinkRecord> = self
             .db
             .prepare(
-                "SELECT session_id, kind, number, via FROM session_links
+                "SELECT session_id, kind,
+                   CASE WHEN kind = 'item' THEN (SELECT number FROM work_items WHERE id = session_links.item_id)
+                     ELSE number END AS number,
+                   via FROM session_links
                  WHERE session_id IN (SELECT value FROM json_each(?)) ORDER BY at",
             )
             .bind(&[ids_json.as_str().into()])?
@@ -505,13 +542,14 @@ impl Work {
             .into_iter()
             .filter_map(|row| {
                 let kind = match row.kind.as_str() {
-                    "issue" => LinkKind::Issue,
+                    "item" => LinkKind::Item,
                     "pull" => LinkKind::Pull,
                     _ => return None,
                 };
-                Some(LinkRecord { session_id: row.session_id, kind, number: row.number, via: LinkVia::parse(&row.via)? })
+                Some(LinkRecord { session_id: row.session_id, kind, number: row.number?, via: LinkVia::parse(&row.via)? })
             })
             .collect();
+        let workspace = self.repo_workspace(repo_id).await?.unwrap_or_default();
         let mut known = HashMap::new();
         let mut wanted: Vec<(LinkKind, u32)> = Vec::new();
         for record in &records {
@@ -521,7 +559,7 @@ impl Work {
         }
         for (kind, number) in wanted.into_iter().take(MAX_LINKED) {
             let found = match kind {
-                LinkKind::Issue => self.issue(repo_id, number).await?.map(|issue| (issue.title, state_name(&issue.state))),
+                LinkKind::Item => self.item(&workspace, number).await?.map(|held| (held.item.title, state_name(&held.item.state))),
                 LinkKind::Pull => self.pull(repo_id, number).await?.map(|pull| (pull.title, state_name(&pull.status))),
             };
             if let Some(found) = found {
@@ -570,7 +608,7 @@ impl Work {
                 .results::<IdRow>()?;
             for session in &pushed_by {
                 for pull in pulls {
-                    self.link(&session.id, repo_id, LinkKind::Pull, pull.number, LinkVia::Branch).await;
+                    self.link_pull(&session.id, repo_id, pull.number, LinkVia::Branch).await;
                 }
             }
             // Trailers are read only while someone records sessions here.
@@ -609,7 +647,7 @@ impl Work {
                     continue;
                 }
                 for pull in pulls {
-                    self.link(&id, repo_id, LinkKind::Pull, pull.number, LinkVia::Trailer).await;
+                    self.link_pull(&id, repo_id, pull.number, LinkVia::Trailer).await;
                 }
             }
             Ok(())
@@ -619,13 +657,26 @@ impl Work {
         }
     }
 
-    /// Sessions tied to an issue or pull request (`kind`, `number`) by a
-    /// link, by id.
-    pub(crate) async fn linked_sessions(&self, repo_id: &str, kind: LinkKind, number: u32) -> Result<Vec<String>> {
+    /// Sessions tied to a repository's pull request by a link, by id.
+    pub(crate) async fn linked_sessions(&self, repo_id: &str, number: u32) -> Result<Vec<String>> {
         Ok(self
             .db
-            .prepare("SELECT DISTINCT session_id AS id FROM session_links WHERE repo_id = ? AND kind = ? AND number = ? LIMIT 200")
-            .bind(&[repo_id.into(), kind_name(kind).into(), number.into()])?
+            .prepare("SELECT DISTINCT session_id AS id FROM session_links WHERE repo_id = ? AND kind = 'pull' AND number = ? LIMIT 200")
+            .bind(&[repo_id.into(), number.into()])?
+            .all()
+            .await?
+            .results::<IdRow>()?
+            .into_iter()
+            .map(|row| row.id)
+            .collect())
+    }
+
+    /// A repository's sessions tied to a work item by a link, by id.
+    pub(crate) async fn item_sessions(&self, repo_id: &str, item_id: &str) -> Result<Vec<String>> {
+        Ok(self
+            .db
+            .prepare("SELECT DISTINCT session_id AS id FROM session_links WHERE repo_id = ? AND kind = 'item' AND item_id = ? LIMIT 200")
+            .bind(&[repo_id.into(), item_id.into()])?
             .all()
             .await?
             .results::<IdRow>()?
@@ -673,7 +724,7 @@ impl Work {
     }
 }
 
-/// An issue's state or a pull request's status, as its JSON name.
+/// A work item's state or a pull request's status, as its JSON name.
 fn state_name<T: serde::Serialize>(state: &T) -> String {
     serde_json::to_value(state).ok().and_then(|value| value.as_str().map(str::to_owned)).unwrap_or_default()
 }

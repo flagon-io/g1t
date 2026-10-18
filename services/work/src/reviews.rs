@@ -23,7 +23,8 @@ pub(crate) use g1t_contracts::identity::{AGENT_ID, AGENT_NAME};
 struct OtherRow {
     number: u32,
     title: String,
-    issue_number: Option<u32>,
+    #[serde(default)]
+    item_number: Option<u32>,
     files: Option<String>,
 }
 
@@ -95,7 +96,7 @@ impl Work {
                 (!paths.is_empty()).then_some(Overlap {
                     number: other.number,
                     title: other.title,
-                    issue: other.issue_number,
+                    item: other.item_number,
                     paths,
                 })
             })
@@ -107,7 +108,8 @@ impl Work {
         self
             .db
             .prepare(
-                "SELECT number, title, issue_number, files FROM pulls
+                "SELECT number, title, (SELECT number FROM work_items WHERE work_items.id = pulls.item_id) AS item_number,
+                   files FROM pulls
                  WHERE repo_id = ? AND id != ? AND status IN ('draft', 'open')
                  ORDER BY number LIMIT 200",
             )

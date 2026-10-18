@@ -27,7 +27,7 @@
 //! likely cause.
 //!
 //! **Telling the work.** The answer goes on the pull request's and its
-//! issue's timelines, into the pull request's session, as a decision
+//! work item's timelines, into the pull request's session, as a decision
 //! record (`integration_failure`, tested) and as `integration.failed`. A
 //! passing combination is `integration.passed`, and a decision too.
 //!
@@ -354,7 +354,7 @@ fn landed_clause(landed: &[u32]) -> String {
     }
 }
 
-/// The note on its issue, and the one-line summary of the decision.
+/// The note on its work item, and the one-line summary of the decision.
 pub(crate) fn summary(number: u32, suspects: &[u32], landed: &[u32], check: &FailedCheck) -> String {
     let what = what_failed(check);
     if suspects.is_empty() && !landed.is_empty() {
@@ -927,7 +927,7 @@ impl Work {
 
     // --- Telling the work -------------------------------------------------------
 
-    /// Tells the pull request, its issue, its session and anyone following
+    /// Tells the pull request, its work item, its session and anyone following
     /// that its combined state failed, and who it failed with. `landed`:
     /// with nothing ahead, the pull requests merged into the default branch
     /// since it branched.
@@ -947,14 +947,15 @@ impl Work {
         let note = pull_note(&ahead, suspects, bisected, landed, &failure.check);
         self.note(&row.repo_id, pull.number, g1t, &note).await?;
         let summary = summary(pull.number, suspects, landed, &failure.check);
-        if let Some(issue) = pull.issue {
-            self.note(&row.repo_id, issue, g1t, &format!("noted: {summary}")).await?;
+        let item = self.pull_item_id(&pull.id).await?;
+        if let Some(item) = &item {
+            self.note_item(item, g1t, &format!("noted: {summary}")).await?;
         }
         self.session_note(pull, &format!("g1t {note}")).await?;
         self.keep_decision_quietly(
             &row.repo_id,
             NewDecision {
-                issue: pull.issue,
+                item,
                 pull: Some(pull.number),
                 session_id: None,
                 actor: None,
@@ -981,7 +982,7 @@ impl Work {
             pull_id: pull.id.clone(),
             number: pull.number,
             pull: pull.number,
-            issue: pull.issue,
+            item: pull.item,
             combination,
             check: failure.check.clone(),
             bisected,
@@ -1009,7 +1010,7 @@ impl Work {
         self.keep_decision_quietly(
             &row.repo_id,
             NewDecision {
-                issue: pull.issue,
+                item: self.pull_item_id(&pull.id).await?,
                 pull: Some(pull.number),
                 session_id: None,
                 actor: None,
@@ -1026,7 +1027,7 @@ impl Work {
             pull_id: pull.id.clone(),
             number: pull.number,
             pull: pull.number,
-            issue: pull.issue,
+            item: pull.item,
             combination,
             commit: commit.map(str::to_owned),
         })?;
@@ -1034,7 +1035,7 @@ impl Work {
     }
 
     /// Appends a note by g1t to a pull request's session, and to the
-    /// harness sessions working on it or its issue (coordination/).
+    /// harness sessions working on it or its work item (coordination/).
     pub(crate) async fn session_note(&self, pull: &Pull, text: &str) -> Result<()> {
         self.note_sessions(pull, text).await;
         let now = rfc3339(now_ms());
@@ -1112,7 +1113,7 @@ impl Work {
                 repo,
                 number: pull.number,
                 summary: String::new(),
-                keep_issue_open: row.keep_issue_open != 0,
+                keep_item_open: row.keep_item_open != 0,
                 ignore_checks: false,
                 bypass_rules: false,
                 merge_method: None,

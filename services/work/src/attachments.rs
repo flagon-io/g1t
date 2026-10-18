@@ -1,4 +1,4 @@
-//! Files put in an issue's, a pull request's or a comment's Markdown
+//! Files put in a work item's, a pull request's or a comment's Markdown
 //! (`upload_attachment`): whoever may comment on a repository may add one,
 //! as an agent shows a screenshot of its preview in a pull request instead
 //! of committing the image. The bytes go in the usercontent namespace

@@ -1,4 +1,4 @@
-//! The work service: issues, pull requests, comments and sessions.
+//! The work service: work items, pull requests, comments and sessions.
 //!
 //! Other services reach it over `POST /rpc/<method>`; see
 //! `g1t_contracts::work` for the methods and their arguments. It also
@@ -21,8 +21,13 @@ mod head_repo;
 mod inbox;
 mod insights;
 mod integration;
+mod items;
+#[cfg(test)]
+mod items_tests;
 mod labels;
 mod lifecycle;
+#[cfg(test)]
+mod migrated;
 mod merge_message;
 mod mergeability;
 mod merging;
@@ -39,10 +44,11 @@ mod runs;
 mod settings;
 mod statuses;
 mod team_reviews;
+mod work_migration;
 
 use g1t_contracts::events::{
-    ChangedFrom, CommentChanges, CommentCreated, CommentDeleted, CommentEdited, DeletedComment, Event, IssueEvent,
-    NewEvent, Publish, PullEvent, SessionAppended,
+    ChangedFrom, CommentChanges, CommentCreated, CommentDeleted, CommentEdited, CommentOn, DeletedComment, Event, NewEvent,
+    Publish, PullEvent, SessionAppended,
 };
 use g1t_contracts::identity::UsernameArgs;
 use g1t_contracts::repos::{
@@ -58,35 +64,92 @@ use g1t_kit::{args, now_ms, reply, rpc_method};
 use serde::Serialize;
 use worker::wasm_bindgen::JsValue;
 use worker::{
-    Context, D1Database, Env, Fetcher, MessageBatch, MessageExt, Request, Response, Result, event,
+    Context, D1Database, Env, Fetcher, MessageBatch, MessageExt, Request, Response, Result, ScheduleContext, ScheduledEvent,
+    event,
 };
 
+use items::{Held, ItemRow, ITEM_COLUMNS};
 use retired::writable;
-use rows::{CommentRow, IssueRow, MovedRow, NumberRow, PULL_COLUMNS, PullRow, SessionRow, Snapshot};
+use rows::{CommentRow, MovedRow, NumberRow, PULL_COLUMNS, PullRow, SessionRow, Snapshot};
 
 pub(crate) const SOURCE: &str = "work";
 const MAX_ENTRY_BATCH: usize = 200;
 pub(crate) const MAX_ENTRY_CHARS: usize = 64_000;
 const MAX_TITLE_CHARS: usize = 200;
 const SESSION_PAGE: u32 = 500;
-const LIST_PAGE: u32 = 100;
+pub(crate) const LIST_PAGE: u32 = 100;
 const MAX_ASSIGNEES: usize = 10;
 pub(crate) const UNVERIFIED: &str = "Confirm your email address first. Check your inbox, or resend the link from the banner on g1t.sh.";
 
-const ISSUE_COLUMNS: &str = "issues.*,
-  (SELECT count(*) FROM pulls WHERE pulls.issue_id = issues.id) AS pull_count,
-  (SELECT agent FROM pulls
-   WHERE pulls.issue_id = issues.id AND pulls.status IN ('draft', 'open')
-     AND pulls.fork_repo_id IS NOT NULL
-   ORDER BY pulls.number DESC LIMIT 1) AS agent,
-  (SELECT count(*) FROM comments
-   WHERE comments.repo_id = issues.repo_id AND comments.number = issues.number
-     AND comments.kind = 'comment') AS comment_count,
-  (SELECT title FROM milestones
-   WHERE milestones.repo_id = issues.repo_id AND milestones.number = issues.milestone) AS milestone_title";
+/// Where a note or a comment goes: a pull request of a repository, by its
+/// number, or a work item, by its id.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum On<'a> {
+    Pull(&'a str, u32),
+    Item(&'a str),
+}
 
-fn no_issue<T>() -> Outcome<T> {
-    Outcome::fail(FailureCode::NotFound, "Issue not found.")
+/// What a comment, a reaction or a set of labels is on: a pull request of
+/// a repository, or a work item. See `AddCommentArgs`.
+#[derive(Clone, Debug)]
+#[allow(clippy::large_enum_variant)]
+pub(crate) enum Thread {
+    Pull(Repo, Pull),
+    Item(Held),
+}
+
+impl Thread {
+    /// Where its comments and notes are kept.
+    pub(crate) fn on(&self) -> On<'_> {
+        match self {
+            Thread::Pull(_, pull) => On::Pull(&pull.repo_id, pull.number),
+            Thread::Item(held) => On::Item(&held.item.id),
+        }
+    }
+
+    /// The id its description's reactions are kept under.
+    pub(crate) fn subject(&self) -> &str {
+        match self {
+            Thread::Pull(_, pull) => &pull.id,
+            Thread::Item(held) => &held.item.id,
+        }
+    }
+
+    /// Where it is, as the `comment.*` events say.
+    pub(crate) fn comment_on(&self) -> CommentOn {
+        match self {
+            Thread::Pull(_, pull) => CommentOn {
+                repo_id: Some(pull.repo_id.clone()),
+                number: pull.number,
+                pull_id: Some(pull.id.clone()),
+                ..CommentOn::default()
+            },
+            Thread::Item(held) => CommentOn {
+                repo_id: held.event_repo().map(str::to_owned),
+                number: held.item.number,
+                item_id: Some(held.item.id.clone()),
+                workspace: Some(held.item.workspace.clone()),
+                repo_ids: held.repo_ids(),
+                ..CommentOn::default()
+            },
+        }
+    }
+
+    /// The repository its events are filed under.
+    pub(crate) fn event_repo(&self) -> Option<&str> {
+        match self {
+            Thread::Pull(repo, _) => Some(&repo.id),
+            Thread::Item(held) => held.event_repo(),
+        }
+    }
+
+    /// Whether `actor` may do `capability` on it.
+    pub(crate) fn may(&self, actor: &User, capability: Capability) -> bool {
+        match self {
+            Thread::Pull(repo, _) => access::can(Some(actor), repo, capability),
+            Thread::Item(held) => held.may(Some(actor), capability),
+        }
+    }
 }
 
 fn no_pull<T>() -> Outcome<T> {
@@ -111,6 +174,13 @@ impl StoredBehind {
     }
 }
 
+/// A pull request's work item, by id, read beside its row.
+#[derive(serde::Deserialize)]
+struct PullItemRow {
+    #[serde(default)]
+    item_id: Option<String>,
+}
+
 /// Refuses `actor` unless their role on `repo` has `capability`: not found
 /// when they cannot read it, forbidden with the role it needs otherwise.
 pub(crate) fn allowed(actor: Option<&User>, repo: &Repo, capability: Capability) -> Outcome<()> {
@@ -124,11 +194,11 @@ pub(crate) fn allowed(actor: Option<&User>, repo: &Repo, capability: Capability)
     }
 }
 
-fn optional(value: &Option<String>) -> JsValue {
+pub(crate) fn optional(value: &Option<String>) -> JsValue {
     value.as_deref().map_or(JsValue::NULL, JsValue::from)
 }
 
-fn optional_number(value: Option<u32>) -> JsValue {
+pub(crate) fn optional_number(value: Option<u32>) -> JsValue {
     value.map_or(JsValue::NULL, JsValue::from)
 }
 
@@ -148,7 +218,7 @@ fn stored_base(base: &str, repo: &Repo) -> Option<String> {
 }
 
 /// The lowercase name a `State` is stored and sent as.
-fn state_name(state: Option<State>) -> Option<&'static str> {
+pub(crate) fn state_name(state: Option<State>) -> Option<&'static str> {
     state.map(|state| match state {
         State::Open => "open",
         State::Closed => "closed",
@@ -156,7 +226,7 @@ fn state_name(state: Option<State>) -> Option<&'static str> {
 }
 
 /// A trimmed title, or why it cannot be used.
-fn valid_title(title: &str) -> std::result::Result<&str, &'static str> {
+pub(crate) fn valid_title(title: &str) -> std::result::Result<&str, &'static str> {
     let title = title.trim();
     if title.is_empty() {
         Err("A title is required.")
@@ -291,10 +361,22 @@ impl Work {
         actor: Option<String>,
         data: serde_json::Value,
     ) -> Result<()> {
+        self.publish_on(kind, Some(repo_id), actor, data).await
+    }
+
+    /// Publishes an event about a repository, or about none (a work item
+    /// filed in its workspace alone).
+    pub(crate) async fn publish_on(
+        &self,
+        kind: &'static str,
+        repo_id: Option<&str>,
+        actor: Option<String>,
+        data: serde_json::Value,
+    ) -> Result<()> {
         let event = NewEvent {
             kind,
             source: SOURCE,
-            repo_id: Some(repo_id.to_owned()),
+            repo_id: repo_id.map(str::to_owned),
             actor,
             data,
         };
@@ -328,35 +410,6 @@ impl Work {
         Ok(found)
     }
 
-    /// The next number in the repository's sequence. Taking it is one
-    /// statement, so concurrent opens cannot be given the same number.
-    async fn next_number(&self, repo_id: &str) -> Result<u32> {
-        let row = self
-            .db
-            .prepare(
-                "INSERT INTO counters (repo_id, last) VALUES (?, 1)
-                 ON CONFLICT (repo_id) DO UPDATE SET last = last + 1
-                 RETURNING last AS n",
-            )
-            .bind(&[repo_id.into()])?
-            .first::<NumberRow>(None)
-            .await?;
-        row.map(|row| row.n)
-            .ok_or_else(|| worker::Error::RustError("no number was assigned".into()))
-    }
-
-    async fn issue(&self, repo_id: &str, number: u32) -> Result<Option<Issue>> {
-        Ok(self
-            .db
-            .prepare(format!(
-                "SELECT {ISSUE_COLUMNS} FROM issues WHERE repo_id = ? AND number = ?"
-            ))
-            .bind(&[repo_id.into(), number.into()])?
-            .first::<IssueRow>(None)
-            .await?
-            .map(Issue::from))
-    }
-
     async fn pull(&self, repo_id: &str, number: u32) -> Result<Option<Pull>> {
         Ok(self
             .db
@@ -367,19 +420,18 @@ impl Work {
             .map(Pull::from))
     }
 
-    /// The repository and one of its issues, as seen by `viewer`.
-    async fn issue_at(
-        &self,
-        path: &RepoPath,
-        number: u32,
-        viewer: &Viewer,
-    ) -> Result<Outcome<(Repo, Issue)>> {
-        let Outcome::Ok(repo) = self.repo(path, viewer).await? else {
-            return Ok(no_issue());
-        };
-        Ok(match self.issue(&repo.id, number).await? {
-            Some(issue) => Outcome::Ok((repo, issue)),
-            None => no_issue(),
+    /// The thread a pair of `repo` (a pull request of it) or `workspace`
+    /// (a work item of it) and `number` names, if `viewer` may read it.
+    pub(crate) async fn thread(&self, viewer: &Viewer, repo: Option<&RepoPath>, workspace: &str, number: u32) -> Result<Outcome<Thread>> {
+        Ok(match repo {
+            Some(path) => match self.pull_at(path, number, viewer).await? {
+                Outcome::Ok((repo, pull)) => Outcome::Ok(Thread::Pull(repo, pull)),
+                Outcome::Fail(failure) => Outcome::Fail(failure),
+            },
+            None => match self.item_for(viewer, workspace, number, Capability::Read).await? {
+                Outcome::Ok(held) => Outcome::Ok(Thread::Item(held)),
+                Outcome::Fail(failure) => Outcome::Fail(failure),
+            },
         })
     }
 
@@ -399,10 +451,10 @@ impl Work {
         })
     }
 
-    /// Records something that happened to an issue or a pull request, so
-    /// that it shows in the conversation where it happened. `text` is what
-    /// `author` did, as the rest of a sentence starting with their name:
-    /// an id and a name, or someone acting, as [`rows::By`] records them.
+    /// Records something that happened to a pull request, so that it shows
+    /// in the conversation where it happened. `text` is what `author` did,
+    /// as the rest of a sentence starting with their name: an id and a
+    /// name, or someone acting, as [`rows::By`] records them.
     pub(crate) async fn note<'a>(
         &self,
         repo_id: &str,
@@ -410,19 +462,28 @@ impl Work {
         author: impl Into<rows::By<'a>>,
         text: &str,
     ) -> Result<()> {
-        let author = author.into();
+        self.note_on(On::Pull(repo_id, number), author.into(), text).await
+    }
+
+    /// Records something that happened, on a pull request or a work item.
+    pub(crate) async fn note_on(&self, on: On<'_>, author: rows::By<'_>, text: &str) -> Result<()> {
         let now = now_ms();
+        let (repo_id, number, item_id) = match on {
+            On::Pull(repo_id, number) => (JsValue::from(repo_id), JsValue::from(number), JsValue::NULL),
+            On::Item(item_id) => (JsValue::NULL, JsValue::NULL, JsValue::from(item_id)),
+        };
         self.db
             .prepare(
                 "INSERT INTO comments
-                   (id, repo_id, number, author_id, author_name, body, kind, created_at,
+                   (id, repo_id, number, item_id, author_id, author_name, body, kind, created_at,
                     acting_for_id, acting_for_name)
-                 VALUES (?, ?, ?, ?, ?, ?, 'event', ?, ?, ?)",
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 'event', ?, ?, ?)",
             )
             .bind(&[
                 new_id("cmt", now).into(),
-                repo_id.into(),
-                number.into(),
+                repo_id,
+                number,
+                item_id,
                 author.id.into(),
                 author.name.into(),
                 text.into(),
@@ -437,10 +498,9 @@ impl Work {
 
     /// Notes who was added to and removed from a list of people, such as
     /// "assigned ana" or "requested a review from g1t".
-    async fn note_changes(
+    pub(crate) async fn note_changes(
         &self,
-        repo_id: &str,
-        number: u32,
+        on: On<'_>,
         actor: &User,
         before: &[String],
         after: &[String],
@@ -464,24 +524,12 @@ impl Work {
             } else {
                 format!("{added} {}", joined(new))
             };
-            self.note(repo_id, number, who, &text).await?;
+            self.note_on(on, who.into(), &text).await?;
         }
         if !gone.is_empty() {
-            self.note(repo_id, number, who, &format!("{removed} {}", joined(gone)))
-                .await?;
+            self.note_on(on, who.into(), &format!("{removed} {}", joined(gone))).await?;
         }
         Ok(())
-    }
-
-    fn issue_event(issue: &Issue) -> IssueEvent {
-        IssueEvent {
-            issue_id: issue.id.clone(),
-            repo_id: issue.repo_id.clone(),
-            number: issue.number,
-            author: Some((&issue.author).into()),
-            requested_by: issue.requested_by.as_ref().map(Into::into),
-            ..IssueEvent::default()
-        }
     }
 
     /// The commit a pull request's change is at in git right now: its
@@ -506,331 +554,9 @@ impl Work {
             number: pull.number,
             author: Some((&pull.author).into()),
             requested_by: pull.requested_by.as_ref().map(Into::into),
-            issue: pull.issue,
+            item: pull.item,
             ..PullEvent::default()
         }
-    }
-
-    // --- Issues ------------------------------------------------------------
-
-    async fn open_issue(&self, a: OpenIssueArgs) -> Result<Outcome<Issue>> {
-        if !a.actor.verified {
-            return Ok(Outcome::fail(FailureCode::Forbidden, UNVERIFIED));
-        }
-        let title = match valid_title(&a.title) {
-            Ok(title) => title,
-            Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
-        };
-        let Some(labels) = normalize_labels(&a.labels) else {
-            return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                format!("An issue can have up to {MAX_LABELS} labels of up to {MAX_LABEL_CHARS} characters each."),
-            ));
-        };
-        let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
-        check!(writable(&repo));
-        // Turned off, or a fork that has not turned them on: those already
-        // there stay readable.
-        if !self.issues_enabled(&repo).await? {
-            return Ok(Outcome::fail(FailureCode::Forbidden, settings::issues_off(&repo)));
-        }
-        // Labels it does not have yet are made for someone who may triage;
-        // anyone else picks from those there are.
-        let colors = check!(self.ensure_labels(&a.actor, &repo, &labels).await?);
-        let milestone = match a.milestone.filter(|number| *number > 0) {
-            Some(number) => {
-                check!(allowed(Some(&a.actor), &repo, Capability::Triage));
-                check!(self.milestone_ref(&repo.id, number).await?)
-            }
-            None => None,
-        };
-        // Commands given the old way are words now: added to the body
-        // under "Definition of done". What has to pass to merge is
-        // the branch's required checks.
-        let body = with_definition_of_done(&a.body, &commands_pass(&a.checks));
-
-        let now = now_ms();
-        let id = new_id("iss", now);
-        let number = self.next_number(&repo.id).await?;
-        let timestamp = rfc3339(now);
-        let (author, requested_by) = authorship(&a.actor);
-        self.db
-            .prepare(
-                "INSERT INTO issues
-                   (id, repo_id, number, title, body, labels, checks, author_id, author_name,
-                    requested_by_id, requested_by_name, created_at, updated_at, milestone)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            )
-            .bind(&[
-                id.as_str().into(),
-                repo.id.as_str().into(),
-                number.into(),
-                title.into(),
-                body.into(),
-                serde_json::to_string(&labels)?.into(),
-                "[]".into(),
-                author.id.as_str().into(),
-                author.username.as_str().into(),
-                optional(&requested_by.as_ref().map(|user| user.id.clone())),
-                optional(&requested_by.as_ref().map(|user| user.username.clone())),
-                timestamp.as_str().into(),
-                timestamp.as_str().into(),
-                optional_number(milestone.as_ref().map(|milestone| milestone.number)),
-            ])?
-            .run()
-            .await?;
-        let Some(issue) = self.issue(&repo.id, number).await? else {
-            return Ok(no_issue());
-        };
-        self.publish(
-            "issue.opened",
-            &repo.id,
-            &a.actor,
-            IssueEvent {
-                title: Some(issue.title.clone()),
-                ..Self::issue_event(&issue)
-            },
-        )
-        .await?;
-        // Opened with labels and a milestone: each is said, as it would be
-        // if they were added afterwards, without notes in the conversation.
-        for label in &issue.labels {
-            let color = colors.iter().find(|(name, _)| name == label).map_or_else(|| label_color_for(label), |(_, c)| c.clone());
-            let label = Some(g1t_contracts::events::EventLabel { name: label.clone(), color });
-            self.publish("issue.labeled", &repo.id, &a.actor, IssueEvent { label, ..Self::issue_event(&issue) })
-                .await?;
-        }
-        if let Some(milestone) = milestone {
-            self.publish(
-                "issue.milestoned",
-                &repo.id,
-                &a.actor,
-                IssueEvent { milestone: Some(milestone), ..Self::issue_event(&issue) },
-            )
-            .await?;
-        }
-        Ok(Outcome::Ok(issue))
-    }
-
-    async fn list_issues(&self, a: ListIssuesArgs) -> Result<Outcome<Vec<Issue>>> {
-        let state = state_name(a.state);
-        let label = a
-            .label
-            .map(|label| label.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase())
-            .filter(|label| !label.is_empty());
-        let milestone = a.milestone;
-        let list = |repo_id: String| {
-            let label = label.clone();
-            async move {
-                let state = state.map_or(JsValue::NULL, JsValue::from);
-                let query = self
-                    .db
-                    .prepare(format!(
-                        "SELECT {ISSUE_COLUMNS} FROM issues
-                         WHERE repo_id = ? AND (? IS NULL OR state = ?)
-                           AND (? IS NULL OR EXISTS
-                             (SELECT 1 FROM json_each(issues.labels) WHERE json_each.value = ?))
-                           AND (? IS NULL OR milestone = ?)
-                         ORDER BY number DESC LIMIT ?"
-                    ))
-                    .bind(&[
-                        repo_id.into(),
-                        state.clone(),
-                        state,
-                        optional(&label),
-                        optional(&label),
-                        optional_number(milestone),
-                        optional_number(milestone),
-                        LIST_PAGE.into(),
-                    ])?;
-                self.timing.db(1, query.all()).await?.results::<IssueRow>()
-            }
-        };
-        let (_, rows) = check!(self.repo_then(&a.repo, &a.viewer, list).await?);
-        Ok(Outcome::Ok(rows.into_iter().map(Issue::from).collect()))
-    }
-
-    /// An issue, the pull requests for it and its comments: one batch,
-    /// started beside the access check (prefetch.rs).
-    async fn get_issue(&self, a: ViewArgs) -> Result<Outcome<IssueDetail>> {
-        let number = a.number;
-        let read = |repo_id: String| async move {
-            let key = [JsValue::from(repo_id.as_str()), JsValue::from(number)];
-            let statements = vec![
-                self.db
-                    .prepare(format!("SELECT {ISSUE_COLUMNS} FROM issues WHERE repo_id = ?1 AND number = ?2"))
-                    .bind(&key)?,
-                self.db
-                    .prepare(format!(
-                        "SELECT {PULL_COLUMNS} FROM pulls
-                         WHERE issue_id = (SELECT id FROM issues WHERE repo_id = ?1 AND number = ?2)
-                         ORDER BY number"
-                    ))
-                    .bind(&key)?,
-                self.db
-                    .prepare("SELECT * FROM comments WHERE repo_id = ?1 AND number = ?2 ORDER BY id LIMIT 500")
-                    .bind(&key)?,
-                self.db.prepare(reactions::THREAD_SQL).bind(&key)?,
-            ];
-            let results = self.timing.db(4, self.db.batch(statements)).await?;
-            let rows = |index: usize| results.get(index).ok_or_else(|| worker::Error::RustError("short batch".into()));
-            Ok::<_, worker::Error>((
-                rows(0)?.results::<IssueRow>()?.into_iter().next().map(Issue::from),
-                rows(1)?.results::<PullRow>()?.into_iter().map(Pull::from).collect::<Vec<_>>(),
-                rows(2)?.results::<CommentRow>()?.into_iter().map(Comment::from).collect::<Vec<_>>(),
-                rows(3)?.results::<reactions::ReactionRow>()?,
-            ))
-        };
-        let Outcome::Ok((_, (Some(issue), pulls, mut comments, reacted))) = self.repo_then(&a.repo, &a.viewer, read).await? else {
-            return Ok(no_issue());
-        };
-        let reactions = reactions::attach(&reacted, &issue.id, &mut comments);
-        Ok(Outcome::Ok(IssueDetail { comments, pulls, issue, reactions }))
-    }
-
-    /// The issue, if `actor` wrote it or may triage the repository's issues.
-    async fn manageable_issue(
-        &self,
-        actor: &User,
-        path: &RepoPath,
-        number: u32,
-    ) -> Result<Outcome<Issue>> {
-        Ok(match self.manageable_issue_at(actor, path, number).await? {
-            Outcome::Ok((_, issue)) => Outcome::Ok(issue),
-            Outcome::Fail(failure) => Outcome::Fail(failure),
-        })
-    }
-
-    /// `manageable_issue`, with the repository it is in.
-    async fn manageable_issue_at(
-        &self,
-        actor: &User,
-        path: &RepoPath,
-        number: u32,
-    ) -> Result<Outcome<(Repo, Issue)>> {
-        let (repo, issue) = check!(self.issue_at(path, number, &Some(actor.clone())).await?);
-        check!(writable(&repo));
-        if issue.owner().id != actor.id {
-            check!(allowed(Some(actor), &repo, Capability::Triage));
-        }
-        Ok(Outcome::Ok((repo, issue)))
-    }
-
-    async fn update_issue(&self, a: UpdateIssueArgs) -> Result<Outcome<Issue>> {
-        let issue = check!(self.manageable_issue(&a.actor, &a.repo, a.number).await?);
-        let title = match a.title.as_deref().map(valid_title) {
-            Some(Err(message)) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
-            Some(Ok(title)) => Some(title.to_owned()),
-            None => None,
-        };
-        if a.labels.as_deref().is_some_and(|labels| normalize_labels(labels).is_none()) {
-            return Ok(Outcome::fail(
-                FailureCode::Invalid,
-                format!("An issue can have up to {MAX_LABELS} labels of up to {MAX_LABEL_CHARS} characters each."),
-            ));
-        }
-        let assignees = match a.assignees {
-            Some(names) => Some(check!(self.valid_assignees(names).await?)),
-            None => None,
-        };
-        // What it is blocked by: checked before anything changes.
-        let blocked_by = match &a.blocked_by {
-            Some(asked) => Some(check!(self.checked_blocked_by(&issue.repo_id, issue.number, asked).await?)),
-            None => None,
-        };
-        // Its labels and milestone first: either can be refused, and then
-        // nothing else changes.
-        if a.milestone.is_some() || a.labels.is_some() {
-            let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
-            if let Some(number) = a.milestone {
-                check!(self.set_milestone(&a.actor, &repo, &labels::Item::Issue(issue.clone()), number).await?);
-            }
-            if let Some(labels) = &a.labels {
-                check!(self.relabel(&a.actor, &repo, &labels::Item::Issue(issue.clone()), labels).await?);
-            }
-        }
-        let assigned = assignees.as_ref().map(serde_json::to_string).transpose()?;
-        let blocked = blocked_by.as_ref().map(serde_json::to_string).transpose()?;
-        let body = a.body.map(|body| body.trim().to_owned());
-        let updated_at = rfc3339(now_ms());
-        let dependency = match &blocked_by {
-            Some(after) => self.dependency_change(&issue, after, &a.actor).await?,
-            None => None,
-        };
-        let mut statements = vec![self
-            .db
-            .prepare(
-                "UPDATE issues
-                 SET title = COALESCE(?, title), body = COALESCE(?, body),
-                     assignees = COALESCE(?, assignees), blocked_by = COALESCE(?, blocked_by),
-                     updated_at = ?
-                 WHERE id = ?",
-            )
-            .bind(&[
-                optional(&title),
-                optional(&body),
-                optional(&assigned),
-                optional(&blocked),
-                updated_at.as_str().into(),
-                issue.id.as_str().into(),
-            ])?];
-        // A change to what it is blocked by reaches the sessions it concerns
-        // with the change itself.
-        let dependency_sent = match (&dependency, &blocked) {
-            (Some(data), Some(blocked)) => coordination::updates::push_delivery(
-                &mut statements,
-                self.delivery(
-                    "dependency.changed",
-                    &issue.repo_id,
-                    data.clone(),
-                    &format!("{}:blocked_by:{updated_at}", issue.id),
-                    "EXISTS (SELECT 1 FROM issues WHERE id = ?7 AND blocked_by = ?8 AND updated_at = ?9)",
-                    vec![issue.id.as_str().into(), blocked.as_str().into(), updated_at.as_str().into()],
-                )?,
-            ),
-            _ => None,
-        };
-        self.db.batch(statements).await?;
-        let before = issue.assignees.clone();
-        let blocked_before = issue.blocked_by.clone();
-        let Some(issue) = self.issue(&issue.repo_id, issue.number).await? else {
-            return Ok(no_issue());
-        };
-        self.publish(
-            "issue.updated",
-            &issue.repo_id,
-            &a.actor,
-            Self::issue_event(&issue),
-        )
-        .await?;
-        if let Some(data) = dependency {
-            self.delivered(dependency_sent, "dependency.changed", &issue.repo_id, Some(a.actor.id.clone()), data).await?;
-            self.blocked_by_changed(&issue, &blocked_before, &a.actor).await?;
-        }
-        if let Some(assignees) = assignees {
-            self.note_changes(
-                &issue.repo_id,
-                issue.number,
-                &a.actor,
-                &before,
-                &assignees,
-                ("assigned", "unassigned"),
-            )
-            .await?;
-            let added: Vec<String> = assignees.iter().filter(|name| !before.contains(name)).cloned().collect();
-            self.publish(
-                "issue.assigned",
-                &issue.repo_id,
-                &a.actor,
-                IssueEvent {
-                    assignees: Some(assignees),
-                    added: Some(added),
-                    ..Self::issue_event(&issue)
-                },
-            )
-            .await?;
-        }
-        Ok(Outcome::Ok(issue))
     }
 
     /// Usernames as given, tidied, if each names an account.
@@ -844,10 +570,10 @@ impl Work {
             if assignees.len() == MAX_ASSIGNEES {
                 return Ok(Outcome::fail(
                     FailureCode::Invalid,
-                    format!("An issue can be assigned to at most {MAX_ASSIGNEES} people."),
+                    format!("A work item or pull request can be assigned to at most {MAX_ASSIGNEES} people."),
                 ));
             }
-            // g1t has no account, and takes the issue on: a session on the
+            // g1t has no account, and takes the work on: a session on the
             // workspace's own Claude (integrations' summon.rs).
             if name == g1t_contracts::system::USERNAME {
                 assignees.push(name);
@@ -872,133 +598,16 @@ impl Work {
         Ok(Outcome::Ok(assignees))
     }
 
-    async fn close_issue(&self, args: CloseIssueArgs) -> Result<Outcome<Issue>> {
-        let CloseIssueArgs { issue: a, commit } = args;
-        let (repo, mut issue) = check!(self.manageable_issue_at(&a.actor, &a.repo, a.number).await?);
-        if issue.state == State::Closed {
-            let how = match (issue.resolved_by, issue.resolved_commit.as_deref()) {
-                (Some(pull), _) => format!(" #{pull} closed it."),
-                (None, Some(commit)) => format!(" Commit {} closed it.", &commit[..7.min(commit.len())]),
-                (None, None) => String::new(),
-            };
-            return Ok(Outcome::fail(FailureCode::Conflict, format!("This issue is already closed.{how}")));
-        }
-        // Closed by a commit on the default branch: as its push would have.
-        if let Some(commit) = commit.as_deref() {
-            if a.reason == Some(IssueReason::NotPlanned) {
-                return Ok(Outcome::fail(FailureCode::Invalid, "A commit closes an issue as completed, not as not planned."));
-            }
-            let (commit, named) = check!(self.closing_commit(&repo, a.number, commit, &a.actor).await?);
-            let session = match named {
-                Some(session) => Some(session),
-                None => self.caller_session(&repo.id, a.number, &a.actor).await?,
-            };
-            if !self.close_by_commit(&repo, a.number, &commit, &a.actor, session.as_deref(), false).await? {
-                return Ok(Outcome::fail(FailureCode::Conflict, "This issue is already closed."));
-            }
-            return Ok(match self.issue(&repo.id, a.number).await? {
-                Some(issue) => Outcome::Ok(issue),
-                None => no_issue(),
-            });
-        }
-        let session = self.caller_session(&repo.id, a.number, &a.actor).await?;
-        let reason = a.reason.unwrap_or(IssueReason::Completed);
-        let now = rfc3339(now_ms());
-        self.db
-            .prepare(
-                "UPDATE issues SET state = 'closed', reason = ?, closed_at = ?, updated_at = ?
-                 WHERE id = ?",
-            )
-            .bind(&[
-                reason.as_str().into(),
-                now.as_str().into(),
-                now.as_str().into(),
-                issue.id.as_str().into(),
-            ])?
-            .run()
-            .await?;
-        self.publish(
-            "issue.closed",
-            &issue.repo_id,
-            &a.actor,
-            IssueEvent {
-                reason: Some(reason.as_str()),
-                session: session.clone(),
-                ..Self::issue_event(&issue)
-            },
-        )
-        .await?;
-        let note = match reason {
-            IssueReason::Completed => "closed this as completed",
-            IssueReason::NotPlanned => "closed this as not planned",
-        };
-        self.note(
-            &issue.repo_id,
-            issue.number,
-            &a.actor,
-            &pushed::closed_note(note, session.as_deref()),
-        )
-        .await?;
-        // Its claims end, and the issues it blocks hear (coordination/).
-        self.issue_resolved(&issue.repo_id, issue.number, &a.actor, true, None).await;
-        issue.state = State::Closed;
-        issue.reason = Some(reason);
-        issue.closed_at = Some(now.clone());
-        issue.updated_at = now;
-        Ok(Outcome::Ok(issue))
-    }
-
-    async fn reopen_issue(&self, a: IssueActionArgs) -> Result<Outcome<Issue>> {
-        let mut issue = check!(self.manageable_issue(&a.actor, &a.repo, a.number).await?);
-        if issue.state == State::Open {
-            return Ok(Outcome::fail(
-                FailureCode::Conflict,
-                "This issue is already open.",
-            ));
-        }
-        let now = rfc3339(now_ms());
-        self.db
-            .prepare(
-                "UPDATE issues
-                 SET state = 'open', reason = NULL, resolved_by = NULL, resolved_commit = NULL,
-                     resolved_pushed_by = NULL, closed_at = NULL, updated_at = ?
-                 WHERE id = ?",
-            )
-            .bind(&[now.as_str().into(), issue.id.as_str().into()])?
-            .run()
-            .await?;
-        self.publish(
-            "issue.reopened",
-            &issue.repo_id,
-            &a.actor,
-            Self::issue_event(&issue),
-        )
-        .await?;
-        self.note(
-            &issue.repo_id,
-            issue.number,
-            &a.actor,
-            "reopened this",
-        )
-        .await?;
-        issue.state = State::Open;
-        issue.reason = None;
-        issue.resolved_by = None;
-        issue.resolved_commit = None;
-        issue.resolved_pushed_by = None;
-        issue.closed_at = None;
-        issue.updated_at = now;
-        Ok(Outcome::Ok(issue))
-    }
-
-
+    /// How many work items linked to a repository are open, and how many
+    /// of its pull requests.
     async fn counts(&self, a: ViewArgs) -> Result<Outcome<Counts>> {
         let read = |repo_id: String| async move {
             let query = self
                 .db
                 .prepare(
                     "SELECT
-                       (SELECT count(*) FROM issues WHERE repo_id = ?1 AND state = 'open') AS issues,
+                       (SELECT count(*) FROM work_item_repos r JOIN work_items i ON i.id = r.item_id
+                        WHERE r.repo_id = ?1 AND i.state = 'open' AND i.number IS NOT NULL) AS items,
                        (SELECT count(*) FROM pulls
                         WHERE repo_id = ?1 AND status IN ('draft', 'open')) AS pulls",
                 )
@@ -1006,10 +615,7 @@ impl Work {
             self.timing.db(1, query.first::<Counts>(None)).await
         };
         let (_, counts) = check!(self.repo_then(&a.repo, &a.viewer, read).await?);
-        Ok(Outcome::Ok(counts.unwrap_or(Counts {
-            issues: 0,
-            pulls: 0,
-        })))
+        Ok(Outcome::Ok(counts.unwrap_or(Counts { items: 0, pulls: 0 })))
     }
 
     // --- Comments ----------------------------------------------------------
@@ -1038,35 +644,27 @@ impl Work {
                 "That comment is too long.",
             ));
         }
-        let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
-        check!(writable(&repo));
-        // The number names an issue or a pull request, never both.
-        let mut pull_id = None;
-        let mut pull_issue = None;
-        let table = if self.issue(&repo.id, a.number).await?.is_some() {
-            if path.is_some() || a.verdict.is_some() {
-                return Ok(Outcome::fail(
-                    FailureCode::Invalid,
-                    "Only a pull request can be reviewed or commented on by line.",
-                ));
+        let thread = check!(self.thread(&Some(a.actor.clone()), a.repo.as_ref(), &a.workspace, a.number).await?);
+        match &thread {
+            Thread::Pull(repo, pull) => {
+                check!(writable(repo));
+                if a.verdict.is_some() && pull.is_owned_by(&a.actor.id) {
+                    return Ok(Outcome::fail(
+                        FailureCode::Forbidden,
+                        "You cannot approve or request changes on your own pull request.",
+                    ));
+                }
             }
-            "issues"
-        } else if let Some(pull) = self.pull(&repo.id, a.number).await? {
-            if a.verdict.is_some() && pull.is_owned_by(&a.actor.id) {
-                return Ok(Outcome::fail(
-                    FailureCode::Forbidden,
-                    "You cannot approve or request changes on your own pull request.",
-                ));
+            Thread::Item(held) => {
+                check!(held.allowed(Some(&a.actor), Capability::Participate));
+                if path.is_some() || a.verdict.is_some() {
+                    return Ok(Outcome::fail(
+                        FailureCode::Invalid,
+                        "Only a pull request can be reviewed or commented on by line.",
+                    ));
+                }
             }
-            pull_id = Some(pull.id.clone());
-            pull_issue = pull.issue;
-            "pulls"
-        } else {
-            return Ok(Outcome::fail(
-                FailureCode::NotFound,
-                "No issue or pull request has that number.",
-            ));
-        };
+        }
 
         let now = now_ms();
         // A session g1t started for someone writes as g1t, for them.
@@ -1086,19 +684,34 @@ impl Work {
             advisory: false,
             reactions: Vec::new(),
         };
+        let (repo_id, number, item_id) = match thread.on() {
+            On::Pull(repo_id, number) => (JsValue::from(repo_id), JsValue::from(number), JsValue::NULL),
+            On::Item(item_id) => (JsValue::NULL, JsValue::NULL, JsValue::from(item_id)),
+        };
+        let touched = match &thread {
+            Thread::Pull(_, pull) => self
+                .db
+                .prepare("UPDATE pulls SET updated_at = ? WHERE id = ?")
+                .bind(&[comment.created_at.as_str().into(), pull.id.as_str().into()])?,
+            Thread::Item(held) => self
+                .db
+                .prepare("UPDATE work_items SET updated_at = ? WHERE id = ?")
+                .bind(&[comment.created_at.as_str().into(), held.item.id.as_str().into()])?,
+        };
         self.db
             .batch(vec![
                 self.db
                     .prepare(
                         "INSERT INTO comments
-                           (id, repo_id, number, author_id, author_name, body, path, line,
+                           (id, repo_id, number, item_id, author_id, author_name, body, path, line,
                             verdict, created_at, acting_for_id, acting_for_name)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     )
                     .bind(&[
                         comment.id.as_str().into(),
-                        repo.id.as_str().into(),
-                        a.number.into(),
+                        repo_id,
+                        number,
+                        item_id,
                         by.id.into(),
                         by.name.into(),
                         body.into(),
@@ -1110,38 +723,30 @@ impl Work {
                         by.acting_for.map_or(JsValue::NULL, |(id, _)| id.into()),
                         by.acting_for.map_or(JsValue::NULL, |(_, name)| name.into()),
                     ])?,
-                self.db
-                    .prepare(format!(
-                        "UPDATE {table} SET updated_at = ? WHERE repo_id = ? AND number = ?"
-                    ))
-                    .bind(&[
-                        comment.created_at.as_str().into(),
-                        repo.id.as_str().into(),
-                        a.number.into(),
-                    ])?,
+                touched,
             ])
             .await?;
-        self.publish(
+        self.publish_thread(
             "comment.created",
-            &repo.id,
+            &thread,
             &a.actor,
             CommentCreated {
                 comment_id: comment.id.clone(),
-                repo_id: repo.id.clone(),
-                number: a.number,
-                pull_id,
+                on: thread.comment_on(),
                 verdict: a.verdict,
                 ..CommentCreated::default()
             },
         )
         .await?;
         // An approval is a decision: a person's is approved.
-        if table == "pulls" && a.verdict == Some(Verdict::Approve) {
+        if let Thread::Pull(repo, pull) = &thread
+            && a.verdict == Some(Verdict::Approve)
+        {
             let said = if body.is_empty() { String::new() } else { format!(": {}", body.chars().take(300).collect::<String>()) };
             self.keep_decision_quietly(
                 &repo.id,
                 decisions::NewDecision {
-                    issue: pull_issue,
+                    item: self.pull_item_id(&pull.id).await?,
                     pull: Some(a.number),
                     session_id: None,
                     actor: Some(&a.actor),
@@ -1156,26 +761,59 @@ impl Work {
         Ok(Outcome::Ok(comment))
     }
 
-    /// A comment in the repository, with the repository and the pull
-    /// request it is on (if it is on one), when `actor` may edit it, or
+    /// Publishes an event about a thread, filed under its repository.
+    pub(crate) async fn publish_thread<T: Serialize>(&self, kind: &'static str, thread: &Thread, actor: &User, data: T) -> Result<()> {
+        match thread.event_repo() {
+            Some(repo_id) => self.publish(kind, repo_id, actor, data).await,
+            None => {
+                let data = g1t_contracts::events::marked(data, Some(actor));
+                self.publish_on(kind, None, Some(actor.id.clone()), data).await
+            }
+        }
+    }
+
+    /// A comment, with the thread it is on, when `actor` may edit it, or
     /// with `deleting`, delete it (`may_change_comment`).
-    async fn changeable_comment(
-        &self,
-        a: &CommentActionArgs,
-        deleting: bool,
-    ) -> Result<Outcome<(Repo, CommentRow, Option<String>)>> {
-        let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
-        check!(writable(&repo));
-        let Some(row) = self
-            .db
-            .prepare("SELECT * FROM comments WHERE id = ? AND repo_id = ?")
-            .bind(&[a.comment_id.trim().into(), repo.id.as_str().into()])?
-            .first::<CommentRow>(None)
-            .await?
-        else {
-            return Ok(Outcome::fail(FailureCode::NotFound, "Comment not found."));
+    async fn changeable_comment(&self, a: &CommentActionArgs, deleting: bool) -> Result<Outcome<(Thread, CommentRow)>> {
+        let actor = Some(a.actor.clone());
+        let id = a.comment_id.trim();
+        let not_found = || Ok(Outcome::fail(FailureCode::NotFound, "Comment not found."));
+        let (thread, row) = match &a.repo {
+            Some(path) => {
+                let repo = check!(self.repo(path, &actor).await?);
+                check!(writable(&repo));
+                let found = self
+                    .db
+                    .prepare("SELECT * FROM comments WHERE id = ? AND repo_id = ?")
+                    .bind(&[id.into(), repo.id.as_str().into()])?
+                    .first::<CommentRow>(None)
+                    .await?;
+                let Some(row) = found else { return not_found() };
+                let Some(pull) = self.pull(&repo.id, row.number.unwrap_or_default()).await? else { return not_found() };
+                (Thread::Pull(repo, pull), row)
+            }
+            None => {
+                let found = self
+                    .db
+                    .prepare("SELECT * FROM comments WHERE id = ? AND item_id IS NOT NULL")
+                    .bind(&[id.into()])?
+                    .first::<CommentRow>(None)
+                    .await?;
+                let Some(row) = found else { return not_found() };
+                let held = match row.item_id.as_deref() {
+                    Some(item_id) => self.item_by_id(item_id).await?,
+                    None => None,
+                };
+                let Some(held) = held.filter(|held| held.item.workspace == items::workspace_of(&a.workspace, None)) else {
+                    return not_found();
+                };
+                if !held.may(actor.as_ref(), Capability::Read) {
+                    return not_found();
+                }
+                (Thread::Item(held), row)
+            }
         };
-        let maintains = access::can(Some(&a.actor), &repo, Capability::ManageSettings);
+        let maintains = thread.may(&a.actor, Capability::ManageSettings);
         // What an agent wrote as itself is answered for by whoever it acted for.
         let author_id = row.answerable_id().to_owned();
         if let Err(refusal) = may_change_comment(
@@ -1190,8 +828,7 @@ impl Work {
             let code = if author_id == a.actor.id || maintains { FailureCode::Conflict } else { FailureCode::Forbidden };
             return Ok(Outcome::fail(code, refusal));
         }
-        let pull_id = self.pull(&repo.id, row.number).await?.map(|pull| pull.id);
-        Ok(Outcome::Ok((repo, row, pull_id)))
+        Ok(Outcome::Ok((thread, row)))
     }
 
     /// Changes the text of a comment: its author's to do, or a
@@ -1201,12 +838,11 @@ impl Work {
         if body.chars().count() > MAX_ENTRY_CHARS {
             return Ok(Outcome::fail(FailureCode::Invalid, "That comment is too long."));
         }
-        let (repo, row, pull_id) = check!(self.changeable_comment(&a, false).await?);
+        let (thread, row) = check!(self.changeable_comment(&a, false).await?);
         // An approval speaks for itself; anything else has to say something.
         if body.is_empty() && row.verdict != Some(Verdict::Approve) && row.agent_verdict.as_deref() != Some("approve") {
             return Ok(Outcome::fail(FailureCode::Invalid, "A comment cannot be empty."));
         }
-        let number = row.number;
         let mut comment = Comment::from(row);
         if comment.body == body {
             return Ok(Outcome::Ok(comment));
@@ -1219,15 +855,13 @@ impl Work {
             .await?;
         let before = std::mem::replace(&mut comment.body, body);
         comment.edited_at = Some(now);
-        self.publish(
+        self.publish_thread(
             "comment.edited",
-            &repo.id,
+            &thread,
             &a.actor,
             CommentEdited {
                 comment_id: comment.id.clone(),
-                repo_id: repo.id.clone(),
-                number,
-                pull_id,
+                on: thread.comment_on(),
                 changes: CommentChanges { body: ChangedFrom { from: before } },
             },
         )
@@ -1239,24 +873,21 @@ impl Work {
     /// that gave a verdict stays. Publishes `comment.deleted` with the
     /// comment as it was.
     async fn delete_comment(&self, a: CommentActionArgs) -> Result<Outcome<bool>> {
-        let (repo, row, pull_id) = check!(self.changeable_comment(&a, true).await?);
+        let (thread, row) = check!(self.changeable_comment(&a, true).await?);
         self.db
             .prepare("DELETE FROM comments WHERE id = ?")
             .bind(&[row.id.as_str().into()])?
             .run()
             .await?;
         self.db.prepare("DELETE FROM reactions WHERE subject = ?").bind(&[row.id.as_str().into()])?.run().await?;
-        let number = row.number;
         let comment = Comment::from(row);
-        self.publish(
+        self.publish_thread(
             "comment.deleted",
-            &repo.id,
+            &thread,
             &a.actor,
             CommentDeleted {
                 comment_id: comment.id.clone(),
-                repo_id: repo.id.clone(),
-                number,
-                pull_id,
+                on: thread.comment_on(),
                 comment: DeletedComment {
                     id: comment.id,
                     body: comment.body,
@@ -1279,22 +910,21 @@ impl Work {
         }
         let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
         check!(writable(&repo));
-        let issue = match a.issue {
-            Some(number) => match self.issue(&repo.id, number).await? {
-                Some(issue) if issue.state == State::Open => Some(issue),
-                Some(_) => {
-                    return Ok(Outcome::fail(
-                        FailureCode::Conflict,
-                        "This issue is closed.",
-                    ));
+        let workspace = repo.namespace.to_lowercase();
+        // A work item of the repository's workspace, which the actor can see.
+        let item = match a.item {
+            Some(number) => match self.item_for(&Some(a.actor.clone()), &workspace, number, Capability::Read).await? {
+                Outcome::Ok(held) if held.item.state == State::Open => Some(held),
+                Outcome::Ok(_) => {
+                    return Ok(Outcome::fail(FailureCode::Conflict, "This work item is closed."));
                 }
-                None => return Ok(no_issue()),
+                Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
             },
             None => None,
         };
-        // A pull request for an issue takes the issue's title unless given one.
-        let title = match (a.title.trim(), &issue) {
-            ("", Some(issue)) => issue.title.clone(),
+        // A pull request for a work item takes its title unless given one.
+        let title = match (a.title.trim(), &item) {
+            ("", Some(held)) => held.item.title.clone(),
             (title, _) => match valid_title(title) {
                 Ok(title) => title.to_owned(),
                 Err(message) => return Ok(Outcome::fail(FailureCode::Invalid, message)),
@@ -1420,26 +1050,28 @@ impl Work {
         let status = if branch.is_some() && !a.draft { "open" } else { "draft" };
         let body = Some(a.body.trim().to_owned()).filter(|body| !body.is_empty());
 
-        let number = self.next_number(&repo.id).await?;
+        // Numbered in the workspace, never as one of this repository's are.
+        self.remember_repo(&repo).await?;
+        let number = self.next_number(&workspace, Some(&repo.id)).await?;
         let timestamp = rfc3339(now);
         let (author, requested_by) = authorship(&a.actor);
-        // The issues it says it closes (closing.rs).
-        let closes = closing::closes(issue.as_ref().map(|issue| issue.number), &title, body.as_deref(), &a.repo);
+        // The work items it says it closes and is part of (closing.rs).
+        let item_id = item.as_ref().map(|held| held.item.id.clone());
+        let named = self.named_items(&repo, item_id.as_deref(), &format!("{title}\n{}", body.as_deref().unwrap_or_default())).await?;
         self.db
             .prepare(
                 "INSERT INTO pulls
-                   (id, repo_id, number, issue_id, issue_number, title, body, agent, runtime,
+                   (id, repo_id, number, item_id, title, body, agent, runtime,
                     status, fork_repo_id, fork_namespace, fork_name, source_branch, head_commit,
                     author_id, author_name, requested_by_id, requested_by_name, created_at, updated_at,
-                    base_branch, head_repo_id, head_namespace, head_name, closes)
+                    base_branch, head_repo_id, head_namespace, head_name, closes_items, parts)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 id.as_str().into(),
                 repo.id.as_str().into(),
                 number.into(),
-                optional(&issue.as_ref().map(|issue| issue.id.clone())),
-                optional_number(issue.as_ref().map(|issue| issue.number)),
+                optional(&item_id),
                 title.into(),
                 optional(&body),
                 agent.into(),
@@ -1460,7 +1092,8 @@ impl Work {
                 optional(&head_repo_id),
                 optional(&head_path.as_ref().map(|path| path.namespace.clone())),
                 optional(&head_path.as_ref().map(|path| path.name.clone())),
-                serde_json::to_string(&closes)?.into(),
+                serde_json::to_string(&named.close_ids())?.into(),
+                serde_json::to_string(&named.part_ids())?.into(),
             ])?
             .run()
             .await?;
@@ -1468,10 +1101,11 @@ impl Work {
             return Ok(no_pull());
         };
         fill_base(&mut pull, &repo);
-        if let Some(issue) = pull.issue {
-            let text = format!("opened #{} for this", pull.number);
-            self.note(&repo.id, issue, &a.actor, &text)
-                .await?;
+        // The work item hears of it, and links the repository it is in.
+        if let Some(held) = &item {
+            let text = format!("opened {}#{} for this", items::path_of(&repo), pull.number);
+            self.note_item(&held.item.id, &a.actor, &text).await?;
+            self.touch_item(held, &repo, &a.actor).await?;
         }
         // Its head and merge refs in the repository, before its events go out.
         self.keep_pull_refs(&pull).await;
@@ -1611,13 +1245,13 @@ impl Work {
             return Ok(no_pull());
         };
         let stored = found.first::<StoredBehind>(prefetch::Slot::Pull)?;
-        let issue = found.first::<IssueRow>(prefetch::Slot::Issue)?.map(Issue::from);
+        let item = found.first::<ItemRow>(prefetch::Slot::Item)?.and_then(ItemRow::held).map(|held| held.item);
         let mut comments: Vec<Comment> =
             found.rows::<CommentRow>(prefetch::Slot::Comments)?.into_iter().map(Comment::from).collect();
         let reactions = reactions::attach(&found.rows::<reactions::ReactionRow>(prefetch::Slot::Reactions)?, &row.id, &mut comments);
         self.keep_prefetched(Some(found));
         let default_branch = repo.default_branch.clone();
-        let detail = self.pull_detail(repo, Pull::from(row), issue, comments, stored, &a.viewer).await;
+        let detail = self.pull_detail(repo, Pull::from(row), item, comments, stored, &a.viewer).await;
         self.keep_prefetched(None);
         // The branch it merges into, named, for whoever reads it.
         Ok(match detail? {
@@ -1636,7 +1270,7 @@ impl Work {
         &self,
         repo: Repo,
         mut pull: Pull,
-        issue: Option<Issue>,
+        item: Option<WorkItem>,
         comments: Vec<Comment>,
         stored: Option<StoredBehind>,
         viewer: &Viewer,
@@ -1680,7 +1314,7 @@ impl Work {
                 }
             };
             let (merge, behind) = try_join(self.mergeability(&pull), behind).await?;
-            let lifecycle = self.assess(&pull, &issue, behind).await?.map(|(lifecycle, _)| lifecycle);
+            let lifecycle = self.assess(&pull, &item, behind).await?.map(|(lifecycle, _)| lifecycle);
             Ok::<_, worker::Error>((behind, lifecycle, merge))
         };
         let (((behind, lifecycle, (mergeable, conflicts)), (landing, stalled), comments), (checks, overlaps)) =
@@ -1704,10 +1338,12 @@ impl Work {
         )
         .await?;
         let code_owners = self.pull_code_owners(&pull, &comments, &settings).await?;
-        // The issues it closes, as its title and description say now; none
-        // where the repository does not close issues that way.
+        // The work items it closes, as its title and description say now;
+        // none where the repository does not close them that way.
         if pull.status.is_active() {
-            pull.closes = merging::issues_to_close(&pull, &repo, &settings, false);
+            let named = self.items_to_close(&pull, &repo, &settings, false).await?;
+            pull.closes = named.close_numbers();
+            pull.parts = named.part_numbers();
         }
         let required = if settings.required_checks.is_empty() {
             Vec::new()
@@ -1731,7 +1367,7 @@ impl Work {
             conflicts,
             earlier_checks: self.earlier_checks(&pull.id).await?,
             reactions: Vec::new(),
-            issue,
+            item,
             pull,
         }))
     }
@@ -1837,10 +1473,10 @@ impl Work {
                 check!(self.change_base(&a.actor, &repo, &pull, base).await?);
             }
             if let Some(number) = a.milestone {
-                check!(self.set_milestone(&a.actor, &repo, &labels::Item::Pull(pull.clone()), number).await?);
+                check!(self.set_milestone(&a.actor, &labels::Labeled::Pull(repo.clone(), pull.clone()), number).await?);
             }
             if let Some(labels) = &a.labels {
-                check!(self.relabel(&a.actor, &repo, &labels::Item::Pull(pull.clone()), labels).await?);
+                check!(self.relabel(&a.actor, &labels::Labeled::Pull(repo.clone(), pull.clone()), labels).await?);
             }
         }
         let assignees = match a.assignees {
@@ -1884,8 +1520,7 @@ impl Work {
             .await?;
         if let Some(assignees) = &assignees {
             self.note_changes(
-                &pull.repo_id,
-                pull.number,
+                On::Pull(&pull.repo_id, pull.number),
                 &a.actor,
                 &pull.assignees,
                 assignees,
@@ -2013,17 +1648,22 @@ impl Work {
         let mut pull = check!(self.manageable_pull(&a.actor, &a.repo, a.number).await?);
         let summary = Some(a.summary.trim().to_owned()).filter(|summary| !summary.is_empty());
         let now = rfc3339(now_ms());
-        // The issues it closes, as its description says now (closing.rs).
-        let closes = closing::closes(pull.issue, &pull.title, summary.as_deref().or(pull.body.as_deref()), &a.repo);
+        // The work items it closes and is part of, as its description says
+        // now (closing.rs).
+        let repo = check!(self.repo(&a.repo, &Some(a.actor.clone())).await?);
+        let own = self.pull_item_id(&pull.id).await?;
+        let text = format!("{}\n{}", pull.title, summary.as_deref().or(pull.body.as_deref()).unwrap_or_default());
+        let named = self.named_items(&repo, own.as_deref(), &text).await?;
         self.db
             .prepare(
-                "UPDATE pulls SET status = 'open', body = COALESCE(?, body), updated_at = ?, closes = ?
+                "UPDATE pulls SET status = 'open', body = COALESCE(?, body), updated_at = ?, closes_items = ?, parts = ?
                  WHERE id = ?",
             )
             .bind(&[
                 optional(&summary),
                 now.as_str().into(),
-                serde_json::to_string(&closes)?.into(),
+                serde_json::to_string(&named.close_ids())?.into(),
+                serde_json::to_string(&named.part_ids())?.into(),
                 pull.id.as_str().into(),
             ])?
             .run()
@@ -2054,7 +1694,8 @@ impl Work {
         }
         pull.status = PullStatus::Open;
         pull.body = summary.or(pull.body);
-        pull.closes = closes;
+        pull.closes = named.close_numbers();
+        pull.parts = named.part_numbers();
         pull.updated_at = now;
         // A draft's code owners are asked once it is ready.
         self.refresh_code_owners(&pull).await;
@@ -2233,10 +1874,10 @@ impl Work {
 
     /// Lands the pull request on the branch it merges into, by the method
     /// asked for or the repository's default (merging.rs). Unless told to
-    /// keep them open, a merge into the default branch resolves the issues
-    /// it closes: its issue and those it names (closing.rs) close naming
-    /// this pull request, and the others still in progress for its issue
-    /// close as superseded.
+    /// keep them open, a merge into the default branch lands the work items
+    /// it closes in this repository: its own and those it names
+    /// (closing.rs), each closing once nothing else is left to land, and
+    /// the others still in progress here for its own close as superseded.
     async fn merge_pull(&self, a: PullActionArgs) -> Result<Outcome<Pull>> {
         let viewer = Some(a.actor.clone());
         let (repo, pull) = check!(self.pull_at(&a.repo, a.number, &viewer).await?);
@@ -2337,7 +1978,7 @@ impl Work {
             // Landing honours the same bypass request against the rules as
             // they are then (queue.rs `settle`).
             let message = (a.commit_title.as_deref(), a.commit_message.as_deref());
-            return self.enqueue(&repo, &pull, &a.actor, a.keep_issue_open, a.bypass_rules, queued, message).await;
+            return self.enqueue(&repo, &pull, &a.actor, a.keep_item_open, a.bypass_rules, queued, message).await;
         }
 
         // The commit it makes, for a merge or a squash: what the merger
@@ -2373,7 +2014,7 @@ impl Work {
                 self.request_landing(
                     &pull,
                     &a.actor,
-                    a.keep_issue_open,
+                    a.keep_item_open,
                     a.delete_branch,
                     a.ignore_checks && settings.allow_ignoring_checks,
                 )
@@ -2460,7 +2101,7 @@ impl Work {
         .await?;
         let landed = check!(landed.unwrap_or_else(lifecycle::repository_unreachable));
         self.record_merge_evaluations(&repo, &pull, &gate).await;
-        let merged = self.record_merge(&repo, pull, &a.actor, a.keep_issue_open, landed, None).await?;
+        let merged = self.record_merge(&repo, pull, &a.actor, a.keep_item_open, landed, None).await?;
         // Its branch, where the merger or the repository says it goes.
         if merged.status == PullStatus::Merged {
             self.delete_branch_after_merge(&repo, &merged, &a.actor, a.delete_branch, head).await?;
@@ -2469,40 +2110,25 @@ impl Work {
     }
 
     /// Records a pull request as merged once the default branch holds it:
-    /// closes its issue, supersedes the others for it, and says so.
-    /// `pushed` names the branch when a push brought its head in, rather
-    /// than a merge from the site or the queue (pushed.rs).
+    /// lands the work items it closes (closing.rs), links those it is part
+    /// of, supersedes the others for its own work item in this repository,
+    /// and says so. `pushed` names the branch when a push brought its head
+    /// in, rather than a merge from the site or the queue (pushed.rs).
     pub(crate) async fn record_merge(
         &self,
         repo: &Repo,
         mut pull: Pull,
         actor: &User,
-        keep_issue_open: bool,
+        keep_item_open: bool,
         landed: Landed,
         pushed: Option<&str>,
     ) -> Result<Pull> {
-        // Only a merge into the default branch resolves issues: into
-        // another branch, the work has not landed yet. Its own issue and
-        // those it names close, where the repository closes them that way.
+        // Only a merge into the default branch lands work: into another
+        // branch, it has not landed yet. Its own work item and those it
+        // names land, where the repository closes them that way.
         let settings = self.settings(&repo.id).await?;
-        let closes = merging::issues_to_close(&pull, repo, &settings, keep_issue_open);
-        let issue = match pull.issue {
-            Some(number) if closes.contains(&number) => self
-                .issue(&repo.id, number)
-                .await?
-                .filter(|issue| issue.state == State::Open),
-            _ => None,
-        };
-        // The others it names: open issues of this repository, not pull
-        // requests.
-        let named = try_join_all(
-            closes
-                .iter()
-                .filter(|number| Some(**number) != pull.issue)
-                .map(|number| self.issue(&repo.id, *number)),
-        )
-        .await?;
-        let named: Vec<Issue> = named.into_iter().flatten().filter(|issue| issue.state == State::Open).collect();
+        let named = self.items_to_close(&pull, repo, &settings, keep_item_open).await?;
+        let own = self.pull_item_id(&pull.id).await?;
         // A fast-forward leaves the base at what was landed, which is its
         // head; the other methods leave its head as it was.
         let head = if landed.method == g1t_contracts::rules::MergeMethod::FastForward {
@@ -2511,72 +2137,37 @@ impl Work {
             pull.head_commit.clone().or_else(|| Some(landed.commit.clone()))
         };
         let now = rfc3339(now_ms());
-        let mut statements = vec![
-            self.db
-                .prepare(
-                    "UPDATE pulls
-                     SET status = 'merged', head_commit = ?, merge_base = ?, merged_by = ?,
-                         merged_at = ?, updated_at = ?, merge_method = ?, merge_commit = ?,
-                         auto_merge = NULL, closes = ?
-                     WHERE id = ? AND status <> 'merged' RETURNING id AS value",
-                )
-                .bind(&[
-                    optional(&head),
-                    optional(&landed.previous),
-                    actor.username.as_str().into(),
-                    now.as_str().into(),
-                    now.as_str().into(),
-                    landed.method.as_str().into(),
-                    landed.commit.as_str().into(),
-                    serde_json::to_string(&closes)?.into(),
-                    pull.id.as_str().into(),
-                ])?,
-        ];
-        for closing in &named {
-            statements.push(
-                self.db
-                    .prepare(
-                        "UPDATE issues
-                         SET state = 'closed', reason = 'completed', resolved_by = ?,
-                             closed_at = ?, updated_at = ?
-                         WHERE id = ? AND state = 'open'",
-                    )
-                    .bind(&[
-                        pull.number.into(),
-                        now.as_str().into(),
-                        now.as_str().into(),
-                        closing.id.as_str().into(),
-                    ])?,
-            );
-        }
-        if let Some(issue) = &issue {
-            statements.push(
-                self.db
-                    .prepare(
-                        "UPDATE issues
-                         SET state = 'closed', reason = 'completed', resolved_by = ?,
-                             closed_at = ?, updated_at = ?
-                         WHERE id = ?",
-                    )
-                    .bind(&[
-                        pull.number.into(),
-                        now.as_str().into(),
-                        now.as_str().into(),
-                        issue.id.as_str().into(),
-                    ])?,
-            );
+        let mut statements = vec![self
+            .db
+            .prepare(
+                "UPDATE pulls
+                 SET status = 'merged', head_commit = ?, merge_base = ?, merged_by = ?,
+                     merged_at = ?, updated_at = ?, merge_method = ?, merge_commit = ?,
+                     auto_merge = NULL, closes_items = ?, parts = ?
+                 WHERE id = ? AND status <> 'merged' RETURNING id AS value",
+            )
+            .bind(&[
+                optional(&head),
+                optional(&landed.previous),
+                actor.username.as_str().into(),
+                now.as_str().into(),
+                now.as_str().into(),
+                landed.method.as_str().into(),
+                landed.commit.as_str().into(),
+                serde_json::to_string(&named.close_ids())?.into(),
+                serde_json::to_string(&named.part_ids())?.into(),
+                pull.id.as_str().into(),
+            ])?];
+        // The others for its own work item in this repository were other
+        // ways to do the same thing.
+        if let Some(own) = own.as_deref().filter(|own| named.close_ids().iter().any(|id| id == own)) {
             statements.push(
                 self.db
                     .prepare(
                         "UPDATE pulls SET status = 'closed', superseded_by = ?, updated_at = ?
-                         WHERE issue_id = ? AND id != ? AND status IN ('draft', 'open')",
+                         WHERE item_id = ? AND repo_id = ? AND id != ? AND status IN ('draft', 'open')",
                     )
-                    .bind(&[
-                        pull.number.into(),
-                        now.as_str().into(),
-                        issue.id.as_str().into(),
-                        pull.id.as_str().into(),
-                    ])?,
+                    .bind(&[pull.number.into(), now.as_str().into(), own.into(), repo.id.as_str().into(), pull.id.as_str().into()])?,
             );
         }
         let recorded = self.db.batch(statements).await?;
@@ -2594,40 +2185,19 @@ impl Work {
             },
         )
         .await?;
-        for issue in issue.iter().chain(&named) {
-            self.publish(
-                "issue.closed",
-                &repo.id,
-                actor,
-                IssueEvent {
-                    reason: Some(IssueReason::Completed.as_str()),
-                    resolved_by: Some(pull.number),
-                    ..Self::issue_event(issue)
-                },
-            )
-            .await?;
-        }
-
         let who = (actor.id.as_str(), actor.username.as_str());
         let note = match pushed {
             Some(branch) => format!("merged this by pushing {} to {branch}", landed.commit),
             None => merging::merged_note(landed.method).to_owned(),
         };
         self.note(&repo.id, pull.number, who, &note).await?;
-        for issue in issue.iter().chain(&named) {
-            self.note(
-                &repo.id,
-                issue.number,
-                who,
-                &format!("closed this by merging #{}", pull.number),
-            )
-            .await?;
-        }
+        let landing = closing::Landing { pull: Some(pull.number), commit: None, pushed_by: None };
+        self.land(repo, &landing, actor, &named.close_ids(), &named.part_ids(), None, false).await?;
         let through_queue = self.landed_through_queue(&pull.id).await?;
         self.keep_decision_quietly(
             &repo.id,
             decisions::NewDecision {
-                issue: pull.issue,
+                item: own.clone(),
                 pull: Some(pull.number),
                 session_id: None,
                 actor: (!decisions::is_g1t(actor)).then_some(actor),
@@ -2648,22 +2218,13 @@ impl Work {
             },
         )
         .await;
-        // A merge into the default branch clears its issue for the issues
-        // it blocks, and ends the claims on it when it closed it.
-        if let Some(number) = pull.issue
-            && pull.targets_default(&repo.default_branch)
-        {
-            self.issue_resolved(&repo.id, number, actor, issue.is_some(), Some(pull.number)).await;
-        }
-        for closed in &named {
-            self.issue_resolved(&repo.id, closed.number, actor, true, Some(pull.number)).await;
-        }
         pull.status = PullStatus::Merged;
         pull.head_commit = head;
         pull.merge_method = Some(landed.method);
         pull.merge_commit = Some(landed.commit.clone());
         pull.auto_merge = None;
-        pull.closes = closes;
+        pull.closes = named.close_numbers();
+        pull.parts = named.part_numbers();
         pull.merge_base = landed.previous;
         pull.merged_by = Some(actor.username.clone());
         pull.merged_at = Some(now.clone());
@@ -2675,8 +2236,8 @@ impl Work {
         let Some(viewer) = a.viewer else {
             return Ok(Vec::new());
         };
-        // The pull requests and their issues, in one round trip: their own,
-        // and those g1t made for them (Pull::owner).
+        // The pull requests and their work items, in one round trip: their
+        // own, and those g1t made for them (Pull::owner).
         let author = [JsValue::from(viewer.id.as_str())];
         let found = self
             .timing
@@ -2692,31 +2253,27 @@ impl Work {
                         .bind(&author)?,
                     self.db
                         .prepare(format!(
-                            "SELECT {ISSUE_COLUMNS} FROM issues WHERE issues.id IN (
-                               SELECT issue_id FROM pulls
-                               WHERE COALESCE(requested_by_id, author_id) = ?1 AND status IN ('draft', 'open') AND issue_id IS NOT NULL
+                            "SELECT {ITEM_COLUMNS} FROM work_items WHERE work_items.id IN (
+                               SELECT item_id FROM pulls
+                               WHERE COALESCE(requested_by_id, author_id) = ?1 AND status IN ('draft', 'open') AND item_id IS NOT NULL
                                ORDER BY updated_at DESC LIMIT 50)"
                         ))
                         .bind(&author)?,
                 ]),
             )
             .await?;
-        let (Some(found), Some(issues)) = (found.first(), found.get(1)) else {
+        let (Some(found), Some(items)) = (found.first(), found.get(1)) else {
             return Ok(Vec::new());
         };
         let snapshots = found.results::<Snapshot>()?;
+        let item_ids: Vec<Option<String>> = found.results::<PullItemRow>()?.into_iter().map(|row| row.item_id).collect();
         let pulls: Vec<Pull> = found.results::<PullRow>()?.into_iter().map(Pull::from).collect();
-        let issues: Vec<Issue> = issues.results::<IssueRow>()?.into_iter().map(Issue::from).collect();
-        let issues = &issues;
+        let items: Vec<Held> = items.results::<ItemRow>()?.into_iter().filter_map(ItemRow::held).collect();
+        let items = &items;
         // Where each stands: the remembered assessment when there is one,
         // and worked out otherwise.
-        try_join_all(pulls.into_iter().zip(snapshots).map(|(pull, snapshot)| async move {
-            let issue = pull.issue.and_then(|number| {
-                issues
-                    .iter()
-                    .find(|issue| issue.repo_id == pull.repo_id && issue.number == number)
-                    .cloned()
-            });
+        try_join_all(pulls.into_iter().zip(snapshots).zip(item_ids).map(|((pull, snapshot), item_id)| async move {
+            let item = item_id.and_then(|id| items.iter().find(|held| held.item.id == id).map(|held| held.item.clone()));
             // Every open pull request has a lifecycle (lifecycle.rs), kept
             // fresh by what moves it (`advance`, on each event that can);
             // anyone's draft but g1t's has none.
@@ -2732,13 +2289,13 @@ impl Work {
             } else {
                 // Never worked out yet: once, and remembered.
                 let behind = self.behind_now(&pull).await?;
-                self.assess(&pull, &issue, behind)
+                self.assess(&pull, &item, behind)
                     .await?
                     .map(|(lifecycle, _)| lifecycle)
             };
             Ok::<_, worker::Error>(ActivePull {
                 pull,
-                issue,
+                item,
                 lifecycle,
             })
         }))
@@ -2833,11 +2390,13 @@ impl Work {
     /// A push moves the head of the pull request it concerns: the one whose
     /// fork was pushed to, or the one opened from the branch that moved.
     async fn on_event(&self, event: &Event) -> Result<()> {
-        // A new repository starts with the default labels.
-        if event.kind == "repo.created"
-            && let Some(repo_id) = event.repo_id.as_deref()
-        {
-            return self.seed_labels(repo_id).await;
+        // A new repository: where it is, for its workspace's work items and
+        // numbers; a workspace's first starts it with the default labels.
+        if event.kind == "repo.created" {
+            return self.repo_created(&event.data).await;
+        }
+        if event.kind == "repo.visibility_changed" || event.kind == "repo.updated" {
+            return self.repo_visibility(&event.data).await;
         }
         // Pull requests into the branch that became the default merge into
         // the default branch, which is stored as none.
@@ -2873,8 +2432,7 @@ impl Work {
              SET head_commit = ?, updated_at = ?, head_pushed_by = ?, head_pushed_at = ?, check_status = NULL, check_run_id = NULL,
                  working_on = NULL, working_until = NULL, stalled = NULL";
         let active = "status IN ('draft', 'open') AND head_commit IS NOT ?";
-        let returning =
-            "RETURNING id, repo_id, number, issue_number, status, author_id, author_name, requested_by_id, requested_by_name";
+        let returning = "RETURNING id, repo_id, number, status, author_id, author_name, requested_by_id, requested_by_name";
         let mut pulls: Vec<MovedRow> = Vec::new();
         // A fork carries its pull request on its default branch.
         if event.data["defaultBranch"].as_bool() == Some(true) {
@@ -2945,7 +2503,7 @@ impl Work {
             self.land_if_requested(&moved.id).await?;
         }
         // The pull requests into the branch whose heads it brought in are
-        // merged, and the issues its commits name closed (pushed.rs).
+        // merged, and the work items its commits name landed (pushed.rs).
         if let Some(branch) = git_ref.strip_prefix("refs/heads/") {
             self.after_branch_push(event, repo_id, branch, after).await;
         }
@@ -2965,6 +2523,7 @@ impl Work {
             .into_iter()
             .filter(|pull| pull.status == PullStatus::Open)
         {
+            let item = moved_pulls.iter().find(|moved| moved.id == pull.id).and_then(|moved| moved.item);
             self.publish_as(
                 "pull.updated",
                 &pull.repo_id,
@@ -2978,7 +2537,7 @@ impl Work {
                     pull_id: pull.id,
                     repo_id: pull.repo_id.clone(),
                     number: pull.number,
-                    issue: pull.issue_number,
+                    item,
                     commit: Some(after.to_owned()),
                     ..PullEvent::default()
                 }
@@ -3025,12 +2584,21 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
     work.db = db;
 
     let answered = match method.as_str() {
-        "open_issue" => reply(&work.open_issue(args(body)?).await?),
-        "list_issues" => reply(&work.list_issues(args(body)?).await?),
-        "get_issue" => reply(&work.get_issue(args(body)?).await?),
-        "update_issue" => reply(&work.update_issue(args(body)?).await?),
-        "close_issue" => reply(&work.close_issue(args(body)?).await?),
-        "reopen_issue" => reply(&work.reopen_issue(args(body)?).await?),
+        // Work items (items.rs) and moving issues into them (work_migration.rs).
+        "open_work_item" => reply(&work.open_work_item(args(body)?).await?),
+        "list_work_items" => reply(&work.list_work_items(args(body)?).await?),
+        "get_work_item" => reply(&work.get_work_item(args(body)?).await?),
+        "update_work_item" => reply(&work.update_work_item(args(body)?).await?),
+        "close_work_item" => reply(&work.close_work_item(args(body)?).await?),
+        "reopen_work_item" => reply(&work.reopen_work_item(args(body)?).await?),
+        "link_work_item" => reply(&work.link_work_item(args(body)?).await?),
+        "unlink_work_item" => reply(&work.unlink_work_item(args(body)?).await?),
+        "resolve_ref" => reply(&work.resolve_ref(args(body)?).await?),
+        "legacy_item_map" => reply(&work.legacy_item_map(args(body)?).await?),
+        "migrate_work_items" => {
+            let _: MigrateWorkItemsArgs = args(body)?;
+            reply(&work.migrate_work_items().await?)
+        }
         "list_labels" => reply(&work.list_labels(args(body)?).await?),
         "save_label" => reply(&work.save_label(args(body)?).await?),
         "delete_label" => reply(&work.delete_label(args(body)?).await?),
@@ -3104,8 +2672,8 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         // Decision records (decisions.rs).
         "record_decision" => reply(&work.record_decision(args(body)?).await?),
         "list_decisions" => reply(&work.list_decisions(args(body)?).await?),
-        // Coordinating work: harness sessions, claims, dependencies and an
-        // issue's whole context (coordination/).
+        // Coordinating work: harness sessions, claims, dependencies and a
+        // work item's whole context (coordination/).
         "start_session" => reply(&work.start_session(args(body)?).await?),
         "update_session" => reply(&work.update_session(args(body)?).await?),
         "end_session" => reply(&work.end_session(args(body)?).await?),
@@ -3113,9 +2681,9 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "list_work_sessions" => reply(&work.list_work_sessions(args(body)?).await?),
         "pull_sessions" => reply(&work.pull_sessions(args(body)?).await?),
         "record_session_entries" => reply(&work.record_session_entries(args(body)?).await?),
-        "claim_issue" => reply(&work.claim_issue(args(body)?).await?),
+        "claim_work_item" => reply(&work.claim_work_item(args(body)?).await?),
         "release_claim" => reply(&work.release_claim(args(body)?).await?),
-        "hand_off_issue" => reply(&work.hand_off_issue(args(body)?).await?),
+        "hand_off_work_item" => reply(&work.hand_off_work_item(args(body)?).await?),
         "list_claims" => reply(&work.list_claims(args(body)?).await?),
         "get_work" => reply(&work.get_work(args(body)?).await?),
         // Runs of sandboxes (runs.rs).
@@ -3149,24 +2717,41 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
     served.finish_timed(answered, &work.timing)
 }
 
+/// The cron trigger: moves on the job that moves issues into work items
+/// (work_migration.rs), until it is done.
+#[event(scheduled)]
+async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
+    let moved = async {
+        let work = service(&env)?;
+        work.migrate_work_items().await
+    };
+    if let Err(error) = moved.await {
+        worker::console_error!("moving issues into work items: {error}");
+    }
+}
+
 /// Events from the bus, delivered on this service's own queue.
 #[event(queue)]
 async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()> {
     let work = service(&env)?;
     for message in batch.messages()? {
-        // A workspace renamed: its runs move to the slug it has now.
-        if g1t_kit::rename::on_event(&env, &env.d1("DB")?, message.body(), &[runs::RENAMED, guardrails::RENAMED, rulesets::RENAMED].concat()).await? {
+        // A workspace renamed: its runs, work items, labels, milestones and
+        // numbers move to the slug it has now.
+        let renamed = [runs::RENAMED, guardrails::RENAMED, rulesets::RENAMED, work_migration::RENAMED].concat();
+        if g1t_kit::rename::on_event(&env, &env.d1("DB")?, message.body(), &renamed).await? {
             message.ack();
             continue;
         }
         // A repository renamed or transferred: its runs and guardrails
-        // follow.
-        if g1t_kit::transfer::on_event(&env, &env.d1("DB")?, message.body(), &[runs::TRANSFERRED, guardrails::TRANSFERRED, head_repo::TRANSFERRED].concat()).await? {
+        // follow, and where it is is recorded for work items and numbers.
+        let transferred = [runs::TRANSFERRED, guardrails::TRANSFERRED, head_repo::TRANSFERRED, work_migration::TRANSFERRED].concat();
+        if g1t_kit::transfer::on_event(&env, &env.d1("DB")?, message.body(), &transferred).await? {
             message.ack();
             continue;
         }
         // A workspace deleted: what it kept for itself goes.
-        if g1t_kit::deleted::on_event(&env.d1("DB")?, message.body(), guardrails::DELETED).await? {
+        let deleted = [guardrails::DELETED, work_migration::DELETED].concat();
+        if g1t_kit::deleted::on_event(&env.d1("DB")?, message.body(), &deleted).await? {
             message.ack();
             continue;
         }

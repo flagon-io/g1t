@@ -37,7 +37,7 @@ pub(crate) const RENAMED: &[&str] = &[
 ];
 
 /// A repository transferred (see `g1t_kit::transfer`): its runs go with
-/// it, as its issues and pull requests do by id. `?1`/`?2` the path now
+/// it, as its pull requests do by id. `?1`/`?2` the path now
 /// and before, `?3`/`?4` the workspaces, `?5` the repository's id.
 pub(crate) const TRANSFERRED: &[&str] = &[
     "UPDATE agent_runs SET workspace = ?3, repo = ?1 WHERE repo_id = ?5 AND repo = ?2",

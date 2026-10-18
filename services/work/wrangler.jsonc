@@ -7,6 +7,10 @@
 	// and each would otherwise cross the distance to it.
 	"placement": { "mode": "off" },
 	"main": "build/index.js",
+	// Moves repositories' issues into their workspaces' work items, a page
+	// at a time, until done (src/work_migration.rs); `migrate_work_items`
+	// runs the same step at once.
+	"triggers": { "crons": ["*/5 * * * *"] },
 	"build": { "command": "node ../../scripts/build-rust-worker.mjs" },
 	"workers_dev": false,
 	"d1_databases": [

@@ -1,7 +1,7 @@
 //! Reading a page's worth of rows in one round trip.
 //!
 //! A pull request's page used to cost about twenty queries one after
-//! another: the repository, the pull request, its issue, then where it
+//! another: the repository, the pull request, its work item, then where it
 //! stands (its progress, settings, statuses, verdicts and queue entry),
 //! its comments and checks. Each is a round trip to the database, and from most places a
 //! round trip is 20 to 40 ms. Here they go as one D1 batch, keyed by the
@@ -26,8 +26,9 @@ use serde::de::DeserializeOwned;
 use worker::wasm_bindgen::JsValue;
 use worker::{D1PreparedStatement, D1Result, Result};
 
+use crate::Work;
+use crate::items::ITEM_COLUMNS;
 use crate::rows::PULL_COLUMNS;
-use crate::{ISSUE_COLUMNS, Work};
 
 /// The pull request's id, from the batch's `?1` (repository) and `?2` (number).
 const PULL_ID: &str = "(SELECT id FROM pulls WHERE repo_id = ?1 AND number = ?2)";
@@ -36,7 +37,7 @@ const PULL_ID: &str = "(SELECT id FROM pulls WHERE repo_id = ?1 AND number = ?2)
 #[derive(Clone, Copy)]
 pub(crate) enum Slot {
     Pull,
-    Issue,
+    Item,
     Comments,
     Verdicts,
     Runs,
@@ -169,11 +170,11 @@ impl Work {
         let statements = vec![
             // Slot::Pull: the row, with everything the lifecycle tracks on it.
             self.statement(&format!("SELECT {PULL_COLUMNS} FROM pulls WHERE repo_id = ?1 AND number = ?2"), &key())?,
-            // Slot::Issue
+            // Slot::Item
             self.statement(
                 &format!(
-                    "SELECT {ISSUE_COLUMNS} FROM issues
-                     WHERE repo_id = ?1 AND number = (SELECT issue_number FROM pulls WHERE repo_id = ?1 AND number = ?2)"
+                    "SELECT {ITEM_COLUMNS} FROM work_items
+                     WHERE id = (SELECT item_id FROM pulls WHERE repo_id = ?1 AND number = ?2)"
                 ),
                 &key(),
             )?,
@@ -202,7 +203,8 @@ impl Work {
             self.statement("SELECT * FROM repo_settings WHERE repo_id = ?1", &repo_only())?,
             // Slot::Others (reviews.rs `overlaps`)
             self.statement(
-                "SELECT number, title, issue_number, files FROM pulls
+                "SELECT number, title, (SELECT number FROM work_items WHERE work_items.id = pulls.item_id) AS item_number,
+                   files FROM pulls
                  WHERE repo_id = ?1 AND number != ?2 AND status IN ('draft', 'open')
                  ORDER BY number LIMIT 200",
                 &key(),

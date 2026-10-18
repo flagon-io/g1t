@@ -16,13 +16,17 @@ use std::collections::HashSet;
 
 const NOW: u64 = 1_791_800_000_000;
 
-/// Starts a subagent of `parent` the way `start_session` does, on issue 4.
+/// The repositories an update is delivered to.
+const REPO: &str = r#"["rep_1"]"#;
+
+/// Starts a subagent of `parent` the way `start_session` does, on work
+/// item 4 of the repository's workspace.
 fn start_child(db: &Connection, id: &str, parent: &str, harness_id: &str, agent: &str) -> Option<String> {
     let at = rfc3339(NOW);
     db.query_row(
         &insert_session_sql(),
         params![
-            id, "rep_1", 4, None::<u32>, "main", "usr_1", "ana", "claude_code", harness_id, None::<String>, None::<String>, at, at,
+            id, "rep_1", "wki_4", None::<u32>, "main", "usr_1", "ana", "claude_code", harness_id, None::<String>, None::<String>, at, at,
             parent, agent, "Find the endpoints", "Find every API endpoint and list them", None::<String>
         ],
         |row| row.get::<_, String>(0),
@@ -45,23 +49,13 @@ fn database() -> Connection {
 }
 
 fn database_at(path: impl AsRef<std::path::Path>) -> Connection {
-    let db = Connection::open(path).unwrap();
-    db.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
-    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/migrations");
-    let mut names: Vec<String> = std::fs::read_dir(dir)
-        .unwrap()
-        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
-        .filter(|name| name.ends_with(".sql"))
-        .collect();
-    names.sort();
-    for name in names {
-        let sql = std::fs::read_to_string(format!("{dir}/{name}")).unwrap();
-        db.execute_batch(&sql).unwrap_or_else(|error| panic!("{name}: {error}"));
-    }
-    db.execute(
+    let db = crate::migrated::database_at(path);
+    db.execute_batch(
         "INSERT INTO pulls (id, repo_id, number, title, agent, runtime, author_id, author_name, created_at, updated_at)
-         VALUES ('pr_9', 'rep_1', 9, 'Greet', 'claude-code', 'external', 'usr_1', 'ana', '', '')",
-        [],
+         VALUES ('pr_9', 'rep_1', 9, 'Greet', 'claude-code', 'external', 'usr_1', 'ana', '', '');
+         INSERT INTO repo_workspaces (repo_id, workspace, path, private) VALUES ('rep_1', 'acme', 'acme/web', 1);
+         INSERT INTO work_items (id, workspace, number, title, body, author_id, author_name, created_at, updated_at)
+         VALUES ('wki_4', 'acme', 4, 'Greet', '', 'usr_1', 'ana', '', ''), ('wki_9', 'acme', 9, 'Other', '', 'usr_1', 'ana', '', '');",
     )
     .unwrap();
     db
@@ -70,7 +64,7 @@ fn database_at(path: impl AsRef<std::path::Path>) -> Connection {
 fn claim(db: &Connection, id: &str, session: Option<&str>, actor: &str) -> String {
     db.query_row(
         &super::claims::upsert_claim_sql(),
-        params![id, "rep_1", 4, session, actor, "ana", "codex", "Working on it", 30, rfc3339(NOW), after_minutes(NOW, 30)],
+        params![id, "wki_4", "rep_1", session, actor, "ana", "codex", "Working on it", 30, rfc3339(NOW), after_minutes(NOW, 30)],
         |row| row.get(0),
     ).unwrap()
 }
@@ -123,7 +117,7 @@ fn start(db: &Connection, id: &str, harness_id: Option<&str>) -> Option<String> 
     db.query_row(
         &insert_session_sql(),
         params![
-            id, "rep_1", 4, None::<u32>, "main", "usr_1", "ana", "claude_code", harness_id, None::<String>, None::<String>, at, at,
+            id, "rep_1", "wki_4", None::<u32>, "main", "usr_1", "ana", "claude_code", harness_id, None::<String>, None::<String>, at, at,
             None::<String>, None::<String>, None::<String>, None::<String>, None::<String>
         ],
         |row| row.get::<_, String>(0),
@@ -185,10 +179,10 @@ fn a_quiet_session_times_out_and_a_heartbeat_brings_it_back() {
         .query_row(
             &resume_sql(),
             params![
-                None::<u32>, 9, None::<String>, "abc123", None::<String>, None::<String>, None::<String>, None::<String>,
+                None::<String>, 9, None::<String>, "abc123", None::<String>, None::<String>, None::<String>, None::<String>,
                 None::<String>, None::<String>, late, "ses_1"
             ],
-            |row| row.get(10),
+            |row| row.get(11),
         )
         .unwrap();
     assert_eq!(state, "active");
@@ -212,10 +206,10 @@ fn a_subagent_starts_once_and_once_finished_stays_finished() {
         .query_row(
             &refresh_sql(),
             params![
-                None::<u32>, None::<u32>, None::<String>, None::<String>, None::<String>, None::<String>, "List endpoints",
+                None::<String>, None::<u32>, None::<String>, None::<String>, None::<String>, None::<String>, "List endpoints",
                 None::<String>, None::<String>, None::<String>, rfc3339(NOW), "ses_c1"
             ],
-            |row| Ok((row.get(10)?, row.get(18)?, row.get(20)?)),
+            |row| Ok((row.get(11)?, row.get(19)?, row.get(21)?)),
         )
         .unwrap();
     assert_eq!((state.as_str(), task.as_str(), result.as_str()), ("ended", "List endpoints", "Found 12 endpoints"));
@@ -252,7 +246,7 @@ fn links_and_touches_are_kept_once_each() {
     assert!(touch(&db, "ses_1", "file", "src/lib.rs"));
     assert!(!touch(&db, "ses_1", "file", "src/lib.rs"), "said again: nothing new");
     assert!(touch(&db, "ses_1", "branch", "4-greet"));
-    let link = |via: &str| db.execute(INSERT_LINK, params!["ses_1", "rep_1", "issue", 4, via, rfc3339(NOW)]).unwrap();
+    let link = |via: &str| db.execute(INSERT_LINK, params!["ses_1", "rep_1", "item", 0, via, rfc3339(NOW), "wki_4"]).unwrap();
     assert_eq!(link("claim"), 1);
     assert_eq!(link("claim"), 0);
     assert_eq!(link("ref"), 1);
@@ -274,7 +268,7 @@ fn a_pull_requests_sessions_are_found_every_way_they_are_tied() {
     db.execute("UPDATE pulls SET source_branch = '9-fix' WHERE id = 'pr_9'", []).unwrap();
     // ses_1 pushed the branch; ses_2's subagent named the pull request in a trailer.
     touch(&db, "ses_1", "branch", "9-fix");
-    db.execute(INSERT_LINK, params!["ses_2c", "rep_1", "pull", 9, "trailer", rfc3339(NOW)]).unwrap();
+    db.execute(INSERT_LINK, params!["ses_2c", "rep_1", "pull", 9, "trailer", rfc3339(NOW), ""]).unwrap();
     let rows = |numbers: &str| -> Vec<PullSessionRow> {
         let mut statement = db.prepare(PULL_SESSIONS).unwrap();
         statement
@@ -300,12 +294,12 @@ fn a_pull_requests_sessions_are_found_every_way_they_are_tied() {
     assert!(pull_sessions_of(rows("[10]")).is_empty());
 }
 
-/// Twelve subagents of one session work on one issue, some on the same
-/// files: each is listed on the issue beside the others, each is told of
+/// Twelve subagents of one session work on one work item, some on the
+/// same files: each is listed on it beside the others, each is told of
 /// every other that touched a file it touched (once per pair, for both
 /// sides), and each holds a claim of its own that the others see.
 #[test]
-fn twelve_subagents_on_one_issue_see_each_other() {
+fn twelve_subagents_on_one_work_item_see_each_other() {
     let db = database();
     start(&db, "ses_parent", Some("lead"));
     let children: Vec<String> = (1..=12).map(|n| format!("ses_c{n:02}")).collect();
@@ -316,9 +310,9 @@ fn twelve_subagents_on_one_issue_see_each_other() {
         touch(&db, id, "file", &format!("src/part{}.rs", n / 2));
         touch(&db, id, "file", &format!("src/only{n}.rs"));
     }
-    // All twelve, and their parent, are on the issue.
-    let on_issue = column(&db, "SELECT id FROM sessions WHERE repo_id = 'rep_1' AND issue = 4 ORDER BY id", []);
-    assert_eq!(on_issue.len(), 13);
+    // All twelve, and their parent, are on the work item.
+    let on_item = column(&db, "SELECT id FROM sessions WHERE repo_id = 'rep_1' AND item_id = 'wki_4' ORDER BY id", []);
+    assert_eq!(on_item.len(), 13);
     let mut announced = 0;
     for id in &children {
         let n: usize = id[5..].parse().unwrap();
@@ -352,7 +346,7 @@ fn twelve_subagents_on_one_issue_see_each_other() {
         }
     }
     assert_eq!(announced, 12 * 11, "66 pairs, each announced to both sides once");
-    // Each claims the issue from its own session: the others see eleven.
+    // Each claims the work item from its own session: the others see eleven.
     let claims: Vec<(&str, Option<&str>)> = children.iter().map(|id| ("usr_1", Some(id.as_str()))).collect();
     for id in &children {
         let others = claims.iter().filter(|(actor, session)| !claim_is_mine(actor, *session, "usr_1", Some(id))).count();
@@ -403,8 +397,8 @@ fn claims_expire_when_due_and_heartbeats_only_extend_them() {
     let db = database();
     let insert = |id: &str, expires_at: &str| {
         db.execute(
-            "INSERT INTO claims (id, repo_id, issue, actor_id, actor_name, state, ttl_minutes, created_at, expires_at)
-             VALUES (?1, 'rep_1', 4, 'usr_1', 'ana', 'active', 30, '', ?2)",
+            "INSERT INTO claims (id, item_id, repo_id, actor_id, actor_name, state, ttl_minutes, created_at, expires_at)
+             VALUES (?1, 'wki_4', 'rep_1', 'usr_1', 'ana', 'active', 30, '', ?2)",
             params![id, expires_at],
         )
         .unwrap();
@@ -466,7 +460,7 @@ fn inbox_delivery_acknowledgement_and_reconnect_are_session_scoped() {
     start(&db, "ses_other", Some("other"));
     db.execute("UPDATE sessions SET state = 'ended' WHERE id = 'ses_ended'", []).unwrap();
     db.execute("UPDATE sessions SET repo_id = 'other' WHERE id = 'ses_other'", []).unwrap();
-    let event = params!["upd_1", "overlap.detected", "{}", rfc3339(NOW), "rep_1", "[]"];
+    let event = params!["upd_1", "overlap.detected", "{}", rfc3339(NOW), REPO, "[]"];
     assert_eq!(db.execute(&deliver_sql("1"), event).unwrap(), 2);
     assert_eq!(db.execute(&deliver_sql("1"), event).unwrap(), 0);
     assert_eq!(column(&db, PENDING, ["ses_a"]), ["upd_1"]);
@@ -479,7 +473,7 @@ fn inbox_delivery_acknowledgement_and_reconnect_are_session_scoped() {
     assert!(column(&db, PENDING, ["ses_a"]).is_empty());
     assert_eq!(column(&db, PENDING, ["ses_b"]), ["upd_1"]);
     assert_eq!(column(&db, "SELECT acknowledged_at FROM session_updates WHERE session_id = 'ses_a'", []), ["first"]);
-    db.execute(&deliver_sql("1"), params!["upd_2", "dependency.changed", "{}", rfc3339(NOW+1), "rep_1", "[]"]).unwrap();
+    db.execute(&deliver_sql("1"), params!["upd_2", "dependency.changed", "{}", rfc3339(NOW+1), REPO, "[]"]).unwrap();
     // An old acknowledgement cannot swallow a later update.
     db.execute(ACK, params!["retry", "ses_a", "upd_1"]).unwrap();
     assert_eq!(column(&db, PENDING, ["ses_a"]), ["upd_2"]);
@@ -491,7 +485,7 @@ fn inbox_drains_bounded_pages_without_skipping_updates() {
     let db = database();
     start(&db, "ses_a", Some("a"));
     for i in 0..105 {
-        db.execute(&deliver_sql("1"), params![format!("upd_{i:03}"), "work.claimed", "{}", rfc3339(NOW), "rep_1", "[]"]).unwrap();
+        db.execute(&deliver_sql("1"), params![format!("upd_{i:03}"), "work.claimed", "{}", rfc3339(NOW), REPO, "[]"]).unwrap();
     }
     let first = column(&db, PENDING, ["ses_a"]);
     assert_eq!(first.len(), 100);
@@ -506,7 +500,7 @@ fn pending_updates_and_receipts_survive_database_reopen() {
         std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
     let db = database_at(&path);
     start(&db, "ses_a", Some("a"));
-    db.execute(&deliver_sql("1"), params!["upd_1", "overlap.detected", "{}", rfc3339(NOW), "rep_1", "[]"]).unwrap();
+    db.execute(&deliver_sql("1"), params!["upd_1", "overlap.detected", "{}", rfc3339(NOW), REPO, "[]"]).unwrap();
     drop(db);
     let db = Connection::open(&path).unwrap();
     assert_eq!(column(&db, PENDING, ["ses_a"]), ["upd_1"]);
@@ -525,10 +519,10 @@ fn inbox_targets_session_overlaps_and_excludes_own_lifecycle_events() {
     let db = database();
     start(&db, "ses_a", Some("a"));
     start(&db, "ses_b", Some("b"));
-    db.execute(&deliver_sql("1"), params!["upd_overlap", "overlap.detected", r#"{"sessionId":"ses_a","otherSessionId":"ses_b"}"#, rfc3339(NOW), "rep_1", "[]"]).unwrap();
+    db.execute(&deliver_sql("1"), params!["upd_overlap", "overlap.detected", r#"{"sessionId":"ses_a","otherSessionId":"ses_b"}"#, rfc3339(NOW), REPO, "[]"]).unwrap();
     assert_eq!(column(&db, PENDING, ["ses_a"]), ["upd_overlap"]);
     assert!(column(&db, PENDING, ["ses_b"]).is_empty());
-    db.execute(&deliver_sql("1"), params!["upd_start", "session.started", r#"{"session":{"id":"ses_b"}}"#, rfc3339(NOW+1), "rep_1", "[]"]).unwrap();
+    db.execute(&deliver_sql("1"), params!["upd_start", "session.started", r#"{"session":{"id":"ses_b"}}"#, rfc3339(NOW+1), REPO, "[]"]).unwrap();
     assert_eq!(column(&db, PENDING, ["ses_a"]), ["upd_overlap", "upd_start"]);
     assert!(column(&db, PENDING, ["ses_b"]).is_empty());
 }
@@ -540,12 +534,12 @@ fn a_session_is_not_told_of_its_own_claims_but_others_are() {
     start(&db, "ses_a", Some("a"));
     start(&db, "ses_b", Some("b"));
     for (id, kind) in [("upd_claim", "work.claimed"), ("upd_release", "work.released"), ("upd_handoff", "work.handoff_requested")] {
-        db.execute(&deliver_sql("1"), params![id, kind, r#"{"claim":{"sessionId":"ses_a"}}"#, rfc3339(NOW), "rep_1", "[]"]).unwrap();
+        db.execute(&deliver_sql("1"), params![id, kind, r#"{"claim":{"sessionId":"ses_a"}}"#, rfc3339(NOW), REPO, "[]"]).unwrap();
     }
     // An expiry happened to the session; it hears of it.
-    db.execute(&deliver_sql("1"), params!["upd_expired", "work.claim_expired", r#"{"claim":{"sessionId":"ses_a"}}"#, rfc3339(NOW + 1), "rep_1", "[]"]).unwrap();
+    db.execute(&deliver_sql("1"), params!["upd_expired", "work.claim_expired", r#"{"claim":{"sessionId":"ses_a"}}"#, rfc3339(NOW + 1), REPO, "[]"]).unwrap();
     // A sessionless claim is news to every session.
-    db.execute(&deliver_sql("1"), params!["upd_bare", "work.claimed", r#"{"claim":{"sessionId":null}}"#, rfc3339(NOW + 2), "rep_1", "[]"]).unwrap();
+    db.execute(&deliver_sql("1"), params!["upd_bare", "work.claimed", r#"{"claim":{"sessionId":null}}"#, rfc3339(NOW + 2), REPO, "[]"]).unwrap();
     assert_eq!(column(&db, PENDING, ["ses_a"]), ["upd_expired", "upd_bare"]);
     assert_eq!(column(&db, PENDING, ["ses_b"]), ["upd_claim", "upd_handoff", "upd_release", "upd_expired", "upd_bare"]);
 }
@@ -556,7 +550,7 @@ fn acknowledging_counts_only_this_sessions_updates() {
     let db = database();
     start(&db, "ses_a", Some("a"));
     start(&db, "ses_b", Some("b"));
-    db.execute(&deliver_sql("1"), params!["upd_1", "dependency.changed", "{}", rfc3339(NOW), "rep_1", "[]"]).unwrap();
+    db.execute(&deliver_sql("1"), params!["upd_1", "dependency.changed", "{}", rfc3339(NOW), REPO, "[]"]).unwrap();
     let known = |session: &str, ids: &str| db.query_row(KNOWN, params![session, ids], |row| row.get::<_, u32>(0)).unwrap();
     assert_eq!(known("ses_a", r#"["upd_1","upd_typo"]"#), 1);
     db.execute(ACK, params!["now", "ses_a", "upd_1"]).unwrap();
@@ -573,27 +567,27 @@ fn updates_reach_the_sessions_on_their_subject_and_those_not_on_anything_yet() {
         start(&db, id, Some(id));
     }
     // start() puts a session on #4: only ses_on4 stays there.
-    db.execute("UPDATE sessions SET issue = NULL WHERE id <> 'ses_on4'", []).unwrap();
-    db.execute("UPDATE sessions SET issue = 9 WHERE id = 'ses_on9'", []).unwrap();
+    db.execute("UPDATE sessions SET item_id = NULL WHERE id <> 'ses_on4'", []).unwrap();
+    db.execute("UPDATE sessions SET item_id = 'wki_9' WHERE id = 'ses_on9'", []).unwrap();
     db.execute("UPDATE sessions SET pull = 14 WHERE id = 'ses_pull'", []).unwrap();
     // Tied to #4 another way (it named it), though attached to nothing.
-    db.execute(INSERT_LINK, params!["ses_linked", "rep_1", "issue", 4, "ref", rfc3339(NOW)]).unwrap();
-    let data = serde_json::json!({ "number": 14, "issue": 4, "claim": { "sessionId": null } });
+    db.execute(INSERT_LINK, params!["ses_linked", "rep_1", "item", 0, "ref", rfc3339(NOW), "wki_4"]).unwrap();
+    let data = serde_json::json!({ "number": 14, "item": 4, "claim": { "sessionId": null } });
     assert_eq!(subjects(&data), [4, 14]);
-    db.execute(&deliver_sql("1"), params!["upd_claim", "work.claimed", data.to_string(), rfc3339(NOW), "rep_1", "[4,14]"]).unwrap();
+    db.execute(&deliver_sql("1"), params!["upd_claim", "work.claimed", data.to_string(), rfc3339(NOW), REPO, "[4,14]"]).unwrap();
     let heard: Vec<&str> = ["ses_on4", "ses_on9", "ses_free", "ses_linked", "ses_pull"]
         .into_iter()
         .filter(|id| !column(&db, PENDING, [*id]).is_empty())
         .collect();
     assert_eq!(heard, ["ses_on4", "ses_free", "ses_linked", "ses_pull"], "the session on #9 is not interrupted");
-    // Tied to another issue only, a session is on something: not told of #4.
+    // Tied to another work item only, a session is on something: not told of #4.
     start(&db, "ses_elsewhere", Some("elsewhere"));
-    db.execute("UPDATE sessions SET issue = NULL WHERE id = 'ses_elsewhere'", []).unwrap();
-    db.execute(INSERT_LINK, params!["ses_elsewhere", "rep_1", "issue", 9, "claim", rfc3339(NOW)]).unwrap();
-    db.execute(&deliver_sql("1"), params!["upd_claim_2", "work.claimed", data.to_string(), rfc3339(NOW), "rep_1", "[4,14]"]).unwrap();
+    db.execute("UPDATE sessions SET item_id = NULL WHERE id = 'ses_elsewhere'", []).unwrap();
+    db.execute(INSERT_LINK, params!["ses_elsewhere", "rep_1", "item", 0, "claim", rfc3339(NOW), "wki_9"]).unwrap();
+    db.execute(&deliver_sql("1"), params!["upd_claim_2", "work.claimed", data.to_string(), rfc3339(NOW), REPO, "[4,14]"]).unwrap();
     assert!(column(&db, PENDING, ["ses_elsewhere"]).is_empty());
     // An event about nothing in particular reaches everyone.
-    db.execute(&deliver_sql("1"), params!["upd_any", "session.started", r#"{"session":{"id":"ses_x"}}"#, rfc3339(NOW + 1), "rep_1", "[]"]).unwrap();
+    db.execute(&deliver_sql("1"), params!["upd_any", "session.started", r#"{"session":{"id":"ses_x"}}"#, rfc3339(NOW + 1), REPO, "[]"]).unwrap();
     assert_eq!(column(&db, PENDING, ["ses_on9"]), ["upd_any"]);
 }
 
@@ -611,12 +605,12 @@ fn an_update_is_written_only_with_its_change_and_once() {
         let id: String = tx
             .query_row(
                 &upsert_claim_sql(),
-                params![proposed, "rep_1", 4, "ses_a", "usr_1", "ana", "codex", "Scope: api", 30, rfc3339(NOW), after_minutes(NOW, 30)],
+                params![proposed, "wki_4", "rep_1", "ses_a", "usr_1", "ana", "codex", "Scope: api", 30, rfc3339(NOW), after_minutes(NOW, 30)],
                 |row| row.get(0),
             )
             .unwrap();
         let update = update_id("work.claimed", &format!("{proposed}:claimed"));
-        tx.execute(&guard, params![update, "work.claimed", r#"{"issue":4,"claim":{"sessionId":"ses_a"}}"#, rfc3339(NOW), "rep_1", "[4]", proposed]).unwrap();
+        tx.execute(&guard, params![update, "work.claimed", r#"{"item":4,"claim":{"sessionId":"ses_a"}}"#, rfc3339(NOW), REPO, "[4]", proposed]).unwrap();
         tx.commit().unwrap();
         id
     };
@@ -628,12 +622,12 @@ fn an_update_is_written_only_with_its_change_and_once() {
     assert_eq!(column(&db, PENDING, ["ses_b"]).len(), 1);
     // The same change written twice (a retried or concurrent request) is one update.
     let update = update_id("work.claimed", "clm_first:claimed");
-    db.execute(&guard, params![update, "work.claimed", "{}", rfc3339(NOW), "rep_1", "[4]", "clm_first"]).unwrap();
+    db.execute(&guard, params![update, "work.claimed", "{}", rfc3339(NOW), REPO, "[4]", "clm_first"]).unwrap();
     assert_eq!(column(&db, PENDING, ["ses_b"]).len(), 1);
     // A transaction that fails takes its update with it.
     {
         let tx = db.transaction().unwrap();
-        tx.execute(&guard, params!["upd_lost", "work.claimed", "{}", rfc3339(NOW), "rep_1", "[4]", "clm_first"]).unwrap();
+        tx.execute(&guard, params!["upd_lost", "work.claimed", "{}", rfc3339(NOW), REPO, "[4]", "clm_first"]).unwrap();
         drop(tx);
     }
     assert_eq!(column(&db, PENDING, ["ses_b"]), [update]);
@@ -668,7 +662,7 @@ fn a_queue_result_told_twice_reaches_each_session_once() {
     start(&db, "ses_a", Some("a"));
     let id = update_id("integration.failed", "qe_1:att_2:abc123");
     for _ in 0..2 {
-        db.execute(&deliver_sql("1"), params![id, "integration.failed", r#"{"number":14,"issue":4}"#, rfc3339(NOW), "rep_1", "[4,14]"]).unwrap();
+        db.execute(&deliver_sql("1"), params![id, "integration.failed", r#"{"number":14,"item":4}"#, rfc3339(NOW), REPO, "[4,14]"]).unwrap();
     }
     assert_eq!(column(&db, PENDING, ["ses_a"]), [id.clone()]);
     // A later attempt's result is news of its own.

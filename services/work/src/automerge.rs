@@ -424,7 +424,7 @@ fn merge_args(
         repo: RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() },
         number,
         summary: String::new(),
-        keep_issue_open: false,
+        keep_item_open: false,
         ignore_checks: false,
         bypass_rules: false,
         merge_method: Some(method),

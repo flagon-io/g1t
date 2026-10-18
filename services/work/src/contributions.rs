@@ -1,6 +1,6 @@
 //! A person's year, for the contribution calendar on their profile: how
-//! many commits they pushed to a default branch (or `gh-pages`), issues and
-//! pull requests they opened (or g1t opened for them, see `requested_by`)
+//! many commits they pushed to a default branch (or `gh-pages`), work items
+//! (filed from a repository) and pull requests they opened (or g1t opened for them, see `requested_by`)
 //! and reviews they gave, day by day (UTC).
 //!
 //! Commits are the repos service's: it credits whoever pushed, as each
@@ -26,7 +26,8 @@ use crate::Work;
 
 /// Every repository the person did something in since `?2`, busiest first.
 const TOUCHED_SQL: &str = "SELECT repo_id, count(*) AS n FROM (
-   SELECT repo_id FROM issues WHERE COALESCE(requested_by_id, author_id) = ?1 AND created_at >= ?2
+   SELECT o.repo_id AS repo_id FROM work_items i JOIN work_item_repos o ON o.item_id = i.id AND o.role = 'origin'
+   WHERE COALESCE(i.requested_by_id, i.author_id) = ?1 AND i.created_at >= ?2
    UNION ALL SELECT repo_id FROM pulls WHERE COALESCE(requested_by_id, author_id) = ?1 AND created_at >= ?2
    UNION ALL SELECT repo_id FROM comments WHERE author_id = ?1 AND created_at >= ?2 AND verdict IS NOT NULL
  ) GROUP BY repo_id ORDER BY n DESC LIMIT ?3";
@@ -34,9 +35,10 @@ const TOUCHED_SQL: &str = "SELECT repo_id, count(*) AS n FROM (
 /// What they did each day since `?3`, in the repositories `?2` (a JSON
 /// array of ids) only.
 const DAYS_SQL: &str = "SELECT day, count(*) AS n FROM (
-   SELECT substr(created_at, 1, 10) AS day FROM issues
-   WHERE COALESCE(requested_by_id, author_id) = ?1 AND created_at >= ?3
-     AND repo_id IN (SELECT value FROM json_each(?2))
+   SELECT substr(i.created_at, 1, 10) AS day FROM work_items i
+   JOIN work_item_repos o ON o.item_id = i.id AND o.role = 'origin'
+   WHERE COALESCE(i.requested_by_id, i.author_id) = ?1 AND i.created_at >= ?3
+     AND o.repo_id IN (SELECT value FROM json_each(?2))
    UNION ALL
    SELECT substr(created_at, 1, 10) AS day FROM pulls
    WHERE COALESCE(requested_by_id, author_id) = ?1 AND created_at >= ?3
@@ -123,7 +125,7 @@ impl Work {
         Ok(Outcome::Ok(tally(rows?, commits, from)))
     }
 
-    /// Issues, pull requests and reviews a day, in repositories the viewer may read.
+    /// Work items, pull requests and reviews a day, in repositories the viewer may read.
     async fn work_days(&self, person: &str, from: &str, viewer: Viewer) -> Result<Vec<DayRow>> {
         let touched = self
             .db

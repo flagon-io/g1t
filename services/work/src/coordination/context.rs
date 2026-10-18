@@ -1,27 +1,36 @@
-//! `get_work`: everything about an issue an agent needs to pick it up, in
-//! one call. What it is for and what done means, who is on it, the pull
-//! requests already made for it and where each stands, what it waits on
-//! and what waits on it, the decisions made about it, and its latest
-//! coordination events.
+//! `get_work`: everything about a work item an agent needs to pick it up,
+//! in one call. What it is for and what done means, the repositories it is
+//! linked to with their pull requests for it and what landed where, what
+//! is still missing, where else it may belong (suggested targets), who is
+//! on it, what it waits on and what waits on it, the decisions made about
+//! it, and its latest coordination events.
+
+use std::collections::HashMap;
 
 use futures_util::future::{try_join, try_join_all, try_join3};
-use g1t_contracts::events::{Event, ListArgs as ListEventsArgs};
-use g1t_contracts::repos::Repo;
+use g1t_contracts::access::Capability;
 use g1t_contracts::decisions::{Decision, DecisionKind, ListDecisionsArgs};
+use g1t_contracts::events::{Event, ListArgs as ListEventsArgs};
+use g1t_contracts::repos::{ReadableArgs, Repo};
 use g1t_contracts::work::*;
-use g1t_contracts::{FailureCode, Outcome};
+use g1t_contracts::{Outcome, Viewer};
 use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
 
 use super::{SESSION_COLUMNS, SessionRow, unwrap_or_fail};
 use crate::Work;
+use crate::items::Held;
 use crate::rows::{PULL_COLUMNS, PullRow};
 
-/// How many sessions, decisions and events `get_work` gives at most.
+/// How many sessions, decisions, events and suggestions `get_work` gives
+/// at most.
 const SESSIONS: u32 = 50;
 const DECISIONS: u32 = 20;
 const EVENTS: u32 = 20;
+const SUGGESTIONS: usize = 5;
+/// How many earlier landings suggestions are drawn from.
+const LANDINGS: u32 = 200;
 
 #[derive(Deserialize)]
 struct PlaceRow {
@@ -29,46 +38,165 @@ struct PlaceRow {
     position: u32,
 }
 
+/// A repository another work item of the workspace landed in.
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct LandingRow {
+    pub repo_id: String,
+    pub title: String,
+    /// JSON array of label names.
+    pub labels: String,
+}
+
+/// A repository of the workspace, and how many files sessions on the work
+/// item touched in it.
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct TouchedRow {
+    pub repo_id: String,
+    pub files: u32,
+}
+
+/// The repositories of workspace `?1` with what earlier work items (not
+/// `?2`) landed in them, newest first.
+const LANDED_BEFORE: &str = "SELECT r.repo_id AS repo_id, i.title AS title, i.labels AS labels
+     FROM work_item_repos r JOIN work_items i ON i.id = r.item_id
+     WHERE i.workspace = ?1 AND i.id <> ?2 AND r.landed_at IS NOT NULL
+     ORDER BY r.landed_at DESC LIMIT ?3";
+
+/// The repositories where sessions on work item `?1` touched files.
+const TOUCHED_FOR: &str = "SELECT s.repo_id AS repo_id, count(*) AS files
+     FROM session_touches t JOIN sessions s ON s.id = t.session_id
+     WHERE t.kind = 'file'
+       AND (s.item_id = ?1 OR s.id IN (SELECT session_id FROM session_links WHERE kind = 'item' AND item_id = ?1))
+     GROUP BY s.repo_id";
+
+/// The words of `text` that say something: lowercase, four letters or
+/// more.
+fn words(text: &str) -> Vec<String> {
+    let mut found: Vec<String> = Vec::new();
+    for word in text.split(|c: char| !c.is_alphanumeric()).map(str::to_lowercase) {
+        if word.chars().count() >= 4 && !found.contains(&word) {
+            found.push(word);
+        }
+    }
+    found
+}
+
+/// Where a work item may belong besides where it is meant to land already:
+/// the workspace's repositories (`candidates`, by id and path), ranked by
+/// where work items sharing its labels or title words landed before, by a
+/// repository's name in its title or description, and by where sessions on
+/// it touched files. Each says why; the likeliest come first.
+pub(crate) fn suggest_targets(
+    item: &WorkItem,
+    candidates: &[(String, String)],
+    landed: &[LandingRow],
+    touched: &[TouchedRow],
+) -> Vec<SuggestedTarget> {
+    let title_words = words(&item.title);
+    let text = format!("{}\n{}", item.title, item.body).to_lowercase();
+    let mut suggested: Vec<SuggestedTarget> = Vec::new();
+    for (repo_id, path) in candidates {
+        if item.repos.iter().any(|repo| repo.repo_id == *repo_id && repo.role == LinkRole::Target) {
+            continue;
+        }
+        let mut score = 0;
+        let mut why: Vec<String> = Vec::new();
+        let landings: Vec<&LandingRow> = landed.iter().filter(|landing| landing.repo_id == *repo_id).collect();
+        let labelled = landings
+            .iter()
+            .filter(|landing| {
+                let labels: Vec<String> = serde_json::from_str(&landing.labels).unwrap_or_default();
+                labels.iter().any(|label| item.labels.contains(label))
+            })
+            .count() as u32;
+        if labelled > 0 {
+            score += 3 * labelled;
+            why.push(format!("{labelled} work items with the same labels landed there"));
+        }
+        let alike = landings.iter().filter(|landing| words(&landing.title).iter().any(|word| title_words.contains(word))).count() as u32;
+        if alike > 0 {
+            score += 2 * alike;
+            why.push(format!("{alike} work items with like titles landed there"));
+        }
+        let name = path.rsplit('/').next().unwrap_or(path).to_lowercase();
+        let names_it = text.split(|c: char| !(c.is_alphanumeric() || c == '-' || c == '_' || c == '.')).any(|word| word == name);
+        if names_it || text.contains(&path.to_lowercase()) {
+            score += 5;
+            why.push(format!("it names {name}"));
+        }
+        if let Some(found) = touched.iter().find(|found| found.repo_id == *repo_id) {
+            score += 4;
+            why.push(format!("sessions on it touched {} files there", found.files));
+        }
+        if score > 0 {
+            let mut why = why.join("; ");
+            if let Some(first) = why.get_mut(0..1) {
+                first.make_ascii_uppercase();
+            }
+            suggested.push(SuggestedTarget { repo_id: repo_id.clone(), path: path.clone(), why: format!("{why}."), score });
+        }
+    }
+    suggested.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.path.cmp(&b.path)));
+    suggested.truncate(SUGGESTIONS);
+    suggested
+}
+
 impl Work {
-    pub(crate) async fn get_work(&self, a: GetWorkArgs) -> Result<Outcome<WorkContext>> {
-        let repo = unwrap_or_fail!(self.coordination_repo(&a.repo, &a.viewer).await?);
-        let Some(issue) = self.issue(&repo.id, a.number).await? else {
-            return Ok(Outcome::fail(FailureCode::NotFound, "Issue not found."));
-        };
+    pub(crate) async fn get_work(&self, a: WorkItemViewArgs) -> Result<Outcome<WorkContext>> {
+        let held = unwrap_or_fail!(self.item_for(&a.viewer, &a.workspace, a.number, Capability::Read).await?);
+        // What went quiet in its repositories is read as it is now.
+        for repo_id in held.repo_ids().iter().take(10) {
+            self.sweep(repo_id).await?;
+        }
         let pulls: Vec<Pull> = self
             .db
-            .prepare(format!("SELECT {PULL_COLUMNS} FROM pulls WHERE issue_id = ? ORDER BY number"))
-            .bind(&[issue.id.as_str().into()])?
+            .prepare(format!("SELECT {PULL_COLUMNS} FROM pulls WHERE item_id = ? ORDER BY created_at"))
+            .bind(&[held.item.id.as_str().into()])?
             .all()
             .await?
             .results::<PullRow>()?
             .into_iter()
             .map(Pull::from)
             .collect();
-        let pull_numbers: Vec<u32> = pulls.iter().map(|pull| pull.number).collect();
-        let mut numbers = vec![issue.number];
-        numbers.extend(&pull_numbers);
+        // The repositories it is linked to and has pull requests in, as far
+        // as the viewer may read them.
+        let mut ids = held.repo_ids();
+        for pull in &pulls {
+            if !ids.contains(&pull.repo_id) {
+                ids.push(pull.repo_id.clone());
+            }
+        }
+        let readable: Vec<Repo> = g1t_kit::call(&self.repos, "readable", &ReadableArgs { ids, viewer: a.viewer.clone() }).await?;
+        let pulls: Vec<Pull> = pulls.into_iter().filter(|pull| readable.iter().any(|repo| repo.id == pull.repo_id)).collect();
+        let mut numbers = vec![held.item.number];
+        numbers.extend(pulls.iter().map(|pull| pull.number));
 
         let people = try_join3(
-            self.active_claims(&repo.id, issue.number),
-            self.work_sessions(&repo.id, issue.number, &pull_numbers),
-            self.default_branch_settings(&repo),
+            self.active_claims(&held.item.id),
+            self.work_sessions(&held, &pulls),
+            self.suggestions(&held),
         );
-        let dependencies = try_join(self.blockers(&repo.id, &issue.blocked_by), self.blocked_issues(&repo.id, issue.number));
+        let dependencies = try_join(self.blockers(&held.item.workspace, &held.item.blocked_by), self.blocked_items(&held));
+        let linked = held.repo_ids();
         let history = try_join(
-            self.coordination_events(&repo.id, &numbers, COORDINATION_EVENTS.to_vec(), EVENTS),
-            self.decisions_on(&a.repo, &a.viewer, issue.number),
+            self.coordination_events(&linked, &numbers, COORDINATION_EVENTS.to_vec(), EVENTS),
+            self.decisions_on(&held, &a.viewer),
         );
-        let work_pulls = try_join_all(pulls.iter().map(|pull| self.work_pull(&repo, pull)));
-        let (((claims, sessions, settings), (blocked_by, blocks)), ((recent, decisions), pulls)) =
-            try_join(try_join(people, dependencies), try_join(history, work_pulls)).await?;
+        let repos = try_join_all(held.item.repos.iter().filter_map(|link| {
+            let repo = readable.iter().find(|repo| repo.id == link.repo_id)?;
+            let mine: Vec<&Pull> = pulls.iter().filter(|pull| pull.repo_id == repo.id).collect();
+            Some(self.work_repo(link.clone(), repo, mine))
+        }));
+        let (((claims, sessions, suggested_targets), (blocked_by, blocks)), ((recent, decisions), repos)) =
+            try_join(try_join(people, dependencies), try_join(history, repos)).await?;
         Ok(Outcome::Ok(WorkContext {
-            definition_of_done: definition_of_done(&issue.body),
-            required_checks: settings.required_checks,
-            issue,
+            definition_of_done: definition_of_done(&held.item.body),
+            missing: held.item.missing(),
+            item: held.item,
+            repos,
+            suggested_targets,
             claims,
             sessions,
-            pulls,
             blocked_by,
             blocks,
             last_integration_failure: decisions.iter().find(|decision| decision.kind == DecisionKind::IntegrationFailure).cloned(),
@@ -77,25 +205,84 @@ impl Work {
         }))
     }
 
-    /// Sessions on an issue or its pull requests, most recently heard from
-    /// first.
-    /// Subagents are listed beside the sessions that started them, so
-    /// sibling agents on one issue see each other; so are sessions tied to
-    /// it any other way (a claim, a branch, a trailer, `#N`).
-    async fn work_sessions(&self, repo_id: &str, issue: u32, pulls: &[u32]) -> Result<Vec<Session>> {
+    /// One repository a work item is linked to: its required checks, and
+    /// its pull requests for the item.
+    async fn work_repo(&self, link: ItemRepo, repo: &Repo, pulls: Vec<&Pull>) -> Result<WorkRepo> {
+        let settings = self.default_branch_settings(repo).await?;
+        let pulls = try_join_all(pulls.into_iter().map(|pull| self.work_pull(repo, pull))).await?;
+        Ok(WorkRepo { link, required_checks: settings.required_checks, pulls })
+    }
+
+    /// Where else a work item may belong ([`suggest_targets`]).
+    async fn suggestions(&self, held: &Held) -> Result<Vec<SuggestedTarget>> {
+        #[derive(Deserialize)]
+        struct Candidate {
+            repo_id: String,
+            path: String,
+        }
+        let results = self
+            .db
+            .batch(vec![
+                self.db
+                    .prepare("SELECT repo_id, path FROM repo_workspaces WHERE workspace = ? ORDER BY path LIMIT 500")
+                    .bind(&[held.item.workspace.as_str().into()])?,
+                self.db
+                    .prepare(LANDED_BEFORE)
+                    .bind(&[held.item.workspace.as_str().into(), held.item.id.as_str().into(), LANDINGS.into()])?,
+                self.db.prepare(TOUCHED_FOR).bind(&[held.item.id.as_str().into()])?,
+            ])
+            .await?;
+        let mut results = results.into_iter();
+        let candidates: Vec<(String, String)> = match results.next() {
+            Some(result) => result.results::<Candidate>()?.into_iter().map(|row| (row.repo_id, row.path)).collect(),
+            None => Vec::new(),
+        };
+        let landed: Vec<LandingRow> = match results.next() {
+            Some(result) => result.results()?,
+            None => Vec::new(),
+        };
+        let touched: Vec<TouchedRow> = match results.next() {
+            Some(result) => result.results()?,
+            None => Vec::new(),
+        };
+        Ok(suggest_targets(&held.item, &candidates, &landed, &touched))
+    }
+
+    /// Sessions on a work item or its pull requests, in any of their
+    /// repositories, most recently heard from first. Subagents are listed
+    /// beside the sessions that started them, so sibling agents on one
+    /// work item see each other; so are sessions tied to it any other way
+    /// (a claim, a branch, a trailer, `#N`).
+    async fn work_sessions(&self, held: &Held, pulls: &[Pull]) -> Result<Vec<Session>> {
         let now = now_ms();
-        let pushed = self.branch_sessions(repo_id, pulls).await?;
+        let mut pushed: Vec<String> = Vec::new();
+        let mut by_repo: HashMap<&str, Vec<u32>> = HashMap::new();
+        for pull in pulls {
+            by_repo.entry(pull.repo_id.as_str()).or_default().push(pull.number);
+        }
+        for (repo_id, numbers) in &by_repo {
+            pushed.extend(self.branch_sessions(repo_id, numbers).await?);
+        }
+        let pull_ids: Vec<&str> = pulls.iter().map(|pull| pull.id.as_str()).collect();
         let mut sessions: Vec<Session> = self
             .db
             .prepare(format!(
                 "SELECT {SESSION_COLUMNS} FROM sessions
-                 WHERE repo_id = ?1 AND (issue = ?2 OR pull IN (SELECT value FROM json_each(?3))
-                   OR id IN (SELECT value FROM json_each(?5))
-                   OR id IN (SELECT session_id FROM session_links WHERE repo_id = ?1
-                     AND ((kind = 'issue' AND number = ?2) OR (kind = 'pull' AND number IN (SELECT value FROM json_each(?3))))))
+                 WHERE item_id = ?1
+                   OR id IN (SELECT value FROM json_each(?3))
+                   OR EXISTS (SELECT 1 FROM pulls p WHERE p.id IN (SELECT value FROM json_each(?2))
+                     AND p.repo_id = sessions.repo_id AND p.number = sessions.pull)
+                   OR id IN (SELECT session_id FROM session_links WHERE kind = 'item' AND item_id = ?1)
+                   OR id IN (SELECT l.session_id FROM session_links l JOIN pulls p ON p.repo_id = l.repo_id AND p.number = l.number
+                     WHERE l.kind = 'pull' AND p.id IN (SELECT value FROM json_each(?2)))
                  ORDER BY state = 'ended', last_seen_at DESC LIMIT ?4"
             ))
-            .bind(&[repo_id.into(), issue.into(), serde_json::to_string(pulls)?.into(), SESSIONS.into(), serde_json::to_string(&pushed)?.into()])?
+            .bind(&[
+                held.item.id.as_str().into(),
+                serde_json::to_string(&pull_ids)?.into(),
+                serde_json::to_string(&pushed)?.into(),
+                SESSIONS.into(),
+            ])?
             .all()
             .await?
             .results::<SessionRow>()?
@@ -106,13 +293,17 @@ impl Work {
         Ok(sessions)
     }
 
-    /// The latest events of `types` about `numbers`, newest first.
-    async fn coordination_events(&self, repo_id: &str, numbers: &[u32], types: Vec<&str>, limit: u32) -> Result<Vec<Event>> {
+    /// The latest events of `types` about `numbers` in `repos`, newest
+    /// first.
+    async fn coordination_events(&self, repos: &[String], numbers: &[u32], types: Vec<&str>, limit: u32) -> Result<Vec<Event>> {
+        if repos.is_empty() {
+            return Ok(Vec::new());
+        }
         g1t_kit::call(
             &self.events,
             "list",
             &ListEventsArgs {
-                repo_id: Some(repo_id.to_owned()),
+                repo_ids: repos.to_vec(),
                 types: types.into_iter().map(str::to_owned).collect(),
                 numbers: numbers.to_vec(),
                 limit: Some(limit),
@@ -122,10 +313,15 @@ impl Work {
         .await
     }
 
-    /// Decision records on an issue and its pull requests, newest first,
-    /// up to [`DECISIONS`].
-    async fn decisions_on(&self, repo: &g1t_contracts::repos::RepoPath, viewer: &g1t_contracts::Viewer, number: u32) -> Result<Vec<Decision>> {
-        let args = ListDecisionsArgs { repo: repo.clone(), viewer: viewer.clone(), number };
+    /// Decision records on a work item and its pull requests, newest
+    /// first, up to [`DECISIONS`].
+    async fn decisions_on(&self, held: &Held, viewer: &Viewer) -> Result<Vec<Decision>> {
+        let args = ListDecisionsArgs {
+            repo: None,
+            workspace: held.item.workspace.clone(),
+            viewer: viewer.clone(),
+            number: held.item.number,
+        };
         let mut decisions = match self.list_decisions(args).await? {
             Outcome::Ok(decisions) => decisions,
             Outcome::Fail(_) => Vec::new(),
@@ -135,13 +331,14 @@ impl Work {
         Ok(decisions)
     }
 
-    /// One of the issue's pull requests and where it stands: its required
-    /// checks, whether it merges, what it overlaps and its place in the
-    /// merge queue, for those still in progress.
+    /// One of the work item's pull requests and where it stands: its
+    /// required checks, whether it merges, what it overlaps and its place
+    /// in the merge queue, for those still in progress.
     async fn work_pull(&self, repo: &Repo, pull: &Pull) -> Result<WorkPull> {
         let mut pull = pull.clone();
         crate::fill_base(&mut pull, repo);
         let brief = |pull: &Pull| WorkPull {
+            repo: crate::items::path_of(repo),
             number: pull.number,
             title: pull.title.clone(),
             status: pull.status,
@@ -188,5 +385,54 @@ impl Work {
             queue: place.map(|place| QueuePlace { state: place.state, position: place.position }),
             ..brief(&pull)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn item(title: &str, body: &str, labels: &[&str], repos: Vec<ItemRepo>) -> WorkItem {
+        serde_json::from_value(serde_json::json!({
+            "id": "wki_1", "workspace": "acme", "number": 7, "title": title, "body": body,
+            "labels": labels, "state": "open", "reason": null, "author": { "id": "usr_1", "username": "ana" },
+            "createdAt": "", "updatedAt": "", "closedAt": null, "pullCount": 0, "commentCount": 0,
+            "repos": repos
+        }))
+        .unwrap()
+    }
+
+    fn landing(repo: &str, title: &str, labels: &str) -> LandingRow {
+        LandingRow { repo_id: repo.into(), title: title.into(), labels: labels.into() }
+    }
+
+    #[test]
+    fn suggestions_say_why_and_come_likeliest_first() {
+        let candidates = vec![
+            ("rep_api".to_owned(), "acme/api".to_owned()),
+            ("rep_web".to_owned(), "acme/web".to_owned()),
+            ("rep_docs".to_owned(), "acme/docs".to_owned()),
+        ];
+        let item = item("Login page shows a stale avatar", "The web client caches it.", &["bug"], Vec::new());
+        let landed = vec![
+            landing("rep_api", "Avatar upload fails", r#"["bug"]"#),
+            landing("rep_api", "Rate limits", r#"["enhancement"]"#),
+            landing("rep_docs", "Typo", "[]"),
+        ];
+        let touched = vec![TouchedRow { repo_id: "rep_web".into(), files: 3 }];
+        let suggested = suggest_targets(&item, &candidates, &landed, &touched);
+        let paths: Vec<&str> = suggested.iter().map(|s| s.path.as_str()).collect();
+        assert_eq!(paths, ["acme/web", "acme/api"]);
+        assert_eq!(suggested[0].why, "It names web; sessions on it touched 3 files there.");
+        assert_eq!(suggested[1].why, "1 work items with the same labels landed there; 1 work items with like titles landed there.");
+        assert!(suggested[0].score > suggested[1].score);
+    }
+
+    #[test]
+    fn a_target_already_linked_is_not_suggested() {
+        let candidates = vec![("rep_web".to_owned(), "acme/web".to_owned())];
+        let target = ItemRepo { repo_id: "rep_web".into(), path: "acme/web".into(), role: LinkRole::Target, legacy_number: None, landed: false };
+        let item = item("Fix web", "", &[], vec![target]);
+        assert!(suggest_targets(&item, &candidates, &[], &[]).is_empty());
     }
 }

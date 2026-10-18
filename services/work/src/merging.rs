@@ -115,6 +115,7 @@ fn messages_for(
     settings: &RepoSettings,
     methods: &[MergeMethod],
     commits: &[CommitText],
+    items: &[u32],
 ) -> Vec<(MergeMethod, Option<(String, String)>)> {
     let owner = pull.owner().username.clone();
     let (head_owner, head_repo) = match (&pull.fork, &pull.head_repo) {
@@ -128,7 +129,6 @@ fn messages_for(
         .clone()
         .or_else(|| pull.fork.as_ref().map(|copy| copy.name.clone()))
         .unwrap_or_default();
-    let issues = issues_to_close(pull, repo, settings, false);
     let facts = MessageFacts {
         number: pull.number,
         title: &pull.title,
@@ -139,7 +139,7 @@ fn messages_for(
         base: pull.base_branch(&repo.default_branch),
         author: &owner,
         commits,
-        issues: &issues,
+        items,
     };
     methods.iter().map(|method| (*method, merge_message::default_message(*method, settings, &facts))).collect()
 }
@@ -276,17 +276,6 @@ pub(crate) fn merged_note(method: MergeMethod) -> &'static str {
         MergeMethod::Rebase => "rebased and merged this",
         MergeMethod::Merge | MergeMethod::FastForward => "merged this",
     }
-}
-
-/// The issues a merge into the default branch closes, where the repository
-/// closes them: its own and those it names (closing.rs). None into another
-/// branch, or when told to keep them open.
-pub(crate) fn issues_to_close(pull: &Pull, repo: &Repo, settings: &RepoSettings, keep_issue_open: bool) -> Vec<u32> {
-    if keep_issue_open || !settings.auto_close_issues || !pull.targets_default(&repo.default_branch) {
-        return Vec::new();
-    }
-    let path = RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() };
-    crate::closing::closes(pull.issue, &pull.title, pull.body.as_deref(), &path)
 }
 
 impl Work {
@@ -449,7 +438,8 @@ impl Work {
         } else {
             Vec::new()
         };
-        Ok(messages_for(repo, pull, settings, methods, &commits))
+        let items = self.items_to_close(pull, repo, settings, false).await?.close_numbers();
+        Ok(messages_for(repo, pull, settings, methods, &commits, &items))
     }
 
     /// The whole message of the commit a merge by `method` makes: what the
@@ -511,7 +501,8 @@ impl Work {
             // A merged or closed one merges no more.
             Vec::new()
         };
-        let messages = messages_for(&repo, &pull, &settings, &methods, &commits);
+        let items = self.items_to_close(&pull, &repo, &settings, false).await?.close_numbers();
+        let messages = messages_for(&repo, &pull, &settings, &methods, &commits, &items);
         let options = messages
             .into_iter()
             .map(|(method, message)| {
@@ -826,21 +817,6 @@ mod tests {
         assert_eq!(squash_author(&pull(G1T, Some(ASKER)), MergeMethod::Squash).map(|user| user.id), Some(ASKER.0.to_owned()));
         // g1t's own work is the merger's.
         assert!(squash_author(&pull(("g1t", "g1t"), None), MergeMethod::Squash).is_none());
-    }
-
-    #[test]
-    fn issues_close_only_into_the_default_branch_where_the_repository_says() {
-        let repo = repo();
-        let mut fixes = branch_pull("feature");
-        fixes.issue = Some(12);
-        fixes.body = Some("Fixes #3. See `closes #4`.".into());
-        let settings = RepoSettings::default();
-        assert_eq!(issues_to_close(&fixes, &repo, &settings, false), vec![12, 3]);
-        assert!(issues_to_close(&fixes, &repo, &settings, true).is_empty());
-        let off = RepoSettings { auto_close_issues: false, ..RepoSettings::default() };
-        assert!(issues_to_close(&fixes, &repo, &off, false).is_empty());
-        fixes.base = Some("release".into());
-        assert!(issues_to_close(&fixes, &repo, &settings, false).is_empty());
     }
 
     fn diverged(head: &str, base: &str, merge_base: Option<&str>) -> Divergence {

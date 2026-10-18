@@ -1,255 +1,336 @@
-//! The issues a pull request says it closes: a closing keyword followed by
-//! an issue of the same repository, in its title or description, such as
-//! `Fixes #12`, `closes: #3` or `Resolves flagon-io/g1t#40`. They close
-//! when it merges into the default branch (`Work::record_merge`), where the
-//! repository closes issues that way (`RepoSettings::auto_close_issues`).
+//! The work items a pull request or a commit says it closes or is part of,
+//! and what landing them does.
 //!
-//! What sits in code, a `span` or a fenced block, says nothing: it is
-//! usually an example.
+//! A closing keyword followed by a reference (`Fixes #12`, `closes: #3`,
+//! `Resolves flagon-io/g1t#40`) names a work item to close; `Part of #12`
+//! or `Refs #12` one it is part of (`g1t_contracts::work::refs`). Each is
+//! read in the repository the pull request or commit is in, and only work
+//! items of that repository's workspace count: another workspace's are
+//! never closed from here.
+//!
+//! When a pull request merges into the default branch, or a commit naming
+//! a work item is pushed there, where the repository closes work items
+//! that way (`RepoSettings::auto_close_items`), the repository's link to
+//! each work item it closes is marked landed and the resolution recorded
+//! ([`LAND_SQL`]); the work item closes once it has landed in every target
+//! it has, or at once when it has none. What it is part of is linked
+//! (`touched`), and closes nothing.
 
-use g1t_contracts::repos::RepoPath;
+use g1t_contracts::events::WorkItemEvent;
+use g1t_contracts::repos::Repo;
+use g1t_contracts::time::rfc3339;
+use g1t_contracts::work::refs::{self, Ref, RefScope};
+use g1t_contracts::work::*;
+use g1t_contracts::User;
+use g1t_kit::now_ms;
+use worker::Result;
+use worker::wasm_bindgen::JsValue;
 
-const KEYWORDS: [&str; 9] = ["close", "closes", "closed", "fix", "fixes", "fixed", "resolve", "resolves", "resolved"];
+use crate::Work;
+use crate::items::{Held, Named, StoredResolution, landing_note, path_of};
+use crate::rows::{By, ValueRow};
 
-/// The most issues one pull request closes this way.
-pub(crate) const MAX_CLOSES: usize = 50;
+/// The most work items one pull request or commit closes this way.
+pub(crate) const MAX_CLOSES: usize = refs::MAX_REFS;
 
-/// The issue numbers `text` names after a closing keyword, in the order
-/// named, each once. `repo` is the repository the pull request is in: a
-/// reference naming another repository closes nothing.
-pub(crate) fn references(text: &str, repo: &RepoPath) -> Vec<u32> {
-    let mut found = Vec::new();
-    for prose in outside_code(text) {
-        scan(&prose, repo, &mut found);
-    }
-    found.truncate(MAX_CLOSES);
-    found
+/// What landed: a pull request merged, or a commit pushed.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Landing {
+    pub pull: Option<u32>,
+    pub commit: Option<String>,
+    pub pushed_by: Option<String>,
 }
 
-/// The issues a pull request closes: its own issue first, then those its
-/// title and description name.
-pub(crate) fn closes(issue: Option<u32>, title: &str, body: Option<&str>, repo: &RepoPath) -> Vec<u32> {
-    let mut closes: Vec<u32> = issue.into_iter().collect();
-    let text = format!("{title}\n{}", body.unwrap_or_default());
-    for number in references(&text, repo) {
-        if !closes.contains(&number) {
-            closes.push(number);
-        }
-    }
-    closes.truncate(MAX_CLOSES);
-    closes
+/// Landing a work item (`?1`) in repository `?2` at `?3`, by `?4` (an
+/// account id), resolved by `?5` (a stored resolution, JSON), whose pull
+/// request and commit are `?6` and `?7`, in one batch: linked (as touched,
+/// unless it is already), marked landed there, the resolution recorded
+/// once, and closed when no target is left to land.
+pub(crate) const LAND_SQL: [&str; 4] = [
+    "INSERT INTO work_item_repos (item_id, repo_id, role, added_at, added_by)
+     VALUES (?1, ?2, 'touched', ?3, ?4) ON CONFLICT (item_id, repo_id) DO NOTHING",
+    "UPDATE work_item_repos SET landed_at = COALESCE(landed_at, ?3) WHERE item_id = ?1 AND repo_id = ?2",
+    "UPDATE work_items SET resolutions = json_insert(resolutions, '$[#]', json(?5)), updated_at = ?3
+     WHERE id = ?1 AND NOT EXISTS (SELECT 1 FROM json_each(work_items.resolutions) j
+       WHERE json_extract(j.value, '$.repo_id') = ?2 AND json_extract(j.value, '$.pull') IS ?6
+         AND json_extract(j.value, '$.commit') IS ?7)",
+    "UPDATE work_items SET state = 'closed', reason = 'completed', closed_at = ?3, updated_at = ?3
+     WHERE id = ?1 AND state = 'open'
+       AND NOT EXISTS (SELECT 1 FROM work_item_repos WHERE item_id = ?1 AND role = 'target' AND landed_at IS NULL)
+     RETURNING id AS value",
+];
+
+/// Linking a work item (`?1`) that a change in repository `?2` is part of,
+/// at `?3`, by `?4`, unless it is linked already.
+pub(crate) const PART_SQL: &str = "INSERT INTO work_item_repos (item_id, repo_id, role, added_at, added_by)
+     VALUES (?1, ?2, 'touched', ?3, ?4) ON CONFLICT (item_id, repo_id) DO NOTHING RETURNING item_id AS value";
+
+/// The work items a text names, by id and number, in the order named.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct NamedItems {
+    pub closes: Vec<(String, u32)>,
+    pub parts: Vec<(String, u32)>,
 }
 
-/// The parts of Markdown outside fenced code blocks and code spans, each
-/// with code replaced by a space so words on either side stay apart.
-fn outside_code(text: &str) -> Vec<String> {
-    let mut parts = Vec::new();
-    let mut current = String::new();
-    // The fence that opened the block being skipped: its character and length.
-    let mut fence: Option<(char, usize)> = None;
-    for line in text.lines() {
-        let trimmed = line.trim_start();
-        let opener = ['`', '~'].into_iter().find_map(|mark| {
-            let run = trimmed.chars().take_while(|c| *c == mark).count();
-            (run >= 3).then_some((mark, run))
-        });
-        match (fence, opener) {
-            (None, Some(opened)) => {
-                fence = Some(opened);
-                parts.push(std::mem::take(&mut current));
-            }
-            (Some((mark, length)), Some((closing, run))) if closing == mark && run >= length && trimmed.trim_end().chars().all(|c| c == mark) => {
-                fence = None;
-            }
-            (Some(_), _) => {}
-            (None, None) => {
-                current.push_str(&without_spans(line));
-                current.push('\n');
-            }
-        }
+impl NamedItems {
+    pub(crate) fn close_ids(&self) -> Vec<String> {
+        self.closes.iter().map(|(id, _)| id.clone()).collect()
     }
-    parts.push(current);
-    parts
+
+    pub(crate) fn part_ids(&self) -> Vec<String> {
+        self.parts.iter().map(|(id, _)| id.clone()).collect()
+    }
+
+    pub(crate) fn close_numbers(&self) -> Vec<u32> {
+        self.closes.iter().map(|(_, number)| *number).collect()
+    }
+
+    pub(crate) fn part_numbers(&self) -> Vec<u32> {
+        self.parts.iter().map(|(_, number)| *number).collect()
+    }
 }
 
-/// A line with its code spans (between matching runs of backticks) blanked.
-fn without_spans(line: &str) -> String {
-    let chars: Vec<char> = line.chars().collect();
-    let mut out = String::with_capacity(line.len());
-    let mut i = 0;
-    while i < chars.len() {
-        if chars[i] != '`' {
-            out.push(chars[i]);
-            i += 1;
-            continue;
-        }
-        let run = chars[i..].iter().take_while(|c| **c == '`').count();
-        // The closing run of the same length, if there is one.
-        let mut j = i + run;
-        let mut close = None;
-        while j < chars.len() {
-            if chars[j] == '`' {
-                let other = chars[j..].iter().take_while(|c| **c == '`').count();
-                if other == run {
-                    close = Some(j + other);
-                    break;
+impl Work {
+    /// The work item `reference` names, read in `repo`: its id, when it is
+    /// one of the workspace's work items.
+    pub(crate) async fn ref_item(&self, repo: &Repo, reference: &Ref) -> Result<Option<String>> {
+        let workspace = repo.namespace.to_lowercase();
+        let (repo_id, in_repo) = match &reference.scope {
+            RefScope::Here => (Some(repo.id.clone()), true),
+            RefScope::Workspace(named) => {
+                if *named != workspace {
+                    return Ok(None);
                 }
-                j += other;
-            } else {
-                j += 1;
+                (None, false)
             }
-        }
-        match close {
-            Some(end) => {
-                out.push(' ');
-                i = end;
+            RefScope::Repo(path) => {
+                if !path.namespace.eq_ignore_ascii_case(&workspace) {
+                    return Ok(None);
+                }
+                let named = format!("{}/{}", path.namespace, path.name);
+                if named.eq_ignore_ascii_case(&path_of(repo)) {
+                    (Some(repo.id.clone()), true)
+                } else {
+                    let known = self
+                        .db
+                        .prepare("SELECT repo_id AS value FROM repo_workspaces WHERE lower(path) = lower(?)")
+                        .bind(&[named.as_str().into()])?
+                        .first::<ValueRow>(None)
+                        .await?;
+                    match known {
+                        Some(row) => (Some(row.value), true),
+                        None => (None, false),
+                    }
+                }
             }
-            // An unmatched run is literal backticks.
-            None => {
-                out.extend(&chars[i..i + run]);
-                i += run;
-            }
-        }
+        };
+        let found = self.lookup_ref(repo_id.as_deref(), &workspace, reference.number).await?;
+        Ok(match found.named(in_repo) {
+            Some(Named::Item(id)) => Some(id),
+            _ => None,
+        })
     }
-    out
-}
 
-fn is_word(c: char) -> bool {
-    c.is_alphanumeric() || c == '_'
-}
-
-/// Every keyword-and-reference pair in `text`.
-fn scan(text: &str, repo: &RepoPath, found: &mut Vec<u32>) {
-    let chars: Vec<char> = text.chars().collect();
-    let mut i = 0;
-    while i < chars.len() {
-        // A word starts here.
-        if !is_word(chars[i]) || (i > 0 && is_word(chars[i - 1])) {
-            i += 1;
-            continue;
-        }
-        let end = chars[i..].iter().position(|c| !is_word(*c)).map_or(chars.len(), |n| i + n);
-        let word: String = chars[i..end].iter().collect::<String>().to_lowercase();
-        i = end;
-        if !KEYWORDS.contains(&word.as_str()) {
-            continue;
-        }
-        // An optional colon, then spaces on the same line; without a colon,
-        // at least one space.
-        let mut at = end;
-        let colon = chars.get(at) == Some(&':');
-        if colon {
-            at += 1;
-        }
-        let spaces = chars[at..].iter().take_while(|c| **c == ' ' || **c == '\t').count();
-        if spaces == 0 && !colon {
-            continue;
-        }
-        at += spaces;
-        if let Some((number, after)) = reference(&chars, at, repo) {
-            if !found.contains(&number) {
-                found.push(number);
+    /// The work items `text`, written in `repo`, closes and is part of,
+    /// with `own` (a pull request's own work item) closed first.
+    pub(crate) async fn named_items(&self, repo: &Repo, own: Option<&str>, text: &str) -> Result<NamedItems> {
+        let named = refs::named(text);
+        let mut closes: Vec<String> = own.map(str::to_owned).into_iter().collect();
+        for reference in &named.closes {
+            if let Some(id) = self.ref_item(repo, reference).await?
+                && !closes.contains(&id)
+            {
+                closes.push(id);
             }
-            i = after;
         }
+        let mut parts: Vec<String> = Vec::new();
+        for reference in &named.parts {
+            if let Some(id) = self.ref_item(repo, reference).await?
+                && !closes.contains(&id)
+                && !parts.contains(&id)
+            {
+                parts.push(id);
+            }
+        }
+        closes.truncate(MAX_CLOSES);
+        parts.truncate(MAX_CLOSES);
+        let mut all = closes.clone();
+        all.extend(parts.iter().cloned());
+        let held = self.items_by_ids(&all).await?;
+        let number = |id: &String| held.iter().find(|held| held.item.id == *id).map(|held| (id.clone(), held.item.number));
+        Ok(NamedItems { closes: closes.iter().filter_map(number).collect(), parts: parts.iter().filter_map(number).collect() })
     }
-}
 
-/// An issue of `repo` referenced at `at`: `#12` or `owner/name#12`, ending
-/// at a word boundary. The number and where the reference ends.
-fn reference(chars: &[char], at: usize, repo: &RepoPath) -> Option<(u32, usize)> {
-    let hash = if chars.get(at) == Some(&'#') {
-        at
-    } else {
-        // owner/name#N, naming this repository.
-        let length = chars[at..].iter().position(|c| *c == '#' || c.is_whitespace()).unwrap_or(chars.len() - at);
-        let hash = at + length;
-        if chars.get(hash) != Some(&'#') {
-            return None;
+    /// The work items a pull request closes and is part of as its title and
+    /// description say now: none closed where it does not merge into the
+    /// default branch, where the repository does not close work items that
+    /// way, or where it is kept open (`keep_open`), when its own work item
+    /// is only something it is part of.
+    pub(crate) async fn items_to_close(&self, pull: &Pull, repo: &Repo, settings: &RepoSettings, keep_open: bool) -> Result<NamedItems> {
+        let own = self.pull_item_id(&pull.id).await?;
+        let text = format!("{}\n{}", pull.title, pull.body.as_deref().unwrap_or_default());
+        let mut named = self.named_items(repo, own.as_deref(), &text).await?;
+        if keep_open || !settings.auto_close_items || !pull.targets_default(&repo.default_branch) {
+            let closed = std::mem::take(&mut named.closes);
+            let mut parts = if keep_open { closed } else { Vec::new() };
+            parts.extend(named.parts);
+            named.parts = parts;
         }
-        let named: String = chars[at..hash].iter().collect();
-        let (owner, name) = named.split_once('/')?;
-        if !owner.eq_ignore_ascii_case(&repo.namespace) || !name.eq_ignore_ascii_case(&repo.name) {
-            return None;
+        Ok(named)
+    }
+
+    /// The id of a pull request's own work item, if it has one.
+    pub(crate) async fn pull_item_id(&self, pull_id: &str) -> Result<Option<String>> {
+        Ok(self
+            .db
+            .prepare("SELECT item_id AS value FROM pulls WHERE id = ? AND item_id IS NOT NULL")
+            .bind(&[pull_id.into()])?
+            .first::<ValueRow>(None)
+            .await?
+            .map(|row| row.value))
+    }
+
+    /// Lands `closes` (work items, by id) in `repo` by `landing`, and links
+    /// `parts`: see the module's notes. Says so on each, with the session
+    /// it was done in when one is known; `agent` when an agent pushed for
+    /// `actor` (the note is then g1t's, for them). Returns the work items
+    /// it closed.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn land(
+        &self,
+        repo: &Repo,
+        landing: &Landing,
+        actor: &User,
+        closes: &[String],
+        parts: &[String],
+        session: Option<&str>,
+        agent: bool,
+    ) -> Result<Vec<Held>> {
+        let now = rfc3339(now_ms());
+        let path = path_of(repo);
+        let by = match By::from(actor) {
+            by if agent && by.acting_for.is_none() && by.id == actor.id => By {
+                id: g1t_contracts::identity::AGENT_ID,
+                name: g1t_contracts::identity::AGENT_NAME,
+                acting_for: Some((&actor.id, &actor.username)),
+            },
+            by => by,
+        };
+        let stored = StoredResolution {
+            repo_id: repo.id.clone(),
+            pull: landing.pull,
+            commit: landing.commit.clone(),
+            pushed_by: landing.pushed_by.clone(),
+        };
+        let resolution = Resolution {
+            repo: path.clone(),
+            pull: landing.pull,
+            commit: landing.commit.clone(),
+            pushed_by: landing.pushed_by.clone(),
+        };
+        let what = landing_note(&path, landing.pull, landing.commit.as_deref());
+        let mut closed = Vec::new();
+        for id in closes {
+            let Some(before) = self.item_by_id(id).await? else { continue };
+            let binds: [JsValue; 7] = [
+                id.as_str().into(),
+                repo.id.as_str().into(),
+                now.as_str().into(),
+                actor.id.as_str().into(),
+                serde_json::to_string(&stored)?.into(),
+                landing.pull.map_or(JsValue::NULL, JsValue::from),
+                landing.commit.as_deref().map_or(JsValue::NULL, JsValue::from),
+            ];
+            let statements = LAND_SQL
+                .iter()
+                .map(|sql| self.db.prepare(*sql).bind(&binds[..g1t_kit::rename::parameters(sql)]))
+                .collect::<Result<Vec<_>>>()?;
+            let results = self.db.batch(statements).await?;
+            let closed_now = results
+                .get(3)
+                .map(|result| result.results::<ValueRow>())
+                .transpose()?
+                .is_some_and(|rows| !rows.is_empty());
+            let Some(held) = self.item_by_id(id).await? else { continue };
+            if closed_now {
+                self.publish_item(
+                    "work_item.closed",
+                    &held,
+                    Some(actor),
+                    WorkItemEvent {
+                        reason: Some(CloseReason::Completed.as_str()),
+                        resolution: Some(resolution.clone()),
+                        missing: Some(Vec::new()),
+                        session: session.map(str::to_owned),
+                        ..Self::item_event(&held)
+                    },
+                )
+                .await?;
+                let text = match landing.pull {
+                    Some(_) => format!("closed this by merging {what}"),
+                    None => format!("closed this in {what}"),
+                };
+                self.note_item(id, by, &crate::pushed::closed_note(&text, session)).await?;
+                self.item_resolved(&held, actor, true, landing.pull).await;
+                closed.push(held);
+                continue;
+            }
+            self.publish_item(
+                "work_item.landed",
+                &held,
+                Some(actor),
+                WorkItemEvent {
+                    resolution: Some(resolution.clone()),
+                    missing: Some(held.item.missing()),
+                    session: session.map(str::to_owned),
+                    ..Self::item_event(&held)
+                },
+            )
+            .await?;
+            if before.item.state == State::Open {
+                let missing = held.item.missing();
+                let text = if missing.is_empty() {
+                    format!("landed {what}")
+                } else {
+                    format!("landed {what}; still to land in {}", missing.join(", "))
+                };
+                self.note_item(id, by, &crate::pushed::closed_note(&text, session)).await?;
+                // Merged for it: what it blocks hears, though it stays open.
+                self.item_resolved(&held, actor, false, landing.pull).await;
+            }
         }
-        hash
-    };
-    let digits = chars[hash + 1..].iter().take_while(|c| c.is_ascii_digit()).count();
-    if digits == 0 || digits > 9 {
-        return None;
+        for id in parts {
+            let linked = self
+                .db
+                .prepare(PART_SQL)
+                .bind(&[id.as_str().into(), repo.id.as_str().into(), now.as_str().into(), actor.id.as_str().into()])?
+                .first::<ValueRow>(None)
+                .await?;
+            if linked.is_none() {
+                continue;
+            }
+            let Some(held) = self.item_by_id(id).await? else { continue };
+            self.publish_item(
+                "work_item.linked",
+                &held,
+                Some(actor),
+                WorkItemEvent { repo: Some(path.clone()), role: Some(LinkRole::Touched), ..Self::item_event(&held) },
+            )
+            .await?;
+            self.note_item(id, by, &format!("linked {path}: {what} is part of this")).await?;
+        }
+        Ok(closed)
     }
-    let after = hash + 1 + digits;
-    if chars.get(after).is_some_and(|c| is_word(*c)) {
-        return None;
-    }
-    let number: u32 = chars[hash + 1..after].iter().collect::<String>().parse().ok()?;
-    (number > 0).then_some((number, after))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn repo() -> RepoPath {
-        RepoPath { namespace: "flagon-io".into(), name: "g1t".into() }
-    }
-
-    fn refs(text: &str) -> Vec<u32> {
-        references(text, &repo())
-    }
-
     #[test]
-    fn every_keyword_closes_whatever_its_case() {
-        for keyword in KEYWORDS {
-            assert_eq!(refs(&format!("{keyword} #7")), vec![7], "{keyword}");
-            assert_eq!(refs(&format!("{} #7", keyword.to_uppercase())), vec![7], "{keyword}");
-        }
-        assert_eq!(refs("Fixes: #12"), vec![12]);
-        assert_eq!(refs("fixes:#12"), vec![12]);
-        assert_eq!(refs("This fixes #3 and resolves #4, closes #3 again."), vec![3, 4]);
-    }
-
-    #[test]
-    fn only_whole_words_and_whole_numbers() {
-        assert!(refs("prefixes #3").is_empty());
-        assert!(refs("fixesthis #3").is_empty());
-        assert!(refs("fixes#3").is_empty(), "no space and no colon");
-        assert!(refs("fixes #3a").is_empty());
-        assert!(refs("fixes #").is_empty());
-        assert!(refs("fixes #0").is_empty());
-        assert!(refs("fixes\n#3").is_empty(), "on the same line");
-        assert_eq!(refs("(fixes #3)."), vec![3]);
-        assert!(refs("fixes issue #3").is_empty(), "the reference follows the keyword");
-    }
-
-    #[test]
-    fn a_reference_to_this_repository_by_name_counts_and_others_do_not() {
-        assert_eq!(refs("Closes flagon-io/g1t#40"), vec![40]);
-        assert_eq!(refs("closes Flagon-IO/G1T#40"), vec![40]);
-        assert!(refs("closes someone/else#40").is_empty());
-        assert!(refs("closes flagon-io/g1t-docs#40").is_empty());
-        assert!(refs("closes g1t#40").is_empty());
-    }
-
-    #[test]
-    fn code_says_nothing() {
-        assert!(refs("Write `fixes #3` to close an issue.").is_empty());
-        assert!(refs("Write ``fixes #3 `x` `` here.").is_empty());
-        assert!(refs("```\nfixes #3\n```").is_empty());
-        assert!(refs("~~~md\nfixes #3\n~~~").is_empty());
-        assert_eq!(refs("```\nfixes #3\n```\nfixes #4"), vec![4]);
-        // An unclosed span is just a backtick.
-        assert_eq!(refs("a ` fixes #5"), vec![5]);
-        // An unclosed fence hides the rest.
-        assert!(refs("````\nfixes #6\n```\nfixes #7").is_empty());
-    }
-
-    #[test]
-    fn its_own_issue_comes_first_and_nothing_twice() {
-        assert_eq!(closes(Some(12), "Fix it", Some("Fixes #12, fixes #3"), &repo()), vec![12, 3]);
-        assert_eq!(closes(None, "Resolve #9", None, &repo()), vec![9]);
-        assert!(closes(None, "Nothing", Some(""), &repo()).is_empty());
-        let many: String = (1..=80).map(|n| format!("fixes #{n} ")).collect();
-        assert_eq!(closes(None, "", Some(&many), &repo()).len(), MAX_CLOSES);
+    fn landing_statements_take_the_item_repository_and_what_landed() {
+        let counts: Vec<usize> = LAND_SQL.iter().map(|sql| g1t_kit::rename::parameters(sql)).collect();
+        assert_eq!(counts, vec![4, 3, 7, 3]);
+        assert_eq!(g1t_kit::rename::parameters(PART_SQL), 4);
     }
 }

@@ -109,7 +109,9 @@ struct Progress {
 #[serde(rename_all = "camelCase")]
 struct LandRequest {
     actor: User,
-    keep_issue_open: bool,
+    /// Stored as `keepIssueOpen` before work items.
+    #[serde(alias = "keepIssueOpen")]
+    keep_item_open: bool,
     /// Delete its branch once merged, as asked; the repository's setting
     /// when absent.
     #[serde(default)]
@@ -312,7 +314,7 @@ impl Work {
     pub(crate) async fn assess(
         &self,
         pull: &Pull,
-        _issue: &Option<Issue>,
+        _item: &Option<WorkItem>,
         behind: bool,
     ) -> Result<Option<(Lifecycle, Next)>> {
         let assessed = self.assess_now(pull, behind).await?;
@@ -572,7 +574,7 @@ impl Work {
                 },
                 number: pull.number,
                 summary: String::new(),
-                keep_issue_open: false,
+                keep_item_open: false,
                 ignore_checks: false,
                 bypass_rules: false,
                 // The repository's default method, message and branch
@@ -619,14 +621,14 @@ impl Work {
         &self,
         pull: &Pull,
         actor: &User,
-        keep_issue_open: bool,
+        keep_item_open: bool,
         delete_branch: Option<bool>,
         ignore_checks: bool,
     ) -> Result<()> {
         let now = now_ms();
         let request = serde_json::to_string(&LandRequest {
             actor: actor.clone(),
-            keep_issue_open,
+            keep_item_open,
             delete_branch,
             ignore_checks,
         })?;
@@ -820,7 +822,7 @@ impl Work {
                 },
                 number: pull.number,
                 summary: String::new(),
-                keep_issue_open: request.keep_issue_open,
+                keep_item_open: request.keep_item_open,
                 ignore_checks: request.ignore_checks,
                 bypass_rules: false,
                 // Only a fast-forward waits to be brought up to date.
@@ -1105,7 +1107,7 @@ mod tests {
             "keepIssueOpen": true,
         }))
         .unwrap();
-        assert!(old.keep_issue_open && !old.ignore_checks);
+        assert!(old.keep_item_open && !old.ignore_checks);
     }
 
     #[test]

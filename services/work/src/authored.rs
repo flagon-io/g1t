@@ -1,13 +1,15 @@
-//! A person's work, for their profile: the issues and pull requests they
-//! opened, and those g1t opened for them (`requested_by`, see Pull::owner),
-//! newest first, a page at a time.
+//! A person's work, for their profile: the work items and pull requests
+//! they opened, and those g1t opened for them (`requested_by`, see
+//! Pull::owner), newest first, a page at a time.
 //!
-//! Only work on repositories the viewer may read is ever shown, counted or
-//! named. Which those are is the repos service's decision (`readable`, the
-//! same check as opening the repository), made once per request over every
-//! repository the person has worked in; every query here is then confined
-//! to that set. A private repository's titles, numbers and even its
-//! existence never reach anyone who could not open it.
+//! Only work the viewer may read is ever shown, counted or named: pull
+//! requests of repositories they may read, and work items filed from one
+//! of those or of a workspace they are a member of. Which repositories
+//! those are is the repos service's decision (`readable`, the same check as
+//! opening the repository), made once per request over every repository
+//! the person has worked in; every query here is then confined to that
+//! set. A private repository's titles, numbers and even its existence
+//! never reach anyone who could not open it.
 
 use std::collections::HashMap;
 
@@ -25,11 +27,15 @@ use crate::Work;
 struct ItemRow {
     kind: AuthoredKind,
     id: String,
-    repo_id: String,
+    /// A pull request's repository, or a work item's origin.
+    repo_id: Option<String>,
+    /// A work item's workspace.
+    #[serde(default)]
+    workspace: Option<String>,
     number: u32,
     title: String,
     state: State,
-    reason: Option<IssueReason>,
+    reason: Option<CloseReason>,
     status: Option<PullStatus>,
     created_at: String,
     updated_at: String,
@@ -96,17 +102,19 @@ impl Params {
     }
 }
 
-/// The work SQL for one page: the person's issues and pull requests in
-/// `visible` as one list, filtered, ordered and cut to `limit + 1` rows.
-fn page_sql(a: &ByAuthorArgs, params: &mut Params, author: &str, visible: &str, limit: u32) -> String {
+/// The work SQL for one page: the person's pull requests in `visible`, and
+/// their work items filed from one of those or of a workspace in
+/// `members`, as one list, filtered, ordered and cut to `limit + 1` rows.
+fn page_sql(a: &ByAuthorArgs, params: &mut Params, author: &str, visible: &str, members: &str, limit: u32) -> String {
     let author = params.push(author);
     let visible = params.push(visible);
+    let members = params.push(members);
     let mut conditions = Vec::new();
     if let Some(kind) = a.kind {
         conditions.push(format!(
             "kind = {}",
             params.push(match kind {
-                AuthoredKind::Issue => "issue",
+                AuthoredKind::Item => "item",
                 AuthoredKind::Pull => "pull",
             })
         ));
@@ -137,12 +145,15 @@ fn page_sql(a: &ByAuthorArgs, params: &mut Params, author: &str, visible: &str, 
     let limit = params.push(limit + 1);
     format!(
         "SELECT * FROM (
-           SELECT 'issue' AS kind, id, repo_id, number, title, state, reason,
-             NULL AS status, created_at, updated_at, NULL AS merged_at
-           FROM issues
-           WHERE COALESCE(requested_by_id, author_id) = {author} AND repo_id IN (SELECT value FROM json_each({visible}))
+           SELECT 'item' AS kind, i.id AS id, o.repo_id AS repo_id, i.workspace AS workspace, i.number AS number,
+             i.title AS title, i.state AS state, i.reason AS reason,
+             NULL AS status, i.created_at AS created_at, i.updated_at AS updated_at, NULL AS merged_at
+           FROM work_items i LEFT JOIN work_item_repos o ON o.item_id = i.id AND o.role = 'origin'
+           WHERE COALESCE(i.requested_by_id, i.author_id) = {author} AND i.number IS NOT NULL
+             AND (o.repo_id IN (SELECT value FROM json_each({visible}))
+               OR i.workspace IN (SELECT value FROM json_each({members})))
            UNION ALL
-           SELECT 'pull' AS kind, id, repo_id, number, title,
+           SELECT 'pull' AS kind, id, repo_id, NULL AS workspace, number, title,
              CASE WHEN status IN ('draft', 'open') THEN 'open' ELSE 'closed' END AS state,
              NULL AS reason, status, created_at, updated_at, merged_at
            FROM pulls
@@ -161,10 +172,13 @@ const COUNTS_SQL: &str = "SELECT
       AND repo_id IN (SELECT value FROM json_each(?2)) AND status IN ('draft', 'open')) AS pulls_open,
    (SELECT count(*) FROM pulls WHERE COALESCE(requested_by_id, author_id) = ?1
       AND repo_id IN (SELECT value FROM json_each(?2))) AS pulls,
-   (SELECT count(*) FROM issues WHERE COALESCE(requested_by_id, author_id) = ?1
-      AND repo_id IN (SELECT value FROM json_each(?2))) AS issues,
-   (SELECT count(*) FROM issues WHERE COALESCE(requested_by_id, author_id) = ?1
-      AND repo_id IN (SELECT value FROM json_each(?2)) AND state = 'open') AS issues_open";
+   (SELECT count(*) FROM work_items i WHERE COALESCE(i.requested_by_id, i.author_id) = ?1 AND i.number IS NOT NULL
+      AND (i.workspace IN (SELECT value FROM json_each(?3)) OR EXISTS (SELECT 1 FROM work_item_repos o
+        WHERE o.item_id = i.id AND o.role = 'origin' AND o.repo_id IN (SELECT value FROM json_each(?2))))) AS items,
+   (SELECT count(*) FROM work_items i WHERE COALESCE(i.requested_by_id, i.author_id) = ?1 AND i.number IS NOT NULL
+      AND i.state = 'open'
+      AND (i.workspace IN (SELECT value FROM json_each(?3)) OR EXISTS (SELECT 1 FROM work_item_repos o
+        WHERE o.item_id = i.id AND o.role = 'origin' AND o.repo_id IN (SELECT value FROM json_each(?2))))) AS items_open";
 
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -172,8 +186,8 @@ struct CountsRow {
     pulls_merged: u32,
     pulls_open: u32,
     pulls: u32,
-    issues: u32,
-    issues_open: u32,
+    items: u32,
+    items_open: u32,
 }
 
 /// Whether `repo` is the one named `namespace/name`.
@@ -202,7 +216,8 @@ impl Work {
             .db
             .prepare(
                 "SELECT repo_id, count(*) AS n FROM (
-                   SELECT repo_id FROM issues WHERE COALESCE(requested_by_id, author_id) = ?1
+                   SELECT o.repo_id AS repo_id FROM work_items i JOIN work_item_repos o ON o.item_id = i.id AND o.role = 'origin'
+                   WHERE COALESCE(i.requested_by_id, i.author_id) = ?1
                    UNION ALL SELECT repo_id FROM pulls WHERE COALESCE(requested_by_id, author_id) = ?1
                  ) GROUP BY repo_id ORDER BY n DESC LIMIT ?2",
             )
@@ -210,7 +225,20 @@ impl Work {
             .all()
             .await?
             .results::<RepoCount>()?;
-        if touched.is_empty() {
+        // The workspaces whose work items the viewer sees as a member.
+        let members: Vec<String> = a
+            .viewer
+            .as_ref()
+            .map(|viewer| {
+                viewer
+                    .workspaces
+                    .iter()
+                    .map(|membership| membership.slug.to_lowercase())
+                    .filter(|slug| g1t_contracts::access::workspace_role(viewer, slug).is_some())
+                    .collect()
+            })
+            .unwrap_or_default();
+        if touched.is_empty() && members.is_empty() {
             return Ok(Outcome::Ok(Authored::default()));
         }
         // ...and of those, the ones the viewer may read.
@@ -236,42 +264,47 @@ impl Work {
                 })
             })
             .collect();
-        if readable.is_empty() {
+        if readable.is_empty() && members.is_empty() {
             return Ok(Outcome::Ok(Authored::default()));
         }
 
         let all_ids: Vec<&str> = readable.iter().map(|repo| repo.id.as_str()).collect();
         let all = serde_json::to_string(&all_ids)?;
+        let member_list = serde_json::to_string(&members)?;
         let counts = self
             .db
             .prepare(COUNTS_SQL)
-            .bind(&[person.id.as_str().into(), all.as_str().into()])?
+            .bind(&[person.id.as_str().into(), all.as_str().into(), member_list.as_str().into()])?
             .first::<CountsRow>(None)
             .await?
             .map(|row| AuthoredCounts {
                 pulls_merged: row.pulls_merged,
                 pulls_open: row.pulls_open,
                 pulls: row.pulls,
-                issues: row.issues,
-                issues_open: row.issues_open,
+                items: row.items,
+                items_open: row.items_open,
             })
             .unwrap_or_default();
 
-        // A repository filter narrows the set; one the viewer cannot read,
-        // or the person never worked in, leaves nothing.
-        let shown = match a.repo.as_deref().map(str::trim).filter(|name| !name.is_empty()) {
-            Some(name) => serde_json::to_string(
-                &readable
-                    .iter()
-                    .filter(|repo| is_named(repo, name))
-                    .map(|repo| repo.id.as_str())
-                    .collect::<Vec<_>>(),
-            )?,
-            None => all,
+        // A repository filter narrows the set to its pull requests and the
+        // work items filed from it; one the viewer cannot read, or the
+        // person never worked in, leaves nothing.
+        let (shown, member_list) = match a.repo.as_deref().map(str::trim).filter(|name| !name.is_empty()) {
+            Some(name) => (
+                serde_json::to_string(
+                    &readable
+                        .iter()
+                        .filter(|repo| is_named(repo, name))
+                        .map(|repo| repo.id.as_str())
+                        .collect::<Vec<_>>(),
+                )?,
+                "[]".to_owned(),
+            ),
+            None => (all, member_list),
         };
         let limit = a.limit.unwrap_or(AUTHORED_PAGE).clamp(1, AUTHORED_PAGE);
         let mut params = Params(Vec::new());
-        let sql = page_sql(&a, &mut params, &person.id, &shown, limit);
+        let sql = page_sql(&a, &mut params, &person.id, &shown, &member_list, limit);
         let mut rows = self
             .db
             .prepare(sql)
@@ -288,13 +321,16 @@ impl Work {
         let items = rows
             .into_iter()
             .filter_map(|row| {
-                let repo = by_id.get(row.repo_id.as_str())?;
+                let repo = row.repo_id.as_deref().and_then(|id| by_id.get(id));
+                // A pull request is shown only with its repository.
+                if row.kind == AuthoredKind::Pull && repo.is_none() {
+                    return None;
+                }
+                let workspace = row.workspace.clone().or_else(|| repo.map(|repo| repo.namespace.to_lowercase()))?;
                 Some(AuthoredItem {
                     kind: row.kind,
-                    repo: RepoPath {
-                        namespace: repo.namespace.clone(),
-                        name: repo.name.clone(),
-                    },
+                    workspace,
+                    repo: repo.map(|repo| RepoPath { namespace: repo.namespace.clone(), name: repo.name.clone() }),
                     number: row.number,
                     title: row.title,
                     state: row.state,
@@ -338,7 +374,8 @@ mod tests {
         ItemRow {
             kind: AuthoredKind::Pull,
             id: id.into(),
-            repo_id: "rep_1".into(),
+            repo_id: Some("rep_1".into()),
+            workspace: None,
             number: 1,
             title: "t".into(),
             state: State::Open,
@@ -353,11 +390,12 @@ mod tests {
     #[test]
     fn every_query_is_confined_to_the_readable_set() {
         let mut params = Params(Vec::new());
-        let sql = page_sql(&args(), &mut params, "usr_1", "[]", 25);
+        let sql = page_sql(&args(), &mut params, "usr_1", "[]", "[]", 25);
         assert_eq!(sql.matches("json_each(?2)").count(), 2);
-        assert_eq!(sql.matches("COALESCE(requested_by_id, author_id) = ?1").count(), 2);
+        assert_eq!(sql.matches("json_each(?3)").count(), 1);
+        assert_eq!(sql.matches("requested_by_id, ").count(), 2);
         assert_eq!(COUNTS_SQL.matches("json_each(?2)").count(), 5);
-        assert!(sql.contains("LIMIT ?3"));
+        assert!(sql.contains("LIMIT ?4"));
         assert!(sql.contains("ORDER BY created_at DESC, id DESC"));
     }
 
@@ -371,13 +409,13 @@ mod tests {
             before: Some("2026-10-01T00:00:00.000Z|pul_9".into()),
             ..args()
         };
-        let sql = page_sql(&a, &mut params, "usr_1", "[]", 10);
-        assert!(sql.contains("kind = ?3"));
+        let sql = page_sql(&a, &mut params, "usr_1", "[]", "[]", 10);
+        assert!(sql.contains("kind = ?4"));
         assert!(sql.contains("status = 'merged'"));
-        assert!(sql.contains("(created_at > ?4 OR (created_at = ?4 AND id > ?5))"));
+        assert!(sql.contains("(created_at > ?5 OR (created_at = ?5 AND id > ?6))"));
         assert!(sql.contains("ORDER BY created_at ASC, id ASC"));
-        assert!(sql.contains("LIMIT ?6"));
-        assert_eq!(params.0.len(), 6);
+        assert!(sql.contains("LIMIT ?7"));
+        assert_eq!(params.0.len(), 7);
     }
 
     #[test]
@@ -387,8 +425,8 @@ mod tests {
             before: Some("nonsense".into()),
             ..args()
         };
-        let sql = page_sql(&a, &mut params, "usr_1", "[]", 10);
-        assert!(!sql.contains(" OR ("));
+        let sql = page_sql(&a, &mut params, "usr_1", "[]", "[]", 10);
+        assert!(!sql.contains("id < "));
         assert_eq!(parse_cursor("a|b|c"), None);
         assert_eq!(parse_cursor("|b"), None);
         assert_eq!(parse_cursor("k|i"), Some(("k", "i")));

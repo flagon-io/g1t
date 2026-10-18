@@ -190,7 +190,7 @@ mod tests {
         Session {
             id: "ses_1".into(),
             repo_id: "rep_1".into(),
-            issue: Some(4),
+            item: Some(4),
             pull: None,
             branch: Some("secret-plans".into()),
             actor: Principal { id: "usr_a".into(), username: "a".into() },
@@ -235,7 +235,7 @@ mod tests {
         assert_eq!(one.result, None);
         assert_eq!(one.branch, None);
         assert_eq!(one.model, None);
-        assert_eq!(one.issue, Some(4));
+        assert_eq!(one.item, Some(4));
         assert_eq!(one.actor.username, "a");
         for kind in [SessionEntryKind::Prompt, SessionEntryKind::ToolCall, SessionEntryKind::Note, SessionEntryKind::Message] {
             assert!(entry(an_entry(kind, "x"), Sight::Outside).is_none());

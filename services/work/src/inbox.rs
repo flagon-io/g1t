@@ -1,14 +1,14 @@
-//! What an event names, for the inbox (`g1t_contracts::inbox`): the issue
-//! or pull request, its people, and the comment, read straight from the
-//! rows. The events service asks as each event arrives and decides from
-//! the answer who is told; nobody's access is checked here, so nothing it
-//! returns is shown to anyone but the people it names, or to those who can
-//! read the repository.
+//! What an event names, for the inbox (`g1t_contracts::inbox`): the work
+//! item or pull request, its people, and the comment, read straight from
+//! the rows. The events service asks as each event arrives and decides
+//! from the answer who is told; nobody's access is checked here, so
+//! nothing it returns is shown to anyone but the people it names, or to
+//! those who can read it.
 
 use g1t_contracts::credentials::Principal;
 use g1t_contracts::inbox::{InboxComment, InboxSubject, InboxSubjectArgs, SubjectKind, TeamMentioned};
 use g1t_contracts::is_valid_namespace;
-use g1t_contracts::work::{Comment, CommentKind, Issue, Pull};
+use g1t_contracts::work::{Comment, CommentKind, Pull, WorkItem};
 use worker::Result;
 
 use crate::Work;
@@ -217,20 +217,20 @@ fn principal(id: &str, username: &str) -> Principal {
     }
 }
 
-fn of_issue(issue: Issue) -> InboxSubject {
-    let body = issue.body.clone();
+fn of_item(item: WorkItem) -> InboxSubject {
+    let body = item.body.clone();
     InboxSubject {
-        kind: Some(SubjectKind::Issue),
-        title: issue.title,
-        author: principal(&issue.author.id, &issue.author.username),
-        requested_by: issue.requested_by.map(|user| principal(&user.id, &user.username)),
-        assignees: issue.assignees,
+        kind: Some(SubjectKind::Item),
+        title: item.title,
+        author: principal(&item.author.id, &item.author.username),
+        requested_by: item.requested_by.map(|user| principal(&user.id, &user.username)),
+        assignees: item.assignees,
         mentions: people_mentioned(&body),
         ..InboxSubject::default()
     }
 }
 
-fn of_pull(pull: Pull, issue: Option<Issue>) -> InboxSubject {
+fn of_pull(pull: Pull, item: Option<WorkItem>) -> InboxSubject {
     InboxSubject {
         kind: Some(SubjectKind::Pull),
         title: pull.title,
@@ -240,7 +240,7 @@ fn of_pull(pull: Pull, issue: Option<Issue>) -> InboxSubject {
         reviewers: pull.reviewers,
         mentions: people_mentioned(pull.body.as_deref().unwrap_or_default()),
         team_mentions: Vec::new(),
-        issue: issue.map(|issue| Box::new(of_issue(issue))),
+        item: item.map(|item| Box::new(of_item(item))),
         comment: None,
     }
 }
@@ -261,59 +261,59 @@ fn of_comment(comment: Comment) -> InboxComment {
 }
 
 impl Work {
-    /// The issue or pull request numbered `number`, with its people, and
-    /// the comment asked about. None when there is no such issue or pull
-    /// request.
+    /// The work item (`item_id`) or pull request (`number` of `repo_id`)
+    /// an event names, with its people, and the comment asked about. None
+    /// when there is no such thing.
     pub(crate) async fn inbox_subject(&self, a: InboxSubjectArgs) -> Result<Option<InboxSubject>> {
-        let comment = async {
-            let Some(id) = &a.comment_id else {
-                return Ok::<_, worker::Error>(None);
-            };
-            let Some(row) = self
-                .db
-                .prepare("SELECT * FROM comments WHERE id = ? AND repo_id = ?")
-                .bind(&[id.as_str().into(), a.repo_id.as_str().into()])?
-                .first::<CommentRow>(None)
-                .await?
-            else {
-                return Ok(None);
-            };
-            let comment = Comment::from(row);
-            let teams = if comment.kind == CommentKind::Event { Vec::new() } else { teams_mentioned(&comment.body) };
-            let mut shown = of_comment(comment.clone());
-            shown.team_mentions = self.team_mentions(&a.repo_id, &teams, &comment.author.id, &comment.author.username).await?;
-            Ok(Some(shown))
-        };
-        let (pull, comment) = futures_util::future::try_join(self.pull(&a.repo_id, a.number), comment).await?;
-        let mut subject = match pull {
-            Some(pull) => {
-                let issue = match pull.issue {
-                    Some(number) => self.issue(&a.repo_id, number).await?,
+        // What it is on: a work item, or a pull request with its work item.
+        let (mut subject, body, repo_id) = match (&a.item_id, &a.repo_id) {
+            (Some(item_id), _) => {
+                let Some(held) = self.item_by_id(item_id).await? else { return Ok(None) };
+                let repo_id = held.event_repo().map(str::to_owned);
+                let body = held.item.body.clone();
+                (of_item(held.item), Some(body), repo_id)
+            }
+            (None, Some(repo_id)) => {
+                let Some(pull) = self.pull(repo_id, a.number).await? else { return Ok(None) };
+                let item = match self.pull_item_id(&pull.id).await? {
+                    Some(id) => self.item_by_id(&id).await?.map(|held| held.item),
                     None => None,
                 };
-                of_pull(pull, issue)
+                let body = pull.body.clone();
+                (of_pull(pull, item), body, Some(repo_id.clone()))
             }
-            None => match self.issue(&a.repo_id, a.number).await? {
-                Some(issue) => of_issue(issue),
-                None => return Ok(None),
-            },
+            (None, None) => return Ok(None),
         };
-        subject.comment = comment;
-        // A description's team mentions, for when it is opened.
-        if a.comment_id.is_none() {
-            let body = match subject.kind {
-                Some(SubjectKind::Pull) => self.pull(&a.repo_id, a.number).await?.and_then(|pull| pull.body),
-                _ => self.issue(&a.repo_id, a.number).await?.map(|issue| issue.body),
-            };
+        if let Some(id) = &a.comment_id {
+            let row = self
+                .db
+                .prepare("SELECT * FROM comments WHERE id = ? AND (repo_id IS ? OR item_id IS ?)")
+                .bind(&[
+                    id.as_str().into(),
+                    crate::optional(&a.repo_id.clone().filter(|_| a.item_id.is_none())),
+                    crate::optional(&a.item_id),
+                ])?
+                .first::<CommentRow>(None)
+                .await?;
+            if let Some(row) = row {
+                let comment = Comment::from(row);
+                let teams = if comment.kind == CommentKind::Event { Vec::new() } else { teams_mentioned(&comment.body) };
+                let mut shown = of_comment(comment.clone());
+                shown.team_mentions =
+                    self.team_mentions(repo_id.as_deref(), &teams, &comment.author.id, &comment.author.username).await?;
+                subject.comment = Some(shown);
+            }
+        } else {
+            // A description's team mentions, for when it is opened.
             let teams = teams_mentioned(body.as_deref().unwrap_or_default());
             let author = subject.author.clone();
-            subject.team_mentions = self.team_mentions(&a.repo_id, &teams, &author.id, &author.username).await?;
+            subject.team_mentions = self.team_mentions(repo_id.as_deref(), &teams, &author.id, &author.username).await?;
         }
         Ok(Some(subject))
     }
 
     /// The teams named, resolved, with who each mention tells.
-    pub(crate) async fn team_mentions(&self, repo_id: &str, teams: &[String], writer_id: &str, writer: &str) -> Result<Vec<TeamMentioned>> {
+    pub(crate) async fn team_mentions(&self, repo_id: Option<&str>, teams: &[String], writer_id: &str, writer: &str) -> Result<Vec<TeamMentioned>> {
         if teams.is_empty() {
             return Ok(Vec::new());
         }
@@ -322,7 +322,7 @@ impl Work {
             "resolve_teams",
             &g1t_contracts::teams::ResolveTeamsArgs {
                 teams: teams.to_vec(),
-                repo_id: Some(repo_id.to_owned()),
+                repo_id: repo_id.map(str::to_owned),
                 asker: Some(writer_id.to_owned()),
             },
         )

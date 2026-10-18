@@ -237,9 +237,9 @@ impl Work {
         let who = actor.unwrap_or(&g1t);
         let handles = |names: &[String]| names.iter().map(|name| format!("@{name}")).collect::<Vec<_>>();
         let verbs = ("requested a review from", "withdrew the request for a review from");
-        self.note_changes(&pull.repo_id, pull.number, who, &pull.reviewers, &people, verbs)
+        self.note_changes(crate::On::Pull(&pull.repo_id, pull.number), who, &pull.reviewers, &people, verbs)
             .await?;
-        self.note_changes(&pull.repo_id, pull.number, who, &handles(&pull.team_reviewers), &handles(&teams), verbs)
+        self.note_changes(crate::On::Pull(&pull.repo_id, pull.number), who, &handles(&pull.team_reviewers), &handles(&teams), verbs)
             .await?;
         let newly = |after: &[String], before: &[String]| -> Vec<String> {
             after.iter().filter(|name| !before.contains(name)).cloned().collect()

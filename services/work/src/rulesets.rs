@@ -1051,7 +1051,7 @@ impl Work {
     pub(crate) async fn default_branch_settings(&self, repo: &Repo) -> Result<RepoSettings> {
         let (stored, requirements) = futures_util::future::try_join(self.settings(&repo.id), self.default_requirements(repo)).await?;
         let mut settings = overlay(stored, &requirements, true);
-        settings.issues_enabled = settings.issues_on(repo.forked_from.is_some());
+        settings.work_items_enabled = settings.work_items_on(repo.forked_from.is_some());
         Ok(settings)
     }
 

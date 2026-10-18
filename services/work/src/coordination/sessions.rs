@@ -76,7 +76,8 @@ fn clip(text: Option<&str>, limit: usize) -> Option<String> {
 /// What a session's heartbeat may change, tidied.
 #[derive(Default)]
 struct Fields {
-    issue: Option<u32>,
+    /// Its work item, by id and number.
+    item: Option<(String, u32)>,
     pull: Option<u32>,
     branch: Option<String>,
     head_commit: Option<String>,
@@ -91,7 +92,7 @@ struct Fields {
 impl Fields {
     fn binds(&self) -> Vec<JsValue> {
         vec![
-            number_or_null(self.issue),
+            self.item.as_ref().map_or(JsValue::NULL, |(id, _)| JsValue::from(id.as_str())),
             number_or_null(self.pull),
             text_or_null(&self.branch),
             text_or_null(&self.head_commit),
@@ -104,7 +105,7 @@ impl Fields {
         ]
     }
 
-    /// The text whose `#N` tie the session to issues and pull requests.
+    /// The text whose `#N` tie the session to work items and pull requests.
     fn named(&self) -> String {
         [&self.title, &self.task, &self.prompt].into_iter().flatten().cloned().collect::<Vec<_>>().join("\n")
     }
@@ -122,7 +123,7 @@ struct RenewRow {
 pub(crate) fn insert_session_sql() -> String {
     format!(
         "INSERT INTO sessions
-           (id, repo_id, issue, pull, branch, actor_id, actor_name, harness, harness_session_id,
+           (id, repo_id, item_id, pull, branch, actor_id, actor_name, harness, harness_session_id,
             title, state, head_commit, started_at, last_seen_at, parent_id, agent_type, task, prompt, model)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'active', ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
          ON CONFLICT (repo_id, actor_id, harness, harness_session_id)
@@ -140,7 +141,7 @@ pub(crate) fn harness_session_sql() -> String {
 }
 
 /// The fields `?1`–`?10` of [`Fields::binds`], each kept when not given.
-const SET_FIELDS: &str = "issue = COALESCE(?1, issue), pull = COALESCE(?2, pull), branch = COALESCE(?3, branch),
+const SET_FIELDS: &str = "item_id = COALESCE(?1, item_id), pull = COALESCE(?2, pull), branch = COALESCE(?3, branch),
      head_commit = COALESCE(?4, head_commit), title = COALESCE(?5, title),
      agent_type = COALESCE(?6, agent_type), task = COALESCE(?7, task), prompt = COALESCE(?8, prompt),
      model = COALESCE(?9, model), result = COALESCE(?10, result)";
@@ -213,35 +214,44 @@ fn finished_subagent(row: &SessionRow) -> bool {
 }
 
 impl Work {
-    /// The issue and pull request a session names, checked: each is one of
-    /// the repository's, of the right kind. A pull request for an issue
-    /// names that issue when no issue was given.
-    async fn session_subjects(&self, repo: &Repo, issue: Option<u32>, pull: Option<u32>) -> Result<Outcome<(Option<u32>, Option<u32>)>> {
-        let mut issue = issue.filter(|number| *number > 0);
-        let pull = pull.filter(|number| *number > 0);
-        if let Some(number) = issue
-            && self.issue(&repo.id, number).await?.is_none()
-        {
-            return Ok(Outcome::fail(FailureCode::Invalid, format!("#{number} is not an issue in this repository.")));
+    /// The work item and pull request a session names, checked: a work
+    /// item of the repository's workspace, and a pull request of the
+    /// repository. A pull request for a work item names that item when no
+    /// item was given.
+    async fn session_subjects(&self, repo: &Repo, item: Option<u32>, pull: Option<u32>) -> Result<Outcome<(Option<(String, u32)>, Option<u32>)>> {
+        let workspace = repo.namespace.to_lowercase();
+        let mut found_item = None;
+        if let Some(number) = item.filter(|number| *number > 0) {
+            match self.item(&workspace, number).await? {
+                Some(held) => found_item = Some((held.item.id, number)),
+                None => return Ok(Outcome::fail(FailureCode::Invalid, format!("#{number} is not a work item in {workspace}."))),
+            }
         }
+        let pull = pull.filter(|number| *number > 0);
         if let Some(number) = pull {
             match self.pull(&repo.id, number).await? {
-                Some(found) => issue = issue.or(found.issue),
+                Some(found) => {
+                    if found_item.is_none()
+                        && let (Some(id), Some(number)) = (self.pull_item_id(&found.id).await?, found.item)
+                    {
+                        found_item = Some((id, number));
+                    }
+                }
                 None => {
                     return Ok(Outcome::fail(FailureCode::Invalid, format!("#{number} is not a pull request in this repository.")));
                 }
             }
         }
-        Ok(Outcome::Ok((issue, pull)))
+        Ok(Outcome::Ok((found_item, pull)))
     }
 
     /// Ties a session to what it said it is on, and what its text names.
     async fn link_fields(&self, session: &Session, fields: &Fields) -> Result<()> {
-        if let Some(number) = fields.issue {
-            self.link(&session.id, &session.repo_id, LinkKind::Issue, number, LinkVia::Attached).await;
+        if let Some((id, _)) = &fields.item {
+            self.link_item(&session.id, &session.repo_id, id, LinkVia::Attached).await;
         }
         if let Some(number) = fields.pull {
-            self.link(&session.id, &session.repo_id, LinkKind::Pull, number, LinkVia::Attached).await;
+            self.link_pull(&session.id, &session.repo_id, number, LinkVia::Attached).await;
         }
         if let Some(branch) = &fields.branch {
             self.link_branch(&session.id, &session.repo_id, branch).await?;
@@ -263,9 +273,9 @@ impl Work {
             },
             None => None,
         };
-        let (issue, pull) = unwrap_or_fail!(self.session_subjects(&repo, a.issue, a.pull).await?);
+        let (item, pull) = unwrap_or_fail!(self.session_subjects(&repo, a.item, a.pull).await?);
         let mut fields = Fields {
-            issue,
+            item,
             pull,
             branch: tidy(a.branch.as_deref(), MAX_BRANCH_CHARS),
             head_commit: tidy(a.head_commit.as_deref(), MAX_COMMIT_CHARS),
@@ -287,7 +297,7 @@ impl Work {
         }
         // A subagent works on what its parent does unless it says.
         if let Some(parent) = &parent {
-            fields.issue = fields.issue.or(parent.issue);
+            fields.item = fields.item.clone().or(parent.item_id.clone().zip(parent.item));
             fields.pull = fields.pull.or(parent.pull);
             fields.branch = fields.branch.clone().or(parent.branch.clone());
             fields.head_commit = fields.head_commit.clone().or(parent.head_commit.clone());
@@ -298,7 +308,8 @@ impl Work {
         let expected = SessionRow {
             id: id.clone(),
             repo_id: repo.id.clone(),
-            issue: fields.issue,
+            item_id: fields.item.as_ref().map(|(id, _)| id.clone()),
+            item: fields.item.as_ref().map(|(_, number)| *number),
             pull: fields.pull,
             branch: fields.branch.clone(),
             actor_id: a.actor.id.clone(),
@@ -327,7 +338,7 @@ impl Work {
             .bind(&[
                 id.as_str().into(),
                 repo.id.as_str().into(),
-                number_or_null(fields.issue),
+                fields.item.as_ref().map_or(JsValue::NULL, |(id, _)| JsValue::from(id.as_str())),
                 number_or_null(fields.pull),
                 text_or_null(&fields.branch),
                 a.actor.id.as_str().into(),
@@ -408,7 +419,8 @@ impl Work {
         // Brought back from having ended: announced with the change.
         let sent = if was_ended && !finished {
             let expected = SessionRow {
-                issue: fields.issue.or(row.issue),
+                item_id: fields.item.as_ref().map(|(id, _)| id.clone()).or(row.item_id.clone()),
+                item: fields.item.as_ref().map(|(_, number)| *number).or(row.item),
                 pull: fields.pull.or(row.pull),
                 branch: fields.branch.clone().or(row.branch.clone()),
                 head_commit: fields.head_commit.clone().or(row.head_commit.clone()),
@@ -529,9 +541,9 @@ impl Work {
         if row.state == "ended" && !revives(row.end_reason.as_deref()) && !finished_subagent(&row) {
             return Ok(Outcome::fail(FailureCode::Conflict, "This session has ended. Start a new one."));
         }
-        let (issue, pull) = unwrap_or_fail!(self.session_subjects(&repo, a.issue, a.pull).await?);
+        let (item, pull) = unwrap_or_fail!(self.session_subjects(&repo, a.item, a.pull).await?);
         let fields = Fields {
-            issue,
+            item,
             pull,
             branch: tidy(a.branch.as_deref(), MAX_BRANCH_CHARS),
             head_commit: tidy(a.head_commit.as_deref(), MAX_COMMIT_CHARS),
@@ -759,15 +771,19 @@ impl Work {
             Some(SessionState::Idle) => "AND state = 'active' AND last_seen_at <= ?2",
             Some(SessionState::Ended) => "AND state = 'ended' AND ?2 IS NOT NULL",
         };
-        // On an issue or pull request: attached, or tied to it any way.
+        // On a work item or pull request: attached, or tied to it any way.
         let mut linked: Vec<String> = Vec::new();
-        if let Some(number) = a.issue {
-            linked.extend(self.linked_sessions(&repo.id, LinkKind::Issue, number).await?);
-            // And those on its pull requests.
+        let mut item_id = None;
+        if let Some(number) = a.item {
+            let Some(held) = self.item(&repo.namespace, number).await? else {
+                return Ok(Outcome::Ok(Vec::new()));
+            };
+            linked.extend(self.item_sessions(&repo.id, &held.item.id).await?);
+            // And those on its pull requests here.
             let pulls: Vec<u32> = self
                 .db
-                .prepare("SELECT number AS n FROM pulls WHERE repo_id = ? AND issue_number = ?")
-                .bind(&[repo.id.as_str().into(), number.into()])?
+                .prepare("SELECT number AS n FROM pulls WHERE repo_id = ? AND item_id = ?")
+                .bind(&[repo.id.as_str().into(), held.item.id.as_str().into()])?
                 .all()
                 .await?
                 .results::<NumberRow>()?
@@ -775,12 +791,13 @@ impl Work {
                 .map(|row| row.n)
                 .collect();
             for pull in &pulls {
-                linked.extend(self.linked_sessions(&repo.id, LinkKind::Pull, *pull).await?);
+                linked.extend(self.linked_sessions(&repo.id, *pull).await?);
             }
             linked.extend(self.branch_sessions(&repo.id, &pulls).await?);
+            item_id = Some(held.item.id);
         }
         if let Some(number) = a.pull {
-            linked.extend(self.linked_sessions(&repo.id, LinkKind::Pull, number).await?);
+            linked.extend(self.linked_sessions(&repo.id, number).await?);
             linked.extend(self.branch_sessions(&repo.id, &[number]).await?);
         }
         let rows = self
@@ -789,7 +806,7 @@ impl Work {
                 "SELECT {SESSION_COLUMNS} FROM sessions
                  WHERE repo_id = ?1 {state}
                    AND (?6 = 1 OR parent_id IS NULL OR id IN (SELECT value FROM json_each(?7)))
-                   AND (?3 IS NULL OR issue = ?3 OR id IN (SELECT value FROM json_each(?7)))
+                   AND (?3 IS NULL OR item_id = ?3 OR id IN (SELECT value FROM json_each(?7)))
                    AND (?4 IS NULL OR pull = ?4 OR id IN (SELECT value FROM json_each(?7)))
                    AND (?8 IS NULL OR id IN (SELECT session_id FROM session_touches WHERE repo_id = ?1 AND kind = 'file'
                      AND (value = ?8 OR (substr(?8, -1) = '/' AND substr(value, 1, length(?8)) = ?8))))
@@ -798,7 +815,7 @@ impl Work {
             .bind(&[
                 repo.id.as_str().into(),
                 idle_since.as_str().into(),
-                number_or_null(a.issue),
+                text_or_null(&item_id),
                 number_or_null(a.pull),
                 LIST_LIMIT.into(),
                 u32::from(a.subagents).into(),
@@ -836,17 +853,18 @@ impl Work {
     }
 
     /// Notes `text` (from g1t) in the live harness sessions on `pull` or
-    /// its issue, so an agent reading its session hears of it. Never fails
-    /// what it follows: a problem is logged.
+    /// its work item, so an agent reading its session hears of it. Never
+    /// fails what it follows: a problem is logged.
     pub(crate) async fn note_sessions(&self, pull: &Pull, text: &str) {
         let noted = async {
             let sessions: Vec<SessionRow> = self
                 .db
                 .prepare(format!(
                     "SELECT {SESSION_COLUMNS} FROM sessions
-                     WHERE repo_id = ?1 AND state = 'active' AND (pull = ?2 OR (?3 IS NOT NULL AND issue = ?3))"
+                     WHERE state = 'active' AND ((repo_id = ?1 AND pull = ?2)
+                       OR item_id = (SELECT item_id FROM pulls WHERE repo_id = ?1 AND number = ?2))"
                 ))
-                .bind(&[pull.repo_id.as_str().into(), pull.number.into(), number_or_null(pull.issue)])?
+                .bind(&[pull.repo_id.as_str().into(), pull.number.into()])?
                 .all()
                 .await?
                 .results()?;
@@ -997,7 +1015,7 @@ impl Work {
             Some(session.actor.id.clone()),
             SessionProgressed {
                 repo_id: session.repo_id.clone(),
-                number: session.pull.or(session.issue),
+                number: session.pull.or(session.item),
                 session_id: session.id.clone(),
                 root_id,
             },
