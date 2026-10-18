@@ -1004,6 +1004,66 @@ time. Every member can see it.
   and what covered it, for your own books. Invoices from Stripe remain the
   record for what was charged to your card.
 
+## Provider cost reports
+
+g1t counts what its own runs cost. Your team's other agents (CI scripts,
+other tools, people's own sessions) are on your AI provider's bill too,
+and the provider's own cost report is the record of all of it. Connect
+the provider and g1t reads that report, day by day, at
+`g1t.sh/<workspace>/-/provider-costs` (**Provider costs**, under Money in
+the workspace's settings).
+
+**What it reads.** The provider's cost report for the whole organization
+the key belongs to, in US dollars, one line per day and line item:
+
+| Provider | Report | Line items |
+| --- | --- | --- |
+| Anthropic | The Usage and Cost Admin API's cost report (`/v1/organizations/cost_report`) | Each description, such as *Claude Opus 5.5 Usage - Input Tokens*, for each of the organization's Console workspaces |
+| OpenAI | The Costs API (`/v1/organization/costs`) | Each line item, for each of the organization's projects |
+
+**Which key.** An admin key, which only an organization's admins can make:
+
+- **Anthropic**: an Admin API key (it starts `sk-ant-admin`), made in the
+  Claude Console under **Settings**, **Admin keys**. An ordinary API key
+  or a workspace's key can't read the cost report. Individual accounts have
+  no Admin API: set up an organization first.
+- **OpenAI**: an admin key (it starts `sk-admin-`), made in the OpenAI
+  platform under **Organization settings**, **Admin keys**. A project or
+  user API key can't read the Costs API.
+
+Only an owner of the workspace can connect a provider, one key per
+provider. g1t checks the key with one small report request and says why
+when it doesn't work (the wrong kind of key, no permission), then reads
+the last 90 days.
+
+**What g1t keeps.** The key, sealed when it is saved; it is never shown
+again, never sent back to anyone and never written to a log. The page shows
+its last four characters, who connected it and when, when it was last read
+and what went wrong. And the costs: day, provider, line item, the provider's
+own workspace or project, and the amount. g1t uses the key for nothing but
+reading the report: never to run a model.
+
+**How often.** Once a day, around 04:17 UTC. Each read asks for the last
+seven days again, since providers revise recent days (and further back,
+up to 90 days, after reads have failed), and replaces what it had for
+those days. A provider that fails keeps its error on the page until a
+read works; the others are read as usual. The day in progress is
+incomplete at the provider too.
+
+**Not added to g1t's own figures.** Runs g1t made on the workspace's own
+key, such as Ask and sessions on [your AI providers](/guides/ai/), are on
+the provider's report as well. The provider's figure already includes
+them, so it is shown beside g1t's, never added to it.
+
+**Disconnecting.** **Disconnect** on the page deletes the key and every cost
+read with it. Replacing the key does the same and reads the last 90 days
+again, since a new key may belong to another organization. To stop the key
+working anywhere, also delete it at the provider.
+
+Members can see which providers are connected and what they reported;
+only owners connect, replace and disconnect them. Services read the figures
+with the billing service's `provider_costs` RPC.
+
 ## For services: entitlements, reserve, settle
 
 Every g1t service that starts something that costs money asks billing
