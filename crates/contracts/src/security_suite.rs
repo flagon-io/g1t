@@ -664,8 +664,8 @@ pub struct CodeAlert {
     pub dismissed_reason: Option<DismissReason>,
     pub dismissed_comment: Option<String>,
     pub dismissed_at: Option<String>,
-    /// The issue g1t was put on to fix it.
-    pub issue: Option<u32>,
+    /// The work item g1t was put on to fix it, by number in the workspace.
+    pub item: Option<u32>,
 }
 
 /// One upload's run of one tool on one commit.
