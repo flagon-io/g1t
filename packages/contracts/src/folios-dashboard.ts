@@ -129,7 +129,7 @@ export function dashboardOpError(op: unknown, queryError: (query: DatasetQuery) 
       const preset = typeof range === "string" && ["7d", "30d", "90d"].includes(range);
       if (!preset && !(isObject(range) && typeof range.from === "string" && typeof range.to === "string")) return "range is 7d, 30d, 90d or { from, to }.";
       if (isObject(range)) {
-        const error = queryError({ dataset: "issues", measure: { op: "count" }, range: { from: range.from as string, to: range.to as string } });
+        const error = queryError({ dataset: "work_items", measure: { op: "count" }, range: { from: range.from as string, to: range.to as string } });
         if (error) return error;
       }
       if (filters.repos != null && !(Array.isArray(filters.repos) && filters.repos.every((repo) => typeof repo === "string"))) return "repos is a list of owner/name.";

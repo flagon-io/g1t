@@ -20,7 +20,7 @@ test("agrees with the Rust validator on every shared case", () => {
 });
 
 test("a parsed query keeps only what the catalog knows", () => {
-  const parsed = parseDatasetQuery({ dataset: "issues", measure: { op: "count" }, sql: "DROP TABLE issues", group_by: "repo" });
+  const parsed = parseDatasetQuery({ dataset: "work_items", measure: { op: "count" }, sql: "DROP TABLE issues", group_by: "repo" });
   assert.ok("query" in parsed);
   assert.equal("sql" in parsed.query, false);
   assert.equal(parsed.query.group_by, "repo");
