@@ -11,9 +11,10 @@ import { WorkFiltersBar, WorkItemRow } from "../../../components/work-items";
 import { Unavailable } from "../../../components/boundary";
 import { colorsOf } from "../../../lib/labels";
 import { isFailed, part } from "../../../lib/partial";
-import { identity, work } from "../../../lib/services.server";
+import { identity, repos, work } from "../../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../../lib/session.server";
-import { filtered, newItemPath, repoFilter, shortPath, workFilters, workPath, workQuery } from "../../../lib/work-items";
+import { emptyListTitle, filtered, newItemPath, repoFilter, shortPath, workFilters, workPath, workQuery } from "../../../lib/work-items";
+import { canItem } from "../../../lib/work-access";
 import { workspaceProjects } from "../../../lib/workspace-projects.server";
 import { workPages } from "../../../lib/repo-live";
 import { useRefreshWhile } from "../../../lib/refresh";
@@ -55,7 +56,18 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     work.listWorkspaceSessions(workspace, viewer, { shown: "live", sessionsOnly: true, repo: filters.repo ? shortPath(filters.repo, workspace) : undefined, limit: 30 }).catch(() => null),
   ]);
   const live = cooking?.ok ? splitLive(cooking.value.sessions) : null;
+  // Who may open one here, as New work item says (routes/workspace/work/new.tsx): a member; anyone else
+  // only from a repository of the workspace (`?repo=web`) they may take part in.
+  const short = filters.repo ? shortPath(filters.repo, workspace) : null;
+  let canOpen = viewer != null && member;
+  if (viewer && !member && short && !short.includes("/")) {
+    const found = await repos.get({ namespace: workspace, name: short }, viewer).catch(() => null);
+    canOpen = Boolean(
+      found?.ok && canItem(viewer, workspace, { id: found.value.id, namespace: found.value.namespace, isPrivate: found.value.isPrivate }, "participate"),
+    );
+  }
   return {
+    canOpen,
     workspace,
     filters,
     member,
@@ -72,7 +84,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 }
 
 export default function WorkList({ loaderData }: Route.ComponentProps) {
-  const { workspace, filters, items, member, signedIn } = loaderData;
+  const { workspace, filters, items, member } = loaderData;
   const { search } = useLocation();
   const colors = colorsOf(loaderData.labels ?? []);
   const repoName = filters.repo ? shortPath(filters.repo, workspace) : null;
@@ -94,7 +106,7 @@ export default function WorkList({ loaderData }: Route.ComponentProps) {
         state={filters.state}
         query={kept.toString()}
         action={
-          signedIn && (member || repoName) ? (
+          loaderData.canOpen ? (
             <ButtonLink to={newItemPath(workspace, repoName)} className="max-sm:h-10">
               <Plus size={15} />
               New work item
@@ -135,15 +147,7 @@ export default function WorkList({ loaderData }: Route.ComponentProps) {
       <div className="mt-4">
         {items.length === 0 ? (
           <EmptyState
-            title={
-              filtered(filters)
-                ? `No ${filters.state} work items match these filters`
-                : repoName
-                  ? `No ${filters.state} work items linked to ${repoName}`
-                  : filters.state === "open"
-                    ? "No open work items"
-                    : "No closed work items"
-            }
+            title={emptyListTitle(filters, repoName)}
           >
             A work item says what should change: a feature, a bug, a chore. It belongs to the workspace and lands in the repositories it
             names; people and their coding agents open pull requests for it.

@@ -5,6 +5,7 @@ import type { ItemRepo } from "@g1t/contracts";
 
 import {
   filterCount,
+  emptyListTitle,
   filtered,
   movedWorkPath,
   newItemPath,
@@ -108,4 +109,14 @@ test("old addresses of a repository's issues, labels, milestones and Work page l
   assert.equal(movedWorkPath("/acme/web/work/sessions/ses_123"), null);
   assert.equal(movedWorkPath("/acme/web/pulls"), null);
   assert.equal(movedWorkPath("/acme/-/issues"), null);
+});
+
+test("an empty Work list names the repository it is filtered to, when that is all it is filtered by", () => {
+  const query = (text: string) => workFilters(new URLSearchParams(text));
+  assert.equal(emptyListTitle(query("repo=web"), "web"), "No open work items linked to web");
+  assert.equal(emptyListTitle(query("repo=web&state=closed&role=target"), "web"), "No closed work items linked to web");
+  assert.equal(emptyListTitle(query("repo=web&label=bug"), "web"), "No open work items match these filters");
+  assert.equal(emptyListTitle(query("label=bug"), null), "No open work items match these filters");
+  assert.equal(emptyListTitle(query(""), null), "No open work items");
+  assert.equal(emptyListTitle(query("state=closed"), null), "No closed work items");
 });
