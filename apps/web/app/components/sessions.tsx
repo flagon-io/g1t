@@ -24,7 +24,7 @@ import { SheetChoices } from "./work-items";
 import { ItemIcon, PullIcon } from "./work-icons";
 import { cn } from "../lib/cn";
 import { HARNESS_NAMES, SESSION_STATES } from "../lib/coordination";
-import { KIND_NAMES, type SessionsFilters, narrowed, repoName, runsIn, sessionHref, sessionsQuery, workspaceSessionTitle } from "../lib/sessions";
+import { KIND_NAMES, type SessionsFilters, narrowed, repoName, runsIn, sessionCost, sessionHref, sessionsQuery, workspaceSessionTitle } from "../lib/sessions";
 import { itemPath, sessionsPath } from "../lib/work-items";
 
 const BRANDS: Partial<Record<Harness, { path: string; title: string }>> = {
@@ -121,6 +121,17 @@ function Where({ session, workspace }: { session: WorkspaceSession; workspace: s
   );
 }
 
+/** What a harness session cost, quietly, when it reported usage. */
+function Cost({ session }: { session: WorkspaceSession }) {
+  const cost = sessionCost(session.session);
+  if (!cost) return null;
+  return (
+    <Hint label="Estimated from the tokens its transcript recorded, at Anthropic's list price. Its subagents count on their own sessions.">
+      <span className="text-xs text-faint tabular-nums">{cost}</span>
+    </Hint>
+  );
+}
+
 /**
  * A live session: its state, what it is called, who runs it and in what,
  * where, the work item and pull request it is on, its subagents and when
@@ -153,6 +164,7 @@ export function SessionCard({ session, workspace }: { session: WorkspaceSession;
           <Where session={session} workspace={workspace} />
         </div>
         {session.step && <p className="line-clamp-1 text-xs text-muted">{session.step}</p>}
+        <Cost session={session} />
         {(session.item != null || session.pull != null || session.subagents > 0) && (
           <div className="flex flex-wrap items-center gap-2">
             {session.item != null && <ItemChip workspace={workspace} number={session.item} title={session.itemTitle} />}
@@ -194,6 +206,7 @@ export function SessionRow({ session, workspace }: { session: WorkspaceSession; 
           </span>
           <Where session={session} workspace={workspace} />
           {session.subagents > 0 && <span>{session.subagents} subagents</span>}
+          <Cost session={session} />
         </div>
       </div>
       <span className="shrink-0 text-xs text-faint">
