@@ -1,0 +1,9 @@
+# Generated, vendored or built: never formatted.
+node_modules/
+target/
+dist/
+build/
+.wrangler/
+.react-router/
+*.lock
+package-lock.json
