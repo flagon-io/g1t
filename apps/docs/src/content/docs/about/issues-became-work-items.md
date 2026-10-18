@@ -41,12 +41,13 @@ sessions, pull requests and what it was blocked by.
 - `#12` and `owner/repo#12` in descriptions, comments and commit messages
   written before still link to that issue's work item.
 - `Closes #12` in history still points at the right work item.
-- A repository's old **Work** page, its claims and sessions, is now its
-  **Sessions** page, with the sessions recorded on its pull requests, and
-  the old address redirects there. A session's page is
-  `g1t.sh/<owner>/<repo>/sessions/<id>`; an old address with a pull
-  request's number in place of the id goes to that pull request's
-  session.
+- A repository has no **Work** or **Sessions** page of its own, and
+  `g1t.sh/<owner>/<repo>/work` and `…/sessions` are not found. Its claims
+  and sessions are on the workspace's
+  [Sessions](/guides/sessions/#the-sessions-page), filtered to it:
+  `g1t.sh/<workspace>/-/sessions?repo=<name>`. A session's page is
+  `g1t.sh/<workspace>/-/sessions/<id>`, and a pull request's recorded
+  session is its **Session** tab, `…/pull/<number>/session`.
 
 ## Labels and milestones
 

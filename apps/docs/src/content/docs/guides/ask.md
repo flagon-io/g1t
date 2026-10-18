@@ -165,7 +165,8 @@ Nothing starts until you choose on the card:
   your own skills, settings and subagents.
 
 Either way the session is tied to the work item: it shows on the work
-item, on the repository's Sessions page and on its own session page, with
+item, on the workspace's [Sessions](/guides/sessions/#the-sessions-page)
+and on its own session page, with
 its subagents, and Ask can tell you where it stands. If a session already
 holds the work item, Ask
 links it rather than proposing another.

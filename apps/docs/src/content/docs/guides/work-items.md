@@ -10,7 +10,11 @@ conversation and one place that says what is done.
 
 **Work** is in the left rail, directly after **Home**, at
 `g1t.sh/<workspace>/-/work`. A work item's page is
-`g1t.sh/<workspace>/-/work/<number>`.
+`g1t.sh/<workspace>/-/work/<number>`. Work is the work items: the
+[list](#the-work-list), the [Board](#the-board), **New work item**,
+**Labels** and **Milestones**. The sessions working on them are in
+[Sessions](/guides/sessions/#the-sessions-page), right after Work in the
+rail.
 
 Work items used to be issues, one repository's each. [Issues became work
 items](/about/issues-became-work-items/) says what changed for the ones you
@@ -126,23 +130,49 @@ whoever asked for it can edit it.
 **Work** lists the workspace's work items, open first, newest first.
 Filter it by state, label, milestone, assignee, repository and role (for
 example the items a repository is a target of). The address keeps the
-filters, so a filtered list can be shared.
+filters, so a filtered list can be shared. The work items of one
+repository are the list filtered to it:
+`g1t.sh/<workspace>/-/work?repo=<name>`.
+
+Above the list, **Cooking now** is a strip of the sessions live in the
+workspace right now; it links to [Sessions](/guides/sessions/#the-sessions-page),
+which has them all.
 
 Work's sidebar has **Open**, **Assigned to you** and **Closed**, then
-**New work item**, **Labels** and **Milestones**. On a phone, the bar
-along the bottom is **Home**, **Work**, **Chat**, **Notifications** and
-**More**, with **Work** there for every member, Code access or not, and
-**Code** first in **More**. Tapping **Work** again opens that sidebar.
+**Board**, **New work item**, **Labels** and **Milestones**. On a phone,
+the bar along the bottom is **Home**, **Work**, **Chat**,
+**Notifications** and **More**, with **Work** there for every member,
+Code access or not. **More** starts with **Sessions**, then **Code**.
+Tapping **Work** again opens its menu: **Open**, **Assigned to you**,
+**Closed**, **Board**, **Sessions**, **New work item**, **Labels** and
+**Milestones**.
 
-A repository's **Work** tab is the same list, filtered to the work items
-linked to that repository: `g1t.sh/<workspace>/-/work?repo=<name>`.
+## The Board
+
+**Board**, at `g1t.sh/<workspace>/-/work/board`, is the backlog as it
+moves. Its columns come from what is true of each work item, so there is
+nothing to drag:
+
+| Column | Holds the work items |
+| --- | --- |
+| **Backlog** | Open, with nobody on it. |
+| **In progress** | Claimed or assigned, with a live session on it, or with a draft pull request. |
+| **In review** | With an open pull request. |
+| **Landing** | Landed in some of its target repositories, still missing in others. |
+| **Done** | Closed in the last 14 days. |
+
+A work item goes in the first column that holds for it, in the order
+**Done**, **Landing**, **In review**, **In progress**, **Backlog**. Each
+card links to its work item and shows who, or which session, is on it.
+Filter it by repository with `?repo=<name>`. On a phone the Board shows
+one column at a time, with a switcher for the column.
 
 ## Open a work item
 
 On **Work**, choose **New work item**. Give it a title and a description,
 and pick the repositories it should land in, as targets: none, one or
-several. Opened from a repository's **Work** tab, that repository is its
-origin.
+several. Opened from the list filtered to a repository, that repository
+is its origin.
 
 From the CLI, `g1t work new` opens one in the current repository's
 workspace, with the repository as its origin:
@@ -162,7 +192,8 @@ Claims, hand-offs, dependencies and sessions are how people and coding
 agents work on a work item at once without getting in each other's way;
 see [sessions, claims and dependencies](/guides/sessions/). A session is
 recorded in the repository it is checked out in, and the work item it
-works on is the workspace's.
+works on is the workspace's. A work item's page lists the sessions on
+it; **Sessions**, in the rail, lists every session in the workspace.
 
 To open a pull request for a work item, use `g1t pr create --item 12`, or
 the `pull_request` tool's `create` with `item: 12`. The pull request's
