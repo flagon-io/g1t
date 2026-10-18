@@ -11,7 +11,7 @@ import { Card } from "../../../components/ui/card";
 import { Hint } from "../../../components/ui/hint";
 import { RepoChips } from "../../../components/work-items";
 import { ItemIcon } from "../../../components/work-icons";
-import { type Board, type BoardCard, STAGES, STAGE_INFO, type Stage, boardOf, pullsByItem, shownStage } from "../../../lib/board";
+import { type Board, type BoardCard, STAGES, STAGE_INFO, type Stage, boardOf, pullRepos, pullsByItem, shownStage } from "../../../lib/board";
 import { cn } from "../../../lib/cn";
 import { page } from "../../../lib/meta";
 import { isFailed, part } from "../../../lib/partial";
@@ -22,9 +22,6 @@ import { getViewer, roleIn, unwrap } from "../../../lib/session.server";
 import { runsIn, sessionHref, workspaceSessionTitle } from "../../../lib/sessions";
 import { useWorkspaceLive } from "../../../lib/use-repo-live";
 import { itemPath, newItemPath, repoFilter, shortPath, workPath } from "../../../lib/work-items";
-
-/** How many repositories' open pull requests the board reads. */
-const PULL_REPOS = 20;
 
 export function meta({ params, location, ...args }: Route.MetaArgs) {
   const repo = new URLSearchParams(location.search).get("repo");
@@ -46,18 +43,21 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     part(work.listWorkspaceSessions(workspace, viewer, { shown: "live", sessionsOnly: true, repo: repoName ?? undefined, limit: 200 }), "Live sessions"),
   ]);
   const sessions = isFailed(live) || !live.ok ? [] : live.value.sessions;
-  // The open pull requests that name their work items, in the repositories looked in.
-  const repos = isFailed(live) || !live.ok ? [] : live.value.repos.slice(0, PULL_REPOS);
+  // The open pull requests that name their work items, in every repository an open item is linked to.
+  const openItems = unwrap(open);
+  const repos = pullRepos(openItems);
   const pulls = await Promise.all(
-    repos.map((one) => {
-      const [namespace = "", name = ""] = one.path.split("/");
+    repos.map((path) => {
+      const [namespace = "", name = ""] = path.split("/");
       return work.listPulls({ namespace, name }, viewer, "open").catch(() => null);
     }),
   );
   const openPulls: Pull[] = pulls.flatMap((found) => (found?.ok ? found.value : []));
+  // A repository whose pull requests could not be read: its items may stand a column early, and the board says so.
+  const unread = repos.filter((_, index) => !pulls[index]?.ok);
   const now = Date.now();
   const board = boardOf(
-    [...unwrap(open), ...(isFailed(closed) || !closed.ok ? [] : closed.value)],
+    [...openItems, ...(isFailed(closed) || !closed.ok ? [] : closed.value)],
     { claims: isFailed(claims) || !claims.ok ? [] : claims.value, sessions, pulls: pullsByItem(openPulls) },
     now,
   );
@@ -68,7 +68,10 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     repo: repoName,
     board,
     stage: shownStage(query.get("stage"), board),
-    unavailable: [closed, claims, live].filter(isFailed).map((failed) => failed.what),
+    unavailable: [
+      ...[closed, claims, live].filter(isFailed).map((failed) => failed.what),
+      ...(unread.length === 0 ? [] : [unread.length === 1 ? `Pull requests in ${unread[0]}` : `Pull requests in ${unread.length} repositories`]),
+    ],
     live: sessions.length,
   };
 }
@@ -193,7 +196,7 @@ export default function BoardPage({ loaderData }: Route.ComponentProps) {
           </ButtonLink>
         )}
       </div>
-      {unavailable.length > 0 && <p className="mt-3 text-xs text-warn">{unavailable.join(", ")} could not be loaded just now; the board may be missing some of it.</p>}
+      {unavailable.length > 0 && <p className="mt-3 text-xs text-warn">{unavailable.join(", ")} could not be loaded just now, so this board is partial: some work items may be missing, or stand a column early.</p>}
 
       {total === 0 ? (
         <div className="mt-5">
