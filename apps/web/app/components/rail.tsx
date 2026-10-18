@@ -1,6 +1,6 @@
 import { useSidebarLocation } from "../lib/use-sidebar-location";
 import { Check, ChevronDown, CircleUserRound, Compass, LayoutGrid, Plus, Settings } from "lucide-react";
-import { Fragment, type ReactNode, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Link } from "react-router";
 
 import { type Membership, type User, hasCodeAccess, shownUsername } from "@g1t/contracts";
@@ -22,12 +22,12 @@ import {
 } from "./ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarSeparator } from "./ui/sidebar";
-import { type BuiltinApp, type PinnableApp } from "../lib/apps";
+import { type PinnableApp, appOf, railApps } from "../lib/apps";
 import { cn } from "../lib/cn";
 import { paletteKeyLabel } from "../lib/shortcut";
 import { type ModeKey, homePagePath, modeHome, modeOf } from "../lib/workspace-nav";
 
-type Item = { key: ModeKey; label: string; badge?: { count: number; loud: boolean } | null };
+type Item = { badge?: { count: number; loud: boolean } | null };
 
 /** A count on an icon: loud (the accent) for what waits on you, quiet for the rest. */
 export function CountBadge({ count, loud, className }: { count: number; loud: boolean; className?: string }) {
@@ -199,11 +199,11 @@ function AppsButton({ slug, pins, onToggle, current }: { slug: string; pins: Pin
 
 /**
  * The rail down the window's left edge: a narrow column of icons, each
- * named by the hint beside it. g1t's mark, which leads to Home; the
- * built-in apps (Home, Work, Chat, Code, Artifacts and Routines) with what is
- * unread on them (Notifications is the bell in the top bar, not a rail
- * app); Explore, lit anywhere beyond your workspaces; the apps you
- * pinned; the Apps launcher;
+ * named by the hint beside it. g1t's mark, which leads to Home; Home;
+ * Explore, lit anywhere beyond your workspaces; then the other built-in
+ * apps (Work, with its sessions, Chat, Code, Artifacts and Routines) with
+ * what is unread on them (Notifications is the bell in the top bar, not a
+ * rail app); the apps you pinned; the Apps launcher;
  * and at its foot People, Workspace and your account. The one you are in
  * sits on a filled square, and which that is follows the address. A
  * member without Code access has no Code. From 768px; a phone has the
@@ -228,23 +228,12 @@ export function Rail({
   const { pathname: path } = useSidebarLocation();
   const here = mode ?? modeOf(path, workspace.slug);
   const slug = workspace.slug;
+  // A member without Code access has no Code; Work is every member's, its sessions in it.
   const code = hasCodeAccess(workspace);
   const { pins, toggle } = useAppPins(slug, saved);
-  const builtins: Item[] = [
-    { key: "home", label: "Home" },
-    // Every member's, Code access or not.
-    { key: "work", label: "Work" },
-    // What is cooking across the workspace, right after its work items.
-    { key: "sessions", label: "Sessions" },
-    {
-      key: "chat",
-      label: "Chat",
-      badge: { count: unread.mentions > 0 ? unread.mentions : unread.chat, loud: unread.mentions > 0 },
-    },
-    ...(code ? [{ key: "code" as const, label: "Code" }] : []),
-    { key: "artifacts", label: "Artifacts" },
-    { key: "routines", label: "Routines" },
-  ];
+  const badges: Partial<Record<ModeKey, Item["badge"]>> = {
+    chat: { count: unread.mentions > 0 ? unread.mentions : unread.chat, loud: unread.mentions > 0 },
+  };
   const shown = pins.map((key) => pinnedApp(key, slug)).filter((app) => app != null);
   // A pinned app is current on its own page and the pages under it.
   const at = (to: string) => path === to || path.startsWith(`${to}/`);
@@ -265,21 +254,21 @@ export function Rail({
       </SidebarHeader>
       <SidebarContent className="items-center gap-0">
         <SidebarMenu className="w-auto shrink-0 gap-2">
-          {builtins.map((item) => (
-            <Fragment key={item.key}>
+          {railApps(code).map((key) =>
+            // g1t beyond your workspaces: Explore, search, profiles, other workspaces and their public projects.
+            key === "explore" ? (
+              <RailLink key={key} to="/explore" label="Explore" icon={<Compass size={20} />} current={here === "browse" || at("/explore")} />
+            ) : (
               <RailLink
-                to={modeHome(item.key, slug)}
-                label={item.label}
-                icon={appIcon(item.key as BuiltinApp, 20)}
-                current={here === item.key && !shown.some((app) => at(app.to))}
-                badge={item.badge}
+                key={key}
+                to={modeHome(key, slug)}
+                label={appOf(key).name}
+                icon={appIcon(key, 20)}
+                current={here === key && !shown.some((app) => at(app.to))}
+                badge={badges[key]}
               />
-              {/* Right after Sessions: g1t beyond your workspaces (Explore, search, profiles, other workspaces and their public projects). */}
-              {item.key === "sessions" && (
-                <RailLink to="/explore" label="Explore" icon={<Compass size={20} />} current={here === "browse" || at("/explore")} />
-              )}
-            </Fragment>
-          ))}
+            ),
+          )}
         </SidebarMenu>
         {/* Your pinned apps: as many as you like, scrolling under a fade at either end. */}
         {shown.length > 0 && (

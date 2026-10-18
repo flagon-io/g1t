@@ -60,17 +60,17 @@ export function repoWorkPath(workspace: string, repo: string): string {
   return `${workPath(workspace)}?repo=${encodeURIComponent(repo)}`;
 }
 
-/** Sessions, the workspace's: what is cooking in it, with filters (`?repo=web&person=ana`). */
+/** Work → Sessions: what is cooking in the workspace, with filters (`?repo=web&person=ana`). */
 export function sessionsPath(workspace: string, filters: Record<string, string | null | undefined> = {}): string {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);
   const text = query.toString();
-  return `/${workspace.toLowerCase()}/-/sessions${text ? `?${text}` : ""}`;
+  return `${workPath(workspace, "sessions")}${text ? `?${text}` : ""}`;
 }
 
 /** One session's page, in whichever of the workspace's repositories it runs. */
 export function sessionPath(workspace: string, id: string): string {
-  return `/${workspace.toLowerCase()}/-/sessions/${encodeURIComponent(id)}`;
+  return `${workPath(workspace, "sessions")}/${encodeURIComponent(id)}`;
 }
 
 /** A new work item, started from a repository (its origin) when `repo` is given. */

@@ -26,7 +26,7 @@
 import { CONNECTORS, type Connector, connectorPath } from "@g1t/contracts/connectors";
 
 /** The apps that are always in the rail. */
-export type BuiltinApp = "home" | "work" | "sessions" | "chat" | "notifications" | "code" | "artifacts" | "routines" | "people" | "workspace";
+export type BuiltinApp = "home" | "work" | "chat" | "notifications" | "code" | "artifacts" | "routines" | "people" | "workspace";
 
 export type BuiltinInfo = {
   key: BuiltinApp;
@@ -43,7 +43,6 @@ const under = (page: string) => (slug: string) => `/${slug}/-/${page}`;
 export const BUILTINS: BuiltinInfo[] = [
   { key: "home", name: "Home", path: under("home") },
   { key: "work", name: "Work", path: under("work") },
-  { key: "sessions", name: "Sessions", path: under("sessions") },
   { key: "chat", name: "Chat", path: under("chat") },
   { key: "notifications", name: "Notifications", path: () => "/notifications" },
   { key: "code", name: "Code", path: under("overview"), code: true },
@@ -53,17 +52,32 @@ export const BUILTINS: BuiltinInfo[] = [
   { key: "workspace", name: "Workspace", path: under("workspace") },
 ];
 
+/**
+ * The rail's apps from its top, in order: Home, Explore (g1t beyond your
+ * workspaces, which is no built-in app), Work with its sessions, Chat,
+ * Code for a member with Code access, Artifacts and Routines. People and
+ * Workspace stand at its foot.
+ */
+export const RAIL_APPS = ["home", "explore", "work", "chat", "code", "artifacts", "routines"] as const;
+
+export type RailApp = (typeof RAIL_APPS)[number];
+
+/** The rail's apps for a member, with Code only when they have Code access. */
+export function railApps(code: boolean): RailApp[] {
+  return RAIL_APPS.filter((key) => code || key !== "code");
+}
+
 /** A phone's bottom bar, before More: Work for every member, Code under More. */
 export const PHONE_TABS = ["home", "work", "chat", "notifications"] as const satisfies readonly BuiltinApp[];
 
 /**
- * The built-in apps the phone's More sheet has, in its order: Sessions
- * first, then Code for a member with Code access, then the rest of the
- * rail's.
+ * The built-in apps the phone's More sheet has, in its order: Code for a
+ * member with Code access, then the rest of the rail's. Explore, which is
+ * no built-in app, heads the sheet before them; Sessions are Work's.
  */
 export function phoneMoreApps(code: boolean): BuiltinApp[] {
-  const rest = BUILTINS.map((app) => app.key).filter((key) => !(PHONE_TABS as readonly string[]).includes(key) && key !== "code" && key !== "sessions");
-  return code ? ["sessions", "code", ...rest] : ["sessions", ...rest];
+  const rest = BUILTINS.map((app) => app.key).filter((key) => !(PHONE_TABS as readonly string[]).includes(key) && key !== "code");
+  return code ? ["code", ...rest] : rest;
 }
 
 /** The built-in app `key`. */

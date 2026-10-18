@@ -22,21 +22,30 @@ import {
   PHONE_TABS,
   appOf,
   phoneMoreApps,
+  railApps,
 } from "./apps.ts";
 
-test("Work is a built-in app right after Home, for every member", () => {
-  assert.deepEqual(BUILTINS.slice(0, 3).map((app) => app.key), ["home", "work", "sessions"]);
+test("Work is a built-in app right after Home, for every member, and Sessions are in it", () => {
+  assert.deepEqual(BUILTINS.slice(0, 3).map((app) => app.key), ["home", "work", "chat"]);
   assert.equal(appOf("work").path("acme"), "/acme/-/work");
   assert.equal(appOf("work").code, undefined, "not part of Code");
+  assert.equal(BUILTINS.some((app) => (app.key as string) === "sessions"), false, "no Sessions app of its own");
 });
 
-test("a phone's bar is Home, Work, Chat and Notifications, with Sessions then Code first under More", () => {
+test("the rail is Home, Explore, Work, Chat, Code, Artifacts and Routines", () => {
+  assert.deepEqual(railApps(true), ["home", "explore", "work", "chat", "code", "artifacts", "routines"]);
+  // A member without Code access has no Code, and the rest in the same order.
+  assert.deepEqual(railApps(false), ["home", "explore", "work", "chat", "artifacts", "routines"]);
+});
+
+test("a phone's bar is Home, Work, Chat and Notifications, with Code first of More's apps", () => {
   assert.deepEqual([...PHONE_TABS], ["home", "work", "chat", "notifications"]);
   // Four tabs and More: five slots.
   assert.equal(PHONE_TABS.length + 1, 5);
-  assert.deepEqual(phoneMoreApps(true), ["sessions", "code", "artifacts", "routines", "people", "workspace"]);
+  // Explore heads the sheet before these; Sessions are Work's, not More's.
+  assert.deepEqual(phoneMoreApps(true), ["code", "artifacts", "routines", "people", "workspace"]);
   // A member without Code access has the rest, Work still on the bar.
-  assert.deepEqual(phoneMoreApps(false), ["sessions", "artifacts", "routines", "people", "workspace"]);
+  assert.deepEqual(phoneMoreApps(false), ["artifacts", "routines", "people", "workspace"]);
 });
 
 test("only integrations are pinned; built-in apps, their pages, old plugins and connectors are not", () => {

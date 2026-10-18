@@ -68,9 +68,9 @@ test("how many filters are on, for the phone's Filters button", () => {
 
 test("a repository's Work tab, and a new work item filed from it", () => {
   assert.equal(repoWorkPath("acme", "web"), "/acme/-/work?repo=web");
-  assert.equal(sessionsPath("Acme"), "/acme/-/sessions");
-  assert.equal(sessionsPath("acme", { repo: "web", person: null }), "/acme/-/sessions?repo=web");
-  assert.equal(sessionPath("Acme", "ses_1"), "/acme/-/sessions/ses_1");
+  assert.equal(sessionsPath("Acme"), "/acme/-/work/sessions");
+  assert.equal(sessionsPath("acme", { repo: "web", person: null }), "/acme/-/work/sessions?repo=web");
+  assert.equal(sessionPath("Acme", "ses_1"), "/acme/-/work/sessions/ses_1");
   assert.equal(newItemPath("Acme"), "/acme/-/work/new");
   assert.equal(newItemPath("acme", "web"), "/acme/-/work/new?repo=web");
   assert.deepEqual(repoFilter("acme", "web"), { namespace: "acme", name: "web" });
