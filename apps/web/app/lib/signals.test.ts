@@ -14,7 +14,9 @@ import {
   mergeSignals,
   newGround,
   newHabits,
+  namesWords,
   pulse,
+  quarterSpend,
   quarterStart,
   quietHeadline,
   reviewSignal,
@@ -27,6 +29,8 @@ import {
   spendFlow,
   spendSignal,
   spoken,
+  spreadSignal,
+  spreading,
   stalledSignal,
   weekStarts,
   weekTotals,
@@ -256,7 +260,7 @@ test("a milestone closed this week says when against its due date, and what it t
 test("stalled changes and rework are findings only when they moved", () => {
   assert.equal(
     stalledSignal(ctx({ weeks: [week("a", { stalled: 16 }), week("b", { stalled: 23 })] }))!.headline,
-    "23 changes have been open over a week, 7 more than last week.",
+    "23 open changes have gone three days with nothing happening, 7 more than last week.",
   );
   assert.equal(stalledSignal(ctx({ weeks: [week("a", { stalled: 16 }), week("b", { stalled: 17 })] })), null);
   const steady = [1, 2, 3, 4].map((i) => week(`w${i}`, { agentMerged: 10, agentReworked: 1 }));
@@ -379,4 +383,50 @@ test("the rhythm adds each group's days and leaves out groups with nothing", () 
       [1, 0, 0, 1],
     ],
   );
+});
+
+test("quarter spend adds each pull request's share of its sessions to g1t's usage", () => {
+  const signals = {
+    ...emptySignals(),
+    pulls: [
+      pull({ number: 1, sessionCostUsd: 2.5 }),
+      pull({ number: 2, sessionCostUsd: 1, createdAt: "2026-05-01T00:00:00Z", mergedAt: "2026-05-02T00:00:00Z" }),
+    ],
+  };
+  const quarterUsage = usage({
+    byPull: [
+      { key: "acme/web#1", micros: 1_000_000, runs: 1 },
+      { key: "acme/other#9", micros: 500_000, runs: 1 },
+    ],
+  });
+  const spend = quarterSpend({ repos, signals, quarterUsage, quarter: "2026-10-01" })!;
+  assert.equal(spend.byPull.get("acme/web#1"), 3_500_000);
+  assert.equal(spend.byPull.get("acme/web#2"), undefined, "last quarter's sessions are left out");
+  assert.equal(spend.total, 4_000_000, "usage on pull requests not listed still counts in the total");
+  assert.equal(spend.sessions, 2_500_000);
+  assert.equal(quarterSpend({ repos, signals, quarterUsage: null, quarter: "2026-10-01" }), null);
+});
+
+test("a harness catching on: two or more people started this month, two weeks or more after the first", () => {
+  const at = (days: number) => new Date(NOW - days * DAY).toISOString();
+  const harnesses = [
+    { repoId: "r1", ownerId: "u1", ownerName: "ana", harness: "codex", firstAt: at(60), sessions: 30 },
+    { repoId: "r2", ownerId: "u1", ownerName: "ana", harness: "codex", firstAt: at(20), sessions: 3 },
+    { repoId: "r1", ownerId: "u2", ownerName: "bo", harness: "codex", firstAt: at(10), sessions: 4 },
+    { repoId: "r2", ownerId: "u3", ownerName: "cy", harness: "codex", firstAt: at(3), sessions: 2 },
+    { repoId: "r1", ownerId: "u2", ownerName: "bo", harness: "cursor", firstAt: at(5), sessions: 1 },
+  ];
+  const [spread] = spreading(harnesses, NOW);
+  assert.equal(spread!.harness, "codex");
+  assert.equal(spread!.first.name, "ana", "a person's first session anywhere counts");
+  assert.deepEqual(
+    spread!.recent.map((p) => p.name),
+    ["bo", "cy"],
+  );
+  assert.equal(spreading(harnesses, NOW, { only: new Set(["r1"]) }).length, 0, "within one project only bo is new");
+  assert.equal(
+    spreadSignal(ctx({ signals: { ...emptySignals(), harnesses } }))!.headline,
+    "Codex is catching on: bo and cy started using it this month, after ana.",
+  );
+  assert.equal(namesWords(["a", "b", "c", "d"]), "a, b and 2 others");
 });

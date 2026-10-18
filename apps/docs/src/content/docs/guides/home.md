@@ -49,8 +49,8 @@ arrow keys, to read any week. Each figure opens the page behind it.
 | Figure | What it counts |
 | --- | --- |
 | **Agent-authored merges** | Pull requests that merged in the week and were an [agent's](#whose-work-is-an-agents). |
-| **Spend per agent merge** | The week's agent [usage](/guides/usage-and-billing/#the-usage-page) at price, divided by the agent pull requests that merged in it: an average, not what any one cost. A dash when usage can't be read or nothing an agent made merged. |
-| **Stalled changes** | Pull requests open more than seven days at the end of each week (now, for this one), neither merged nor closed. Drafts count. |
+| **Spend per agent merge** | The week's agent [usage](/guides/usage-and-billing/#the-usage-page) at price, plus what the [sessions](/guides/sessions/) started in it cost (estimated at list price from their token usage), divided by the agent pull requests that merged in it: an average, not what any one cost. A dash when usage can't be read or nothing an agent made merged. |
+| **Stalled changes** | Pull requests open at the end of each week (now, for this one), opened three days or more before, with nothing in the three days before: no push, comment, review, timeline event, check or session. Drafts count. |
 | **Agent rework rate** | Of the agent pull requests that merged in the week, the share a person asked for changes on before they merged. |
 
 ### Whose work is an agent's
@@ -74,14 +74,17 @@ beside it. When nothing stands out, the headline says what the week did.
 | **Work items waiting on one unreviewed change** | An open pull request no one has reviewed is for a work item that other open work items are blocked by. The one holding up the most leads. |
 | **Agent drafts waiting for review** | This week's first reviews waited at least four times as long as agents took to open the pull requests (from their session starting), and at least four hours. Without that gap: first reviews took half as long again as the weeks before. |
 | **A milestone shipped** | A milestone closed in the last seven days, against its due date, with its weeks in build, its merged pull requests and its projects. |
-| **Where agent spend is going** | More than a third of the quarter's agent usage by pull request went into one milestone (else one work item, else one project). |
+| **Where agent spend is going** | More than a third of the quarter's agent spend by pull request went into one milestone (else one work item, else one project). Spend is g1t's usage on each pull request and its share of its sessions' cost. |
 | **Stalled changes rising** | At least three more stalled changes than last week, and a quarter more. |
 | **Agent rework moving** | People asked for changes on agents' merged work at least 8 points more, or less, often than over the four weeks before (with five agent merges or more). |
+| **A practice catching on** | Two or more people started using a harness (Claude Code, Codex, Cursor and so on) this month, at least two weeks after the first person did. |
 | **Who works where** | Someone started merging to a project one person has carried (three quarters of its last 90 days' merges), or merged to a project for the first time this week after work elsewhere. |
 
 Findings are ordered by how much they hold up: blocked work first, then
 waits, then what shipped and where spend went. Up to five show, and the
-rest are one click away. The same reads, at more length, are on the
+rest are one click away. What the work says is read again at most every
+five minutes for each person, so a figure can be up to five minutes
+behind. The same reads, at more length, are on the
 [workspace overview](/guides/workspaces/#the-workspace-overview).
 
 ## Ask from Home

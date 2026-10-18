@@ -24,7 +24,7 @@ import { PulseSkeleton, PulseStrip } from "../../components/signals";
 import { SpendFlow } from "../../components/spend-flow";
 import { isFailed, part } from "../../lib/partial";
 import { loadRepos } from "../../lib/home.server";
-import { dailySignal, dayList, dollars, newGround, newHabits, rhythm, silos, spendFlow, spoken, waitingRows } from "../../lib/signals";
+import { dailySignal, dayList, dollars, harnessWords, namesWords, newGround, newHabits, quarterSpend, rhythm, silos, spendFlow, spoken, spreading, waitingRows } from "../../lib/signals";
 import { type SignalData, loadGroups, loadSignalData } from "../../lib/signals.server";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -83,14 +83,18 @@ async function loadGround(viewer: User, slug: string, now: number) {
 function shapeGround(found: SignalData, groups: Awaited<ReturnType<typeof loadGroups>>, now: number) {
   const name = (id: string) => found.repos[id]?.name ?? "a project";
   const path = (id: string) => (found.repos[id] ? `/${found.repos[id]!.namespace}/${found.repos[id]!.name}` : null);
-  const quarterSpend = found.quarterUsage ? found.quarterUsage.byPull.reduce((sum, slice) => sum + slice.micros, 0) : null;
+  const quarter = quarterSpend({ repos: found.repos, signals: found.signals, quarterUsage: found.quarterUsage, quarter: found.range.quarter });
+  // Practices catching on in each team (else across the workspace), the newest first.
+  const scopes = groups?.by === "team" ? groups.groups.map((group) => ({ key: group.key, label: group.label, only: new Set(group.repoIds) as ReadonlySet<string> | undefined })) : [{ key: "all", label: "the workspace", only: undefined }];
+  const spreads = scopes.flatMap((scope) => spreading(found.signals.harnesses, now, { only: scope.only }).map((spread) => ({ scope, spread })));
   return {
     tiles: dailySignal(found).tiles,
     complete: found.complete,
     capped: found.signals.pullsCapped,
     flow: spendFlow({ slug: found.slug, repos: found.repos, signals: found.signals, quarterUsage: found.quarterUsage, quarter: found.range.quarter }),
-    sized: (quarterSpend ?? 0) > 0 ? ("spend" as const) : ("pulls" as const),
-    quarterSpend,
+    sized: (quarter?.total ?? 0) > 0 ? ("spend" as const) : ("pulls" as const),
+    quarterSpend: quarter?.total ?? null,
+    sessionSpend: quarter?.sessions ?? 0,
     rhythm: groups ? { by: groups.by, rows: rhythm(found.signals.days, dayList(found.range.until, found.range.days), groups.groups) } : null,
     waiting: waitingRows(found.signals.waiting, found.repos).map((pull) => ({ ...pull, age: spoken(Math.max(0, (now - Date.parse(pull.createdAt)) / 1000)) })),
     silos: silos(found.signals.authors, now)
@@ -105,6 +109,13 @@ function shapeGround(found: SignalData, groups: Awaited<ReturnType<typeof loadGr
     newGround: newGround(found.signals.authors, now)
       .slice(0, QUIET_ROWS)
       .map((row) => ({ key: `${row.ownerId}:${row.repoId}`, to: path(row.repoId), where: name(row.repoId), line: `${row.name} merged a first change here`, more: `${row.elsewhere} merges elsewhere first` })),
+    spreading: spreads.slice(0, QUIET_ROWS).map(({ scope, spread }) => ({
+      key: `${scope.key}:${spread.harness}`,
+      to: null,
+      where: `${harnessWords(spread.harness)} in ${scope.label}`,
+      line: `${namesWords(spread.recent.map((person) => person.name))} started using it this month, after ${spread.first.name}`,
+      more: `${spread.people} people use it now`,
+    })),
     habits: newHabits(found.signals.pulls, now)
       .slice(0, QUIET_ROWS)
       .map((row) => ({ key: row.ownerId, to: path(row.repoId), where: name(row.repoId), line: `${row.name} merged a first agent-made change`, more: `after ${row.byHand} by hand` })),
@@ -287,7 +298,7 @@ function GroundTruth({ slug, ground }: { slug: string; ground: Ground }) {
         title={ground.quarterSpend ? `${dollars(ground.quarterSpend)} of agent spend this quarter, and what it went into` : "This quarter's work, and how much of it agents did"}
         hint={
           ground.sized === "spend"
-            ? "Each milestone, its work items, their change set in each project and its pull requests, sized by what the agents' usage on them came to and shaded by how much was an agent's. Choose a box to open what is under it."
+            ? `Each milestone, its work items, their change set in each project and its pull requests, sized by what agents cost on them${ground.sessionSpend > 0 ? ` (g1t's metered usage, and ${dollars(ground.sessionSpend)} of harness sessions estimated at list price)` : ""} and shaded by how much was an agent's. Choose a box to open what is under it.`
             : "Usage isn't known for this quarter, so each box is sized by its pull requests and shaded by how many were an agent's. Choose a box to open what is under it."
         }
       >
@@ -340,9 +351,10 @@ function GroundTruth({ slug, ground }: { slug: string; ground: Ground }) {
         title="Who works where, and what is spreading"
         hint="What no roll-up shows: knowledge resting with one person, people moving into new ground, and new ways of working taking hold. Each is a place to look, not a verdict."
       >
-        <div className="grid gap-8 md:grid-cols-3">
+        <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-4">
           <QuietList title="Knowledge silos" hint="Projects where one person has done most of the last 90 days' work" rows={ground.silos} empty="No project rests on one person right now." />
           <QuietList title="New ground" hint="People who merged to a project for the first time in the last two weeks" rows={ground.newGround} empty="No one has moved into a new project in the last two weeks." />
+          <QuietList title="Spreading" hint="A harness more people took up this month, after someone started with it" rows={ground.spreading} empty="No harness has caught on in a team this month." />
           <QuietList title="New habits" hint="People whose first agent-made change merged in the last two weeks" rows={ground.habits} empty="No one new started merging agents' work in the last two weeks." />
         </div>
       </Section>

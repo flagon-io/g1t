@@ -15,6 +15,7 @@ import type {
   RepoPath,
   SignalAuthor,
   SignalDay,
+  SignalHarness,
   SignalItem,
   SignalMilestone,
   SignalPull,
@@ -310,7 +311,7 @@ export function pulse({ slug, weeks, spend }: PulseInput): PulseTile[] {
       delta: deltaOf(perMerge[at] ?? null, before ? (perMerge[at - 1] ?? null) : null, (abs) => dollars(abs), false),
       series: perMerge,
       points: perMerge.map((micros, i) => `${labels[i]}: ${micros == null ? "no agent merges" : dollars(micros)}`),
-      hint: "The week's agent usage at price, over the agent pull requests that merged",
+      hint: "g1t's agent usage at price and harness sessions' cost at list price, over the agent merges",
       to: `/${slug}/-/usage`,
     },
     {
@@ -319,8 +320,8 @@ export function pulse({ slug, weeks, spend }: PulseInput): PulseTile[] {
       value: String(now.stalled),
       delta: deltaOf(now.stalled, before?.stalled ?? null, count, false),
       series: weeks.map((week) => week.stalled),
-      points: weeks.map((week, i) => `${labels[i]}: ${week.stalled} open over a week`),
-      hint: "Pull requests open more than seven days, neither merged nor closed",
+      points: weeks.map((week, i) => `${labels[i]}: ${week.stalled} with nothing for three days`),
+      hint: "Open pull requests with no push, comment, review, check or session for three days",
       to: `/${slug}/-/overview?tab=needs#work`,
     },
     {
@@ -452,11 +453,42 @@ export function reviewSignal(ctx: SignalContext): Signal | null {
   return null;
 }
 
-/** What each of the quarter's pull requests cost, by `namespace/name#number`. */
-function pullSpend(usage: Usage | null): Map<string, number> {
-  const spend = new Map<string, number>();
-  for (const slice of usage?.byPull ?? []) spend.set(slice.key.toLowerCase(), (spend.get(slice.key.toLowerCase()) ?? 0) + slice.micros);
-  return spend;
+const MICROS = 1_000_000;
+
+/** Whether a pull request's work falls in the quarter: opened in it, or merged in it. */
+function inQuarter(pull: SignalPull, quarter: string): boolean {
+  return pull.createdAt.slice(0, 10) >= quarter || (pull.mergedAt != null && pull.mergedAt.slice(0, 10) >= quarter);
+}
+
+/**
+ * What the quarter's agent work cost, by pull request (`namespace/name#number`)
+ * and in all: g1t's metered usage on each pull request (usage's `byPull`), and
+ * each pull request's share of what its harness sessions cost, estimated at
+ * list price from their token usage. The total also holds g1t usage on pull
+ * requests the reading doesn't list. Null when usage did not answer.
+ */
+export function quarterSpend(
+  ctx: Pick<SignalContext, "repos" | "signals" | "quarterUsage" | "quarter">,
+): { byPull: Map<string, number>; total: number; sessions: number } | null {
+  if (!ctx.quarterUsage) return null;
+  const byPull = new Map<string, number>();
+  let total = 0;
+  for (const slice of ctx.quarterUsage.byPull) {
+    const key = slice.key.toLowerCase();
+    byPull.set(key, (byPull.get(key) ?? 0) + slice.micros);
+    total += slice.micros;
+  }
+  let sessions = 0;
+  for (const pull of ctx.signals.pulls) {
+    const repo = ctx.repos[pull.repoId];
+    const micros = Math.round((pull.sessionCostUsd ?? 0) * MICROS);
+    if (!repo || micros <= 0 || !inQuarter(pull, ctx.quarter)) continue;
+    const key = pullKey(repo, pull.number);
+    byPull.set(key, (byPull.get(key) ?? 0) + micros);
+    total += micros;
+    sessions += micros;
+  }
+  return { byPull, total, sessions };
 }
 
 function pullKey(repo: RepoPath, number: number): string {
@@ -465,11 +497,9 @@ function pullKey(repo: RepoPath, number: number): string {
 
 /** Where the quarter's agent usage went, by milestone (else work item, else project): the biggest share. */
 export function spendSignal(ctx: SignalContext): Signal | null {
-  const usage = ctx.quarterUsage;
-  if (!usage) return null;
-  const spend = pullSpend(usage);
-  const total = usage.byPull.reduce((sum, slice) => sum + slice.micros, 0);
-  if (total <= 0) return null;
+  const quarter = quarterSpend(ctx);
+  if (!quarter || quarter.total <= 0) return null;
+  const { byPull: spend, total } = quarter;
   const items = new Map(ctx.signals.items.map((item) => [item.number, item]));
   const milestones = new Map(ctx.signals.milestones.map((milestone) => [milestone.number, milestone]));
   const groups = new Map<string, { label: string; to: string; micros: number }>();
@@ -552,7 +582,7 @@ export function stalledSignal(ctx: SignalContext): Signal | null {
   if (more < 3 || now.stalled < 1.25 * before.stalled) return null;
   return {
     key: "stalled",
-    headline: `${countWord(now.stalled)} changes have been open over a week, ${more} more than last week.`,
+    headline: `${countWord(now.stalled)} open changes have gone three days with nothing happening, ${more} more than last week.`,
     facts: [`${before.stalled} last week`, `${now.stalled} now`],
     link: { label: "See what's stalled", to: `/${ctx.slug}/-/overview?tab=needs#work` },
     trend: {
@@ -662,6 +692,77 @@ export function newHabits(pulls: SignalPull[], now: number, days = 14): NewHabit
   return found.sort((a, b) => b.firstAgentAt.localeCompare(a.firstAgentAt));
 }
 
+/**
+ * A way of working catching on: a harness that someone took up first,
+ * then at least two more people started using in the last `days`, at
+ * least two weeks after them. Over the repositories in `only` (a team's),
+ * or all of them; the newest spread first.
+ */
+export type Spread = {
+  harness: string;
+  first: { ownerId: string; name: string; at: string };
+  recent: { ownerId: string; name: string; at: string }[];
+  people: number;
+};
+
+export function spreading(harnesses: SignalHarness[], now: number, { days = 30, only }: { days?: number; only?: ReadonlySet<string> } = {}): Spread[] {
+  // Each person's first session with each harness, over the repositories asked about.
+  const firsts = new Map<string, Map<string, { ownerId: string; name: string; at: string }>>();
+  for (const row of harnesses) {
+    if (only && !only.has(row.repoId)) continue;
+    const people = firsts.get(row.harness) ?? new Map();
+    const known = people.get(row.ownerId);
+    if (!known || row.firstAt < known.at) people.set(row.ownerId, { ownerId: row.ownerId, name: row.ownerName, at: row.firstAt });
+    firsts.set(row.harness, people);
+  }
+  const found: Spread[] = [];
+  for (const [harness, people] of firsts) {
+    const order = [...people.values()].sort((a, b) => a.at.localeCompare(b.at));
+    const first = order[0]!;
+    const recent = order.filter((person) => now - Date.parse(person.at) <= days * DAY_MS && Date.parse(person.at) - Date.parse(first.at) >= 14 * DAY_MS);
+    if (recent.length >= 2) found.push({ harness, first, recent, people: order.length });
+  }
+  return found.sort((a, b) => b.recent[b.recent.length - 1]!.at.localeCompare(a.recent[a.recent.length - 1]!.at));
+}
+
+const HARNESS_WORDS: Record<string, string> = {
+  claude_code: "Claude Code",
+  claude_managed_agents: "Claude Managed Agents",
+  codex: "Codex",
+  cursor: "Cursor",
+  copilot: "Copilot",
+};
+
+/** A harness as a sentence names it. */
+export function harnessWords(harness: string): string {
+  return HARNESS_WORDS[harness] ?? "another harness";
+}
+
+/** Names in a sentence: "ana", "ana and bo", "ana, bo and 2 others". */
+export function namesWords(names: string[], max = 3): string {
+  if (names.length <= 1) return names[0] ?? "";
+  if (names.length <= max) return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return `${names.slice(0, max - 1).join(", ")} and ${names.length - max + 1} others`;
+}
+
+/** A practice catching on, as a finding. */
+export function spreadSignal(ctx: SignalContext): Signal | null {
+  const spread = spreading(ctx.signals.harnesses ?? [], ctx.now)[0];
+  if (!spread) return null;
+  const tool = harnessWords(spread.harness);
+  return {
+    key: "spread",
+    headline: `${tool} is catching on: ${namesWords(spread.recent.map((person) => person.name))} started using it this month, after ${spread.first.name}.`,
+    facts: [
+      `${spread.people} people use it now`,
+      `${spread.first.name} first, ${spoken(Math.max(0, (Date.parse(spread.recent[0]!.at) - Date.parse(spread.first.at)) / 1000))} before the next`,
+    ],
+    link: { label: "See the sessions", to: `/${ctx.slug}/-/work/sessions` },
+    weight: 22 + Math.min(12, spread.recent.length * 3),
+    ask: `How have ${namesWords(spread.recent.map((person) => person.name))} been using ${tool}, and what did ${spread.first.name} do with it first?`,
+  };
+}
+
 /** The quiet changes as one finding: someone moving into a project one person has carried, else anyone new to one. */
 export function groundSignal(ctx: SignalContext): Signal | null {
   const spreading = silos(ctx.signals.authors, ctx.now).find((silo) => silo.joining.length > 0 && ctx.repos[silo.repoId]);
@@ -695,7 +796,7 @@ export function groundSignal(ctx: SignalContext): Signal | null {
   };
 }
 
-const FINDINGS = [blockedSignal, reviewSignal, shippedSignal, spendSignal, stalledSignal, reworkSignal, groundSignal];
+const FINDINGS = [blockedSignal, reviewSignal, shippedSignal, spendSignal, stalledSignal, reworkSignal, groundSignal, spreadSignal];
 
 /** Every finding worth a look today, the one that matters most first. A finding that cannot be worked out is left out. */
 export function findings(ctx: SignalContext): Signal[] {
@@ -813,7 +914,7 @@ function fold(nodes: FlowNode[], label: string): FlowNode[] {
  * no work item has a node of its own.
  */
 export function spendFlow(ctx: Pick<SignalContext, "slug" | "repos" | "signals" | "quarterUsage" | "quarter">): FlowNode[] {
-  const spend = pullSpend(ctx.quarterUsage);
+  const spend = quarterSpend(ctx)?.byPull ?? new Map<string, number>();
   const items = new Map(ctx.signals.items.map((item) => [item.number, item]));
   const milestones = new Map(ctx.signals.milestones.map((milestone) => [milestone.number, milestone]));
   type Build = FlowNode & { index: Map<string, Build> };
