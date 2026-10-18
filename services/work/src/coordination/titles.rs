@@ -135,10 +135,14 @@ pub(crate) fn linked_sql() -> String {
 }
 
 /// A title its agent gives (`?5` of the heartbeat): pinned ones keep
-/// theirs. `?13` is where it came from ([`given_source`]), `?11` now.
+/// theirs. `?13` is where it came from ([`given_source`]), `?11` now. An
+/// agent saying again the title it gave changes nothing: it settled when
+/// first given, and is as stale as it was.
 pub(crate) const SET_TITLE: &str = "title = CASE WHEN ?5 IS NULL OR title_source = 'person' THEN title ELSE ?5 END,
-     title_due_at = CASE WHEN ?5 IS NULL OR title_source = 'person' OR ?13 <> 'agent' THEN title_due_at ELSE NULL END,
-     title_settled_at = CASE WHEN ?5 IS NULL OR title_source = 'person' OR ?13 <> 'agent' THEN title_settled_at ELSE ?11 END,
+     title_due_at = CASE WHEN ?5 IS NULL OR title_source = 'person' OR ?13 <> 'agent'
+         OR (title_source = 'agent' AND lower(title) = lower(?5)) THEN title_due_at ELSE NULL END,
+     title_settled_at = CASE WHEN ?5 IS NULL OR title_source = 'person' OR ?13 <> 'agent'
+         OR (title_source = 'agent' AND lower(title) = lower(?5)) THEN title_settled_at ELSE ?11 END,
      title_source = CASE WHEN ?5 IS NULL OR title_source = 'person' THEN title_source ELSE ?13 END";
 
 /// A person names session `?3` `?1` at `?2`: pinned.
