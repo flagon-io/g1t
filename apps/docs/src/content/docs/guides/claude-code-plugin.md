@@ -186,10 +186,11 @@ most never need one. The session is the record of that work:
    other work items or pull requests, when it is named again as it ends.
    Rename a session on its page to pin your own title: g1t and Claude never
    replace it. See [Session titles](/guides/sessions/#session-titles).
-2. **It shows to the team.** The project's overview and its **Sessions** page
-   list it in **Live now** under its pull request, else its branch, else
-   under **No branch yet**, with who it is for, Claude Code, its state,
-   when it was last heard from and its branch.
+2. **It shows to the team.** The project's overview lists it in **Live
+   now** under its pull request, else its branch, else under **No branch
+   yet**, with who it is for, Claude Code, its state, when it was last
+   heard from and its branch; the workspace's
+   [Sessions](/guides/sessions/#the-sessions-page) lists it with the rest.
 3. **It gets a work item when it becomes a change** others should know
    about: a branch to push, a pull request. Claude is told to look for a
    work item first (`g1t work list`) and claim it with `g1t work claim N`,
@@ -315,7 +316,8 @@ settings, for example in `~/.claude/settings.json`:
 ```
 
 A recorded session can be read on its own page, linked from the work item, the
-pull request's **Session** tab and the repository's **Sessions** page: who ran
+pull request's **Session** tab and the workspace's
+[Sessions](/guides/sessions/#the-sessions-page): who ran
 it, its subagents as a tree, the skills used, what it touched, and the
 work items and pull requests it worked on.
 

@@ -1,6 +1,6 @@
 ---
 title: Sessions, claims and dependencies
-description: How agents and people on one repository see who is working on what, with sessions of their own harnesses, advisory claims on work items, what a work item is blocked by, and the one call that loads a work item's whole context.
+description: How agents and people see who is working on what, in a repository and across the workspace on Sessions, with sessions of their own harnesses, advisory claims on work items, what a work item is blocked by, and the one call that loads a work item's whole context.
 ---
 
 When several agents and people work on one repository at once, each needs
@@ -29,37 +29,92 @@ looks, and starting a session or recording an entry again is a no-op.
 What git and g1t record (commits, pull requests, checks, merges) is the
 truth; sessions are the account of how it got there.
 
+## The Sessions page
+
+**Sessions** is in the left rail, directly after **Work**, at
+`g1t.sh/<workspace>/-/sessions`. It shows what is cooking across the
+workspace: the sessions in every one of its repositories you can read,
+as they happen, without reloading.
+
+- **Live now**: the active and idle sessions, the most recently heard
+  from first. Each card shows the session's title, who it acts for, its
+  harness, its repository and branch, the work item and pull request it
+  is on, when it was last heard from, how many subagents it has, and
+  whether it is live or idle. A session with no title is named by what
+  its first prompt was for, else **Session on** its branch, else
+  **Untitled session**. A title that is only a tag, such as
+  `<pasted_content id="5c50">`, counts as no title.
+- **Merge queue**: each repository's merge queue that has something
+  waiting, as on its [Merge queue](/guides/merge-queue/#the-merge-queue-page)
+  page.
+- **Just landed**: the pull requests merged lately, across the
+  repositories, each with a link to the session behind it.
+- **What happened**: the latest coordination events across the
+  repositories: claims, sessions starting and ending, overlaps, and what
+  the merge queue found when it combined changes.
+- **Recent**: the sessions that ended lately.
+
+With nothing going on, choose your client in the
+[connection instructions](/guides/bring-your-own-agent/), or run
+`g1t work claim <number>` from any harness.
+
+Narrow it by repository (`?repo=web`), person (`?person=<username>`),
+harness (`?harness=codex`), kind (`?kind=hosted`) and state. The address
+keeps the filters, so a filtered view can be shared. A repository's
+sessions are Sessions filtered to it,
+`g1t.sh/<workspace>/-/sessions?repo=<name>`: a repository has no
+Sessions page of its own.
+
+Every kind of session is listed in this one place:
+
+| Kind | Is |
+| --- | --- |
+| `harness` | A run of someone's own harness (Claude Code, Codex, Cursor, Copilot or another), with its [subagents](#subagents) under it. |
+| `hosted` | A session started on g1t, from a work item or the web, on the workspace's Anthropic provider: harness `claude_managed_agents`. See [Start a session on your Anthropic account](#start-a-session-on-your-anthropic-account). |
+| `agent` | g1t's own agent at work on a pull request. Only the workspace's members see these. |
+| `recorded` | A session recorded on a pull request with no session of its own. It opens on the pull request's **Session** tab, `g1t.sh/<owner>/<repo>/pull/<number>/session`. |
+
+**A session's page** is `g1t.sh/<workspace>/-/sessions/<id>` (the
+`ses_…` id), opened from Sessions or from anywhere the session is listed:
+who ran it, in which harness and on which model, how long it has run, its
+repository, the work items and pull requests it and its subagents worked
+on (each says how it was tied), its subagents as a tree you open one at a
+time (each with its kind, the task it was given, what it touched and what
+it reported), the skills used, what was touched (files, commits, branches,
+pull requests), and everything it recorded, as it records it: its prompt
+folded, its messages formatted as they were written, and the tool calls
+between them a line each (a command as code, a file by its path, a g1t
+tool by what it did, such as *work item · claim*), more than three in a
+row folded into one line that opens to them; a long command and what a
+tool gave back open under its line. A subagent's own page links back to
+the session that started it.
+
+The same list is in the API, MCP and the CLI:
+[`GET /workspaces/{workspace}/sessions`](/reference/api/sessions/list-workspace-sessions/)
+by `state` (`live`, `recent` or `ended`), `kind` (`harness`, `hosted`,
+`agent` or `recorded`), `harness`, `person`, `repo`, `item`, `subagents`
+and `limit`, which returns the `sessions`, each repository's `queue`, what
+`landed` and the `repos` it covers;
+[`GET /workspaces/{workspace}/sessions/{id}`](/reference/api/sessions/get-workspace-session/)
+for one session, with its `repo`. Over MCP, the `session` tool's `list`
+takes `workspace` instead of `repo`, and `get` takes `workspace` and `id`.
+From the CLI:
+
+```sh
+g1t session list --workspace                 # this repository's workspace
+g1t session list --workspace acme --in web   # one repository of it
+g1t session list --workspace --harness codex --state active
+```
+
+`--workspace` takes a slug, or none for the current repository's
+workspace; `--harness`, `--person`, `--in NAME` (a repository of it),
+`--state` (active or idle: what is going now; ended), `--item` and `--subagents` narrow it.
+
 ## On the site
 
-Everything here shows on g1t.sh as it happens, without reloading.
+Besides **Sessions**, sessions and claims show where the work is, as it
+happens, without reloading.
 
-- **The Sessions page**, `g1t.sh/<owner>/<repo>/sessions`, a tab beside
-  **Pull requests** and **Merge queue** (it used to be the repository's
-  **Work** page, and the old address redirects here):
-  - **Live now**: the active claims and the active and idle sessions,
-    grouped by the work item they are on, the most recently active first.
-    A work item with more than one claim is marked. Sessions on no work
-    item yet follow, grouped by their pull request, else by their branch (when it
-    is not the default branch), the most recently heard from first; those
-    on neither are last, under **No branch yet**. Each session shows its
-    title, who it acts for, its harness, its state, when it was last heard
-    from and its branch. A provisional title (what its first prompt asked
-    for, until g1t settles one) shows muted. A session with no title is
-    named by what its first prompt was for, else **Session on** its branch,
-    else **Untitled session**. A title that is only a tag, such as
-    `<pasted_content id="5c50">`, counts as no title.
-  - **Merge queue**: what is waiting to land and what is being tested,
-    as on the [Merge queue](/guides/merge-queue/#the-merge-queue-page) page.
-  - **What happened**: the latest 30 coordination events, from claims to
-    what the merge queue found when it combined changes.
-  - **Just landed**: the latest merges, each with a link to the session
-    behind it.
-  - **Recorded on pull requests**: the latest sessions recorded on its pull
-    requests, each opening that pull request's session.
-
-  With nothing going on, choose your client in the
-  [connection instructions](/guides/bring-your-own-agent/), or run
-  `g1t work claim <number>` from any harness.
 - **A work item's Work panel**, at the top of its sidebar: its claims
   (who, from which harness, since when and when each lapses; ones
   released, expired or handed off lately are shown dimmed), the sessions on
@@ -70,23 +125,14 @@ Everything here shows on g1t.sh as it happens, without reloading.
   the latest combination that failed in the merge queue, and its
   [decision records](/guides/why-blame/#decision-records), each marked
   **Claimed**, **Tested** or **Approved**.
-- **A session's page**, `g1t.sh/<owner>/<repo>/sessions/<id>` (the
-  `ses_…` id; a pull request's number there goes to that pull request's
-  recorded session, `…/pull/<number>/session`), opened from any of these: who ran it, in which harness and on which
-  model, how long it has run, the work items and pull requests it and its
-  subagents worked on (each says how it was tied), its subagents as a tree
-  you open one at a time (each with its kind, the task it was given, what
-  it touched and what it reported), the skills used, what was touched
-  (files, commits, branches, pull requests), and everything it recorded,
-  as it records it: its prompt folded, its messages formatted as they were
-  written, and the tool calls between them a line each (a command as code,
-  a file by its path, a g1t tool by what it did, such as *work item · claim*),
-  more than three in a row folded into one line that opens to them; a
-  long command and what a tool gave back open under its line. A
-  subagent's own page links back to the session that started it.
 - **A work item's and a pull request's sessions**: every session tied to
   it in any way, in any of the workspace's repositories, with its
-  subagents under it.
+  subagents under it. A pull request's **Session** tab,
+  `g1t.sh/<owner>/<repo>/pull/<number>/session`, is what was recorded on
+  it.
+- **A project's overview**: **Live now**, the people and coding agents
+  working on that repository, grouped by work item, then by pull request
+  or branch. See [the overview](/guides/projects/#the-overview).
 - **Start a session** on a work item, for members of a workspace with an
   Anthropic AI provider: see
   [Start a session on your Anthropic account](#start-a-session-on-your-anthropic-account).
@@ -202,7 +248,7 @@ update and every batch of entries counts as a heartbeat:
 
 A session its harness left behind, killed or never told to end, can be
 ended by hand: **End session** in its menu under Live now (on the
-project's overview and the Sessions page), or on its page. Whoever runs a
+project's overview and on **Sessions**), or on its page. Whoever runs a
 session can end it, and so can anyone with write access to the
 repository; nobody else sees the action. It ends with `end_reason`
 `ended by hand by @name`, its subagents still going end with it, and its
@@ -231,14 +277,15 @@ that touched a file, or any under a folder ending in `/`); subagents are
 listed too with `subagents=true`. A session in the list with no `title`
 carries `first_prompt`: the first 300 characters of the first prompt it
 recorded. Read one with its entries, subagents, links, skills and what it
-touched with `session` `get`.
+touched with `session` `get`. For the sessions of every repository of a
+workspace, see [The Sessions page](#the-sessions-page).
 
 ## Work with no work item yet
 
 Not every session starts from a work item, and most should not end with
 one: a question, a look around or a quick fix needs no work item. The
-session is the record of that work, and the team sees it in **Live now**
-while it goes:
+session is the record of that work, and the team sees it in **Live now**,
+on **Sessions** and on the project's overview, while it goes:
 
 1. **It says what it is for.** Give it a `title` when you start it, or
    later with `session` `update`. The
@@ -249,8 +296,8 @@ while it goes:
    title to the next prompt. It never replaces a title the session
    already has.
 2. **It shows where it works.** Attach its `branch` and, once there is
-   one, its `pull`: **Live now** groups sessions on no work item by pull
-   request, then by branch.
+   one, its `pull`: the project's **Live now** groups sessions on no work
+   item by pull request, then by branch.
 3. **It opens or claims a work item when it becomes a change** others
    should know about: a branch to push, a pull request. Look for one first
    (`work_item` `list`, `work_item` `list_claims`); if one covers the work,
@@ -606,6 +653,7 @@ secrets out of prompts and command lines.
 | To | You need |
 | --- | --- |
 | Read sessions and claims | To be able to read the repository. Public repositories need no token. What a session shows depends on who you are: see [Who sees what](#who-sees-what). |
+| Read a workspace's **Sessions** | It lists the sessions of the workspace's repositories you can read; g1t's own agent's sessions only for members. |
 | Read a work item's context | To be able to see the work item: see [Who sees a work item](/guides/work-items/#who-sees-a-work-item). |
 | Start a session, claim a work item, open one by claiming it | A confirmed email address and a role that may open work items; the repository must not be archived. |
 | Update, record in or end a session | To be the person whose token started it. |

@@ -51,10 +51,10 @@ The bar along the bottom is the site's phone bar:
 | Tab | What is on it |
 | --- | --- |
 | **Home** | Coming. Opens Home on the site meanwhile. |
-| **Work** | The workspace's work items, for every member, Code access or not. See [Work](#work). |
+| **Work** | The workspace's work items and their Board, for every member, Code access or not. **Sessions** opens from the icon in its header. See [Work](#work). |
 | **Chat** | Your starred conversations, channels and direct messages, with what is unread, moving live. See [Chat](#chat). |
 | **Notifications** | Coming. Opens your notifications on the site meanwhile; messages to you already arrive [on the phone](#notifications). |
-| **More** | **Code**, for members with Code access; whether this phone gets notifications, your workspaces, how you signed in, and **Sign out**. |
+| **More** | **Sessions** first (see [Sessions](#sessions)), then **Code**, for members with Code access; whether this phone gets notifications, your workspaces, how you signed in, and **Sign out**. |
 
 **Code**, under **More**, is the workspace's repositories, each with its
 pull requests and its **Work**: the work items linked to it. A pull
@@ -64,7 +64,8 @@ and you can approve it or ask for changes.
 ## Work
 
 Work on the phone is the site's [Work](/guides/work-items/), laid out for
-one hand.
+one hand. A switch at its top, **Items | Board**, chooses between the
+list and the Board.
 
 - **The list** shows the workspace's open work items, newest first: each
   with its number, title, state, labels and the repositories it is linked
@@ -86,6 +87,24 @@ one hand.
 - **New work item** (the **+** on Work) takes a title, a description,
   labels and the repositories it should land in; none is fine. Opened from
   a repository's Work, that repository is its origin.
+- **The Board** is the site's [Board](/guides/work-items/#the-board):
+  **Backlog**, **In progress**, **In review**, **Landing** and **Done**,
+  each card a work item with who or which session is on it. Tap a card to
+  open the work item.
+
+## Sessions
+
+**Sessions** is the site's [Sessions](/guides/sessions/#the-sessions-page):
+the sessions at work across the workspace. Open it from the icon in
+Work's header, or first in **More**.
+
+- **Everything**, **Live** and **Recent** at the top choose what it
+  lists. Pull down to read it again.
+- **Filters** are in a sheet: **Started by me**, and a repository.
+- **A session** shows its facts (who, harness, repository, branch, state,
+  when it was last heard from), what it is working on (its work item and
+  pull request), its subagents as a tree, the files it touched, and its
+  timeline.
 
 ## Chat
 
@@ -163,13 +182,17 @@ pages it has screens for:
 | `g1t://<workspace>/-/work`, with the list's filters (`?repo=web&label=bug`) | Work, filtered as the link says |
 | `g1t://<workspace>/-/work/<number>` | The work item |
 | `g1t://<workspace>/-/work/new` | A new work item |
+| `g1t://<workspace>/-/work/board` | Work, on the Board |
+| `g1t://<workspace>/-/sessions` | Sessions |
+| `g1t://<workspace>/-/sessions/<id>` | The session |
 | `g1t://<workspace>/-/chat`, `…/-/chat/<channel>`, `…/-/chat/dm/<id>` | Chat, or the conversation, in that workspace |
 | `g1t://<owner>/<repo>` | The repository |
 | `g1t://<owner>/<repo>/pull/<number>` | The pull request |
 | `g1t://<owner>/<repo>/issues/<number>` | What that old issue number names in the repository: the work item the issue became, or a pull request. The app asks g1t, as the site does. `…/issues` and `…/issues/new` open Work filtered to the repository, and a new work item from it. |
 
 The same paths as `https://g1t.sh/…` links, such as
-`https://g1t.sh/<workspace>/-/work/<number>`, open these screens once
+`https://g1t.sh/<workspace>/-/work/<number>` or
+`https://g1t.sh/<workspace>/-/sessions/<id>`, open these screens once
 g1t.sh publishes the files Android and iOS check first (see
 [below](#whats-not-there-yet)). The workspace's labels and milestones open
 on the site.
