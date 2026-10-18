@@ -161,7 +161,7 @@ export const repoPages = {
       change.kind === "queue.changed";
   },
   /**
-   * The Sessions page: claims, sessions starting and ending, dependencies,
+   * Sessions (the workspace's, over its repositories): claims, sessions starting and ending, dependencies,
    * overlaps, what the merge queue finds and decisions, the queue moving,
    * and merges; and sessions going on (heard from, so still active).
    */

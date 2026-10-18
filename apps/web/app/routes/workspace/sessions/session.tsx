@@ -1,24 +1,24 @@
 import { ArrowLeft, Bot, ChevronRight, ExternalLink, GitBranch, GitCommitHorizontal, Pencil, Sparkles, Square } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import { Form, Link, redirect } from "react-router";
+import { Form, Link } from "react-router";
 
 import type { Pull, SessionLink, SessionTouch, State, TouchKind, WorkSession } from "@g1t/contracts";
 
 import type { Route } from "./+types/session";
-import { page } from "../../lib/meta";
-import { Actor, CoordinationFeed, EndSessionDialog, HarnessBadge, SessionStateBadge } from "../../components/coordination";
-import { SessionEntries } from "../../components/session-entries";
-import { EmptyState, Input, SubmitButton, TimeAgo } from "../../components/ui";
-import { Alert } from "../../components/ui/alert";
-import { Badge } from "../../components/ui/badge";
-import { Button } from "../../components/ui/button";
-import { Card } from "../../components/ui/card";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../components/ui/collapsible";
-import { Hint } from "../../components/ui/hint";
-import { PersonLink } from "../../components/work";
-import { ItemIcon, PullIcon } from "../../components/work-icons";
-import { itemPath } from "../../lib/refs";
-import { requireRepo } from "../../lib/access.server";
+import { page } from "../../../lib/meta";
+import { Actor, CoordinationFeed, EndSessionDialog, HarnessBadge, SessionStateBadge } from "../../../components/coordination";
+import { SessionEntries } from "../../../components/session-entries";
+import { EmptyState, Input, SubmitButton, TimeAgo } from "../../../components/ui";
+import { Alert } from "../../../components/ui/alert";
+import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../../components/ui/collapsible";
+import { Hint } from "../../../components/ui/hint";
+import { PersonLink } from "../../../components/work";
+import { ItemIcon, PullIcon } from "../../../components/work-icons";
+import { itemPath } from "../../../lib/refs";
+import { accessTo } from "../../../lib/access.server";
 import {
   type SessionNode,
   TOUCH_KINDS,
@@ -33,12 +33,13 @@ import {
   titleIsProvisional,
   touchedByKind,
   viaLabel,
-} from "../../lib/coordination";
-import { notFound } from "../../lib/not-found.server";
-import { repoPages } from "../../lib/repo-live";
-import { agentSessions, work } from "../../lib/services.server";
-import { assertSameOrigin, requireUser } from "../../lib/session.server";
-import { useRepoLive } from "../../lib/use-repo-live";
+} from "../../../lib/coordination";
+import { notFound } from "../../../lib/not-found.server";
+import { repoPages } from "../../../lib/repo-live";
+import { agentSessions, work } from "../../../lib/services.server";
+import { assertSameOrigin, getViewer, requireUser } from "../../../lib/session.server";
+import { useLive } from "../../../lib/use-repo-live";
+import { sessionPath, sessionsPath } from "../../../lib/work-items";
 
 const MANAGED = "claude_managed_agents";
 
@@ -56,23 +57,30 @@ function workspaceOf(base: string): string {
   return base.split("/").filter(Boolean)[0]?.toLowerCase() ?? "";
 }
 
+/** The repository `owner/name` as a path to look it up by. */
+function repoPath(repo: string): { namespace: string; name: string } {
+  const [namespace = "", name = ""] = repo.split("/");
+  return { namespace, name };
+}
+
 export function meta({ loaderData, params, ...args }: Route.MetaArgs) {
   const session = loaderData?.session;
   const firstPrompt = loaderData?.entries.find((entry) => entry.kind === "prompt")?.text;
   const name = session ? `${sessionName(session, firstPrompt)} · ` : "";
-  return page(args, { title: `${name}Session · ${params.owner}/${params.repo} · g1t` });
+  return page(args, { title: `${name}Session · ${loaderData?.repo ?? params.owner} · g1t` });
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {
-  // `sessions/12` was a pull request's recorded session, which its own Session tab shows.
-  if (/^\d+$/.test(params.id)) throw redirect(`/${params.owner}/${params.repo}/pull/${params.id}/session`, 301);
-  const { viewer, access } = await requireRepo(context, params, "read");
-  const path = { namespace: params.owner, name: params.repo };
-  const read = () => work.getWorkSession(path, params.id, viewer);
+  const viewer = getViewer(context);
+  const workspace = params.owner.toLowerCase();
+  const read = () => work.getWorkspaceSession(workspace, params.id, viewer);
   // The session is what the page is about: a service that fails fails the
-  // page (in the repository's frame), rather than calling it not found.
+  // page, rather than calling it not found.
   let found = await read();
   if (!found.ok) throw notFound("page");
+  const repo = found.value.repo;
+  const path = repoPath(repo);
+  const access = await accessTo(context, { owner: path.namespace, repo: path.name });
   // A session on the workspace's Anthropic account is followed every
   // minute; while it goes, it is read now, through the top of its tree.
   const top = found.value.root ?? found.value.session;
@@ -97,6 +105,9 @@ export async function loader({ params, context }: Route.LoaderArgs) {
       : null;
   return {
     ...found.value,
+    workspace,
+    repoId: session.repoId,
+    signedIn: viewer != null,
     // Only whoever started it stops it, and only the top of the tree.
     canStop: viewer?.id === session.actor.id && session.harness === MANAGED && session.state !== "ended" && !session.parentId,
     // One its harness left behind is ended by hand: by whoever runs it, or anyone with write access.
@@ -108,9 +119,11 @@ export async function loader({ params, context }: Route.LoaderArgs) {
 export async function action({ request, params, context }: Route.ActionArgs) {
   assertSameOrigin(request);
   const user = requireUser(context, request);
-  await requireRepo(context, params, "read");
   const form = await request.formData();
-  const path = { namespace: params.owner, name: params.repo };
+  // Where it runs: the repository its ending and stopping go to.
+  const found = await work.getWorkspaceSession(params.owner.toLowerCase(), params.id, user, 4294967295).catch(() => null);
+  if (!found?.ok) return { error: "The session could not be found. Try again in a moment." };
+  const path = repoPath(found.value.repo);
   // Ending it by hand (from here, or a list's menu by fetcher); the work service checks who may.
   if (form.get("action") === "end") {
     const ended = await work.endWorkSession(user, path, params.id).catch(() => null);
@@ -315,7 +328,7 @@ function SubagentNode({ node, base, touched, now }: { node: SessionNode; base: s
             <ChevronRight size={14} />
           </CollapsibleTrigger>
           <Bot size={14} className="shrink-0 text-faint" />
-          <Link to={`${base}/sessions/${session.id}`} prefetch="intent" className="shrink-0 text-sm font-medium hover:text-accent">
+          <Link to={sessionPath(workspaceOf(base), session.id)} prefetch="intent" className="shrink-0 text-sm font-medium hover:text-accent">
             {session.agentType ?? "Subagent"}
           </Link>
           {session.task && (
@@ -362,13 +375,13 @@ function SubagentTree({ nodes, base, touched, now }: { nodes: SessionNode[]; bas
 }
 
 /** One harness session: who ran it, where, what it worked on, its subagents, what it touched and what it recorded. */
-export default function WorkSessionPage({ loaderData, actionData, params }: Route.ComponentProps) {
-  const { session, entries, updates = [], children = [], touched = [], links = [], skills = [], root, canStop, canEnd, consoleUrl, limited } = loaderData;
-  const base = `/${params.owner}/${params.repo}`;
+export default function WorkSessionPage({ loaderData, actionData }: Route.ComponentProps) {
+  const { session, entries, updates = [], children = [], touched = [], links = [], skills = [], root, canStop, canEnd, consoleUrl, limited, workspace, repo } = loaderData;
+  const base = `/${repo}`;
   const [ending, setEnding] = useState(false);
   const now = Date.now();
-  // Any session, claim or overlap in the repository: a change names no session.
-  useRepoLive({ match: repoPages.session() });
+  // Any session, claim or overlap in its repository: a change names no session.
+  useLive({ match: repoPages.session(), repos: [{ id: loaderData.repoId, path: repo }], signedIn: loaderData.signedIn });
 
   const tools = entries.filter((entry) => entry.kind === "tool_call").length;
   const firstPrompt = entries.find((entry) => entry.kind === "prompt")?.text;
@@ -391,21 +404,21 @@ export default function WorkSessionPage({ loaderData, actionData, params }: Rout
     <div className="max-w-4xl">
       {isSubagent ? (
         <p className="flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
-          <Link to={`${base}/sessions/${session.parentId}`} className="inline-flex items-center gap-1.5 hover:text-fg">
+          <Link to={sessionPath(workspace, session.parentId!)} className="inline-flex items-center gap-1.5 hover:text-fg">
             <ArrowLeft size={14} />
             Subagent of {parent ? sessionName(parent) : "another subagent"}
           </Link>
           {root && root.id !== session.parentId && (
             <>
               <span className="text-faint">in</span>
-              <Link to={`${base}/sessions/${root.id}`} className="hover:text-fg">
+              <Link to={sessionPath(workspace, root.id)} className="hover:text-fg">
                 {sessionName(root)}
               </Link>
             </>
           )}
         </p>
       ) : (
-        <Link to={`${base}/sessions`} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
+        <Link to={sessionsPath(workspace)} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
           <ArrowLeft size={14} />
           Sessions
         </Link>
@@ -453,6 +466,9 @@ export default function WorkSessionPage({ loaderData, actionData, params }: Rout
 
       <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
         <PersonLink name={session.actor.username} className="font-medium text-fg hover:underline" />
+        <Link to={base} className="font-mono text-xs hover:text-fg">
+          in {repo}
+        </Link>
         <span>
           started <TimeAgo at={session.startedAt} />
         </span>
@@ -593,7 +609,7 @@ export default function WorkSessionPage({ loaderData, actionData, params }: Rout
       <Section title="What it recorded" aside={limited ? undefined : `${entries.length} entries, ${tools} tool calls`}>
         {limited ? (
           <EmptyState title="Shown to the workspace's members">
-            What a session records is the work of whoever runs it, as it happens. Members of {params.owner} see it; anyone else sees that it runs, who runs it and what it is tied to.
+            What a session records is the work of whoever runs it, as it happens. Members of {workspace} see it; anyone else sees that it runs, who runs it and what it is tied to.
           </EmptyState>
         ) : entries.length === 0 ? (
           <EmptyState title="Nothing recorded yet">Prompts, messages, tool calls, skills and notes show here as the session records them.</EmptyState>

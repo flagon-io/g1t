@@ -63,7 +63,6 @@ export function frameOf(pathname: string, viewer: { signedIn: boolean; workspace
 /** The project pages the sidebar lists, by key, for a member or not. */
 export type ProjectPage =
   | "code"
-  | "work"
   | "pulls"
   | "actions"
   | "deployments"
@@ -100,7 +99,6 @@ export const PAGE_NEEDS: Partial<Record<ProjectPage, Capability>> = {
 export function projectPages(member: boolean, can?: Partial<Abilities>): ProjectPage[] {
   const pages: (ProjectPage | false)[] = [
     "code",
-    "work",
     "pulls",
     "actions",
     // A public repository's deployments and build logs are for anyone, as its code is.
@@ -127,9 +125,7 @@ export function projectPages(member: boolean, can?: Partial<Abilities>): Project
  */
 export const PROJECT_PAGE_LINKS: Record<ProjectPage, { label: string; path: string; also: string[]; soon?: boolean; outside?: boolean }> = {
   code: { label: "Code", path: "code", also: ["tree", "blob", "commits", "commit", "branches", "tags", "releases", "compare"] },
-  // The workspace's Work list filtered to the project (`outside`): work items belong to the workspace.
-  work: { label: "Work", path: "work", also: [], outside: true },
-  pulls: { label: "Pull requests", path: "pulls", also: ["pull", "queue", "sessions"] },
+  pulls: { label: "Pull requests", path: "pulls", also: ["pull", "queue"] },
   actions: { label: "Workflows", path: "actions", also: [] },
   deployments: { label: "Deployments", path: "deployments", also: ["settings/deployments"] },
   observability: { label: "Observability", path: "observability", also: [] },

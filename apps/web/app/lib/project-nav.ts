@@ -97,13 +97,12 @@ export function sections(): Section[] {
   ]);
 }
 
-/** Pull requests, the merge queue and the sessions working on them share a page's tabs too. */
+/** Pull requests and the merge queue share a page's tabs too. */
 export const PULLS: Section = {
   key: "Code",
   tabs: [
     { label: "Pull requests", path: "pulls", also: ["pull"] },
     { label: "Merge queue", path: "queue" },
-    { label: "Sessions", path: "sessions" },
   ],
 };
 

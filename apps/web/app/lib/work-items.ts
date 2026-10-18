@@ -12,7 +12,7 @@ export { itemPath } from "./refs.ts";
 
 /**
  * Where an old address under a repository is now, when it named something
- * that moved to Work or to Sessions; null when it did not:
+ * that moved to Work; null when it did not:
  *
  * - `/<owner>/<repo>/issues` is the Work list filtered to the repository,
  *   keeping its filters (`?state=closed&label=bug`);
@@ -21,9 +21,7 @@ export { itemPath } from "./refs.ts";
  *   the work service can say: `{ resolve: n }`;
  * - `/<owner>/<repo>/labels` and `/milestones[/<n>]` the workspace's
  *   (milestones were numbered again in the workspace, so an old one's
- *   number leads to the list);
- * - `/<owner>/<repo>/work` and `/work/sessions/<id>` its Sessions page and
- *   a session's.
+ *   number leads to the list).
  */
 export function movedWorkPath(pathname: string, search = ""): string | { resolve: number } | null {
   const parts = pathname.replace(/\.data$/, "").split("/").filter(Boolean);
@@ -48,10 +46,6 @@ export function movedWorkPath(pathname: string, search = ""): string | { resolve
       return rest === undefined ? workPath(workspace, "labels") : null;
     case "milestones":
       return more === undefined ? workPath(workspace, "milestones") : null;
-    case "work":
-      if (rest === undefined) return `/${owner}/${repo}/sessions`;
-      if (rest === "sessions" && more) return `/${owner}/${repo}/sessions/${more}`;
-      return null;
   }
   return null;
 }
@@ -61,9 +55,22 @@ export function workPath(workspace: string, page = ""): string {
   return `/${workspace.toLowerCase()}/-/work${page ? `/${page}` : ""}`;
 }
 
-/** The Work list filtered to one repository of the workspace: a repository's Work tab. */
+/** The Work list filtered to one repository of the workspace. */
 export function repoWorkPath(workspace: string, repo: string): string {
   return `${workPath(workspace)}?repo=${encodeURIComponent(repo)}`;
+}
+
+/** Sessions, the workspace's: what is cooking in it, with filters (`?repo=web&person=ana`). */
+export function sessionsPath(workspace: string, filters: Record<string, string | null | undefined> = {}): string {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);
+  const text = query.toString();
+  return `/${workspace.toLowerCase()}/-/sessions${text ? `?${text}` : ""}`;
+}
+
+/** One session's page, in whichever of the workspace's repositories it runs. */
+export function sessionPath(workspace: string, id: string): string {
+  return `/${workspace.toLowerCase()}/-/sessions/${encodeURIComponent(id)}`;
 }
 
 /** A new work item, started from a repository (its origin) when `repo` is given. */

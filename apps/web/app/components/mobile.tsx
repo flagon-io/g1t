@@ -36,7 +36,6 @@ import { STATUS_URL } from "../lib/status";
 import { type ModeKey, modeHome, modeOf } from "../lib/workspace-nav";
 import { PROJECT_PAGE_LINKS, type ProjectPage, projectPageAt, projectPages } from "../lib/chrome";
 import { ROADMAP, type RoadmapItem } from "../lib/roadmap";
-import { repoWorkPath } from "../lib/work-items";
 
 /**
  * The phone's layout (below 768px): a bottom bar of apps with More for
@@ -302,14 +301,15 @@ function MoreSheet({
               <span className="ml-auto truncate font-mono text-xs text-faint">{slug}</span>
             </div>
             <div className="grid grid-cols-4 gap-1.5">
-              {/* Code first, for a member who has it: it left the bar for Work. */}
+              {/* Sessions first, what is cooking, then Code for a member who has it: both left the bar for Work. */}
+              <MoreTile to={appOf("sessions").path(slug)} icon={appIcon("sessions", 20)} label="Sessions" />
               {apps.includes("code") && <MoreTile to={appOf("code").path(slug)} icon={appIcon("code", 20)} label="Code" />}
               <MoreTile to={`/${slug}/-/apps`} icon={<LayoutGrid size={20} />} label="All apps" />
               {shown.map((app) => (
                 <MoreTile key={app.key} to={app.to} icon={app.icon(26)} label={app.name} />
               ))}
               {apps
-                .filter((key) => key !== "code")
+                .filter((key) => key !== "code" && key !== "sessions")
                 .map((key) => (
                   <MoreTile key={key} to={appOf(key).path(slug)} icon={appIcon(key, 20)} label={appOf(key).name} />
                 ))}
@@ -594,15 +594,14 @@ export function ProjectStrip({
     <NavTabs label="Project" className={always ? undefined : "md:hidden"}>
       {pages.map((page) => {
         const link = page === "overview" ? { label: "Overview", path: "" } : PROJECT_PAGE_LINKS[page];
-        const [namespace = "", name = ""] = base.split("/").filter(Boolean);
-        const to = page === "work" ? repoWorkPath(namespace, name) : link.path ? `${base}/${link.path}` : base;
+        const to = link.path ? `${base}/${link.path}` : base;
         return (
           <NavTab
             key={page}
             to={to}
             current={at === page}
             soon={page !== "overview" && PROJECT_PAGE_LINKS[page].soon}
-            count={page === "work" ? counts?.items : page === "pulls" ? counts?.pulls : undefined}
+            count={page === "pulls" ? counts?.pulls : undefined}
           >
             {link.label}
           </NavTab>

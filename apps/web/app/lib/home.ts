@@ -29,6 +29,7 @@ import type {
 import { HARNESS_NAMES } from "./coordination.ts";
 import { type PushRecord, pushedByPerson, pushedCommits } from "./mission-control.ts";
 import { settledLine } from "./inbox.ts";
+import { sessionPath } from "./work-items.ts";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -748,7 +749,7 @@ export function pushRows(
       at: Date.parse(push.time),
       sha: push.data.after,
       repoId,
-      agent: session ? { harness: null, to: `/${repo.namespace}/${repo.name}/work/sessions/${session}` } : null,
+      agent: session ? { harness: null, to: sessionPath(repo.namespace, session) } : null,
       ...(brought.length === 1 && subject(newest.message) ? { refsIn: `${repo.namespace}/${repo.name}` } : {}),
     });
   }
@@ -821,7 +822,7 @@ export function withSessions(rows: LandedChange[], sessions: { repo: RepoPath; p
   for (const { repo, pulls } of sessions) {
     for (const pull of pulls) {
       const first = pull.sessions[0];
-      if (first) found.set(`landed:${pullKey(repo, pull.number)}`, { harness: first.harness, to: `/${repo.namespace}/${repo.name}/work/sessions/${first.id}` });
+      if (first) found.set(`landed:${pullKey(repo, pull.number)}`, { harness: first.harness, to: sessionPath(repo.namespace, first.id) });
     }
   }
   return rows.map((row) => (row.agent || !found.has(row.key) ? row : { ...row, agent: found.get(row.key)! }));

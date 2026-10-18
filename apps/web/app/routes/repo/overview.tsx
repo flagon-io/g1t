@@ -36,7 +36,7 @@ import { Button } from "../../components/ui/button";
 import { type LivePull, LiveNowList, StartHere } from "../../components/coordination";
 import { awakeAndIdle, liveByItem } from "../../lib/coordination";
 import { type Need, ageBuckets, rankNeeds, runHealth } from "../../lib/mission";
-import { repoWorkPath } from "../../lib/work-items";
+import { repoWorkPath, sessionsPath } from "../../lib/work-items";
 import { count, duration, percent } from "../../lib/observability";
 import { ECOSYSTEM_LABEL, installCommands } from "../../lib/packages";
 import {
@@ -861,7 +861,7 @@ function Overview({
               </span>
             ) : null
           }
-          all={{ to: `${base}/sessions`, label: "Sessions" }}
+          all={{ to: sessionsPath(base.split("/")[1]!, { repo: base.split("/")[2] }), label: "Sessions" }}
         >
           {!loaderData.liveLoaded ? (
             <Unavailable what="Who is working" />
@@ -879,7 +879,7 @@ function Overview({
                 ender={loaderData.ender}
               />
               {moreItems > 0 && (
-                <Link to={`${base}/sessions`} className="mt-2 inline-block px-1 text-xs text-muted hover:text-fg">
+                <Link to={sessionsPath(base.split("/")[1]!, { repo: base.split("/")[2] })} className="mt-2 inline-block px-1 text-xs text-muted hover:text-fg">
                   {plural(moreItems, "more work item")} being worked on
                 </Link>
               )}

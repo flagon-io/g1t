@@ -51,7 +51,8 @@ test("a visitor gets the public frame everywhere else", () => {
 
 test("a project's menu hides member-only pages from everyone else", () => {
   const visitor = projectPages(false);
-  assert.deepEqual(visitor.slice(0, 4), ["code", "work", "pulls", "actions"]);
+  // Work items and sessions are the workspace's: no tab of the project's.
+  assert.deepEqual(visitor.slice(0, 3), ["code", "pulls", "actions"]);
   for (const page of ["security", "settings"] as const) {
     assert.ok(!visitor.includes(page), page);
     assert.ok(projectPages(true).includes(page), page);
@@ -69,10 +70,11 @@ test("the phone's project strip lights the page a path is under", () => {
   assert.equal(projectPageAt("commit/abc123"), "code");
   // Work is the workspace's list, filtered to the project: no page of the project lights for an old issue's address.
   assert.equal(projectPageAt("issues/12"), null);
-  assert.equal(projectPageAt("sessions"), "pulls");
+  // A repository has no Sessions page: Sessions is the workspace's.
+  assert.equal(projectPageAt("sessions"), null);
   assert.equal(projectPageAt("pull/3/files"), "pulls");
   assert.equal(projectPageAt("queue"), "pulls");
-  assert.equal(projectPageAt("sessions/12"), "pulls");
+  assert.equal(projectPageAt("sessions/12"), null);
   assert.equal(projectPageAt("actions/runs/9"), "actions");
   assert.equal(projectPageAt("security/secret-scanning"), "security");
   assert.equal(projectPageAt("stargazers"), "insights");

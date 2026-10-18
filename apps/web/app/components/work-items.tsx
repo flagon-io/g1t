@@ -357,7 +357,7 @@ function assigneeOptions(choices: FilterChoices): string[] {
 }
 
 /** One filter in the phone's sheet: a heading and its choices, 48px rows, the one on ticked. */
-function SheetChoices({
+export function SheetChoices({
   title,
   choices,
   failed = false,

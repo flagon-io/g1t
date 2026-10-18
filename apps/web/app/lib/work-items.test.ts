@@ -11,6 +11,8 @@ import {
   repoChips,
   repoFilter,
   repoWorkPath,
+  sessionPath,
+  sessionsPath,
   shortPath,
   workFilters,
   workListPath,
@@ -66,6 +68,9 @@ test("how many filters are on, for the phone's Filters button", () => {
 
 test("a repository's Work tab, and a new work item filed from it", () => {
   assert.equal(repoWorkPath("acme", "web"), "/acme/-/work?repo=web");
+  assert.equal(sessionsPath("Acme"), "/acme/-/sessions");
+  assert.equal(sessionsPath("acme", { repo: "web", person: null }), "/acme/-/sessions?repo=web");
+  assert.equal(sessionPath("Acme", "ses_1"), "/acme/-/sessions/ses_1");
   assert.equal(newItemPath("Acme"), "/acme/-/work/new");
   assert.equal(newItemPath("acme", "web"), "/acme/-/work/new?repo=web");
   assert.deepEqual(repoFilter("acme", "web"), { namespace: "acme", name: "web" });
@@ -98,8 +103,9 @@ test("old addresses of a repository's issues, labels, milestones and Work page l
   // Milestones were numbered again in the workspace: an old one leads to the list.
   assert.equal(movedWorkPath("/acme/web/milestones"), "/acme/-/work/milestones");
   assert.equal(movedWorkPath("/acme/web/milestones/3"), "/acme/-/work/milestones");
-  assert.equal(movedWorkPath("/acme/web/work"), "/acme/web/sessions");
-  assert.equal(movedWorkPath("/acme/web/work/sessions/ses_123"), "/acme/web/sessions/ses_123");
+  // A repository's old Work and Sessions pages are gone: Sessions is the workspace's.
+  assert.equal(movedWorkPath("/acme/web/work"), null);
+  assert.equal(movedWorkPath("/acme/web/work/sessions/ses_123"), null);
   assert.equal(movedWorkPath("/acme/web/pulls"), null);
   assert.equal(movedWorkPath("/acme/-/issues"), null);
 });

@@ -24,6 +24,7 @@ import { AGENT_MODES, type AskProposalState, type User } from "@g1t/contracts";
 import type { Route } from "./+types/ask";
 import { agentSessions, ai, chat, deployments, projects, repos } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../lib/session.server";
+import { sessionPath } from "../../lib/work-items";
 
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
@@ -91,7 +92,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     return Response.json({ error: result.error.message, ...built }, { status: 400 });
   }
   const started = result.value;
-  const session_url = started.sessionUrl ?? (started.session ? `/${namespace}/${name}/sessions/${started.session.id}` : null);
+  const session_url = started.sessionUrl ?? (started.session ? sessionPath(namespace, started.session.id) : null);
   await kept.save(
     started.handoff
       ? { item: started.item }
