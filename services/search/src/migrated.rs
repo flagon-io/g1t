@@ -239,6 +239,21 @@ mod tests {
         assert_eq!(found(&db, "is:open label:bug", &viewer), vec![1, 2, 3]);
     }
 
+    #[test]
+    fn repo_names_a_private_repository_only_to_who_may_read_it() {
+        let db = filled();
+        // A member who reads none of acme's private repositories sees every
+        // work item, but repo: answers of acme/api as of one that is not there.
+        let viewer = member(BasePermission::None);
+        assert_eq!(found(&db, "crash repo:acme/api", &viewer), found(&db, "crash repo:acme/nope", &viewer));
+        assert_eq!(found(&db, "crash -repo:acme/api", &viewer), found(&db, "crash -repo:acme/nope", &viewer));
+        assert_eq!(found(&db, "crash -repo:acme/api", &viewer), vec![1, 2, 3]);
+        // Given a role on it, it is there.
+        let granted = Some(User { workspaces: vec![Membership::member("acme")], ..outsider(&["rep_api"]).unwrap() });
+        assert_eq!(found(&db, "crash repo:acme/api", &granted), vec![2]);
+        assert_eq!(found(&db, "crash -repo:acme/api", &granted), vec![1, 3]);
+    }
+
     fn numbers_count(db: &Connection, sql: &Sql) -> i64 {
         db.query_row(&sql.text, rusqlite::params_from_iter(values(&sql.params)), |row| row.get(0)).unwrap()
     }
