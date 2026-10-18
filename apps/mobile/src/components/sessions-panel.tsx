@@ -1,23 +1,23 @@
-import { Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { Activity, Check as CheckIcon, SlidersHorizontal, X } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, SectionList, StyleSheet, View, useWindowDimensions } from "react-native";
+import { Activity, Check as CheckIcon, X } from "lucide-react-native";
+import type { ReactNode } from "react";
+import { RefreshControl, ScrollView, SectionList, StyleSheet, View, useWindowDimensions } from "react-native";
 
 import { Sheet } from "@/components/chat/sheet";
 import { Segments } from "@/components/segments";
 import { SessionCard } from "@/components/sessions";
-import { Button, Empty, ErrorView, Loading, Row, Screen, SectionHeader, Text } from "@/components/ui";
+import { Button, Empty, ErrorView, Loading, Row, SectionHeader, Text } from "@/components/ui";
 import { Chip } from "@/components/work";
-import { useSignedIn } from "@/lib/session";
 import { type ApiWorkspaceSession, type SessionsFilter, isLive } from "@/lib/sessions";
 import { useWorkspaceSessions } from "@/lib/work";
 import { space, useColors } from "@/theme";
 
 type Shown = "all" | "live" | "ended";
-type Params = { workspace?: string; state?: string; person?: string; repo?: string; item?: string };
 
-/** The filter a link names (`/acme/-/sessions?state=live&repo=web`): every session when it names none. */
-function filterOf(params: Params): SessionsFilter {
+/** What a link to Work's sessions may name (`/acme/-/work/sessions?state=live&repo=web`). */
+export type SessionsParams = { state?: string; person?: string; repo?: string; item?: string };
+
+/** The filter a link names: every session when it names none. */
+export function sessionsFilterOf(params: SessionsParams): SessionsFilter {
   const state = params.state === "live" || params.state === "ended" ? params.state : "recent";
   const item = Number(params.item);
   return { state, person: params.person || undefined, repo: params.repo || undefined, item: Number.isInteger(item) && item > 0 ? item : undefined };
@@ -25,58 +25,46 @@ function filterOf(params: Params): SessionsFilter {
 
 const SHOWN: Record<Shown, SessionsFilter["state"]> = { all: "recent", live: "live", ended: "ended" };
 
+/** Whether any filter but which sessions are shown is set: the header's filter button is lit then. */
+export function sessionsFiltered(filter: SessionsFilter): boolean {
+  return Boolean(filter.person || filter.repo || filter.item);
+}
+
 /**
- * Sessions: what is cooking across the workspace. The ones going now
- * first, then those that ended lately, each with who runs it in what,
+ * Work's Sessions: what is cooking across the workspace. The ones going
+ * now first, then those that ended lately, each with who runs it in what,
  * where, and the work item and pull request it is on. Pull down to read
- * again; while one is live it is read again every 15 s.
+ * again; while one is live it is read again every 15 s. `top` is Work's
+ * own segments (Items, Board, Sessions), over this view's.
  */
-export default function Sessions() {
-  const params = useLocalSearchParams<Params>();
-  const { workspace: current, me } = useSignedIn();
-  const workspace = params.workspace ?? current?.slug;
+export function SessionsPanel({
+  workspace,
+  me,
+  filter,
+  onChange: setFilter,
+  focused,
+  filtering,
+  onFiltering,
+  top,
+}: {
+  workspace: string;
+  me: string;
+  filter: SessionsFilter;
+  onChange: (filter: SessionsFilter) => void;
+  focused: boolean;
+  filtering: boolean;
+  onFiltering: (open: boolean) => void;
+  top: ReactNode;
+}) {
   const colors = useColors();
-  const linked = useMemo(() => filterOf(params), [params.state, params.person, params.repo, params.item]);
-  const [filter, setFilter] = useState<SessionsFilter>(linked);
-  useEffect(() => setFilter(linked), [linked]);
-  const [filtering, setFiltering] = useState(false);
-  const [focused, setFocused] = useState(false);
-  useFocusEffect(
-    useCallback(() => {
-      setFocused(true);
-      return () => setFocused(false);
-    }, []),
-  );
   const sessions = useWorkspaceSessions(workspace, filter, focused);
   const shown: Shown = filter.state === "live" ? "live" : filter.state === "ended" ? "ended" : "all";
 
   const active = [
-    filter.person ? { key: "person", label: filter.person === me.username ? "Started by me" : `@${filter.person}` } : null,
+    filter.person ? { key: "person", label: filter.person === me ? "Started by me" : `@${filter.person}` } : null,
     filter.repo ? { key: "repo", label: filter.repo } : null,
     filter.item ? { key: "item", label: `#${filter.item}` } : null,
   ].filter((one): one is { key: "person" | "repo" | "item"; label: string } => one !== null);
-
-  const header = (
-    <Stack.Screen
-      options={{
-        title: "Sessions",
-        headerRight: () => (
-          <Pressable accessibilityLabel="Filters" hitSlop={10} onPress={() => setFiltering(true)}>
-            <SlidersHorizontal size={22} color={active.length ? colors.accent : colors.fg} />
-          </Pressable>
-        ),
-      }}
-    />
-  );
-
-  if (!workspace) {
-    return (
-      <Screen>
-        {header}
-        <Empty icon={Activity} title="No workspace yet" body="Create or join a workspace on g1t, then come back." />
-      </Screen>
-    );
-  }
 
   const all = sessions.data?.sessions ?? [];
   const sections: { title: string; data: ApiWorkspaceSession[] }[] =
@@ -90,9 +78,9 @@ export default function Sessions() {
         : [];
 
   return (
-    <Screen>
-      {header}
+    <>
       <View style={[styles.bar, { borderBottomColor: colors.line }]}>
+        {top}
         <Segments
           value={shown}
           onChange={(next) => setFilter({ ...filter, state: SHOWN[next] })}
@@ -147,16 +135,16 @@ export default function Sessions() {
       <Filters
         visible={filtering}
         filter={filter}
-        me={me.username}
+        me={me}
         repos={(sessions.data?.repos ?? []).map((repo) => repo.path.split("/", 2)[1] ?? repo.path)}
-        onClose={() => setFiltering(false)}
+        onClose={() => onFiltering(false)}
         onChange={setFilter}
       />
-    </Screen>
+    </>
   );
 }
 
-/** The list's filters, in a sheet: started by you, and the repository. */
+/** The sessions' filters, in a sheet: started by you, and the repository. */
 function Filters({
   visible,
   filter,

@@ -1,22 +1,40 @@
 import { Stack, router, useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
-import { Activity, Check as CheckIcon, ListTodo, Plus, SlidersHorizontal, X } from "lucide-react-native";
+import { Check as CheckIcon, ListTodo, Plus, SlidersHorizontal, X } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 
 import { Board } from "@/components/board";
 import { Sheet } from "@/components/chat/sheet";
 import { Segments } from "@/components/segments";
+import { SessionsPanel, sessionsFilterOf, sessionsFiltered } from "@/components/sessions-panel";
 import { Button, Empty, ErrorView, Loading, Row, Screen, Text } from "@/components/ui";
 import { Chip, ItemRow, roleLabel } from "@/components/work";
 import { useRepos } from "@/lib/code";
+import type { SessionsFilter } from "@/lib/sessions";
 import { useSignedIn } from "@/lib/session";
 import { type LinkRole, type WorkFilter, useLabels, useMilestones, useWorkItems } from "@/lib/work";
 import { radius, space, useColors } from "@/theme";
 
-type Params = { workspace?: string; view?: string; state?: string; label?: string; milestone?: string; assignee?: string; repo?: string; role?: string };
+type Params = {
+  workspace?: string;
+  view?: string;
+  state?: string;
+  label?: string;
+  milestone?: string;
+  assignee?: string;
+  repo?: string;
+  role?: string;
+  // Sessions' own filters (`state` and `repo` are shared names).
+  person?: string;
+  item?: string;
+};
 
-/** The list of items, or the board. */
-type Shown = "items" | "board";
+/** Work's three views: the list of items, the board, and the sessions working on them. */
+type Shown = "items" | "board" | "sessions";
+
+function shownOf(view: string | undefined): Shown {
+  return view === "board" || view === "sessions" ? view : "items";
+}
 
 /** The filter a link to the list names (`/acme/-/work?repo=web&label=bug`), open items when it names none. */
 function filterOf(params: Params): WorkFilter {
@@ -35,10 +53,12 @@ function filterOf(params: Params): WorkFilter {
 
 /**
  * Work: the workspace's work items, newest first, for every member,
- * Code or not, or its board (`/acme/-/work/board`). Filters are in a
- * sheet (the ⚙ in the header, the chips above the list, or Work in the
- * bar again); pull down to read again, and the list loads more as it
- * nears its end. Sessions opens from the header.
+ * Code or not; its board (`/acme/-/work/board`); and its sessions
+ * (`/acme/-/work/sessions`), what is cooking on them: Items, Board and
+ * Sessions at the top, as the site's Work holds all three. Filters are
+ * in a sheet (the ⚙ in the header, the chips above the list, or Work in
+ * the bar again); pull down to read again, and the list loads more as it
+ * nears its end.
  */
 export default function WorkList() {
   const params = useLocalSearchParams<Params>();
@@ -49,7 +69,11 @@ export default function WorkList() {
   const [filter, setFilter] = useState<WorkFilter>(linked);
   useEffect(() => setFilter(linked), [linked]);
   const [filtering, setFiltering] = useState(false);
-  const linkedView: Shown = params.view === "board" ? "board" : "items";
+  const [filteringSessions, setFilteringSessions] = useState(false);
+  const linkedSessions = useMemo(() => sessionsFilterOf(params), [params.state, params.person, params.repo, params.item]);
+  const [sessionsFilter, setSessionsFilter] = useState<SessionsFilter>(linkedSessions);
+  useEffect(() => setSessionsFilter(linkedSessions), [linkedSessions]);
+  const linkedView = shownOf(params.view);
   const [view, setView] = useState<Shown>(linkedView);
   useEffect(() => setView(linkedView), [linkedView]);
   const [focused, setFocused] = useState(false);
@@ -68,7 +92,9 @@ export default function WorkList() {
     const tabs = navigation.getParent();
     if (!tabs) return;
     return tabs.addListener("tabPress" as never, () => {
-      if (navigation.isFocused() && view === "items") setFiltering(true);
+      if (!navigation.isFocused()) return;
+      if (view === "items") setFiltering(true);
+      if (view === "sessions") setFilteringSessions(true);
     });
   }, [navigation, view]);
 
@@ -79,20 +105,33 @@ export default function WorkList() {
     filter.repo ? { key: "repo", label: filter.role ? `${filter.repo} · ${roleLabel(filter.role)}` : filter.repo } : null,
   ].filter((one): one is { key: keyof WorkFilter; label: string } => one !== null);
 
+  const sessionsLit = sessionsFiltered(sessionsFilter);
+  const views = (
+    <Segments
+      value={view}
+      onChange={setView}
+      options={[
+        { value: "items", label: "Items" },
+        { value: "board", label: "Board" },
+        { value: "sessions", label: "Sessions" },
+      ]}
+    />
+  );
+
   const header = (
     <Stack.Screen
       options={{
         title: "Work",
         headerRight: () => (
           <View style={styles.actions}>
-            {slug ? (
-              <Pressable accessibilityLabel="Sessions" hitSlop={10} onPress={() => router.push({ pathname: "/work/sessions", params: { workspace: slug } })}>
-                <Activity size={22} color={colors.fg} />
-              </Pressable>
-            ) : null}
             {view === "items" ? (
               <Pressable accessibilityLabel="Filters" hitSlop={10} onPress={() => setFiltering(true)}>
                 <SlidersHorizontal size={22} color={active.length ? colors.accent : colors.fg} />
+              </Pressable>
+            ) : null}
+            {view === "sessions" ? (
+              <Pressable accessibilityLabel="Filters" hitSlop={10} onPress={() => setFilteringSessions(true)}>
+                <SlidersHorizontal size={22} color={sessionsLit ? colors.accent : colors.fg} />
               </Pressable>
             ) : null}
           </View>
@@ -110,18 +149,29 @@ export default function WorkList() {
     );
   }
 
+  if (view === "sessions") {
+    return (
+      <Screen>
+        {header}
+        <SessionsPanel
+          workspace={slug}
+          me={me.username}
+          filter={sessionsFilter}
+          onChange={setSessionsFilter}
+          focused={focused}
+          filtering={filteringSessions}
+          onFiltering={setFilteringSessions}
+          top={views}
+        />
+      </Screen>
+    );
+  }
+
   return (
     <Screen>
       {header}
       <View style={[styles.bar, { borderBottomColor: colors.line }]}>
-        <Segments
-          value={view}
-          onChange={setView}
-          options={[
-            { value: "items", label: "Items" },
-            { value: "board", label: "Board" },
-          ]}
-        />
+        {views}
         {view === "items" ? (
           <Segments
             value={filter.state}
