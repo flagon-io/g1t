@@ -182,7 +182,7 @@ const scoped = (scopes: string[] | null, more: Partial<NonNullable<User["token"]
 const scopedTokens = lookup({
   g1t_chat_read: scoped(["chat:read", "notifications:read"]),
   g1t_chat_write: scoped(["chat:write", "notifications:write"]),
-  g1t_no_chat: scoped(["repo:read", "issues:write", "notifications:read"]),
+  g1t_no_chat: scoped(["repo:read", "work:write", "notifications:read"]),
   g1t_full: scoped(null),
   g1t_legacy: scoped(null, { legacy: true }),
   g1t_web: ada,

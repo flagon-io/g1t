@@ -64,7 +64,7 @@ test("filters come from the address, and q wins", () => {
 
 test("changing one filter keeps the others", () => {
   const current = new URLSearchParams("state=closed&label=bug");
-  assert.equal(withFilter("/a/b/issues", current, "milestone", "3"), "/a/b/issues?state=closed&label=bug&milestone=3");
-  assert.equal(withFilter("/a/b/issues", current, "label", null), "/a/b/issues?state=closed");
-  assert.equal(withFilter("/a/b/issues", new URLSearchParams("label=bug"), "label", ""), "/a/b/issues");
+  assert.equal(withFilter("/a/-/work", current, "milestone", "3"), "/a/-/work?state=closed&label=bug&milestone=3");
+  assert.equal(withFilter("/a/-/work", current, "label", null), "/a/-/work?state=closed");
+  assert.equal(withFilter("/a/-/work", new URLSearchParams("label=bug"), "label", ""), "/a/-/work");
 });
