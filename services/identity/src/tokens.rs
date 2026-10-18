@@ -516,15 +516,15 @@ mod tests {
         assert_eq!(stored_scopes(None), (None, true));
         assert_eq!(stored_scopes(Some("*")), (None, false));
         assert_eq!(
-            stored_scopes(Some("issues:write repo:read nonsense")),
-            (Some(vec!["repo:read".to_owned(), "issues:write".to_owned()]), false)
+            stored_scopes(Some("work:write repo:read nonsense")),
+            (Some(vec!["repo:read".to_owned(), "work:write".to_owned()]), false)
         );
     }
 
     #[test]
     fn scopes_are_stored_as_text() {
-        let grant = Grant::asked(&Some(vec!["issues:read".to_owned(), "bogus".to_owned()]));
-        assert_eq!(grant.scopes_column(), "issues:read");
+        let grant = Grant::asked(&Some(vec!["work:read".to_owned(), "bogus".to_owned()]));
+        assert_eq!(grant.scopes_column(), "work:read");
         assert_eq!(Grant::asked(&None).scopes_column(), "*");
         assert_eq!(Grant::asked(&Some(vec![])).scopes_column(), "");
     }

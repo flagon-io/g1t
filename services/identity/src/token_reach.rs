@@ -1275,7 +1275,7 @@ mod tests {
 
     fn workspace_token(selection: RepositorySelection) -> g1t_contracts::scopes::TokenAccess {
         g1t_contracts::scopes::TokenAccess {
-            scopes: Some(vec!["repo:read".into(), "code:write".into(), "issues:write".into()]),
+            scopes: Some(vec!["repo:read".into(), "code:write".into(), "work:write".into()]),
             reach: Some(workspace_token_reach("acme".into(), selection, vec!["rep_1".into()])),
             ..Default::default()
         }
@@ -1286,11 +1286,11 @@ mod tests {
         use g1t_contracts::scopes::decide;
         for selection in [RepositorySelection::All, RepositorySelection::Selected] {
             let token = workspace_token(selection);
-            let issue = |repo: &str| serde_json::json!({ "repo": repo, "title": "spam" });
-            let elsewhere = decide(&token, "create_issue", &issue("other/public"));
+            let item = |repo: &str| serde_json::json!({ "repo": repo, "title": "spam" });
+            let elsewhere = decide(&token, "open_work_item", &item("other/public"));
             assert!(!elsewhere.allowed, "{selection:?}");
             assert_eq!(elsewhere.rule, "token:resource-owner");
-            assert!(decide(&token, "create_issue", &issue("acme/rocket")).allowed, "{selection:?}");
+            assert!(decide(&token, "open_work_item", &item("acme/rocket")).allowed, "{selection:?}");
             // Reading a public repository elsewhere is as anyone may.
             assert!(decide(&token, "get_repo", &serde_json::json!({ "repo": "other/public" })).allowed, "{selection:?}");
         }
@@ -1406,7 +1406,8 @@ mod tests {
     #[test]
     fn the_migration_sets_full_access_out_as_every_permission() {
         use g1t_contracts::scopes::{Resource, ResourceGroup, top_scopes};
-        let sql = include_str!("../migrations/0041_one_kind_of_token.sql");
+        // As 0054 rewrote them, when `issues` became `work`.
+        let sql = include_str!("../migrations/0041_one_kind_of_token.sql").replace("issues:", "work:");
         let then: Vec<Scope> = top_scopes(&Scope::ALL)
             .into_iter()
             .filter(|scope| !matches!(scope.resource(), Resource::Artifacts | Resource::Chat | Resource::Observability))

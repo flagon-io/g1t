@@ -8,7 +8,7 @@
 //! (see [`crate::access`]) and the token's scopes.
 //!
 //! Each scope is a resource and a level, written `resource:level`, such as
-//! `issues:write`. A higher level of a resource includes the lower ones:
+//! `work:write`. A higher level of a resource includes the lower ones:
 //! `repo:admin` includes `repo:write`, which includes `repo:create`, which
 //! includes `repo:read`.
 //!
@@ -35,7 +35,7 @@ pub enum Resource {
     Code,
     Security,
     Packages,
-    Issues,
+    Work,
     PullRequests,
     Agents,
     Workflows,
@@ -64,7 +64,7 @@ impl Resource {
         Resource::Code,
         Resource::Security,
         Resource::Packages,
-        Resource::Issues,
+        Resource::Work,
         Resource::PullRequests,
         Resource::Agents,
         Resource::Workflows,
@@ -97,7 +97,7 @@ impl Resource {
             Resource::Code => "code",
             Resource::Security => "security",
             Resource::Packages => "packages",
-            Resource::Issues => "issues",
+            Resource::Work => "work",
             Resource::PullRequests => "pull_requests",
             Resource::Agents => "agents",
             Resource::Workflows => "workflows",
@@ -127,7 +127,7 @@ impl Resource {
             Resource::Code => "Code",
             Resource::Security => "Security",
             Resource::Packages => "Packages",
-            Resource::Issues => "Issues",
+            Resource::Work => "Work",
             Resource::PullRequests => "Pull requests",
             Resource::Agents => "g1t agents",
             Resource::Workflows => "Workflows",
@@ -212,8 +212,8 @@ pub enum Scope {
     PackagesRead,
     PackagesWrite,
     PackagesDelete,
-    IssuesRead,
-    IssuesWrite,
+    WorkRead,
+    WorkWrite,
     PullRequestsRead,
     PullRequestsWrite,
     /// Retired with g1t's own agents ([`Resource::retired`]): parses, so
@@ -273,8 +273,8 @@ impl Scope {
         Scope::PackagesRead,
         Scope::PackagesWrite,
         Scope::PackagesDelete,
-        Scope::IssuesRead,
-        Scope::IssuesWrite,
+        Scope::WorkRead,
+        Scope::WorkWrite,
         Scope::PullRequestsRead,
         Scope::PullRequestsWrite,
         Scope::AgentsRun,
@@ -327,8 +327,8 @@ impl Scope {
             Scope::PackagesRead => "packages:read",
             Scope::PackagesWrite => "packages:write",
             Scope::PackagesDelete => "packages:delete",
-            Scope::IssuesRead => "issues:read",
-            Scope::IssuesWrite => "issues:write",
+            Scope::WorkRead => "work:read",
+            Scope::WorkWrite => "work:write",
             Scope::PullRequestsRead => "pull_requests:read",
             Scope::PullRequestsWrite => "pull_requests:write",
             Scope::AgentsRun => "agents:run",
@@ -408,7 +408,7 @@ impl Scope {
     /// What it lets a token do, in plain words.
     pub fn describe(self) -> &'static str {
         match self {
-            Scope::RepoRead => "See repositories, their settings, labels, timelines, releases, languages, contributors and security alerts, and search",
+            Scope::RepoRead => "See repositories, their settings, timelines, releases, languages, contributors and security alerts, and search",
             Scope::RepoCreate => "Create repositories, and nothing that changes or deletes one",
             Scope::RepoWrite => "Create repositories, create, rename and delete branches, change how pull requests merge and publish releases",
             Scope::RepoAdmin => "Rename, archive, transfer, delete or change who can see a repository, change its rulesets, and dismiss security alerts",
@@ -419,10 +419,10 @@ impl Scope {
             Scope::PackagesRead => "Pull container images and install private packages",
             Scope::PackagesWrite => "Push container images and publish packages",
             Scope::PackagesDelete => "Delete and restore packages and their versions",
-            Scope::IssuesRead => "Read issues and comments",
-            Scope::IssuesWrite => "Open, edit, close and comment on issues",
+            Scope::WorkRead => "Read work items, their comments, labels, milestones and claims",
+            Scope::WorkWrite => "Open, edit, link, close and comment on work items, claim them, and manage labels and milestones",
             Scope::PullRequestsRead => "Read pull requests, their changes, sessions and merge queues",
-            Scope::PullRequestsWrite => "Open, review, close and merge pull requests",
+            Scope::PullRequestsWrite => "Open, review, comment on, close and merge pull requests",
             Scope::AgentsRun => "Retired: put g1t's own agents to work. Grants nothing now",
             Scope::WorkflowsRead => "Read workflows, runs and logs",
             Scope::WorkflowsWrite => "Run, cancel, rerun and turn workflows on or off",
@@ -556,7 +556,7 @@ impl Resource {
 // --- Permissions --------------------------------------------------------------
 //
 // A token's permissions are its scopes read per resource: each resource
-// at none or one level (`{"issues": "write", "repo": "read"}`). A level
+// at none or one level (`{"work": "write", "repo": "read"}`). A level
 // includes the ones below it, so the highest scope held of each resource
 // says everything; that is what a token stores. Personal tokens and a
 // workspace's own tokens are made, shown and checked this way alike.
@@ -588,7 +588,7 @@ pub fn permissions_of(scopes: &[Scope]) -> std::collections::BTreeMap<String, St
         .collect()
 }
 
-/// Permissions as asked for (`{"issues": "write"}`, `none` or empty left
+/// Permissions as asked for (`{"work": "write"}`, `none` or empty left
 /// out) into the scopes a token stores, or why they cannot be. `personal`
 /// is whether the token is a person's: only theirs may hold account ones.
 pub fn resolve_permissions(asked: &std::collections::BTreeMap<String, String>, personal: bool) -> Result<Vec<Scope>, String> {
@@ -670,7 +670,7 @@ impl Preset {
                 scopes.extend([
                     Scope::RepoCreate,
                     Scope::CodeWrite,
-                    Scope::IssuesWrite,
+                    Scope::WorkWrite,
                     Scope::PullRequestsWrite,
                     Scope::NotificationsWrite,
                 ]);
@@ -1030,7 +1030,7 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("get_repo", Scope::RepoRead),
     ("list_forks", Scope::RepoRead),
     // Comments on commits are read with the repository, and written as
-    // comments on issues are.
+    // comments on work items are.
     ("list_repo_commit_comments", Scope::RepoRead),
     ("list_commit_comments", Scope::RepoRead),
     // A repository's files, as clone and fetch need.
@@ -1060,16 +1060,18 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("create_release", Scope::RepoWrite),
     ("update_release", Scope::RepoWrite),
     ("delete_release", Scope::RepoWrite),
-    ("list_labels", Scope::RepoRead),
-    ("list_milestones", Scope::RepoRead),
-    ("get_milestone", Scope::RepoRead),
-    ("create_label", Scope::IssuesWrite),
-    ("update_label", Scope::IssuesWrite),
-    ("delete_label", Scope::IssuesWrite),
-    ("add_default_labels", Scope::IssuesWrite),
-    ("create_milestone", Scope::IssuesWrite),
-    ("update_milestone", Scope::IssuesWrite),
-    ("delete_milestone", Scope::IssuesWrite),
+    // A workspace's labels and milestones, which its work items and pull
+    // requests carry.
+    ("list_labels", Scope::WorkRead),
+    ("list_milestones", Scope::WorkRead),
+    ("get_milestone", Scope::WorkRead),
+    ("create_label", Scope::WorkWrite),
+    ("update_label", Scope::WorkWrite),
+    ("delete_label", Scope::WorkWrite),
+    ("add_default_labels", Scope::WorkWrite),
+    ("create_milestone", Scope::WorkWrite),
+    ("update_milestone", Scope::WorkWrite),
+    ("delete_milestone", Scope::WorkWrite),
     ("get_repo_settings", Scope::RepoRead),
     ("list_check_names", Scope::RepoRead),
     ("list_deleted_repos", Scope::RepoRead),
@@ -1150,36 +1152,42 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("set_security_advisory_state", Scope::SecurityWrite),
     ("report_vulnerability", Scope::SecurityWrite),
     ("review_vulnerability_report", Scope::SecurityWrite),
-    // Issues.
-    ("list_issues", Scope::IssuesRead),
-    ("get_issue", Scope::IssuesRead),
-    ("create_issue", Scope::IssuesWrite),
-    ("update_issue", Scope::IssuesWrite),
-    ("list_issue_labels", Scope::IssuesRead),
-    ("add_issue_labels", Scope::IssuesWrite),
-    ("set_issue_labels", Scope::IssuesWrite),
-    ("remove_issue_labels", Scope::IssuesWrite),
-    ("close_issue", Scope::IssuesWrite),
-    ("reopen_issue", Scope::IssuesWrite),
-    ("add_comment", Scope::IssuesWrite),
+    // Work items: a workspace's tracked work, its comments and labels.
+    ("list_work_items", Scope::WorkRead),
+    ("list_repo_work_items", Scope::WorkRead),
+    ("get_work_item", Scope::WorkRead),
+    ("list_work_item_links", Scope::WorkRead),
+    ("resolve_ref", Scope::WorkRead),
+    ("open_work_item", Scope::WorkWrite),
+    ("update_work_item", Scope::WorkWrite),
+    ("close_work_item", Scope::WorkWrite),
+    ("reopen_work_item", Scope::WorkWrite),
+    ("link_work_item", Scope::WorkWrite),
+    ("unlink_work_item", Scope::WorkWrite),
+    ("list_work_item_labels", Scope::WorkRead),
+    ("add_work_item_labels", Scope::WorkWrite),
+    ("set_work_item_labels", Scope::WorkWrite),
+    ("remove_work_item_labels", Scope::WorkWrite),
+    ("list_work_item_decisions", Scope::WorkRead),
+    ("add_work_item_comment", Scope::WorkWrite),
+    ("edit_work_item_comment", Scope::WorkWrite),
+    ("delete_work_item_comment", Scope::WorkWrite),
+    ("react_to_work_item", Scope::WorkWrite),
     // An image for a description or a comment: whoever may comment.
-    ("upload_attachment", Scope::IssuesWrite),
-    ("edit_comment", Scope::IssuesWrite),
-    ("delete_comment", Scope::IssuesWrite),
-    ("react", Scope::IssuesWrite),
-    ("create_commit_comment", Scope::IssuesWrite),
-    ("update_commit_comment", Scope::IssuesWrite),
-    ("delete_commit_comment", Scope::IssuesWrite),
+    ("upload_attachment", Scope::WorkWrite),
+    ("create_commit_comment", Scope::WorkWrite),
+    ("update_commit_comment", Scope::WorkWrite),
+    ("delete_commit_comment", Scope::WorkWrite),
     // Looking up a ticket the work refers to, through the workspace's
-    // integrations, and bringing one in as an issue.
-    ("get_context", Scope::IssuesRead),
-    ("import_issue", Scope::IssuesWrite),
-    // Coordinating work on issues: claims, and the context to pick one up.
-    ("list_claims", Scope::IssuesRead),
-    ("get_work", Scope::IssuesRead),
-    ("claim_issue", Scope::IssuesWrite),
-    ("release_claim", Scope::IssuesWrite),
-    ("hand_off_issue", Scope::IssuesWrite),
+    // integrations, and bringing one in as a work item.
+    ("get_context", Scope::WorkRead),
+    ("import_work_items", Scope::WorkWrite),
+    // Coordinating work items: claims, and the context to pick one up.
+    ("list_claims", Scope::WorkRead),
+    ("get_work", Scope::WorkRead),
+    ("claim_work_item", Scope::WorkWrite),
+    ("release_claim", Scope::WorkWrite),
+    ("hand_off_work_item", Scope::WorkWrite),
     // Pull requests.
     ("list_pull_requests", Scope::PullRequestsRead),
     ("get_pull_request", Scope::PullRequestsRead),
@@ -1204,6 +1212,11 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("delete_pull_request_head_branch", Scope::PullRequestsWrite),
     ("restore_pull_request_head_branch", Scope::PullRequestsWrite),
     ("request_reviewers", Scope::PullRequestsWrite),
+    // Comments on pull requests, and reactions to them.
+    ("add_comment", Scope::PullRequestsWrite),
+    ("edit_comment", Scope::PullRequestsWrite),
+    ("delete_comment", Scope::PullRequestsWrite),
+    ("react", Scope::PullRequestsWrite),
     ("remove_requested_reviewers", Scope::PullRequestsWrite),
     // Harness sessions, which record how pull requests are made.
     ("get_session", Scope::PullRequestsRead),
@@ -1622,8 +1635,8 @@ mod tests {
             assert!(scope.as_str().starts_with(scope.resource().as_str()));
             assert!(scope.includes(scope));
         }
-        assert_eq!(Scope::parse(" Issues:Write "), Some(Scope::IssuesWrite));
-        assert_eq!(Scope::parse("issues"), None);
+        assert_eq!(Scope::parse(" Work:Write "), Some(Scope::WorkWrite));
+        assert_eq!(Scope::parse("work"), None);
     }
 
     #[test]
@@ -1633,10 +1646,10 @@ mod tests {
         assert!(Scope::RepoWrite.includes(Scope::RepoCreate));
         assert!(Scope::RepoCreate.includes(Scope::RepoRead));
         assert!(!Scope::RepoCreate.includes(Scope::RepoWrite));
-        assert!(Scope::IssuesWrite.includes(Scope::IssuesRead));
-        assert!(!Scope::IssuesRead.includes(Scope::IssuesWrite));
+        assert!(Scope::WorkWrite.includes(Scope::WorkRead));
+        assert!(!Scope::WorkRead.includes(Scope::WorkWrite));
         assert!(!Scope::RepoAdmin.includes(Scope::CodeWrite));
-        assert!(!Scope::PullRequestsWrite.includes(Scope::IssuesWrite));
+        assert!(!Scope::PullRequestsWrite.includes(Scope::WorkWrite));
     }
 
     #[test]
@@ -1651,16 +1664,16 @@ mod tests {
     #[test]
     fn scopes_are_parsed_from_oauth_text_leaving_out_unknown_ones() {
         assert_eq!(
-            parse_scopes("issues:write repo:read,bogus:thing issues:write"),
-            vec![Scope::RepoRead, Scope::IssuesWrite]
+            parse_scopes("work:write repo:read,bogus:thing work:write"),
+            vec![Scope::RepoRead, Scope::WorkWrite]
         );
-        assert_eq!(scopes_text(&[Scope::RepoRead, Scope::IssuesWrite]), "repo:read issues:write");
+        assert_eq!(scopes_text(&[Scope::RepoRead, Scope::WorkWrite]), "repo:read work:write");
     }
 
     #[test]
     fn the_oauth_default_is_the_agent_preset_and_never_admin() {
         let scopes = oauth_default();
-        assert!(scopes.contains(&Scope::IssuesWrite));
+        assert!(scopes.contains(&Scope::WorkWrite));
         assert!(scopes.contains(&Scope::PullRequestsWrite));
         assert!(!scopes.contains(&Scope::AgentsRun));
         assert!(scopes.iter().all(|scope| !scope.dangerous()), "{scopes:?}");
@@ -1682,7 +1695,7 @@ mod tests {
             assert_eq!(back, scope);
         }
         // But nothing hands them out, and asking for them gets the rest.
-        assert_eq!(parse_scopes("agents:run issues:read memory:write models:write"), vec![Scope::IssuesRead]);
+        assert_eq!(parse_scopes("agents:run work:read memory:write models:write"), vec![Scope::WorkRead]);
         assert!(!offered_scopes().iter().any(|scope| scope.resource().retired()));
         assert!(!everything().iter().any(|scope| scope.resource().retired()));
         for preset in Preset::ALL {
@@ -1829,11 +1842,11 @@ mod tests {
         let job = TokenAccess {
             repo: Some("acme/web".into()),
             job: Some(JobToken { run_id: "run_1".into(), job_id: "job_1".into(), pull_requests: false }),
-            ..token(&[Scope::RepoRead, Scope::IssuesWrite, Scope::IssuesRead, Scope::PullRequestsWrite])
+            ..token(&[Scope::RepoRead, Scope::WorkWrite, Scope::WorkRead, Scope::PullRequestsWrite])
         };
-        assert!(decide(&job, "create_issue", &json!({ "repo": "acme/web" })).allowed);
-        assert!(decide(&job, "create_issue", &json!({ "repo": "Acme/Web" })).allowed, "names compare without case");
-        let elsewhere = decide(&job, "create_issue", &json!({ "repo": "acme/api" }));
+        assert!(decide(&job, "open_work_item", &json!({ "repo": "acme/web" })).allowed);
+        assert!(decide(&job, "open_work_item", &json!({ "repo": "Acme/Web" })).allowed, "names compare without case");
+        let elsewhere = decide(&job, "open_work_item", &json!({ "repo": "acme/api" }));
         assert!(!elsewhere.allowed);
         assert_eq!(elsewhere.rule, "token:repository");
         // Nothing beyond the one repository, a workspace's listing included.
@@ -1882,16 +1895,16 @@ mod tests {
     #[test]
     fn a_narrowed_token_only_reads_outside_its_workspace() {
         let reach = TokenReach { workspace: Some("acme".into()), repositories: RepositorySelection::All, repo_ids: Vec::new() };
-        let fine = TokenAccess { reach: Some(reach), ..token(&[Scope::RepoRead, Scope::IssuesRead, Scope::IssuesWrite]) };
-        assert!(decide(&fine, "create_issue", &json!({ "repo": "acme/web" })).allowed);
-        assert!(decide(&fine, "create_issue", &json!({ "repo": "Acme/web" })).allowed);
-        let elsewhere = decide(&fine, "create_issue", &json!({ "repo": "globex/site" }));
+        let fine = TokenAccess { reach: Some(reach), ..token(&[Scope::RepoRead, Scope::WorkRead, Scope::WorkWrite]) };
+        assert!(decide(&fine, "open_work_item", &json!({ "repo": "acme/web" })).allowed);
+        assert!(decide(&fine, "open_work_item", &json!({ "repo": "Acme/web" })).allowed);
+        let elsewhere = decide(&fine, "open_work_item", &json!({ "repo": "globex/site" }));
         assert_eq!(elsewhere.rule, "token:resource-owner");
         assert!(elsewhere.reason.unwrap().contains("acme"));
-        assert!(decide(&fine, "get_issue", &json!({ "repo": "globex/site" })).allowed, "public repositories elsewhere read");
+        assert!(decide(&fine, "get_work_item", &json!({ "repo": "globex/site" })).allowed, "public repositories elsewhere read");
         assert!(!decide(&fine, "create_pull_request", &json!({ "repo": "acme/web" })).allowed, "its scopes still hold");
-        let mine = TokenAccess { reach: Some(TokenReach::default()), ..token(&[Scope::IssuesWrite]) };
-        assert!(decide(&mine, "create_issue", &json!({ "repo": "acme/web" })).reason.unwrap().contains("your account"));
+        let mine = TokenAccess { reach: Some(TokenReach::default()), ..token(&[Scope::WorkWrite]) };
+        assert!(decide(&mine, "open_work_item", &json!({ "repo": "acme/web" })).reason.unwrap().contains("your account"));
         assert!(fine.covers_repo("rep_1", "acme") && !fine.covers_repo("rep_1", "globex"));
         let selected = TokenReach { workspace: Some("acme".into()), repositories: RepositorySelection::Selected, repo_ids: vec!["rep_1".into()] };
         assert!(selected.covers("rep_1", "ACME") && !selected.covers("rep_2", "acme"));
@@ -1928,11 +1941,11 @@ mod tests {
     #[test]
     fn permissions_are_scopes_read_per_resource() {
         let asked: std::collections::BTreeMap<String, String> =
-            [("issues", "write"), ("repo", "read"), ("code", "none"), ("packages", "delete")].iter().map(|(a, b)| ((*a).to_owned(), (*b).to_owned())).collect();
+            [("work", "write"), ("repo", "read"), ("code", "none"), ("packages", "delete")].iter().map(|(a, b)| ((*a).to_owned(), (*b).to_owned())).collect();
         let scopes = resolve_permissions(&asked, true).unwrap();
-        assert_eq!(scopes, vec![Scope::RepoRead, Scope::PackagesDelete, Scope::IssuesWrite]);
+        assert_eq!(scopes, vec![Scope::RepoRead, Scope::PackagesDelete, Scope::WorkWrite]);
         let back = permissions_of(&scopes);
-        assert_eq!(back.get("issues").map(String::as_str), Some("write"));
+        assert_eq!(back.get("work").map(String::as_str), Some("write"));
         assert_eq!(back.get("packages").map(String::as_str), Some("delete"));
         assert!(!back.contains_key("code"));
         // Lower levels held beside a higher one say nothing more.
@@ -1949,7 +1962,7 @@ mod tests {
     fn permissions_are_checked_by_name_level_and_owner() {
         let one = |name: &str, level: &str| -> std::collections::BTreeMap<String, String> { [(name.to_owned(), level.to_owned())].into() };
         assert!(resolve_permissions(&one("wiki", "read"), true).unwrap_err().contains("wiki"));
-        assert!(resolve_permissions(&one("issues", "admin"), true).unwrap_err().contains("read, write"));
+        assert!(resolve_permissions(&one("work", "admin"), true).unwrap_err().contains("read, write"));
         assert!(resolve_permissions(&one("workflow_files", "read"), true).is_err(), "workflow files are written only");
         assert!(resolve_permissions(&one("notifications", "read"), false).unwrap_err().contains("account"));
         assert_eq!(resolve_permissions(&one("notifications", "read"), true).unwrap(), vec![Scope::NotificationsRead]);
@@ -1972,12 +1985,12 @@ mod tests {
 
     #[test]
     fn a_missing_scope_is_named() {
-        let read = token(&[Scope::IssuesRead]);
-        assert!(decide(&read, "get_issue", &json!({})).allowed);
+        let read = token(&[Scope::WorkRead]);
+        assert!(decide(&read, "get_work_item", &json!({})).allowed);
         assert!(decide(&read, "whoami", &json!({})).allowed);
-        let refused = decide(&read, "create_issue", &json!({}));
+        let refused = decide(&read, "open_work_item", &json!({}));
         assert!(!refused.allowed);
-        assert_eq!(refused.reason.as_deref(), Some("This access token needs the issues:write scope to use create_issue."));
+        assert_eq!(refused.reason.as_deref(), Some("This access token needs the work:write scope to use open_work_item."));
         // An operation the table does not know needs full access.
         assert!(!decide(&read, "something_new", &json!({})).allowed);
     }
@@ -2007,10 +2020,10 @@ mod tests {
         let refused = decide_git(&reader, true, false);
         assert!(!refused.allowed);
         assert!(refused.reason.unwrap().contains("code:write"));
-        let issues = token(&[Scope::IssuesWrite]);
-        assert!(!decide_git(&issues, false, false).allowed);
-        assert!(decide_git(&issues, false, true).allowed, "public code needs no scope");
-        assert!(!decide_git(&issues, true, true).allowed, "pushing to public code still needs code:write");
+        let work = token(&[Scope::WorkWrite]);
+        assert!(!decide_git(&work, false, false).allowed);
+        assert!(decide_git(&work, false, true).allowed, "public code needs no scope");
+        assert!(!decide_git(&work, true, true).allowed, "pushing to public code still needs code:write");
         let writer = token(&[Scope::CodeWrite]);
         assert!(decide_git(&writer, true, false).allowed);
         assert!(decide_git(&writer, false, false).allowed, "code:write includes code:read");
@@ -2040,9 +2053,9 @@ mod tests {
 
     #[test]
     fn token_access_travels_as_json() {
-        let access = token(&[Scope::IssuesRead]);
+        let access = token(&[Scope::WorkRead]);
         let wire = serde_json::to_value(&access).unwrap();
-        assert_eq!(wire["scopes"], json!(["issues:read"]));
+        assert_eq!(wire["scopes"], json!(["work:read"]));
         assert!(wire.get("resources").is_none());
         let back: TokenAccess = serde_json::from_value(wire).unwrap();
         assert_eq!(back, access);
@@ -2052,7 +2065,7 @@ mod tests {
         // whatever its owner can.
         let older: TokenAccess = serde_json::from_value(json!({
             "token_id": "tok_1",
-            "scopes": ["issues:read"],
+            "scopes": ["work:read"],
             "resources": { "kind": "repositories", "repositories": ["acme/rocket"] },
         }))
         .unwrap();

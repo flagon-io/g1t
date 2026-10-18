@@ -56,11 +56,11 @@ pub enum RunCredentialKind {
     /// and pushing that to a branch of its own. Not an agent.
     Bump,
     /// A session g1t started on an agent's harness (Claude Managed Agents)
-    /// for the person who asked, on one issue or pull request. It works
+    /// for the person who asked, on one work item or pull request. It works
     /// through the API, MCP and the CLI with what [`SESSION_SCOPES`] allow,
     /// in its repository only, and pushes to that repository and its pull
     /// requests' working copies. What it writes (comments, reviews, closes,
-    /// the issues and pull requests it opens) is g1t's, for that person;
+    /// the work items and pull requests it opens) is g1t's, for that person;
     /// what it may do is that person's role there, never beyond
     /// [`AGENT_CEILING`].
     Session,
@@ -289,10 +289,14 @@ pub const READ_OPERATIONS: &[&str] = &[
     "list_check_names",
     "get_merge_queue",
     "get_pull_request_merge_options",
-    "list_issues",
-    "get_issue",
+    "list_work_items",
+    "list_repo_work_items",
+    "get_work_item",
+    "list_work_item_links",
+    "resolve_ref",
     "list_labels",
-    "list_issue_labels",
+    "list_work_item_labels",
+    "list_work_item_decisions",
     "list_milestones",
     "get_milestone",
     "list_pull_requests",
@@ -398,7 +402,7 @@ pub const NEVER: &[&str] = &[
     "disable_pull_request_auto_merge",
     "delete_pull_request_head_branch",
     "restore_pull_request_head_branch",
-    "import_issue",
+    "import_work_items",
     "list_integrations",
     "connect_integration",
     "update_integration",
@@ -537,11 +541,11 @@ pub fn is_read(operation: &str) -> bool {
 }
 
 /// The scopes of a session's credential ([`RunCredentialKind::Session`]):
-/// what working on an issue needs, named as an access token's are.
+/// what working on a work item needs, named as an access token's are.
 pub const SESSION_SCOPES: [&str; 8] = [
     "repo:read",
     "code:write",
-    "issues:write",
+    "work:write",
     "pull_requests:write",
     "checks:read",
     "workflows:read",
@@ -641,7 +645,7 @@ fn scope_rule(scope: &AgentScope) -> String {
 
 /// Whether `user`, resolved from a run credential with `scope`, may use
 /// `operation`. `repo` is the repository the call names, if any, and
-/// `needs_repo` whether the operation is about one; `number` the issue or
+/// `needs_repo` whether the operation is about one; `number` the work item or
 /// pull request it names.
 pub fn decide_operation(
     user: &User,
@@ -956,10 +960,10 @@ mod tests {
                 _ => vec![],
             },
             CredentialUse::Tools => match kind {
-                K::Implement | K::Revise | K::Answer => vec!["get_issue", "get_pull_request", "create_issue", "add_comment", "remember"],
-                K::Review => vec!["get_issue", "get_pull_request", "add_comment", "review_pull_request"],
-                K::Plan => vec!["get_issue", "get_pull_request", "create_issue"],
-                K::Update => vec!["get_issue", "get_pull_request"],
+                K::Implement | K::Revise | K::Answer => vec!["get_work_item", "get_pull_request", "open_work_item", "add_comment", "remember"],
+                K::Review => vec!["get_work_item", "get_pull_request", "add_comment", "review_pull_request"],
+                K::Plan => vec!["get_work_item", "get_pull_request", "open_work_item"],
+                K::Update => vec!["get_work_item", "get_pull_request"],
                 _ => vec![],
             },
         };
@@ -1042,11 +1046,11 @@ mod tests {
     /// may.
     #[test]
     fn a_stored_token_uses_only_what_it_lists() {
-        assert!(op(K::Implement, Tools, "create_issue").allowed);
+        assert!(op(K::Implement, Tools, "open_work_item").allowed);
         assert!(op(K::Review, Tools, "review_pull_request").allowed);
-        assert!(!op(K::Review, Tools, "create_issue").allowed);
+        assert!(!op(K::Review, Tools, "open_work_item").allowed);
         assert!(!op(K::Plan, Tools, "add_comment").allowed);
-        assert!(!op(K::Checks, Tools, "get_issue").allowed);
+        assert!(!op(K::Checks, Tools, "get_work_item").allowed);
         for operation in ["record_session", "merge_pull_request", "update_repo_settings", "create_webhook", "set_actions_secret"] {
             for kind in [K::Implement, K::Revise, K::Answer, K::Review, K::Plan, K::Checks] {
                 assert!(!op(kind, Tools, operation).allowed, "{operation} by a {} run's tools", kind.as_str());
@@ -1060,9 +1064,9 @@ mod tests {
         assert!(op(K::Implement, Runner, "mark_pull_request_ready").allowed);
         assert!(op(K::Revise, Runner, "record_session").allowed);
         assert!(!op(K::Revise, Runner, "mark_pull_request_ready").allowed);
-        assert!(!op(K::Implement, Runner, "create_issue").allowed);
+        assert!(!op(K::Implement, Runner, "open_work_item").allowed);
         assert!(!op(K::Review, Runner, "record_session").allowed);
-        assert!(!op(K::Checks, Runner, "get_issue").allowed);
+        assert!(!op(K::Checks, Runner, "get_work_item").allowed);
     }
 
     #[test]
@@ -1098,20 +1102,20 @@ mod tests {
         let decision = decide_operation(
             &user,
             &scope,
-            "create_issue",
+            "open_work_item",
             Some(&path("acme", "other")),
             true,
             None,
         );
         assert!(!decision.allowed);
         assert_eq!(decision.rule, "scope:repository");
-        let decision = decide_operation(&user, &scope, "create_issue", None, true, None);
+        let decision = decide_operation(&user, &scope, "open_work_item", None, true, None);
         assert_eq!(decision.rule, "scope:repository");
         // The repository's name is matched without regard to case.
         let decision = decide_operation(
             &user,
             &scope,
-            "create_issue",
+            "open_work_item",
             Some(&path("Acme", "Rocket")),
             true,
             None,
@@ -1128,7 +1132,7 @@ mod tests {
         let decision = decide_operation(
             &user,
             &scope,
-            "get_issue",
+            "get_work_item",
             Some(&path("acme", "rocket")),
             true,
             Some(1),
@@ -1190,7 +1194,7 @@ mod tests {
         assert_eq!(permission(Some(&agent_user), rocket), Some(RepoRole::Write));
         assert_eq!(permission(Some(&agent_user), other), None);
         assert_eq!(permission(Some(&agent_user), elsewhere), None);
-        let decision = decide_operation(&agent_user, &tools, "get_issue", Some(&path("acme", "rocket")), true, Some(1));
+        let decision = decide_operation(&agent_user, &tools, "get_work_item", Some(&path("acme", "rocket")), true, Some(1));
         assert!(decision.allowed, "{}", decision.reason.unwrap_or_default());
         // The person, downstream of a runner's credential, carries the same.
         let person = as_person(&agent_user).expect("a runner acts as the person");
@@ -1239,7 +1243,7 @@ mod tests {
         // A tools token made before run credentials never reaches git.
         let old = AgentScope {
             repo: upstream.clone(),
-            operations: vec!["get_issue".to_owned()],
+            operations: vec!["get_work_item".to_owned()],
             run: None,
         };
         assert_eq!(decide_git(&old, &upstream, false).rule, "git:not-a-run");
@@ -1302,7 +1306,7 @@ mod tests {
     #[test]
     fn scopes_without_a_run_still_parse() {
         let old: AgentScope = serde_json::from_str(
-            r#"{"repo":{"namespace":"acme","name":"rocket"},"operations":["get_issue"]}"#,
+            r#"{"repo":{"namespace":"acme","name":"rocket"},"operations":["get_work_item"]}"#,
         )
         .unwrap();
         assert!(old.run.is_none());
@@ -1338,7 +1342,7 @@ mod tests {
         }
     }
 
-    /// A session works on its issue through the API and MCP with what its
+    /// A session works on its work item through the API and MCP with what its
     /// scopes allow, in its repository, and never with what no run may.
     #[test]
     fn a_session_does_what_its_scopes_allow_in_its_repository() {
@@ -1349,11 +1353,11 @@ mod tests {
         for operation in [
             "whoami",
             "get_work",
-            "claim_issue",
+            "claim_work_item",
             "add_comment",
             // A screenshot of its preview, for a pull request or a comment.
             "upload_attachment",
-            "close_issue",
+            "close_work_item",
             "create_pull_request",
             "review_pull_request",
             "mark_pull_request_ready",
@@ -1376,7 +1380,7 @@ mod tests {
         }
         use crate::scopes::Scope;
         let scopes = run_scopes(K::Session, Runner);
-        assert!(scopes.contains(&Scope::CodeWrite) && scopes.contains(&Scope::IssuesWrite));
+        assert!(scopes.contains(&Scope::CodeWrite) && scopes.contains(&Scope::WorkWrite));
         assert!(scopes.iter().all(|scope| !scope.dangerous()));
     }
 
