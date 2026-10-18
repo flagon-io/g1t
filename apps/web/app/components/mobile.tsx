@@ -562,9 +562,9 @@ const soonPagesOf = (): Record<string, ProjectPage> =>
 /**
  * A project's pages along the bottom of its header: the sidebar's own list
  * (lib/chrome.ts) as a row of tabs that scrolls sideways on a phone, the
- * current one underlined on the header's border and kept in view, so Work
- * and Pull requests are one tap away. Work is the workspace's Work list
- * filtered to the project (lib/work-items.ts `repoWorkPath`). From 768px a member's sidebar has
+ * current one underlined on the header's border and kept in view, so Pull
+ * requests is one tap away. A project's work items are Work filtered to it
+ * (lib/work-items.ts `repoWorkPath`), from the palette. From 768px a member's sidebar has
  * them; a visitor, who has none, always sees the row.
  */
 export function ProjectStrip({

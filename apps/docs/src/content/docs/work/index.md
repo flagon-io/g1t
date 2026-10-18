@@ -43,8 +43,8 @@ can still file, follow and close work.
 A repository has no Work of its own. Its work items are Work filtered to
 it, `g1t.sh/<workspace>/-/work?repo=<name>`, and its sessions are
 Sessions filtered to it, `g1t.sh/<workspace>/-/work/sessions?repo=<name>`.
-The project's [**Work** and **Sessions** tabs](/guides/projects/) open
-those.
+A project has no Work tab of its own: from one, the command palette
+(`Ctrl K`) has **Work** and **Sessions** filtered to it.
 
 ## Work's sidebar
 
@@ -66,7 +66,7 @@ Under **Sessions**:
 | Row | Opens |
 | --- | --- |
 | **Live now** | [Sessions](/work/sessions/): what is going now, the merge queue, what just landed and what happened. |
-| **Recent** | Every session, most recently heard from first, live or ended. |
+| **Every session** | Every session, most recently heard from first, live or ended. |
 | **Yours** | The sessions you ran, `?person=<you>`. |
 | **People's harnesses**, **Started on g1t**, **g1t's agent**, **Recorded on pull requests** | Each [kind of session](/work/sessions/#kinds-of-session) alone. |
 

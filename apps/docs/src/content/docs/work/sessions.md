@@ -49,7 +49,7 @@ of the workspace's repositories you can read.
   the merge queue found when it combined changes.
 - **Recent**: the sessions that ended lately.
 
-**Recent**, in the sidebar, is every session in one list, live or ended,
+**Every session**, in the sidebar, is every session in one list, live or ended,
 the most recently heard from first. **Yours** is the sessions you ran.
 
 With nothing going on, Sessions says how to start: choose your client in

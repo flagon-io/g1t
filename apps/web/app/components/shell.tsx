@@ -1468,7 +1468,7 @@ function WorkSidebar({ slug, username }: { slug: string; username: string }) {
             Live now
           </SidebarLink>
           <SidebarLink to={sessionsPath(slug, { state: "recent" })} icon={<History size={15} />} current={sessionView({ state: "recent" })}>
-            Recent
+            Every session
           </SidebarLink>
           <SidebarLink to={sessionsPath(slug, { person: username })} icon={<CircleUserRound size={15} />} current={sessionView({ person: username })}>
             Yours
