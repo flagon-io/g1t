@@ -27,9 +27,16 @@
 //                     finished, its final message
 //   SubagentStart     g1t session start --parent SESSION --agent-type TYPE …:
 //                     each subagent is a session of its own, under this one
-//   SubagentStop      g1t session end --result "its final message" for it
-//   Stop              g1t session heartbeat
-//   SessionEnd        g1t session end --reason REASON
+//   SubagentStop      g1t session heartbeat --usage-json USAGE, then
+//                     g1t session end --result "its final message" for it
+//   Stop              g1t session heartbeat --usage-json USAGE
+//   SessionEnd        g1t session heartbeat --usage-json USAGE, then
+//                     g1t session end --reason REASON
+//
+// USAGE is the session's token usage so far, per model, counted from its
+// own transcript (a subagent's from its own; see transcriptUsage): only
+// the counts, never what the transcript says. g1t estimates the session's
+// cost from it at list price. It is sent to a CLI of USAGE_CLI or later.
 //
 // What a tool returned (tool_response) is never sent, with one exception
 // that is not a tool's output: an Agent call's answer, which is its
@@ -85,6 +92,8 @@ export const MIN_NODE = 18;
 export const ACK_CLI = "0.3.3";
 /** The oldest g1t CLI with `g1t upgrade`. */
 export const UPGRADE_CLI = "0.3.4";
+/** The oldest g1t CLI with `g1t session heartbeat --usage-json` (test/cli-contract.json's since). */
+export const USAGE_CLI = "0.4.1";
 /** How to update the CLI: its installer, run again. */
 const INSTALL = "`curl -fsSL https://g1t.sh/install | sh` (on Windows, `irm https://g1t.sh/install.ps1 | iex`)";
 
@@ -290,6 +299,15 @@ export function g1tTool(name) {
 }
 
 /**
+ * A heartbeat that reports the token usage counted from `transcript`.
+ * `only`: sent only with usage to report (before the session ends);
+ * otherwise a plain heartbeat when there is none.
+ */
+function usageStep(transcript, { only = false } = {}) {
+  return { args: ["session", "heartbeat"], usage: String(transcript), ...(only ? { only: true } : {}) };
+}
+
+/**
  * What a hook event asks for: the CLI calls to run in the background
  * (`steps`), whether to start the session first, and for a subagent's
  * events, which subagent (`agent`). Pure, so the tests can check it
@@ -328,6 +346,9 @@ export function plan(event, env = process.env) {
       return job;
     case "SubagentStop": {
       if (!job.agent) return null;
+      // Its own transcript: its parent's leaves out what it used.
+      const transcript = event.agent_transcript_path ?? subagentPaths(event.transcript_path, event.agent_id)?.transcript;
+      if (transcript) job.steps.push(usageStep(transcript, { only: true }));
       const args = ["session", "end", "--reason", "done"];
       const result = typeof event.last_assistant_message === "string" ? event.last_assistant_message.trim() : "";
       // --flag=VALUE throughout for text: one that starts with a dash ("- Found …") is still a value.
@@ -402,9 +423,10 @@ export function plan(event, env = process.env) {
       return job;
     }
     case "Stop":
-      job.steps.push({ args: ["session", "heartbeat"] });
+      job.steps.push(event.transcript_path ? usageStep(event.transcript_path) : { args: ["session", "heartbeat"] });
       return job;
     case "SessionEnd":
+      if (event.transcript_path) job.steps.push(usageStep(event.transcript_path, { only: true }));
       job.steps.push({ args: ["session", "end", "--reason", String(event.reason || "other")] });
       job.end = true;
       return job;
@@ -555,6 +577,7 @@ export function sessionFiles(sid, env = process.env) {
     shell: (toolUseId) => join(dir, `${safe}.shell.${safeName(toolUseId)}.json`),
     unrecorded: join(dir, `${safe}.unrecorded.json`),
     agent: (agentId) => join(dir, `${safe}.agent.${safeName(String(agentId).replace(/^agent-/, ""))}.id`),
+    usage: (transcript) => join(dir, `${safe}.usage.${createHash("sha256").update(String(transcript)).digest("hex").slice(0, 16)}.json`),
   };
 }
 
@@ -713,6 +736,132 @@ export function pairSubagent(agent, files, transcriptPath, env = process.env) {
   if (what) agent.task = what;
   if (prompt && env.G1T_RECORD_PROMPTS !== "0") agent.prompt = prompt;
   return agent;
+}
+
+// --- what a session used ------------------------------------------------
+
+/** The prompt size above which claude-haiku-5-5 is priced as its `long` tier. */
+export const LONG_PROMPT_TOKENS = 100000;
+/** How many messages are remembered to tell a message written again from a new one. */
+const RECENT_MESSAGES = 500;
+/** How much of a transcript is read at once. */
+const USAGE_CHUNK = 1 << 20;
+
+const COUNTS = ["input_tokens", "output_tokens", "cache_write_5m_tokens", "cache_write_1h_tokens", "cache_read_tokens"];
+
+const whole = (n) => (Number.isSafeInteger(n) && n > 0 ? n : 0);
+
+/** One transcript entry's usage, or null for one that is not an assistant message with usage. */
+export function entryUsage(entry) {
+  const message = entry?.type === "assistant" ? entry.message : null;
+  const usage = message?.usage;
+  const model = typeof message?.model === "string" ? message.model.trim() : "";
+  if (!usage || typeof usage !== "object" || !model || model === "<synthetic>") return null;
+  const split = usage.cache_creation && typeof usage.cache_creation === "object" ? usage.cache_creation : null;
+  const counts = {
+    input_tokens: whole(usage.input_tokens),
+    output_tokens: whole(usage.output_tokens),
+    // Without the split, every cache write is taken as the 5-minute kind.
+    cache_write_5m_tokens: split ? whole(split.ephemeral_5m_input_tokens) : whole(usage.cache_creation_input_tokens),
+    cache_write_1h_tokens: split ? whole(split.ephemeral_1h_input_tokens) : 0,
+    cache_read_tokens: whole(usage.cache_read_input_tokens),
+  };
+  const id = typeof message.id === "string" ? `${message.id}|${typeof entry.requestId === "string" ? entry.requestId : ""}` : null;
+  return { id, model, counts };
+}
+
+/** The tier a message is priced at: `long` for a claude-haiku-5-5 prompt over LONG_PROMPT_TOKENS. */
+export function usageTier(model, counts) {
+  const prompt = counts.input_tokens + counts.cache_read_tokens + counts.cache_write_5m_tokens + counts.cache_write_1h_tokens;
+  return /claude-haiku-5-5/i.test(model) && prompt > LONG_PROMPT_TOKENS ? "long" : null;
+}
+
+function addTo(totals, model, counts, sign) {
+  const tier = usageTier(model, counts);
+  const key = `${model}\u0000${tier ?? ""}`;
+  const row = (totals[key] ??= { model, ...(tier ? { tier } : {}), ...Object.fromEntries(COUNTS.map((name) => [name, 0])) });
+  for (const name of COUNTS) row[name] = Math.max(0, row[name] + sign * counts[name]);
+}
+
+/**
+ * Counts one transcript line into `state` ({ totals, recent }). Claude
+ * Code writes a line for each part of one API response, each with the
+ * response's usage: a message seen again (by message.id and requestId)
+ * counts once, at the most each count was given.
+ */
+export function countLine(state, line) {
+  if (!line.includes('"usage"')) return;
+  let entry;
+  try {
+    entry = JSON.parse(line);
+  } catch {
+    return;
+  }
+  const found = entryUsage(entry);
+  if (!found) return;
+  const { id, model, counts } = found;
+  const before = id ? state.recent[id] : null;
+  if (before) {
+    addTo(state.totals, before.model, before.counts, -1);
+    for (const name of COUNTS) counts[name] = Math.max(counts[name], before.counts[name]);
+    delete state.recent[id];
+  }
+  addTo(state.totals, model, counts, 1);
+  if (id) {
+    state.recent[id] = { model, counts };
+    const ids = Object.keys(state.recent);
+    for (const old of ids.slice(0, Math.max(0, ids.length - RECENT_MESSAGES))) delete state.recent[old];
+  }
+}
+
+/** The usage counted so far, as `g1t session heartbeat --usage-json` takes it: models with tokens. */
+export function usageList(state) {
+  return Object.values(state.totals).filter((row) => COUNTS.some((name) => row[name] > 0));
+}
+
+/**
+ * A transcript's token usage so far, per model and tier: what it has
+ * counted before (kept at `statePath`, with how far it read), and the
+ * lines written since, read a chunk at a time. Only complete lines are
+ * counted. A transcript that got shorter is counted again from the top.
+ * Null when it cannot be read; never throws.
+ */
+export function transcriptUsage(transcript, statePath) {
+  let fd;
+  try {
+    const size = statSync(transcript).size;
+    let state = statePath ? readJson(statePath, null) : null;
+    if (!state || state.path !== transcript || !(state.offset <= size) || typeof state.totals !== "object" || typeof state.recent !== "object") {
+      state = { path: transcript, offset: 0, totals: {}, recent: {} };
+    }
+    fd = openSync(transcript, "r");
+    const buffer = Buffer.alloc(USAGE_CHUNK);
+    let rest = Buffer.alloc(0);
+    let at = state.offset;
+    while (at < size) {
+      const read = readSync(fd, buffer, 0, Math.min(USAGE_CHUNK, size - at), at);
+      if (read <= 0) break;
+      at += read;
+      const chunk = Buffer.concat([rest, buffer.subarray(0, read)]);
+      const end = chunk.lastIndexOf(10);
+      rest = chunk;
+      if (end < 0) continue;
+      for (const line of chunk.subarray(0, end).toString("utf8").split("\n")) countLine(state, line);
+      // Counted up to and with the last newline; the rest is read again with what follows.
+      state.offset = at - (chunk.length - end - 1);
+      rest = chunk.subarray(end + 1);
+    }
+    if (statePath) write(statePath, JSON.stringify(state));
+    return usageList(state);
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd);
+      } catch {}
+    }
+  }
 }
 
 // --- saying so once ----------------------------------------------------
@@ -894,7 +1043,13 @@ export function work(job, env = process.env) {
   opts.env.G1T_SESSION = session;
   for (const step of job.steps) {
     if (step.args) {
-      const args = step.key ? [...step.args.slice(0, -2), `--key=${step.key}`, ...step.args.slice(-2)] : step.args;
+      let args = step.key ? [...step.args.slice(0, -2), `--key=${step.key}`, ...step.args.slice(-2)] : step.args;
+      if (step.usage) {
+        // Only a CLI that takes it is given usage: the counts, never what the transcript says.
+        const usage = version && !older(version, USAGE_CLI) ? transcriptUsage(step.usage, files.usage(step.usage)) : null;
+        if (usage?.length) args = [...args, `--usage-json=${JSON.stringify(usage)}`];
+        else if (step.only) continue;
+      }
       const out = cli(bin, args, opts);
       if (out.status === EXIT_AUTH) return setProblem(env, "signed_out");
       if (out.status === EXIT_USAGE) return setProblem(env, "refused", step.args.slice(0, 2).join(" "));

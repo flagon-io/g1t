@@ -939,6 +939,17 @@ Say the current session is still working; renews its claims.
 g1t session heartbeat [OPTIONS]
 ```
 
+| Argument or flag | |
+| --- | --- |
+| `--usage-json <JSON>` | The session's token usage so far, per model, as JSON; - reads it from stdin. |
+
+```text
+--usage-json reports the session's token usage so far, which g1t prices at Anthropic's list price:
+a JSON list with one entry per model, each {model, tier?, input_tokens, output_tokens,
+cache_write_5m_tokens, cache_write_1h_tokens, cache_read_tokens}. It is cumulative, so it replaces
+what the session reported before. - reads it from stdin.
+```
+
 Calls [`update_session`](/reference/api/sessions/update-session/).
 
 ### g1t session log
