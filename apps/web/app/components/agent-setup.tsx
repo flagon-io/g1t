@@ -103,7 +103,7 @@ export function AgentSetup({ hint = true, className }: { hint?: boolean; classNa
             ),
           )}
           {chosen === "codex" && mcp === "https://mcp.g1t.sh" && (
-            <> {" "}<a href="https://docs.g1t.sh/guides/bring-your-own-agent/#codex-marketplace" className="text-fg underline underline-offset-4">Install the Codex plugin</a> for issue and session workflows.</>
+            <> {" "}<a href="https://docs.g1t.sh/guides/bring-your-own-agent/#codex-marketplace" className="text-fg underline underline-offset-4">Install the Codex plugin</a> for work item and session workflows.</>
           )}
           {chosen === "cursor" && (
             <>

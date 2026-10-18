@@ -17,6 +17,27 @@ test("llms.txt follows the heading and file-list format and preserves the detail
   assert.match(read("apps/web/public/agents.md"), /## Set someone up/);
 });
 
+test("agent guides name work items, not the issues they replaced", () => {
+  // Issues became workspace work items: no /repos/…/issues routes, no
+  // issues:* scopes and no `issue` MCP tool remain (see
+  // apps/docs/src/content/docs/about/issues-became-work-items.md).
+  const stale = [
+    [/\/issues\b/, "an /issues route"],
+    [/\bissues:(read|write)\b/, "an issues:* scope"],
+    [/`issue`|"name": *"issue"/, "an MCP tool named issue"],
+    [/\bkeep_issue_open\b|\bis:issue\b|\bg1t issue\b|\bg1t work context\b/, "a renamed field, qualifier or command"],
+  ];
+  for (const path of ["apps/web/public/agents.md", "apps/web/public/llms.txt", "apps/web/public/install/claude.sh"]) {
+    const text = read(path);
+    for (const [pattern, what] of stale) {
+      const found = text.match(pattern);
+      assert.equal(found, null, `${path} still names ${what}: ${found?.[0]}`);
+    }
+  }
+  const guide = read("apps/web/public/agents.md");
+  for (const text of ["`work_item`", "/workspaces/{workspace}/work", "work:write", "is:item", "keep_item_open", "/-/work/sessions"]) assert.ok(guide.includes(text), text);
+});
+
 test("features is routed, discoverable on desktop and mobile, and has real documentation targets", () => {
   assert.match(read("apps/web/app/routes.ts"), /route\("features", "routes\/features.tsx"\)/);
   assert.match(read("apps/web/app/routes/sitemap-xml.ts"), /"\/features"/);
