@@ -83,7 +83,7 @@ pub fn added(pack: &Pack, tip: &str, limit: usize) -> Option<Vec<String>> {
         if out.len() > limit {
             return None;
         }
-        queue.extend(read_commit(data).parents);
+        queue.extend(read_commit(&data).parents);
     }
     Some(out)
 }
@@ -97,7 +97,7 @@ pub fn messages(pack: &Pack, ids: &[String]) -> Vec<CommitFacts> {
             let Some((ObjectKind::Commit, data)) = pack.get(id) else {
                 return None;
             };
-            let commit = read_commit(data);
+            let commit = read_commit(&data);
             Some(CommitFacts {
                 sha: id.clone(),
                 message: commit.message,
@@ -179,7 +179,7 @@ pub async fn facts<R: GitRepo>(objects: &Objects<'_, R>, id: &str, signature: Op
     let Some((ObjectKind::Commit, data)) = objects.pack.get(id) else {
         return Ok(None);
     };
-    let commit = read_commit(data);
+    let commit = read_commit(&data);
     let old_tree = match commit.parents.first() {
         Some(parent) => objects.commit_tree(parent).await?,
         None => None,
@@ -215,7 +215,7 @@ pub async fn contains<R: GitRepo>(pack: &Pack, repo: &R, new: &str, old: &str, d
             continue;
         }
         match pack.get(&id) {
-            Some((ObjectKind::Commit, data)) => queue.extend(read_commit(data).parents),
+            Some((ObjectKind::Commit, data)) => queue.extend(read_commit(&data).parents),
             _ => boundary.push(id),
         }
     }
@@ -257,11 +257,11 @@ pub fn signing_facts(pack: &Pack, ids: &[String]) -> (Vec<String>, Vec<String>) 
     let mut emails = Vec::new();
     for id in ids {
         let Some((ObjectKind::Commit, data)) = pack.get(id) else { continue };
-        if let Some(fingerprint) = crate::signatures::fingerprint(data)
+        if let Some(fingerprint) = crate::signatures::fingerprint(&data)
             && !fingerprints.contains(&fingerprint)
         {
             fingerprints.push(fingerprint);
-            if let Some(email) = read_commit(data).committer_email.map(|email| email.to_lowercase())
+            if let Some(email) = read_commit(&data).committer_email.map(|email| email.to_lowercase())
                 && !emails.contains(&email)
             {
                 emails.push(email);
@@ -285,8 +285,8 @@ pub async fn read_all<R: GitRepo>(
     let read = try_join_all(ids.iter().map(|id| async move {
         let signature = owners.and_then(|(keys, emails)| {
             let (_, data) = pack.get(id)?;
-            let committer = read_commit(data).committer_email;
-            Some(crate::signatures::decide(data, committer.as_deref(), keys, emails))
+            let committer = read_commit(&data).committer_email;
+            Some(crate::signatures::decide(&data, committer.as_deref(), keys, emails))
         });
         facts(objects, id, signature).await
     }))
