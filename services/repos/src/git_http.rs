@@ -514,7 +514,7 @@ fn peel_tags(body: &[u8], pushed: &mut [Pushed]) {
         for _ in 0..4 {
             let Some((g1t_scan::pack::ObjectKind::Tag, data)) = pack.get(&id) else { break };
             let header = |name: &str| {
-                std::str::from_utf8(data).ok()?.lines().take_while(|line| !line.is_empty()).find_map(|line| line.strip_prefix(name)).map(str::to_owned)
+                std::str::from_utf8(&data).ok()?.lines().take_while(|line| !line.is_empty()).find_map(|line| line.strip_prefix(name)).map(str::to_owned)
             };
             let (Some(object), Some(kind)) = (header("object "), header("type ")) else { break };
             if kind == "commit" {

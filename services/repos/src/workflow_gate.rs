@@ -87,7 +87,7 @@ pub(crate) async fn changed_in_commits<R: GitRepo>(pack: &Pack, repo: &R, ids: &
         let Some((ObjectKind::Commit, data)) = pack.get(id) else {
             continue;
         };
-        let commit = rule_facts::read_commit(data);
+        let commit = rule_facts::read_commit(&data);
         let old_root = match commit.parents.first() {
             Some(parent) => objects.commit_tree(parent).await?,
             None => None,
