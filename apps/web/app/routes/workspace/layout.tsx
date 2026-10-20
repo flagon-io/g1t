@@ -1,5 +1,5 @@
 import { Package, Plus } from "lucide-react";
-import { Outlet, data, redirect, useLocation, useNavigation } from "react-router";
+import { Outlet, type ShouldRevalidateFunctionArgs, data, redirect, useLocation, useNavigation } from "react-router";
 
 import type { Route } from "./+types/layout";
 import { page } from "../../lib/meta";
@@ -10,6 +10,7 @@ import { WelcomeBanner } from "../../components/welcome";
 import { clearWelcome, welcomes } from "../../lib/invites";
 import { notFound } from "../../lib/not-found.server";
 import { redirectIfRenamed } from "../../lib/renamed.server";
+import { changesShell } from "../../lib/shell-changes";
 import { rememberWorkspace } from "../../lib/workspace-choice";
 import { workspacePage, workspaceRedirect } from "../../lib/workspace-nav";
 import { shortcutOf, workspaceProjects } from "../../lib/workspace-projects.server";
@@ -50,6 +51,26 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const welcome = welcomes(request.headers.get("cookie"), workspace.slug);
   if (welcome) headers.append("Set-Cookie", clearWelcome(secure));
   return data({ workspace, role, welcome }, { headers });
+}
+
+/**
+ * The workspace, and the viewer's role in it, change with the workspace
+ * or after a submission that changes the frame (lib/shell-changes.ts):
+ * not from one of its pages to the next, a filter, or a page refreshing
+ * itself. An old address is still sent on to where it moved.
+ */
+export function shouldRevalidate({
+  currentParams,
+  nextParams,
+  nextUrl,
+  formMethod,
+  formAction,
+  formData,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  if (currentParams.owner !== nextParams.owner) return true;
+  if (formMethod && formMethod !== "GET") return defaultShouldRevalidate && changesShell(formAction, formData);
+  return Boolean(nextUrl.search && workspaceRedirect(nextUrl.pathname, nextUrl.search));
 }
 
 /** A workspace's own pages, each with its title and what it is for. */
