@@ -14,6 +14,7 @@ import type { AskSetup, ChatLiveEvent, ChatMessage, Result } from "@g1t/contract
 import { askPage } from "../lib/ask";
 import { answering, applyLive, fromG1t } from "../lib/g1t-chat";
 import { browserTimeZone } from "../lib/time-zone";
+import { useReadWhenShown } from "../lib/use-read-when-shown";
 import { G1tAnswer } from "./chat/answer";
 import { useChatLive } from "./chat/live";
 import { Alert, AlertDescription } from "./ui/alert";
@@ -127,6 +128,11 @@ export default function HomeSummary({ slug, question, onDone }: { slug: string; 
     return () => clearInterval(timer);
   }, [channelId, finished, load]);
 
+  // Watched here, so read here: the question is the viewer's own, and the
+  // answer is marked once it is finished, while the card is in view.
+  const card = useRef<HTMLDivElement>(null);
+  useReadWhenShown(slug, channelId, finished && answer ? answer.id : null, { target: card });
+
   const told = useRef(false);
   useEffect(() => {
     if (finished && !told.current) {
@@ -154,7 +160,7 @@ export default function HomeSummary({ slug, question, onDone }: { slug: string; 
   }
 
   return (
-    <div aria-live="polite" aria-busy={!finished}>
+    <div ref={card} aria-live="polite" aria-busy={!finished}>
       {channelId && <LiveSocket slug={slug} channelId={channelId} onEvent={onEvent} onReconnect={() => void load()} />}
       {answer ? (
         <G1tAnswer message={answer} context={{ slug, repo: null }} />

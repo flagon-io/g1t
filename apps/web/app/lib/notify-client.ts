@@ -41,6 +41,7 @@ import type { DesktopRunnerBridge } from "./desktop-runner";
 import type { DesktopSettingsBridge } from "./desktop-settings";
 import { openLive } from "./live-socket";
 import { dndOn, isIdle, mergePeople } from "./presence";
+import { shownConversations } from "./read-when-shown";
 import { notificationArrived } from "./sound-events";
 
 import {
@@ -53,6 +54,7 @@ import {
   markReadLocally,
   offerPush,
   heldOpen,
+  isViewing,
   reconnectDelay,
   titleWith,
   waitingCards,
@@ -232,6 +234,8 @@ export function desktopSink(bridge: DesktopBridge): NotificationSink {
         showToast(notification);
         return;
       }
+      // Watched on a page that is showing, if not in front: not news.
+      if (onScreenHere(notification)) return;
       bridge.notify({
         id: notification.id,
         title: notification.title,
@@ -391,8 +395,14 @@ export function setViewing(next: { path: string; channel_id?: string | null }): 
   sendState();
 }
 
+/** Whether this tab, visible, shows the notification's conversation: on its page, or on a surface like Home's Summarize. */
+function onScreenHere(notification: FeedNotification): boolean {
+  if (typeof document === "undefined" || document.visibilityState !== "visible") return false;
+  return isViewing(notification, { ...viewing, shown: shownConversations() });
+}
+
 function showToast(notification: FeedNotification): void {
-  const toasts = addToast(state.toasts, notification, viewing, Date.now());
+  const toasts = addToast(state.toasts, notification, { ...viewing, shown: shownConversations() }, Date.now());
   if (toasts === state.toasts) return;
   const offer =
     state.offer ||
