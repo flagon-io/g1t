@@ -118,7 +118,7 @@ struct Reporter {
 impl Reporter {
     fn send(&self, step: &str, mut body: Value) -> Result<Value> {
         body["token"] = self.token.clone().into();
-        match ureq::post(&format!("{}/{step}", self.base)).send_json(body) {
+        match crate::http::agent().post(&format!("{}/{step}", self.base)).send_json(body) {
             Ok(response) => Ok(response.into_json().unwrap_or(Value::Null)),
             // A refusal (409 `not_enabled`, say) still says why in its
             // body, which the step reads: ureq makes any status over 399
@@ -436,7 +436,7 @@ fn upload_bucket(session: &UploadSession, bucket: &[String], by_hash: &BTreeMap<
         body.extend_from_slice(b"\r\n");
     }
     body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
-    let response = ureq::post(&session.upload_url)
+    let response = crate::http::agent().post(&session.upload_url)
         .set("authorization", &format!("Bearer {}", session.jwt))
         .set("content-type", &format!("multipart/form-data; boundary={boundary}"))
         .send_bytes(&body);
@@ -1339,7 +1339,7 @@ fn start_check(dir: &Path, config: &Path) -> Started {
                 )),
             };
         }
-        let answer = match ureq::get(&url).timeout(Duration::from_secs(30)).call() {
+        let answer = match crate::http::agent().get(&url).timeout(Duration::from_secs(30)).call() {
             Ok(response) => Some(response.into_string().unwrap_or_default()),
             Err(ureq::Error::Status(_, response)) => Some(response.into_string().unwrap_or_default()),
             Err(_) => None,

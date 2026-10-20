@@ -57,7 +57,7 @@ type Result<T> = std::result::Result<T, String>;
 
 impl Registry {
     pub fn new(base: String, host: String, name: String, credentials: Credentials) -> Registry {
-        let agent = ureq::AgentBuilder::new()
+        let agent = crate::http::builder()
             .timeout_connect(Duration::from_secs(30))
             .timeout_read(Duration::from_secs(300))
             .user_agent(concat!("g1t/", env!("CARGO_PKG_VERSION")))

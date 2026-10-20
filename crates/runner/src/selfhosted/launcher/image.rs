@@ -98,7 +98,7 @@ fn safe_name(name: &str) -> Result<&str> {
 /// once its SHA-256 is the manifest's. Says how far it is at each tenth
 /// (`progress`, in percent), when the manifest gives the file's size.
 fn download_checked(url: &str, path: &Path, want: &SandboxFile, progress: &dyn Fn(u64)) -> Result<()> {
-    let response = ureq::get(url).timeout(std::time::Duration::from_secs(3600)).call().map_err(|e| anyhow!("could not fetch {url}: {e}"))?;
+    let response = crate::http::agent().get(url).timeout(std::time::Duration::from_secs(3600)).call().map_err(|e| anyhow!("could not fetch {url}: {e}"))?;
     let part = path.with_extension("part");
     let mut out = std::fs::File::create(&part).with_context(|| format!("could not write {}", part.display()))?;
     let mut reader = response.into_reader();

@@ -29,6 +29,7 @@ mod clone;
 mod deploy;
 mod docker;
 mod guard;
+mod http;
 mod mergecheck;
 mod queue;
 mod selfhosted;

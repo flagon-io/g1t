@@ -428,7 +428,7 @@ pub fn watch() {
 /// Reports the verdict, kills everything else and exits.
 fn stop(verdict: &Verdict, own: u32) -> ! {
     eprintln!("g1t-runner: stopped for unusual CPU use: {}", serde_json::to_string(verdict).unwrap_or_default());
-    let _ = ureq::post(REPORT_URL)
+    let _ = crate::http::agent().post(REPORT_URL)
         .timeout(Duration::from_secs(10))
         .send_json(serde_json::json!({ "verdict": verdict }));
     if let Ok(entries) = std::fs::read_dir("/proc") {

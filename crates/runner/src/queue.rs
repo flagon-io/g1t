@@ -127,7 +127,7 @@ fn build(stack: &[Item], auth: &str) -> std::result::Result<String, Stopped> {
 
 fn report(api: &str, entry: &str, token: &str, mut body: serde_json::Value) -> Result<()> {
     body["token"] = token.into();
-    ureq::post(&format!("{api}/queue/{entry}"))
+    crate::http::agent().post(&format!("{api}/queue/{entry}"))
         .send_json(body)
         .context("could not report the merge queue's result")?;
     Ok(())

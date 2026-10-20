@@ -307,7 +307,7 @@ pub fn main() -> i32 {
             return 2;
         }
     };
-    let agent = ureq::AgentBuilder::new().timeout_connect(Duration::from_secs(30)).timeout(Duration::from_secs(600)).build();
+    let agent = crate::http::builder().timeout_connect(Duration::from_secs(30)).timeout(Duration::from_secs(600)).build();
     let job = Job { api, id, token: token.clone(), agent };
     let mut fetched = 0;
     match back_up(&job, &mut fetched) {

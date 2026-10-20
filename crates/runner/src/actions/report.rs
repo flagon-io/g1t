@@ -157,7 +157,7 @@ impl Api {
         let tries = if rotate { 1 } else { SPEC_TRIES };
         let mut attempt = 1;
         let mut spec: Value = loop {
-            let fetched = ureq::post(&url)
+            let fetched = crate::http::agent().post(&url)
                 .timeout(Duration::from_secs(60))
                 .send_json(body.clone())
                 .map_err(SpecError::from)
@@ -197,7 +197,7 @@ impl Api {
     pub(crate) fn action(&self, repository: &str, git_ref: &str) -> std::result::Result<Value, (bool, String)> {
         // The first job to use an action at a commit waits while g1t
         // fetches and keeps its archive.
-        let sent = ureq::post(&format!("{}/actions/jobs/{}/action", self.base, self.job))
+        let sent = crate::http::agent().post(&format!("{}/actions/jobs/{}/action", self.base, self.job))
             .timeout(Duration::from_secs(120))
             .send_json(json!({ "token": self.token, "report": { "repository": repository, "ref": git_ref } }));
         match sent {
@@ -213,7 +213,7 @@ impl Api {
 
     /// Downloads the archive g1t keeps of `repository` at `sha` to `to`.
     pub(crate) fn action_archive(&self, repository: &str, sha: &str, to: &std::path::Path) -> std::result::Result<u64, String> {
-        let response = ureq::post(&format!("{}/actions/jobs/{}/archive", self.base, self.job))
+        let response = crate::http::agent().post(&format!("{}/actions/jobs/{}/archive", self.base, self.job))
             .timeout(Duration::from_secs(300))
             .send_json(json!({ "token": self.token, "report": { "repository": repository, "sha": sha } }))
             .map_err(|error| match error {
@@ -243,7 +243,7 @@ impl Api {
         // A report that cannot be sent is tried a few times, then dropped:
         // the job goes on, and g1t notices a silent job by itself.
         for attempt in 0..3 {
-            let sent = ureq::post(&format!("{}/actions/jobs/{}", self.base, self.job))
+            let sent = crate::http::agent().post(&format!("{}/actions/jobs/{}", self.base, self.job))
                 .timeout(Duration::from_secs(30))
                 .send_json(json!({ "token": self.token, "report": report }));
             match sent {

@@ -10,7 +10,7 @@ g1t-actions = { path = "../actions" }
 # Reading lockfiles again after a security update (bump.rs).
 g1t-scan = { workspace = true }
 sha2 = "0.10"
-serde_yaml = "0.9"
+serde_yaml = { workspace = true }
 toml = "0.8"
 hex = "0.4"
 # Packing and unpacking artifacts as ZIP files (actions/zip.rs).
@@ -24,16 +24,19 @@ anyhow = "1"
 base64 = "0.22"
 serde = { workspace = true }
 serde_json = { workspace = true }
-# native-certs: a guarded sandbox re-signs HTTPS with a certificate the
-# runner adds to the system store (guard.rs), which webpki-roots never sees.
-ureq = { version = "2", features = ["json", "native-certs"] }
+ureq = { version = "2", features = ["json"] }
+# The system's certificates, which ureq is given (http.rs): a guarded
+# sandbox re-signs HTTPS with a certificate the runner adds to the system
+# store (guard.rs), which webpki-roots never sees. ureq's own native-certs
+# is on rustls-native-certs 0.7 and rustls-pemfile.
+rustls-native-certs = "0.8"
 # Brokered secrets on a self-hosted runner (actions/broker.rs): the job's
 # HTTPS to a brokered host is opened with a certificate made for the job,
 # and its requests are passed to g1t, which fills in the value. With ring,
 # which ureq's rustls already builds.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
-webpki-roots = "0.26"
+webpki-roots = "1.0.10"
 # The certificates' validity, as rcgen takes it.
 time = { version = "0.3", default-features = false, features = ["std"] }
 
