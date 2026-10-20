@@ -2118,7 +2118,8 @@ impl<S: GitStore> Repos<S> {
                 refs_cache::Key::new(&repo.id, version, default_branch.as_deref(), protocol, &kind)
             });
         // A fresh clone's pack may have been kept too: see pack_cache.rs.
-        // Under the same refs version, so never across a change to them.
+        // By the request alone when it names commits by id; under the same
+        // refs version when it names refs, so never across a change to them.
         let pack_key = self
             .packs
             .as_ref()
@@ -2127,8 +2128,10 @@ impl<S: GitStore> Repos<S> {
                 let encoding = request.headers().get("content-encoding").ok().flatten();
                 pack_cache::cacheable(git, get, protocol, encoding.as_deref(), body.as_deref())
             })
-            .zip(refs_cache::usable(registry::refs_state(&repo.id), now_ms()))
-            .map(|(normalized, version)| pack_cache::Key::new(&repo.id, version, &normalized));
+            .and_then(|normalized| {
+                let version = refs_cache::usable(registry::refs_state(&repo.id), now_ms());
+                pack_cache::Key::for_request(&repo.id, version, &normalized)
+            });
         // A kept answer and the free workspace limits, with a kept
         // credential and, for a push, what the repository holds looked up
         // alongside. A kept answer goes back without waiting for the

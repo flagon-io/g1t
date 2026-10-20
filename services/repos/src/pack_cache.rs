@@ -5,13 +5,25 @@
 //! a pull request's head. The git store builds the same pack for it every
 //! time, which takes seconds and is an operation. The answer is kept in a
 //! bucket ([`PackStore`]: R2's `GIT_PACKS` on Cloudflare, or any
-//! S3-compatible store, as [`STORAGE`] says) under the
-//! repository's id, the version of its refs (`refs_version`, see
-//! registry.rs and refs_cache.rs) and a hash of the request with what does
-//! not change the answer taken out ([`normalize`]): the client's `agent`,
-//! its session id, and the order of its lines. A change to the refs moves
-//! the version, so a pack is never served across one; old ones are left for
-//! the bucket's lifecycle rule to delete.
+//! S3-compatible store, as [`STORAGE`] says) under the repository's id and
+//! a hash of the request with what does not change the answer taken out
+//! ([`normalize`]): the client's `agent`, its session id, and the order of
+//! its lines.
+//!
+//! A request that names its wants by object id alone has one answer for
+//! good: the objects an id reaches never change. So it is kept under the
+//! request alone ([`Key::by_request`]), and every job of a CI run that
+//! checks out the same commit finds the first one's pack, whatever moved
+//! in the repository meanwhile (a push, a pull request's test merge, a
+//! fork). Keyed by the refs version, as every pack was, the cache hit 32
+//! times and missed 210 on 2026-10-20. A commit stays fetchable by its id
+//! this way as long as the pack is kept (the bucket's lifecycle rule), as
+//! a commit on GitHub does until it is collected; the request is
+//! authorized first, as always. A request that names refs (`want-ref`) has
+//! an answer that follows them, so it is kept under the version of the
+//! repository's refs (`refs_version`, see registry.rs and refs_cache.rs)
+//! and never served across a change to them ([`Key::new`]). Old packs are
+//! left for the bucket's lifecycle rule to delete.
 //!
 //! On a miss the store's answer goes to git as it arrives and, at the same
 //! time, to the bucket ([`Tee`] and [`fill`]): never held whole. Packs over
@@ -290,13 +302,36 @@ pub fn cacheable(git: &GitRequest, get: bool, protocol: u8, encoding: Option<&st
     normalize(protocol, body?)
 }
 
-/// Where one pack is kept: by repository, refs version and request.
+/// Whether a normalized request names refs (`want-ref`), so that its
+/// answer follows them, rather than naming every want by its object id.
+pub fn names_refs(normalized: &str) -> bool {
+    normalized.lines().any(|line| line.starts_with("want-ref "))
+}
+
+/// Where one pack is kept: by repository and request, and for a request
+/// that names refs, by the version of the refs too.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Key(String);
 
 impl Key {
     pub fn new(repo_id: &str, refs_version: u64, normalized: &str) -> Key {
         Key(format!("packs/{repo_id}/{refs_version}/{}", g1t_secrets::sha256_hex(normalized)))
+    }
+
+    /// For a request whose wants are all object ids: the same for good.
+    pub fn by_request(repo_id: &str, normalized: &str) -> Key {
+        Key(format!("packs/{repo_id}/ids/{}", g1t_secrets::sha256_hex(normalized)))
+    }
+
+    /// The key a normalized request is kept under: by itself when it names
+    /// no refs, otherwise under `refs_version`, and not at all when there
+    /// is no usable version (refs_cache::usable) to put it under.
+    pub fn for_request(repo_id: &str, refs_version: Option<u64>, normalized: &str) -> Option<Key> {
+        if names_refs(normalized) {
+            refs_version.map(|version| Key::new(repo_id, version, normalized))
+        } else {
+            Some(Key::by_request(repo_id, normalized))
+        }
     }
 
     pub fn as_str(&self) -> &str {
@@ -859,6 +894,19 @@ mod tests {
         assert_ne!(Key::new("r1", 4, &normalized), Key::new("r2", 4, &normalized));
         assert_eq!(Key::new("r1", 4, &normalized), Key::new("r1", 4, &normalized));
         assert!(Key::new("r1", 4, &normalized).as_str().starts_with("packs/r1/4/"));
+        // Wants named by id: kept by the request alone, whatever the refs
+        // version, and even while there is none to use.
+        assert!(!names_refs(&normalized));
+        assert_eq!(Key::for_request("r1", Some(4), &normalized), Key::for_request("r1", Some(5), &normalized));
+        assert_eq!(Key::for_request("r1", None, &normalized), Some(Key::by_request("r1", &normalized)));
+        assert_ne!(Key::by_request("r1", &normalized), Key::by_request("r2", &normalized));
+        assert!(Key::by_request("r1", &normalized).as_str().starts_with("packs/r1/ids/"));
+        // Wants named by ref: under the refs version, and not kept without one.
+        let by_ref = v2(&["object-format=sha1"], &["want-ref refs/heads/main", "deepen 1", "done"]);
+        let by_ref = cacheable(&fetch, false, 2, None, Some(&by_ref)).unwrap();
+        assert!(names_refs(&by_ref));
+        assert_eq!(Key::for_request("r1", Some(4), &by_ref), Some(Key::new("r1", 4, &by_ref)));
+        assert_eq!(Key::for_request("r1", None, &by_ref), None);
     }
 
     /// A v2 answer: shallow-info, then the pack in channel 1, progress in 2.
