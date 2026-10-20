@@ -18,6 +18,7 @@ mod diff;
 mod drift;
 mod fallback;
 mod forks;
+mod git_edge;
 mod git_http;
 mod git_ops;
 mod hidden_refs;
@@ -248,6 +249,9 @@ pub(crate) struct Repos<S: GitStore> {
     shared: Option<Rc<shared::Shared>>,
     /// Packs for fresh clones (pack_cache.rs); `None` without the bucket.
     packs: Option<Rc<pack_cache::Packs>>,
+    /// The git edge, for the repositories `GIT_EDGE` names (git_edge.rs);
+    /// `None` while it is off.
+    edge: Option<Rc<git_edge::Edge>>,
     /// What this request started that need not hold up its answer
     /// (store.rs), handed to its `waitUntil` once it has answered.
     deferred: Rc<store::Deferred>,
@@ -2207,19 +2211,23 @@ impl<S: GitStore> Repos<S> {
             after.spawn(env, ctx);
             return Ok(response);
         }
-        // The store's credential: one made a moment ago, here or in another
-        // isolate (see store.rs), or a new one.
-        let access = match kept_access {
-            Some((access, from)) => {
-                timing.note("cred", from.as_str());
-                access
+        // A read the repository's git edge may answer (git_edge.rs): asked
+        // first, for the refs as g1t records them, so it never answers with
+        // older ones. Anything but its answer goes to the store, as before.
+        let edge_version = self
+            .edge
+            .as_ref()
+            .filter(|edge| !write && !fallback && git_edge::answers(git, get) && edge.serves(&repo.namespace, &repo.name))
+            .and(refs_cache::usable(registry::refs_state(&repo.id), now_ms()));
+        let edge_answer = match (self.edge.as_ref(), edge_version) {
+            (Some(edge), Some(version)) => {
+                let answer = edge.answer(&repo.id, version, git, &request, body.as_deref()).await;
+                timing.mark("edge");
+                timing.note("edge", if answer.is_some() { "hit" } else { "miss" });
+                meters::record(if answer.is_some() { git_edge::HIT } else { git_edge::MISS }, &key, 0, 0);
+                answer
             }
-            None => {
-                let access = self.store.mint_access(&key, scope).await?;
-                timing.mark("mint");
-                timing.note("cred", "mint");
-                access
-            }
+            _ => None,
         };
         // Should the store turn a kept credential down, a fetch's first
         // request is tried again with a new one; the requests after it then
@@ -2257,37 +2265,68 @@ impl<S: GitStore> Repos<S> {
             limits.repo_limit = limits.repo_limit.min(limits.held.saturating_add(requested));
             Some(requested)
         } else { None };
-        let mut outcome = git_http::forward(
-            request,
-            body,
-            git,
-            &access,
-            checks,
-            default_branch.as_deref(),
-            limits,
-            timing,
-        )
-        .await?;
-        let turned_down = matches!(
-            &outcome,
-            git_http::Push::Forwarded(forwarded) if matches!(forwarded.response.status_code(), 401 | 403)
-        );
-        if turned_down {
-            self.store.forget_access(&key).await;
-            if let Some(again) = again {
-                let access = self.store.mint_access(&key, scope).await?;
-                outcome = git_http::forward(
-                    again,
-                    None,
-                    git,
-                    &access,
-                    async |_: &[u8], _: bool, _: bool| Ok(push_checks::Checks::clear()),
-                    default_branch.as_deref(),
-                    git_http::PushLimits::default(),
-                    timing,
-                )
-                .await?;
+        // The store's credential, when the store is asked: kept for the git
+        // edge too, which catches up with the store using it.
+        let mut store_access = None;
+        let edge_answered = edge_answer.is_some();
+        let outcome = if let Some(answer) = edge_answer {
+            git_http::Push::Forwarded(git_http::from_edge(answer, git, get, body.as_deref(), default_branch.as_deref()).await?)
+        } else {
+            // One made a moment ago, here or in another isolate (see
+            // store.rs), or a new one.
+            let access = match kept_access {
+                Some((access, from)) => {
+                    timing.note("cred", from.as_str());
+                    access
+                }
+                None => {
+                    let access = self.store.mint_access(&key, scope).await?;
+                    timing.mark("mint");
+                    timing.note("cred", "mint");
+                    access
+                }
+            };
+            let mut outcome = git_http::forward(
+                request,
+                body,
+                git,
+                &access,
+                checks,
+                default_branch.as_deref(),
+                limits,
+                timing,
+            )
+            .await?;
+            let turned_down = matches!(
+                &outcome,
+                git_http::Push::Forwarded(forwarded) if matches!(forwarded.response.status_code(), 401 | 403)
+            );
+            let mut access = access;
+            if turned_down {
+                self.store.forget_access(&key).await;
+                if let Some(again) = again {
+                    access = self.store.mint_access(&key, scope).await?;
+                    outcome = git_http::forward(
+                        again,
+                        None,
+                        git,
+                        &access,
+                        async |_: &[u8], _: bool, _: bool| Ok(push_checks::Checks::clear()),
+                        default_branch.as_deref(),
+                        git_http::PushLimits::default(),
+                        timing,
+                    )
+                    .await?;
+                }
             }
+            store_access = Some(access);
+            outcome
+        };
+        // The edge was asked and did not answer (cold, or behind the refs):
+        // it catches up now, for the next read.
+        if let (Some(edge), Some(version), Some(access), false) = (self.edge.clone(), edge_version, store_access.clone(), edge_answered) {
+            let (repo_id, head) = (repo.id.clone(), repo.default_branch.clone());
+            ctx.wait_until(async move { edge.sync(&repo_id, version, &access, &head).await });
         }
         let forwarded =
             match outcome {
@@ -2338,6 +2377,15 @@ impl<S: GitStore> Repos<S> {
             let mut report = response.bytes().await?;
             self.refs_moved(&repo.id).await;
             timing.mark("refs");
+            // The repository's git edge catches up with the push, so the
+            // clones that follow it (a CI run's) find it ready.
+            if let (200, Some(edge), Some(access), Some(refs)) =
+                (status, self.edge.clone(), store_access.clone(), registry::refs_state(&repo.id))
+                && edge.serves(&repo.namespace, &repo.name)
+            {
+                let (repo_id, head) = (repo.id.clone(), repo.default_branch.clone());
+                ctx.wait_until(async move { edge.sync(&repo_id, refs.version, &access, &head).await });
+            }
             if status == 200 {
                 push_feedback::add(&mut report, self.security.as_ref(), &repo, &viewer).await;
             }
@@ -2356,9 +2404,10 @@ impl<S: GitStore> Repos<S> {
                 }
             }
             response = Response::from_bytes(body)?.with_headers(headers).with_status(status);
-        } else if let (Some(pack_key), Some(packs), true) = (&pack_key, &self.packs, forwarded.from_store) {
+        } else if let (Some(pack_key), Some(packs), true) = (&pack_key, &self.packs, forwarded.from_store || edge_answered) {
             // A fresh clone the bucket did not have: counted, and its pack
-            // kept as it streams to git, when it is a whole one.
+            // kept as it streams to git, when it is a whole one (the git
+            // edge's as much as the store's: smaller, and as good).
             meters::record(pack_cache::MISS, &key, forwarded.sent, 0);
             // Past the repository's limit on writes to the bucket, the pack
             // goes to git without being kept (limits.rs).
@@ -2767,6 +2816,7 @@ fn service(env: &Env) -> Result<Repos<ArtifactsStore>> {
         deferred,
         shared,
         packs: pack_cache::Packs::from_env(env).map(Rc::new),
+        edge: git_edge::Edge::from_env(env).map(Rc::new),
         events: env.service("EVENTS")?,
         security: env.service("SECURITY").ok(),
         billing: env.service("BILLING").ok(),

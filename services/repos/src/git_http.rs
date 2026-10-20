@@ -1078,14 +1078,8 @@ pub async fn forward(
             (Err(error), None) => return Err(error),
         }
     };
-    if let (true, Some(branch)) = (lists_head, default_branch)
-        && response.status_code() == 200
-    {
-        let headers = response.headers().clone();
-        headers.delete("content-length")?;
-        let body = response.bytes().await?;
-        let body = with_head(&body, branch).unwrap_or(body);
-        response = Response::from_bytes(body)?.with_headers(headers);
+    if git.service == GitService::UploadPack {
+        response = read_answer(response, git, lists_head, body.as_deref(), default_branch).await?;
     }
     // A push's ref advertisement asks for a pack without outside bases.
     if method == Method::Get
@@ -1101,12 +1095,6 @@ pub async fn forward(
         let body = hidden_refs::advertisement_without_hidden(&body).unwrap_or(body);
         response = Response::from_bytes(body)?.with_headers(headers);
     }
-    if git.endpoint == "git-upload-pack"
-        && response.status_code() == 200
-        && body.as_deref().is_some_and(negotiating)
-    {
-        response = without_early_pack(response).await?;
-    }
     Ok(Push::Forwarded(Forwarded {
         response,
         pushed: Vec::new(),
@@ -1116,6 +1104,43 @@ pub async fn forward(
         from_store: true,
         unscanned: false,
     }))
+}
+
+/// A read's answer as g1t gives it, from the store or the git edge
+/// (git_edge.rs): an advertisement or `ls-refs` with `HEAD` on the default
+/// branch g1t keeps, and a negotiating fetch's without the sections sent
+/// after acknowledgments without `ready`.
+async fn read_answer(mut response: Response, git: &GitRequest, lists_head: bool, body: Option<&[u8]>, default_branch: Option<&str>) -> Result<Response> {
+    if let (true, Some(branch)) = (lists_head, default_branch)
+        && response.status_code() == 200
+    {
+        let headers = response.headers().clone();
+        headers.delete("content-length")?;
+        let body = response.bytes().await?;
+        let body = with_head(&body, branch).unwrap_or(body);
+        response = Response::from_bytes(body)?.with_headers(headers);
+    }
+    if git.endpoint == "git-upload-pack" && response.status_code() == 200 && body.is_some_and(negotiating) {
+        response = without_early_pack(response).await?;
+    }
+    Ok(response)
+}
+
+/// The git edge's answer to a read (git_edge.rs), as [`forward`] gives the
+/// store's: the same `HEAD` and negotiation handling. Not the store's own,
+/// so never metered as one of its operations.
+pub async fn from_edge(response: Response, git: &GitRequest, get: bool, body: Option<&[u8]>, default_branch: Option<&str>) -> Result<Forwarded> {
+    let lists_head = names_head(git, if get { None } else { body });
+    let response = read_answer(response, git, lists_head, body, default_branch).await?;
+    Ok(Forwarded {
+        response,
+        pushed: Vec::new(),
+        deleted: Vec::new(),
+        pack_bytes: 0,
+        sent: body.map_or(0, |body| body.len() as u64),
+        from_store: false,
+        unscanned: false,
+    })
 }
 
 /// A receive-pack request; see [`forward`]. Its steps: `recv` (the push
