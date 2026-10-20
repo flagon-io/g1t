@@ -6,10 +6,13 @@ import type { FeedNotification, NotificationKind } from "@g1t/contracts";
 import { NotificationCardActions } from "./card-actions";
 import { MemberAvatar } from "../chat/marks";
 
-import { closeOffer, currentSink, declinePush, dismiss, enablePush, useNotifyState } from "../../lib/notify-client";
+import { type NotifyState, closeOffer, currentSink, declinePush, dismiss, enablePush, useNotifySelector } from "../../lib/notify-client";
 import { TOAST_GUESS, TOAST_MS, canQuickReply, hiddenToFit, notificationActions, quickReplyRequest } from "../../lib/notify-store";
 import { Avatar } from "../ui/avatar";
 import { Button } from "../ui/button";
+
+const toastsOf = (s: NotifyState) => s.toasts;
+const offerOf = (s: NotifyState) => s.offer;
 
 /** How each kind reads; an old kind this does not know (an agent's "waiting on you") reads as a notification. */
 const KIND: Partial<Record<NotificationKind, { label: string; icon: ReactNode }>> = {
@@ -198,7 +201,8 @@ function PushOffer() {
  * is on them.
  */
 export function Toaster() {
-  const { toasts, offer } = useNotifyState();
+  const toasts = useNotifySelector(toastsOf);
+  const offer = useNotifySelector(offerOf);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const [hidden, setHidden] = useState(0);

@@ -157,6 +157,38 @@ export function waitingCards(recent: FeedNotification[], settled: ReadonlySet<st
 
 // ── Counts ────────────────────────────────────────────────────────────────
 
+/**
+ * Whether two values read from the store are the same for whoever shows
+ * them: the same value, or objects and arrays whose own fields (items)
+ * are each the same.
+ */
+export function shallowEqual<T>(a: T, b: T): boolean {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a);
+  if (ka.length !== Object.keys(b).length) return false;
+  return ka.every((k) => Object.prototype.hasOwnProperty.call(b, k) && Object.is((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+}
+
+/**
+ * A reader of one part of the store: the last answer again while the state
+ * is the one it read, or while what it reads from a newer state is equal,
+ * so a component that shows that part redraws only when it changes, not
+ * on every word from the feed (a presence change, another workspace's
+ * counts).
+ */
+export function selection<S, T>(): (from: S, select: (state: S) => T, isEqual: (a: T, b: T) => boolean) => T {
+  let last: { from: S; select: (state: S) => T; value: T } | null = null;
+  return (from, select, isEqual) => {
+    if (last && last.from === from && last.select === select) return last.value;
+    const value = select(from);
+    const kept = last && isEqual(last.value, value) ? last.value : value;
+    last = { from, select, value: kept };
+    return kept;
+  };
+}
+
 /** What the rail shows for a workspace. */
 export type LiveBadges = { chat: number; mentions: number; inbox: number };
 

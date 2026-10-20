@@ -56,6 +56,8 @@ import {
   heldOpen,
   isViewing,
   reconnectDelay,
+  selection,
+  shallowEqual,
   titleWith,
   waitingCards,
   type LiveBadges,
@@ -316,16 +318,31 @@ export function useNotifyState(): NotifyState {
   );
 }
 
+/**
+ * One part of the store, for a component that shows only that: it redraws
+ * when that part changes (by `isEqual`, `Object.is` by default), not on
+ * every word from the feed. A presence change used to redraw the whole
+ * shell and every live page.
+ */
+export function useNotifySelector<T>(select: (state: NotifyState) => T, isEqual: (a: T, b: T) => boolean = Object.is): T {
+  const [read] = useState(selection<NotifyState, T>);
+  return useSyncExternalStore(
+    subscribeStore,
+    () => read(state, select, isEqual),
+    () => read(SERVER_STATE, select, isEqual),
+  );
+}
+
 /** The rail's numbers for a workspace from the feed, or null while it cannot say. */
 export function useLiveBadges(workspace: string | null | undefined): Partial<LiveBadges> | null {
-  const s = useNotifyState();
-  return badgesOf(workspace ? s.counts[workspace.toLowerCase()] : null, s.inbox);
+  const key = workspace?.toLowerCase();
+  return useNotifySelector((s) => badgesOf(key ? s.counts[key] : null, s.inbox), shallowEqual);
 }
 
 /** A workspace's counts from the feed, for the Chat sidebar. */
 export function useLiveCounts(workspace: string | null | undefined): FeedCounts | null {
-  const s = useNotifyState();
-  return workspace ? (s.counts[workspace.toLowerCase()] ?? null) : null;
+  const key = workspace?.toLowerCase();
+  return useNotifySelector((s) => (key ? (s.counts[key] ?? null) : null));
 }
 
 /** A card's notification was acted on, or put away: its toast goes, and the panel stops waiting on it. */
@@ -336,8 +353,7 @@ export function settle(id: string): void {
 
 /** The chat cards waiting on the person, newest first, for the panel. */
 export function useWaitingCards(workspace?: string | null): FeedNotification[] {
-  const s = useNotifyState();
-  return waitingCards(s.recent, s.settled, Date.now(), workspace);
+  return useNotifySelector((s) => waitingCards(s.recent, s.settled, Date.now(), workspace), shallowEqual);
 }
 
 /** People's presence by user id, with an index by username (lowercased). */
@@ -356,16 +372,24 @@ function byName(people: Record<string, PresenceEntry>): Map<string, PresenceEntr
  * Your own comes from `me`, so it moves the moment you change it.
  */
 export function usePresenceOf(person: { id?: string | null; username?: string | null } | null | undefined): PresenceEntry | null {
-  const s = useNotifyState();
-  if (!person) return null;
-  const mine = s.me && ((person.id && person.id === s.me.user_id) || (person.username && person.username.toLowerCase() === s.me.username.toLowerCase()));
-  if (mine) return s.me;
-  if (person.id && s.people[person.id]) return s.people[person.id]!;
-  return person.username ? (byName(s.people).get(person.username.toLowerCase()) ?? null) : null;
+  const id = person?.id ?? null;
+  const username = person?.username ?? null;
+  // Only this person's entry: someone else going idle leaves this avatar alone.
+  return useNotifySelector((s) => presenceIn(s, id, username), shallowEqual);
 }
 
+function presenceIn(s: NotifyState, id: string | null, username: string | null): PresenceEntry | null {
+  if (!id && !username) return null;
+  const mine = s.me && ((id && id === s.me.user_id) || (username && username.toLowerCase() === s.me.username.toLowerCase()));
+  if (mine) return s.me;
+  if (id && s.people[id]) return s.people[id]!;
+  return username ? (byName(s.people).get(username.toLowerCase()) ?? null) : null;
+}
+
+const ownPresence = (s: NotifyState) => s.me;
+
 export function useOwnPresence(): OwnPresence | null {
-  return useNotifyState().me;
+  return useNotifySelector(ownPresence);
 }
 
 /** Whether you are not to be disturbed right now, for code outside React (the sound rules). */
@@ -383,8 +407,10 @@ export function feedConnected(): boolean {
   return state.connected;
 }
 
+const connectedOf = (s: NotifyState) => s.connected;
+
 export function useFeedConnected(): boolean {
-  return useNotifyState().connected;
+  return useNotifySelector(connectedOf);
 }
 
 let viewing: { path: string; channel_id?: string | null } = { path: "" };
