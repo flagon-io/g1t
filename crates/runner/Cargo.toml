@@ -36,7 +36,7 @@ rustls-native-certs = "0.8"
 # which ureq's rustls already builds.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
-webpki-roots = "0.26"
+webpki-roots = "1.0.10"
 # The certificates' validity, as rcgen takes it.
 time = { version = "0.3", default-features = false, features = ["std"] }
 
