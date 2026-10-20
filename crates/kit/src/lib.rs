@@ -41,8 +41,24 @@ pub async fn call<A: Serialize, R: DeserializeOwned>(
     method: &str,
     arguments: &A,
 ) -> Result<R> {
+    call_in(service, method, arguments, None).await
+}
+
+/// Calls `method` like [`call`], in the D1 session `session` asks for (a
+/// constraint or a bookmark, as [`d1::constraint`] reads them); `None`
+/// reads the service's primary, as [`call`] does. For reads made on a
+/// caller's behalf, in the session it asked for them ([`d1::forwarded`]).
+pub async fn call_in<A: Serialize, R: DeserializeOwned>(
+    service: &Fetcher,
+    method: &str,
+    arguments: &A,
+    session: Option<&str>,
+) -> Result<R> {
     let headers = Headers::new();
     headers.set("content-type", "application/json")?;
+    if let Some(session) = session {
+        headers.set(d1::BOOKMARK, session)?;
+    }
     let mut init = RequestInit::new();
     init.with_method(Method::Post)
         .with_headers(headers)

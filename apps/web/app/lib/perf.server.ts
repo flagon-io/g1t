@@ -9,6 +9,7 @@ import {
   bookmarkCookie,
   coveredMs,
   mayWrite,
+  nestedSessions,
   setsBookmark,
   readBookmarks,
   rpcMethodOf,
@@ -74,14 +75,17 @@ export function instrumented(name: string, binding: ServiceBinding): ServiceBind
       const perf = scope.getStore();
       const method = rpcMethodOf(input);
       if (!perf) return answerInTime(binding, name, method, input, init);
-      const session = sessionFor(name, perf.bookmarks, perf.writing, Math.floor(Date.now() / 1000));
+      const now = Math.floor(Date.now() / 1000);
+      const session = sessionFor(name, perf.bookmarks, perf.writing, now);
+      const nested = nestedSessions(name, method, perf.bookmarks, perf.writing, now);
       let sent = init;
-      if (session) {
+      if (session || nested.length > 0) {
         const headers = new Headers(init?.headers);
-        headers.set("x-d1-bookmark", session);
+        if (session) headers.set("x-d1-bookmark", session);
+        for (const [header, value] of nested) headers.set(header, value);
         sent = { ...init, headers };
-        perf.sessions.set(name, session.startsWith("first-") ? session.slice(6) : "bookmark");
       }
+      if (session) perf.sessions.set(name, session.startsWith("first-") ? session.slice(6) : "bookmark");
       if (SESSION_SERVICES.has(name) && mayWrite(method)) perf.wrote = true;
       const from = Date.now();
       let response: Response;

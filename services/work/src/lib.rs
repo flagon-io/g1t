@@ -295,6 +295,12 @@ struct Work {
     /// Repositories read in this request, by id, for rules that need one
     /// where only a pull request is at hand (rulesets.rs `repo_for`).
     known_repos: std::cell::RefCell<std::collections::HashMap<String, Repo>>,
+    /// Where this request's reads of repos may go: the session the site
+    /// would have asked repos for itself (crates/kit/src/d1.rs
+    /// `forwarded`), so a page's access checks read a replica near it
+    /// rather than the primary each time. `None`, the primary, for every
+    /// other caller, and for methods that may write.
+    repos_session: Option<String>,
 }
 
 impl Work {
@@ -390,17 +396,19 @@ impl Work {
     }
 
     /// The repository, if the viewer may see it. Whether they may is
-    /// decided by the repos service.
+    /// decided by the repos service, from where the caller would have read
+    /// it (`repos_session`).
     async fn repo(&self, path: &RepoPath, viewer: &Viewer) -> Result<Outcome<Repo>> {
         let found: Outcome<Repo> = self
             .timing
-            .rpc(g1t_kit::call(
+            .rpc(g1t_kit::call_in(
                 &self.repos,
                 "get",
                 &GetArgs {
                     path: path.clone(),
                     viewer: viewer.clone(),
                 },
+                self.repos_session.as_deref(),
             ))
             .await?;
         if let Outcome::Ok(repo) = &found {
@@ -1192,7 +1200,7 @@ impl Work {
         // about; those of repositories the viewer cannot read are dropped.
         let asked = serde_json::to_string(&ids)?;
         let check = ReadableArgs { ids, viewer: a.viewer };
-        let readable = self.timing.rpc(g1t_kit::call::<_, Vec<Repo>>(&self.repos, "readable", &check));
+        let readable = self.timing.rpc(g1t_kit::call_in::<_, Vec<Repo>>(&self.repos, "readable", &check, self.repos_session.as_deref()));
         let (readable, rows) = try_join(readable, self.timing.db(1, self.newest_pulls(asked, limit))).await?;
         if readable.is_empty() {
             return Ok(Vec::new());
@@ -2591,6 +2599,7 @@ fn service(env: &Env) -> Result<Work> {
         timing: g1t_kit::d1::Timing::default(),
         prefetched: std::cell::RefCell::new(None),
         known_repos: std::cell::RefCell::new(std::collections::HashMap::new()),
+        repos_session: None,
     })
 }
 
@@ -2604,6 +2613,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
     let body: serde_json::Value = request.json().await?;
     let mut work = service(&env)?;
     work.db = db;
+    work.repos_session = g1t_kit::d1::forwarded(&request, "repos")?;
 
     let answered = match method.as_str() {
         // Work items (items/) and moving issues into them (items/migration.rs).
