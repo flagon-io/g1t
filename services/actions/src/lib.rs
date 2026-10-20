@@ -88,10 +88,12 @@ pub const WAIT_FOR_MACHINE_MS: u64 = 30 * 60 * 1000;
 
 /// How long a job on g1t's machines has to say anything after it starts.
 /// Its runner reports its first step within seconds (6 to 12 on Deploy
-/// #445); one that has said nothing by now lost its sandbox before it ran
-/// anything (on 2026-10-20, a runner rollout replacing containers under
-/// two jobs of Deploy #443), so it is tried again rather than left until
-/// SILENT_MS fails it.
+/// #445); one that has said nothing by now never got a sandbox, so it is
+/// tried again rather than left until SILENT_MS fails it. On 2026-10-20
+/// two jobs of Deploy #443 were started from the request of a job that
+/// reported its end: no container was free, the library's retries took
+/// longer than that job's container stayed connected, and the start was
+/// cancelled with the request, after the jobs were marked as running.
 pub const FIRST_REPORT_MS: u64 = 3 * 60 * 1000;
 
 /// Whether a job that started at `started` and was last heard from at
