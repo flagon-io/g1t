@@ -11,6 +11,13 @@
  * (and for DEPLOY_GRACE_MS after) no new draft is made unless the trouble
  * outlasts it. No Workers imports, so it is tested under Node.
  *
+ * Kept calm: slowness alone on a part g1t is not down without (not
+ * `core`) is drafted only once its run has lasted SLOW_SUSTAIN_MS; a part
+ * whose draft was dismissed on its own in the last COOLDOWN_MS brings that
+ * draft back rather than making a new one, unless it is worse (not
+ * answering where it was slow, or WORSE_FACTOR over its slow line); and a
+ * draft is raised again only while its trouble is still going.
+ *
  * A slow answer only counts once the check, asked again at once, is slow
  * too (probe.ts `probe`), so one cold start is not a slow check.
  */
@@ -32,6 +39,16 @@ export const STALE_EVERY_MS = 6 * 60 * 60_000;
 export const DEPLOY_GRACE_MS = 3 * 60_000;
 /** A deploy that said it started and never said it finished stops counting after this. */
 export const DEPLOY_MAX_MS = 30 * 60_000;
+/**
+ * How long slowness alone, on a part that is not core, goes on before it
+ * is drafted. Page speed flapped over its line all day on 20 Oct: four
+ * drafts made, each dismissed on its own soon after.
+ */
+export const SLOW_SUSTAIN_MS = 15 * 60_000;
+/** After a draft is dismissed on its own, how long its parts bring it back rather than make a new one. */
+export const COOLDOWN_MS = 2 * 60 * 60_000;
+/** Slow by this much over a part's line is worse than slow: a new draft, cooldown or not. */
+export const WORSE_FACTOR = 1.5;
 
 /** One check in a run's `recent`: good, slow, or not answering. */
 export type Mark = "." | "s" | "x";
@@ -74,7 +91,12 @@ export type Detection = {
   recovered: (Trouble & { incident: string })[];
   /** Parts that crossed the line during a deploy: kept counting, not raised yet. */
   held: string[];
+  /** Parts that crossed the line again within COOLDOWN_MS of their draft's dismissal, no worse: that draft brought back. */
+  reopen: (Trouble & { incident: string })[];
 };
+
+/** A part whose detected draft was dismissed on its own lately: what it was, and when. */
+export type Cooled = { incident: string; state: "degraded" | "down"; at: string };
 
 export type DetectOptions = {
   /** Failed or slow checks of the last `window` that cross the line. */
@@ -84,7 +106,24 @@ export type DetectOptions = {
   recoverAfter?: number;
   /** A deploy is running, or just finished: no new drafts, only counting. */
   quiet?: boolean;
+  /** Parts g1t is not down without (`core: false`): slowness alone waits SLOW_SUSTAIN_MS. */
+  minor?: Set<string>;
+  /** Parts whose detected draft was dismissed on its own (`cooledAt` keeps those of the last COOLDOWN_MS). */
+  cooled?: Map<string, Cooled>;
+  /** Each part's slow line, for what is worse than slow. */
+  slowMs?: (key: string) => number;
+  sustainMs?: number;
+  cooldownMs?: number;
 };
+
+/**
+ * Whether trouble is worse than what a dismissed draft was about: not
+ * answering where it was slow, or slow by WORSE_FACTOR over the line.
+ */
+export function worseThan(cooled: Cooled, now: { state: "degraded" | "down"; ms?: number | null }, slowMs: number): boolean {
+  if (cooled.state === "down") return false;
+  return now.state === "down" || (now.ms != null && now.ms > slowMs * WORSE_FACTOR);
+}
 
 const isBad = (m: string) => m === "s" || m === "x";
 
@@ -121,15 +160,26 @@ export function upgradeStreak(s: Omit<Streak, "checks" | "recent"> & { checks?: 
 
 export function detect(
   previous: Map<string, Streak>,
-  observations: { component: string; state: StatusComponentState }[],
+  /** `ms`: the time the check is judged on (the site's own, for Page speed). */
+  observations: { component: string; state: StatusComponentState; ms?: number | null }[],
   open: OpenRef[],
   maintenance: Set<string>,
   at: Date,
-  { bad: need = DETECT_BAD, window = DETECT_WINDOW, recoverAfter = RECOVER_AFTER, quiet = false }: DetectOptions = {},
+  {
+    bad: need = DETECT_BAD,
+    window = DETECT_WINDOW,
+    recoverAfter = RECOVER_AFTER,
+    quiet = false,
+    minor = new Set(),
+    cooled = new Map(),
+    slowMs = () => Number.POSITIVE_INFINITY,
+    sustainMs = SLOW_SUSTAIN_MS,
+    cooldownMs = COOLDOWN_MS,
+  }: DetectOptions = {},
 ): Detection {
-  const out: Detection = { streaks: [], draft: [], failing: [], recovered: [], held: [] };
+  const out: Detection = { streaks: [], draft: [], failing: [], recovered: [], held: [], reopen: [] };
   const covering = (key: string) => open.filter((i) => i.components.includes(key));
-  for (const { component: key, state } of observations) {
+  for (const { component: key, state, ms } of observations) {
     const prev = previous.get(key);
     if (state === "unmonitored" || maintenance.has(key)) continue;
     const m = mark(state);
@@ -158,11 +208,18 @@ export function detect(
     } else if (!streak.alerted && badIn(recent) >= need) {
       const t = trouble();
       const incidents = covering(key);
+      const back = cooled.get(key);
+      const recently = back != null && at.getTime() - Date.parse(back.at) < cooldownMs;
       if (incidents.length) {
         streak.alerted = true;
         for (const i of incidents) out.failing.push({ incident: i.id, ...t });
+      } else if (streak.state === "degraded" && minor.has(key) && at.getTime() - Date.parse(streak.since) < sustainMs) {
+        // Slowness alone on a part g1t is not down without: kept counting until it lasts.
       } else if (quiet) {
         out.held.push(key);
+      } else if (recently && !worseThan(back, { state: streak.state, ms }, slowMs(key))) {
+        streak.alerted = true;
+        out.reopen.push({ incident: back.incident, ...t });
       } else {
         streak.alerted = true;
         out.draft.push(t);
@@ -242,6 +299,8 @@ export type WatchedDraft = {
   healthy_since: string | null;
   /** When the alert last went out again for it; null before the first time. */
   reminded_at: string | null;
+  /** When it was last brought back after being dismissed (`Detection.reopen`): STALE_AFTER_MS counts from here then. */
+  reopened_at?: string | null;
 };
 
 export type Settled = {
@@ -275,17 +334,22 @@ export function settleDrafts(drafts: WatchedDraft[], troubled: Set<string>, at: 
 
 /**
  * Detected drafts to raise again: unacknowledged for STALE_AFTER_MS since
- * they were made, the first time; then every STALE_EVERY_MS after the last
- * time. `drafts` are the ones still waiting after this round's dismissals.
+ * they were made (or brought back), the first time; then every
+ * STALE_EVERY_MS after the last time. Only while the trouble is still
+ * going: a draft none of whose parts is `troubled` now waits quietly to be
+ * dismissed. `drafts` are the ones still waiting after this round's
+ * dismissals.
  */
 export function staleDrafts(
-  drafts: Pick<WatchedDraft, "id" | "title" | "declared_at" | "reminded_at">[],
+  drafts: Pick<WatchedDraft, "id" | "title" | "components" | "declared_at" | "reminded_at" | "reopened_at">[],
+  troubled: Set<string>,
   at: Date,
   { after = STALE_AFTER_MS, every = STALE_EVERY_MS } = {},
 ): { id: string; title: string; waiting_ms: number }[] {
   const t = at.getTime();
   return drafts
-    .filter((d) => (d.reminded_at ? t - Date.parse(d.reminded_at) >= every : t - Date.parse(d.declared_at) >= after))
+    .filter((d) => d.components.some((k) => troubled.has(k)))
+    .filter((d) => (d.reminded_at ? t - Date.parse(d.reminded_at) >= every : t - Date.parse(d.reopened_at ?? d.declared_at) >= after))
     .map((d) => ({ id: d.id, title: d.title, waiting_ms: Math.max(0, t - Date.parse(d.declared_at)) }));
 }
 
@@ -347,6 +411,11 @@ export function recoverySentence(name: string, t: { state: "degraded" | "down"; 
 /** The timeline line, and the follow-up email's words, when a recovered draft is dismissed on its own. */
 export function autoDismissText(lastedMs: number, recoveredAt: string, healthyFor = RECOVERED_FOR_MS): string {
   return `Recovered after ${minutesWords(lastedMs)}, at ${recoveredAt}, and stayed healthy for ${minutesWords(healthyFor)}; dismissed automatically. It never appeared on the status page.`;
+}
+
+/** The timeline line when a dismissed draft is brought back by the same trouble. */
+export function reopenText(sentence: string, dismissedAt: string, sinceMs: number): string {
+  return `Back ${minutesWords(sinceMs)} after it was dismissed (${dismissedAt}): ${sentence} Brought back rather than drafted again; no alert was sent.`;
 }
 
 /** The timeline line when a draft left waiting is raised again. */

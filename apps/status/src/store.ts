@@ -25,7 +25,7 @@ import type {
   TimelineKind,
 } from "@g1t/contracts";
 
-import { type DeployWindow, type Streak, type WatchedDraft, upgradeStreak } from "./detect.ts";
+import { type Cooled, type DeployWindow, type Streak, type WatchedDraft, upgradeStreak } from "./detect.ts";
 import { type Entry, type IncidentFacts, durations, shortId } from "./incidents.ts";
 import { type Current, type DayRow, HISTORY_DAYS, dayOf, overallImpact } from "./model.ts";
 import { postmortemDraft } from "./postmortem.ts";
@@ -883,11 +883,14 @@ export async function saveDeploy(db: D1Database, window: DeployWindow): Promise<
 
 const HEALTHY = "draft_healthy:";
 const REMINDED = "draft_reminded:";
+const REOPENED = "draft_reopened:";
+/** `cooldown:<part>`: the part's detected draft dismissed on its own, as detect.ts `Cooled` in JSON. */
+const COOLDOWN = "cooldown:";
 
 /**
  * Detected drafts no one has picked up (unacknowledged, never published),
- * with their parts, since when those have been healthy, and when the
- * alert last went out again for them.
+ * with their parts, since when those have been healthy, when the alert
+ * last went out again for them, and when one was brought back.
  */
 export async function watchedDrafts(db: D1Database): Promise<WatchedDraft[]> {
   const list = rows<{
@@ -897,14 +900,16 @@ export async function watchedDrafts(db: D1Database): Promise<WatchedDraft[]> {
     declared_at: string;
     healthy_since: string | null;
     reminded_at: string | null;
+    reopened_at: string | null;
     component: string | null;
   }>(
     (await db
       .prepare(
-        `SELECT i.id, i.title, i.started_at, i.declared_at, m.value AS healthy_since, r.value AS reminded_at, c.component FROM incident i
+        `SELECT i.id, i.title, i.started_at, i.declared_at, m.value AS healthy_since, r.value AS reminded_at, o.value AS reopened_at, c.component FROM incident i
          LEFT JOIN incident_component c ON c.incident_id = i.id AND c.impact != 'operational'
          LEFT JOIN meta m ON m.key = '${HEALTHY}' || i.id
          LEFT JOIN meta r ON r.key = '${REMINDED}' || i.id
+         LEFT JOIN meta o ON o.key = '${REOPENED}' || i.id
          WHERE i.source = 'detected' AND i.visibility = 'draft' AND i.acknowledged_at IS NULL AND i.resolved_at IS NULL AND i.published_at IS NULL`,
       )
       .all()) as D1Result,
@@ -918,6 +923,7 @@ export async function watchedDrafts(db: D1Database): Promise<WatchedDraft[]> {
       declared_at: r.declared_at,
       healthy_since: r.healthy_since ?? null,
       reminded_at: r.reminded_at ?? null,
+      reopened_at: r.reopened_at ?? null,
       components: [],
     };
     if (r.component) d.components.push(r.component);
@@ -949,11 +955,15 @@ export async function saveHealthy(db: D1Database, healthy: { id: string; since: 
  * watched (`watching`: every watched draft's id).
  */
 export async function saveReminders(db: D1Database, watching: string[], reminded: { id: string; text: string }[], now: Date): Promise<void> {
-  const keys = watching.map((id) => `${REMINDED}${id}`);
+  const forget = (prefix: string) => {
+    const keys = watching.map((id) => `${prefix}${id}`);
+    return keys.length
+      ? db.prepare(`DELETE FROM meta WHERE key LIKE '${prefix}%' AND key NOT IN (${inList(keys)})`).bind(...keys)
+      : db.prepare(`DELETE FROM meta WHERE key LIKE '${prefix}%'`);
+  };
   await db.batch([
-    keys.length
-      ? db.prepare(`DELETE FROM meta WHERE key LIKE '${REMINDED}%' AND key NOT IN (${inList(keys)})`).bind(...keys)
-      : db.prepare(`DELETE FROM meta WHERE key LIKE '${REMINDED}%'`),
+    forget(REMINDED),
+    forget(REOPENED),
     ...reminded.flatMap((r) => [
       db
         .prepare(`INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT (key) DO UPDATE SET value = excluded.value`)
@@ -966,7 +976,9 @@ export async function saveReminders(db: D1Database, watching: string[], reminded
 /**
  * Dismisses a detected draft that recovered, as `status`, resolved at the
  * moment it recovered. Only while it is still an untouched draft: returns
- * false (and changes nothing) when staff got to it first.
+ * false (and changes nothing) when staff got to it first. Its parts are
+ * cooled for detect.ts COOLDOWN_MS: the same trouble back brings this
+ * draft back (`reopenDraft`) rather than making a new one.
  */
 export async function autoDismiss(db: D1Database, id: string, recoveredAt: string, text: string, now: Date): Promise<boolean> {
   const done = await db
@@ -979,8 +991,60 @@ export async function autoDismiss(db: D1Database, id: string, recoveredAt: strin
   if ((done.meta?.changes ?? 0) === 0) return false;
   await db.batch([
     ...timelineStatements(db, id, [{ kind: "dismissed", public: false, status: null, text }], now, "status"),
-    db.prepare(`DELETE FROM meta WHERE key IN (?1, ?2)`).bind(`${HEALTHY}${id}`, `${REMINDED}${id}`),
+    db.prepare(`DELETE FROM meta WHERE key IN (?1, ?2, ?3)`).bind(`${HEALTHY}${id}`, `${REMINDED}${id}`, `${REOPENED}${id}`),
+    db
+      .prepare(
+        `INSERT INTO meta (key, value)
+         SELECT '${COOLDOWN}' || component, json_object('incident', incident_id, 'state', CASE impact WHEN 'major_outage' THEN 'down' ELSE 'degraded' END, 'at', ?2)
+         FROM incident_component WHERE incident_id = ?1 AND impact != 'operational'
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
+      )
+      .bind(id, now.toISOString()),
     auditStatement(db, now.toISOString(), "status", "incident_dismissed", id, `Dismissed automatically: ${text}`),
+  ]);
+  return true;
+}
+
+/** Parts whose detected draft was dismissed on its own within `cooldownMs`; older ones are forgotten. */
+export async function loadCooled(db: D1Database, now: Date, cooldownMs: number): Promise<Map<string, Cooled>> {
+  const [, read] = await db.batch([
+    db.prepare(`DELETE FROM meta WHERE key LIKE '${COOLDOWN}%' AND json_extract(value, '$.at') < ?1`).bind(iso(now.getTime() - cooldownMs)),
+    db.prepare(`SELECT key, value FROM meta WHERE key LIKE '${COOLDOWN}%'`),
+  ]);
+  const map = new Map<string, Cooled>();
+  for (const r of rows<{ key: string; value: string }>(read as D1Result)) {
+    try {
+      const c = JSON.parse(r.value) as Cooled;
+      if (typeof c.incident === "string" && typeof c.at === "string") map.set(r.key.slice(COOLDOWN.length), c);
+    } catch {
+      // Not ours to read: left to expire.
+    }
+  }
+  return map;
+}
+
+/**
+ * Brings back a detected draft dismissed on its own: a draft again,
+ * investigating, with `text` on its timeline. Only while no one has picked
+ * it up: returns false (and changes nothing) otherwise. Its parts are no
+ * longer cooled, and STALE_AFTER_MS counts again from now.
+ */
+export async function reopenDraft(db: D1Database, id: string, text: string, now: Date): Promise<boolean> {
+  const done = await db
+    .prepare(
+      `UPDATE incident SET visibility = 'draft', status = 'investigating', resolved_at = NULL
+       WHERE id = ?1 AND visibility = 'dismissed' AND source = 'detected' AND acknowledged_at IS NULL AND published_at IS NULL`,
+    )
+    .bind(id)
+    .run();
+  if ((done.meta?.changes ?? 0) === 0) return false;
+  await db.batch([
+    ...timelineStatements(db, id, [{ kind: "failing", public: false, status: null, text }], now, "status"),
+    db.prepare(`DELETE FROM meta WHERE key LIKE '${COOLDOWN}%' AND json_extract(value, '$.incident') = ?1`).bind(id),
+    db
+      .prepare(`INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT (key) DO UPDATE SET value = excluded.value`)
+      .bind(`${REOPENED}${id}`, now.toISOString()),
+    auditStatement(db, now.toISOString(), "status", "incident_reopened", id, `Brought back automatically: ${text}`),
   ]);
   return true;
 }

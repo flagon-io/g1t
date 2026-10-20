@@ -55,6 +55,7 @@ import plexMono from "@g1t/theme/fonts/ibm-plex-mono-latin-400.woff2";
 
 import { type Targets, components } from "./components.ts";
 import {
+  COOLDOWN_MS,
   autoDismissText,
   deployChange,
   deployQuiet,
@@ -64,6 +65,7 @@ import {
   minutesWords,
   quietUntil,
   recoverySentence,
+  reopenText,
   settleDrafts,
   staleDrafts,
   staleText,
@@ -129,6 +131,7 @@ import {
   facts,
   incidentDetail,
   load,
+  loadCooled,
   loadDeploy,
   loadHistory,
   loadPublicIncident,
@@ -142,6 +145,7 @@ import {
   publishPostmortem,
   recipients,
   record,
+  reopenDraft,
   requestSubscription,
   saveDeploy,
   saveHealthy,
@@ -331,41 +335,66 @@ async function afterChecks(env: Env, ctx: { waitUntil(p: Promise<unknown>): void
     });
   }
   // Detection. A deploy restarts services: during one, and briefly after, trouble is counted but not drafted.
-  const [streaks, open, page, deploy] = await Promise.all([loadStreaks(env.DB), openRefs(env.DB), load(env.DB, now, origin), loadDeploy(env.DB)]);
+  const [streaks, open, page, deploy, cooled] = await Promise.all([
+    loadStreaks(env.DB),
+    openRefs(env.DB),
+    load(env.DB, now, origin),
+    loadDeploy(env.DB),
+    loadCooled(env.DB, now, COOLDOWN_MS),
+  ]);
   const quiet = deployQuiet(deploy, now);
-  const found = detect(streaks, observations, open, underMaintenance(page.maintenance, now), now, { quiet });
+  const slowMs = (key: string) => parts(env).find((p) => p.key === key)?.slowMs ?? SLOW_MS;
+  const minor = new Set(
+    parts(env)
+      .filter((p) => !p.core)
+      .map((p) => p.key),
+  );
+  // Each part on the time it is judged on: the site's own, for Page speed.
+  const judged = observations.map((o) => ({ ...o, ms: o.server_ms ?? o.latency_ms }));
+  const found = detect(streaks, judged, open, underMaintenance(page.maintenance, now), now, { quiet, minor, cooled, slowMs });
   await saveStreaks(env.DB, found.streaks);
   if (found.held.length) console.log(JSON.stringify({ event: "status.held_for_deploy", parts: found.held, deploy: deploy?.id ?? null }));
   const name = (key: string) => named.get(key) ?? key;
-  const slowMs = (key: string) => parts(env).find((p) => p.key === key)?.slowMs ?? SLOW_MS;
   const lines = [
     ...found.failing.map((f) => ({ incident: f.incident, kind: "failing" as const, text: troubleSentence(name(f.key), f, stamp(f.since), slowMs(f.key)) })),
     ...found.recovered.map((r) => ({ incident: r.incident, kind: "recovered" as const, text: recoverySentence(name(r.key), r, stamp(r.since)) })),
   ];
   await addSystemLines(env.DB, lines, now);
+  // The same trouble back soon after its draft was dismissed on its own: that draft back, quietly. One staff got to first is drafted anew.
+  const draft = [...found.draft];
+  for (const incident of new Set(found.reopen.map((r) => r.incident))) {
+    const back = found.reopen.filter((r) => r.incident === incident);
+    const dismissedAt = cooled.get(back[0]!.key)!.at;
+    const said = back.map((r) => troubleSentence(name(r.key), r, stamp(r.since), slowMs(r.key))).join(" ");
+    if (await reopenDraft(env.DB, incident, reopenText(said, stamp(dismissedAt), now.getTime() - Date.parse(dismissedAt)), now)) {
+      console.warn(JSON.stringify({ event: "status.reopened", id: incident, parts: back.map((r) => r.key) }));
+    } else {
+      draft.push(...back);
+    }
+  }
   const sudo = (id: string) => `${(env.SUDO_URL || "https://sudo.g1t.sh").replace(/\/+$/, "")}/incidents/${id}`;
   const alertTo = (env.STATUS_ALERT_EMAIL ?? "").trim();
   const send = sender(env);
-  if (found.draft.length) {
+  if (draft.length) {
     const core = new Set(
       parts(env)
         .filter((p) => p.core)
         .map((p) => p.key),
     );
-    const title = draftTitle(found.draft.map((d) => ({ name: name(d.key), state: d.state })));
-    const since = found.draft.map((d) => d.since).sort()[0]!;
-    const said = found.draft.map((d) => troubleSentence(name(d.key), d, stamp(d.since), slowMs(d.key)));
+    const title = draftTitle(draft.map((d) => ({ name: name(d.key), state: d.state })));
+    const since = draft.map((d) => d.since).sort()[0]!;
+    const said = draft.map((d) => troubleSentence(name(d.key), d, stamp(d.since), slowMs(d.key)));
     // Trouble that began in a deploy and outlasted it: say so, it is the first thing to rule out.
     const note = deploy && deployQuiet(deploy, new Date(since)) ? `It began during a deploy (started ${stamp(deploy.started_at)}) and outlasted it.` : null;
     const id = await createIncident(
       env.DB,
       {
         title,
-        severity: found.draft.some((d) => d.state === "down" && core.has(d.key)) ? "sev2" : "sev3",
+        severity: draft.some((d) => d.state === "down" && core.has(d.key)) ? "sev2" : "sev3",
         status: "investigating",
         visibility: "draft",
         source: "detected",
-        components: found.draft.map((d) => ({ key: d.key, impact: detectedImpact(d.state) })),
+        components: draft.map((d) => ({ key: d.key, impact: detectedImpact(d.state) })),
         started_at: since,
         acknowledged_at: null,
         commander: null,
@@ -383,7 +412,7 @@ async function afterChecks(env: Env, ctx: { waitUntil(p: Promise<unknown>): void
       now,
       { action: "incident_detected", detail: title },
     );
-    console.warn(JSON.stringify({ event: "status.detected", id, parts: found.draft.map((d) => d.key), since }));
+    console.warn(JSON.stringify({ event: "status.detected", id, parts: draft.map((d) => d.key), since }));
     if (alertTo && send) {
       const { text, html } = renderMail(alertLetter({ title, lines: said, link: sudo(id), ...(note ? { note } : {}) }));
       ctx.waitUntil(
@@ -405,7 +434,9 @@ async function afterChecks(env: Env, ctx: { waitUntil(p: Promise<unknown>): void
     if (!(await autoDismiss(env.DB, d.id, d.recovered_at, text, now))) continue;
     dismissed.add(d.id);
     console.log(JSON.stringify({ event: "status.auto_dismissed", id: d.id, lasted_ms: d.lasted_ms }));
-    if (alertTo && send) {
+    // One brought back quietly, and never raised again, goes quietly too: staff were already told it recovered.
+    const quietly = watched.some((w) => w.id === d.id && w.reopened_at && !w.reminded_at);
+    if (alertTo && send && !quietly) {
       const letter = recoveredLetter({ title: d.title, text, link: sudo(d.id) });
       const { text: body, html } = renderMail(letter);
       ctx.waitUntil(
@@ -415,9 +446,9 @@ async function afterChecks(env: Env, ctx: { waitUntil(p: Promise<unknown>): void
       );
     }
   }
-  // Drafts still waiting for someone: the alert goes out again after 45 minutes, then every 6 hours.
+  // Drafts still waiting for someone: the alert goes out again after 45 minutes, then every 6 hours, while the trouble goes on.
   const waiting = watched.filter((d) => !dismissed.has(d.id));
-  const stale = staleDrafts(waiting, now);
+  const stale = staleDrafts(waiting, troubled, now);
   const emailed = !!(alertTo && send);
   await saveReminders(
     env.DB,

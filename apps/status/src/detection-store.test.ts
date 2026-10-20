@@ -9,7 +9,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 
-import { type Streak, autoDismissText, deployChange, detect, settleDrafts, staleDrafts, staleText } from "./detect.ts";
+import { COOLDOWN_MS, type Streak, autoDismissText, deployChange, detect, settleDrafts, staleDrafts, staleText } from "./detect.ts";
 import { stamp } from "./postmortem.ts";
 import {
   CHECK_HISTORY_DAYS,
@@ -18,10 +18,12 @@ import {
   createIncident,
   historySpan,
   incidentDetail,
+  loadCooled,
   loadDeploy,
   loadStreaks,
   openRefs,
   record,
+  reopenDraft,
   saveDeploy,
   saveHealthy,
   saveReminders,
@@ -188,7 +190,15 @@ test("every check is kept for 7 days, with where it ran from, and an incident's 
     await record(
       db,
       [
-        { component: "speed", state: m < 3 ? "degraded" : "up", detail: "", latency_ms: m < 3 ? 1900 : 300, colo: "IAD", first_ms: m < 3 ? 2400 : null },
+        {
+          component: "speed",
+          state: m < 3 ? "degraded" : "up",
+          detail: "",
+          latency_ms: m < 3 ? 1900 : 300,
+          colo: "IAD",
+          first_ms: m < 3 ? 2400 : null,
+          server_ms: m < 3 ? 1650 : 120,
+        },
         { component: "api", state: "up", detail: "", latency_ms: 90, colo: "IAD" },
         { component: "sandboxes", state: "unmonitored", detail: "", latency_ms: null },
       ],
@@ -199,6 +209,15 @@ test("every check is kept for 7 days, with where it ran from, and an incident's 
   assert.equal(kept.length, 5);
   assert.deepEqual(kept[0], { component: "speed", at: minute(0).toISOString(), ms: 1900, outcome: "degraded", colo: "IAD", first_ms: 2400 });
   assert.deepEqual(kept[4], { component: "speed", at: minute(4).toISOString(), ms: 300, outcome: "up", colo: "IAD", first_ms: null });
+  // Page speed keeps the site's own time beside the time from here; other parts have none.
+  const server = await db.prepare(`SELECT component, ms, server_ms FROM check_history WHERE at = ?1 ORDER BY component`).bind(minute(0).toISOString()).all();
+  assert.deepEqual(
+    server.results.map((r) => ({ ...r })),
+    [
+      { component: "api", ms: 90, server_ms: null },
+      { component: "speed", ms: 1900, server_ms: 1650 },
+    ],
+  );
   assert.equal((await checkHistory(db, ["sandboxes"], minute(0), minute(4))).length, 0, "a part with no check keeps no history");
   // A round 7 days later prunes everything older.
   await record(
@@ -265,7 +284,7 @@ test("a draft left waiting is raised again, with a line on its timeline, and for
   );
   const tick = async (now: Date) => {
     const waiting = await watchedDrafts(db);
-    const due = staleDrafts(waiting, now);
+    const due = staleDrafts(waiting, new Set(["speed"]), now);
     await saveReminders(
       db,
       waiting.map((d) => d.id),
@@ -352,4 +371,58 @@ test("a detected draft that recovered is dismissed after ten healthy minutes; on
   // Nothing is left to watch, and the bookkeeping is gone with it.
   assert.deepEqual(await watchedDrafts(db), []);
   assert.equal(await autoDismiss(db, id, at(7, 29).toISOString(), "again", at(7, 40)), false, "dismissing twice changes nothing");
+});
+
+test("20 Oct: Page speed slow again 17 minutes after its draft was dismissed brings that draft back, quietly", async () => {
+  const db = d1();
+  const id = await createIncident(
+    db,
+    {
+      title: "Detected: Page speed slow",
+      severity: "sev3",
+      status: "investigating",
+      visibility: "draft",
+      source: "detected",
+      components: [{ key: "speed", impact: "degraded" }],
+      started_at: at(7, 0).toISOString(),
+      acknowledged_at: null,
+      commander: null,
+      communications: null,
+      by: "status",
+    },
+    [{ kind: "detected", public: false, status: null, text: "Detected." }],
+    at(7, 15),
+    null,
+  );
+  assert.equal(await autoDismiss(db, id, at(7, 30).toISOString(), "Recovered.", at(7, 40)), true);
+  const cooled = await loadCooled(db, at(7, 57), COOLDOWN_MS);
+  assert.deepEqual([...cooled], [["speed", { incident: id, state: "degraded", at: at(7, 40).toISOString() }]]);
+
+  // Slow for 15 minutes again: brought back, not drafted anew.
+  const streak: Streak = { component: "speed", state: "degraded", count: 15, checks: 15, recent: "ssss", since: at(7, 42).toISOString(), alerted: false };
+  const options = { minor: new Set(["speed"]), cooled, slowMs: () => 800 };
+  const found = detect(new Map([["speed", streak]]), [{ component: "speed", state: "degraded", ms: 950 }], await openRefs(db), new Set(), at(7, 57), options);
+  assert.deepEqual([found.draft.length, found.reopen.map((r) => r.incident)], [0, [id]]);
+  assert.equal(await reopenDraft(db, id, "Back.", at(7, 57)), true);
+  const detail = (await incidentDetail(db, id, "https://status.g1t.sh", new Map()))!;
+  assert.deepEqual([detail.visibility, detail.status, detail.resolved_at, detail.timeline.at(-1)!.kind], ["draft", "investigating", null, "failing"]);
+  const [watched] = await watchedDrafts(db);
+  assert.deepEqual([watched!.id, watched!.reopened_at], [id, at(7, 57).toISOString()]);
+  assert.equal((await loadCooled(db, at(7, 58), COOLDOWN_MS)).size, 0, "no longer cooled while it is open");
+  assert.equal(await reopenDraft(db, id, "Again.", at(7, 58)), false, "only a dismissed draft comes back");
+
+  // Worse than before (not answering): a new draft, cooldown or not.
+  await autoDismiss(db, id, at(8, 10).toISOString(), "Recovered.", at(8, 20));
+  const down = detect(
+    new Map([["speed", { ...streak, state: "down" as const, recent: "xxxx" }]]),
+    [{ component: "speed", state: "down" }],
+    await openRefs(db),
+    new Set(),
+    at(8, 30),
+    { ...options, cooled: await loadCooled(db, at(8, 30), COOLDOWN_MS) },
+  );
+  assert.deepEqual([down.draft.length, down.reopen.length], [1, 0]);
+  // Two hours on, it is forgotten.
+  assert.equal((await loadCooled(db, new Date(at(8, 20).getTime() + COOLDOWN_MS + 1), COOLDOWN_MS)).size, 0);
+  assert.equal((await db.prepare(`SELECT COUNT(*) AS n FROM meta WHERE key LIKE 'cooldown:%'`).first<{ n: number }>())!.n, 0);
 });
