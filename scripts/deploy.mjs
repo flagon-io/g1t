@@ -7,6 +7,7 @@
 //   node scripts/deploy.mjs deploy                migrations, then every changed unit
 //   node scripts/deploy.mjs deploy --only web,api just these (if changed; --force: anyway)
 //   node scripts/deploy.mjs build --only events   build as a deploy would, upload nothing
+//   node scripts/deploy.mjs outputs --only events what a build leaves for the deploy, one path a line
 //   node scripts/deploy.mjs migrate               pending D1 migrations only
 //   node scripts/deploy.mjs manifest [--check]    the resolved manifest, or its problems
 //   node scripts/deploy.mjs doctor                which units lack their secrets
@@ -18,10 +19,11 @@
 // --force, --concurrency N (default 4), --stage core (one stage),
 // --json (plan), --out FILE (plan), --no-migrations, --allow-dirty,
 // --rebuild-image, --rebuild-base, --since REV (Workers with no recorded
-// commit are taken to run REV); for build-base and image, --no-push, and
-// for build-base, --no-cache.
+// commit are taken to run REV), --prebuilt (deploy what `build` left in
+// each unit's outputs, building nothing); for build-base and image,
+// --no-push, and for build-base, --no-cache.
 
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -68,6 +70,7 @@ import { decide, git, planJson, pool, table } from "./deploy/plan.mjs";
 import { reportDeployment } from "./deploy/report.mjs";
 import {
   ROOT,
+  buildOutputs,
   byStage,
   codeStages,
   containersRollout,
@@ -83,7 +86,7 @@ import { withDeployWindow } from "./deploy/status-window.mjs";
 import { publishWebAssets, verifyWebAssets } from "./deploy/web-assets.mjs";
 
 const USAGE =
-  "usage: node scripts/deploy.mjs plan|deploy|build|migrate|manifest|doctor|install|build-base|image [--all] [--only a,b] [--skip a,b] [--force] [--rollback] [--concurrency N] [--stage S] [--json]";
+  "usage: node scripts/deploy.mjs plan|deploy|build|outputs|migrate|manifest|doctor|install|build-base|image [--all] [--only a,b] [--skip a,b] [--force] [--rollback] [--concurrency N] [--stage S] [--json]";
 
 function parseArgs(argv) {
   const opts = { command: argv[0], only: [], skip: [], concurrency: 4, force: false, all: false, json: false };
@@ -109,6 +112,7 @@ function parseArgs(argv) {
     else if (flag === "--out") opts.out = value();
     else if (flag === "--since") opts.since = value();
     else if (flag === "--github-output") opts.githubOutput = true;
+    else if (flag === "--prebuilt") opts.prebuilt = true;
     else throw new Error(`unknown flag ${arg}\n${USAGE}`);
   }
   if (!Number.isInteger(opts.concurrency) || opts.concurrency < 1) throw new Error("--concurrency is a whole number, 1 or more");
@@ -144,11 +148,20 @@ function writeGithubOutputs(data, p) {
       .map((u) => u.unit)
       .join(",")}`,
   ];
+  // Each job names its stage, which names the artifact its build is kept in.
+  const builds = [];
   for (const [stage, { jobs }] of Object.entries(data.stages)) {
+    const staged = jobs.map((job) => ({ ...job, stage }));
+    builds.push(...staged.filter((job) => job.prebuilt));
     // A matrix needs one entry; an empty stage's job is skipped by its `if`.
-    const include = jobs.length ? jobs : [{ group: "none", units: "" }];
-    lines.push(`has_${stage}=${jobs.length > 0}`, `${stage}=${JSON.stringify({ include })}`);
+    const include = staged.length ? staged : [{ group: "none", units: "", stage }];
+    lines.push(`has_${stage}=${staged.length > 0}`, `${stage}=${JSON.stringify({ include })}`);
   }
+  // Every stage's builds, made at once before any stage deploys.
+  lines.push(
+    `has_builds=${builds.length > 0}`,
+    `builds=${JSON.stringify({ include: builds.length ? builds : [{ group: "none", units: "", stage: "none" }] })}`,
+  );
   if (data.migration_errors.length) {
     // The units, then why for the first: one cause (a token, say) is usually all of them.
     throw new Error(`Could not read pending migrations: ${data.migration_errors.map((e) => e.unit).join(", ")}
@@ -372,13 +385,13 @@ async function newBase(unit, { push = true, noCache = false, onLine = log } = {}
 }
 
 /** Builds (and unless `dryRun`, deploys) one unit. */
-async function ship(unit, decision, { head, subject, dirty, dryRun, docker, rebuildImage, rebuildBase }) {
+async function ship(unit, decision, { head, subject, dirty, dryRun, docker, rebuildImage, rebuildBase, prebuilt }) {
   const started = Date.now();
   const out = unitLogger(unit.id);
   const cwd = join(ROOT, unit.path);
   const result = { unit: unit.id, stage: unit.stage, ok: false, version: null, ms: 0, note: "" };
   try {
-    if (unit.kind === "react-router" || unit.kind === "astro") {
+    if ((unit.kind === "react-router" || unit.kind === "astro") && !prebuilt) {
       // One command string: Node warns about arguments passed beside shell: true.
       const built = await exec("npm run build", [], { cwd, onLine: out.line, shell: true, env: wranglerEnv() });
       if (built.code !== 0) throw new Error(`npm run build failed:\n${lastLines(built.out)}`);
@@ -512,7 +525,17 @@ async function deploy(stack, opts, { dryRun = false } = {}) {
 
   // A deploy names the commit it came from, so a dirty tree would be
   // recorded as something it is not.
-  const dirtyFiles = git.dirty();
+  // A prebuilt unit's outputs are untracked files the build job left, not
+  // changes to what is deployed.
+  const built = opts.prebuilt ? touched.flatMap(buildOutputs) : [];
+  const dirtyFiles = git.dirty().filter((file) => !built.some((dir) => file.startsWith(`${dir}/`)));
+  if (opts.prebuilt && !dryRun) {
+    const missing = built.filter((dir) => !existsSync(join(ROOT, dir)));
+    if (missing.length)
+      throw new Error(`--prebuilt, but nothing was built at ${missing.join(", ")}: run \`node scripts/deploy.mjs build\` for these units first.`);
+    // Each Rust Worker's build command (scripts/build-rust-worker.mjs) reads this and builds nothing.
+    process.env.G1T_PREBUILT = "1";
+  }
   const dirty = deploying.some((d) =>
     dirtyFiles.some((file) => file.startsWith(`${d.unit.path}/`) || d.unit.dependsOn.some((dir) => file.startsWith(`${dir}/`)) || d.unit.inputs.includes(file)),
   );
@@ -536,9 +559,18 @@ async function deploy(stack, opts, { dryRun = false } = {}) {
     return true;
   }
 
-  if (touched.some((u) => u.kind === "rust-worker")) ensureWorkerBuild();
+  if (!opts.prebuilt && touched.some((u) => u.kind === "rust-worker")) ensureWorkerBuild();
   const docker = once(dockerAvailable);
-  const context = { head, subject: git.subject(), dirty, dryRun, docker, rebuildImage: opts.rebuildImage, rebuildBase: opts.rebuildBase };
+  const context = {
+    head,
+    subject: git.subject(),
+    dirty,
+    dryRun,
+    docker,
+    rebuildImage: opts.rebuildImage,
+    rebuildBase: opts.rebuildBase,
+    prebuilt: Boolean(opts.prebuilt),
+  };
   // A deploy run by hand shows on the repository's Deployments page; a
   // dirty tree is not a commit anyone can look at, so it is left out.
   const settle = dryRun || dirty ? null : await reportDeployment({ head, subject: context.subject, units: touched.map((u) => u.id), log });
@@ -659,6 +691,9 @@ async function main() {
       return deploy(stack, opts);
     case "build":
       return deploy(stack, { ...opts, force: true }, { dryRun: true });
+    case "outputs":
+      console.log(selected(stack, opts).flatMap(buildOutputs).join("\n"));
+      return true;
     case "migrate": {
       const units = selected(stack, opts);
       const { migrations } = await survey(

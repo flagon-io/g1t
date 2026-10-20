@@ -1,0 +1,34 @@
+# Deletes the cache entries a newer one of the same kind has replaced
+# (`node scripts/deploy/ci-cache.mjs tidy`, which says how it decides).
+# Each new lockfile saves a new entry of every kind, and before this the
+# old ones stayed until the repository's 10 GiB was full; then the entries
+# restored longest ago went, which were Deploy's, and a deploy built
+# everything from nothing. An entry stays an hour after its last use, so
+# hourly is soon enough.
+name: Cache tidy
+
+on:
+  schedule:
+    - cron: "41 * * * *"
+  workflow_dispatch:
+
+# Its token checks the code out and deletes cache entries, nothing more.
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: cache-tidy
+  cancel-in-progress: true
+
+jobs:
+  tidy:
+    name: Replaced entries
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Delete them
+        env:
+          CACHE_TOKEN: ${{ github.token }}
+        run: node scripts/deploy/ci-cache.mjs tidy

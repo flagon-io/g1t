@@ -32,6 +32,20 @@
 // 671 MB to 1,687 MB in a day, two thirds of the way to the 2 GB an entry
 // may hold, and its restore from 15 s to a minute. Anything unexpected
 // (Cargo fails, lists nothing) prunes nothing.
+//
+// tidy deletes the entries a newer one of the same kind has replaced. A
+// kind is a key less its last part (`cargo-test-Linux-1.99.0-` for
+// `cargo-test-Linux-1.99.0-830c05ffde674de7`), on one ref: each new
+// lockfile saves a new entry of every kind, and the old ones stayed until
+// the repository's 10 GiB was full, when the entries restored longest ago
+// went, which were Deploy's. On the day this was written the repository
+// held 10.4 GiB, most of it two or three generations of the same builds,
+// and a deploy found none of its caches. The newest entry of a kind stays,
+// as does any used in the last hour (a run may be restoring it), and
+// sccache's, one for each compiled crate, are left to the quota. Needs a
+// token that may delete the repository's caches (`actions: write`).
+//
+//   node scripts/deploy/ci-cache.mjs tidy [--dry-run]
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -163,12 +177,69 @@ function prune(args) {
   }
 }
 
+/** An entry's kind: its ref, and its key less the last `-part`. */
+export function kind(entry) {
+  const cut = entry.key.lastIndexOf("-");
+  return `${entry.ref} ${cut > 0 ? entry.key.slice(0, cut + 1) : entry.key}`;
+}
+
+/** How long since its last use an entry replaced by a newer one is kept: a run may still be restoring it. */
+export const REPLACED_IDLE_MS = 60 * 60 * 1000;
+
+/**
+ * The entries (as the caches API lists them) that a newer entry of the
+ * same kind has replaced, and that nothing has used in REPLACED_IDLE_MS.
+ */
+export function replaced(entries, now = Date.now()) {
+  const newest = new Map();
+  for (const entry of entries) {
+    if (entry.key.startsWith("sccache/")) continue;
+    const at = newest.get(kind(entry));
+    if (!at || Date.parse(entry.created_at) > Date.parse(at.created_at)) newest.set(kind(entry), entry);
+  }
+  return entries.filter(
+    (entry) =>
+      !entry.key.startsWith("sccache/") && newest.get(kind(entry)) !== entry && now - Date.parse(entry.last_accessed_at ?? entry.created_at) > REPLACED_IDLE_MS,
+  );
+}
+
+async function tidy(args) {
+  const dryRun = args.includes("--dry-run");
+  const api = process.env.GITHUB_API_URL;
+  const repo = process.env.GITHUB_REPOSITORY;
+  const token = process.env.CACHE_TOKEN;
+  if (!api || !repo || !token) throw new Error("tidy needs GITHUB_API_URL, GITHUB_REPOSITORY and CACHE_TOKEN");
+  const call = async (method, path) => {
+    const response = await fetch(`${api}/repos/${repo}/actions/caches${path}`, {
+      method,
+      headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json" },
+    });
+    if (!response.ok) throw new Error(`${method} caches${path}: ${response.status} ${await response.text()}`);
+    return response.json();
+  };
+  const entries = [];
+  for (let page = 1; ; page++) {
+    const { actions_caches: found = [] } = await call("GET", `?per_page=100&page=${page}&sort=created_at`);
+    entries.push(...found);
+    if (found.length < 100) break;
+  }
+  const gone = replaced(entries);
+  const mb = (n) => `${Math.round(n / 1_048_576)} MB`;
+  const total = (list) => list.reduce((sum, e) => sum + (e.size_in_bytes ?? 0), 0);
+  for (const entry of gone) {
+    console.log(`${dryRun ? "would delete" : "deleting"} ${entry.key} (${entry.ref}, ${mb(entry.size_in_bytes ?? 0)})`);
+    if (!dryRun) await call("DELETE", `/${entry.id}`);
+  }
+  console.log(`${gone.length} of ${entries.length} entries replaced by newer ones, ${mb(total(gone))} of ${mb(total(entries))}`);
+}
+
 if (process.argv[1] && basename(process.argv[1]) === "ci-cache.mjs") {
   const [command, ...rest] = process.argv.slice(2);
   if (command === "keys") keys();
   else if (command === "prune") prune(rest);
+  else if (command === "tidy") await tidy(rest);
   else {
-    console.error("usage: node scripts/deploy/ci-cache.mjs keys | prune <profile dir>... -- <cargo args>");
+    console.error("usage: node scripts/deploy/ci-cache.mjs keys | prune <profile dir>... -- <cargo args> | tidy [--dry-run]");
     process.exit(2);
   }
 }

@@ -45,6 +45,7 @@ import { decide, git, planJson, pool } from "./plan.mjs";
 import {
   ROOT,
   buildGroups,
+  buildOutputs,
   cargoWorkspace,
   findWranglerConfigs,
   loadStack,
@@ -617,14 +618,16 @@ test("the plan as data: migrations, and each stage's units in jobs that share a 
   const decisions = units.map((u) => ({ unit: u, deploy: true, reason: "x", since: null, image: false }));
   const data = planJson(stack, decisions, { events: { pending: ["0003_x.sql"] }, repos: { pending: [] } }, HEAD);
   assert.deepEqual(data.migrations, [{ unit: "events", database: "g1t-events", pending: ["0003_x.sql"] }]);
+  // Rust Workers and sites are built before any stage deploys; TypeScript
+  // Workers are bundled by Wrangler as they deploy.
   assert.deepEqual(data.stages.core.jobs, [
-    { group: "rust", units: "events,repos", rust: true, image: false },
-    { group: "ts", units: "projects", rust: false, image: false },
+    { group: "rust", units: "events,repos", rust: true, image: false, prebuilt: true },
+    { group: "ts", units: "projects", rust: false, image: false, prebuilt: false },
   ]);
-  assert.deepEqual(data.stages.edge.jobs, [{ group: "rust", units: "api", rust: true, image: false }]);
+  assert.deepEqual(data.stages.edge.jobs, [{ group: "rust", units: "api", rust: true, image: false, prebuilt: true }]);
   assert.deepEqual(data.stages.front.jobs, [
-    { group: "web", units: "web", rust: false, image: false },
-    { group: "docs", units: "docs", rust: false, image: false },
+    { group: "web", units: "web", rust: false, image: false, prebuilt: true },
+    { group: "docs", units: "docs", rust: false, image: false, prebuilt: true },
   ]);
   assert.deepEqual(data.stage_order, ["core", "edge", "front"]);
   assert.deepEqual(buildGroups([]), []);
@@ -635,8 +638,16 @@ test("the plan as data: migrations, and each stage's units in jobs that share a 
     jobs.filter((j) => j.rust).map((j) => j.units.split(",").length),
     [4, 4, 3],
   );
-  assert.ok(jobs.some((j) => j.group === "runner-image" && j.units === "runner" && j.image && !j.rust));
+  assert.ok(jobs.some((j) => j.group === "runner-image" && j.units === "runner" && j.image && !j.rust && !j.prebuilt));
   assert.ok(!jobs.find((j) => j.group === "ts").units.includes("runner"));
+});
+
+test("what a build leaves for the deploy, by kind of unit", () => {
+  const byId = (id) => stack.units.find((u) => u.id === id);
+  assert.deepEqual(buildOutputs(byId("events")), ["services/events/build"]);
+  assert.deepEqual(buildOutputs(byId("web")), ["apps/web/build", "apps/web/.wrangler/deploy"]);
+  assert.deepEqual(buildOutputs(byId("docs")), ["apps/docs/dist"]);
+  assert.deepEqual(buildOutputs(byId("projects")), []);
 });
 
 test("units are picked by short name, folder or Worker name", () => {

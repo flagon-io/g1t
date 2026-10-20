@@ -51,9 +51,13 @@ never cancelled:
 1. **Check and plan.** The manifest is checked against every config and
    `npm run test:deploy` runs. Beside it, `scripts/deploy.mjs plan` works
    out which units changed since the commit each one is running.
-2. **Migrations.** Every pending D1 migration, before any code.
-3. **Core, edge, front.** The units in each stage deploy in parallel; a
-   stage starts only when the one before succeeded. A unit binds only to
+2. **Build and migrations.** Every stage's Rust Workers and sites are
+   built at once, as soon as the plan is known, each build job keeping what
+   it made as an artifact. Beside them, every pending D1 migration runs,
+   before any code.
+3. **Core, edge, front.** The units in each stage deploy in parallel, from
+   what the build jobs made (`deploy --prebuilt`), so a stage only uploads;
+   a stage starts only when the one before succeeded. A unit binds only to
    units in its own stage or an earlier one, which a test checks, so new
    code never calls a service that has not shipped yet.
 4. **Smoke.** `scripts/ops/smoke.mjs` checks that sign-in and sign-up still

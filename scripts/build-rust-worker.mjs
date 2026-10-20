@@ -15,6 +15,7 @@
 //   node scripts/build-rust-worker.mjs --ensure   # install only
 
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 
 export const WORKER_BUILD_VERSION = "0.8.7";
 
@@ -38,6 +39,13 @@ export function ensureWorkerBuild() {
 // Run, not imported (scripts/deploy.mjs imports ensureWorkerBuild).
 if (process.argv[1]?.replaceAll("\\", "/").endsWith("scripts/build-rust-worker.mjs")) {
   const args = process.argv.slice(2);
+  // `deploy --prebuilt`: CI built this Worker in an earlier job and left
+  // its build/ here, so Wrangler deploys that as it is.
+  if (process.env.G1T_PREBUILT === "1" && !args.includes("--ensure")) {
+    if (existsSync("build")) process.exit(0);
+    console.error("G1T_PREBUILT is set, but this Worker has no build/ to deploy.");
+    process.exit(1);
+  }
   ensureWorkerBuild();
   if (!args.includes("--ensure")) {
     const built = run("worker-build", ["--release", ...args]);

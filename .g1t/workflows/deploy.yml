@@ -5,10 +5,18 @@
 #   check    the deploy manifest is consistent, and the tool's tests pass
 #   plan     what changed since each Worker's live commit, and pending migrations
 #            (beside check, not after it: neither waits for the other)
+#   build    every stage's Rust Workers and sites, all at once, as soon as the
+#            plan is known; each job keeps what it built as an artifact
 #   migrate  pending D1 migrations, before any code, once check and plan pass
-#   core, edge, front   the units of each stage, in jobs that share a build;
-#            a stage starts only when the one before it succeeded
+#   core, edge, front   the units of each stage, deployed from what build
+#            made (`deploy --prebuilt`), so a stage only uploads; a stage
+#            starts only when the one before it succeeded
 #   smoke    sign-in and sign-up still work on g1t.sh
+#
+# Building every stage before any deploys keeps the stages' order (core
+# before edge before front) without making edge wait for core to compile:
+# a deploy used to take each stage's build in turn, and the Rust stage's
+# 15 minutes held up everything after it.
 #
 # Each run that deploys is one production deployment of g1t.sh, made by the
 # jobs that name `environment: production` (one per run, however many jobs):
@@ -16,16 +24,16 @@
 # run ends. It shows on the project's Deployments page and as the commit's
 # `deploy / production` check. The plan job reads production's secrets
 # with `deployment: false`, so a dry run or a change that deploys nothing
-# makes no deployment.
+# makes no deployment. The build jobs read no secrets at all.
 #
 # Needs the repository secret CLOUDFLARE_API_TOKEN (a Production row, with
 # Containers write) and the variable CLOUDFLARE_ACCOUNT_ID. A job that
 # must make the runner's image (the `runner-image` group) builds the
-# runner's binary on a larger machine and makes the image in
-# registry.cloudflare.com with no Docker: one layer with the binary on the
-# base's layers, pulling none of the base (scripts/deploy/registry.mjs).
-# Optionally, the secret STATUS_DEPLOY_TOKEN (the status Worker's secret of
-# the same name), so status.g1t.sh hears each deploy start and finish.
+# runner's binary and makes the image in registry.cloudflare.com with no
+# Docker: one layer with the binary on the base's layers, pulling none of
+# the base (scripts/deploy/registry.mjs). Optionally, the secret
+# STATUS_DEPLOY_TOKEN (the status Worker's secret of the same name), so
+# status.g1t.sh hears each deploy start and finish.
 name: Deploy
 
 on:
@@ -98,6 +106,8 @@ jobs:
     outputs:
       migrate: ${{ steps.plan.outputs.migrate }}
       migrate_units: ${{ steps.plan.outputs.migrate_units }}
+      has_builds: ${{ steps.plan.outputs.has_builds }}
+      builds: ${{ steps.plan.outputs.builds }}
       has_core: ${{ steps.plan.outputs.has_core }}
       core: ${{ steps.plan.outputs.core }}
       has_edge: ${{ steps.plan.outputs.has_edge }}
@@ -105,10 +115,14 @@ jobs:
       has_front: ${{ steps.plan.outputs.has_front }}
       front: ${{ steps.plan.outputs.front }}
     steps:
+      # Each Worker's live commit is compared with this one: the history,
+      # without the files' contents. Git fetches the few it reads (the
+      # lockfiles at a Worker's live commit) when it reads them; a whole
+      # clone of g1t from g1t.sh is 134 MB, its history alone 17 MB.
       - uses: actions/checkout@v5
         with:
-          # Each Worker's live commit is compared with this one.
           fetch-depth: 0
+          filter: blob:none
       # No npm ci: with CLOUDFLARE_API_TOKEN the plan reads Cloudflare's API
       # itself (scripts/deploy/cloudflare.mjs), and needs no Wrangler.
       - name: Plan
@@ -122,6 +136,122 @@ jobs:
           if [ -n "$UNITS" ]; then args+=(--only "$UNITS" --force); fi
           if [ "$ALL" = "true" ]; then args+=(--all); fi
           node scripts/deploy.mjs plan "${args[@]}" --github-output
+
+  # The Rust Workers and the sites of every stage, built as a deploy would
+  # build them (`deploy.mjs build`), each job's units sharing one Cargo
+  # target. What each job built goes into an artifact, `build-<stage>-<group>`,
+  # which its stage's job unpacks and deploys. Nothing here deploys or
+  # reads a secret, so it starts as soon as the plan is known, beside check
+  # and migrate.
+  build:
+    name: build ${{ matrix.stage }} (${{ matrix.group }})
+    needs: [plan]
+    if: ${{ needs.plan.outputs.has_builds == 'true' && inputs.dry_run != true }}
+    # ubuntu-latest: 4 vCPU in this public repository, as on GitHub.
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      # One failed build stops the deploy (its stage cannot start), but the
+      # others finish, so their caches are saved for the next run.
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.builds) }}
+    steps:
+      - uses: actions/checkout@v5
+      # Rust workers: the wasm target, and worker-build kept between runs
+      # (its version is pinned in scripts/build-rust-worker.mjs).
+      - name: Rust for Workers
+        if: ${{ matrix.rust }}
+        run: rustup target add wasm32-unknown-unknown
+      - name: Cache worker-build
+        if: ${{ matrix.rust }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/worker-build
+          key: worker-build-${{ runner.os }}-${{ hashFiles('scripts/build-rust-worker.mjs') }}
+      - name: Cache worker-build's tools (wasm-bindgen, esbuild)
+        if: ${{ matrix.rust }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/worker-build
+          key: worker-build-tools-${{ runner.os }}-${{ hashFiles('scripts/build-rust-worker.mjs') }}
+      # rust: the toolchain; cargo: Cargo.lock's crates.io and git packages,
+      # not the workspace's own versions (scripts/deploy/ci-cache.mjs).
+      - name: Cache keys
+        id: keys
+        if: ${{ matrix.rust }}
+        run: node scripts/deploy/ci-cache.mjs keys
+      # Every crate the lockfile names, as CI's Rust job saves them on
+      # main. Only restored: a job downloads the crates of its own units,
+      # and saving those would stand in for the whole under that key.
+      - name: Cache crates
+        if: ${{ matrix.rust }}
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+          key: cargo-crates-${{ runner.os }}-${{ steps.keys.outputs.cargo }}
+          restore-keys: cargo-crates-${{ runner.os }}-
+      # The compiled dependencies of this job's units, for wasm32 and the
+      # build scripts and proc macros they run. Cargo calls rustc again for
+      # the workspace's own crates whatever is cached (a checkout's sources
+      # are newer); sccache, below, answers those calls. So an entry is
+      # saved only when the dependencies or the toolchain change, not when
+      # a release bumps a workspace crate's version; otherwise this group's
+      # last entry for the toolchain is a start, else any group's.
+      - name: Cache the Cargo target
+        if: ${{ matrix.rust }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            target/release
+            target/wasm32-unknown-unknown/release
+            !target/**/incremental
+            !target/**/*.wasm
+          key: cargo-workers-${{ runner.os }}-${{ steps.keys.outputs.rust }}-${{ matrix.group }}-${{ steps.keys.outputs.cargo }}
+          restore-keys: |
+            cargo-workers-${{ runner.os }}-${{ steps.keys.outputs.rust }}-${{ matrix.group }}-
+            cargo-workers-${{ runner.os }}-${{ steps.keys.outputs.rust }}-
+      # Every rustc call that makes a library (the workspace's crates,
+      # which Cargo compiles again on every checkout, and any dependency
+      # not restored above) is looked up by its inputs in the repository's
+      # Actions cache: unchanged crates come back from it instead of being
+      # compiled. A Worker's own crate (a cdylib) is still compiled.
+      # worker-build runs Cargo, so its wasm32 builds go through it too;
+      # wasm-bindgen and wasm-opt are not rustc. Pinned by version and
+      # sha256 in scripts/sccache.sh; without the cache, the job builds as
+      # before.
+      - name: sccache
+        if: ${{ matrix.rust }}
+        run: bash scripts/sccache.sh install
+      # npm's downloads for the whole lockfile, only restored, as the
+      # check job restores them: the install reads them first (--prefer-offline, in
+      # scripts/deploy/stack.mjs) and asks the registry only for what
+      # changed, so a connection it drops mid-install rarely stops a build.
+      - name: Cache npm's downloads
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.npm
+          key: npm-full-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-full-${{ runner.os }}-
+      - name: Install
+        run: node scripts/deploy.mjs install --only "${{ matrix.units }}"
+      - name: Build ${{ matrix.units }}
+        run: node scripts/deploy.mjs build --only "${{ matrix.units }}" --concurrency 2
+      # What Wrangler deploys, by its repository paths, in one file the
+      # stage's job unpacks where it was.
+      - name: Keep what was built
+        run: tar -cf build.tar $(node scripts/deploy.mjs outputs --only "${{ matrix.units }}")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.stage }}-${{ matrix.group }}
+          path: build.tar
+          if-no-files-found: error
+          retention-days: 1
+      # Hits and misses, on the log and in the run's summary.
+      - name: sccache's hits and misses
+        if: ${{ always() && matrix.rust }}
+        run: bash scripts/sccache.sh stats
 
   migrate:
     name: Migrations
@@ -152,9 +282,10 @@ jobs:
 
   core:
     name: core (${{ matrix.group }})
-    needs: [check, plan, migrate]
+    needs: [check, plan, build, migrate]
     # Runs when nothing before it failed: a migrate job skipped for having
-    # nothing to apply is not a failure.
+    # nothing to apply is not a failure, nor a build skipped for having
+    # nothing to build.
     if: ${{ !failure() && !cancelled() && needs.plan.outputs.has_core == 'true' && inputs.dry_run != true }}
     # ubuntu-latest: 4 vCPU in this public repository, as on GitHub.
     runs-on: ubuntu-latest
@@ -169,64 +300,12 @@ jobs:
       max-parallel: 4
       matrix: ${{ fromJSON(needs.plan.outputs.core) }}
     steps: &deploy
+      # The deploy compares this commit with each Worker's live one, so it
+      # needs the history, without the files' contents (see the plan job).
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      # Rust workers: the wasm target, and worker-build kept between runs
-      # (its version is pinned in scripts/build-rust-worker.mjs).
-      - name: Rust for Workers
-        if: ${{ matrix.rust }}
-        run: rustup target add wasm32-unknown-unknown
-      - name: Cache worker-build
-        if: ${{ matrix.rust }}
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin/worker-build
-          key: worker-build-${{ runner.os }}-${{ hashFiles('scripts/build-rust-worker.mjs') }}
-      - name: Cache worker-build's tools (wasm-bindgen, esbuild)
-        if: ${{ matrix.rust }}
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/worker-build
-          key: worker-build-tools-${{ runner.os }}-${{ hashFiles('scripts/build-rust-worker.mjs') }}
-      # rust: the toolchain; cargo: Cargo.lock's crates.io and git packages,
-      # not the workspace's own versions (scripts/deploy/ci-cache.mjs).
-      - name: Cache keys
-        id: keys
-        if: ${{ matrix.rust || matrix.image }}
-        run: node scripts/deploy/ci-cache.mjs keys
-      # Every crate the lockfile names, as CI's Rust job saves them on
-      # main. Only restored: a stage downloads the crates of its own units,
-      # and saving those would stand in for the whole under that key.
-      - name: Cache crates
-        if: ${{ matrix.rust || matrix.image }}
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-          key: cargo-crates-${{ runner.os }}-${{ steps.keys.outputs.cargo }}
-          restore-keys: cargo-crates-${{ runner.os }}-
-      # The compiled dependencies of this job's units, for wasm32 and the
-      # build scripts and proc macros they run. Cargo calls rustc again for
-      # the workspace's own crates whatever is cached (a checkout's sources
-      # are newer); sccache, below, answers those calls. So an entry is
-      # saved only when the dependencies or the toolchain change, not when
-      # a release bumps a workspace crate's version; otherwise this group's
-      # last entry for the toolchain is a start, else any group's.
-      - name: Cache the Cargo target
-        if: ${{ matrix.rust }}
-        uses: actions/cache@v4
-        with:
-          path: |
-            target/release
-            target/wasm32-unknown-unknown/release
-            !target/**/incremental
-            !target/**/*.wasm
-          key: cargo-workers-${{ runner.os }}-${{ steps.keys.outputs.rust }}-${{ matrix.group }}-${{ steps.keys.outputs.cargo }}
-          restore-keys: |
-            cargo-workers-${{ runner.os }}-${{ steps.keys.outputs.rust }}-${{ matrix.group }}-
-            cargo-workers-${{ runner.os }}-${{ steps.keys.outputs.rust }}-
+          filter: blob:none
       # The runner's image: its binary, built natively for musl (the base
       # has musl-gcc; the target is added here), with its Cargo target kept
       # between runs: the musl target's, and target/release, where Cargo
@@ -236,6 +315,19 @@ jobs:
       # layers and one with the binary (scripts/deploy/registry.mjs).
       # Building it with the job's Docker Engine, only if that fails, pulls
       # the 4.5 GB base onto the job's disk.
+      - name: Cache keys
+        id: keys
+        if: ${{ matrix.image }}
+        run: node scripts/deploy/ci-cache.mjs keys
+      - name: Cache crates
+        if: ${{ matrix.image }}
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+          key: cargo-crates-${{ runner.os }}-${{ steps.keys.outputs.cargo }}
+          restore-keys: cargo-crates-${{ runner.os }}-
       - name: Rust for the runner
         if: ${{ matrix.image }}
         run: rustup target add x86_64-unknown-linux-musl
@@ -249,17 +341,10 @@ jobs:
             !target/**/incremental
           key: runner-musl-${{ runner.os }}-${{ steps.keys.outputs.rust }}-${{ steps.keys.outputs.cargo }}
           restore-keys: runner-musl-${{ runner.os }}-${{ steps.keys.outputs.rust }}-
-      # Every rustc call that makes a library (the workspace's crates,
-      # which Cargo compiles again on every checkout, and any dependency
-      # not restored above) is looked up by its inputs in the repository's
-      # Actions cache: unchanged crates come back from it instead of being
-      # compiled. A Worker's own crate (a cdylib) and the runner's binary
-      # are still compiled. worker-build runs Cargo, so its wasm32 builds
-      # go through it too; wasm-bindgen and wasm-opt are not rustc.
-      # Pinned by version and sha256 in scripts/sccache.sh; without the
-      # cache, the job builds as before.
+      # The runner's workspace crates, which Cargo compiles again on every
+      # checkout, come back from the Actions cache (the build job says how).
       - name: sccache
-        if: ${{ matrix.rust || matrix.image }}
+        if: ${{ matrix.image }}
         run: bash scripts/sccache.sh install
       # npm's downloads for the whole lockfile, only restored, as the
       # check job restores them: the install reads them first (--prefer-offline, in
@@ -273,6 +358,15 @@ jobs:
           restore-keys: npm-full-${{ runner.os }}-
       - name: Install
         run: node scripts/deploy.mjs install --only "${{ matrix.units }}"
+      # What the build job made for these units, back where it was built.
+      - name: Fetch what was built
+        if: ${{ matrix.prebuilt }}
+        uses: actions/download-artifact@v4
+        with:
+          name: build-${{ matrix.stage }}-${{ matrix.group }}
+      - name: Unpack what was built
+        if: ${{ matrix.prebuilt }}
+        run: tar -xf build.tar && rm build.tar
       # The runner's image job: npm's downloads are only restored here, and
       # the install has read them, so they go, leaving the disk to the
       # runner's build (and to Docker, should the image need it). What the
@@ -290,7 +384,11 @@ jobs:
           # status.g1t.sh hears the deploy start and finish, so its restarts
           # are not drafted as incidents. Optional: without it, nothing is sent.
           STATUS_DEPLOY_TOKEN: ${{ secrets.STATUS_DEPLOY_TOKEN }}
-        run: node scripts/deploy.mjs deploy --only "${{ matrix.units }}" --force --no-migrations --concurrency 2
+          PREBUILT: ${{ matrix.prebuilt }}
+        run: |
+          args=(--only "${{ matrix.units }}" --force --no-migrations --concurrency 4)
+          if [ "$PREBUILT" = "true" ]; then args+=(--prebuilt); fi
+          node scripts/deploy.mjs deploy "${args[@]}"
       - name: The disk after the runner's image
         if: ${{ always() && matrix.image }}
         run: |
@@ -298,12 +396,12 @@ jobs:
           du -sh "$HOME"/.cargo target node_modules 2>/dev/null || true
       # Hits and misses, on the log and in the run's summary.
       - name: sccache's hits and misses
-        if: ${{ always() && (matrix.rust || matrix.image) }}
+        if: ${{ always() && matrix.image }}
         run: bash scripts/sccache.sh stats
 
   edge:
     name: edge (${{ matrix.group }})
-    needs: [check, plan, migrate, core]
+    needs: [check, plan, build, migrate, core]
     if: ${{ !failure() && !cancelled() && needs.plan.outputs.has_edge == 'true' && inputs.dry_run != true }}
     runs-on: ubuntu-latest
     environment:
@@ -318,7 +416,7 @@ jobs:
 
   front:
     name: front (${{ matrix.group }})
-    needs: [check, plan, migrate, core, edge]
+    needs: [check, plan, build, migrate, core, edge]
     if: ${{ !failure() && !cancelled() && needs.plan.outputs.has_front == 'true' && inputs.dry_run != true }}
     runs-on: ubuntu-latest
     environment:

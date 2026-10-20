@@ -58,6 +58,11 @@ fn every_workflow_asks_for_only_what_its_token_does() {
     let image = job("runner-release.yml", "image");
     assert_eq!(image.get("packages"), Access::Write);
     assert_eq!(image.get("contents"), Access::Read);
+    // Cache tidy reads the code and deletes cache entries, nothing else.
+    let tidy = job("cache-tidy.yml", "tidy");
+    assert_eq!(tidy.get("actions"), Access::Write);
+    assert_eq!(tidy.get("contents"), Access::Read);
+    assert_eq!(tidy.get("packages"), Access::None);
 }
 
 #[test]
@@ -88,25 +93,40 @@ fn plan_outputs(
     edge: &[(&str, &str, bool)],
     front: &[(&str, &str, bool)],
 ) -> Value {
-    let matrix = |jobs: &[(&str, &str, bool)]| {
-        let include: Vec<Value> = if jobs.is_empty() {
+    // As scripts/deploy.mjs writes them: a Rust group or a site is built
+    // ahead (`prebuilt`), and every stage's builds are one matrix.
+    let entries = |stage: &str, jobs: &[(&str, &str, bool)]| -> Vec<Value> {
+        jobs.iter()
+            .map(|(group, units, rust)| {
+                let prebuilt = *rust || *group == "web" || *group == "docs";
+                json!({ "group": group, "units": units, "rust": rust, "prebuilt": prebuilt, "stage": stage })
+            })
+            .collect()
+    };
+    let matrix = |include: Vec<Value>| {
+        let include = if include.is_empty() {
             vec![json!({ "group": "none", "units": "" })]
         } else {
-            jobs.iter()
-                .map(|(group, units, rust)| json!({ "group": group, "units": units, "rust": rust }))
-                .collect()
+            include
         };
         json!({ "include": include }).to_string()
     };
+    let builds: Vec<Value> = [("core", core), ("edge", edge), ("front", front)]
+        .iter()
+        .flat_map(|(stage, jobs)| entries(stage, jobs))
+        .filter(|job| job["prebuilt"] == json!(true))
+        .collect();
     json!({
         "migrate": migrate.to_string(),
         "migrate_units": if migrate { "events" } else { "" },
+        "has_builds": (!builds.is_empty()).to_string(),
+        "builds": matrix(builds),
         "has_core": (!core.is_empty()).to_string(),
-        "core": matrix(core),
+        "core": matrix(entries("core", core)),
         "has_edge": (!edge.is_empty()).to_string(),
-        "edge": matrix(edge),
+        "edge": matrix(entries("edge", edge)),
         "has_front": (!front.is_empty()).to_string(),
-        "front": matrix(front),
+        "front": matrix(entries("front", front)),
     })
 }
 
@@ -187,7 +207,7 @@ fn deploy_runs_on_main_and_by_hand_one_at_a_time() {
     assert_eq!(concurrency.cancel_in_progress, json!(false));
     assert_eq!(
         deploy.job_order(),
-        ["check", "plan", "migrate", "core", "edge", "front", "smoke"]
+        ["check", "plan", "build", "migrate", "core", "edge", "front", "smoke"]
     );
     // The stages share their steps (a YAML alias), and read the token only
     // where they deploy.
@@ -798,6 +818,44 @@ fn deploy_stages_follow_one_another() {
         false
     ));
 
+    // Every stage builds at once, as soon as the plan is known: the build
+    // waits for nothing else, and every stage waits for it.
+    let build = deploy.jobs.iter().find(|j| j.id == "build").unwrap();
+    assert_eq!(build.needs, ["plan"]);
+    assert!(starts(&deploy, "build", &[], &all, push.clone(), false));
+    for id in ["core", "edge", "front"] {
+        let job = deploy.jobs.iter().find(|j| j.id == id).unwrap();
+        assert!(job.needs.iter().any(|n| n == "build"), "{id}: {:?}", job.needs);
+    }
+    // A failed build deploys nothing.
+    assert!(!starts(
+        &deploy,
+        "core",
+        &[("build", "failure"), ("migrate", "success")],
+        &all,
+        push.clone(),
+        false
+    ));
+    // TypeScript Workers alone: nothing to build, and core still runs.
+    let bundled = plan_outputs(false, &[("ts", "projects", false)], &[], &[]);
+    assert!(!starts(&deploy, "build", &[], &bundled, push.clone(), false));
+    assert!(starts(
+        &deploy,
+        "core",
+        &[("build", "skipped"), ("migrate", "skipped")],
+        &bundled,
+        push.clone(),
+        false
+    ));
+    assert!(!starts(
+        &deploy,
+        "build",
+        &[],
+        &all,
+        json!({ "dry_run": true, "units": "", "all": false }),
+        false
+    ));
+
     // A dry run plans and stops.
     let dry = json!({ "dry_run": true, "units": "", "all": false });
     assert!(!starts(&deploy, "migrate", &[], &all, dry.clone(), false));
@@ -869,6 +927,63 @@ fn deploy_stage_matrices_come_from_the_plan() {
             ("ts", "projects,og", false)
         ]
     );
+
+    // The builds: every stage's Rust groups and sites in one matrix, each
+    // naming its stage, since two stages may each have a group `rust`.
+    let outputs = plan_outputs(
+        false,
+        &[("rust", "events", true), ("ts", "projects", false)],
+        &[("rust", "api", true)],
+        &[("web", "web", false)],
+    );
+    let build = deploy.jobs.iter().find(|j| j.id == "build").unwrap();
+    let mut contexts = Map::new();
+    contexts.insert(
+        "needs".into(),
+        json!({ "plan": { "result": "success", "outputs": outputs } }),
+    );
+    let scope = Scope {
+        contexts: &contexts,
+        status: Status::Success,
+        hash_files: None,
+    };
+    let value = expr::interpolate_value(build.matrix.as_ref().unwrap(), &scope).unwrap();
+    let builds: Vec<(String, String)> = matrix::expand(&value)
+        .unwrap()
+        .iter()
+        .map(|c| {
+            (
+                c["stage"].as_str().unwrap().to_owned(),
+                c["group"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        builds,
+        [
+            ("core".to_owned(), "rust".to_owned()),
+            ("edge".to_owned(), "rust".to_owned()),
+            ("front".to_owned(), "web".to_owned())
+        ]
+    );
+    // A build's artifact is the one its stage's job fetches.
+    let artifact = |job: &workflow::Job, action: &str| {
+        job.steps
+            .iter()
+            .find(|s| s.uses.as_deref().is_some_and(|u| u.starts_with(action)))
+            .map(|s| s.raw["with"]["name"].as_str().unwrap().to_owned())
+            .unwrap_or_else(|| panic!("{}: no {action}", job.id))
+    };
+    let name = "build-${{ matrix.stage }}-${{ matrix.group }}";
+    assert_eq!(artifact(build, "actions/upload-artifact@"), name);
+    for stage in ["core", "edge", "front"] {
+        let job = deploy.jobs.iter().find(|j| j.id == stage).unwrap();
+        assert_eq!(artifact(job, "actions/download-artifact@"), name, "{stage}");
+    }
+    // The build reads no secret and makes no deployment.
+    assert!(build.raw.get("environment").is_none());
+    let source = std::fs::read_to_string(workflows_dir().join("deploy.yml")).unwrap();
+    assert!(!source.split("\n  build:").nth(1).unwrap().split("\n  migrate:").next().unwrap().contains("secrets."));
 }
 
 #[test]
@@ -925,8 +1040,16 @@ fn rust_builds_go_through_sccache_before_cargo_and_report_after() {
         (at, job.steps[at].clone())
     };
     let deploy = read("deploy.yml");
-    for stage in ["core", "edge", "front"] {
-        let job = deploy.jobs.iter().find(|j| j.id == stage).unwrap();
+    // The Workers' Rust is built by the build job; a stage's job builds
+    // only the runner's binary, for its image.
+    for (id, through) in [
+        ("build", [true, false, false]),
+        ("core", [false, true, false]),
+        ("edge", [false, true, false]),
+        ("front", [false, true, false]),
+    ] {
+        let stage = id;
+        let job = deploy.jobs.iter().find(|j| j.id == id).unwrap();
         let (install_at, install) = step(job, "bash scripts/sccache.sh install");
         let (stats_at, stats) = step(job, "bash scripts/sccache.sh stats");
         // Before anything runs Cargo (worker-build's install, the build),
@@ -939,9 +1062,9 @@ fn rust_builds_go_through_sccache_before_cargo_and_report_after() {
         assert!(install_at < install_step, "{stage}");
         assert_eq!(stats_at, job.steps.len() - 1, "{stage}");
         for (rust, image, uses) in [
-            (true, false, true),
-            (false, true, true),
-            (false, false, false),
+            (true, false, through[0]),
+            (false, true, through[1]),
+            (false, false, through[2]),
         ] {
             let matrix = json!({ "group": "g", "units": "u", "rust": rust, "image": image });
             assert_eq!(
