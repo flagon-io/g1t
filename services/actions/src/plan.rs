@@ -253,6 +253,10 @@ pub struct JobRow {
     /// for another (migration 0020): good for `brokered_secrets` only.
     #[serde(default)]
     pub first_token_hash: Option<String>,
+    /// Since when it has waited for a machine the runner had none of
+    /// (migration 0025).
+    #[serde(default)]
+    pub waiting_since: Option<String>,
 }
 
 /// How long a cancelled job has to run its `if: always()` and `cancelled()`
@@ -1663,7 +1667,7 @@ impl Actions {
             let claimed = self
                 .db
                 .prepare(
-                    "UPDATE jobs SET status = 'in_progress', token_hash = ?, first_token_hash = NULL, started_at = ?, seen_at = ? WHERE id = ? AND status = 'queued' RETURNING id",
+                    "UPDATE jobs SET status = 'in_progress', token_hash = ?, first_token_hash = NULL, started_at = ?, seen_at = ?, waiting_since = NULL WHERE id = ? AND status = 'queued' RETURNING id",
                 )
                 .bind(&[sha256_hex(&token).into(), at.as_str().into(), at.as_str().into(), job.id.as_str().into()])?
                 .first::<Value>(None)
@@ -1703,6 +1707,30 @@ impl Actions {
             .await
             .unwrap_or_else(|error| fail(FailureCode::Conflict, format!("The runner could not be reached: {error}")));
             if let Outcome::Fail(refused) = started {
+                // No machine free (every sandbox of its class taken, or a
+                // rollout replacing them): back in the queue, tried again at
+                // the next sweep, until it has waited WAIT_FOR_MACHINE_MS.
+                // The sandboxes after it would find none either, so this
+                // sweep starts no more.
+                if refused.code == FailureCode::Unavailable {
+                    let since = job.waiting_since.clone().unwrap_or_else(|| at.clone());
+                    if crate::waited_for_a_machine(Some(&since), now_ms()) {
+                        let minutes = crate::WAIT_FOR_MACHINE_MS / 60_000;
+                        let reason = format!("{} None came free in {minutes} minutes.", refused.message);
+                        Box::pin(self.finish_job(&job.id, "failure", Some(&reason), None)).await?;
+                        continue;
+                    }
+                    self.db
+                        .prepare(
+                            "UPDATE jobs SET status = 'queued', token_hash = NULL, started_at = NULL, seen_at = NULL, waiting_since = ?, reason = ?
+                               WHERE id = ? AND status = 'in_progress'",
+                        )
+                        .bind(&[since.as_str().into(), refused.message.as_str().into(), job.id.as_str().into()])?
+                        .run()
+                        .await?;
+                    worker::console_warn!("actions: job {} waits for a machine: {}", job.id, refused.message);
+                    break;
+                }
                 // Billing would not pay for a scheduled run's job: the
                 // schedule waits rather than making runs only to refuse them.
                 if refused.code == FailureCode::PaymentRequired

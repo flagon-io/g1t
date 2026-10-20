@@ -5,6 +5,7 @@ import {
   answered,
   capReached,
   describeError,
+  noMachine,
   OWED_GIVE_UP_MS,
   OWED_MAX_DELAY_SECONDS,
   owedDelaySeconds,
@@ -168,4 +169,11 @@ test("tries back off from 30 seconds to an hour", () => {
   assert.equal(owedDelaySeconds(5), 480);
   assert.equal(owedDelaySeconds(8), OWED_MAX_DELAY_SECONDS);
   assert.equal(owedDelaySeconds(1000), OWED_MAX_DELAY_SECONDS);
+});
+
+test("a sandbox Cloudflare has no container for waits for a machine; any other failure does not", () => {
+  assert.equal(noMachine(new Error("there is no container instance that can be provided to this durable object")), true);
+  assert.equal(noMachine("Error: There is no Container instance available at this time"), true);
+  assert.equal(noMachine(new Error("the container exited with code 1")), false);
+  assert.equal(noMachine(undefined), false);
 });
