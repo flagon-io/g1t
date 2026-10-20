@@ -20,7 +20,17 @@ export type ProbeResult = {
   colo?: string;
   /** Slow at first and checked again at once (`confirmSlow`): the first try's time. */
   first_ms?: number;
+  /**
+   * A check judged by the site's own time (`serverTime` on its check): how
+   * long the site took, without the way here. Slowness is judged on this.
+   */
+  server_ms?: number;
 };
+
+/** The time a result is judged on: the site's own when there is one, else the whole time. */
+export function judgedMs(result: Pick<ProbeResult, "ms" | "server_ms">): number {
+  return result.server_ms ?? result.ms;
+}
 
 /** How one git store namespace answered lately: repos `store_health`. */
 export type StoreHealthRow = {
@@ -117,6 +127,7 @@ export async function timed(work: (signal: AbortSignal) => Promise<true | string
 /** One request, answered with the status that means it works. */
 export async function step(fetcher: Fetch, { url, headers = {}, expect, browser = false }: Step, timeoutMs = TIMEOUT_MS): Promise<ProbeResult> {
   let colo: string | null = null;
+  let total: number | null = null;
   const result = await timed(async (signal) => {
     const response = await fetcher(url, {
       signal,
@@ -125,11 +136,42 @@ export async function step(fetcher: Fetch, { url, headers = {}, expect, browser 
     });
     // Timed to the answer's headers: the body is never read.
     colo = coloOf(response.headers.get("cf-ray"));
+    total = serverTotal(response.headers.get("server-timing"));
     await response.body?.cancel().catch(() => undefined);
     const good = expect == null ? response.ok : response.status === expect;
     return good || `HTTP ${response.status}`;
   }, timeoutMs);
-  return colo ? { ...result, colo } : result;
+  const out = colo ? { ...result, colo } : result;
+  return total != null && result.ok ? { ...out, server_ms: total } : out;
+}
+
+/**
+ * The site's own time to first byte, from its `Server-Timing` header: the
+ * `total` entry apps/web's lib/perf.ts `serverTiming` writes first
+ * (`total;dur=406;desc="web to first byte"`). Null without one: a page
+ * from the site's cache says only `cache;desc="hit, 17s old"`.
+ */
+export function serverTotal(header: string | null | undefined): number | null {
+  for (const entry of (header ?? "").split(",")) {
+    const [name, ...params] = entry.split(";").map((p) => p.trim());
+    if (name?.toLowerCase() !== "total") continue;
+    const dur = params.find((p) => /^dur=/i.test(p));
+    const ms = dur ? Number(dur.slice(4).replace(/^"|"$/g, "")) : Number.NaN;
+    if (Number.isFinite(ms) && ms >= 0) return ms;
+  }
+  return null;
+}
+
+/**
+ * The site's own time for a `serverTime` check: the slowest of its pages,
+ * each at the time it says it took, or, for a page that does not say (one
+ * from the site's cache), its time here less `baseline`'s, a file the site
+ * hands out without any work, asked for at the same moment: the way here,
+ * as near as it can be told. With no baseline, the whole time.
+ */
+export function serverOf(pages: ProbeResult[], baseline: ProbeResult | null): number {
+  const way = baseline?.ok ? baseline.ms : 0;
+  return Math.max(0, ...pages.map((p) => p.server_ms ?? Math.max(0, p.ms - way)));
 }
 
 /** The data centre in a `cf-ray` header: `8c1f2e3d4a5b6c7d-IAD` is `IAD`. */
@@ -149,7 +191,7 @@ export function combine(results: ProbeResult[]): ProbeResult {
 
 /** Whether a result is only slow: it worked, with nothing else wrong, but over `slowMs`. */
 export function onlySlow(result: ProbeResult | null, slowMs: number): boolean {
-  return result != null && result.ok && !result.degraded && Math.round(result.ms) > slowMs;
+  return result != null && result.ok && !result.degraded && Math.round(judgedMs(result)) > slowMs;
 }
 
 /**
@@ -161,7 +203,7 @@ export function onlySlow(result: ProbeResult | null, slowMs: number): boolean {
  */
 export function confirmSlow(first: ProbeResult, again: ProbeResult | null): ProbeResult {
   if (!again || !again.ok || again.degraded) return { ...first, first_ms: first.ms };
-  const better = again.ms < first.ms ? again : first;
+  const better = judgedMs(again) < judgedMs(first) ? again : first;
   const colo = better.colo ?? first.colo ?? again.colo;
   return { ...better, ...(colo ? { colo } : {}), first_ms: first.ms };
 }
@@ -179,8 +221,14 @@ export type Probers = {
 export async function runCheck(check: Check, probers: Probers): Promise<ProbeResult | null> {
   const timeoutMs = probers.timeoutMs ?? TIMEOUT_MS;
   switch (check.kind) {
-    case "http":
-      return combine(await Promise.all(check.steps.map((s) => step(probers.fetch, s, timeoutMs))));
+    case "http": {
+      const asked = Promise.all(check.steps.map((s) => step(probers.fetch, s, timeoutMs)));
+      if (!check.serverTime) return combine(await asked);
+      // The baseline goes with the pages, so it takes the same way here at the same moment.
+      const [pages, baseline] = await Promise.all([asked, step(probers.fetch, { url: check.serverTime.baseline }, timeoutMs)]);
+      const result = combine(pages);
+      return result.ok ? { ...result, server_ms: serverOf(pages, baseline) } : result;
+    }
     case "billing": {
       const billing = probers.billing;
       if (!billing) return null;

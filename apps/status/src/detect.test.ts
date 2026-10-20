@@ -2,14 +2,17 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  COOLDOWN_MS,
   DEPLOY_GRACE_MS,
   DEPLOY_MAX_MS,
   DETECT_BAD,
   DETECT_WINDOW,
   RECOVER_AFTER,
   RECOVERED_FOR_MS,
+  SLOW_SUSTAIN_MS,
   STALE_AFTER_MS,
   STALE_EVERY_MS,
+  WORSE_FACTOR,
   type DeployWindow,
   type Streak,
   autoDismissText,
@@ -22,12 +25,14 @@ import {
   minutesWords,
   quietUntil,
   recoverySentence,
+  reopenText,
   settleDrafts,
   staleDrafts,
   staleText,
   troubleSentence,
   troubledNow,
   upgradeStreak,
+  worseThan,
 } from "./detect.ts";
 
 const at = (minute: number) => new Date(Date.UTC(2026, 9, 5, 12, minute));
@@ -283,17 +288,75 @@ test("a draft nobody acknowledges is raised again after 45 minutes, once, then e
   assert.deepEqual([STALE_AFTER_MS, STALE_EVERY_MS], [45 * 60_000, 6 * 3_600_000]);
   const made = at(0);
   const later = (ms: number) => new Date(made.getTime() + ms);
-  const draft = { id: "d1", title: "Detected: Page speed slow", declared_at: made.toISOString(), reminded_at: null as string | null };
-  assert.deepEqual(staleDrafts([draft], later(STALE_AFTER_MS - 1)), []);
-  assert.deepEqual(staleDrafts([draft], later(STALE_AFTER_MS)), [{ id: "d1", title: draft.title, waiting_ms: STALE_AFTER_MS }]);
+  const draft = { id: "d1", title: "Detected: Page speed slow", components: ["speed"], declared_at: made.toISOString(), reminded_at: null as string | null };
+  const troubled = new Set(["speed"]);
+  assert.deepEqual(staleDrafts([draft], troubled, later(STALE_AFTER_MS - 1)), []);
+  assert.deepEqual(staleDrafts([draft], troubled, later(STALE_AFTER_MS)), [{ id: "d1", title: draft.title, waiting_ms: STALE_AFTER_MS }]);
   // Raised at 45 minutes: not again the minute after, nor at 90 minutes.
   const reminded = { ...draft, reminded_at: later(STALE_AFTER_MS).toISOString() };
-  assert.deepEqual(staleDrafts([reminded], later(STALE_AFTER_MS + 60_000)), []);
-  assert.deepEqual(staleDrafts([reminded], later(2 * STALE_AFTER_MS)), []);
-  assert.deepEqual(staleDrafts([reminded], later(STALE_AFTER_MS + STALE_EVERY_MS - 1)), []);
-  assert.equal(staleDrafts([reminded], later(STALE_AFTER_MS + STALE_EVERY_MS)).length, 1);
+  assert.deepEqual(staleDrafts([reminded], troubled, later(STALE_AFTER_MS + 60_000)), []);
+  assert.deepEqual(staleDrafts([reminded], troubled, later(2 * STALE_AFTER_MS)), []);
+  assert.deepEqual(staleDrafts([reminded], troubled, later(STALE_AFTER_MS + STALE_EVERY_MS - 1)), []);
+  assert.equal(staleDrafts([reminded], troubled, later(STALE_AFTER_MS + STALE_EVERY_MS)).length, 1);
+  // Healthy now: it waits quietly to be dismissed, at 45 minutes or after.
+  assert.deepEqual(staleDrafts([draft], new Set(["api"]), later(STALE_AFTER_MS)), []);
+  assert.deepEqual(staleDrafts([reminded], new Set(), later(STALE_AFTER_MS + STALE_EVERY_MS)), []);
+  // Brought back after it was dismissed: 45 minutes from then.
+  const back = { ...draft, reopened_at: later(3 * STALE_AFTER_MS).toISOString() };
+  assert.deepEqual(staleDrafts([back], troubled, later(4 * STALE_AFTER_MS - 1)), []);
+  assert.equal(staleDrafts([back], troubled, later(4 * STALE_AFTER_MS)).length, 1);
   assert.equal(staleText(STALE_AFTER_MS, true), "Unacknowledged for 45 minutes. The alert address was emailed again.");
   assert.equal(staleText(STALE_AFTER_MS + STALE_EVERY_MS, false), "Unacknowledged for 6h 45m.");
+});
+
+test(`slowness alone on a part g1t is not down without waits ${SLOW_SUSTAIN_MS / 60_000} minutes; not answering does not`, () => {
+  const sustained = (pattern: string, key = "speed", minor = new Set(["speed"])) => {
+    let streaks = new Map<string, Streak>();
+    return [...pattern].map((c, minute) => {
+      const state = c === "x" ? "down" : c === "s" ? "degraded" : "up";
+      const found = detect(streaks, [{ component: key, state }], [], new Set(), at(minute), { minor });
+      streaks = new Map(found.streaks.map((s) => [s.component, s]));
+      return found.draft.length;
+    });
+  };
+  // Slow 4 of 5 at minute 3, drafted only once the run is 15 minutes old, and still slow.
+  assert.equal(sustained("s".repeat(20)).indexOf(1), 15);
+  // Flapping that never lasts 15 minutes in a run is never drafted.
+  assert.equal(sustained("ssss...ssss...ssss...").includes(1), false);
+  // Not answering is drafted at once; and a core part's slowness is too.
+  assert.equal(sustained("xxxxx").indexOf(1), 3);
+  assert.equal(sustained("sssss", "git").indexOf(1), 3);
+});
+
+test("the same trouble within two hours of its draft's dismissal brings it back; worse trouble is a new draft", () => {
+  assert.deepEqual([COOLDOWN_MS, WORSE_FACTOR], [2 * 3_600_000, 1.5]);
+  const cooled = new Map([["git", { incident: "d1", state: "degraded" as const, at: at(0).toISOString() }]]);
+  const slowMs = () => 1500;
+  const cross = (state: "degraded" | "down", ms: number, minute: number) => {
+    const streak: Streak = {
+      component: "git",
+      state,
+      count: 3,
+      checks: 3,
+      recent: state === "down" ? "xxx" : "sss",
+      since: at(minute - 3).toISOString(),
+      alerted: false,
+    };
+    return detect(new Map([["git", streak]]), [{ component: "git", state, ms }], [], new Set(), at(minute), { cooled, slowMs });
+  };
+  const back = cross("degraded", 1800, 30);
+  assert.deepEqual([back.draft.length, back.reopen.map((r) => r.incident)], [0, ["d1"]]);
+  assert.equal(back.streaks[0]!.alerted, true, "counted as raised, so it is not raised again each minute");
+  // Clearly over the line, or not answering where it was slow: worse, a new draft.
+  assert.deepEqual([cross("degraded", 2300, 30).draft.length, cross("down", 5000, 30).draft.length], [1, 1]);
+  // After the cooldown: a new draft.
+  assert.equal(cross("degraded", 1800, 121).draft.length, 1);
+  // Down after a draft about not answering: the same trouble, brought back.
+  assert.equal(worseThan({ incident: "d1", state: "down", at: at(0).toISOString() }, { state: "down" }, 1500), false);
+  assert.equal(
+    reopenText("Git has been slow.", "5 Oct 12:00 UTC", 17 * 60_000),
+    "Back 17 minutes after it was dismissed (5 Oct 12:00 UTC): Git has been slow. Brought back rather than drafted again; no alert was sent.",
+  );
 });
 
 test("slow and down are said apart, with the run's own start", () => {
