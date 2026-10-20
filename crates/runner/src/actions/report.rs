@@ -71,6 +71,57 @@ pub(crate) fn take_cancel() {
     CANCEL.take();
 }
 
+/// How many times a spec is asked for before the job fails.
+const SPEC_TRIES: u32 = 4;
+
+/// How long to wait before asking for a spec again, after `attempt` tries:
+/// 1, 2, then 4 seconds.
+fn spec_backoff(attempt: u32) -> Duration {
+    Duration::from_secs(1 << (attempt - 1).min(2))
+}
+
+/// Why a spec did not arrive.
+#[derive(Debug)]
+enum SpecError {
+    /// g1t answered with this status.
+    Status(u16),
+    /// The request could not be made or answered (connection, timeout).
+    Transport(String),
+    /// The answer's body did not read as JSON: cut short, usually.
+    Body(std::io::Error),
+}
+
+impl SpecError {
+    /// Whether asking again may get the spec: not when g1t said no.
+    fn worth_retrying(&self) -> bool {
+        match self {
+            SpecError::Status(code) => *code >= 500,
+            SpecError::Transport(_) | SpecError::Body(_) => true,
+        }
+    }
+}
+
+impl From<ureq::Error> for SpecError {
+    fn from(error: ureq::Error) -> Self {
+        match error {
+            ureq::Error::Status(code, _) => SpecError::Status(code),
+            ureq::Error::Transport(transport) => SpecError::Transport(transport.to_string()),
+        }
+    }
+}
+
+impl std::fmt::Display for SpecError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SpecError::Status(code) => write!(f, "g1t answered {code}"),
+            SpecError::Transport(error) => write!(f, "{error}"),
+            SpecError::Body(error) => write!(f, "Failed to read JSON: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for SpecError {}
+
 #[derive(Clone)]
 pub(crate) struct Api {
     pub(crate) base: String,
@@ -88,6 +139,12 @@ impl Api {
     /// With `broker`, this harness passes its job's requests to brokered
     /// secrets' hosts through g1t (broker.rs), and the spec lists each
     /// stand-in's hosts (`brokered`).
+    ///
+    /// A spec that does not arrive whole (the connection drops, or the body
+    /// ends early) or that g1t could not make (5xx) is asked for again, up
+    /// to [`SPEC_TRIES`] times: Deploy #449's job failed on one truncated
+    /// answer. Not with `rotate`: g1t spends the token on the first ask,
+    /// whether or not the answer arrived, so a second would be refused.
     pub(crate) fn spec(&mut self, rotate: bool, broker: bool) -> Result<Value> {
         let mut body = json!({ "token": self.token });
         if rotate {
@@ -96,8 +153,25 @@ impl Api {
         if broker {
             body["broker"] = json!(true);
         }
-        let response = ureq::post(&format!("{}/actions/jobs/{}/spec", self.base, self.job)).timeout(Duration::from_secs(60)).send_json(body)?;
-        let mut spec: Value = response.into_json()?;
+        let url = format!("{}/actions/jobs/{}/spec", self.base, self.job);
+        let tries = if rotate { 1 } else { SPEC_TRIES };
+        let mut attempt = 1;
+        let mut spec: Value = loop {
+            let fetched = ureq::post(&url)
+                .timeout(Duration::from_secs(60))
+                .send_json(body.clone())
+                .map_err(SpecError::from)
+                .and_then(|response| response.into_json::<Value>().map_err(SpecError::Body));
+            match fetched {
+                Ok(spec) => break spec,
+                Err(error) if attempt < tries && error.worth_retrying() => {
+                    eprintln!("g1t-runner: the job's spec did not arrive whole ({error}); asking again");
+                    std::thread::sleep(spec_backoff(attempt));
+                    attempt += 1;
+                }
+                Err(error) => return Err(error.into()),
+            }
+        };
         self.take_next_token(&mut spec);
         Ok(spec)
     }
@@ -468,6 +542,59 @@ pub(crate) fn unstamped(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A g1t on 127.0.0.1 that answers each spec request with the next of
+    /// `answers` (a body, and whether to cut it short), counting the asks.
+    fn serve(answers: Vec<(&'static str, bool)>) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let asked = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count = asked.clone();
+        std::thread::spawn(move || {
+            for (body, cut) in answers {
+                let Ok((mut stream, _)) = listener.accept() else { return };
+                let mut request = [0u8; 4096];
+                let _ = stream.read(&mut request);
+                count.fetch_add(1, Ordering::SeqCst);
+                // Cut short: says the whole length, sends half, and hangs up.
+                let sent = if cut { &body[..body.len() / 2] } else { body };
+                let head = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+                let _ = stream.write_all(head.as_bytes());
+                let _ = stream.write_all(sent.as_bytes());
+            }
+        });
+        (base, asked)
+    }
+
+    #[test]
+    fn a_spec_cut_short_is_asked_for_again() {
+        let body = r#"{"job":"job_1","masks":[],"steps":[{"run":"cargo test"}]}"#;
+        let (base, asked) = serve(vec![(body, true), (body, false)]);
+        let mut api = Api { base, job: "job_1".into(), token: "t".into() };
+        let spec = api.spec(false, false).unwrap();
+        assert_eq!(spec["steps"][0]["run"], "cargo test");
+        assert_eq!(asked.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn a_spec_that_spends_its_token_is_asked_for_once() {
+        let body = r#"{"job":"job_1","masks":[],"next_token":"fresh"}"#;
+        let (base, asked) = serve(vec![(body, true), (body, false)]);
+        let mut api = Api { base, job: "job_1".into(), token: "t".into() };
+        let error = api.spec(true, false).unwrap_err().to_string();
+        assert!(error.starts_with("Failed to read JSON"), "{error}");
+        assert_eq!(asked.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn only_what_may_arrive_next_time_is_asked_again() {
+        assert!(SpecError::Status(502).worth_retrying());
+        assert!(!SpecError::Status(403).worth_retrying());
+        assert!(!SpecError::Status(404).worth_retrying());
+        assert!(SpecError::Transport("connection reset".into()).worth_retrying());
+        assert_eq!((spec_backoff(1), spec_backoff(2), spec_backoff(3)), (Duration::from_secs(1), Duration::from_secs(2), Duration::from_secs(4)));
+    }
 
     #[test]
     fn the_token_a_spec_carries_replaces_the_one_it_was_fetched_with() {
