@@ -272,37 +272,40 @@ impl Billing {
     /// reservations hold, when the caller has read it.
     pub(crate) async fn complimentary_month(&self, row: &Row, held: Option<i64>) -> Result<ComplimentaryMonth> {
         let month = crate::credits::month_of(&rfc3339(now_ms()));
-        let used = self.allowance_used("complimentary", &row.workspace, &month).await?;
+        let pending_sql = format!(
+            "SELECT SUM({}) AS micros FROM pending_usage WHERE workspace = ?1 AND month = ?2 AND charged_at IS NULL",
+            crate::storage::NET_CHARGE
+        );
+        let month_start = format!("{month}-01");
+        let overrun_args: [worker::wasm_bindgen::JsValue; 2] = [row.workspace.as_str().into(), month_start.as_str().into()];
+        // None of these needs another's answer, so they go to D1 at once.
+        let used = self.allowance_used("complimentary", &row.workspace, &month);
         // Metered this month and not on the ledger yet: the allowance pays
         // for it when the month closes.
-        let pending = self
-            .sum(
-                &format!(
-                    "SELECT SUM({}) AS micros FROM pending_usage WHERE workspace = ?1 AND month = ?2 AND charged_at IS NULL",
-                    crate::storage::NET_CHARGE
-                ),
-                &[row.workspace.as_str().into(), month.as_str().into()],
-            )
-            .await?;
-        let held = match held {
-            Some(held) => held,
-            None => self
-                .sum(
-                    "SELECT SUM(hold_micros) AS micros FROM reservations WHERE workspace = ?1 AND settled_at IS NULL AND expires_at > ?2",
-                    &[row.workspace.as_str().into(), rfc3339(now_ms()).into()],
-                )
-                .await?,
+        let pending_args: [worker::wasm_bindgen::JsValue; 2] = [row.workspace.as_str().into(), month.as_str().into()];
+        let pending = self.sum(&pending_sql, &pending_args);
+        let held = async {
+            match held {
+                Some(held) => Ok(held),
+                None => {
+                    self.sum(
+                        "SELECT SUM(hold_micros) AS micros FROM reservations WHERE workspace = ?1 AND settled_at IS NULL AND expires_at > ?2",
+                        &[row.workspace.as_str().into(), rfc3339(now_ms()).into()],
+                    )
+                    .await
+                }
+            }
         };
-        let overrun = self
-            .sum(
-                "SELECT SUM(given_micros) AS micros FROM ledger
-                 WHERE workspace = ?1 AND kind = 'usage' AND created_at >= ?2 AND given_micros > 0 AND EXISTS (
-                   SELECT 1 FROM complimentary_periods p WHERE p.workspace = ?1 AND p.starts_at <= ledger.created_at
-                     AND (p.ends_at IS NULL OR p.ends_at > ledger.created_at))",
-                &[row.workspace.as_str().into(), format!("{month}-01").into()],
-            )
-            .await?;
-        let has_card = row.charges_past() && self.has_card(&row.workspace).await?;
+        let overrun = self.sum(
+            "SELECT SUM(given_micros) AS micros FROM ledger
+             WHERE workspace = ?1 AND kind = 'usage' AND created_at >= ?2 AND given_micros > 0 AND EXISTS (
+               SELECT 1 FROM complimentary_periods p WHERE p.workspace = ?1 AND p.starts_at <= ledger.created_at
+                 AND (p.ends_at IS NULL OR p.ends_at > ledger.created_at))",
+            &overrun_args,
+        );
+        let has_card = async { Ok(row.charges_past() && self.has_card(&row.workspace).await?) };
+        let ((used, pending, held), (overrun, has_card)) =
+            futures_util::future::try_join(futures_util::future::try_join3(used, pending, held), futures_util::future::try_join(overrun, has_card)).await?;
         Ok(month_standing(&month, row, used, pending, held, overrun, has_card))
     }
 
