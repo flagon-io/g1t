@@ -17,6 +17,7 @@ import {
   CHAT_VIEWER_HEADER,
   G1T_KEY,
   G1T_PRINCIPAL,
+  aiClient,
   fail,
   identityClient,
   idFloor,
@@ -25,6 +26,7 @@ import {
   openD1,
   parsePrincipalKey,
   principalKey,
+  type AskSetup,
   type Channel,
   type ChannelAccessRequest,
   type ChannelChange,
@@ -38,6 +40,7 @@ import {
   type EmojiFile,
   type EmojiList,
   type EmojiUpload,
+  type G1tAsked,
   type ChatSettings,
   type ChatSettingsView,
   type ChatActivity,
@@ -1620,7 +1623,9 @@ class Chat {
     return ok(message);
   }
 
-  async post(a: { workspace: string; channel_id: string; viewer: Viewer; message: PostMessage }): Promise<Result<ChatMessage>> {
+  /** `setup`: what Ask answers with, when `g1tAsk` has just read it, so the answer does not read it again. */
+  async post(a: { workspace: string; channel_id: string; viewer: Viewer; message: PostMessage }, setup?: AskSetup): Promise<Result<ChatMessage>> {
+    const askedAt = Date.now();
     const found = await this.place(a.workspace, a.channel_id, a.viewer, "read");
     if (!found.ok) return found;
     const body = messageBody(a.message?.body);
@@ -1645,7 +1650,10 @@ class Chat {
     // A question for @g1t: kept with the page it was asked from, then answered.
     const page = pageFrom(a.message?.page);
     const written = await this.write(place, me, input, { meta: page ? { page } : {} });
-    if (written.ok) this.defer(this.startAnswer(place, a.viewer!).catch((error) => console.error("g1t could not start an answer in", place.channel.id, error)));
+    if (written.ok)
+      this.defer(
+        this.startAnswer(place, a.viewer!, { at: askedAt, setup }).catch((error) => console.error("g1t could not start an answer in", place.channel.id, error)),
+      );
     return written;
   }
 
@@ -1659,21 +1667,32 @@ class Chat {
   /**
    * Starts @g1t's answer to what was last said in its direct message: an
    * empty message from g1t, `thinking`, which the channel's room writes the
-   * answer into as it streams (src/room.ts `startAnswer`).
+   * answer into as it streams (src/room.ts `startAnswer`). `asked` is when
+   * the question came, and Ask's setup when the caller has just read it.
    */
-  private async startAnswer(place: Place, viewer: User): Promise<void> {
-    const recent = await this.db
-      .prepare("SELECT id, author, kind, body, meta, deleted_at FROM messages WHERE channel_id = ? AND thread_root IS NULL ORDER BY id DESC LIMIT 120")
-      .bind(place.channel.id)
-      .all<SaidRow>();
+  private async startAnswer(place: Place, viewer: User, asked: { at: number; setup?: AskSetup } = { at: Date.now() }): Promise<void> {
+    const { channel } = place;
+    // The conversation is read while the empty answer is written, not before
+    // it: one database round trip fewer before the model is asked. The
+    // empty answer may be among the rows read; the conversation leaves it out.
+    const [recent, written] = await Promise.all([
+      this.db
+        .prepare("SELECT id, author, kind, body, meta, deleted_at FROM messages WHERE channel_id = ? AND thread_root IS NULL ORDER BY id DESC LIMIT 120")
+        .bind(channel.id)
+        .all<SaidRow>(),
+      this.write(place, G1T_KEY, { body: "", card: null, thread_root: null }, { meta: { answer: { state: "thinking" } }, notify: false }),
+    ]);
+    if (!written.ok) return;
     const rows = recent.results.reverse();
-    const messages = conversation(rows);
-    if (!messages.length) return;
+    const messages = conversation(rows, written.value.id);
+    if (!messages.length) {
+      // Nothing to answer after all (g1t had the last word): its empty answer goes.
+      await this.db.prepare("DELETE FROM messages WHERE id = ?").bind(written.value.id).run();
+      this.broadcast(channel.id, { type: "message.deleted", channel_id: channel.id, id: written.value.id });
+      return;
+    }
     // The question it answers: a clear that deletes it also throws this answer away (src/room.ts).
     const question = latestQuestion(rows);
-    const written = await this.write(place, G1T_KEY, { body: "", card: null, thread_root: null }, { meta: { answer: { state: "thinking" } }, notify: false });
-    if (!written.ok) return;
-    const { channel } = place;
     await this.room(channel.id).startAnswer({
       slug: place.slug,
       channel: { id: channel.id, kind: channel.kind, name: channel.name },
@@ -1683,6 +1702,8 @@ class Chat {
       page: { ...latestPage(rows), path: latestPage(rows)?.path ?? `/${place.slug}/-/chat/dm/${channel.id}` },
       message: written.value,
       question_id: question ?? undefined,
+      setup: asked.setup,
+      asked_at: asked.at,
     });
   }
 
@@ -1698,6 +1719,32 @@ class Chat {
 
   async g1tDm(a: { workspace: string; viewer: Viewer }): Promise<Result<Channel>> {
     return this.openDm({ workspace: a.workspace, viewer: a.viewer, members: [G1T_PRINCIPAL] });
+  }
+
+  /**
+   * Asks @g1t in one call (Home's Summarize): Ask's setup is read while
+   * the direct message is found or opened, then the question is posted,
+   * which starts the answer with that setup. Ask that cannot answer yet
+   * asks nothing and says why.
+   */
+  async g1tAsk(a: { workspace: string; viewer: Viewer; message: PostMessage }): Promise<Result<G1tAsked>> {
+    const [setup, opened] = await Promise.all([this.askSetup(a.workspace, a.viewer), this.g1tDm(a)]);
+    if (setup === "unreachable") return fail("unavailable", "Ask could not be reached. Try again in a moment.");
+    if (setup?.problem) return ok({ problem: setup.problem });
+    if (!opened.ok) return opened;
+    const channel_id = opened.value.id;
+    const message = { body: a.message?.body ?? "", thread_root: null, page: a.message?.page ?? null };
+    const saved = await this.post({ workspace: a.workspace, channel_id, viewer: a.viewer, message }, setup ?? undefined);
+    return saved.ok ? ok({ channel_id, question_id: saved.value.id }) : saved;
+  }
+
+  /** What Ask answers with in the workspace; null without Ask's service, `unreachable` when it did not answer. */
+  private async askSetup(slug: string, viewer: Viewer): Promise<AskSetup | null | "unreachable"> {
+    if (!this.env.INTEGRATIONS) return null;
+    const found = await aiClient(this.env.INTEGRATIONS)
+      .askSettings(slug, viewer)
+      .catch(() => null);
+    return found?.ok ? found.value : "unreachable";
   }
 
   /**
@@ -2249,6 +2296,8 @@ async function answer(service: Chat, method: string, args: any): Promise<Respons
       return Response.json(await service.setEmojiUpload(args));
     case "g1t_dm":
       return Response.json(await service.g1tDm(args));
+    case "g1t_ask":
+      return Response.json(await service.g1tAsk(args));
     case "g1t_reset":
       return Response.json(await service.g1tReset(args));
     case "g1t_retry":

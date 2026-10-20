@@ -9,79 +9,60 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router";
 
-import type { AskSetup, ChatLiveEvent, ChatMessage, Result } from "@g1t/contracts";
+import type { ChatLiveEvent, ChatMessage, Result } from "@g1t/contracts";
 
 import { askPage } from "../lib/ask";
 import { answering, applyLive, fromG1t } from "../lib/g1t-chat";
+import { type AskedG1t, type SummaryState, summaryAsked, summaryPollMs } from "../lib/home-summary";
 import { browserTimeZone } from "../lib/time-zone";
 import { useReadWhenShown } from "../lib/use-read-when-shown";
 import { G1tAnswer } from "./chat/answer";
-import { useChatLive } from "./chat/live";
+import { type LiveState, useChatLive } from "./chat/live";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Skeleton } from "./ui/skeleton";
 
-/** How often the conversation is read again while the answer comes, should the socket miss it. */
-const POLL_MS = 2_500;
 /** How long the card waits for an answer before it stops reading. */
 const GIVE_UP_MS = 4 * 60_000;
-
-async function chatApi<T>(slug: string, body: Record<string, unknown>): Promise<Result<T>> {
-  try {
-    const response = await fetch(`/${slug}/-/chat/api`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    return (await response.json()) as Result<T>;
-  } catch {
-    return { ok: false, error: { code: "conflict", message: "g1t could not be reached. Check your connection and try again." } };
-  }
-}
 
 function LiveSocket({
   slug,
   channelId,
   onEvent,
   onReconnect,
+  onState,
 }: {
   slug: string;
   channelId: string;
   onEvent: (event: ChatLiveEvent) => void;
   onReconnect: () => void;
+  onState: (state: LiveState) => void;
 }) {
-  useChatLive(slug, channelId, onEvent, onReconnect);
+  const { state } = useChatLive(slug, channelId, onEvent, onReconnect);
+  useEffect(() => onState(state), [state, onState]);
   return null;
 }
-
-type State =
-  | { step: "asking" }
-  | { step: "answering"; channelId: string; questionId: string }
-  | { step: "problem"; message: string; setup: boolean; owner: boolean };
 
 /** Asks g1t `question` once, then shows its answer as it streams. `onDone` runs when the answer is finished. */
 export default function HomeSummary({ slug, question, onDone }: { slug: string; question: string; onDone?: (channelId: string | null) => void }) {
   const { pathname } = useLocation();
-  const [state, setState] = useState<State>({ step: "asking" });
+  const [state, setState] = useState<SummaryState>({ step: "asking" });
+  const [live, setLive] = useState<LiveState>("connecting");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const asked = useRef(false);
 
   useEffect(() => {
     if (asked.current) return;
     asked.current = true;
+    // One request: chat checks Ask is set up, opens the direct message with g1t and asks there.
     void (async () => {
-      const setup = await fetch(`/${slug}/-/ask`, { headers: { accept: "application/json" } })
-        .then((response) => response.json() as Promise<{ ok: boolean; value?: AskSetup; owner: boolean }>)
+      const asked = await fetch(`/${slug}/-/chat/api`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ intent: "ask_g1t", body: question, page: { ...askPage(pathname), time_zone: browserTimeZone() } }),
+      })
+        .then((response) => response.json() as Promise<Result<AskedG1t>>)
         .catch(() => null);
-      if (!setup?.ok || !setup.value)
-        return setState({ step: "problem", message: "Ask could not be reached. Try again in a moment.", setup: false, owner: false });
-      if (setup.value.problem) return setState({ step: "problem", message: setup.value.problem, setup: true, owner: setup.owner });
-      const opened = await chatApi<{ channel: { id: string } }>(slug, { intent: "g1t_dm" });
-      if (!opened.ok) return setState({ step: "problem", message: opened.error.message, setup: false, owner: false });
-      const channelId = opened.value.channel.id;
-      const saved = await chatApi<ChatMessage>(slug, {
-        intent: "post",
-        channel_id: channelId,
-        body: question,
-        page: { ...askPage(pathname), time_zone: browserTimeZone() },
-      });
-      if (!saved.ok) return setState({ step: "problem", message: saved.error.message, setup: false, owner: false });
-      setState({ step: "answering", channelId, questionId: saved.value.id });
+      setState(summaryAsked(asked));
     })();
   }, [slug, question, pathname]);
 
@@ -116,17 +97,20 @@ export default function HomeSummary({ slug, question, onDone }: { slug: string; 
     [channelId],
   );
 
-  // Read until the answer is finished: the socket brings it as it streams, this makes sure of it.
+  // Read until the answer is finished: the socket brings it as it streams, this makes sure of it,
+  // often while the socket connects, now and then once it is open (and once as it opens).
+  const since = useRef<number | null>(null);
   useEffect(() => {
     if (!channelId || finished) return;
+    if (since.current == null) since.current = Date.now();
     void load();
-    const started = Date.now();
+    const started = since.current;
     const timer = setInterval(() => {
       if (Date.now() - started > GIVE_UP_MS) clearInterval(timer);
       else void load();
-    }, POLL_MS);
+    }, summaryPollMs(live));
     return () => clearInterval(timer);
-  }, [channelId, finished, load]);
+  }, [channelId, finished, load, live]);
 
   // Watched here, so read here: the question is the viewer's own, and the
   // answer is marked once it is finished, while the card is in view.
@@ -161,7 +145,7 @@ export default function HomeSummary({ slug, question, onDone }: { slug: string; 
 
   return (
     <div ref={card} aria-live="polite" aria-busy={!finished}>
-      {channelId && <LiveSocket slug={slug} channelId={channelId} onEvent={onEvent} onReconnect={() => void load()} />}
+      {channelId && <LiveSocket slug={slug} channelId={channelId} onEvent={onEvent} onReconnect={() => void load()} onState={setLive} />}
       {answer ? (
         <G1tAnswer message={answer} context={{ slug, repo: null }} />
       ) : (

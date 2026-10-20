@@ -42,6 +42,7 @@ test("the site's chat client never reaches the internal methods", async () => {
   const viewer = { id: "u1", username: "ana", workspaces: [{ slug: "acme", role: "member" as const }] };
   await client.post("acme", "chn_1", viewer as never, { body: "hi" });
   await client.g1tDm("acme", viewer as never);
+  await client.g1tAsk("acme", viewer as never, { body: "What happened?" });
   await client.g1tReset("acme", "chn_1", viewer as never);
   await client.g1tRetry("acme", "chn_1", viewer as never);
   await client.g1tStop("acme", "chn_1", viewer as never);

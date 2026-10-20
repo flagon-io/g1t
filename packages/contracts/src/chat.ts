@@ -493,6 +493,13 @@ export type PostMessage = {
 };
 
 /**
+ * What `g1tAsk` did: the question is in the viewer's direct message with
+ * @g1t and its answer is starting, or Ask cannot answer in the workspace
+ * yet and nothing was asked (`problem`, for the person asking).
+ */
+export type G1tAsked = { channel_id: string; question_id: string } | { problem: string };
+
+/**
  * What the live socket sends. The site opens
  * `wss://<site>/<workspace>/chat/live?channel=<id>`; the site checks the
  * session and forwards the upgrade to the chat service with the viewer.
@@ -659,6 +666,13 @@ export type ChatApi = {
   /** The viewer's direct message with @g1t, created on first use. */
   g1tDm(workspace: string, viewer: User): Promise<Result<Channel>>;
   /**
+   * Asks @g1t a question in one call, as Home's Summarize does: checks
+   * Ask is set up in the workspace (with the viewer's direct message with
+   * g1t opened meanwhile), then posts the question there, which starts the
+   * answer. What `g1tDm` and `post` do, without the round trips between.
+   */
+  g1tAsk(workspace: string, viewer: User, message: PostMessage): Promise<Result<G1tAsked>>;
+  /**
    * Starts a new conversation in the viewer's direct message with @g1t: a
    * mark after which answers read only what comes next. Stops an answer
    * still coming.
@@ -770,6 +784,7 @@ export function chatClient(service: ServiceBinding): ChatApi {
     removeEmoji: (workspace, viewer, name) => call("remove_emoji", { workspace, viewer, name }),
     setEmojiUpload: (workspace, viewer, value) => call("set_emoji_upload", { workspace, viewer, value }),
     g1tDm: (workspace, viewer) => call("g1t_dm", { workspace, viewer }),
+    g1tAsk: (workspace, viewer, message) => call("g1t_ask", { workspace, viewer, message }),
     g1tReset: (workspace, channelId, viewer) => call("g1t_reset", { workspace, channel_id: channelId, viewer }),
     g1tRetry: (workspace, channelId, viewer) => call("g1t_retry", { workspace, channel_id: channelId, viewer }),
     g1tStop: (workspace, channelId, viewer) => call("g1t_stop", { workspace, channel_id: channelId, viewer }),

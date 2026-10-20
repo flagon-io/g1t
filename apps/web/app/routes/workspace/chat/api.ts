@@ -4,7 +4,7 @@ import type { Route } from "./+types/api";
 import { RESERVED_CHANNEL_NAMES, channelName, channelPath } from "../../../lib/chat";
 import { personFrom, principalsFrom } from "../../../lib/chat.server";
 import { chat } from "../../../lib/services.server";
-import { assertSameOrigin, requireUser } from "../../../lib/session.server";
+import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../../lib/session.server";
 
 /**
  * What a chat page asks for as it runs, as JSON, without loading a page:
@@ -83,6 +83,18 @@ export async function action({ params, context, request }: Route.ActionArgs) {
       case "g1t_dm": {
         const opened = await chat.g1tDm(slug, viewer);
         return opened.ok ? { ok: true, value: { channel: opened.value, to: channelPath(slug, opened.value) } } : opened;
+      }
+      // Asks @g1t in one request (Home's Summarize): what `-/ask`, `g1t_dm` and `post` did one after another.
+      // Ask that cannot answer yet says why, and whether the viewer is an owner who can choose a provider.
+      case "ask_g1t": {
+        const role = roleIn(getViewer(context), slug);
+        if (!role) return { ok: false, error: { code: "not_found", message: "Ask could not be reached. Try again in a moment." } };
+        const body = (sent.body ?? "").trim();
+        if (!body) return { ok: false, error: { code: "invalid", message: "Write something to ask." } };
+        const page = sent.page && typeof sent.page === "object" ? (sent.page as AskPage) : null;
+        const asked = await chat.g1tAsk(slug, viewer, { body, page });
+        if (asked.ok && "problem" in asked.value) return { ok: true, value: { problem: asked.value.problem, owner: role === "owner" } };
+        return asked;
       }
       case "g1t_reset":
         return chat.g1tReset(slug, channel, viewer);
