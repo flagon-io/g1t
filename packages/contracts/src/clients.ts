@@ -450,6 +450,7 @@ export function workClient(service: ServiceBinding): WorkApi {
         label: filter.label ?? null,
         milestone: filter.milestone ?? null,
         assignee: filter.assignee ?? null,
+        parent: filter.parent ?? null,
         closed_since: filter.closedSince ?? null,
         before: filter.before ?? null,
         ...(filter.horizon ? { horizon: filter.horizon } : {}),
@@ -462,14 +463,17 @@ export function workClient(service: ServiceBinding): WorkApi {
       call("get_plan", { workspace, viewer, ...(options.repo ? { repo: options.repo } : {}), ...(options.all ? { all: true } : {}) }),
     nextWorkItem: (workspace, viewer, repo) => call("next_work_item", { workspace, viewer, ...(repo ? { repo } : {}) }),
     configurePlan: (actor, workspace, nowCap) => call("configure_plan", { actor, workspace, now_cap: nowCap }),
-    closeWorkItem: (actor, workspace, number, reason, by) =>
+    closeWorkItem: (actor, workspace, number, reason, by, subItems) =>
       call("close_work_item", {
         actor,
         workspace,
         number,
         reason: reason ?? null,
         ...(by ? { repo: by.repo, commit: by.commit } : {}),
+        ...(subItems ? { sub_items: subItems.subItems, ...(subItems.moveTo ? { move_to: subItems.moveTo } : {}) } : {}),
       }),
+    setWorkItemParent: (actor, workspace, number, parent, onlyFrom) =>
+      call("set_work_item_parent", { actor, workspace, number, parent, ...(onlyFrom ? { only_from: onlyFrom } : {}) }),
     reopenWorkItem: (actor, workspace, number) => call("reopen_work_item", { actor, workspace, number }),
     linkWorkItem: (actor, workspace, number, repo, role = "target") => call("link_work_item", { actor, workspace, number, repo, role }),
     unlinkWorkItem: (actor, workspace, number, repo) => call("unlink_work_item", { actor, workspace, number, repo }),

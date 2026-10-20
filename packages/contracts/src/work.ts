@@ -94,6 +94,10 @@ export type WorkItem = {
   assignees: string[];
   /** The numbers of the work items of the workspace that have to land before this one is worked on. */
   blockedBy: number[];
+  /** The number of the work item of the workspace it is a sub-item of, if any. */
+  parent?: number | null;
+  /** With sub-items: how many of them are closed, of how many. */
+  subItemProgress?: SubItemProgress | null;
   /**
    * The agent working on it now: the one behind its newest pull request
    * that is still in progress in a fork, such as `g1t`.
@@ -116,6 +120,16 @@ export type WorkItem = {
   /** While it is in Triage: where g1t suggests it goes. */
   suggestion?: PlanSuggestion | null;
 };
+
+/** How far along a parent's sub-items are: `done` of `total` are closed. Mirrors `crates/contracts/src/work/sub_items.rs`. */
+export type SubItemProgress = { done: number; total: number };
+
+/**
+ * What closing a work item does with its sub-items that are still open:
+ * leave them, close them too (and theirs), or move them to another parent.
+ * Closing one that has some is refused until this is said.
+ */
+export type OpenSubItems = "leave" | "close" | "move";
 
 /** What g1t suggests for a work item in Triage, drafted by the workspace's own AI provider, for a person to accept or not. */
 export type PlanSuggestion = {
@@ -246,6 +260,10 @@ export type WorkItemDetail = {
   comments: Comment[];
   /** How people (and g1t) reacted to its description. */
   reactions: ReactionGroup[];
+  /** The work item it is a sub-item of, when the viewer may see it. */
+  parent?: ItemBrief | null;
+  /** Its sub-items the viewer may see, by number. */
+  sub_items?: ItemBrief[];
 };
 
 /** What `#N` names (`resolveRef`): see `refs.ts` for the order it is read in. */
@@ -980,6 +998,8 @@ export type OpenWorkItemInput = {
   labels?: string[];
   /** The number of the workspace milestone to put it in. Needs the Triage role. */
   milestone?: number;
+  /** The number of the work item to file it as a sub-item of. */
+  parent?: number;
 };
 
 export type UpdateWorkItemInput = {
@@ -992,6 +1012,8 @@ export type UpdateWorkItemInput = {
   milestone?: number;
   /** The work items of the workspace that have to land first, by number; replaces the whole set. */
   blocked_by?: number[];
+  /** The number of the work item to make it a sub-item of; 0 takes it out of its parent. */
+  parent?: number;
 };
 
 /** How many `listWorkItems` and `listPulls` give at most in one call. */
@@ -1007,6 +1029,8 @@ export type WorkItemFilter = {
   milestone?: number;
   /** Only those assigned to this username. */
   assignee?: string;
+  /** Only the sub-items of the work item of this number. */
+  parent?: number;
   /** Only those closed at or after this time (RFC 3339), the most recently closed first instead of the newest. */
   closedSince?: string;
   /** Only those numbered below this: the next page, after one whose lowest number this is. */
@@ -1097,7 +1121,20 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
    * branch, naming it after a closing keyword) would have: it lands there,
    * and closes once nothing else is left to land.
    */
-  closeWorkItem(actor: User, workspace: string, number: number, reason?: CloseReason, by?: { repo: RepoPath; commit: string }): Promise<Result<WorkItem>>;
+  closeWorkItem(
+    actor: User,
+    workspace: string,
+    number: number,
+    reason?: CloseReason,
+    by?: { repo: RepoPath; commit: string },
+    subItems?: { subItems: OpenSubItems; moveTo?: number },
+  ): Promise<Result<WorkItem>>;
+  /**
+   * Makes work item `number` a sub-item of `parent`, or of nothing with
+   * null; with `onlyFrom`, takes it out only when that is its parent now.
+   * Its owner, or someone with the Triage role on it, may. Returns the sub-item.
+   */
+  setWorkItemParent(actor: User, workspace: string, number: number, parent: number | null, onlyFrom?: number): Promise<Result<WorkItem>>;
   reopenWorkItem(actor: User, workspace: string, number: number): Promise<Result<WorkItem>>;
   /** Links a repository of the workspace as a target (or as touched), or changes how it is linked. Needs Triage. */
   linkWorkItem(actor: User, workspace: string, number: number, repo: RepoPath, role?: LinkRole): Promise<Result<WorkItem>>;
@@ -1895,6 +1932,10 @@ export type WorkContext = {
   blockedBy: Blocker[];
   /** The work items it blocks. */
   blocks: ItemBrief[];
+  /** The work item it is a sub-item of, when the viewer may see it. */
+  parent?: ItemBrief | null;
+  /** Its sub-items the viewer may see, by number. A parent is not blocked by them. */
+  subItems?: ItemBrief[];
   /** On it and its pull requests, newest first. */
   decisions: Decision[];
   /** The latest `integration_failure` decision among them. */

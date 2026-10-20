@@ -1237,6 +1237,13 @@ pub struct WorkContext {
     pub blocked_by: Vec<Blocker>,
     /// The work items it blocks.
     pub blocks: Vec<ItemBrief>,
+    /// The work item it is a sub-item of, when the viewer may see it.
+    #[serde(default)]
+    pub parent: Option<ItemBrief>,
+    /// Its sub-items the viewer may see, by number. Not what it is
+    /// blocked by: a parent waits on none of them.
+    #[serde(default)]
+    pub sub_items: Vec<ItemBrief>,
     /// Decision records on it and its pull requests, newest first.
     #[serde(default)]
     pub decisions: Vec<crate::decisions::Decision>,

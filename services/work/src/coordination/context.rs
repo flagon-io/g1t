@@ -179,7 +179,11 @@ impl Work {
             self.work_sessions(&held, &pulls),
             self.suggestions(&held, viewer),
         );
-        let dependencies = try_join(self.blockers(viewer, &held.item.workspace, &held.item.blocked_by), items::blocked_items(self, &held, viewer));
+        let dependencies = try_join3(
+            self.blockers(viewer, &held.item.workspace, &held.item.blocked_by),
+            items::blocked_items(self, &held, viewer),
+            items::parent_and_sub_items(self, &held, viewer),
+        );
         // Only the repositories the viewer may read: the events service
         // takes the ids it is given as checked.
         let linked: Vec<String> = held.repo_ids().into_iter().filter(|id| may_read(id)).collect();
@@ -192,7 +196,7 @@ impl Work {
             let mine: Vec<&Pull> = pulls.iter().filter(|pull| pull.repo_id == repo.id).collect();
             Some(self.work_repo(link.clone(), repo, mine))
         }));
-        let (((claims, sessions, suggested_targets), (blocked_by, blocks)), ((recent, decisions), repos)) =
+        let (((claims, sessions, suggested_targets), (blocked_by, blocks, (parent, sub_items))), ((recent, decisions), repos)) =
             try_join(try_join(people, dependencies), try_join(history, repos)).await?;
         let readable_ids: Vec<String> = readable.iter().map(|repo| repo.id.clone()).collect();
         let (claims, sessions) = shown_people(claims, sessions, &readable_ids, &a.viewer, &held.item.workspace);
@@ -207,6 +211,8 @@ impl Work {
             sessions,
             blocked_by,
             blocks,
+            parent,
+            sub_items,
             last_integration_failure: decisions.iter().find(|decision| decision.kind == DecisionKind::IntegrationFailure).cloned(),
             decisions,
             recent,

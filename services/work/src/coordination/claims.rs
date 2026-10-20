@@ -178,6 +178,7 @@ impl Work {
                 body: a.body.clone().unwrap_or_default(),
                 labels: Vec::new(),
                 milestone: None,
+                parent: None,
             })
             .await?
         );

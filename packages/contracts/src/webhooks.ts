@@ -54,6 +54,8 @@ export const EVENT_TYPES = [
   "work_item.linked",
   "work_item.unlinked",
   "work_item.landed",
+  "work_item.parent_changed",
+  "work_item.sub_items_changed",
   "comment.created",
   "comment.edited",
   "comment.deleted",

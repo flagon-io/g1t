@@ -59,6 +59,7 @@ mod plan_settle;
 mod reading;
 mod refs;
 mod rows;
+mod sub_items;
 pub(crate) mod sql;
 #[cfg(test)]
 mod tests;
@@ -248,6 +249,22 @@ pub(crate) async fn readable_repo_ids(work: &Work, viewer: Option<&User>, ids: &
 /// see, in no particular order.
 pub(crate) async fn visible_numbered(work: &Work, workspace: &str, numbers: &[u32], viewer: Option<&User>) -> Result<Vec<Held>> {
     work.visible_numbered(workspace, numbers, viewer).await
+}
+
+/// `held` closed or reopened (`closed`): its parent hears, and says so when
+/// the last of its sub-items closed. Never fails.
+pub(crate) async fn sub_item_resolved(work: &Work, held: &Held, actor: &User, closed: bool) {
+    work.sub_item_resolved(held, actor, closed).await
+}
+
+/// The work item `held` is a sub-item of and its sub-items, those `viewer`
+/// may see.
+pub(crate) async fn parent_and_sub_items(
+    work: &Work,
+    held: &Held,
+    viewer: Option<&User>,
+) -> Result<(Option<g1t_contracts::work::ItemBrief>, Vec<g1t_contracts::work::ItemBrief>)> {
+    work.parent_and_sub_items(held, viewer).await
 }
 
 /// The work items that name `held` in their `blocked_by`, those `viewer`

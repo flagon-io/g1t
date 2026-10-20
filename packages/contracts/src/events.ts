@@ -22,6 +22,7 @@ import type {
   Resolution,
   SessionEventData,
   SessionProgressedData,
+  SubItemProgress,
   Verdict,
 } from "./work";
 
@@ -296,6 +297,14 @@ export type EventPayloads = {
   /** A repository (`repo`, `owner/name`) was linked to it, or its link changed (`role`). */
   "work_item.linked": WorkItemEventData & { repo: string; role: LinkRole };
   "work_item.unlinked": WorkItemEventData & { repo: string; role: LinkRole };
+  /** On the sub-item: the work item it is a sub-item of now, and the one it was, by number. */
+  "work_item.parent_changed": WorkItemEventData & { parent?: number; fromParent?: number };
+  /** On the parent: one of its sub-items was added, removed, closed or reopened. */
+  "work_item.sub_items_changed": WorkItemEventData & {
+    subItem: number;
+    change: "added" | "removed" | "closed" | "reopened";
+    progress?: SubItemProgress;
+  };
   /**
    * A page of where repositories' issues went when they became work items,
    * sent by the job that moved them; the last page has `done`.

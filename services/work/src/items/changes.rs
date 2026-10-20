@@ -132,6 +132,7 @@ impl Work {
             }
             None => None,
         };
+        let parent_id = check!(self.parent_for_new(&workspace, &a.actor, a.parent).await?);
         let now = now_ms();
         let id = new_id("wki", now);
         let number = self.next_number(&workspace, origin.as_ref().map(|repo| repo.id.as_str())).await?;
@@ -142,8 +143,8 @@ impl Work {
             .prepare(
                 "INSERT INTO work_items
                    (id, workspace, number, title, body, labels, author_id, author_name, requested_by_id,
-                    requested_by_name, created_at, updated_at, milestone)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    requested_by_name, created_at, updated_at, milestone, parent_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 id.as_str().into(),
@@ -159,6 +160,7 @@ impl Work {
                 timestamp.as_str().into(),
                 timestamp.as_str().into(),
                 optional_number(milestone.as_ref().map(|milestone| milestone.number)),
+                optional(&parent_id),
             ])?];
         let links = origin.iter().map(|repo| (repo, LinkRole::Origin)).chain(targets.iter().map(|repo| (repo, LinkRole::Target)));
         for (repo, role) in links {
@@ -200,6 +202,9 @@ impl Work {
             )
             .await?;
         }
+        if let Some(parent_id) = &parent_id {
+            self.sub_item_opened(parent_id, &held, &a.actor).await?;
+        }
         Ok(Outcome::Ok(held.shown(Some(&a.actor))))
     }
 
@@ -233,6 +238,9 @@ impl Work {
         }
         if let Some(labels) = &a.labels {
             check!(self.relabel(&a.actor, &super::labels::Labeled::Item(held.clone()), labels).await?);
+        }
+        if let Some(parent) = a.parent {
+            check!(self.reparent(&held, &a.actor, Some(parent).filter(|number| *number > 0), None).await?);
         }
         let assigned = assignees.as_ref().map(serde_json::to_string).transpose()?;
         let blocked_ids = match &blocked_by {
@@ -306,11 +314,17 @@ impl Work {
 
 
     pub(crate) async fn close_work_item(&self, args: CloseWorkItemArgs) -> Result<Outcome<WorkItem>> {
-        let CloseWorkItemArgs { item: a, repo, commit } = args;
+        let CloseWorkItemArgs { item: a, repo, commit, sub_items, move_to } = args;
         let held = check!(self.manageable_item(&a.actor, &a.workspace, a.number).await?);
         if held.item.state == State::Closed {
             return Ok(Outcome::fail(FailureCode::Conflict, "This work item is already closed."));
         }
+        // Its open sub-items are never closed, or left, without being told;
+        // a commit closing it leaves them.
+        let closing = match commit {
+            Some(_) => Vec::new(),
+            None => check!(self.before_closing(&held, &a.actor, sub_items, move_to).await?),
+        };
         // Closed by a commit on a repository's default branch: as its push
         // would have.
         if let Some(commit) = commit.as_deref() {
@@ -365,6 +379,25 @@ impl Work {
         self.note_item(&held.item.id, &a.actor, &crate::pushed::closed_note(note, session.as_deref())).await?;
         // Its claims end, and the work items it blocks hear (coordination/).
         self.item_resolved(&held, &a.actor, true, None).await;
+        // Then its sub-items asked to close too, deepest first.
+        for sub_item in closing {
+            let args = CloseWorkItemArgs {
+                item: WorkItemActionArgs {
+                    actor: a.actor.clone(),
+                    workspace: sub_item.item.workspace.clone(),
+                    number: sub_item.item.number,
+                    reason: Some(reason),
+                },
+                repo: None,
+                commit: None,
+                sub_items: Some(OpenSubItems::Leave),
+                move_to: None,
+            };
+            if let Outcome::Fail(failure) = Box::pin(self.close_work_item(args)).await? {
+                let (number, sub_item) = (held.item.number, sub_item.item.number);
+                worker::console_error!("#{number} closed, but its sub-item #{sub_item} did not: {}", failure.message);
+            }
+        }
         let mut item = held.shown(Some(&a.actor));
         item.state = State::Closed;
         item.reason = Some(reason);
@@ -394,6 +427,7 @@ impl Work {
             .await?;
         self.publish_item("work_item.reopened", &held, Some(&a.actor), Self::item_event(&held)).await?;
         self.note_item(&held.item.id, &a.actor, "reopened this").await?;
+        self.sub_item_resolved(&held, &a.actor, false).await;
         Ok(match self.item_by_id(&held.item.id).await? {
             Some(held) => Outcome::Ok(held.shown(Some(&a.actor))),
             None => no_item(),
