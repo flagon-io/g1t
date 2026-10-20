@@ -15,7 +15,7 @@ g1t-kit.workspace = true
 g1t-scan.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-serde_yaml = "0.9"
+serde_yaml.workspace = true
 # The dependency update file is read with its lines, so each problem says where it is.
 yaml-rust2 = { version = "0.13", default-features = false }
 toml = "0.8"

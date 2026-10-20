@@ -10,7 +10,7 @@ g1t-actions = { path = "../actions" }
 # Reading lockfiles again after a security update (bump.rs).
 g1t-scan = { workspace = true }
 sha2 = "0.10"
-serde_yaml = "0.9"
+serde_yaml = { workspace = true }
 toml = "0.8"
 hex = "0.4"
 # Packing and unpacking artifacts as ZIP files (actions/zip.rs).
