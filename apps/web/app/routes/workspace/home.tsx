@@ -77,6 +77,7 @@ import { loadMissionControl } from "../../lib/mission-control.server";
 import { page } from "../../lib/meta";
 import { inbox, work } from "../../lib/services.server";
 import { requireUser, roleIn } from "../../lib/session.server";
+import { canItem } from "../../lib/work-access";
 import { homePagePath } from "../../lib/workspace-nav";
 import { Boundary } from "../../components/boundary";
 
@@ -139,16 +140,33 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const lastSeenP = windowKey === "last" ? loadLastVisit(viewer, slug).catch(() => undefined) : Promise.resolve(null);
 
   // Your own work in the plan's Now, and the work item to take next for when nothing else waits on you.
-  const nowP = Promise.all([work.listWorkItems(slug, viewer, { horizon: "now" }), work.listClaims(slug, viewer, { state: "active" })])
-    .then(([now, claims]) => (now.ok && claims.ok ? nowRows(now.value, claims.value, viewer.username) : null))
+  // Whoever plans (the Triage role or higher) reads the plan instead of
+  // the list: its Now is the same, and it says how many have waited in
+  // Triage over a week, which they are asked to place.
+  const plans = canItem(viewer, slug, null, "triage");
+  const planP = plans
+    ? work
+        .getPlan(slug, viewer)
+        .then((plan) => (plan.ok ? plan.value : null))
+        .catch(() => null)
+    : Promise.resolve(null);
+  const nowItemsP = plans
+    ? planP.then((plan) => plan?.now ?? null)
+    : work
+        .listWorkItems(slug, viewer, { horizon: "now" })
+        .then((now) => (now.ok ? now.value : null))
+        .catch(() => null);
+  const nowP = Promise.all([nowItemsP, work.listClaims(slug, viewer, { state: "active" })])
+    .then(([now, claims]) => (now && claims.ok ? nowRows(now, claims.value, viewer.username) : null))
     .catch(() => null);
+  const triageWaitingP = planP.then((plan) => (plans ? (plan?.triageWaiting ?? null) : undefined));
   const nextP = work
     .nextWorkItem(slug, viewer)
     .then((result) => (result.ok && result.value ? { item: result.value, viewer: viewer.username } : null))
     .catch(() => null);
-  const waiting: Promise<Attention> = Promise.all([missionP, notificationsP, chatP, nowP, nextP])
-    .then(([mission, notifications, sidebar, now, next]) =>
-      attention({ slug, code, codeNeeds: mission?.needs ?? null, notifications, chat: sidebar?.entries ?? null, now, next }),
+  const waiting: Promise<Attention> = Promise.all([missionP, notificationsP, chatP, nowP, nextP, triageWaitingP])
+    .then(([mission, notifications, sidebar, now, next, triageWaiting]) =>
+      attention({ slug, code, codeNeeds: mission?.needs ?? null, notifications, chat: sidebar?.entries ?? null, now, triageWaiting, next }),
     )
     .catch(() => ({ rows: [], start: null, missing: ["Code", "Notifications", "Chat", "Work"] }));
 

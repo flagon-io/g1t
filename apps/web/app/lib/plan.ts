@@ -5,7 +5,7 @@
  * move looks like before the work service answers, and how full Now is.
  * Pure, so it is tested under Node.
  */
-import type { Appetite, Claim, Horizon, Plan, PlanGroup, PlanWorkItemInput, WorkItem, WorkspaceSession } from "@g1t/contracts";
+import type { Appetite, Claim, Hill, Horizon, Plan, PlanGroup, PlanSuggestion, PlanWorkItemInput, WorkItem, WorkspaceSession } from "@g1t/contracts";
 
 import { workPath } from "./work-items.ts";
 
@@ -16,6 +16,8 @@ import { workPath } from "./work-items.ts";
 export const HORIZONS: readonly Horizon[] = ["triage", "now", "next", "later", "set_aside"];
 /** Every appetite, smallest first. */
 export const APPETITES: readonly Appetite[] = ["small", "medium", "large"];
+/** Every stage of a hill, in the order work goes over it (the contracts' `HILLS`). */
+export const HILL_STEPS: readonly Hill[] = ["figuring_out", "decided", "building", "landing"];
 
 /** The Plan, Work's first page. */
 export function planPath(workspace: string, query = ""): string {
@@ -311,4 +313,98 @@ export function moveForm(move: Move): Record<string, string> {
 /** How many more there are than are shown, as "n more"; null for none. */
 export function moreText(shown: number, total: number): string | null {
   return total > shown ? `${(total - shown).toLocaleString("en-US")} more` : null;
+}
+
+// --- How Now stands -----------------------------------------------------------
+
+const DAY_MS = 86_400_000;
+
+/** Where `hill` is among its four stages: 0 (figuring it out) to 3 (landing). */
+export function hillStep(hill: Hill): number {
+  return Math.max(0, HILL_STEPS.indexOf(hill));
+}
+
+/** Whole days since `at` (RFC 3339), never fewer than 0; null when there is no time. */
+export function daysSince(at: string | null | undefined, now: number): number | null {
+  const time = at ? Date.parse(at) : Number.NaN;
+  if (Number.isNaN(time)) return null;
+  return Math.max(0, Math.floor((now - time) / DAY_MS));
+}
+
+/**
+ * What a quiet row says: "Quiet for 6 days", counted from the last time
+ * anything happened on it; "Quiet" alone when that is not known (or is
+ * today, as clocks differ). Null
+ * for one that is not quiet.
+ */
+export function quietText(progress: { quiet: boolean; activeAt: string | null }, now: number): string | null {
+  if (!progress.quiet) return null;
+  const days = daysSince(progress.activeAt, now);
+  if (days == null || days < 1) return "Quiet";
+  return `Quiet for ${days === 1 ? "1 day" : `${days.toLocaleString("en-US")} days`}`;
+}
+
+/** How each work item in Now stands, by number. */
+export function progressOf<P extends { number: number }>(progress: readonly P[]): Record<number, P> {
+  return Object.fromEntries(progress.map((one) => [one.number, one]));
+}
+
+/** Days with nothing happening before a work item in Now has gone quiet (the contracts' `QUIET_DAYS`). */
+export const QUIET_AFTER_DAYS = 5;
+
+/** The week's line about Now going quiet; null for none. */
+export function quietLine(count: number): string | null {
+  if (count <= 0) return null;
+  const one = count === 1;
+  return `${count.toLocaleString("en-US")} in Now ${one ? "has" : "have"} gone quiet, with nothing happening on ${one ? "it" : "them"} for ${QUIET_AFTER_DAYS} days or more.`;
+}
+
+/** The week's line about letting go; null for none set aside lately. */
+export function setAsideLine(count: number): string | null {
+  if (count <= 0) return null;
+  return `${count.toLocaleString("en-US")} set aside in the last 30 days, untouched for 90 days in Later`;
+}
+
+/** Triage's banner on the Plan: how many wait, and how many of them have waited more than a week. */
+export function triageLine(total: number, waiting: number): string {
+  const wait = total === 1 ? "1 new work item waits" : `${total.toLocaleString("en-US")} new work items wait`;
+  const long =
+    waiting <= 0
+      ? ""
+      : waiting >= total
+        ? total === 1
+          ? " It has waited more than a week."
+          : " All have waited more than a week."
+        : ` ${waiting.toLocaleString("en-US")} of them have waited more than a week.`;
+  return `${wait} in Triage to be placed.${long}`;
+}
+
+// --- Triage's suggestions -------------------------------------------------------
+
+/** A suggestion in a few words: "Next · M". */
+export function suggestionText(suggestion: Pick<PlanSuggestion, "horizon" | "appetite">): string {
+  const horizon = { triage: "Triage", now: "Now", next: "Next", later: "Later", set_aside: "Set aside" }[suggestion.horizon];
+  const size = suggestion.appetite ? ` · ${suggestion.appetite === "small" ? "S" : suggestion.appetite === "medium" ? "M" : "L"}` : "";
+  return `${horizon}${size}`;
+}
+
+/**
+ * Accepting a suggestion, as the form a fetcher posts (`planInput` reads
+ * it): its horizon, where the horizon puts new work (the bottom of Next),
+ * and its appetite when it has one.
+ */
+export function acceptForm(suggestion: Pick<PlanSuggestion, "horizon" | "appetite">): Record<string, string> {
+  const form: Record<string, string> = { horizon: suggestion.horizon };
+  if (suggestion.appetite) form.appetite = suggestion.appetite;
+  return form;
+}
+
+/** Whether the viewer may accept a suggestion: moving into Now takes more than placing work elsewhere. */
+export function canAccept(suggestion: Pick<PlanSuggestion, "horizon">, canNow: boolean): boolean {
+  return suggestion.horizon !== "triage" && (suggestion.horizon !== "now" || canNow);
+}
+
+/** The comment a work item closed as a duplicate gets. */
+export function duplicateComment(of: number): string {
+  return `Duplicate of #${of}`;
 }

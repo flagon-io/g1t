@@ -815,6 +815,16 @@ fn horizon_label(name: &str) -> &str {
     }
 }
 
+/// A hill's stage, as people say it.
+fn hill_label(name: &str) -> &'static str {
+    match name {
+        "decided" => "Decided",
+        "building" => "Building",
+        "landing" => "Landing",
+        _ => "Figuring it out",
+    }
+}
+
 /// An appetite as given: `S`, `small` and so on, or `none` to clear it.
 pub fn appetite_field(text: &str) -> Result<Value> {
     match text.trim().to_ascii_lowercase().as_str() {
@@ -935,8 +945,32 @@ fn print_plan(out: &Output, workspace: &str, plan: &Value) -> Result<()> {
     if now.is_empty() {
         println!("{}", out.dim("  Nothing in Now. Move what you're taking on: g1t work plan <number> --now"));
     } else {
-        let rows: Vec<Vec<Cell>> = now.iter().enumerate().map(|(i, item)| plan_row(out, i + 1, item)).collect();
-        out.table(&["", "number", "title", "appetite", "", "waits"], &rows)?;
+        let progress = list_of(plan, "progress");
+        let of = |item: &Value| progress.iter().find(|p| p["number"] == item["number"]);
+        let rows: Vec<Vec<Cell>> = now
+            .iter()
+            .enumerate()
+            .map(|(i, item)| {
+                let mut row = plan_row(out, i + 1, item);
+                let stage = of(item).map(|p| hill_label(s(p, "hill"))).unwrap_or_default();
+                let quiet = if of(item).and_then(|p| p["quiet"].as_bool()) == Some(true) { " · quiet" } else { "" };
+                let stage = format!("{stage}{quiet}");
+                row.insert(3, Cell::styled(stage.clone(), out.dim(&stage)));
+                row
+            })
+            .collect();
+        out.table(&["", "number", "title", "hill", "appetite", "", "waits"], &rows)?;
+        // Where each stands, as g1t drafted it from its record.
+        for item in now {
+            if let Some(standing) = of(item).and_then(|p| p["standing"].as_str()) {
+                println!("{}", out.dim(&format!("  #{}: {standing}", item["number"])));
+            }
+        }
+    }
+    let landed = list_of(plan, "landed");
+    if !landed.is_empty() {
+        let list: Vec<String> = landed.iter().map(|item| format!("#{}", item["number"])).collect();
+        println!("{}", out.dim(&format!("  Landed from Now this week: {}", list.join(", "))));
     }
     println!();
     println!("{}", out.bold(&format!("Next · {}", count("next_total"))));
@@ -960,6 +994,10 @@ fn print_plan(out: &Output, workspace: &str, plan: &Value) -> Result<()> {
             count("set_aside_total")
         ))
     );
+    let waiting = count("triage_waiting");
+    if waiting > 0 {
+        println!("{}", out.dim(&format!("{waiting} waited in Triage over a week: g1t work list --horizon triage")));
+    }
     Ok(())
 }
 

@@ -115,7 +115,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   const origin = originOf(item.repos);
   // Who may do what follows the item: the better of their role in the
   // workspace and on its origin repository (lib/work-access.ts).
-  const [originRepo, links, subscription, sessionTrees] = await Promise.all([
+  const [originRepo, links, subscription, sessionTrees, progress] = await Promise.all([
     origin ? repos.getById(origin.repoId, viewer).catch(() => null) : null,
     // What it is tied to outside g1t. Shown only once the item is known visible.
     part(integrations.links(workspace, number), "Links from outside g1t"),
@@ -128,6 +128,13 @@ export async function loader({ params, context }: Route.LoaderArgs) {
       ),
       "Sessions",
     ),
+    // How it stands while it is in Now, as the plan reads it, for the sidebar's Plan: it does without when it cannot be read.
+    item.horizon === "now" && item.state === "open"
+      ? work
+          .getPlan(workspace, viewer)
+          .then((plan) => (plan.ok ? (plan.value.progress.find((one) => one.number === number) ?? null) : null))
+          .catch(() => null)
+      : null,
   ]);
   const ref = originRepo?.ok ? { id: originRepo.value.id, namespace: originRepo.value.namespace, isPrivate: originRepo.value.isPrivate } : null;
   const can = itemAbilities(viewer, workspace, ref);
@@ -151,6 +158,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     subscription,
     coordination: isFailed(coordination) ? coordination : coordination.ok ? coordination.value : null,
     sessionTrees,
+    progress,
     // Only when it can start: the button is not shown otherwise.
     agentSetup: agentSetup?.ok && agentSetup.value.available ? agentSetup.value : null,
     endedClaims: ended
@@ -1017,7 +1025,7 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
           ) : (
             <MilestoneBox milestones={loaderData.milestones} current={item.milestone} canEdit={can.triage} base={workPath(workspace)} />
           )}
-          <PlanBox item={item} workspace={workspace} canEdit={can.triage} canNow={can.manage_labels} />
+          <PlanBox item={item} workspace={workspace} canEdit={can.triage} canNow={can.manage_labels} progress={loaderData.progress} />
           {viewer &&
             (isFailed(loaderData.subscription) ? (
               <SideUnavailable heading="Notifications" what="Your notification settings" />

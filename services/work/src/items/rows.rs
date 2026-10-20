@@ -82,6 +82,9 @@ pub(crate) struct ItemRow {
     pub urgent: u8,
     #[serde(default)]
     pub planned_at: Option<String>,
+    /// JSON [`PlanSuggestion`] (plan_settle.rs).
+    #[serde(default)]
+    pub suggestion: Option<String>,
 }
 
 /// A link as [`ITEM_COLUMNS`] reads it.
@@ -288,6 +291,12 @@ impl ItemRow {
                 budget_usd: self.budget_usd,
                 urgent: self.urgent != 0,
                 planned_at: self.planned_at,
+                // Only while it waits to be placed.
+                suggestion: self
+                    .suggestion
+                    .as_deref()
+                    .filter(|_| self.horizon.unwrap_or_default() == Horizon::Triage && self.state == State::Open)
+                    .and_then(|json| serde_json::from_str(json).ok()),
             },
             origin,
             known,

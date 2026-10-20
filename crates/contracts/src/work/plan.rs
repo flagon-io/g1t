@@ -120,6 +120,117 @@ pub const MAX_NOW_CAP: u32 = 50;
 pub const NEXT_SHOWN: u32 = 10;
 /// The most spend budget a work item may be given, in dollars.
 pub const MAX_BUDGET_USD: f64 = 100_000.0;
+/// A work item in Triage this many days is waiting too long: Home says so
+/// to those who plan.
+pub const TRIAGE_NUDGE_DAYS: u32 = 7;
+/// A work item in Later untouched this many days is set aside.
+pub const SET_ASIDE_DAYS: u32 = 90;
+/// A work item in Now with nothing happening on it this many days has gone
+/// quiet.
+pub const QUIET_DAYS: u32 = 5;
+/// How far back the plan's week looks, in days.
+pub const WEEK_DAYS: u32 = 7;
+
+/// What g1t suggests for a work item in Triage: drafted by the
+/// workspace's own AI provider from the work item and the plan, for a
+/// person to accept or not.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanSuggestion {
+    pub horizon: Horizon,
+    #[serde(default)]
+    pub appetite: Option<Appetite>,
+    /// An open work item it seems to repeat, by number.
+    #[serde(default)]
+    pub duplicate_of: Option<u32>,
+    /// Why, in a sentence.
+    pub why: String,
+    /// RFC 3339.
+    pub at: String,
+}
+
+/// How far along a work item in Now is, as its record says: what its
+/// sessions, decisions and pull requests show, never set by hand.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Hill {
+    /// Nothing decided yet: sessions on it, or nothing at all.
+    FiguringOut,
+    /// A decision is recorded on it: the approach is settled.
+    Decided,
+    /// A draft pull request, or commits made for it.
+    Building,
+    /// A pull request in review or merged, or landed in some of its
+    /// targets.
+    Landing,
+}
+
+impl Hill {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Hill::FiguringOut => "figuring_out",
+            Hill::Decided => "decided",
+            Hill::Building => "building",
+            Hill::Landing => "landing",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Hill::FiguringOut => "Figuring it out",
+            Hill::Decided => "Decided",
+            Hill::Building => "Building",
+            Hill::Landing => "Landing",
+        }
+    }
+}
+
+/// What a work item's record says of it, for its hill.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct HillFacts {
+    pub decisions: u32,
+    pub draft_pulls: u32,
+    pub commits: u32,
+    pub open_pulls: u32,
+    pub merged_pulls: u32,
+    pub landed_targets: u32,
+}
+
+/// Where a work item with `facts` is on its hill: the furthest stage any
+/// fact reaches.
+pub fn hill_of(facts: &HillFacts) -> Hill {
+    if facts.open_pulls > 0 || facts.merged_pulls > 0 || facts.landed_targets > 0 {
+        Hill::Landing
+    } else if facts.draft_pulls > 0 || facts.commits > 0 {
+        Hill::Building
+    } else if facts.decisions > 0 {
+        Hill::Decided
+    } else {
+        Hill::FiguringOut
+    }
+}
+
+/// How a work item in Now stands.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Progress {
+    pub number: u32,
+    pub hill: Hill,
+    /// RFC 3339: the last time anything happened on it (a session, a
+    /// decision, a pull request, a change to it).
+    #[serde(default)]
+    pub active_at: Option<String>,
+    /// Nothing has happened on it for [`QUIET_DAYS`].
+    #[serde(default)]
+    pub quiet: bool,
+    /// Where it stands, in a sentence or two, drafted by g1t from its
+    /// record with the workspace's AI provider; none until it has one.
+    #[serde(default)]
+    pub standing: Option<String>,
+    /// RFC 3339: when `standing` was drafted.
+    #[serde(default)]
+    pub standing_at: Option<String>,
+}
 
 /// What `Some(None)` means in a change: the field is cleared. Absent
 /// leaves it as it is; JSON `null` clears it.
@@ -202,6 +313,19 @@ pub struct Plan {
     /// the workspace), the largest group first.
     pub later: Vec<PlanGroup>,
     pub set_aside_total: u32,
+    /// How each work item in Now stands, in Now's order.
+    #[serde(default)]
+    pub progress: Vec<Progress>,
+    /// What closed from Now in the last [`WEEK_DAYS`], the most recent
+    /// first; at most 10.
+    #[serde(default)]
+    pub landed: Vec<WorkItem>,
+    /// How many have waited in Triage more than [`TRIAGE_NUDGE_DAYS`].
+    #[serde(default)]
+    pub triage_waiting: u32,
+    /// How many were set aside in the last 30 days.
+    #[serde(default)]
+    pub set_aside_recent: u32,
 }
 
 /// Work items of one horizon filed in one repository.
@@ -320,6 +444,17 @@ mod tests {
             top = between(None, Some(&top));
         }
         assert!(top.len() < 60);
+    }
+
+    #[test]
+    fn the_hill_is_the_furthest_stage_the_record_reaches() {
+        assert_eq!(hill_of(&HillFacts::default()), Hill::FiguringOut);
+        assert_eq!(hill_of(&HillFacts { decisions: 2, ..HillFacts::default() }), Hill::Decided);
+        assert_eq!(hill_of(&HillFacts { decisions: 1, commits: 3, ..HillFacts::default() }), Hill::Building);
+        assert_eq!(hill_of(&HillFacts { draft_pulls: 1, ..HillFacts::default() }), Hill::Building);
+        assert_eq!(hill_of(&HillFacts { open_pulls: 1, ..HillFacts::default() }), Hill::Landing);
+        assert_eq!(hill_of(&HillFacts { landed_targets: 1, draft_pulls: 1, ..HillFacts::default() }), Hill::Landing);
+        assert_eq!(serde_json::to_value(Hill::FiguringOut).unwrap(), "figuring_out");
     }
 
     #[test]

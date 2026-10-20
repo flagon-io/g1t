@@ -55,6 +55,7 @@ mod migration;
 mod milestones;
 mod numbering;
 mod plan;
+mod plan_settle;
 mod reading;
 mod refs;
 mod rows;

@@ -45,6 +45,24 @@ A work item moved to another horizon goes last there, unless you drop it
 in a place. The move is noted in its conversation ("moved this from Next
 to Now").
 
+### Suggestions in Triage
+
+When the workspace has an [AI provider](/guides/ai/) chosen for Ask, g1t
+suggests where each new work item in Triage goes: a horizon (Now, Next or
+Later), an appetite, an open work item it seems to repeat, and why, in a
+sentence. g1t asks the workspace's own provider once for each new work
+item, within a few minutes of it being filed. Nothing moves until someone
+accepts:
+
+- **Accept** moves it as suggested: last on that horizon, with that
+  appetite.
+- **Close as duplicate**, when it seems to repeat another, closes it as
+  not planned with a comment naming the other.
+
+A workspace with no provider gets no suggestions; Triage works the same
+without them. When work items have waited in Triage more than a week,
+Home tells those who can plan.
+
 ### Who can plan
 
 | To                                                                    | You need                                                             |
@@ -85,6 +103,35 @@ spend. Both are optional, and both show on the work item and in the plan.
 ahead of everything ranked there, and stays there until it closes.
 Reopening a work item clears it.
 
+## How work in Now stands
+
+Nobody reports progress by hand. Each work item in Now shows where it is
+on its **hill**, from what its record says:
+
+| Stage               | When                                                                        |
+| ------------------- | --------------------------------------------------------------------------- |
+| **Figuring it out** | Nothing is decided yet: sessions on it, or nothing at all.                  |
+| **Decided**         | A decision is recorded on it, so the approach is settled.                   |
+| **Building**        | It has a draft pull request, or a session on it made commits.               |
+| **Landing**         | A pull request for it is in review or merged, or it landed in some targets. |
+
+Under its title, a sentence or two says **where it stands** and what comes
+next. g1t drafts it from the work item's sessions, decisions and pull
+requests with the workspace's AI provider, again whenever something new
+happens on it. A work item with nothing happening on it for 5 days says
+it has gone **quiet**.
+
+**This week**, beside the plan, lists what landed from Now in the last 7
+days and how many in Now have gone quiet.
+
+## Letting go
+
+Later is for work you want, not for everything anyone ever filed. A work
+item in Later that nothing has happened to for 90 days is set aside, and
+its conversation says so ("set this aside: nothing happened on it in
+Later for 90 days"). It is not deleted: search finds it, and one move puts
+it back. The plan says how many were set aside in the last 30 days.
+
 ## What to take next
 
 The work item to take next is the first one in **Now** that nobody is
@@ -122,6 +169,12 @@ work in the order it will be done.
 | List one horizon       | [`list_work_items`](/reference/api/work-items/list-work-items/) with `horizon`, in the plan's order                                    |
 | Set Now's cap          | [`configure_plan`](/reference/api/work-items/configure-plan/)                                                                          |
 
+`get_plan` also answers `progress` (each Now work item's `hill`,
+`active_at`, `quiet` and drafted `standing`), `landed` (what closed from
+Now in the last 7 days), `triage_waiting` and `set_aside_recent`. A work
+item in Triage carries its `suggestion`.
+
 Each move publishes `work_item.planned`, with the work item's `horizon`,
 `fromHorizon` when it changed horizon, its `appetite` and whether it is
-`urgent`. See [webhooks](/guides/webhooks/).
+`urgent`. Setting aside after 90 days publishes it too, with no actor.
+See [webhooks](/guides/webhooks/).

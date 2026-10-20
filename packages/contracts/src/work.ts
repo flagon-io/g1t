@@ -113,7 +113,51 @@ export type WorkItem = {
   urgent: boolean;
   /** RFC 3339: when it was last moved in the plan; null for one never placed. */
   plannedAt: string | null;
+  /** While it is in Triage: where g1t suggests it goes. */
+  suggestion?: PlanSuggestion | null;
 };
+
+/** What g1t suggests for a work item in Triage, drafted by the workspace's own AI provider, for a person to accept or not. */
+export type PlanSuggestion = {
+  horizon: Horizon;
+  appetite: Appetite | null;
+  /** An open work item it seems to repeat. */
+  duplicateOf: number | null;
+  why: string;
+  /** RFC 3339. */
+  at: string;
+};
+
+/** How far along a work item in Now is, as its record says; never set by hand. */
+export type Hill = "figuring_out" | "decided" | "building" | "landing";
+
+export const HILLS: Hill[] = ["figuring_out", "decided", "building", "landing"];
+
+export function hillLabel(hill: Hill): string {
+  return { figuring_out: "Figuring it out", decided: "Decided", building: "Building", landing: "Landing" }[hill];
+}
+
+/** How a work item in Now stands. */
+export type Progress = {
+  number: number;
+  hill: Hill;
+  /** RFC 3339: the last time anything happened on it. */
+  activeAt: string | null;
+  /** Nothing has happened on it for `QUIET_DAYS`. */
+  quiet: boolean;
+  /** Where it stands, drafted by g1t from its record; null until it has one. */
+  standing: string | null;
+  standingAt: string | null;
+};
+
+/** Days in Triage before Home says a work item is waiting too long. */
+export const TRIAGE_NUDGE_DAYS = 7;
+/** Days untouched in Later before a work item is set aside. */
+export const SET_ASIDE_DAYS = 90;
+/** Days with nothing happening before a work item in Now has gone quiet. */
+export const QUIET_DAYS = 5;
+/** How far back the plan's week looks. */
+export const WEEK_DAYS = 7;
 
 /**
  * Where an open work item stands in its workspace's plan. New ones start
@@ -161,6 +205,14 @@ export type Plan = {
   /** Later, by the repository each is filed in (null: filed in the workspace), the largest group first. */
   later: PlanGroup[];
   setAsideTotal: number;
+  /** How each work item in Now stands, in Now's order. */
+  progress: Progress[];
+  /** What closed from Now in the last `WEEK_DAYS`, the most recent first; at most 10. */
+  landed: WorkItem[];
+  /** How many have waited in Triage more than `TRIAGE_NUDGE_DAYS`. */
+  triageWaiting: number;
+  /** How many were set aside in the last 30 days. */
+  setAsideRecent: number;
 };
 
 export type PlanGroup = { repo: string | null; count: number };

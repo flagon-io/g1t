@@ -2766,6 +2766,13 @@ async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
     if let Err(error) = settled.await {
         worker::console_error!("settling session titles: {error}");
     }
+    let planned = async {
+        let work = service(&env)?;
+        work.settle_plan().await
+    };
+    if let Err(error) = planned.await {
+        worker::console_error!("the plan's upkeep: {error}");
+    }
 }
 
 /// Events from the bus, delivered on this service's own queue.

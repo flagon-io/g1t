@@ -1,4 +1,4 @@
-import { Inbox, Plus, X } from "lucide-react";
+import { Check, Copy, Inbox, Plus, Sparkles, X } from "lucide-react";
 import { Link, useFetcher } from "react-router";
 
 import { APPETITES, LIST_PAGE, type WorkItem, appetiteLetter } from "@g1t/contracts";
@@ -12,7 +12,7 @@ import { ToggleGroup, ToggleGroupItem } from "../../../components/ui/toggle-grou
 import { RepoChips } from "../../../components/work-items";
 import { page } from "../../../lib/meta";
 import { isFailed, part } from "../../../lib/partial";
-import { APPETITE_HINTS, APPETITE_SUMMARY, moreText, planInput, planPath } from "../../../lib/plan";
+import { APPETITE_HINTS, APPETITE_SUMMARY, acceptForm, canAccept, duplicateComment, moreText, planInput, planPath, suggestionText } from "../../../lib/plan";
 import { workPages } from "../../../lib/repo-live";
 import { work } from "../../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../../lib/session.server";
@@ -53,6 +53,15 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const form = await request.formData();
   const number = Number(form.get("number"));
   if (!Number.isInteger(number) || number < 1) return { error: "Choose a work item.", number: null };
+  // A duplicate: said in a comment, then closed as not planned, as its own page would.
+  if (form.get("action") === "close-duplicate") {
+    const of = Number(form.get("of"));
+    if (!Number.isInteger(of) || of < 1 || of === number) return { error: "Choose the work item it repeats.", number };
+    const said = await work.addComment(user, { workspace, number }, { body: duplicateComment(of) });
+    if (!said.ok) return { error: said.error.message, number };
+    const result = await work.closeWorkItem(user, workspace, number, "not_planned");
+    return result.ok ? { error: null, number } : { error: result.error.message, number };
+  }
   // Closing as not planned, as the item's own page does.
   if (form.get("action") === "close-not-planned") {
     const result = await work.closeWorkItem(user, workspace, number, "not_planned");
@@ -66,12 +75,15 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
 /**
  * Work's Triage: the work items nobody has placed in the plan yet, newest
- * first, each with the moves that place it.
+ * first, each with the moves that place it, and where g1t suggests it goes
+ * (drafted with the workspace's own AI provider), which one click accepts.
  */
 export default function Triage({ loaderData }: Route.ComponentProps) {
   const { workspace, items, triageTotal, canPlan, canNow, member } = loaderData;
   useWorkspaceLive({ workspace, member, match: workPages.list() });
   const more = moreText(items.length, triageTotal);
+  // Only a workspace with an AI provider gets suggestions, so one shown says it has one.
+  const suggesting = items.some((item) => item.suggestion);
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -83,6 +95,12 @@ export default function Triage({ loaderData }: Route.ComponentProps) {
           <p className="mt-1 text-sm text-muted">
             New work items land here until someone places them: in Now, in Next to be taken in turn, or in Later. Give each an appetite while you are at it.
           </p>
+          {suggesting && (
+            <p className="mt-1 flex items-center gap-1.5 text-xs text-faint">
+              <Sparkles size={12} className="shrink-0" aria-hidden />
+              g1t suggests where new work goes using your workspace's AI provider; nothing moves until someone accepts.
+            </p>
+          )}
         </div>
         {loaderData.canOpen && (
           <ButtonLink to={newItemPath(workspace)} className="max-sm:h-10">
@@ -121,7 +139,9 @@ function TriageRow({ item, workspace, canPlan, canNow }: { item: WorkItem; works
   const busy = fetcher.state !== "idle";
   const posted = fetcher.formData;
   // Placed or closed: gone from Triage before the answer, back if it was refused.
-  const leaving = busy && posted != null && (posted.has("horizon") || posted.get("action") === "close-not-planned");
+  const leaving =
+    busy && posted != null && (posted.has("horizon") || posted.get("action") === "close-not-planned" || posted.get("action") === "close-duplicate");
+  const suggestion = item.suggestion ?? null;
   const appetite = busy && posted?.has("appetite") ? (String(posted.get("appetite")) as WorkItem["appetite"] | "none") : item.appetite;
   const post = (fields: Record<string, string>) => fetcher.submit({ number: String(item.number), ...fields }, { method: "post" });
   if (leaving) return null;
@@ -139,6 +159,44 @@ function TriageRow({ item, workspace, canPlan, canNow }: { item: WorkItem; works
           <RepoChips repos={item.repos} workspace={workspace} />
         </div>
       </div>
+      {suggestion && (
+        <Card tone="plain" radius="lg" className="flex min-w-0 flex-col gap-2 border-accent/20 bg-accent/5 px-3 py-2 sm:flex-row sm:items-center">
+          <div className="min-w-0 grow text-xs">
+            <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+              <Sparkles size={12} className="shrink-0 text-accent" aria-hidden />
+              <span className="font-medium text-fg">Suggested: {suggestionText(suggestion)}</span>
+              {suggestion.duplicateOf != null && (
+                <>
+                  <span className="text-faint">·</span>
+                  <span className="text-muted">
+                    Looks like{" "}
+                    <Link to={itemPath(workspace, suggestion.duplicateOf)} className="font-mono text-fg underline-offset-4 hover:underline">
+                      #{suggestion.duplicateOf}
+                    </Link>
+                  </span>
+                </>
+              )}
+            </p>
+            <p className="mt-0.5 text-muted">{suggestion.why}</p>
+          </div>
+          {canPlan && (
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {canAccept(suggestion, canNow) && (
+                <Button size="sm" variant="accent" disabled={busy} onClick={() => post(acceptForm(suggestion))}>
+                  <Check size={14} />
+                  Accept
+                </Button>
+              )}
+              {suggestion.duplicateOf != null && (
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => post({ action: "close-duplicate", of: String(suggestion.duplicateOf) })}>
+                  <Copy size={14} />
+                  Close as duplicate
+                </Button>
+              )}
+            </div>
+          )}
+        </Card>
+      )}
       {canPlan && (
         <div className="flex flex-wrap items-center gap-2">
           {canNow && (

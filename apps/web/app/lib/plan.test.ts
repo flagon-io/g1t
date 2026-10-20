@@ -5,12 +5,17 @@ import type { Claim, WorkItem, WorkspaceSession } from "@g1t/contracts";
 
 import {
   type PlanView,
+  acceptForm,
   allItemsPath,
   applyMove,
   blockersToRead,
   budgetText,
+  canAccept,
   capState,
+  daysSince,
+  duplicateComment,
   dropPosition,
+  hillStep,
   listRedirect,
   menuHorizons,
   moreText,
@@ -22,7 +27,13 @@ import {
   parseBudget,
   planInput,
   planPath,
+  progressOf,
+  quietLine,
+  quietText,
+  setAsideLine,
   setAsidePath,
+  suggestionText,
+  triageLine,
   triagePath,
   waitingLabel,
   waitingOn,
@@ -240,4 +251,46 @@ test("budgets", () => {
 test("n more", () => {
   assert.equal(moreText(10, 10), null);
   assert.equal(moreText(10, 1234), "1,224 more");
+});
+
+test("a hill's stage, in its four steps", () => {
+  assert.deepEqual((["figuring_out", "decided", "building", "landing"] as const).map(hillStep), [0, 1, 2, 3]);
+});
+
+test("a quiet row says for how long, from the last time anything happened on it", () => {
+  const now = Date.parse("2026-10-19T12:00:00Z");
+  assert.equal(daysSince("2026-10-13T11:00:00Z", now), 6);
+  assert.equal(daysSince(null, now), null);
+  assert.equal(daysSince("2026-10-20T00:00:00Z", now), 0);
+  assert.equal(quietText({ quiet: true, activeAt: "2026-10-13T11:00:00Z" }, now), "Quiet for 6 days");
+  assert.equal(quietText({ quiet: true, activeAt: "2026-10-18T11:00:00Z" }, now), "Quiet for 1 day");
+  assert.equal(quietText({ quiet: true, activeAt: null }, now), "Quiet");
+  assert.equal(quietText({ quiet: false, activeAt: "2026-10-01T00:00:00Z" }, now), null);
+});
+
+test("the week: what went quiet, what was let go, and Triage waiting", () => {
+  assert.equal(quietLine(0), null);
+  assert.equal(quietLine(1), "1 in Now has gone quiet, with nothing happening on it for 5 days or more.");
+  assert.equal(quietLine(3), "3 in Now have gone quiet, with nothing happening on them for 5 days or more.");
+  assert.equal(setAsideLine(0), null);
+  assert.equal(setAsideLine(4), "4 set aside in the last 30 days, untouched for 90 days in Later");
+  assert.equal(triageLine(1, 0), "1 new work item waits in Triage to be placed.");
+  assert.equal(triageLine(5, 2), "5 new work items wait in Triage to be placed. 2 of them have waited more than a week.");
+  assert.equal(triageLine(3, 3), "3 new work items wait in Triage to be placed. All have waited more than a week.");
+  assert.equal(triageLine(1, 1), "1 new work item waits in Triage to be placed. It has waited more than a week.");
+  assert.deepEqual(progressOf([{ number: 4, hill: "building" }]), { 4: { number: 4, hill: "building" } });
+});
+
+test("accepting a suggestion moves it where it says, at the bottom, with its appetite", () => {
+  const next = { horizon: "next" as const, appetite: "medium" as const };
+  assert.equal(suggestionText(next), "Next · M");
+  assert.equal(suggestionText({ horizon: "later", appetite: null }), "Later");
+  assert.deepEqual(acceptForm(next), { horizon: "next", appetite: "medium" });
+  assert.deepEqual(acceptForm({ horizon: "later", appetite: null }), { horizon: "later" });
+  // It is a plan move as the form posts it: no position, so the horizon puts it at the bottom.
+  assert.deepEqual(planInput(new URLSearchParams(acceptForm(next))), { horizon: "next", appetite: "medium" });
+  assert.equal(canAccept({ horizon: "now" }, false), false);
+  assert.equal(canAccept({ horizon: "now" }, true), true);
+  assert.equal(canAccept({ horizon: "next" }, false), true);
+  assert.equal(duplicateComment(12), "Duplicate of #12");
 });

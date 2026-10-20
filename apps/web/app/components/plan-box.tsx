@@ -1,9 +1,11 @@
 import { Link, useFetcher } from "react-router";
 import { useEffect, useId, useState } from "react";
 
-import { APPETITES, HORIZONS, type Horizon, type WorkItem, appetiteLetter, horizonLabel } from "@g1t/contracts";
+import { Check, Sparkles } from "lucide-react";
 
-import { AppetiteChip } from "./plan";
+import { APPETITES, HORIZONS, type Horizon, type Progress, type WorkItem, appetiteLetter, hillLabel, horizonLabel } from "@g1t/contracts";
+
+import { AppetiteChip, HillMark, QuietBadge, StandingText } from "./plan";
 import { ErrorText } from "./ui";
 import { Input, InputAddon, InputGroup } from "./ui/input";
 import { Badge } from "./ui/badge";
@@ -11,8 +13,11 @@ import { Button } from "./ui/button";
 import { SelectField } from "./ui/select";
 import { Switch } from "./ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
+import { Card } from "./ui/card";
 import { Hint } from "./ui/hint";
-import { APPETITE_HINTS, APPETITE_SUMMARY, HORIZON_HINTS, budgetText, planPath } from "../lib/plan";
+import { cn } from "../lib/cn";
+import { itemPath } from "../lib/work-items";
+import { APPETITE_HINTS, APPETITE_SUMMARY, HORIZON_HINTS, acceptForm, budgetText, canAccept, planPath, suggestionText } from "../lib/plan";
 
 /**
  * The item page's Plan, in its sidebar beside Milestone: where it stands
@@ -20,18 +25,23 @@ import { APPETITE_HINTS, APPETITE_SUMMARY, HORIZON_HINTS, budgetText, planPath }
  * working on it, and urgent, which puts it first in Now. Each change posts
  * `action=plan` to the page. Read-only for who cannot plan (`canEdit`, the
  * Triage role); Now and urgent also take the right to manage milestones
- * (`canNow`), which the work service checks again.
+ * (`canNow`), which the work service checks again. In Triage, where g1t
+ * suggests it goes, with Accept; in Now, how it stands (`progress`): its
+ * hill and where it stands, as the plan reads them.
  */
 export function PlanBox({
   item,
   workspace,
   canEdit,
   canNow,
+  progress,
 }: {
-  item: Pick<WorkItem, "horizon" | "appetite" | "budgetUsd" | "urgent" | "state">;
+  item: Pick<WorkItem, "horizon" | "appetite" | "budgetUsd" | "urgent" | "state" | "suggestion">;
   workspace: string;
   canEdit: boolean;
   canNow: boolean;
+  /** How it stands, while it is in Now; null when it could not be read. */
+  progress?: Progress | null;
 }) {
   const fetcher = useFetcher<{ error?: string } | null>();
   const budgetId = useId();
@@ -45,6 +55,8 @@ export function PlanBox({
   useEffect(() => setBudget(item.budgetUsd == null ? "" : String(item.budgetUsd)), [item.budgetUsd]);
   const post = (fields: Record<string, string>) => fetcher.submit({ action: "plan", ...fields }, { method: "post" });
   const lockedInNow = horizon === "now" && !canNow;
+  const suggestion = item.horizon === "triage" && horizon === "triage" && item.state === "open" ? (item.suggestion ?? null) : null;
+  const standing = item.horizon === "now" && horizon === "now" && item.state === "open" ? (progress ?? null) : null;
   return (
     <section>
       <div className="flex items-center justify-between gap-2">
@@ -53,8 +65,41 @@ export function PlanBox({
           Open the plan
         </Link>
       </div>
+      {suggestion && (
+        <Card tone="plain" radius="lg" className="mt-2 space-y-1.5 border-accent/20 bg-accent/5 px-3 py-2 text-xs">
+          <p className="flex items-center gap-1.5">
+            <Sparkles size={12} className="shrink-0 text-accent" aria-hidden />
+            <span className="font-medium text-fg">Suggested: {suggestionText(suggestion)}</span>
+          </p>
+          {suggestion.duplicateOf != null && (
+            <p className="text-muted">
+              Looks like{" "}
+              <Link to={itemPath(workspace, suggestion.duplicateOf)} className="font-mono text-fg underline-offset-4 hover:underline">
+                #{suggestion.duplicateOf}
+              </Link>
+            </p>
+          )}
+          <p className="text-muted">{suggestion.why}</p>
+          {editable && canAccept(suggestion, canNow) && (
+            <Button size="xs" variant="accent" disabled={fetcher.state !== "idle"} onClick={() => post(acceptForm(suggestion))}>
+              <Check size={13} />
+              Accept
+            </Button>
+          )}
+        </Card>
+      )}
+      {standing && (
+        <div className="mt-2 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <HillMark hill={standing.hill} />
+            <span className="text-xs text-muted">{hillLabel(standing.hill)}</span>
+            <QuietBadge progress={standing} />
+          </div>
+          <StandingText standing={standing} />
+        </div>
+      )}
       {editable ? (
-        <div className="mt-2 space-y-3">
+        <div className={cn("space-y-3", suggestion || standing ? "mt-3" : "mt-2")}>
           <SelectField
             aria-label="Horizon"
             size="sm"
@@ -110,7 +155,7 @@ export function PlanBox({
           {lockedInNow && <p className="text-xs text-faint">Moving it out of Now takes the right to manage milestones.</p>}
         </div>
       ) : (
-        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-sm">
+        <div className={cn("flex flex-wrap items-center gap-1.5 text-sm", suggestion || standing ? "mt-3" : "mt-2")}>
           {item.urgent && <Badge tone="danger">Urgent</Badge>}
           <span>{horizonLabel(item.horizon)}</span>
           {item.appetite && <AppetiteChip appetite={item.appetite} />}
