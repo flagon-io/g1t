@@ -12,6 +12,7 @@ mod credentials;
 mod docs;
 mod error;
 mod git;
+mod http;
 mod image;
 mod jq;
 mod mapping;

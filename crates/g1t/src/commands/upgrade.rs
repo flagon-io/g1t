@@ -97,7 +97,7 @@ pub fn verify(message: &[u8], signature: &str, key: &str) -> std::result::Result
 }
 
 fn agent(timeout: Duration) -> ureq::Agent {
-    ureq::AgentBuilder::new().timeout(timeout).user_agent(&format!("g1t/{VERSION}")).build()
+    crate::http::builder().timeout(timeout).user_agent(&format!("g1t/{VERSION}")).build()
 }
 
 fn download(agent: &ureq::Agent, url: &str) -> std::result::Result<Vec<u8>, String> {

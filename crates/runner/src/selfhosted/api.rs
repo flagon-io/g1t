@@ -75,7 +75,7 @@ impl std::fmt::Display for Failure {
 }
 
 fn agent() -> ureq::Agent {
-    ureq::AgentBuilder::new()
+    crate::http::builder()
         .timeout_connect(Duration::from_secs(15))
         .timeout_read(Duration::from_secs(60))
         .user_agent(&format!("g1t-runner/{VERSION} ({}; {})", std::env::consts::OS, std::env::consts::ARCH))

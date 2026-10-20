@@ -104,7 +104,7 @@ fn probe(auth: &str) -> Result<Vec<String>> {
 
 fn report(api: &str, pull: &str, token: &str, mut body: serde_json::Value) -> Result<()> {
     body["token"] = token.into();
-    ureq::post(&format!("{api}/mergechecks/{pull}"))
+    crate::http::agent().post(&format!("{api}/mergechecks/{pull}"))
         .send_json(body)
         .context("could not report the merge check")?;
     Ok(())

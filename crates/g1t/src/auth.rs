@@ -102,7 +102,7 @@ pub fn discover(name: &str, site: &str) -> Result<Host> {
         return Ok(Host::hosted());
     }
     let url = format!("{site}/.well-known/g1t.json");
-    let text = ureq::get(&url)
+    let text = crate::http::agent().get(&url)
         .timeout(std::time::Duration::from_secs(15))
         .call()
         .map_err(|e| Error::failed(format!("{name} did not say where its API is ({url}): {e}")))?

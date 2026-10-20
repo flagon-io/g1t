@@ -56,7 +56,7 @@ pub fn encode_segment(segment: &str) -> String {
 
 impl Client {
     pub fn new(host: Host, token: Option<String>) -> Client {
-        let agent = ureq::AgentBuilder::new()
+        let agent = crate::http::builder()
             .timeout_connect(Duration::from_secs(15))
             .timeout_read(Duration::from_secs(120))
             .user_agent(&format!("g1t-cli/{}", env!("CARGO_PKG_VERSION")))
@@ -74,7 +74,7 @@ impl Client {
     /// The same client, giving up sooner: for commands an agent's hooks run
     /// in the background, which must not hang on a slow network.
     pub fn with_timeouts(mut self, connect: Duration, read: Duration) -> Client {
-        self.agent = ureq::AgentBuilder::new()
+        self.agent = crate::http::builder()
             .timeout_connect(connect)
             .timeout_read(read)
             .timeout_write(read)

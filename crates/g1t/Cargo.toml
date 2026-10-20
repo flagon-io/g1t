@@ -28,8 +28,11 @@ serde_json = { workspace = true }
 sha2 = "0.10"
 tar = { version = "0.4", default-features = false }
 terminal_size = "0.4"
-# native-certs: sandboxes that re-sign HTTPS (Claude Managed Agents, guarded
-# runners) add their proxy's certificate to the system store, which the
-# webpki-roots bundle never sees.
-ureq = { version = "2", default-features = false, features = ["tls", "native-certs"] }
+ureq = { version = "2", default-features = false, features = ["tls"] }
+# The system's certificates, which ureq is given (http.rs): sandboxes that
+# re-sign HTTPS (Claude Managed Agents, guarded runners) add their proxy's
+# certificate to the system store, which the webpki-roots bundle never sees.
+# ureq's own native-certs is on rustls-native-certs 0.7 and rustls-pemfile.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-native-certs = "0.8"
 

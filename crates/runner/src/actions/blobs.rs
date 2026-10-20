@@ -113,7 +113,7 @@ impl Job {
             let mut tries = 0;
             let answer = loop {
                 tries += 1;
-                match ureq::put(&url).set("authorization", &self.auth()).timeout(Duration::from_secs(600)).send_bytes(&buffer[..filled]) {
+                match crate::http::agent().put(&url).set("authorization", &self.auth()).timeout(Duration::from_secs(600)).send_bytes(&buffer[..filled]) {
                     Ok(response) => break response.into_json::<serde_json::Value>().map_err(|e| e.to_string())?,
                     Err(ureq::Error::Status(status, response)) if status < 500 => return Err(refusal(response)),
                     Err(error) if tries >= 3 => return Err(error.to_string()),
@@ -233,7 +233,7 @@ impl Job {
             ureq::Error::Status(_, response) => format!("The artifact could not be uploaded: {}", refusal(response)),
             other => format!("The artifact could not be uploaded: {other}"),
         };
-        let started = ureq::post(&self.url(&query))
+        let started = crate::http::agent().post(&self.url(&query))
             .set("authorization", &self.auth())
             .timeout(Duration::from_secs(60))
             .call()
@@ -256,7 +256,7 @@ impl Job {
         }
         let base = format!("artifacts/uploads/{id}");
         let give_up = |job: &Job| {
-            let _ = ureq::delete(&job.url(&format!("{base}?upload={}", urlencode(&upload)))).set("authorization", &job.auth()).call();
+            let _ = crate::http::agent().delete(&job.url(&format!("{base}?upload={}", urlencode(&upload)))).set("authorization", &job.auth()).call();
         };
         let parts = match self.send_parts(&base, &upload, archive, part_bytes) {
             Ok(parts) => parts,
@@ -265,7 +265,7 @@ impl Job {
                 return Err(format!("The artifact could not be uploaded: {error}"));
             }
         };
-        let done = ureq::post(&self.url(&format!("{base}/complete?upload={}", urlencode(&upload))))
+        let done = crate::http::agent().post(&self.url(&format!("{base}/complete?upload={}", urlencode(&upload))))
             .set("authorization", &self.auth())
             .timeout(Duration::from_secs(120))
             .send_json(serde_json::json!({ "size": size, "parts": parts, "digest": format!("sha256:{digest}") }));
@@ -286,7 +286,7 @@ impl Job {
             Some(run) => format!("artifacts?run_id={}", urlencode(run)),
             None => "artifacts".to_owned(),
         };
-        let listed = ureq::get(&self.url(&rest))
+        let listed = crate::http::agent().get(&self.url(&rest))
             .set("authorization", &self.auth())
             .timeout(Duration::from_secs(60))
             .call()
@@ -319,7 +319,7 @@ impl Job {
     /// Downloads an artifact into `file`, checking its digest; how it is
     /// packed, `zip` or `tgz`.
     fn fetch_to(&mut self, artifact: &Listed, file: &Path) -> Result<String, String> {
-        let response = match ureq::get(&self.url(&format!("artifacts/{}/download", artifact.id)))
+        let response = match crate::http::agent().get(&self.url(&format!("artifacts/{}/download", artifact.id)))
             .set("authorization", &self.auth())
             .timeout(Duration::from_secs(4 * 3600))
             .call()
@@ -501,7 +501,7 @@ impl Job {
         let _ = std::fs::remove_dir_all(&folder);
         if result.0 && delete {
             for artifact in &chosen {
-                match ureq::delete(&self.url(&format!("artifacts/{}", artifact.id))).set("authorization", &self.auth()).timeout(Duration::from_secs(60)).call() {
+                match crate::http::agent().delete(&self.url(&format!("artifacts/{}", artifact.id))).set("authorization", &self.auth()).timeout(Duration::from_secs(60)).call() {
                     Ok(_) => self.log.line(&format!("Deleted artifact {}.", artifact.name)),
                     Err(ureq::Error::Status(_, response)) => self.log.line(&format!("##[warning]Artifact {} could not be deleted: {}", artifact.name, refusal(response))),
                     Err(error) => self.log.line(&format!("##[warning]Artifact {} could not be deleted: {error}", artifact.name)),

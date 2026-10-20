@@ -129,7 +129,7 @@ struct Reporter {
 impl Reporter {
     fn send(&self, mut body: serde_json::Value) -> Result<()> {
         body["token"] = self.token.clone().into();
-        ureq::post(&self.url)
+        crate::http::agent().post(&self.url)
             .send_json(body)
             .context("could not report the check run")?;
         Ok(())

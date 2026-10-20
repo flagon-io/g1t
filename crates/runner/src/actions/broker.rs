@@ -359,7 +359,7 @@ impl Relay {
             url: format!("{}/actions/jobs/{}/broker", api.base, api.job),
             token: api.token.clone(),
             // Never a redirect: g1t answers itself.
-            agent: ureq::AgentBuilder::new().redirects(0).timeout(RELAY_TIME).build(),
+            agent: crate::http::builder().redirects(0).timeout(RELAY_TIME).build(),
         }
     }
 
