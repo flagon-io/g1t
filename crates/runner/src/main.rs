@@ -10,6 +10,9 @@
 //! commands, from before checks were workflows. See the modules of those
 //! names. It talks to g1t only through the public API and git.
 //!
+//! `gitedge` is not work that ends: it is a server, a repository's git
+//! edge, that keeps a mirror of it and answers its clones (see `gitedge`).
+//!
 //! Every mode runs with the mining watch in `abuse`: a sandbox that looks
 //! like it is mining stops itself and exits with `abuse::EXIT_CODE`.
 //!
@@ -28,6 +31,7 @@ mod checks;
 mod clone;
 mod deploy;
 mod docker;
+mod gitedge;
 mod guard;
 mod http;
 mod mergecheck;
@@ -106,6 +110,7 @@ fn main() {
         Ok("bump") => bump::main(),
         Ok("checks") => checks::main(),
         Ok("deploy") => deploy::main(),
+        Ok("gitedge") => gitedge::main(),
         Ok("queue") => queue::main(),
         Ok("mergecheck") => mergecheck::main(),
         // Work g1t no longer does (an agent's run, a review, a plan, a
