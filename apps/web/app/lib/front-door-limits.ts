@@ -15,6 +15,8 @@
  *   access token (`Authorization: Bearer`, app/lib/website-token.ts), by a
  *   hash of the token, at the API's limit for a token; the address ceiling
  *   applies as for cookies.
+ * - Crawlers (app/lib/crawlers.ts): per crawler, wherever it asks from,
+ *   only for the costly pages it is not served from the cache.
  *
  * Static assets never reach the Worker (the assets binding answers them),
  * and the few files it serves itself are left out here too. Every limit
@@ -30,6 +32,7 @@ export type FrontDoorLimits = {
   WEB_TOKEN_LIMIT?: RateLimitBinding;
   GIT_ANONYMOUS_LIMIT?: RateLimitBinding;
   GIT_SIGNED_LIMIT?: RateLimitBinding;
+  CRAWLER_LIMIT?: RateLimitBinding;
 };
 
 /** Files the Worker serves that are never limited: build output, fonts, and top-level files such as robots.txt. */
@@ -75,6 +78,7 @@ const GIT_MESSAGE_ANONYMOUS =
   "Too many git requests from your network. Wait a minute and try again, or use credentials for a higher limit: https://docs.g1t.sh/reference/rate-limits/\n";
 const GIT_MESSAGE_SIGNED = "Too many git requests with these credentials. Wait a minute and try again: https://docs.g1t.sh/reference/rate-limits/\n";
 const PAGE_MESSAGE = "Too many requests from your network. Wait a minute and try again.\n";
+const CRAWLER_MESSAGE = "Too many pages drawn for this crawler. Wait a minute and try again, and see /robots.txt.\n";
 const TOKEN_PAGE_MESSAGE = "Too many requests with this access token. Wait a minute and try again: https://docs.g1t.sh/reference/rate-limits/\n";
 
 /**
@@ -124,6 +128,16 @@ export async function pageLimited(env: FrontDoorLimits, request: Request, pathna
   if (!verdicts.includes("limited")) return null;
   if (token && verdicts[1] === "limited") return tooManyRequests(TOKEN_PAGE_MESSAGE);
   return tooManyRequests(token || session ? PAGE_MESSAGE : `${PAGE_MESSAGE.trimEnd()} Signed-in accounts have a higher limit.\n`);
+}
+
+/**
+ * The 429 for a crawler's costly page that is not in the cache, past its
+ * family's limit, or null to go on. Counted per family, not per address:
+ * a crawler asks from many.
+ */
+export async function crawlerLimited(env: FrontDoorLimits, family: string): Promise<Response | null> {
+  const verdict = await checkLimit(env.CRAWLER_LIMIT, `crawler:${family}`);
+  return verdict === "limited" ? tooManyRequests(CRAWLER_MESSAGE) : null;
 }
 
 /**

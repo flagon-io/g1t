@@ -75,6 +75,7 @@ declare global {
       WEB_TOKEN_LIMIT?: RateLimitBinding;
       GIT_ANONYMOUS_LIMIT?: RateLimitBinding;
       GIT_SIGNED_LIMIT?: RateLimitBinding;
+      CRAWLER_LIMIT?: RateLimitBinding;
       /**
        * Where repository files and avatars are served (app/lib/usercontent.ts).
        * Unset on g1t.sh, which is https://g1tusercontent.com; unset on another

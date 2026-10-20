@@ -4,7 +4,7 @@ import { test } from "node:test";
 
 import { LIMIT_PERIOD_SECONDS, RATE_LIMITS, type RateLimitBinding, checkLimit, isLimited, secretKey } from "@g1t/contracts/rate-limits";
 
-import { archiveLink, gitLimited, heavy, pageLimited, sessionCookie, unlimited, usercontentLimited } from "./front-door-limits.ts";
+import { archiveLink, crawlerLimited, gitLimited, heavy, pageLimited, sessionCookie, unlimited, usercontentLimited } from "./front-door-limits.ts";
 
 /** A binding that lets `allow` requests through per key, recording each key it was asked. */
 function binding(allow: number): RateLimitBinding & { keys: string[] } {
@@ -116,6 +116,18 @@ test("requests with an access token count by a hash of the token, at the API's l
   assert.equal(refused?.status, 429);
   assert.match((await refused?.text()) ?? "", /this access token/);
   assert.equal(RATE_LIMITS.WEB_TOKEN_LIMIT.limit, RATE_LIMITS.API_TOKEN_LIMIT.limit);
+});
+
+test("a crawler's costly pages count per crawler, wherever it asks from", async () => {
+  const env = { CRAWLER_LIMIT: binding(1) };
+  assert.equal(await crawlerLimited(env, "anthropic"), null);
+  const refused = await crawlerLimited(env, "anthropic");
+  assert.equal(refused?.status, 429);
+  assert.equal(refused?.headers.get("retry-after"), String(LIMIT_PERIOD_SECONDS));
+  assert.match((await refused?.text()) ?? "", /robots\.txt/);
+  assert.equal(await crawlerLimited(env, "openai"), null, "each crawler counts apart");
+  assert.deepEqual(env.CRAWLER_LIMIT.keys, ["crawler:anthropic", "crawler:anthropic", "crawler:openai"]);
+  assert.equal(await crawlerLimited({}, "anthropic"), null, "without the binding, nothing is limited");
 });
 
 test("files the Worker serves itself are never limited", async () => {

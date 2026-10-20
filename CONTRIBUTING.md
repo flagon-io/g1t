@@ -323,6 +323,20 @@ disagree). Limits fail open, keys hash anything secret, and each Worker
 takes its namespace ids from its own block of a hundred (41xx packages,
 42xx web, 43xx repos, 44xx api, 45xx og, 46xx status).
 
+Crawlers made most of g1t.sh's requests on 2026-10-20 (ClaudeBot 147k
+and GPTBot 34k of 286k in six hours), and every shared service slowed
+for people signed in. So a crawler is never signed in and is served from
+the cache: `app/lib/crawlers.ts` knows them by user agent (add a new one
+to `FAMILIES`, with a case in its test) or by Cloudflare's verified bot
+fields, and `serveCrawler` in `workers/app.ts` keeps its public pages for
+6 hours under the address alone. Only a page not in the cache is drawn,
+and the costly ones (tree, file, commit, raw, blame, compare, search)
+count against `CRAWLER_LIMIT`, per crawler. `/robots.txt` asks for 5
+seconds between requests and keeps crawlers from raw files, archives,
+blame and comparisons (`app/lib/robots.ts`). A scraper that looks like a
+browser is a signed-out visitor: the signed-out page cache and the
+limits per address are what it meets.
+
 ## Operating g1t.sh
 
 For Flagon staff.

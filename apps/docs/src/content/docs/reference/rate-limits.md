@@ -63,6 +63,11 @@ minute.
 Signing up with a password is limited to 5 accounts an hour from one
 network; see [too many attempts](/guides/authentication/#too-many-attempts).
 
+Crawlers are served public pages from a cache, kept for hours. A tree,
+file, commit, raw, blame or comparison page that is not in it counts
+against 60 a minute for each crawler, wherever it asks from, and
+`/robots.txt` asks for 5 seconds between requests.
+
 A running job's live log, which its run's page asks for about once a
 second, counts as a page, not as a log download.
 A signed archive link, the address
