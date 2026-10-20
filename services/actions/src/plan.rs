@@ -1599,6 +1599,11 @@ impl Actions {
 
     /// Starts queued jobs, oldest first, while their workspace has room.
     pub async fn start_queued(&self) -> Result<()> {
+        self.start_queued_except(&std::collections::HashSet::new()).await
+    }
+
+    /// [`Self::start_queued`], leaving `held` for a later sweep.
+    async fn start_queued_except(&self, held: &std::collections::HashSet<String>) -> Result<()> {
         let queued = self
             .db
             // Self-hosted jobs are taken by their runners (runners.rs).
@@ -1619,6 +1624,9 @@ impl Actions {
                 .map_or(0, |count| count.n)
         };
         for job in queued {
+            if held.contains(&job.id) {
+                continue;
+            }
             let in_workspace = match running.get(&job.namespace) {
                 Some(n) => *n,
                 None => {
@@ -2867,6 +2875,7 @@ impl Actions {
         }
         // Jobs whose sandbox went quiet or ran past their time.
         let running = self.db.prepare("SELECT * FROM jobs WHERE status = 'in_progress'").all().await?.results::<JobRow>()?;
+        let mut lost = std::collections::HashSet::new();
         for job in running {
             // Times in g1t's format compare as text.
             let before = |ms: u64| rfc3339(now_ms.saturating_sub(ms));
@@ -2885,6 +2894,14 @@ impl Actions {
                     let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id })).await;
                 }
                 self.finish_job(&job.id, "failure", Some(&reason), None).await?;
+            } else if job.runner_id.is_none() && crate::never_reported(job.started_at.as_deref(), job.seen_at.as_deref(), now_ms) {
+                // Its sandbox never ran it: nothing it did needs undoing.
+                // It starts again at the next sweep, not this one: the same
+                // sandbox takes it, and the stop of the lost one finishes
+                // in that sandbox's alarm, after this.
+                if self.retry_lost_start(&job, now_ms).await? {
+                    lost.insert(job.id.clone());
+                }
             } else if silent {
                 let reason = match &job.runner_name {
                     Some(name) => format!("The self-hosted runner {name} stopped answering."),
@@ -2942,7 +2959,44 @@ impl Actions {
         {
             worker::console_error!("actions: the logs' sweep failed: {error}");
         }
-        self.start_queued().await
+        self.start_queued_except(&lost).await
+    }
+
+    /// A job whose sandbox never reported (`never_reported`): back in the
+    /// queue, its token void so that sandbox can no longer report for it,
+    /// and the sandbox stopped, which gives back what billing held for it.
+    /// It waits as a job with no machine does, and fails once it has waited
+    /// WAIT_FOR_MACHINE_MS. Returns whether it went back in the queue.
+    async fn retry_lost_start(&self, job: &JobRow, now_ms: u64) -> Result<bool> {
+        let since = job.waiting_since.clone().or_else(|| job.started_at.clone()).unwrap_or_else(|| rfc3339(now_ms));
+        if crate::waited_for_a_machine(Some(&since), now_ms) {
+            let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id })).await;
+            let minutes = crate::WAIT_FOR_MACHINE_MS / 60_000;
+            let reason = format!("No machine ran the job in {minutes} minutes: each one it was given stopped answering before it started.");
+            self.finish_job(&job.id, "failure", Some(&reason), None).await?;
+            return Ok(false);
+        }
+        // Not if it reported after all, since it was read.
+        let requeued = self
+            .db
+            .prepare(
+                "UPDATE jobs SET status = 'queued', token_hash = NULL, first_token_hash = NULL, started_at = NULL, seen_at = NULL, waiting_since = ?, reason = ?
+                   WHERE id = ? AND status = 'in_progress' AND seen_at = started_at RETURNING id",
+            )
+            .bind(&[
+                since.as_str().into(),
+                "Its machine stopped answering before it started; it waits for another.".into(),
+                job.id.as_str().into(),
+            ])?
+            .first::<Value>(None)
+            .await?;
+        if requeued.is_none() {
+            return Ok(false);
+        }
+        worker::console_warn!("actions: job {} never reported; it goes back in the queue", job.id);
+        self.revoke_job_tokens(&job.id).await;
+        let _: Result<Value> = g1t_kit::call(&self.runner, "stop_actions_job", &json!({ "job": job.id })).await;
+        Ok(true)
     }
 }
 
