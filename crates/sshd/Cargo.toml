@@ -10,7 +10,7 @@ anyhow = "1.0.104"
 flate2 = "1.1.10"
 futures-util = "0.3.34"
 reqwest = { version = "0.13.5", features = ["json", "stream"] }
-russh = "0.63.3"
+russh = "0.64.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 tokio = { version = "1.53.1", features = ["full"] }

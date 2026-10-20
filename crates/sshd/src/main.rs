@@ -99,9 +99,10 @@ where
     tokio::spawn(async move {
         while let Some(Ok(message)) = source.next().await {
             if let Message::Binary(bytes) = message
-                && to_ssh.write_all(&bytes).await.is_err() {
-                    break;
-                }
+                && to_ssh.write_all(&bytes).await.is_err()
+            {
+                break;
+            }
         }
         let _ = to_ssh.shutdown().await;
     });
