@@ -310,8 +310,19 @@ the databases, so start calls together and add no rounds.
   page now asks the room once and keeps the answer, so only its first
   open pays. Still to cut: the live socket's four service calls before
   the room answers, the page and sidebar's 27 database round trips in two
-  calls, the root loader's billing and identity calls (0.7–1.3 s and
-  0.45 s inside), and the 3.4 MB of script a doc page decodes.
+  calls, billing's own rounds behind `entitlements` (about 8 in a row,
+  0.7–0.9 s, now paid once per workspace every two minutes), and the
+  3.4 MB of script a doc page decodes.
+- The frame is read once, not with every page. The root and the
+  workspace layout reload after a submission only when it changes what
+  the frame shows (`lib/shell-changes.ts`: add a page there when its
+  form changes the sidebar); a comment or a review reloads only its page.
+  What every page asks and rarely changes is kept in the data centre
+  (`shortCache`): who a session is for 30 s (by a hash of its token;
+  signing out forgets it), a workspace's entitlements for two minutes,
+  whether a project files work items for five. A request that writes,
+  and the person's pages for 30 s after, read afresh, and an isolate
+  keeps nothing longer than 30 s itself.
 
 ## Rate limits
 

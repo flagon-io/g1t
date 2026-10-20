@@ -26,12 +26,16 @@ import { clearWelcome, welcomes } from "../../lib/invites";
 import { notFound } from "../../lib/not-found.server";
 import { redirectIfRenamed, redirectIfTransferred } from "../../lib/renamed.server";
 import { accessFor, countsFor, projectFor, repoFor } from "../../lib/access.server";
+import { shortCache } from "../../lib/cache.server";
 import { inbox, projects, repos, work } from "../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../lib/session.server";
 import { isFailed, orElse, part } from "../../lib/partial";
 
 /** How many forks the header counts before it says "100+". */
 const FORKS_COUNTED = 100;
+
+/** How long the data centre keeps whether a project files work items, for its menus. */
+const WORK_ITEMS_ENABLED_TTL_MS = 300_000;
 
 export function meta({ loaderData: loaded, params, ...args }: Route.MetaArgs) {
   return page(args, { title: `${loaded?.project?.name ?? params.repo} · ${params.owner} · g1t` });
@@ -64,11 +68,15 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       .then((found) => (found.ok ? found.value.length : null))
       .catch(() => null),
     // Whether work items can be filed from it (off by default in a fork): Work
-    // leaves its menus when they cannot. On when it could not be read.
-    work
-      .getSettings(path, viewer)
-      .then((found) => (found.ok ? (found.value.workItemsEnabled ?? true) : true))
-      .catch(() => true),
+    // leaves its menus when they cannot. On when it could not be read. It
+    // rarely changes and every page of the project asks, so the data centre
+    // keeps that one answer for the project (an unanswered read is not
+    // kept); whoever changes it reads it fresh.
+    shortCache(`work-items-enabled:${params.owner}/${params.repo}`.toLowerCase(), WORK_ITEMS_ENABLED_TTL_MS, async () => {
+      const found = await work.getSettings(path, viewer);
+      if (!found.ok) throw new Error(found.error.message);
+      return found.value.workItemsEnabled ?? true;
+    }).catch(() => true),
   ]);
   if (!repo.ok && !found.ok) {
     // Under a workspace's old name, after a rename: the project is at the new one.

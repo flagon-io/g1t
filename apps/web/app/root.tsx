@@ -42,6 +42,7 @@ import { unreadTotals } from "./lib/chat";
 import { countsFor, readableRepos } from "./lib/access.server";
 import { agentForProviders, DEFAULT_AGENT, parseAgent, rememberAgentDefault } from "./lib/agent-setup";
 import { shortCache } from "./lib/cache.server";
+import { changesShell } from "./lib/shell-changes";
 import { getViewer, viewerMiddleware } from "./lib/session.server";
 import { shortcutOf, workspaceProjects } from "./lib/workspace-projects.server";
 import { addresses } from "./lib/addresses.server";
@@ -192,11 +193,14 @@ function bareShell(user: User, params: { owner?: string; repo?: string }, chosen
 
 /**
  * The sidebar only changes with the workspace or repository being looked
- * at, or after something was submitted: not on every page within them.
+ * at, or after a submission that changes it (lib/shell-changes.ts): not on
+ * every page within them, nor after a comment or a review, which would
+ * read billing and the rest of the sidebar again for nothing.
  */
-export function shouldRevalidate({ currentParams, nextParams, formMethod, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
-  if (formMethod && formMethod !== "GET") return defaultShouldRevalidate;
-  return currentParams.owner !== nextParams.owner || currentParams.repo !== nextParams.repo;
+export function shouldRevalidate({ currentParams, nextParams, formMethod, formAction, formData, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
+  const moved = currentParams.owner !== nextParams.owner || currentParams.repo !== nextParams.repo;
+  if (formMethod && formMethod !== "GET") return moved || (defaultShouldRevalidate && changesShell(formAction, formData));
+  return moved;
 }
 
 /**
@@ -232,7 +236,10 @@ async function shellFor(
     kept("status", () => billing.status()).catch(() => null),
     kept(`usage:${monthStart}`, () => billing.usage(workspace!.slug, user, monthStart)).catch(() => null),
     kept("limit", () => billing.limit(workspace!.slug, user)).catch(() => null),
-    kept("entitlements", () => billing.entitlements(workspace!.slug)).catch(() => null),
+    // Only whether new compute is paused, and why: the same for everyone in
+    // the workspace and slow to work out (about 8 database rounds in
+    // billing), so kept for the workspace, and for longer.
+    workspace ? shortCache(`shell:entitlements:${workspace.slug}`, ENTITLEMENTS_TTL_MS, () => billing.entitlements(workspace.slug)).catch(() => null) : null,
     part(sharedRepos(user), "Shared with you").then((value) => orElse(value, [])),
     // The bell's count: one query, never kept, so marking an item shows at once.
     inbox.counts(user.username).catch(() => null),
@@ -325,6 +332,15 @@ const CHAT_BADGE_WAIT_MS = 300;
  * own changes read fresh anyway (lib/perf.ts `PRIMARY_WINDOW_SECONDS`).
  */
 const SHELL_TTL_MS = 30_000;
+
+/**
+ * How long the data centre keeps a workspace's entitlements for the
+ * sidebar. A pause the person lifts or causes shows at once (their own
+ * writes read fresh); one that starts or ends by itself, or by another
+ * owner, shows within this. Starting compute asks billing itself, never
+ * this copy.
+ */
+const ENTITLEMENTS_TTL_MS = 120_000;
 
 /** Most repositories listed under Shared with you. */
 const MAX_SHARED = 20;
