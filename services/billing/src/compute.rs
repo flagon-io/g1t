@@ -189,6 +189,10 @@ impl From<SpikeRow> for Spike {
     }
 }
 
+/// Why new compute is paused (`pause_reason`): why, the spike behind it
+/// (or the latest one), and the refusal's code.
+type Paused = (Option<String>, Option<Spike>, Option<FailureCode>);
+
 /// A workspace's pace: the last hour, the usual hour over the last week,
 /// the last day, at price (what was charged plus what paid for it first).
 #[derive(Clone, Copy, Debug, Default)]
@@ -244,25 +248,30 @@ impl Billing {
             .map(Spike::from))
     }
 
-    /// The spike pausing the workspace now, found or new. Never for g1t's
-    /// own workspaces, which are watched in sudo but never paused.
-    async fn spike_pause(&self, workspace: &str, plan: PlanKind) -> Result<Option<Spike>> {
-        let latest = self.latest_spike(workspace).await?;
+    /// The spike pausing the workspace now, found or new, and the latest
+    /// spike as read on the way, so the caller need not read it again.
+    /// Never for g1t's own workspaces, which are watched in sudo but never
+    /// paused.
+    async fn spike_pause(&self, workspace: &str, plan: PlanKind) -> Result<(Option<Spike>, Option<Spike>)> {
+        let watched = plan != PlanKind::Internal && self.charging;
+        // The pace is read beside the latest spike rather than after it:
+        // it is needed unless that spike already pauses.
+        let pace = async { if watched { self.pace(workspace).await.map(Some) } else { Ok(None) } };
+        let (latest, pace) = try_join(self.latest_spike(workspace), pace).await?;
         if let Some(spike) = &latest
             && (spike.status == "open" || spike.status == "stopped") {
-                return Ok(latest);
+                return Ok((latest.clone(), latest));
             }
-        if plan == PlanKind::Internal || !self.charging {
-            return Ok(None);
-        }
-        let pace = self.pace(workspace).await?;
+        let Some(pace) = pace else {
+            return Ok((None, latest));
+        };
         let now = rfc3339(now_ms());
         if let Some(spike) = &latest
             && spike.status == "continued" && still_continued(spike.until.as_deref(), &now, spike.hour_micros, pace.last_hour) {
-                return Ok(None);
+                return Ok((None, latest));
             }
         if !is_spike(pace.last_hour, pace.usual_hour, self.plans.spike_factor, self.plans.spike_floor_micros) {
-            return Ok(None);
+            return Ok((None, latest));
         }
         let id = new_id("spk", now_ms());
         self.db
@@ -274,14 +283,14 @@ impl Billing {
             .bind(&[id.as_str().into(), workspace.into(), (pace.last_hour as f64).into(), (pace.usual_hour as f64).into(), now.as_str().into()])?
             .run()
             .await?;
-        self.latest_spike(workspace).await
+        let spike = self.latest_spike(workspace).await?;
+        Ok((spike.clone(), spike))
     }
 
     /// The alerts a workspace has reached this month: its plan's included
     /// usage, its spend limit and g1t's ceiling, from 50%.
     pub(crate) async fn alerts_for(&self, workspace: &str) -> Result<Vec<UsageAlert>> {
-        let account = self.account_of(workspace).await?;
-        let plan = self.plan_kind_for(workspace, &account).await?;
+        let (account, plan, _) = self.account_and_plan(workspace).await?;
         let has_plan = plan != PlanKind::Free;
         let month = credits::month_of(&rfc3339(now_ms()));
         let (limit, used) = try_join(self.limit_with(workspace, &account, plan), async {
@@ -398,16 +407,35 @@ impl Billing {
         account: &BillingAccount,
         plan: PlanKind,
         limit: Option<&g1t_contracts::billing::Limit>,
-    ) -> Result<(Option<String>, Option<Spike>, Option<FailureCode>)> {
+    ) -> Result<Paused> {
+        match self.pause_before_limit(workspace, account, plan).await? {
+            Ok(paused) => Ok(paused),
+            Err(latest) => self.pause_at_limit(workspace, plan, limit, latest).await,
+        }
+    }
+
+    /// `pause_reason` up to the limit, which it does not need: a hold, a
+    /// comped budget or a spike that pauses (`Ok`), or else the latest
+    /// spike (`Err`), for `pause_at_limit`. A caller can so read it beside
+    /// the limit rather than after it.
+    async fn pause_before_limit(
+        &self,
+        workspace: &str,
+        account: &BillingAccount,
+        plan: PlanKind,
+    ) -> Result<std::result::Result<Paused, Option<Spike>>> {
         if let Some(hold) = account.allowances.hold.as_deref().filter(|h| !h.trim().is_empty()) {
-            return Ok((Some(format!("g1t staff put a hold on new compute ({}).", hold.trim())), None, Some(FailureCode::Paused)));
+            return Ok(Ok((Some(format!("g1t staff put a hold on new compute ({}).", hold.trim())), None, Some(FailureCode::Paused))));
         }
-        // A comped account past its monthly budget (`budget`).
-        if let Some(why) = self.comped_stop(account).await? {
-            return Ok((Some(why), None, Some(FailureCode::Paused)));
+        // A comped account past its monthly budget (`budget`), and the
+        // spikes, read at once: a comped account is g1t's own (Internal),
+        // whose spikes are only read, never written, so nothing is written
+        // that the budget would have stopped.
+        let (comped, (spike, latest)) = try_join(self.comped_stop(account), self.spike_pause(workspace, plan)).await?;
+        if let Some(why) = comped {
+            return Ok(Ok((Some(why), None, Some(FailureCode::Paused))));
         }
-        let spike = self.spike_pause(workspace, plan).await?;
-        if let Some(spike) = &spike {
+        if let Some(spike) = spike {
             let why = if spike.status == "stopped" {
                 format!(
                     "an owner stopped new compute after a spend spike ({} in an hour). An owner can choose Keep going.",
@@ -421,9 +449,19 @@ impl Billing {
                     dollars(spike.average_micros)
                 )
             };
-            return Ok((Some(why), Some(spike.clone()), Some(FailureCode::Paused)));
+            return Ok(Ok((Some(why), Some(spike), Some(FailureCode::Paused))));
         }
-        let latest = self.latest_spike(workspace).await?;
+        Ok(Err(latest))
+    }
+
+    /// The rest of `pause_reason`: the limit, once nothing paused before it.
+    async fn pause_at_limit(
+        &self,
+        workspace: &str,
+        plan: PlanKind,
+        limit: Option<&g1t_contracts::billing::Limit>,
+        latest: Option<Spike>,
+    ) -> Result<Paused> {
         // A complimentary workspace that stops at its allowance has no
         // on-demand usage to limit: the allowance is the bound (`reserve`,
         // which passes no limit for it). One charged past it has the plan's.
@@ -446,24 +484,41 @@ impl Billing {
     /// `entitlements`: what the workspace may do now.
     pub(crate) async fn entitlements(&self, a: EntitlementsArgs) -> Result<Entitlements> {
         let workspace = a.workspace.to_lowercase();
-        let account = self.account_of(&workspace).await?;
-        let plan = self.plan_kind_for(&workspace, &account).await?;
+        let (account, plan, enrollment) = self.account_and_plan(&workspace).await?;
         let has_plan = plan != PlanKind::Free;
         let now = rfc3339(now_ms());
         let month = credits::month_of(&now);
         // Every signed-in page asks for this, so what does not need another
-        // answer is read at once: the limit (and the pause, from it), the
-        // trial, and the month's counts.
+        // answer is read at once: the limit, the enrollment and the pause
+        // (whose reads need neither), the trial, and the month's counts.
         let standing = async {
-            let limit = self.limit_with(&workspace, &account, plan).await?;
-            // An enrollment has the plan's limit only when its own card is
-            // charged past the allowance, as `reserve` decides it.
-            let limited = plan != PlanKind::Complimentary || match self.complimentary_active(&workspace).await? {
-                Some(row) if row.charges_past() => self.has_card(&workspace).await?,
-                _ => false,
+            let limit = async {
+                // A complimentary enrollment, for g1t's own workspaces too:
+                // read with the plan, unless it was not.
+                let enrollment = match (plan, enrollment) {
+                    (PlanKind::Complimentary | PlanKind::Internal, Some(row)) => row,
+                    (PlanKind::Complimentary | PlanKind::Internal, None) => self.complimentary_active(&workspace).await?,
+                    _ => None,
+                };
+                // An enrollment has the plan's limit only when its own card
+                // is charged past the allowance, as `reserve` decides it.
+                let limited = plan != PlanKind::Complimentary
+                    || match &enrollment {
+                        Some(row) if row.charges_past() => self.has_card(&workspace).await?,
+                        _ => false,
+                    };
+                Ok::<_, worker::Error>((enrollment, limited))
             };
-            let pause = self.pause_reason(&workspace, &account, plan, limited.then_some(&limit)).await?;
-            Ok::<_, worker::Error>((limit, pause))
+            let ((limit, (enrollment, limited)), early) = try_join(
+                try_join(self.limit_with(&workspace, &account, plan), limit),
+                self.pause_before_limit(&workspace, &account, plan),
+            )
+            .await?;
+            let pause = match early {
+                Ok(paused) => paused,
+                Err(latest) => self.pause_at_limit(&workspace, plan, limited.then_some(&limit), latest).await?,
+            };
+            Ok::<_, worker::Error>((limit, pause, enrollment))
         };
         let trial = async {
             let (checked, grant) = try_join(
@@ -489,7 +544,7 @@ impl Billing {
             async { if has_plan { self.allowance_used("plan_credit", &workspace, &month).await } else { Ok(0) } },
         );
         let more = try_join(self.allowance_used("build_seconds", &workspace, &month), self.git_operations_this_month(&workspace));
-        let ((limit, (paused, spike, _)), (verified, grant), (stored, oss, held, included_used), (build_seconds, git_operations)) =
+        let ((limit, (paused, spike, _), enrollment), (verified, grant), (stored, oss, held, included_used), (build_seconds, git_operations)) =
             try_join4(standing, trial, counts, more).await?;
         let trial_left = grant.as_ref().map_or(0, |g| left(g.granted_micros, g.used_micros));
         let first_month = limit.first_month;
@@ -500,12 +555,9 @@ impl Billing {
             _ => limit.ceiling_micros.unwrap_or(UNLIMITED_MICROS),
         };
         // A complimentary enrollment's month (g1t's own may have one too).
-        let complimentary = match plan {
-            PlanKind::Complimentary | PlanKind::Internal => match self.complimentary_active(&workspace).await? {
-                Some(row) => Some(self.complimentary_month(&row, Some(held)).await?),
-                None => None,
-            },
-            _ => None,
+        let complimentary = match &enrollment {
+            Some(row) => Some(self.complimentary_month(row, Some(held)).await?),
+            None => None,
         };
         let enrolled = complimentary.as_ref().filter(|_| plan == PlanKind::Complimentary);
         // Past its allowance, nothing more that costs money starts (no
@@ -595,8 +647,7 @@ impl Billing {
         if !self.charging {
             return Ok(Outcome::Ok(Reservation { id: new_id("rsv", now), paid_by: PaidBy::OnDemand, held_micros: 0, expires_at }));
         }
-        let account = self.account_of(&workspace).await?;
-        let plan = self.plan_kind_for(&workspace, &account).await?;
+        let (account, plan, enrollment) = self.account_and_plan(&workspace).await?;
         // g1t's own caps (`budget`), in their own words: a comped account's
         // monthly budget, and the daily breaker.
         if let Some(why) = self.comped_stop(&account).await? {
@@ -607,7 +658,11 @@ impl Billing {
         }
         // An enrollment: what pays first, and whether its own card is charged
         // past it (`charge`), with a card to charge.
-        let enrollment = if plan == PlanKind::Complimentary { self.complimentary_active(&workspace).await? } else { None };
+        let enrollment = match (plan, enrollment) {
+            (PlanKind::Complimentary, Some(row)) => row,
+            (PlanKind::Complimentary, None) => self.complimentary_active(&workspace).await?,
+            _ => None,
+        };
         let charges_past = match &enrollment {
             Some(row) if row.charges_past() => self.has_card(&workspace).await?,
             _ => false,

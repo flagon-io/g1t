@@ -36,7 +36,7 @@ use crate::stripe::{StripeSubscription, is_missing};
 use crate::{Billing, Touched, members_only, optional};
 
 #[derive(Deserialize)]
-struct SubscriptionRow {
+pub(crate) struct SubscriptionRow {
     feature: String,
     subscription_id: String,
     status: String,
@@ -240,16 +240,21 @@ impl Billing {
     /// When the workspace's plan started, and when the period paid for
     /// ends: its first billing cycle is the first month.
     pub(crate) async fn plan_cycle(&self, workspace: &str) -> Result<Option<(String, Option<String>)>> {
-        let row = match self.current(workspace, Feature::Plan).await? {
+        // Both rows are read at once; the Deployments one counts only
+        // without the plan's (and is asked about again only then).
+        let (plan, deployments) =
+            futures_util::future::try_join(self.subscription_row(workspace, Feature::Plan), self.subscription_row(workspace, Feature::Deployments))
+                .await?;
+        let row = match self.current_from(workspace, Feature::Plan, plan).await? {
             Some(row) => Some(row),
-            None => self.current(workspace, Feature::Deployments).await?,
+            None => self.current_from(workspace, Feature::Deployments, deployments).await?,
         };
         Ok(row
             .filter(|row| status_from(&row.status).on())
             .map(|row| (row.started_at, row.period_end)))
     }
 
-    async fn subscription_row(&self, workspace: &str, feature: Feature) -> Result<Option<SubscriptionRow>> {
+    pub(crate) async fn subscription_row(&self, workspace: &str, feature: Feature) -> Result<Option<SubscriptionRow>> {
         self.db
             .prepare(
                 "SELECT feature, subscription_id, status, period_end, started_by, started_at, updated_at
@@ -302,7 +307,14 @@ impl Billing {
     /// A workspace's plan for a feature, asking the processor again once
     /// the period it last knew of is over, at most once an hour.
     async fn current(&self, workspace: &str, feature: Feature) -> Result<Option<SubscriptionRow>> {
-        let Some(row) = self.subscription_row(workspace, feature).await? else {
+        let row = self.subscription_row(workspace, feature).await?;
+        self.current_from(workspace, feature, row).await
+    }
+
+    /// `current`, from the row already read (`subscription_row`), so a
+    /// caller can read it beside other reads.
+    async fn current_from(&self, workspace: &str, feature: Feature, row: Option<SubscriptionRow>) -> Result<Option<SubscriptionRow>> {
+        let Some(row) = row else {
             return Ok(None);
         };
         let stale = needs_refresh(&row.status, row.period_end.as_deref(), &row.updated_at, now_ms());
@@ -492,11 +504,13 @@ impl Billing {
 
     /// Whether the workspace's plan for the feature is paid up.
     pub(crate) async fn plan_on(&self, workspace: &str, feature: Feature) -> Result<bool> {
-        Ok(self
-            .current(workspace, feature)
-            .await?
-            .and_then(|row| row.subscription())
-            .is_some_and(|s| s.status.on()))
+        let row = self.subscription_row(workspace, feature).await?;
+        self.plan_on_from(workspace, feature, row).await
+    }
+
+    /// `plan_on`, from the row already read (`subscription_row`).
+    pub(crate) async fn plan_on_from(&self, workspace: &str, feature: Feature, row: Option<SubscriptionRow>) -> Result<bool> {
+        Ok(self.current_from(workspace, feature, row).await?.and_then(|row| row.subscription()).is_some_and(|s| s.status.on()))
     }
 
     pub(crate) async fn features(&self, a: FeaturesArgs) -> Result<Outcome<Vec<FeatureState>>> {

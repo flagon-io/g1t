@@ -34,6 +34,8 @@ use serde::Deserialize;
 use worker::{Env, Result};
 
 use crate::Billing;
+use crate::complimentary::Row as ComplimentaryRow;
+use crate::features::SubscriptionRow;
 use crate::features::dollars;
 
 /// Every number of the plan and the pools, from the billing service's
@@ -284,6 +286,13 @@ pub(crate) struct Grant {
     pub used_micros: i64,
 }
 
+/// What decides a plan the account does not decide (`plan_kind_for`).
+struct PlanReads {
+    enrollment: Option<ComplimentaryRow>,
+    plan: Option<SubscriptionRow>,
+    deployments: Option<SubscriptionRow>,
+}
+
 impl Billing {
     /// The workspace's plan: comped terms are internal, an enterprise's
     /// workspaces are invoiced, and otherwise the plan is paid for (or
@@ -298,26 +307,70 @@ impl Billing {
 
     /// The plan, from the account already read for the workspace.
     pub(crate) async fn plan_kind_for(&self, workspace: &str, account: &BillingAccount) -> Result<PlanKind> {
+        if let Some(plan) = self.plan_by_account(account) {
+            return Ok(plan);
+        }
+        let reads = self.plan_reads(workspace).await?;
+        self.plan_kind_from(workspace, account, reads).await
+    }
+
+    /// The account that pays for the workspace and its plan, read in one
+    /// round: what the plan may need (`plan_reads`) is read beside the
+    /// account rather than after it. Also the workspace's active
+    /// enrollment, when it was read (`None` when it was not).
+    pub(crate) async fn account_and_plan(&self, workspace: &str) -> Result<(BillingAccount, PlanKind, Option<Option<ComplimentaryRow>>)> {
+        let reads = async { if self.charging { Ok(Some(self.plan_reads(workspace).await?)) } else { Ok(None) } };
+        let (account, reads) = futures_util::future::try_join(self.account_of(workspace), reads).await?;
+        let enrollment = reads.as_ref().map(|r| r.enrollment.clone().filter(|row| row.status == "active"));
+        let plan = match (self.plan_by_account(&account), reads) {
+            (Some(plan), _) => plan,
+            (None, Some(reads)) => self.plan_kind_from(workspace, &account, reads).await?,
+            (None, None) => self.plan_kind_for(workspace, &account).await?,
+        };
+        Ok((account, plan, enrollment))
+    }
+
+    /// The plan when the account alone decides it: g1t's own, an
+    /// enterprise's, or any on a g1t that does not charge.
+    fn plan_by_account(&self, account: &BillingAccount) -> Option<PlanKind> {
         if account.terms.full_discount() {
-            return Ok(PlanKind::Internal);
+            return Some(PlanKind::Internal);
         }
         if account.kind == g1t_contracts::billing::AccountKind::Enterprise {
-            return Ok(PlanKind::Enterprise);
+            return Some(PlanKind::Enterprise);
         }
         if !self.charging {
-            return Ok(PlanKind::Paid);
+            return Some(PlanKind::Paid);
         }
+        None
+    }
+
+    /// The rows the plan is decided from, when the account does not decide
+    /// it: the enrollment and both subscriptions, read at once.
+    async fn plan_reads(&self, workspace: &str) -> Result<PlanReads> {
+        let (enrollment, plan, deployments) = futures_util::future::try_join3(
+            self.complimentary_row(workspace),
+            self.subscription_row(workspace, Feature::Plan),
+            self.subscription_row(workspace, Feature::Deployments),
+        )
+        .await?;
+        Ok(PlanReads { enrollment, plan, deployments })
+    }
+
+    /// The plan from the rows read for it, in `plan_kind_for`'s order.
+    async fn plan_kind_from(&self, workspace: &str, account: &BillingAccount, reads: PlanReads) -> Result<PlanKind> {
         // Enrolled by staff, once Stripe has its subscription.
-        if self.complimentary_active(workspace).await?.is_some() {
+        if reads.enrollment.is_some_and(|row| row.status == "active") {
             return Ok(PlanKind::Complimentary);
         }
         if account.allowances.plan {
             return Ok(PlanKind::Paid);
         }
-        // Both subscriptions are asked for at once; either one is the plan.
+        // Either subscription is the plan; a stale one is asked about
+        // again (`current`), both at once.
         let (plan, deployments) = futures_util::future::try_join(
-            self.plan_on(workspace, Feature::Plan),
-            self.plan_on(workspace, Feature::Deployments),
+            self.plan_on_from(workspace, Feature::Plan, reads.plan),
+            self.plan_on_from(workspace, Feature::Deployments, reads.deployments),
         )
         .await?;
         if plan || deployments {

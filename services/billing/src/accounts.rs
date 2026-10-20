@@ -28,6 +28,15 @@ use worker::wasm_bindgen::JsValue;
 
 use crate::{Billing, LedgerRow, optional};
 
+/// The account a workspace is linked to (an enterprise's), if that account
+/// exists: a link to one that does not leaves the workspace its own.
+const LINKED_ACCOUNT: &str = "SELECT a.* FROM account_members m JOIN billing_accounts a ON a.id = m.account_id WHERE m.workspace = ?";
+
+/// The workspaces of the account a workspace is linked to, itself among
+/// them; none when it is not linked.
+const LINKED_MEMBERS: &str = "SELECT o.workspace FROM account_members m JOIN account_members o ON o.account_id = m.account_id
+     WHERE m.workspace = ? ORDER BY o.workspace";
+
 pub(crate) const FEE_WAIVER_SUBSCRIPTIONS: &str = "SELECT subscription_id FROM subscriptions WHERE workspace = ? AND status <> 'canceled' LIMIT 1";
 
 #[derive(Deserialize)]
@@ -196,26 +205,32 @@ impl Billing {
         }
     }
 
-    /// The account that pays for a workspace.
+    /// The account that pays for a workspace. Its three reads (the
+    /// account it is linked to, its own, and the linked account's members)
+    /// need no answer from one another, so they go to D1 at once: every
+    /// billing answer starts here.
     pub(crate) async fn account_of(&self, workspace: &str) -> Result<BillingAccount> {
         let workspace = workspace.to_lowercase();
-        #[derive(Deserialize)]
-        struct Link {
-            account_id: String,
-        }
-        let linked = self
-            .db
-            .prepare("SELECT account_id FROM account_members WHERE workspace = ?")
-            .bind(&[workspace.as_str().into()])?
-            .first::<Link>(None)
-            .await?;
-        if let Some(link) = linked
-            && let Some(row) = self.account_row(&link.account_id).await? {
-                let members = self.members(&row.id).await?;
-                return Ok(self.to_account(&row, members));
-            }
         let id = own_account(&workspace);
-        Ok(match self.account_row(&id).await? {
+        let linked = async { self.db.prepare(LINKED_ACCOUNT).bind(&[workspace.as_str().into()])?.first::<AccountRow>(None).await };
+        let members = async {
+            Ok::<_, worker::Error>(
+                self.db
+                    .prepare(LINKED_MEMBERS)
+                    .bind(&[workspace.as_str().into()])?
+                    .all()
+                    .await?
+                    .results::<Member>()?
+                    .into_iter()
+                    .map(|m| m.workspace)
+                    .collect::<Vec<String>>(),
+            )
+        };
+        let (linked, own, members) = futures_util::future::try_join3(linked, self.account_row(&id), members).await?;
+        if let Some(row) = linked {
+            return Ok(self.to_account(&row, members));
+        }
+        Ok(match own {
             Some(row) => self.to_account(&row, vec![workspace]),
             None => BillingAccount {
                 id,
@@ -752,6 +767,38 @@ mod tests {
 
     fn terms(kind: TermsKind, discount: u32) -> Terms {
         Terms { kind, discount_percent: discount, ..Terms::standard() }
+    }
+
+    #[test]
+    fn the_account_and_its_members_are_read_in_one_round_with_the_same_answers() {
+        // `account_of` reads the linked account and its members beside the
+        // workspace's own row, rather than after the link: the joins must
+        // answer what reading the link first did.
+        let db = rusqlite::Connection::open_in_memory().unwrap();
+        // The tables as 0008 makes them (it also carries over `limits`).
+        db.execute_batch("CREATE TABLE limits (workspace TEXT PRIMARY KEY, ceiling_micros INTEGER, updated_at TEXT);").unwrap();
+        db.execute_batch(include_str!("../migrations/0008_accounts.sql")).unwrap();
+        db.execute_batch(
+            "INSERT INTO billing_accounts (id, kind, name, created_by, created_at) VALUES
+               ('ent_1', 'enterprise', 'Acme', 'staff', 't0'), ('ws_solo', 'workspace', 'solo', 'staff', 't0');
+             INSERT INTO account_members (workspace, account_id, added_by, added_at) VALUES
+               ('beta', 'ent_1', 'staff', 't0'), ('alpha', 'ent_1', 'staff', 't0'), ('orphan', 'ent_gone', 'staff', 't0');",
+        )
+        .unwrap();
+        let linked = |workspace: &str| -> Option<String> { db.query_row(LINKED_ACCOUNT, [workspace], |r| r.get::<_, String>("id")).ok() };
+        let members = |workspace: &str| -> Vec<String> {
+            let mut statement = db.prepare(LINKED_MEMBERS).unwrap();
+            statement.query_map([workspace], |r| r.get(0)).unwrap().map(Result::unwrap).collect()
+        };
+        // A member of an enterprise: the enterprise, and all its workspaces
+        // in order.
+        assert_eq!(linked("beta").as_deref(), Some("ent_1"));
+        assert_eq!(members("beta"), ["alpha", "beta"]);
+        // Linked to an account that is gone: its own, as before.
+        assert_eq!(linked("orphan"), None);
+        // Not linked: no linked account, no members; its own row decides.
+        assert_eq!(linked("solo"), None);
+        assert!(members("solo").is_empty());
     }
 
     #[test]

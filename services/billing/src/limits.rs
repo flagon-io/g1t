@@ -42,7 +42,7 @@
 
 use std::collections::BTreeSet;
 
-use futures_util::future::{try_join, try_join3, try_join4, try_join_all};
+use futures_util::future::{try_join, try_join3, try_join_all};
 use g1t_contracts::billing::{
     BillingAccount, CheckLimitArgs, Limit, LimitArgs, LimitState, NotePendingArgs, PlanKind, SetBudgetArgs, SetSpendLimitArgs, Trust,
 };
@@ -338,8 +338,7 @@ impl Billing {
     /// usage and payments count together.
     pub(crate) async fn limit_of(&self, workspace: &str) -> Result<Limit> {
         let workspace = workspace.to_lowercase();
-        let account = self.account_of(&workspace).await?;
-        let plan = self.plan_kind_for(&workspace, &account).await?;
+        let (account, plan, _) = self.account_and_plan(&workspace).await?;
         self.limit_with(&workspace, &account, plan).await
     }
 
@@ -416,55 +415,55 @@ impl Billing {
         // do not.
         // Payments count only from the day payments went live
         // (`payments_live_since`): test-mode ones from before the switch
-        // pay nothing off. None counts until that day is set.
-        let live_since = if live { self.payments_live_since().await? } else { None };
-        // In the statement's order: the day, the workspaces, the month.
-        let mut before: Vec<JsValue> = vec![live_since.as_deref().unwrap_or("9999").into()];
-        before.extend(members.iter().cloned());
-        before.push(month_start.as_str().into());
-        let balance_before = async {
-            Ok::<i64, worker::Error>(
-                self.db
-                    .prepare(format!(
-                        "SELECT SUM(CASE WHEN kind = 'usage' THEN amount_micros
-                                         WHEN kind = 'top_up' AND reference LIKE 'crd%' THEN amount_micros
-                                         WHEN kind = 'top_up' AND {live} = 1 AND created_at >= ? THEN amount_micros
-                                         ELSE 0 END) AS paid
-                         FROM ledger WHERE workspace IN ({marks}) AND created_at < ?",
-                        live = u8::from(live_since.is_some())
-                    ))
-                    .bind(&before)?
-                    .first::<Paid>(None)
-                    .await?
-                    .and_then(|row| row.paid)
-                    .unwrap_or(0),
-            )
-        };
-        // The trust ceiling, from what has been paid and how steadily. The
-        // first month is asked for beside it, since neither needs the other.
-        let trust = async {
-            Ok::<_, worker::Error>(match account.terms.kind {
-                _ if account.terms.full_discount() => (Trust::Internal, None, false),
-                _ if account.terms.ceiling_micros.is_some() => (Trust::Reviewed, account.terms.ceiling_micros, false),
-                _ => {
-                    let standing = async {
-                        let paid = self.live_paid(&members).await?;
-                        let established = if paid > 0 { self.established(&members).await? } else { None };
-                        Ok::<_, worker::Error>((paid, established))
-                    };
-                    let first = async {
-                        if plan == PlanKind::Paid { self.first_month(&workspace).await } else { Ok(false) }
-                    };
-                    let ((paid, established), first_month) = try_join(standing, first).await?;
-                    if plan == PlanKind::Free {
-                        // Nothing on demand: only what a free workspace can owe.
-                        (Trust::New, Some(self.ceilings.new), false)
-                    } else {
-                        let ceiling = paid_ceiling(&self.ceilings, self.plans.paid_start_micros, first_month, paid, established);
-                        (if established.is_some() { Trust::Established } else { Trust::Paid }, Some(ceiling), first_month)
+        // pay nothing off. None counts until that day is set. The day is
+        // read once, beside the reads that do not need it, and both the
+        // balance and the trust ceiling are worked out from it.
+        let paid_side = async {
+            let live_since = if live { self.payments_live_since().await? } else { None };
+            // In the statement's order: the day, the workspaces, the month.
+            let mut before: Vec<JsValue> = vec![live_since.as_deref().unwrap_or("9999").into()];
+            before.extend(members.iter().cloned());
+            before.push(month_start.as_str().into());
+            let balance_before = async {
+                Ok::<i64, worker::Error>(
+                    self.db
+                        .prepare(format!(
+                            "SELECT SUM(CASE WHEN kind = 'usage' THEN amount_micros
+                                             WHEN kind = 'top_up' AND reference LIKE 'crd%' THEN amount_micros
+                                             WHEN kind = 'top_up' AND {live} = 1 AND created_at >= ? THEN amount_micros
+                                             ELSE 0 END) AS paid
+                             FROM ledger WHERE workspace IN ({marks}) AND created_at < ?",
+                            live = u8::from(live_since.is_some())
+                        ))
+                        .bind(&before)?
+                        .first::<Paid>(None)
+                        .await?
+                        .and_then(|row| row.paid)
+                        .unwrap_or(0),
+                )
+            };
+            // The trust ceiling, from what has been paid and how steadily. The
+            // first month is asked for beside it, since neither needs the other.
+            let trust = async {
+                Ok::<_, worker::Error>(match account.terms.kind {
+                    _ if account.terms.full_discount() => (Trust::Internal, None, false),
+                    _ if account.terms.ceiling_micros.is_some() => (Trust::Reviewed, account.terms.ceiling_micros, false),
+                    _ => {
+                        let first = async {
+                            if plan == PlanKind::Paid { self.first_month(&workspace).await } else { Ok(false) }
+                        };
+                        let ((paid, established), first_month) = try_join(self.paid_and_established(&members, live_since.as_deref()), first).await?;
+                        if plan == PlanKind::Free {
+                            // Nothing on demand: only what a free workspace can owe.
+                            (Trust::New, Some(self.ceilings.new), false)
+                        } else {
+                            let ceiling = paid_ceiling(&self.ceilings, self.plans.paid_start_micros, first_month, paid, established);
+                            (if established.is_some() { Trust::Established } else { Trust::Paid }, Some(ceiling), first_month)
+                        }
                     }
-                }
-            })
+                })
+            };
+            try_join(balance_before, trust).await
         };
         // This month's charges on the ledger, measured as every page
         // measures them, and last month's, for the automatic spend limit.
@@ -483,8 +482,8 @@ impl Billing {
         }));
         // None of these reads needs another's answer, so they go to D1 at
         // once: the limit is on every signed-in page.
-        let ((row, month, balance_before, charges), (pending, credits, included), (trust, trust_ceiling, first_month)) =
-            try_join3(try_join4(row, month, balance_before, charges), try_join3(pending, credits, included), trust).await?;
+        let ((row, month, charges), (pending, credits, included), (balance_before, (trust, trust_ceiling, first_month))) =
+            try_join3(try_join3(row, month, charges), try_join3(pending, credits, included), paid_side).await?;
         // Charged this month: the one definition (`charged`), so this is
         // the Billing page's and Usage's figure, to the micro.
         let percent = account.terms.percent_off();
@@ -646,40 +645,46 @@ impl Billing {
     /// subscription's start: a workspace that paid before, ended its plan
     /// and came back keeps its history rather than starting over.
     pub(crate) async fn first_month(&self, workspace: &str) -> Result<bool> {
-        let Some((started_at, period_end)) = self.plan_cycle(workspace).await? else { return Ok(false) };
-        let first_paid = if self.stripe.as_ref().is_some_and(crate::stripe::Stripe::live) {
-            #[derive(Deserialize)]
-            struct First {
-                paid_at: Option<String>,
+        // The cycle and the first payment are read at once.
+        let first_paid = async {
+            if self.stripe.as_ref().is_some_and(crate::stripe::Stripe::live) {
+                #[derive(Deserialize)]
+                struct First {
+                    paid_at: Option<String>,
+                }
+                Ok(self
+                    .db
+                    .prepare("SELECT MIN(paid_at) AS paid_at FROM plan_payments WHERE workspace = ? AND amount_micros > 0")
+                    .bind(&[workspace.into()])?
+                    .first::<First>(None)
+                    .await?
+                    .and_then(|first| first.paid_at))
+            } else {
+                Ok(None)
             }
-            self.db
-                .prepare("SELECT MIN(paid_at) AS paid_at FROM plan_payments WHERE workspace = ? AND amount_micros > 0")
-                .bind(&[workspace.into()])?
-                .first::<First>(None)
-                .await?
-                .and_then(|first| first.paid_at)
-        } else {
-            None
         };
+        let (cycle, first_paid) = try_join(self.plan_cycle(workspace), first_paid).await?;
+        let Some((started_at, period_end)) = cycle else { return Ok(false) };
         Ok(in_first_cycle(trust_start(&started_at, first_paid.as_deref()), period_end.as_deref(), &rfc3339(now_ms())))
     }
 
     /// Real money the workspaces have paid g1t, cleared: usage payments and
     /// the plan's price. Nothing in test mode, and credits g1t gave are not
     /// payments.
-    pub(crate) async fn live_paid(&self, members: &[JsValue]) -> Result<i64> {
+    /// `live_since` is `payments_live_since`, read by the caller.
+    pub(crate) async fn live_paid(&self, members: &[JsValue], live_since: Option<&str>) -> Result<i64> {
         if !self.stripe.as_ref().is_some_and(crate::stripe::Stripe::live) {
             return Ok(0);
         }
         // Only what was paid since payments went live: test-mode payments
         // from before the switch are not money. Nothing until the day is set.
-        let Some(live_since) = self.payments_live_since().await? else { return Ok(0) };
+        let Some(live_since) = live_since else { return Ok(0) };
         let marks = vec!["?"; members.len().max(1)].join(", ");
         let settled = rfc3339(now_ms() - SETTLE_DAYS * 24 * 60 * 60 * 1000);
         let mut bound = members.to_vec();
-        bound.push(live_since.as_str().into());
+        bound.push(live_since.into());
         bound.extend_from_slice(members);
-        bound.push(live_since.as_str().into());
+        bound.push(live_since.into());
         Ok(self
             .db
             .prepare(format!(
@@ -698,6 +703,19 @@ impl Billing {
             .await?
             .and_then(|row| row.paid)
             .unwrap_or(0))
+    }
+
+    /// What the workspaces have paid (`live_paid`), and their Established
+    /// ceiling, which counts only once something was paid. Both are read
+    /// at once when anything can have been paid; the ceiling is dropped
+    /// when nothing was, the answer reading them in turn gives.
+    async fn paid_and_established(&self, members: &[JsValue], live_since: Option<&str>) -> Result<(i64, Option<i64>)> {
+        let live = self.stripe.as_ref().is_some_and(crate::stripe::Stripe::live);
+        if !live || live_since.is_none() {
+            return Ok((0, None));
+        }
+        let (paid, established) = try_join(self.live_paid(members, live_since), self.established(members)).await?;
+        Ok((paid, if paid > 0 { established } else { None }))
     }
 
     /// This month's usage on the ledger across the workspaces, in the parts
@@ -1186,8 +1204,7 @@ impl Billing {
 
     pub(crate) async fn check_limit(&self, a: CheckLimitArgs) -> Result<Outcome<Limit>> {
         let workspace = a.workspace.to_lowercase();
-        let account = self.account_of(&workspace).await?;
-        let plan = self.plan_kind_for(&workspace, &account).await?;
+        let (account, plan, _) = self.account_and_plan(&workspace).await?;
         let limit = self.limit_with(&workspace, &account, plan).await?;
         Ok(Outcome::Ok(held(limit, account.allowances.hold.as_deref())))
     }

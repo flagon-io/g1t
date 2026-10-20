@@ -488,17 +488,20 @@ impl Billing {
             return Ok((Replay::default(), 0));
         };
         let since = format!("{}-01", crate::limits::previous_month(&first[..7]));
-        let lines = self
-            .db
-            .prepare(
-                "SELECT reference, kind, amount_micros, created_at, task FROM ledger
-                 WHERE workspace = ? AND created_at >= ? ORDER BY created_at, id",
-            )
-            .bind(&[workspace.into(), since.into()])?
-            .all()
-            .await?
-            .results::<Line>()?;
-        let balance = self.row(workspace).await?.map_or(0, |row| row.balance_micros);
+        // The lines and the balance are read at once.
+        let lines = async {
+            self.db
+                .prepare(
+                    "SELECT reference, kind, amount_micros, created_at, task FROM ledger
+                     WHERE workspace = ? AND created_at >= ? ORDER BY created_at, id",
+                )
+                .bind(&[workspace.into(), since.into()])?
+                .all()
+                .await?
+                .results::<Line>()
+        };
+        let (lines, row) = futures_util::future::try_join(lines, self.row(workspace)).await?;
+        let balance = row.map_or(0, |row| row.balance_micros);
         let opening = balance - lines.iter().map(|l| l.amount_micros).sum::<i64>();
         let facts: Vec<Grant> = grants.iter().map(GrantRow::facts).collect();
         Ok((replay(opening, &lines, &facts), balance))
