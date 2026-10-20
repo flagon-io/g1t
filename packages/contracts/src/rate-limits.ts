@@ -59,6 +59,8 @@ export const RATE_LIMITS = {
   GIT_SIGNED_LIMIT: { worker: "apps/web", namespaceId: 4206, limit: 1200, per: "credential, git requests with credentials" },
   // The same as API_TOKEN_LIMIT: a token counts alike on the website and the API.
   WEB_TOKEN_LIMIT: { worker: "apps/web", namespaceId: 4207, limit: 1000, per: "token, pages and data requests with an access token" },
+  // Crawlers are served from the cache; this counts the costly pages drawn for one (apps/web/app/lib/crawlers.ts).
+  CRAWLER_LIMIT: { worker: "apps/web", namespaceId: 4208, limit: 60, per: "crawler, tree, file, commit, raw, blame and compare pages not in the cache" },
   // services/repos (src/lib.rs): what an anonymous clone can cost a repository's owner.
   PACK_FILL_LIMIT: { worker: "services/repos", namespaceId: 4301, limit: 30, per: "repository, packs written to the pack cache" },
   ANONYMOUS_FETCH_LIMIT: { worker: "services/repos", namespaceId: 4302, limit: 120, per: "repository, anonymous fetches the store answers" },

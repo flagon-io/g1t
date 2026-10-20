@@ -89,6 +89,16 @@ to 5 minutes. Before a cached repository page is served, the site asks
 `repos` whether the repository is still public, so making it private
 takes effect at once.
 
+A crawler (known by its user agent, or as a bot Cloudflare verified) is
+served the same public pages from a cache of its own: without its cookies
+or token, keyed by the address alone, and kept for 6 hours, or a day for
+a page of one full commit hash. Only a page that is not in that cache is
+drawn, and a tree, file, commit, raw, blame or comparison page drawn
+counts against 60 a minute for that crawler. Whether a repository is
+still public is asked at most once a minute for crawlers, so making it
+private reaches them within a minute. A crawler's hit says
+`cache;desc="crawler hit, Ns old"`.
+
 ### Server-Timing
 
 Every page carries a `Server-Timing` header: the total, each loader, each

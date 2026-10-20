@@ -9,7 +9,8 @@ import { withSiteHeaders } from "../app/lib/page-headers";
 import { finishResponse, withRequestPerf } from "../app/lib/perf.server";
 import { READ_DEADLINE_MS, withDeadline } from "../app/lib/deadline";
 import { wantsServerErrors } from "../app/lib/developer-mode";
-import { gitLimited, pageLimited, usercontentLimited } from "../app/lib/front-door-limits";
+import { crawlerLimited, gitLimited, pageLimited, usercontentLimited } from "../app/lib/front-door-limits";
+import { alsoKeptForCrawlers, costlyForCrawlers, crawlerCacheKey, crawlerKeepSeconds, crawlerOf, keptForCrawlers, signedOut } from "../app/lib/crawlers";
 import { goImport } from "../app/lib/go-get";
 import { repositoryOfPage, stillPublic } from "../app/lib/public-cache";
 import { registryWorkspace, servicePath } from "../app/lib/registry-paths";
@@ -125,6 +126,10 @@ async function site(request: Request, env: Env, ctx: ExecutionContext): Promise<
   // site: React Router refuses cross-site posts (workers/sso-saml.ts).
   const saml = request.method === "POST" ? samlPath(pathname) : null;
   if (saml) return receiveSaml(env, request, saml);
+  // Crawlers see what anyone signed out sees, from the cache for hours
+  // (app/lib/crawlers.ts).
+  const crawler = crawlerOf(request);
+  if (crawler) return serveCrawler(env, request, ctx, crawler);
   // Every page and data request says where its time went (Server-Timing)
   // and keeps the reader's D1 bookmarks (app/lib/perf.server.ts).
   const render = () => withRequestPerf(request, async () => finishResponse(request, await requestHandler(request)));
@@ -220,6 +225,66 @@ async function servePublic(env: Env, request: Request, ctx: ExecutionContext, re
     return answer;
   }
   return refresh();
+}
+
+/**
+ * A crawler's request (app/lib/crawlers.ts), without its cookies or token.
+ * A public page is served from this data centre's cache, kept for six hours
+ * (a page of one commit for a day) under its address alone, and drawn only
+ * when it is not there; a costly page drawn counts against the crawler's
+ * limit. A repository's kept page is served only while it is public, as for
+ * people, but whether it is public is kept for a minute: repos asked on
+ * every hit would be most of what a crawler still costs.
+ */
+async function serveCrawler(env: Env, request: Request, ctx: ExecutionContext, family: string): Promise<Response> {
+  const anonymous = signedOut(request);
+  const render = () => withRequestPerf(anonymous, async () => finishResponse(anonymous, await requestHandler(anonymous)));
+  const url = new URL(request.url);
+  const costly = costlyForCrawlers(url);
+  const kept =
+    request.method === "GET" &&
+    !needsBuildRefresh(request, import.meta.env.G1T_BUILD_ID) &&
+    (PUBLIC_TOP.test(url.pathname) || PUBLIC_PROJECT.test(url.pathname) || alsoKeptForCrawlers(url.pathname));
+  if (!kept) return (costly ? await crawlerLimited(env, family) : null) ?? render();
+  const cache = (caches as unknown as { default: Cache }).default;
+  const key = crawlerCacheKey(url, pageRepresentation(request.headers.get("accept")));
+  const cached = await withDeadline("cache", CACHE_DEADLINE_MS, () => cache.match(key)).catch(() => undefined);
+  const repository = PUBLIC_TOP.test(url.pathname) ? null : repositoryOfPage(url.pathname);
+  if (cached && (!repository || (await publicForCrawlers(env, ctx, url.origin, repository)))) {
+    const age = Math.round((Date.now() - Number(cached.headers.get("x-g1t-kept-at") ?? Date.now())) / 1000);
+    const answer = new Response(cached.body, cached);
+    answer.headers.delete("x-g1t-kept-at");
+    answer.headers.delete("cache-control");
+    answer.headers.set("server-timing", `cache;desc="crawler hit, ${age}s old"`);
+    return answer;
+  }
+  if (costly) {
+    const limited = await crawlerLimited(env, family);
+    if (limited) return limited;
+  }
+  const fresh = await render();
+  if (keptForCrawlers(fresh)) {
+    const copy = new Response(fresh.clone().body, fresh);
+    copy.headers.set("x-g1t-kept-at", String(Date.now()));
+    copy.headers.set("cache-control", `public, max-age=${crawlerKeepSeconds(url)}`);
+    ctx.waitUntil(cache.put(key, copy).catch(() => undefined));
+  }
+  return fresh;
+}
+
+/** How long whether a repository is public is kept for crawlers. */
+const CRAWLER_VISIBILITY_SECONDS = 60;
+
+/** Whether the repository is public, asked of repos at most once a minute per data centre. */
+async function publicForCrawlers(env: Env, ctx: ExecutionContext, origin: string, repository: string): Promise<boolean> {
+  const cache = (caches as unknown as { default: Cache }).default;
+  const key = new Request(`${origin}/_g1t/crawler-visibility/${encodeURIComponent(repository)}`, { method: "GET" });
+  const known = await withDeadline("cache", CACHE_DEADLINE_MS, () => cache.match(key)).catch(() => undefined);
+  if (known) return (await known.text()) === "public";
+  const visible = await isStillPublic(env, repository);
+  const answer = new Response(visible ? "public" : "not public", { headers: { "cache-control": `public, max-age=${CRAWLER_VISIBILITY_SECONDS}` } });
+  ctx.waitUntil(cache.put(key, answer).catch(() => undefined));
+  return visible;
 }
 
 /** Whether the repository is there and public; anything else, including no answer, is no. */
