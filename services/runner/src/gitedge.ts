@@ -16,10 +16,15 @@
 /** The port the edge's server listens on inside its container. */
 export const GIT_EDGE_PORT = 8080;
 
-/** What the edge's container is started with: the runner binary as the edge's server. */
+/**
+ * What the edge's container is started with: the runner binary as the
+ * edge's server. It runs nobody's code, so the watch for mining
+ * (crates/runner abuse.rs) is off: a long `git repack` is the edge at work.
+ */
 export const GIT_EDGE_ENV: Record<string, string> = {
   MODE: "gitedge",
   GITEDGE_PORT: String(GIT_EDGE_PORT),
+  G1T_ABUSE: "off",
 };
 
 /**

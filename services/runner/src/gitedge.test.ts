@@ -73,8 +73,8 @@ test("only the edge's four endpoints, with their methods, are routed", () => {
   }
 });
 
-test("the edge's container is the runner binary as the edge's server, on 8080", () => {
-  assert.deepEqual(GIT_EDGE_ENV, { MODE: "gitedge", GITEDGE_PORT: "8080" });
+test("the edge's container is the runner binary as the edge's server, on 8080, not watched for mining", () => {
+  assert.deepEqual(GIT_EDGE_ENV, { MODE: "gitedge", GITEDGE_PORT: "8080", G1T_ABUSE: "off" });
 });
 
 test("the Worker passes a request to its repository's object, as it came, and nothing else", async () => {
