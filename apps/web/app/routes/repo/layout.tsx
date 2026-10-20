@@ -143,7 +143,6 @@ function Header({
   archived,
   namespace,
   name,
-  large,
   actions,
   parent,
 }: {
@@ -154,17 +153,17 @@ function Header({
   namespace: string;
   name: string;
   archived?: boolean;
-  large?: boolean;
   /** At the end of the row: Pin, Watch and Star. */
   actions?: ReactNode;
 }) {
   const base = `/${namespace}/${name}`;
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <span className={`flex shrink-0 items-center justify-center rounded-md bg-raised text-muted ring-1 ring-line ${large ? "size-8" : "size-6"}`}>
-        {isPrivate ? <Lock size={large ? 15 : 13} /> : <Box size={large ? 15 : 13} />}
+      {/* One size on every tab, so moving between them never shifts the page under the header. */}
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-raised text-muted ring-1 ring-line">
+        {isPrivate ? <Lock size={14} /> : <Box size={14} />}
       </span>
-      <h1 className={large ? "text-lg" : "text-[0.9375rem]"}>
+      <h1 className="text-base">
         <Link to={`/${namespace}`} className="font-mono text-muted hover:text-fg">
           {namespace}
         </Link>
@@ -236,7 +235,6 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
         <div className={`mx-auto max-w-6xl px-4 pt-4 sm:px-5 ${signedIn ? "pb-4 max-md:pb-0" : ""}`}>
           <Header
             project={project}
-            large={!rest}
             isPrivate={repo.isPrivate}
             archived={Boolean(repo.archivedAt)}
             namespace={repo.namespace}
