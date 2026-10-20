@@ -56,9 +56,21 @@
 /*
  * Measured against Arial: size-adjust is the ratio of the two faces'
  * average letter widths in English text, and the overrides are the web
- * font's own ascent and descent over that. Mono needs none: Plex Mono and
- * the usual system monospace faces have the same advance.
+ * font's own ascent and descent over that. Mono needs one only on Windows:
+ * Plex Mono, SF Mono, Menlo and DejaVu Sans Mono all advance 0.6 em, but
+ * Consolas 0.55 em, so there inline code and code lines widened when Plex
+ * arrived and the text around them wrapped again (measured on a README:
+ * layout shift 0.034, about 240 ms after the first paint).
  */
+@font-face {
+  font-family: "IBM Plex Mono Fallback";
+  src: local("Consolas");
+  size-adjust: 109.13%;
+  ascent-override: 93.93%;
+  descent-override: 25.2%;
+  line-gap-override: 0%;
+}
+
 @font-face {
   font-family: "Hanken Grotesk Fallback";
   src: local("Arial"), local("ArialMT"), local("Helvetica Neue"), local("Helvetica"), local("Roboto");
