@@ -15,7 +15,7 @@ import {
   SquareTerminal,
   Tag as TagIcon,
 } from "lucide-react";
-import { type ReactNode, Suspense } from "react";
+import { type ReactNode, Suspense, useEffect } from "react";
 import { Await, Form, Link } from "react-router";
 
 import type { BlobView as Blob, Branch, TreeView as RawTree } from "@g1t/contracts";
@@ -32,6 +32,7 @@ import { CodeLines } from "./code-lines";
 
 import { useAddresses } from "../lib/addresses";
 import { commitHint } from "../lib/commit-message";
+import { installSharedHint } from "../lib/shared-hint";
 import { type Failed, isFailed } from "../lib/partial";
 import { Boundary, Unavailable } from "./boundary";
 import { isImagePath } from "../lib/usercontent";
@@ -43,7 +44,6 @@ import { CopyLine, TimeAgo, notACredential } from "./ui";
 import { Card } from "./ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { Hint } from "./ui/hint";
 import { SkeletonLine } from "./ui/skeleton";
 
 function encodePath(path: string): string {
@@ -293,6 +293,7 @@ function FileRows({
   entries: Tree["entries"];
   last: FileCommits | null | undefined;
 }) {
+  useEffect(installSharedHint, []);
   const byName = new Map((last?.entries ?? []).map((entry) => [entry.name, entry.commit]));
   // Inside a directory, `..` leads one level up: to its parent, or the
   // repository's top from a directory at the top.
@@ -331,28 +332,21 @@ function FileRows({
             </Link>
             <span className="hidden min-w-0 sm:block">
               {commit ? (
-                <Hint label={commitHint(commit.message)}>
-                  <span className="block animate-fade-in truncate text-muted">
-                    <CommitText
-                      text={commit.message.split("\n")[0] ?? ""}
-                      base={base}
-                      to={`${base}/commit/${commit.hash}`}
-                      linkClassName="hover:text-fg hover:underline"
-                    />
-                  </span>
-                </Hint>
+                // One hint shared by every row (lib/shared-hint.ts), not a tooltip each.
+                <span className="block truncate text-muted" data-shared-hint="text" data-hint={commitHint(commit.message)}>
+                  <CommitText
+                    text={commit.message.split("\n")[0] ?? ""}
+                    base={base}
+                    to={`${base}/commit/${commit.hash}`}
+                    linkClassName="hover:text-fg hover:underline"
+                  />
+                </span>
               ) : last === undefined ? (
                 <SkeletonLine width="10rem" barClassName="max-w-full" />
               ) : null}
             </span>
             <span className="text-right text-xs whitespace-nowrap text-faint">
-              {commit ? (
-                <span className="animate-fade-in">
-                  <TimeAgo at={commit.authoredAt} />
-                </span>
-              ) : last === undefined ? (
-                <SkeletonLine className="justify-end" barClassName="w-12" />
-              ) : null}
+              {commit ? <TimeAgo at={commit.authoredAt} /> : last === undefined ? <SkeletonLine className="justify-end" barClassName="w-12" /> : null}
             </span>
           </li>
         );

@@ -1,6 +1,37 @@
-import type { ComponentProps, ReactNode } from "react";
+import { type ComponentProps, type ReactNode, Suspense, useLayoutEffect, useRef } from "react";
 
 import { cn } from "../../lib/cn";
+
+/** How tall each held region last drew, by its id, for as long as the tab stays on the site. */
+const heldHeights = new Map<string, number>();
+
+/**
+ * A streamed region whose outline is as tall as the region was the last
+ * time it drew in this tab: coming back to a page (Home, between its
+ * sections) the outline already has the real height, so nothing under it
+ * moves when the region arrives. The first time, `fallback` alone sizes it.
+ * `id` names the region and what it is for (`home:acme:needed`).
+ */
+export function HeldSuspense({ id, fallback, children }: { id: string; fallback: ReactNode; children: ReactNode }) {
+  const height = heldHeights.get(id);
+  return (
+    <Suspense fallback={<div style={height ? { minHeight: height } : undefined}>{fallback}</div>}>
+      <Measured id={id}>{children}</Measured>
+    </Suspense>
+  );
+}
+
+function Measured({ id, children }: { id: string; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => heldHeights.set(id, el.offsetHeight));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [id]);
+  return <div ref={ref}>{children}</div>;
+}
 
 // The shape of something still loading: a quiet raised block that pulses
 // (still for people who ask for less motion). Give it the size of what it

@@ -249,10 +249,12 @@ function MarkdownLink({ href = "", children, node }: { href?: string; children?:
 }
 
 /** A picture; a relative one is the document's commit's file. */
-function MarkdownImage({ src, alt }: { src?: unknown; alt?: string }) {
+function MarkdownImage({ src, alt, width, height }: { src?: unknown; alt?: string; width?: string | number; height?: string | number }) {
   const { rawBase } = useContext(MarkdownBases);
   const at = typeof src === "string" ? imageSource(src, rawBase) : undefined;
-  return <img src={at} alt={alt ?? ""} loading="lazy" className="inline max-w-full rounded" />;
+  // The size the author gave (`<img width="120">`, common in READMEs) is kept,
+  // so the picture's place is held before it loads and the text does not jump.
+  return <img src={at} alt={alt ?? ""} width={width} height={height} loading="lazy" className="inline max-w-full rounded" />;
 }
 
 /**

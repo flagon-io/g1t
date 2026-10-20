@@ -25,7 +25,7 @@ import { Unavailable } from "../../components/boundary";
 import { actions } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, unwrap } from "../../lib/session.server";
 import { accessFor, refusal, repoFor } from "../../lib/access.server";
-import { useRefreshWhile } from "../../lib/refresh";
+import { REFRESH_MS, useRefreshWhile } from "../../lib/refresh";
 import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
 
@@ -95,11 +95,11 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 /**
  * Runs start, move and finish live (lib/use-repo-live.ts). While something
  * runs the page also asks again now and then, in case a change was missed:
- * every 30 s with the live socket, every few seconds without it.
+ * every 30 s with the live socket, every 4 s without it.
  */
 function useLiveWhile(running: boolean) {
   const { live } = useRepoLive({ match: repoPages.runs() });
-  useRefreshWhile(running, live ? 30_000 : 3000);
+  useRefreshWhile(running, live ? 30_000 : REFRESH_MS);
 }
 
 const EVENT_WORDS: Record<string, string> = {

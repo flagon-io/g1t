@@ -10,7 +10,9 @@ import { type GroupRun, QueueEntryCard, QueueTrain } from "../../components/merg
 import { actions, work } from "../../lib/services.server";
 import { getViewer, unwrap } from "../../lib/session.server";
 import { accessFor, repoFor } from "../../lib/access.server";
-import { useRefreshWhile } from "../../lib/refresh";
+import { REFRESH_MS, useRefreshWhile } from "../../lib/refresh";
+import { repoPages } from "../../lib/repo-live";
+import { useRepoLive } from "../../lib/use-repo-live";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Merge queue · ${params.owner}/${params.repo} · g1t` });
@@ -49,7 +51,11 @@ export default function Queue({ loaderData, params }: Route.ComponentProps) {
   const { queue, defaultBranch, member, groupRuns } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   const moving = queue.active.length > 0;
-  useRefreshWhile(moving);
+  // The queue moving, its checks and merges arrive live; while it moves the
+  // page also asks again, every 30 s with the socket in case one was missed,
+  // every few seconds without it.
+  const { live } = useRepoLive({ match: repoPages.pulls() });
+  useRefreshWhile(moving, live ? 30_000 : REFRESH_MS);
 
   const testing = queue.active.filter((entry) => entry.state !== "waiting").length;
   return (

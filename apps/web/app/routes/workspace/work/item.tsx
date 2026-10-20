@@ -522,10 +522,12 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
   const sessionTrees = isFailed(loaderData.sessionTrees) ? null : loaderData.sessionTrees;
   // What changes to it (comments, labels, links, its pull requests) shows as it happens.
   useWorkspaceLive({ workspace, member: loaderData.member, match: workPages.item(item.number), followBottom: true });
-  // Follow pull requests at work without a manual reload.
-  useRefreshWhile(pulls.some((pull) => pull.status === "draft" || pull.checkStatus === "queued" || pull.checkStatus === "running"));
-  // Claims lapse and sessions go idle with no event to say so: looked at again now and then.
-  useRefreshWhile((coordination?.claims.length ?? 0) > 0 || (coordination?.sessions.some((session) => session.state !== "ended") ?? false), 30_000);
+  // Follow pull requests at work without a manual reload: their checks
+  // every 10 s while they run; a draft, which can sit for days, each minute.
+  const checksGoing = pulls.some((pull) => pull.checkStatus === "queued" || pull.checkStatus === "running");
+  useRefreshWhile(checksGoing || pulls.some((pull) => pull.status === "draft"), checksGoing ? 10_000 : 60_000);
+  // Claims lapse and sessions go idle (after 15 minutes) with no event to say so: looked at again each minute.
+  useRefreshWhile((coordination?.claims.length ?? 0) > 0 || (coordination?.sessions.some((session) => session.state !== "ended") ?? false), 60_000);
   const now = Date.now();
 
   const open = item.state === "open";

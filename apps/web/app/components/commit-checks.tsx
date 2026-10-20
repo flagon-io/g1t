@@ -106,18 +106,22 @@ export function ChecksList({ checks, className, showHeader = true }: { checks: C
   );
 }
 
-/** A commit's mark, opening its checks; nothing when nothing reported on it. */
-export function CommitChecksMark({ checks, className }: { checks: CommitChecks | null | undefined; className?: string }) {
-  if (!checks || checks.state === "none" || checks.total === 0) return null;
+/** The size of a mark, and of the place held for it. */
+const MARK_SIZE = "inline-flex size-6 shrink-0 pointer-coarse:size-8 items-center justify-center";
+
+/**
+ * A commit's mark, opening its checks; nothing when nothing reported on
+ * it, or, with `keep`, an empty place the mark's size, so a row that held
+ * one while its checks loaded does not close up under the reader.
+ */
+export function CommitChecksMark({ checks, className, keep }: { checks: CommitChecks | null | undefined; className?: string; keep?: boolean }) {
+  if (!checks || checks.state === "none" || checks.total === 0) return keep ? <span aria-hidden="true" className={cn(MARK_SIZE, className)} /> : null;
   const headline = checksHeadline(checks);
   return (
     <Popover>
       <PopoverTrigger
         aria-label={`${headline}: ${checksTally(checks)}`}
-        className={cn(
-          "relative z-10 inline-flex size-6 shrink-0 pointer-coarse:size-8 animate-fade-in items-center justify-center rounded-md transition-colors hover:bg-raised data-[state=open]:bg-raised",
-          className,
-        )}
+        className={cn("relative z-10 rounded-md transition-colors hover:bg-raised data-[state=open]:bg-raised", MARK_SIZE, className)}
       >
         <Mark state={checks.state} />
       </PopoverTrigger>
@@ -131,7 +135,7 @@ export function CommitChecksMark({ checks, className }: { checks: CommitChecks |
 /** Holds a mark's place while the page's checks are read. */
 export function CommitChecksPlaceholder({ className }: { className?: string }) {
   return (
-    <span aria-hidden="true" className={cn("inline-flex size-6 shrink-0 items-center justify-center", className)}>
+    <span aria-hidden="true" className={cn(MARK_SIZE, className)}>
       <Skeleton className="size-3.5 rounded-full" />
     </span>
   );
@@ -139,15 +143,16 @@ export function CommitChecksPlaceholder({ className }: { className?: string }) {
 
 /**
  * The mark for commit `sha` from a page's checks: a placeholder while they
- * are on their way, then the mark, or nothing.
+ * are on their way, then the mark, or its empty place (the row's words
+ * stay where they were drawn).
  */
 export function CommitChecksBadge({ checks, sha, className }: { checks: ChecksSource; sha: string; className?: string }) {
   if (!checks) return null;
   if (!(checks instanceof Promise)) return <CommitChecksMark checks={checks[sha]} className={className} />;
   return (
     <Suspense fallback={<CommitChecksPlaceholder className={className} />}>
-      <Await resolve={checks} errorElement={null}>
-        {(found) => <CommitChecksMark checks={found?.[sha]} className={className} />}
+      <Await resolve={checks} errorElement={<CommitChecksMark checks={null} className={className} keep />}>
+        {(found) => <CommitChecksMark checks={found?.[sha]} className={className} keep />}
       </Await>
     </Suspense>
   );

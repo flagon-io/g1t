@@ -9,14 +9,14 @@
 import { useEffect, useRef } from "react";
 
 import { HOME_GAP_MS, type HomeRepo, type Seen, arrivedOf, homeShows } from "./home-live";
-import { useNotifyState } from "./notify-client";
+import { useNotifySelector } from "./notify-client";
 import { useLive } from "./use-repo-live";
 
 export function useHomeLive(slug: string, repos: readonly HomeRepo[]): boolean {
   const { live, nudge } = useLive({ repos, signedIn: true, match: (change) => homeShows(change, repos), gap: HOME_GAP_MS });
 
-  const { inbox, recent } = useNotifyState();
-  const newest = recent.find((n) => n.workspace.toLowerCase() === slug)?.id ?? null;
+  const inbox = useNotifySelector((s) => s.inbox);
+  const newest = useNotifySelector((s) => s.recent.find((n) => n.workspace.toLowerCase() === slug)?.id ?? null);
   const before = useRef<{ inbox: number | null; newest: string | null } | null>(null);
   useEffect(() => {
     const was = before.current;

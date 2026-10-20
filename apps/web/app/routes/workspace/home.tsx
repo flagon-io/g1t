@@ -20,7 +20,7 @@ import {
 } from "../../components/home";
 import { HomeAsk, WhatChangedCard } from "../../components/home-ask";
 import { HomeWeek, HomeWeekSkeleton } from "../../components/home-week";
-import { Skeleton } from "../../components/ui/skeleton";
+import { HeldSuspense, Skeleton } from "../../components/ui/skeleton";
 import { sidebarOrNull } from "../../lib/chat.server";
 import {
   type Attention,
@@ -379,7 +379,8 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_24rem]">
         {/* 1. Your move: everything waiting on you, the one to start with on top, with no time window. */}
         <div id="needed" className="scroll-mt-4">
-          <Suspense
+          <HeldSuspense
+            id={`home:${slug}:needed`}
             fallback={
               <Card title="Your move">
                 <RowsSkeleton rows={4} />
@@ -396,12 +397,12 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 </Card>
               )}
             </Await>
-          </Suspense>
+          </HeldSuspense>
         </div>
 
         {/* 2. Live: agents at work, then workflow runs and builds, as they go. */}
         <Card title="Live" hint="Agents, runs and builds going now">
-          <Suspense fallback={<RowsSkeleton rows={2} />}>
+          <HeldSuspense id={`home:${slug}:live`} fallback={<RowsSkeleton rows={2} />}>
             <Await resolve={Promise.all([live, runningNow])}>
               {([sessions, value]) => (
                 <Boundary what="Live">
@@ -410,13 +411,13 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 </Boundary>
               )}
             </Await>
-          </Suspense>
+          </HeldSuspense>
         </Card>
       </div>
 
       {/* 3. The week's work, for members who see Code: its figures, its days, and what is worth a look. */}
       {signal && (
-        <Suspense fallback={<HomeWeekSkeleton />}>
+        <HeldSuspense id={`home:${slug}:week`} fallback={<HomeWeekSkeleton />}>
           <Await resolve={signal}>
             {(value) => (
               <Boundary what="This week">
@@ -424,7 +425,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               </Boundary>
             )}
           </Await>
-        </Suspense>
+        </HeldSuspense>
       )}
 
       <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_24rem]">
@@ -451,7 +452,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             <WhatChangedCard key={span.key} slug={slug} span={span} tz={tz} />
           </div>
           <div className="border-t border-line">
-            <Suspense fallback={<SpanSkeleton />}>
+            <HeldSuspense id={`home:${slug}:${span.key}:people`} fallback={<SpanSkeleton />}>
               <Await resolve={digest}>
                 {(value) => (
                   <Boundary what="Who did what">
@@ -459,9 +460,10 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                   </Boundary>
                 )}
               </Await>
-            </Suspense>
+            </HeldSuspense>
           </div>
-          <Suspense
+          <HeldSuspense
+            id={`home:${slug}:${span.key}:landed`}
             fallback={
               <div className="border-t border-line pt-4">
                 <RowsSkeleton rows={3} />
@@ -483,12 +485,13 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 </Boundary>
               )}
             </Await>
-          </Suspense>
+          </HeldSuspense>
         </section>
 
         {/* 5. What the span cost, and what settled by itself: kept in view beside it. */}
         <aside aria-label="Cost and settled" className="space-y-5 lg:sticky lg:top-4">
-          <Suspense
+          <HeldSuspense
+            id={`home:${slug}:${span.key}:spent`}
             fallback={
               <Card title="Spent">
                 <SpendSkeleton />
@@ -502,8 +505,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 </Boundary>
               )}
             </Await>
-          </Suspense>
-          <Suspense
+          </HeldSuspense>
+          <HeldSuspense
+            id={`home:${slug}:settled`}
             fallback={
               <Card title="Settled for you">
                 <RowsSkeleton rows={1} />
@@ -517,7 +521,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 </Boundary>
               )}
             </Await>
-          </Suspense>
+          </HeldSuspense>
         </aside>
       </div>
     </div>

@@ -68,6 +68,7 @@ import { resolveRange, rangeLabel } from "../../lib/usage";
 import { deliveryDays, duration as deliveryDuration } from "../../lib/workspace-insights";
 import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
+import { useProject } from "./layout";
 
 /** A library's packages shown on its overview; the rest are a link away. */
 const PACKAGES_SHOWN = 3;
@@ -492,19 +493,22 @@ export default function ProjectOverview({ loaderData, actionData, params }: Rout
   return (
     <Suspense fallback={<OverviewSkeleton />}>
       <Await resolve={loaderData.overview} errorElement={<OverviewFailed />}>
-        {(overview) => (
-          // Faded in over its outline, not switched for it.
-          <div className="animate-fade-in">
-            <Overview loaderData={overview} actionData={actionData} params={params} />
-          </div>
-        )}
+        {/* In place of its outline, at once: a fade here read as the page arriving twice. */}
+        {(overview) => <Overview loaderData={overview} actionData={actionData} params={params} />}
       </Await>
     </Suspense>
   );
 }
 
-/** The overview's sections as they will sit, while they stream in. */
+/**
+ * The overview's sections as they will sit, while they stream in: every
+ * panel the page draws, each about as tall as it usually is, so the page
+ * does not grow under the reader when it arrives (it grew by about 820 px
+ * when only the first two rows had outlines).
+ */
 function OverviewSkeleton() {
+  // Delivery is for members only; the project's layout already knows.
+  const member = useProject()?.member ?? false;
   return (
     <Loading className="space-y-8" aria-label="Loading the overview">
       <Card className="overflow-hidden rounded-2xl">
@@ -515,15 +519,55 @@ function OverviewSkeleton() {
           <Skeleton className="aspect-16/10 w-full rounded-lg" />
           <SkeletonRows rows={5} />
         </div>
+        <div className="flex h-14 items-center justify-between border-t border-line px-5 sm:px-6">
+          <Skeleton className="h-3 w-56" />
+          <Skeleton className="h-8 w-32 rounded-md" />
+        </div>
       </Card>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
         {[0, 1, 2].map((key) => (
           <Card key={key} className="p-5">
             <SkeletonRows rows={4} />
           </Card>
         ))}
       </div>
+      <div className="rounded-xl border border-line bg-surface p-5">
+        <Skeleton className="h-4 w-32" />
+        <SkeletonRows rows={2} className="mt-4" rowClassName="h-14" />
+      </div>
+      <PanelSkeleton>
+        <SkeletonRows rows={2} rowClassName="h-14" />
+      </PanelSkeleton>
+      <div className="grid items-start gap-6 xl:grid-cols-2">
+        {member && (
+          <PanelSkeleton>
+            <div className="h-20 border-b border-line" />
+            <div className="h-36 p-4">
+              <Skeleton className="h-full w-full" />
+            </div>
+            <div className="h-11 border-t border-line" />
+          </PanelSkeleton>
+        )}
+        <PanelSkeleton>
+          <div className="h-24 border-b border-line p-4">
+            <Skeleton className="mt-7 h-6 w-full" />
+          </div>
+          <SkeletonRows rows={5} rowClassName="h-15" />
+        </PanelSkeleton>
+      </div>
     </Loading>
+  );
+}
+
+/** A `Panel` while it loads: its title row and a card of `children`. */
+function PanelSkeleton({ children }: { children: ReactNode }) {
+  return (
+    <div>
+      <div className="flex h-7 items-center">
+        <Skeleton className="h-4 w-28" />
+      </div>
+      <Card className="mt-3 overflow-hidden">{children}</Card>
+    </div>
   );
 }
 
@@ -911,9 +955,12 @@ function Overview({
   const busy = claims.length + awake.length > 0;
   const working = busy || idle.length > 0;
   // Deployments, checks, releases, claims and sessions show as they happen.
-  useRepoLive({ match: (change) => repoPages.overview()(change) || repoPages.runs()(change) || change.kind === "git.push" });
-  // Claims lapse and sessions go idle with no event to say so.
-  useRefreshWhile(working || (loaderData.workflowRuns ?? []).some((run) => run.status !== "completed"), 15_000);
+  const { live: heard } = useRepoLive({ match: (change) => repoPages.overview()(change) || repoPages.runs()(change) || change.kind === "git.push" });
+  // Claims lapse and sessions go idle (after 15 minutes) with no event to
+  // say so: looked at again each minute. Runs going are followed every 15 s
+  // only without the live socket, which says when they move.
+  const runsGoing = (loaderData.workflowRuns ?? []).some((run) => run.status !== "completed");
+  useRefreshWhile(working || (!heard && runsGoing), heard ? 60_000 : 15_000);
   const live = liveByItem(claims, awake);
   const moreItems = live.items.length - LIVE_SHOWN;
 

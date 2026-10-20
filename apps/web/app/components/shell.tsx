@@ -2049,19 +2049,33 @@ function commandsFor(user: User, shell: ShellData): Command[] {
   return commands;
 }
 
+/** How long the next page may take before the one leaving dims: most arrive sooner, and then nothing flickers. */
+export const LEAVING_DIM_MS = 500;
+
 /**
- * The page while the next one loads: after a moment it dims, under the
- * bar below, so it is plainly on its way out rather than frozen, and the
- * next page fades up from there. Sending a form does not dim it: the
- * form's button says it is working. Spread on the element holding the page.
+ * The page while the next one loads: the bar below says so at once, and
+ * only if it takes a while does the page dim, so it is plainly on its way
+ * out rather than frozen. The next page is simply there, at full strength:
+ * no fade back up. Sending a form does not dim it: the form's button says
+ * it is working. Spread on the element holding the page (the content,
+ * never the chrome around it).
  */
 export function useLeaving() {
   const navigation = useNavigation();
   const method = navigation.formMethod?.toUpperCase();
   const leaving = navigation.state === "loading" && (method == null || method === "GET");
+  const [dim, setDim] = useState(false);
+  useEffect(() => {
+    if (!leaving) {
+      setDim(false);
+      return;
+    }
+    const timer = setTimeout(() => setDim(true), LEAVING_DIM_MS);
+    return () => clearTimeout(timer);
+  }, [leaving]);
   return {
     "aria-busy": leaving || undefined,
-    className: `transition-opacity motion-reduce:transition-none ${leaving ? "opacity-60 delay-200 duration-300" : "duration-150"}`,
+    className: dim && leaving ? "opacity-60 transition-opacity duration-200 motion-reduce:transition-none" : "",
   };
 }
 

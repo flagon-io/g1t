@@ -23,6 +23,8 @@ import {
   overlayEntries,
   quickReplyRequest,
   reconnectDelay,
+  selection,
+  shallowEqual,
   titleWith,
   unlisted,
 } from "./notify-store.ts";
@@ -275,4 +277,32 @@ test("the backoff starts over only after a connection held for a while", () => {
   assert.equal(heldOpen(null, 50_000), false);
   assert.equal(heldOpen(45_000, 50_000), false, "dropped within seconds: keep backing off");
   assert.equal(heldOpen(40_000, 50_000), true);
+});
+
+test("a reader of one part of the store answers the same until that part changes", () => {
+  type S = { counts: Record<string, FeedCounts>; inbox: number | null; people: Record<string, { at: string }> };
+  const read = selection<S, ReturnType<typeof badgesOf>>();
+  const badges = (s: S) => badgesOf(s.counts.acme, s.inbox);
+  const first: S = { counts: { acme: counts() }, inbox: 2, people: {} };
+  const shown = read(first, badges, shallowEqual);
+  assert.deepEqual(shown, { chat: 4, mentions: 1, inbox: 2 });
+  // Someone going idle, or another workspace's counts: a new state, the same badges, so nothing redraws.
+  const idle: S = { ...first, people: { usr_1: { at: "2026-10-20T00:00:00Z" } } };
+  assert.equal(read(idle, badges, shallowEqual), shown);
+  const other: S = { ...idle, counts: { ...idle.counts, side: counts({ workspace: "side" }) } };
+  assert.equal(read(other, badges, shallowEqual), shown);
+  // The inbox moving does.
+  const moved: S = { ...other, inbox: 3 };
+  assert.deepEqual(read(moved, badges, shallowEqual), { chat: 4, mentions: 1, inbox: 3 });
+  assert.notEqual(read(moved, badges, shallowEqual), shown);
+});
+
+test("shallow equality looks one level down", () => {
+  assert.ok(shallowEqual({ a: 1, b: "x" }, { a: 1, b: "x" }));
+  assert.ok(!shallowEqual<object>({ a: 1 }, { a: 1, b: 2 }));
+  assert.ok(!shallowEqual({ a: {} }, { a: {} }));
+  assert.ok(shallowEqual([1, 2], [1, 2]));
+  assert.ok(!shallowEqual<unknown>([1], { 0: 1 }));
+  assert.ok(shallowEqual(null, null));
+  assert.ok(!shallowEqual<unknown>(null, {}));
 });

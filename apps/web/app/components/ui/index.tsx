@@ -1,13 +1,13 @@
 import { Check, Copy, LoaderCircle } from "lucide-react";
-import { type ComponentProps, Fragment, type ReactNode, useState } from "react";
+import { type ComponentProps, Fragment, type ReactNode, useEffect, useState } from "react";
 import { Link, type LinkProps, NavLink, useLocation, useNavigation } from "react-router";
 
 import { cn } from "../../lib/cn";
 import { linkPaths } from "../../lib/compute";
 import { type Submission, isPending } from "../../lib/pending";
+import { installSharedHint, sharedHintWording } from "../../lib/shared-hint";
 import { exactTime, timeAgo } from "../../lib/time-ago";
 import { Button, type ButtonSize, type ButtonVariant, buttonVariants } from "./button";
-import { Hint } from "./hint";
 
 export function Field({ label, hint, htmlFor, children }: { label: string; hint?: ReactNode; htmlFor?: string; children: ReactNode }) {
   return (
@@ -273,21 +273,25 @@ export function CopyLine({
   );
 }
 
+// The moment in full, in the reader's zone, worded when the hint opens.
+sharedHintWording("time", (mark) => exactTime(mark.getAttribute("datetime") ?? "") || null);
+
 /**
  * Compact relative time such as "5m ago", or the date once it is weeks
- * old (lib/time-ago.ts), with the moment in full on hover.
+ * old (lib/time-ago.ts), with the moment in full on hover. The page's
+ * timestamps share one hint (lib/shared-hint.ts): a list of hundreds no
+ * longer mounts a tooltip for each.
  */
 export function TimeAgo({ at }: { at: string | number }) {
+  useEffect(installSharedHint, []);
   // Timestamps are RFC 3339 strings; a few older ones are still numbers.
   const time = new Date(at);
   if (Number.isNaN(time.getTime())) return null;
   return (
-    <Hint label={<span suppressHydrationWarning>{exactTime(at)}</span>}>
-      {/* The server and the browser render at slightly different times, and zones. */}
-      <time dateTime={time.toISOString()} suppressHydrationWarning>
-        {timeAgo(at)}
-      </time>
-    </Hint>
+    // The server and the browser render at slightly different times, and zones.
+    <time dateTime={time.toISOString()} data-shared-hint="time" suppressHydrationWarning>
+      {timeAgo(at)}
+    </time>
   );
 }
 

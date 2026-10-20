@@ -262,8 +262,8 @@ export default function BoardPage({ loaderData }: Route.ComponentProps) {
   const total = STAGES.reduce((sum, one) => sum + board[one].length, 0);
   const query = (more: Record<string, string>) => `?${new URLSearchParams({ ...(repo ? { repo } : {}), ...more }).toString()}`;
   useWorkspaceLive({ workspace, member, match: workPages.list() });
-  // Sessions go idle and end with no event to say so.
-  useRefreshWhile(live > 0, 30_000);
+  // Sessions go idle (after 15 minutes) with no event to say so: looked at again each minute.
+  useRefreshWhile(live > 0, 60_000);
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">

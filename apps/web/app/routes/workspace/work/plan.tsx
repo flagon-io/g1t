@@ -126,8 +126,8 @@ export default function PlanPage({ loaderData }: Route.ComponentProps) {
   const { workspace, member, canPlan, canNow, on, all } = loaderData;
   const fetcher = useFetcher<typeof action>();
   useWorkspaceLive({ workspace, member, match: workPages.list() });
-  // Sessions go idle and end with no event to say so.
-  useRefreshWhile(loaderData.live > 0, 30_000);
+  // Sessions go idle (after 15 minutes) with no event to say so: looked at again each minute.
+  useRefreshWhile(loaderData.live > 0, 60_000);
 
   // What a move from a Later group brings with it, to show it where it lands before the answer.
   const [carried, setCarried] = useState<WorkItem | null>(null);

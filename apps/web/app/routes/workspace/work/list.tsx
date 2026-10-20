@@ -155,8 +155,8 @@ export default function WorkList({ loaderData }: Route.ComponentProps) {
   // The tabs keep the filters but a horizon, which holds only open items; each filter keeps the state and the others.
   const kept = new URLSearchParams(workQuery({ ...filters, state: "open", horizon: null }));
   useWorkspaceLive({ workspace, member, match: workPages.list() });
-  // Sessions go idle and end with no event to say so.
-  useRefreshWhile((loaderData.cooking?.total ?? 0) > 0, 30_000);
+  // Sessions go idle (after 15 minutes) with no event to say so: looked at again each minute.
+  useRefreshWhile((loaderData.cooking?.total ?? 0) > 0, 60_000);
   return (
     <div>
       {loaderData.cooking && <CookingStrip sessions={loaderData.cooking.sessions} total={loaderData.cooking.total} workspace={workspace} repo={repoName} />}
