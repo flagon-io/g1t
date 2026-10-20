@@ -6,6 +6,8 @@
  * direct message with @g1t in chat (`-/chat/api`, intents `g1t_dm`, `post`,
  * `g1t_stop`, `g1t_reset`, `g1t_retry`, `g1t_clear`): the chat service has g1t answer
  * there, with the provider an owner chose, on the workspace's own key.
+ * Home's Summarize does this setup check, `g1t_dm` and `post` in one
+ * request instead (`ask_g1t`).
  *
  * `POST -/ask` starts a session g1t proposed in an answer (the proposal
  * card in components/ask-steps): the person's click is the confirmation.

@@ -17,6 +17,7 @@ import {
   CHAT_VIEWER_HEADER,
   G1T_KEY,
   G1T_PRINCIPAL,
+  aiClient,
   fail,
   identityClient,
   idFloor,
@@ -39,6 +40,7 @@ import {
   type EmojiFile,
   type EmojiList,
   type EmojiUpload,
+  type G1tAsked,
   type ChatSettings,
   type ChatSettingsView,
   type ChatActivity,
@@ -1720,6 +1722,32 @@ class Chat {
   }
 
   /**
+   * Asks @g1t in one call (Home's Summarize): Ask's setup is read while
+   * the direct message is found or opened, then the question is posted,
+   * which starts the answer with that setup. Ask that cannot answer yet
+   * asks nothing and says why.
+   */
+  async g1tAsk(a: { workspace: string; viewer: Viewer; message: PostMessage }): Promise<Result<G1tAsked>> {
+    const [setup, opened] = await Promise.all([this.askSetup(a.workspace, a.viewer), this.g1tDm(a)]);
+    if (setup === "unreachable") return fail("unavailable", "Ask could not be reached. Try again in a moment.");
+    if (setup?.problem) return ok({ problem: setup.problem });
+    if (!opened.ok) return opened;
+    const channel_id = opened.value.id;
+    const message = { body: a.message?.body ?? "", thread_root: null, page: a.message?.page ?? null };
+    const saved = await this.post({ workspace: a.workspace, channel_id, viewer: a.viewer, message }, setup ?? undefined);
+    return saved.ok ? ok({ channel_id, question_id: saved.value.id }) : saved;
+  }
+
+  /** What Ask answers with in the workspace; null without Ask's service, `unreachable` when it did not answer. */
+  private async askSetup(slug: string, viewer: Viewer): Promise<AskSetup | null | "unreachable"> {
+    if (!this.env.INTEGRATIONS) return null;
+    const found = await aiClient(this.env.INTEGRATIONS)
+      .askSettings(slug, viewer)
+      .catch(() => null);
+    return found?.ok ? found.value : "unreachable";
+  }
+
+  /**
    * "New conversation": stops an answer still coming, and leaves a mark
    * after which g1t reads only what is said next. Everything before stays
    * to read.
@@ -2268,6 +2296,8 @@ async function answer(service: Chat, method: string, args: any): Promise<Respons
       return Response.json(await service.setEmojiUpload(args));
     case "g1t_dm":
       return Response.json(await service.g1tDm(args));
+    case "g1t_ask":
+      return Response.json(await service.g1tAsk(args));
     case "g1t_reset":
       return Response.json(await service.g1tReset(args));
     case "g1t_retry":
