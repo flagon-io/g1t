@@ -41,7 +41,11 @@ function whenIdle(run: () => void) {
   else window.addEventListener("load", idle, { once: true });
 }
 
-if (analyticsHere()) {
+// Once every module has loaded: the bundler may put the consent module in
+// a chunk that imports this one back, and then it is not ready while this
+// one runs.
+queueMicrotask(() => {
+  if (!analyticsHere()) return;
   if (allowed()) whenIdle(() => void load());
   // A choice made on the banner, or changed from the footer.
   onChoice(() => {
@@ -49,7 +53,7 @@ if (analyticsHere()) {
     if (choice() === "yes") void load().then((analytics) => analytics.optInCapturing());
     else if (sdk) void sdk.then((analytics) => analytics.optOutCapturing());
   });
-}
+});
 
 /** Who is signed in, by account id only; null after signing out. */
 export function identify(userId: string | null, previous: string | null) {
