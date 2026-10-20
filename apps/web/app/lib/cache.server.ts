@@ -46,6 +46,14 @@ function keep(key: string, ttlMs: number, value: unknown) {
   if (kept.size > MAX_ENTRIES) kept.delete(kept.keys().next().value as string);
 }
 
+/** Forgets `key` here and in the data centre: what it named has ended. */
+export async function forgetShortCache(key: string): Promise<void> {
+  kept.delete(key);
+  await colo()
+    ?.delete(ORIGIN + encodeURIComponent(key))
+    .catch(() => undefined);
+}
+
 /**
  * Only settled answers are kept, never a promise still in flight: a
  * Worker's I/O belongs to the request that started it, so another request

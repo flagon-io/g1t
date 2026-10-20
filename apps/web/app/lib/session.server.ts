@@ -9,6 +9,8 @@ import { safeNext } from "./next";
 import { WORKSPACE_COOKIE, chosenWorkspace } from "./workspace-choice";
 import { codeGate } from "./workspace-nav";
 import { identity } from "./services.server";
+import { forgetShortCache, shortCache } from "./cache.server";
+import { sessionKey } from "./session-key";
 import { TOKEN_CHALLENGE, bearerToken, tokenVerdict } from "./website-token";
 import { crossOrigin } from "./same-origin";
 
@@ -60,7 +62,7 @@ export const viewerMiddleware: MiddlewareFunction<Response> = async ({ request, 
   } else {
     const token = sessionToken(request);
     if (!token) return;
-    viewer = await identity.userForSession(token);
+    viewer = await userForSession(token);
   }
   context.set(viewerContext, viewer);
 
@@ -87,6 +89,34 @@ export const viewerMiddleware: MiddlewareFunction<Response> = async ({ request, 
     if (around) throw redirect(around);
   }
 };
+
+/**
+ * How long a session's answer is kept: every signed-in request asked
+ * identity first, before any loader started (p50 169 ms). A request that
+ * writes, and the person's pages for a while after they wrote, ask afresh
+ * (lib/cache.server.ts), so every change is made as who they are now.
+ * Signing out here forgets it; a session ended elsewhere (a password
+ * reset, a suspension) or a membership taken away still reads as it was
+ * for at most this long, in a data centre that kept it.
+ */
+const SESSION_TTL_MS = 30_000;
+
+/** Thrown to keep a session nobody holds out of the cache. */
+const SIGNED_OUT = Symbol("signed out");
+
+/** Who the session is, kept a few seconds; a session that has ended is never kept. */
+async function userForSession(token: string): Promise<Viewer> {
+  try {
+    return await shortCache(await sessionKey(token), SESSION_TTL_MS, async () => {
+      const viewer = await identity.userForSession(token);
+      if (!viewer) throw SIGNED_OUT;
+      return viewer;
+    });
+  } catch (error) {
+    if (error === SIGNED_OUT) return null;
+    throw error;
+  }
+}
 
 type Context = Readonly<RouterContextProvider>;
 
@@ -138,7 +168,11 @@ export function startSession(token: string): string {
 /** Ends the session and returns the `Set-Cookie` value that clears it. */
 export async function endSession(request: Request): Promise<string> {
   const token = sessionToken(request);
-  if (token) await identity.signOut(token);
+  if (token) {
+    await identity.signOut(token);
+    // Nor is it who they are here any more.
+    await forgetShortCache(await sessionKey(token));
+  }
   return sessionCookie("", 0);
 }
 
