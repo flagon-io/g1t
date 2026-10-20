@@ -86,6 +86,26 @@ pub fn has_room(in_workspace: u32, in_pool: u32) -> bool {
 /// fails saying so. Tried again each minute until then.
 pub const WAIT_FOR_MACHINE_MS: u64 = 30 * 60 * 1000;
 
+/// How long a job on g1t's machines has to say anything after it starts.
+/// Its runner reports its first step within seconds (6 to 12 on Deploy
+/// #445); one that has said nothing by now lost its sandbox before it ran
+/// anything (on 2026-10-20, a runner rollout replacing containers under
+/// two jobs of Deploy #443), so it is tried again rather than left until
+/// SILENT_MS fails it.
+pub const FIRST_REPORT_MS: u64 = 3 * 60 * 1000;
+
+/// Whether a job that started at `started` and was last heard from at
+/// `seen` (RFC 3339, both set as it starts) never reported, and is past
+/// FIRST_REPORT_MS at `now`. Every report moves `seen` on.
+pub fn never_reported(started: Option<&str>, seen: Option<&str>, now: u64) -> bool {
+    match (started, seen) {
+        (Some(started), Some(seen)) if started == seen => {
+            g1t_contracts::time::parse_rfc3339(started).is_some_and(|started| now.saturating_sub(started) >= FIRST_REPORT_MS)
+        }
+        _ => false,
+    }
+}
+
 /// Whether a job that has waited for a machine since `since` (RFC 3339)
 /// should stop waiting at `now`. One whose start cannot be read waits from
 /// now on.
@@ -462,5 +482,17 @@ mod room_tests {
         assert!(!waited_for_a_machine(Some(&since), 1_000_000 + WAIT_FOR_MACHINE_MS - 1));
         assert!(waited_for_a_machine(Some(&since), 1_000_000 + WAIT_FOR_MACHINE_MS));
         assert!(!waited_for_a_machine(Some("not a time"), u64::MAX));
+    }
+
+    #[test]
+    fn a_job_that_never_reported_is_lost_after_three_minutes() {
+        let started = g1t_contracts::time::rfc3339(1_000_000);
+        let later = g1t_contracts::time::rfc3339(1_005_000);
+        assert!(!never_reported(Some(&started), Some(&started), 1_000_000 + FIRST_REPORT_MS - 1));
+        assert!(never_reported(Some(&started), Some(&started), 1_000_000 + FIRST_REPORT_MS));
+        // Once it has said anything, only SILENT_MS ends it.
+        assert!(!never_reported(Some(&started), Some(&later), u64::MAX));
+        assert!(!never_reported(None, None, u64::MAX));
+        assert!(!never_reported(Some("not a time"), Some("not a time"), u64::MAX));
     }
 }
