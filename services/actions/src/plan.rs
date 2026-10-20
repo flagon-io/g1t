@@ -1597,8 +1597,13 @@ impl Actions {
         Ok(())
     }
 
-    /// Starts queued jobs, oldest first, while their workspace has room.
+    /// Starts queued jobs, oldest first, while their workspace has room. In
+    /// a request, only notes that they want starting (`defer_starts`).
     pub async fn start_queued(&self) -> Result<()> {
+        if self.defer_starts {
+            self.starts_wanted.set(true);
+            return Ok(());
+        }
         self.start_queued_except(&std::collections::HashSet::new()).await
     }
 

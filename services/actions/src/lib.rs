@@ -185,6 +185,14 @@ pub struct Actions {
     limits: limits::Limits,
     /// Whether repositories' Actions are on, read once per request.
     actions_on: protection::ActionsOn,
+    /// In a request, queued jobs are not started inline: whoever made the
+    /// request may be gone before a sandbox starts, which can take seconds
+    /// while Cloudflare has no container free, and the start would be
+    /// cancelled with it, after the jobs were marked as running. They are
+    /// started after the answer instead (`fetch`, `wait_until`).
+    defer_starts: bool,
+    /// Whether this request queued jobs or freed room for them.
+    starts_wanted: std::cell::Cell<bool>,
 }
 
 impl Actions {
@@ -205,6 +213,8 @@ impl Actions {
             blob_key: env.secret("ACTIONS_KEY").ok().map(|key| runtime::blob_key(&key.to_string())),
             limits: limits::Limits::from_env(env),
             actions_on: protection::ActionsOn::default(),
+            defer_starts: false,
+            starts_wanted: std::cell::Cell::new(false),
         })
     }
 
@@ -284,13 +294,34 @@ macro_rules! check {
 }
 
 #[event(fetch)]
-async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response> {
+async fn fetch(mut request: Request, env: Env, ctx: Context) -> Result<Response> {
     let Some(method) = rpc_method(&request) else {
         return Response::error("Not found", 404);
     };
     let body: Value = request.json().await?;
-    let service = Actions::new(&env)?;
-    match method.as_str() {
+    let service = Actions { defer_starts: true, ..Actions::new(&env)? };
+    let response = answer(&service, &method, body).await;
+    // The jobs this request queued or made room for start after the
+    // answer, where the caller leaving cannot cancel them. A start that is
+    // cut short anyway is tried again (FIRST_REPORT_MS).
+    if service.starts_wanted.get() {
+        ctx.wait_until(async move {
+            match Actions::new(&env) {
+                Ok(service) => {
+                    if let Err(error) = service.start_queued().await {
+                        worker::console_error!("actions: starting queued jobs after {method} failed: {error}");
+                    }
+                }
+                Err(error) => worker::console_error!("actions: could not start: {error}"),
+            }
+        });
+    }
+    response
+}
+
+/// One RPC's answer.
+async fn answer(service: &Actions, method: &str, body: Value) -> Result<Response> {
+    match method {
         "workflows" => reply(&service.workflows(args(body)?).await?),
         "workflow" => reply(&service.workflow(args(body)?).await?),
         "runs" => reply(&service.runs(args(body)?).await?),
