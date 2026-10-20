@@ -41,6 +41,8 @@ export type Observation = Current & {
   colo?: string | null;
   /** A slow answer asked again (probe.ts `confirmSlow`): the first try's time. */
   first_ms?: number | null;
+  /** A check judged by the site's own time (probe.ts `serverOf`): that time. */
+  server_ms?: number | null;
 };
 
 /** How long every single check is kept (`check_history`), for sudo's incident pages. */
@@ -69,8 +71,8 @@ export async function record(db: D1Database, observations: Observation[], at: Da
     if (o.state === "unmonitored") continue;
     statements.push(
       db
-        .prepare(`INSERT OR REPLACE INTO check_history (component, at, ms, outcome, colo, first_ms) VALUES (?1, ?2, ?3, ?4, ?5, ?6)`)
-        .bind(o.component, when, o.latency_ms, o.state, o.colo ?? null, o.first_ms ?? null),
+        .prepare(`INSERT OR REPLACE INTO check_history (component, at, ms, outcome, colo, first_ms, server_ms) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`)
+        .bind(o.component, when, o.latency_ms, o.state, o.colo ?? null, o.first_ms ?? null, o.server_ms ?? null),
     );
     if (maintenance.has(o.component)) continue;
     const up = o.state === "up" ? 1 : 0;

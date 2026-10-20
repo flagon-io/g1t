@@ -33,6 +33,12 @@ export function classify(result: ProbeResult | null, slowMs = SLOW_MS): { state:
   if (!result.ok) return { state: "down", detail: `Failed: ${result.error ?? "no answer"}` };
   if (result.degraded) return { state: "degraded", detail: result.degraded };
   const ms = Math.round(result.ms);
+  if (result.server_ms != null) {
+    // Judged on the site's own time; the time from where the check ran is beside it.
+    const server = Math.round(result.server_ms);
+    const said = `${server} ms, ${ms} ms ${result.colo ? `from ${result.colo}` : "in all"}`;
+    return server > slowMs ? { state: "degraded", detail: `Slow: server ${said}` } : { state: "up", detail: `Server ${said}` };
+  }
   if (ms > slowMs) return { state: "degraded", detail: `Slow: answered in ${ms} ms` };
   return { state: "up", detail: `Answered in ${ms} ms` };
 }

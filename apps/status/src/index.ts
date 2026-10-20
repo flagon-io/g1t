@@ -269,6 +269,7 @@ export async function checkAll(env: Env, now = new Date()): Promise<Observation[
       latency_ms: result ? Math.round(result.ms) : null,
       colo: result ? (result.colo ?? roundColo) : null,
       first_ms: result?.first_ms != null ? Math.round(result.first_ms) : null,
+      server_ms: result?.server_ms != null ? Math.round(result.server_ms) : null,
     };
   });
   const { maintenance } = await load(env.DB, now, originOf(env));

@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { isbot } from "isbot";
 
 import { components } from "./components.ts";
-import { BROWSER_USER_AGENT, USER_AGENT, coloOf, combine, confirmSlow, judgeStorage, probe, runCheck, step } from "./probe.ts";
+import { BROWSER_USER_AGENT, USER_AGENT, coloOf, combine, confirmSlow, judgeStorage, judgedMs, probe, runCheck, serverOf, serverTotal, step } from "./probe.ts";
 
 const answer = (status: number) => async () => new Response("x", { status });
 
@@ -159,4 +159,65 @@ test("git storage is judged by how its calls went, and quiet is up", async () =>
   const viaCheck = await runCheck({ kind: "storage" }, { fetch: answer(200), billing: null, storage: async () => report(row(1, 0, 0, 0, 5)) });
   assert.deepEqual(viaCheck, { ok: true, ms: 5 });
   assert.equal(await runCheck({ kind: "storage" }, { fetch: answer(200), billing: null }), null);
+});
+
+test("the site's own time is read from Server-Timing's total", () => {
+  // As apps/web's lib/perf.ts `serverTiming` writes it.
+  assert.equal(serverTotal(`total;dur=406;desc="web to first byte", loader.root;dur=180, rpc;dur=406;desc="12 service calls"`), 406);
+  assert.equal(serverTotal(`loader.root;dur=180, total;dur=91.5`), 91.5);
+  // A page from the site's cache, or none at all, says nothing of its time.
+  assert.equal(serverTotal(`cache;desc="hit, 17s old"`), null);
+  assert.equal(serverTotal(null), null);
+  assert.equal(serverTotal(`total;desc="no time"`), null);
+});
+
+test("page speed is judged on the site's time; a cached page on its time less the way here", async () => {
+  // Pages that say their time: judged on it, whatever the way here took.
+  assert.equal(
+    serverOf(
+      [
+        { ok: true, ms: 610, server_ms: 420 },
+        { ok: true, ms: 500, server_ms: 300 },
+      ],
+      { ok: true, ms: 200 },
+    ),
+    420,
+  );
+  // A cached page says nothing: its time less the baseline's, never below nothing.
+  assert.equal(
+    serverOf(
+      [
+        { ok: true, ms: 610, server_ms: 120 },
+        { ok: true, ms: 350 },
+      ],
+      { ok: true, ms: 200 },
+    ),
+    150,
+  );
+  assert.equal(serverOf([{ ok: true, ms: 150 }], { ok: true, ms: 200 }), 0);
+  // No baseline: the whole time, never less.
+  assert.equal(serverOf([{ ok: true, ms: 350 }], { ok: false, ms: 5000, error: "timed out" }), 350);
+
+  // Through probe: a project page that took 300 ms at the site, and Explore from its cache.
+  const asked: string[] = [];
+  const site = (total: number) => async (url: string) => {
+    asked.push(url);
+    if (url.endsWith("/favicon.ico")) return new Response("x");
+    const timing = url.endsWith("/explore") ? `cache;desc="hit, 4s old"` : `total;dur=${total};desc="web to first byte"`;
+    return new Response("x", { headers: { "server-timing": timing, "cf-ray": "8c1f2e3d4a5b6c7d-SEA" } });
+  };
+  const speed = components({ SITE_URL: "https://g1t.sh", PROBE_REPO: "flagon-io/g1t" }).find((p) => p.key === "speed")!;
+  assert.deepEqual(speed.check.kind === "http" && speed.check.serverTime, { baseline: "https://g1t.sh/favicon.ico" });
+  const fast = await probe(speed.check, { fetch: site(300), billing: null }, speed.slowMs!);
+  assert.deepEqual(asked.sort(), ["https://g1t.sh/explore", "https://g1t.sh/favicon.ico", "https://g1t.sh/flagon-io/g1t"], "the pages and the baseline, once");
+  assert.deepEqual([fast!.ok, fast!.colo, fast!.server_ms, judgedMs(fast!)], [true, "SEA", 300, 300]);
+  // Slow at the site is slow, however near the check ran, and asked again before it counts.
+  const slow = await probe(speed.check, { fetch: site(1200), billing: null }, speed.slowMs!);
+  assert.deepEqual([slow!.server_ms, slow!.first_ms != null], [1200, true]);
+  // Other checks are judged on the whole time, header or not.
+  const login = await runCheck({ kind: "http", steps: [{ url: "https://g1t.sh/login" }] }, { fetch: site(1200), billing: null });
+  assert.equal(login!.server_ms, undefined);
+  // A page that failed is a failure, with no time of the site's to judge.
+  const failed = await runCheck(speed.check, { fetch: async (url) => new Response("x", { status: url.endsWith(".ico") ? 200 : 502 }), billing: null });
+  assert.deepEqual([failed!.ok, failed!.server_ms], [false, undefined]);
 });

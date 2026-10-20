@@ -47,6 +47,14 @@ test("classify: fast is up, slow is degraded, failed is down, none is unmonitore
   assert.equal(classify(null).state, "unmonitored");
 });
 
+test("classify: a check judged on the site's own time says both, and only the site's counts", () => {
+  assert.deepEqual(classify({ ok: true, ms: 610.4, server_ms: 420, colo: "SEA" }, 800), { state: "up", detail: "Server 420 ms, 610 ms from SEA" });
+  // Slow from here, in time at the site: up.
+  assert.equal(classify({ ok: true, ms: 1400, server_ms: 380 }, 800).state, "up");
+  assert.deepEqual(classify({ ok: true, ms: 1100, server_ms: 920 }, 800), { state: "degraded", detail: "Slow: server 920 ms, 1100 ms in all" });
+  assert.equal(classify({ ok: false, ms: 5000, error: "HTTP 502", server_ms: 10 }, 800).state, "down");
+});
+
 test("uptime rounds down, so one failure never reads as 100%", () => {
   assert.equal(uptimeOf(1439, 1440), 99.93);
   assert.equal(uptimeOf(99999, 100000), 99.99);
@@ -194,9 +202,10 @@ test("components: an installation without a host leaves that part off", () => {
       { url: "https://g1t.sh/flagon-io/g1t", browser: true },
       { url: "https://g1t.sh/explore", browser: true },
     ],
+    serverTime: { baseline: "https://g1t.sh/favicon.ico" },
   });
-  assert.equal(classify({ ok: true, ms: 900 }, speed.slowMs).state, "degraded");
-  assert.equal(classify({ ok: true, ms: 300 }, speed.slowMs).state, "up");
+  assert.equal(classify({ ok: true, ms: 900, server_ms: 850 }, speed.slowMs).state, "degraded");
+  assert.equal(classify({ ok: true, ms: 900, server_ms: 300 }, speed.slowMs).state, "up");
   const git = all.find((c) => c.key === "git")!;
   assert.deepEqual(git.check, { kind: "http", steps: [{ url: "https://g1t.sh/flagon-io/g1t.git/info/refs?service=git-upload-pack" }] });
 });

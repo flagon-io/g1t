@@ -40,7 +40,17 @@ export type Step = {
 };
 
 export type Check =
-  | { kind: "http"; steps: Step[] }
+  | {
+      kind: "http";
+      steps: Step[];
+      /**
+       * Judged by the site's own time (probe.ts `serverOf`), not the time
+       * from wherever the cron ran: the `Server-Timing` total each page
+       * sends, or for a page that sends none, its time less `baseline`'s, a
+       * static file of the same site, asked for at the same moment.
+       */
+      serverTime?: { baseline: string };
+    }
   /** Billing, through its binding: reading its price book. */
   | { kind: "billing" }
   /** Git storage, through the repos service binding: how the store answered lately. */
@@ -62,8 +72,12 @@ export type ComponentInfo = {
 
 /**
  * The page-speed budget the status page holds the site to: the slower of a
- * public project page and Explore, to the first byte of the answer, from a
- * Cloudflare data centre. CONTRIBUTING.md, "Speed", has the site's targets.
+ * public project page and Explore, to the first byte of the answer, as the
+ * site timed itself (its `Server-Timing` total). The time from the cron's
+ * data centre is kept too, but not judged: since 17 Oct Cloudflare runs
+ * the cron from a different data centre through the day, and every check
+ * from it carries about 200 ms more on the way, none of it the site's.
+ * CONTRIBUTING.md, "Speed", has the site's targets.
  */
 export const SPEED_BUDGET_MS = 800;
 
@@ -146,7 +160,7 @@ export function components(vars: Partial<Targets>, billing = true, storage = fal
           key: "speed",
           name: "Page speed",
           address: `${shown}/${repo}`,
-          checks: `A public project page and Explore each answering within ${SPEED_BUDGET_MS} ms. Slower counts as degraded.`,
+          checks: `A public project page and Explore each answering within ${SPEED_BUDGET_MS} ms, as the site times itself; the time from here is shown beside it. Slower counts as degraded.`,
           core: false,
           check: {
             kind: "http",
@@ -154,6 +168,7 @@ export function components(vars: Partial<Targets>, billing = true, storage = fal
               { url: `${site}/${repo}`, browser: true },
               { url: `${site}/explore`, browser: true },
             ],
+            serverTime: { baseline: `${site}/favicon.ico` },
           },
           slowMs: SPEED_BUDGET_MS,
         }

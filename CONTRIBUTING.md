@@ -270,7 +270,8 @@ the databases, so start calls together and add no rounds.
 
 - Every page answers with `Server-Timing`: each loader, each service's
   calls and their database time. Look at it in DevTools when a page feels
-  slow.
+  slow. status.g1t.sh's Page speed holds its `total` to 800 ms, so keep
+  that entry's name (`apps/status/src/probe.ts` `serverTotal`).
 - `scripts/perf/measure.ps1` times pages from your machine (`-BrowserUA`
   for signed-out pages as a browser sees them). A page that only reads
   must not set the `g1t_d1` cookie: a new read-only service method goes in
