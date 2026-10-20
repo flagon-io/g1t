@@ -14,7 +14,8 @@
  *    (or a short line saying why nothing did), and the person is notified.
  *
  * Stop, or a newer question, aborts `signal`: what came stays, marked
- * stopped.
+ * stopped. It says how long each part took (`AnswerTimes`), which the
+ * room logs once per answer.
  */
 import type { AskSetup, ChatAnswer } from "@g1t/contracts";
 
@@ -42,21 +43,30 @@ export type AnswerDeps = {
   now(): number;
 };
 
-export async function runAnswer(deps: AnswerDeps, signal: AbortSignal): Promise<void> {
+/**
+ * How long an answer took, in ms from when it started running: to having
+ * Ask's setup, to the model's first word or step (null when none came),
+ * and to its end.
+ */
+export type AnswerTimes = { setup_ms: number; first_token_ms: number | null; end_ms: number; asked: boolean };
+
+export async function runAnswer(deps: AnswerDeps, signal: AbortSignal): Promise<AnswerTimes> {
+  const started = deps.now();
+  const times: AnswerTimes = { setup_ms: 0, first_token_ms: null, end_ms: 0, asked: false };
+  const ended = async (body: string, answer: ChatAnswer) => {
+    await deps.finish(body, answer);
+    times.end_ms = deps.now() - started;
+    return times;
+  };
   deps.typing();
   const setup = await deps.setup().catch(() => null);
-  if (signal.aborted) {
-    await deps.finish(finalBody("", { state: "stopped" }), { state: "stopped" });
-    return;
-  }
+  times.setup_ms = deps.now() - started;
+  if (signal.aborted) return ended(finalBody("", { state: "stopped" }), { state: "stopped" });
   if (setup?.problem) {
-    if (!setup.provider_id) {
-      await deps.finish(notSetUpText(deps.slug), { state: "done", setup: "missing" });
-    } else {
-      await deps.finish(cannotAnswerText(setup.problem), { state: "error", error: setup.problem });
-    }
-    return;
+    if (!setup.provider_id) return ended(notSetUpText(deps.slug), { state: "done", setup: "missing" });
+    return ended(cannotAnswerText(setup.problem), { state: "error", error: setup.problem });
   }
+  times.asked = true;
   const reader = new AnswerReader();
   let shownAt = 0;
   let savedAt = deps.now();
@@ -75,6 +85,8 @@ export async function runAnswer(deps: AnswerDeps, signal: AbortSignal): Promise<
           if (done || signal.aborted) break;
           if (!reader.feed(value)) continue;
           const now = deps.now();
+          // The first word, or the first step: the provider's meta line alone is not the model answering.
+          if (times.first_token_ms == null && (reader.body || reader.answer.steps?.length || reader.over)) times.first_token_ms = now - started;
           if (now - shownAt >= SHOW_EVERY_MS) {
             shownAt = now;
             deps.show(reader.body, reader.answer);
@@ -97,5 +109,32 @@ export async function runAnswer(deps: AnswerDeps, signal: AbortSignal): Promise<
   }
   if (signal.aborted) reader.stop();
   else reader.finish();
-  await deps.finish(finalBody(reader.body, reader.answer), reader.answer);
+  return ended(finalBody(reader.body, reader.answer), reader.answer);
+}
+
+/**
+ * An answer's log line, its times in ms from the question: to the room
+ * starting on it (`queued_ms`), to having Ask's setup, to the model's first
+ * word or step (null when none came), and to the end. A job handed over
+ * without the question's time counts from the room's start (`started`).
+ */
+export function answerLog(
+  job: { slug: string; channel: { id: string }; setup?: AskSetup; asked_at?: number },
+  started: number,
+  times: AnswerTimes,
+  ended: ChatAnswer | null,
+) {
+  const queued = job.asked_at ? Math.max(0, started - job.asked_at) : 0;
+  return {
+    slug: job.slug,
+    channel_id: job.channel.id,
+    setup_read: !job.setup,
+    asked: times.asked,
+    queued_ms: queued,
+    setup_ms: queued + times.setup_ms,
+    first_token_ms: times.first_token_ms == null ? null : queued + times.first_token_ms,
+    end_ms: queued + times.end_ms,
+    model: ended?.model ?? null,
+    state: ended?.state ?? null,
+  };
 }

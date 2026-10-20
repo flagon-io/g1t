@@ -21,6 +21,7 @@ import {
   principalKey,
   type AskMessage,
   type AskPage,
+  type AskSetup,
   type ChatAnswer,
   type ChatLiveEvent,
   type ChatMessage,
@@ -29,7 +30,7 @@ import {
   type User,
 } from "@g1t/contracts";
 
-import { runAnswer } from "./answer.ts";
+import { answerLog, runAnswer } from "./answer.ts";
 import { G1T_PROFILE, answerAllowed, metaColumn } from "./g1t.ts";
 import { PERSON_TYPING_MS, isTypingFrame } from "./messages.ts";
 import { notifyMessage } from "./notify.ts";
@@ -69,6 +70,14 @@ export type AnswerJob = {
    * is thrown away (`clear`). Absent on a job handed over before it was.
    */
   question_id?: string;
+  /**
+   * What Ask answers with, when whoever handed the job over has just read
+   * it (src/index.ts `g1tAsk`): the room asks the model without reading it
+   * again. Absent, the room reads it first.
+   */
+  setup?: AskSetup;
+  /** When the question came (ms), so the answer's log says how long the person waited. */
+  asked_at?: number;
 };
 
 export class ChannelRoom extends DurableObject<RoomEnv> {
@@ -182,11 +191,14 @@ export class ChannelRoom extends DurableObject<RoomEnv> {
       return;
     }
     const ask = aiClient(this.env.INTEGRATIONS as ServiceBinding);
+    let ended = null as ChatAnswer | null;
+    const started = Date.now();
     try {
-      await runAnswer(
+      const times = await runAnswer(
         {
           slug: job.slug,
           setup: async () => {
+            if (job.setup) return job.setup;
             if (!this.env.INTEGRATIONS) return null;
             const found = await ask.askSettings(job.slug, job.actor);
             return found.ok ? found.value : { provider_id: "unknown", provider_name: null, provider: null, model: null, problem: found.error.message };
@@ -198,11 +210,16 @@ export class ChannelRoom extends DurableObject<RoomEnv> {
             if (!run.cleared) this.broadcast({ type: "message.streaming", channel_id: job.channel.id, id: job.message.id, body, answer });
           },
           save: (body, answer) => (run.cleared ? Promise.resolve() : this.store(job.message.id, body, answer)),
-          finish: (body, answer) => (run.cleared ? this.discard(job.channel.id, job.message.id) : this.end(job, body, answer, run.superseded)),
+          finish: (body, answer) => {
+            ended = answer;
+            return run.cleared ? this.discard(job.channel.id, job.message.id) : this.end(job, body, answer, run.superseded);
+          },
           now: () => Date.now(),
         },
         run.stop.signal,
       );
+      // Once per answer, for Workers Observability: how long the person waited for the model's first word, and its last.
+      console.log({ message: "g1t answer timing", ...answerLog(job, started, times, ended) });
     } catch (error) {
       console.error("g1t could not answer in", job.channel.id, error);
     } finally {

@@ -25,6 +25,7 @@ import {
   openD1,
   parsePrincipalKey,
   principalKey,
+  type AskSetup,
   type Channel,
   type ChannelAccessRequest,
   type ChannelChange,
@@ -1620,7 +1621,9 @@ class Chat {
     return ok(message);
   }
 
-  async post(a: { workspace: string; channel_id: string; viewer: Viewer; message: PostMessage }): Promise<Result<ChatMessage>> {
+  /** `setup`: what Ask answers with, when `g1tAsk` has just read it, so the answer does not read it again. */
+  async post(a: { workspace: string; channel_id: string; viewer: Viewer; message: PostMessage }, setup?: AskSetup): Promise<Result<ChatMessage>> {
+    const askedAt = Date.now();
     const found = await this.place(a.workspace, a.channel_id, a.viewer, "read");
     if (!found.ok) return found;
     const body = messageBody(a.message?.body);
@@ -1645,7 +1648,10 @@ class Chat {
     // A question for @g1t: kept with the page it was asked from, then answered.
     const page = pageFrom(a.message?.page);
     const written = await this.write(place, me, input, { meta: page ? { page } : {} });
-    if (written.ok) this.defer(this.startAnswer(place, a.viewer!).catch((error) => console.error("g1t could not start an answer in", place.channel.id, error)));
+    if (written.ok)
+      this.defer(
+        this.startAnswer(place, a.viewer!, { at: askedAt, setup }).catch((error) => console.error("g1t could not start an answer in", place.channel.id, error)),
+      );
     return written;
   }
 
@@ -1659,21 +1665,32 @@ class Chat {
   /**
    * Starts @g1t's answer to what was last said in its direct message: an
    * empty message from g1t, `thinking`, which the channel's room writes the
-   * answer into as it streams (src/room.ts `startAnswer`).
+   * answer into as it streams (src/room.ts `startAnswer`). `asked` is when
+   * the question came, and Ask's setup when the caller has just read it.
    */
-  private async startAnswer(place: Place, viewer: User): Promise<void> {
-    const recent = await this.db
-      .prepare("SELECT id, author, kind, body, meta, deleted_at FROM messages WHERE channel_id = ? AND thread_root IS NULL ORDER BY id DESC LIMIT 120")
-      .bind(place.channel.id)
-      .all<SaidRow>();
+  private async startAnswer(place: Place, viewer: User, asked: { at: number; setup?: AskSetup } = { at: Date.now() }): Promise<void> {
+    const { channel } = place;
+    // The conversation is read while the empty answer is written, not before
+    // it: one database round trip fewer before the model is asked. The
+    // empty answer may be among the rows read; the conversation leaves it out.
+    const [recent, written] = await Promise.all([
+      this.db
+        .prepare("SELECT id, author, kind, body, meta, deleted_at FROM messages WHERE channel_id = ? AND thread_root IS NULL ORDER BY id DESC LIMIT 120")
+        .bind(channel.id)
+        .all<SaidRow>(),
+      this.write(place, G1T_KEY, { body: "", card: null, thread_root: null }, { meta: { answer: { state: "thinking" } }, notify: false }),
+    ]);
+    if (!written.ok) return;
     const rows = recent.results.reverse();
-    const messages = conversation(rows);
-    if (!messages.length) return;
+    const messages = conversation(rows, written.value.id);
+    if (!messages.length) {
+      // Nothing to answer after all (g1t had the last word): its empty answer goes.
+      await this.db.prepare("DELETE FROM messages WHERE id = ?").bind(written.value.id).run();
+      this.broadcast(channel.id, { type: "message.deleted", channel_id: channel.id, id: written.value.id });
+      return;
+    }
     // The question it answers: a clear that deletes it also throws this answer away (src/room.ts).
     const question = latestQuestion(rows);
-    const written = await this.write(place, G1T_KEY, { body: "", card: null, thread_root: null }, { meta: { answer: { state: "thinking" } }, notify: false });
-    if (!written.ok) return;
-    const { channel } = place;
     await this.room(channel.id).startAnswer({
       slug: place.slug,
       channel: { id: channel.id, kind: channel.kind, name: channel.name },
@@ -1683,6 +1700,8 @@ class Chat {
       page: { ...latestPage(rows), path: latestPage(rows)?.path ?? `/${place.slug}/-/chat/dm/${channel.id}` },
       message: written.value,
       question_id: question ?? undefined,
+      setup: asked.setup,
+      asked_at: asked.at,
     });
   }
 

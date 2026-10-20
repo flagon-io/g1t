@@ -12,6 +12,7 @@ import {
   finalBody,
   g1tDmPerson,
   latestPage,
+  latestQuestion,
   metaColumn,
   notSetUpText,
   pageFrom,
@@ -110,6 +111,15 @@ test("the conversation leaves out failed answers, the set-up note, the answer be
     row("m7", G1T_KEY, "", { answer: { state: "thinking" } }),
   ];
   assert.deepEqual(conversation(rows), [{ role: "user", content: "First\n\nSecond" }]);
+});
+
+test("the answer being written, read with the conversation, changes nothing the answer reads", () => {
+  const page = { path: "/acme" };
+  const asked = [row("m1", ana, "Q", { page })];
+  const read = [...asked, row("m2", G1T_KEY, "", { answer: { state: "thinking" } })];
+  assert.deepEqual(conversation(read, "m2"), conversation(asked));
+  assert.equal(latestQuestion(read), "m1");
+  assert.deepEqual(latestPage(read), page);
 });
 
 test("a stopped answer still counts as what g1t said", () => {
