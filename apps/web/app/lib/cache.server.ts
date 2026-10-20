@@ -20,6 +20,14 @@ const kept = new Map<string, { until: number; value: unknown }>();
 /** Entries kept at most; the oldest go first. */
 const MAX_ENTRIES = 2_000;
 
+/**
+ * The longest an isolate keeps an answer itself, however long the data
+ * centre keeps it: a write clears the data centre's copy but only its own
+ * isolate's, so the others must not outlast the window in which the
+ * writer reads fresh anyway (lib/perf.ts `PRIMARY_WINDOW_SECONDS`).
+ */
+const ISOLATE_TTL_MS = 30_000;
+
 /** Where the data centre's cache keeps them: a name nothing outside can ask for. */
 const ORIGIN = "https://short.g1t.internal/";
 
@@ -34,7 +42,7 @@ function colo(): Cache | null {
 
 function keep(key: string, ttlMs: number, value: unknown) {
   kept.delete(key);
-  kept.set(key, { until: Date.now() + ttlMs, value });
+  kept.set(key, { until: Date.now() + Math.min(ttlMs, ISOLATE_TTL_MS), value });
   if (kept.size > MAX_ENTRIES) kept.delete(kept.keys().next().value as string);
 }
 
