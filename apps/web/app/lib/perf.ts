@@ -94,6 +94,29 @@ export function sessionFor(service: string, bookmarks: Bookmarks, writing: boole
 }
 
 /**
+ * The services a service reads on the caller's behalf: work asks repos
+ * whether the viewer may see a repository at the start of nearly every
+ * method. Without word from the site that read goes to repos' primary,
+ * 60–80 ms a work call (#212).
+ */
+const NESTED_READS: Record<string, string[]> = { work: ["repos"] };
+
+/**
+ * The `x-d1-bookmark-<service>` headers a call to `method` of `service`
+ * carries (crates/kit/src/d1.rs `forwarded`): for each service it reads on
+ * the caller's behalf, what the site would have sent that service itself.
+ * Only for methods that read: one that may write checks access on the
+ * primary, as before.
+ */
+export function nestedSessions(service: string, method: string, bookmarks: Bookmarks, writing: boolean, nowSeconds: number): [string, string][] {
+  if (writing || mayWrite(method)) return [];
+  return (NESTED_READS[service] ?? []).flatMap((nested) => {
+    const session = sessionFor(nested, bookmarks, writing, nowSeconds);
+    return session ? [[`x-d1-bookmark-${nested}`, session] as [string, string]] : [];
+  });
+}
+
+/**
  * Methods that only read. Anything not listed is taken to write, so a new
  * method errs towards a cookie and a primary read, never a stale page.
  * `get`, `list`, `queue` and `pulls_for_repos` were missing: every project

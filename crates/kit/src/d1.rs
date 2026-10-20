@@ -17,6 +17,12 @@
 //! so service-to-service calls ([`crate::call`]), queues and crons read the
 //! primary as before. CONTRIBUTING.md ("Speed") says who sends what.
 //!
+//! A service that reads another's database on its caller's behalf (work
+//! asking repos whether the viewer may see a repository) is told what that
+//! read may use in `x-d1-bookmark-<service>`: what the caller would have
+//! sent had it asked the other service itself ([`forwarded`]). Without it,
+//! the nested call reads the primary.
+//!
 //! Every response that goes through [`Served::finish`] also carries
 //! `server-timing: svc;dur=<ms>;desc="<how D1 was read>"`, which the site
 //! adds up per service for its own `Server-Timing` header. A service that
@@ -54,6 +60,21 @@ pub fn constraint(header: Option<&str>) -> Option<String> {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-');
     Some(if well_formed { value.to_owned() } else { "first-primary".to_owned() })
+}
+
+/// The header in which a caller says what a nested read of `service`'s
+/// database may use.
+pub fn forwarded_header(service: &str) -> String {
+    format!("{BOOKMARK}-{service}")
+}
+
+/// What `request`'s caller said a nested read of `service`'s database may
+/// use (a constraint or a bookmark, read as [`constraint`] reads them), or
+/// `None` for the primary. The site sends it only with methods that read,
+/// and only what it would have sent `service` itself: a nested read is
+/// never staler than the caller's own read of `service` would have been.
+pub fn forwarded(request: &Request, service: &str) -> Result<Option<String>> {
+    Ok(constraint(request.headers().get(&forwarded_header(service))?.as_deref()))
 }
 
 /// How one RPC read its database, for its response.
@@ -168,7 +189,12 @@ impl Served {
 
 #[cfg(test)]
 mod tests {
-    use super::{Timing, constraint};
+    use super::{Timing, constraint, forwarded_header};
+
+    #[test]
+    fn a_nested_read_is_named_for_its_service() {
+        assert_eq!(forwarded_header("repos"), "x-d1-bookmark-repos");
+    }
 
     #[test]
     fn nothing_timed_adds_nothing() {

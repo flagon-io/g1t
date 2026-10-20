@@ -7,6 +7,7 @@ import {
   coveredMs,
   mayWrite,
   metricName,
+  nestedSessions,
   readBookmarks,
   rpcMethodOf,
   serverTiming,
@@ -61,6 +62,24 @@ test("what each call asks for", () => {
   const later = { at: now - PRIMARY_WINDOW_SECONDS, services: { work: BOOKMARK } };
   assert.equal(sessionFor("work", later, false, now), BOOKMARK);
   assert.equal(sessionFor("repos", later, false, now), "first-unconstrained");
+});
+
+test("work's reads of repos go where the site's own would", () => {
+  const now = 1_800_000_000;
+  const none = { at: null, services: {} };
+  // A page with no recent write: work asks repos' nearest copy.
+  assert.deepEqual(nestedSessions("work", "get_pull", none, false, now), [["x-d1-bookmark-repos", "first-unconstrained"]]);
+  // After a write to repos, at least as new as it.
+  const later = { at: now - PRIMARY_WINDOW_SECONDS, services: { repos: BOOKMARK } };
+  assert.deepEqual(nestedSessions("work", "get_settings", later, false, now), [["x-d1-bookmark-repos", BOOKMARK]]);
+  // Just after any write, repos' primary.
+  const justWrote = { at: now - 5, services: {} };
+  assert.deepEqual(nestedSessions("work", "list_pulls", justWrote, false, now), [["x-d1-bookmark-repos", "first-primary"]]);
+  // A method that may write, or a form post, says nothing: the primary.
+  assert.deepEqual(nestedSessions("work", "merge_pull", none, false, now), []);
+  assert.deepEqual(nestedSessions("work", "get_pull", none, true, now), []);
+  // Only services that read another's database on the caller's behalf.
+  assert.deepEqual(nestedSessions("repos", "get", none, false, now), []);
 });
 
 test("only known reads are taken not to write", () => {
