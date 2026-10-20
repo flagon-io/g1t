@@ -33,12 +33,20 @@ const WEBSOCKET_ADDR: &str = "0.0.0.0:8080";
 #[tokio::main]
 async fn main() -> Result<()> {
     let host_key = std::env::var("SSH_HOST_KEY").context("SSH_HOST_KEY is not set")?;
+    let host_key = PrivateKey::from_openssh(host_key).context("invalid SSH_HOST_KEY")?;
+    // The rsa crate's private-key operations are not constant-time
+    // (RUSTSEC-2023-0071, the Marvin attack), and the host key signs every
+    // handshake. Clients' RSA keys are only verified, which is not affected.
+    anyhow::ensure!(
+        !host_key.algorithm().is_rsa(),
+        "SSH_HOST_KEY is an RSA key: use an ed25519 or ECDSA one"
+    );
     let api = Arc::new(Api::new(
         std::env::var("G1T_API").unwrap_or_else(|_| "https://g1t.sh".into()),
         std::env::var("INTERNAL_SECRET").context("INTERNAL_SECRET is not set")?,
     ));
     let config = Arc::new(Config {
-        keys: vec![PrivateKey::from_openssh(host_key).context("invalid SSH_HOST_KEY")?],
+        keys: vec![host_key],
         methods: MethodSet::from(&[MethodKind::PublicKey][..]),
         auth_rejection_time: Duration::from_secs(1),
         auth_rejection_time_initial: Some(Duration::ZERO),
