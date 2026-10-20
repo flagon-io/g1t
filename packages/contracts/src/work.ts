@@ -103,6 +103,82 @@ export type WorkItem = {
   milestone?: MilestoneRef | null;
   /** The repositories it is linked to: its origin first, then targets, then those it touched. */
   repos: ItemRepo[];
+  /** Where it stands in the workspace's plan. A closed one keeps where it was, for if it is reopened. */
+  horizon: Horizon;
+  /** How much the work is worth, if someone has said. */
+  appetite: Appetite | null;
+  /** In dollars, what an agent working on it may spend. */
+  budgetUsd: number | null;
+  /** First in Now until it closes. */
+  urgent: boolean;
+  /** RFC 3339: when it was last moved in the plan; null for one never placed. */
+  plannedAt: string | null;
+};
+
+/**
+ * Where an open work item stands in its workspace's plan. New ones start
+ * in Triage; within Now, Next and Later the order is the priority. Mirrors
+ * `crates/contracts/src/work/plan.rs`.
+ */
+export type Horizon = "triage" | "now" | "next" | "later" | "set_aside";
+
+/** Every horizon, in the order work moves through them. */
+export const HORIZONS: Horizon[] = ["triage", "now", "next", "later", "set_aside"];
+
+/** A horizon's name, as people say it. */
+export function horizonLabel(horizon: Horizon): string {
+  return { triage: "Triage", now: "Now", next: "Next", later: "Later", set_aside: "Set aside" }[horizon];
+}
+
+/** How much a piece of work is worth: one session, a few (about a week), or a phase to break down first. */
+export type Appetite = "small" | "medium" | "large";
+
+export const APPETITES: Appetite[] = ["small", "medium", "large"];
+
+/** `S`, `M` or `L`. */
+export function appetiteLetter(appetite: Appetite): string {
+  return { small: "S", medium: "M", large: "L" }[appetite];
+}
+
+/** How many Now holds before the plan says it is over, unless the workspace says otherwise. */
+export const DEFAULT_NOW_CAP = 6;
+/** The most a workspace may set Now's cap to. */
+export const MAX_NOW_CAP = 50;
+/** How many of Next the plan shows before "n more". */
+export const NEXT_SHOWN = 10;
+
+/** A workspace's plan, as `getPlan` reads it. */
+export type Plan = {
+  workspace: string;
+  /** Urgent first, then by rank. */
+  now: WorkItem[];
+  nowCap: number;
+  /** By rank, the top first: at most `NEXT_SHOWN` unless asked for all. */
+  next: WorkItem[];
+  nextTotal: number;
+  triageTotal: number;
+  laterTotal: number;
+  /** Later, by the repository each is filed in (null: filed in the workspace), the largest group first. */
+  later: PlanGroup[];
+  setAsideTotal: number;
+};
+
+export type PlanGroup = { repo: string | null; count: number };
+
+/**
+ * A move in the plan (`planWorkItem`): whichever fields are given change.
+ * `before`/`after` place it next to another open work item, on that one's
+ * horizon; `top` puts it first; a new horizon with no position puts it
+ * last. `appetite` and `budget_usd` of `null` clear them.
+ */
+export type PlanWorkItemInput = {
+  horizon?: Horizon;
+  before?: number;
+  after?: number;
+  top?: boolean;
+  appetite?: Appetite | null;
+  budget_usd?: number | null;
+  urgent?: boolean;
 };
 
 /** The targets of a work item that have not landed yet, by path. */
@@ -883,6 +959,10 @@ export type WorkItemFilter = {
   closedSince?: string;
   /** Only those numbered below this: the next page, after one whose lowest number this is. */
   before?: number;
+  /** Only open ones on this horizon, in the plan's order. `before` does not page these. */
+  horizon?: Horizon;
+  /** At most this many, up to `LIST_PAGE`. */
+  limit?: number;
 };
 
 export type OpenPullInput = {
@@ -949,6 +1029,17 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
   getWorkItem(workspace: string, number: number, viewer: Viewer): Promise<Result<WorkItemDetail>>;
   /** Its owner, or someone with the Triage role on it, may. */
   updateWorkItem(actor: User, workspace: string, number: number, input: UpdateWorkItemInput): Promise<Result<WorkItem>>;
+  /**
+   * Moves a work item in the plan. Needs the Triage role on it; moving into
+   * or out of Now, ranking Now and urgent need the right to manage milestones.
+   */
+  planWorkItem(actor: User, workspace: string, number: number, input: PlanWorkItemInput): Promise<Result<WorkItem>>;
+  /** A workspace's plan within its bounds; `all` reads every one of Next. */
+  getPlan(workspace: string, viewer: Viewer, options?: { repo?: RepoPath; all?: boolean }): Promise<Result<Plan>>;
+  /** The work item to take next: the first in Now nobody is on, else the top of Next that is ready. */
+  nextWorkItem(workspace: string, viewer: Viewer, repo?: RepoPath): Promise<Result<WorkItem | null>>;
+  /** Sets Now's cap (1 to `MAX_NOW_CAP`). Needs the right to manage milestones. */
+  configurePlan(actor: User, workspace: string, nowCap: number): Promise<Result<Plan>>;
   /**
    * Closes it; with `by`, as the commit there (on its repository's default
    * branch, naming it after a closing keyword) would have: it lands there,

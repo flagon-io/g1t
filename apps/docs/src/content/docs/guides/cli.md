@@ -264,6 +264,35 @@ and `--target` names each repository it should land in.
 `g1t work new` without `--title` asks for one and opens your editor for
 the body.
 
+### The plan
+
+```sh
+g1t work plan                           # Now and Next, and how many wait in Triage, Later and Set aside
+g1t work plan --all                     # every one of Next, not only its top 10
+g1t work plan 191 --next --before 197   # move #191 to Next, just ahead of #197
+g1t work plan 203 --now --top           # first in Now
+g1t work plan 186 --later --appetite M  # to Later, worth about a week
+g1t work plan 195 --urgent              # a fire: first in Now until it closes
+g1t work plan 59 --set-aside            # let it go; back with --next or --later
+g1t work list --horizon triage          # one horizon, in the plan's order
+g1t work next                           # the work item to take next
+g1t work next --claim                   # and claim it
+g1t work dispatch                       # start a session on what's next
+```
+
+[The plan](/work/plan/) says where each open work item stands: Triage,
+Now, Next, Later or Set aside, and within a horizon its place is its
+priority. `g1t work plan` with a number moves that work item: to a
+horizon (`--now`, `--next`, `--later`, `--set-aside`, `--triage`), where
+on it (`--before N`, `--after N`, `--top`; with only a horizon it goes
+last), and what the plan says of it: `--appetite S|M|L|none`,
+`--budget DOLLARS|none`, and `--urgent` or `--not-urgent`.
+
+`g1t work next` prints the work item to take next: the first in Now that
+nobody is on, else the top of Next, skipping work items that are blocked,
+claimed, or assigned to someone else. `g1t work dispatch` with neither a
+number nor `--title` starts a session on that work item.
+
 ### Images in descriptions and comments
 
 `g1t attach` uploads images, such as a screenshot of a preview, and prints the

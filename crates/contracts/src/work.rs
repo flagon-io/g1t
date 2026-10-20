@@ -28,6 +28,9 @@ pub use coordination::*;
 mod items;
 pub use items::*;
 
+mod plan;
+pub use plan::*;
+
 mod workspace_sessions;
 pub use workspace_sessions::*;
 

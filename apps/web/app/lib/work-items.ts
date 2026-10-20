@@ -4,7 +4,7 @@
  * (lib/work-access.ts says who may do what to one). Pure, so it is tested
  * under Node.
  */
-import type { ItemRepo, LinkRole } from "@g1t/contracts";
+import type { Horizon, ItemRepo, LinkRole } from "@g1t/contracts";
 
 import { tidyLabelName } from "./labels.ts";
 
@@ -14,7 +14,7 @@ export { itemPath } from "./refs.ts";
  * Where an old address under a repository is now, when it named something
  * that moved to Work; null when it did not:
  *
- * - `/<owner>/<repo>/issues` is the Work list filtered to the repository,
+ * - `/<owner>/<repo>/issues` is All work items filtered to the repository,
  *   keeping its filters (`?state=closed&label=bug`);
  * - `/<owner>/<repo>/issues/new` a new work item with it as the origin;
  * - `/<owner>/<repo>/issues/<n>` is `#n` read in the repository, which only
@@ -38,7 +38,7 @@ export function movedWorkPath(pathname: string, search = ""): string | { resolve
       if (rest === undefined) {
         const query = new URLSearchParams({ repo });
         for (const [key, value] of old) if (key !== "repo") query.append(key, value);
-        return `${workPath(workspace)}?${query.toString()}`;
+        return `${workPath(workspace, "all")}?${query.toString()}`;
       }
       if (more !== undefined) return null;
       if (rest === "new") return newItemPath(workspace, repo);
@@ -60,7 +60,7 @@ export function workPath(workspace: string, page = ""): string {
 
 /** The Work list filtered to one repository of the workspace. */
 export function repoWorkPath(workspace: string, repo: string): string {
-  return `${workPath(workspace)}?repo=${encodeURIComponent(repo)}`;
+  return `${workPath(workspace, "all")}?repo=${encodeURIComponent(repo)}`;
 }
 
 /** Work → Sessions: what is cooking in the workspace, with filters (`?repo=web&person=ana`). */
@@ -90,9 +90,17 @@ export const ROLE_LABELS: Record<LinkRole, string> = {
   touched: "Touched",
 };
 
+/** The plan's horizons the list filters by, in the order work moves through them (`HORIZONS` in contracts). */
+export const LIST_HORIZONS: readonly Horizon[] = ["now", "next", "later", "triage", "set_aside"];
+
+/** Each horizon's name, as the list's filter and its rows say it (`horizonLabel` in contracts). */
+export const HORIZON_LABELS: Record<Horizon, string> = { triage: "Triage", now: "Now", next: "Next", later: "Later", set_aside: "Set aside" };
+
 /** The filters on the Work list, as its address keeps them. */
 export type WorkFilters = {
   state: "open" | "closed";
+  /** Only open ones on this horizon of the plan, in the plan's order. */
+  horizon: Horizon | null;
   label: string;
   milestone: number | null;
   /** A username, or `@me` for the viewer. */
@@ -104,10 +112,13 @@ export type WorkFilters = {
 
 /**
  * The Work list's filters from its address: `?state=closed&label=bug&
- * milestone=3&assignee=ana&repo=web&role=target`, and the same written in
- * `q` (`is:closed label:bug repo:web role:target`), which wins.
+ * milestone=3&assignee=ana&repo=web&role=target&horizon=now`, and the same
+ * written in `q` (`is:closed label:bug repo:web role:target horizon:now`,
+ * or `is:now` for a horizon), which wins. A horizon holds only open work
+ * items, so with one the state is open.
  */
 export function workFilters(query: URLSearchParams): WorkFilters {
+  let horizon = horizonOf(query.get("horizon"));
   let label = query.get("label") ?? "";
   let milestone = Number(query.get("milestone")) || null;
   let state: "open" | "closed" = query.get("state") === "closed" ? "closed" : "open";
@@ -119,12 +130,15 @@ export function workFilters(query: URLSearchParams): WorkFilters {
     if (key === "label") label = value;
     else if (key === "milestone") milestone = Number(value) || null;
     else if (key === "is" && (value === "open" || value === "closed")) state = value;
+    else if (key === "is" && horizonOf(value)) horizon = horizonOf(value);
+    else if (key === "horizon") horizon = horizonOf(value);
     else if (key === "assignee") assignee = value;
     else if (key === "repo") repo = value;
     else if (key === "role") role = roleOf(value);
   }
   return {
-    state,
+    state: horizon ? "open" : state,
+    horizon,
     label: label ? tidyLabelName(label) : "",
     milestone,
     assignee: assignee.replace(/^@(?!me$)/, "").trim(),
@@ -138,31 +152,39 @@ function roleOf(value: string | null | undefined): LinkRole | null {
   return LINK_ROLES.find((role) => role === value) ?? null;
 }
 
+/** A horizon as the address writes it: `now`, `set_aside` (or `set-aside`), any case. */
+function horizonOf(value: string | null | undefined): Horizon | null {
+  const wanted = value?.trim().toLowerCase().replace(/-/g, "_");
+  return LIST_HORIZONS.find((horizon) => horizon === wanted) ?? null;
+}
+
 /**
  * What an empty Work list says: the repository it is filtered to, when
  * that is its only filter; that nothing matches, for any other; else that
  * there are none in this state.
  */
 export function emptyListTitle(filters: WorkFilters, repoName: string | null): string {
-  if (repoName && !filters.label && !filters.milestone && !filters.assignee) return `No ${filters.state} work items linked to ${repoName}`;
+  if (filters.horizon && !filters.repo && !filters.label && !filters.milestone && !filters.assignee) return `Nothing in ${HORIZON_LABELS[filters.horizon]}`;
+  if (repoName && !filters.horizon && !filters.label && !filters.milestone && !filters.assignee) return `No ${filters.state} work items linked to ${repoName}`;
   if (filtered(filters)) return `No ${filters.state} work items match these filters`;
   return filters.state === "open" ? "No open work items" : "No closed work items";
 }
 
 /** Whether any filter but the state is set. */
 export function filtered(filters: WorkFilters): boolean {
-  return Boolean(filters.label || filters.milestone || filters.assignee || filters.repo);
+  return Boolean(filters.horizon || filters.label || filters.milestone || filters.assignee || filters.repo);
 }
 
 /** How many filters but the state are set: the phone's Filters button shows it. */
 export function filterCount(filters: WorkFilters): number {
-  return [filters.label, filters.milestone, filters.assignee, filters.repo].filter(Boolean).length;
+  return [filters.horizon, filters.label, filters.milestone, filters.assignee, filters.repo].filter(Boolean).length;
 }
 
 /** The filters as an address's query, in a steady order, leaving out what is unset. */
 export function workQuery(filters: Partial<WorkFilters>): string {
   const params = new URLSearchParams();
-  if (filters.state === "closed") params.set("state", "closed");
+  if (filters.horizon) params.set("horizon", filters.horizon);
+  else if (filters.state === "closed") params.set("state", "closed");
   if (filters.repo) params.set("repo", filters.repo);
   if (filters.repo && filters.role) params.set("role", filters.role);
   if (filters.label) params.set("label", filters.label);
@@ -171,10 +193,52 @@ export function workQuery(filters: Partial<WorkFilters>): string {
   return params.toString();
 }
 
-/** The Work list with `change` made to `filters`. */
+/** All work items (Work's list, beside the plan at `-/work`) with `change` made to `filters`. */
 export function workListPath(workspace: string, filters: Partial<WorkFilters>, change: Partial<WorkFilters> = {}): string {
   const query = workQuery({ ...filters, ...change });
-  return `${workPath(workspace)}${query ? `?${query}` : ""}`;
+  return `${workPath(workspace, "all")}${query ? `?${query}` : ""}`;
+}
+
+/**
+ * Where the list is in its pages, from its address: `before`, the lowest
+ * number the page above showed (none on the first page), and `newer`, the
+ * `before` of each page above it, so Newer can step back one page at a
+ * time (the work service pages only downward).
+ */
+export type ListPage = { before: number | null; newer: number[] };
+
+const cursor = (value: string) => (/^\d+$/.test(value) && Number(value) > 0 ? Number(value) : null);
+
+export function listPage(query: URLSearchParams): ListPage {
+  const before = cursor(query.get("before") ?? "");
+  if (before == null) return { before: null, newer: [] };
+  const newer = (query.get("newer") ?? "")
+    .split(/[.,]/)
+    .map(cursor)
+    .filter((value): value is number => value != null && value > before);
+  return { before, newer };
+}
+
+/**
+ * The address of the page below (`older`, from the lowest number shown)
+ * or above (`newer`), as a query that keeps `filters`: relative, so it
+ * works wherever the list is served.
+ */
+export function pageQuery(filters: Partial<WorkFilters>, at: ListPage, to: { older: number } | "newer"): string {
+  const params = new URLSearchParams(workQuery(filters));
+  if (to === "newer") {
+    const before = at.newer.at(-1);
+    if (before != null) {
+      params.set("before", String(before));
+      if (at.newer.length > 1) params.set("newer", at.newer.slice(0, -1).join("."));
+    }
+  } else {
+    params.set("before", String(to.older));
+    const newer = at.before == null ? [] : [...at.newer, at.before];
+    if (newer.length > 0) params.set("newer", newer.join("."));
+  }
+  const text = params.toString();
+  return `?${text}`;
 }
 
 /** A repository filter as the work service takes it: `web` is the workspace's `web`. */

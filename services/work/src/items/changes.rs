@@ -385,7 +385,7 @@ impl Work {
                 self.db
                     .prepare(
                         "UPDATE work_items
-                         SET state = 'open', reason = NULL, resolutions = '[]', closed_at = NULL, updated_at = ?
+                         SET state = 'open', reason = NULL, resolutions = '[]', closed_at = NULL, urgent = 0, updated_at = ?
                          WHERE id = ?",
                     )
                     .bind(&[now.as_str().into(), held.item.id.as_str().into()])?,

@@ -1,25 +1,29 @@
 ---
 title: The Board
-description: The workspace's backlog as it moves, in five stages from Backlog to Done. Each work item's stage follows from what is true of it, its claims, sessions, pull requests and landings, so there is nothing to drag.
+description: The work that is moving, in five stages from Up next to Done. Each work item's stage follows from what is true of it, its claims, sessions, pull requests and landings, so there is nothing to drag. Everything else waits in the plan.
 ---
 
-**Board**, in Work's sidebar, at `g1t.sh/<workspace>/-/work/board`, is
-the backlog as it moves. Its columns are stages, and a work item's stage
+**Board**, a tab of Work at `g1t.sh/<workspace>/-/work/board`, is the
+work that is moving. Its columns are stages, and a work item's stage
 comes from what is true of it: who is on it, its pull requests, where it
 has landed. There is nothing to drag. Do the work, and the card moves.
+
+The Board holds only what is moving and what comes next, so it stays
+short however much work the workspace has. Work nobody is on yet waits in
+[the plan](/work/plan/), in the order it will be taken.
 
 ## The stages
 
 | Stage           | Holds the work items                                                                                                                                |
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Backlog**     | Open, and nobody is on it.                                                                                                                          |
+| **Up next**     | The top of the plan's Next (at most 10), in the plan's order, with nobody on it yet.                                                                |
 | **In progress** | Claimed or assigned, with a live session on it, with a draft pull request, or with a pull request merged that did not close it.                     |
 | **In review**   | With a pull request open for review.                                                                                                                |
 | **Landing**     | Landed in some of its target repositories and still missing in others, or with a pull request that closes it merged while a target still misses it. |
 | **Done**        | Closed as completed in the last 14 days.                                                                                                            |
 
 A work item is in the first stage that holds for it, in the order
-**Done**, **Landing**, **In review**, **In progress**, **Backlog**. So a
+**Done**, **Landing**, **In review**, **In progress**, **Up next**. So a
 work item with one pull request in review and another still a draft is
 **In review**, and one that has landed in one of its two targets is
 **Landing** whatever else is going on. A work item closed more than 14
@@ -48,8 +52,9 @@ repository an open work item is linked to.
 
 A typical work item goes left to right as the work happens:
 
-1. **Backlog.** Someone files it. Nobody has claimed it, it has no
-   assignee, no session is on it and it has no pull request.
+1. **Up next.** Someone files it, and it waits in [Triage](/work/plan/#horizons)
+   until it is placed in the plan. Once it is among the top of Next, with
+   nobody on it, the Board shows it here.
 2. **In progress.** Someone [claims it](/work/claims-and-dependencies/#claims)
    (`g1t work claim 12`), it is assigned, a [session](/work/sessions/)
    starts on it, or a draft pull request is opened for it
@@ -65,14 +70,15 @@ A typical work item goes left to right as the work happens:
    closed it. See [closing work items](/work/closing/).
 
 It moves back as well: a claim released or expired with nobody else on it
-and no pull request sends it back to **Backlog**, and reopening a work item
+and no pull request sends it back to the plan (and to **Up next** if it is near the top of Next), and reopening a work item
 clears where it landed, so it goes back to whatever stage its pull
 requests and claims put it in.
 
 ## Reading the Board
 
-Each column lists its work items most recently changed first, and **Done**
-most recently closed first. Each card shows the work item's title, number
+**Up next** is in the plan's order. The other columns list their work items
+most recently changed first, and **Done** most recently closed first. A
+card for a work item in Now says so, and an urgent one says that too. Each card shows the work item's title, number
 and repositories, how many of its pull requests merged lately, and who is
 on it: up to three people (its assignees, whoever claimed it, whoever runs
 a session on it) and up to two of its live sessions, each followed by a
@@ -85,10 +91,16 @@ through on its cards, and the Board reads nothing from it. If a
 repository's pull requests could not be read at all, the Board says so
 above the columns: its work items may stand a column early until it can.
 
-The Board reads up to 1,000 open work items, the newest first, up to 300
-open and 300 recently merged pull requests in each repository, and up to
-100 work items for **Done**. When there are more, it says so above the
-columns, such as "Showing the newest 1,000 open work items."
+The Board reads the plan's Now and the top of Next, the newest 200 open
+work items, and up to 20 older ones that someone has claimed or a live
+session is on; up to 300 open and 300 recently merged pull requests in
+each repository; and up to 100 work items for **Done**. Past the newest
+200 open work items it shows only those in Now or Next, claimed or with a
+live session, and says so above the columns.
+
+Under the columns, a line says how much of the plan is not on the Board,
+such as "Everything not on the board is in the plan: 12 in Next, 32 in
+Later and 8 in Triage", and links to it.
 
 The Board follows the work as it happens, without reloading, and checks
 again every 30 seconds while a session is live, since a session going idle

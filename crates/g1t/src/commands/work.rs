@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use crate::cli::{
     CloseReason, ItemState, ReopenArgs, WorkArgs, WorkBlockArgs, WorkClaimArgs, WorkCloseArgs, WorkCommand,
     WorkCommentArgs, WorkDispatchArgs, WorkEditArgs, WorkEventsArgs, WorkHandoffArgs, WorkLinkArgs, WorkListArgs,
-    WorkNewArgs, WorkNumber, WorkReleaseArgs, WorkViewArgs,
+    WorkNewArgs, WorkNextArgs, WorkNumber, WorkPlanArgs, WorkReleaseArgs, WorkViewArgs,
 };
 use crate::client::{Call, Client};
 use crate::context::Ctx;
@@ -48,7 +48,9 @@ pub fn run(ctx: &Ctx, args: WorkArgs) -> Result<()> {
         WorkCommand::Block(args) => block(ctx, workspace, args, true),
         WorkCommand::Unblock(args) => block(ctx, workspace, args, false),
         WorkCommand::Events(args) => events(ctx, args),
-        WorkCommand::Dispatch(args) => dispatch(ctx, args),
+        WorkCommand::Plan(args) => plan(ctx, workspace, args),
+        WorkCommand::Next(args) => next(ctx, workspace, args),
+        WorkCommand::Dispatch(args) => dispatch(ctx, workspace, args),
     }
 }
 
@@ -162,6 +164,8 @@ fn list(ctx: &Ctx, workspace: Option<&str>, args: WorkListArgs) -> Result<()> {
         .query_opt("assignee", assignee)
         .query_opt("repo", filter.map(Repo::to_string))
         .query_opt("role", args.role.map(|role| role.name()))
+        .query_opt("horizon", args.horizon.map(|horizon| horizon.name()))
+        .query_opt("limit", args.horizon.map(|_| args.limit.clamp(1, 100)))
         .send()?;
     let mut items = super::items(found, "items");
     if let Some(a) = &args.author {
@@ -748,7 +752,17 @@ fn claimed_number(given: Option<u64>, found: &Value) -> u64 {
 /// several calls to the provider.
 const DISPATCH_TIMEOUT: Duration = Duration::from_secs(60);
 
-fn dispatch(ctx: &Ctx, args: WorkDispatchArgs) -> Result<()> {
+fn dispatch(ctx: &Ctx, workspace: Option<&str>, mut args: WorkDispatchArgs) -> Result<()> {
+    // Neither a number nor a title: what the plan says to take next.
+    if args.number.is_none() && args.title.is_none() {
+        let place = coordination_place(ctx, workspace, super::QUICK)?;
+        let found = place.op("next_work_item").query_opt("repo", place.repo.as_ref().filter(|_| repo_named(ctx)).map(Repo::to_string)).send()?;
+        let Some(number) = next_item(&found)["number"].as_u64() else {
+            return Err(Error::usage(format!("Nothing in {}'s plan is ready to take: give a work item's number, or --title for a new one.", place.workspace)));
+        };
+        eprintln!("Taking #{number}, next in the plan.");
+        args.number = Some(number);
+    }
     let (repo, client) = super::coordination_client(ctx, DISPATCH_TIMEOUT)?;
     let handoff = if args.handoff {
         Some(true)
@@ -785,6 +799,195 @@ fn dispatch(ctx: &Ctx, args: WorkDispatchArgs) -> Result<()> {
     if let Some(url) = found["provider_session_url"].as_str() {
         eprintln!("{} {url}", out.dim("On Anthropic:"));
     }
+    Ok(())
+}
+
+// --- the plan ---------------------------------------------------------------
+
+/// What a plan's horizon is called, as people say it.
+fn horizon_label(name: &str) -> &str {
+    match name {
+        "now" => "Now",
+        "next" => "Next",
+        "later" => "Later",
+        "set_aside" => "Set aside",
+        _ => "Triage",
+    }
+}
+
+/// An appetite as given: `S`, `small` and so on, or `none` to clear it.
+pub fn appetite_field(text: &str) -> Result<Value> {
+    match text.trim().to_ascii_lowercase().as_str() {
+        "s" | "small" => Ok(json!("small")),
+        "m" | "medium" => Ok(json!("medium")),
+        "l" | "large" => Ok(json!("large")),
+        "none" | "" => Ok(Value::Null),
+        _ => Err(Error::usage("--appetite is S (one session), M (about a week), L (a phase), or none.")),
+    }
+}
+
+/// A budget as given: dollars (`25`, `$25.50`), or `none` to clear it.
+pub fn budget_field(text: &str) -> Result<Value> {
+    let text = text.trim().trim_start_matches('$');
+    if text.eq_ignore_ascii_case("none") {
+        return Ok(Value::Null);
+    }
+    match text.parse::<f64>() {
+        Ok(dollars) if dollars.is_finite() && dollars > 0.0 => Ok(json!(dollars)),
+        _ => Err(Error::usage("--budget is a number of dollars above 0, or none.")),
+    }
+}
+
+/// The work item `next_work_item` answered, if any (the API may wrap it).
+fn next_item(found: &Value) -> &Value {
+    match found.get("item") {
+        Some(item) => item,
+        None => found,
+    }
+}
+
+/// A work item as a row of the plan: number, title, appetite, urgent.
+fn plan_row(out: &Output, rank: usize, item: &Value) -> Vec<Cell> {
+    let number = format!("#{}", item["number"]);
+    let appetite = match s(item, "appetite") {
+        "small" => "S",
+        "medium" => "M",
+        "large" => "L",
+        _ => "",
+    };
+    let flags = if item["urgent"].as_bool() == Some(true) { "urgent" } else { "" };
+    let waits: Vec<String> = item["blocked_by"].as_array().into_iter().flatten().filter_map(Value::as_u64).map(|n| format!("#{n}")).collect();
+    let waits = if waits.is_empty() { String::new() } else { format!("waits on {}", waits.join(", ")) };
+    vec![
+        Cell::styled(rank.to_string(), out.dim(&rank.to_string())),
+        Cell::styled(number.clone(), out.green(&number)),
+        Cell::new(s(item, "title")),
+        Cell::styled(appetite.to_owned(), out.dim(appetite)),
+        Cell::styled(flags.to_owned(), out.red(flags)),
+        Cell::styled(waits.clone(), out.dim(&waits)),
+    ]
+}
+
+fn plan(ctx: &Ctx, workspace: Option<&str>, args: WorkPlanArgs) -> Result<()> {
+    let place = coordination_place(ctx, workspace, super::QUICK)?;
+    let Some(number) = args.number else {
+        let found = place
+            .op("get_plan")
+            .query_opt("repo", place.repo.as_ref().filter(|_| repo_named(ctx)).map(Repo::to_string))
+            .query_opt("all", args.all.then_some(true))
+            .send()?;
+        if ctx.out.structured() {
+            return ctx.out.emit(&found);
+        }
+        return print_plan(&ctx.out, &place.workspace, &found);
+    };
+    let horizon = [
+        (args.now, "now"),
+        (args.next, "next"),
+        (args.later, "later"),
+        (args.set_aside, "set_aside"),
+        (args.triage, "triage"),
+    ]
+    .into_iter()
+    .find_map(|(chosen, name)| chosen.then_some(name));
+    let urgent = if args.urgent {
+        Some(true)
+    } else if args.not_urgent {
+        Some(false)
+    } else {
+        None
+    };
+    let mut call = place
+        .op("plan_work_item")
+        .arg("number", number)
+        .field_opt("horizon", horizon)
+        .field_opt("before", args.before)
+        .field_opt("after", args.after)
+        .field_opt("urgent", urgent);
+    if args.top {
+        call = call.field("top", true);
+    }
+    if let Some(appetite) = &args.appetite {
+        call = call.field("appetite", appetite_field(appetite)?);
+    }
+    if let Some(budget) = &args.budget {
+        call = call.field("budget_usd", budget_field(budget)?);
+    }
+    let changes = horizon.is_some() || args.before.is_some() || args.after.is_some() || args.top || urgent.is_some();
+    if !changes && args.appetite.is_none() && args.budget.is_none() {
+        return Err(Error::usage("Say where to move it (--now, --next, --later, --set-aside, --triage, --before, --after, --top), or what to set (--appetite, --budget, --urgent)."));
+    }
+    let updated = super::unwrap_key(call.send()?, "item");
+    if ctx.out.structured() {
+        return ctx.out.emit(&updated);
+    }
+    eprintln!("#{number} is in {}.", horizon_label(s(&updated, "horizon")));
+    Ok(())
+}
+
+fn print_plan(out: &Output, workspace: &str, plan: &Value) -> Result<()> {
+    let count = |key: &str| plan[key].as_u64().unwrap_or_default();
+    let now = list_of(plan, "now");
+    let next = list_of(plan, "next");
+    let cap = count("now_cap");
+    let over = if now.len() as u64 > cap { out.red(" over its cap") } else { String::new() };
+    println!("{}", out.bold(&format!("Now · {} of {cap}{over}", now.len())));
+    if now.is_empty() {
+        println!("{}", out.dim("  Nothing in Now. Move what you're taking on: g1t work plan <number> --now"));
+    } else {
+        let rows: Vec<Vec<Cell>> = now.iter().enumerate().map(|(i, item)| plan_row(out, i + 1, item)).collect();
+        out.table(&["", "number", "title", "appetite", "", "waits"], &rows)?;
+    }
+    println!();
+    println!("{}", out.bold(&format!("Next · {}", count("next_total"))));
+    if next.is_empty() {
+        println!("{}", out.dim("  Nothing in Next."));
+    } else {
+        let rows: Vec<Vec<Cell>> = next.iter().enumerate().map(|(i, item)| plan_row(out, now.len() + i + 1, item)).collect();
+        out.table(&["", "number", "title", "appetite", "", "waits"], &rows)?;
+        let more = count("next_total").saturating_sub(next.len() as u64);
+        if more > 0 {
+            println!("{}", out.dim(&format!("  {more} more: g1t work plan --all")));
+        }
+    }
+    println!();
+    println!(
+        "{}",
+        out.dim(&format!(
+            "{} in Triage · {} in Later · {} set aside, in {workspace}. List one with g1t work list --horizon <name>.",
+            count("triage_total"),
+            count("later_total"),
+            count("set_aside_total")
+        ))
+    );
+    Ok(())
+}
+
+fn next(ctx: &Ctx, workspace: Option<&str>, args: WorkNextArgs) -> Result<()> {
+    let place = coordination_place(ctx, workspace, super::QUICK)?;
+    let found = place.op("next_work_item").query_opt("repo", place.repo.as_ref().filter(|_| repo_named(ctx)).map(Repo::to_string)).send()?;
+    let item = next_item(&found).clone();
+    let Some(number) = item["number"].as_u64() else {
+        if ctx.out.structured() {
+            return ctx.out.emit(&Value::Null);
+        }
+        eprintln!("Nothing in {}'s plan is ready to take: everything in Now and Next is claimed, blocked or someone else's.", place.workspace);
+        return Ok(());
+    };
+    if args.claim {
+        let claimed = place.op("claim_work_item").arg("number", number).send()?;
+        if ctx.out.structured() {
+            return ctx.out.emit(&json!({ "item": item, "claim": claimed }));
+        }
+        println!("#{number} {}", s(&item, "title"));
+        eprintln!("Claimed #{number}. {}", place.url(number));
+        return Ok(());
+    }
+    if ctx.out.structured() {
+        return ctx.out.emit(&item);
+    }
+    println!("#{number} {}", s(&item, "title"));
+    eprintln!("{} in the plan. Claim it with g1t work claim {number}.", horizon_label(s(&item, "horizon")));
     Ok(())
 }
 

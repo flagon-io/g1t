@@ -163,7 +163,7 @@ pub struct GitDeleted {
 /// The work item events the work service publishes. Each one's payload is
 /// a [`WorkItemEvent`]; the event's `repoId` is the work item's origin,
 /// when it has one.
-pub const WORK_ITEM_EVENTS: [&str; 12] = [
+pub const WORK_ITEM_EVENTS: [&str; 13] = [
     "work_item.opened",
     "work_item.updated",
     "work_item.assigned",
@@ -171,6 +171,7 @@ pub const WORK_ITEM_EVENTS: [&str; 12] = [
     "work_item.unlabeled",
     "work_item.milestoned",
     "work_item.demilestoned",
+    "work_item.planned",
     "work_item.closed",
     "work_item.reopened",
     "work_item.linked",
@@ -234,6 +235,19 @@ pub struct WorkItemEvent {
     pub repo: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<crate::work::LinkRole>,
+    /// On `work_item.planned`: where it stands in the plan now.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub horizon: Option<crate::work::Horizon>,
+    /// On `work_item.planned`, when it moved to another horizon: where it
+    /// was.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_horizon: Option<crate::work::Horizon>,
+    /// On `work_item.planned`: how much the work is worth, if said.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub appetite: Option<crate::work::Appetite>,
+    /// On `work_item.planned`: whether it is urgent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub urgent: Option<bool>,
 }
 
 /// `work.migrated`: a page of where repositories' issues went when they

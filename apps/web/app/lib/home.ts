@@ -23,13 +23,14 @@ import type {
   ShipState,
   ShippedRepo,
   Statement,
+  WorkItem,
   WorkflowRun,
 } from "@g1t/contracts";
 
 import { HARNESS_NAMES } from "./coordination.ts";
 import { type PushRecord, pushedByPerson, pushedCommits } from "./mission-control.ts";
 import { settledLine } from "./inbox.ts";
-import { sessionPath } from "./work-items.ts";
+import { itemPath, sessionPath } from "./work-items.ts";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -459,7 +460,7 @@ export function digestColumn(input: DigestInput): DigestColumn {
       // Work items are the workspace's: its Work list, filtered to the one project they were in, if one.
       const ids = new Set([...itemsOpened.repoIds, ...itemsClosed.repoIds, ...comments.repoIds]);
       const only = ids.size === 1 ? repos[[...ids][0]!] : null;
-      lines.push({ key: "items", text, count: items, to: only ? `/${slug}/-/work?repo=${encodeURIComponent(only.name)}` : `/${slug}/-/work` });
+      lines.push({ key: "items", text, count: items, to: only ? `/${slug}/-/work/all?repo=${encodeURIComponent(only.name)}` : `/${slug}/-/work/all` });
     }
 
     const succeeded = sum("shipped", (repo) => repo.deployments.succeeded);
@@ -1068,9 +1069,13 @@ export function running(parts: RunningRow[][]): RunningRow[] {
  *    request that is ready to merge);
  * 3. a job waiting for a runner that is not there;
  * 4. an unread notification that is a warning or a failure;
- * 5. a mention or a direct message.
+ * 5. a mention or a direct message;
+ * 6. a work item in the plan's Now that is yours: assigned to you, or claimed by you.
+ *
+ * `next`, the work item to take next, is never a row: Start here falls back
+ * to it when nothing else ranks ([`attention`]).
  */
-export type AttentionKind = "deploy" | "pull_blocked" | "review" | "invitation" | "ready" | "runner" | "notification" | "chat";
+export type AttentionKind = "deploy" | "pull_blocked" | "review" | "invitation" | "ready" | "runner" | "notification" | "chat" | "now" | "next";
 
 export const TIER: Record<AttentionKind, number> = {
   deploy: 0,
@@ -1081,6 +1086,8 @@ export const TIER: Record<AttentionKind, number> = {
   runner: 3,
   notification: 4,
   chat: 5,
+  now: 6,
+  next: 7,
 };
 
 export type Stake = { text: string; tone: "danger" | "warn" | "accent" | null };
@@ -1101,22 +1108,25 @@ export type AttentionRow = {
   /** Epoch ms: when it started waiting. */
   at: number;
   /** Where it came from, for a member without Code access never `code`. */
-  from: "code" | "notifications" | "chat";
+  from: "code" | "notifications" | "chat" | "plan";
+  /** Its place in the plan, for a work item: within its tier, it orders before how long it has waited. */
+  rank?: number;
 };
 
 /**
- * Most pressing first: by tier, then what has waited longest, then by key
- * so the order never depends on the order rows were read. One of each key,
- * and one of each place: a notification about a pull request already on
- * the list is left out.
+ * Most pressing first: by tier, then by place in the plan, then what has
+ * waited longest, then by key so the order never depends on the order
+ * rows were read. One of each key, and one of each place: a notification
+ * about a pull request already on the list is left out, as is your work
+ * item in Now that a notification already names.
  */
 export function rankAttention(rows: AttentionRow[]): AttentionRow[] {
-  const sorted = [...rows].sort((a, b) => TIER[a.kind] - TIER[b.kind] || a.at - b.at || a.key.localeCompare(b.key));
+  const sorted = [...rows].sort((a, b) => TIER[a.kind] - TIER[b.kind] || (a.rank ?? 0) - (b.rank ?? 0) || a.at - b.at || a.key.localeCompare(b.key));
   const keys = new Set<string>();
   const places = new Set<string>();
   return sorted.filter((row) => {
     const place = row.action.to.split(/[?#]/)[0];
-    if (keys.has(row.key) || (row.kind === "notification" && places.has(place))) return false;
+    if (keys.has(row.key) || ((row.kind === "notification" || row.kind === "now") && places.has(place))) return false;
     keys.add(row.key);
     places.add(place);
     return true;
@@ -1128,7 +1138,7 @@ export function startHere(ranked: AttentionRow[]): { row: AttentionRow; why: str
   const row = ranked[0];
   if (!row) return null;
   const sameTier = ranked.filter((other) => TIER[other.kind] === TIER[row.kind]).length;
-  const tail = sameTier > 1 ? ` Of the ${sameTier} like it, it has waited longest.` : "";
+  const tail = sameTier <= 1 ? "" : row.kind === "now" ? ` It is first of your ${sameTier} there.` : ` Of the ${sameTier} like it, it has waited longest.`;
   return { row, why: `${WHY[row.kind]}${tail}` };
 }
 
@@ -1141,7 +1151,86 @@ const WHY: Record<AttentionKind, string> = {
   runner: "A job is waiting for a runner that is not there.",
   notification: "It is the most pressing unread notification.",
   chat: "Nothing else is waiting, and this is the oldest message for you.",
+  now: "Nothing else is waiting on you, and this is yours in Now.",
+  next: "Nothing is waiting on you, so this is the work to take next.",
 };
+
+/** A horizon's name, for a work item row (`horizonLabel` in contracts). */
+const HORIZON_WORD: Record<WorkItem["horizon"], string> = { triage: "Triage", now: "Now", next: "Next", later: "Later", set_aside: "Set aside" };
+
+/** `#12 · acme/web`: a work item's number and the repository it was filed in. */
+function itemDetail(item: WorkItem, also?: string): string {
+  const origin = item.repos.find((repo) => repo.role === "origin")?.path;
+  return [`#${item.number}`, origin, also].filter(Boolean).join(" · ");
+}
+
+/**
+ * The work items in the plan's Now that are the viewer's (assigned to
+ * them, or with a live claim of theirs), as rows of Your move in Now's
+ * order: urgent first, then by rank. `now` comes as `getPlan` or the
+ * list with `horizon: "now"` reads it; `claims` are the workspace's
+ * active ones.
+ */
+export function nowRows(
+  now: readonly WorkItem[],
+  claims: readonly { item: number; state: string; actor: { username: string } }[],
+  viewer: string,
+): AttentionRow[] {
+  const me = viewer.toLowerCase();
+  const claimed = new Set(claims.filter((claim) => claim.state === "active" && claim.actor.username.toLowerCase() === me).map((claim) => claim.item));
+  const rows: AttentionRow[] = [];
+  now.forEach((item, index) => {
+    if (item.state !== "open" || item.horizon !== "now") return;
+    const assigned = item.assignees.some((name) => name.toLowerCase() === me);
+    if (!assigned && !claimed.has(item.number)) return;
+    rows.push({
+      key: `item:${item.workspace}#${item.number}`,
+      kind: "now",
+      title: item.title,
+      detail: itemDetail(item, claimed.has(item.number) ? "claimed by you" : "assigned to you"),
+      stake: item.urgent ? { text: "Urgent", tone: "danger" } : { text: "In Now", tone: "accent" },
+      action: { label: "Open", to: itemPath(item.workspace, item.number) },
+      owner: null,
+      at: 0,
+      from: "plan",
+      rank: index,
+    });
+  });
+  return rows;
+}
+
+/**
+ * Why the work item to take next (`nextWorkItem`) is the one: first in
+ * Now with nobody on it (or urgent there), else the top of Next; nothing
+ * open blocks it, nobody has claimed it, and it is assigned to nobody or
+ * to the viewer, which it says.
+ */
+export function nextWhy(item: WorkItem, viewer: string): string {
+  const mine = item.assignees.some((name) => name.toLowerCase() === viewer.toLowerCase());
+  const why =
+    item.horizon === "now"
+      ? item.urgent
+        ? "Marked urgent in Now, and nobody is on it yet."
+        : "First in Now that nobody is on, and nothing blocks it."
+      : "Top of the plan's Next, ready and unclaimed.";
+  return mine ? `${why} It is assigned to you.` : why;
+}
+
+/** The work item to take next, as Start here shows it when nothing else waits on the viewer. */
+export function nextRow(item: WorkItem): AttentionRow {
+  const size = item.appetite ? ` · ${item.appetite === "small" ? "S" : item.appetite === "medium" ? "M" : "L"}` : "";
+  return {
+    key: `item:${item.workspace}#${item.number}`,
+    kind: "next",
+    title: item.title,
+    detail: itemDetail(item),
+    stake: { text: `${item.urgent ? "Urgent" : HORIZON_WORD[item.horizon]}${size}`, tone: item.urgent ? "danger" : "accent" },
+    action: { label: "Open work item", to: itemPath(item.workspace, item.number) },
+    owner: null,
+    at: 0,
+    from: "plan",
+  };
+}
 
 // --- Rows from each source ----------------------------------------------------
 
@@ -1286,12 +1375,21 @@ export type Attention = {
   missing: string[];
 };
 
+/**
+ * Your move and Start here from each source: Code's needs, notifications,
+ * chat, and the viewer's own work in the plan's Now (`now`, null when the
+ * plan did not answer). When nothing ranks, Start here is `next`, the work
+ * item to take next, if there is one; it is no row of Your move, since it
+ * waits on nobody.
+ */
 export function attention(input: {
   slug: string;
   code: boolean;
   codeNeeds: CodeNeed[] | null;
   notifications: InboxItem[] | null;
   chat: ChatEntryLike[] | null;
+  now?: AttentionRow[] | null;
+  next?: { item: WorkItem; viewer: string } | null;
 }): Attention {
   const rows: AttentionRow[] = [];
   const missing: string[] = [];
@@ -1311,8 +1409,11 @@ export function attention(input: {
       if (row) rows.push(row);
     }
   } else missing.push("Chat");
+  if (input.now) rows.push(...input.now);
+  else if (input.now === null) missing.push("Work");
   const ranked = rankAttention(rows);
-  return { rows: ranked, start: startHere(ranked), missing };
+  const next = input.next ? { row: nextRow(input.next.item), why: nextWhy(input.next.item, input.next.viewer) } : null;
+  return { rows: ranked, start: startHere(ranked) ?? next, missing };
 }
 
 // --- Spend in the span ----------------------------------------------------------

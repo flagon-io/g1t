@@ -18,6 +18,8 @@ use crate::{LIST_PAGE, Work, optional, optional_number, state_name};
 /// public repository or one in `?9`, the repositories they were given a
 /// role on), at most `?10`. With `?11`, only those closed since then, the
 /// most recently closed first; with `?12`, only those numbered below it.
+/// With `?13`, only open ones on that horizon of the plan, in the plan's
+/// order (plan.rs).
 const LIST_SQL: &str = "SELECT {ITEM_COLUMNS} FROM work_items
      WHERE workspace = ?1 AND (?2 IS NULL OR state = ?2)
        AND (?3 IS NULL OR EXISTS (SELECT 1 FROM json_each(work_items.labels) WHERE json_each.value = ?3))
@@ -30,7 +32,12 @@ const LIST_SQL: &str = "SELECT {ITEM_COLUMNS} FROM work_items
                AND (rw.private = 0 OR o.repo_id IN (SELECT value FROM json_each(?9)))))
        AND (?11 IS NULL OR closed_at >= ?11)
        AND (?12 IS NULL OR number < ?12)
-     ORDER BY CASE WHEN ?11 IS NULL THEN NULL ELSE closed_at END DESC, number DESC LIMIT ?10";
+       AND (?13 IS NULL OR (state = 'open' AND COALESCE(horizon, 'triage') = ?13))
+     ORDER BY CASE WHEN ?11 IS NULL THEN NULL ELSE closed_at END DESC,
+       CASE WHEN ?13 IS NULL THEN NULL ELSE urgent END DESC,
+       CASE WHEN ?13 IS NULL THEN NULL ELSE rank IS NULL END,
+       CASE WHEN ?13 IS NULL THEN NULL ELSE rank END,
+       number DESC LIMIT ?10";
 
 /// The work items matching `condition` (on `work_items`), with everything
 /// they are read with.
@@ -218,9 +225,10 @@ impl Work {
                 a.role.map_or(JsValue::NULL, |role| role.as_str().into()),
                 u32::from(member).into(),
                 serde_json::to_string(&granted)?.into(),
-                LIST_PAGE.into(),
+                a.limit.unwrap_or(LIST_PAGE).clamp(1, LIST_PAGE).into(),
                 optional(&a.closed_since.map(|at| at.trim().to_owned()).filter(|at| !at.is_empty())),
-                optional_number(a.before),
+                optional_number(if a.horizon.is_some() { None } else { a.before }),
+                a.horizon.map_or(JsValue::NULL, |horizon| horizon.as_str().into()),
             ])?;
         let rows = self.timing.db(1, query.all()).await?.results::<ItemRow>()?;
         Ok(Outcome::Ok(
@@ -345,7 +353,7 @@ mod tests {
     /// The numbers `list_work_items` reads for acme as a member, in its order.
     fn listed(db: &Connection, state: Option<&str>, limit: u32, closed_since: Option<&str>, before: Option<u32>) -> Vec<u32> {
         let sql = LIST_SQL.replace("{ITEM_COLUMNS}", ITEM_COLUMNS);
-        let values: [&dyn ToSql; 12] = [&"acme", &state, &None::<String>, &None::<u32>, &None::<String>, &None::<String>, &None::<String>, &1, &"[]", &limit, &closed_since, &before];
+        let values: [&dyn ToSql; 13] = [&"acme", &state, &None::<String>, &None::<u32>, &None::<String>, &None::<String>, &None::<String>, &1, &"[]", &limit, &closed_since, &before, &None::<String>];
         let mut statement = db.prepare(&sql).unwrap();
         let numbers = statement.query_map(&values[..], |row| row.get::<_, u32>("number")).unwrap();
         numbers.map(Result::unwrap).collect()

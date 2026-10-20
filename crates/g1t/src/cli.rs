@@ -1299,11 +1299,30 @@ Examples:
   g1t work events --follow --type integration.failed --type overlap.detected --json
 With --json, each event is one JSON object on a line of its own.")]
     Events(WorkEventsArgs),
+    /// Show the workspace's plan (Now and Next), or move a work item in it.
+    #[command(after_help = "\nEvery open work item stands on one horizon: triage, now, next, later or set-aside. Within a
+horizon its place is its priority. With no number, this prints Now and Next and how many wait in
+Triage, Later and Set aside. With a number, it moves that work item: to a horizon (last there,
+unless --before, --after or --top says where), and sets its appetite, budget or urgent.
+Examples:
+  g1t work plan
+  g1t work plan 191 --next --before 197
+  g1t work plan 203 --now --top --appetite L
+  g1t work plan 195 --urgent")]
+    Plan(WorkPlanArgs),
+    /// The work item to take next: the first in Now nobody is on, else the top of Next.
+    #[command(after_help = "\nWork items blocked by open work, claimed by someone, or assigned to someone else are skipped.
+Examples:
+  g1t work next
+  g1t work next --claim")]
+    Next(WorkNextArgs),
     /// Start work on a work item in a session on your own Claude, or print the Claude Code command for it.
     #[command(after_help = "\nWith the workspace's Anthropic AI provider, a Claude Managed Agents session starts on that
 account and is recorded on g1t; otherwise (or with --handoff) this prints a `claude` command
-to run with g1t's plugin, whose session attaches to the work item as it starts.
+to run with g1t's plugin, whose session attaches to the work item as it starts. With neither a
+number nor --title, it takes the work item `g1t work next` gives.
 Examples:
+  g1t work dispatch
   g1t work dispatch 12
   g1t work dispatch 12 --mode plan --instruction \"Keep the old flag\"
   g1t work dispatch --title \"Add a healthcheck\" --handoff")]
@@ -1370,8 +1389,85 @@ pub struct WorkListArgs {
     /// With --repo: only those linked to it this way.
     #[arg(long, value_enum)]
     pub role: Option<LinkRole>,
+    /// Only open work items on this horizon of the plan, in the plan's order.
+    #[arg(short = 'H', long, value_enum)]
+    pub horizon: Option<Horizon>,
     #[arg(short = 'L', long, default_value_t = 20)]
     pub limit: usize,
+}
+
+/// A horizon of the workspace's plan.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum Horizon {
+    Triage,
+    Now,
+    Next,
+    Later,
+    SetAside,
+}
+
+impl Horizon {
+    pub fn name(self) -> &'static str {
+        match self {
+            Horizon::Triage => "triage",
+            Horizon::Now => "now",
+            Horizon::Next => "next",
+            Horizon::Later => "later",
+            Horizon::SetAside => "set_aside",
+        }
+    }
+}
+
+#[derive(Debug, Args)]
+pub struct WorkPlanArgs {
+    /// The work item to move; leave it out to show the plan.
+    pub number: Option<u64>,
+    /// Move it to Now: what the workspace is on.
+    #[arg(long, group = "to", requires = "number")]
+    pub now: bool,
+    /// Move it to Next: ranked, the top taken first.
+    #[arg(long, group = "to", requires = "number")]
+    pub next: bool,
+    /// Move it to Later: wanted, not ranked against Next yet.
+    #[arg(long, group = "to", requires = "number")]
+    pub later: bool,
+    /// Set it aside: out of every view but search.
+    #[arg(long = "set-aside", group = "to", requires = "number")]
+    pub set_aside: bool,
+    /// Move it back to Triage.
+    #[arg(long, group = "to", requires = "number")]
+    pub triage: bool,
+    /// Put it just before this work item, on that one's horizon.
+    #[arg(long, value_name = "NUMBER", group = "at", requires = "number")]
+    pub before: Option<u64>,
+    /// Put it just after this work item, on that one's horizon.
+    #[arg(long, value_name = "NUMBER", group = "at", requires = "number")]
+    pub after: Option<u64>,
+    /// Put it first on its horizon.
+    #[arg(long, group = "at", requires = "number")]
+    pub top: bool,
+    /// How much the work is worth: S (one session), M (about a week), L (a phase), or none.
+    #[arg(long, value_name = "S|M|L|none", requires = "number")]
+    pub appetite: Option<String>,
+    /// What an agent working on it may spend, in dollars, or none.
+    #[arg(long, value_name = "DOLLARS|none", requires = "number")]
+    pub budget: Option<String>,
+    /// Mark it urgent: first in Now until it closes.
+    #[arg(long, conflicts_with = "not_urgent", requires = "number")]
+    pub urgent: bool,
+    /// It is no longer urgent.
+    #[arg(long = "not-urgent", requires = "number")]
+    pub not_urgent: bool,
+    /// With no number: every one of Next, not only its top 10.
+    #[arg(long, conflicts_with = "number")]
+    pub all: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct WorkNextArgs {
+    /// Claim it too.
+    #[arg(long)]
+    pub claim: bool,
 }
 
 #[derive(Debug, Args)]
@@ -1496,7 +1592,6 @@ impl DispatchMode {
 }
 
 #[derive(Debug, Args)]
-#[command(group(clap::ArgGroup::new("which").required(true).args(["number", "title"])))]
 pub struct WorkDispatchArgs {
     /// The work item's number.
     pub number: Option<u64>,

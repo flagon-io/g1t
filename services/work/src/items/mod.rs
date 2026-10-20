@@ -54,6 +54,7 @@ mod links;
 mod migration;
 mod milestones;
 mod numbering;
+mod plan;
 mod reading;
 mod refs;
 mod rows;

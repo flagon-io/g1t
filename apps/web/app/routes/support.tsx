@@ -160,7 +160,7 @@ export default function Support() {
           </Card>
           <p className="mt-4 text-sm text-muted">
             Write from the email address on your g1t account, so we know it's you. Found a bug in g1t itself? You can also open a work item on{" "}
-            <Link to="/flagon-io/-/work?repo=g1t" className="text-accent hover:underline">
+            <Link to="/flagon-io/-/work/all?repo=g1t" className="text-accent hover:underline">
               flagon-io/g1t
             </Link>
             .

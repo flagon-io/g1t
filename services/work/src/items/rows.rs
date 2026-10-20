@@ -71,6 +71,17 @@ pub(crate) struct ItemRow {
     /// JSON array of [`LinkRow`].
     #[serde(default)]
     pub links: Option<String>,
+    /// NULL for Triage (plan.rs).
+    #[serde(default)]
+    pub horizon: Option<Horizon>,
+    #[serde(default)]
+    pub appetite: Option<Appetite>,
+    #[serde(default)]
+    pub budget_usd: Option<f64>,
+    #[serde(default)]
+    pub urgent: u8,
+    #[serde(default)]
+    pub planned_at: Option<String>,
 }
 
 /// A link as [`ITEM_COLUMNS`] reads it.
@@ -272,6 +283,11 @@ impl ItemRow {
                 agent: self.agent,
                 milestone: milestone_ref(self.milestone, self.milestone_title),
                 repos,
+                horizon: self.horizon.unwrap_or_default(),
+                appetite: self.appetite,
+                budget_usd: self.budget_usd,
+                urgent: self.urgent != 0,
+                planned_at: self.planned_at,
             },
             origin,
             known,

@@ -161,6 +161,23 @@ pub struct WorkItem {
     /// then those it touched.
     #[serde(default)]
     pub repos: Vec<ItemRepo>,
+    /// Where it stands in the workspace's plan. A closed one keeps where
+    /// it was, for if it is reopened.
+    #[serde(default)]
+    pub horizon: super::Horizon,
+    /// How much the work is worth, if someone has said.
+    #[serde(default)]
+    pub appetite: Option<super::Appetite>,
+    /// In dollars, what an agent working on it may spend.
+    #[serde(default)]
+    pub budget_usd: Option<f64>,
+    /// First in Now until it closes.
+    #[serde(default)]
+    pub urgent: bool,
+    /// RFC 3339: when it was last moved in the plan; none for one never
+    /// placed.
+    #[serde(default)]
+    pub planned_at: Option<String>,
 }
 
 impl WorkItem {
@@ -280,6 +297,14 @@ pub struct ListWorkItemsArgs {
     /// recently closed first instead of the newest.
     #[serde(default)]
     pub closed_since: Option<String>,
+    /// Only open ones on this horizon of the plan, in the plan's order
+    /// (urgent first, then by rank; Triage newest first) instead of the
+    /// newest first. `before` does not page these; `limit` does.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub horizon: Option<super::Horizon>,
+    /// At most this many (1 to 100, 100 if left out).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
     /// Only those numbered below this: the next page, after one whose
     /// lowest number this is.
     #[serde(default)]

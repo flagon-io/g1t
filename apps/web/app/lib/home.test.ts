@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { ActivityDigest, ActorCount, ChatActivity, Deployment, InboxItem, RepoDigest, WorkflowRun } from "@g1t/contracts";
+import type { ActivityDigest, ActorCount, ChatActivity, Deployment, InboxItem, RepoDigest, WorkItem, WorkflowRun } from "@g1t/contracts";
 
 import {
   type AttentionRow,
@@ -25,7 +25,10 @@ import {
   landedDeploys,
   landedFromActivity,
   landedIn,
+  nextRow,
+  nextWhy,
   notificationRow,
+  nowRows,
   parseWindow,
   pushRows,
   rankAttention,
@@ -144,6 +147,96 @@ test("Start here: the most pressing tier first, then what has waited longest", (
   assert.equal(two?.row.key, "review:old");
   assert.match(two?.why ?? "", /Of the 2 like it, it has waited longest/);
   assert.equal(startHere([]), null);
+});
+
+function workItem(number: number, over: Partial<WorkItem> = {}): WorkItem {
+  return {
+    id: `wki_${number}`,
+    workspace: "acme",
+    number,
+    title: `Item ${number}`,
+    body: "",
+    labels: [],
+    state: "open",
+    reason: null,
+    resolutions: [],
+    author: { id: "usr_1", username: "ana" } as WorkItem["author"],
+    requestedBy: null,
+    createdAt: iso(NOW - DAY),
+    updatedAt: iso(NOW - HOUR),
+    closedAt: null,
+    pullCount: 0,
+    commentCount: 0,
+    assignees: [],
+    blockedBy: [],
+    agent: null,
+    repos: [{ repoId: "rep_web", path: "acme/web", role: "origin", legacyNumber: null, landed: false }],
+    horizon: "next",
+    appetite: null,
+    budgetUsd: null,
+    urgent: false,
+    plannedAt: null,
+    ...over,
+  };
+}
+
+test("with nothing waiting, Start here is the work item to take next, and says why", () => {
+  const next = workItem(31, { title: "Retry lost starts", appetite: "small" });
+  const out = attention({ slug: "acme", code: true, codeNeeds: [], notifications: [], chat: [], now: [], next: { item: next, viewer: "bo" } });
+  // It waits on nobody, so it is no row of Your move.
+  assert.deepEqual(out.rows, []);
+  assert.equal(out.start?.row.kind, "next");
+  assert.equal(out.start?.row.title, "Retry lost starts");
+  assert.equal(out.start?.row.detail, "#31 · acme/web");
+  assert.deepEqual(out.start?.row.action, { label: "Open work item", to: "/acme/-/work/31" });
+  assert.deepEqual(out.start?.row.stake, { text: "Next · S", tone: "accent" });
+  assert.equal(out.start?.why, "Top of the plan's Next, ready and unclaimed.");
+  // Anything that ranks comes first.
+  const busy = attention({ slug: "acme", code: true, codeNeeds: [need({})], notifications: [], chat: [], now: [], next: { item: next, viewer: "bo" } });
+  assert.equal(busy.start?.row.key, "pull:p1");
+  // No work item to take: nothing to start with.
+  assert.equal(attention({ slug: "acme", code: true, codeNeeds: [], notifications: [], chat: [], next: null }).start, null);
+});
+
+test("why the work item to take next is the one", () => {
+  assert.equal(nextWhy(workItem(1, { horizon: "now" }), "bo"), "First in Now that nobody is on, and nothing blocks it.");
+  assert.equal(nextWhy(workItem(1, { horizon: "now", urgent: true }), "bo"), "Marked urgent in Now, and nobody is on it yet.");
+  assert.equal(nextWhy(workItem(1, { assignees: ["Bo"] }), "bo"), "Top of the plan's Next, ready and unclaimed. It is assigned to you.");
+  assert.deepEqual(nextRow(workItem(2, { horizon: "now", urgent: true })).stake, { text: "Urgent", tone: "danger" });
+});
+
+test("your work in Now is in Your move, in Now's order, after everything else that waits on you", () => {
+  const now = [
+    workItem(7, { horizon: "now", urgent: true, assignees: ["bo"] }),
+    workItem(3, { horizon: "now", assignees: ["ana"] }),
+    workItem(5, { horizon: "now" }),
+    workItem(9, { horizon: "now", assignees: ["BO"] }),
+  ];
+  const claims = [
+    { item: 5, state: "active", actor: { username: "bo" } },
+    { item: 3, state: "released", actor: { username: "bo" } },
+  ];
+  const rows = nowRows(now, claims, "bo");
+  const dm = { channel: { id: "c1", kind: "dm" as const, name: null, last_message_at: iso(NOW - DAY) }, title: "ana", muted: false, unread: 1, mentions: 0 };
+  assert.deepEqual(
+    rows.map((r) => [r.key, r.detail, r.stake?.text]),
+    [
+      ["item:acme#7", "#7 · acme/web · assigned to you", "Urgent"],
+      ["item:acme#5", "#5 · acme/web · claimed by you", "In Now"],
+      ["item:acme#9", "#9 · acme/web · assigned to you", "In Now"],
+    ],
+  );
+  const out = attention({ slug: "acme", code: false, codeNeeds: null, notifications: [], chat: [dm], now: rows });
+  assert.deepEqual(
+    out.rows.map((r) => r.key),
+    ["chat:c1", "item:acme#7", "item:acme#5", "item:acme#9"],
+  );
+  // Alone, the first of them is where to start.
+  const alone = attention({ slug: "acme", code: false, codeNeeds: null, notifications: [], chat: [], now: rows.slice(1) });
+  assert.equal(alone.start?.row.key, "item:acme#5");
+  assert.match(alone.start?.why ?? "", /yours in Now\. It is first of your 2 there\./);
+  // The plan not answering is said, like any other source.
+  assert.deepEqual(attention({ slug: "acme", code: false, codeNeeds: null, notifications: [], chat: [], now: null }).missing, ["Work"]);
 });
 
 test("the same order whatever order the rows came in", () => {
@@ -450,7 +543,7 @@ test("the digest: what was done, by kind with counts, and who, agents marked", (
     [
       ["pushes", "47 commits to 4 projects", "/acme/-/repositories"],
       ["pulls", "5 opened, 5 merged, 4 reviewed", "/acme/-/repositories"],
-      ["items", "2 opened, 2 closed, 7 comments", "/acme/-/work?repo=web"],
+      ["items", "2 opened, 2 closed, 7 comments", "/acme/-/work/all?repo=web"],
       ["shipped", "2 deploys, 1 release, 1 package version", "/acme/web/deployments"],
       ["docs", "1 doc created, 7 docs edited", "/acme/-/artifacts"],
       ["chat", "120 messages in 5 conversations", "/acme/-/chat"],

@@ -126,6 +126,7 @@ stake, how long it has waited, and has its action beside it.
 | Code          | A failed production build; your open pull request that can't land until you act (it conflicts, a required check fails, someone asked for changes, approvals are missing); your pull request that meets everything its branch asks for, ready for you to merge; a review asked of you by name; an invitation to a repository; a job waiting for a self-hosted runner |
 | Notifications | An unread notification in this workspace that is a warning (someone or something is waiting) or a failure. One whose cause is over, such as a workflow that has passed since or a pull request that merged, has [settled](/guides/notifications/#threads-that-settle-themselves) and is not here                                                                    |
 | Chat          | A conversation that mentions you, or a direct message you haven't read. Muted conversations are left out                                                                                                                                                                                                                                                            |
+| Work          | A work item in [the plan](/work/plan/)'s Now that is assigned to you or that you claimed, in Now's order                                                                                                                                                                                                                                                            |
 
 A notification about something already on the list, such as a pull
 request whose row is there, is left out.
@@ -149,6 +150,7 @@ waited, longest first:
 4. Something that may be stuck: a job without a runner.
 5. Unread warnings and failures in your notifications.
 6. Mentions and direct messages.
+7. Your work items in Now.
 
 The list shows the first eight rows; **Show more** opens the rest. The
 line under its heading says how many things need you.
@@ -168,6 +170,11 @@ button opens the same place. For a pull request (one ready to
 merge, a review asked of you, or yours that is stuck) it says **Open pull
 request**; you merge or review there. For anything else it names the
 action, such as **See the build** or **Respond**.
+
+When nothing needs you, Start here shows the work item to take next from
+[the plan](/work/plan/#what-to-take-next): the first in Now that nobody
+is on, or the top of Next, with why ("Top of the plan's Next, ready and
+unclaimed") and **Open work item**.
 
 ## Since you were last here
 

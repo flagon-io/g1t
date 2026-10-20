@@ -231,14 +231,20 @@ export default [
       // to your rail.
       route("-/home", "routes/workspace/home.tsx"),
       route("-/home/seen", "routes/workspace/home-seen.ts"),
-      // Work: the workspace's work items, for every member. The list (its
-      // filters in the address), the board of them as they move, a new one,
-      // the labels and milestones they share with pull requests, `#12` read
-      // in the workspace, and each item. Sessions are Work's too: what is
-      // cooking across the workspace, in every repository of it the viewer
-      // may read (live sessions of every kind, the merge queues, what landed
-      // and what happened), and one session's page.
-      route("-/work", "routes/workspace/work/list.tsx"),
+      // Work: the workspace's work items, for every member. It opens on the
+      // plan (Now, Next, Later; `-/work` with the list's filters is an old
+      // link to the list, and goes there), with one Later group's items and
+      // Triage, the new ones nobody has placed. Then the list of all of them
+      // (its filters in the address), the board of them as they move, a new
+      // one, the labels and milestones they share with pull requests, `#12`
+      // read in the workspace, and each item. Sessions are Work's too: what
+      // is cooking across the workspace, in every repository of it the
+      // viewer may read (live sessions of every kind, the merge queues, what
+      // landed and what happened), and one session's page.
+      route("-/work", "routes/workspace/work/plan.tsx"),
+      route("-/work/plan/later", "routes/workspace/work/plan-later.ts"),
+      route("-/work/triage", "routes/workspace/work/triage.tsx"),
+      route("-/work/all", "routes/workspace/work/list.tsx"),
       route("-/work/board", "routes/workspace/work/board.tsx"),
       route("-/work/sessions", "routes/workspace/work/sessions/list.tsx"),
       route("-/work/sessions/:id", "routes/workspace/work/sessions/session.tsx"),

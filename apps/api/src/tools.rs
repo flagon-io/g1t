@@ -141,15 +141,18 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "work_item",
         title: "Work items",
-        description: "Work items: any tracked work of a workspace (a feature, a bug, a chore), numbered in the workspace with its new pull requests, and linked to the repositories it concerns: its origin (where it was filed), its targets (where the work is meant to land) and those it touched. Name one by `workspace` and `number`; `repo` alone names the workspace too (and on `list` filters, on `create` is the origin). Before working on one, `work` gives everything about it (definition of done, each repository with its pull requests and whether the work landed there, what is missing, suggested targets, who is on it, what it waits on); `claim` says you are on it (advisory and expiring, never a lock), `release` or `handoff` when you stop. `link` a repository as a target to say the work must land there too. `update` with blocked_by sets the work items that must land first. `attach` uploads an image (a screenshot) whose markdown goes in a body or a comment.",
+        description: "Work items: any tracked work of a workspace (a feature, a bug, a chore), numbered in the workspace with its new pull requests, and linked to the repositories it concerns: its origin (where it was filed), its targets (where the work is meant to land) and those it touched. Name one by `workspace` and `number`; `repo` alone names the workspace too (and on `list` filters, on `create` is the origin). To pick up work, `next` gives the work item to take next from the workspace's plan (Now, then Next); `get_plan` reads the plan and `plan` moves one in it. Before working on one, `work` gives everything about it (definition of done, each repository with its pull requests and whether the work landed there, what is missing, suggested targets, who is on it, what it waits on); `claim` says you are on it (advisory and expiring, never a lock), `release` or `handoff` when you stop. `link` a repository as a target to say the work must land there too. `update` with blocked_by sets the work items that must land first. `attach` uploads an image (a screenshot) whose markdown goes in a body or a comment.",
         default_action: None,
         actions: &[
-            a("list", Op::ListWorkItems, "A workspace's work items, newest first; by state, label, milestone, assignee, or a repository linked to them"),
+            a("list", Op::ListWorkItems, "A workspace's work items, newest first; by state, label, milestone, assignee, or a repository linked to them; with horizon, one horizon of the plan in its order, at most limit"),
             a("get", Op::GetWorkItem, "One work item with its repositories, comments and pull requests"),
             a("create", Op::OpenWorkItem, "Open a work item, filed from repo or in the workspace, with targets"),
             a("update", Op::UpdateWorkItem, "Change title, body, labels, milestone, assignees or blocked_by"),
             a("close", Op::CloseWorkItem, "Close it without a pull request; commit (with repo) names the default-branch commit that did it"),
             a("reopen", Op::ReopenWorkItem, "Reopen it"),
+            a("next", Op::NextWorkItem, "The work item to take next, for you: the first in Now nobody is on, else the top of Next, never one blocked, claimed or assigned to someone else; repo narrows it to one repository. Picking up work? Call this, then claim what it gives"),
+            a("get_plan", Op::GetPlan, "The workspace's plan: Now in full with its cap, the top 10 of Next (all for every one), and how many are in Triage, Later (by repository) and Set aside; repo narrows it"),
+            a("plan", Op::PlanWorkItem, "Move it in the plan: horizon (triage, now, next, later, set_aside), at most one of before or after (another's number) or top; set appetite (small, medium, large), budget_usd or urgent (first in Now); null clears appetite or budget_usd. Triage role; Now and urgent need the Write role"),
             a("links", Op::ListWorkItemLinks, "The repositories it is linked to, with roles and where it landed"),
             a("link", Op::LinkWorkItem, "Link a repository as a target (or touched)"),
             a("unlink", Op::UnlinkWorkItem, "Unlink a repository it no longer concerns"),
@@ -421,7 +424,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "workspace",
         title: "Workspaces",
-        description: "Workspaces own repositories (g1t.sh/{workspace}/{repo}) and work items (g1t.sh/{workspace}/-/work): read what happened across its repositories (`activity`: what merged, shipped and deployed, by whom, over a span), create, update or delete one, invite members, manage its labels and milestones (which its work items and pull requests carry), connect integrations, set rulesets that hold across its repositories, read and change its projects (what each is, where it runs, its links), and keep your own pinned projects at the top of its sidebar.",
+        description: "Workspaces own repositories (g1t.sh/{workspace}/{repo}) and work items (g1t.sh/{workspace}/-/work): read what happened across its repositories (`activity`: what merged, shipped and deployed, by whom, over a span), create, update or delete one, invite members, manage its labels and milestones (which its work items and pull requests carry) and how many work items its plan's Now holds, connect integrations, set rulesets that hold across its repositories, read and change its projects (what each is, where it runs, its links), and keep your own pinned projects at the top of its sidebar.",
         default_action: None,
         actions: &[
             a("get", Op::GetWorkspace, "A workspace's details and settings"),
@@ -446,6 +449,7 @@ pub const TOOLS: &[Tool] = &[
             a("create_milestone", Op::CreateMilestone, "Create a milestone"),
             a("update_milestone", Op::UpdateMilestone, "Change a milestone's title, description, due date or state"),
             a("delete_milestone", Op::DeleteMilestone, "Delete a milestone"),
+            a("configure_plan", Op::ConfigurePlan, "Set now_cap, how many work items its plan's Now holds before it says it is over (1 to 50)"),
             a("list_integrations", Op::ListIntegrations, "Alert sources and issue trackers"),
             a("connect_integration", Op::ConnectIntegration, "Connect one"),
             a("update_integration", Op::UpdateIntegration, "Change one: rotate its key or its settings"),
@@ -1040,7 +1044,7 @@ mod tests {
         let work_item = tools.iter().find(|tool| tool["name"] == "work_item").unwrap();
         assert_eq!(
             work_item["inputSchema"]["properties"]["action"]["enum"],
-            json!(["list", "get", "links", "labels", "decisions", "resolve", "work", "list_claims"])
+            json!(["list", "get", "next", "get_plan", "links", "labels", "decisions", "resolve", "work", "list_claims"])
         );
     }
 
