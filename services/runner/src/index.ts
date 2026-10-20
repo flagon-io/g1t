@@ -36,7 +36,7 @@ import { BUMP_MINUTES, BUMP_TOKEN_TTL_SECONDS, bumpEnv, bumpProblem, bumpSandbox
 import { BACKUP_MINUTES, backupEnv, backupPace, backupSandboxName } from "./backup";
 import { holdCredentials, revokeCredentials, runCredential } from "./credentials";
 import { cancelTask, enqueueTask, handedOverStep, selfHostedRoute, taskEnv, taskRepo } from "./self-hosted";
-import { answered, capReached, describeError, type Owed, recordOwed, stoppedShort, tellStopped, withinTimeCap } from "./lifecycle";
+import { answered, capReached, describeError, noMachine, type Owed, recordOwed, stoppedShort, tellStopped, withinTimeCap } from "./lifecycle";
 import {
   ABUSE_EXIT_CODE,
   ABUSE_HOST,
@@ -996,6 +996,11 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
         },
       });
     } catch (error) {
+      // No machine free: the actions service puts the job back in the
+      // queue for its next sweep. What was reserved is given back already.
+      if (noMachine(error)) {
+        return { ok: false, error: { code: "unavailable", message: `No ${instance.label} machine was free to start the job.` } };
+      }
       // A sandbox that could not start, or stopped at once: the job fails
       // with why, rather than waiting to be noticed.
       return {

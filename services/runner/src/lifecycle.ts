@@ -84,6 +84,15 @@ export function stoppedShort(exitCode: number, why: string | null): boolean {
   return exitCode !== 0 || why !== null;
 }
 
+/**
+ * Whether a sandbox could not start because Cloudflare had no container to
+ * give it: every instance of its class is taken, or a rollout is replacing
+ * them. It passes; the work waits for a machine rather than failing.
+ */
+export function noMachine(error: unknown): boolean {
+  return /no container instance/i.test(describeError(error));
+}
+
 /** An error as one line, for a log: its message, or what was thrown. */
 export function describeError(error: unknown): string {
   if (error instanceof Error) return error.message || error.name;

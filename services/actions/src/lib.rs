@@ -80,6 +80,20 @@ pub fn has_room(in_workspace: u32, in_pool: u32) -> bool {
     in_workspace < RUNNING_PER_WORKSPACE
         || (in_workspace < BURST_PER_WORKSPACE && in_pool + POOL_HEADROOM < HOSTED_POOL)
 }
+
+/// How long a job waits for a machine when the runner has none for it
+/// (every sandbox of its class taken, or a rollout replacing them) before it
+/// fails saying so. Tried again each minute until then.
+pub const WAIT_FOR_MACHINE_MS: u64 = 30 * 60 * 1000;
+
+/// Whether a job that has waited for a machine since `since` (RFC 3339)
+/// should stop waiting at `now`. One whose start cannot be read waits from
+/// now on.
+pub fn waited_for_a_machine(since: Option<&str>, now: u64) -> bool {
+    since
+        .and_then(g1t_contracts::time::parse_rfc3339)
+        .is_some_and(|since| now.saturating_sub(since) >= WAIT_FOR_MACHINE_MS)
+}
 /// The longest a job on g1t's own machines may run, whatever its
 /// `timeout-minutes`.
 pub const MAX_TIMEOUT_MINUTES: u32 = g1t_actions::workflow::HOSTED_MAX_TIMEOUT_MINUTES;
@@ -439,5 +453,14 @@ mod room_tests {
         assert!(has_room(RUNNING_PER_WORKSPACE, HOSTED_POOL - POOL_HEADROOM - 1));
         assert!(!has_room(RUNNING_PER_WORKSPACE, HOSTED_POOL - POOL_HEADROOM));
         assert!(!has_room(BURST_PER_WORKSPACE, 0));
+    }
+
+    #[test]
+    fn a_job_waits_for_a_machine_for_half_an_hour() {
+        let since = g1t_contracts::time::rfc3339(1_000_000);
+        assert!(!waited_for_a_machine(None, u64::MAX));
+        assert!(!waited_for_a_machine(Some(&since), 1_000_000 + WAIT_FOR_MACHINE_MS - 1));
+        assert!(waited_for_a_machine(Some(&since), 1_000_000 + WAIT_FOR_MACHINE_MS));
+        assert!(!waited_for_a_machine(Some("not a time"), u64::MAX));
     }
 }
