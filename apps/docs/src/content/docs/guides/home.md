@@ -233,6 +233,10 @@ AI provider:
 2. g1t's summary streams into the card as it is written. It reads g1t as
    you, as [Ask](/guides/ask/#what-it-can-read) does, so it covers only
    what you can see.
+   Once it is finished, with the card in view, it counts as read, so it
+   is not left unread in your direct message and makes no pop-up or
+   sound (see
+   [One conversation, in Ask and in Chat](/guides/ask/#one-conversation-in-ask-and-in-chat)).
 3. When it is finished:
    - **Ask a follow-up** opens the top bar's Ask on the same
      conversation, so you can ask about anything in the summary.

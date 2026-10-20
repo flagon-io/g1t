@@ -29,6 +29,8 @@ export type FocusState = {
   focused: boolean;
   /** The conversation on screen, by channel id; null on any other page. */
   viewingChannel: string | null;
+  /** Conversations shown besides, outside Chat: g1t's answer on Home, the Ask panel (lib/read-when-shown.ts). */
+  shown?: ReadonlySet<string>;
 };
 
 export type SoundContext = {
@@ -94,7 +96,7 @@ function mine(arrival: Arrival, me: SoundContext["me"]): boolean {
 
 /** Whether the person is looking at the conversation right now: on screen, in a window in front. */
 export function lookingAt(channelId: string | null, focus: FocusState): boolean {
-  return channelId !== null && focus.visible && focus.focused && focus.viewingChannel === channelId;
+  return channelId !== null && focus.visible && focus.focused && (focus.viewingChannel === channelId || !!focus.shown?.has(channelId));
 }
 
 /** The cue an arrival earns, or null for silence. Every rule above, in order. */
@@ -158,7 +160,7 @@ export class SoundGate {
  * notification once no tab is in front).
  */
 export function wantsDesktopToast(input: {
-  notification: Pick<FeedNotification, "kind">;
+  notification: Pick<FeedNotification, "kind"> & { channel_id?: string | null };
   toast: boolean;
   ctx: Pick<SoundContext, "focus" | "dnd" | "settings">;
   permission: "default" | "granted" | "denied";
@@ -169,5 +171,7 @@ export function wantsDesktopToast(input: {
   if (!ctx.settings.desktop_toasts || input.permission !== "granted" || input.pushOn) return false;
   if (ctx.dnd || !input.toast) return false;
   if (ctx.focus.visible && ctx.focus.focused) return false;
+  // Shown on a page in view, if not in front (an answer streaming on Home): it was watched.
+  if (ctx.focus.visible && input.notification.channel_id && ctx.focus.shown?.has(input.notification.channel_id)) return false;
   return cueForNotificationKind(input.notification.kind) !== null;
 }

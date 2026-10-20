@@ -100,6 +100,7 @@ import { messageBody, meterDay, pageOf, pageSize } from "./messages.ts";
 import { GENERAL, MAX_DM_MEMBERS, channelName, dmKey, dmMembers } from "./names.ts";
 import { ROOM_MEMBER_HEADER, type ChannelRoom, type RoomMember } from "./room.ts";
 import { mayCreateChannel, mayManageChannel, permissionsFor, rowFor, settingsChange, settingsOf, type SettingsRow } from "./settings.ts";
+import { markReadUpTo } from "./read.ts";
 import { dmTitle, sidebarOrder, tally, type UnreadRow } from "./unread.ts";
 // Live notifications and counts (services/notify).
 import { notifyCleared, notifyMessage, notifyMuted, notifyRead } from "./notify.ts";
@@ -1886,12 +1887,7 @@ class Chat {
     if (!member) return ok(null);
     const id = typeof a.id === "string" ? a.id : "";
     if (!id) return fail("invalid", "Say which message was read.");
-    // Only forward: reading an old thread does not mark newer messages unread.
-    const changed = await this.db
-      .prepare("UPDATE channel_members SET last_read_id = ?1 WHERE channel_id = ?2 AND principal = ?3 AND (last_read_id IS NULL OR last_read_id < ?1)")
-      .bind(id, channel.id, member.principal)
-      .run();
-    if (changed.meta.changes) {
+    if (await markReadUpTo(this.db, channel.id, member.principal, id)) {
       this.broadcast(channel.id, {
         type: "read",
         channel_id: channel.id,

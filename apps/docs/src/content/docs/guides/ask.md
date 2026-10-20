@@ -234,6 +234,15 @@ in the desktop app. **Open in Chat** at the top of the panel takes you to
 it. Nobody else can read it, and it stays until you delete it or
 [clear it](#clear-the-conversation).
 
+An answer you watched is read wherever you watched it. While the Ask panel
+is open, or [Home's summary](/guides/home/#what-changed) is in view, g1t's
+answer counts as read once it is finished: it is not left unread in Chat's
+sidebar, the Chat badge or the tab's title, on your other tabs, in the
+desktop app or on your phone. Nor does it pop up, sound or show a desktop
+notification on the page you are watching it on. A tab in the background
+reads nothing, so an answer that finished while you were away waits for you
+as unread.
+
 - **New conversation** leaves a mark in the direct message. From then on,
   g1t reads only what comes after it, and the panel shows only that; what
   came before stays in Chat to read.

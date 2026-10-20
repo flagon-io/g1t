@@ -20,6 +20,7 @@ import { type SoundCue, cueOn } from "@g1t/contracts/sounds";
 
 import { type Arrival, type FocusState, SoundGate, arrivalKey, cueFor, wantsDesktopToast } from "./chat-sounds";
 import { claimPing } from "./one-tab";
+import { shownConversations } from "./read-when-shown";
 import { play, soundSettings } from "./sounds";
 
 let me: { id: string; username: string } | null = null;
@@ -53,6 +54,7 @@ export function focusState(): FocusState {
     visible: has && document.visibilityState === "visible",
     focused: has && document.hasFocus(),
     viewingChannel: viewing,
+    shown: shownConversations(),
   };
 }
 

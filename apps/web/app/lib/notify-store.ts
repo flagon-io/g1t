@@ -23,14 +23,20 @@ export function pathOf(href: string): string {
   return href.split(/[?#]/)[0].replace(/\/+$/, "").toLowerCase();
 }
 
+/** What the page shows: its path, the conversation open in Chat, and conversations shown besides (g1t's answer on Home). */
+export type Viewing = { path: string; channel_id?: string | null; shown?: ReadonlySet<string> };
+
 /**
  * Whether the person is looking at the conversation a notification is
- * about right now: its page is open, or the chat page open says it shows
- * that channel. A toast for it would only repeat what is on screen.
+ * about right now: its page is open, the chat page open says it shows
+ * that channel, or another surface on the page shows its messages (Home's
+ * Summarize, the Ask panel). A toast for it would only repeat what is on
+ * screen.
  */
-export function isViewing(notification: FeedNotification, viewing: { path: string; channel_id?: string | null }): boolean {
+export function isViewing(notification: FeedNotification, viewing: Viewing): boolean {
   if (notification.channel_id && viewing.channel_id && notification.channel_id === viewing.channel_id) return true;
   if (!notification.channel_id) return false;
+  if (viewing.shown?.has(notification.channel_id)) return true;
   return pathOf(notification.href) === pathOf(viewing.path);
 }
 
@@ -38,7 +44,7 @@ export function isViewing(notification: FeedNotification, viewing: { path: strin
  * The toasts after one arrives: never twice, never for what is on screen,
  * newest last, at most `MAX_TOASTS`.
  */
-export function addToast(toasts: Toast[], notification: FeedNotification, viewing: { path: string; channel_id?: string | null }, now: number): Toast[] {
+export function addToast(toasts: Toast[], notification: FeedNotification, viewing: Viewing, now: number): Toast[] {
   if (toasts.some((t) => t.notification.id === notification.id)) return toasts;
   if (isViewing(notification, viewing)) return toasts;
   // A newer message in the same conversation replaces the older toast.
