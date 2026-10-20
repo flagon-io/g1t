@@ -12,7 +12,8 @@
 #   bash scripts/sccache.sh install   # a step before the first cargo
 #   bash scripts/sccache.sh stats     # the last step, with if: always()
 #
-# install downloads the pinned release and checks its sha256, starts the
+# install uses the pinned release when it is already installed (g1t's
+# runner image has it), or downloads it and checks its sha256; starts the
 # server (which reads and writes a check entry in the cache), and only then
 # sets RUSTC_WRAPPER for the steps after it. If anything there fails, the
 # job builds as it did without sccache, and the step says why. A release
@@ -52,10 +53,21 @@ fi
 
 warn() { echo "::warning title=sccache::$1, so this job builds without it"; }
 
+version_of() { "$1" --version 2>/dev/null | awk '{print $2}'; }
+
+# Finds this version of sccache, or downloads it. g1t's runner image has it
+# in ~/.cargo/bin already (services/runner/base/Dockerfile), so a job there
+# downloads nothing; one on PATH anywhere else is used too.
 fetch() {
   local name="sccache-v${VERSION}-${TARGET}"
   local dir="${RUNNER_TEMP:-/tmp}/sccache-${VERSION}"
-  if [ -x "$SCCACHE" ] && [ "$("$SCCACHE" --version 2>/dev/null | awk '{print $2}')" = "$VERSION" ]; then
+  local found
+  if [ -x "$SCCACHE" ] && [ "$(version_of "$SCCACHE")" = "$VERSION" ]; then
+    return 0
+  fi
+  found="$(command -v sccache || true)"
+  if [ -n "$found" ] && [ "$(version_of "$found")" = "$VERSION" ]; then
+    SCCACHE="$found"
     return 0
   fi
   mkdir -p "$dir" "$BIN"
@@ -94,6 +106,8 @@ install_sccache() {
 }
 
 stats() {
+  # The sccache that install found or downloaded, which RUSTC_WRAPPER names.
+  SCCACHE="${RUSTC_WRAPPER:-$SCCACHE}"
   if [ -z "${RUSTC_WRAPPER:-}" ] || [ ! -x "$SCCACHE" ]; then
     echo "sccache was not used in this job."
     return 0

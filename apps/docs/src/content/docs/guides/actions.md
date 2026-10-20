@@ -496,7 +496,7 @@ downloads nothing.
 | Node     | 24                                                                       | `/usr/local/bin`                                              | `actions/setup-node` installs other versions.                                                                                      |
 | Python   | 3.11                                                                     | `/usr/bin/python3`                                            | `actions/setup-python` installs other versions.                                                                                    |
 | Go       | 1.27                                                                     | `/usr/local/go`                                               | `actions/setup-go` installs other versions.                                                                                        |
-| Rust     | stable, with `rustfmt`, `clippy` and the `wasm32-unknown-unknown` target | `~/.cargo/bin`                                                | `rustup` is there to add toolchains and targets.                                                                                   |
+| Rust     | stable, with `rustfmt`, `clippy` and the `wasm32-unknown-unknown` target | `~/.cargo/bin`                                                | Also the `x86_64-unknown-linux-musl` target, `worker-build` and `sccache`. `rustup` is there to add toolchains and targets.        |
 
 ```yaml
 steps:
@@ -1026,6 +1026,8 @@ its entries in the repository's cache, under [the cache's](#the-cache)
 limits and branch rules.
 
 1. Install sccache, pinned to a release and checked against its checksum.
+   g1t's machines have sccache 0.18.0 in `~/.cargo/bin` already, so a job
+   that runs only on them can leave this step out.
 2. Set `RUSTC_WRAPPER: sccache` and `SCCACHE_GHA_ENABLED: "true"`. The
    job's `ACTIONS_RUNTIME_TOKEN` and `ACTIONS_CACHE_URL` are already in
    every step's environment; no step needs to export them.

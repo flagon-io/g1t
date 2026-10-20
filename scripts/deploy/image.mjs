@@ -217,6 +217,8 @@ export async function baseVersions(ref) {
     'echo "python=$(python3 --version | cut -d" " -f2)"',
     'echo "go=$(go version | cut -d" " -f3)"',
     'echo "rust=$(rustc --version | cut -d" " -f2)"',
+    'echo "worker-build=$(worker-build --version)"',
+    'echo "sccache=$(sccache --version | cut -d" " -f2)"',
     'echo "java=$(java --version | head -n1 | cut -d" " -f2)"',
     'echo "dotnet=$(dotnet --version)"',
     'echo "ruby=$(ruby --version | cut -d" " -f2)"',

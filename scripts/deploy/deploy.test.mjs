@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import { isStaticElf } from "../build-runner.mjs";
+import { WORKER_BUILD_VERSION } from "../build-rust-worker.mjs";
 import {
   DEPLOY_CONFIG,
   baseInputs,
@@ -177,6 +178,20 @@ test("services/runner/base.json records the base its folder builds", () => {
   assert.match(lock.image, /^registry\.cloudflare\.com\/[0-9a-f]{32}\/g1t-runner:base-\d{8}-[0-9a-f]{12}$/);
   assert.ok(lock.image.endsWith(lock.inputs.slice(0, 12)));
   assert.equal(baseState(runner).current, true);
+});
+
+test("the base has the worker-build and sccache that the build scripts pin", () => {
+  const dockerfile = readFileSync(join(ROOT, "services/runner/base/Dockerfile"), "utf8");
+  const arg = (name) => dockerfile.match(new RegExp(`^ARG ${name}=(\\S+)\\r?$`, "m"))?.[1];
+  const sccache = readFileSync(join(ROOT, "scripts/sccache.sh"), "utf8");
+  const pinned = (name) => sccache.match(new RegExp(`^${name}=(\\S+)\\r?$`, "m"))?.[1];
+  assert.equal(arg("WORKER_BUILD_VERSION"), WORKER_BUILD_VERSION, "scripts/build-rust-worker.mjs and the base's Dockerfile pin worker-build differently");
+  assert.ok(pinned("VERSION") && pinned("SHA256"), "scripts/sccache.sh pins VERSION and SHA256");
+  assert.equal(arg("SCCACHE_VERSION"), pinned("VERSION"), "scripts/sccache.sh and the base's Dockerfile pin sccache differently");
+  assert.equal(arg("SCCACHE_SHA256"), pinned("SHA256"), "scripts/sccache.sh and the base's Dockerfile check sccache against different sha256s");
+  assert.equal(pinned("TARGET"), "x86_64-unknown-linux-musl");
+  assert.match(dockerfile, /sccache-v\$\{SCCACHE_VERSION\}-x86_64-unknown-linux-musl/);
+  assert.match(dockerfile, /rustup target add x86_64-unknown-linux-musl/);
 });
 
 test("an image's hash ignores line endings, and its tags say what they are", () => {
