@@ -39,6 +39,10 @@ rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"]
 webpki-roots = "1.0.10"
 # The certificates' validity, as rcgen takes it.
 time = { version = "0.3", default-features = false, features = ["std"] }
+# The git edge's HTTP server (gitedge.rs): small, synchronous, pure Rust,
+# without its TLS features (the Container's port is reached over plain
+# HTTP by the Durable Object only).
+tiny_http = { version = "0.12", default-features = false }
 
 [target.'cfg(unix)'.dependencies]
 # A step's signals back to their defaults before it runs (actions/process.rs).
