@@ -16,7 +16,7 @@
 
 use std::collections::HashSet;
 
-use g1t_contracts::ai::{AiBriefArgs, MAX_BRIEF_INPUT_CHARS};
+use g1t_contracts::ai::{AiBriefArgs, MAX_BRIEF_INPUT_CHARS, MAX_BRIEF_TOKENS};
 use g1t_contracts::events::WorkItemEvent;
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::work::*;
@@ -64,6 +64,28 @@ struct Budget {
 /// say a horizon it may suggest. `known` are the open work items it may
 /// say this one repeats.
 pub(crate) fn read_suggestion(answer: &str, known: &[u32], at: &str) -> Option<PlanSuggestion> {
+    // Some models answer with a JSON object instead of the four lines.
+    let json = answer.find('{').zip(answer.rfind('}')).and_then(|(open, close)| serde_json::from_str::<serde_json::Value>(&answer[open..=close]).ok());
+    if let Some(serde_json::Value::Object(fields)) = json {
+        let text = |key: &str| match fields.get(key) {
+            Some(serde_json::Value::String(text)) => text.clone(),
+            Some(serde_json::Value::Number(number)) => number.to_string(),
+            _ => String::new(),
+        };
+        let lines = format!(
+            "horizon: {}\nappetite: {}\nduplicate: {}\nwhy: {}",
+            text("horizon"),
+            text("appetite"),
+            if text("duplicate").is_empty() { text("duplicate_of") } else { text("duplicate") },
+            text("why")
+        );
+        return read_lines(&lines, known, at);
+    }
+    read_lines(answer, known, at)
+}
+
+/// [`read_suggestion`] of the four `key: value` lines.
+fn read_lines(answer: &str, known: &[u32], at: &str) -> Option<PlanSuggestion> {
     let mut horizon = None;
     let mut appetite = None;
     let mut duplicate_of = None;
@@ -73,7 +95,7 @@ pub(crate) fn read_suggestion(answer: &str, known: &[u32], at: &str) -> Option<P
             continue;
         };
         let value = value.trim().trim_matches(|c: char| c == '*' || c == '`' || c == '"').trim();
-        match key.trim().trim_matches(|c: char| c == '*' || c == '-').trim().to_ascii_lowercase().as_str() {
+        match key.trim().trim_matches(|c: char| c == '*' || c == '-' || c == '#' || c == '"').trim().to_ascii_lowercase().as_str() {
             "horizon" => horizon = Horizon::parse(value).filter(|h| matches!(h, Horizon::Now | Horizon::Next | Horizon::Later)),
             "appetite" => appetite = Appetite::parse(value),
             "duplicate" => {
@@ -170,6 +192,7 @@ impl Work {
         match g1t_kit::call::<_, Outcome<Option<String>>>(integrations, "ai_brief", &args).await {
             Ok(Outcome::Ok(Some(answer))) => Some(answer),
             Ok(Outcome::Ok(None)) => {
+                worker::console_log!("{workspace}: the plan got no answer from the AI provider (none chosen, or an empty answer)");
                 budget.without.insert(workspace.to_owned());
                 None
             }
@@ -281,12 +304,15 @@ impl Work {
                 listed.join("\n")
             );
             let at = rfc3339(now_ms());
-            let answer = self.brief(&item.workspace, SUGGEST_SYSTEM, input, 120, budget).await;
+            let answer = self.brief(&item.workspace, SUGGEST_SYSTEM, input, MAX_BRIEF_TOKENS, budget).await;
             if answer.is_none() && !budget.without.contains(&item.workspace) {
                 // Out of calls for this run: asked again on the next.
                 break;
             }
             let suggestion = answer.as_deref().and_then(|answer| read_suggestion(answer, &known, &at));
+            if let (Some(answer), None) = (&answer, &suggestion) {
+                worker::console_log!("{}#{}: the AI provider's suggestion did not read: {}", item.workspace, item.number, clip(answer, 300));
+            }
             // Asked once: with no provider, or no usable answer, it is not
             // asked again.
             self.db
@@ -365,7 +391,7 @@ impl Work {
                 if decisions.is_empty() { none() } else { decisions.join("\n") },
                 if pulls.is_empty() { none() } else { pulls.join("\n") },
             );
-            let answer = self.brief(&item.workspace, STANDING_SYSTEM, input, 120, budget).await;
+            let answer = self.brief(&item.workspace, STANDING_SYSTEM, input, MAX_BRIEF_TOKENS, budget).await;
             if answer.is_none() && !budget.without.contains(&item.workspace) {
                 break;
             }
@@ -405,6 +431,15 @@ mod tests {
         // A horizon it may not suggest, or none: no suggestion.
         assert_eq!(read_suggestion("horizon: set_aside\nwhy: old", &[], at), None);
         assert_eq!(read_suggestion("I think this should go next.", &[], at), None);
+        // A JSON object, in a code fence or not.
+        let json = "```json\n{\"horizon\": \"next\", \"appetite\": \"medium\", \"duplicate\": 12, \"why\": \"Same as #12.\"}\n```";
+        let read = read_suggestion(json, &[12], at).unwrap();
+        assert_eq!((read.horizon, read.appetite, read.duplicate_of, read.why.as_str()), (Horizon::Next, Some(Appetite::Medium), Some(12), "Same as #12."));
+        let read = read_suggestion("{\"horizon\":\"later\",\"appetite\":\"small\",\"duplicate\":null,\"why\":\"Nice to have.\"}", &[], at).unwrap();
+        assert_eq!((read.horizon, read.duplicate_of), (Horizon::Later, None));
+        // Keys in quotes or headings.
+        let read = read_suggestion("## Horizon: next\n\"appetite\": small\nwhy: ok", &[], at).unwrap();
+        assert_eq!((read.horizon, read.appetite), (Horizon::Next, Some(Appetite::Small)));
     }
 
     #[test]
