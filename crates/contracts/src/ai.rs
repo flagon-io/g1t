@@ -301,7 +301,9 @@ pub struct AiBriefArgs {
 
 /// The most of an [`AiBriefArgs`] input sent to the provider.
 pub const MAX_BRIEF_INPUT_CHARS: usize = 6_000;
-/// The longest answer an [`AiBriefArgs`] may ask for.
+/// The longest answer an [`AiBriefArgs`] may ask for. The provider is
+/// given room beyond it to think first; the caller keeps only a short
+/// answer.
 pub const MAX_BRIEF_TOKENS: u32 = 200;
 
 /// `ask_settings`: what Ask answers with. Returns `Outcome<AskSetup>`.
