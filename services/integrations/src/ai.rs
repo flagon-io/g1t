@@ -40,6 +40,21 @@ pub async fn route(service: &Integrations, method: &str, body: Value) -> Result<
     }
 }
 
+/// Tokens a brief's model may spend thinking before it answers, beyond
+/// the answer's own length. Current models think by default (Claude Haiku
+/// 5.5 among them, at effort `medium`) and count it against `max_tokens`:
+/// held to the answer's length alone, they used all of it thinking and
+/// answered nothing, so session titles and the plan's suggestions came back
+/// empty. Turning thinking off is refused by some (Claude Opus 5.5, Claude
+/// Sonnet 5.5), so the room is given instead; callers keep only a short
+/// answer whatever comes back.
+const BRIEF_THINKING_ROOM: u32 = 2_048;
+
+/// The `max_tokens` a brief asking for an answer of `asked` tokens sends.
+fn brief_room(asked: u32) -> u32 {
+    asked.clamp(1, MAX_BRIEF_TOKENS) + BRIEF_THINKING_ROOM
+}
+
 const NO_SUCH: &str = "No such AI provider.";
 const NO_SEALER: &str = "AI providers are not set up on this g1t: it has no key to keep secrets with.";
 
@@ -672,7 +687,7 @@ impl Integrations {
             rounds: &[],
             tools: &[],
             answer_now: false,
-            max_tokens: a.max_tokens.clamp(1, MAX_BRIEF_TOKENS),
+            max_tokens: brief_room(a.max_tokens),
         }) {
             Ok(built) => built,
             Err(problem) => return Ok(fail(FailureCode::Invalid, problem)),
@@ -755,6 +770,14 @@ fn ask_refusal(message: &str) -> Result<Response> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_brief_leaves_its_model_room_to_think_before_it_answers() {
+        assert_eq!(brief_room(40), 40 + BRIEF_THINKING_ROOM);
+        // Never more answer than a brief may ask for, never none.
+        assert_eq!(brief_room(10_000), MAX_BRIEF_TOKENS + BRIEF_THINKING_ROOM);
+        assert_eq!(brief_room(0), 1 + BRIEF_THINKING_ROOM);
+    }
 
     #[test]
     fn an_ai_provider_needs_its_key_and_its_address_when_it_has_no_known_one() {
