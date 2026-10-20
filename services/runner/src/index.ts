@@ -61,6 +61,7 @@ import { newlyMisdirected } from "./broker";
 import { relay, relayDeps } from "./broker-relay";
 import { forward } from "./forward";
 import { EGRESS_ENV, jobNamespaceOf } from "./egress";
+import { GIT_EDGE_ENV, GIT_EDGE_PORT, answerEdge, routeToEdge } from "./gitedge";
 
 // Outbound interception, which brokered secrets and abuse reports use,
 // needs this exported.
@@ -75,6 +76,13 @@ export interface RunnerEnv {
    */
   SANDBOX_2CORE?: DurableObjectNamespace<Sandbox2Core>;
   SANDBOX_4CORE?: DurableObjectNamespace<Sandbox4Core>;
+  /**
+   * The git edge (gitedge.ts): one object and container per repository,
+   * named by its id, that answers clones from a well-packed mirror. Not a
+   * machine jobs can ask for. Absent on a g1t that does not deploy it, and
+   * every clone is answered from Artifacts.
+   */
+  GIT_EDGE?: DurableObjectNamespace<GitEdge>;
   IDENTITY: ServiceBinding;
   REPOS: ServiceBinding;
   WORK: ServiceBinding;
@@ -812,6 +820,56 @@ export class Sandbox4Core extends AttemptSandbox {
 }
 
 /**
+ * The git edge of one repository (gitedge.ts): the runner binary as an
+ * HTTP server (`MODE=gitedge`) that keeps a mirror of the repository,
+ * fetched from Artifacts, and serves clones and fetches from it with real
+ * git. It is not a sandbox: it runs nobody's code, is never metered or
+ * capped, and holds no credentials but the read token each sync brings.
+ * Its requests go straight out: it registers no outbound handlers, so
+ * nothing of it is intercepted and it needs no re-signing certificate
+ * (`EGRESS_ENV`). It sleeps after half an hour without a request, and its
+ * mirror goes with it; the next clone finds it cold and starts it again.
+ */
+export class GitEdge extends Container<RunnerEnv> {
+  defaultPort = GIT_EDGE_PORT;
+  sleepAfter = "30m";
+  enableInternet = true;
+  envVars = GIT_EDGE_ENV;
+  /** The start under way, shared by every request that finds it cold. */
+  private warming: Promise<void> | null = null;
+
+  override async fetch(request: Request): Promise<Response> {
+    return answerEdge(request, {
+      // Listening on its port: what the library itself waits for before
+      // it passes a request on.
+      ready: async () => this.ctx.container?.running === true && (await this.getState()).status === "healthy",
+      start: () => this.warm(),
+      forward: (forwarded) => this.containerFetch(forwarded, GIT_EDGE_PORT),
+      background: (work) => this.ctx.waitUntil(work),
+    });
+  }
+
+  /**
+   * Starts the container and waits until its server listens, once however
+   * many ask. A first start may pull the image, so it is given a minute.
+   */
+  private warm(): Promise<void> {
+    this.warming ??= this.startAndWaitForPorts({
+      ports: GIT_EDGE_PORT,
+      cancellationOptions: { instanceGetTimeoutMS: 60_000, portReadyTimeoutMS: 60_000 },
+    }).finally(() => {
+      this.warming = null;
+    });
+    return this.warming;
+  }
+
+  /** Logged, never thrown: the next clone finds the edge cold and starts it again. */
+  override onError(error: unknown): void {
+    console.error("git edge container error", this.ctx.id.toString(), describeError(error));
+  }
+}
+
+/**
  * What the actions service sends to start a job (`StartJobArgs`). Callers
  * from before may also send `workflow`, `environment` and `trusted`, for
  * workflow-only domains, which are gone: they are ignored.
@@ -830,7 +888,8 @@ type ActionsJobArgs = {
 export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
   /**
    * The JSON protocol the Rust services speak: `POST /rpc/<method>` with the
-   * arguments as the body. Only bound services can.
+   * arguments as the body, and the git edge's routes (`/gitedge/…`). Only
+   * bound services can.
    */
   async fetch(request: Request): Promise<Response> {
     const { pathname } = new URL(request.url);
@@ -877,6 +936,11 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
     }
     if (request.method === "POST" && pathname === "/rpc/start_deploy") {
       return Response.json(await this.startDeploy((await request.json()) as DeployJob));
+    }
+    // The repos service's clones and syncs, to the repository's git edge
+    // (gitedge.ts), passed on as they came.
+    if (pathname.startsWith("/gitedge/")) {
+      return routeToEdge(request, this.env.GIT_EDGE);
     }
     return new Response("Not found\n", { status: 404 });
   }
