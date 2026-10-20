@@ -67,7 +67,7 @@ import { expiresIn, formatBytes, legacyArtifactsWorthAsking } from "../../lib/ru
 import { actions } from "../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../lib/session.server";
 import { accessTo, refusal } from "../../lib/access.server";
-import { useRefreshWhile } from "../../lib/refresh";
+import { REFRESH_MS, useRefreshWhile } from "../../lib/refresh";
 import { runControls } from "../../lib/run-controls";
 import { endPlace } from "../../lib/log-follow";
 import { type GraphJob, type Unit, groupJobs, jobsOf, unitStanding } from "../../lib/run-graph";
@@ -1313,7 +1313,7 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
   // streams on its own), every few seconds without it. Waiting on a person
   // needs no quick refresh.
   const { live: heard } = useRepoLive({ match: repoPages.run(run.id, run.sha) });
-  useRefreshWhile(going, run.status === "action_required" || run.status === "waiting" ? 8000 : heard ? 10_000 : 2500);
+  useRefreshWhile(going, run.status === "action_required" || run.status === "waiting" ? 8000 : heard ? 10_000 : REFRESH_MS);
 
   // The job asked for; none is the run's summary.
   const selected = jobs.find((job) => job.id === search.get("job")) ?? null;

@@ -90,7 +90,7 @@ import { accessTo, refusal, repoFor } from "../../lib/access.server";
 import { SubscriptionBox } from "../../components/notifications";
 import { Boundary, Unavailable } from "../../components/boundary";
 import { isFailed, part } from "../../lib/partial";
-import { useRefreshWhile } from "../../lib/refresh";
+import { REFRESH_MS, useRefreshWhile } from "../../lib/refresh";
 import { repoPages } from "../../lib/repo-live";
 import { useRepoLive } from "../../lib/use-repo-live";
 
@@ -838,11 +838,20 @@ export default function PullPage({ loaderData, actionData, params }: Route.Compo
   // Whether it merges cleanly is being worked out, so the box will change.
   const probing = active && mergeable === "checking";
   const conflicting = active && mergeable === "conflicting";
-  useRefreshWhile(working || checking || settling || moving || landing || probing);
   // New commits, checks, reviews and comments, and its merge or close, as
   // they happen: the timeline grows where the reader is, and one reading
   // at its end follows it.
-  useRepoLive({ match: repoPages.pull(pull.number, { branch: pull.branch, sha: pull.headCommit }), followBottom: true });
+  const { live: heard } = useRepoLive({ match: repoPages.pull(pull.number, { branch: pull.branch, sha: pull.headCommit }), followBottom: true });
+  // With the live socket, only what has no event (whether it merges
+  // cleanly, a catch-up's push landing) is asked for every few seconds;
+  // checks, the queue and the merge arrive, and are asked for again only
+  // every 30 s in case one was missed. A draft waits for its pushes.
+  // Without the socket, the page asks every few seconds while anything moves.
+  const quick = probing || settling;
+  useRefreshWhile(
+    heard ? quick || checking || moving || landing : working || checking || settling || moving || landing || probing,
+    heard && !quick ? 30_000 : REFRESH_MS,
+  );
   // The rules of its base it does not meet: checks show in their own
   // section, so the rest stop the button here. Someone a ruleset lets
   // bypass it may tick a box and merge past them.

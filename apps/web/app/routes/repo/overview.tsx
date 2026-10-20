@@ -955,9 +955,12 @@ function Overview({
   const busy = claims.length + awake.length > 0;
   const working = busy || idle.length > 0;
   // Deployments, checks, releases, claims and sessions show as they happen.
-  useRepoLive({ match: (change) => repoPages.overview()(change) || repoPages.runs()(change) || change.kind === "git.push" });
-  // Claims lapse and sessions go idle with no event to say so.
-  useRefreshWhile(working || (loaderData.workflowRuns ?? []).some((run) => run.status !== "completed"), 15_000);
+  const { live: heard } = useRepoLive({ match: (change) => repoPages.overview()(change) || repoPages.runs()(change) || change.kind === "git.push" });
+  // Claims lapse and sessions go idle (after 15 minutes) with no event to
+  // say so: looked at again each minute. Runs going are followed every 15 s
+  // only without the live socket, which says when they move.
+  const runsGoing = (loaderData.workflowRuns ?? []).some((run) => run.status !== "completed");
+  useRefreshWhile(working || (!heard && runsGoing), heard ? 60_000 : 15_000);
   const live = liveByItem(claims, awake);
   const moreItems = live.items.length - LIVE_SHOWN;
 
