@@ -42,6 +42,7 @@ import { unreadTotals } from "./lib/chat";
 import { countsFor, readableRepos } from "./lib/access.server";
 import { agentForProviders, DEFAULT_AGENT, parseAgent, rememberAgentDefault } from "./lib/agent-setup";
 import { shortCache } from "./lib/cache.server";
+import { changesShell } from "./lib/shell-changes";
 import { getViewer, viewerMiddleware } from "./lib/session.server";
 import { shortcutOf, workspaceProjects } from "./lib/workspace-projects.server";
 import { addresses } from "./lib/addresses.server";
@@ -192,11 +193,14 @@ function bareShell(user: User, params: { owner?: string; repo?: string }, chosen
 
 /**
  * The sidebar only changes with the workspace or repository being looked
- * at, or after something was submitted: not on every page within them.
+ * at, or after a submission that changes it (lib/shell-changes.ts): not on
+ * every page within them, nor after a comment or a review, which would
+ * read billing and the rest of the sidebar again for nothing.
  */
-export function shouldRevalidate({ currentParams, nextParams, formMethod, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
-  if (formMethod && formMethod !== "GET") return defaultShouldRevalidate;
-  return currentParams.owner !== nextParams.owner || currentParams.repo !== nextParams.repo;
+export function shouldRevalidate({ currentParams, nextParams, formMethod, formAction, formData, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
+  const moved = currentParams.owner !== nextParams.owner || currentParams.repo !== nextParams.repo;
+  if (formMethod && formMethod !== "GET") return moved || (defaultShouldRevalidate && changesShell(formAction, formData));
+  return moved;
 }
 
 /**
