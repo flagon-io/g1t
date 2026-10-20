@@ -20,10 +20,12 @@
 //!   hand out. Downloads are a GET, of the whole blob or of one byte range
 //!   (`Range`), as the toolkit's client fetches large entries in segments.
 //!   Uploads speak the part of Azure Blob Storage's protocol the toolkit's
-//!   client uses (Put Blob, Put Block, Put Block List), mapped onto an R2
-//!   multipart upload: a block's id ends in its index, which is its part's
-//!   number. An upload link carries a query, as an Azure SAS link does,
-//!   which clients that sign their requests with it need.
+//!   client uses (Put Blob, Put Block, Put Block List). Put Blob, the whole
+//!   blob in one request, is put in R2 as it comes; blocks are parts of an
+//!   R2 multipart upload, which a cache entry's first block starts: a
+//!   block's id ends in its index, which is its part's number. An upload
+//!   link carries a query, as an Azure SAS link does, which clients that
+//!   sign their requests with it need.
 //!
 //! Every call carries the job's runtime token; the actions service checks
 //! it and keeps the entries (cache.rs, run_artifacts.rs, runtime.rs there).
@@ -49,6 +51,8 @@ pub const ARTIFACT_SERVICE: &str = "github.actions.results.api.v1.ArtifactServic
 pub const CACHE_PATH: &str = "/actions/toolkit/";
 /// The largest single block or blob a request may carry.
 const MAX_BLOCK_BYTES: u64 = 256 * 1024 * 1024;
+/// The most objects R2 deletes in one call.
+const DELETES_PER_CALL: usize = 1000;
 
 /// The bearer token of a request.
 pub fn bearer(request: &Request) -> String {
@@ -333,6 +337,58 @@ async fn start_upload(bucket: &Bucket, services: &Services, job: &str, token: &s
     })
 }
 
+/// Starts the R2 upload of a cache entry reserved without one, for its
+/// first block: the upload its parts go to. Blocks sent side by side may
+/// each start one; the service keeps the first it hears of, and the
+/// others send their parts there and abort their own.
+async fn start_blocks(bucket: &Bucket, services: &Services, token: &str, object: &str) -> Result<Outcome<String>> {
+    let started = bucket.create_multipart_upload(object).execute().await?;
+    let mine = started.upload_id().await;
+    let kept: Outcome<String> =
+        g1t_kit::call(&services.actions, "blob_start", &BlobArgs { blob: token.to_owned(), upload: mine.clone(), ..BlobArgs::default() }).await?;
+    if !matches!(&kept, Outcome::Ok(kept) if *kept == mine) {
+        let _ = started.abort().await;
+    }
+    Ok(kept)
+}
+
+/// Puts a blob sent whole in R2 at `object`, as it comes, and aborts the
+/// R2 upload started for it when it was reserved, if one was: nothing is
+/// sent to it. Its size, as R2 measured it.
+async fn put_whole(bucket: &Bucket, object: &str, upload_id: &str, body: Option<worker::web_sys::ReadableStream>) -> Result<u64> {
+    let put = async {
+        match body {
+            Some(body) => bucket.put(object, body).execute().await,
+            None => bucket.put(object, Vec::<u8>::new()).execute().await,
+        }
+    };
+    let unused = async {
+        if !upload_id.is_empty()
+            && let Ok(upload) = bucket.resume_multipart_upload(object, upload_id)
+        {
+            let _ = upload.abort().await;
+        }
+    };
+    let (put, ()) = futures_util::future::join(put, unused).await;
+    match put? {
+        Some(object) => Ok(object.size()),
+        None => Err(worker::Error::RustError("R2 did not keep the blob.".to_owned())),
+    }
+}
+
+/// The objects to delete, in calls R2 takes.
+pub fn delete_calls(objects: &[String]) -> std::slice::Chunks<'_, String> {
+    objects.chunks(DELETES_PER_CALL)
+}
+
+/// Deletes objects from R2, as many calls as that takes.
+pub async fn delete_objects(bucket: &Bucket, objects: &[String]) -> Result<()> {
+    for call in delete_calls(objects) {
+        bucket.delete_multiple(call.iter().map(String::as_str).collect()).await?;
+    }
+    Ok(())
+}
+
 /// `POST /twirp/{service}/{method}`. A failure inside is logged and
 /// answered as Twirp's `internal`, with its cause.
 pub async fn twirp(request: Request, env: &Env, services: &Services, service: &str, method: &str) -> Result<Response> {
@@ -409,7 +465,15 @@ async fn twirp_inner(mut request: Request, env: &Env, services: &Services, servi
                 // creating this cache") and goes on.
                 Outcome::Fail(refused) => return answer(json!({ "ok": false, "signed_upload_url": "", "message": refused.message })),
             };
-            match start_upload(&bucket, services, &job, &token, "cache", &reserved.id, &reserved.object).await? {
+            // The service signs a token for an upload whose R2 upload is
+            // not started yet: an entry sent whole is put as it is, and one
+            // sent in blocks starts it with its first (`start_blocks`). A
+            // service that does not starts it here, as before.
+            let started = match reserved.blob {
+                Some(blob) => Outcome::Ok(upload_url(&services.addresses.api, &blob)),
+                None => start_upload(&bucket, services, &job, &token, "cache", &reserved.id, &reserved.object).await?,
+            };
+            match started {
                 Outcome::Ok(url) => answer(json!({ "ok": true, "signed_upload_url": url })),
                 Outcome::Fail(refused) => answer(json!({ "ok": false, "signed_upload_url": "", "message": refused.message })),
             }
@@ -494,9 +558,7 @@ async fn commit_cache(bucket: &Bucket, services: &Services, job: &str, token: &s
     .await?;
     Ok(match committed {
         Outcome::Ok(committed) => {
-            if !committed.evicted.is_empty() {
-                bucket.delete_multiple(committed.evicted.iter().map(String::as_str).collect()).await?;
-            }
+            delete_objects(bucket, &committed.evicted).await?;
             Outcome::Ok(())
         }
         Outcome::Fail(refused) => Outcome::Fail(refused),
@@ -537,6 +599,17 @@ pub fn chunk_part(range: &str) -> Option<(u16, u64)> {
         return None;
     }
     Some(((start / CACHE_PART_BYTES + 1) as u16, length))
+}
+
+/// Whether a chunk of the older protocol is its whole entry: one from 0
+/// that says it is all of it (`bytes 0-99/100`), or that is not a chunk's
+/// length. An entry sent in several chunks starts with one exactly a
+/// chunk long, as R2 completes an upload only from parts of one size (the
+/// last aside).
+pub fn chunk_whole(range: &str) -> bool {
+    let Some((1, length)) = chunk_part(range) else { return false };
+    let total = range.trim().strip_prefix("bytes ").and_then(|r| r.split_once('/')).and_then(|(_, total)| total.trim().parse::<u64>().ok());
+    total == Some(length) || length != CACHE_PART_BYTES
 }
 
 /// The bytes a download's `Range` header asks for, out of `size`: first and
@@ -666,23 +739,39 @@ async fn cache_v1_inner(mut request: Request, env: &Env, services: &Services, me
                         return plain_error(400, &format!("Send the entry in chunks of {} MB, each with its Content-Range.", CACHE_PART_BYTES / 1_048_576));
                     };
                     let Some(body) = request.inner().body() else { return plain_error(400, "The chunk is empty.") };
+                    // An entry sent in one chunk (as sccache sends every
+                    // entry) is put in R2 whole, with no parts to record
+                    // or complete.
+                    if chunk_whole(&range) {
+                        put_whole(&bucket, &pending.object, &upload_id, Some(body)).await?;
+                        return Ok(Response::empty()?.with_status(204));
+                    }
                     let upload = bucket.resume_multipart_upload(&pending.object, &upload_id)?;
                     let uploaded = upload.upload_part(part, body).await?;
-                    let recorded = BlobArgs { blob, part: u32::from(part), etag: uploaded.etag(), size: length };
+                    let recorded = BlobArgs { blob, part: u32::from(part), etag: uploaded.etag(), size: length, ..BlobArgs::default() };
                     let _: Outcome<bool> = g1t_kit::call(actions, "blob_part", &recorded).await?;
                     Ok(Response::empty()?.with_status(204))
                 }
                 "POST" => {
-                    let parts: Outcome<Vec<BlobPart>> = g1t_kit::call(actions, "blob_parts", &BlobArgs { blob: blob.clone(), ..BlobArgs::default() }).await?;
-                    let parts = match parts {
-                        Outcome::Ok(parts) => parts,
-                        Outcome::Fail(refused) => return plain_error(refused.code.http_status(), &refused.message),
+                    // An entry put whole is in R2 already; one sent in parts
+                    // is not until they are completed.
+                    let size = match bucket.head(&pending.object).await? {
+                        Some(whole) => whole.size(),
+                        None => {
+                            let parts: Outcome<Vec<BlobPart>> =
+                                g1t_kit::call(actions, "blob_parts", &BlobArgs { blob: blob.clone(), ..BlobArgs::default() }).await?;
+                            let parts = match parts {
+                                Outcome::Ok(parts) => parts,
+                                Outcome::Fail(refused) => return plain_error(refused.code.http_status(), &refused.message),
+                            };
+                            let size = match finish(&bucket, &pending.object, &upload_id, &parts).await {
+                                Ok(size) => size,
+                                Err(problem) => return plain_error(400, &format!("The entry could not be completed: {problem}")),
+                            };
+                            let _: Outcome<bool> = g1t_kit::call(actions, "blob_done", &BlobArgs { blob, size, ..BlobArgs::default() }).await?;
+                            size
+                        }
                     };
-                    let size = match finish(&bucket, &pending.object, &upload_id, &parts).await {
-                        Ok(size) => size,
-                        Err(problem) => return plain_error(400, &format!("The entry could not be completed: {problem}")),
-                    };
-                    let _: Outcome<bool> = g1t_kit::call(actions, "blob_done", &BlobArgs { blob, size, ..BlobArgs::default() }).await?;
                     match commit_cache(&bucket, services, &job, &token, &pending.id, size).await? {
                         Outcome::Ok(()) => Ok(Response::empty()?.with_status(204)),
                         Outcome::Fail(refused) => plain_error(refused.code.http_status(), &refused.message),
@@ -696,14 +785,12 @@ async fn cache_v1_inner(mut request: Request, env: &Env, services: &Services, me
 }
 
 /// Completes an R2 upload from its recorded parts, in order; the size it
-/// came to. An upload with no parts is an empty object.
+/// came to. An upload with no parts, or none started, is an empty object.
 async fn finish(bucket: &Bucket, object: &str, upload_id: &str, parts: &[BlobPart]) -> std::result::Result<u64, String> {
-    let upload = bucket.resume_multipart_upload(object, upload_id).map_err(|e| e.to_string())?;
     if parts.is_empty() {
-        let _ = upload.abort().await;
-        bucket.put(object, Vec::<u8>::new()).execute().await.map_err(|e| e.to_string())?;
-        return Ok(0);
+        return put_whole(bucket, object, upload_id, None).await.map_err(|e| e.to_string());
     }
+    let upload = bucket.resume_multipart_upload(object, upload_id).map_err(|e| e.to_string())?;
     let done = upload
         .complete(parts.iter().map(|p| UploadedPart::new(p.part as u16, p.etag.clone())))
         .await
@@ -856,38 +943,56 @@ async fn blob_inner(mut request: Request, env: &Env, services: &Services, method
         ("PUT", Some(upload_id)) => {
             let comp = query(&request, "comp").unwrap_or_default();
             let limit = if grant.kind == "cache" { CACHE_MAX_ENTRY_BYTES } else { ARTIFACT_MAX_BYTES };
+            let length = request.headers().get("content-length")?.and_then(|l| l.parse::<u64>().ok()).unwrap_or(0);
             match comp.as_str() {
-                // Put Block, or Put Blob: one part.
-                "block" | "" => {
-                    let part = if comp == "block" {
-                        match query(&request, "blockid").as_deref().and_then(block_index) {
-                            Some(index) if index < 10_000 => index + 1,
-                            _ => return azure_error(400, "InvalidQueryParameterValue", "A block id ends in its index, from 0."),
-                        }
-                    } else {
-                        1
-                    };
-                    let length = request.headers().get("content-length")?.and_then(|l| l.parse::<u64>().ok()).unwrap_or(0);
+                // Put Blob: the whole thing, put in R2 as it comes.
+                "" => {
                     if length > MAX_BLOCK_BYTES || length > limit {
                         return azure_error(413, "RequestBodyTooLarge", "That block is larger than g1t takes at once.");
                     }
-                    let upload = bucket.resume_multipart_upload(&grant.object, upload_id)?;
+                    let body = request.inner().body().filter(|_| length > 0);
+                    let size = put_whole(&bucket, &grant.object, upload_id, body).await?;
+                    if size > limit {
+                        bucket.delete(&grant.object).await?;
+                        return azure_error(413, "RequestBodyTooLarge", &format!("It is {} MB, more than g1t keeps ({} MB).", size / 1_048_576, limit / 1_048_576));
+                    }
+                    // A cache entry is measured in R2 when it is finalized;
+                    // an artifact keeps its size now.
+                    if grant.kind != "cache" {
+                        let _: Outcome<bool> = g1t_kit::call(&services.actions, "blob_done", &BlobArgs { blob: token.to_owned(), size, ..BlobArgs::default() }).await?;
+                    }
+                    azure(201)
+                }
+                // Put Block: one part.
+                "block" => {
+                    let part = match query(&request, "blockid").as_deref().and_then(block_index) {
+                        Some(index) if index < 10_000 => index + 1,
+                        _ => return azure_error(400, "InvalidQueryParameterValue", "A block id ends in its index, from 0."),
+                    };
+                    if length > MAX_BLOCK_BYTES || length > limit {
+                        return azure_error(413, "RequestBodyTooLarge", "That block is larger than g1t takes at once.");
+                    }
+                    let upload_id = if upload_id.is_empty() {
+                        match start_blocks(&bucket, services, token, &grant.object).await? {
+                            Outcome::Ok(started) => started,
+                            Outcome::Fail(refused) => return azure_error(404, "BlobNotFound", &refused.message),
+                        }
+                    } else {
+                        upload_id.to_owned()
+                    };
+                    let upload = bucket.resume_multipart_upload(&grant.object, &upload_id)?;
                     let uploaded = match request.inner().body() {
                         Some(body) if length > 0 => upload.upload_part(part as u16, body).await?,
                         _ => upload.upload_part(part as u16, Vec::<u8>::new()).await?,
                     };
-                    let recorded = BlobArgs { blob: token.to_owned(), part, etag: uploaded.etag(), size: length };
+                    let recorded = BlobArgs { blob: token.to_owned(), part, etag: uploaded.etag(), size: length, ..BlobArgs::default() };
                     let _: Outcome<bool> = g1t_kit::call(&services.actions, "blob_part", &recorded).await?;
-                    if comp == "block" {
-                        return azure(201);
-                    }
-                    // Put Blob is the whole thing: finish it now.
-                    complete_blob(&bucket, services, token, &grant, upload_id, &[], limit, true).await
+                    azure(201)
                 }
                 "blocklist" => {
                     let xml = request.text().await.unwrap_or_default();
                     let ids = block_list(&xml);
-                    complete_blob(&bucket, services, token, &grant, upload_id, &ids, limit, false).await
+                    complete_blob(&bucket, services, token, &grant, upload_id, &ids, limit).await
                 }
                 _ => azure_error(400, "InvalidQueryParameterValue", "g1t takes Put Blob, Put Block and Put Block List."),
             }
@@ -896,31 +1001,16 @@ async fn blob_inner(mut request: Request, env: &Env, services: &Services, method
     }
 }
 
-/// Finishes an upload from its parts: the blocks a list names, or the one
-/// part of a Put Blob.
-#[allow(clippy::too_many_arguments)]
-async fn complete_blob(
-    bucket: &Bucket,
-    services: &Services,
-    token: &str,
-    grant: &BlobGrant,
-    upload_id: &str,
-    ids: &[String],
-    limit: u64,
-    whole: bool,
-) -> Result<Response> {
+/// Finishes an upload from the blocks a list names.
+async fn complete_blob(bucket: &Bucket, services: &Services, token: &str, grant: &BlobGrant, upload_id: &str, ids: &[String], limit: u64) -> Result<Response> {
     let recorded: Outcome<Vec<BlobPart>> = g1t_kit::call(&services.actions, "blob_parts", &BlobArgs { blob: token.to_owned(), ..BlobArgs::default() }).await?;
     let recorded = match recorded {
         Outcome::Ok(recorded) => recorded,
         Outcome::Fail(refused) => return azure_error(403, "AuthenticationFailed", &refused.message),
     };
-    let parts = if whole {
-        recorded.into_iter().filter(|p| p.part == 1).collect()
-    } else {
-        match parts_for(ids, &recorded) {
-            Ok(parts) => parts,
-            Err(problem) => return azure_error(400, "InvalidBlockList", &problem),
-        }
+    let parts = match parts_for(ids, &recorded) {
+        Ok(parts) => parts,
+        Err(problem) => return azure_error(400, "InvalidBlockList", &problem),
     };
     let size = match finish(bucket, &grant.object, upload_id, &parts).await {
         Ok(size) => size,
@@ -993,6 +1083,32 @@ mod tests {
         assert_eq!(chunk_part(&format!("bytes 0-{}/*", MAX_BLOCK_BYTES)), None);
         assert_eq!(chunk_part("bytes 10-5/*"), None);
         assert_eq!(chunk_part("0-10"), None);
+    }
+
+    #[test]
+    fn an_entry_sent_in_one_chunk_is_put_whole() {
+        let mb32 = CACHE_PART_BYTES;
+        // sccache's 13-byte check file, and a compiled crate over 32 MB:
+        // one chunk each, from 0.
+        assert!(chunk_whole("bytes 0-12/*"));
+        assert!(chunk_whole(&format!("bytes 0-{}/*", mb32)));
+        assert!(chunk_whole("bytes 0-99/100"));
+        // Exactly a chunk long: the whole entry only when it says so.
+        assert!(chunk_whole(&format!("bytes 0-{}/{mb32}", mb32 - 1)));
+        assert!(!chunk_whole(&format!("bytes 0-{}/*", mb32 - 1)));
+        assert!(!chunk_whole(&format!("bytes 0-{}/{}", mb32 - 1, mb32 * 3)));
+        // A later chunk, or not a chunk at all.
+        assert!(!chunk_whole(&format!("bytes {mb32}-{}/*", mb32 + 99)));
+        assert!(!chunk_whole("bytes 5-10/*"));
+    }
+
+    #[test]
+    fn evicted_objects_are_deleted_a_thousand_at_a_time() {
+        let objects: Vec<String> = (0..2_345).map(|n| format!("c/repo_1/cache_{n}")).collect();
+        let calls: Vec<usize> = delete_calls(&objects).map(<[String]>::len).collect();
+        assert_eq!(calls, [1_000, 1_000, 345]);
+        assert_eq!(delete_calls(&objects[..3]).count(), 1);
+        assert_eq!(delete_calls(&[]).count(), 0);
     }
 
     #[test]

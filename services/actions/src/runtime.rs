@@ -38,6 +38,12 @@ pub(crate) const DOWNLOAD_SECONDS: u64 = 60 * 60;
 /// How long a download link the API redirects a person to is good.
 pub(crate) const LINK_SECONDS: u64 = 10 * 60;
 
+/// Keeps the R2 upload a block started for a pending cache entry, unless
+/// one is kept already, and gives the one kept: writes are one at a time,
+/// so every block of an entry sends its parts to the same upload.
+pub(crate) const BLOB_START: &str =
+    "UPDATE cache_entries SET upload = COALESCE(upload, ?1) WHERE id = ?2 AND object = ?3 AND status = 'pending' RETURNING upload";
+
 fn encode(bytes: &[u8]) -> String {
     URL_SAFE_NO_PAD.encode(bytes)
 }
@@ -86,6 +92,17 @@ pub fn runtime_job(token: &str) -> Option<String> {
     claims["job"].as_str().map(str::to_owned)
 }
 
+/// The run a runtime token says its job is in, unchecked: read alongside
+/// the job, and used only once the token is checked and the job's row
+/// names the same run.
+pub(crate) fn runtime_run(token: &str) -> Option<String> {
+    if !is_runtime(token) {
+        return None;
+    }
+    let claims = decode_json(token.split('.').nth(1)?)?;
+    claims["run"].as_str().map(str::to_owned)
+}
+
 /// Whether `token` is a good runtime token for `job`, whose own token
 /// hashes to `token_hash`, at `now` (seconds).
 pub(crate) fn runtime_valid(token: &str, job: &str, token_hash: &str, now: u64) -> bool {
@@ -116,7 +133,8 @@ pub(crate) struct BlobClaims {
     pub i: String,
     /// Its object in R2.
     pub o: String,
-    /// The R2 upload, for an upload.
+    /// The R2 upload, for an upload: empty while none is started (a cache
+    /// entry's, which is started with its first block).
     #[serde(default)]
     pub u: Option<String>,
     /// Good until, seconds since the epoch.
@@ -132,6 +150,15 @@ pub(crate) fn sign_blob(key: &str, claims: &BlobClaims) -> String {
     let payload = encode(serde_json::to_string(claims).unwrap_or_default().as_bytes());
     let signature = mac(key, &payload);
     format!("{payload}.{signature}")
+}
+
+/// Where an upload's parts are recorded: under its R2 upload, or, for one
+/// started after its token was signed, under its entry.
+pub(crate) fn parts_key(claims: &BlobClaims) -> Option<String> {
+    match claims.u.as_deref()? {
+        "" => Some(format!("{}:{}", claims.k, claims.i)),
+        upload => Some(upload.to_owned()),
+    }
 }
 
 /// What a blob token grants, if it is signed with `key` and good at `now`.
@@ -398,14 +425,26 @@ impl Actions {
         };
         // A download needs its entry still there; an upload, still pending.
         let wanted = if claims.u.is_some() { "pending" } else { "ready" };
+        let mut upload = claims.u.clone();
         let (exists, filename, content_type) = match claims.k.as_str() {
             "cache" => {
+                #[derive(Deserialize)]
+                struct Row {
+                    upload: Option<String>,
+                }
                 let row = self
                     .db
-                    .prepare("SELECT id FROM cache_entries WHERE id = ? AND object = ? AND status = ?")
+                    .prepare("SELECT upload FROM cache_entries WHERE id = ? AND object = ? AND status = ?")
                     .bind(&[claims.i.as_str().into(), claims.o.as_str().into(), wanted.into()])?
-                    .first::<Value>(None)
+                    .first::<Row>(None)
                     .await?;
+                // A token signed before its R2 upload was started: the
+                // upload a block started since, if one has.
+                if upload.as_deref() == Some("")
+                    && let Some(started) = row.as_ref().and_then(|row| row.upload.clone())
+                {
+                    upload = Some(started);
+                }
                 (row.is_some(), None, Some("application/octet-stream".to_owned()))
             }
             _ => {
@@ -433,12 +472,38 @@ impl Actions {
         if !exists {
             return Ok(fail(FailureCode::NotFound, "That is gone: it expired, was deleted, or its upload finished."));
         }
-        Ok(Outcome::Ok(BlobGrant { kind: claims.k, id: claims.i, object: claims.o, upload: claims.u, filename, content_type }))
+        Ok(Outcome::Ok(BlobGrant { kind: claims.k, id: claims.i, object: claims.o, upload, filename, content_type }))
+    }
+
+    /// `blob_start`: the R2 upload a cache entry's parts go to. The first
+    /// block to arrive keeps the one it started; the others are told it,
+    /// and abort their own.
+    pub async fn blob_start(&self, a: BlobArgs) -> Result<Outcome<String>> {
+        let Some(BlobClaims { k, i, o, u: Some(signed), .. }) = self.opened(&a.blob) else {
+            return Ok(fail(FailureCode::Unauthenticated, "That link has expired or is not an upload."));
+        };
+        if k != "cache" || !signed.is_empty() || a.upload.is_empty() {
+            return Ok(fail(FailureCode::Invalid, "That upload was started when it was reserved."));
+        }
+        #[derive(Deserialize)]
+        struct Row {
+            upload: String,
+        }
+        let row = self
+            .db
+            .prepare(BLOB_START)
+            .bind(&[a.upload.as_str().into(), i.as_str().into(), o.as_str().into()])?
+            .first::<Row>(None)
+            .await?;
+        Ok(match row {
+            Some(row) => Outcome::Ok(row.upload),
+            None => fail(FailureCode::NotFound, "That is gone: it expired, was deleted, or its upload finished."),
+        })
     }
 
     /// `blob_part`.
     pub async fn blob_part(&self, a: BlobArgs) -> Result<Outcome<bool>> {
-        let Some(BlobClaims { u: Some(upload), .. }) = self.opened(&a.blob) else {
+        let Some(upload) = self.opened(&a.blob).as_ref().and_then(parts_key) else {
             return Ok(fail(FailureCode::Unauthenticated, "That link has expired or is not an upload."));
         };
         self.db
@@ -454,7 +519,7 @@ impl Actions {
 
     /// `blob_parts`.
     pub async fn blob_parts(&self, a: BlobArgs) -> Result<Outcome<Vec<BlobPart>>> {
-        let Some(BlobClaims { u: Some(upload), .. }) = self.opened(&a.blob) else {
+        let Some(upload) = self.opened(&a.blob).as_ref().and_then(parts_key) else {
             return Ok(fail(FailureCode::Unauthenticated, "That link has expired or is not an upload."));
         };
         #[derive(Deserialize)]
@@ -476,9 +541,13 @@ impl Actions {
     /// `blob_done`: the upload is complete at `size` bytes, as R2 measured
     /// it, which is the size its entry is committed at.
     pub async fn blob_done(&self, a: BlobArgs) -> Result<Outcome<bool>> {
-        let Some(BlobClaims { k, i, u: Some(upload), .. }) = self.opened(&a.blob) else {
+        let Some(claims) = self.opened(&a.blob) else {
             return Ok(Outcome::Ok(false));
         };
+        let Some(upload) = parts_key(&claims) else {
+            return Ok(Outcome::Ok(false));
+        };
+        let BlobClaims { k, i, .. } = claims;
         self.db.prepare("DELETE FROM blob_parts WHERE upload = ?").bind(&[upload.as_str().into()])?.run().await?;
         let size = (a.size as f64).into();
         if k == "cache" {
@@ -555,6 +624,38 @@ mod tests {
         assert_eq!(open_blob(&blob_key("11".repeat(32).as_str()), &token, 999), None);
         let (payload, _) = token.split_once('.').unwrap();
         assert_eq!(open_blob(&key, &format!("{payload}.AAAA"), 999), None);
+    }
+
+    #[test]
+    fn parts_are_recorded_under_their_upload_or_else_their_entry() {
+        let claims = |u: Option<&str>| BlobClaims { k: "cache".into(), i: "cache_1".into(), o: "c/repo_1/cache_1".into(), u: u.map(str::to_owned), e: 1_000 };
+        assert_eq!(parts_key(&claims(Some("up_1"))).as_deref(), Some("up_1"));
+        // Started after its token was signed: every block's token is the same.
+        assert_eq!(parts_key(&claims(Some(""))).as_deref(), Some("cache:cache_1"));
+        // A download has no parts.
+        assert_eq!(parts_key(&claims(None)), None);
+        assert_eq!(runtime_run(&runtime_token("job_1", "run_1", HASH, 1_700_000_000, 3600)).as_deref(), Some("run_1"));
+        assert_eq!(runtime_run(HASH), None);
+    }
+
+    #[test]
+    fn the_first_block_s_upload_is_the_one_kept() {
+        let db = rusqlite::Connection::open_in_memory().unwrap();
+        db.execute_batch(
+            "CREATE TABLE cache_entries (id TEXT PRIMARY KEY, object TEXT NOT NULL, status TEXT NOT NULL, upload TEXT);
+             INSERT INTO cache_entries VALUES ('cache_1', 'c/repo_1/cache_1', 'pending', NULL);
+             INSERT INTO cache_entries VALUES ('cache_2', 'c/repo_1/cache_2', 'ready', NULL);",
+        )
+        .unwrap();
+        let start = |upload: &str, id: &str, object: &str| -> Option<String> {
+            use rusqlite::OptionalExtension;
+            db.query_row(BLOB_START, rusqlite::params![upload, id, object], |row| row.get(0)).optional().unwrap()
+        };
+        assert_eq!(start("up_a", "cache_1", "c/repo_1/cache_1").as_deref(), Some("up_a"));
+        assert_eq!(start("up_b", "cache_1", "c/repo_1/cache_1").as_deref(), Some("up_a"));
+        // Not pending, or another entry's object: nothing.
+        assert_eq!(start("up_c", "cache_2", "c/repo_1/cache_2"), None);
+        assert_eq!(start("up_c", "cache_1", "c/repo_1/cache_2"), None);
     }
 
     #[test]

@@ -1322,7 +1322,10 @@ pub struct CacheReservation {
     #[serde(default)]
     pub upload: Option<String>,
     /// A signed token for sending its parts through the toolkit's blob
-    /// endpoint, once its upload is started.
+    /// endpoint, once its upload is started. A new reservation comes with
+    /// one for an upload not started yet: an entry sent in one request is
+    /// put in R2 whole, and only one sent in blocks starts an R2 upload,
+    /// with its first block (`blob_start`).
     #[serde(default)]
     pub blob: Option<String>,
 }
@@ -1678,7 +1681,8 @@ pub struct BlobGrant {
     /// The entry's id: a cache entry's `cache_…`, an artifact's number.
     pub id: String,
     pub object: String,
-    /// The R2 upload it sends parts to; `None` for a download.
+    /// The R2 upload it sends parts to; `None` for a download, and empty
+    /// for an upload whose R2 upload is not started yet.
     pub upload: Option<String>,
     /// For a download: what to call the file, and its type.
     #[serde(default)]
@@ -1703,7 +1707,10 @@ pub struct BlobSignArgs {
 /// is there: `Outcome<BlobGrant>`. `blob_part` records a part sent with an
 /// upload token (`part`, `etag`, `size`): `Outcome<bool>`. `blob_parts`
 /// gives the parts recorded, in order: `Outcome<Vec<BlobPart>>`, and
-/// `blob_done` forgets them: `Outcome<bool>`.
+/// `blob_done` forgets them: `Outcome<bool>`. `blob_start` keeps the R2
+/// upload the API started (`upload`) for a token whose upload was not
+/// started yet, unless another of its blocks started one first, and gives
+/// the one its parts go to: `Outcome<String>`.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct BlobArgs {
     pub blob: String,
@@ -1713,6 +1720,8 @@ pub struct BlobArgs {
     pub etag: String,
     #[serde(default)]
     pub size: u64,
+    #[serde(default)]
+    pub upload: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

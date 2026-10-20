@@ -399,6 +399,7 @@ async fn answer(service: &Actions, method: &str, body: Value) -> Result<Response
         "oidc_claims" => reply(&service.oidc_claims(args(body)?).await?),
         "blob_sign" => reply(&service.blob_sign(args(body)?).await?),
         "blob_open" => reply(&service.blob_open(args(body)?).await?),
+        "blob_start" => reply(&service.blob_start(args(body)?).await?),
         "blob_part" => reply(&service.blob_part(args(body)?).await?),
         "blob_parts" => reply(&service.blob_parts(args(body)?).await?),
         "blob_done" => reply(&service.blob_done(args(body)?).await?),
