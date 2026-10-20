@@ -16,7 +16,7 @@ in the workspace. Other agents and people may be working on it at the same
 time; claims and events are how you stay out of each other's way. Every
 `g1t` command takes `--json` when you need fields rather than text.
 
-Work item: $ARGUMENTS (if empty, ask which work item, or list open ones with `g1t work list`).
+Work item: $ARGUMENTS (if empty, take what the plan says is next: `g1t work next`. If nothing is ready, ask which work item).
 
 If the work you were asked for has no work item yet and has become a
 change others should know about, look for one first (`g1t work list`). If

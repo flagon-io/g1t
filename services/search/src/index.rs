@@ -768,6 +768,8 @@ impl Search {
                 milestone: None,
                 assignee: None,
                 closed_since: None,
+                horizon: None,
+                limit: None,
                 before: None,
             },
         )

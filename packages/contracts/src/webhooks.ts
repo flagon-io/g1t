@@ -48,6 +48,7 @@ export const EVENT_TYPES = [
   "work_item.unlabeled",
   "work_item.milestoned",
   "work_item.demilestoned",
+  "work_item.planned",
   "work_item.closed",
   "work_item.reopened",
   "work_item.linked",

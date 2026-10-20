@@ -34,6 +34,7 @@ import {
   landedDeploys,
   landedFromActivity,
   landedIn,
+  nowRows,
   parseWindow,
   pushRows,
   settledIn,
@@ -92,7 +93,9 @@ const LIVE_READ = 12;
  * Home: the workspace's front page. First the box that asks g1t
  * (components/home-ask: What changed summarizes the span on the page, and
  * Explain on each change that landed asks about it). Then Your move:
- * everything waiting on you, with no time window, beside Live: the agents
+ * everything waiting on you, with no time window, your own work in the
+ * plan's Now among it, and with nothing waiting the work item to take
+ * next as Start here; beside it Live: the agents
  * at work, workflow runs and builds going now. Then the week's work
  * (components/home-week, lib/signals.ts): four figures, the last two weeks
  * day by day, and what is worth a look, each with its evidence and pinned
@@ -135,9 +138,19 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     .catch(() => null);
   const lastSeenP = windowKey === "last" ? loadLastVisit(viewer, slug).catch(() => undefined) : Promise.resolve(null);
 
-  const waiting: Promise<Attention> = Promise.all([missionP, notificationsP, chatP])
-    .then(([mission, notifications, sidebar]) => attention({ slug, code, codeNeeds: mission?.needs ?? null, notifications, chat: sidebar?.entries ?? null }))
-    .catch(() => ({ rows: [], start: null, missing: ["Code", "Notifications", "Chat"] }));
+  // Your own work in the plan's Now, and the work item to take next for when nothing else waits on you.
+  const nowP = Promise.all([work.listWorkItems(slug, viewer, { horizon: "now" }), work.listClaims(slug, viewer, { state: "active" })])
+    .then(([now, claims]) => (now.ok && claims.ok ? nowRows(now.value, claims.value, viewer.username) : null))
+    .catch(() => null);
+  const nextP = work
+    .nextWorkItem(slug, viewer)
+    .then((result) => (result.ok && result.value ? { item: result.value, viewer: viewer.username } : null))
+    .catch(() => null);
+  const waiting: Promise<Attention> = Promise.all([missionP, notificationsP, chatP, nowP, nextP])
+    .then(([mission, notifications, sidebar, now, next]) =>
+      attention({ slug, code, codeNeeds: mission?.needs ?? null, notifications, chat: sidebar?.entries ?? null, now, next }),
+    )
+    .catch(() => ({ rows: [], start: null, missing: ["Code", "Notifications", "Chat", "Work"] }));
 
   const span = spanFor(windowKey, now, await lastSeenP, tz);
 

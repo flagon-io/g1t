@@ -28,6 +28,7 @@ import { Hint } from "../../../components/ui/hint";
 import { SelectField } from "../../../components/ui/select";
 import { CheckBadge } from "../../../components/checks";
 import { LabelChip, LabelsBox, MilestoneBox } from "../../../components/labels";
+import { PlanBox } from "../../../components/plan-box";
 import { Assignee, ChangeSize, CommentForm, CommentList, ItemState, PeoplePicker, PersonLink, PullIcon, plainText } from "../../../components/work";
 import { AttachImages } from "../../../components/attach-images";
 import { RoleBadge } from "../../../components/work-items";
@@ -44,6 +45,7 @@ import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../../lib/s
 import { useRefreshWhile } from "../../../lib/refresh";
 import { isFailed, part } from "../../../lib/partial";
 import { parseBlockedBy, pullHrefs, resolutionOf } from "../../../lib/coordination";
+import { planInput } from "../../../lib/plan";
 import { refPath } from "../../../lib/refs.server";
 import { itemAbilities } from "../../../lib/work-access";
 import { LINK_ROLES, ROLE_LABELS, itemPath, originOf, repoFilter, sessionPath, shortPath, workPath } from "../../../lib/work-items";
@@ -245,6 +247,13 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     }
     case "milestone": {
       const result = await work.updateWorkItem(user, workspace, number, { milestone: Number(form.get("milestone")) || 0 });
+      return result.ok ? null : { error: result.error.message, action: intent };
+    }
+    // Its place in the plan, from the sidebar's Plan (components/plan-box.tsx).
+    case "plan": {
+      const input = planInput(form);
+      if (typeof input === "string") return { error: input, action: intent };
+      const result = await work.planWorkItem(user, workspace, number, input);
       return result.ok ? null : { error: result.error.message, action: intent };
     }
     // Linking a repository in a role (a suggestion's Add as target is one), or unlinking one.
@@ -1008,6 +1017,7 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
           ) : (
             <MilestoneBox milestones={loaderData.milestones} current={item.milestone} canEdit={can.triage} base={workPath(workspace)} />
           )}
+          <PlanBox item={item} workspace={workspace} canEdit={can.triage} canNow={can.manage_labels} />
           {viewer &&
             (isFailed(loaderData.subscription) ? (
               <SideUnavailable heading="Notifications" what="Your notification settings" />

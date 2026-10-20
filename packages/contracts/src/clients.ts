@@ -452,9 +452,16 @@ export function workClient(service: ServiceBinding): WorkApi {
         assignee: filter.assignee ?? null,
         closed_since: filter.closedSince ?? null,
         before: filter.before ?? null,
+        ...(filter.horizon ? { horizon: filter.horizon } : {}),
+        ...(filter.limit ? { limit: filter.limit } : {}),
       }),
     getWorkItem: (workspace, number, viewer) => call("get_work_item", { workspace, number, viewer }),
     updateWorkItem: (actor, workspace, number, input) => call("update_work_item", { actor, workspace, number, ...input }),
+    planWorkItem: (actor, workspace, number, input) => call("plan_work_item", { actor, workspace, number, ...input }),
+    getPlan: (workspace, viewer, options = {}) =>
+      call("get_plan", { workspace, viewer, ...(options.repo ? { repo: options.repo } : {}), ...(options.all ? { all: true } : {}) }),
+    nextWorkItem: (workspace, viewer, repo) => call("next_work_item", { workspace, viewer, ...(repo ? { repo } : {}) }),
+    configurePlan: (actor, workspace, nowCap) => call("configure_plan", { actor, workspace, now_cap: nowCap }),
     closeWorkItem: (actor, workspace, number, reason, by) =>
       call("close_work_item", {
         actor,

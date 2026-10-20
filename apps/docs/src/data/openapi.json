@@ -401,6 +401,10 @@
         "update_work_item",
         "close_work_item",
         "reopen_work_item",
+        "plan_work_item",
+        "get_plan",
+        "next_work_item",
+        "configure_plan",
         "list_work_item_links",
         "link_work_item",
         "unlink_work_item",
@@ -58649,7 +58653,7 @@
           "Work items"
         ],
         "summary": "List a workspace's work items",
-        "description": "A workspace's work items, newest first. A work item is any tracked work (a feature, a bug, a chore) of the workspace, numbered in its sequence with new pull requests, and linked to the repositories it concerns: its `origin` (where it was filed, if it was filed in one), its `target`s (where the work is meant to land) and those it `touched` (where a pull request or commit for it landed or is under way). Filter by state, by a label's name, by a milestone's number, by assignee, and with repo by a repository it is linked to (role narrows it to one kind of link). Members see every work item; anyone who can read a repository sees the work items filed in it.\n\nReturns at most 100 work items, newest first. Each lists the repositories it is linked to in `repos`, with its role in each. `comment_count` counts comments, not events such as \"opened #14 for this\".",
+        "description": "A workspace's work items, newest first. A work item is any tracked work (a feature, a bug, a chore) of the workspace, numbered in its sequence with new pull requests, and linked to the repositories it concerns: its `origin` (where it was filed, if it was filed in one), its `target`s (where the work is meant to land) and those it `touched` (where a pull request or commit for it landed or is under way). Filter by state, by a label's name, by a milestone's number, by assignee, and with repo by a repository it is linked to (role narrows it to one kind of link). With horizon, only the open work items on that horizon of the plan, in the plan's order: urgent first, then by rank (triage newest first). limit is how many, 1 to 100 (100 if left out). Each work item says where it stands in the plan: `horizon`, `appetite`, `budget_usd`, `urgent` and `planned_at`. Members see every work item; anyone who can read a repository sees the work items filed in it.\n\nReturns at most 100 work items (limit takes fewer), newest first; with horizon, the open ones on that horizon in the plan's order. Each lists the repositories it is linked to in `repos`, with its role in each. `comment_count` counts comments, not events such as \"opened #14 for this\".",
         "x-operation": "list_work_items",
         "x-mcp-tool": "work_item",
         "x-mcp-action": "list",
@@ -58736,6 +58740,33 @@
               ]
             },
             "description": "With repo: only work items linked to it this way."
+          },
+          {
+            "name": "horizon",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "triage",
+                "now",
+                "next",
+                "later",
+                "set_aside"
+              ]
+            },
+            "description": "A horizon of the plan: triage (not placed yet), now, next, later or set_aside. Only the open work items on it, in the plan's order instead of the newest first."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "description": "At most this many, 1 to 100 (100 if left out)."
           },
           {
             "$ref": "#/components/parameters/ApiVersion"
@@ -60718,6 +60749,968 @@
               }
             }
           }
+        }
+      }
+    },
+    "/workspaces/{workspace}/work/{number}/plan": {
+      "post": {
+        "operationId": "plan_work_item",
+        "tags": [
+          "Work items"
+        ],
+        "summary": "Plan a work item",
+        "description": "Move an open work item in its workspace's plan, or set what the plan says of it. Every open work item is on one horizon: triage (not placed yet; where new ones start), now (what the workspace is on), next (ranked: the top is taken next), later (wanted, not ranked yet) or set_aside (out of every view but search). Only the fields given change. horizon moves it, last there unless a position is given; before or after (another open work item's number) puts it next to that one, on that one's horizon; top puts it first on its horizon. Give at most one of before, after and top; triage takes none, since it is in the order work items came in. appetite (small, medium or large) is how much the work is worth and budget_usd what an agent on it may spend (in dollars, above 0 and up to 100000); null clears either. urgent true puts it first in Now, ahead of its rank, until it closes. Needs the Triage role on the work item; moving it into or out of Now, ranking it within Now, and urgent need the Write role through workspace membership, the right to manage milestones. A closed work item is refused with `409`. Returns the work item. A work_item.planned event, with horizon, from_horizon when it moved, appetite and urgent.\n\nMoves #12 into Now, just after #9, and says it is small. Give at most one of before, after and top; with none, a new horizon puts it last there and the same horizon leaves it where it is. appetite and budget_usd take null to clear them. A work_item.planned event says where it is now (`horizon`), where it was (`from_horizon`, when it moved), its `appetite` and whether it is `urgent`.",
+        "x-operation": "plan_work_item",
+        "x-mcp-tool": "work_item",
+        "x-mcp-action": "plan",
+        "x-scope": "work:write",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "work:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "The work item's number, shown after the #. A workspace numbers its work items and new pull requests in one sequence."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "wki_01m43shrzpfe49x74ga7sj1c6v",
+                  "workspace": "flagon-io",
+                  "number": 12,
+                  "title": "Greeting should name the caller",
+                  "body": "Take a name from the first argument; fall back to world.",
+                  "labels": [
+                    "feature"
+                  ],
+                  "state": "open",
+                  "reason": null,
+                  "resolutions": [],
+                  "author": {
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                    "username": "syntaqx",
+                    "display_username": "syntaqx",
+                    "kind": "user",
+                    "verified": false,
+                    "workspaces": []
+                  },
+                  "requested_by": null,
+                  "created_at": "2026-10-01T18:04:11.482Z",
+                  "updated_at": "2026-10-19T15:20:07.114Z",
+                  "closed_at": null,
+                  "pull_count": 0,
+                  "comment_count": 0,
+                  "assignees": [],
+                  "blocked_by": [],
+                  "agent": null,
+                  "milestone": null,
+                  "repos": [
+                    {
+                      "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                      "path": "flagon-io/hello",
+                      "role": "origin",
+                      "legacy_number": null,
+                      "landed": false
+                    }
+                  ],
+                  "horizon": "now",
+                  "appetite": "small",
+                  "budget_usd": null,
+                  "urgent": false,
+                  "planned_at": "2026-10-19T15:20:07.114Z"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "repo": {
+                    "type": "string",
+                    "description": "Instead of workspace: a repository of the workspace, as \"owner/name\", whose workspace it is."
+                  },
+                  "horizon": {
+                    "type": "string",
+                    "enum": [
+                      "triage",
+                      "now",
+                      "next",
+                      "later",
+                      "set_aside"
+                    ],
+                    "description": "Where to move it: last there, unless before, after or top says where. Into or out of now needs the Write role."
+                  },
+                  "before": {
+                    "type": "integer",
+                    "description": "The number of the open work item to put it just before, on that one's horizon."
+                  },
+                  "after": {
+                    "type": "integer",
+                    "description": "The number of the open work item to put it just after, on that one's horizon."
+                  },
+                  "top": {
+                    "type": "boolean",
+                    "description": "First on its horizon (or on horizon, when given)."
+                  },
+                  "appetite": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "small",
+                      "medium",
+                      "large",
+                      null
+                    ],
+                    "description": "How much the work is worth: small (one session), medium (a few, about a week) or large (a phase, broken into smaller work items before it is taken on). null clears it."
+                  },
+                  "budget_usd": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "What an agent working on it may spend, in dollars, above 0 and up to 100000. null clears it."
+                  },
+                  "urgent": {
+                    "type": "boolean",
+                    "description": "true puts it first in Now, ahead of its rank, until it closes; false takes that away. Needs the Write role."
+                  }
+                }
+              },
+              "example": {
+                "horizon": "now",
+                "after": 9,
+                "appetite": "small"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "number": 12
+        }
+      }
+    },
+    "/workspaces/{workspace}/plan": {
+      "get": {
+        "operationId": "get_plan",
+        "tags": [
+          "Work items"
+        ],
+        "summary": "Get a workspace's plan",
+        "description": "A workspace's plan, as you may see it: `now` in full (urgent first, then by rank, at most 100) with `now_cap`, how many Now holds before the plan says it is over; `next` by rank, its top 10 (with all, up to 100) and `next_total`; then counts only: `triage_total`, `later_total` with `later` grouped by the repository each is filed in (`repo` \"owner/name\", none for those filed in the workspace; the largest 50 groups), and `set_aside_total`. With repo, only work items linked to it. Members see every work item; anyone who can read a repository sees those filed in it. list_work_items with horizon lists one horizon, such as Later or Triage, in the plan's order.\n\nNow is urgent first, then by rank; Next is its top 10 unless all is given, and next_total says how many it holds. Triage, Later and Set aside are counts only: list_work_items with horizon lists them, in the plan's order, at most 100 at a time. A Later group with repo null holds the work items filed in the workspace, not in a repository.",
+        "x-operation": "get_plan",
+        "x-mcp-tool": "work_item",
+        "x-mcp-action": "get_plan",
+        "x-scope": "work:read",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "work:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "repo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only work items linked to this repository (\"owner/name\"). Given without workspace, its workspace's."
+          },
+          {
+            "name": "all",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Every one of Next (up to 100), not only its top 10."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "workspace": "flagon-io",
+                  "now": [
+                    {
+                      "id": "wki_01m3zr4bq1ef0a8m6n2vkxgq7t",
+                      "workspace": "flagon-io",
+                      "number": 9,
+                      "title": "Deploy fails when the README has no title",
+                      "body": "The page build reads the first heading as the site title and stops when there is none.",
+                      "labels": [
+                        "bug"
+                      ],
+                      "state": "open",
+                      "reason": null,
+                      "resolutions": [],
+                      "author": {
+                        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                        "username": "syntaqx",
+                        "display_username": "syntaqx",
+                        "kind": "user",
+                        "verified": false,
+                        "workspaces": []
+                      },
+                      "requested_by": null,
+                      "created_at": "2026-10-01T18:04:11.482Z",
+                      "updated_at": "2026-10-01T19:41:52.830Z",
+                      "closed_at": null,
+                      "pull_count": 0,
+                      "comment_count": 0,
+                      "assignees": [],
+                      "blocked_by": [],
+                      "agent": null,
+                      "milestone": null,
+                      "repos": [
+                        {
+                          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                          "path": "flagon-io/hello",
+                          "role": "origin",
+                          "legacy_number": null,
+                          "landed": false
+                        }
+                      ],
+                      "horizon": "now",
+                      "appetite": "medium",
+                      "budget_usd": 25.0,
+                      "urgent": true,
+                      "planned_at": "2026-10-18T09:12:44.501Z"
+                    },
+                    {
+                      "id": "wki_01m43shrzpfe49x74ga7sj1c6v",
+                      "workspace": "flagon-io",
+                      "number": 12,
+                      "title": "Greeting should name the caller",
+                      "body": "Take a name from the first argument; fall back to world.",
+                      "labels": [
+                        "feature"
+                      ],
+                      "state": "open",
+                      "reason": null,
+                      "resolutions": [],
+                      "author": {
+                        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                        "username": "syntaqx",
+                        "display_username": "syntaqx",
+                        "kind": "user",
+                        "verified": false,
+                        "workspaces": []
+                      },
+                      "requested_by": null,
+                      "created_at": "2026-10-01T18:04:11.482Z",
+                      "updated_at": "2026-10-19T15:20:07.114Z",
+                      "closed_at": null,
+                      "pull_count": 0,
+                      "comment_count": 0,
+                      "assignees": [],
+                      "blocked_by": [],
+                      "agent": null,
+                      "milestone": null,
+                      "repos": [
+                        {
+                          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                          "path": "flagon-io/hello",
+                          "role": "origin",
+                          "legacy_number": null,
+                          "landed": false
+                        }
+                      ],
+                      "horizon": "now",
+                      "appetite": "small",
+                      "budget_usd": null,
+                      "urgent": false,
+                      "planned_at": "2026-10-19T15:20:07.114Z"
+                    }
+                  ],
+                  "now_cap": 6,
+                  "next": [
+                    {
+                      "id": "wki_01m4a7tq2re8sbm3w0c5vzd9hk",
+                      "workspace": "flagon-io",
+                      "number": 15,
+                      "title": "Say which flags a command takes in --help",
+                      "body": "Each command lists its flags with one line on what each does.",
+                      "labels": [
+                        "documentation"
+                      ],
+                      "state": "open",
+                      "reason": null,
+                      "resolutions": [],
+                      "author": {
+                        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                        "username": "syntaqx",
+                        "display_username": "syntaqx",
+                        "kind": "user",
+                        "verified": false,
+                        "workspaces": []
+                      },
+                      "requested_by": null,
+                      "created_at": "2026-10-01T18:04:11.482Z",
+                      "updated_at": "2026-10-01T19:41:52.830Z",
+                      "closed_at": null,
+                      "pull_count": 0,
+                      "comment_count": 0,
+                      "assignees": [],
+                      "blocked_by": [],
+                      "agent": null,
+                      "milestone": null,
+                      "repos": [
+                        {
+                          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                          "path": "flagon-io/hello",
+                          "role": "origin",
+                          "legacy_number": null,
+                          "landed": false
+                        }
+                      ],
+                      "horizon": "next",
+                      "appetite": "small",
+                      "budget_usd": null,
+                      "urgent": false,
+                      "planned_at": "2026-10-17T11:03:29.870Z"
+                    }
+                  ],
+                  "next_total": 14,
+                  "triage_total": 3,
+                  "later_total": 22,
+                  "later": [
+                    {
+                      "repo": "flagon-io/hello",
+                      "count": 15
+                    },
+                    {
+                      "repo": null,
+                      "count": 7
+                    }
+                  ],
+                  "set_aside_total": 5
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      },
+      "patch": {
+        "operationId": "configure_plan",
+        "tags": [
+          "Work items"
+        ],
+        "summary": "Configure a workspace's plan",
+        "description": "Set how many work items a workspace's Now holds before its plan says it is over: now_cap, 1 to 50 (6 until it is set). Past the cap, g1t warns; it never refuses a move. Needs the Write role through workspace membership, the right to manage milestones. Returns the plan's settings: `now_cap`, with no work items or counts.\n\nOnly now_cap is meaningful in the answer: get_plan reads the plan itself.",
+        "x-operation": "configure_plan",
+        "x-mcp-tool": "workspace",
+        "x-mcp-action": "configure_plan",
+        "x-scope": "work:write",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "work:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "workspace": "flagon-io",
+                  "now": [],
+                  "now_cap": 8,
+                  "next": [],
+                  "next_total": 0,
+                  "triage_total": 0,
+                  "later_total": 0,
+                  "later": [],
+                  "set_aside_total": 0
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "now_cap": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50,
+                    "description": "How many work items Now holds before the plan says it is over, 1 to 50."
+                  }
+                },
+                "required": [
+                  "now_cap"
+                ]
+              },
+              "example": {
+                "now_cap": 8
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      }
+    },
+    "/workspaces/{workspace}/plan/next": {
+      "get": {
+        "operationId": "next_work_item",
+        "tags": [
+          "Work items"
+        ],
+        "summary": "Get the work item to take next",
+        "description": "The work item to take next in a workspace, for you: the first in Now nobody is on, else the top of Next, leaving out any blocked by open work, claimed by someone, or assigned to someone other than you. With repo, only work items linked to it. Returns the work item, or null when nothing is ready. This is how an agent picks up work: read it, then claim_work_item it. Reading it claims nothing.\n\nnull when nothing is ready: everything in Now and Next is blocked by open work, claimed, or assigned to someone else. It claims nothing; claim_work_item the work item it gives before starting on it.",
+        "x-operation": "next_work_item",
+        "x-mcp-tool": "work_item",
+        "x-mcp-action": "next",
+        "x-scope": "work:read",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "work:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "repo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only work items linked to this repository (\"owner/name\"), such as the one your checkout is of. Given without workspace, its workspace's."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "wki_01m4a7tq2re8sbm3w0c5vzd9hk",
+                  "workspace": "flagon-io",
+                  "number": 15,
+                  "title": "Say which flags a command takes in --help",
+                  "body": "Each command lists its flags with one line on what each does.",
+                  "labels": [
+                    "documentation"
+                  ],
+                  "state": "open",
+                  "reason": null,
+                  "resolutions": [],
+                  "author": {
+                    "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+                    "username": "syntaqx",
+                    "display_username": "syntaqx",
+                    "kind": "user",
+                    "verified": false,
+                    "workspaces": []
+                  },
+                  "requested_by": null,
+                  "created_at": "2026-10-01T18:04:11.482Z",
+                  "updated_at": "2026-10-01T19:41:52.830Z",
+                  "closed_at": null,
+                  "pull_count": 0,
+                  "comment_count": 0,
+                  "assignees": [],
+                  "blocked_by": [],
+                  "agent": null,
+                  "milestone": null,
+                  "repos": [
+                    {
+                      "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+                      "path": "flagon-io/hello",
+                      "role": "origin",
+                      "legacy_number": null,
+                      "landed": false
+                    }
+                  ],
+                  "horizon": "next",
+                  "appetite": "small",
+                  "budget_usd": null,
+                  "urgent": false,
+                  "planned_at": "2026-10-17T11:03:29.870Z"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        },
+        "x-example-query": {
+          "repo": "flagon-io/hello"
         }
       }
     },
@@ -68549,6 +69542,7 @@
                         "work_item.unlabeled",
                         "work_item.milestoned",
                         "work_item.demilestoned",
+                        "work_item.planned",
                         "work_item.closed",
                         "work_item.reopened",
                         "work_item.linked",
@@ -68905,6 +69899,7 @@
                         "work_item.unlabeled",
                         "work_item.milestoned",
                         "work_item.demilestoned",
+                        "work_item.planned",
                         "work_item.closed",
                         "work_item.reopened",
                         "work_item.linked",
@@ -70176,6 +71171,7 @@
                         "work_item.unlabeled",
                         "work_item.milestoned",
                         "work_item.demilestoned",
+                        "work_item.planned",
                         "work_item.closed",
                         "work_item.reopened",
                         "work_item.linked",
@@ -70518,6 +71514,7 @@
                         "work_item.unlabeled",
                         "work_item.milestoned",
                         "work_item.demilestoned",
+                        "work_item.planned",
                         "work_item.closed",
                         "work_item.reopened",
                         "work_item.linked",

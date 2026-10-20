@@ -1124,6 +1124,7 @@ g1t work list [OPTIONS]
 | `-a, --assignee <ASSIGNEE>` | Only work items assigned to this person (@me for you). |
 | `-A, --author <AUTHOR>` | Only work items opened by this person (@me for you). |
 | `--role <ROLE>` | With --repo: only those linked to it this way. One of `origin`, `target`, `touched`. |
+| `-H, --horizon <HORIZON>` | Only open work items on this horizon of the plan, in the plan's order. One of `triage`, `now`, `next`, `later`, `set-aside`. |
 | `-L, --limit <LIMIT>` | Default: `20`. |
 
 Calls [`list_work_items`](/reference/api/work-items/list-work-items/).
@@ -1408,12 +1409,72 @@ With --json, each event is one JSON object on a line of its own.
 
 Calls [`list_events`](/reference/api/repositories/list-events/).
 
+### g1t work plan
+
+Show the workspace's plan (Now and Next), or move a work item in it.
+
+```text
+g1t work plan [OPTIONS] [NUMBER]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `[NUMBER]` | The work item to move; leave it out to show the plan. |
+| `--now` | Move it to Now: what the workspace is on. |
+| `--next` | Move it to Next: ranked, the top taken first. |
+| `--later` | Move it to Later: wanted, not ranked against Next yet. |
+| `--set-aside` | Set it aside: out of every view but search. |
+| `--triage` | Move it back to Triage. |
+| `--before <NUMBER>` | Put it just before this work item, on that one's horizon. |
+| `--after <NUMBER>` | Put it just after this work item, on that one's horizon. |
+| `--top` | Put it first on its horizon. |
+| `--appetite <S\|M\|L\|none>` | How much the work is worth: S (one session), M (about a week), L (a phase), or none. |
+| `--budget <DOLLARS\|none>` | What an agent working on it may spend, in dollars, or none. |
+| `--urgent` | Mark it urgent: first in Now until it closes. |
+| `--not-urgent` | It is no longer urgent. |
+| `--all` | With no number: every one of Next, not only its top 10. |
+
+```text
+Every open work item stands on one horizon: triage, now, next, later or set-aside. Within a
+horizon its place is its priority. With no number, this prints Now and Next and how many wait in
+Triage, Later and Set aside. With a number, it moves that work item: to a horizon (last there,
+unless --before, --after or --top says where), and sets its appetite, budget or urgent.
+Examples:
+  g1t work plan
+  g1t work plan 191 --next --before 197
+  g1t work plan 203 --now --top --appetite L
+  g1t work plan 195 --urgent
+```
+
+Calls [`get_plan`](/reference/api/work-items/get-plan/), [`plan_work_item`](/reference/api/work-items/plan-work-item/).
+
+### g1t work next
+
+The work item to take next: the first in Now nobody is on, else the top of Next.
+
+```text
+g1t work next [OPTIONS]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `--claim` | Claim it too. |
+
+```text
+Work items blocked by open work, claimed by someone, or assigned to someone else are skipped.
+Examples:
+  g1t work next
+  g1t work next --claim
+```
+
+Calls [`next_work_item`](/reference/api/work-items/next-work-item/), [`claim_work_item`](/reference/api/work-items/claim-work-item/).
+
 ### g1t work dispatch
 
 Start work on a work item in a session on your own Claude, or print the Claude Code command for it.
 
 ```text
-g1t work dispatch [OPTIONS] <NUMBER|--title <TITLE>>
+g1t work dispatch [OPTIONS] [NUMBER]
 ```
 
 | Argument or flag | |
@@ -1429,14 +1490,16 @@ g1t work dispatch [OPTIONS] <NUMBER|--title <TITLE>>
 ```text
 With the workspace's Anthropic AI provider, a Claude Managed Agents session starts on that
 account and is recorded on g1t; otherwise (or with --handoff) this prints a `claude` command
-to run with g1t's plugin, whose session attaches to the work item as it starts.
+to run with g1t's plugin, whose session attaches to the work item as it starts. With neither a
+number nor --title, it takes the work item `g1t work next` gives.
 Examples:
+  g1t work dispatch
   g1t work dispatch 12
   g1t work dispatch 12 --mode plan --instruction "Keep the old flag"
   g1t work dispatch --title "Add a healthcheck" --handoff
 ```
 
-Calls [`start_agent_session`](/reference/api/sessions/start-agent-session/).
+Calls [`start_agent_session`](/reference/api/sessions/start-agent-session/), [`next_work_item`](/reference/api/work-items/next-work-item/).
 
 ## g1t why
 

@@ -7,8 +7,10 @@ import {
   filterCount,
   emptyListTitle,
   filtered,
+  listPage,
   movedWorkPath,
   newItemPath,
+  pageQuery,
   repoChips,
   repoFilter,
   repoWorkPath,
@@ -23,9 +25,10 @@ import {
 const query = (text: string) => new URLSearchParams(text);
 
 test("the Work list's filters come from its address", () => {
-  assert.deepEqual(workFilters(query("")), { state: "open", label: "", milestone: null, assignee: "", repo: "", role: null });
+  assert.deepEqual(workFilters(query("")), { state: "open", horizon: null, label: "", milestone: null, assignee: "", repo: "", role: null });
   assert.deepEqual(workFilters(query("state=closed&label=Bug&milestone=3&assignee=ana&repo=web&role=target")), {
     state: "closed",
+    horizon: null,
     label: "bug",
     milestone: 3,
     assignee: "ana",
@@ -35,6 +38,7 @@ test("the Work list's filters come from its address", () => {
   // The same written as a query, which wins over the plain parameters.
   assert.deepEqual(workFilters(query("label=docs&q=is:closed label:bug repo:acme/api role:origin assignee:@bo")), {
     state: "closed",
+    horizon: null,
     label: "bug",
     milestone: null,
     assignee: "bo",
@@ -48,6 +52,42 @@ test("the Work list's filters come from its address", () => {
   assert.equal(workFilters(query("assignee=@me")).assignee, "@me");
 });
 
+test("a horizon of the plan filters the list, written as a parameter or in the query, with a milestone too", () => {
+  assert.equal(workFilters(query("horizon=now")).horizon, "now");
+  assert.equal(workFilters(query("q=horizon:Next")).horizon, "next");
+  assert.equal(workFilters(query("q=is:triage")).horizon, "triage");
+  assert.equal(workFilters(query("q=horizon:set-aside")).horizon, "set_aside");
+  assert.equal(workFilters(query("horizon=soon")).horizon, null);
+  // A horizon holds only open work items.
+  assert.deepEqual(workFilters(query("state=closed&horizon=now")).state, "open");
+  const both = workFilters(query("q=horizon:next milestone:3"));
+  assert.deepEqual([both.horizon, both.milestone], ["next", 3]);
+  assert.equal(workQuery(both), "horizon=next&milestone=3");
+  assert.equal(workListPath("acme", both, { horizon: null }), "/acme/-/work/all?milestone=3");
+  assert.equal(filterCount(both), 2);
+  assert.equal(emptyListTitle(workFilters(query("horizon=now")), null), "Nothing in Now");
+  assert.equal(emptyListTitle(both, null), "No open work items match these filters");
+});
+
+test("the list pages down by the lowest number shown, and back up one page at a time", () => {
+  const filters = workFilters(query("label=bug"));
+  const first = listPage(query("label=bug"));
+  assert.deepEqual(first, { before: null, newer: [] });
+  assert.equal(pageQuery(filters, first, { older: 420 }), "?label=bug&before=420");
+  const second = listPage(query("label=bug&before=420"));
+  assert.deepEqual(second, { before: 420, newer: [] });
+  assert.equal(pageQuery(filters, second, { older: 300 }), "?label=bug&before=300&newer=420");
+  const third = listPage(query("before=300&newer=420"));
+  assert.equal(pageQuery(filters, third, { older: 180 }), "?label=bug&before=180&newer=420.300");
+  // Newer: one page up, to the first page from the second.
+  assert.equal(pageQuery(filters, listPage(query("before=180&newer=420.300")), "newer"), "?label=bug&before=300&newer=420");
+  assert.equal(pageQuery(filters, third, "newer"), "?label=bug&before=420");
+  assert.equal(pageQuery(filters, second, "newer"), "?label=bug");
+  // Nonsense, or a page above that is not above, is dropped.
+  assert.deepEqual(listPage(query("before=x&newer=500")), { before: null, newer: [] });
+  assert.deepEqual(listPage(query("before=300&newer=200.abc.400")), { before: 300, newer: [400] });
+});
+
 test("the filters go back into the address in one order, leaving out what is unset", () => {
   assert.equal(workQuery({ state: "open" }), "");
   assert.equal(
@@ -57,10 +97,10 @@ test("the filters go back into the address in one order, leaving out what is uns
   // A role without a repository means nothing.
   assert.equal(workQuery({ role: "target" }), "");
   const current = workFilters(query("repo=web&label=bug"));
-  assert.equal(workListPath("Acme", current), "/acme/-/work?repo=web&label=bug");
-  assert.equal(workListPath("acme", current, { label: "" }), "/acme/-/work?repo=web");
-  assert.equal(workListPath("acme", current, { repo: "", role: null }), "/acme/-/work?label=bug");
-  assert.equal(workListPath("acme", current, { state: "closed" }), "/acme/-/work?state=closed&repo=web&label=bug");
+  assert.equal(workListPath("Acme", current), "/acme/-/work/all?repo=web&label=bug");
+  assert.equal(workListPath("acme", current, { label: "" }), "/acme/-/work/all?repo=web");
+  assert.equal(workListPath("acme", current, { repo: "", role: null }), "/acme/-/work/all?label=bug");
+  assert.equal(workListPath("acme", current, { state: "closed" }), "/acme/-/work/all?state=closed&repo=web&label=bug");
 });
 
 test("how many filters are on, for the phone's Filters button", () => {
@@ -71,7 +111,7 @@ test("how many filters are on, for the phone's Filters button", () => {
 });
 
 test("a repository's Work tab, and a new work item filed from it", () => {
-  assert.equal(repoWorkPath("acme", "web"), "/acme/-/work?repo=web");
+  assert.equal(repoWorkPath("acme", "web"), "/acme/-/work/all?repo=web");
   assert.equal(sessionsPath("Acme"), "/acme/-/work/sessions");
   assert.equal(sessionsPath("acme", { repo: "web", person: null }), "/acme/-/work/sessions?repo=web");
   assert.equal(sessionPath("Acme", "ses_1"), "/acme/-/work/sessions/ses_1");
@@ -93,9 +133,9 @@ test("an item's repositories fit a phone: two, then how many more", () => {
 });
 
 test("old addresses of a repository's issues, labels, milestones and Work page lead on", () => {
-  assert.equal(movedWorkPath("/acme/web/issues"), "/acme/-/work?repo=web");
+  assert.equal(movedWorkPath("/acme/web/issues"), "/acme/-/work/all?repo=web");
   // Its filters come along.
-  assert.equal(movedWorkPath("/Acme/web/issues", "?state=closed&label=bug&_routes=x"), "/acme/-/work?repo=web&state=closed&label=bug");
+  assert.equal(movedWorkPath("/Acme/web/issues", "?state=closed&label=bug&_routes=x"), "/acme/-/work/all?repo=web&state=closed&label=bug");
   assert.equal(movedWorkPath("/acme/web/issues/new"), "/acme/-/work/new?repo=web");
   // An old issue's number is read in the repository, which only the work service can do.
   assert.deepEqual(movedWorkPath("/acme/web/issues/12"), { resolve: 12 });

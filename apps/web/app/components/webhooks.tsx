@@ -28,6 +28,7 @@ const GROUPS: { title: string; events: string[] }[] = [
       "work_item.unlabeled",
       "work_item.milestoned",
       "work_item.demilestoned",
+      "work_item.planned",
       "work_item.linked",
       "work_item.unlinked",
       "work_item.landed",

@@ -1,12 +1,13 @@
 import { Bot, Columns3, GitMerge, Plus } from "lucide-react";
 import { Link } from "react-router";
 
-import { LIST_PAGE } from "@g1t/contracts";
+import { LIST_PAGE, type WorkItem, appetiteLetter } from "@g1t/contracts";
 
 import type { Route } from "./+types/board";
 import { HarnessMark, StateDot } from "../../../components/sessions";
 import { ButtonLink, EmptyState } from "../../../components/ui";
 import { Avatar } from "../../../components/ui/avatar";
+import { Badge } from "../../../components/ui/badge";
 import { Card } from "../../../components/ui/card";
 import { Hint } from "../../../components/ui/hint";
 import { RepoChips } from "../../../components/work-items";
@@ -16,17 +17,23 @@ import {
   type BoardCard,
   DONE_DAYS,
   ITEM_PAGES,
+  ON_IT_READS,
   PULL_PAGES,
   type ReadPull,
   STAGES,
   STAGE_INFO,
   type Stage,
+  boardItems,
   boardOf,
   cappedNotes,
+  onItNotRead,
+  planRest,
+  planRestWords,
   pullRepos,
   pullsByItem,
   readPages,
   shownStage,
+  upNextOf,
 } from "../../../lib/board";
 import { cn } from "../../../lib/cn";
 import { page } from "../../../lib/meta";
@@ -53,17 +60,32 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const member = roleIn(viewer, workspace) != null;
   const now = Date.now();
   const since = new Date(now - DONE_DAYS * 86_400_000).toISOString();
-  // The open work items are what the board is, every page of them; what says where each stands, a part each.
-  const [open, closed, claims, live] = await Promise.all([
+  // Only what the stages need, never every open item: the plan's Now and the top of its Next (Up next),
+  // the newest open items (where most work in progress is), and what a claim or a live session is on.
+  const [plan, recent, closed, claims, live] = await Promise.all([
+    part(work.getPlan(workspace, viewer, { repo: repo ?? undefined }), "The plan"),
     readPages((before) => work.listWorkItems(workspace, viewer, { state: "open", repo: repo ?? undefined, before }).then(unwrap), LIST_PAGE, ITEM_PAGES),
     part(work.listWorkItems(workspace, viewer, { state: "closed", repo: repo ?? undefined, closedSince: since }), "Done"),
     part(work.listClaims(workspace, viewer, { state: "active", repo: repo ?? undefined }), "Claims"),
     part(work.listWorkspaceSessions(workspace, viewer, { shown: "live", sessionsOnly: true, repo: repoName ?? undefined, limit: 200 }), "Live sessions"),
   ]);
   const sessions = isFailed(live) || !live.ok ? [] : live.value.sessions;
+  const active = isFailed(claims) || !claims.ok ? [] : claims.value;
+  const planned = isFailed(plan) || !plan.ok ? null : plan.value;
+  const read = boardItems(planned?.now, planned?.next, recent.rows);
+  // An older item someone is on: read on its own (one gone, or not the viewer's to see, is left out).
+  const older = await Promise.all(
+    onItNotRead(read, active, sessions, ON_IT_READS).map((number) =>
+      work
+        .getWorkItem(workspace, number, viewer)
+        .then((found): WorkItem[] => (found.ok && found.value.item.state === "open" ? [found.value.item] : []))
+        .catch((): WorkItem[] => []),
+    ),
+  );
+  const open = boardItems(read, older.flat());
   // The open and recently merged pull requests in every repository an open item is linked to.
-  const repos = pullRepos(open.rows);
-  const read = (path: string, state: "open" | "closed") => {
+  const repos = pullRepos(open);
+  const readPulls = (path: string, state: "open" | "closed") => {
     const [namespace = "", name = ""] = path.split("/");
     // Not found or refused is an answer: none the viewer can see there.
     const page = (before: number | undefined) =>
@@ -72,21 +94,21 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
         .then((found) => (found.ok ? found.value : []));
     return part(readPages(page, LIST_PAGE, PULL_PAGES), `Pull requests in ${path}`);
   };
-  const pulls = await Promise.all(repos.map((path) => Promise.all([read(path, "open"), read(path, "closed")])));
-  const readPulls: ReadPull[] = [];
+  const pulls = await Promise.all(repos.map((path) => Promise.all([readPulls(path, "open"), readPulls(path, "closed")])));
+  const found: ReadPull[] = [];
   const unread: string[] = [];
   const capped: string[] = [];
   repos.forEach((path, index) => {
     const both = pulls[index]!;
     if (both.some(isFailed)) unread.push(path);
-    for (const found of both) {
-      if (isFailed(found)) continue;
-      if (found.capped) capped.push(path);
-      readPulls.push(...found.rows.map((pull) => ({ ...pull, repo: path })));
+    for (const pulled of both) {
+      if (isFailed(pulled)) continue;
+      if (pulled.capped) capped.push(path);
+      found.push(...pulled.rows.map((pull) => ({ ...pull, repo: path })));
     }
   });
   const done = isFailed(closed) || !closed.ok ? [] : closed.value;
-  const board = boardOf([...open.rows, ...done], { claims: isFailed(claims) || !claims.ok ? [] : claims.value, sessions, pulls: pullsByItem(readPulls) }, now);
+  const board = boardOf([...open, ...done], { claims: active, sessions, pulls: pullsByItem(found), upNext: upNextOf(planned) }, now);
   return {
     workspace,
     member,
@@ -94,13 +116,15 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     repo: repoName,
     board,
     stage: shownStage(query.get("stage"), board),
+    // What of the plan is not on the board, for the line under it.
+    rest: planRest(planned, board),
     // A part that could not be read: its items may be missing, or stand a column early, and the board says so.
     unavailable: [
-      ...[closed, claims, live].filter(isFailed).map((failed) => failed.what),
+      ...[plan, closed, claims, live].filter(isFailed).map((failed) => failed.what),
       ...(unread.length === 0 ? [] : [unread.length === 1 ? `Pull requests in ${unread[0]}` : `Pull requests in ${unread.length} repositories`]),
     ],
     // What was read only in part, said plainly rather than left out silently.
-    capped: cappedNotes({ items: open.capped ? open.rows.length : null, done: done.length >= LIST_PAGE ? LIST_PAGE : null, pulls: [...new Set(capped)] }),
+    capped: cappedNotes({ items: recent.capped ? recent.rows.length : null, done: done.length >= LIST_PAGE ? LIST_PAGE : null, pulls: [...new Set(capped)] }),
     live: sessions.length,
   };
 }
@@ -153,8 +177,25 @@ function OnIt({ card, workspace }: { card: BoardCard; workspace: string }) {
   );
 }
 
+/** Where a card stands in the plan, when it says something: urgent, in Now, and how much the work is worth. */
+function PlanMarks({ item }: { item: WorkItem }) {
+  if (item.state !== "open" || (!item.urgent && item.horizon !== "now" && !item.appetite)) return null;
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1">
+      {item.urgent && <Badge tone="danger">Urgent</Badge>}
+      {item.horizon === "now" && <Badge tone="accent">Now</Badge>}
+      {item.appetite && (
+        <Hint label={`Appetite: ${item.appetite}`}>
+          <Badge className="px-1.5">{appetiteLetter(item.appetite)}</Badge>
+        </Hint>
+      )}
+    </span>
+  );
+}
+
 function ItemCard({ card, workspace }: { card: BoardCard; workspace: string }) {
   const { item } = card;
+  const marks = item.state === "open" && (item.urgent || item.horizon === "now" || item.appetite);
   return (
     <li>
       <Card className="flex flex-col gap-2 p-3 transition-colors hover:border-line-strong">
@@ -166,8 +207,9 @@ function ItemCard({ card, workspace }: { card: BoardCard; workspace: string }) {
             {item.title} <span className="font-normal text-faint">#{item.number}</span>
           </span>
         </Link>
-        {(item.repos.length > 0 || card.merged > 0) && (
+        {(item.repos.length > 0 || card.merged > 0 || marks) && (
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <PlanMarks item={item} />
             <RepoChips repos={item.repos} workspace={workspace} />
             {card.merged > 0 && (
               <Hint label={`${card.merged === 1 ? "A pull request" : `${card.merged} pull requests`} for it merged in the last ${DONE_DAYS} days`}>
@@ -214,7 +256,9 @@ function Column({ stage, board, workspace }: { stage: Stage; board: Board; works
  * stages that wraps rather than scrolling sideways.
  */
 export default function BoardPage({ loaderData }: Route.ComponentProps) {
-  const { workspace, board, stage, repo, member, signedIn, unavailable, capped, live } = loaderData;
+  const { workspace, board, stage, repo, member, signedIn, unavailable, capped, live, rest } = loaderData;
+  const restWords = rest ? planRestWords(rest) : null;
+  const planTo = workPath(workspace);
   const total = STAGES.reduce((sum, one) => sum + board[one].length, 0);
   const query = (more: Record<string, string>) => `?${new URLSearchParams({ ...(repo ? { repo } : {}), ...more }).toString()}`;
   useWorkspaceLive({ workspace, member, match: workPages.list() });
@@ -229,7 +273,9 @@ export default function BoardPage({ loaderData }: Route.ComponentProps) {
             Board
             {repo && <span className="font-mono text-sm font-normal text-muted">{shortPath(repo, workspace)}</span>}
           </h1>
-          <p className="mt-1 text-sm text-muted">Work items as they move: who is on each, what is in review, and what is landing where.</p>
+          <p className="mt-1 text-sm text-muted">
+            Now and what is up next in the plan, then work items as they move: who is on each, what is in review, and what is landing where.
+          </p>
         </div>
         {signedIn && (member || repo) && (
           <ButtonLink to={newItemPath(workspace, repo)} className="max-sm:h-10">
@@ -248,11 +294,24 @@ export default function BoardPage({ loaderData }: Route.ComponentProps) {
       {total === 0 ? (
         <div className="mt-5">
           <EmptyState title={repo ? `No work items linked to ${shortPath(repo, workspace)}` : "No work items yet"}>
-            A work item moves across the board by itself: claimed, a session on it, a pull request opened, landed in its repositories, closed.{" "}
-            <Link to={workPath(workspace)} className="text-fg underline underline-offset-4">
-              The Work list
-            </Link>
-            .
+            A work item moves across the board by itself: placed in Now or Next, claimed, a session on it, a pull request opened, landed in its repositories,
+            closed.{" "}
+            {restWords ? (
+              <>
+                The plan holds {restWords}.{" "}
+                <Link to={planTo} className="text-fg underline underline-offset-4">
+                  Open the plan
+                </Link>
+                .
+              </>
+            ) : (
+              <>
+                <Link to={workPath(workspace, "all")} className="text-fg underline underline-offset-4">
+                  All work items
+                </Link>
+                .
+              </>
+            )}
           </EmptyState>
         </div>
       ) : (
@@ -284,6 +343,14 @@ export default function BoardPage({ loaderData }: Route.ComponentProps) {
               <Column key={one} stage={one} board={board} workspace={workspace} />
             ))}
           </div>
+          {restWords && (
+            <p className="mt-5 text-sm text-muted">
+              Everything not on the board is in the plan: {restWords}.{" "}
+              <Link to={planTo} className="font-medium text-fg underline-offset-4 hover:underline">
+                Open the plan
+              </Link>
+            </p>
+          )}
         </>
       )}
     </div>

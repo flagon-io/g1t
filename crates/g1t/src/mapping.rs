@@ -276,7 +276,9 @@ pub static COMMANDS: &[Mapping] = &[
     Mapping { command: "work block", ops: &["get_work_item", "update_work_item"] },
     Mapping { command: "work unblock", ops: &["get_work_item", "update_work_item"] },
     Mapping { command: "work events", ops: &["list_events"] },
-    Mapping { command: "work dispatch", ops: &["start_agent_session"] },
+    Mapping { command: "work plan", ops: &["get_plan", "plan_work_item"] },
+    Mapping { command: "work next", ops: &["next_work_item", "claim_work_item"] },
+    Mapping { command: "work dispatch", ops: &["start_agent_session", "next_work_item"] },
     Mapping { command: "why", ops: &["why"] },
     Mapping { command: "attach", ops: &["upload_attachment", "upload_work_item_attachment"] },
     // Every operation, by name: the table generated from the OpenAPI document.

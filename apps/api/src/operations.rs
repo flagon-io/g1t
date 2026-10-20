@@ -175,6 +175,10 @@ pub enum Op {
     UpdateWorkItem,
     CloseWorkItem,
     ReopenWorkItem,
+    PlanWorkItem,
+    GetPlan,
+    NextWorkItem,
+    ConfigurePlan,
     ListWorkItemLinks,
     LinkWorkItem,
     UnlinkWorkItem,
@@ -680,6 +684,15 @@ fn milestone_input(input: &Value) -> Option<u32> {
     }
 }
 
+/// A horizon of the plan given as `horizon`: none when it was not given,
+/// or why it is not one.
+fn horizon_input(input: &Value) -> std::result::Result<Option<Horizon>, &'static str> {
+    match optional_text(input, "horizon") {
+        None => Ok(None),
+        Some(name) => Horizon::parse(&name).map(Some).ok_or("horizon is triage, now, next, later or set_aside."),
+    }
+}
+
 fn repo_schema() -> Value {
     json!({
         "type": "string",
@@ -868,7 +881,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 430] = [
+    pub const ALL: [Op; 434] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -926,6 +939,10 @@ impl Op {
         Op::UpdateWorkItem,
         Op::CloseWorkItem,
         Op::ReopenWorkItem,
+        Op::PlanWorkItem,
+        Op::GetPlan,
+        Op::NextWorkItem,
+        Op::ConfigurePlan,
         Op::ListWorkItemLinks,
         Op::LinkWorkItem,
         Op::UnlinkWorkItem,
@@ -1365,6 +1382,10 @@ impl Op {
             Op::UpdateWorkItem => "update_work_item",
             Op::CloseWorkItem => "close_work_item",
             Op::ReopenWorkItem => "reopen_work_item",
+            Op::PlanWorkItem => "plan_work_item",
+            Op::GetPlan => "get_plan",
+            Op::NextWorkItem => "next_work_item",
+            Op::ConfigurePlan => "configure_plan",
             Op::ListWorkItemLinks => "list_work_item_links",
             Op::LinkWorkItem => "link_work_item",
             Op::UnlinkWorkItem => "unlink_work_item",
@@ -1695,7 +1716,7 @@ impl Op {
                 "Create a repository in one of your workspaces, empty or as a copy of a public git repository elsewhere. It gets a project of its own name; description is that project's. With deploy true, its project's g1t.page Deployments are turned on as soon as it is made, as update_deployment_settings with enabled true does: its first push to the default branch deploys production. The repository is made either way: the response has `deployments` (the settings, with production_url) when they are on, or `deploy_error` saying why not (the workspace has no g1t plan, or your role is too low)."
             }
             Op::ListWorkItems => {
-                "A workspace's work items, newest first. A work item is any tracked work (a feature, a bug, a chore) of the workspace, numbered in its sequence with new pull requests, and linked to the repositories it concerns: its `origin` (where it was filed, if it was filed in one), its `target`s (where the work is meant to land) and those it `touched` (where a pull request or commit for it landed or is under way). Filter by state, by a label's name, by a milestone's number, by assignee, and with repo by a repository it is linked to (role narrows it to one kind of link). Members see every work item; anyone who can read a repository sees the work items filed in it."
+                "A workspace's work items, newest first. A work item is any tracked work (a feature, a bug, a chore) of the workspace, numbered in its sequence with new pull requests, and linked to the repositories it concerns: its `origin` (where it was filed, if it was filed in one), its `target`s (where the work is meant to land) and those it `touched` (where a pull request or commit for it landed or is under way). Filter by state, by a label's name, by a milestone's number, by assignee, and with repo by a repository it is linked to (role narrows it to one kind of link). With horizon, only the open work items on that horizon of the plan, in the plan's order: urgent first, then by rank (triage newest first). limit is how many, 1 to 100 (100 if left out). Each work item says where it stands in the plan: `horizon`, `appetite`, `budget_usd`, `urgent` and `planned_at`. Members see every work item; anyone who can read a repository sees the work items filed in it."
             }
             Op::ListRepoWorkItems => {
                 "The work items linked to a repository, in any role (origin, target or touched) or in role: the workspace's work list filtered to it. Read only: work items are opened in the workspace (open_work_item, with repo as their origin)."
@@ -1714,6 +1735,18 @@ impl Op {
             }
             Op::ReopenWorkItem => {
                 "Reopen a closed work item. Its author may reopen their own work item, as may the person g1t filed one for; anyone else needs the Triage role. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
+            }
+            Op::PlanWorkItem => {
+                "Move an open work item in its workspace's plan, or set what the plan says of it. Every open work item is on one horizon: triage (not placed yet; where new ones start), now (what the workspace is on), next (ranked: the top is taken next), later (wanted, not ranked yet) or set_aside (out of every view but search). Only the fields given change. horizon moves it, last there unless a position is given; before or after (another open work item's number) puts it next to that one, on that one's horizon; top puts it first on its horizon. Give at most one of before, after and top; triage takes none, since it is in the order work items came in. appetite (small, medium or large) is how much the work is worth and budget_usd what an agent on it may spend (in dollars, above 0 and up to 100000); null clears either. urgent true puts it first in Now, ahead of its rank, until it closes. Needs the Triage role on the work item; moving it into or out of Now, ranking it within Now, and urgent need the Write role through workspace membership, the right to manage milestones. A closed work item is refused with `409`. Returns the work item. A work_item.planned event, with horizon, from_horizon when it moved, appetite and urgent."
+            }
+            Op::GetPlan => {
+                "A workspace's plan, as you may see it: `now` in full (urgent first, then by rank, at most 100) with `now_cap`, how many Now holds before the plan says it is over; `next` by rank, its top 10 (with all, up to 100) and `next_total`; then counts only: `triage_total`, `later_total` with `later` grouped by the repository each is filed in (`repo` \"owner/name\", none for those filed in the workspace; the largest 50 groups), and `set_aside_total`. With repo, only work items linked to it. Members see every work item; anyone who can read a repository sees those filed in it. list_work_items with horizon lists one horizon, such as Later or Triage, in the plan's order."
+            }
+            Op::NextWorkItem => {
+                "The work item to take next in a workspace, for you: the first in Now nobody is on, else the top of Next, leaving out any blocked by open work, claimed by someone, or assigned to someone other than you. With repo, only work items linked to it. Returns the work item, or null when nothing is ready. This is how an agent picks up work: read it, then claim_work_item it. Reading it claims nothing."
+            }
+            Op::ConfigurePlan => {
+                "Set how many work items a workspace's Now holds before its plan says it is over: now_cap, 1 to 50 (6 until it is set). Past the cap, g1t warns; it never refuses a move. Needs the Write role through workspace membership, the right to manage milestones. Returns the plan's settings: `now_cap`, with no work items or counts."
             }
             Op::ListWorkItemLinks => {
                 "The repositories a work item is linked to: its origin first, then its targets, then those it touched, each with its `role`, its `legacy_number` (the issue number it had in its origin before work items) and whether the work `landed` there. `missing` lists the targets it has not landed in yet. The workspace is `workspace`, its slug."
@@ -2767,6 +2800,12 @@ impl Op {
                         "enum": ["origin", "target", "touched"],
                         "description": "With repo: only work items linked to it this way.",
                     },
+                    "horizon": {
+                        "type": "string",
+                        "enum": Horizon::ALL.map(Horizon::as_str),
+                        "description": "A horizon of the plan: triage (not placed yet), now, next, later or set_aside. Only the open work items on it, in the plan's order instead of the newest first.",
+                    },
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 100, "description": "At most this many, 1 to 100 (100 if left out)." },
                 }),
                 &[],
             ),
@@ -2850,6 +2889,51 @@ impl Op {
                     },
                 })),
                 &["number"],
+            ),
+            Op::PlanWorkItem => object(
+                item_numbered(json!({
+                    "horizon": {
+                        "type": "string",
+                        "enum": Horizon::ALL.map(Horizon::as_str),
+                        "description": "Where to move it: last there, unless before, after or top says where. Into or out of now needs the Write role.",
+                    },
+                    "before": { "type": "integer", "description": "The number of the open work item to put it just before, on that one's horizon." },
+                    "after": { "type": "integer", "description": "The number of the open work item to put it just after, on that one's horizon." },
+                    "top": { "type": "boolean", "description": "First on its horizon (or on horizon, when given)." },
+                    "appetite": {
+                        "type": ["string", "null"],
+                        "enum": [Appetite::Small.as_str(), Appetite::Medium.as_str(), Appetite::Large.as_str(), null],
+                        "description": "How much the work is worth: small (one session), medium (a few, about a week) or large (a phase, broken into smaller work items before it is taken on). null clears it.",
+                    },
+                    "budget_usd": {
+                        "type": ["number", "null"],
+                        "description": "What an agent working on it may spend, in dollars, above 0 and up to 100000. null clears it.",
+                    },
+                    "urgent": { "type": "boolean", "description": "true puts it first in Now, ahead of its rank, until it closes; false takes that away. Needs the Write role." },
+                })),
+                &["number"],
+            ),
+            Op::GetPlan => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "repo": { "type": "string", "description": "Only work items linked to this repository (\"owner/name\"). Given without workspace, its workspace's." },
+                    "all": { "type": "boolean", "description": "Every one of Next (up to 100), not only its top 10." },
+                }),
+                &[],
+            ),
+            Op::NextWorkItem => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "repo": { "type": "string", "description": "Only work items linked to this repository (\"owner/name\"), such as the one your checkout is of. Given without workspace, its workspace's." },
+                }),
+                &[],
+            ),
+            Op::ConfigurePlan => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "now_cap": { "type": "integer", "minimum": 1, "maximum": MAX_NOW_CAP, "description": "How many work items Now holds before the plan says it is over, 1 to 50." },
+                }),
+                &["workspace", "now_cap"],
             ),
             Op::CloseWorkItem => object(
                 json!({
@@ -4046,6 +4130,8 @@ impl Op {
                 | Op::ListRepoWorkItems
                 | Op::GetWorkItem
                 | Op::ListWorkItemLinks
+                | Op::GetPlan
+                | Op::NextWorkItem
                 | Op::ResolveRef
                 | Op::ListWorkItemDecisions
                 | Op::ListLabels
@@ -4256,6 +4342,10 @@ impl Op {
                 | Op::UpdateWorkItem
                 | Op::CloseWorkItem
                 | Op::ReopenWorkItem
+                | Op::PlanWorkItem
+                | Op::GetPlan
+                | Op::NextWorkItem
+                | Op::ConfigurePlan
                 | Op::ListWorkItemLinks
                 | Op::LinkWorkItem
                 | Op::UnlinkWorkItem
@@ -5297,6 +5387,10 @@ impl Op {
                         None => return failed(FailureCode::Invalid, "role is origin, target or touched."),
                     },
                 };
+                let horizon = match horizon_input(input) {
+                    Ok(horizon) => horizon,
+                    Err(message) => return failed(FailureCode::Invalid, message),
+                };
                 // On the workspace's list, a repository may be named by
                 // its name alone, as the site's Work list does.
                 let filter = given_repo().or_else(|| {
@@ -5316,6 +5410,8 @@ impl Op {
                         label: optional_text(input, "label"),
                         milestone: integer(input, "milestone"),
                         assignee: optional_text(input, "assignee"),
+                        horizon,
+                        limit: integer(input, "limit"),
                         before: None,
                         closed_since: None,
                     },
@@ -5390,6 +5486,59 @@ impl Op {
                     return failed(FailureCode::Invalid, "Give repo, the repository the commit is in, as owner/name.");
                 }
                 pass(work, "close_work_item", &CloseWorkItemArgs { item, repo: given_repo(), commit }).await
+            }
+            Op::PlanWorkItem => {
+                let horizon = match horizon_input(input) {
+                    Ok(horizon) => horizon,
+                    Err(message) => return failed(FailureCode::Invalid, message),
+                };
+                let appetite = match input.get("appetite") {
+                    None => None,
+                    Some(Value::Null) => Some(None),
+                    Some(given) => match given.as_str().and_then(Appetite::parse) {
+                        Some(appetite) => Some(Some(appetite)),
+                        None => return failed(FailureCode::Invalid, "appetite is small, medium or large, or null to clear it."),
+                    },
+                };
+                let budget_usd = match input.get("budget_usd") {
+                    None => None,
+                    Some(Value::Null) => Some(None),
+                    Some(given) => match given.as_f64().or_else(|| given.as_str().and_then(|text| text.trim().parse().ok())) {
+                        Some(dollars) => Some(Some(dollars)),
+                        None => return failed(FailureCode::Invalid, "budget_usd is a number of dollars, or null to clear it."),
+                    },
+                };
+                pass(
+                    work,
+                    "plan_work_item",
+                    &PlanWorkItemArgs {
+                        actor: actor(),
+                        workspace: item_ws(),
+                        number,
+                        horizon,
+                        before: integer(input, "before"),
+                        after: integer(input, "after"),
+                        top: yes(input, "top") == Some(true),
+                        appetite,
+                        budget_usd,
+                        urgent: yes(input, "urgent"),
+                    },
+                )
+                .await
+            }
+            Op::GetPlan => {
+                let asked =
+                    GetPlanArgs { workspace: item_ws(), viewer: viewer.clone(), repo: given_repo(), all: yes(input, "all") == Some(true) };
+                pass(work, "get_plan", &asked).await
+            }
+            Op::NextWorkItem => {
+                pass(work, "next_work_item", &NextWorkItemArgs { workspace: item_ws(), viewer: viewer.clone(), repo: given_repo() }).await
+            }
+            Op::ConfigurePlan => {
+                let Some(now_cap) = integer(input, "now_cap") else {
+                    return failed(FailureCode::Invalid, &format!("Give now_cap, a number from 1 to {MAX_NOW_CAP}."));
+                };
+                pass(work, "configure_plan", &ConfigurePlanArgs { actor: actor(), workspace: item_ws(), now_cap }).await
             }
             Op::LinkWorkItem | Op::UnlinkWorkItem => {
                 let Some(linked) = given_repo() else {

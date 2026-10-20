@@ -37,6 +37,7 @@ pub fn github_events(kind: &str) -> Vec<(&'static str, Option<&'static str>)> {
         "work_item.unlabeled" => vec![("work_item", Some("unlabeled"))],
         "work_item.milestoned" => vec![("work_item", Some("milestoned"))],
         "work_item.demilestoned" => vec![("work_item", Some("demilestoned"))],
+        "work_item.planned" => vec![("work_item", Some("planned"))],
         "work_item.linked" => vec![("work_item", Some("linked"))],
         "work_item.unlinked" => vec![("work_item", Some("unlinked"))],
         "work_item.landed" => vec![("work_item", Some("landed"))],
@@ -316,6 +317,7 @@ mod tests {
         assert_eq!(github_events("work_item.updated"), [("work_item", Some("edited"))]);
         assert_eq!(github_events("work_item.linked"), [("work_item", Some("linked"))]);
         assert_eq!(github_events("work_item.landed"), [("work_item", Some("landed"))]);
+        assert_eq!(github_events("work_item.planned"), [("work_item", Some("planned"))]);
         assert!(github_events("issue.opened").is_empty());
         assert_eq!(github_events("pull.updated")[0], ("pull_request", Some("synchronize")));
         assert_eq!(github_events("pull.merged")[1], ("pull_request_target", Some("closed")));

@@ -603,7 +603,16 @@ pub const ROUTES: &[Route] = &[
         "GET",
         "/workspaces/:workspace/work",
         Op::ListWorkItems,
-        &[("state", "state"), ("label", "label"), ("milestone", "milestone"), ("assignee", "assignee"), ("repo", "repo"), ("role", "role")],
+        &[
+            ("state", "state"),
+            ("label", "label"),
+            ("milestone", "milestone"),
+            ("assignee", "assignee"),
+            ("repo", "repo"),
+            ("role", "role"),
+            ("horizon", "horizon"),
+            ("limit", "limit"),
+        ],
     ),
     route("POST", "/workspaces/:workspace/work", Op::OpenWorkItem, &[]),
     route("POST", "/workspaces/:workspace/work/import", Op::ImportWorkItems, &[]),
@@ -613,6 +622,12 @@ pub const ROUTES: &[Route] = &[
     route("PATCH", "/workspaces/:workspace/work/:number", Op::UpdateWorkItem, &[]),
     route("POST", "/workspaces/:workspace/work/:number/close", Op::CloseWorkItem, &[]),
     route("POST", "/workspaces/:workspace/work/:number/reopen", Op::ReopenWorkItem, &[]),
+    route("POST", "/workspaces/:workspace/work/:number/plan", Op::PlanWorkItem, &[]),
+    // The plan: where each open work item stands, and in what order the
+    // work is taken.
+    route("GET", "/workspaces/:workspace/plan", Op::GetPlan, &[("repo", "repo"), ("all", "all")]),
+    route("PATCH", "/workspaces/:workspace/plan", Op::ConfigurePlan, &[]),
+    route("GET", "/workspaces/:workspace/plan/next", Op::NextWorkItem, &[("repo", "repo")]),
     route("GET", "/workspaces/:workspace/work/:number/links", Op::ListWorkItemLinks, &[]),
     route("POST", "/workspaces/:workspace/work/:number/links", Op::LinkWorkItem, &[]),
     route("DELETE", "/workspaces/:workspace/work/:number/links", Op::UnlinkWorkItem, &[("repo", "repo")]),
@@ -1645,6 +1660,10 @@ mod tests {
         assert_eq!(op("PATCH", "/workspaces/acme/work/12"), Op::UpdateWorkItem);
         assert_eq!(op("POST", "/workspaces/acme/work/12/close"), Op::CloseWorkItem);
         assert_eq!(op("POST", "/workspaces/acme/work/12/reopen"), Op::ReopenWorkItem);
+        assert_eq!(op("POST", "/workspaces/acme/work/12/plan"), Op::PlanWorkItem);
+        assert_eq!(op("GET", "/workspaces/acme/plan"), Op::GetPlan);
+        assert_eq!(op("PATCH", "/workspaces/acme/plan"), Op::ConfigurePlan);
+        assert_eq!(op("GET", "/workspaces/acme/plan/next"), Op::NextWorkItem);
         assert_eq!(op("GET", "/workspaces/acme/work/12/links"), Op::ListWorkItemLinks);
         assert_eq!(op("POST", "/workspaces/acme/work/12/links"), Op::LinkWorkItem);
         let (route, input) = resolve("DELETE", "/workspaces/acme/work/12/links", &[("repo".to_owned(), "acme/api".to_owned())], Value::Null).unwrap();

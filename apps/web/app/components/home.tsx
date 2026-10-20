@@ -14,6 +14,7 @@ import {
   GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
+  ListTodo,
   Loader,
   Mail,
   Package,
@@ -21,6 +22,7 @@ import {
   Server,
   Sparkles,
   Tag,
+  Target,
   User,
   Users,
   Workflow,
@@ -158,6 +160,8 @@ const ICON: Record<AttentionKind, ReactNode> = {
   runner: <Server size={16} className="text-warn" />,
   notification: <Bell size={16} className="text-warn" />,
   chat: <AtSign size={16} className="text-accent" />,
+  now: <Target size={16} className="text-accent" />,
+  next: <ListTodo size={16} className="text-accent" />,
 };
 
 const STAKE_TONE: Record<NonNullable<Stake["tone"]> | "none", string> = {
@@ -229,7 +233,7 @@ export function NeedsList({ attention, now }: { attention: Attention; now: numbe
           <Quiet>
             {missing.length > 0
               ? "Nothing needs you in what could be read."
-              : "Nothing needs you. Reviews, invitations and messages for you show here as soon as they arrive."}
+              : "Nothing needs you. Reviews, invitations, messages and your work in Now show here as soon as they arrive."}
           </Quiet>
         )
       )}
@@ -280,7 +284,10 @@ export function RowsSkeleton({ rows = 3 }: { rows?: number }) {
 /** Rows about a pull request: Start here's button opens it, and says so, rather than naming the step (Merge, Review) it can't take there. */
 const PULL_KINDS = new Set<AttentionKind>(["ready", "review", "pull_blocked"]);
 
-/** The one g1t picked to start with: the first of Where you're needed, a step bigger, with why. */
+/**
+ * The one g1t picked to start with: the first of Where you're needed, a
+ * step bigger, with why; with nothing waiting, the work item to take next.
+ */
 function StartRow({ start, now, arrived }: { start: NonNullable<Attention["start"]>; now: number; arrived?: boolean }) {
   const { row } = start;
   const owner = row.owner ? (row.owner.agent ? `@${row.owner.name}` : row.owner.name) : null;

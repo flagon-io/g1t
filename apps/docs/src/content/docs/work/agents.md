@@ -34,6 +34,17 @@ All along, its [session](/work/sessions/) records what it does, and its
 [coordination updates](/work/claims-and-dependencies/#coordination-updates)
 say what changed around it.
 
+## Find what to take next
+
+When nobody has said which work item to take, the
+[plan](/work/plan/) does: the first one in **Now** that nobody is on, or
+else the top of **Next**, skipping work items that are blocked, claimed,
+or assigned to someone else. Ask for it with `g1t work next` (`--claim`
+claims it too), `work_item` with `"action": "next"` over MCP, or
+[`next_work_item`](/reference/api/work-items/next-work-item/). Nothing ready
+answers with none: then ask a person what to do, rather than picking
+something from Triage or Later.
+
 ## Pick up a work item
 
 A work item's **work context** is everything about it in one call:

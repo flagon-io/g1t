@@ -40,6 +40,8 @@ import {
   LayoutDashboard,
   LayoutGrid,
   LifeBuoy,
+  Inbox,
+  ListOrdered,
   ListTodo,
   Lock,
   LogOut,
@@ -1539,15 +1541,16 @@ export function WorkspaceSidebar({ slug, owner }: { slug: string; owner: boolean
 /**
  * Work's sidebar, and its menu on a phone (the Work tab tapped again), in
  * two sections. First, under the mode's own name as every mode's first rows
- * are, its work items: the views people keep coming back to, saved in the
- * address (open, yours, closed), the board of them as they move, a new one,
- * and the workspace's labels and milestones. Then Sessions, the work being
+ * are, its work items: the plan, the board of them as they move, Triage,
+ * the views of all of them people keep coming back to, saved in the address
+ * (open, yours, closed), a new one, and the workspace's labels and
+ * milestones. Then Sessions, the work being
  * done on them: what is going now, what just ended, your own, and each
  * kind, kept in the address as well.
  */
 function WorkSidebar({ slug, username }: { slug: string; username: string }) {
   const { pathname: path, search } = useSidebarLocation();
-  const list = workPath(slug);
+  const list = workPath(slug, "all");
   const sessions = sessionsPath(slug);
   const query = new URLSearchParams(search);
   const viewOf = (page: string) => (want: Record<string, string>) =>
@@ -1560,17 +1563,23 @@ function WorkSidebar({ slug, username }: { slug: string; username: string }) {
       <ModeHeader title="Work" />
       <nav aria-label="Work" className={PANEL}>
         <NavRows>
+          <SidebarLink to={workPath(slug)} icon={<ListOrdered size={15} />} current={path === workPath(slug)}>
+            Plan
+          </SidebarLink>
+          <SidebarLink to={workPath(slug, "board")} icon={<Columns3 size={15} />} current={at("board")}>
+            Board
+          </SidebarLink>
+          <SidebarLink to={workPath(slug, "triage")} icon={<Inbox size={15} />} current={at("triage")}>
+            Triage
+          </SidebarLink>
           <SidebarLink to={list} icon={<ListTodo size={15} />} current={view({})}>
-            Open
+            All open
           </SidebarLink>
           <SidebarLink to={`${list}?assignee=${encodeURIComponent(username)}`} icon={<CircleUserRound size={15} />} current={view({ assignee: username })}>
             Assigned to you
           </SidebarLink>
           <SidebarLink to={`${list}?state=closed`} icon={<Check size={15} />} current={view({ state: "closed" })}>
             Closed
-          </SidebarLink>
-          <SidebarLink to={workPath(slug, "board")} icon={<Columns3 size={15} />} current={at("board")}>
-            Board
           </SidebarLink>
           <SidebarLink to={newItemPath(slug)} icon={<Plus size={15} />} current={at("new")}>
             New work item
@@ -1956,9 +1965,11 @@ function commandsFor(user: User, shell: ShellData): Command[] {
     ...(ws
       ? [
           { label: "Home", to: homePagePath(ws.slug), icon: <House size={15} /> },
-          { label: "Work", hint: "The workspace's work items", to: workPath(ws.slug), icon: <ListTodo size={15} /> },
+          { label: "Work", hint: "The plan: Now, Next and Later", to: workPath(ws.slug), icon: <ListTodo size={15} /> },
           { label: "New work item", to: newItemPath(ws.slug), icon: <Plus size={15} /> },
           { label: "Board", hint: "Work items as they move", to: workPath(ws.slug, "board"), icon: <Columns3 size={15} /> },
+          { label: "Triage", hint: "Work: new items nobody has placed yet", to: workPath(ws.slug, "triage"), icon: <Inbox size={15} /> },
+          { label: "All work items", hint: "Work, with filters", to: workPath(ws.slug, "all"), icon: <ListTodo size={15} /> },
           { label: "Sessions", hint: "Work: what is cooking across the workspace", to: sessionsPath(ws.slug), icon: <Activity size={15} /> },
           { label: "Labels", hint: "Work", to: workPath(ws.slug, "labels"), icon: <ListTodo size={15} /> },
           { label: "Milestones", hint: "Work", to: workPath(ws.slug, "milestones"), icon: <ListTodo size={15} /> },

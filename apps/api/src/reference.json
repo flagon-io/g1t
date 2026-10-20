@@ -1177,7 +1177,7 @@
         ]
       }
     ],
-    "notes": "Returns at most 100 work items, newest first. Each lists the repositories it is linked to in `repos`, with its role in each. `comment_count` counts comments, not events such as \"opened #14 for this\"."
+    "notes": "Returns at most 100 work items (limit takes fewer), newest first; with horizon, the open ones on that horizon in the plan's order. Each lists the repositories it is linked to in `repos`, with its role in each. `comment_count` counts comments, not events such as \"opened #14 for this\"."
   },
   "open_work_item": {
     "request": {
@@ -1523,6 +1523,290 @@
         }
       ]
     }
+  },
+  "plan_work_item": {
+    "params": {
+      "workspace": "flagon-io",
+      "number": 12
+    },
+    "request": {
+      "horizon": "now",
+      "after": 9,
+      "appetite": "small"
+    },
+    "response": {
+      "id": "wki_01m43shrzpfe49x74ga7sj1c6v",
+      "workspace": "flagon-io",
+      "number": 12,
+      "title": "Greeting should name the caller",
+      "body": "Take a name from the first argument; fall back to world.",
+      "labels": ["feature"],
+      "state": "open",
+      "reason": null,
+      "resolutions": [],
+      "author": {
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+        "username": "syntaqx",
+        "display_username": "syntaqx",
+        "kind": "user",
+        "verified": false,
+        "workspaces": []
+      },
+      "requested_by": null,
+      "created_at": "2026-10-01T18:04:11.482Z",
+      "updated_at": "2026-10-19T15:20:07.114Z",
+      "closed_at": null,
+      "pull_count": 0,
+      "comment_count": 0,
+      "assignees": [],
+      "blocked_by": [],
+      "agent": null,
+      "milestone": null,
+      "repos": [
+        {
+          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+          "path": "flagon-io/hello",
+          "role": "origin",
+          "legacy_number": null,
+          "landed": false
+        }
+      ],
+      "horizon": "now",
+      "appetite": "small",
+      "budget_usd": null,
+      "urgent": false,
+      "planned_at": "2026-10-19T15:20:07.114Z"
+    },
+    "notes": "Moves #12 into Now, just after #9, and says it is small. Give at most one of before, after and top; with none, a new horizon puts it last there and the same horizon leaves it where it is. appetite and budget_usd take null to clear them. A work_item.planned event says where it is now (`horizon`), where it was (`from_horizon`, when it moved), its `appetite` and whether it is `urgent`."
+  },
+  "get_plan": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": {
+      "workspace": "flagon-io",
+      "now": [
+        {
+          "id": "wki_01m3zr4bq1ef0a8m6n2vkxgq7t",
+          "workspace": "flagon-io",
+          "number": 9,
+          "title": "Deploy fails when the README has no title",
+          "body": "The page build reads the first heading as the site title and stops when there is none.",
+          "labels": ["bug"],
+          "state": "open",
+          "reason": null,
+          "resolutions": [],
+          "author": {
+            "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+            "username": "syntaqx",
+            "display_username": "syntaqx",
+            "kind": "user",
+            "verified": false,
+            "workspaces": []
+          },
+          "requested_by": null,
+          "created_at": "2026-10-01T18:04:11.482Z",
+          "updated_at": "2026-10-01T19:41:52.830Z",
+          "closed_at": null,
+          "pull_count": 0,
+          "comment_count": 0,
+          "assignees": [],
+          "blocked_by": [],
+          "agent": null,
+          "milestone": null,
+          "repos": [
+            {
+              "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+              "path": "flagon-io/hello",
+              "role": "origin",
+              "legacy_number": null,
+              "landed": false
+            }
+          ],
+          "horizon": "now",
+          "appetite": "medium",
+          "budget_usd": 25.0,
+          "urgent": true,
+          "planned_at": "2026-10-18T09:12:44.501Z"
+        },
+        {
+          "id": "wki_01m43shrzpfe49x74ga7sj1c6v",
+          "workspace": "flagon-io",
+          "number": 12,
+          "title": "Greeting should name the caller",
+          "body": "Take a name from the first argument; fall back to world.",
+          "labels": ["feature"],
+          "state": "open",
+          "reason": null,
+          "resolutions": [],
+          "author": {
+            "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+            "username": "syntaqx",
+            "display_username": "syntaqx",
+            "kind": "user",
+            "verified": false,
+            "workspaces": []
+          },
+          "requested_by": null,
+          "created_at": "2026-10-01T18:04:11.482Z",
+          "updated_at": "2026-10-19T15:20:07.114Z",
+          "closed_at": null,
+          "pull_count": 0,
+          "comment_count": 0,
+          "assignees": [],
+          "blocked_by": [],
+          "agent": null,
+          "milestone": null,
+          "repos": [
+            {
+              "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+              "path": "flagon-io/hello",
+              "role": "origin",
+              "legacy_number": null,
+              "landed": false
+            }
+          ],
+          "horizon": "now",
+          "appetite": "small",
+          "budget_usd": null,
+          "urgent": false,
+          "planned_at": "2026-10-19T15:20:07.114Z"
+        }
+      ],
+      "now_cap": 6,
+      "next": [
+        {
+          "id": "wki_01m4a7tq2re8sbm3w0c5vzd9hk",
+          "workspace": "flagon-io",
+          "number": 15,
+          "title": "Say which flags a command takes in --help",
+          "body": "Each command lists its flags with one line on what each does.",
+          "labels": ["documentation"],
+          "state": "open",
+          "reason": null,
+          "resolutions": [],
+          "author": {
+            "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+            "username": "syntaqx",
+            "display_username": "syntaqx",
+            "kind": "user",
+            "verified": false,
+            "workspaces": []
+          },
+          "requested_by": null,
+          "created_at": "2026-10-01T18:04:11.482Z",
+          "updated_at": "2026-10-01T19:41:52.830Z",
+          "closed_at": null,
+          "pull_count": 0,
+          "comment_count": 0,
+          "assignees": [],
+          "blocked_by": [],
+          "agent": null,
+          "milestone": null,
+          "repos": [
+            {
+              "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+              "path": "flagon-io/hello",
+              "role": "origin",
+              "legacy_number": null,
+              "landed": false
+            }
+          ],
+          "horizon": "next",
+          "appetite": "small",
+          "budget_usd": null,
+          "urgent": false,
+          "planned_at": "2026-10-17T11:03:29.870Z"
+        }
+      ],
+      "next_total": 14,
+      "triage_total": 3,
+      "later_total": 22,
+      "later": [
+        {
+          "repo": "flagon-io/hello",
+          "count": 15
+        },
+        {
+          "repo": null,
+          "count": 7
+        }
+      ],
+      "set_aside_total": 5
+    },
+    "notes": "Now is urgent first, then by rank; Next is its top 10 unless all is given, and next_total says how many it holds. Triage, Later and Set aside are counts only: list_work_items with horizon lists them, in the plan's order, at most 100 at a time. A Later group with repo null holds the work items filed in the workspace, not in a repository."
+  },
+  "next_work_item": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "query": {
+      "repo": "flagon-io/hello"
+    },
+    "response": {
+      "id": "wki_01m4a7tq2re8sbm3w0c5vzd9hk",
+      "workspace": "flagon-io",
+      "number": 15,
+      "title": "Say which flags a command takes in --help",
+      "body": "Each command lists its flags with one line on what each does.",
+      "labels": ["documentation"],
+      "state": "open",
+      "reason": null,
+      "resolutions": [],
+      "author": {
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+        "username": "syntaqx",
+        "display_username": "syntaqx",
+        "kind": "user",
+        "verified": false,
+        "workspaces": []
+      },
+      "requested_by": null,
+      "created_at": "2026-10-01T18:04:11.482Z",
+      "updated_at": "2026-10-01T19:41:52.830Z",
+      "closed_at": null,
+      "pull_count": 0,
+      "comment_count": 0,
+      "assignees": [],
+      "blocked_by": [],
+      "agent": null,
+      "milestone": null,
+      "repos": [
+        {
+          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+          "path": "flagon-io/hello",
+          "role": "origin",
+          "legacy_number": null,
+          "landed": false
+        }
+      ],
+      "horizon": "next",
+      "appetite": "small",
+      "budget_usd": null,
+      "urgent": false,
+      "planned_at": "2026-10-17T11:03:29.870Z"
+    },
+    "notes": "null when nothing is ready: everything in Now and Next is blocked by open work, claimed, or assigned to someone else. It claims nothing; claim_work_item the work item it gives before starting on it."
+  },
+  "configure_plan": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "request": {
+      "now_cap": 8
+    },
+    "response": {
+      "workspace": "flagon-io",
+      "now": [],
+      "now_cap": 8,
+      "next": [],
+      "next_total": 0,
+      "triage_total": 0,
+      "later_total": 0,
+      "later": [],
+      "set_aside_total": 0
+    },
+    "notes": "Only now_cap is meaningful in the answer: get_plan reads the plan itself."
   },
   "add_comment": {
     "request": {

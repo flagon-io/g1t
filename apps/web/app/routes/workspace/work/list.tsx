@@ -1,5 +1,7 @@
-import { Columns3, Flag, Plus, Tag } from "lucide-react";
+import { ChevronLeft, ChevronRight, Columns3, Flag, Plus, Tag } from "lucide-react";
 import { Link, useLocation } from "react-router";
+
+import { LIST_PAGE } from "@g1t/contracts";
 
 import type { Route } from "./+types/list";
 import { page } from "../../../lib/meta";
@@ -13,7 +15,21 @@ import { colorsOf } from "../../../lib/labels";
 import { isFailed, part } from "../../../lib/partial";
 import { identity, repos, work } from "../../../lib/services.server";
 import { getViewer, roleIn, unwrap } from "../../../lib/session.server";
-import { emptyListTitle, filtered, newItemPath, repoFilter, shortPath, workFilters, workPath, workQuery } from "../../../lib/work-items";
+import {
+  HORIZON_LABELS,
+  type ListPage,
+  type WorkFilters,
+  emptyListTitle,
+  filtered,
+  listPage,
+  newItemPath,
+  pageQuery,
+  repoFilter,
+  shortPath,
+  workFilters,
+  workPath,
+  workQuery,
+} from "../../../lib/work-items";
 import { canItem } from "../../../lib/work-access";
 import { workspaceProjects } from "../../../lib/workspace-projects.server";
 import { workPages } from "../../../lib/repo-live";
@@ -32,7 +48,11 @@ export function meta({ params, location, ...args }: Route.MetaArgs) {
 export async function loader({ params, context, request }: Route.LoaderArgs) {
   const viewer = getViewer(context);
   const workspace = params.owner.toLowerCase();
-  const filters = workFilters(new URL(request.url).searchParams);
+  const query = new URL(request.url).searchParams;
+  const filters = workFilters(query);
+  // A page at a time, newest first, below the lowest number of the page above. A horizon is
+  // read in the plan's order instead, its first page only: the plan pages it no further.
+  const at: ListPage = filters.horizon ? { before: null, newer: [] } : listPage(query);
   const member = roleIn(viewer, workspace) != null;
   const repo = filters.repo ? repoFilter(workspace, filters.repo) : null;
   const assignee = filters.assignee === "@me" ? (viewer?.username ?? "") : filters.assignee;
@@ -41,6 +61,8 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const [items, labels, milestones, projects, members, cooking] = await Promise.all([
     work.listWorkItems(workspace, viewer, {
       state: filters.state,
+      horizon: filters.horizon ?? undefined,
+      before: at.before ?? undefined,
       label: filters.label || undefined,
       milestone: filters.milestone ?? undefined,
       assignee: assignee || undefined,
@@ -73,14 +95,20 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       found?.ok && canItem(viewer, workspace, { id: found.value.id, namespace: found.value.namespace, isPrivate: found.value.isPrivate }, "participate"),
     );
   }
+  const rows = unwrap(items);
   return {
     canOpen,
     workspace,
     filters,
+    at,
+    // The page below, from the lowest number shown, when this one is full.
+    older: !filters.horizon && rows.length >= LIST_PAGE ? Math.min(...rows.map((item) => item.number)) : null,
+    // A horizon's first page is all the list shows of it: the plan has the rest.
+    more: filters.horizon != null && rows.length >= LIST_PAGE,
     member,
     signedIn: viewer != null,
     me: viewer?.username ?? null,
-    items: unwrap(items),
+    items: rows,
     labels: isFailed(labels) || !labels.ok ? null : labels.value,
     milestones: isFailed(milestones) || !milestones.ok ? null : milestones.value,
     repos:
@@ -96,13 +124,36 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   };
 }
 
+/** Newer and Older under the list: links relative to wherever the list is served, so its filters come along. */
+function Paging({ filters, at, older }: { filters: WorkFilters; at: ListPage; older: number | null }) {
+  if (at.before == null && older == null) return null;
+  return (
+    <nav aria-label="Pages" className="mt-3 flex items-center justify-between gap-3">
+      {at.before != null ? (
+        <ButtonLink to={pageQuery(filters, at, "newer")} prefetch="intent" variant="outline" size="sm" className="max-sm:h-10">
+          <ChevronLeft size={15} />
+          Newer
+        </ButtonLink>
+      ) : (
+        <span />
+      )}
+      {older != null && (
+        <ButtonLink to={pageQuery(filters, at, { older })} prefetch="intent" variant="outline" size="sm" className="max-sm:h-10">
+          Older
+          <ChevronRight size={15} />
+        </ButtonLink>
+      )}
+    </nav>
+  );
+}
+
 export default function WorkList({ loaderData }: Route.ComponentProps) {
-  const { workspace, filters, items, member } = loaderData;
-  const { search } = useLocation();
+  const { workspace, filters, items, member, at, older, more } = loaderData;
+  const { pathname, search } = useLocation();
   const colors = colorsOf(loaderData.labels ?? []);
   const repoName = filters.repo ? shortPath(filters.repo, workspace) : null;
-  // The tabs keep the filters; each filter keeps the state and the others.
-  const kept = new URLSearchParams(workQuery({ ...filters, state: "open" }));
+  // The tabs keep the filters but a horizon, which holds only open items; each filter keeps the state and the others.
+  const kept = new URLSearchParams(workQuery({ ...filters, state: "open", horizon: null }));
   useWorkspaceLive({ workspace, member, match: workPages.list() });
   // Sessions go idle and end with no event to say so.
   useRefreshWhile((loaderData.cooking?.total ?? 0) > 0, 30_000);
@@ -115,7 +166,7 @@ export default function WorkList({ loaderData }: Route.ComponentProps) {
         </div>
       )}
       <StateTabs
-        to={workPath(workspace)}
+        to={pathname}
         state={filters.state}
         query={kept.toString()}
         action={
@@ -157,6 +208,15 @@ export default function WorkList({ loaderData }: Route.ComponentProps) {
           </Link>
         </span>
       </div>
+      {filters.horizon && items.length > 0 && (
+        <p className="mt-3 text-xs text-muted">
+          {HORIZON_LABELS[filters.horizon]}, in the plan&apos;s order{filters.horizon === "triage" ? ", newest first" : ""}.
+          {more && ` Showing the first ${LIST_PAGE}; the plan has the rest.`}{" "}
+          <Link to={workPath(workspace)} className="text-fg underline-offset-4 hover:underline">
+            Open the plan
+          </Link>
+        </p>
+      )}
       <div className="mt-4">
         {items.length === 0 ? (
           <EmptyState title={emptyListTitle(filters, repoName)}>
@@ -165,7 +225,7 @@ export default function WorkList({ loaderData }: Route.ComponentProps) {
             {search && filtered(filters) && (
               <>
                 {" "}
-                <Link to={workPath(workspace)} className="text-fg underline underline-offset-4">
+                <Link to={pathname} className="text-fg underline underline-offset-4">
                   Clear the filters
                 </Link>
                 .
@@ -181,6 +241,7 @@ export default function WorkList({ loaderData }: Route.ComponentProps) {
             </ul>
           </Card>
         )}
+        <Paging filters={filters} at={at} older={older} />
       </div>
     </div>
   );

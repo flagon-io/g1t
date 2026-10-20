@@ -1162,6 +1162,11 @@ pub const OPERATIONS: &[(&str, Scope)] = &[
     ("update_work_item", Scope::WorkWrite),
     ("close_work_item", Scope::WorkWrite),
     ("reopen_work_item", Scope::WorkWrite),
+    // The plan: where each open work item stands, and what to take next.
+    ("get_plan", Scope::WorkRead),
+    ("next_work_item", Scope::WorkRead),
+    ("plan_work_item", Scope::WorkWrite),
+    ("configure_plan", Scope::WorkWrite),
     ("link_work_item", Scope::WorkWrite),
     ("unlink_work_item", Scope::WorkWrite),
     ("list_work_item_labels", Scope::WorkRead),

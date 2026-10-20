@@ -14,6 +14,7 @@ import { rememberWorkspace } from "../../lib/workspace-choice";
 import { workspacePage, workspaceRedirect } from "../../lib/workspace-nav";
 import { shortcutOf, workspaceProjects } from "../../lib/workspace-projects.server";
 import { WorkspacePageSkeleton } from "../../components/workspace-skeletons";
+import { WorkTabs, workTab } from "../../components/plan-tabs";
 import { identity } from "../../lib/services.server";
 import { getViewer, roleIn } from "../../lib/session.server";
 import { isFailed, part } from "../../lib/partial";
@@ -205,9 +206,11 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
     const heading = PAGES[key];
     // Pages within one (a single package or team) have headings of their own.
     const titled = heading && (shown != null || parts.length === 1 || key === whole);
+    // Work's views (Plan, Board, Triage, All items, Milestones, Sessions) are its tabs, which name the page.
+    const tab = parts[0] === "work" && !next ? workTab(pathname, workspace.slug) : null;
     return (
       <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
-        {titled && <PageHeader title={heading.title} about={heading.about} />}
+        {tab != null ? <WorkTabs workspace={workspace.slug} /> : titled && <PageHeader title={heading.title} about={heading.about} />}
         {next ? <WorkspacePageSkeleton page={next} /> : <Outlet />}
       </div>
     );

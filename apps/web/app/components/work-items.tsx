@@ -8,7 +8,7 @@ import { Check, GitPullRequest, MessageSquare, Milestone as MilestoneIcon, Slide
 import { type ReactNode, useState } from "react";
 import { Link } from "react-router";
 
-import type { ItemRepo, Label, LinkRole, Milestone, WorkItem } from "@g1t/contracts";
+import { type ItemRepo, type Label, type LinkRole, type Milestone, type WorkItem, appetiteLetter } from "@g1t/contracts";
 
 import { FilterMenu, LabelChip, Swatch } from "./labels";
 import { BottomSheet } from "./mobile";
@@ -20,7 +20,19 @@ import { AssigneeStack } from "./work";
 import { ItemIcon } from "./work-icons";
 import { cn } from "../lib/cn";
 import type { LabelColors } from "../lib/labels";
-import { LINK_ROLES, ROLE_LABELS, type WorkFilters, filterCount, filtered, itemPath, repoChips, shortPath, workListPath } from "../lib/work-items";
+import {
+  HORIZON_LABELS,
+  LINK_ROLES,
+  LIST_HORIZONS,
+  ROLE_LABELS,
+  type WorkFilters,
+  filterCount,
+  filtered,
+  itemPath,
+  repoChips,
+  shortPath,
+  workListPath,
+} from "../lib/work-items";
 
 /** How a repository is linked, as a quiet word beside its name. */
 export function RoleBadge({ role }: { role: LinkRole }) {
@@ -73,10 +85,35 @@ export function RepoChips({ repos, workspace, max = 2, className }: { repos: Ite
 }
 
 /**
- * One row of the Work list: its state, title and labels, then its number,
- * who opened it and when, its repositories and milestone; its assignees,
- * pull requests and comments at the end. On a phone the meta wraps under
- * the title and the counts sit with it, so nothing scrolls sideways.
+ * Where an open work item stands in the plan, beside its title: urgent,
+ * Now or Next as a small badge (Triage, Later and Set aside are said only
+ * by the list's filter), and its appetite's letter when someone set one.
+ */
+export function PlanBadges({ item }: { item: WorkItem }) {
+  if (item.state !== "open") return null;
+  const horizon = item.horizon === "now" || item.horizon === "next" ? item.horizon : null;
+  if (!item.urgent && !horizon && !item.appetite) return null;
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1">
+      {item.urgent && <Badge tone="danger">Urgent</Badge>}
+      {horizon && <Badge tone={horizon === "now" ? "accent" : "neutral"}>{HORIZON_LABELS[horizon]}</Badge>}
+      {item.appetite && (
+        <Hint label={`Appetite: ${item.appetite}`}>
+          <Badge className="px-1.5" aria-label={`Appetite: ${item.appetite}`}>
+            {appetiteLetter(item.appetite)}
+          </Badge>
+        </Hint>
+      )}
+    </span>
+  );
+}
+
+/**
+ * One row of the Work list: its state, title, where it stands in the plan
+ * and its labels, then its number, who opened it and when, its
+ * repositories and milestone; its assignees, pull requests and comments
+ * at the end. On a phone the meta wraps under the title and the counts sit
+ * with it, so nothing scrolls sideways.
  */
 export function WorkItemRow({ item, colors }: { item: WorkItem; colors: LabelColors }) {
   return (
@@ -88,6 +125,7 @@ export function WorkItemRow({ item, colors }: { item: WorkItem; colors: LabelCol
         <span className="min-w-0 grow">
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="min-w-0 font-medium wrap-break-word">{item.title}</span>
+            <PlanBadges item={item} />
             {item.labels.map((name) => (
               <LabelChip key={name} name={name} color={colors[name]} />
             ))}
@@ -151,8 +189,8 @@ export type FilterChoices = {
 };
 
 /**
- * The Work list's filters: on a computer, a menu each (repository, its
- * role, label, milestone, assignee); on a phone, one Filters button that
+ * The Work list's filters: on a computer, a menu each (horizon, repository,
+ * its role, label, milestone, assignee); on a phone, one Filters button that
  * says how many are on and opens them as a sheet from the bottom, within
  * reach of a thumb. Each choice is a link, so the address keeps them.
  */
@@ -166,6 +204,20 @@ export function WorkFiltersBar({ workspace, filters, choices }: { workspace: str
   return (
     <>
       <div className="hidden flex-wrap items-center gap-2 sm:flex">
+        <FilterMenu
+          label="Horizon"
+          active={filters.horizon ? HORIZON_LABELS[filters.horizon] : undefined}
+          clearTo={filters.horizon ? to({ horizon: null }) : undefined}
+          searchPlaceholder="Filter horizons"
+          emptyText="No horizon matches."
+          options={LIST_HORIZONS.map((horizon) => ({
+            key: horizon,
+            to: to({ horizon }),
+            keywords: HORIZON_LABELS[horizon],
+            selected: filters.horizon === horizon,
+            label: <span>{HORIZON_LABELS[horizon]}</span>,
+          }))}
+        />
         <FilterMenu
           label="Repository"
           active={filters.repo ? shortPath(filters.repo, workspace) : undefined}
@@ -258,6 +310,7 @@ export function WorkFiltersBar({ workspace, filters, choices }: { workspace: str
           Filters
           {count > 0 && <span className="rounded-full bg-accent px-1.5 text-[0.6875rem] leading-4.5 font-bold text-bg tabular-nums">{count}</span>}
         </Button>
+        {filters.horizon && <Badge tone="accent">{HORIZON_LABELS[filters.horizon]}</Badge>}
         {filters.repo && (
           <span className="min-w-0 truncate font-mono text-xs text-muted">
             {shortPath(filters.repo, workspace)}
@@ -275,6 +328,14 @@ export function WorkFiltersBar({ workspace, filters, choices }: { workspace: str
             </Link>
           )}
         </div>
+        <SheetChoices
+          title="Horizon"
+          onPick={() => setOpen(false)}
+          choices={[
+            { key: "any", label: "Any horizon", to: to({ horizon: null }), on: !filters.horizon },
+            ...LIST_HORIZONS.map((horizon) => ({ key: horizon, label: HORIZON_LABELS[horizon], to: to({ horizon }), on: filters.horizon === horizon })),
+          ]}
+        />
         <SheetChoices
           title="Repository"
           failed={choices.repos == null}
