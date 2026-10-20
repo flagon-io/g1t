@@ -19,6 +19,10 @@ What uses it:
   answer with the provider and model chosen under **Ask g1t**.
 - **Sessions on work items** start on the workspace's Anthropic provider. See
   [Start a session on your Anthropic account](/guides/sessions/#start-a-session-on-your-anthropic-account).
+- **[The plan](/work/plan/)** asks the provider chosen under **Ask g1t**, on
+  its fast model, where each new work item in Triage goes, and drafts where
+  each work item in Now stands. A few short questions every few minutes,
+  only when something is new.
 
 Only workspace owners add, test, change and remove providers, and choose
 what Ask uses. Members see which providers there are and what Ask answers

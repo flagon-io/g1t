@@ -178,6 +178,9 @@ pub struct WorkItem {
     /// placed.
     #[serde(default)]
     pub planned_at: Option<String>,
+    /// While it is in Triage: where g1t suggests it goes.
+    #[serde(default)]
+    pub suggestion: Option<super::PlanSuggestion>,
 }
 
 impl WorkItem {

@@ -14,6 +14,7 @@ import {
   GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
+  Inbox,
   ListTodo,
   Loader,
   Mail,
@@ -161,6 +162,7 @@ const ICON: Record<AttentionKind, ReactNode> = {
   notification: <Bell size={16} className="text-warn" />,
   chat: <AtSign size={16} className="text-accent" />,
   now: <Target size={16} className="text-accent" />,
+  triage: <Inbox size={16} className="text-warn" />,
   next: <ListTodo size={16} className="text-accent" />,
 };
 

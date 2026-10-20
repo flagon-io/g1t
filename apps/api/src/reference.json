@@ -1732,9 +1732,22 @@
           "count": 7
         }
       ],
-      "set_aside_total": 5
+      "set_aside_total": 5,
+      "progress": [
+        {
+          "number": 9,
+          "hill": "building",
+          "active_at": "2026-10-19T21:12:40.118Z",
+          "quiet": false,
+          "standing": "#14 makes the title optional and is in review; next, the deploy check needs a page with no heading.",
+          "standing_at": "2026-10-19T21:15:02.004Z"
+        }
+      ],
+      "landed": [],
+      "triage_waiting": 2,
+      "set_aside_recent": 0
     },
-    "notes": "Now is urgent first, then by rank; Next is its top 10 unless all is given, and next_total says how many it holds. Triage, Later and Set aside are counts only: list_work_items with horizon lists them, in the plan's order, at most 100 at a time. A Later group with repo null holds the work items filed in the workspace, not in a repository."
+    "notes": "Now is urgent first, then by rank; Next is its top 10 unless all is given, and next_total says how many it holds. Triage, Later and Set aside are counts only: list_work_items with horizon lists them, in the plan's order, at most 100 at a time. A Later group with repo null holds the work items filed in the workspace, not in a repository. progress says how each in Now stands: its hill (figuring_out, decided, building or landing, from its decisions, commits and pull requests), when anything last happened on it, quiet after 5 days with nothing, and standing, a sentence or two g1t drafts from its record with the workspace's AI provider (null without one). landed is what closed from Now in the last 7 days; triage_waiting counts work items in Triage for more than 7 days; set_aside_recent, those set aside in the last 30 days (g1t sets aside work items untouched for 90 days in Later). A work item in Triage carries suggestion: where g1t suggests it goes (horizon, appetite, duplicate_of, why)."
   },
   "next_work_item": {
     "params": {

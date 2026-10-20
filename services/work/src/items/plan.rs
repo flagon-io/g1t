@@ -69,6 +69,107 @@ const NEIGHBOURS: &str = "SELECT
    (SELECT min(rank) FROM work_items WHERE workspace = ?1 AND state = 'open' AND COALESCE(horizon, 'triage') = ?2
       AND id <> ?3 AND rank IS NOT NULL AND (?5 IS NULL OR rank > ?5)) AS behind";
 
+/// What the record says of each work item in the JSON array of ids `?1`:
+/// its hill's facts, when anything last happened on it, and where g1t
+/// last said it stands.
+pub(crate) const FACTS: &str = "SELECT w.number,
+   (SELECT count(*) FROM decisions d WHERE d.item_id = w.id
+      AND d.kind NOT IN ('claim', 'merge', 'integration_failure', 'integration_passed')) AS decisions,
+   (SELECT count(*) FROM pulls p WHERE p.item_id = w.id AND p.status = 'draft') AS draft_pulls,
+   (SELECT count(*) FROM session_touches t JOIN sessions s ON s.id = t.session_id
+      WHERE s.item_id = w.id AND t.kind = 'commit') AS commits,
+   (SELECT count(*) FROM pulls p WHERE p.item_id = w.id AND p.status = 'open') AS open_pulls,
+   (SELECT count(*) FROM pulls p WHERE p.item_id = w.id AND p.status = 'merged') AS merged_pulls,
+   (SELECT count(*) FROM work_item_repos r WHERE r.item_id = w.id AND r.landed_at IS NOT NULL) AS landed_targets,
+   max(w.updated_at,
+       COALESCE((SELECT max(s.last_seen_at) FROM sessions s WHERE s.item_id = w.id), ''),
+       COALESCE((SELECT max(d.created_at) FROM decisions d WHERE d.item_id = w.id), ''),
+       COALESCE((SELECT max(p.updated_at) FROM pulls p WHERE p.item_id = w.id), '')) AS active_at,
+   w.standing, w.standing_at
+ FROM work_items w WHERE w.id IN (SELECT value FROM json_each(?1))";
+
+#[derive(Deserialize)]
+pub(crate) struct FactsRow {
+    pub number: u32,
+    #[serde(default)]
+    pub decisions: u32,
+    #[serde(default)]
+    pub draft_pulls: u32,
+    #[serde(default)]
+    pub commits: u32,
+    #[serde(default)]
+    pub open_pulls: u32,
+    #[serde(default)]
+    pub merged_pulls: u32,
+    #[serde(default)]
+    pub landed_targets: u32,
+    #[serde(default)]
+    pub active_at: Option<String>,
+    #[serde(default)]
+    pub standing: Option<String>,
+    #[serde(default)]
+    pub standing_at: Option<String>,
+}
+
+impl FactsRow {
+    pub(crate) fn hill(&self) -> Hill {
+        hill_of(&HillFacts {
+            decisions: self.decisions,
+            draft_pulls: self.draft_pulls,
+            commits: self.commits,
+            open_pulls: self.open_pulls,
+            merged_pulls: self.merged_pulls,
+            landed_targets: self.landed_targets,
+        })
+    }
+
+    /// How it stands, quiet when nothing has happened since `quiet_before`
+    /// (RFC 3339).
+    pub(crate) fn progress(self, quiet_before: &str) -> Progress {
+        let hill = self.hill();
+        let active_at = self.active_at.filter(|at| !at.is_empty());
+        Progress {
+            number: self.number,
+            hill,
+            quiet: active_at.as_deref().is_some_and(|at| at < quiet_before),
+            active_at,
+            standing: self.standing,
+            standing_at: self.standing_at,
+        }
+    }
+}
+
+/// The RFC 3339 time `days` before `now_ms`.
+pub(crate) fn days_before(now_ms: u64, days: u32) -> String {
+    rfc3339(now_ms.saturating_sub(u64::from(days) * 86_400_000))
+}
+
+/// What closed from Now since `?5`, the most recently closed first.
+const LANDED: &str = "SELECT {ITEM_COLUMNS} FROM work_items
+   WHERE work_items.workspace = ?1 AND work_items.state = 'closed' AND work_items.number IS NOT NULL
+     AND work_items.horizon = 'now' AND work_items.closed_at >= ?5
+     AND (?4 IS NULL OR EXISTS (SELECT 1 FROM work_item_repos r WHERE r.item_id = work_items.id AND r.repo_id = ?4))
+     AND (?2 = 1 OR EXISTS (SELECT 1 FROM work_item_repos o JOIN repo_workspaces rw ON rw.repo_id = o.repo_id
+           WHERE o.item_id = work_items.id AND o.role = 'origin'
+             AND (rw.private = 0 OR o.repo_id IN (SELECT value FROM json_each(?3)))))
+   ORDER BY work_items.closed_at DESC LIMIT 10";
+
+/// How many have waited in Triage since before `?5`, and how many were set
+/// aside since `?6`.
+const WAITING: &str = "SELECT
+   (SELECT count(*) FROM work_items WHERE {OPEN_VISIBLE} AND COALESCE(work_items.horizon, 'triage') = 'triage'
+      AND work_items.created_at < ?5) AS triage_waiting,
+   (SELECT count(*) FROM work_items WHERE {OPEN_VISIBLE} AND work_items.horizon = 'set_aside'
+      AND work_items.planned_at >= ?6) AS set_aside_recent";
+
+#[derive(Deserialize)]
+struct Waiting {
+    #[serde(default)]
+    triage_waiting: u32,
+    #[serde(default)]
+    set_aside_recent: u32,
+}
+
 #[derive(Deserialize)]
 struct Neighbours {
     ahead: Option<String>,
@@ -356,13 +457,19 @@ impl Work {
             values
         };
         let shown = if a.all { crate::LIST_PAGE } else { NEXT_SHOWN };
+        let now_ms = now_ms();
+        let week = days_before(now_ms, WEEK_DAYS);
+        let mut waiting_values = bound(Some(days_before(now_ms, TRIAGE_NUDGE_DAYS).into()));
+        waiting_values.push(days_before(now_ms, 30).into());
         let statements = vec![
             self.db.prepare(open_items(&format!("{HORIZON} = 'now'"), crate::LIST_PAGE)).bind(&bound(None))?,
             self.db.prepare(open_items(&format!("{HORIZON} = 'next'"), shown)).bind(&bound(None))?,
             self.db.prepare(COUNTS.replace("{OPEN_VISIBLE}", OPEN_VISIBLE)).bind(&bound(None))?,
             self.db.prepare(LATER_GROUPS.replace("{OPEN_VISIBLE}", OPEN_VISIBLE)).bind(&bound(None))?,
+            self.db.prepare(LANDED.replace("{ITEM_COLUMNS}", ITEM_COLUMNS)).bind(&bound(Some(week.as_str().into())))?,
+            self.db.prepare(WAITING.replace("{OPEN_VISIBLE}", OPEN_VISIBLE)).bind(&waiting_values)?,
         ];
-        let results = self.timing.db(4, self.db.batch(statements)).await?;
+        let results = self.timing.db(6, self.db.batch(statements)).await?;
         let rows = |index: usize| results.get(index).ok_or_else(|| worker::Error::RustError("short batch".into()));
         let now = shown_rows(rows(0)?.results::<ItemRow>()?, &a.viewer);
         let next = shown_rows(rows(1)?.results::<ItemRow>()?, &a.viewer);
@@ -371,7 +478,28 @@ impl Work {
             counts.iter().filter(|row| row.horizon.as_deref().and_then(Horizon::parse).unwrap_or_default() == horizon).map(|row| row.count).sum()
         };
         let later = rows(3)?.results::<Group>()?.into_iter().map(|group| PlanGroup { repo: group.repo, count: group.count }).collect();
+        let landed = shown_rows(rows(4)?.results::<ItemRow>()?, &a.viewer);
+        let waiting = rows(5)?.results::<Waiting>()?.into_iter().next().unwrap_or(Waiting { triage_waiting: 0, set_aside_recent: 0 });
+        // How each in Now stands, in Now's order.
+        let ids: Vec<&str> = now.iter().map(|item| item.id.as_str()).collect();
+        let mut facts: Vec<FactsRow> = if ids.is_empty() {
+            Vec::new()
+        } else {
+            self.db.prepare(FACTS).bind(&[serde_json::to_string(&ids)?.into()])?.all().await?.results::<FactsRow>()?
+        };
+        let quiet_before = days_before(now_ms, QUIET_DAYS);
+        let progress = now
+            .iter()
+            .filter_map(|item| {
+                let at = facts.iter().position(|row| row.number == item.number)?;
+                Some(facts.swap_remove(at).progress(&quiet_before))
+            })
+            .collect();
         Ok(Outcome::Ok(Plan {
+            progress,
+            landed,
+            triage_waiting: waiting.triage_waiting,
+            set_aside_recent: waiting.set_aside_recent,
             now_cap: self.now_cap(&workspace).await?,
             now,
             next,
@@ -593,6 +721,68 @@ mod tests {
             .map(Result::unwrap)
             .collect();
         assert_eq!(groups, [(Some("acme/web".into()), 2)]);
+    }
+
+    /// The facts `FACTS` reads for work item `number`.
+    fn facts(db: &Connection, number: u32) -> FactsRow {
+        let ids = format!("[\"wki_{number}\"]");
+        db.query_row(FACTS, [ids], |row| {
+            Ok(FactsRow {
+                number: row.get("number")?,
+                decisions: row.get("decisions")?,
+                draft_pulls: row.get("draft_pulls")?,
+                commits: row.get("commits")?,
+                open_pulls: row.get("open_pulls")?,
+                merged_pulls: row.get("merged_pulls")?,
+                landed_targets: row.get("landed_targets")?,
+                active_at: row.get("active_at")?,
+                standing: row.get("standing")?,
+                standing_at: row.get("standing_at")?,
+            })
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn the_record_says_how_far_along_each_is() {
+        let db = acme();
+        db.execute_batch(
+            "UPDATE work_items SET horizon = 'now', updated_at = '2026-10-01T00:00:00Z' WHERE number IN (1, 3, 4);
+             INSERT INTO decisions (id, repo_id, item_id, kind, confidence, summary, created_at)
+               VALUES ('dec_1', 'rep_web', 'wki_3', 'proposal', 'approved', 'Rank by fractional keys', '2026-10-10T00:00:00Z'),
+                      ('dec_2', 'rep_web', 'wki_1', 'claim', 'approved', 'Scope: tests', '2026-10-11T00:00:00Z');
+             INSERT INTO sessions (id, repo_id, actor_id, actor_name, harness, state, started_at, last_seen_at, item_id)
+               VALUES ('ses_1', 'rep_web', 'usr_1', 'ana', 'claude_code', 'active', '2026-10-12T00:00:00Z', '2026-10-15T00:00:00Z', 'wki_4');
+             INSERT INTO session_touches (session_id, repo_id, kind, value, at) VALUES ('ses_1', 'rep_web', 'commit', 'abc1234', '2026-10-15T00:00:00Z');",
+        )
+        .unwrap();
+        // A claim's note is not a decision; nothing else has happened on #1.
+        let one = facts(&db, 1);
+        assert_eq!((one.hill(), one.active_at.as_deref()), (Hill::FiguringOut, Some("2026-10-11T00:00:00Z")));
+        assert_eq!(facts(&db, 3).hill(), Hill::Decided);
+        let four = facts(&db, 4);
+        assert_eq!((four.hill(), four.active_at.as_deref()), (Hill::Building, Some("2026-10-15T00:00:00Z")));
+        // Quiet: nothing since before the line.
+        assert!(facts(&db, 3).progress("2026-10-14T00:00:00Z").quiet);
+        assert!(!facts(&db, 4).progress("2026-10-14T00:00:00Z").quiet);
+    }
+
+    #[test]
+    fn the_plan_says_what_waits_too_long() {
+        let db = acme();
+        db.execute_batch(
+            "UPDATE work_items SET created_at = '2026-10-01T00:00:00Z' WHERE number IN (1, 3);
+             UPDATE work_items SET created_at = '2026-10-18T00:00:00Z' WHERE number = 4;
+             UPDATE work_items SET horizon = 'set_aside', planned_at = '2026-10-15T00:00:00Z' WHERE number = 5;
+             UPDATE work_items SET horizon = 'set_aside', planned_at = '2026-08-01T00:00:00Z' WHERE number = 6;",
+        )
+        .unwrap();
+        let values: [&dyn ToSql; 6] = [&"acme", &1, &"[]", &None::<String>, &"2026-10-12T00:00:00Z", &"2026-09-20T00:00:00Z"];
+        let (waiting, recent): (u32, u32) = db
+            .query_row(&WAITING.replace("{OPEN_VISIBLE}", OPEN_VISIBLE), &values[..], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap();
+        // #1 and #3 (and #2, made with no date) in Triage since before the line; #5 set aside lately.
+        assert_eq!((waiting, recent), (3, 1));
     }
 
     #[test]

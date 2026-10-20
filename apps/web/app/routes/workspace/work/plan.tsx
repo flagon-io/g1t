@@ -1,4 +1,4 @@
-import { ChevronRight, Inbox, ListOrdered, Plus } from "lucide-react";
+import { CheckCircle2, ChevronRight, Inbox, ListOrdered, Plus } from "lucide-react";
 import { type DragEvent, useEffect, useMemo, useState } from "react";
 import { Link, redirect, useFetcher } from "react-router";
 
@@ -6,7 +6,7 @@ import type { PlanGroup, WorkItem } from "@g1t/contracts";
 
 import type { Route } from "./+types/plan";
 import { CapBar, PlanRow, PlanRowMenu, type RowDrag } from "../../../components/plan";
-import { ButtonLink } from "../../../components/ui";
+import { ButtonLink, TimeAgo } from "../../../components/ui";
 import { Alert } from "../../../components/ui/alert";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
@@ -29,7 +29,11 @@ import {
   onItems,
   planInput,
   planPath,
+  progressOf,
+  quietLine,
+  setAsideLine,
   setAsidePath,
+  triageLine,
   triagePath,
   waitingOn,
 } from "../../../lib/plan";
@@ -39,7 +43,7 @@ import { work } from "../../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn, unwrap } from "../../../lib/session.server";
 import { useWorkspaceLive } from "../../../lib/use-repo-live";
 import { canItem } from "../../../lib/work-access";
-import { newItemPath, shortPath, workPath } from "../../../lib/work-items";
+import { itemPath, newItemPath, shortPath, workPath } from "../../../lib/work-items";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
   return page(args, { title: `Plan · Work · ${params.owner} · g1t` });
@@ -220,6 +224,11 @@ export default function PlanPage({ loaderData }: Route.ComponentProps) {
   });
 
   const cap = capState(plan.now.length, loaderData.plan.nowCap);
+  // How each in Now stands, and the week: read with the plan, and left as they are while a move is on its way.
+  const { landed, triageWaiting, setAsideRecent } = loaderData.plan;
+  const progress = useMemo(() => progressOf(loaderData.plan.progress), [loaderData.plan.progress]);
+  const quiet = quietLine(loaderData.plan.progress.filter((one) => one.quiet).length);
+  const letGo = setAsideLine(setAsideRecent);
   const nextMore = moreText(plan.next.length, plan.nextTotal);
   const row = (lane: "now" | "next", item: WorkItem, index: number, rank: number) => (
     <PlanRow
@@ -231,6 +240,7 @@ export default function PlanPage({ loaderData }: Route.ComponentProps) {
       waiting={waitingOn(item, closed)}
       drag={rowDrag(lane, item, index)}
       menu={canPlan ? <PlanRowMenu item={item} list={lists[lane]} canNow={canNow} onMove={(move) => submit(move, item)} /> : undefined}
+      progress={lane === "now" ? progress[item.number] : undefined}
     />
   );
 
@@ -272,9 +282,7 @@ export default function PlanPage({ loaderData }: Route.ComponentProps) {
           className="mt-4 flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm text-muted transition-colors hover:border-line-strong hover:text-fg"
         >
           <Inbox size={15} className="shrink-0 text-accent" />
-          <span className="min-w-0 grow">
-            {plan.triageTotal === 1 ? "1 new work item waits" : `${plan.triageTotal.toLocaleString("en-US")} new work items wait`} in Triage to be placed.
-          </span>
+          <span className="min-w-0 grow">{triageLine(plan.triageTotal, Math.min(triageWaiting, plan.triageTotal))}</span>
           <ChevronRight size={15} className="shrink-0" />
         </Link>
       )}
@@ -341,6 +349,56 @@ export default function PlanPage({ loaderData }: Route.ComponentProps) {
         </Card>
 
         <div className="grid min-w-0 content-start gap-4">
+          <Card asChild className="min-w-0">
+            <section aria-labelledby="plan-week">
+              <header className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 pt-3 pb-2">
+                <h2 id="plan-week" className="text-sm font-semibold">
+                  This week
+                </h2>
+                <span className="text-xs text-faint">what landed from Now</span>
+              </header>
+              {landed.length === 0 ? (
+                <p className="px-4 pb-2 text-xs text-faint">Nothing has landed from Now in the last 7 days.</p>
+              ) : (
+                <ul className="px-2 pb-1">
+                  {landed.map((item) => (
+                    <li key={item.id}>
+                      <Link
+                        to={itemPath(workspace, item.number)}
+                        prefetch="intent"
+                        className="flex min-w-0 items-baseline gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-raised/60 hover:text-accent"
+                      >
+                        <CheckCircle2 size={13} className="shrink-0 translate-y-0.5 text-success" aria-hidden />
+                        <span className="min-w-0 grow truncate">
+                          <span className="mr-1.5 font-mono text-xs text-faint">#{item.number}</span>
+                          {item.title}
+                        </span>
+                        {item.closedAt && (
+                          <span className="shrink-0 text-xs text-faint">
+                            <TimeAgo at={item.closedAt} />
+                          </span>
+                        )}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {(quiet || letGo) && (
+                <div className="space-y-1 border-t border-line px-4 py-2.5 text-xs text-muted">
+                  {quiet && <p>{quiet}</p>}
+                  {letGo && (
+                    <p>
+                      <Link to={setAsidePath(workspace)} className="hover:text-fg">
+                        {letGo}
+                      </Link>
+                      .
+                    </p>
+                  )}
+                </div>
+              )}
+              {!quiet && !letGo && <div className="pb-2" />}
+            </section>
+          </Card>
           <Card asChild className={cn("min-w-0", over?.lane === "later" && "border-accent/60 bg-accent/5")}>
             <section aria-labelledby="plan-later" {...laneDrop("later")}>
               <header className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 pt-3 pb-2">

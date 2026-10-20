@@ -1,8 +1,8 @@
-import { ArrowDown, ArrowUp, ArrowUpToLine, Bot, CornerDownRight, GripVertical, MoreHorizontal } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpToLine, Bot, CornerDownRight, GripVertical, MoreHorizontal, Sparkles } from "lucide-react";
 import type { DragEvent, ReactNode } from "react";
 import { Link } from "react-router";
 
-import { type Appetite, type Horizon, type WorkItem, appetiteLetter, horizonLabel } from "@g1t/contracts";
+import { type Appetite, type Hill, type Horizon, type Progress as Standing, type WorkItem, appetiteLetter, hillLabel, horizonLabel } from "@g1t/contracts";
 
 import { HarnessMark, StateDot } from "./sessions";
 import { RepoChips } from "./work-items";
@@ -13,8 +13,22 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Hint } from "./ui/hint";
 import { Progress } from "./ui/progress";
 import { cn } from "../lib/cn";
-import { APPETITE_HINTS, type CapState, type Move, type OnIt, type Position, menuHorizons, moveDown, moveUp, waitingLabel } from "../lib/plan";
+import {
+  APPETITE_HINTS,
+  type CapState,
+  HILL_STEPS,
+  type Move,
+  type OnIt,
+  type Position,
+  hillStep,
+  menuHorizons,
+  moveDown,
+  moveUp,
+  quietText,
+  waitingLabel,
+} from "../lib/plan";
 import { onItemSessionTitle, runsIn, sessionHref } from "../lib/sessions";
+import { timeAgo } from "../lib/time-ago";
 import { itemPath } from "../lib/work-items";
 
 /** A work item's appetite as its letter in a small square, with what it means on hover. */
@@ -25,6 +39,71 @@ export function AppetiteChip({ appetite }: { appetite: Appetite }) {
         {appetiteLetter(appetite)}
       </Badge>
     </Hint>
+  );
+}
+
+/** Where each of a hill's four stages sits on its curve, as x and y in a 44 by 16 box. */
+const HILL_POINTS = HILL_STEPS.map((_, step) => {
+  const along = (step + 0.5) / HILL_STEPS.length;
+  return { x: 3 + along * 38, y: 14 - Math.sin(along * Math.PI) * 10 };
+});
+
+/**
+ * How far along a work item in Now is, as its record says: a small hill
+ * with its four stages (figuring it out, decided, building, landing) and
+ * the one it is at filled in. Its stage is its accessible name and its
+ * hint; `label` also shows it in words, before the hill.
+ */
+export function HillMark({ hill, label = false }: { hill: Hill; label?: boolean }) {
+  const at = hillStep(hill);
+  const words = `${hillLabel(hill)}, stage ${at + 1} of ${HILL_STEPS.length}`;
+  return (
+    <Hint label={words}>
+      <span role="img" aria-label={words} className="inline-flex shrink-0 items-center gap-1.5">
+        {label && <span className="text-[0.6875rem] whitespace-nowrap text-faint">{hillLabel(hill)}</span>}
+        <svg viewBox="0 0 44 16" className="h-4 w-11" aria-hidden>
+          <path d="M2 15 Q 22 -5 42 15" fill="none" className="stroke-line-strong" strokeWidth="1.25" />
+          {HILL_POINTS.map((point, step) =>
+            step === at ? (
+              <circle key={step} cx={point.x} cy={point.y} r="3" className="fill-accent" />
+            ) : (
+              <circle key={step} cx={point.x} cy={point.y} r="1.25" className={step < at ? "fill-accent/50" : "fill-line-strong"} />
+            ),
+          )}
+        </svg>
+      </span>
+    </Hint>
+  );
+}
+
+/**
+ * Where a work item in Now stands, in g1t's words from its record (its
+ * sessions, decisions and pull requests), muted, with a small mark that
+ * says g1t drafted it and when. Nothing until it has been drafted.
+ */
+export function StandingText({ standing, className }: { standing: Pick<Standing, "standing" | "standingAt">; className?: string }) {
+  if (!standing.standing) return null;
+  const when = standing.standingAt ? ` ${timeAgo(standing.standingAt)}` : "";
+  return (
+    <p className={cn("text-xs leading-relaxed text-muted", className)}>
+      {standing.standing}
+      <Hint label={<span suppressHydrationWarning>{`Drafted by g1t from its record${when}`}</span>}>
+        <span className="ml-1 inline-flex translate-y-px items-center text-faint" aria-label="Drafted by g1t" role="img">
+          <Sparkles size={11} />
+        </span>
+      </Hint>
+    </p>
+  );
+}
+
+/** "Quiet for 6 days", for a work item in Now nothing has happened on lately. */
+export function QuietBadge({ progress }: { progress: Pick<Standing, "quiet" | "activeAt"> }) {
+  const text = quietText(progress, Date.now());
+  if (!text) return null;
+  return (
+    <Badge tone="warn" suppressHydrationWarning>
+      {text}
+    </Badge>
   );
 }
 
@@ -168,7 +247,8 @@ export type RowDrag = {
 /**
  * One work item in the plan: its place (`rank`), urgent first, its number
  * and title, its repositories, what it waits on, who is on it, its
- * appetite, and its menu.
+ * appetite, and its menu. In Now, also how it stands (`progress`): its
+ * hill, whether it has gone quiet, and where it stands under its title.
  */
 export function PlanRow({
   item,
@@ -178,6 +258,7 @@ export function PlanRow({
   waiting,
   drag,
   menu,
+  progress,
 }: {
   item: WorkItem;
   rank: number | null;
@@ -187,7 +268,9 @@ export function PlanRow({
   waiting: readonly number[];
   drag?: RowDrag;
   menu?: ReactNode;
+  progress?: Standing;
 }) {
+  const quiet = progress?.quiet ?? false;
   return (
     <li
       draggable={drag?.draggable || undefined}
@@ -227,9 +310,17 @@ export function PlanRow({
           <span className="mr-1.5 font-mono text-xs font-normal text-faint">#{item.number}</span>
           {item.title}
         </Link>
-        {(item.repos.length > 0 || waiting.length > 0 || (on && (on.people.length > 0 || on.sessions.length > 0))) && (
+        {progress && <StandingText standing={progress} className="mt-0.5 line-clamp-2" />}
+        {(progress || item.repos.length > 0 || waiting.length > 0 || quiet || (on && (on.people.length > 0 || on.sessions.length > 0))) && (
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-faint">
+            {/* On a phone the hill goes under the title, in words, where there is room for it. */}
+            {progress && (
+              <span className="sm:hidden">
+                <HillMark hill={progress.hill} label />
+              </span>
+            )}
             <RepoChips repos={item.repos} workspace={workspace} max={1} />
+            {progress && <QuietBadge progress={progress} />}
             {waiting.length > 0 && (
               <Badge tone="warn" className="max-w-full">
                 <span className="truncate">{waitingLabel(waiting)}</span>
@@ -240,6 +331,11 @@ export function PlanRow({
         )}
       </div>
       <div className="flex shrink-0 items-center gap-1">
+        {progress && (
+          <span className="mr-1 max-sm:hidden">
+            <HillMark hill={progress.hill} />
+          </span>
+        )}
         {item.appetite && <AppetiteChip appetite={item.appetite} />}
         {menu}
       </div>

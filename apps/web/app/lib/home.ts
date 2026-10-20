@@ -30,7 +30,7 @@ import type {
 import { HARNESS_NAMES } from "./coordination.ts";
 import { type PushRecord, pushedByPerson, pushedCommits } from "./mission-control.ts";
 import { settledLine } from "./inbox.ts";
-import { itemPath, sessionPath } from "./work-items.ts";
+import { itemPath, sessionPath, workPath } from "./work-items.ts";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -1070,12 +1070,13 @@ export function running(parts: RunningRow[][]): RunningRow[] {
  * 3. a job waiting for a runner that is not there;
  * 4. an unread notification that is a warning or a failure;
  * 5. a mention or a direct message;
- * 6. a work item in the plan's Now that is yours: assigned to you, or claimed by you.
+ * 6. a work item in the plan's Now that is yours: assigned to you, or claimed by you;
+ * 7. work items that have waited in Triage over a week, for whoever plans.
  *
  * `next`, the work item to take next, is never a row: Start here falls back
  * to it when nothing else ranks ([`attention`]).
  */
-export type AttentionKind = "deploy" | "pull_blocked" | "review" | "invitation" | "ready" | "runner" | "notification" | "chat" | "now" | "next";
+export type AttentionKind = "deploy" | "pull_blocked" | "review" | "invitation" | "ready" | "runner" | "notification" | "chat" | "now" | "triage" | "next";
 
 export const TIER: Record<AttentionKind, number> = {
   deploy: 0,
@@ -1087,7 +1088,8 @@ export const TIER: Record<AttentionKind, number> = {
   notification: 4,
   chat: 5,
   now: 6,
-  next: 7,
+  triage: 7,
+  next: 8,
 };
 
 export type Stake = { text: string; tone: "danger" | "warn" | "accent" | null };
@@ -1152,6 +1154,7 @@ const WHY: Record<AttentionKind, string> = {
   notification: "It is the most pressing unread notification.",
   chat: "Nothing else is waiting, and this is the oldest message for you.",
   now: "Nothing else is waiting on you, and this is yours in Now.",
+  triage: "Nothing else is waiting on you, and new work has waited over a week to be placed in the plan.",
   next: "Nothing is waiting on you, so this is the work to take next.",
 };
 
@@ -1197,6 +1200,26 @@ export function nowRows(
     });
   });
   return rows;
+}
+
+/**
+ * Work that has waited in Triage more than `TRIAGE_NUDGE_DAYS`, as a row of
+ * Your move for a viewer who plans (the Triage role or higher): after
+ * their own work in Now. None when nothing has waited that long.
+ */
+export function triageRow(slug: string, waiting: number): AttentionRow | null {
+  if (waiting <= 0) return null;
+  return {
+    key: `triage:${slug}`,
+    kind: "triage",
+    title: `${plural(waiting, "work item")} ${waiting === 1 ? "has" : "have"} waited in Triage over a week`,
+    detail: "Place each in the plan, or close it.",
+    stake: null,
+    action: { label: "Triage", to: workPath(slug, "triage") },
+    owner: null,
+    at: 0,
+    from: "plan",
+  };
 }
 
 /**
@@ -1389,6 +1412,8 @@ export function attention(input: {
   notifications: InboxItem[] | null;
   chat: ChatEntryLike[] | null;
   now?: AttentionRow[] | null;
+  /** How many have waited in Triage over a week, for a viewer who plans; undefined for one who does not. */
+  triageWaiting?: number | null;
   next?: { item: WorkItem; viewer: string } | null;
 }): Attention {
   const rows: AttentionRow[] = [];
@@ -1411,9 +1436,14 @@ export function attention(input: {
   } else missing.push("Chat");
   if (input.now) rows.push(...input.now);
   else if (input.now === null) missing.push("Work");
+  const triage = input.triageWaiting ? triageRow(input.slug, input.triageWaiting) : null;
+  if (triage) rows.push(triage);
   const ranked = rankAttention(rows);
   const next = input.next ? { row: nextRow(input.next.item), why: nextWhy(input.next.item, input.next.viewer) } : null;
-  return { rows: ranked, start: startHere(ranked) ?? next, missing };
+  // Work to take comes before a nudge to place new work.
+  const first = startHere(ranked);
+  const start = first?.row.kind === "triage" && next ? next : (first ?? next);
+  return { rows: ranked, start, missing };
 }
 
 // --- Spend in the span ----------------------------------------------------------

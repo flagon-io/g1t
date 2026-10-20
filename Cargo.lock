@@ -1396,7 +1396,7 @@ dependencies = [
 
 [[package]]
 name = "g1t"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "anstyle-query",
  "base64 0.22.1",

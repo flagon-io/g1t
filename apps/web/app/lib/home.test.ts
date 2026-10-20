@@ -46,6 +46,7 @@ import {
   spendIn,
   startHere,
   summarizeQuestion,
+  triageRow,
   waitingSentence,
   withSessions,
   withShipped,
@@ -237,6 +238,45 @@ test("your work in Now is in Your move, in Now's order, after everything else th
   assert.match(alone.start?.why ?? "", /yours in Now\. It is first of your 2 there\./);
   // The plan not answering is said, like any other source.
   assert.deepEqual(attention({ slug: "acme", code: false, codeNeeds: null, notifications: [], chat: [], now: null }).missing, ["Work"]);
+});
+
+test("work waiting in Triage over a week is a row for whoever plans, last, after their work in Now", () => {
+  assert.equal(triageRow("acme", 0), null);
+  const one = triageRow("acme", 1);
+  assert.equal(one?.title, "1 work item has waited in Triage over a week");
+  const row = triageRow("acme", 4);
+  assert.equal(row?.title, "4 work items have waited in Triage over a week");
+  assert.deepEqual(row?.action, { label: "Triage", to: "/acme/-/work/triage" });
+  const mine = nowRows([workItem(7, { horizon: "now", assignees: ["bo"] })], [], "bo");
+  const dm = { channel: { id: "c1", kind: "dm" as const, name: null, last_message_at: iso(NOW - DAY) }, title: "ana", muted: false, unread: 1, mentions: 0 };
+  const out = attention({ slug: "acme", code: false, codeNeeds: null, notifications: [], chat: [dm], now: mine, triageWaiting: 4 });
+  assert.deepEqual(
+    out.rows.map((r) => r.key),
+    ["chat:c1", "item:acme#7", "triage:acme"],
+  );
+  // Alone, it is where to start, before the work item to take next.
+  const alone = attention({
+    slug: "acme",
+    code: false,
+    codeNeeds: null,
+    notifications: [],
+    chat: [],
+    now: [],
+    triageWaiting: 2,
+    next: { item: workItem(31), viewer: "bo" },
+  });
+  // The work to take next comes before the nudge; with none, the nudge leads.
+  assert.equal(alone.start?.row.key, nextRow(workItem(31)).key);
+  assert.deepEqual(
+    alone.rows.map((row) => row.key),
+    ["triage:acme"],
+  );
+  const nudge = attention({ slug: "acme", code: false, codeNeeds: null, notifications: [], chat: [], now: [], triageWaiting: 2 });
+  assert.equal(nudge.start?.row.key, "triage:acme");
+  assert.match(nudge.start?.why ?? "", /waited over a week to be placed/);
+  // Nothing waiting that long, or a viewer who does not plan: no row.
+  assert.deepEqual(attention({ slug: "acme", code: false, codeNeeds: null, notifications: [], chat: [], now: [], triageWaiting: 0 }).rows, []);
+  assert.deepEqual(attention({ slug: "acme", code: false, codeNeeds: null, notifications: [], chat: [], now: [] }).rows, []);
 });
 
 test("the same order whatever order the rows came in", () => {
