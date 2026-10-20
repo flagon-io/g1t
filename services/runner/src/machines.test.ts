@@ -30,8 +30,30 @@ test("each label in the machine catalogue runs in its own class, bound and sized
     "standard-3": { vcpu: 2, memory_mib: 8 * 1024, disk_mb: 16_000 },
     "standard-4": { vcpu: 4, memory_mib: 12 * 1024, disk_mb: 20_000 },
   };
-  // Every class has a label, and every label a class.
-  assert.deepEqual(INSTANCE_TYPES.map((instance) => instance.sandboxClass).sort(), config.containers.map((container) => container.class_name).sort());
+  // The container classes that are not machines, each named: the git edge
+  // (gitedge.ts) serves clones, runs no jobs and no job can ask for it, so
+  // it has no label, no price and no sandbox binding.
+  const notMachines: Record<string, string> = { GitEdge: "GIT_EDGE" };
+  for (const [className, binding] of Object.entries(notMachines)) {
+    assert.ok(
+      config.containers.some((c) => c.class_name === className),
+      `${className} is not in wrangler.jsonc`,
+    );
+    assert.ok(
+      config.durable_objects.bindings.some((b) => b.name === binding && b.class_name === className),
+      binding,
+    );
+    assert.ok(!INSTANCE_TYPES.some((instance) => instance.sandboxClass === className), `${className} is in the machine catalogue`);
+    assert.equal(SANDBOX_BINDINGS[className], undefined, `${className} is in SANDBOX_BINDINGS`);
+  }
+  // Every other class has a label, and every label a class.
+  assert.deepEqual(
+    INSTANCE_TYPES.map((instance) => instance.sandboxClass).sort(),
+    config.containers
+      .map((container) => container.class_name)
+      .filter((className) => !Object.hasOwn(notMachines, className))
+      .sort(),
+  );
   for (const instance of INSTANCE_TYPES) {
     const type = config.containers.find((c) => c.class_name === instance.sandboxClass)?.instance_type;
     const size = typeof type === "string" ? named[type] : undefined;
