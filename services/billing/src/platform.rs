@@ -5,8 +5,9 @@
 //! The caps in `budget` hold what g1t pays for agents and sandboxes; this
 //! is about the platform underneath, which no workspace's limit covers and
 //! Cloudflare never caps: Workers requests and CPU, D1 rows, Queue
-//! operations, Durable Objects, KV and Artifacts. A loop in any of them is
-//! otherwise found on the bill.
+//! operations, Durable Objects, KV, Artifacts and Containers (the runner's
+//! sandboxes and git edges). A loop in any of them is otherwise found on
+//! the bill.
 //!
 //! - **The pause** (`platform_pause`): five independent levels, set by
 //!   staff in sudo (Costs & margin, Platform pause) or by the watcher on a
@@ -106,6 +107,13 @@ pub(crate) const METRICS: &[Metric] = &[
     Metric { key: "kv_deletes", title: "KV deletes", var: "KV_DELETES", default: 200_000.0, of: "KV namespace id", levels: &[Indexing, Renders] },
     Metric { key: "kv_lists", title: "KV lists", var: "KV_LISTS", default: 200_000.0, of: "KV namespace id", levels: &[Indexing, Renders] },
     Metric { key: "artifacts_events", title: "Artifacts events", var: "ARTIFACTS_EVENTS", default: 1_000_000.0, of: "repository", levels: &[Compute, Schedules] },
+    // Containers bill memory while awake ($0.009 a GiB-hour) and the CPU
+    // they use ($0.072 a vCPU-hour): 400 GiB-hours, about $3.60, is more
+    // than any runner class at its max_instances for the whole hour (30
+    // g1t-4core sandboxes hold 360 GiB), and 180,000 CPU-seconds is 50 vCPU
+    // busy all hour, about the same.
+    Metric { key: "container_memory_gib_hours", title: "Containers memory (GiB-hours)", var: "CONTAINER_MEMORY_GIB_HOURS", default: 400.0, of: "container application id", levels: &[Compute, Schedules, GitEdge] },
+    Metric { key: "container_cpu_seconds", title: "Containers CPU (seconds)", var: "CONTAINER_CPU_SECONDS", default: 180_000.0, of: "container application id", levels: &[Compute, Schedules, GitEdge] },
 ];
 
 pub(crate) fn metric(key: &str) -> Option<&'static Metric> {
@@ -420,6 +428,7 @@ pub(crate) const QUERIES: &[Query] = &[
     Query { key: "do_sql", dataset: "durableObjectsPeriodicGroups", select: "sum { rowsWritten }", dimensions: "namespaceId", hour_filter: "datetime" },
     Query { key: "kv", dataset: "kvOperationsAdaptiveGroups", select: "sum { requests }", dimensions: "namespaceId actionType", hour_filter: "datetime" },
     Query { key: "artifacts", dataset: "artifactsEventsAdaptiveGroups", select: "count", dimensions: "repositoryName", hour_filter: "datetime" },
+    Query { key: "containers", dataset: "containersUsageAdaptiveGroups", select: "sum { allocatedMemory cpuTimeSec }", dimensions: "applicationId", hour_filter: "datetime" },
 ];
 
 /// A window to read: one hour (`Time` bounds) or days (`Date` bounds).
@@ -468,6 +477,8 @@ pub(crate) fn query_body(account: &str, query: &Query, window: &Window) -> Value
     );
     json!({ "query": text, "variables": { "account": account, "since": since, "until": until } })
 }
+
+const GIB: f64 = (1u64 << 30) as f64;
 
 /// What one query counted, per metric: the total and each name's part.
 pub(crate) type Counted = BTreeMap<&'static str, BTreeMap<String, f64>>;
@@ -526,6 +537,12 @@ pub(crate) fn counted(query: &Query, body: &Value) -> std::result::Result<Counte
                 }
             }
             "artifacts" => add("artifacts_events", &name_of("repositoryName"), g["count"].as_f64().unwrap_or(0.0)),
+            "containers" => {
+                let name = name_of("applicationId");
+                // allocatedMemory is in byte-seconds.
+                add("container_memory_gib_hours", &name, number("allocatedMemory") / GIB / 3600.0);
+                add("container_cpu_seconds", &name, number("cpuTimeSec"));
+            }
             _ => {}
         }
     }
@@ -1061,6 +1078,8 @@ mod tests {
         assert_eq!(w.threshold("d1_rows_read"), 2_000_000_000.0);
         assert_eq!(w.threshold("do_rows_written"), 5_000_000.0);
         assert_eq!(w.threshold("workers_requests"), 20_000_000.0);
+        assert_eq!(w.threshold("container_memory_gib_hours"), 400.0);
+        assert_eq!(w.threshold("container_cpu_seconds"), 180_000.0);
         assert_eq!(w.auto_pause, vec![Schedules, Indexing, GitEdge]);
     }
 
@@ -1141,6 +1160,28 @@ mod tests {
     }
 
     #[test]
+    fn containers_count_memory_in_gib_hours_and_cpu_in_seconds_by_application() {
+        let gib_hour = GIB * 3600.0;
+        let containers = counted(
+            query("containers"),
+            &answer(json!([
+                // Ten g1t-4core sandboxes (12 GiB each) for half an hour.
+                { "sum": { "allocatedMemory": 60.0 * gib_hour, "cpuTimeSec": 7200.5 }, "dimensions": { "applicationId": "a0329680" } },
+                { "sum": { "allocatedMemory": 6.0 * gib_hour, "cpuTimeSec": 90.0 }, "dimensions": { "applicationId": "a038498b" } },
+                { "sum": { "allocatedMemory": 0.0, "cpuTimeSec": 0.0 }, "dimensions": { "applicationId": "a036c974" } },
+            ])),
+        )
+        .unwrap();
+        let all = totals(&[containers]);
+        assert_eq!(all["container_memory_gib_hours"], Total { value: 66.0, top_name: Some("a0329680".into()), top_value: Some(60.0) });
+        assert_eq!(all["container_cpu_seconds"].value, 7290.5);
+        // The month so far is read by date, as for the other datasets.
+        let month = query_body("acct", query("containers"), &month_so_far(1_791_465_420_000));
+        let text = month["query"].as_str().unwrap();
+        assert!(text.contains("rows: containersUsageAdaptiveGroups(limit: 10000, filter: { date_geq: $since, date_leq: $until })"), "{text}");
+    }
+
+    #[test]
     fn over_the_threshold_is_a_breach_and_five_times_it_is_severe() {
         let w = watch();
         assert_eq!(judge(&w, "kv_lists", 200_000.0, &[]), None);
@@ -1154,6 +1195,10 @@ mod tests {
         // Durable Objects feed compute, which is never paused by itself by default.
         let dos = judge(&w, "do_rows_written", 30_000_000.0, &[]).unwrap();
         assert_eq!(levels_to_pause(&w, &dos), vec![Schedules]);
+        // Containers also feed the git edge, which AUTO_PAUSE allows by default.
+        let containers = judge(&w, "container_memory_gib_hours", 2_400.0, &[]).unwrap();
+        assert!(containers.severe);
+        assert_eq!(levels_to_pause(&w, &containers), vec![Schedules, GitEdge]);
     }
 
     #[test]
