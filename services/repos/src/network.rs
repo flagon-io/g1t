@@ -40,6 +40,7 @@ use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Role, Viewer, is_valid_
 use g1t_kit::now_ms;
 use worker::Result;
 
+use crate::public_storage::{self, Operation};
 use crate::lifecycle::{VisibilityFacts, visibility_check};
 use crate::registry::{RepoRow, can, can_read, can_write, store_key};
 use crate::store::{GitRepo, GitStore, Scope, locate};
@@ -219,14 +220,49 @@ impl<S: GitStore> Repos<S> {
             let bytes = measured.saturating_add(pending);
             self.registry.claim_store_key(&fork, Some(&source_namespace), &default).await?;
             self.registry.insert(&fork).await?;
-            if !self.registry.reserve_public(&fork, bytes, self.free_public_bytes).await? {
+            let Some(reservation) =
+                self.registry.reserve_public(&fork, bytes, self.free_public_bytes, Operation::Fork, Some(&a.actor.id)).await?
+            else {
                 self.registry.remove(&fork.id).await?;
                 self.registry.unlock_copy(&source, &fork).await?;
                 return Ok(Outcome::fail(FailureCode::Forbidden, "This fork would exceed the workspace's public storage limit."));
+            };
+            let forked = match self.store.open(&store_key(&source)).await {
+                Ok(source_git) => source_git.fork(&store_key(&fork), a.default_branch_only).await,
+                Err(error) => {
+                    // The store was never asked to copy anything.
+                    self.registry.release_public(&reservation).await?;
+                    self.registry.unlock_copy(&source, &fork).await?;
+                    return Err(error);
+                }
+            };
+            if let Err(error) = forked {
+                let message = error.to_string();
+                if public_storage::may_still_run(&message) {
+                    // A timeout or a server error: the store may still be
+                    // copying. The lock stays until its lease and grace
+                    // have passed, for staff (storage_holds.rs), and the
+                    // reservation stays, ended.
+                    self.registry.end_public(&reservation, &message, &[]).await;
+                } else {
+                    // The store refused, or was never asked: nothing is
+                    // copying and nothing was copied.
+                    self.registry.release_public(&reservation).await?;
+                    self.registry.unlock_copy(&source, &fork).await?;
+                }
+                return Err(error);
             }
-            self.store.open(&store_key(&source)).await?.fork(&store_key(&fork), a.default_branch_only).await?;
-            self.registry.finish_public(&fork, measured, measured).await?;
-            self.registry.unlock_copy(&source, &fork).await?;
+            // The lock first: if staff released it while the store copied,
+            // the source may have taken writes the measured size misses, so
+            // the reservation stays, ended, for staff to look at.
+            if self.registry.unlock_copy(&source, &fork).await? {
+                // The whole reservation goes, the source's in-flight share
+                // with it: the fork holds what was measured.
+                self.registry.finish_public(&reservation, measured).await?;
+            } else {
+                let why = "The fork was made after staff released its copy lock: the source may have taken writes its measured size misses.";
+                self.registry.end_public(&reservation, why, &[]).await;
+            }
         } else {
             // Kept in the EU: copied there, never forked across.
             let placed = match self.place(&fork).await? {
@@ -241,21 +277,36 @@ impl<S: GitStore> Repos<S> {
             let copied = if a.default_branch_only {
                 let head = self.store.open(&store_key(&source)).await?.log(&source.default_branch, 1).await?;
                 match head.first() {
-                    Some(head) => land::fast_forward(&from, &to, &fork.default_branch, None, &head.hash, self.public_quota(&fork)).await?,
+                    Some(head) => land::fast_forward(&from, &to, &fork.default_branch, None, &head.hash, self.public_quota(&fork, Operation::Fork, Some(&a.actor.id))).await?,
                     None => Ok(()),
                 }
             } else {
-                match copy::copy(
+                let held = std::cell::RefCell::new(None);
+                let copied = copy::copy(
                     &copy::Endpoint::bearer(&from.remote, &from.token),
                     &copy::Endpoint::bearer(&to.remote, &to.token),
-                    |bytes| self.registry.reserve_public(&fork, bytes, self.free_public_bytes),
+                    |bytes| self.hold_into(&held, &fork, bytes, Operation::Fork, Some(&a.actor.id)),
                 )
-                .await? {
-                    Ok(copied) => {
-                        self.registry.finish_public(&fork, copied.pack_bytes, copied.pack_bytes).await?;
+                .await;
+                let held = held.into_inner();
+                match (copied, held) {
+                    (Ok(Ok(copied)), Some(reservation)) => {
+                        self.registry.finish_public(&reservation, copied.pack_bytes).await?;
                         Ok(())
                     }
-                    Err(problem) => Err(problem.to_string()),
+                    (Ok(Ok(_)), None) => Ok(()),
+                    // Sent, and the store said no or stopped answering.
+                    (Ok(Err(problem)), Some(reservation)) => {
+                        self.registry.end_public(&reservation, &problem.to_string(), &[]).await;
+                        Err(problem.to_string())
+                    }
+                    (Ok(Err(problem)), None) => Err(problem.to_string()),
+                    (Err(error), held) => {
+                        if let Some(reservation) = held {
+                            self.registry.end_public(&reservation, &error.to_string(), &[]).await;
+                        }
+                        return Err(error);
+                    }
                 }
             };
             if let Err(reason) = copied {
@@ -413,7 +464,7 @@ impl<S: GitStore> Repos<S> {
             }
             let from = parent_git.access(Scope::Read).await?;
             let to = fork_git.access(Scope::Write).await?;
-            let moved = land::fast_forward(&from, &to, &branch, Some(&head.hash), &their_head.hash, self.public_quota(&fork)).await?;
+            let moved = land::fast_forward(&from, &to, &branch, Some(&head.hash), &their_head.hash, self.public_quota(&fork, Operation::Sync, Some(&a.actor.id))).await?;
             self.refs_moved(&fork.id).await;
             if moved.is_err() {
                 return Ok(Outcome::fail(FailureCode::Conflict, format!("{branch} moved while it was being synced. Nothing was lost; try again.")));

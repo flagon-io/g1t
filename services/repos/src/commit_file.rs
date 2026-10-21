@@ -18,10 +18,11 @@ use g1t_kit::now_ms;
 use g1t_scan::pack::{ObjectKind, object_id, write_pack};
 use worker::Result;
 
+use crate::public_storage::Operation;
 use crate::catch_up::{Change, Signature, ancestors, commit_object, merge_tree, read_dirs};
 use crate::registry::{can_write, store_key};
 use crate::store::{GitRepo, GitStore, Scope};
-use crate::{Repos, UNVERIFIED, land, not_found};
+use crate::{Repos, UNVERIFIED, not_found};
 
 /// The largest file this writes.
 const MAX_CONTENT_BYTES: usize = 64 * 1024;
@@ -162,12 +163,11 @@ impl<S: GitStore> Repos<S> {
         let access = git.access(Scope::Write).await?;
         // Only if the branch is still not there.
         let pack = write_pack(&objects);
-        if !self.registry.reserve_public(&repo, pack.len() as u64, self.free_public_bytes).await? {
+        let Some(pushed) =
+            self.push_reserved(&repo, Operation::Commit, Some(&a.actor.id), &access, &a.branch, None, &commit_id, pack).await?
+        else {
             return Ok(Outcome::fail(FailureCode::Forbidden, "Public repository storage is full. Make room before adding more data."));
-        }
-        let bytes = pack.len() as u64;
-        let pushed = land::push_pack(&access, &a.branch, None, &commit_id, pack).await?;
-        self.registry.finish_public(&repo, bytes, bytes).await?;
+        };
         self.refs_moved(&repo.id).await;
 
         let git_ref = format!("refs/heads/{}", a.branch);

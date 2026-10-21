@@ -342,6 +342,22 @@ impl Sideband {
     /// The pack bytes in the next chunk of the answer, or why it failed.
     pub fn feed(&mut self, input: &[u8]) -> Result<Vec<u8>, String> {
         let mut out = Vec::new();
+        self.take(input, Some(&mut out))?;
+        Ok(out)
+    }
+
+    /// Counts the pack bytes in the next chunk without keeping them
+    /// ([`Sideband::pack_bytes`]), for a pack only measured.
+    pub fn count(&mut self, input: &[u8]) -> Result<(), String> {
+        self.take(input, None)
+    }
+
+    /// Whether the flush after the pack has come: the pack is whole.
+    pub fn complete(&self) -> bool {
+        self.done
+    }
+
+    fn take(&mut self, input: &[u8], mut out: Option<&mut Vec<u8>>) -> Result<(), String> {
         self.pending.extend_from_slice(input);
         let mut at = 0;
         while !self.done && self.pending.len() >= at + 4 {
@@ -372,7 +388,9 @@ impl Sideband {
                         self.started = true;
                     }
                     self.pack_bytes += data.len() as u64;
-                    out.extend_from_slice(data);
+                    if let Some(out) = out.as_deref_mut() {
+                        out.extend_from_slice(data);
+                    }
                 }
                 Some(&ERROR_BAND) => {
                     return Err(format!("the source refused the fetch: {}", String::from_utf8_lossy(&payload[1..])));
@@ -383,7 +401,7 @@ impl Sideband {
             at += length;
         }
         self.pending.drain(..at);
-        Ok(out)
+        Ok(())
     }
 
     /// Whether a pack arrived.

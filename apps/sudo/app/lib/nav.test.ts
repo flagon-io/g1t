@@ -62,6 +62,7 @@ test("the built pages are not marked soon", () => {
     "/costs",
     "/abuse",
     "/blocked-domains",
+    "/storage",
     "/incidents",
     "/audit",
   ]);

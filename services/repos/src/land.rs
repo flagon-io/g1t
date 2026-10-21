@@ -51,6 +51,12 @@ fn meter(service: &str) -> &'static str {
 
 /// Sends `body` to `service` on the store, answered in full or an error.
 async fn send(access: &GitAccess, service: &str, body: JsValue, sent: u64) -> Result<Response> {
+    send_metered(access, service, meter(service), body, sent).await
+}
+
+/// [`send`], counted under `meter`: a request on g1t's own account
+/// (storage drift) is not one of the workspace's operations.
+async fn send_metered(access: &GitAccess, service: &str, meter: &str, body: JsValue, sent: u64) -> Result<Response> {
     let headers = Headers::new();
     headers.set("authorization", &format!("Bearer {}", access.token))?;
     headers.set("content-type", &format!("application/x-{service}-request"))?;
@@ -59,7 +65,7 @@ async fn send(access: &GitAccess, service: &str, body: JsValue, sent: u64) -> Re
     init.with_method(Method::Post).with_headers(headers).with_body(Some(body));
     let request = Request::new_with_init(&format!("{}/{service}", access.remote), &init)?;
     let mut response = Fetch::Request(request).send().await?;
-    meters::record_remote(meter(service), &access.remote, sent, 0);
+    meters::record_remote(meter, &access.remote, sent, 0);
     if response.status_code() != 200 {
         let text = response.text().await.unwrap_or_default();
         return Err(Error::RustError(format!("{service} returned {}: {text}", response.status_code())));
@@ -222,26 +228,37 @@ pub(crate) async fn fast_forward(
     let reference = format!("refs/heads/{branch}");
     let failure: Rc<RefCell<Option<String>>> = Rc::default();
     let demux = Rc::new(RefCell::new(Sideband::default()));
+    // Set once every pack byte has been passed on to the store.
+    let delivered = Rc::new(std::cell::Cell::new(false));
     let pack = {
         let failure = failure.clone();
         let demux = demux.clone();
         let quota = quota.clone();
+        let delivered = delivered.clone();
         fetched.stream()?.then(move |chunk| {
             let failure = failure.clone();
             let demux = demux.clone();
             let quota = quota.clone();
+            let delivered = delivered.clone();
             async move {
             let chunk = chunk?;
             let pack = demux.borrow_mut().feed(&chunk).map_err(|why| {
                 *failure.borrow_mut() = Some(why.clone());
                 Error::RustError(why)
             })?;
-            if let Some(quota) = quota {
-                if !quota.registry.reserve_public(&quota.repo, pack.len() as u64, quota.cap).await? {
+            if let Some(quota) = quota
+                && needs_grant(&pack)
+            {
+                // Refused past the copy's lease too: cut short, the push
+                // is refused whole (public_storage.rs).
+                if !quota.grow(pack.len() as u64).await? {
                     let why = "Public repository storage is full. Make room before adding more data.".to_owned();
                     *failure.borrow_mut() = Some(why.clone());
                     return Err(Error::RustError(why));
                 }
+            }
+            if demux.borrow().complete() {
+                delivered.set(true);
             }
             Ok(pack)
             }
@@ -265,18 +282,87 @@ pub(crate) async fn fast_forward(
         .filter(|chunk| futures_util::future::ready(!matches!(chunk, Ok(bytes) if bytes.is_empty())));
     let pushed = send(target, "git-receive-pack", crate::git_http::stream_body(body)?, 0).await;
     if let Some(why) = failure.borrow_mut().take() {
+        if let Some(quota) = &quota {
+            match cut_short(delivered.get()) {
+                // Cut short before its end, so the store refused the push
+                // whole, as a push over a limit is (git_http.rs).
+                CutShort::Release => quota.release().await?,
+                CutShort::End => quota.end(&why).await,
+            }
+        }
         return Err(Error::RustError(why));
     }
-    let report = pushed?.bytes().await?;
+    let report = match pushed {
+        Ok(mut pushed) => pushed.bytes().await,
+        Err(error) => Err(error),
+    };
+    let report = match report {
+        Ok(report) => report,
+        Err(error) => {
+            // Whether the store kept any of it is not known: the
+            // reservation stays, ended, for staff (storage_holds.rs).
+            if let Some(quota) = quota {
+                quota.end(&error.to_string()).await;
+            }
+            return Err(error);
+        }
+    };
     let moved = demux.borrow().pack_bytes;
     if let Some(quota) = quota {
-        quota.registry.finish_public(&quota.repo, moved, moved).await?;
+        quota.finish(moved).await?;
     }
     if let (Some(from), Some(to)) = (crate::store::key_from_remote(&source.remote), crate::store::key_from_remote(&target.remote)) {
         meters::record_bytes("internal.git.fetch", &from, 0, moved);
         meters::record_bytes("internal.git.receive_pack", &to, moved, 0);
     }
     Ok(reported(&report, &reference, true))
+}
+
+/// The size of the pack `source` sends for everything `wants` reaches that
+/// `haves` do not, counted as it streams past and never held (storage
+/// drift, storage_holds.rs). What a mirror clone downloads: the store's
+/// own measure of what it keeps, as near as git can ask for it. Counted
+/// under `meter`, and given up past `limit` bytes.
+pub(crate) async fn pack_size(source: &GitAccess, wants: &[String], haves: &[String], meter: &str, limit: u64) -> Result<u64> {
+    if wants.is_empty() {
+        return Ok(0);
+    }
+    let request = crate::copy::upload_request(wants, haves);
+    let sent = request.len() as u64;
+    let mut fetched = send_metered(source, "git-upload-pack", meter, Uint8Array::from(request.as_slice()).into(), sent).await?;
+    let mut demux = Sideband::default();
+    let mut stream = fetched.stream()?;
+    while let Some(chunk) = stream.next().await {
+        demux.count(&chunk?).map_err(Error::RustError)?;
+        if demux.pack_bytes > limit {
+            return Err(Error::RustError(format!("over the {limit} bytes left to measure")));
+        }
+    }
+    demux.finish().map_err(Error::RustError)?;
+    if let Some(key) = crate::store::key_from_remote(&source.remote) {
+        meters::record_bytes(meter, &key, 0, demux.pack_bytes);
+    }
+    Ok(demux.pack_bytes)
+}
+
+/// Whether a chunk of a streamed copy needs more of its reservation: only
+/// one that carries pack bytes. Progress lines and the flush after the
+/// pack carry none, and must not be refused after the pack is whole.
+pub(crate) fn needs_grant(pack: &[u8]) -> bool {
+    !pack.is_empty()
+}
+
+/// What a streamed copy cut short does with its reservation.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum CutShort {
+    /// The pack never went out whole, so the store refused the push whole.
+    Release,
+    /// The whole pack had gone out: whether the store kept it is not known.
+    End,
+}
+
+pub(crate) fn cut_short(pack_delivered: bool) -> CutShort {
+    if pack_delivered { CutShort::End } else { CutShort::Release }
 }
 
 /// The commands at the start of a receive-pack request for many refs:
@@ -368,6 +454,48 @@ pub(crate) async fn copy_refs(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A side-band packet on `band`.
+    fn band(band: u8, payload: &[u8]) -> Vec<u8> {
+        let mut out = format!("{:04x}", payload.len() + 5).into_bytes();
+        out.push(band);
+        out.extend_from_slice(payload);
+        out
+    }
+
+    #[test]
+    fn a_copy_asks_more_of_its_reservation_only_for_pack_bytes() {
+        let mut demux = Sideband::default();
+        // A progress line before the pack: nothing to reserve.
+        let progress = demux.feed(&band(2, b"Counting objects: 3\n")).unwrap();
+        assert!(!needs_grant(&progress));
+        let pack = demux.feed(&band(1, b"PACK\x00\x00\x00\x02rest")).unwrap();
+        assert!(needs_grant(&pack));
+        assert!(!demux.complete());
+        // The flush after the pack: the pack is whole, and this chunk asks
+        // for nothing, so a full workspace or a passed lease cannot turn a
+        // whole pack into a refused one.
+        let flush = demux.feed(b"0000").unwrap();
+        assert!(!needs_grant(&flush));
+        assert!(demux.complete());
+    }
+
+    #[test]
+    fn a_copy_cut_short_after_its_whole_pack_went_out_keeps_its_reservation_ended() {
+        assert_eq!(cut_short(false), CutShort::Release);
+        assert_eq!(cut_short(true), CutShort::End);
+    }
+
+    #[test]
+    fn a_measured_pack_is_counted_without_being_kept() {
+        let mut kept = Sideband::default();
+        let mut counted = Sideband::default();
+        let answer = [band(1, b"PACK0123456789"), band(2, b"progress"), b"0000".to_vec()].concat();
+        let pack = kept.feed(&answer).unwrap();
+        counted.count(&answer).unwrap();
+        assert_eq!(counted.pack_bytes, pack.len() as u64);
+        assert!(counted.complete());
+    }
 
     #[test]
     fn landing_rejects_a_branch_replaced_after_checks() {

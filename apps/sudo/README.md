@@ -131,6 +131,28 @@ roadmap.
   and their subdomains, no new account may sign up with or add, each with
   a reason (`admin_blocked_domains`, `admin_block_domain`). Accounts
   already there are not touched.
+- **Storage holds** (`/storage`, under Platform): public storage that
+  writes reserved before reaching the git store, and the locks native
+  forks put on their source, oldest first (the repos service's
+  `admin_storage_holds`): each with its repository, the write behind it
+  (push, merge, fork, import and so on) and who made it, its age, its
+  lease, and whether it is **provably abandoned** and why. **Inspect**
+  (`admin_inspect_storage_hold`) adds what the git store lists for each
+  repository the hold names (refs, the default branch's commit), what g1t
+  counts for it (stored, reserved, how much of that the ledger accounts
+  for), and for a push that ended, each ref it asked for against the
+  store's. **Release** (`admin_release_storage_hold`) is offered only on a
+  provably abandoned hold and takes a reason; the repos service inspects
+  it again, checks the same rules in the batch that releases, and writes a
+  row of `storage_recoveries` with the evidence, listed under **Released**
+  (`admin_storage_recoveries`). Provably abandoned means: the write
+  recorded that it ended; or its one-hour lease passed 15 minutes ago; or,
+  for bytes reserved before the ledger began and locks without a lease,
+  24 hours have passed since it began. A release never changes
+  `stored_bytes`, which is billed. **Drift** (`admin_storage_drift`) streams
+  a small random sample of repositories from the store and sets what it
+  holds beside `stored_bytes`; it reads only. The runbook is
+  `docs/operations/storage-holds.md`.
 - **Deleted accounts** (`/users/deleted`, linked from Workspaces):
   accounts deleted by the person or by staff, newest first
   (`admin_deleted_accounts`), each with who deleted it (the person, or the

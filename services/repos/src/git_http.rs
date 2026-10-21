@@ -575,6 +575,9 @@ pub struct Forwarded {
     /// was streamed to the store unscanned (`LargePushes::Unscanned`). Its
     /// `git.push` events say so, and security scans it after it lands.
     pub unscanned: bool,
+    /// For a push: the store refused it for its rate limit (429), before
+    /// taking any of it, so its storage reservation can go at once.
+    pub rate_limited: bool,
 }
 
 /// What became of a git request.
@@ -603,6 +606,9 @@ pub struct PushLimits {
     pub scan_cap: usize,
     /// What happens to a larger one.
     pub large: LargePushes,
+    /// When a push streamed to the store is cut short, in milliseconds:
+    /// its storage reservation's lease (public_storage.rs).
+    pub deadline_ms: Option<u64>,
 }
 
 impl Default for PushLimits {
@@ -613,6 +619,7 @@ impl Default for PushLimits {
             repo_limit: crate::pack_limits::DEFAULT_REPO_LIMIT_BYTES,
             scan_cap: crate::secret_scan::MAX_SCANNED_PUSH,
             large: LargePushes::Refuse,
+            deadline_ms: None,
         }
     }
 }
@@ -645,6 +652,8 @@ pub enum SizeViolation {
     Object { size: u64 },
     Repository { held: u64, incoming: u64, limit: u64 },
     Unscannable { size: u64, cap: usize },
+    /// Still streaming at its deadline ([`PushLimits::deadline_ms`]).
+    Overdue,
 }
 
 /// Why a push is declined for its size, as git shows it: the `ng` reason,
@@ -689,6 +698,17 @@ pub fn size_refusal(violation: &SizeViolation) -> (String, Vec<String>) {
                 "  git rev-list --reverse HEAD | awk 'NR % 500 == 0' | xargs -I{} git push origin {}:refs/heads/main".to_owned(),
                 format!("A push over {} is refused by the network before it reaches g1t (HTTP 413).", megabytes(PLATFORM_BODY_LIMIT_BYTES)),
                 "See https://docs.g1t.sh/guides/git/#size-limits. Nothing was pushed.".to_owned(),
+            ],
+        ),
+        SizeViolation::Overdue => (
+            "the push took too long".to_owned(),
+            vec![
+                format!(
+                    "g1t takes a push for up to {}; this one was still arriving. A push is at most 100 MB, which uploads well within that on any ordinary connection.",
+                    crate::public_storage::lease_words()
+                ),
+                "Push again from a faster connection, or in parts: https://docs.g1t.sh/guides/git/#size-limits.".to_owned(),
+                "Nothing was pushed.".to_owned(),
             ],
         ),
     }
@@ -1073,6 +1093,7 @@ pub async fn forward(
                     sent,
                     from_store: false,
                     unscanned: false,
+                    rate_limited: false,
                 }));
             }
             (Err(error), None) => return Err(error),
@@ -1103,6 +1124,7 @@ pub async fn forward(
         sent,
         from_store: true,
         unscanned: false,
+        rate_limited: false,
     }))
 }
 
@@ -1140,6 +1162,7 @@ pub async fn from_edge(response: Response, git: &GitRequest, get: bool, body: Op
         sent: body.map_or(0, |body| body.len() as u64),
         from_store: false,
         unscanned: false,
+        rate_limited: false,
     })
 }
 
@@ -1238,6 +1261,17 @@ async fn push(
         let (reason, messages) = size_refusal(&violation);
         return Ok(Push::Declined(declined(&head, &reason, &messages)?, reason));
     }
+    // Read so slowly that its storage reservation's lease has passed: the
+    // store is not asked at all (public_storage.rs).
+    if let Some(deadline) = limits.deadline_ms
+        && g1t_kit::now_ms() > deadline
+    {
+        if !ended {
+            drain(&mut stream).await?;
+        }
+        let (reason, messages) = size_refusal(&SizeViolation::Overdue);
+        return Ok(Push::Declined(declined(&head, &reason, &messages)?, reason));
+    }
     let mut pushed = pushed_branches(&head);
     // The whole push is at hand only when it ended within what is read.
     if ended {
@@ -1273,6 +1307,13 @@ async fn push(
                 let chunk = chunk?;
                 let mut walked = walked.borrow_mut();
                 walked.1 += chunk.len() as u64;
+                if let Some(deadline) = limits.deadline_ms
+                    && !chunk.is_empty()
+                    && g1t_kit::now_ms() > deadline
+                {
+                    *found.borrow_mut() = Some(SizeViolation::Overdue);
+                    return Err(worker::Error::RustError("push past its deadline".into()));
+                }
                 if let Some(violation) = check_size(&mut walked.0, &chunk, &limits) {
                     *found.borrow_mut() = Some(violation);
                     return Err(worker::Error::RustError("push over the size limit".into()));
@@ -1308,6 +1349,7 @@ async fn push(
         ms,
     );
     // A push is never tried again: the store may have taken it.
+    let rate_limited = matches!((&answered, failure), (Ok(_), Some(Failure::RateLimited)));
     let mut response = match (answered, failure) {
         (Ok(response), None) => response,
         (Ok(response), Some(Failure::RateLimited)) => {
@@ -1336,6 +1378,7 @@ async fn push(
         sent,
         from_store: true,
         unscanned,
+        rate_limited,
     }))
 }
 

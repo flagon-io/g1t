@@ -395,6 +395,20 @@ impl Registry {
             .map(Repo::from))
     }
 
+    /// The repository `id`, deleted or not, and when it was deleted.
+    pub async fn by_id_any(&self, id: &str) -> Result<Option<(Repo, Option<String>)>> {
+        Ok(self
+            .db
+            .prepare("SELECT * FROM repos WHERE id = ?")
+            .bind(&[id.into()])?
+            .first::<RepoRow>(None)
+            .await?
+            .map(|mut row| {
+                let deleted_at = row.deleted_at.take();
+                (Repo::from(row), deleted_at)
+            }))
+    }
+
     /// The repository at `path`, deleted or not: what holds the name.
     pub async fn by_path_any(&self, path: &RepoPath) -> Result<Option<(Repo, Option<String>)>> {
         Ok(self

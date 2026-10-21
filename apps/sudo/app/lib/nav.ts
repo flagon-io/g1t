@@ -32,6 +32,7 @@ export type NavIcon =
   | "velocity"
   | "invites"
   | "aliases"
+  | "storage"
   // Sections
   | "customers"
   | "spend"
@@ -229,6 +230,12 @@ export const NAV: NavGroup[] = [
         to: "/blocked-domains",
         icon: "abuse",
         about: "Email domains no new account may sign up with.",
+      },
+      {
+        label: "Storage holds",
+        to: "/storage",
+        icon: "storage",
+        about: "Public storage reserved by interrupted writes and forks, released only when provably abandoned, and drift against the git store.",
       },
       {
         label: "Incidents",
