@@ -9,6 +9,7 @@ import {
   eventsClient,
   identityAdminClient,
   projectsClient,
+  reposAdminClient,
   runnersAdminClient,
   telemetryClient,
   type User,
@@ -37,6 +38,9 @@ export const statusAdmin = env.STATUS as unknown as StatusAdminApi;
 
 /** A workspace's self-hosted runners, and removing them (actions' admin_* methods). */
 export const runnersAdmin = runnersAdminClient(env.ACTIONS);
+
+/** Public storage holds and drift (the repos service's admin_storage_* methods). */
+export const reposAdmin = reposAdminClient(env.REPOS);
 
 /** A workspace's projects, read as the workspace itself, which sees them all. */
 export const workspaceProjects = (slug: string) => {

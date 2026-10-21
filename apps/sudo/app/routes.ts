@@ -24,6 +24,7 @@ export default [
   route("costs/bill", "routes/costs-bill.tsx"),
   route("abuse", "routes/abuse.tsx"),
   route("blocked-domains", "routes/blocked-domains.tsx"),
+  route("storage", "routes/storage.tsx"),
   route("invoices", "routes/invoices.tsx"),
   route("credits", "routes/credits.tsx"),
   route("stripe", "routes/stripe.tsx"),

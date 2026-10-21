@@ -576,3 +576,100 @@ export type Comparison = {
   /** True when more files changed than are listed. */
   truncated: boolean;
 };
+
+// --- Staff only (sudo): public storage holds. Mirrors the types in
+// crates/contracts/src/repos.rs; services/repos/src/storage_holds.rs. ---
+
+/** What holds public storage capacity: a ledger reservation, bytes older code reserved without one, or a native fork's lock on its source. */
+export type StorageHoldKind = "reservation" | "unledgered" | "copy_lock";
+
+/** A repository a hold names. `path` is null once its row is gone. */
+export type StorageHoldRepo = { id: string; path: string | null; private: boolean; deleted: boolean };
+
+/** One hold, and whether it is provably abandoned. */
+export type StorageHold = {
+  kind: StorageHoldKind;
+  /** A reservation's id; the repository's id for unledgered bytes; the source's id for a copy lock. */
+  id: string;
+  /** The repository charged; a copy lock's source. */
+  repo: StorageHoldRepo;
+  /** The repository written; a copy lock's destination. */
+  target: StorageHoldRepo | null;
+  /** push, commit, merge, queue, update, land, sync, import or fork. */
+  operation: string | null;
+  actor: string | null;
+  /** `held` while it may run, `ended` once it stopped without knowing whether the store took it. */
+  state: "held" | "ended" | null;
+  bytes: number;
+  since: string | null;
+  ageSeconds: number | null;
+  leaseUntil: string | null;
+  outcome: string | null;
+  abandoned: boolean;
+  /** Why it is abandoned, or why not yet. */
+  why: string;
+  /** When it will be, if nothing changes. */
+  releasableAt: string | null;
+};
+
+export type StorageHolds = { now: string; ledgerSince: string | null; holds: StorageHold[]; more: number };
+
+/** A ref a write asked the store to move, and where the store has it now (null: not there). */
+export type AskedRef = { name: string; asked: string; now: string | null };
+
+/** What the git store says about one repository a hold names, and what g1t counts for it. */
+export type UpstreamState = {
+  role: "charged" | "written" | "source";
+  repo: StorageHoldRepo;
+  read: boolean;
+  error: string | null;
+  refs: number;
+  head: string | null;
+  asked: AskedRef[];
+  storedBytes: number | null;
+  reservedBytes: number | null;
+  ledgerBytes: number | null;
+};
+
+export type StorageHoldInspection = { hold: StorageHold; upstream: UpstreamState[]; releasable: boolean; refusal: string | null };
+
+/** A hold staff released, as recorded with the evidence. */
+export type StorageRecovery = {
+  id: string;
+  kind: StorageHoldKind;
+  repoId: string;
+  targetId: string | null;
+  reservationId: string | null;
+  operation: string | null;
+  actor: string | null;
+  bytes: number;
+  heldSince: string | null;
+  evidence: StorageHoldInspection | null;
+  staff: string;
+  reason: string;
+  releasedAt: string;
+};
+
+/** One repository measured in the git store against what g1t counts. */
+export type RepoDrift = {
+  repo: StorageHoldRepo;
+  storedBytes: number;
+  storeBytes: number | null;
+  /** storeBytes - storedBytes: above zero, g1t counts less than the store holds. */
+  driftBytes: number | null;
+  workingCopies: number;
+  note: string | null;
+};
+
+export type StorageDrift = { measuredAt: string; repos: RepoDrift[]; storedBytes: number; storeBytes: number };
+
+/** Staff-only public storage holds, on the repos service: only sudo calls it. */
+export interface ReposAdminApi {
+  holds(limit?: number): Promise<StorageHolds>;
+  inspect(kind: StorageHoldKind, id: string): Promise<Result<StorageHoldInspection>>;
+  /** Inspects again and releases only a provably abandoned hold, with an audit row naming `staff`. */
+  release(kind: StorageHoldKind, id: string, staff: string, reason: string): Promise<Result<StorageRecovery>>;
+  recoveries(limit?: number): Promise<StorageRecovery[]>;
+  /** Reads only: a sample of repositories (or `repoIds`) measured in the store. */
+  drift(options?: { sample?: number; maxBytes?: number; repoIds?: string[] }): Promise<StorageDrift>;
+}

@@ -8,6 +8,8 @@ declare global {
       EVENTS: ServiceBinding;
       /** Actions: a workspace's self-hosted runners (admin_runners, admin_remove_runners). */
       ACTIONS: ServiceBinding;
+      /** Repos: public storage holds and drift (admin_storage_holds and the rest). */
+      REPOS: ServiceBinding;
       /** Projects: a workspace's projects, read as the workspace. */
       PROJECTS: ServiceBinding;
       /** Telemetry: projects' ingest tokens, to see and revoke. */

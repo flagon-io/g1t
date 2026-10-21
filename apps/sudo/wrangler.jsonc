@@ -29,6 +29,9 @@
     // projects, and their telemetry ingest tokens.
     { "binding": "ACTIONS", "service": "g1t-actions" },
     { "binding": "PROJECTS", "service": "g1t-projects" },
+    // Public storage holds that outlived their write, and drift against
+    // the git store (routes/storage.tsx; the repos service's storage_holds.rs).
+    { "binding": "REPOS", "service": "g1t-repos" },
     { "binding": "TELEMETRY", "service": "g1t-telemetry" }
   ],
   "vars": {

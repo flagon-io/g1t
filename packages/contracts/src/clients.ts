@@ -8,7 +8,7 @@ import type { IdentityAdminApi, IdentityApi } from "./identity";
 import type { IntegrationsApi } from "./integrations";
 import type { PackagesApi } from "./packages";
 import type { WebhooksApi } from "./webhooks";
-import type { RepoPath, ReposApi } from "./repos";
+import type { RepoPath, ReposAdminApi, ReposApi } from "./repos";
 import type { CommentScope, PullDetail, Thread, WorkApi } from "./work";
 import type { Result } from "./result";
 import type { RunnersAdminApi, RunnersApi } from "./runners";
@@ -887,6 +887,19 @@ export function runnersAdminClient(service: ServiceBinding): RunnersAdminApi {
   return {
     list: (workspace) => call("admin_runners", { workspace }),
     remove: (workspace, id, staff) => call("admin_remove_runners", { workspace, id, staff }),
+  };
+}
+
+/** Staff-only public storage holds, on the repos service: only sudo calls it. */
+export function reposAdminClient(service: ServiceBinding): ReposAdminApi {
+  const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
+  return {
+    holds: (limit) => call("admin_storage_holds", { limit: limit ?? null }),
+    inspect: (kind, id) => call("admin_inspect_storage_hold", { kind, id }),
+    release: (kind, id, staff, reason) => call("admin_release_storage_hold", { kind, id, staff, reason }),
+    recoveries: (limit) => call("admin_storage_recoveries", { limit: limit ?? null }),
+    drift: (options = {}) =>
+      call("admin_storage_drift", { sample: options.sample ?? null, maxBytes: options.maxBytes ?? null, repoIds: options.repoIds ?? [] }),
   };
 }
 
