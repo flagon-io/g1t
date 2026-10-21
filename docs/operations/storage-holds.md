@@ -18,13 +18,13 @@ same room.
 
 The repos service decides, from what the write recorded:
 
-| Hold                                                           | Abandoned when                                                                                                                 |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| A reservation marked `ended`                                   | At once: the write stopped without knowing whether the store kept it, and sends nothing after                                  |
-| A reservation still `held`                                     | 15 minutes after its lease, two hours from when it was taken. By its lease a push is cut short and a copy's chunks are refused |
-| Unledgered bytes (reserved before migration 0023, with no row) | 24 hours after the ledger began (`storage_ledger_epoch`): older code had no lease                                              |
-| A copy lock with a lease                                       | 15 minutes after its lease                                                                                                     |
-| A copy lock without one (older code)                           | 24 hours after the ledger began, and at least its lease and grace after it was taken                                           |
+| Hold                                                           | Abandoned when                                                                                                                                                                                                                               |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A reservation marked `ended`                                   | At once: the write stopped without knowing whether the store kept it, and sends nothing after                                                                                                                                                |
+| A reservation still `held`                                     | 15 minutes after its lease, two hours from when it was taken. A push or a branch copied chunk by chunk is cut short at its lease; a write of one pack, and a native fork's one call to the store, are not, and are taken as answered by then |
+| Unledgered bytes (reserved before migration 0023, with no row) | 24 hours after the ledger began (`storage_ledger_epoch`): older code had no lease                                                                                                                                                            |
+| A copy lock with a lease                                       | 15 minutes after its lease. A fork whose call timed out or met a server error keeps its lock until then: the store may still be copying                                                                                                      |
+| A copy lock without one (older code)                           | 24 hours after the ledger began, and at least its lease and grace after it was taken                                                                                                                                                         |
 
 Release is offered only then, and the repos service checks again, in the
 same batch that releases.

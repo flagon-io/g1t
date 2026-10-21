@@ -6,7 +6,9 @@
 //! Each reservation is a row of `storage_reservations` (migration 0023)
 //! next to the sum admission reads, `repos.storage_reserved_bytes`: the
 //! row says which operation holds it, for whom, since when, and its lease,
-//! the moment the operation stops sending to the store whatever happens.
+//! after which a push or streamed copy is cut short, and by which any other
+//! write's one request to the store has been answered (storage_holds.rs
+//! says which writes are which).
 //! Both move in one batch, so the sum is always the rows plus what older
 //! code reserved without one ("unledgered"). An operation that stops
 //! without knowing whether the store took its write (the store answered
@@ -30,7 +32,10 @@ use crate::registry::Registry;
 
 /// How long an operation holding a reservation may send to the store. A
 /// push still streaming at its lease is cut short, so the store refuses it
-/// whole (git_http.rs); a copy's chunks are refused past it (land.rs).
+/// whole, and one read whole after it is declined (git_http.rs); a branch
+/// copied chunk by chunk is refused its next chunk (land.rs). Writes of one
+/// pack in memory, and a native fork's one call to the store, are not cut:
+/// the lease assumes they have been answered by then.
 pub const LEASE_MS: u64 = 2 * 3600 * 1000;
 /// How long after a lease a reservation still counts as possibly in
 /// flight: clocks differ between isolates, and the store may still be
@@ -269,6 +274,22 @@ pub(crate) const TRANSFER: &str = "UPDATE repos SET namespace = ?2 WHERE id = ?1
 pub(crate) const LOCK_COPY: &str = "INSERT INTO storage_copy_locks (repo_id, destination_id, created_at, created_ms, lease_until_ms)
     VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT DO NOTHING RETURNING repo_id";
 
+/// Ends a copy lock. ?1 source, ?2 destination.
+pub(crate) const UNLOCK_COPY: &str = "DELETE FROM storage_copy_locks WHERE repo_id = ?1 AND destination_id = ?2 RETURNING repo_id";
+
+/// Whether a store call that failed with `error` may still be at work in
+/// the store: it timed out, the store answered with a server error, or it
+/// gave no answer. Not when the store refused it for its rate limit or as
+/// read-only, when g1t never asked (its breaker was open), or when the
+/// store answered with a reason (a permanent error carries no `Busy`,
+/// store.rs `invoke`).
+pub(crate) fn may_still_run(error: &str) -> bool {
+    match crate::resilience::busy(error) {
+        Some(busy) => !(busy.read_only || busy.rate_limited || error.contains(" not asked: ")),
+        None => false,
+    }
+}
+
 impl Registry {
     pub(crate) async fn copy_size(&self, repo: &Repo) -> Result<(u64, u64)> {
         #[derive(Deserialize)]
@@ -288,10 +309,14 @@ impl Registry {
             .first::<Locked>(None).await?.is_some())
     }
 
-    pub(crate) async fn unlock_copy(&self, source: &Repo, destination: &Repo) -> Result<()> {
-        self.db.prepare("DELETE FROM storage_copy_locks WHERE repo_id = ?1 AND destination_id = ?2")
-            .bind(&[source.id.as_str().into(), destination.id.as_str().into()])?.run().await?;
-        Ok(())
+    /// Lets the source take writes again. False when its lock was gone
+    /// already: staff released it while the copy ran (storage_holds.rs).
+    pub(crate) async fn unlock_copy(&self, source: &Repo, destination: &Repo) -> Result<bool> {
+        #[derive(Deserialize)]
+        struct Unlocked { #[serde(rename = "repo_id")] _id: String }
+        Ok(self.db.prepare(UNLOCK_COPY)
+            .bind(&[source.id.as_str().into(), destination.id.as_str().into()])?
+            .first::<Unlocked>(None).await?.is_some())
     }
     pub(crate) async fn make_public(&self, repo: &Repo, cap: i64) -> Result<bool> {
         #[derive(Deserialize)]
@@ -414,6 +439,21 @@ mod tests {
         let old = admission(RESERVE, "RETURNING");
         let new = admission(HOLD, "ON CONFLICT").replace(" AND ?10 <= ?11", "");
         assert_eq!(old, new);
+    }
+
+    #[test]
+    fn a_fork_that_may_still_be_copying_keeps_its_lock() {
+        use crate::resilience::Busy;
+        let unavailable = Busy { rate_limited: false, retry_after: 5, read_only: false };
+        // A timeout, a 5xx or no answer at all: the store may be copying.
+        assert!(may_still_run(&unavailable.error("fork for acme--rocket failed: INTERNAL_ERROR").to_string()));
+        assert!(may_still_run(&unavailable.error("fork for acme--rocket failed: the operation timed out").to_string()));
+        // Refused for the rate limit, read-only, or never asked: nothing is.
+        assert!(!may_still_run(&Busy { rate_limited: true, ..unavailable }.error("fork failed: RATE_LIMITED").to_string()));
+        assert!(!may_still_run(&Busy::read_only().error("fork refused: the git store is read-only").to_string()));
+        assert!(!may_still_run(&unavailable.error("fork not asked: the git store has been failing").to_string()));
+        // An answer with a reason (NOT_FOUND, a bad name) carries no Busy.
+        assert!(!may_still_run("NOT_FOUND: no such repository"));
     }
 
     #[test]

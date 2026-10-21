@@ -40,7 +40,7 @@ use g1t_contracts::{FailureCode, Outcome, PrincipalKind, Role, Viewer, is_valid_
 use g1t_kit::now_ms;
 use worker::Result;
 
-use crate::public_storage::Operation;
+use crate::public_storage::{self, Operation};
 use crate::lifecycle::{VisibilityFacts, visibility_check};
 use crate::registry::{RepoRow, can, can_read, can_write, store_key};
 use crate::store::{GitRepo, GitStore, Scope, locate};
@@ -229,20 +229,40 @@ impl<S: GitStore> Repos<S> {
             };
             let forked = match self.store.open(&store_key(&source)).await {
                 Ok(source_git) => source_git.fork(&store_key(&fork), a.default_branch_only).await,
-                Err(error) => Err(error),
+                Err(error) => {
+                    // The store was never asked to copy anything.
+                    self.registry.release_public(&reservation).await?;
+                    self.registry.unlock_copy(&source, &fork).await?;
+                    return Err(error);
+                }
             };
             if let Err(error) = forked {
-                // No copy is under way any more, so the source takes writes
-                // again; whether the store made the fork is not known, so
-                // the reservation stays, ended, for staff (storage_holds.rs).
-                self.registry.end_public(&reservation, &error.to_string(), &[]).await;
-                self.registry.unlock_copy(&source, &fork).await?;
+                let message = error.to_string();
+                if public_storage::may_still_run(&message) {
+                    // A timeout or a server error: the store may still be
+                    // copying. The lock stays until its lease and grace
+                    // have passed, for staff (storage_holds.rs), and the
+                    // reservation stays, ended.
+                    self.registry.end_public(&reservation, &message, &[]).await;
+                } else {
+                    // The store refused, or was never asked: nothing is
+                    // copying and nothing was copied.
+                    self.registry.release_public(&reservation).await?;
+                    self.registry.unlock_copy(&source, &fork).await?;
+                }
                 return Err(error);
             }
-            // The whole reservation goes, the source's in-flight share with
-            // it: the fork holds what was measured.
-            self.registry.finish_public(&reservation, measured).await?;
-            self.registry.unlock_copy(&source, &fork).await?;
+            // The lock first: if staff released it while the store copied,
+            // the source may have taken writes the measured size misses, so
+            // the reservation stays, ended, for staff to look at.
+            if self.registry.unlock_copy(&source, &fork).await? {
+                // The whole reservation goes, the source's in-flight share
+                // with it: the fork holds what was measured.
+                self.registry.finish_public(&reservation, measured).await?;
+            } else {
+                let why = "The fork was made after staff released its copy lock: the source may have taken writes its measured size misses.";
+                self.registry.end_public(&reservation, why, &[]).await;
+            }
         } else {
             // Kept in the EU: copied there, never forked across.
             let placed = match self.place(&fork).await? {

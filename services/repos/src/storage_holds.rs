@@ -22,11 +22,24 @@
 //!   (the store answered its write with an error, or stopped answering)
 //!   and settles nothing after that.
 //! - A reservation still `held` once its lease ([`LEASE_MS`] from when it
-//!   was taken) has passed by [`GRACE_MS`]: by its lease the operation
-//!   stops sending, whatever happens. A push still streaming is cut short,
-//!   so the store refuses it whole (git_http.rs), and a copy's next chunk is
-//!   refused (land.rs). The grace covers clocks that differ between
-//!   isolates and an answer the store is still writing.
+//!   was taken) has passed by [`GRACE_MS`]. What the lease cuts depends on
+//!   the write:
+//!   - **Cut at the lease.** A push over git: one still streaming is cut
+//!     short, so the store refuses it whole, and one read whole after its
+//!     lease is declined before the store is asked (git_http.rs). A branch
+//!     copied chunk by chunk (land.rs `fast_forward`: a fast-forward
+//!     landing, a fork synced, an EU fork of its default branch): a chunk
+//!     past the lease is refused, so the copy is cut short.
+//!   - **Not cut.** Writes that send one pack already in memory right after
+//!     reserving (a commit from the site, other merge methods, the merge
+//!     queue, a pull request update, an import or EU fork of every branch,
+//!     copy.rs), and a native fork, one call to the store that g1t cannot
+//!     cut short. For these the lease assumes the store has answered that
+//!     one request or call by then; a native fork whose call failed in a
+//!     way that may still be copying keeps its lock (network.rs).
+//!
+//!   The grace covers clocks that differ between isolates and an answer
+//!   the store is still writing.
 //! - Unledgered bytes once [`LEGACY_MS`] has passed since the ledger began:
 //!   every write since then keeps a row, and older code had no lease.
 //! - A copy lock past its lease by [`GRACE_MS`]; one taken by older code,
@@ -198,7 +211,7 @@ pub fn verdict(basis: Basis<'_>, now: u64, epoch_ms: Option<u64>) -> Verdict {
                 Verdict {
                     abandoned: true,
                     why: format!(
-                        "Its lease ended at {}: by then the write had stopped sending to the store, and its grace has passed.",
+                        "Its lease ended at {}, and its grace has passed: a push or streamed copy is cut short at its lease, and any other write has had its one request to the store answered by then.",
                         at(lease_until_ms)
                     ),
                     releasable_at_ms: None,
@@ -239,7 +252,10 @@ pub fn verdict(basis: Basis<'_>, now: u64, epoch_ms: Option<u64>) -> Verdict {
             if now >= free {
                 Verdict {
                     abandoned: true,
-                    why: format!("Its lease ended at {}: the copy that took it stopped by then, and its grace has passed.", at(lease)),
+                    why: format!(
+                        "Its lease ended at {}, and its grace has passed: the fork is one call to the store, which g1t cannot cut short, and has been answered by then.",
+                        at(lease)
+                    ),
                     releasable_at_ms: None,
                 }
             } else {

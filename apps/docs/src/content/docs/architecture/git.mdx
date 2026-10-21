@@ -118,10 +118,21 @@ gives the row back.
 A write that stops without knowing whether the store kept it (the store
 answered with an error, or stopped answering) marks its row `ended`, with
 the refs it asked for. A row also carries a lease, two hours from when it
-was taken: a push still streaming at its lease is cut short, so the store
-refuses it whole, and a streamed copy's chunks are refused past it. A
-native fork locks its source while it takes the source's size
-(`storage_copy_locks`); the lock has the same lease.
+was taken. What the lease cuts depends on the write:
+
+| Write                                                                                                                                                                | At its lease                                                                                                                      |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| A push over git                                                                                                                                                      | Cut short if still streaming, so the store refuses it whole; one read whole after its lease is declined before the store is asked |
+| A branch copied chunk by chunk: a fast-forward landing, a fork synced, a fork kept in the EU with its default branch only                                            | Its next chunk is refused, so the copy is cut short                                                                               |
+| One pack sent from memory: a commit from the site, other merge methods, the merge queue, a pull request update, an import or a fork kept in the EU with every branch | Not cut: it is one request, made as soon as the room is reserved, and the lease takes it as answered by then                      |
+| A native fork                                                                                                                                                        | Not cut: it is one call to the store, which g1t cannot stop; the lease takes it as answered by then                               |
+
+A native fork locks its source while it takes the source's size
+(`storage_copy_locks`); the lock has the same lease. A fork whose call
+timed out or met a server error may still be copying, so it keeps its
+lock until the lease and grace have passed; one the store refused unlocks
+at once. A fork that finishes after staff released its lock leaves its
+reservation ended, for staff to look at.
 
 Rows and locks that outlive their write are for staff, in sudo's Storage
 holds page (`services/repos/src/storage_holds.rs`). A hold is released only
