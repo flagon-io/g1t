@@ -55,16 +55,26 @@ pub fn heads_and_tags(all: Vec<(String, String)>) -> Vec<(String, String)> {
 }
 
 pub async fn branches(access: &GitAccess) -> Result<Vec<Branch>> {
-    Ok(parse_advertisement(&advertisement(access).await?))
+    Ok(parse_advertisement(&advertisement_default(access).await?))
 }
 
 /// Every ref the repository has: branches, tags, and the heads of pull
 /// requests kept there (forks.rs).
 pub async fn all(access: &GitAccess) -> Result<Vec<(String, String)>> {
-    Ok(parse_refs(&advertisement(access).await?))
+    Ok(parse_refs(&advertisement(access, "internal.git.info_refs").await?))
 }
 
-async fn advertisement(access: &GitAccess) -> Result<Vec<u8>> {
+/// [`all`], counted under `meter`: storage drift's listings are g1t's own
+/// (storage_holds.rs).
+pub async fn all_metered(access: &GitAccess, meter: &str) -> Result<Vec<(String, String)>> {
+    Ok(parse_refs(&advertisement(access, meter).await?))
+}
+
+async fn advertisement_default(access: &GitAccess) -> Result<Vec<u8>> {
+    advertisement(access, "internal.git.info_refs").await
+}
+
+async fn advertisement(access: &GitAccess, meter: &str) -> Result<Vec<u8>> {
     let headers = Headers::new();
     headers.set("authorization", &format!("Bearer {}", access.token))?;
     let mut init = RequestInit::new();
@@ -75,7 +85,7 @@ async fn advertisement(access: &GitAccess) -> Result<Vec<u8>> {
     )?;
     let mut response = Fetch::Request(request).send().await?;
     let bytes = response.bytes().await?;
-    crate::meters::record_remote("internal.git.info_refs", &access.remote, 0, bytes.len() as u64);
+    crate::meters::record_remote(meter, &access.remote, 0, bytes.len() as u64);
     if response.status_code() != 200 {
         return Err(Error::RustError(format!(
             "listing refs returned {}",

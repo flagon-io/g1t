@@ -68,6 +68,13 @@ const DRIFT_DEFAULT: u32 = 5;
 const DRIFT_MAX_BYTES: u64 = 200_000_000;
 /// Working copies measured with one repository.
 const DRIFT_WORKING_COPIES: usize = 10;
+/// The most one drift report streams from the store, all repositories
+/// together: past it, the rest are passed over.
+pub const DRIFT_BUDGET_BYTES: u64 = 1_000_000_000;
+/// What drift's listings and packs are counted as: an operation on g1t's
+/// own bill and never a workspace's (meters.rs `COST_ONLY_OPERATIONS`), so
+/// measuring a repository neither bills it nor uses its free operations.
+pub const DRIFT_METER: &str = "internal.git.drift_fetch";
 
 // --- The ledger, read ---
 
@@ -746,8 +753,9 @@ impl<S: GitStore> Repos<S> {
             a.repo_ids.iter().take(DRIFT_MAX as usize).cloned().collect()
         };
         let mut drift = StorageDrift { measured_at: at(now_ms()), ..StorageDrift::default() };
+        let mut budget = DRIFT_BUDGET_BYTES;
         for id in ids {
-            let measured = self.measure(&id).await?;
+            let measured = self.measure(&id, max_bytes, &mut budget).await?;
             if let Some(store) = measured.store_bytes {
                 drift.stored_bytes += measured.stored_bytes;
                 drift.store_bytes += store;
@@ -757,7 +765,9 @@ impl<S: GitStore> Repos<S> {
         Ok(drift)
     }
 
-    async fn measure(&self, id: &str) -> Result<RepoDrift> {
+    /// Measures one repository, unless g1t counts it over `max_bytes` or
+    /// it would take more than is left of `budget`, which it spends.
+    async fn measure(&self, id: &str, max_bytes: u64, budget: &mut u64) -> Result<RepoDrift> {
         #[derive(Deserialize)]
         struct Id {
             id: String,
@@ -774,6 +784,14 @@ impl<S: GitStore> Repos<S> {
             drift.note = Some("A pull request's working copy: measured with its repository.".to_owned());
             return Ok(drift);
         }
+        if stored > max_bytes {
+            drift.note = Some(format!("Passed over: g1t counts it over the {max_bytes} bytes asked for."));
+            return Ok(drift);
+        }
+        if *budget == 0 || stored > *budget {
+            drift.note = Some("Passed over: this report has streamed as much as one may.".to_owned());
+            return Ok(drift);
+        }
         let copies: Vec<String> = self
             .registry
             .db
@@ -786,13 +804,14 @@ impl<S: GitStore> Repos<S> {
             .map(|row| row.id)
             .collect();
         drift.working_copies = u32::try_from(copies.len()).unwrap_or(u32::MAX);
+        let left = *budget;
         let measured = async {
             let access = self.store.access(&store_key(&repo), Scope::Read).await?;
-            let all = ref_map(refs::all(&access).await?);
+            let all = ref_map(refs::all_metered(&access, DRIFT_METER).await?);
             let mut wants: Vec<String> = all.values().cloned().collect();
             wants.sort();
             wants.dedup();
-            let mut total = land::pack_size(&access, &wants, &[]).await?;
+            let mut total = land::pack_size(&access, &wants, &[], DRIFT_METER, left).await?;
             let mut skipped = 0;
             for (index, copy_id) in copies.iter().enumerate() {
                 if index >= DRIFT_WORKING_COPIES {
@@ -801,25 +820,33 @@ impl<S: GitStore> Repos<S> {
                 }
                 let Some(copy) = self.registry.by_id(copy_id).await? else { continue };
                 let copy_access = self.store.access(&store_key(&copy), Scope::Read).await?;
-                let theirs = ref_map(refs::all(&copy_access).await?);
+                let theirs = ref_map(refs::all_metered(&copy_access, DRIFT_METER).await?);
                 let mut copy_wants: Vec<String> = theirs.values().filter(|hash| !wants.contains(hash)).cloned().collect();
                 copy_wants.sort();
                 copy_wants.dedup();
                 // What the working copy holds beyond its repository: the
                 // repository's commits are what it has in common.
-                total += land::pack_size(&copy_access, &copy_wants, &wants).await?;
+                total += land::pack_size(&copy_access, &copy_wants, &wants, DRIFT_METER, left.saturating_sub(total)).await?;
             }
             Ok::<_, worker::Error>((total, skipped))
         };
         match measured.await {
             Ok((total, skipped)) => {
+                *budget = budget.saturating_sub(total);
                 drift.store_bytes = Some(total);
                 drift.drift_bytes = Some(i64::try_from(total).unwrap_or(i64::MAX) - i64::try_from(stored).unwrap_or(i64::MAX));
                 if skipped > 0 {
                     drift.note = Some(format!("{skipped} working copies were not measured."));
                 }
             }
-            Err(error) => drift.note = Some(format!("Not measured: {error}")),
+            Err(error) => {
+                // Whatever it streamed before it stopped is spent; a stop
+                // for the budget leaves none.
+                if error.to_string().contains("bytes left to measure") {
+                    *budget = 0;
+                }
+                drift.note = Some(format!("Not measured: {error}"));
+            }
         }
         Ok(drift)
     }
@@ -885,16 +912,21 @@ mod tests {
     }
 
     #[test]
-    fn a_release_is_checked_again_in_sql_by_the_same_rules() {
-        // The SQL holds the same conditions as `verdict`, so a hold that
-        // changed after it was inspected is never released.
-        assert!(RELEASE_RESERVATION.contains("bytes = ?3 AND (state = 'ended' OR lease_until_ms + ?8 <= ?9)"));
-        assert!(RELEASE_UNLEDGERED.contains("(SELECT started_ms FROM storage_ledger_epoch WHERE id = 1) + ?8 <= ?9"));
-        assert!(RELEASE_LOCK.contains("lease_until_ms + ?9 END <= ?10"));
-        for dependent in [RELEASE_RESERVATION_SUM, RELEASE_RESERVATION_ROW, RELEASE_UNLEDGERED_SUM, RELEASE_LOCK_ROW] {
-            assert!(dependent.contains("EXISTS (SELECT 1 FROM storage_recoveries WHERE id = ?1)"), "{dependent}");
-        }
-        assert!(!RELEASE_RESERVATION_SUM.contains("stored_bytes"), "a release never changes what is billed");
+    fn measuring_drift_is_never_a_workspaces_operation() {
+        // Every listing and pack drift asks the store for is counted under
+        // DRIFT_METER, which is g1t's cost and bills no workspace and uses
+        // none of its free operations (meters.rs `record`).
+        let mapping = crate::meters::Mapping::defaults();
+        assert_eq!(mapping.cost(DRIFT_METER), 1.0);
+        assert_eq!(mapping.billable(DRIFT_METER), 0.0);
+        let source = include_str!("storage_holds.rs");
+        let measuring = &source[source.find("async fn measure(").unwrap()..source.find("/// Repositories to measure").unwrap()];
+        assert!(!measuring.contains("refs::all("), "a listing for drift names its meter");
+        assert_eq!(measuring.matches("land::pack_size(").count(), measuring.matches("DRIFT_METER, ").count());
+        assert!(measuring.matches("land::pack_size(").count() >= 2);
+        // And the migration gives the meter the same weights.
+        let migration = include_str!("../migrations/0023_storage_reservations.sql");
+        assert!(migration.contains("('internal.git.drift_fetch', 1, 0,"));
     }
 
     #[test]

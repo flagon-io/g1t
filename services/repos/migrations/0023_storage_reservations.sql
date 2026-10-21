@@ -78,4 +78,10 @@ CREATE TABLE storage_recoveries (
   released_at TEXT NOT NULL
 );
 CREATE INDEX storage_recoveries_root ON storage_recoveries (root_id);
+
+-- Storage drift (`admin_storage_drift`) lists and fetches repositories
+-- for staff, metered as `internal.git.drift_fetch`: an operation on g1t's
+-- own bill, never on a workspace's, as a backup's clone is (0013).
+INSERT OR IGNORE INTO operation_mapping (meter, cost_operations, billable_operations, note, updated_at) VALUES
+  ('internal.git.drift_fetch', 1, 0, 'Storage drift measurement (#193): g1t''s cost, not the workspace''s', '2026-10-21T00:00:00Z');
 CREATE INDEX storage_recoveries_reservation ON storage_recoveries (reservation_id) WHERE reservation_id IS NOT NULL;

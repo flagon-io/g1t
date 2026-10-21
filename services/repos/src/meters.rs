@@ -253,8 +253,9 @@ pub const DEFAULT_OPERATIONS: [&str; 7] = [
 ];
 
 /// Meters that are an operation on g1t's own bill and on no workspace's:
-/// a nightly backup's clone (backups.rs, migrations/0013).
-pub const COST_ONLY_OPERATIONS: [&str; 1] = [crate::backups::FETCH_METER];
+/// a nightly backup's clone (backups.rs, migrations/0013), and storage
+/// drift's listings and packs (storage_holds.rs, migrations/0023).
+pub const COST_ONLY_OPERATIONS: [&str; 2] = [crate::backups::FETCH_METER, crate::storage_holds::DRIFT_METER];
 
 /// How long a read of `operation_mapping` is used for.
 const MAPPING_TTL_MS: u64 = 5 * 60 * 1000;
