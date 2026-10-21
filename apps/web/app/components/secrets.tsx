@@ -65,7 +65,7 @@ export function SecretsPanel({
   );
 
   return (
-    <div className="min-w-0 max-w-5xl">
+    <div className="min-w-0 max-w-7xl">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">{scope === "project" ? "Environment variables" : "Secrets and variables"}</h1>

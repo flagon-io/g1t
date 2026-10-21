@@ -125,7 +125,7 @@ export default function Incidents({ loaderData }: Route.ComponentProps) {
   const filtered = filters.severity != null || filters.component != null || filters.q !== "";
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
       <PageHeader
         title="Incidents"
         description="Declare, run and close incidents, schedule maintenance, and publish postmortems. What is public appears on status.g1t.sh within 30 seconds."

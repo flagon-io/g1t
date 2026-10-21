@@ -318,7 +318,7 @@ export function Landing() {
       {/* The opening. */}
       <section className="dusk relative">
         <div aria-hidden="true" className="dusk-planet pointer-events-none absolute -top-120 left-1/2 size-240 translate-x-[-10%] rounded-full" />
-        <div className="relative mx-auto max-w-6xl px-4 pt-20 text-center sm:pt-24">
+        <div className="relative mx-auto max-w-7xl px-4 pt-20 text-center sm:pt-24">
           <Link
             to={`${DOCS}/guides/bring-your-own-agent/`}
             className="inline-flex animate-fade-up items-center gap-2 rounded-full bg-bg/50 px-3 py-1 text-xs whitespace-nowrap text-fg-soft ring-1 ring-line backdrop-blur transition-colors hover:bg-bg/70"
@@ -361,7 +361,7 @@ export function Landing() {
       </section>
 
       {/* Facts. */}
-      <section className="relative z-10 mx-auto max-w-6xl px-4">
+      <section className="relative z-10 mx-auto max-w-7xl px-4">
         <dl className="grid gap-px overflow-hidden rounded-2xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
           {FACTS.map(([figure, about]) => (
             <div key={figure} className="bg-bg px-6 py-6">
@@ -373,7 +373,7 @@ export function Landing() {
       </section>
 
       {/* Home: where the day starts. */}
-      <section id="home" className="mx-auto max-w-6xl scroll-mt-20 px-4 pt-24">
+      <section id="home" className="mx-auto max-w-7xl scroll-mt-20 px-4 pt-24">
         <div className="max-w-3xl">
           <Eyebrow>Home</Eyebrow>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-5xl">Start every day knowing where things stand.</h2>
@@ -422,7 +422,7 @@ export function Landing() {
       </section>
 
       {/* What a workspace holds. */}
-      <section className="mx-auto max-w-6xl px-4 pt-24">
+      <section className="mx-auto max-w-7xl px-4 pt-24">
         <div className="max-w-3xl">
           <Eyebrow>One workspace</Eyebrow>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-5xl">Talk, write it down, ship.</h2>
@@ -450,7 +450,7 @@ export function Landing() {
       </section>
 
       {/* Code. */}
-      <section className="mx-auto max-w-6xl px-4 pt-24">
+      <section className="mx-auto max-w-7xl px-4 pt-24">
         <div className="max-w-3xl">
           <Eyebrow>Code</Eyebrow>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-5xl">A forge built for many changes at once.</h2>
@@ -516,7 +516,7 @@ export function Landing() {
       </section>
 
       {/* The forge, for people. */}
-      <section className="mx-auto max-w-6xl px-4 py-24">
+      <section className="mx-auto max-w-7xl px-4 py-24">
         <div className="grid gap-10 lg:grid-cols-[1fr_1.2fr] lg:gap-16">
           <div>
             <Eyebrow>Collaborate</Eyebrow>
@@ -535,7 +535,7 @@ export function Landing() {
       </section>
 
       {/* Chat, where people talk about the work. */}
-      <section className="mx-auto grid max-w-6xl items-start gap-12 px-4 lg:grid-cols-[1.1fr_1fr] lg:gap-16">
+      <section className="mx-auto grid max-w-7xl items-start gap-12 px-4 lg:grid-cols-[1.1fr_1fr] lg:gap-16">
         <div>
           <Eyebrow>Chat</Eyebrow>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-4xl">Just talk to your team.</h2>
@@ -572,7 +572,7 @@ export function Landing() {
       </section>
 
       {/* Agents: they do the work, you make the calls. */}
-      <section id="agents" className="mx-auto max-w-6xl scroll-mt-20 px-4 pt-24">
+      <section id="agents" className="mx-auto max-w-7xl scroll-mt-20 px-4 pt-24">
         <div className="max-w-3xl">
           <Eyebrow>Agents</Eyebrow>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance sm:text-5xl">Agents do the work. You make the calls.</h2>
@@ -622,7 +622,7 @@ export function Landing() {
 
       {/* Connect */}
       <section className="mt-24 border-y border-line bg-surface/40">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 py-24 lg:grid-cols-2">
+        <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 py-24 lg:grid-cols-2">
           <div>
             <Eyebrow>Bring your own agent</Eyebrow>
             <h2 className="mt-3 text-3xl font-semibold tracking-tight text-balance">Any agent that speaks MCP works on g1t</h2>
@@ -662,7 +662,7 @@ export function Landing() {
       </section>
 
       {/* Artifacts: the docs the work cites. */}
-      <section className="mx-auto max-w-6xl px-4 pt-24">
+      <section className="mx-auto max-w-7xl px-4 pt-24">
         <div className="grid gap-10 rounded-3xl bg-surface p-8 ring-1 ring-line sm:p-10 lg:grid-cols-[1fr_1.1fr] lg:gap-16">
           <div>
             <Eyebrow>Artifacts</Eyebrow>
@@ -688,7 +688,7 @@ export function Landing() {
       </section>
 
       {/* The rails. */}
-      <section className="mx-auto max-w-6xl px-4 py-24">
+      <section className="mx-auto max-w-7xl px-4 py-24">
         <Eyebrow>The rails</Eyebrow>
         <h2 className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-balance">Rules decide what lands, not whoever wrote it</h2>
         <p className="mt-4 max-w-2xl leading-7 text-muted">
@@ -708,7 +708,7 @@ export function Landing() {
 
       {/* How it flows */}
       <section id="how" className="scroll-mt-20 border-y border-line bg-surface/40">
-        <div className="mx-auto max-w-6xl px-4 py-24">
+        <div className="mx-auto max-w-7xl px-4 py-24">
           <Eyebrow>How it flows</Eyebrow>
           <h2 className="mt-3 text-3xl font-semibold tracking-tight">From a work item to main</h2>
           <Live>
@@ -744,7 +744,7 @@ export function Landing() {
       </section>
 
       {/* Secure by default */}
-      <section className="mx-auto max-w-6xl px-4 py-24">
+      <section className="mx-auto max-w-7xl px-4 py-24">
         <Eyebrow>Secure by default</Eyebrow>
         <h2 className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight text-balance">Safe to hand the work to, and healthy without anyone watching</h2>
         <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -759,7 +759,7 @@ export function Landing() {
       </section>
 
       {/* Switching: what moving in costs, and what holds if g1t goes away. */}
-      <section id="switching" className="mx-auto max-w-6xl scroll-mt-20 px-4 pb-24">
+      <section id="switching" className="mx-auto max-w-7xl scroll-mt-20 px-4 pb-24">
         <div className="grid gap-10 rounded-3xl bg-surface p-8 ring-1 ring-line sm:p-10 lg:grid-cols-[1fr_1.1fr] lg:gap-16">
           <div>
             <Eyebrow>Switching</Eyebrow>
@@ -801,7 +801,7 @@ export function Landing() {
       </section>
 
       {/* Pricing, in one band. */}
-      <section className="mx-auto max-w-6xl px-4 py-24">
+      <section className="mx-auto max-w-7xl px-4 py-24">
         <div className="flex flex-wrap items-end justify-between gap-6">
           <div>
             <Eyebrow>Pricing</Eyebrow>
@@ -824,7 +824,7 @@ export function Landing() {
       </section>
 
       {/* Open source */}
-      <section className="mx-auto max-w-6xl px-4 pb-24">
+      <section className="mx-auto max-w-7xl px-4 pb-24">
         <div className="grid gap-10 rounded-3xl bg-surface p-8 ring-1 ring-line sm:p-10 lg:grid-cols-[1.3fr_1fr]">
           <div>
             <Eyebrow>Open source</Eyebrow>
@@ -874,7 +874,7 @@ export function Landing() {
       </section>
 
       {/* The close. */}
-      <section className="mx-auto max-w-6xl px-4 pb-8">
+      <section className="mx-auto max-w-7xl px-4 pb-8">
         <div className="dusk relative overflow-hidden rounded-3xl px-6 py-16 text-center ring-1 ring-line">
           <h2 className="mx-auto max-w-2xl text-3xl font-semibold tracking-tight text-balance sm:text-4xl">Bring your team. Bring your agents.</h2>
           <p className="mx-auto mt-4 max-w-xl text-fg-soft/80 text-balance">

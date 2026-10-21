@@ -36,7 +36,7 @@ export default function CostsBill({ loaderData, actionData }: Route.ComponentPro
     "Cloudflare's bill as read, line by line, what does not add up against g1t's own counts and price book, and the prices themselves: proposals waiting for a decision, every version, the mappings and the guardrails.";
   if (!report) {
     return (
-      <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
         <CostsHeader page="bill" range={range} report={null} done={null} runError={null} description={description} />
         <div className="mt-5">
           <Notice tone="warn">Billing did not answer for costs: {error}</Notice>
@@ -45,7 +45,7 @@ export default function CostsBill({ loaderData, actionData }: Route.ComponentPro
     );
   }
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
       <CostsHeader page="bill" range={range} report={report} done={done} runError={failed?.section === "run" ? failed.error : null} description={description} />
 
       <CycleSection report={report} />

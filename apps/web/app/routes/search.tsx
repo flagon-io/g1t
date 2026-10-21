@@ -109,7 +109,7 @@ export default function Search({ loaderData }: Route.ComponentProps) {
   const go = (next: string, nextType: SearchType | null = type) => navigate(searchHref(next, nextType));
   const languages = [...new Set([...(language ? [language] : []), ...LANGUAGES])];
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
       <h1 className="text-2xl font-semibold tracking-tight">Search</h1>
       <p className="mt-1 text-sm text-muted">
         Repositories, code, work items, pull requests and people: everything public on g1t, and what is private to the workspaces you belong to.

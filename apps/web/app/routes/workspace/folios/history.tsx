@@ -75,7 +75,7 @@ export default function FolioHistory({ loaderData, params }: Route.ComponentProp
   }, [chosen, slug, folio.id]);
   const canRestore = canDo(folio.viewer_role, "edit") && !folio.trashed_at;
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-7xl">
       <Link to={folio.path} className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-fg">
         <ArrowLeft size={13} /> Back to <FolioGlyph folio={folio} size={12} /> {folio.title || "Untitled"}
       </Link>

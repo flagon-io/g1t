@@ -134,7 +134,7 @@ export default function ProjectSecurity({ loaderData, params }: Route.ComponentP
   };
   const setState = (value: AlertState) => navigate((next) => (value === "open" ? next.delete("state") : next.set("state", value)));
   return (
-    <div className="max-w-5xl">
+    <div className="max-w-7xl">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">

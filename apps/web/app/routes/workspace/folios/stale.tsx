@@ -30,7 +30,7 @@ export default function FoliosStale({ loaderData, params }: Route.ComponentProps
   const zone = useViewerZone();
   const { items } = loaderData;
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-7xl">
       <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
         <AlertTriangle size={18} className="text-warn" /> Possibly out of date
       </h1>

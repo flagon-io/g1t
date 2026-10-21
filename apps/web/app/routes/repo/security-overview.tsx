@@ -268,7 +268,7 @@ export default function SecurityOverview({ loaderData, params }: Route.Component
   if (loaderData.kind === "public") {
     const { policy, advisories: published, reporting, signedIn } = loaderData;
     return (
-      <div className="max-w-5xl space-y-8">
+      <div className="max-w-7xl space-y-8">
         <SectionHeader
           title="Security"
           about="How to report a vulnerability in this repository, and what its maintainers have published about vulnerabilities in what it ships."
@@ -361,7 +361,7 @@ export default function SecurityOverview({ loaderData, params }: Route.Component
   const action = `${base}/security`;
   const canManage = Boolean(can.manage_settings);
   return (
-    <div className="max-w-5xl space-y-8">
+    <div className="max-w-7xl space-y-8">
       <SectionHeader
         title="Security"
         about="What keeps this repository safe, and where each part stands. Pushes that add a secret are refused before they land, every package the lockfiles resolve is checked for known vulnerabilities, code scanning reads your tools' results, and the maintainers publish advisories and take private reports."

@@ -212,7 +212,7 @@ const PARTS = [
 export default function Routines({ loaderData }: Route.ComponentProps) {
   const { name } = loaderData;
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 sm:px-8 sm:py-10">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-8 sm:py-10">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">

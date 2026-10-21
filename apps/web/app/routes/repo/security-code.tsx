@@ -59,7 +59,7 @@ export default function CodeScanning({ loaderData, params }: Route.ComponentProp
   const empty = scanning.alerts.length === 0 && scanning.analyses.length === 0;
   const settingUp = navigation.state !== "idle" && navigation.formAction?.endsWith("/code-scanning/setup");
   return (
-    <div className="max-w-5xl space-y-8">
+    <div className="max-w-7xl space-y-8">
       <SectionHeader
         title="Code scanning"
         about="Results from your static analysis tools, uploaded as SARIF. On the default branch each problem is an alert, fixed when a later analysis no longer reports it. On a pull request, new results on the lines it changes become review comments and the Code scanning check."

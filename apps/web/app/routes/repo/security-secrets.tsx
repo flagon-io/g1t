@@ -96,7 +96,7 @@ export default function SecretScanning({ loaderData, params }: Route.ComponentPr
   const own = listed.filter((pattern) => pattern.scope === "repository");
   const inherited = listed.filter((pattern) => pattern.scope === "workspace");
   return (
-    <div className="max-w-5xl space-y-8">
+    <div className="max-w-7xl space-y-8">
       <SectionHeader
         title="Secret scanning"
         about="Pushes that add a key or a token are refused before they land; the person pushing can bypass with a reason. The default branch's history is scanned once, in the background, and again when a custom pattern is published."

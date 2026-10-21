@@ -41,7 +41,7 @@ export default function Observability({ loaderData, params }: Route.ComponentPro
   const nothing = !isFailed(overview) && overview.totals.requests === 0 && overview.services.length === 0 && (facets?.services.length ?? 0) === 0;
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-7xl">
       <ObservabilityHeader
         title="Observability"
         about="What the project's running software does: its requests, errors and latency, by deployment. Apps on g1t.page report on their own; anything else sends OpenTelemetry."

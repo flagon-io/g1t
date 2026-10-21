@@ -55,7 +55,7 @@ export default function Metrics({ loaderData, params }: Route.ComponentProps) {
   const aggregates: Aggregate[] = info?.kind === "histogram" ? [...AGGREGATES] : AGGREGATES.filter((a) => !a.startsWith("p"));
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-7xl">
       <ObservabilityHeader title="Metrics" about="Every metric the project's software sends with OpenTelemetry: counters, gauges and histograms, over time." />
       <FilterBar path={path} view={view} environments={facets?.environments ?? []} services={facets?.services ?? []} />
 

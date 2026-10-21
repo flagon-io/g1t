@@ -44,7 +44,7 @@ export default function DependencyGraph({ loaderData, params }: Route.ComponentP
       (!query || dep.name.toLowerCase().includes(query)),
   );
   return (
-    <div className="max-w-5xl space-y-6">
+    <div className="max-w-7xl space-y-6">
       <SectionHeader
         title="Dependency graph"
         about="Every package the lockfiles on the default branch resolve: direct or transitive where the lockfile says, for development or not, and its license where the lockfile records one. Read again on every push to the default branch, and daily."

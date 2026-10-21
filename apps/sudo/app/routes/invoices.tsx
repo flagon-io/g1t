@@ -44,7 +44,7 @@ export default function Invoices({ loaderData }: Route.ComponentProps) {
   const scope = [status ? STATUS_LABEL[status].toLowerCase() : null, month ? `in ${monthLong(month)}` : null].filter(Boolean).join(", ");
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
       <PageHeader
         title="Invoices"
         description="Every invoice g1t has sent, newest first: workspaces' monthly and near-the-limit invoices, and enterprises' net-30 ones."

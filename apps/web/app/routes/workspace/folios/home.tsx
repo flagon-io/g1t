@@ -177,7 +177,7 @@ export default function FoliosHome({ loaderData, params }: Route.ComponentProps)
     </>
   );
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-7xl">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="grow text-2xl font-semibold tracking-tight">Artifacts</h1>
         <Hint label="Templates">

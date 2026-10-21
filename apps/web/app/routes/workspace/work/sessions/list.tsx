@@ -157,7 +157,7 @@ export default function SessionsPage({ loaderData }: Route.ComponentProps) {
   useRefreshWhile(going > 0 || waiting > 0, 15_000);
 
   return (
-    <div className="max-w-5xl">
+    <div className="max-w-7xl">
       <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
         <Activity size={19} className="text-accent" />
         Sessions

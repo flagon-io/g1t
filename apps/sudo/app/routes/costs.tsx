@@ -46,7 +46,7 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
   const description = `What g1t cost to run (Cloudflare's bill) against what workspaces paid, with what g1t gave away on purpose kept apart. Prices are cost plus ${MARKUP_PERCENT}%, a ${percentLabel(marginOnPrice(MARKUP_PERCENT))} margin: every margin here is a share of the price, not of the cost. The bill itself, drift and the price book are on Bill & pricing.`;
   if (!report) {
     return (
-      <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
         <CostsHeader page="costs" range={range} report={null} done={null} runError={null} description={description} />
         <div className="mt-5">
           <Notice tone="warn">Billing did not answer for costs: {error}</Notice>
@@ -65,7 +65,7 @@ export default function Costs({ loaderData, actionData }: Route.ComponentProps) 
   const floor = report.settings.marginFloorPercent;
   const open = report.proposals.filter((p) => p.status === "open");
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
       <CostsHeader
         page="costs"
         range={range}

@@ -93,7 +93,7 @@ export default function PostmortemEditor({ loaderData, actionData }: Route.Compo
   const failed = actionData as ActionData | undefined;
   if (!incident) {
     return (
-      <main className="mx-auto max-w-6xl px-4 py-8">
+      <main className="mx-auto max-w-7xl px-4 py-8">
         <Notice tone="warn">The status worker did not answer: {error}</Notice>
       </main>
     );
@@ -104,7 +104,7 @@ export default function PostmortemEditor({ loaderData, actionData }: Route.Compo
   const resolved = incident.resolved_at != null;
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
       <BackLink to={`/incidents/${incident.id}`}>{incident.title}</BackLink>
       <div className="mt-3">
         <PageHeader

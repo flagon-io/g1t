@@ -63,7 +63,7 @@ export default function Aliases({ loaderData, actionData }: Route.ComponentProps
   const { aliases, error, done } = loaderData;
   const adding = actionData && !actionData.alias ? actionData : null;
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
       <PageHeader
         title="Aliases"
         description="Names that lead to a workspace. Every address under an alias (pages, git, the API, packages) leads to the workspace under its own name, and the alias follows it through renames. Only staff set them, for a company's trading name such as g1t for Flagon, Inc.; customers cannot make one."

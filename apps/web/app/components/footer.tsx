@@ -285,7 +285,7 @@ export function LegalRow({ user }: { user: User | null | undefined }) {
 export function SiteFooter({ user }: { user: User | null | undefined }) {
   return (
     <footer className="mt-24 border-t border-line">
-      <div className="mx-auto grid max-w-6xl grid-cols-2 gap-x-8 gap-y-10 px-4 pt-12 pb-10 sm:grid-cols-4 lg:grid-cols-6">
+      <div className="mx-auto grid max-w-7xl grid-cols-2 gap-x-8 gap-y-10 px-4 pt-12 pb-10 sm:grid-cols-4 lg:grid-cols-6">
         <BrandColumn />
         {/* The link columns sit in the same grid as the brand column. */}
         <nav aria-label="Footer" className="contents">

@@ -83,7 +83,7 @@ export default function Credits({ loaderData, actionData }: Route.ComponentProps
   const open = (credits?.grants ?? []).filter((grant) => grant.state === "open");
 
   return (
-    <main id="top" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-8 sm:py-10">
+    <main id="top" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-8 sm:py-10">
       <PageHeader
         title="Credits & refunds"
         description="Every credit staff have given: promotional and goodwill credit is given away when spent; a refund gives back money already paid. Give credit from a workspace's page, under Billing."

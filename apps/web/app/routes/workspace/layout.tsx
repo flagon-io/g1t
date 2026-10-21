@@ -230,7 +230,7 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
     // Work's views (Plan, Board, Triage, All items, Milestones, Sessions) are its tabs, which name the page.
     const tab = parts[0] === "work" && !next ? workTab(pathname, workspace.slug) : null;
     return (
-      <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
+      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-8">
         {tab != null ? <WorkTabs workspace={workspace.slug} /> : titled && <PageHeader title={heading.title} about={heading.about} />}
         {next ? <WorkspacePageSkeleton page={next} /> : <Outlet />}
       </div>
@@ -240,7 +240,7 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
     <>
       {/* The workspace's own header band, above its overview. */}
       <div className="border-b border-line bg-surface/60">
-        <div className="mx-auto max-w-6xl px-4 py-8">
+        <div className="mx-auto max-w-7xl px-4 py-8">
           {welcome && (
             <div className="mb-6">
               <WelcomeBanner title={`You're in ${workspace.name}`}>You joined as a {role}. Its projects, work and people are all here.</WelcomeBanner>
@@ -271,7 +271,7 @@ export default function WorkspaceLayout({ loaderData }: Route.ComponentProps) {
           {workspace.description && <p className="mt-4 max-w-2xl text-sm text-muted">{workspace.description}</p>}
         </div>
       </div>
-      <div className="mx-auto max-w-6xl px-4 py-8">{next ? <WorkspacePageSkeleton page="overview" /> : <Outlet />}</div>
+      <div className="mx-auto max-w-7xl px-4 py-8">{next ? <WorkspacePageSkeleton page="overview" /> : <Outlet />}</div>
     </>
   );
 }

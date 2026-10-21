@@ -44,7 +44,7 @@ export default function Traces({ loaderData, params }: Route.ComponentProps) {
   const max = Math.max(1, ...(list?.items.map((t) => t.duration_us / 1000) ?? []));
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-7xl">
       <ObservabilityHeader
         title="Traces"
         about="Each request followed through the software it touched: the request on g1t.page, the spans its own code and every other service sent, and the logs written along the way."

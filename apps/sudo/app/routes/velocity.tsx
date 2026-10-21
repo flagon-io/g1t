@@ -22,7 +22,7 @@ export default function Velocity({ loaderData }: Route.ComponentProps) {
   const waiting = rows.filter((row) => row.spike?.status === "open").length;
   const lastHour = rows.reduce((sum, row) => sum + row.lastHourMicros, 0);
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
       <PageHeader
         title="Velocity"
         description="Workspaces spending in the last day, fastest first. An hour at five times the usual hour, and at least $5, is a spike: new compute pauses until an owner chooses Keep going or Stop."

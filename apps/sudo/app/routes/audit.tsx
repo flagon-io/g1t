@@ -68,7 +68,7 @@ export default function Audit({ loaderData }: Route.ComponentProps) {
   const filtered = by != null || action != null;
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
       <PageHeader
         title="Audit log"
         description="Every change made in sudo, what Stripe told billing, and every incident and maintenance change on the status page, newest first. Each names who made it."

@@ -32,7 +32,7 @@ function metricsLine(metrics: Record<string, unknown> | null): string {
 export default function Abuse({ loaderData }: Route.ComponentProps) {
   const { flags, error } = loaderData;
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
       <PageHeader
         title="Abuse & fraud"
         description="Sandboxes g1t stopped because they looked like mining: CPU pinned with no progress, or a miner seen by name. Each was destroyed as it was flagged, and the owner was told why."

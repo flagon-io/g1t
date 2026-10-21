@@ -53,7 +53,7 @@ const STATUS_LABEL: Record<RequestStatus, string> = { open: "Open", approved: "A
 export default function Requests({ loaderData, actionData }: Route.ComponentProps) {
   const { status, rows, openCount, error, done, now } = loaderData;
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
       <PageHeader
         title="Requests"
         description="Owners asking for a higher limit, or for help with a month that went past what they meant. g1t answers within one business day; the owner is told in the app and by email."
