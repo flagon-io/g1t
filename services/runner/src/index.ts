@@ -1339,7 +1339,8 @@ export default class RunnerService extends WorkerEntrypoint<RunnerEnv> {
 
   /** A sweep, for steps whose trigger was missed or whose sandbox died, and the nightly backups. */
   async scheduled(): Promise<void> {
-    await this.advanceAll();
+    // Each step on its own: one that fails does not stop the others.
+    await this.advanceAll().catch((error: unknown) => console.log("pull requests not advanced", String(error)));
     await this.buildWaitingQueues().catch((error: unknown) => console.log("waiting queues not built", String(error)));
     await this.startBackups().catch((error: unknown) => console.log("backups not started", String(error)));
   }

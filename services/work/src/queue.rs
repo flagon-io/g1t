@@ -117,7 +117,17 @@ const LANDING_WAITS: &str = "UPDATE queue_entries SET landing_commit = NULL, err
 // claim, a retest and a landing each clear it). The runner's sweep passes
 // over each again.
 const WAITING_QUEUES: &str = "SELECT DISTINCT repo_id AS value FROM queue_entries
-    WHERE state IN ('waiting', 'passed') AND error IS NOT NULL LIMIT 100";
+    WHERE state IN ('waiting', 'passed') AND error IS NOT NULL ORDER BY repo_id LIMIT 100";
+
+// A landing that went through while another request gave up its intent:
+// a request that found the repository taking no writes (LANDING_WAITS) can
+// clear the intent of one whose push was already on its way, and that one's
+// FINISH_LANDING then matches nothing. Its pull request merged at exactly
+// the tested commit, so the entry landed; only an entry still passed, at
+// that commit, moves.
+const FINISH_LANDED: &str = "UPDATE queue_entries SET state = 'landed', finished_at = ?1, error = NULL, landing_commit = combined_commit
+    WHERE id = ?2 AND state = 'passed' AND combined_commit = ?3 AND finished_at IS NULL
+    RETURNING id AS value";
 
 const LEAVE: &str =
     "UPDATE queue_entries SET state = ?1, error = COALESCE(?2, error), finished_at = ?3
@@ -280,6 +290,11 @@ pub(crate) fn clashed_with(ahead: &[(QueueStackItem, Vec<String>)], paths: &[Str
         .rev()
         .find(|(_, files)| paths.iter().any(|path| files.contains(path)))
         .map(|(item, _)| item.number)
+}
+
+/// Why an entry a person took out left the queue.
+pub(crate) fn removed_by(username: &str) -> String {
+    format!("@{username} removed it from the queue.")
 }
 
 /// Why an entry left because what it would build is gone.
@@ -462,8 +477,10 @@ impl Work {
         ) {
             return Ok(Outcome::Fail(failure));
         }
+        // Said as why it left, in place of a reason it was waiting for.
+        let why = removed_by(&a.actor.username);
         if self
-            .leave(&repo.id, &pull, QueueState::Removed, None)
+            .leave(&repo.id, &pull, QueueState::Removed, Some(&why))
             .await?
         {
             let who = (a.actor.id.as_str(), a.actor.username.as_str());
@@ -1399,6 +1416,15 @@ impl Work {
                 continue;
             }
             if row.landing_commit.is_none() {
+                // Landed by a request whose intent another gave up (see
+                // FINISH_LANDED): landed, not closed.
+                if pull.status == PullStatus::Merged
+                    && row.combined_commit.is_some()
+                    && pull.merge_commit == row.combined_commit
+                {
+                    self.finish_landed(&row).await?;
+                    continue;
+                }
                 // Pushed to since it was tested: test it again as it is now.
                 if pull.status != PullStatus::Open {
                     self.leave(repo_id, &pull, QueueState::Removed, Some("It was closed."))
@@ -1566,6 +1592,25 @@ impl Work {
     pub(crate) async fn waiting_queues(&self) -> Result<Vec<String>> {
         let rows = self.db.prepare(WAITING_QUEUES).all().await?.results::<crate::rows::ValueRow>()?;
         Ok(rows.into_iter().map(|row| row.value).collect())
+    }
+
+    /// Records an entry as landed whose pull request merged at its tested
+    /// commit after its landing intent was given up (FINISH_LANDED).
+    async fn finish_landed(&self, row: &EntryRow) -> Result<()> {
+        let finished = self
+            .db
+            .prepare(FINISH_LANDED)
+            .bind(&[
+                rfc3339(now_ms()).into(),
+                row.id.as_str().into(),
+                row.combined_commit.as_deref().map_or(JsValue::NULL, JsValue::from),
+            ])?
+            .first::<crate::rows::ValueRow>(None)
+            .await?;
+        if finished.is_some() {
+            self.drop_branch(row).await;
+        }
+        Ok(())
     }
 
     async fn finish_landing(&self, row: &EntryRow) -> Result<()> {

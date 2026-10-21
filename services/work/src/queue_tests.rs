@@ -4,7 +4,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use super::{
     ABANDON_LANDING, ACCEPT_BUILD, BEGIN_LANDING, CLAIM_BUILD, ENQUEUE, FINISH_CHECKS,
     FINISH_LANDING, LANDING_WAITS, LEAVE, PUBLISHING, REPORT_BUILD, RETEST, RETESTED, STILL_LANDING,
-    WAIT_UNAVAILABLE, WAITING_QUEUES, attempt_branch, tell_waiting,
+    FINISH_LANDED, WAIT_UNAVAILABLE, WAITING_QUEUES, attempt_branch, removed_by, tell_waiting,
 };
 use crate::integration::{FINISH_PROBE, REPORT_PROBE, RESOLVE_HELD};
 
@@ -761,4 +761,52 @@ fn only_an_unavailable_refusal_waits_and_it_waits_for_the_sweep() {
     assert!(sweep[..sweep.find("\n  }\n").unwrap()].contains("await this.buildWaitingQueues()"));
     assert!(runner.contains("for (const repoId of await workClient(this.env.WORK).waitingQueues()) {"));
     assert!(include_str!("../../runner/wrangler.jsonc").contains(r#""crons": ["*/5 * * * *"]"#));
+}
+
+#[test]
+fn a_landing_that_went_through_while_another_request_waited_is_landed_not_closed() {
+    let db = database();
+    assert!(claim(&db, "attempt"));
+    assert!(report(&db, "attempt", "tested"));
+    assert!(finish(&db, "tested"));
+    // Request A takes the intent and pushes. A fork locks the repository,
+    // and request B, admitted to the same intent, is refused and waits.
+    assert!(exists(&db, BEGIN_LANDING, params!["entry", "tested", "attempt"]));
+    assert!(exists(&db, BEGIN_LANDING, params!["entry", "tested", "attempt"]));
+    assert!(exists(&db, LANDING_WAITS, params!["entry", "tested", LOCKED]));
+    // A's push had gone through: it records the merge, but its finish finds
+    // no intent to finish.
+    db.execute("UPDATE pulls SET status = 'merged', merge_commit = 'tested' WHERE id = 'pull'", []).unwrap();
+    assert_eq!(db.execute(FINISH_LANDING, params!["now", "entry"]).unwrap(), 0);
+    // The next pass finds it merged at the tested commit: landed.
+    assert!(!exists(&db, FINISH_LANDED, params!["now", "entry", "other"]), "only at the tested commit");
+    assert!(exists(&db, FINISH_LANDED, params!["now", "entry", "tested"]));
+    let (state, error, _, _) = entry(&db);
+    assert_eq!((state.as_str(), error), ("landed", None));
+    assert!(!exists(&db, FINISH_LANDED, params!["now", "entry", "tested"]), "once");
+    assert!(!exists(&db, LEAVE, params!["removed", "It was closed.", "now", "entry"]), "never also closed");
+    assert!(waiting_queues(&db).is_empty());
+    // settle asks this before it would call it closed.
+    let settle = body_of("settle");
+    let landed = settle.find("self.finish_landed(&row).await?;").expect("finished as landed");
+    let closed = settle.find("Some(\"It was closed.\")").unwrap();
+    assert!(landed < closed);
+    assert!(settle.contains("pull.status == PullStatus::Merged"));
+    assert!(settle.contains("pull.merge_commit == row.combined_commit"));
+}
+
+#[test]
+fn an_entry_taken_out_while_waiting_says_who_took_it_out_not_why_it_waited() {
+    let db = database();
+    assert!(claim(&db, "attempt"));
+    assert!(exists(&db, WAIT_UNAVAILABLE, params!["entry", "attempt", LOCKED]));
+    let why = removed_by("ada");
+    assert_eq!(why, "@ada removed it from the queue.");
+    assert!(exists(&db, LEAVE, params!["removed", why, "now", "entry"]));
+    let (state, error, _, _) = entry(&db);
+    assert_eq!((state.as_str(), error.as_deref()), ("removed", Some("@ada removed it from the queue.")));
+    assert!(waiting_queues(&db).is_empty());
+    let removal = body_of("remove_from_queue");
+    assert!(removal.contains("let why = removed_by(&a.actor.username);"));
+    assert!(removal.contains(".leave(&repo.id, &pull, QueueState::Removed, Some(&why))"));
 }

@@ -332,7 +332,7 @@ Each shows:
 | Checks    | How its state's checks stand, linked to the `merge_group` workflow run on the tested commit (each run by name when there are several). |
 | Who       | The person or coding agent who made the pull request, and who queued it.                                                               |
 | Commit    | The tested state's commit.                                                                                                             |
-| Why       | Why it waits, when the repository takes no writes for now, such as while it is copied into a fork.                                     |
+| Why       | **Waiting:** and the reason, not as a failure, when the repository takes no writes for now, such as while it is copied into a fork.    |
 
 **Recently** lists the last 20 that left the queue: **Landed**, **Failed**
 or **Removed**. A failed entry shows why.

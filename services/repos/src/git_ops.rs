@@ -373,9 +373,7 @@ pub fn repository_full_message(namespace: &str, name: &str, held: u64) -> String
 /// checked it. Plain text, which git prints as `remote:` lines before it
 /// gives up: it shows an error's body only when it is `text/plain`.
 pub fn copy_locked_response(namespace: &str, name: &str, refusal: crate::public_storage::Refusal) -> Result<Response> {
-    let response = Response::error(copy_locked_message(namespace, name, refusal), 403)?;
-    response.headers().set("content-type", "text/plain; charset=utf-8")?;
-    Ok(response)
+    plain_refusal(copy_locked_message(namespace, name, refusal), 403)
 }
 
 /// A copy ordinarily ends within minutes; a fork whose call to the store
@@ -602,6 +600,7 @@ mod tests {
             ("git_ops.rs", include_str!("git_ops.rs"), "storage_full_response"),
             ("git_ops.rs", include_str!("git_ops.rs"), "public_storage_full_response"),
             ("git_ops.rs", include_str!("git_ops.rs"), "too_many"),
+            ("git_ops.rs", include_str!("git_ops.rs"), "copy_locked_response"),
             ("git_http.rs", include_str!("git_http.rs"), "refuse<T>"),
             ("git_http.rs", include_str!("git_http.rs"), "busy_response"),
             ("limits.rs", include_str!("limits.rs"), "too_many_anonymous_fetches"),

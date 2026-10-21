@@ -9,6 +9,7 @@ import { Await, Link } from "react-router";
 
 import type { QueueEntry, QueueState } from "@g1t/contracts";
 
+import { queueReason } from "../lib/queue-reason";
 import { TimeAgo } from "./ui";
 import { Avatar } from "./ui/avatar";
 import { Badge, type BadgeTone } from "./ui/badge";
@@ -25,6 +26,18 @@ const STATE: Record<QueueState, { label: string; tone: BadgeTone; icon: ReactNod
   landed: { label: "Landed", tone: "merged", icon: <GitMerge size={13} /> },
   removed: { label: "Removed", tone: "neutral", icon: <Minus size={13} /> },
 };
+
+/** Why an entry waits (in a warning's colour) or why it left (as a failure). */
+function EntryReason({ state, error }: { state: QueueState; error?: string | null }) {
+  const reason = queueReason(state, error);
+  if (!reason) return null;
+  return (
+    <p className={`mt-2.5 text-xs ${reason.waiting ? "text-warn" : "text-danger"}`}>
+      {reason.label && <span className="font-medium">{reason.label} </span>}
+      {reason.text}
+    </p>
+  );
+}
 
 export function QueueStateBadge({ state }: { state: QueueState }) {
   const { label, tone, icon } = STATE[state];
@@ -142,7 +155,7 @@ export function QueueEntryCard({
             </span>
           )}
         </div>
-        {entry.error && <p className="mt-2.5 text-xs text-danger">{entry.error}</p>}
+        <EntryReason state={entry.state} error={entry.error} />
         {entry.state === "failed" &&
           entry.results
             .filter((result) => !result.passed)
