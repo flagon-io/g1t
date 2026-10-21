@@ -173,8 +173,12 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     coordination: isFailed(coordination) ? coordination : coordination.ok ? coordination.value : null,
     sessionTrees,
     progress,
-    // Only when it can start: the button is not shown otherwise.
+    // Only when it can start: assigning to g1t is not offered otherwise.
     agentSetup: agentSetup?.ok && agentSetup.value.available ? agentSetup.value : null,
+    // Starting an agent is offered to every member: on the workspace's account when it is set up, else on their own machine.
+    agentSetupInfo: agentSetup?.ok ? agentSetup.value : null,
+    // An owner is pointed to where hosted sessions are set up.
+    owner: roleIn(viewer, workspace) === "owner",
     endedClaims: ended
       .flatMap((claims) => (claims?.ok ? claims.value : []))
       .sort((a, b) => Date.parse(b.endedAt ?? b.createdAt) - Date.parse(a.endedAt ?? a.createdAt)),
@@ -228,10 +232,20 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       if (!repo) return { error: "Link a repository for it to work in first.", action: intent };
       const mode = AGENT_MODES.find((one) => one.mode === form.get("mode"))?.mode ?? "implement";
       const instruction = String(form.get("instruction") ?? "").trim();
-      const result = await agentSessions.start(user, repo, { item: number, mode, instruction: instruction || undefined, handoff: false }).catch(() => null);
-      if (!result) return { error: "The session could not be started. Try again in a moment.", action: intent };
+      // On the person's own machine: the Claude Code command to run, and nothing started here.
+      const handoff = form.get("where") === "local";
+      const result = await agentSessions.start(user, repo, { item: number, mode, instruction: instruction || undefined, handoff }).catch(() => null);
+      if (!result)
+        return {
+          error: handoff ? "The command could not be made. Try again in a moment." : "The session could not be started. Try again in a moment.",
+          action: intent,
+        };
       if (!result.ok) return { error: result.error.message, action: intent };
       const started = result.value;
+      if (handoff)
+        return result.value.command
+          ? { action: intent, command: result.value.command }
+          : { error: "No command came back. Try again in a moment.", action: intent };
       const to = sitePath(started.sessionUrl, request.url) ?? (started.session ? sessionPath(repo.namespace, started.session.id) : null);
       if (!to) return { error: "No session was started.", action: intent };
       throw redirect(to);
@@ -924,11 +938,13 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
                   parentError={errorFor("parent")}
                   sessions={sessionTrees}
                   start={
-                    loaderData.agentSetup && open && workIn ? (
+                    loaderData.member && open && workIn ? (
                       <StartSessionDialog
-                        setup={loaderData.agentSetup}
+                        setup={loaderData.agentSetupInfo}
                         repo={workIn}
-                        error={actionData && "action" in actionData && actionData.action === "start-session" ? actionData.error : null}
+                        error={actionData && "action" in actionData && actionData.action === "start-session" && "error" in actionData ? actionData.error : null}
+                        command={actionData && "command" in actionData ? actionData.command : null}
+                        setupHref={loaderData.owner ? `/${workspace}/-/ai` : null}
                       />
                     ) : undefined
                   }

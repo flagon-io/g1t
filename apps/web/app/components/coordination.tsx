@@ -73,7 +73,7 @@ import {
 } from "../lib/coordination";
 import { sessionPath, sessionsPath } from "../lib/work-items";
 import { AgentSetup } from "./agent-setup";
-import { Input, SubmitButton, TimeAgo } from "./ui";
+import { CopyLine, Input, SubmitButton, TimeAgo } from "./ui";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import {
   AlertDialog,
@@ -505,39 +505,82 @@ export function SessionTreeList({
 }
 
 /**
- * Starting a session on the work item on the workspace's Anthropic account: a
- * button opening a dialog that asks what kind of work and for anything to
- * add, posting `start-session` to the work item's action.
+ * Start an agent on a work item, from the browser: on the workspace's
+ * Anthropic account, where that is set up, and it shows on the work item
+ * as it goes; or on your own machine, as the Claude Code command to run in
+ * the repository (what `g1t work dispatch --handoff` prints), which needs
+ * nothing set up. Where hosted sessions are not set up, it says why, and
+ * an owner is pointed to where to set them up (`setupHref`).
  */
 export function StartSessionDialog({
   setup,
   repo,
   error,
+  command,
+  setupHref,
 }: {
-  setup: AgentSessionsSetup;
+  /** Whether sessions can start on the workspace's account; null when it could not be read. */
+  setup: AgentSessionsSetup | null;
   /** The repository it works in, `owner/name`. */ repo?: string;
   error?: string | null;
+  /** The Claude Code command, once asked for. */
+  command?: string | null;
+  /** Where an owner sets hosted sessions up; absent for a member. */
+  setupHref?: string | null;
 }) {
-  const [open, setOpen] = useState(Boolean(error));
+  const hosted = setup?.available === true;
+  const [open, setOpen] = useState(Boolean(error || command));
+  const [where, setWhere] = useState<"hosted" | "local">(hosted ? "hosted" : "local");
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="xs">
           <Sparkles size={12} />
-          Start a session
+          Start an agent
         </Button>
       </DialogTrigger>
       <DialogContent>
         <Form method="post" className="grid gap-5">
           <input type="hidden" name="action" value="start-session" />
+          <input type="hidden" name="where" value={where} />
           {repo && <input type="hidden" name="repo" value={repo} />}
           <DialogHeader>
-            <DialogTitle>Start a session on this work item</DialogTitle>
+            <DialogTitle>Start an agent on this work item</DialogTitle>
             <DialogDescription>
-              Claude works on it on {setup.connectionName ? `the ${setup.connectionName} connection` : "your workspace's Anthropic account"}
-              {setup.model ? `, with ${setup.model}` : ""}. It shows on this work item as it goes, with its subagents.
+              It works in {repo ?? "the work item's repository"} and shows on this work item as it goes, with its subagents.
             </DialogDescription>
           </DialogHeader>
+          <FieldSet>
+            <FieldLegend className="mb-0">Where it runs</FieldLegend>
+            <RadioGroup value={where} onValueChange={(value) => setWhere(value as "hosted" | "local")}>
+              <RadioOption
+                value="hosted"
+                disabled={!hosted}
+                label="On the workspace's Anthropic account"
+                description={
+                  hosted ? (
+                    `Claude on ${setup?.connectionName ? `the ${setup.connectionName} connection` : "the workspace's account"}${setup?.model ? `, with ${setup.model}` : ""}, billed by Anthropic to the workspace.`
+                  ) : (
+                    <>
+                      {setup?.problem ?? "Not set up for this workspace yet."}{" "}
+                      {setupHref ? (
+                        <Link to={setupHref} className="text-accent hover:underline">
+                          Set it up
+                        </Link>
+                      ) : (
+                        "An owner can set it up."
+                      )}
+                    </>
+                  )
+                }
+              />
+              <RadioOption
+                value="local"
+                label="On your own machine"
+                description="Claude Code, with the command to run in your checkout of the repository. Nothing to set up."
+              />
+            </RadioGroup>
+          </FieldSet>
           <FieldSet>
             <FieldLegend className="mb-0">What to do</FieldLegend>
             <RadioGroup name="mode" defaultValue="implement">
@@ -551,12 +594,20 @@ export function StartSessionDialog({
             <Textarea id="start-session-instruction" name="instruction" rows={3} maxLength={4000} placeholder="Optional: what to keep in mind" />
             <FieldError>{error}</FieldError>
           </Field>
+          {command && (
+            <div className="grid gap-1.5">
+              <p className="text-sm text-fg-soft">
+                Run this in your checkout of the repository: Claude Code starts on the work item, and its session shows here.
+              </p>
+              <CopyLine text={command} prompt />
+            </div>
+          )}
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="ghost">Cancel</Button>
+              <Button variant="ghost">{command ? "Done" : "Cancel"}</Button>
             </DialogClose>
-            <SubmitButton match={{ action: "start-session" }} pending="Starting…">
-              Start
+            <SubmitButton match={{ action: "start-session" }} pending={where === "hosted" ? "Starting…" : "Getting it…"}>
+              {where === "hosted" ? "Start" : command ? "Get it again" : "Get the command"}
             </SubmitButton>
           </DialogFooter>
         </Form>
