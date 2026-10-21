@@ -1056,9 +1056,8 @@ impl Billing {
                     return Ok(());
                 }
                 if !worth_charging(owed, self.plans.min_charge_micros) {
-                    // Under the minimum charge: a card payment's fee would be
-                    // too much of it. It stays owed and goes on the next
-                    // invoice that reaches the minimum.
+                    // Under the minimum charge: it stays owed and goes on the
+                    // next invoice that reaches the minimum.
                     record("carried", owed, None, None)?.run().await?;
                     return Ok(());
                 }
@@ -1592,15 +1591,15 @@ mod tests {
 
     #[test]
     fn amounts_under_the_minimum_carry_over_only_at_the_month_close() {
-        let min = 5_000_000;
+        let min = 1_000_000;
         assert!(!worth_charging(0, min));
-        assert!(!worth_charging(4_990_000, min));
-        assert!(worth_charging(5_000_000, min));
+        assert!(!worth_charging(990_000, min));
+        assert!(worth_charging(1_000_000, min));
         assert!(worth_charging(12_000_000, min));
-        // $3 carried from last month and $2.50 this month: charged together.
-        let carried = 3_000_000;
+        // 60 cents carried from last month and 50 this month: charged together.
+        let carried = 600_000;
         assert!(!worth_charging(carried, min));
-        assert!(worth_charging(carried + 2_500_000, min));
+        assert!(worth_charging(carried + 500_000, min));
     }
 
     #[test]

@@ -100,7 +100,7 @@ const DEFAULT_FREE: Required<FreeTier> = {
   freePrivateStorageBytes: 1_000_000_000,
   auditRetentionDays: 7,
   planAuditRetentionDays: 90,
-  minChargeMicros: 5_000_000,
+  minChargeMicros: 1_000_000,
   gitOperationsIncluded: 50_000,
   paidStartCeilingMicros: 100_000_000,
   overageForgiveCostMicros: 50_000_000,
@@ -563,8 +563,8 @@ export default function Pricing({ loaderData }: Route.ComponentProps) {
         </Card>
       </ul>
       <p className="mt-3 text-sm text-muted">
-        No card is charged less than {dollars(tier.minChargeMicros)} when a month closes, so a payment's fee is never most of it. Smaller amounts carry over to
-        the next invoice. Charges at a limit always go through.
+        If a month closes with less than {dollars(tier.minChargeMicros)} owed, your card isn't charged: the amount moves to the next invoice that reaches it.
+        Charges made at your spend limit always go through.
       </p>
 
       <div className="mt-14 grid gap-4 sm:grid-cols-2">

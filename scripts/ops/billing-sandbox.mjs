@@ -16,8 +16,8 @@ const secret = "whsec_local_billing_audit_only";
 const fixturePath = resolve(dir, "fixture.json");
 const phase = process.argv[2];
 assert.ok(
-  ["seed", "run", "lifecycle", "enterprise", "protocol", "complimentary", "cleanup"].includes(phase),
-  "Use seed, run, lifecycle, enterprise, protocol, complimentary, or cleanup",
+  ["seed", "run", "lifecycle", "enterprise", "protocol", "complimentary", "prepay", "cleanup"].includes(phase),
+  "Use seed, run, lifecycle, enterprise, protocol, complimentary, prepay, or cleanup",
 );
 // A local Worker is not enough isolation: production replays all events in
 // its Stripe account. The test and live keys below were verified to share
@@ -70,6 +70,33 @@ function localSQL(sql) {
     { encoding: "utf8" },
   );
   if (result.status !== 0) throw Error(`Local fixture SQL failed: ${result.stderr.slice(0, 500)}`);
+}
+function localRows(sql) {
+  const result = spawnSync(
+    process.execPath,
+    [
+      "node_modules/wrangler/bin/wrangler.js",
+      "d1",
+      "execute",
+      "billing-audit",
+      "--local",
+      "--config",
+      "target/billing-audit/wrangler.json",
+      "--persist-to",
+      "target/billing-audit/state",
+      "--command",
+      sql,
+      "--json",
+    ],
+    { encoding: "utf8" },
+  );
+  if (result.status !== 0) throw Error(`Local query failed: ${result.stderr.slice(0, 500)}`);
+  return JSON.parse(result.stdout)[0].results;
+}
+function signed(event) {
+  const payload = JSON.stringify(event),
+    time = Math.floor(Date.now() / 1000);
+  return { payload, signature: `t=${time},v1=${createHmac("sha256", secret).update(`${time}.${payload}`).digest("hex")}` };
 }
 if (phase === "protocol") {
   assert.equal((await rpc("status", {})).live, false);
@@ -554,6 +581,114 @@ if (phase === "protocol") {
       }
     }
   }
+} else if (phase === "prepay") {
+  // A card prepayment end to end: the real Checkout page (3DS is always
+  // asked for), then the ledger and tax_and_fees reconciled to the cent
+  // against Stripe's charge and balance transaction, before and after a
+  // partial refund. The page is paid in a browser while this waits
+  // (billing-sandbox-pay.mjs, given the URL it prints and writes to
+  // prepay.json); `prepay resume` picks that page up again. Needs Stripe
+  // Tax on in the sandbox, with a Washington registration.
+  const resume = process.argv[3] === "resume" ? JSON.parse(readFileSync(resolve(dir, "prepay.json"), "utf8")) : null;
+  const workspace = resume?.workspace ?? `prepay-${Date.now()}`;
+  const actor = { id: "usr_audit", username: "audit-owner", verified: true, workspaces: [{ slug: workspace, role: "owner" }] };
+  const checks = [];
+  const passed = (name) => {
+    checks.push(name);
+    console.log(`PASS ${name}`);
+  };
+  assert.equal((await rpc("status", {})).live, false);
+  const amountCents = 2_500;
+  let customer, sessionId;
+  if (resume) {
+    customer = { id: resume.customer };
+    sessionId = resume.session;
+  } else {
+    customer = await stripe("/customers", {
+      name: "Disposable g1t prepay audit",
+      email: "prepay-audit@example.com",
+      "metadata[g1t_audit]": workspace,
+      "address[country]": "US",
+      "address[state]": "WA",
+      "address[postal_code]": "98101",
+      "address[line1]": "1301 2nd Ave",
+      "address[city]": "Seattle",
+    });
+    localSQL(
+      `INSERT INTO accounts (workspace,balance_micros,customer_id,created_at) VALUES ('${workspace}',0,'${customer.id}','${new Date().toISOString()}');`,
+    );
+    const started = await rpc("checkout", { workspace, actor, amountCents, returnUrl: `${endpoint}/return` });
+    assert.equal(started.ok, true, JSON.stringify(started));
+    const url = started.value.url;
+    sessionId = url.match(/cs_test_[A-Za-z0-9]+/)[0];
+    writeFileSync(resolve(dir, "prepay.json"), JSON.stringify({ workspace, customer: customer.id, session: sessionId, url }));
+    console.log(`PAY ${url}`);
+  }
+  let session;
+  for (const deadline = Date.now() + 10 * 60_000; ; ) {
+    session = await stripe(`/checkout/sessions/${sessionId}`);
+    if (session.payment_status === "paid") break;
+    assert.ok(Date.now() < deadline, "The prepay page was not paid within 10 minutes");
+    await new Promise((r) => setTimeout(r, 3_000));
+  }
+  assert.equal(session.amount_subtotal, amountCents);
+  const taxCents = session.total_details.amount_tax;
+  assert.ok(taxCents > 0, "No tax: turn on Stripe Tax in the sandbox, with a Washington registration (Colorado exempts this product)");
+  passed("Checkout page paid in the browser, through its 3DS challenge");
+  const completed = signed({ id: `evt_local_prepay_${workspace}`, type: "checkout.session.completed", livemode: false, data: { object: session } });
+  assert.equal((await rpc("stripe_webhook", completed)).ok, true);
+  assert.equal((await rpc("stripe_webhook", completed)).ok, true);
+  const account = () => rpc("account", { workspace, viewer: actor }).then((a) => a.value.balanceMicros);
+  assert.equal(await account(), amountCents * 10_000);
+  passed("prepayment credited once, at the amount before tax");
+  // The balance transaction can trail the charge by a few seconds.
+  let charge, txn;
+  for (let tries = 0; !txn; tries++) {
+    assert.ok(tries < 20, "Stripe made no balance transaction for the charge");
+    if (tries) await new Promise((r) => setTimeout(r, 2_000));
+    charge = (await stripe(`/payment_intents/${session.payment_intent}?expand[]=latest_charge.balance_transaction`)).latest_charge;
+    txn = charge.balance_transaction;
+  }
+  const ledger = (kind) => localRows(`SELECT COALESCE(SUM(amount_micros),0) AS m FROM ledger WHERE workspace='${workspace}' AND kind='${kind}'`)[0].m;
+  const extras = (kind) => localRows(`SELECT COALESCE(SUM(amount_micros),0) AS m FROM tax_and_fees WHERE workspace='${workspace}' AND kind='${kind}'`)[0].m;
+  assert.equal(ledger("top_up"), amountCents * 10_000);
+  assert.equal(extras("tax"), taxCents * 10_000);
+  assert.equal(extras("card_fee"), 0, "No card fee line since the fee was folded into prices");
+  assert.equal(txn.amount, charge.amount);
+  assert.equal(ledger("top_up") + extras("tax"), txn.amount * 10_000);
+  passed(
+    `ledger top_up ($${amountCents / 100}) + tax ($${taxCents / 100}) = Stripe balance transaction ($${txn.amount / 100}); Stripe's fee $${txn.fee / 100} recorded nowhere`,
+  );
+  const refundCents = 1_000;
+  await stripe("/refunds", { charge: charge.id, amount: String(refundCents) });
+  const refundedCharge = await stripe(`/charges/${charge.id}`);
+  const refunded = signed({ id: `evt_local_prepay_refund_${workspace}`, type: "charge.refunded", livemode: false, data: { object: refundedCharge } });
+  assert.equal((await rpc("stripe_webhook", refunded)).ok, true);
+  assert.equal((await rpc("stripe_webhook", refunded)).ok, true);
+  const taxBack = Math.floor((refundCents * taxCents) / charge.amount);
+  assert.equal(await account(), (amountCents - (refundCents - taxBack)) * 10_000);
+  assert.equal(extras("tax"), (taxCents - taxBack) * 10_000);
+  assert.equal(ledger("top_up") + extras("tax"), (refundedCharge.amount - refundedCharge.amount_refunded) * 10_000);
+  passed(`partial refund ($${refundCents / 100}, $${taxBack / 100} of it tax) reversed once and in proportion; ledger + tax = what Stripe kept`);
+  await stripe(`/customers/${customer.id}`, undefined, "DELETE");
+  writeFileSync(
+    resolve(dir, "prepay-results.json"),
+    JSON.stringify(
+      {
+        checkedAt: new Date().toISOString(),
+        mode: "sandbox",
+        worker: "local",
+        workspace,
+        session: sessionId,
+        charge: charge.id,
+        amounts: { prepaidCents: amountCents, taxCents, chargedCents: charge.amount, stripeFeeCents: txn.fee, refundCents, refundTaxCents: taxBack },
+        checks,
+        limitations: ["Locally signed delivery, not public webhook transport", "No production deployment"],
+      },
+      null,
+      2,
+    ),
+  );
 } else if (phase === "cleanup") {
   const { customer } = JSON.parse(readFileSync(fixturePath, "utf8"));
   await stripe(`/customers/${customer}`, undefined, "DELETE");

@@ -412,8 +412,8 @@ export default function WorkspaceBilling({ loaderData, actionData }: Route.Compo
               </li>
               <li>Credit from g1t comes off what you owe, the soonest-expiring first.</li>
               <li>
-                Each month closes with an itemised invoice. No card is charged less than {wholeDollars(entitlements?.minChargeMicros ?? 5 * MICROS_PER_DOLLAR)};
-                less carries over.
+                Each month closes with an itemised invoice. Under {wholeDollars(entitlements?.minChargeMicros ?? MICROS_PER_DOLLAR)} owed, your card isn't
+                charged; the amount moves to the next invoice.
               </li>
               <li>
                 Prices exclude tax. Stripe adds tax where it applies, worked out from the billing address you keep on Stripe, and it is its own line on every

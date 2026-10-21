@@ -265,8 +265,7 @@ impl Billing {
             return Ok(settled.ok_or_else(|| "Nothing is owed.".to_owned()));
         }
         // Only a month's close charges no less than the minimum
-        // (`MIN_CHARGE_MICROS`), so a payment's fee is never most of it;
-        // less carries over. A charge because a limit was reached always
+        // (`MIN_CHARGE_MICROS`); less carries over. A charge because a limit was reached always
         // goes through, whatever its size, so a new workspace's limit never
         // strands it.
         if reason == "month" && !crate::limits::worth_charging(owed, self.plans.min_charge_micros) {

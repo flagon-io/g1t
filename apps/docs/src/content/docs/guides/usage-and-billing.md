@@ -742,12 +742,11 @@ fees** on the statement; those stay as they were.
 
 ### The minimum charge
 
-Only the month's close has a minimum: a card is not charged less than
-**$5** then, so a payment's processing cost is never most of what is paid. When a month
-closes owing less, the amount carries over to the next invoice that reaches
-$5, as _Unpaid from earlier_. A charge made because a workspace is at or
-near a limit always goes through, whatever the amount, so work can carry
-on.
+If a month closes with less than **$1** owed, the card isn't charged. The
+amount moves to the next invoice that reaches $1, as _Unpaid from
+earlier_. Only the month's close has this minimum: a charge made because a
+workspace is at or near its spend limit always goes through, whatever the
+amount, so work can carry on.
 
 ## Moving a repository between workspaces
 
