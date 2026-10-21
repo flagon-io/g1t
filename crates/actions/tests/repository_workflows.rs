@@ -474,7 +474,6 @@ fn a_cargo_target_restored_from_an_older_entry_is_pruned_before_it_is_saved() {
             .iter()
             .position(|s| s.id.as_deref() == Some(cache))
             .unwrap();
-        assert!(saves(&job.steps[at]), "{file} {id}");
         let prune = job
             .steps
             .iter()
@@ -485,11 +484,31 @@ fn a_cargo_target_restored_from_an_older_entry_is_pruned_before_it_is_saved() {
             })
             .unwrap_or_else(|| panic!("{file} {id}: no prune"));
         assert!(at < prune, "{file} {id}");
-        assert_eq!(
-            job.steps[prune].condition.as_deref().map(str::trim),
-            Some(format!("${{{{ steps.{cache}.outputs.cache-hit != 'true' }}}}").as_str()),
-            "{file} {id}"
-        );
+        let condition = job.steps[prune].condition.as_deref().map(str::trim).unwrap_or_default();
+        // The cache step saves in its post step, after the prune; or it only
+        // restores, and a save step of the same entry after the prune saves
+        // when it runs.
+        if saves(&job.steps[at]) {
+            assert_eq!(
+                condition,
+                format!("${{{{ steps.{cache}.outputs.cache-hit != 'true' }}}}"),
+                "{file} {id}"
+            );
+        } else {
+            let key = &job.steps[at].raw["with"]["key"];
+            let save = job
+                .steps
+                .iter()
+                .position(|s| saves(s) && &s.raw["with"]["key"] == key)
+                .unwrap_or_else(|| panic!("{file} {id}: nothing saves {key}"));
+            assert!(prune < save, "{file} {id}");
+            assert_eq!(paths(&job.steps[save]), paths(&job.steps[at]), "{file} {id}");
+            assert!(
+                condition.starts_with(&format!("${{{{ steps.{cache}.outputs.cache-hit != 'true' ")),
+                "{file} {id}: {condition}"
+            );
+            assert_eq!(job.steps[save].condition.as_deref().map(str::trim), Some(condition), "{file} {id}");
+        }
     }
     // The CLI's build is made in the builder image, whose Cargo the host
     // cannot ask what it built: so it is never started from an older entry,
@@ -1029,6 +1048,18 @@ fn step_runs(step: &workflow::Step, matrix: Value, status: Status) -> bool {
     expr::condition(step.condition.as_deref().unwrap_or_default(), &scope).unwrap()
 }
 
+/// Whether a step runs, for a job going `status`, with `contexts` (an
+/// object of them, such as `steps`).
+fn runs_with(step: &workflow::Step, contexts: &Value, status: Status) -> bool {
+    let contexts = contexts.as_object().unwrap().clone();
+    let scope = Scope {
+        contexts: &contexts,
+        status,
+        hash_files: None,
+    };
+    expr::condition(step.condition.as_deref().unwrap_or_default(), &scope).unwrap()
+}
+
 #[test]
 fn rust_builds_go_through_sccache_before_cargo_and_report_after() {
     let step = |job: &workflow::Job, run: &str| -> (usize, workflow::Step) {
@@ -1084,10 +1115,11 @@ fn rust_builds_go_through_sccache_before_cargo_and_report_after() {
     let ci = read("ci.yml");
     let rust = ci.jobs.iter().find(|j| j.id == "rust").unwrap();
     let (install_at, _) = step(rust, "bash scripts/sccache.sh install");
-    let (tests_at, _) = step(rust, "cargo test ${{ matrix.crates }} --locked --quiet");
+    let (tests_at, _) = step(rust, "cargo test ${{ steps.affected.outputs.crates }} --locked --quiet");
     let (stats_at, stats) = step(rust, "bash scripts/sccache.sh stats");
     assert!(install_at < tests_at && tests_at < stats_at);
-    assert!(step_runs(&stats, json!({}), Status::Failure));
+    let testing = json!({ "steps": { "affected": { "outputs": { "crates": "-p g1t-kit", "whole": "true" } } } });
+    assert!(runs_with(&stats, &testing, Status::Failure));
     // main's runs keep the caches pull requests restore from: only Rust.
     assert!(ci.trigger("push").unwrap().branches.allows("main"));
     assert!(ci.trigger("pull_request").is_some());
@@ -1336,7 +1368,53 @@ fn ci_tests_every_crate_once_across_its_rust_parts() {
         .unwrap()
         .to_owned();
     assert!(key.contains("${{ matrix.part }}"), "{key}");
-    for run in ["cargo test ${{ matrix.crates }} --locked --quiet", "node scripts/deploy/ci-cache.mjs prune target/debug -- test ${{ matrix.crates }} --locked --no-run"] {
+    // It tests the crates of the part a pull request reaches, and prunes
+    // and saves only a build of all of them.
+    for run in ["cargo test ${{ steps.affected.outputs.crates }} --locked --quiet", "node scripts/deploy/ci-cache.mjs prune target/debug -- test ${{ matrix.crates }} --locked --no-run"] {
         assert!(rust.steps.iter().any(|s| s.run.as_deref() == Some(run)), "{run}");
     }
+}
+
+#[test]
+fn ci_tests_only_the_crates_a_pull_request_reaches() {
+    let ci = read("ci.yml");
+    let rust = ci.jobs.iter().find(|j| j.id == "rust").unwrap();
+    // The check names stay those the rules may require.
+    assert_eq!(rust.raw["name"], json!("Rust (${{ matrix.part }})"));
+    // The test merge commit and its parents, to compare it with the base.
+    let checkout = &rust.steps[0];
+    assert!(checkout.uses.as_deref().is_some_and(|u| u.starts_with("actions/checkout@")));
+    assert_eq!(checkout.raw["with"]["fetch-depth"], json!(2));
+    let affected = &rust.steps[1];
+    assert_eq!(affected.id.as_deref(), Some("affected"));
+    assert_eq!(
+        affected.run.as_deref(),
+        Some("node scripts/deploy/ci-affected.mjs ${{ matrix.crates }}")
+    );
+    assert!(affected.condition.is_none());
+    let outputs = |crates: &str, whole: bool| {
+        json!({ "steps": {
+            "affected": { "outputs": { "crates": crates, "whole": whole.to_string() } },
+            "test-build": { "outputs": { "cache-hit": "false" } },
+        } })
+    };
+    let (all, some, none) = (outputs("-p g1t-kit -p g1t", true), outputs("-p g1t", false), outputs("", false));
+    for step in &rust.steps[2..] {
+        let name = step.name.clone().unwrap_or_default();
+        // A part with nothing to test does nothing more, and passes.
+        assert!(!runs_with(step, &none, Status::Success), "{name}");
+        assert!(!runs_with(step, &none, Status::Failure), "{name}");
+        assert!(runs_with(step, &all, Status::Success), "{name}");
+        // Only a build of every crate of the part is pruned and saved.
+        let keeps = name == "Only this build's files are saved" || saves(step) && step.id.as_deref() != Some("test-build") && step.raw["with"]["key"].as_str().is_some_and(|k| k.starts_with("cargo-test-"));
+        assert_eq!(runs_with(step, &some, Status::Success), !keeps, "{name}");
+    }
+    // The script is the build's: a change to it, as to this workflow,
+    // tests every crate (scripts/deploy/ci-affected.mjs EVERYTHING).
+    let script = std::fs::read_to_string(workflows_dir().join("../../scripts/deploy/ci-affected.mjs")).unwrap();
+    for path in ["\"Cargo.lock\"", "\".g1t/workflows/ci.yml\"", "\"scripts/sccache.sh\"", "\"scripts/deploy/ci-affected.mjs\""] {
+        assert!(script.contains(path), "{path}");
+    }
+    // Anything but a pull request tests every crate.
+    assert!(script.contains("process.env.GITHUB_EVENT_NAME !== \"pull_request\""));
 }
