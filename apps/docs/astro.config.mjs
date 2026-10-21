@@ -181,6 +181,7 @@ export default defineConfig({
             { label: "Closing work items", slug: "work/closing" },
             { label: "Labels", slug: "work/labels" },
             { label: "Milestones", slug: "work/milestones" },
+            { label: "Projects", slug: "work/projects" },
             { label: "Sessions", slug: "work/sessions" },
             { label: "Session titles", slug: "work/session-titles" },
             { label: "Claims and dependencies", slug: "work/claims-and-dependencies" },
