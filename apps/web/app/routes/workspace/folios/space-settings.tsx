@@ -236,7 +236,7 @@ export default function SpaceSettings({ loaderData, params }: Route.ComponentPro
             <AlertDialogAction
               onClick={async () => {
                 const done = await settings.send("delete_space", { space_id: space.id });
-                if (done.ok) navigate(`/${slug}/-/artifacts`);
+                if (done.ok) navigate(`/${slug}/-/library/artifacts`);
               }}
             >
               Delete space
@@ -255,7 +255,7 @@ export default function SpaceSettings({ loaderData, params }: Route.ComponentPro
             <AlertDialogAction
               onClick={async () => {
                 const done = await settings.send("update_space", { space_id: space.id, space_change: { archived: true } });
-                if (done.ok) navigate(`/${slug}/-/artifacts`);
+                if (done.ok) navigate(`/${slug}/-/library/artifacts`);
               }}
             >
               Archive

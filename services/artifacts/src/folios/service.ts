@@ -318,7 +318,7 @@ export class Folios {
 
   ref(slug: string, row: Pick<FolioRow, "id" | "kind" | "title" | "icon">): FolioRef {
     const s = slugOf(row.title, row.id);
-    return { id: row.id, kind: row.kind, title: row.title, icon: row.icon, slug: s, path: `/${slug}/-/artifacts/${s}` };
+    return { id: row.id, kind: row.kind, title: row.title, icon: row.icon, slug: s, path: `/${slug}/-/library/artifacts/${s}` };
   }
 
   /** Folios as lists and pages show them, for the viewer. Rows without a role are left out. */

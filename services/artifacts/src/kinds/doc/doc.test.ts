@@ -65,6 +65,6 @@ test("a doc restores from an old state and from old text", () => {
 
 test("links to other folios and preview lines", () => {
   const a = "fol_01jb2k7x9hfq0b3zj0f5s2m8ra";
-  assert.deepEqual(linkedFolioIds(`see /acme/-/artifacts/plan-${a} and ${a}`), [a]);
+  assert.deepEqual(linkedFolioIds(`see /acme/-/library/artifacts/plan-${a} and ${a}`), [a]);
   assert.deepEqual(previewLines("# A\n\n**B** text\n\n```\ncode\n```\n", 2), ["A", "B text"]);
 });

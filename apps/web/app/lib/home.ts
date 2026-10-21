@@ -503,7 +503,7 @@ export function digestColumn(input: DigestInput): DigestColumn {
         const parts: string[] = [];
         if (made > 0) parts.push(`${what(made)} created`);
         if (edited > 0) parts.push(`${what(edited)} edited`);
-        lines.push({ key: "docs", text: parts.join(", "), count: made + edits.length, to: `/${slug}/-/artifacts` });
+        lines.push({ key: "docs", text: parts.join(", "), count: made + edits.length, to: `/${slug}/-/library/artifacts` });
       }
     }
   }

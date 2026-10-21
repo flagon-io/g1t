@@ -16,9 +16,10 @@ const NAME = /^[a-z0-9_-]+$/;
 
 /**
  * Names the site's chat URLs use beside channel names
- * (`/<workspace>/-/chat/<name>`), so no channel can take them.
+ * (`/<workspace>/-/chat/<name>`), so no channel can take them: `sessions`
+ * is Chat's sessions page.
  */
-export const RESERVED = new Set(["dm", "browse", "live", "api", "new"]);
+export const RESERVED = new Set(["dm", "browse", "live", "api", "new", "sessions"]);
 
 /**
  * A channel name as it is kept: lowercase, without a leading `#`, spaces

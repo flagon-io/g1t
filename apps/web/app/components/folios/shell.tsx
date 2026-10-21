@@ -51,7 +51,7 @@ export function FolioHeader({
   const [favorite, setFavorite] = useState(folio.favorite);
   const others = presence.filter((p) => !p.me);
   const crumbs = [
-    folio.space ? { label: folio.space.name, to: spacePath(slug, folio.space.slug) } : { label: "Private", to: `/${slug}/-/artifacts?space=private` },
+    folio.space ? { label: folio.space.name, to: spacePath(slug, folio.space.slug) } : { label: "Private", to: `/${slug}/-/library/artifacts?space=private` },
     ...breadcrumbs.map((b) => ({ label: `${b.icon ? `${b.icon} ` : ""}${b.title || "Untitled"}`, to: b.path })),
     {
       label: (

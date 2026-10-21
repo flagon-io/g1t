@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useState } from "react";
-import { Await, data } from "react-router";
+import { Await, data, redirect } from "react-router";
 
 import { type WorkspaceSession, hasCodeAccess } from "@g1t/contracts";
 
@@ -78,7 +78,7 @@ import { page } from "../../lib/meta";
 import { inbox, work } from "../../lib/services.server";
 import { requireUser, roleIn } from "../../lib/session.server";
 import { canItem } from "../../lib/work-access";
-import { homePagePath } from "../../lib/workspace-nav";
+import { isPhone } from "../../lib/phone";
 import { Boundary } from "../../components/boundary";
 
 export function meta({ params, ...args }: Route.MetaArgs) {
@@ -121,6 +121,12 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   const now = Date.now();
   const tz = readCookie(request.headers.get("cookie"), "g1t_tz");
   const url = new URL(request.url);
+  // On a computer Home is Chat's landing (routes/workspace/chat/index.tsx): its own address leads there.
+  if (url.pathname.toLowerCase().endsWith(`/${slug}/-/home`) && !isPhone(request.headers)) {
+    url.searchParams.delete("_routes");
+    const query = url.searchParams.toString();
+    throw redirect(`/${slug}/-/chat${query ? `?${query}` : ""}`);
+  }
   const windowKey = parseWindow(url.searchParams.get("window"));
   // Getting started, for an owner: streamed, and opened by itself until dismissed (`?setup` opens it anyway).
   const setupAsked = url.searchParams.has("setup");
@@ -337,7 +343,7 @@ function useMarkSeen(slug: string, loadedAt: number) {
     const mark = () => {
       if (done) return;
       done = true;
-      void fetch(`${homePagePath(slug)}/seen`, {
+      void fetch(`/${slug}/-/home/seen`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ at: loadedAt }),

@@ -195,23 +195,38 @@ export default [
       route("-/chat/person/:username", "routes/workspace/chat/person.ts"),
       // A work item or pull request's card, over its chip in chat and g1t's answers.
       route("-/chat/ref", "routes/workspace/chat/ref.ts"),
+      // Chat's sessions: what agents are doing, beside the people you talk to.
+      // Ahead of the channels, and `sessions` is no channel's name.
+      route("-/chat/sessions", "routes/workspace/work/sessions/list.tsx"),
+      route("-/chat/sessions/:id", "routes/workspace/work/sessions/session.tsx"),
       route("-/chat", "routes/workspace/chat/layout.tsx", [
         index("routes/workspace/chat/index.tsx"),
         route("browse", "routes/workspace/chat/browse.tsx"),
         route("dm/:id", "routes/workspace/chat/channel.tsx", { id: "routes/workspace/chat/dm" }),
         route(":channel", "routes/workspace/chat/channel.tsx"),
       ]),
-      // Artifacts mode (code says "folio"): what its
+      // The Library, and its artifacts (code says "folio"): what their
       // pages call as they run (an artifact's live socket, JSON, comments,
       // uploads, export), then Home, making one, templates, the trash, the
       // spaces, and each artifact by its address. Addresses are flat and end
       // in the id, so renaming or moving one keeps links working.
-      route("-/artifacts/live", "routes/workspace/folios/live.ts"),
-      route("-/artifacts/api", "routes/workspace/folios/api.ts"),
-      route("-/artifacts/threads/:folio/*", "routes/workspace/folios/threads.ts"),
-      route("-/artifacts/upload", "routes/workspace/folios/upload.ts"),
-      route("-/artifacts/export", "routes/workspace/folios/export.ts"),
-      route("-/artifacts", "routes/workspace/folios/layout.tsx", [
+      route("-/library/artifacts/live", "routes/workspace/folios/live.ts"),
+      route("-/library/artifacts/api", "routes/workspace/folios/api.ts"),
+      route("-/library/artifacts/threads/:folio/*", "routes/workspace/folios/threads.ts"),
+      route("-/library/artifacts/upload", "routes/workspace/folios/upload.ts"),
+      route("-/library/artifacts/export", "routes/workspace/folios/export.ts"),
+      // Artifacts were at `-/artifacts` before the Library: a page opened
+      // then still calls these there, and every other old address, and
+      // `-/library` itself, goes on to its place in the Library.
+      route("-/artifacts/live", "routes/workspace/folios/live.ts", { id: "routes/workspace/folios/live-before-library" }),
+      route("-/artifacts/api", "routes/workspace/folios/api.ts", { id: "routes/workspace/folios/api-before-library" }),
+      route("-/artifacts/threads/:folio/*", "routes/workspace/folios/threads.ts", { id: "routes/workspace/folios/threads-before-library" }),
+      route("-/artifacts/upload", "routes/workspace/folios/upload.ts", { id: "routes/workspace/folios/upload-before-library" }),
+      route("-/artifacts/export", "routes/workspace/folios/export.ts", { id: "routes/workspace/folios/export-before-library" }),
+      route("-/artifacts/*", "routes/workspace/folios/moved.ts", { id: "routes/workspace/folios/moved-pages" }),
+      route("-/artifacts", "routes/workspace/folios/moved.ts", { id: "routes/workspace/folios/moved-home" }),
+      route("-/library", "routes/workspace/folios/moved.ts", { id: "routes/workspace/folios/library" }),
+      route("-/library/artifacts", "routes/workspace/folios/layout.tsx", [
         index("routes/workspace/folios/home.tsx"),
         route("new/:kind", "routes/workspace/folios/new.tsx"),
         route("templates", "routes/workspace/folios/templates.tsx"),
@@ -246,8 +261,9 @@ export default [
       route("-/work/triage", "routes/workspace/work/triage.tsx"),
       route("-/work/all", "routes/workspace/work/list.tsx"),
       route("-/work/board", "routes/workspace/work/board.tsx"),
-      route("-/work/sessions", "routes/workspace/work/sessions/list.tsx"),
-      route("-/work/sessions/:id", "routes/workspace/work/sessions/session.tsx"),
+      // Sessions were Work's: their old addresses lead to Chat, where they are now.
+      route("-/work/sessions", "routes/workspace/work/sessions/moved.ts", { id: "routes/workspace/work/sessions/moved-list" }),
+      route("-/work/sessions/:id", "routes/workspace/work/sessions/moved.ts", { id: "routes/workspace/work/sessions/moved-session" }),
       route("-/work/new", "routes/workspace/work/new.tsx"),
       route("-/work/labels", "routes/workspace/work/labels.tsx"),
       route("-/work/milestones", "routes/workspace/work/milestones.tsx"),

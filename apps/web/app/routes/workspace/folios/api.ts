@@ -229,7 +229,7 @@ async function embed(slug: string, address: string, viewer: User, origin: string
   }
   const parts = path.split("/").filter(Boolean).map(decodeURIComponent);
   const missing = { ok: false as const, error: { code: "not_found" as const, message: "Not found." } };
-  // /<owner>/-/artifacts/<slug>-<id>
+  // /<owner>/-/library/artifacts/<slug>-<id>
   if (parts[1] === "-" && parts[2] === "artifacts" && parts[3]) {
     if (parts[0]!.toLowerCase() !== slug) return missing;
     const id = folioIdFrom(parts[3]);
@@ -241,6 +241,10 @@ async function embed(slug: string, address: string, viewer: User, origin: string
       ok: true,
       value: { kind: "page", title: `${f.icon ? `${f.icon} ` : ""}${f.title || "Untitled"}`, subtitle: f.space?.name ?? "Private", state: null, href: f.path },
     };
+  }
+  // /<owner>/-/chat/sessions/<id>: a session's page, not a channel.
+  if (parts[1] === "-" && parts[2] === "chat" && parts[3] === "sessions") {
+    return { ok: true, value: { kind: "page", title: parts[4] ? "A session" : "Sessions", subtitle: "Chat", state: null, href: path } };
   }
   // /<owner>/-/chat/<channel>
   if (parts[1] === "-" && parts[2] === "chat" && parts[3]) {

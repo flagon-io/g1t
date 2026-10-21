@@ -220,7 +220,7 @@ export function ShareDialog({
                       <>
                         From{" "}
                         <Link
-                          to={from.kind === "folio" ? from.path : `/${slug}/-/artifacts`}
+                          to={from.kind === "folio" ? from.path : `/${slug}/-/library/artifacts`}
                           onClick={() => onOpenChange(false)}
                           className="text-muted hover:text-fg hover:underline"
                         >

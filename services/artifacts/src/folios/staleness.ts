@@ -115,7 +115,7 @@ async function tellOf(env: FolioStaleEnv, change: Change, ids: string[], hits: M
   for (const row of rows) {
     const slug = slugs[row.workspace_id];
     if (!slug) continue;
-    const href = `/${slug}/-/artifacts/${slugOf(row.title, row.id)}`;
+    const href = `/${slug}/-/library/artifacts/${slugOf(row.title, row.id)}`;
     const paths = hits.get(row.id) ?? [];
     const work: Promise<unknown>[] = [];
     if (notify && row.owner.startsWith("user:")) {

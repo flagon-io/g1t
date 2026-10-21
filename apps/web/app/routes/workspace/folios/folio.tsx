@@ -43,7 +43,7 @@ export const links: Route.LinksFunction = () =>
   editorFiles().map((href) => ({ rel: "modulepreload", href, "data-doc-editor": "" }) as unknown as HtmlLinkDescriptor);
 
 /** The live socket's path in this workspace (lib/socket-ticket.ts `socketPath`). */
-const livePath = (slug: string) => `/${slug}/-/artifacts/live`;
+const livePath = (slug: string) => `/${slug}/-/library/artifacts/live`;
 
 type Loaded = { page: FolioPage; ticket: OfferedTicket | null } | { denied: string };
 
@@ -134,7 +134,7 @@ function Opened({ slug, page, ticket }: { slug: string; page: FolioPage; ticket:
         status={status}
         comments={folio.kind === "doc" ? { open: showComments, onToggle: () => setShowComments(!showComments) } : null}
         onError={setError}
-        onTrashed={() => navigate(`/${slug}/-/artifacts`)}
+        onTrashed={() => navigate(`/${slug}/-/library/artifacts`)}
       />
       {error && (
         <div className="mx-auto mt-4 max-w-3xl">
@@ -214,7 +214,7 @@ function NeedAccess({ slug, id }: { slug: string; id: string }) {
           {error && <ErrorText>{error}</ErrorText>}
         </form>
       )}
-      <Link to={`/${slug}/-/artifacts`} className="mt-6 text-xs text-muted hover:text-fg">
+      <Link to={`/${slug}/-/library/artifacts`} className="mt-6 text-xs text-muted hover:text-fg">
         Back to Artifacts
       </Link>
     </div>

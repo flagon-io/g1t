@@ -86,8 +86,8 @@ test("the rail's mode follows the address", async () => {
   // Agents mode and Memory are gone: their old addresses fall to Code's not-found page.
   assert.equal(modeOf("/acme/-/agents", "acme"), "code");
   assert.equal(modeOf("/acme/-/memory", "acme"), "code");
-  assert.equal(modeOf("/acme/-/artifacts", "acme"), "artifacts");
-  assert.equal(modeOf("/acme/-/artifacts/spaces/general", "acme"), "artifacts");
+  assert.equal(modeOf("/acme/-/library/artifacts", "acme"), "artifacts");
+  assert.equal(modeOf("/acme/-/library/artifacts/spaces/general", "acme"), "artifacts");
   assert.equal(modeOf("/acme/-/routines", "acme"), "routines");
   // Docs mode is gone: its old addresses are nobody's mode, so they fall to Code's not-found page.
   assert.equal(modeOf("/acme/-/docs", "acme"), "code");
@@ -117,7 +117,7 @@ test("the rail's mode follows the address", async () => {
   assert.equal(modeHome("apps", "acme"), "/acme/-/apps");
   assert.equal(modeHome("code", "acme"), "/acme/-/overview");
   assert.equal(modeHome("workspace", "acme"), "/acme/-/workspace");
-  assert.equal(homePath("acme"), "/acme/-/home");
+  assert.equal(homePath("acme"), "/acme/-/chat");
   assert.equal(homePath("acme", "?tab=landed&_routes=x"), "/acme/-/overview?tab=landed");
 });
 
@@ -150,9 +150,9 @@ test("Workspace mode's sidebar knows which group and page an address is", async 
 test("a member without Code access is sent around Code's pages", async () => {
   const { codeGate } = await import("./workspace-nav.ts");
   const none = ["acme"];
-  assert.equal(codeGate("/", "", none, "acme"), "/acme/-/home");
+  assert.equal(codeGate("/", "", none, "acme"), "/acme/-/chat");
   assert.equal(codeGate("/", "", none, "other"), null);
-  assert.equal(codeGate("/acme", "", none, "acme"), "/acme/-/home");
+  assert.equal(codeGate("/acme", "", none, "acme"), "/acme/-/chat");
   assert.equal(codeGate("/acme/web/pull/3", "?x=1", none, "acme"), "/acme/-/code-access?from=%2Facme%2Fweb%2Fpull%2F3%3Fx%3D1");
   assert.equal(codeGate("/acme/-/projects", "", none, "acme"), "/acme/-/code-access?from=%2Facme%2F-%2Fprojects");
   assert.equal(codeGate("/acme/-/chat/general", "", none, "acme"), null);
@@ -183,6 +183,11 @@ test("Work is a mode of its own, after Home", async () => {
   // Sessions are Work's: its list and each session light Work.
   assert.equal(modeOf("/acme/-/work/sessions", "acme"), "work");
   assert.equal(modeOf("/acme/-/work/sessions/ses_1.data", "acme"), "work");
+  // Sessions are Chat's now, beside the people you talk to.
+  assert.equal(modeOf("/acme/-/chat/sessions", "acme"), "chat");
+  assert.equal(modeOf("/acme/-/chat/sessions/ses_1", "acme"), "chat");
+  assert.equal(modeOf("/acme/-/library/artifacts", "acme"), "artifacts");
+  assert.equal(modeOf("/acme/-/library", "acme"), "artifacts");
   // Their old address is no page of its own any more, so it falls to Code's not-found page.
   assert.equal(modeOf("/acme/-/sessions", "acme"), "code");
   assert.equal(modeHome("work", "acme"), "/acme/-/work");

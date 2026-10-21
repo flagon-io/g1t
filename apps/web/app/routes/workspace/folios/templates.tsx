@@ -37,13 +37,13 @@ export default function FolioTemplates({ loaderData, params }: Route.ComponentPr
   const navigation = useNavigation();
   // The template an artifact is being started from, while it is.
   const starting =
-    navigation.state !== "idle" && navigation.formAction?.includes("/-/artifacts/new/") ? String(navigation.formData?.get("template") ?? "") : null;
+    navigation.state !== "idle" && navigation.formAction?.includes("/-/library/artifacts/new/") ? String(navigation.formData?.get("template") ?? "") : null;
   const all = (loaderData.templates ?? []).filter((t) => !kind || t.kind === kind);
   const builtin = all.filter((t) => t.builtin);
   const own = all.filter((t) => !t.builtin);
   const startButton = (t: FolioTemplate) =>
     FOLIO_KIND_UI[t.kind].ready ? (
-      <Form method="post" action={`/${slug}/-/artifacts/new/${t.kind}`}>
+      <Form method="post" action={`/${slug}/-/library/artifacts/new/${t.kind}`}>
         <input type="hidden" name="template" value={t.id} />
         {space !== "private" && <input type="hidden" name="space" value={space} />}
         <Button

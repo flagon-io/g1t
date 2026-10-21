@@ -1,9 +1,9 @@
 import { useSidebarLocation } from "../lib/use-sidebar-location";
-import { Check, ChevronDown, CircleUserRound, Compass, LayoutGrid, Plus, Settings } from "lucide-react";
+import { Check, ChevronDown, Compass, LayoutGrid, Plus } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Link } from "react-router";
 
-import { type Membership, type User, hasCodeAccess, shownUsername } from "@g1t/contracts";
+import { type Membership, type User, hasCodeAccess } from "@g1t/contracts";
 
 import { AppsLauncher, appIcon, pinnedApp, useAppPins } from "./apps";
 import { Mark } from "./logo";
@@ -45,7 +45,7 @@ function displayName(membership: Membership): string {
 /**
  * The workspace you are in and the way to another: its avatar, its name
  * and a chevron, opening the workspace itself, its people and settings,
- * your workspaces, a new one, and your own account. `bar` sits in the app
+ * your workspaces and a new one; your own account is its own menu. `bar` sits in the app
  * bar after g1t's mark, lit while you are in People or Workspace; `row`
  * heads the drawer; `compact` starts a phone's top bar.
  */
@@ -132,21 +132,7 @@ export function WorkspaceSwitcher({
             New workspace
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuSeparator className="my-1.5" />
-        <DropdownMenuLabel>Personal account</DropdownMenuLabel>
-        <DropdownMenuItem asChild>
-          <Link to={`/u/${user.username}`}>
-            <CircleUserRound />
-            <span className="grow">Your profile</span>
-            <span className="font-mono text-xs text-faint">@{shownUsername(user)}</span>
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link to="/settings">
-            <Settings />
-            Your settings
-          </Link>
-        </DropdownMenuItem>
+        {/* Only the workspace and switching between them: your own profile and settings are your account menu's, at the bar's other end. */}
       </DropdownMenuContent>
     </DropdownMenu>
   );

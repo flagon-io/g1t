@@ -5,7 +5,7 @@
  * Kept by the artifacts service (`services/artifacts`).
  *
  * Naming: code says "folio", people see "artifact" (UI text, URLs
- * `/<ws>/-/artifacts/...`, the `artifact` MCP tool, REST paths, the
+ * `/<ws>/-/library/artifacts/...`, the `artifact` MCP tool, REST paths, the
  * `artifacts:*` scopes). The Cloudflare Artifacts git store and workflow
  * run artifacts are something else and keep their names.
  *
@@ -149,7 +149,7 @@ export function folioSlug(title: string, id: string): string {
 
 /** A folio's address. Flat: moving it between spaces and Private never breaks a link. */
 export function folioPath(workspace: string, title: string, id: string): string {
-  return `/${workspace}/-/artifacts/${folioSlug(title, id)}`;
+  return `/${workspace}/-/library/artifacts/${folioSlug(title, id)}`;
 }
 
 /** The folio id at the end of an address segment, or null. */
@@ -189,7 +189,7 @@ export type FolioRef = {
   icon: string | null;
   /** `<title-slug>-<id>`. */
   slug: string;
-  /** `/<ws>/-/artifacts/<slug>`. */
+  /** `/<ws>/-/library/artifacts/<slug>`. */
   path: string;
 };
 

@@ -48,11 +48,11 @@ test("agrees with the Rust validators on every shared case", () => {
 
 test("addresses are flat, end in the id and survive renames", () => {
   const id = "fol_01jb2k7x9hfq0b3zj0f5s2m8ra";
-  assert.equal(folioPath("acme", "Q4 roadmap: pricing", id), `/acme/-/artifacts/q4-roadmap-pricing-${id}`);
+  assert.equal(folioPath("acme", "Q4 roadmap: pricing", id), `/acme/-/library/artifacts/q4-roadmap-pricing-${id}`);
   assert.equal(folioSlug("", id), id);
   assert.equal(folioSlug("Café ✨ notes", id), `cafe-notes-${id}`);
   assert.equal(folioIdFrom(folioSlug("Anything at all", id)), id);
-  assert.deepEqual(linkedFolioIds(`see /acme/-/artifacts/x-${id} and ${id}`), [id]);
+  assert.deepEqual(linkedFolioIds(`see /acme/-/library/artifacts/x-${id} and ${id}`), [id]);
   for (const segment of FOLIO_ROUTE_SEGMENTS) assert.equal(folioIdFrom(segment), null, segment);
 });
 

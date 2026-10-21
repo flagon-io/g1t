@@ -63,17 +63,27 @@ export function repoWorkPath(workspace: string, repo: string): string {
   return `${workPath(workspace, "all")}?repo=${encodeURIComponent(repo)}`;
 }
 
-/** Work → Sessions: what is cooking in the workspace, with filters (`?repo=web&person=ana`). */
+/**
+ * Chat → Sessions: what agents are doing in the workspace, with filters
+ * (`?repo=web&person=ana`). Sessions are Chat's, beside the people you
+ * talk to; they were Work's before (`-/work/sessions`, which leads here).
+ */
 export function sessionsPath(workspace: string, filters: Record<string, string | null | undefined> = {}): string {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);
   const text = query.toString();
-  return `${workPath(workspace, "sessions")}${text ? `?${text}` : ""}`;
+  return `/${workspace.toLowerCase()}/-/chat/sessions${text ? `?${text}` : ""}`;
 }
 
 /** One session's page, in whichever of the workspace's repositories it runs. */
 export function sessionPath(workspace: string, id: string): string {
-  return `${workPath(workspace, "sessions")}/${encodeURIComponent(id)}`;
+  return `/${workspace.toLowerCase()}/-/chat/sessions/${encodeURIComponent(id)}`;
+}
+
+/** Where a session's address from when they were Work's is now: `/acme/-/work/sessions/ses_1` is `/acme/-/chat/sessions/ses_1`. */
+export function movedSessionsPath(pathname: string, search = ""): string | null {
+  const match = /^\/([^/]+)\/-\/work\/sessions(\/[^/]+)?\/?$/.exec(pathname);
+  return match ? `/${match[1]!.toLowerCase()}/-/chat/sessions${match[2] ?? ""}${search}` : null;
 }
 
 /** A new work item, started from a repository (its origin) when `repo` is given, and as a sub-item of `parent`. */

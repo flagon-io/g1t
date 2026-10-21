@@ -120,12 +120,12 @@ impl FoliosOp {
         match self {
             FoliosOp::List => "List the artifacts (docs, slides, designs and dashboards) in a workspace that you can open, most recently edited first: each with its id (fol_…), kind, title, icon, space (null in its owner's Private), parent_id, owner, your role (viewer_role: view, comment, edit or manage), general_access, private, excerpt, edited_at and html_url. tab is all (the default), yours (you own them) or shared (shared with you). Narrow with kind, space (its slug or id), project (owner/name), q (words or meaning) and limit (at most 100); next_cursor pages on. With state trashed, the artifacts in the trash you can restore instead. Not workflow runs' artifacts.",
             FoliosOp::Search => "Search the artifacts in a workspace that you can open, by words and by meaning: each hit is the artifact with the passage that matched (snippet, and the heading it is under), its space_name and edited_at. Narrow with kind, space, project and limit (at most 50). Only what you can read now is found.",
-            FoliosOp::Get => "Get one artifact by its id (fol_…) or its address (`/acme/-/artifacts/q4-roadmap-fol_…`): its kind, title, space, parent_id, owner, who made it, your role, general_access, whether it is private, how many it is shared with, its excerpt, whether it may be out of date with the code it cites (stale), and html_url. Not found when you cannot open it, as for one that does not exist. Opening a link-shared artifact this way counts as following its link.",
+            FoliosOp::Get => "Get one artifact by its id (fol_…) or its address (`/acme/-/library/artifacts/q4-roadmap-fol_…`): its kind, title, space, parent_id, owner, who made it, your role, general_access, whether it is private, how many it is shared with, its excerpt, whether it may be out of date with the code it cites (stale), and html_url. Not found when you cannot open it, as for one that does not exist. Opening a link-shared artifact this way counts as following its link.",
             FoliosOp::GetContent => "Get an artifact's content in the form agents read and write: for a doc, its Markdown in content, and its top-level blocks (id, type, level and Markdown) to target an edit at; with can (read, suggest, edit): what you may do to it. Slides, designs and dashboards answer that they are not here yet.",
             FoliosOp::ListVersions => "List an artifact's saved versions, newest first: each with its id (ver_…), created_at, kind (created, edit, agent, suggestion, proposal or restore), note, and the people and agents who made it.",
             FoliosOp::GetAccess => "Who can open an artifact and how: its owner, each person, agent and team it is shared with (principal, role, and inherited_from when the access comes from a doc it is under), general_access (none, workspace or link) with general_role, whether it follows its space or parent (inherit), agent_mode, and whether you may change it (can_share).",
             FoliosOp::ListTemplates => "The templates an artifact can start from: the built-in ones and those saved in the workspace, each with its id, kind, name, description and body (Markdown, or a JSON spec). Narrow with kind.",
-            FoliosOp::ListSpaces => "The spaces in your Artifacts sidebar: the General space, open spaces you joined, your teams' spaces and Members-only spaces you are in. Each with its id, slug, name, kind (workspace for an open space, team or private), your role in it (viewer_role) and how many artifacts it holds you can open.",
+            FoliosOp::ListSpaces => "The spaces in your Library sidebar: the General space, open spaces you joined, your teams' spaces and Members-only spaces you are in. Each with its id, slug, name, kind (workspace for an open space, team or private), your role in it (viewer_role) and how many artifacts it holds you can open.",
             FoliosOp::QueryDataset => "Run a dataset query (work items, pull requests, workflow runs, deployments, spend or agent sessions) as you, over what you can read: rows of the measure, grouped and filtered as asked, with truncated when more rows matched, and partial true when some of it was left out because you cannot read it. Answers that dashboards are not here yet until they ship.",
             FoliosOp::Create => "Make an artifact. kind is doc (the default); slides, designs and dashboards answer that they are not here yet. It lands in space (a slug or id you can edit in), under parent_id (a doc you can edit), or, with neither, in your Private, where only you can open it. Start it from markdown, or from a template (template_id), with an optional title and icon. You own it. Returns the artifact.",
             FoliosOp::Update => "Rename an artifact (title), change its icon (null clears it), or move it: to space (a slug or id; `private` for your Private, yours only), under parent_id (a doc), before before_id among its new siblings. Moving changes who can open it when it follows its space or parent. Takes the edit role on it, and on where it goes. Returns the artifact.",
@@ -157,7 +157,7 @@ impl FoliosOp {
 
     pub fn input(self) -> Value {
         let workspace = json!({ "type": "string", "description": "The workspace's slug, e.g. \"acme\"." });
-        let artifact_id = json!({ "type": "string", "description": "The artifact's id (fol_…), or its address: /acme/-/artifacts/q4-roadmap-fol_…" });
+        let artifact_id = json!({ "type": "string", "description": "The artifact's id (fol_…), or its address: /acme/-/library/artifacts/q4-roadmap-fol_…" });
         let kind = json!({ "type": "string", "enum": ["doc", "slides", "design", "dashboard"], "description": "doc, slides, design or dashboard." });
         let space = json!({ "type": "string", "description": "A space: its slug (general) or id (spc_…)." });
         let project = json!({ "type": "string", "description": "Only artifacts about this repository: owner/name." });
@@ -879,7 +879,7 @@ mod tests {
             "title": "Q4 roadmap",
             "icon": null,
             "slug": "q4-roadmap-fol_0123456789abcdefghjkmnpqrs",
-            "path": "/acme/-/artifacts/q4-roadmap-fol_0123456789abcdefghjkmnpqrs",
+            "path": "/acme/-/library/artifacts/q4-roadmap-fol_0123456789abcdefghjkmnpqrs",
             "workspace_id": "ws_1",
             "space": { "id": "spc_1", "slug": "general", "name": "General", "kind": "workspace" },
             "parent_id": null,
@@ -911,7 +911,7 @@ mod tests {
     #[test]
     fn an_artifact_is_snake_case_with_its_page() {
         let shown = folio_json(&folio(), "https://g1t.sh/");
-        assert_eq!(shown["html_url"], "https://g1t.sh/acme/-/artifacts/q4-roadmap-fol_0123456789abcdefghjkmnpqrs");
+        assert_eq!(shown["html_url"], "https://g1t.sh/acme/-/library/artifacts/q4-roadmap-fol_0123456789abcdefghjkmnpqrs");
         assert_eq!(shown["owner"], json!({ "type": "user", "id": "usr_1", "username": "ana", "display_name": "Ana" }));
         assert_eq!(shown["created_by"]["type"], "agent");
         assert_eq!(shown["edited_by"], Value::Null);
@@ -925,8 +925,8 @@ mod tests {
         let id = "fol_0123456789abcdefghjkmnpqrs";
         assert_eq!(artifact_id(id).as_deref(), Some(id));
         assert_eq!(artifact_id("q4-roadmap-fol_0123456789abcdefghjkmnpqrs").as_deref(), Some(id));
-        assert_eq!(artifact_id("https://g1t.sh/acme/-/artifacts/q4-roadmap-fol_0123456789abcdefghjkmnpqrs?x=1#h").as_deref(), Some(id));
-        assert_eq!(artifact_id("/acme/-/artifacts/q4-roadmap-fol_0123456789abcdefghjkmnpqrs/").as_deref(), Some(id));
+        assert_eq!(artifact_id("https://g1t.sh/acme/-/library/artifacts/q4-roadmap-fol_0123456789abcdefghjkmnpqrs?x=1#h").as_deref(), Some(id));
+        assert_eq!(artifact_id("/acme/-/library/artifacts/q4-roadmap-fol_0123456789abcdefghjkmnpqrs/").as_deref(), Some(id));
         assert_eq!(artifact_id("q4-roadmap"), None);
         assert_eq!(artifact_id("../fol_x"), None);
     }
@@ -1006,7 +1006,7 @@ mod tests {
             "folio_id": "fol_1",
             "owner": { "kind": "user", "id": "usr_1", "name": "ana", "display_name": "Ana" },
             "rows": [
-                { "principal": "team:design", "profile": { "kind": "team", "id": "design", "name": "design", "display_name": "@acme/design" }, "role": "edit", "source": { "kind": "folio", "id": "fol_0", "title": "Plans", "path": "/acme/-/artifacts/plans-fol_0" } },
+                { "principal": "team:design", "profile": { "kind": "team", "id": "design", "name": "design", "display_name": "@acme/design" }, "role": "edit", "source": { "kind": "folio", "id": "fol_0", "title": "Plans", "path": "/acme/-/library/artifacts/plans-fol_0" } },
                 { "principal": "user:usr_2", "profile": { "kind": "user", "id": "usr_2", "name": "bo", "display_name": "Bo" }, "role": "view", "source": { "kind": "grant" } },
             ],
             "general_access": "none",
@@ -1023,12 +1023,12 @@ mod tests {
         assert_eq!(access["inherited_from"]["type"], "artifact");
         assert!(access.get("public_link").is_none());
         let content = content_json(
-            &json!({ "folio": { "id": "fol_1", "kind": "doc", "title": "T", "icon": null, "slug": "t-fol_1", "path": "/acme/-/artifacts/t-fol_1", "edited_at": "2026-10-02T00:00:00.000Z" }, "space": null, "content": "# T", "blocks": [{ "id": "b1", "type": "heading", "level": 1, "markdown": "# T" }], "can": { "read": true, "suggest": true, "edit": true }, "audience_can_read": true }),
+            &json!({ "folio": { "id": "fol_1", "kind": "doc", "title": "T", "icon": null, "slug": "t-fol_1", "path": "/acme/-/library/artifacts/t-fol_1", "edited_at": "2026-10-02T00:00:00.000Z" }, "space": null, "content": "# T", "blocks": [{ "id": "b1", "type": "heading", "level": 1, "markdown": "# T" }], "can": { "read": true, "suggest": true, "edit": true }, "audience_can_read": true }),
             site,
         );
-        assert_eq!(content["artifact"]["html_url"], "https://g1t.sh/acme/-/artifacts/t-fol_1");
+        assert_eq!(content["artifact"]["html_url"], "https://g1t.sh/acme/-/library/artifacts/t-fol_1");
         assert!(content.get("audience_can_read").is_none());
-        let edit = edit_json(&json!({ "mode": "applied", "version_id": "ver_1", "folio": { "id": "fol_1", "path": "/acme/-/artifacts/t-fol_1" }, "summary": "Added a section." }), site);
+        let edit = edit_json(&json!({ "mode": "applied", "version_id": "ver_1", "folio": { "id": "fol_1", "path": "/acme/-/library/artifacts/t-fol_1" }, "summary": "Added a section." }), site);
         assert_eq!(edit["version_id"], "ver_1");
         for shown in [access, content, edit, version_json(&json!({ "id": "ver_1", "folio_id": "fol_1", "authors": [{ "kind": "user", "id": "usr_1", "name": "ana", "display_name": "Ana" }] }))] {
             assert!(g1t_kit::wire::camel_case_keys(&shown).is_empty(), "{shown}");

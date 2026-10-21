@@ -97426,7 +97426,7 @@
                       "excerpt": "What we ship this quarter, and what we leave for next.",
                       "source": null,
                       "stale": false,
-                      "html_url": "https://g1t.sh/acme/-/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+                      "html_url": "https://g1t.sh/acme/-/library/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
                     }
                   ],
                   "next_cursor": null
@@ -97603,7 +97603,7 @@
                   "excerpt": "What changed in 2.4.",
                   "source": null,
                   "stale": false,
-                  "html_url": "https://g1t.sh/acme/-/artifacts/release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+                  "html_url": "https://g1t.sh/acme/-/library/artifacts/release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
                 }
               }
             },
@@ -97868,7 +97868,7 @@
                     "title": "Q4 roadmap",
                     "icon": "🗺️",
                     "slug": "q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
-                    "html_url": "https://g1t.sh/acme/-/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+                    "html_url": "https://g1t.sh/acme/-/library/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
                     "space_name": "General",
                     "snippet": "We ship the merge queue and Artifacts in Q4; dashboards follow.",
                     "heading": "This quarter",
@@ -97978,7 +97978,7 @@
           "Artifacts"
         ],
         "summary": "Get an artifact",
-        "description": "Get one artifact by its id (fol_…) or its address (`/acme/-/artifacts/q4-roadmap-fol_…`): its kind, title, space, parent_id, owner, who made it, your role, general_access, whether it is private, how many it is shared with, its excerpt, whether it may be out of date with the code it cites (stale), and html_url. Not found when you cannot open it, as for one that does not exist. Opening a link-shared artifact this way counts as following its link.\n\n`artifact_id` is the id, or the artifact's address (`q4-roadmap-fol_…`, or its whole link). Not found when you cannot open it, the same as when it does not exist.",
+        "description": "Get one artifact by its id (fol_…) or its address (`/acme/-/library/artifacts/q4-roadmap-fol_…`): its kind, title, space, parent_id, owner, who made it, your role, general_access, whether it is private, how many it is shared with, its excerpt, whether it may be out of date with the code it cites (stale), and html_url. Not found when you cannot open it, as for one that does not exist. Opening a link-shared artifact this way counts as following its link.\n\n`artifact_id` is the id, or the artifact's address (`q4-roadmap-fol_…`, or its whole link). Not found when you cannot open it, the same as when it does not exist.",
         "x-operation": "get_workspace_artifact",
         "x-mcp-tool": "artifact",
         "x-mcp-action": "get",
@@ -98010,7 +98010,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The artifact's id (fol_…), or its address: /acme/-/artifacts/q4-roadmap-fol_…"
+            "description": "The artifact's id (fol_…), or its address: /acme/-/library/artifacts/q4-roadmap-fol_…"
           },
           {
             "$ref": "#/components/parameters/ApiVersion"
@@ -98068,7 +98068,7 @@
                   "excerpt": "What we ship this quarter, and what we leave for next.",
                   "source": null,
                   "stale": false,
-                  "html_url": "https://g1t.sh/acme/-/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+                  "html_url": "https://g1t.sh/acme/-/library/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
                 }
               }
             },
@@ -98200,7 +98200,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The artifact's id (fol_…), or its address: /acme/-/artifacts/q4-roadmap-fol_…"
+            "description": "The artifact's id (fol_…), or its address: /acme/-/library/artifacts/q4-roadmap-fol_…"
           },
           {
             "$ref": "#/components/parameters/ApiVersion"
@@ -98253,7 +98253,7 @@
                   "excerpt": "What changed in 2.4.",
                   "source": null,
                   "stale": false,
-                  "html_url": "https://g1t.sh/acme/-/artifacts/release-notes-2-4-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+                  "html_url": "https://g1t.sh/acme/-/library/artifacts/release-notes-2-4-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
                 }
               }
             },
@@ -98442,7 +98442,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The artifact's id (fol_…), or its address: /acme/-/artifacts/q4-roadmap-fol_…"
+            "description": "The artifact's id (fol_…), or its address: /acme/-/library/artifacts/q4-roadmap-fol_…"
           },
           {
             "$ref": "#/components/parameters/ApiVersion"
@@ -98490,7 +98490,7 @@
                   "excerpt": "What changed in 2.4.",
                   "source": null,
                   "stale": false,
-                  "html_url": "https://g1t.sh/acme/-/artifacts/release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+                  "html_url": "https://g1t.sh/acme/-/library/artifacts/release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
                 }
               }
             },
@@ -98642,7 +98642,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The artifact's id (fol_…), or its address: /acme/-/artifacts/q4-roadmap-fol_…"
+            "description": "The artifact's id (fol_…), or its address: /acme/-/library/artifacts/q4-roadmap-fol_…"
           },
           {
             "$ref": "#/components/parameters/ApiVersion"
@@ -98690,7 +98690,7 @@
                   "excerpt": "What changed in 2.4.",
                   "source": null,
                   "stale": false,
-                  "html_url": "https://g1t.sh/acme/-/artifacts/release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
+                  "html_url": "https://g1t.sh/acme/-/library/artifacts/release-notes-fol_01kq8d5f7h9k1n3q5s7u9w1y3a"
                 }
               }
             },
@@ -98842,7 +98842,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The artifact's id (fol_…), or its address: /acme/-/artifacts/q4-roadmap-fol_…"
+            "description": "The artifact's id (fol_…), or its address: /acme/-/library/artifacts/q4-roadmap-fol_…"
           },
           {
             "$ref": "#/components/parameters/ApiVersion"
@@ -99007,7 +99007,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The artifact's id (fol_…), or its address: /acme/-/artifacts/q4-roadmap-fol_…"
+            "description": "The artifact's id (fol_…), or its address: /acme/-/library/artifacts/q4-roadmap-fol_…"
           },
           {
             "$ref": "#/components/parameters/ApiVersion"
@@ -99026,7 +99026,7 @@
                     "title": "Q4 roadmap",
                     "icon": "🗺️",
                     "slug": "q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
-                    "html_url": "https://g1t.sh/acme/-/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
+                    "html_url": "https://g1t.sh/acme/-/library/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
                     "edited_at": "2026-10-08T16:40:12.000Z"
                   },
                   "space": {
@@ -99192,7 +99192,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The artifact's id (fol_…), or its address: /acme/-/artifacts/q4-roadmap-fol_…"
+            "description": "The artifact's id (fol_…), or its address: /acme/-/library/artifacts/q4-roadmap-fol_…"
           },
           {
             "$ref": "#/components/parameters/ApiVersion"
@@ -99212,7 +99212,7 @@
                     "title": "Q4 roadmap",
                     "icon": "🗺️",
                     "slug": "q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z",
-                    "html_url": "https://g1t.sh/acme/-/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
+                    "html_url": "https://g1t.sh/acme/-/library/artifacts/q4-roadmap-fol_01kq7c4e6g8j0m2p4r6t8v0x2z"
                   },
                   "version_id": "ver_01kqa7h9k1n3q5s7u9w1y3a5c",
                   "summary": "Replaced the section This quarter."
@@ -99427,7 +99427,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The artifact's id (fol_…), or its address: /acme/-/artifacts/q4-roadmap-fol_…"
+            "description": "The artifact's id (fol_…), or its address: /acme/-/library/artifacts/q4-roadmap-fol_…"
           },
           {
             "$ref": "#/components/parameters/ApiVersion"
@@ -99611,7 +99611,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The artifact's id (fol_…), or its address: /acme/-/artifacts/q4-roadmap-fol_…"
+            "description": "The artifact's id (fol_…), or its address: /acme/-/library/artifacts/q4-roadmap-fol_…"
           },
           {
             "$ref": "#/components/parameters/ApiVersion"
@@ -99897,7 +99897,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The artifact's id (fol_…), or its address: /acme/-/artifacts/q4-roadmap-fol_…"
+            "description": "The artifact's id (fol_…), or its address: /acme/-/library/artifacts/q4-roadmap-fol_…"
           },
           {
             "$ref": "#/components/parameters/ApiVersion"
@@ -100073,7 +100073,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "The artifact's id (fol_…), or its address: /acme/-/artifacts/q4-roadmap-fol_…"
+            "description": "The artifact's id (fol_…), or its address: /acme/-/library/artifacts/q4-roadmap-fol_…"
           },
           {
             "name": "version_id",
@@ -100391,7 +100391,7 @@
           "Artifacts"
         ],
         "summary": "List artifact spaces",
-        "description": "The spaces in your Artifacts sidebar: the General space, open spaces you joined, your teams' spaces and Members-only spaces you are in. Each with its id, slug, name, kind (workspace for an open space, team or private), your role in it (viewer_role) and how many artifacts it holds you can open.\n\nOpen spaces show once you join them in Artifacts; General always shows. Give a space's `slug` or `id` as `space` to the other artifact calls.",
+        "description": "The spaces in your Library sidebar: the General space, open spaces you joined, your teams' spaces and Members-only spaces you are in. Each with its id, slug, name, kind (workspace for an open space, team or private), your role in it (viewer_role) and how many artifacts it holds you can open.\n\nOpen spaces show once you join them in Artifacts; General always shows. Give a space's `slug` or `id` as `space` to the other artifact calls.",
         "x-operation": "list_workspace_artifact_spaces",
         "x-mcp-tool": "artifact",
         "x-mcp-action": "spaces",

@@ -40,12 +40,15 @@ import { ROADMAP, type RoadmapItem } from "../lib/roadmap";
 /**
  * The phone's layout (below 768px): a bottom bar of apps with More for
  * the rest, the mode's sidebar as a drawer from the left, and each tab a
- * list that pushes its detail full screen. A computer has the rail.
+ * list that pushes its detail full screen. A computer has the app bar.
  */
 
-/** Whether a path is one conversation, which takes the whole screen on a phone. */
+/**
+ * Whether a path is one conversation, which takes the whole screen on a
+ * phone. Browse and Chat's sessions are pages of their own, with the bars.
+ */
 export function isConversation(pathname: string): boolean {
-  return /^\/[^/]+\/-\/chat\/(?!browse\/?$)[^/]+/.test(pathname);
+  return /^\/[^/]+\/-\/chat\/(?!browse\/?$|sessions(?:\/|$))[^/]+/.test(pathname);
 }
 
 /**

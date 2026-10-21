@@ -1,7 +1,7 @@
 /**
  * An artifact's live connection, whatever its kind: the Yjs document and
  * everyone's presence, synced over
- * `wss://<site>/<workspace>/-/artifacts/live?folio=<id>` with the folio's
+ * `wss://<site>/<workspace>/-/library/artifacts/live?folio=<id>` with the folio's
  * room (services/artifacts src/folios/room.ts). Binary frames speak the
  * y-protocols sync and awareness messages; text frames are the service's
  * own notices (`FoliosLiveEvent`): a rename, a new suggestion, a version,

@@ -10,6 +10,7 @@ import {
   dayGroups,
   dayKey,
   flatten,
+  libraryAddress,
   linkedArtifacts,
   pathTo,
   readingTime,
@@ -78,11 +79,27 @@ test("chat messages name the artifacts they link to, in this workspace only", ()
   const id = "fol_01jb2k7x9hfq0b3zj0f5s2m8ra";
   const other = "fol_01jb2k7x9hfq0b3zj0f5s2m8rb";
   assert.deepEqual(
-    linkedArtifacts(`See https://g1t.sh/acme/-/artifacts/q4-plan-${id} and /acme/-/artifacts/${other}, and again /Acme/-/artifacts/${id}`, "acme"),
+    linkedArtifacts(
+      `See https://g1t.sh/acme/-/library/artifacts/q4-plan-${id} and /acme/-/library/artifacts/${other}, and again /Acme/-/library/artifacts/${id}`,
+      "acme",
+    ),
     [id, other],
   );
-  assert.deepEqual(linkedArtifacts(`/other/-/artifacts/x-${id}`, "acme"), []);
-  assert.deepEqual(linkedArtifacts(`/acme/-/artifacts/spaces/general`, "acme"), []);
+  assert.deepEqual(linkedArtifacts(`/other/-/library/artifacts/x-${id}`, "acme"), []);
+  assert.deepEqual(linkedArtifacts(`/acme/-/library/artifacts/spaces/general`, "acme"), []);
+  // Links from before the Library still count.
+  assert.deepEqual(linkedArtifacts(`see /acme/-/artifacts/q4-plan-${id}`, "acme"), [id]);
+});
+
+test("addresses from before the Library go to their place in it", () => {
+  assert.equal(libraryAddress("/acme/-/artifacts"), "/acme/-/library/artifacts");
+  assert.equal(libraryAddress("/acme/-/artifacts/", "?q=plan"), "/acme/-/library/artifacts?q=plan");
+  assert.equal(libraryAddress("/acme/-/artifacts/q4-plan-fol_1/history"), "/acme/-/library/artifacts/q4-plan-fol_1/history");
+  assert.equal(libraryAddress("/acme/-/artifacts/spaces/general"), "/acme/-/library/artifacts/spaces/general");
+  // The Library itself opens on its artifacts.
+  assert.equal(libraryAddress("/acme/-/library"), "/acme/-/library/artifacts");
+  assert.equal(libraryAddress("/acme/-/library/", "?x=1"), "/acme/-/library/artifacts?x=1");
+  assert.equal(libraryAddress("/acme/web/pull/1"), "/acme/web/pull/1");
 });
 
 test("snippets mark their matches", () => {
@@ -124,6 +141,6 @@ test("a project's docs become folders, and spaces and files have addresses under
     root.folders[0]!.files.map((f) => f.title),
     ["Deploy"],
   );
-  assert.equal(repoFilePath("acme", "acme/web", "docs/a b.md"), "/acme/-/artifacts/repo/acme/web/docs/a%20b.md");
-  assert.equal(spacePath("acme", "general"), "/acme/-/artifacts/spaces/general");
+  assert.equal(repoFilePath("acme", "acme/web", "docs/a b.md"), "/acme/-/library/artifacts/repo/acme/web/docs/a%20b.md");
+  assert.equal(spacePath("acme", "general"), "/acme/-/library/artifacts/spaces/general");
 });

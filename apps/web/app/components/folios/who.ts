@@ -14,7 +14,7 @@ export async function whoAre(slug: string, keys: string[]): Promise<Map<string, 
   const wanted = [...new Set(keys)].filter((k) => !known.has(k) && /^(user|agent):/.test(k));
   if (wanted.length) {
     try {
-      const r = await fetch(`/${slug}/-/artifacts/api?who=${encodeURIComponent(wanted.join(","))}`, { headers: { accept: "application/json" } });
+      const r = await fetch(`/${slug}/-/library/artifacts/api?who=${encodeURIComponent(wanted.join(","))}`, { headers: { accept: "application/json" } });
       const result = (await r.json()) as Result<Who[]>;
       if (result.ok) for (const w of result.value) known.set(w.key, w);
     } catch {

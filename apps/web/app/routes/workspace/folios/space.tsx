@@ -89,7 +89,7 @@ export default function SpacePage({ loaderData, params }: Route.ComponentProps) 
             </Hint>
           )}
           {canDo(space.viewer_role, "edit") && (
-            <Form method="post" action={`/${slug}/-/artifacts/new/doc`}>
+            <Form method="post" action={`/${slug}/-/library/artifacts/new/doc`}>
               <input type="hidden" name="space" value={space.id} />
               <Button type="submit" disabled={starting} variant="accent" className="gap-1.5 px-3 disabled:opacity-60">
                 <FilePlus2 size={15} /> {starting ? "Starting…" : "New doc"}
