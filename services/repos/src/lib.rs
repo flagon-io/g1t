@@ -2416,30 +2416,49 @@ impl<S: GitStore> Repos<S> {
         timing.mark("store");
         let mut response = forwarded.response;
         let status = response.status_code();
+        let asked: Vec<(String, String)> =
+            forwarded.pushed.iter().map(|pushed| (pushed.git_ref.clone(), pushed.after.clone())).collect();
+        // A push: the store has moved its refs once it has answered in
+        // full, so the answer is read before its reservation is settled
+        // (the report says whether the store took it) and before the change
+        // is recorded, and only then goes back. Whoever fetches after it
+        // sees the push.
+        let answered = if write && !get {
+            let headers = response.headers().clone();
+            headers.delete("content-length")?;
+            match response.bytes().await {
+                Ok(report) => Some((headers, report)),
+                Err(error) => {
+                    // Whether the store kept it is not known: ended, for staff.
+                    if let Some(reserved) = &public_reserved {
+                        let outcome = format!("The store's answer to the push ({status}) could not be read: {error}");
+                        self.registry.end_public(reserved, &outcome, &asked).await;
+                    }
+                    return Err(error);
+                }
+            }
+        } else {
+            None
+        };
         if let Some(reserved) = &public_reserved {
-            match public_storage::push_settlement(status, forwarded.rate_limited) {
+            let report = answered.as_ref().map(|(_, report)| report.as_slice());
+            match public_storage::push_settlement(status, forwarded.rate_limited, report) {
                 // Successful uploads replace it with the actual admitted pack.
                 public_storage::Settlement::Finish => self.registry.finish_public(reserved, forwarded.pack_bytes).await?,
-                // Refused for the store's rate limit: it took nothing.
+                // Refused for the store's rate limit, or a report saying
+                // the store refused all of it (its unpack failed, or every
+                // ref was refused): it took nothing.
                 public_storage::Settlement::Release => self.registry.release_public(reserved).await?,
                 // On any other answer the store may have kept the push, so
                 // the whole reservation stays, ended, with the refs it asked
                 // for: staff release it once they have looked
                 // (storage_holds.rs).
                 public_storage::Settlement::End => {
-                    let refs: Vec<(String, String)> =
-                        forwarded.pushed.iter().map(|pushed| (pushed.git_ref.clone(), pushed.after.clone())).collect();
-                    self.registry.end_public(reserved, &format!("The store answered the push with {status}."), &refs).await;
+                    self.registry.end_public(reserved, &format!("The store answered the push with {status}."), &asked).await;
                 }
             }
         }
-        if write && !get {
-            // A push: the store has moved its refs once it has answered in
-            // full, so the answer is read before the change is recorded, and
-            // only then goes back. Whoever fetches after it sees the push.
-            let headers = response.headers().clone();
-            headers.delete("content-length")?;
-            let mut report = response.bytes().await?;
+        if let Some((headers, mut report)) = answered {
             self.refs_moved(&repo.id).await;
             timing.mark("refs");
             // The repository's git edge catches up with the push, so the

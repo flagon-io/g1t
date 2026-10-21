@@ -210,6 +210,26 @@ test("settling replaces the whole reservation with what was measured", () => {
   db.close();
 });
 
+test("a write the store refused gives its reservation back and counts nothing, public or private", () => {
+  const db = database();
+  repo(db, "public", 1_000);
+  repo(db, "private", 2_000, "team", 1);
+  for (const root of ["public", "private"]) {
+    // A merge tried three times, its branch moved each time: each attempt
+    // reserves its pack and is released with nothing measured.
+    for (const attempt of [1, 2, 3]) {
+      assert.ok(hold(db, { root, id: `srv_${root}_${attempt}`, bytes: 400, operation: "merge" }));
+      settle(db, root, `srv_${root}_${attempt}`, 0);
+    }
+    // And the store took the fourth.
+    assert.ok(hold(db, { root, id: `srv_${root}_4`, bytes: 400, operation: "merge" }));
+    settle(db, root, `srv_${root}_4`, 400);
+  }
+  assert.deepEqual(sums(db, "public"), { stored: 1_400, reserved: 0, ledger: 0 });
+  assert.deepEqual(sums(db, "private"), { stored: 2_400, reserved: 0, ledger: 0 }, "private storage is billed from stored_bytes");
+  db.close();
+});
+
 test("a write settling after staff released its reservation counts its bytes once and takes nothing else's", () => {
   const db = database();
   repo(db, "public", 0);

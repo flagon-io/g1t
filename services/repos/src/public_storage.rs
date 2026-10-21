@@ -1,7 +1,9 @@
 //! Public storage admission is independent of a paid subscription. Reserve
 //! bytes before contacting the git store; a crash retains the reservation
-//! rather than admitting the same capacity twice. A successful write
-//! replaces its reservation with the bytes it measured.
+//! rather than admitting the same capacity twice. A write the store took
+//! replaces its reservation with the bytes it measured; one the store
+//! refused (an `ng` for its ref, a failed unpack) gives it back and counts
+//! nothing, since `stored_bytes` is what private storage is billed from.
 //!
 //! Each reservation is a row of `storage_reservations` (migration 0023)
 //! next to the sum admission reads, `repos.storage_reserved_bytes`: the
@@ -28,6 +30,7 @@ use g1t_kit::now_ms;
 use serde::Deserialize;
 use worker::Result;
 
+use crate::land::Verdict;
 use crate::registry::Registry;
 
 /// How long an operation holding a reservation may send to the store. A
@@ -168,6 +171,19 @@ impl StreamQuota {
             self.registry.end_public(&reservation, outcome, &[]).await;
         }
     }
+
+    /// The store answered the copy, `measured` bytes of pack sent: settled
+    /// by its [`write_settlement`].
+    pub async fn settle(&self, verdict: &Verdict, measured: u64) -> Result<()> {
+        match write_settlement(verdict) {
+            Settlement::Finish => self.finish(measured).await,
+            Settlement::Release => self.release().await,
+            Settlement::End => {
+                self.end(verdict.reason()).await;
+                Ok(())
+            }
+        }
+    }
 }
 
 impl<S: crate::store::GitStore> crate::Repos<S> {
@@ -198,9 +214,11 @@ impl<S: crate::store::GitStore> crate::Repos<S> {
 
     /// Pushes `pack` to `branch` under a reservation of its size: `None`
     /// when the workspace's public storage cannot fit it. The inner result
-    /// is the store's verdict on the branch (land.rs `push_pack`); the pack
-    /// is counted either way, as the store answered. A push the store
-    /// answered with an error, or never answered, leaves its reservation
+    /// is the store's verdict on the branch (land.rs `push_pack`). The pack
+    /// is counted only when the branch moved; one the store refused (the
+    /// branch had moved, or the unpack failed) gives its reservation back
+    /// with nothing counted. A push the store answered with an error, never
+    /// answered, or answered without saying either, leaves its reservation
     /// ended for staff.
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn push_reserved(
@@ -211,13 +229,17 @@ impl<S: crate::store::GitStore> crate::Repos<S> {
         let Some(reservation) = self.registry.reserve_public(repo, bytes, self.free_public_bytes, operation, actor).await? else {
             return Ok(None);
         };
-        match crate::land::push_pack(access, branch, old, new, pack).await {
-            Ok(pushed) => {
-                self.registry.finish_public(&reservation, bytes).await?;
-                Ok(Some(pushed))
+        let refs = [(format!("refs/heads/{branch}"), new.to_owned())];
+        match crate::land::push_pack_judged(access, branch, old, new, pack).await {
+            Ok(verdict) => {
+                match write_settlement(&verdict) {
+                    Settlement::Finish => self.registry.finish_public(&reservation, bytes).await?,
+                    Settlement::Release => self.registry.release_public(&reservation).await?,
+                    Settlement::End => self.registry.end_public(&reservation, verdict.reason(), &refs).await,
+                }
+                Ok(Some(verdict.into_result()))
             }
             Err(error) => {
-                let refs = [(format!("refs/heads/{branch}"), new.to_owned())];
                 self.registry.end_public(&reservation, &error.to_string(), &refs).await;
                 Err(error)
             }
@@ -292,20 +314,51 @@ pub(crate) const LOCK_COPY: &str = "INSERT INTO storage_copy_locks (repo_id, des
 pub(crate) enum Settlement {
     /// Stored: the reservation becomes the bytes measured.
     Finish,
-    /// Refused before the store took any of it.
+    /// Refused: the store took none of it, so nothing is counted.
     Release,
     /// The store may have kept it: ended, for staff.
     End,
 }
 
-/// A push the store answered with `status`; `rate_limited` when the store
-/// refused it for its rate limit (git_http.rs `Forwarded`), which takes
-/// nothing. Any other answer than 200 is ambiguous.
-pub(crate) fn push_settlement(status: u16, rate_limited: bool) -> Settlement {
+/// A push the store answered with `status` and `report`, its answer read
+/// whole; `rate_limited` when the store refused it for its rate limit
+/// (git_http.rs `Forwarded`), which takes nothing. A 200 whose report
+/// says the store refused all of it ([`refused_whole`]) takes nothing
+/// either; any other 200 is counted. Any other answer than 200 is
+/// ambiguous.
+pub(crate) fn push_settlement(status: u16, rate_limited: bool, report: Option<&[u8]>) -> Settlement {
     match (status, rate_limited) {
+        (200, _) if report.is_some_and(refused_whole) => Settlement::Release,
         (200, _) => Settlement::Finish,
         (_, true) => Settlement::Release,
         _ => Settlement::End,
+    }
+}
+
+/// Whether a push's report-status says the store kept none of it: its
+/// unpack failed, or it refused (`ng`) every ref it reports on and moved
+/// none. A report this cannot read says neither.
+pub(crate) fn refused_whole(report: &[u8]) -> bool {
+    let Some(lines) = crate::land::report_lines(report) else {
+        return false;
+    };
+    if lines.iter().any(|line| line.starts_with("unpack ") && line != "unpack ok") {
+        return true;
+    }
+    lines.iter().any(|line| line == "unpack ok")
+        && lines.iter().any(|line| line.starts_with("ng "))
+        && !lines.iter().any(|line| line.starts_with("ok "))
+}
+
+/// What the store's answer to a write of one ref (land.rs `Verdict`)
+/// does with its reservation: counted only when the ref moved, given back
+/// when the store refused it, and ended, for staff, when the answer says
+/// neither.
+pub(crate) fn write_settlement(verdict: &Verdict) -> Settlement {
+    match verdict {
+        Verdict::Moved => Settlement::Finish,
+        Verdict::Refused(_) => Settlement::Release,
+        Verdict::Unclear(_) => Settlement::End,
     }
 }
 
@@ -478,13 +531,175 @@ mod tests {
 
     #[test]
     fn a_push_refused_for_the_rate_limit_lets_its_reservation_go_at_once() {
-        assert_eq!(push_settlement(200, false), Settlement::Finish);
-        assert_eq!(push_settlement(429, true), Settlement::Release);
+        assert_eq!(push_settlement(200, false, None), Settlement::Finish);
+        assert_eq!(push_settlement(429, true, None), Settlement::Release);
         // A server error, or no answer (g1t's own 503), may have been kept.
-        assert_eq!(push_settlement(500, false), Settlement::End);
-        assert_eq!(push_settlement(503, false), Settlement::End);
+        assert_eq!(push_settlement(500, false, None), Settlement::End);
+        assert_eq!(push_settlement(503, false, None), Settlement::End);
         // A 429 g1t did not see as the store's rate limit is not assumed to be one.
-        assert_eq!(push_settlement(429, false), Settlement::End);
+        assert_eq!(push_settlement(429, false, None), Settlement::End);
+    }
+
+    /// A report-status, plain.
+    fn report(lines: &[&str]) -> Vec<u8> {
+        let mut report: Vec<u8> = lines.iter().flat_map(|line| crate::git_http::pkt_line(format!("{line}\n").as_bytes())).collect();
+        report.extend_from_slice(b"0000");
+        report
+    }
+
+    /// The same report inside side-band channel 1, after a progress line,
+    /// split across packets, as the store answers a client that asked for
+    /// side-band.
+    fn banded(lines: &[&str]) -> Vec<u8> {
+        let mut answer = crate::git_http::pkt_line(b"\x02Resolving deltas: 100% (3/3)\n");
+        for chunk in report(lines).chunks(9) {
+            answer.extend(crate::git_http::pkt_line(&[&[1u8][..], chunk].concat()));
+        }
+        answer.extend_from_slice(b"0000");
+        answer
+    }
+
+    /// What a write of one pack to `reference` does with its reservation
+    /// when the store answers `answer` (`push_reserved`, and a branch
+    /// copied chunk by chunk, land.rs `fast_forward`).
+    fn settled(answer: &[u8], reference: &str) -> Settlement {
+        write_settlement(&crate::land::verdict(answer, reference, true))
+    }
+
+    /// The body of `fn name` in `source`, up to the next item.
+    fn body_of(source: &str, name: &str) -> String {
+        let code = source.split("#[cfg(test)]\nmod tests").next().unwrap_or_default();
+        let lines: Vec<&str> = code.lines().collect();
+        let start = lines.iter().position(|line| line.contains(&format!("fn {name}("))).unwrap_or_else(|| panic!("no fn {name}"));
+        let end = lines[start + 1..]
+            .iter()
+            .position(|line| {
+                let indent = line.len() - line.trim_start().len();
+                let rest = line.trim_start();
+                indent <= 4 && ["fn ", "async fn ", "pub", "///", "#["].iter().any(|prefix| rest.starts_with(prefix))
+            })
+            .map_or(lines.len(), |at| start + 1 + at);
+        lines[start..end].join("\n")
+    }
+
+    #[test]
+    fn a_write_is_counted_only_when_the_store_took_it() {
+        assert_eq!(write_settlement(&Verdict::Moved), Settlement::Finish);
+        assert_eq!(write_settlement(&Verdict::Refused("ng".into())), Settlement::Release);
+        assert_eq!(write_settlement(&Verdict::Unclear(String::new())), Settlement::End);
+        // Every write of one pack settles by the store's verdict, never by
+        // its having answered: the measured bytes go into stored_bytes
+        // only on Finish.
+        let reserved = body_of(include_str!("public_storage.rs"), "push_reserved");
+        assert!(reserved.contains("push_pack_judged("), "{reserved}");
+        assert!(reserved.contains("match write_settlement(&verdict)"));
+        assert_eq!(reserved.matches("finish_public(").count(), 1);
+        assert!(reserved.contains("Settlement::Finish => self.registry.finish_public("));
+        assert!(reserved.contains("Settlement::Release => self.registry.release_public("));
+        let copied = body_of(include_str!("land.rs"), "fast_forward");
+        assert!(copied.contains("quota.settle(&verdict, moved)"), "{copied}");
+        assert!(!copied.contains("quota.finish("));
+    }
+
+    #[test]
+    fn a_file_committed_to_a_branch_that_appeared_meanwhile_counts_nothing() {
+        let source = body_of(include_str!("commit_file.rs"), "commit_file");
+        assert!(source.contains("push_reserved(") && !source.contains("finish_public("));
+        let refused = report(&["unpack ok", "ng refs/heads/docs failed to update ref"]);
+        assert_eq!(settled(&refused, "refs/heads/docs"), Settlement::Release);
+        let made = report(&["unpack ok", "ok refs/heads/docs"]);
+        assert_eq!(settled(&made, "refs/heads/docs"), Settlement::Finish);
+    }
+
+    #[test]
+    fn a_merge_whose_branch_moved_counts_nothing_however_often_it_is_tried() {
+        let source = body_of(include_str!("merge_methods.rs"), "land_by");
+        assert!(source.contains("push_reserved(") && !source.contains("finish_public("));
+        // Each attempt reserves again and is refused again: nothing of any
+        // of them is counted.
+        for reason in ["non-fast-forward", "stale info", "fetch first"] {
+            let refused = report(&["unpack ok", &format!("ng refs/heads/main {reason}")]);
+            assert_eq!(settled(&refused, "refs/heads/main"), Settlement::Release, "{reason}");
+        }
+    }
+
+    #[test]
+    fn a_merge_queue_branch_the_store_could_not_unpack_counts_nothing() {
+        let source = body_of(include_str!("merge_methods.rs"), "build_queue_step");
+        assert!(source.contains("push_reserved(") && !source.contains("finish_public("));
+        let unpacked = report(&["unpack index-pack abnormal exit", "ng refs/heads/gq/main/1 unpacker error"]);
+        assert_eq!(settled(&unpacked, "refs/heads/gq/main/1"), Settlement::Release);
+        let moved = report(&["unpack ok", "ng refs/heads/gq/main/1 non-fast-forward"]);
+        assert_eq!(settled(&moved, "refs/heads/gq/main/1"), Settlement::Release);
+    }
+
+    #[test]
+    fn a_pull_request_update_whose_branch_was_pushed_meanwhile_counts_nothing() {
+        let source = body_of(include_str!("catch_up.rs"), "push_update");
+        assert!(source.contains("push_reserved(") && !source.contains("finish_public("));
+        let refused = report(&["unpack ok", "ng refs/heads/feature non-fast-forward"]);
+        assert_eq!(settled(&refused, "refs/heads/feature"), Settlement::Release);
+    }
+
+    #[test]
+    fn a_landing_sync_or_branch_copied_into_a_fork_that_was_refused_counts_nothing() {
+        // land (lib.rs), sync_fork and fork (network.rs) copy a branch
+        // chunk by chunk, settled in land.rs `fast_forward`.
+        for (file, source, function) in [
+            ("lib.rs", include_str!("lib.rs"), "land"),
+            ("network.rs", include_str!("network.rs"), "sync_fork"),
+            ("network.rs", include_str!("network.rs"), "fork"),
+        ] {
+            let body = body_of(source, function);
+            assert!(body.contains("land::fast_forward("), "{file}: {function}");
+            assert!(body.contains("self.public_quota("), "{file}: {function}");
+        }
+        let refused = report(&["unpack ok", "ng refs/heads/main fetch first"]);
+        assert_eq!(settled(&refused, "refs/heads/main"), Settlement::Release);
+    }
+
+    #[test]
+    fn a_write_the_store_answered_without_a_verdict_stays_ended_for_staff() {
+        // Nothing, an unpack that said nothing of the ref, a report for
+        // another ref, a fatal error on side-band channel 3, or no report.
+        for answer in [
+            Vec::new(),
+            report(&["unpack ok"]),
+            report(&["unpack ok", "ng refs/heads/main2 non-fast-forward"]),
+            [crate::git_http::pkt_line(b"\x03fatal: the remote end hung up"), b"0000".to_vec()].concat(),
+            b"<html>bad gateway</html>".to_vec(),
+        ] {
+            assert_eq!(settled(&answer, "refs/heads/main"), Settlement::End, "{answer:?}");
+        }
+    }
+
+    #[test]
+    fn a_push_the_store_refused_whole_counts_nothing() {
+        let settle = |answer: Vec<u8>| push_settlement(200, false, Some(&answer));
+        for answer in [
+            // Every ref refused: the store moved none of them.
+            report(&["unpack ok", "ng refs/heads/main non-fast-forward", "ng refs/tags/v1 already exists"]),
+            banded(&["unpack ok", "ng refs/heads/main non-fast-forward"]),
+            // The unpack failed: nothing of the pack is kept.
+            report(&["unpack error: invalid pack", "ng refs/heads/main unpacker error"]),
+            banded(&["unpack index-pack abnormal exit", "ng refs/heads/main unpacker error"]),
+        ] {
+            assert_eq!(settle(answer), Settlement::Release);
+        }
+        // A ref that moved stores the pack, beside one that did not (a
+        // hidden ref g1t refused, hidden_refs.rs).
+        assert_eq!(settle(banded(&["unpack ok", "ok refs/heads/main", "ng refs/pull/1/head deny updating a hidden ref"])), Settlement::Finish);
+        assert_eq!(settle(report(&["unpack ok", "ok refs/heads/main"])), Settlement::Finish);
+        // A 200 whose report cannot be read is counted, as before.
+        assert_eq!(settle(b"0000".to_vec()), Settlement::Finish);
+        assert_eq!(settle(Vec::new()), Settlement::Finish);
+        // An answer other than 200 is ambiguous whatever it says.
+        assert_eq!(push_settlement(500, false, Some(&report(&["unpack ok", "ng refs/heads/main x"]))), Settlement::End);
+        // The push path reads the report before it settles.
+        let answer = body_of(include_str!("lib.rs"), "answer_git");
+        let read = answer.find("match response.bytes().await").expect("the report is read");
+        let settles = answer.find("public_storage::push_settlement(status, forwarded.rate_limited, report)").expect("settled by it");
+        assert!(read < settles);
     }
 
     #[test]
