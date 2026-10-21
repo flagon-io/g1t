@@ -226,15 +226,24 @@ jobs:
       - name: Cache keys
         id: keys
         run: node scripts/deploy/ci-cache.mjs keys
+      # g1t's runner image has Tauri's system packages, so on it the two
+      # steps after this are skipped (they took 68 s a run: a minute to
+      # install from the cache, and 10 s to restore it). A machine without
+      # them (self-hosted, or an older image) installs them as before.
+      - name: Is what Tauri needs on Linux installed
+        id: tauri-apt
+        run: bash scripts/apt-install.sh tauri --check
       # apt's lists and downloads (scripts/apt-install.sh): 110 s of every
       # run before, mostly fetching 335 MB. Saved here, on main; the desktop
       # release's Linux build restores the same entry.
       - name: Cache apt's downloads
+        if: ${{ steps.tauri-apt.outputs.installed != 'true' }}
         uses: actions/cache@v4
         with:
           path: ~/.cache/apt/tauri
           key: apt-tauri-${{ runner.os }}-${{ hashFiles('scripts/apt-install.sh') }}
       - name: What Tauri needs on Linux
+        if: ${{ steps.tauri-apt.outputs.installed != 'true' }}
         run: bash scripts/apt-install.sh tauri
       - name: Cache the desktop app's build
         id: desktop-build
