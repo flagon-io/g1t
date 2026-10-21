@@ -1604,11 +1604,26 @@ impl Actions {
             self.starts_wanted.set(true);
             return Ok(());
         }
-        self.start_queued_except(&std::collections::HashSet::new()).await
+        self.start_queued_except(&std::collections::HashSet::new()).await.map(|_| ())
     }
 
-    /// [`Self::start_queued`], leaving `held` for a later sweep.
-    async fn start_queued_except(&self, held: &std::collections::HashSet<String>) -> Result<()> {
+    /// [`Self::start_queued`], and while the runner refuses jobs for want of
+    /// a machine, again after each of MACHINE_RETRY_MS rather than at the
+    /// next sweep (#292). Only where nothing waits on it: after a request's
+    /// answer, and at the end of the sweep.
+    pub async fn start_queued_retrying(&self, held: &std::collections::HashSet<String>) -> Result<()> {
+        for pause in crate::MACHINE_RETRY_MS {
+            if !self.start_queued_except(held).await? {
+                return Ok(());
+            }
+            worker::Delay::from(std::time::Duration::from_millis(pause)).await;
+        }
+        self.start_queued_except(held).await.map(|_| ())
+    }
+
+    /// [`Self::start_queued`], leaving `held` for a later sweep. Returns
+    /// whether the runner refused any job for want of a machine.
+    async fn start_queued_except(&self, held: &std::collections::HashSet<String>) -> Result<bool> {
         let queued = self
             .db
             // Self-hosted jobs are taken by their runners (runners.rs).
@@ -1727,11 +1742,13 @@ impl Actions {
                 .unwrap_or_else(|error| fail(FailureCode::Conflict, format!("The runner could not be reached: {error}")))
         });
         let started = futures_util::future::join_all(starts).await;
+        let mut no_machine = false;
         for ((job, at, run, _), started) in claimed_jobs.into_iter().zip(started) {
             if let Outcome::Fail(refused) = started {
                 // No machine free (every sandbox of its class taken, or a
-                // rollout replacing them): back in the queue, tried again at
-                // the next sweep, until it has waited WAIT_FOR_MACHINE_MS.
+                // rollout replacing them): back in the queue, tried again
+                // within seconds (start_queued_retrying) or at the next
+                // sweep, until it has waited WAIT_FOR_MACHINE_MS.
                 if refused.code == FailureCode::Unavailable {
                     let since = job.waiting_since.clone().unwrap_or_else(|| at.clone());
                     if crate::waited_for_a_machine(Some(&since), now_ms()) {
@@ -1749,6 +1766,7 @@ impl Actions {
                         .run()
                         .await?;
                     worker::console_warn!("actions: job {} waits for a machine: {}", job.id, refused.message);
+                    no_machine = true;
                     continue;
                 }
                 // Billing would not pay for a scheduled run's job: the
@@ -1767,7 +1785,7 @@ impl Actions {
                 self.job_started(&job.id).await?;
             }
         }
-        Ok(())
+        Ok(no_machine)
     }
 
     /// Finishes a job and moves its run along.
@@ -2977,7 +2995,7 @@ impl Actions {
         {
             worker::console_error!("actions: the logs' sweep failed: {error}");
         }
-        self.start_queued_except(&lost).await
+        self.start_queued_retrying(&lost).await
     }
 
     /// A job whose sandbox never reported (`never_reported`): back in the
