@@ -182,6 +182,9 @@ pub enum Op {
     ListWorkItemLinks,
     LinkWorkItem,
     UnlinkWorkItem,
+    SetWorkItemParent,
+    AddWorkItemSubItem,
+    RemoveWorkItemSubItem,
     ResolveRef,
     ListLabels,
     CreateLabel,
@@ -439,6 +442,33 @@ fn integer(input: &Value, key: &str) -> Option<u32> {
         Value::String(digits) => digits.parse().ok(),
         _ => None,
     }
+}
+
+/// A work item's number given as `key`: `12`, `"12"` or `"#12"`; none
+/// when it is absent, null or 0. Anything else is refused, naming `key`.
+fn item_ref(input: &Value, key: &str) -> Result<Option<u32>, String> {
+    let number = match &input[key] {
+        Value::Null => return Ok(None),
+        Value::Number(number) => number.as_u64().and_then(|n| u32::try_from(n).ok()),
+        Value::String(text) => text.trim().trim_start_matches('#').parse().ok(),
+        _ => None,
+    };
+    match number {
+        Some(0) => Ok(None),
+        Some(number) => Ok(Some(number)),
+        None => Err(format!("{key} is a work item's number, such as 12 or \"#12\".")),
+    }
+}
+
+/// What closing a work item can do with its open sub-items.
+const OPEN_SUB_ITEMS: [&str; 3] = ["leave", "close", "move"];
+
+/// The `parent` a work item is given: a work item's number, or none.
+fn parent_schema() -> Value {
+    json!({
+        "type": ["integer", "null"],
+        "description": "The number of the work item of the workspace to make it a sub-item of; null or 0 takes it out of its parent. Not the work item itself, nor one of its own sub-items.",
+    })
 }
 
 /// A list given as an array, or comma-separated (from a query string); none when empty.
@@ -881,7 +911,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 434] = [
+    pub const ALL: [Op; 437] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -946,6 +976,9 @@ impl Op {
         Op::ListWorkItemLinks,
         Op::LinkWorkItem,
         Op::UnlinkWorkItem,
+        Op::SetWorkItemParent,
+        Op::AddWorkItemSubItem,
+        Op::RemoveWorkItemSubItem,
         Op::ResolveRef,
         Op::ListLabels,
         Op::CreateLabel,
@@ -1389,6 +1422,9 @@ impl Op {
             Op::ListWorkItemLinks => "list_work_item_links",
             Op::LinkWorkItem => "link_work_item",
             Op::UnlinkWorkItem => "unlink_work_item",
+            Op::SetWorkItemParent => "set_work_item_parent",
+            Op::AddWorkItemSubItem => "add_work_item_sub_item",
+            Op::RemoveWorkItemSubItem => "remove_work_item_sub_item",
             Op::ResolveRef => "resolve_ref",
             Op::ListLabels => "list_labels",
             Op::CreateLabel => "create_label",
@@ -1716,22 +1752,22 @@ impl Op {
                 "Create a repository in one of your workspaces, empty or as a copy of a public git repository elsewhere. It gets a project of its own name; description is that project's. With deploy true, its project's g1t.page Deployments are turned on as soon as it is made, as update_deployment_settings with enabled true does: its first push to the default branch deploys production. The repository is made either way: the response has `deployments` (the settings, with production_url) when they are on, or `deploy_error` saying why not (the workspace has no g1t plan, or your role is too low)."
             }
             Op::ListWorkItems => {
-                "A workspace's work items, newest first. A work item is any tracked work (a feature, a bug, a chore) of the workspace, numbered in its sequence with new pull requests, and linked to the repositories it concerns: its `origin` (where it was filed, if it was filed in one), its `target`s (where the work is meant to land) and those it `touched` (where a pull request or commit for it landed or is under way). Filter by state, by a label's name, by a milestone's number, by assignee, and with repo by a repository it is linked to (role narrows it to one kind of link). With horizon, only the open work items on that horizon of the plan, in the plan's order: urgent first, then by rank (triage newest first). limit is how many, 1 to 100 (100 if left out). Each work item says where it stands in the plan: `horizon`, `appetite`, `budget_usd`, `urgent` and `planned_at`. Members see every work item; anyone who can read a repository sees the work items filed in it."
+                "A workspace's work items, newest first. A work item is any tracked work (a feature, a bug, a chore) of the workspace, numbered in its sequence with new pull requests, and linked to the repositories it concerns: its `origin` (where it was filed, if it was filed in one), its `target`s (where the work is meant to land) and those it `touched` (where a pull request or commit for it landed or is under way). Filter by state, by a label's name, by a milestone's number, by assignee, and with repo by a repository it is linked to (role narrows it to one kind of link). With horizon, only the open work items on that horizon of the plan, in the plan's order: urgent first, then by rank (triage newest first). limit is how many, 1 to 100 (100 if left out). With parent, only the sub-items of the work item of that number. Each work item says where it stands in the plan: `horizon`, `appetite`, `budget_usd`, `urgent` and `planned_at`; and `parent`, the number of the work item it is a sub-item of, and with sub-items `sub_item_progress` (`done` of `total` closed). Members see every work item; anyone who can read a repository sees the work items filed in it."
             }
             Op::ListRepoWorkItems => {
                 "The work items linked to a repository, in any role (origin, target or touched) or in role: the workspace's work list filtered to it. Read only: work items are opened in the workspace (open_work_item, with repo as their origin)."
             }
             Op::GetWorkItem => {
-                "A work item: its description (which may say what done means, under \"Definition of done\"), labels, milestone, `repos` (each linked repository with its `role`, its `legacy_number` when it was filed there as an issue before work items, and whether the work `landed` there), `resolutions` (what landed it in each repository: a merged pull request, or a commit pushed to its default branch, with who pushed it), its comments and reactions, and every pull request made for it, in any repository. Read this before opening a pull request, to see what others have already tried. A comment one of the workspace's agents wrote as itself has `agent` (its `id`, `handle`, `display_name` and `avatar_seed`) and `acting_for` (the person it acted for, whose access capped it); its `author` is the agent, of kind `agent`. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
+                "A work item: its description (which may say what done means, under \"Definition of done\"), labels, milestone, `repos` (each linked repository with its `role`, its `legacy_number` when it was filed there as an issue before work items, and whether the work `landed` there), `resolutions` (what landed it in each repository: a merged pull request, or a commit pushed to its default branch, with who pushed it), its comments and reactions, every pull request made for it, in any repository, and `parent` and `sub_items` (each with its `number`, `title` and `state`), as far as you can see them. Read this before opening a pull request, to see what others have already tried. A comment one of the workspace's agents wrote as itself has `agent` (its `id`, `handle`, `display_name` and `avatar_seed`) and `acting_for` (the person it acted for, whose access capped it); its `author` is the agent, of kind `agent`. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
             }
             Op::OpenWorkItem => {
-                "Open a work item in a workspace. With repo, it is filed from that repository, its origin: anyone who may take part in the repository may (on a public one, anyone signed in), and workspace may be left out. Without, only a member of the workspace may. targets are repositories of the workspace where the work is meant to land; the work item closes once a pull request or commit that closes it has landed in every target (with none, once anything that closes it lands). Say what done means in the body if it helps, for instance under a \"Definition of done\" heading. labels are the workspace's labels by name; a name it does not have yet is created when you have the Write role, and refused otherwise. milestone, a workspace milestone's number, needs the Triage role. A work_item.opened event."
+                "Open a work item in a workspace. With repo, it is filed from that repository, its origin: anyone who may take part in the repository may (on a public one, anyone signed in), and workspace may be left out. Without, only a member of the workspace may. targets are repositories of the workspace where the work is meant to land; the work item closes once a pull request or commit that closes it has landed in every target (with none, once anything that closes it lands). Say what done means in the body if it helps, for instance under a \"Definition of done\" heading. labels are the workspace's labels by name; a name it does not have yet is created when you have the Write role, and refused otherwise. milestone, a workspace milestone's number, needs the Triage role. parent, the number of a work item of the workspace you can see, files it as that one's sub-item. A work_item.opened event."
             }
             Op::UpdateWorkItem => {
-                "Change a work item's title, body, labels, milestone, the people it is assigned to, or what it is blocked by. Only the fields given are changed; labels, assignees and blocked_by each replace the whole set, and milestone null or 0 takes it out of its milestone. blocked_by lists the numbers of the work items of the workspace that have to land first: one that is not a work item, the work item itself, or a set that would make a cycle is refused with `422`, and a change is a dependency.changed event. Its author may change their own work item, as may the person g1t filed one for; anyone else needs the Triage role, and so does the milestone. Each label added or removed is a work_item.labeled or work_item.unlabeled event. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
+                "Change a work item's title, body, labels, milestone, the people it is assigned to, what it is blocked by, or its parent. Only the fields given are changed; labels, assignees and blocked_by each replace the whole set, milestone null or 0 takes it out of its milestone, and parent (as set_work_item_parent) null or 0 out of its parent. blocked_by lists the numbers of the work items of the workspace that have to land first: one that is not a work item, the work item itself, or a set that would make a cycle is refused with `422`, and a change is a dependency.changed event. Its author may change their own work item, as may the person g1t filed one for; anyone else needs the Triage role, and so does the milestone. Each label added or removed is a work_item.labeled or work_item.unlabeled event. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
             }
             Op::CloseWorkItem => {
-                "Close a work item without a pull request. A work item closes by itself once what closes it has landed in every target: a pull request whose title or description names it after a closing keyword (Fixes #12) merging into a repository's default branch, or such a commit pushed there, marks that repository landed. When a commit already on a default branch did the work, give it as commit, with repo the repository it is in: it lands there as its push would have, and the work item closes if nothing else is left to land. A commit that is not on the default branch, or whose message does not name the work item after a closing keyword, is refused with `422`; a work item already closed, with `409`. Its author may close their own work item, as may the person g1t filed one for; anyone else needs the Triage role. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
+                "Close a work item without a pull request. A work item closes by itself once what closes it has landed in every target: a pull request whose title or description names it after a closing keyword (Fixes #12) merging into a repository's default branch, or such a commit pushed there, marks that repository landed. When a commit already on a default branch did the work, give it as commit, with repo the repository it is in: it lands there as its push would have, and the work item closes if nothing else is left to land. A commit that is not on the default branch, or whose message does not name the work item after a closing keyword, is refused with `422`; a work item already closed, with `409`. A work item with open sub-items is never closed with them silently: without sub_items it is refused with `409`, naming them; sub_items leave leaves them open, close closes them too (with the same reason, and their own open sub-items), and move makes them sub-items of move_to. A commit closing it leaves them. Closing the last open sub-item leaves its parent open, and says so on the parent. Its author may close their own work item, as may the person g1t filed one for; anyone else needs the Triage role. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
             }
             Op::ReopenWorkItem => {
                 "Reopen a closed work item. Its author may reopen their own work item, as may the person g1t filed one for; anyone else needs the Triage role. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
@@ -1756,6 +1792,15 @@ impl Op {
             }
             Op::UnlinkWorkItem => {
                 "Unlink a repository from a work item: a target it no longer needs to land in, or one it touched. Its origin stays. Needs the Triage role on the work item. A work_item.unlinked event; unlinking closes and reopens nothing by itself."
+            }
+            Op::SetWorkItemParent => {
+                "Make a work item a sub-item of another work item of the workspace (parent, its number), or, with parent null or 0, of none. A work item has one parent and any number of sub-items; a parent shows its sub-items and how many of them are done (`sub_item_progress`), and is not blocked by them: blocked_by stays separate. A parent that is not a work item of the workspace you can see, the work item itself, or one of its own sub-items however deep (a cycle) is refused with `422`. Its author may change their own work item, as may the person g1t filed one for; anyone else needs the Triage role. Returns the work item. A work_item.parent_changed event on it, with parent and from_parent, and a work_item.sub_items_changed event on each parent it left or joined. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
+            }
+            Op::AddWorkItemSubItem => {
+                "Make work item sub_item a sub-item of work item number, as set_work_item_parent on sub_item would: it leaves the parent it had. Refused with `422` when it would make a cycle. Needs what changing sub_item needs: its author, the person g1t filed it for, or the Triage role. Returns the sub-item. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
+            }
+            Op::RemoveWorkItemSubItem => {
+                "Take work item sub_item out of work item number, so it has no parent. Refused with `422` when number is not its parent. Needs what changing sub_item needs: its author, the person g1t filed it for, or the Triage role. Returns the former sub-item. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
             }
             Op::ResolveRef => {
                 "What `#number` names, read where it is written: in a repository (repo) or in a workspace alone (workspace). In a repository, it is the first of a pull request of that repository numbered so, a work item filed there whose old issue number it was, the work item of the workspace with that number, and a pull request of another of the workspace's repositories. In a workspace, the work item with that number, else its pull request. Answers `{ kind: work_item, workspace, number, item_id }`, `{ kind: pull, repo, number }`, or `{ kind: none }` when it names nothing you may see. This is how an old link to a repository's issue finds the work item it became."
@@ -2806,6 +2851,7 @@ impl Op {
                         "description": "A horizon of the plan: triage (not placed yet), now, next, later or set_aside. Only the open work items on it, in the plan's order instead of the newest first.",
                     },
                     "limit": { "type": "integer", "minimum": 1, "maximum": 100, "description": "At most this many, 1 to 100 (100 if left out)." },
+                    "parent": { "type": "integer", "description": "Only the sub-items of the work item of this number." },
                 }),
                 &[],
             ),
@@ -2861,6 +2907,7 @@ impl Op {
                         "description": "What kind of work this is, e.g. \"bug\" or \"enhancement\": the workspace's labels, as list_labels gives them. A name it does not have yet is created for someone with the Write role.",
                     },
                     "milestone": { "type": "integer", "description": "The number of the workspace milestone to put it in. Needs the Triage role." },
+                    "parent": { "type": "integer", "description": "The number of the work item of the workspace to file it as a sub-item of." },
                 }),
                 &["title"],
             ),
@@ -2887,6 +2934,7 @@ impl Op {
                         "items": { "type": "integer" },
                         "description": "The numbers of the work items of the workspace that have to land first. Replaces the whole set; an empty list clears it. No cycles, and never the work item itself.",
                     },
+                    "parent": parent_schema(),
                 })),
                 &["number"],
             ),
@@ -2952,6 +3000,12 @@ impl Op {
                         "type": "string",
                         "description": "The commit that did it: one on repo's default branch whose message names this work item after a closing keyword (Fixes #12). It lands there as pushing it would have.",
                     },
+                    "sub_items": {
+                        "type": "string",
+                        "enum": OPEN_SUB_ITEMS,
+                        "description": "What to do with its sub-items that are still open: leave them open, close them too, or move them to move_to. Needed when it has any.",
+                    },
+                    "move_to": { "type": "integer", "description": "With sub_items move: the number of the work item they become sub-items of." },
                 }),
                 &["number"],
             ),
@@ -2973,6 +3027,13 @@ impl Op {
                 }
                 object(properties, &["number", "repo"])
             }
+            Op::SetWorkItemParent => object(item_numbered(json!({ "parent": parent_schema() })), &["number", "parent"]),
+            Op::AddWorkItemSubItem | Op::RemoveWorkItemSubItem => object(
+                item_numbered(json!({
+                    "sub_item": { "type": "integer", "description": "The number of the work item to add as a sub-item, or to take out." },
+                })),
+                &["number", "sub_item"],
+            ),
             Op::ResolveRef => object(
                 json!({
                     "repo": { "type": "string", "description": "The repository the reference is written in, \"owner/name\"." },
@@ -4349,6 +4410,9 @@ impl Op {
                 | Op::ListWorkItemLinks
                 | Op::LinkWorkItem
                 | Op::UnlinkWorkItem
+                | Op::SetWorkItemParent
+                | Op::AddWorkItemSubItem
+                | Op::RemoveWorkItemSubItem
                 | Op::ListWorkItemLabels
                 | Op::AddWorkItemLabels
                 | Op::SetWorkItemLabels
@@ -5412,6 +5476,7 @@ impl Op {
                         assignee: optional_text(input, "assignee"),
                         horizon,
                         limit: integer(input, "limit"),
+                        parent: integer(input, "parent"),
                         before: None,
                         closed_since: None,
                     },
@@ -5446,6 +5511,10 @@ impl Op {
                         body: text(input, "body"),
                         labels: strings(input, "labels").unwrap_or_default(),
                         milestone: integer(input, "milestone"),
+                        parent: match item_ref(input, "parent") {
+                            Ok(parent) => parent,
+                            Err(message) => return failed(FailureCode::Invalid, &message),
+                        },
                     },
                 )
                 .await
@@ -5453,6 +5522,11 @@ impl Op {
             Op::UpdateWorkItem => {
                 let blocked_by = match crate::coordination::blocked_by(input) {
                     Ok(blocked_by) => blocked_by,
+                    Err(message) => return failed(FailureCode::Invalid, &message),
+                };
+                // Given as null, it takes it out of its parent.
+                let parent = match item_ref(input, "parent") {
+                    Ok(parent) => parent.or_else(|| input.get("parent").map(|_| 0)),
                     Err(message) => return failed(FailureCode::Invalid, &message),
                 };
                 pass(
@@ -5468,6 +5542,7 @@ impl Op {
                         assignees: strings(input, "assignees"),
                         milestone: milestone_input(input),
                         blocked_by,
+                        parent,
                     },
                 )
                 .await
@@ -5485,7 +5560,21 @@ impl Op {
                 if commit.is_some() && given_repo().is_none() {
                     return failed(FailureCode::Invalid, "Give repo, the repository the commit is in, as owner/name.");
                 }
-                pass(work, "close_work_item", &CloseWorkItemArgs { item, repo: given_repo(), commit }).await
+                let sub_items = match optional_text(input, "sub_items") {
+                    None => None,
+                    Some(asked) => match OpenSubItems::parse(&asked) {
+                        Some(asked) => Some(asked),
+                        None => return failed(FailureCode::Invalid, "sub_items is leave, close or move."),
+                    },
+                };
+                let move_to = match item_ref(input, "move_to") {
+                    Ok(move_to) => move_to,
+                    Err(message) => return failed(FailureCode::Invalid, &message),
+                };
+                if sub_items == Some(OpenSubItems::Move) && move_to.is_none() {
+                    return failed(FailureCode::Invalid, "Say which work item they move to, as move_to.");
+                }
+                pass(work, "close_work_item", &CloseWorkItemArgs { item, repo: given_repo(), commit, sub_items, move_to }).await
             }
             Op::PlanWorkItem => {
                 let horizon = match horizon_input(input) {
@@ -5556,6 +5645,30 @@ impl Op {
                 };
                 let method = if self == Op::LinkWorkItem { "link_work_item" } else { "unlink_work_item" };
                 pass(work, method, &LinkWorkItemArgs { actor: actor(), workspace: item_ws(), number, repo: linked, role }).await
+            }
+            Op::SetWorkItemParent => {
+                if input.get("parent").is_none() {
+                    return failed(FailureCode::Invalid, "Give parent, a work item's number, or null for none.");
+                }
+                let parent = match item_ref(input, "parent") {
+                    Ok(parent) => parent,
+                    Err(message) => return failed(FailureCode::Invalid, &message),
+                };
+                let args = SetParentArgs { actor: actor(), workspace: item_ws(), number, parent, only_from: None };
+                pass(work, "set_work_item_parent", &args).await
+            }
+            Op::AddWorkItemSubItem | Op::RemoveWorkItemSubItem => {
+                let sub_item = match item_ref(input, "sub_item") {
+                    Ok(Some(sub_item)) => sub_item,
+                    Ok(None) => return failed(FailureCode::Invalid, "Give sub_item, the number of a work item of the workspace."),
+                    Err(message) => return failed(FailureCode::Invalid, &message),
+                };
+                let args = if self == Op::AddWorkItemSubItem {
+                    SetParentArgs { actor: actor(), workspace: item_ws(), number: sub_item, parent: Some(number), only_from: None }
+                } else {
+                    SetParentArgs { actor: actor(), workspace: item_ws(), number: sub_item, parent: None, only_from: Some(number) }
+                };
+                pass(work, "set_work_item_parent", &args).await
             }
             Op::ResolveRef => {
                 if given_repo().is_none() && workspace().is_empty() {

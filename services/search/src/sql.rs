@@ -377,6 +377,11 @@ fn items_select(query: &Query, reader: &Reader, kind: ItemKind) -> (Sql, bool) {
     for label in &query.labels.exclude {
         filters.add("instr(i.labels, ?) = 0", vec![Param::Text(format!("|{label}|"))]);
     }
+    // A sub-item keeps its parent's number in its own workspace. A pull
+    // request has none, so matches nothing.
+    if let Some(parent) = query.parent {
+        filters.add("i.parent = ?", vec![Param::Int(i64::from(parent))]);
+    }
     match query.prose_match() {
         Some(expression) => {
             let mut params = vec![Param::Text(expression)];
@@ -556,6 +561,19 @@ mod tests {
     }
 
     #[test]
+    fn parent_finds_sub_items() {
+        let query = Query::parse("crash parent:#212");
+        for kind in [ItemKind::Item, ItemKind::Pull] {
+            let sql = items_page(&query, &reader(&[]), kind, PAGE);
+            assert!(sql.text.contains("i.parent = ?"), "{}", sql.text);
+            assert!(sql.params.contains(&Param::Int(212)));
+            assert_eq!(placeholders(&sql), sql.params.len());
+        }
+        let sql = items_page(&Query::parse("crash"), &reader(&[]), ItemKind::Item, PAGE);
+        assert!(!sql.text.contains("i.parent"));
+    }
+
+    #[test]
     fn code_needs_three_characters_unless_scoped() {
         assert!(code_plan(&Query::parse("fn")).is_err());
         assert_eq!(code_plan(&Query::parse("fn repo:a/b")).unwrap(), CodePlan::Scan { short: vec!["fn".into()] });
@@ -603,6 +621,7 @@ mod tests {
             "fn repo:acme/web",
             "repo:acme/web path:*.rs",
             "crash is:open label:bug author:ana",
+            "parent:212 is:open",
             "crash repo:acme/web -repo:acme/old org:acme is:private",
             "language:rust",
             "ana",

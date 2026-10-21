@@ -612,6 +612,7 @@ pub const ROUTES: &[Route] = &[
             ("role", "role"),
             ("horizon", "horizon"),
             ("limit", "limit"),
+            ("parent", "parent"),
         ],
     ),
     route("POST", "/workspaces/:workspace/work", Op::OpenWorkItem, &[]),
@@ -631,6 +632,10 @@ pub const ROUTES: &[Route] = &[
     route("GET", "/workspaces/:workspace/work/:number/links", Op::ListWorkItemLinks, &[]),
     route("POST", "/workspaces/:workspace/work/:number/links", Op::LinkWorkItem, &[]),
     route("DELETE", "/workspaces/:workspace/work/:number/links", Op::UnlinkWorkItem, &[("repo", "repo")]),
+    // Sub-items: a work item's parent, and the work items under it.
+    route("PUT", "/workspaces/:workspace/work/:number/parent", Op::SetWorkItemParent, &[]),
+    route("POST", "/workspaces/:workspace/work/:number/sub_items", Op::AddWorkItemSubItem, &[]),
+    route("DELETE", "/workspaces/:workspace/work/:number/sub_items/:sub_item", Op::RemoveWorkItemSubItem, &[]),
     route("GET", "/workspaces/:workspace/work/:number/labels", Op::ListWorkItemLabels, &[]),
     route("POST", "/workspaces/:workspace/work/:number/labels", Op::AddWorkItemLabels, &[]),
     route("PUT", "/workspaces/:workspace/work/:number/labels", Op::SetWorkItemLabels, &[]),
@@ -1669,6 +1674,11 @@ mod tests {
         let (route, input) = resolve("DELETE", "/workspaces/acme/work/12/links", &[("repo".to_owned(), "acme/api".to_owned())], Value::Null).unwrap();
         assert_eq!(route.op, Op::UnlinkWorkItem);
         assert_eq!(input, json!({ "repo": "acme/api", "number": 12, "workspace": "acme" }));
+        assert_eq!(op("PUT", "/workspaces/acme/work/12/parent"), Op::SetWorkItemParent);
+        assert_eq!(op("POST", "/workspaces/acme/work/12/sub_items"), Op::AddWorkItemSubItem);
+        let (route, input) = resolve("DELETE", "/workspaces/acme/work/12/sub_items/14", &[], Value::Null).unwrap();
+        assert_eq!(route.op, Op::RemoveWorkItemSubItem);
+        assert_eq!(input["sub_item"], json!("14"));
         assert_eq!(op("GET", "/workspaces/acme/work/12/decisions"), Op::ListWorkItemDecisions);
         assert_eq!(op("GET", "/repos/acme/web/work"), Op::ListRepoWorkItems);
         let (route, input) = resolve("GET", "/repos/acme/web/refs/7", &[], Value::Null).unwrap();

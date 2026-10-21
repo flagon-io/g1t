@@ -6897,6 +6897,22 @@ pub static OPERATIONS: &[Operation] = &[
         ],
     },
     Operation {
+        id: "add_work_item_sub_item",
+        method: "POST",
+        path: "/workspaces/{workspace}/work/{number}/sub_items",
+        tag: "Work items",
+        summary: "Add a sub-item to a work item",
+        scope: Some("work:write"),
+        params: &[
+            Param { name: "workspace", location: In::Path, kind: "string", required: true, values: &[] },
+            Param { name: "number", location: In::Path, kind: "integer", required: true, values: &[] },
+        ],
+        body: &[
+            Field { name: "repo", kind: "string", required: false, values: &[] },
+            Field { name: "sub_item", kind: "integer", required: true, values: &[] },
+        ],
+    },
+    Operation {
         id: "claim_new_work_item",
         method: "POST",
         path: "/workspaces/{workspace}/claims",
@@ -6949,8 +6965,10 @@ pub static OPERATIONS: &[Operation] = &[
         ],
         body: &[
             Field { name: "commit", kind: "string", required: false, values: &[] },
+            Field { name: "move_to", kind: "integer", required: false, values: &[] },
             Field { name: "reason", kind: "string", required: false, values: &["completed", "not_planned"] },
             Field { name: "repo", kind: "string", required: false, values: &[] },
+            Field { name: "sub_items", kind: "string", required: false, values: &["leave", "close", "move"] },
         ],
     },
     Operation {
@@ -7177,6 +7195,7 @@ pub static OPERATIONS: &[Operation] = &[
             Param { name: "role", location: In::Query, kind: "string", required: false, values: &["origin", "target", "touched"] },
             Param { name: "horizon", location: In::Query, kind: "string", required: false, values: &["triage", "now", "next", "later", "set_aside"] },
             Param { name: "limit", location: In::Query, kind: "integer", required: false, values: &[] },
+            Param { name: "parent", location: In::Query, kind: "integer", required: false, values: &[] },
         ],
         body: &[],
     },
@@ -7207,6 +7226,7 @@ pub static OPERATIONS: &[Operation] = &[
             Field { name: "body", kind: "string", required: false, values: &[] },
             Field { name: "labels", kind: "array", required: false, values: &[] },
             Field { name: "milestone", kind: "integer", required: false, values: &[] },
+            Field { name: "parent", kind: "integer", required: false, values: &[] },
             Field { name: "repo", kind: "string", required: false, values: &[] },
             Field { name: "targets", kind: "array", required: false, values: &[] },
             Field { name: "title", kind: "string", required: true, values: &[] },
@@ -7304,6 +7324,22 @@ pub static OPERATIONS: &[Operation] = &[
         ],
     },
     Operation {
+        id: "remove_work_item_sub_item",
+        method: "DELETE",
+        path: "/workspaces/{workspace}/work/{number}/sub_items/{sub_item}",
+        tag: "Work items",
+        summary: "Remove a sub-item from a work item",
+        scope: Some("work:write"),
+        params: &[
+            Param { name: "workspace", location: In::Path, kind: "string", required: true, values: &[] },
+            Param { name: "number", location: In::Path, kind: "integer", required: true, values: &[] },
+            Param { name: "sub_item", location: In::Path, kind: "integer", required: true, values: &[] },
+        ],
+        body: &[
+            Field { name: "repo", kind: "string", required: false, values: &[] },
+        ],
+    },
+    Operation {
         id: "reopen_work_item",
         method: "POST",
         path: "/workspaces/{workspace}/work/{number}/reopen",
@@ -7362,6 +7398,22 @@ pub static OPERATIONS: &[Operation] = &[
         ],
     },
     Operation {
+        id: "set_work_item_parent",
+        method: "PUT",
+        path: "/workspaces/{workspace}/work/{number}/parent",
+        tag: "Work items",
+        summary: "Set a work item's parent",
+        scope: Some("work:write"),
+        params: &[
+            Param { name: "workspace", location: In::Path, kind: "string", required: true, values: &[] },
+            Param { name: "number", location: In::Path, kind: "integer", required: true, values: &[] },
+        ],
+        body: &[
+            Field { name: "parent", kind: "integer", required: true, values: &[] },
+            Field { name: "repo", kind: "string", required: false, values: &[] },
+        ],
+    },
+    Operation {
         id: "unlink_work_item",
         method: "DELETE",
         path: "/workspaces/{workspace}/work/{number}/links",
@@ -7393,6 +7445,7 @@ pub static OPERATIONS: &[Operation] = &[
             Field { name: "body", kind: "string", required: false, values: &[] },
             Field { name: "labels", kind: "array", required: false, values: &[] },
             Field { name: "milestone", kind: "integer", required: false, values: &[] },
+            Field { name: "parent", kind: "integer", required: false, values: &[] },
             Field { name: "repo", kind: "string", required: false, values: &[] },
             Field { name: "title", kind: "string", required: false, values: &[] },
         ],

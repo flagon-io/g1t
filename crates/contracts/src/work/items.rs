@@ -237,6 +237,7 @@ pub fn sort_repos(repos: &mut [ItemRepo]) {
 
 /// A work item and everything on it.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkItemDetail {
     pub item: WorkItem,
     /// Every pull request made for it, in any repository, oldest first.

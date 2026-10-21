@@ -265,7 +265,7 @@ pub static COMMANDS: &[Mapping] = &[
     Mapping { command: "work new", ops: &["open_work_item", "update_work_item", "upload_attachment", "upload_work_item_attachment"] },
     Mapping { command: "work comment", ops: &["add_work_item_comment", "upload_work_item_attachment"] },
     Mapping { command: "work edit", ops: &["update_work_item", "get_work_item"] },
-    Mapping { command: "work close", ops: &["close_work_item", "add_work_item_comment"] },
+    Mapping { command: "work close", ops: &["close_work_item", "add_work_item_comment", "get_work_item"] },
     Mapping { command: "work reopen", ops: &["reopen_work_item", "add_work_item_comment"] },
     Mapping { command: "work link", ops: &["link_work_item"] },
     Mapping { command: "work unlink", ops: &["unlink_work_item"] },

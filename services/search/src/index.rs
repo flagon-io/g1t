@@ -57,12 +57,13 @@ const ITEMS_PER_JOB: usize = 20;
 
 /// Stores a work item or pull request by its key, as it is now.
 pub const UPSERT_ITEM: &str = "INSERT INTO items (kind, key, repo_id, workspace, number, repos, title, body, state, status,
-       author, requested_by, labels, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       author, requested_by, labels, created_at, updated_at, parent)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (key) DO UPDATE SET repo_id = excluded.repo_id, workspace = excluded.workspace,
        number = excluded.number, repos = excluded.repos, title = excluded.title, body = excluded.body,
        state = excluded.state, status = excluded.status, author = excluded.author,
-       requested_by = excluded.requested_by, labels = excluded.labels, updated_at = excluded.updated_at";
+       requested_by = excluded.requested_by, labels = excluded.labels, updated_at = excluded.updated_at,
+       parent = excluded.parent";
 
 /// Where `park` keeps a backfill page in `meta`, by its key's prefix.
 const PARKED: &str = "parked_job:";
@@ -178,6 +179,8 @@ struct Row<'a> {
     workspace: Option<&'a str>,
     number: u32,
     repos: &'a str,
+    /// A work item's parent's number in its workspace, if it is a sub-item.
+    parent: Option<u32>,
 }
 
 /// What a row of `items` says.
@@ -624,6 +627,7 @@ impl Search {
                 workspace: Some(&item.workspace.to_lowercase()),
                 number: item.number,
                 repos: &repos_of(&linked),
+                parent: item.parent,
             },
             Text {
                 title: &item.title,
@@ -648,6 +652,7 @@ impl Search {
                 workspace: None,
                 number: pull.number,
                 repos: "|",
+                parent: None,
             },
             Text {
                 title: &pull.title,
@@ -683,6 +688,7 @@ impl Search {
                 p(&labels_of(text.labels)),
                 p(text.created_at),
                 p(text.updated_at),
+                row.parent.map_or(Param::Null, |number| Param::Int(i64::from(number))),
             ],
         )
     }
@@ -767,6 +773,7 @@ impl Search {
                 label: None,
                 milestone: None,
                 assignee: None,
+                parent: None,
                 closed_since: None,
                 horizon: None,
                 limit: None,
@@ -972,8 +979,8 @@ impl Search {
                     self.enqueue(vec![Job::Repo { repo_id: repo.repo_id }]).await?;
                 }
             }
-            // Every change to a work item: its text, state, labels and the
-            // repositories it is linked to are all indexed.
+            // Every change to a work item: its text, state, labels, parent
+            // and the repositories it is linked to are all indexed.
             kind if kind.starts_with("work_item.") => {
                 if let Ok(item) = serde_json::from_value::<ItemEvent>(data.clone()) {
                     self.index_work_item(&item.workspace, item.number, Some(&item.item_id)).await?;

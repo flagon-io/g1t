@@ -1125,6 +1125,7 @@ g1t work list [OPTIONS]
 | `-A, --author <AUTHOR>` | Only work items opened by this person (@me for you). |
 | `--role <ROLE>` | With --repo: only those linked to it this way. One of `origin`, `target`, `touched`. |
 | `-H, --horizon <HORIZON>` | Only open work items on this horizon of the plan, in the plan's order. One of `triage`, `now`, `next`, `later`, `set-aside`. |
+| `-p, --parent <PARENT>` | Only the sub-items of the work item of this number. |
 | `-L, --limit <LIMIT>` | Default: `20`. |
 
 Calls [`list_work_items`](/reference/api/work-items/list-work-items/).
@@ -1163,6 +1164,7 @@ g1t work new [OPTIONS]
 | `-l, --label <LABEL>` | A label; repeat for more. |
 | `-a, --assignee <ASSIGNEE>` | Someone to assign; repeat for more (@me for you). |
 | `-m, --milestone <MILESTONE>` | A workspace milestone's number. |
+| `-p, --parent <PARENT>` | File it as a sub-item of the work item of this number. |
 | `-w, --web` | Open the new work item page in the browser instead. |
 
 ```text
@@ -1195,7 +1197,7 @@ Calls [`add_work_item_comment`](/reference/api/work-items/add-work-item-comment/
 
 ### g1t work edit
 
-Change a work item's title, body, labels, assignees or milestone.
+Change a work item's title, body, labels, assignees, milestone or parent.
 
 ```text
 g1t work edit [OPTIONS] <NUMBER>
@@ -1213,6 +1215,15 @@ g1t work edit [OPTIONS] <NUMBER>
 | `--remove-assignee <LOGIN>` |  |
 | `-m, --milestone <MILESTONE>` | A workspace milestone's number. |
 | `--remove-milestone` | Take it out of its milestone. |
+| `-p, --parent <PARENT>` | Make it a sub-item of the work item of this number. |
+| `--remove-parent` | Take it out of its parent. |
+
+```text
+With --parent, it becomes a sub-item of that work item; --remove-parent takes it out.
+Examples:
+  g1t work edit 228 --parent 212
+  g1t work edit 228 --remove-parent
+```
 
 Calls [`update_work_item`](/reference/api/work-items/update-work-item/), [`get_work_item`](/reference/api/work-items/get-work-item/).
 
@@ -1230,8 +1241,18 @@ g1t work close [OPTIONS] <NUMBER>
 | `-r, --reason <REASON>` | One of `completed`, `not_planned`. |
 | `-c, --comment <COMMENT>` | Leave a comment as it closes. |
 | `--commit <COMMIT>` | The commit on the repository's default branch that did it: its message names the work item after a closing keyword (Fixes #12). Its full hash. It lands there; the work item closes when nothing else is left to land. |
+| `--sub-items <SUB_ITEMS>` | What to do with its sub-items that are still open. One of `leave`, `close`, `move`. |
+| `--move-to <NUMBER>` | With --sub-items move: the number of the work item they become sub-items of. |
 
-Calls [`close_work_item`](/reference/api/work-items/close-work-item/), [`add_work_item_comment`](/reference/api/work-items/add-work-item-comment/).
+```text
+A work item with open sub-items never closes them silently: say what to do with them with
+--sub-items (leave them open, close them too, or move them to --move-to). Asked when not given.
+Examples:
+  g1t work close 212 --sub-items leave
+  g1t work close 212 --sub-items move --move-to 219
+```
+
+Calls [`close_work_item`](/reference/api/work-items/close-work-item/), [`add_work_item_comment`](/reference/api/work-items/add-work-item-comment/), [`get_work_item`](/reference/api/work-items/get-work-item/).
 
 ### g1t work reopen
 

@@ -263,7 +263,7 @@ export type WorkItemDetail = {
   /** The work item it is a sub-item of, when the viewer may see it. */
   parent?: ItemBrief | null;
   /** Its sub-items the viewer may see, by number. */
-  sub_items?: ItemBrief[];
+  subItems?: ItemBrief[];
 };
 
 /** What `#N` names (`resolveRef`): see `refs.ts` for the order it is read in. */

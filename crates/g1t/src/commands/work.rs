@@ -11,7 +11,7 @@ use std::collections::{BTreeSet, HashSet, VecDeque};
 use std::time::{Duration, Instant};
 
 use crate::cli::{
-    CloseReason, ItemState, ReopenArgs, WorkArgs, WorkBlockArgs, WorkClaimArgs, WorkCloseArgs, WorkCommand,
+    CloseReason, ItemState, OpenSubItems, ReopenArgs, WorkArgs, WorkBlockArgs, WorkClaimArgs, WorkCloseArgs, WorkCommand,
     WorkCommentArgs, WorkDispatchArgs, WorkEditArgs, WorkEventsArgs, WorkHandoffArgs, WorkLinkArgs, WorkListArgs,
     WorkNewArgs, WorkNextArgs, WorkNumber, WorkPlanArgs, WorkReleaseArgs, WorkViewArgs,
 };
@@ -165,6 +165,7 @@ fn list(ctx: &Ctx, workspace: Option<&str>, args: WorkListArgs) -> Result<()> {
         .query_opt("repo", filter.map(Repo::to_string))
         .query_opt("role", args.role.map(|role| role.name()))
         .query_opt("horizon", args.horizon.map(|horizon| horizon.name()))
+        .query_opt("parent", args.parent)
         .query_opt("limit", args.horizon.map(|_| args.limit.clamp(1, 100)))
         .send()?;
     let mut items = super::items(found, "items");
@@ -210,9 +211,11 @@ pub fn print_list(out: &Output, items: &[Value]) -> Result<()> {
             let state = s(i, "state");
             let labels = super::names(&i["labels"]).join(", ");
             let repos = repos_cell(i);
+            let family = family_cell(i);
+            let title = format!("{}{family}", s(i, "title"));
             vec![
                 Cell::styled(number.clone(), if state == "open" { out.green(&number) } else { out.dim(&number) }),
-                Cell::new(s(i, "title")),
+                Cell::styled(title, format!("{}{}", s(i, "title"), out.dim(&family))),
                 Cell::styled(repos.clone(), out.dim(&repos)),
                 Cell::styled(labels.clone(), out.dim(&labels)),
                 Cell::styled(ago(s(i, "updated_at")), out.dim(&ago(s(i, "updated_at")))),
@@ -220,6 +223,20 @@ pub fn print_list(out: &Output, items: &[Value]) -> Result<()> {
         })
         .collect();
     out.table(&["number", "title", "repos", "labels", "updated"], &rows)
+}
+
+/// After a work item's title: how far along its sub-items are (`3/7`), and
+/// the work item it is a sub-item of (`↑ #212`).
+pub fn family_cell(item: &Value) -> String {
+    let mut out = String::new();
+    let progress = &item["sub_item_progress"];
+    if let (Some(done), Some(total)) = (progress["done"].as_u64(), progress["total"].as_u64()) {
+        out.push_str(&format!("  {done}/{total}"));
+    }
+    if let Some(parent) = item["parent"].as_u64() {
+        out.push_str(&format!("  ↑ #{parent}"));
+    }
+    out
 }
 
 fn view(ctx: &Ctx, workspace: Option<&str>, args: WorkViewArgs) -> Result<()> {
@@ -291,6 +308,7 @@ fn new(ctx: &Ctx, workspace: Option<&str>, args: WorkNewArgs) -> Result<()> {
         .field_opt("targets", (!targets.is_empty()).then_some(Value::Array(targets)))
         .field_opt("labels", (!labels.is_empty()).then_some(Value::Array(labels)))
         .field_opt("milestone", args.milestone)
+        .field_opt("parent", args.parent)
         .send()?;
     let number = made["number"].as_u64().unwrap_or_default();
     let made = if later.is_empty() {
@@ -339,12 +357,23 @@ fn close(ctx: &Ctx, workspace: Option<&str>, args: WorkCloseArgs) -> Result<()> 
         CloseReason::Completed => "completed",
         CloseReason::NotPlanned => "not_planned",
     });
+    if args.sub_items == Some(OpenSubItems::Move) && args.move_to.is_none() {
+        return Err(Error::usage("--sub-items move needs --move-to, the work item they become sub-items of."));
+    }
+    // Open sub-items are never closed, or left, without being told: asked
+    // here when they are there and nothing was said. A commit leaves them.
+    let (sub_items, move_to) = match (args.sub_items, &args.commit) {
+        (None, None) => ask_about_sub_items(&place, args.number)?,
+        (asked, _) => (asked, args.move_to),
+    };
     let closed = place
         .op("close_work_item")
         .arg("number", args.number)
         .field_opt("reason", reason)
         .field_opt("commit", args.commit.as_deref())
         .field_opt("repo", repo)
+        .field_opt("sub_items", sub_items.map(OpenSubItems::name))
+        .field_opt("move_to", move_to)
         .send()?;
     let said = if closed["state"] == "closed" {
         format!("Closed {}", place.name(args.number))
@@ -352,6 +381,39 @@ fn close(ctx: &Ctx, workspace: Option<&str>, args: WorkCloseArgs) -> Result<()> 
         format!("Landed {} in this repository; it waits on {}", place.name(args.number), missing(&closed).join(", "))
     };
     super::done(ctx, &closed, &said, &place.url(args.number))
+}
+
+/// What to do with work item `number`'s open sub-items, when it has some:
+/// asked at a terminal, refused with what to say anywhere else.
+fn ask_about_sub_items(place: &Place, number: u64) -> Result<(Option<OpenSubItems>, Option<u64>)> {
+    let found = place.op("get_work_item").arg("number", number).send()?;
+    let open: Vec<u64> = list_of(&found, "sub_items")
+        .iter()
+        .filter(|item| item["state"] == "open")
+        .filter_map(|item| item["number"].as_u64())
+        .collect();
+    if open.is_empty() {
+        return Ok((None, None));
+    }
+    let listed: Vec<String> = open.iter().map(|n| format!("#{n}")).collect();
+    let them = if open.len() == 1 { "1 open sub-item".to_owned() } else { format!("{} open sub-items", open.len()) };
+    let said = format!("#{number} has {them} ({}).", listed.join(", "));
+    if !prompt::interactive() {
+        return Err(Error::usage(format!(
+            "{said} Say what to do with them: --sub-items leave, close, or move with --move-to NUMBER."
+        )));
+    }
+    eprintln!("{said}");
+    let choices = ["Leave them open".to_owned(), "Close them too".to_owned(), "Move them to another work item".to_owned()];
+    Ok(match prompt::select("What happens to them?", &choices)? {
+        0 => (Some(OpenSubItems::Leave), None),
+        1 => (Some(OpenSubItems::Close), None),
+        _ => {
+            let to = prompt::input("Move them to work item number:", None)?;
+            let to: u64 = to.trim().trim_start_matches('#').parse().map_err(|_| Error::usage("That is not a work item's number."))?;
+            (Some(OpenSubItems::Move), Some(to))
+        }
+    })
 }
 
 /// The targets a work item has not landed in yet.
@@ -414,8 +476,16 @@ fn edit(ctx: &Ctx, workspace: Option<&str>, args: WorkEditArgs) -> Result<()> {
         call = call.field("milestone", Value::Null);
         changed = true;
     }
+    if let Some(p) = args.parent {
+        call = call.field("parent", p);
+        changed = true;
+    }
+    if args.remove_parent {
+        call = call.field("parent", Value::Null);
+        changed = true;
+    }
     if !changed {
-        return Err(Error::usage("Nothing to change: pass --title, --body, --add-label, --add-assignee or --milestone."));
+        return Err(Error::usage("Nothing to change: pass --title, --body, --add-label, --add-assignee, --milestone or --parent."));
     }
     let updated = call.send()?;
     super::done(ctx, &updated, &format!("Edited {}", place.name(args.number)), &place.url(args.number))
@@ -532,6 +602,12 @@ pub fn print_context(out: &Output, name: &str, work: &Value) {
         facts.push(format!("milestone {milestone}"));
     }
     println!("{}", facts.join(" · "));
+    let parent = &work["parent"];
+    if let Some(number) = parent["number"].as_u64() {
+        println!("Sub-item of #{number} {}", s(parent, "title"));
+    } else if let Some(number) = item["parent"].as_u64() {
+        println!("Sub-item of #{number}");
+    }
     println!();
     match item["body"].as_str().filter(|b| !b.trim().is_empty()) {
         Some(body) => println!("{}", body.trim_end()),
@@ -625,6 +701,18 @@ pub fn print_context(out: &Output, name: &str, work: &Value) {
         heading(out, "Blocks");
         for blocked in blocks {
             println!("  #{} {} {}", blocked["number"], s(blocked, "title"), out.state(s(blocked, "state")));
+        }
+    }
+    let sub_items = list_of(work, "sub_items");
+    if !sub_items.is_empty() {
+        let progress = &item["sub_item_progress"];
+        let done = match (progress["done"].as_u64(), progress["total"].as_u64()) {
+            (Some(done), Some(total)) => format!(" ({done} of {total} done)"),
+            _ => String::new(),
+        };
+        heading(out, &format!("Sub-items{done}"));
+        for sub_item in sub_items {
+            println!("  #{} {} {}", sub_item["number"], s(sub_item, "title"), out.state(s(sub_item, "state")));
         }
     }
     let failure = &work["last_integration_failure"];
@@ -1434,6 +1522,12 @@ fn events(ctx: &Ctx, args: WorkEventsArgs) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_list_shows_a_parents_progress_and_a_sub_items_parent() {
+        assert_eq!(family_cell(&json!({ "sub_item_progress": { "done": 3, "total": 7 }, "parent": 219 })), "  3/7  ↑ #219");
+        assert_eq!(family_cell(&json!({ "sub_item_progress": null, "parent": null })), "");
+    }
 
     #[test]
     fn a_claim_says_which_work_item_it_is_on() {

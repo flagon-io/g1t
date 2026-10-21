@@ -1387,6 +1387,11 @@
           "verdict": null,
           "created_at": "2026-10-01T18:20:02.141Z"
         }
+      ],
+      "parent": { "number": 212, "title": "Clones and CI are fast", "state": "open" },
+      "sub_items": [
+        { "number": 230, "title": "Clone cache keeps a pack for named commits", "state": "closed" },
+        { "number": 231, "title": "Clones are served by real git", "state": "open" }
       ]
     },
     "notes": "A closed work item says how it was closed: `reason` is `completed` or `not_planned`, and `resolutions` says what landed it in each repository: `pull`, the pull request whose merge did it, or `commit`, the commit pushed to the default branch whose message did (`Fixes #12`), with `pushed_by` saying who pushed it. `repos` lists the repositories it is linked to, with `landed` true where the work landed. Each pull request made for it is listed, in any repository; one closed because another was merged has `superseded_by` set."
@@ -15567,6 +15572,141 @@
       ]
     },
     "notes": "A work item with targets closes once it has landed in every one of them. Linking a repository it is already linked to changes its role."
+  },
+  "set_work_item_parent": {
+    "request": {
+      "parent": 212
+    },
+    "response": {
+      "id": "wki_01m43shrzpfe49x74ga7sj1c6v",
+      "workspace": "flagon-io",
+      "number": 230,
+      "title": "Clone cache keeps a pack for named commits",
+      "body": "Part of the clone speedups.",
+      "labels": ["feature"],
+      "state": "open",
+      "reason": null,
+      "resolutions": [],
+      "author": {
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+        "username": "syntaqx",
+        "display_username": "syntaqx",
+        "kind": "user",
+        "verified": false,
+        "workspaces": []
+      },
+      "requested_by": null,
+      "created_at": "2026-10-01T18:04:11.482Z",
+      "updated_at": "2026-10-01T19:41:52.830Z",
+      "closed_at": null,
+      "pull_count": 0,
+      "comment_count": 0,
+      "assignees": [],
+      "blocked_by": [],
+      "parent": 212,
+      "sub_item_progress": null,
+      "agent": null,
+      "milestone": null,
+      "repos": [
+        {
+          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+          "path": "flagon-io/hello",
+          "role": "origin",
+          "legacy_number": null,
+          "landed": false
+        }
+      ]
+    },
+    "notes": "parent null or 0 takes it out of its parent. A parent shows `sub_item_progress`, how many of its sub-items are closed (`done`) of how many (`total`), and is not blocked by them. A parent that would make a cycle is refused with `422`: `#212 is already under #230 (#212 → #219 → #230, each a sub-item of the next), so #230 cannot be its sub-item.`"
+  },
+  "add_work_item_sub_item": {
+    "request": {
+      "sub_item": 230
+    },
+    "response": {
+      "id": "wki_01m43shrzpfe49x74ga7sj1c6v",
+      "workspace": "flagon-io",
+      "number": 230,
+      "title": "Clone cache keeps a pack for named commits",
+      "body": "Part of the clone speedups.",
+      "labels": ["feature"],
+      "state": "open",
+      "reason": null,
+      "resolutions": [],
+      "author": {
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+        "username": "syntaqx",
+        "display_username": "syntaqx",
+        "kind": "user",
+        "verified": false,
+        "workspaces": []
+      },
+      "requested_by": null,
+      "created_at": "2026-10-01T18:04:11.482Z",
+      "updated_at": "2026-10-01T19:41:52.830Z",
+      "closed_at": null,
+      "pull_count": 0,
+      "comment_count": 0,
+      "assignees": [],
+      "blocked_by": [],
+      "parent": 212,
+      "sub_item_progress": null,
+      "agent": null,
+      "milestone": null,
+      "repos": [
+        {
+          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+          "path": "flagon-io/hello",
+          "role": "origin",
+          "legacy_number": null,
+          "landed": false
+        }
+      ]
+    },
+    "notes": "Returns the sub-item, now under the work item in the path. It leaves the parent it had."
+  },
+  "remove_work_item_sub_item": {
+    "response": {
+      "id": "wki_01m43shrzpfe49x74ga7sj1c6v",
+      "workspace": "flagon-io",
+      "number": 230,
+      "title": "Clone cache keeps a pack for named commits",
+      "body": "Part of the clone speedups.",
+      "labels": ["feature"],
+      "state": "open",
+      "reason": null,
+      "resolutions": [],
+      "author": {
+        "id": "usr_01kkntcg1eeb98j62xjm7eh09p",
+        "username": "syntaqx",
+        "display_username": "syntaqx",
+        "kind": "user",
+        "verified": false,
+        "workspaces": []
+      },
+      "requested_by": null,
+      "created_at": "2026-10-01T18:04:11.482Z",
+      "updated_at": "2026-10-01T19:41:52.830Z",
+      "closed_at": null,
+      "pull_count": 0,
+      "comment_count": 0,
+      "assignees": [],
+      "blocked_by": [],
+      "parent": null,
+      "sub_item_progress": null,
+      "agent": null,
+      "milestone": null,
+      "repos": [
+        {
+          "repo_id": "rep_01m3m5q6p0e2qaw6mmjahk0qrr",
+          "path": "flagon-io/hello",
+          "role": "origin",
+          "legacy_number": null,
+          "landed": false
+        }
+      ]
+    },
+    "notes": "Returns the former sub-item, with no parent. Refused with `422` when the work item in the path is not its parent."
   },
   "unlink_work_item": {
     "query": {

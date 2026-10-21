@@ -1,9 +1,10 @@
-import { CircleCheck, CircleDot, CircleX, Ellipsis, FolderGit2, MessageSquare, SendHorizontal } from "lucide-react-native";
+import { CircleCheck, CircleDot, CircleX, Ellipsis, FolderGit2, ListTree, MessageSquare, SendHorizontal } from "lucide-react-native";
 import { type ReactNode, useEffect, useState } from "react";
 import { ActivityIndicator, Keyboard, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Text } from "@/components/ui";
+import { type SubItemProgress, progressLabel, progressShare, progressShort } from "@/lib/sub-items";
 import { ago } from "@/lib/time";
 import type { ApiItemRepo, ApiWorkItem, LinkRole } from "@/lib/work";
 import { radius, space, useColors } from "@/theme";
@@ -73,6 +74,48 @@ export function RepoChips({ repos, workspace, max = 2 }: { repos: ApiItemRepo[];
   );
 }
 
+/**
+ * Where an item sits among its sub-items, compact for a row of a list or
+ * a card on the board: a parent's progress ("3/7"), a sub-item's parent
+ * ("↑ #212").
+ */
+export function SubItemMeta({ item }: { item: Pick<ApiWorkItem, "parent" | "sub_item_progress"> }) {
+  const colors = useColors();
+  const progress = item.sub_item_progress;
+  return (
+    <>
+      {progress && progress.total > 0 ? (
+        <View style={styles.inline} accessibilityLabel={`Sub-items: ${progressLabel(progress)}`}>
+          <ListTree size={13} color={progress.done === progress.total ? colors.merged : colors.faint} />
+          <Text size="small" tone="muted">
+            {progressShort(progress)}
+          </Text>
+        </View>
+      ) : null}
+      {item.parent ? (
+        <Text size="small" tone="muted" accessibilityLabel={`Sub-item of #${item.parent}`}>
+          ↑ #{item.parent}
+        </Text>
+      ) : null}
+    </>
+  );
+}
+
+/** How far along an item's sub-items are, as a thin bar. */
+export function ProgressBar({ progress }: { progress: SubItemProgress }) {
+  const colors = useColors();
+  const share = progressShare(progress);
+  return (
+    <View
+      accessibilityRole="progressbar"
+      accessibilityValue={{ min: 0, max: progress.total, now: progress.done }}
+      style={[styles.track, { backgroundColor: colors.raised }]}
+    >
+      <View style={{ width: `${share * 100}%`, height: "100%", borderRadius: radius.full, backgroundColor: share === 1 ? colors.merged : colors.success }} />
+    </View>
+  );
+}
+
 /** One work item in a list: its number and title, then state, repositories and labels on a line that wraps. */
 export function ItemRow({ item, onPress }: { item: ApiWorkItem; onPress: () => void }) {
   const colors = useColors();
@@ -92,6 +135,7 @@ export function ItemRow({ item, onPress }: { item: ApiWorkItem; onPress: () => v
           <Text size="small" tone="muted">
             #{item.number} · {ago(item.updated_at)}
           </Text>
+          <SubItemMeta item={item} />
           <RepoChips repos={item.repos} workspace={item.workspace} />
           {item.labels.slice(0, 2).map((label) => (
             <Chip key={label} label={label} />
@@ -178,6 +222,8 @@ const styles = StyleSheet.create({
   chip: { flexDirection: "row", alignItems: "center", gap: 4, borderWidth: 1, borderRadius: radius.full, paddingHorizontal: space.sm, paddingVertical: 1 },
   row: { flexDirection: "row", gap: space.md, paddingHorizontal: space.lg, paddingVertical: space.md, borderBottomWidth: StyleSheet.hairlineWidth },
   meta: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 },
+  inline: { flexDirection: "row", alignItems: "center", gap: 3 },
+  track: { height: 4, borderRadius: radius.full, overflow: "hidden" },
   bar: {
     flexDirection: "row",
     alignItems: "flex-end",

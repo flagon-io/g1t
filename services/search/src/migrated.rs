@@ -100,6 +100,11 @@ mod tests {
 
     /// A work item of acme numbered `number`, filed in `origin`, linked to `repos`.
     fn item(db: &Connection, number: i64, origin: Option<&str>, repos: &str, title: &str) {
+        sub_item(db, number, origin, repos, title, None);
+    }
+
+    /// A work item as `item` makes it, a sub-item of `parent` when there is one.
+    fn sub_item(db: &Connection, number: i64, origin: Option<&str>, repos: &str, title: &str, parent: Option<i64>) {
         run(
             db,
             UPSERT_ITEM,
@@ -119,6 +124,7 @@ mod tests {
                 Param::from("|bug|"),
                 Param::from("2026-10-01T00:00:00Z"),
                 Param::Text(format!("2026-10-01T00:00:{number:02}Z")),
+                parent.map_or(Param::Null, Param::Int),
             ],
         );
     }
@@ -252,6 +258,29 @@ mod tests {
         let granted = Some(User { workspaces: vec![Membership::member("acme")], ..outsider(&["rep_api"]).unwrap() });
         assert_eq!(found(&db, "crash repo:acme/api", &granted), vec![2]);
         assert_eq!(found(&db, "crash -repo:acme/api", &granted), vec![1, 3]);
+    }
+
+    #[test]
+    fn parent_finds_the_sub_items_of_a_work_item() {
+        let db = filled();
+        sub_item(&db, 4, Some("rep_web"), "|rep_web|", "crash on logout", Some(1));
+        sub_item(&db, 5, Some("rep_api"), "|rep_api|", "crash in the queue", Some(1));
+        sub_item(&db, 6, Some("rep_web"), "|rep_web|", "crash on signup", Some(3));
+        let viewer = member(BasePermission::Read);
+        assert_eq!(found(&db, "parent:1", &viewer), vec![4, 5]);
+        assert_eq!(found(&db, "crash parent:#1", &viewer), vec![4, 5]);
+        assert_eq!(found(&db, "logout parent:1", &viewer), vec![4]);
+        assert_eq!(found(&db, "parent:3", &viewer), vec![6]);
+        assert!(found(&db, "parent:2", &viewer).is_empty());
+        // Who may read each sub-item still decides: signed out, only what
+        // was filed in the public repository.
+        assert_eq!(found(&db, "parent:1", &None), vec![4]);
+        // Indexed again with no parent, it is no longer one of them.
+        item(&db, 5, Some("rep_api"), "|rep_api|", "crash in the queue");
+        assert_eq!(found(&db, "parent:1", &viewer), vec![4]);
+        // No pull request has a parent.
+        let pulls = numbers(&db, &items_page(&Query::parse("parent:1"), &Reader::of(&viewer), ItemKind::Pull, PAGE));
+        assert!(pulls.is_empty());
     }
 
     fn numbers_count(db: &Connection, sql: &Sql) -> i64 {
