@@ -10317,6 +10317,220 @@
     },
     "response": true
   },
+  "list_work_projects": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "response": [
+      {
+        "id": "prj_01m5g9a4c8e7b2f0q1r6s3t5v9",
+        "workspace": "flagon-io",
+        "slug": "work-overhaul",
+        "name": "Work overhaul",
+        "icon": "🧭",
+        "color": "5319e7",
+        "summary": "Plan, track and ship like Linear, with a home for each body of work.",
+        "brief": "## Problem\n\nItems group only by repository or milestone.",
+        "instructions": "Keep each slice to one pull request.",
+        "lead": "syntaqx",
+        "state": "active",
+        "appetite": "large",
+        "start_on": "2026-10-20",
+        "target_on": "2026-12-12",
+        "health": "on_track",
+        "open_items": 13,
+        "closed_items": 11,
+        "member_count": 4,
+        "created_at": "2026-10-20T09:00:00.000Z",
+        "created_by": "syntaqx",
+        "updated_at": "2026-10-21T16:30:00.000Z",
+        "updated_by": "syntaqx",
+        "archived_at": null
+      }
+    ]
+  },
+  "get_work_project": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "work-overhaul"
+    },
+    "response": {
+      "project": {
+        "id": "prj_01m5g9a4c8e7b2f0q1r6s3t5v9",
+        "workspace": "flagon-io",
+        "slug": "work-overhaul",
+        "name": "Work overhaul",
+        "icon": "🧭",
+        "color": "5319e7",
+        "summary": "Plan, track and ship like Linear, with a home for each body of work.",
+        "brief": "## Problem\n\nItems group only by repository or milestone.",
+        "instructions": "Keep each slice to one pull request.",
+        "lead": "syntaqx",
+        "state": "active",
+        "appetite": "large",
+        "start_on": "2026-10-20",
+        "target_on": "2026-12-12",
+        "health": "on_track",
+        "open_items": 13,
+        "closed_items": 11,
+        "member_count": 4,
+        "created_at": "2026-10-20T09:00:00.000Z",
+        "created_by": "syntaqx",
+        "updated_at": "2026-10-21T16:30:00.000Z",
+        "updated_by": "syntaqx",
+        "archived_at": null
+      },
+      "members": [
+        { "user_id": "usr_1", "username": "syntaqx", "role": "lead", "added_at": "2026-10-20T09:00:00.000Z" },
+        { "user_id": "usr_2", "username": "ana", "role": "member", "added_at": "2026-10-20T09:05:00.000Z" }
+      ],
+      "repos": [{ "repo_id": "rep_01j9", "path": "flagon-io/g1t", "default_target": true }],
+      "open": [],
+      "progress": [],
+      "milestones": []
+    }
+  },
+  "create_work_project": {
+    "params": {
+      "workspace": "flagon-io"
+    },
+    "request": {
+      "name": "Work overhaul",
+      "summary": "Plan, track and ship like Linear, with a home for each body of work.",
+      "target_on": "2026-12-12"
+    },
+    "response": {
+      "id": "prj_01m5g9a4c8e7b2f0q1r6s3t5v9",
+      "workspace": "flagon-io",
+      "slug": "work-overhaul",
+      "name": "Work overhaul",
+      "icon": null,
+      "color": "5319e7",
+      "summary": "Plan, track and ship like Linear, with a home for each body of work.",
+      "brief": "",
+      "instructions": "",
+      "lead": "syntaqx",
+      "state": "active",
+      "appetite": null,
+      "start_on": null,
+      "target_on": "2026-12-12",
+      "health": null,
+      "open_items": 0,
+      "closed_items": 0,
+      "member_count": 1,
+      "created_at": "2026-10-20T09:00:00.000Z",
+      "created_by": "syntaqx",
+      "updated_at": "2026-10-20T09:00:00.000Z",
+      "updated_by": "syntaqx",
+      "archived_at": null
+    }
+  },
+  "update_work_project": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "work-overhaul"
+    },
+    "request": {
+      "health": "at_risk"
+    },
+    "response": {
+      "id": "prj_01m5g9a4c8e7b2f0q1r6s3t5v9",
+      "workspace": "flagon-io",
+      "slug": "work-overhaul",
+      "name": "Work overhaul",
+      "icon": null,
+      "color": "5319e7",
+      "summary": "Plan, track and ship like Linear, with a home for each body of work.",
+      "brief": "",
+      "instructions": "",
+      "lead": "syntaqx",
+      "state": "active",
+      "appetite": null,
+      "start_on": null,
+      "target_on": "2026-12-12",
+      "health": "at_risk",
+      "open_items": 13,
+      "closed_items": 11,
+      "member_count": 4,
+      "created_at": "2026-10-20T09:00:00.000Z",
+      "created_by": "syntaqx",
+      "updated_at": "2026-11-02T10:00:00.000Z",
+      "updated_by": "syntaqx",
+      "archived_at": null
+    }
+  },
+  "archive_work_project": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "work-overhaul"
+    },
+    "response": {
+      "id": "prj_01m5g9a4c8e7b2f0q1r6s3t5v9",
+      "workspace": "flagon-io",
+      "slug": "work-overhaul",
+      "name": "Work overhaul",
+      "icon": null,
+      "color": "5319e7",
+      "summary": "Plan, track and ship like Linear, with a home for each body of work.",
+      "brief": "",
+      "instructions": "",
+      "lead": "syntaqx",
+      "state": "done",
+      "appetite": null,
+      "start_on": null,
+      "target_on": "2026-12-12",
+      "health": "on_track",
+      "open_items": 0,
+      "closed_items": 24,
+      "member_count": 4,
+      "created_at": "2026-10-20T09:00:00.000Z",
+      "created_by": "syntaqx",
+      "updated_at": "2026-12-15T10:00:00.000Z",
+      "updated_by": "syntaqx",
+      "archived_at": "2026-12-15T10:00:00.000Z"
+    }
+  },
+  "add_work_project_member": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "work-overhaul",
+      "username": "ana"
+    },
+    "request": {
+      "role": "member"
+    },
+    "response": [
+      { "user_id": "usr_1", "username": "syntaqx", "role": "lead", "added_at": "2026-10-20T09:00:00.000Z" },
+      { "user_id": "usr_2", "username": "ana", "role": "member", "added_at": "2026-10-20T09:05:00.000Z" }
+    ]
+  },
+  "remove_work_project_member": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "work-overhaul",
+      "username": "ana"
+    },
+    "response": [{ "user_id": "usr_1", "username": "syntaqx", "role": "lead", "added_at": "2026-10-20T09:00:00.000Z" }]
+  },
+  "add_work_project_repo": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "work-overhaul"
+    },
+    "request": {
+      "repo": "flagon-io/g1t",
+      "default_target": true
+    },
+    "response": [{ "repo_id": "rep_01j9", "path": "flagon-io/g1t", "default_target": true }]
+  },
+  "remove_work_project_repo": {
+    "params": {
+      "workspace": "flagon-io",
+      "project": "work-overhaul",
+      "repo": "flagon-io/g1t"
+    },
+    "response": []
+  },
   "get_milestone": {
     "params": {
       "workspace": "flagon-io",

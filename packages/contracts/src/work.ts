@@ -106,6 +106,8 @@ export type WorkItem = {
   agent: string | null;
   /** The workspace milestone it is in, if any. */
   milestone?: MilestoneRef | null;
+  /** The project it is in, if any. */
+  project?: WorkProjectRef | null;
   /** The repositories it is linked to: its origin first, then targets, then those it touched. */
   repos: ItemRepo[];
   /** Where it stands in the workspace's plan. A closed one keeps where it was, for if it is reopened. */
@@ -328,6 +330,140 @@ export type Milestone = {
 
 /** One milestone and what is in it that the viewer may see, newest first. */
 export type MilestoneDetail = { milestone: Milestone; items: WorkItem[]; pulls: Pull[] };
+
+// --- Projects ----------------------------------------------------------------
+//
+// A project is Work's home for a body of work: a brief, a lead and its
+// people, the repositories its work lands in, dates, a state and a health.
+// A work item is in one project or none. (What Code calls a project is a
+// repository, `Project` in projects.ts; these are `WorkProject`s.)
+
+/** Where a project is in its life. */
+export type ProjectState = "shaping" | "active" | "paused" | "done" | "dropped";
+
+export const PROJECT_STATES: readonly ProjectState[] = ["shaping", "active", "paused", "done", "dropped"];
+
+export function projectStateLabel(state: ProjectState): string {
+  return { shaping: "Shaping", active: "Active", paused: "Paused", done: "Done", dropped: "Dropped" }[state];
+}
+
+/** Whether a project in this state is still under way. */
+export function projectLive(state: ProjectState): boolean {
+  return state === "shaping" || state === "active" || state === "paused";
+}
+
+/** How a project is going, as its lead says. */
+export type ProjectHealth = "on_track" | "at_risk" | "off_track";
+
+export const PROJECT_HEALTHS: readonly ProjectHealth[] = ["on_track", "at_risk", "off_track"];
+
+export function projectHealthLabel(health: ProjectHealth): string {
+  return { on_track: "On track", at_risk: "At risk", off_track: "Off track" }[health];
+}
+
+/** The longest a project's name, slug and summary may be. */
+export const MAX_PROJECT_NAME = 80;
+export const MAX_PROJECT_SLUG = 60;
+export const MAX_PROJECT_SUMMARY = 200;
+export const MAX_PROJECT_BRIEF = 20_000;
+
+/** A project's slug from its name: lowercase letters, digits and single dashes. Empty when nothing is left. */
+export function projectSlug(text: string): string {
+  const slug = text
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+/, "")
+    .slice(0, MAX_PROJECT_SLUG)
+    .replace(/-+$/, "");
+  // A number would read as a work item's (`-/work/12`).
+  return /^\d+$/.test(slug) ? "" : slug;
+}
+
+/** A project, as a work item names it. */
+export type WorkProjectRef = { id: string; slug: string; name: string; color: string; icon?: string | null };
+
+/** A project of a workspace. */
+export type WorkProject = {
+  /** `prj_…`. */
+  id: string;
+  workspace: string;
+  /** Unique in the workspace: `-/work/projects/<slug>`. */
+  slug: string;
+  name: string;
+  /** An emoji, if it has one. */
+  icon: string | null;
+  /** Six hex digits, without `#`. */
+  color: string;
+  /** What it is for, in a line. */
+  summary: string;
+  /** Markdown: the pitch. */
+  brief: string;
+  /** Markdown: what agents are told for every work item in it. */
+  instructions: string;
+  /** Its lead's username. */
+  lead: string | null;
+  state: ProjectState;
+  appetite: Appetite | null;
+  /** `YYYY-MM-DD`. */
+  startOn: string | null;
+  /** `YYYY-MM-DD`. */
+  targetOn: string | null;
+  health: ProjectHealth | null;
+  openItems: number;
+  closedItems: number;
+  memberCount: number;
+  createdAt: string;
+  createdBy: string | null;
+  updatedAt: string;
+  updatedBy: string | null;
+  archivedAt: string | null;
+};
+
+export type ProjectRole = "lead" | "member";
+
+export type ProjectMember = { userId: string; username: string; role: ProjectRole; addedAt: string };
+
+/** A repository a project's work lands in; a default target is linked to each work item filed into it without targets. */
+export type ProjectRepo = { repoId: string; path: string; defaultTarget: boolean };
+
+/** A project and its home page. */
+export type WorkProjectDetail = {
+  project: WorkProject;
+  /** Its lead first, then by username. */
+  members: ProjectMember[];
+  /** Those the viewer may read. */
+  repos: ProjectRepo[];
+  /** Its open work items in the plan's order: Now, then Next, Later, Triage and Set aside, at most 100. */
+  open: WorkItem[];
+  /** Where each of `open` is on its hill, in the same order. */
+  progress: Progress[];
+  /** The workspace milestones its work items are in, each counting only this project's. */
+  milestones: Milestone[];
+};
+
+/** What `createProject` and `updateProject` set: only the fields given change. */
+export type ProjectChange = {
+  name?: string;
+  slug?: string;
+  /** An emoji; "" clears it. */
+  icon?: string;
+  color?: string;
+  summary?: string;
+  brief?: string;
+  instructions?: string;
+  /** A username; "" leaves it without a lead. */
+  lead?: string;
+  state?: ProjectState;
+  /** null clears it. */
+  appetite?: Appetite | null;
+  /** `YYYY-MM-DD`; "" clears it. */
+  startOn?: string;
+  /** `YYYY-MM-DD`; "" clears it. */
+  targetOn?: string;
+  /** null clears it. */
+  health?: ProjectHealth | null;
+};
 
 /** How `setLabels` changes an item's labels. */
 export type LabelChange = "set" | "add" | "remove";
@@ -1001,6 +1137,8 @@ export type OpenWorkItemInput = {
   milestone?: number;
   /** The number of the work item to file it as a sub-item of. */
   parent?: number;
+  /** The slug of the project to file it in. Needs the Triage role. Without targets, the project's default targets are linked. */
+  project?: string;
 };
 
 export type UpdateWorkItemInput = {
@@ -1015,6 +1153,8 @@ export type UpdateWorkItemInput = {
   blocked_by?: number[];
   /** The number of the work item to make it a sub-item of; 0 takes it out of its parent. */
   parent?: number;
+  /** The slug of the project to put it in; "" takes it out of its project. Needs the Triage role. */
+  project?: string;
 };
 
 /** How many `listWorkItems` and `listPulls` give at most in one call. */
@@ -1032,6 +1172,8 @@ export type WorkItemFilter = {
   assignee?: string;
   /** Only the sub-items of the work item of this number. */
   parent?: number;
+  /** Only those in the project of this slug. */
+  project?: string;
   /** Only those closed at or after this time (RFC 3339), the most recently closed first instead of the newest. */
   closedSince?: string;
   /** Only those numbered below this: the next page, after one whose lowest number this is. */
@@ -1178,6 +1320,22 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
     milestone: { number?: number; title?: string; description?: string; dueOn?: string; state?: State },
   ): Promise<Result<Milestone>>;
   deleteMilestone(actor: User, workspace: string, number: number): Promise<Result<boolean>>;
+  /** A workspace's projects, live ones first, each by name; the archived ones instead with `archived`. */
+  listProjects(workspace: string, viewer: Viewer, options?: { state?: ProjectState; archived?: boolean }): Promise<Result<WorkProject[]>>;
+  /** A project (by slug or id) and its home page. */
+  getProject(workspace: string, project: string, viewer: Viewer): Promise<Result<WorkProjectDetail>>;
+  /** Creates a project; its lead is the actor unless `lead` says. Needs the Write role in the workspace. */
+  createProject(actor: User, workspace: string, change: ProjectChange & { name: string }): Promise<Result<WorkProject>>;
+  /** Changes the fields given of a project. Needs the Write role in the workspace. */
+  updateProject(actor: User, workspace: string, project: string, change: ProjectChange): Promise<Result<WorkProject>>;
+  /** Archives a project, or with `archived` false brings it back. */
+  archiveProject(actor: User, workspace: string, project: string, archived?: boolean): Promise<Result<WorkProject>>;
+  /** Adds someone to a project or changes their role; returns everyone in it. */
+  addProjectMember(actor: User, workspace: string, project: string, username: string, role?: ProjectRole): Promise<Result<ProjectMember[]>>;
+  removeProjectMember(actor: User, workspace: string, project: string, username: string): Promise<Result<ProjectMember[]>>;
+  /** Names a repository of the workspace as one the project's work lands in; returns its repositories. */
+  addProjectRepo(actor: User, workspace: string, project: string, repo: RepoPath, defaultTarget?: boolean): Promise<Result<ProjectRepo[]>>;
+  removeProjectRepo(actor: User, workspace: string, project: string, repo: RepoPath): Promise<Result<ProjectRepo[]>>;
   /** How many work items linked to the repository, and how many of its pull requests, are open. */
   counts(repo: RepoPath, viewer: Viewer): Promise<Result<{ items: number; pulls: number }>>;
   /** Moves on the job that moves issues into work items; does nothing once done. */

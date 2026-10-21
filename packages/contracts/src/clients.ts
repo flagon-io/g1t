@@ -9,7 +9,7 @@ import type { IntegrationsApi } from "./integrations";
 import type { PackagesApi } from "./packages";
 import type { WebhooksApi } from "./webhooks";
 import type { RepoPath, ReposAdminApi, ReposApi } from "./repos";
-import type { CommentScope, PullDetail, Thread, WorkApi } from "./work";
+import type { CommentScope, ProjectChange, PullDetail, Thread, WorkApi } from "./work";
 import type { Result } from "./result";
 import type { RunnersAdminApi, RunnersApi } from "./runners";
 
@@ -424,6 +424,16 @@ function commentScope(scope: CommentScope): { repo: RepoPath | null; workspace: 
   return "repo" in scope ? { repo: scope.repo, workspace: "" } : { repo: null, workspace: scope.workspace };
 }
 
+/** A project's change as the work service reads it: snake_case, with only the fields given. */
+function projectChange(change: ProjectChange): Record<string, unknown> {
+  const { startOn, targetOn, ...rest } = change;
+  return {
+    ...Object.fromEntries(Object.entries(rest).filter(([, value]) => value !== undefined)),
+    ...(startOn !== undefined ? { start_on: startOn } : {}),
+    ...(targetOn !== undefined ? { target_on: targetOn } : {}),
+  };
+}
+
 export function workClient(service: ServiceBinding): WorkApi {
   const call = <T>(method: string, args: object) => rpc<T>(service, method, args);
   return {
@@ -439,6 +449,7 @@ export function workClient(service: ServiceBinding): WorkApi {
         body: input.body,
         labels: input.labels ?? [],
         milestone: input.milestone ?? null,
+        ...(input.project ? { project: input.project } : {}),
       }),
     listWorkItems: (workspace, viewer, filter = {}) =>
       call("list_work_items", {
@@ -454,6 +465,7 @@ export function workClient(service: ServiceBinding): WorkApi {
         closed_since: filter.closedSince ?? null,
         before: filter.before ?? null,
         ...(filter.horizon ? { horizon: filter.horizon } : {}),
+        ...(filter.project ? { project: filter.project } : {}),
         ...(filter.limit ? { limit: filter.limit } : {}),
       }),
     getWorkItem: (workspace, number, viewer) => call("get_work_item", { workspace, number, viewer }),
@@ -495,6 +507,19 @@ export function workClient(service: ServiceBinding): WorkApi {
     getMilestone: (workspace, number, viewer) => call("get_milestone", { workspace, number, viewer }),
     saveMilestone: (actor, workspace, milestone) => call("save_milestone", { actor, workspace, ...milestone }),
     deleteMilestone: (actor, workspace, number) => call("delete_milestone", { actor, workspace, number }),
+    // Projects' arguments are snake_case too.
+    listProjects: (workspace, viewer, options = {}) =>
+      call("list_projects", { workspace, viewer, ...(options.state ? { state: options.state } : {}), ...(options.archived ? { archived: true } : {}) }),
+    getProject: (workspace, project, viewer) => call("get_project", { workspace, project, viewer }),
+    createProject: (actor, workspace, change) => call("create_project", { actor, workspace, ...projectChange(change) }),
+    updateProject: (actor, workspace, project, change) => call("update_project", { actor, workspace, project, ...projectChange(change) }),
+    archiveProject: (actor, workspace, project, archived = true) => call("archive_project", { actor, workspace, project, archived }),
+    addProjectMember: (actor, workspace, project, username, role) =>
+      call("add_project_member", { actor, workspace, project, username, ...(role ? { role } : {}) }),
+    removeProjectMember: (actor, workspace, project, username) => call("remove_project_member", { actor, workspace, project, username }),
+    addProjectRepo: (actor, workspace, project, repo, defaultTarget) =>
+      call("add_project_repo", { actor, workspace, project, repo, ...(defaultTarget === undefined ? {} : { default_target: defaultTarget }) }),
+    removeProjectRepo: (actor, workspace, project, repo) => call("remove_project_repo", { actor, workspace, project, repo }),
     counts: (repo, viewer) => call("counts", { repo, viewer }),
     addComment: (actor, thread, comment) => call("add_comment", { actor, ...threadArgs(thread), ...comment }),
     editComment: (actor, scope, commentId, body) => call("edit_comment", { actor, ...commentScope(scope), commentId, body }),

@@ -8,7 +8,7 @@ import Diagram from "../../../components/Diagram.astro";
 
 `work` (`services/work`, Rust) keeps everything about a change that is not
 the code itself: work items, pull requests, comments, reviews, labels,
-milestones, rulesets, checks and commit statuses, CODEOWNERS, and the
+milestones, projects, rulesets, checks and commit statuses, CODEOWNERS, and the
 merge queue. Its database is `g1t-work`. The code lives in `repos`, and
 `work` asks `repos` whenever it needs it.
 
@@ -34,7 +34,9 @@ Work items and pull requests share one sequence of numbers per workspace
 still live in their repository and are unique there: a new one takes the
 workspace's next number, never at or below a number its repository already
 has. Labels and milestones belong to the workspace too, shared by its work
-items and pull requests.
+items and pull requests, and so do its projects (`projects`, with
+`project_members` and `project_repos`): a work item is in one or none, by
+`work_items.project_id`.
 
 A pull request records where its head is: a fork of its own, `pulls--<id>`
 in the git store, or a branch in the repository

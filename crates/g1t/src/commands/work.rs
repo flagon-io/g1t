@@ -167,6 +167,7 @@ fn list(ctx: &Ctx, workspace: Option<&str>, args: WorkListArgs) -> Result<()> {
         .query_opt("role", args.role.map(|role| role.name()))
         .query_opt("horizon", args.horizon.map(|horizon| horizon.name()))
         .query_opt("parent", args.parent)
+        .query_opt("project", args.project.clone())
         .query_opt("limit", args.horizon.map(|_| args.limit.clamp(1, 100)))
         .send()?;
     let mut items = super::items(found, "items");
@@ -313,6 +314,7 @@ fn new(ctx: &Ctx, workspace: Option<&str>, args: WorkNewArgs) -> Result<()> {
         .field_opt("labels", (!labels.is_empty()).then_some(Value::Array(labels)))
         .field_opt("milestone", args.milestone)
         .field_opt("parent", args.parent)
+        .field_opt("project", args.project.clone())
         .send()?;
     let number = made["number"].as_u64().unwrap_or_default();
     let made = if later.is_empty() {
@@ -497,8 +499,18 @@ fn edit(ctx: &Ctx, workspace: Option<&str>, args: WorkEditArgs) -> Result<()> {
         call = call.field("parent", Value::Null);
         changed = true;
     }
+    if let Some(project) = &args.project {
+        call = call.field("project", project.trim());
+        changed = true;
+    }
+    if args.remove_project {
+        call = call.field("project", Value::Null);
+        changed = true;
+    }
     if !changed {
-        return Err(Error::usage("Nothing to change: pass --title, --body, --add-label, --add-assignee, --milestone or --parent."));
+        return Err(Error::usage(
+            "Nothing to change: pass --title, --body, --add-label, --add-assignee, --milestone, --project or --parent.",
+        ));
     }
     let updated = call.send()?;
     super::done(ctx, &updated, &format!("Edited {}", place.name(args.number)), &place.url(args.number))
@@ -613,6 +625,9 @@ pub fn print_context(out: &Output, name: &str, work: &Value) {
     }
     if let Some(milestone) = item["milestone"]["title"].as_str() {
         facts.push(format!("milestone {milestone}"));
+    }
+    if let Some(project) = item["project"]["name"].as_str() {
+        facts.push(format!("project {project}"));
     }
     println!("{}", facts.join(" · "));
     let parent = &work["parent"];

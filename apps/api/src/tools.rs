@@ -141,13 +141,13 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "work_item",
         title: "Work items",
-        description: "Work items: any tracked work of a workspace (a feature, a bug, a chore), numbered in the workspace with its new pull requests, and linked to the repositories it concerns: its origin (where it was filed), its targets (where the work is meant to land) and those it touched. Name one by `workspace` and `number`; `repo` alone names the workspace too (and on `list` filters, on `create` is the origin). To pick up work, `next` gives the work item to take next from the workspace's plan (Now, then Next); `get_plan` reads the plan and `plan` moves one in it. Before working on one, `work` gives everything about it (definition of done, each repository with its pull requests and whether the work landed there, what is missing, suggested targets, who is on it, what it waits on); `claim` says you are on it (advisory and expiring, never a lock), `release` or `handoff` when you stop. `link` a repository as a target to say the work must land there too. `update` with blocked_by sets the work items that must land first. A work item can have one `parent` and any number of sub-items (`add_sub_item`, `remove_sub_item`); a parent shows how many are done and is not blocked by them, and `close` on one with open sub-items needs sub_items (leave, close or move with move_to). `attach` uploads an image (a screenshot) whose markdown goes in a body or a comment.",
+        description: "Work items: any tracked work of a workspace (a feature, a bug, a chore), numbered in the workspace with its new pull requests, and linked to the repositories it concerns: its origin (where it was filed), its targets (where the work is meant to land) and those it touched. Name one by `workspace` and `number`; `repo` alone names the workspace too (and on `list` filters, on `create` is the origin). To pick up work, `next` gives the work item to take next from the workspace's plan (Now, then Next); `get_plan` reads the plan and `plan` moves one in it. Before working on one, `work` gives everything about it (definition of done, each repository with its pull requests and whether the work landed there, what is missing, suggested targets, who is on it, what it waits on); `claim` says you are on it (advisory and expiring, never a lock), `release` or `handoff` when you stop. `link` a repository as a target to say the work must land there too. `update` with blocked_by sets the work items that must land first. A work item can be in one project (`project` on `create`, `update` and `list`; `list_projects` and `get_project` read them, `create_project` and `update_project` change them). A work item can have one `parent` and any number of sub-items (`add_sub_item`, `remove_sub_item`); a parent shows how many are done and is not blocked by them, and `close` on one with open sub-items needs sub_items (leave, close or move with move_to). `attach` uploads an image (a screenshot) whose markdown goes in a body or a comment.",
         default_action: None,
         actions: &[
             a("list", Op::ListWorkItems, "A workspace's work items, newest first; by state, label, milestone, assignee, or a repository linked to them; with horizon, one horizon of the plan in its order, at most limit"),
             a("get", Op::GetWorkItem, "One work item with its repositories, comments and pull requests"),
             a("create", Op::OpenWorkItem, "Open a work item, filed from repo or in the workspace, with targets"),
-            a("update", Op::UpdateWorkItem, "Change title, body, labels, milestone, assignees, blocked_by or parent"),
+            a("update", Op::UpdateWorkItem, "Change title, body, labels, milestone, project, assignees, blocked_by or parent"),
             a("close", Op::CloseWorkItem, "Close it without a pull request; commit (with repo) names the default-branch commit that did it; with open sub-items, sub_items says what to do with them: leave, close, or move to move_to"),
             a("reopen", Op::ReopenWorkItem, "Reopen it"),
             a("next", Op::NextWorkItem, "The work item to take next, for you: the first in Now nobody is on, else the top of Next, never one blocked, claimed or assigned to someone else; repo narrows it to one repository. Picking up work? Call this, then claim what it gives"),
@@ -177,6 +177,15 @@ pub const TOOLS: &[Tool] = &[
             a("release", Op::Coordination(CoordinationOp::ReleaseClaim), "Stop working on it"),
             a("handoff", Op::Coordination(CoordinationOp::HandOffWorkItem), "Hand it off, to someone or anyone, with a note on where it stands"),
             a("list_claims", Op::Coordination(CoordinationOp::ListClaims), "Claims on a workspace's work items: who is working on what"),
+            a("list_projects", Op::ListWorkProjects, "A workspace's projects (homes for bodies of work), live ones first; state or archived narrows them"),
+            a("get_project", Op::GetWorkProject, "One project by its slug: brief, instructions, people, repositories, its open work items with where each is on its hill, milestones"),
+            a("create_project", Op::CreateWorkProject, "Create a project: name, and slug, summary, brief, lead, state, dates or health if you like"),
+            a("update_project", Op::UpdateWorkProject, "Change a project's name, brief, instructions, lead, state, appetite, dates or health"),
+            a("archive_project", Op::ArchiveWorkProject, "Archive a project, or with archived false bring it back"),
+            a("add_project_member", Op::AddWorkProjectMember, "Add someone to a project by username, as member or lead"),
+            a("remove_project_member", Op::RemoveWorkProjectMember, "Take someone out of a project"),
+            a("add_project_repo", Op::AddWorkProjectRepo, "Name a repository its work lands in; default_target links it to new work items in it"),
+            a("remove_project_repo", Op::RemoveWorkProjectRepo, "Take a repository off a project"),
         ],
     },
     Tool {
@@ -1049,7 +1058,7 @@ mod tests {
         let work_item = tools.iter().find(|tool| tool["name"] == "work_item").unwrap();
         assert_eq!(
             work_item["inputSchema"]["properties"]["action"]["enum"],
-            json!(["list", "get", "next", "get_plan", "links", "labels", "decisions", "resolve", "work", "list_claims"])
+            json!(["list", "get", "next", "get_plan", "links", "labels", "decisions", "resolve", "work", "list_claims", "list_projects", "get_project"])
         );
     }
 

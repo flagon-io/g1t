@@ -1,17 +1,22 @@
 ---
 title: Work
-description: Where a workspace keeps what it means to do and sees it being done. Work items are the backlog, of any kind of work; Sessions are the work being done on them, by people and their coding agents. On the site, the phone and the native app.
+description: Where a workspace keeps what it means to do and sees it being done. Work items are the backlog, of any kind of work, planned in Now, Next and Later and gathered into projects. On the site, the phone and the native app.
 ---
 
 **Work** is where a workspace keeps what it means to do, and sees it being
-done. It has two halves:
+done.
 
 - **Work items** are the backlog: a feature, a bug, a chore, any kind of
   work. Each belongs to the workspace, not to one repository, and names
   the repositories it should land in. See [work items](/work/work-items/).
+- **The plan** says what the workspace is on now, what comes next and what
+  can wait. See [the plan](/work/plan/).
+- **Projects** give a body of work a home: its brief, lead and people, its
+  work items, its repositories and how it is going. See
+  [projects](/work/projects/).
 - **Sessions** are the work being done: each run of someone's coding
-  agent, or of g1t's, recorded as it goes, with the work items and pull
-  requests it is on. See [sessions](/work/sessions/).
+  agent, or of g1t's, recorded as it goes. They are in Chat, and every
+  work item links to its own. See [sessions](/work/sessions/).
 
 Around them, g1t keeps who is on what. A [claim](/work/claims-and-dependencies/#claims)
 says someone is working on a work item; what it is
@@ -33,7 +38,7 @@ recorded as a session while it works: see
 | ----------- | ------------------------------------------------------------------------------------------------- |
 | **Home**    | What needs you, across the workspace. See [Home](/guides/home/).                                  |
 | **Explore** | Public repositories and people beyond your workspaces. See [Search and Explore](/guides/search/). |
-| **Work**    | Work items and sessions, at `g1t.sh/<workspace>/-/work`.                                          |
+| **Work**    | Work items, the plan and projects, at `g1t.sh/<workspace>/-/work`.                                |
 
 Then **Chat**, **Code** (for members with Code access), **Artifacts**,
 **Routines** and the apps you pinned. Work is there for every member of
@@ -48,39 +53,42 @@ A project has no Work tab of its own: from one, the command palette
 
 ## Work's sidebar
 
-Work's sidebar has its work items first, then its sessions. Each row is a
-view kept in the address, so you can share it.
+Work's sidebar has **New work item** first, then its views, then its
+projects. Each row is a view kept in the address, so you can share it.
 
 | Row                 | Opens                                                                        |
 | ------------------- | ---------------------------------------------------------------------------- |
-| **Open**            | The [Work list](#the-work-list): the open work items.                        |
+| **New work item**   | A new work item; see [file a work item](/work/work-items/#file-a-work-item). |
+| **Plan**            | [The plan](/work/plan/), at `-/work`: Now, Next and Later.                   |
+| **Board**           | The [Board](/work/board/): the work as it moves, from Up next to Done.       |
+| **Triage**          | New work items nobody has placed in the plan yet.                            |
+| **All open**        | The [Work list](#the-work-list), at `-/work/all`: the open work items.       |
 | **Assigned to you** | The open work items assigned to you, `?assignee=<you>`.                      |
 | **Closed**          | The closed ones, `?state=closed`.                                            |
-| **Board**           | The [Board](/work/board/): the backlog as it moves, from Backlog to Done.    |
-| **New work item**   | A new work item; see [file a work item](/work/work-items/#file-a-work-item). |
 | **Labels**          | The workspace's [labels](/work/labels/).                                     |
 | **Milestones**      | The workspace's [milestones](/work/milestones/).                             |
 
-Under **Sessions**:
+Under **Projects**:
 
-| Row                                                                                        | Opens                                                                                                |
-| ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| **Live now**                                                                               | [Sessions](/work/sessions/): what is going now, the merge queue, what just landed and what happened. |
-| **Every session**                                                                          | Every session, most recently heard from first, live or ended.                                        |
-| **Yours**                                                                                  | The sessions you ran, `?person=<you>`.                                                               |
-| **People's harnesses**, **Started on g1t**, **g1t's agent**, **Recorded on pull requests** | Each [kind of session](/work/sessions/#kinds-of-session) alone.                                      |
+| Row              | Opens                                                                                      |
+| ---------------- | ------------------------------------------------------------------------------------------ |
+| **All projects** | The [projects](/work/projects/) page, at `-/work/projects`.                                |
+| Each project     | The projects under way, active first, each with a dot for its health: opens its home page. |
+| **New project**  | Makes one; see [make a project](/work/projects/#make-a-project).                           |
+
+[Sessions](/work/sessions/) are in Chat, at `-/chat/sessions`.
 
 ## The Work list
 
-**Open**, at `g1t.sh/<workspace>/-/work`, lists the workspace's work
-items. **Open** and **Closed** above it switch between the two. Each row
+**All open**, at `g1t.sh/<workspace>/-/work/all`, lists the workspace's
+work items. **Open** and **Closed** above it switch between the two. Each row
 shows the work item's title, labels and number, who opened or closed it
 and when, the repositories it links (the first two, then "+2"), its
 milestone, its assignees, and how many pull requests and comments it has.
 
 Filter it by repository, by the role that repository plays (origin,
 target or touched; see [repositories and their roles](/work/work-items/#repositories-and-their-roles)),
-by label, milestone and assignee. On a phone they are in one **Filters**
+by label, milestone, project and assignee. On a phone they are in one **Filters**
 sheet. The address keeps them:
 
 | Filter     | In the address                                           |
@@ -90,6 +98,7 @@ sheet. The address keeps them:
 | Its role   | `?repo=web&role=target`: `origin`, `target` or `touched` |
 | Label      | `?label=bug`                                             |
 | Milestone  | `?milestone=3`                                           |
+| Project    | `?project=work-overhaul`, a project's slug               |
 | Assignee   | `?assignee=ana`, or `?assignee=@me`                      |
 
 `?q=` takes the same filters as words, quotes around a name with spaces:
@@ -138,6 +147,8 @@ See [the phone app's Work](/guides/mobile/#work).
 
 - [Work items](/work/work-items/): what one has, filing one, its number,
   who sees it and its repositories.
+- [The plan](/work/plan/): Now, Next and Later.
+- [Projects](/work/projects/): homes for bodies of work.
 - [The Board](/work/board/): the stages a work item moves through.
 - [Sub-items](/work/sub-items/): breaking a work item down, and how far
   along its sub-items are.

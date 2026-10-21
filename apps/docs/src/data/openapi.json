@@ -450,6 +450,21 @@
       ]
     },
     {
+      "name": "Work projects",
+      "description": "A workspace's projects: homes for bodies of work, each with a brief, a lead and its people, the repositories its work lands in, dates, a state and a health. A work item is in one project or none.",
+      "x-tools": [
+        "list_work_projects",
+        "create_work_project",
+        "get_work_project",
+        "update_work_project",
+        "archive_work_project",
+        "add_work_project_member",
+        "remove_work_project_member",
+        "add_work_project_repo",
+        "remove_work_project_repo"
+      ]
+    },
+    {
       "name": "Pull requests",
       "description": "A proposed change in its own fork or on a branch, with its comments and reactions. Several can be made for one work item, in its repositories; each merged one lands it in its repository. It merges by a merge commit, a squash, a rebase or a fast-forward, now or with auto-merge once everything it needs is met.",
       "x-tools": [
@@ -58658,7 +58673,7 @@
           "Work items"
         ],
         "summary": "List a workspace's work items",
-        "description": "A workspace's work items, newest first. A work item is any tracked work (a feature, a bug, a chore) of the workspace, numbered in its sequence with new pull requests, and linked to the repositories it concerns: its `origin` (where it was filed, if it was filed in one), its `target`s (where the work is meant to land) and those it `touched` (where a pull request or commit for it landed or is under way). Filter by state, by a label's name, by a milestone's number, by assignee, and with repo by a repository it is linked to (role narrows it to one kind of link). With horizon, only the open work items on that horizon of the plan, in the plan's order: urgent first, then by rank (triage newest first). limit is how many, 1 to 100 (100 if left out). With parent, only the sub-items of the work item of that number. Each work item says where it stands in the plan: `horizon`, `appetite`, `budget_usd`, `urgent` and `planned_at`; and `parent`, the number of the work item it is a sub-item of, and with sub-items `sub_item_progress` (`done` of `total` closed). Members see every work item; anyone who can read a repository sees the work items filed in it.\n\nReturns at most 100 work items (limit takes fewer), newest first; with horizon, the open ones on that horizon in the plan's order. Each lists the repositories it is linked to in `repos`, with its role in each. `comment_count` counts comments, not events such as \"opened #14 for this\".",
+        "description": "A workspace's work items, newest first. A work item is any tracked work (a feature, a bug, a chore) of the workspace, numbered in its sequence with new pull requests, and linked to the repositories it concerns: its `origin` (where it was filed, if it was filed in one), its `target`s (where the work is meant to land) and those it `touched` (where a pull request or commit for it landed or is under way). Filter by state, by a label's name, by a milestone's number, by assignee, and with repo by a repository it is linked to (role narrows it to one kind of link). With horizon, only the open work items on that horizon of the plan, in the plan's order: urgent first, then by rank (triage newest first). limit is how many, 1 to 100 (100 if left out). With parent, only the sub-items of the work item of that number; with project (a slug), only those in that project. Each work item says the `project` it is in (its id, slug, name, color and icon), and where it stands in the plan: `horizon`, `appetite`, `budget_usd`, `urgent` and `planned_at`; and `parent`, the number of the work item it is a sub-item of, and with sub-items `sub_item_progress` (`done` of `total` closed). Members see every work item; anyone who can read a repository sees the work items filed in it.\n\nReturns at most 100 work items (limit takes fewer), newest first; with horizon, the open ones on that horizon in the plan's order. Each lists the repositories it is linked to in `repos`, with its role in each. `comment_count` counts comments, not events such as \"opened #14 for this\".",
         "x-operation": "list_work_items",
         "x-mcp-tool": "work_item",
         "x-mcp-action": "list",
@@ -58781,6 +58796,15 @@
               "type": "integer"
             },
             "description": "Only the sub-items of the work item of this number."
+          },
+          {
+            "name": "project",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only work items in the project of this slug."
           },
           {
             "$ref": "#/components/parameters/ApiVersion"
@@ -58933,7 +58957,7 @@
           "Work items"
         ],
         "summary": "Open a work item",
-        "description": "Open a work item in a workspace. With repo, it is filed from that repository, its origin: anyone who may take part in the repository may (on a public one, anyone signed in), and workspace may be left out. Without, only a member of the workspace may. targets are repositories of the workspace where the work is meant to land; the work item closes once a pull request or commit that closes it has landed in every target (with none, once anything that closes it lands). Say what done means in the body if it helps, for instance under a \"Definition of done\" heading. labels are the workspace's labels by name; a name it does not have yet is created when you have the Write role, and refused otherwise. milestone, a workspace milestone's number, needs the Triage role. parent, the number of a work item of the workspace you can see, files it as that one's sub-item. A work_item.opened event.\n\nLabels are lowercased. A label not used before is created.",
+        "description": "Open a work item in a workspace. With repo, it is filed from that repository, its origin: anyone who may take part in the repository may (on a public one, anyone signed in), and workspace may be left out. Without, only a member of the workspace may. targets are repositories of the workspace where the work is meant to land; the work item closes once a pull request or commit that closes it has landed in every target (with none, once anything that closes it lands). Say what done means in the body if it helps, for instance under a \"Definition of done\" heading. labels are the workspace's labels by name; a name it does not have yet is created when you have the Write role, and refused otherwise. milestone, a workspace milestone's number, needs the Triage role. parent, the number of a work item of the workspace you can see, files it as that one's sub-item. project, a project's slug, files it in that project and needs the Triage role; without targets, the project's default targets are linked. A work_item.opened event.\n\nLabels are lowercased. A label not used before is created.",
         "x-operation": "open_work_item",
         "x-mcp-tool": "work_item",
         "x-mcp-action": "create",
@@ -59160,6 +59184,10 @@
                   "parent": {
                     "type": "integer",
                     "description": "The number of the work item of the workspace to file it as a sub-item of."
+                  },
+                  "project": {
+                    "type": "string",
+                    "description": "The slug of the project to file it in. Needs the Triage role. Without targets, the project's default targets are linked."
                   }
                 },
                 "required": [
@@ -59179,6 +59207,1905 @@
               }
             }
           }
+        }
+      }
+    },
+    "/workspaces/{workspace}/work/projects": {
+      "get": {
+        "operationId": "list_work_projects",
+        "tags": [
+          "Work projects"
+        ],
+        "summary": "List projects",
+        "description": "A workspace's projects: homes for bodies of work, each with its slug, name, summary, lead (a username), state (shaping, active, paused, done or dropped), appetite, start_on and target_on (YYYY-MM-DD), health (on_track, at_risk, off_track or null), open_items and closed_items (its work items) and member_count. Live ones first (shaping, active, paused), then done and dropped, each by name. state narrows it to one state; archived true lists the archived ones instead. Projects are Work's: a repository is not a project here.",
+        "x-operation": "list_work_projects",
+        "x-mcp-tool": "work_item",
+        "x-mcp-action": "list_projects",
+        "x-scope": "work:read",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "work:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "shaping",
+                "active",
+                "paused",
+                "done",
+                "dropped"
+              ]
+            },
+            "description": "Only projects in this state."
+          },
+          {
+            "name": "archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "The archived projects instead. False unless you say."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "prj_01m5g9a4c8e7b2f0q1r6s3t5v9",
+                    "workspace": "flagon-io",
+                    "slug": "work-overhaul",
+                    "name": "Work overhaul",
+                    "icon": "🧭",
+                    "color": "5319e7",
+                    "summary": "Plan, track and ship like Linear, with a home for each body of work.",
+                    "brief": "## Problem\n\nItems group only by repository or milestone.",
+                    "instructions": "Keep each slice to one pull request.",
+                    "lead": "syntaqx",
+                    "state": "active",
+                    "appetite": "large",
+                    "start_on": "2026-10-20",
+                    "target_on": "2026-12-12",
+                    "health": "on_track",
+                    "open_items": 13,
+                    "closed_items": 11,
+                    "member_count": 4,
+                    "created_at": "2026-10-20T09:00:00.000Z",
+                    "created_by": "syntaqx",
+                    "updated_at": "2026-10-21T16:30:00.000Z",
+                    "updated_by": "syntaqx",
+                    "archived_at": null
+                  }
+                ]
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      },
+      "post": {
+        "operationId": "create_work_project",
+        "tags": [
+          "Work projects"
+        ],
+        "summary": "Create a project",
+        "description": "Create a project in a workspace: a name (at most 80 characters) and, if you like, a slug (made from the name when left out; unique in the workspace), an icon (an emoji), a color (six hex digits; chosen from the slug when left out), a one-line summary, a brief and instructions (Markdown), a lead (a username; you when left out), a state (active when left out), an appetite (small, medium or large), start_on and target_on (YYYY-MM-DD) and a health. Needs the Write role through workspace membership.",
+        "x-operation": "create_work_project",
+        "x-mcp-tool": "work_item",
+        "x-mcp-action": "create_project",
+        "x-scope": "work:write",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "work:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "prj_01m5g9a4c8e7b2f0q1r6s3t5v9",
+                  "workspace": "flagon-io",
+                  "slug": "work-overhaul",
+                  "name": "Work overhaul",
+                  "icon": null,
+                  "color": "5319e7",
+                  "summary": "Plan, track and ship like Linear, with a home for each body of work.",
+                  "brief": "",
+                  "instructions": "",
+                  "lead": "syntaqx",
+                  "state": "active",
+                  "appetite": null,
+                  "start_on": null,
+                  "target_on": "2026-12-12",
+                  "health": null,
+                  "open_items": 0,
+                  "closed_items": 0,
+                  "member_count": 1,
+                  "created_at": "2026-10-20T09:00:00.000Z",
+                  "created_by": "syntaqx",
+                  "updated_at": "2026-10-20T09:00:00.000Z",
+                  "updated_by": "syntaqx",
+                  "archived_at": null
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "At most 80 characters."
+                  },
+                  "slug": {
+                    "type": "string",
+                    "description": "Unique in the workspace: letters, digits and dashes, at most 60. Made from the name when left out."
+                  },
+                  "icon": {
+                    "type": "string",
+                    "description": "An emoji."
+                  },
+                  "color": {
+                    "type": "string",
+                    "description": "Six hex digits, like 1d76db. Chosen from the slug when left out."
+                  },
+                  "summary": {
+                    "type": "string",
+                    "description": "What it is for, in a line: at most 200 characters."
+                  },
+                  "brief": {
+                    "type": "string",
+                    "description": "Markdown: the pitch (the problem, the appetite, the solution, the rabbit holes and what is out)."
+                  },
+                  "instructions": {
+                    "type": "string",
+                    "description": "Markdown: what agents are told for every work item in it."
+                  },
+                  "lead": {
+                    "type": "string",
+                    "description": "A username: its lead, made a member with the role lead. You, when creating without one."
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "shaping",
+                      "active",
+                      "paused",
+                      "done",
+                      "dropped"
+                    ],
+                    "description": "shaping, active, paused, done or dropped; active when creating without one."
+                  },
+                  "appetite": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "small",
+                      "medium",
+                      "large",
+                      null
+                    ],
+                    "description": "How much the work is worth: small, medium or large. null clears it."
+                  },
+                  "start_on": {
+                    "type": "string",
+                    "description": "The day it starts, YYYY-MM-DD."
+                  },
+                  "target_on": {
+                    "type": "string",
+                    "description": "The day it should be done, YYYY-MM-DD; not before start_on."
+                  },
+                  "health": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "on_track",
+                      "at_risk",
+                      "off_track",
+                      null
+                    ],
+                    "description": "How it is going: on_track, at_risk or off_track. null clears it."
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              },
+              "example": {
+                "name": "Work overhaul",
+                "summary": "Plan, track and ship like Linear, with a home for each body of work.",
+                "target_on": "2026-12-12"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io"
+        }
+      }
+    },
+    "/workspaces/{workspace}/work/projects/{project}": {
+      "get": {
+        "operationId": "get_work_project",
+        "tags": [
+          "Work projects"
+        ],
+        "summary": "Get a project",
+        "description": "A project and its home page: the project (with its brief and the instructions agents get, both Markdown), `members` (its lead first, each with role lead or member), `repos` (each with whether it is a default_target), `open` (its open work items, in the plan's order: Now, then Next, Later, Triage and Set aside, at most 100), `progress` (where each open one is on its hill: figuring_out, decided, building or landing, read from its record) and `milestones` (the workspace milestones its work items are in, counting only this project's). Name it by its slug or id.",
+        "x-operation": "get_work_project",
+        "x-mcp-tool": "work_item",
+        "x-mcp-action": "get_project",
+        "x-scope": "work:read",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "work:read"
+            ]
+          },
+          {}
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The project's slug, from list_work_projects, or its id (prj_…)."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "project": {
+                    "id": "prj_01m5g9a4c8e7b2f0q1r6s3t5v9",
+                    "workspace": "flagon-io",
+                    "slug": "work-overhaul",
+                    "name": "Work overhaul",
+                    "icon": "🧭",
+                    "color": "5319e7",
+                    "summary": "Plan, track and ship like Linear, with a home for each body of work.",
+                    "brief": "## Problem\n\nItems group only by repository or milestone.",
+                    "instructions": "Keep each slice to one pull request.",
+                    "lead": "syntaqx",
+                    "state": "active",
+                    "appetite": "large",
+                    "start_on": "2026-10-20",
+                    "target_on": "2026-12-12",
+                    "health": "on_track",
+                    "open_items": 13,
+                    "closed_items": 11,
+                    "member_count": 4,
+                    "created_at": "2026-10-20T09:00:00.000Z",
+                    "created_by": "syntaqx",
+                    "updated_at": "2026-10-21T16:30:00.000Z",
+                    "updated_by": "syntaqx",
+                    "archived_at": null
+                  },
+                  "members": [
+                    {
+                      "user_id": "usr_1",
+                      "username": "syntaqx",
+                      "role": "lead",
+                      "added_at": "2026-10-20T09:00:00.000Z"
+                    },
+                    {
+                      "user_id": "usr_2",
+                      "username": "ana",
+                      "role": "member",
+                      "added_at": "2026-10-20T09:05:00.000Z"
+                    }
+                  ],
+                  "repos": [
+                    {
+                      "repo_id": "rep_01j9",
+                      "path": "flagon-io/g1t",
+                      "default_target": true
+                    }
+                  ],
+                  "open": [],
+                  "progress": [],
+                  "milestones": []
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "project": "work-overhaul"
+        }
+      },
+      "patch": {
+        "operationId": "update_work_project",
+        "tags": [
+          "Work projects"
+        ],
+        "summary": "Update a project",
+        "description": "Change a project, named by its slug or id: any of the fields create_work_project takes, and only those given. An empty string clears icon, lead, start_on and target_on; null clears appetite and health. Setting a lead makes them a member with the role lead; the lead before stays a member. The target date can't be before the start date. Needs the Write role through workspace membership.",
+        "x-operation": "update_work_project",
+        "x-mcp-tool": "work_item",
+        "x-mcp-action": "update_project",
+        "x-scope": "work:write",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "work:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The project's slug, from list_work_projects, or its id (prj_…)."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "prj_01m5g9a4c8e7b2f0q1r6s3t5v9",
+                  "workspace": "flagon-io",
+                  "slug": "work-overhaul",
+                  "name": "Work overhaul",
+                  "icon": null,
+                  "color": "5319e7",
+                  "summary": "Plan, track and ship like Linear, with a home for each body of work.",
+                  "brief": "",
+                  "instructions": "",
+                  "lead": "syntaqx",
+                  "state": "active",
+                  "appetite": null,
+                  "start_on": null,
+                  "target_on": "2026-12-12",
+                  "health": "at_risk",
+                  "open_items": 13,
+                  "closed_items": 11,
+                  "member_count": 4,
+                  "created_at": "2026-10-20T09:00:00.000Z",
+                  "created_by": "syntaqx",
+                  "updated_at": "2026-11-02T10:00:00.000Z",
+                  "updated_by": "syntaqx",
+                  "archived_at": null
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "At most 80 characters."
+                  },
+                  "slug": {
+                    "type": "string",
+                    "description": "Unique in the workspace: letters, digits and dashes, at most 60. Made from the name when left out."
+                  },
+                  "icon": {
+                    "type": "string",
+                    "description": "An emoji. An empty string clears it."
+                  },
+                  "color": {
+                    "type": "string",
+                    "description": "Six hex digits, like 1d76db. Chosen from the slug when left out."
+                  },
+                  "summary": {
+                    "type": "string",
+                    "description": "What it is for, in a line: at most 200 characters."
+                  },
+                  "brief": {
+                    "type": "string",
+                    "description": "Markdown: the pitch (the problem, the appetite, the solution, the rabbit holes and what is out)."
+                  },
+                  "instructions": {
+                    "type": "string",
+                    "description": "Markdown: what agents are told for every work item in it."
+                  },
+                  "lead": {
+                    "type": "string",
+                    "description": "A username: its lead, made a member with the role lead. You, when creating without one. An empty string clears it."
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "shaping",
+                      "active",
+                      "paused",
+                      "done",
+                      "dropped"
+                    ],
+                    "description": "shaping, active, paused, done or dropped; active when creating without one."
+                  },
+                  "appetite": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "small",
+                      "medium",
+                      "large",
+                      null
+                    ],
+                    "description": "How much the work is worth: small, medium or large. null clears it."
+                  },
+                  "start_on": {
+                    "type": "string",
+                    "description": "The day it starts, YYYY-MM-DD. An empty string clears it."
+                  },
+                  "target_on": {
+                    "type": "string",
+                    "description": "The day it should be done, YYYY-MM-DD; not before start_on. An empty string clears it."
+                  },
+                  "health": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "on_track",
+                      "at_risk",
+                      "off_track",
+                      null
+                    ],
+                    "description": "How it is going: on_track, at_risk or off_track. null clears it."
+                  }
+                }
+              },
+              "example": {
+                "health": "at_risk"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "project": "work-overhaul"
+        }
+      }
+    },
+    "/workspaces/{workspace}/work/projects/{project}/archive": {
+      "post": {
+        "operationId": "archive_work_project",
+        "tags": [
+          "Work projects"
+        ],
+        "summary": "Archive a project",
+        "description": "Archive a project, or with archived false bring it back. An archived project is left out of list_work_projects (unless archived is true), takes no new work items, and its work items stay in it. Needs the Write role through workspace membership.",
+        "x-operation": "archive_work_project",
+        "x-mcp-tool": "work_item",
+        "x-mcp-action": "archive_project",
+        "x-scope": "work:write",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "work:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The project's slug, from list_work_projects, or its id (prj_…)."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "id": "prj_01m5g9a4c8e7b2f0q1r6s3t5v9",
+                  "workspace": "flagon-io",
+                  "slug": "work-overhaul",
+                  "name": "Work overhaul",
+                  "icon": null,
+                  "color": "5319e7",
+                  "summary": "Plan, track and ship like Linear, with a home for each body of work.",
+                  "brief": "",
+                  "instructions": "",
+                  "lead": "syntaqx",
+                  "state": "done",
+                  "appetite": null,
+                  "start_on": null,
+                  "target_on": "2026-12-12",
+                  "health": "on_track",
+                  "open_items": 0,
+                  "closed_items": 24,
+                  "member_count": 4,
+                  "created_at": "2026-10-20T09:00:00.000Z",
+                  "created_by": "syntaqx",
+                  "updated_at": "2026-12-15T10:00:00.000Z",
+                  "updated_by": "syntaqx",
+                  "archived_at": "2026-12-15T10:00:00.000Z"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "archived": {
+                    "type": "boolean",
+                    "description": "False brings an archived project back. True unless you say."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "project": "work-overhaul"
+        }
+      }
+    },
+    "/workspaces/{workspace}/work/projects/{project}/members/{username}": {
+      "put": {
+        "operationId": "add_work_project_member",
+        "tags": [
+          "Work projects"
+        ],
+        "summary": "Add someone to a project",
+        "description": "Add someone to a project by username, or change their role: role member (the default) or lead, which makes them its lead (the lead before stays a member). Returns everyone in it. Needs the Write role through workspace membership.",
+        "x-operation": "add_work_project_member",
+        "x-mcp-tool": "work_item",
+        "x-mcp-action": "add_project_member",
+        "x-scope": "work:write",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "work:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The project's slug, from list_work_projects, or its id (prj_…)."
+          },
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The person's username."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "user_id": "usr_1",
+                    "username": "syntaqx",
+                    "role": "lead",
+                    "added_at": "2026-10-20T09:00:00.000Z"
+                  },
+                  {
+                    "user_id": "usr_2",
+                    "username": "ana",
+                    "role": "member",
+                    "added_at": "2026-10-20T09:05:00.000Z"
+                  }
+                ]
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "member",
+                      "lead"
+                    ],
+                    "description": "member when left out; lead makes them its lead."
+                  }
+                }
+              },
+              "example": {
+                "role": "member"
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "project": "work-overhaul",
+          "username": "ana"
+        }
+      },
+      "delete": {
+        "operationId": "remove_work_project_member",
+        "tags": [
+          "Work projects"
+        ],
+        "summary": "Take someone out of a project",
+        "description": "Take someone out of a project, by username. Taking out its lead leaves it without one. Returns everyone in it. Needs the Write role through workspace membership.",
+        "x-operation": "remove_work_project_member",
+        "x-mcp-tool": "work_item",
+        "x-mcp-action": "remove_project_member",
+        "x-scope": "work:write",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "work:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The project's slug, from list_work_projects, or its id (prj_…)."
+          },
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The person's username."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "user_id": "usr_1",
+                    "username": "syntaqx",
+                    "role": "lead",
+                    "added_at": "2026-10-20T09:00:00.000Z"
+                  }
+                ]
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "project": "work-overhaul",
+          "username": "ana"
+        }
+      }
+    },
+    "/workspaces/{workspace}/work/projects/{project}/repos": {
+      "post": {
+        "operationId": "add_work_project_repo",
+        "tags": [
+          "Work projects"
+        ],
+        "summary": "Add a repository to a project",
+        "description": "Name a repository of the workspace as one a project's work lands in, or change whether it is a default target (default_target, true when left out). A default target is linked as a target to each work item filed into the project without targets of its own. Returns its repositories. Needs the Write role through workspace membership.",
+        "x-operation": "add_work_project_repo",
+        "x-mcp-tool": "work_item",
+        "x-mcp-action": "add_project_repo",
+        "x-scope": "work:write",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "work:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The project's slug, from list_work_projects, or its id (prj_…)."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "repo_id": "rep_01j9",
+                    "path": "flagon-io/g1t",
+                    "default_target": true
+                  }
+                ]
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "repo": {
+                    "type": "string",
+                    "description": "Repository as \"owner/name\", e.g. \"flagon-io/hello\"."
+                  },
+                  "default_target": {
+                    "type": "boolean",
+                    "description": "Link it as a target to each work item filed into the project without targets of its own. True unless you say."
+                  }
+                },
+                "required": [
+                  "repo"
+                ]
+              },
+              "example": {
+                "repo": "flagon-io/g1t",
+                "default_target": true
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "project": "work-overhaul"
+        }
+      },
+      "delete": {
+        "operationId": "remove_work_project_repo",
+        "tags": [
+          "Work projects"
+        ],
+        "summary": "Take a repository off a project",
+        "description": "Take a repository off a project. Its work items keep their links. Returns its repositories. Needs the Write role through workspace membership.",
+        "x-operation": "remove_work_project_repo",
+        "x-mcp-tool": "work_item",
+        "x-mcp-action": "remove_project_repo",
+        "x-scope": "work:write",
+        "security": [
+          {
+            "token": []
+          },
+          {
+            "oauth": [
+              "work:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workspace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The workspace's slug, e.g. \"flagon-io\"."
+          },
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The project's slug, from list_work_projects, or its id (prj_…)."
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": []
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "401": {
+            "description": "A token is required, or the one sent is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed to do this: the role you have is not enough, or the token lacks the scope it needs, which `needed_scope` names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "404": {
+            "description": "It does not exist, or you cannot see it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "422": {
+            "description": "The input is not valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "X-G1t-Api-Version": {
+                "$ref": "#/components/headers/ApiVersion"
+              },
+              "RateLimit-Policy": {
+                "$ref": "#/components/headers/RateLimitPolicy"
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "repo": {
+                    "type": "string",
+                    "description": "Repository as \"owner/name\", e.g. \"flagon-io/hello\"."
+                  }
+                },
+                "required": [
+                  "repo"
+                ]
+              }
+            }
+          }
+        },
+        "x-example-params": {
+          "workspace": "flagon-io",
+          "project": "work-overhaul",
+          "repo": "flagon-io/g1t"
         }
       }
     },
@@ -60082,7 +62009,7 @@
           "Work items"
         ],
         "summary": "Update a work item",
-        "description": "Change a work item's title, body, labels, milestone, the people it is assigned to, what it is blocked by, or its parent. Only the fields given are changed; labels, assignees and blocked_by each replace the whole set, milestone null or 0 takes it out of its milestone, and parent (as set_work_item_parent) null or 0 out of its parent. blocked_by lists the numbers of the work items of the workspace that have to land first: one that is not a work item, the work item itself, or a set that would make a cycle is refused with `422`, and a change is a dependency.changed event. Its author may change their own work item, as may the person g1t filed one for; anyone else needs the Triage role, and so does the milestone. Each label added or removed is a work_item.labeled or work_item.unlabeled event. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace.",
+        "description": "Change a work item's title, body, labels, milestone, project, the people it is assigned to, what it is blocked by, or its parent. Only the fields given are changed; labels, assignees and blocked_by each replace the whole set, milestone null or 0 takes it out of its milestone, project (a slug) null or an empty string out of its project, and parent (as set_work_item_parent) null or 0 out of its parent. blocked_by lists the numbers of the work items of the workspace that have to land first: one that is not a work item, the work item itself, or a set that would make a cycle is refused with `422`, and a change is a dependency.changed event. Its author may change their own work item, as may the person g1t filed one for; anyone else needs the Triage role, and so do the milestone and the project. Each label added or removed is a work_item.labeled or work_item.unlabeled event. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace.",
         "x-operation": "update_work_item",
         "x-mcp-tool": "work_item",
         "x-mcp-action": "update",
@@ -60309,6 +62236,13 @@
                       "null"
                     ],
                     "description": "The number of the workspace milestone to put it in; null or 0 takes it out. Needs the Triage role."
+                  },
+                  "project": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The slug of the project to put it in; null or \"\" takes it out. Needs the Triage role."
                   },
                   "assignees": {
                     "type": "array",

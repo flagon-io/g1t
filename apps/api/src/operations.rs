@@ -201,6 +201,15 @@ pub enum Op {
     CreateMilestone,
     UpdateMilestone,
     DeleteMilestone,
+    ListWorkProjects,
+    GetWorkProject,
+    CreateWorkProject,
+    UpdateWorkProject,
+    ArchiveWorkProject,
+    AddWorkProjectMember,
+    RemoveWorkProjectMember,
+    AddWorkProjectRepo,
+    RemoveWorkProjectRepo,
     AddComment,
     EditComment,
     DeleteComment,
@@ -730,6 +739,35 @@ fn milestone_schema() -> Value {
     json!({ "type": "integer", "description": "The milestone's number, from list_milestones." })
 }
 
+fn project_schema() -> Value {
+    json!({ "type": "string", "description": "The project's slug, from list_work_projects, or its id (prj_…)." })
+}
+
+fn project_state_schema(description: &str) -> Value {
+    json!({ "type": "string", "enum": ProjectState::ALL.map(ProjectState::as_str), "description": description })
+}
+
+/// A project's state given as `state`: none when it was not given, or why
+/// it is not one.
+fn project_state_input(input: &Value) -> std::result::Result<Option<ProjectState>, &'static str> {
+    match optional_text(input, "state") {
+        None => Ok(None),
+        Some(name) => ProjectState::parse(&name).map(Some).ok_or("state is shaping, active, paused, done or dropped."),
+    }
+}
+
+/// A field that `null` clears: `Some(None)` for null, `None` when it was
+/// not given, or why the value is not one `parse` reads.
+fn clearable<T>(input: &Value, key: &str, parse: fn(&str) -> Option<T>, what: &'static str) -> std::result::Result<Option<Option<T>>, &'static str> {
+    match input.get(key) {
+        None => Ok(None),
+        Some(Value::Null) => Ok(Some(None)),
+        Some(Value::String(text)) if text.trim().is_empty() => Ok(Some(None)),
+        Some(Value::String(text)) => parse(text).map(|value| Some(Some(value))).ok_or(what),
+        Some(_) => Err(what),
+    }
+}
+
 /// A milestone given as a number, or as null or 0 for none: `Some(0)` for
 /// none, `None` when it was not given.
 fn milestone_input(input: &Value) -> Option<u32> {
@@ -937,7 +975,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 439] = [
+    pub const ALL: [Op; 448] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -1021,6 +1059,15 @@ impl Op {
         Op::CreateMilestone,
         Op::UpdateMilestone,
         Op::DeleteMilestone,
+        Op::ListWorkProjects,
+        Op::GetWorkProject,
+        Op::CreateWorkProject,
+        Op::UpdateWorkProject,
+        Op::ArchiveWorkProject,
+        Op::AddWorkProjectMember,
+        Op::RemoveWorkProjectMember,
+        Op::AddWorkProjectRepo,
+        Op::RemoveWorkProjectRepo,
         Op::AddComment,
         Op::EditComment,
         Op::DeleteComment,
@@ -1469,6 +1516,15 @@ impl Op {
             Op::CreateMilestone => "create_milestone",
             Op::UpdateMilestone => "update_milestone",
             Op::DeleteMilestone => "delete_milestone",
+            Op::ListWorkProjects => "list_work_projects",
+            Op::GetWorkProject => "get_work_project",
+            Op::CreateWorkProject => "create_work_project",
+            Op::UpdateWorkProject => "update_work_project",
+            Op::ArchiveWorkProject => "archive_work_project",
+            Op::AddWorkProjectMember => "add_work_project_member",
+            Op::RemoveWorkProjectMember => "remove_work_project_member",
+            Op::AddWorkProjectRepo => "add_work_project_repo",
+            Op::RemoveWorkProjectRepo => "remove_work_project_repo",
             Op::AddComment => "add_comment",
             Op::EditComment => "edit_comment",
             Op::DeleteComment => "delete_comment",
@@ -1782,7 +1838,7 @@ impl Op {
                 "Create a repository in one of your workspaces, empty or as a copy of a public git repository elsewhere. It gets a project of its own name; description is that project's. With deploy true, its project's g1t.page Deployments are turned on as soon as it is made, as update_deployment_settings with enabled true does: its first push to the default branch deploys production. The repository is made either way: the response has `deployments` (the settings, with production_url) when they are on, or `deploy_error` saying why not (the workspace has no g1t plan, or your role is too low)."
             }
             Op::ListWorkItems => {
-                "A workspace's work items, newest first. A work item is any tracked work (a feature, a bug, a chore) of the workspace, numbered in its sequence with new pull requests, and linked to the repositories it concerns: its `origin` (where it was filed, if it was filed in one), its `target`s (where the work is meant to land) and those it `touched` (where a pull request or commit for it landed or is under way). Filter by state, by a label's name, by a milestone's number, by assignee, and with repo by a repository it is linked to (role narrows it to one kind of link). With horizon, only the open work items on that horizon of the plan, in the plan's order: urgent first, then by rank (triage newest first). limit is how many, 1 to 100 (100 if left out). With parent, only the sub-items of the work item of that number. Each work item says where it stands in the plan: `horizon`, `appetite`, `budget_usd`, `urgent` and `planned_at`; and `parent`, the number of the work item it is a sub-item of, and with sub-items `sub_item_progress` (`done` of `total` closed). Members see every work item; anyone who can read a repository sees the work items filed in it."
+                "A workspace's work items, newest first. A work item is any tracked work (a feature, a bug, a chore) of the workspace, numbered in its sequence with new pull requests, and linked to the repositories it concerns: its `origin` (where it was filed, if it was filed in one), its `target`s (where the work is meant to land) and those it `touched` (where a pull request or commit for it landed or is under way). Filter by state, by a label's name, by a milestone's number, by assignee, and with repo by a repository it is linked to (role narrows it to one kind of link). With horizon, only the open work items on that horizon of the plan, in the plan's order: urgent first, then by rank (triage newest first). limit is how many, 1 to 100 (100 if left out). With parent, only the sub-items of the work item of that number; with project (a slug), only those in that project. Each work item says the `project` it is in (its id, slug, name, color and icon), and where it stands in the plan: `horizon`, `appetite`, `budget_usd`, `urgent` and `planned_at`; and `parent`, the number of the work item it is a sub-item of, and with sub-items `sub_item_progress` (`done` of `total` closed). Members see every work item; anyone who can read a repository sees the work items filed in it."
             }
             Op::ListRepoWorkItems => {
                 "The work items linked to a repository, in any role (origin, target or touched) or in role: the workspace's work list filtered to it. Read only: work items are opened in the workspace (open_work_item, with repo as their origin)."
@@ -1791,10 +1847,10 @@ impl Op {
                 "A work item: its description (which may say what done means, under \"Definition of done\"), labels, milestone, `repos` (each linked repository with its `role`, its `legacy_number` when it was filed there as an issue before work items, and whether the work `landed` there), `resolutions` (what landed it in each repository: a merged pull request, or a commit pushed to its default branch, with who pushed it), its comments and reactions, every pull request made for it, in any repository, and `parent` and `sub_items` (each with its `number`, `title` and `state`), as far as you can see them. Read this before opening a pull request, to see what others have already tried. A comment one of the workspace's agents wrote as itself has `agent` (its `id`, `handle`, `display_name` and `avatar_seed`) and `acting_for` (the person it acted for, whose access capped it); its `author` is the agent, of kind `agent`. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
             }
             Op::OpenWorkItem => {
-                "Open a work item in a workspace. With repo, it is filed from that repository, its origin: anyone who may take part in the repository may (on a public one, anyone signed in), and workspace may be left out. Without, only a member of the workspace may. targets are repositories of the workspace where the work is meant to land; the work item closes once a pull request or commit that closes it has landed in every target (with none, once anything that closes it lands). Say what done means in the body if it helps, for instance under a \"Definition of done\" heading. labels are the workspace's labels by name; a name it does not have yet is created when you have the Write role, and refused otherwise. milestone, a workspace milestone's number, needs the Triage role. parent, the number of a work item of the workspace you can see, files it as that one's sub-item. A work_item.opened event."
+                "Open a work item in a workspace. With repo, it is filed from that repository, its origin: anyone who may take part in the repository may (on a public one, anyone signed in), and workspace may be left out. Without, only a member of the workspace may. targets are repositories of the workspace where the work is meant to land; the work item closes once a pull request or commit that closes it has landed in every target (with none, once anything that closes it lands). Say what done means in the body if it helps, for instance under a \"Definition of done\" heading. labels are the workspace's labels by name; a name it does not have yet is created when you have the Write role, and refused otherwise. milestone, a workspace milestone's number, needs the Triage role. parent, the number of a work item of the workspace you can see, files it as that one's sub-item. project, a project's slug, files it in that project and needs the Triage role; without targets, the project's default targets are linked. A work_item.opened event."
             }
             Op::UpdateWorkItem => {
-                "Change a work item's title, body, labels, milestone, the people it is assigned to, what it is blocked by, or its parent. Only the fields given are changed; labels, assignees and blocked_by each replace the whole set, milestone null or 0 takes it out of its milestone, and parent (as set_work_item_parent) null or 0 out of its parent. blocked_by lists the numbers of the work items of the workspace that have to land first: one that is not a work item, the work item itself, or a set that would make a cycle is refused with `422`, and a change is a dependency.changed event. Its author may change their own work item, as may the person g1t filed one for; anyone else needs the Triage role, and so does the milestone. Each label added or removed is a work_item.labeled or work_item.unlabeled event. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
+                "Change a work item's title, body, labels, milestone, project, the people it is assigned to, what it is blocked by, or its parent. Only the fields given are changed; labels, assignees and blocked_by each replace the whole set, milestone null or 0 takes it out of its milestone, project (a slug) null or an empty string out of its project, and parent (as set_work_item_parent) null or 0 out of its parent. blocked_by lists the numbers of the work items of the workspace that have to land first: one that is not a work item, the work item itself, or a set that would make a cycle is refused with `422`, and a change is a dependency.changed event. Its author may change their own work item, as may the person g1t filed one for; anyone else needs the Triage role, and so do the milestone and the project. Each label added or removed is a work_item.labeled or work_item.unlabeled event. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
             }
             Op::CloseWorkItem => {
                 "Close a work item without a pull request. A work item closes by itself once what closes it has landed in every target: a pull request whose title or description names it after a closing keyword (Fixes #12) merging into a repository's default branch, or such a commit pushed there, marks that repository landed. When a commit already on a default branch did the work, give it as commit, with repo the repository it is in: it lands there as its push would have, and the work item closes if nothing else is left to land. A commit that is not on the default branch, or whose message does not name the work item after a closing keyword, is refused with `422`; a work item already closed, with `409`. A work item with open sub-items is never closed with them silently: without sub_items it is refused with `409`, naming them; sub_items leave leaves them open, close closes them too (with the same reason, and their own open sub-items), and move makes them sub-items of move_to. A commit closing it leaves them. Closing the last open sub-item leaves its parent open, and says so on the parent. Its author may close their own work item, as may the person g1t filed one for; anyone else needs the Triage role. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
@@ -1877,6 +1933,33 @@ impl Op {
             }
             Op::DeleteMilestone => {
                 "Delete a workspace milestone. The work items and pull requests in it are in no milestone afterwards. Needs the Write role through workspace membership."
+            }
+            Op::ListWorkProjects => {
+                "A workspace's projects: homes for bodies of work, each with its slug, name, summary, lead (a username), state (shaping, active, paused, done or dropped), appetite, start_on and target_on (YYYY-MM-DD), health (on_track, at_risk, off_track or null), open_items and closed_items (its work items) and member_count. Live ones first (shaping, active, paused), then done and dropped, each by name. state narrows it to one state; archived true lists the archived ones instead. Projects are Work's: a repository is not a project here."
+            }
+            Op::GetWorkProject => {
+                "A project and its home page: the project (with its brief and the instructions agents get, both Markdown), `members` (its lead first, each with role lead or member), `repos` (each with whether it is a default_target), `open` (its open work items, in the plan's order: Now, then Next, Later, Triage and Set aside, at most 100), `progress` (where each open one is on its hill: figuring_out, decided, building or landing, read from its record) and `milestones` (the workspace milestones its work items are in, counting only this project's). Name it by its slug or id."
+            }
+            Op::CreateWorkProject => {
+                "Create a project in a workspace: a name (at most 80 characters) and, if you like, a slug (made from the name when left out; unique in the workspace), an icon (an emoji), a color (six hex digits; chosen from the slug when left out), a one-line summary, a brief and instructions (Markdown), a lead (a username; you when left out), a state (active when left out), an appetite (small, medium or large), start_on and target_on (YYYY-MM-DD) and a health. Needs the Write role through workspace membership."
+            }
+            Op::UpdateWorkProject => {
+                "Change a project, named by its slug or id: any of the fields create_work_project takes, and only those given. An empty string clears icon, lead, start_on and target_on; null clears appetite and health. Setting a lead makes them a member with the role lead; the lead before stays a member. The target date can't be before the start date. Needs the Write role through workspace membership."
+            }
+            Op::ArchiveWorkProject => {
+                "Archive a project, or with archived false bring it back. An archived project is left out of list_work_projects (unless archived is true), takes no new work items, and its work items stay in it. Needs the Write role through workspace membership."
+            }
+            Op::AddWorkProjectMember => {
+                "Add someone to a project by username, or change their role: role member (the default) or lead, which makes them its lead (the lead before stays a member). Returns everyone in it. Needs the Write role through workspace membership."
+            }
+            Op::RemoveWorkProjectMember => {
+                "Take someone out of a project, by username. Taking out its lead leaves it without one. Returns everyone in it. Needs the Write role through workspace membership."
+            }
+            Op::AddWorkProjectRepo => {
+                "Name a repository of the workspace as one a project's work lands in, or change whether it is a default target (default_target, true when left out). A default target is linked as a target to each work item filed into the project without targets of its own. Returns its repositories. Needs the Write role through workspace membership."
+            }
+            Op::RemoveWorkProjectRepo => {
+                "Take a repository off a project. Its work items keep their links. Returns its repositories. Needs the Write role through workspace membership."
             }
             Op::AddComment => {
                 "Comment on a pull request. Give path and line to comment on one line of the change. A work item is commented on with add_work_item_comment."
@@ -2621,6 +2704,81 @@ impl Op {
                     object(properties, &["workspace", "title"])
                 }
             }
+            Op::ListWorkProjects => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "state": project_state_schema("Only projects in this state."),
+                    "archived": { "type": "boolean", "description": "The archived projects instead. False unless you say." },
+                }),
+                &["workspace"],
+            ),
+            Op::GetWorkProject => object(json!({ "workspace": workspace_schema(), "project": project_schema() }), &["workspace", "project"]),
+            Op::CreateWorkProject | Op::UpdateWorkProject => {
+                let update = self == Op::UpdateWorkProject;
+                let clears = |what: &str| if update { format!("{what} An empty string clears it.") } else { what.to_owned() };
+                let mut properties = json!({
+                    "workspace": workspace_schema(),
+                    "name": { "type": "string", "description": "At most 80 characters." },
+                    "slug": {
+                        "type": "string",
+                        "description": "Unique in the workspace: letters, digits and dashes, at most 60. Made from the name when left out.",
+                    },
+                    "icon": { "type": "string", "description": clears("An emoji.") },
+                    "color": { "type": "string", "description": "Six hex digits, like 1d76db. Chosen from the slug when left out." },
+                    "summary": { "type": "string", "description": "What it is for, in a line: at most 200 characters." },
+                    "brief": { "type": "string", "description": "Markdown: the pitch (the problem, the appetite, the solution, the rabbit holes and what is out)." },
+                    "instructions": { "type": "string", "description": "Markdown: what agents are told for every work item in it." },
+                    "lead": { "type": "string", "description": clears("A username: its lead, made a member with the role lead. You, when creating without one.") },
+                    "state": project_state_schema("shaping, active, paused, done or dropped; active when creating without one."),
+                    "appetite": {
+                        "type": ["string", "null"],
+                        "enum": ["small", "medium", "large", null],
+                        "description": "How much the work is worth: small, medium or large. null clears it.",
+                    },
+                    "start_on": { "type": "string", "description": clears("The day it starts, YYYY-MM-DD.") },
+                    "target_on": { "type": "string", "description": clears("The day it should be done, YYYY-MM-DD; not before start_on.") },
+                    "health": {
+                        "type": ["string", "null"],
+                        "enum": ["on_track", "at_risk", "off_track", null],
+                        "description": "How it is going: on_track, at_risk or off_track. null clears it.",
+                    },
+                });
+                if update {
+                    properties["project"] = project_schema();
+                    object(properties, &["workspace", "project"])
+                } else {
+                    object(properties, &["workspace", "name"])
+                }
+            }
+            Op::ArchiveWorkProject => object(
+                json!({
+                    "workspace": workspace_schema(),
+                    "project": project_schema(),
+                    "archived": { "type": "boolean", "description": "False brings an archived project back. True unless you say." },
+                }),
+                &["workspace", "project"],
+            ),
+            Op::AddWorkProjectMember | Op::RemoveWorkProjectMember => {
+                let mut properties = json!({ "workspace": workspace_schema(), "project": project_schema(), "username": username_schema() });
+                if self == Op::AddWorkProjectMember {
+                    properties["role"] = json!({
+                        "type": "string",
+                        "enum": ["member", "lead"],
+                        "description": "member when left out; lead makes them its lead.",
+                    });
+                }
+                object(properties, &["workspace", "project", "username"])
+            }
+            Op::AddWorkProjectRepo | Op::RemoveWorkProjectRepo => {
+                let mut properties = json!({ "workspace": workspace_schema(), "project": project_schema(), "repo": repo_schema() });
+                if self == Op::AddWorkProjectRepo {
+                    properties["default_target"] = json!({
+                        "type": "boolean",
+                        "description": "Link it as a target to each work item filed into the project without targets of its own. True unless you say.",
+                    });
+                }
+                object(properties, &["workspace", "project", "repo"])
+            }
             Op::UpdateRepo => object(
                 json!({
                     "repo": repo_schema(),
@@ -2888,6 +3046,7 @@ impl Op {
                     },
                     "limit": { "type": "integer", "minimum": 1, "maximum": 100, "description": "At most this many, 1 to 100 (100 if left out)." },
                     "parent": { "type": "integer", "description": "Only the sub-items of the work item of this number." },
+                    "project": { "type": "string", "description": "Only work items in the project of this slug." },
                 }),
                 &[],
             ),
@@ -2944,6 +3103,10 @@ impl Op {
                     },
                     "milestone": { "type": "integer", "description": "The number of the workspace milestone to put it in. Needs the Triage role." },
                     "parent": { "type": "integer", "description": "The number of the work item of the workspace to file it as a sub-item of." },
+                    "project": {
+                        "type": "string",
+                        "description": "The slug of the project to file it in. Needs the Triage role. Without targets, the project's default targets are linked.",
+                    },
                 }),
                 &["title"],
             ),
@@ -2959,6 +3122,10 @@ impl Op {
                     "milestone": {
                         "type": ["integer", "null"],
                         "description": "The number of the workspace milestone to put it in; null or 0 takes it out. Needs the Triage role.",
+                    },
+                    "project": {
+                        "type": ["string", "null"],
+                        "description": "The slug of the project to put it in; null or \"\" takes it out. Needs the Triage role.",
                     },
                     "assignees": {
                         "type": "array",
@@ -4247,6 +4414,8 @@ impl Op {
                 | Op::ListWorkItemLabels
                 | Op::ListMilestones
                 | Op::GetMilestone
+                | Op::ListWorkProjects
+                | Op::GetWorkProject
                 | Op::ListPullRequests
                 | Op::GetPullRequest
                 | Op::ReadSession
@@ -4483,6 +4652,15 @@ impl Op {
                 | Op::CreateMilestone
                 | Op::UpdateMilestone
                 | Op::DeleteMilestone
+                | Op::ListWorkProjects
+                | Op::GetWorkProject
+                | Op::CreateWorkProject
+                | Op::UpdateWorkProject
+                | Op::ArchiveWorkProject
+                | Op::AddWorkProjectMember
+                | Op::RemoveWorkProjectMember
+                | Op::AddWorkProjectRepo
+                | Op::RemoveWorkProjectRepo
         )
     }
 
@@ -5526,6 +5704,7 @@ impl Op {
                         horizon,
                         limit: integer(input, "limit"),
                         parent: integer(input, "parent"),
+                        project: optional_text(input, "project"),
                         before: None,
                         closed_since: None,
                     },
@@ -5564,6 +5743,7 @@ impl Op {
                             Ok(parent) => parent,
                             Err(message) => return failed(FailureCode::Invalid, &message),
                         },
+                        project: optional_text(input, "project"),
                     },
                 )
                 .await
@@ -5592,6 +5772,8 @@ impl Op {
                         milestone: milestone_input(input),
                         blocked_by,
                         parent,
+                        // Given as null, it takes it out of its project.
+                        project: input.get("project").map(|given| given.as_str().unwrap_or_default().trim().to_owned()),
                     },
                 )
                 .await
@@ -5818,6 +6000,94 @@ impl Op {
                     work,
                     "delete_milestone",
                     &DeleteMilestoneArgs { actor: actor(), workspace: item_ws(), number: integer(input, "milestone").unwrap_or_default() },
+                )
+                .await
+            }
+            Op::ListWorkProjects => {
+                let state = match project_state_input(input) {
+                    Ok(state) => state,
+                    Err(message) => return failed(FailureCode::Invalid, message),
+                };
+                let archived = yes(input, "archived").unwrap_or(false);
+                pass(work, "list_projects", &ListProjectsArgs { workspace: item_ws(), viewer: viewer.clone(), state, archived }).await
+            }
+            Op::GetWorkProject => {
+                pass(work, "get_project", &GetProjectArgs { workspace: item_ws(), viewer: viewer.clone(), project: text(input, "project") }).await
+            }
+            Op::CreateWorkProject | Op::UpdateWorkProject => {
+                let state = match project_state_input(input) {
+                    Ok(state) => state,
+                    Err(message) => return failed(FailureCode::Invalid, message),
+                };
+                let appetite = match clearable(input, "appetite", Appetite::parse, "appetite is small, medium or large.") {
+                    Ok(appetite) => appetite,
+                    Err(message) => return failed(FailureCode::Invalid, message),
+                };
+                let health = match clearable(input, "health", ProjectHealth::parse, "health is on_track, at_risk or off_track.") {
+                    Ok(health) => health,
+                    Err(message) => return failed(FailureCode::Invalid, message),
+                };
+                let given = |key: &str| input[key].as_str().map(str::to_owned);
+                let method = if self == Op::CreateWorkProject { "create_project" } else { "update_project" };
+                pass(
+                    work,
+                    method,
+                    &SaveProjectArgs {
+                        actor: actor(),
+                        workspace: item_ws(),
+                        project: (self == Op::UpdateWorkProject).then(|| text(input, "project")),
+                        name: given("name"),
+                        slug: given("slug"),
+                        icon: given("icon"),
+                        color: given("color"),
+                        summary: given("summary"),
+                        brief: given("brief"),
+                        instructions: given("instructions"),
+                        lead: given("lead"),
+                        state,
+                        appetite,
+                        start_on: given("start_on"),
+                        target_on: given("target_on"),
+                        health,
+                    },
+                )
+                .await
+            }
+            Op::ArchiveWorkProject => {
+                let archived = yes(input, "archived").unwrap_or(true);
+                pass(work, "archive_project", &ArchiveProjectArgs { actor: actor(), workspace: item_ws(), project: text(input, "project"), archived })
+                    .await
+            }
+            Op::AddWorkProjectMember | Op::RemoveWorkProjectMember => {
+                let role = match optional_text(input, "role").as_deref() {
+                    None => None,
+                    Some("member") => Some(ProjectRole::Member),
+                    Some("lead") => Some(ProjectRole::Lead),
+                    Some(_) => return failed(FailureCode::Invalid, "role is member or lead."),
+                };
+                let method = if self == Op::AddWorkProjectMember { "add_project_member" } else { "remove_project_member" };
+                pass(
+                    work,
+                    method,
+                    &ProjectMemberArgs { actor: actor(), workspace: item_ws(), project: text(input, "project"), username: text(input, "username"), role },
+                )
+                .await
+            }
+            Op::AddWorkProjectRepo | Op::RemoveWorkProjectRepo => {
+                let Some(repo) = given_repo() else {
+                    return failed(FailureCode::Invalid, "Give the repository as \"owner/name\".");
+                };
+                let method = if self == Op::AddWorkProjectRepo { "add_project_repo" } else { "remove_project_repo" };
+                pass(
+                    work,
+                    method,
+                    &ProjectRepoArgs {
+                        actor: actor(),
+                        workspace: item_ws(),
+                        project: text(input, "project"),
+                        repo,
+                        default_target: yes(input, "default_target"),
+                    },
                 )
                 .await
             }

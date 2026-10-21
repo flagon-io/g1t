@@ -28,7 +28,7 @@ macro_rules! check {
 }
 
 #[derive(Deserialize)]
-struct MilestoneRow {
+pub(super) struct MilestoneRow {
     number: u32,
     title: String,
     description: String,

@@ -20,7 +20,7 @@ use crate::{LIST_PAGE, Work, optional, optional_number, state_name};
 /// most recently closed first; with `?12`, only those numbered below it.
 /// With `?13`, only open ones on that horizon of the plan, in the plan's
 /// order (plan.rs). With `?14`, only the sub-items of the work item of that
-/// number.
+/// number. With `?15`, only those in the project of that id.
 const LIST_SQL: &str = "SELECT {ITEM_COLUMNS} FROM work_items
      WHERE workspace = ?1 AND (?2 IS NULL OR state = ?2)
        AND (?3 IS NULL OR EXISTS (SELECT 1 FROM json_each(work_items.labels) WHERE json_each.value = ?3))
@@ -35,6 +35,7 @@ const LIST_SQL: &str = "SELECT {ITEM_COLUMNS} FROM work_items
        AND (?12 IS NULL OR number < ?12)
        AND (?13 IS NULL OR (state = 'open' AND COALESCE(horizon, 'triage') = ?13))
        AND (?14 IS NULL OR parent_id = (SELECT p.id FROM work_items p WHERE p.workspace = ?1 AND p.number = ?14))
+       AND (?15 IS NULL OR project_id = ?15)
      ORDER BY CASE WHEN ?11 IS NULL THEN NULL ELSE closed_at END DESC,
        CASE WHEN ?13 IS NULL THEN NULL ELSE urgent END DESC,
        CASE WHEN ?13 IS NULL THEN NULL ELSE rank IS NULL END,
@@ -214,6 +215,7 @@ impl Work {
             .filter(|label| !label.is_empty());
         let assignee = a.assignee.map(|name| name.trim().trim_start_matches('@').to_lowercase()).filter(|name| !name.is_empty());
         let state = state_name(a.state).map_or(JsValue::NULL, JsValue::from);
+        let project = self.project_filter(&workspace, a.project.as_deref()).await?;
         let query = self
             .db
             .prepare(LIST_SQL.replace("{ITEM_COLUMNS}", ITEM_COLUMNS))
@@ -232,6 +234,7 @@ impl Work {
                 optional_number(if a.horizon.is_some() { None } else { a.before }),
                 a.horizon.map_or(JsValue::NULL, |horizon| horizon.as_str().into()),
                 optional_number(a.parent),
+                optional(&project),
             ])?;
         let rows = self.timing.db(1, query.all()).await?.results::<ItemRow>()?;
         Ok(Outcome::Ok(
@@ -368,11 +371,38 @@ mod tests {
         before: Option<u32>,
         parent: Option<u32>,
     ) -> Vec<u32> {
+        listed_in(db, state, limit, closed_since, before, parent, None)
+    }
+
+    /// As [`listed_under`], only those in the project of id `project` when given.
+    fn listed_in(
+        db: &Connection,
+        state: Option<&str>,
+        limit: u32,
+        closed_since: Option<&str>,
+        before: Option<u32>,
+        parent: Option<u32>,
+        project: Option<&str>,
+    ) -> Vec<u32> {
         let sql = LIST_SQL.replace("{ITEM_COLUMNS}", ITEM_COLUMNS);
-        let values: [&dyn ToSql; 14] = [&"acme", &state, &None::<String>, &None::<u32>, &None::<String>, &None::<String>, &None::<String>, &1, &"[]", &limit, &closed_since, &before, &None::<String>, &parent];
+        let values: [&dyn ToSql; 15] = [&"acme", &state, &None::<String>, &None::<u32>, &None::<String>, &None::<String>, &None::<String>, &1, &"[]", &limit, &closed_since, &before, &None::<String>, &parent, &project];
         let mut statement = db.prepare(&sql).unwrap();
         let numbers = statement.query_map(&values[..], |row| row.get::<_, u32>("number")).unwrap();
         numbers.map(Result::unwrap).collect()
+    }
+
+    #[test]
+    fn project_lists_only_its_work_items() {
+        let db = acme();
+        db.execute_batch(
+            "INSERT INTO projects (id, workspace, slug, name, color, created_at, updated_at) VALUES ('prj_1', 'acme', 'launch', 'Launch', '1d76db', '', '');
+             UPDATE work_items SET project_id = 'prj_1' WHERE number IN (2, 3);",
+        )
+        .unwrap();
+        assert_eq!(listed_in(&db, None, 100, None, None, None, Some("prj_1")), [3, 2]);
+        assert_eq!(listed_in(&db, Some("open"), 100, None, None, None, Some("prj_1")), [2]);
+        // A project that names none matches nothing.
+        assert_eq!(listed_in(&db, None, 100, None, None, None, Some("none")), Vec::<u32>::new());
     }
 
     #[test]

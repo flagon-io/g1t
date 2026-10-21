@@ -28,6 +28,7 @@ import { Hint } from "../../../components/ui/hint";
 import { SelectField } from "../../../components/ui/select";
 import { CheckBadge } from "../../../components/checks";
 import { LabelChip, LabelsBox, MilestoneBox } from "../../../components/labels";
+import { ProjectBox } from "../../../components/projects";
 import { PlanBox } from "../../../components/plan-box";
 import { Assignee, ChangeSize, CommentForm, CommentList, ItemState, PeoplePicker, PersonLink, PullIcon, plainText } from "../../../components/work";
 import { AttachImages } from "../../../components/attach-images";
@@ -98,7 +99,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   // The item is what the page is about: without it there is no page.
   // Everything beside it is a part (lib/partial.ts), which says it could
   // not be loaded in its own place when its service fails.
-  const [found, labels, milestones, members, teams, coordination, ended, agentSetup] = await Promise.all([
+  const [found, labels, milestones, members, teams, coordination, ended, agentSetup, workProjects] = await Promise.all([
     work.getWorkItem(workspace, number, viewer),
     part(work.listLabels(workspace, viewer), "Labels"),
     // Open ones to choose from, and the one it is in, with its progress.
@@ -118,6 +119,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     // Whether a member can start a session on the workspace's Anthropic
     // account: the button is simply not offered when this cannot be read.
     member ? agentSessions.setup(workspace, viewer).catch(() => null) : null,
+    // The projects it can be put in, and the one it is in.
+    part(work.listProjects(workspace, viewer), "Projects"),
   ]);
   if (!found.ok) {
     // Work items and pull requests share the workspace's numbers: this may be a pull request.
@@ -168,6 +171,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     member,
     labels: isFailed(labels) ? labels : labels.ok ? labels.value : [],
     milestones: isFailed(milestones) ? milestones : milestones.ok ? milestones.value : [],
+    projects: isFailed(workProjects) ? workProjects : workProjects.ok ? workProjects.value : [],
     links,
     subscription,
     coordination: isFailed(coordination) ? coordination : coordination.ok ? coordination.value : null,
@@ -306,6 +310,11 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     }
     case "milestone": {
       const result = await work.updateWorkItem(user, workspace, number, { milestone: Number(form.get("milestone")) || 0 });
+      return result.ok ? null : { error: result.error.message, action: intent };
+    }
+    // The project it is in, from the sidebar's Project (components/projects.tsx): a slug, or "" for none.
+    case "project": {
+      const result = await work.updateWorkItem(user, workspace, number, { project: String(form.get("project") ?? "").trim() });
       return result.ok ? null : { error: result.error.message, action: intent };
     }
     // Its place in the plan, from the sidebar's Plan (components/plan-box.tsx).
@@ -916,6 +925,7 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
             [item.assignees.length, "assignee", "assignees"],
             [item.labels.length, "label", "labels"],
             [item.milestone ? 1 : 0, "milestone", "milestones"],
+            [item.project ? 1 : 0, "project", "projects"],
           ])}
         >
           {isFailed(loaderData.coordination) ? (
@@ -1128,6 +1138,11 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
             <SideUnavailable heading="Milestone" what="Milestones" />
           ) : (
             <MilestoneBox milestones={loaderData.milestones} current={item.milestone} canEdit={can.triage} base={workPath(workspace)} />
+          )}
+          {isFailed(loaderData.projects) ? (
+            <SideUnavailable heading="Project" what="Projects" />
+          ) : (
+            <ProjectBox projects={loaderData.projects} current={item.project} canEdit={can.triage} workspace={workspace} />
           )}
           <PlanBox item={item} workspace={workspace} canEdit={can.triage} canNow={can.manage_labels} progress={loaderData.progress} />
           {viewer &&

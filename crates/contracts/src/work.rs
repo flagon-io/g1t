@@ -31,6 +31,9 @@ pub use items::*;
 mod plan;
 pub use plan::*;
 
+mod projects;
+pub use projects::*;
+
 mod sub_items;
 pub use sub_items::*;
 

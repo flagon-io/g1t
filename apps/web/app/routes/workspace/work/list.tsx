@@ -12,117 +12,30 @@ import { StateTabs } from "../../../components/work";
 import { WorkFiltersBar, WorkItemRow } from "../../../components/work-items";
 import { Unavailable } from "../../../components/boundary";
 import { colorsOf } from "../../../lib/labels";
-import { isFailed, part } from "../../../lib/partial";
-import { identity, repos, work } from "../../../lib/services.server";
-import { getViewer, roleIn, unwrap } from "../../../lib/session.server";
 import {
   HORIZON_LABELS,
   type ListPage,
   type WorkFilters,
   emptyListTitle,
   filtered,
-  listPage,
   newItemPath,
   pageQuery,
-  repoFilter,
   shortPath,
-  workFilters,
   workPath,
   workQuery,
 } from "../../../lib/work-items";
-import { canItem } from "../../../lib/work-access";
-import { workspaceProjects } from "../../../lib/workspace-projects.server";
 import { workPages } from "../../../lib/repo-live";
 import { useRefreshWhile } from "../../../lib/refresh";
-import { splitLive } from "../../../lib/sessions";
 import { useWorkspaceLive } from "../../../lib/use-repo-live";
-
-/** How many live sessions the strip over the list shows. */
-const COOKING = 6;
+import { type WorkListData, loadWorkList } from "../../../lib/work-list.server";
 
 export function meta({ params, location, ...args }: Route.MetaArgs) {
   const repo = new URLSearchParams(location.search).get("repo");
   return page({ location, ...args }, { title: `Work${repo ? ` · ${repo}` : ""} · ${params.owner} · g1t` });
 }
 
-export async function loader({ params, context, request }: Route.LoaderArgs) {
-  const viewer = getViewer(context);
-  const workspace = params.owner.toLowerCase();
-  const query = new URL(request.url).searchParams;
-  const filters = workFilters(query);
-  // A page at a time, newest first, below the lowest number of the page above. A horizon is
-  // read in the plan's order instead, its first page only: the plan pages it no further.
-  const at: ListPage = filters.horizon ? { before: null, newer: [] } : listPage(query);
-  const member = roleIn(viewer, workspace) != null;
-  const repo = filters.repo ? repoFilter(workspace, filters.repo) : null;
-  const assignee = filters.assignee === "@me" ? (viewer?.username ?? "") : filters.assignee;
-  // The list is what the page is about; what fills its filters is a part
-  // each, whose menu says so when its service fails.
-  const [items, labels, milestones, projects, members, cooking] = await Promise.all([
-    work.listWorkItems(workspace, viewer, {
-      state: filters.state,
-      horizon: filters.horizon ?? undefined,
-      before: at.before ?? undefined,
-      label: filters.label || undefined,
-      milestone: filters.milestone ?? undefined,
-      assignee: assignee || undefined,
-      repo: repo ?? undefined,
-      role: filters.role ?? undefined,
-      parent: filters.parent ?? undefined,
-    }),
-    part(work.listLabels(workspace, viewer), "Labels"),
-    part(work.listMilestones(workspace, viewer, "open"), "Milestones"),
-    part(workspaceProjects(workspace, viewer), "Repositories"),
-    // A member filters by the workspace's people; anyone else, by name in the address.
-    member ? part(identity.listMembers(workspace, viewer), "The workspace's people") : null,
-    // What is cooking now, over the list: a nicety, left out when Sessions cannot say.
-    work
-      .listWorkspaceSessions(workspace, viewer, {
-        shown: "live",
-        sessionsOnly: true,
-        repo: filters.repo ? shortPath(filters.repo, workspace) : undefined,
-        limit: 30,
-      })
-      .catch(() => null),
-  ]);
-  const live = cooking?.ok ? splitLive(cooking.value.sessions) : null;
-  // Who may open one here, as New work item says (routes/workspace/work/new.tsx): a member; anyone else
-  // only from a repository of the workspace (`?repo=web`) they may take part in.
-  const short = filters.repo ? shortPath(filters.repo, workspace) : null;
-  let canOpen = viewer != null && member;
-  if (viewer && !member && short && !short.includes("/")) {
-    const found = await repos.get({ namespace: workspace, name: short }, viewer).catch(() => null);
-    canOpen = Boolean(
-      found?.ok && canItem(viewer, workspace, { id: found.value.id, namespace: found.value.namespace, isPrivate: found.value.isPrivate }, "participate"),
-    );
-  }
-  const rows = unwrap(items);
-  return {
-    canOpen,
-    workspace,
-    filters,
-    at,
-    // The page below, from the lowest number shown, when this one is full.
-    older: !filters.horizon && rows.length >= LIST_PAGE ? Math.min(...rows.map((item) => item.number)) : null,
-    // A horizon's first page is all the list shows of it: the plan has the rest.
-    more: filters.horizon != null && rows.length >= LIST_PAGE,
-    member,
-    signedIn: viewer != null,
-    me: viewer?.username ?? null,
-    items: rows,
-    labels: isFailed(labels) || !labels.ok ? null : labels.value,
-    milestones: isFailed(milestones) || !milestones.ok ? null : milestones.value,
-    repos:
-      isFailed(projects) || !projects.ok
-        ? null
-        : projects.value
-            .filter((p) => p.workspace.toLowerCase() === workspace)
-            .map((p) => p.slug)
-            .sort(),
-    people: members == null || isFailed(members) || !members.ok ? null : members.value.map((m) => m.username).sort(),
-    labelsFailed: isFailed(labels),
-    cooking: live ? { sessions: [...live.active, ...live.idle].slice(0, COOKING), total: live.active.length + live.idle.length } : null,
-  };
+export async function loader(args: Route.LoaderArgs) {
+  return loadWorkList(args);
 }
 
 /** Newer and Older under the list: links relative to wherever the list is served, so its filters come along. */
@@ -149,12 +62,24 @@ function Paging({ filters, at, older }: { filters: WorkFilters; at: ListPage; ol
 }
 
 export default function WorkList({ loaderData }: Route.ComponentProps) {
-  const { workspace, filters, items, member, at, older, more } = loaderData;
+  return <WorkListView data={loaderData} />;
+}
+
+/**
+ * The Work list, drawn from what `loadWorkList` read. With `project` (its
+ * slug and its Items tab's address), it is that project's list: its
+ * filters keep to the tab, and a new work item is filed into it.
+ */
+export function WorkListView({ data: loaderData, project }: { data: WorkListData; project?: { slug: string; base: string } }) {
+  const { workspace, items, member, at, older, more } = loaderData;
+  // On a project's tab, its project is where the list is, not a filter to show or carry.
+  const filters = project ? { ...loaderData.filters, project: "" } : loaderData.filters;
   const { pathname, search } = useLocation();
   const colors = colorsOf(loaderData.labels ?? []);
   const repoName = filters.repo ? shortPath(filters.repo, workspace) : null;
   // The tabs keep the filters but a horizon, which holds only open items; each filter keeps the state and the others.
   const kept = new URLSearchParams(workQuery({ ...filters, state: "open", horizon: null }));
+  const emptyTitle = project && !filtered(filters) ? `No ${filters.state} work items in this project` : emptyListTitle(filters, repoName);
   useWorkspaceLive({ workspace, member, match: workPages.list() });
   // Sessions go idle (after 15 minutes) with no event to say so: looked at again each minute.
   useRefreshWhile((loaderData.cooking?.total ?? 0) > 0, 60_000);
@@ -171,7 +96,8 @@ export default function WorkList({ loaderData }: Route.ComponentProps) {
         state={filters.state}
         query={kept.toString()}
         action={
-          loaderData.canOpen ? (
+          // A project's header has its own New work item.
+          loaderData.canOpen && !project ? (
             <ButtonLink to={newItemPath(workspace, repoName)} className="max-sm:h-10">
               <Plus size={15} />
               New work item
@@ -183,9 +109,17 @@ export default function WorkList({ loaderData }: Route.ComponentProps) {
         <WorkFiltersBar
           workspace={workspace}
           filters={filters}
-          choices={{ repos: loaderData.repos, labels: loaderData.labels, milestones: loaderData.milestones, people: loaderData.people, me: loaderData.me }}
+          base={project?.base}
+          choices={{
+            repos: loaderData.repos,
+            labels: loaderData.labels,
+            milestones: loaderData.milestones,
+            people: loaderData.people,
+            me: loaderData.me,
+            projects: loaderData.projects,
+          }}
         />
-        <span className="ml-auto hidden items-center gap-1 sm:flex">
+        <span className={project ? "hidden" : "ml-auto hidden items-center gap-1 sm:flex"}>
           <Link
             to={workPath(workspace, repoName ? `board?repo=${encodeURIComponent(repoName)}` : "board")}
             className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-muted transition-colors hover:bg-surface hover:text-fg"
@@ -220,7 +154,7 @@ export default function WorkList({ loaderData }: Route.ComponentProps) {
       )}
       <div className="mt-4">
         {items.length === 0 ? (
-          <EmptyState title={emptyListTitle(filters, repoName)}>
+          <EmptyState title={emptyTitle}>
             A work item says what should change: a feature, a bug, a chore. It belongs to the workspace and lands in the repositories it names; people and their
             coding agents open pull requests for it.
             {search && filtered(filters) && (
@@ -237,7 +171,7 @@ export default function WorkList({ loaderData }: Route.ComponentProps) {
           <Card asChild tone="plain" divided className="overflow-hidden">
             <ul>
               {items.map((item) => (
-                <WorkItemRow key={item.id} item={item} colors={colors} />
+                <WorkItemRow key={item.id} item={item} colors={colors} showProject={!project} />
               ))}
             </ul>
           </Card>

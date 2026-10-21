@@ -1151,6 +1151,7 @@ g1t work list [OPTIONS]
 | `--role <ROLE>` | With --repo: only those linked to it this way. One of `origin`, `target`, `touched`. |
 | `-H, --horizon <HORIZON>` | Only open work items on this horizon of the plan, in the plan's order. One of `triage`, `now`, `next`, `later`, `set-aside`. |
 | `-p, --parent <PARENT>` | Only the sub-items of the work item of this number. |
+| `--project <SLUG>` | Only work items in the project of this slug. |
 | `-L, --limit <LIMIT>` | Default: `20`. |
 
 Calls [`list_work_items`](/reference/api/work-items/list-work-items/).
@@ -1190,6 +1191,7 @@ g1t work new [OPTIONS]
 | `-a, --assignee <ASSIGNEE>` | Someone to assign; repeat for more (@me for you). |
 | `-m, --milestone <MILESTONE>` | A workspace milestone's number. |
 | `-p, --parent <PARENT>` | File it as a sub-item of the work item of this number. |
+| `--project <SLUG>` | File it in the project of this slug. Without --target, the project's default targets are linked. |
 | `-w, --web` | Open the new work item page in the browser instead. |
 
 ```text
@@ -1242,6 +1244,8 @@ g1t work edit [OPTIONS] <NUMBER>
 | `--remove-milestone` | Take it out of its milestone. |
 | `-p, --parent <PARENT>` | Make it a sub-item of the work item of this number. |
 | `--remove-parent` | Take it out of its parent. |
+| `--project <SLUG>` | Put it in the project of this slug. |
+| `--remove-project` | Take it out of its project. |
 
 ```text
 With --parent, it becomes a sub-item of that work item; --remove-parent takes it out.
@@ -1573,6 +1577,125 @@ Examples:
 ```
 
 Calls [`start_agent_session`](/reference/api/sessions/start-agent-session/), [`next_work_item`](/reference/api/work-items/next-work-item/).
+
+## g1t project
+
+Projects: homes for bodies of work in Work, with a brief, a lead, people and repositories.
+
+Flags every `g1t project` command takes:
+
+| Flag | |
+| --- | --- |
+| `--workspace <SLUG>` | The workspace, by its slug; the current repository's when left out. Also `G1T_WORKSPACE`. |
+
+### g1t project list
+
+List the workspace's projects: live ones first, then done and dropped.
+
+```text
+g1t project list [OPTIONS]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `-s, --state <STATE>` | Only projects in this state. One of `shaping`, `active`, `paused`, `done`, `dropped`. |
+| `--archived` | The archived projects instead. |
+
+Calls [`list_work_projects`](/reference/api/work-projects/list-work-projects/).
+
+### g1t project view
+
+Show a project: its brief, lead, dates and health, people, repositories, and its open work items with where each stands.
+
+```text
+g1t project view [OPTIONS] <SLUG>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<SLUG>` | The project's slug. |
+| `-w, --web` | Open it in the browser. |
+
+Calls [`get_work_project`](/reference/api/work-projects/get-work-project/).
+
+### g1t project create
+
+Create a project; you lead it unless --lead says who does.
+
+```text
+g1t project create [OPTIONS]
+```
+
+| Argument or flag | |
+| --- | --- |
+| `-n, --name <NAME>` |  |
+| `--slug <SLUG>` | Its slug, unique in the workspace; made from the name when left out. |
+| `--summary <SUMMARY>` | What it is for, in a line. |
+| `--brief <BRIEF>` | The brief, in Markdown: the problem, the appetite, the solution, what is out. |
+| `--brief-file <FILE>` | Read the brief from a file, or - for stdin. |
+| `--instructions <INSTRUCTIONS>` | What agents are told for every work item in it, in Markdown. |
+| `--lead <LOGIN>` | Its lead, by username (@me for you). |
+| `-s, --state <STATE>` | One of `shaping`, `active`, `paused`, `done`, `dropped`. |
+| `--appetite <S\|M\|L\|none>` | How much the work is worth: S, M, L, or none. |
+| `--start-on <DATE>` | When it starts, YYYY-MM-DD. |
+| `--target-on <DATE>` | When it should be done, YYYY-MM-DD. |
+| `--health <HEALTH>` | How it is going: on-track, at-risk, off-track, or none. |
+| `--icon <ICON>` | An emoji for it. |
+| `--color <COLOR>` | Its color: six hex digits. |
+| `--add-member <LOGIN>` | Someone to add to it; repeat for more (@me for you). |
+| `--add-repo <OWNER/NAME>` | A repository its work lands in, OWNER/NAME, linked to new work items in it; repeat for more. |
+
+```text
+The slug is made from the name unless --slug gives one. File work items into it with
+g1t work new --project SLUG, or move one in with g1t work edit N --project SLUG.
+Examples:
+  g1t project create --name "Work overhaul" --summary "Plan, track and ship" --target-on 2026-12-12
+  g1t project create --name "Mobile 2.0" --state shaping --brief-file pitch.md
+```
+
+Calls [`create_work_project`](/reference/api/work-projects/create-work-project/), [`add_work_project_member`](/reference/api/work-projects/add-work-project-member/), [`add_work_project_repo`](/reference/api/work-projects/add-work-project-repo/).
+
+### g1t project edit
+
+Change a project: its name, brief, lead, state, dates or health; add or remove people and repositories.
+
+```text
+g1t project edit [OPTIONS] <SLUG>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<SLUG>` | The project's slug. |
+| `-n, --name <NAME>` |  |
+| `--new-slug <SLUG>` | A new slug for it. |
+| `--summary <SUMMARY>` | What it is for, in a line. |
+| `--brief <BRIEF>` | The brief, in Markdown: the problem, the appetite, the solution, what is out. |
+| `--brief-file <FILE>` | Read the brief from a file, or - for stdin. |
+| `--instructions <INSTRUCTIONS>` | What agents are told for every work item in it, in Markdown. |
+| `--lead <LOGIN>` | Its lead, by username (@me for you). |
+| `-s, --state <STATE>` | One of `shaping`, `active`, `paused`, `done`, `dropped`. |
+| `--appetite <S\|M\|L\|none>` | How much the work is worth: S, M, L, or none. |
+| `--start-on <DATE>` | When it starts, YYYY-MM-DD. |
+| `--target-on <DATE>` | When it should be done, YYYY-MM-DD. |
+| `--health <HEALTH>` | How it is going: on-track, at-risk, off-track, or none. |
+| `--icon <ICON>` | An emoji for it. |
+| `--color <COLOR>` | Its color: six hex digits. |
+| `--add-member <LOGIN>` | Someone to add to it; repeat for more (@me for you). |
+| `--remove-member <LOGIN>` | Someone to take out of it; repeat for more. |
+| `--add-repo <OWNER/NAME>` | A repository its work lands in, OWNER/NAME, linked to new work items in it; repeat for more. |
+| `--remove-repo <OWNER/NAME>` | A repository to take off it; repeat for more. |
+| `--archive` | Archive it: out of lists, and no new work items. |
+| `--unarchive` | Bring it back from the archive. |
+
+```text
+An empty --lead, --start-on or --target-on clears it; --health none and --appetite none clear those.
+Examples:
+  g1t project edit work-overhaul --health at-risk
+  g1t project edit work-overhaul --add-member ana --add-repo flagon-io/g1t
+  g1t project edit work-overhaul --state done --archive
+```
+
+Calls [`update_work_project`](/reference/api/work-projects/update-work-project/), [`add_work_project_member`](/reference/api/work-projects/add-work-project-member/), [`remove_work_project_member`](/reference/api/work-projects/remove-work-project-member/), [`add_work_project_repo`](/reference/api/work-projects/add-work-project-repo/), [`remove_work_project_repo`](/reference/api/work-projects/remove-work-project-repo/), [`archive_work_project`](/reference/api/work-projects/archive-work-project/), [`get_work_project`](/reference/api/work-projects/get-work-project/).
 
 ## g1t why
 

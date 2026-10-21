@@ -30,7 +30,7 @@ import {
 const query = (text: string) => new URLSearchParams(text);
 
 test("the Work list's filters come from its address", () => {
-  assert.deepEqual(workFilters(query("")), { state: "open", horizon: null, label: "", milestone: null, assignee: "", repo: "", role: null, parent: null });
+  assert.deepEqual(workFilters(query("")), { state: "open", horizon: null, label: "", milestone: null, assignee: "", repo: "", role: null, parent: null, project: "" });
   assert.deepEqual(workFilters(query("state=closed&label=Bug&milestone=3&assignee=ana&repo=web&role=target")), {
     state: "closed",
     horizon: null,
@@ -40,6 +40,7 @@ test("the Work list's filters come from its address", () => {
     repo: "web",
     role: "target",
     parent: null,
+    project: "",
   });
   // The same written as a query, which wins over the plain parameters.
   assert.deepEqual(workFilters(query("label=docs&q=is:closed label:bug repo:acme/api role:origin assignee:@bo")), {
@@ -51,12 +52,16 @@ test("the Work list's filters come from its address", () => {
     repo: "acme/api",
     role: "origin",
     parent: null,
+    project: "",
   });
   // A role says how a repository is linked: without one it is dropped, and an unknown one is none.
   assert.equal(workFilters(query("role=target")).role, null);
   assert.equal(workFilters(query("repo=web&role=owner")).role, null);
   // `@me` is kept for the page to read as the viewer.
   assert.equal(workFilters(query("assignee=@me")).assignee, "@me");
+  // A project, by its slug.
+  assert.equal(workFilters(query("project=Work-Overhaul")).project, "work-overhaul");
+  assert.equal(workFilters(query("q=project:mobile")).project, "mobile");
 });
 
 test("a horizon of the plan filters the list, written as a parameter or in the query, with a milestone too", () => {

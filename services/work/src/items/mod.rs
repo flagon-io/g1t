@@ -56,6 +56,7 @@ mod milestones;
 mod numbering;
 mod plan;
 mod plan_settle;
+mod projects;
 mod reading;
 mod refs;
 mod rows;
@@ -69,6 +70,9 @@ pub(crate) use labels::Labeled;
 pub(crate) use links::MARK_DELETED;
 pub(crate) use landing::{Landing, PastLanding};
 pub(crate) use migration::{DELETED, RENAMED, TRANSFERRED};
+pub(crate) use projects::{
+    DELETED as PROJECTS_DELETED, RENAMED as PROJECTS_RENAMED, REPO_PURGED as PROJECTS_REPO_PURGED, user_deleted as projects_user_deleted,
+};
 pub(crate) use reading::{held_rows, select};
 pub(crate) use refs::{MAX_CLOSES, Named, NamedItems};
 pub(crate) use rows::{Held, path_of, repo_readable, workspace_of};

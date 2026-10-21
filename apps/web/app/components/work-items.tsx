@@ -8,9 +8,10 @@ import { ArrowUp, Check, GitPullRequest, MessageSquare, Milestone as MilestoneIc
 import { type ReactNode, useState } from "react";
 import { Link } from "react-router";
 
-import { type ItemRepo, type Label, type LinkRole, type Milestone, type SubItemProgress, type WorkItem, appetiteLetter } from "@g1t/contracts";
+import { type ItemRepo, type Label, type LinkRole, type Milestone, type SubItemProgress, type WorkItem, type WorkProject, appetiteLetter } from "@g1t/contracts";
 
 import { FilterMenu, LabelChip, Swatch } from "./labels";
+import { ProjectMark } from "./projects";
 import { BottomSheet } from "./mobile";
 import { TimeAgo } from "./ui";
 import { Badge } from "./ui/badge";
@@ -34,6 +35,7 @@ import {
   subItemsDone,
   subItemsShare,
   workListPath,
+  workQuery,
 } from "../lib/work-items";
 
 /** How a repository is linked, as a quiet word beside its name. */
@@ -167,7 +169,7 @@ export function PlanBadges({ item }: { item: WorkItem }) {
  * at the end. On a phone the meta wraps under the title and the counts sit
  * with it, so nothing scrolls sideways.
  */
-export function WorkItemRow({ item, colors }: { item: WorkItem; colors: LabelColors }) {
+export function WorkItemRow({ item, colors, showProject = true }: { item: WorkItem; colors: LabelColors; showProject?: boolean }) {
   return (
     <li className="transition-colors hover:bg-surface">
       <Link prefetch="intent" to={itemPath(item.workspace, item.number)} className="flex min-w-0 items-start gap-3 px-4 py-3">
@@ -196,6 +198,12 @@ export function WorkItemRow({ item, colors }: { item: WorkItem; colors: LabelCol
               <span className="inline-flex min-w-0 items-center gap-1">
                 <MilestoneIcon size={11} className="shrink-0" />
                 <span className="max-w-36 truncate">{item.milestone.title}</span>
+              </span>
+            )}
+            {showProject && item.project && (
+              <span className="inline-flex min-w-0 items-center gap-1">
+                <ProjectMark project={item.project} size={14} className="rounded text-[0.5625rem]" />
+                <span className="max-w-36 truncate">{item.project.name}</span>
               </span>
             )}
             <span className="ml-auto flex shrink-0 items-center gap-3 text-muted sm:hidden">
@@ -240,6 +248,8 @@ export type FilterChoices = {
   people: string[] | null;
   /** The viewer, for "Assigned to you". */
   me: string | null;
+  /** The workspace's projects, to filter by; left out where the list is one project's already. */
+  projects?: Pick<WorkProject, "slug" | "name" | "color" | "icon">[] | null;
 };
 
 /**
@@ -248,12 +258,29 @@ export type FilterChoices = {
  * says how many are on and opens them as a sheet from the bottom, within
  * reach of a thumb. Each choice is a link, so the address keeps them.
  */
-export function WorkFiltersBar({ workspace, filters, choices }: { workspace: string; filters: WorkFilters; choices: FilterChoices }) {
+export function WorkFiltersBar({
+  workspace,
+  filters,
+  choices,
+  base,
+}: {
+  workspace: string;
+  filters: WorkFilters;
+  choices: FilterChoices;
+  /** Where the list is, when it is not All items (a project's Items): each choice keeps to it. */
+  base?: string;
+}) {
   const [open, setOpen] = useState(false);
-  const to = (change: Partial<WorkFilters>) => workListPath(workspace, filters, change);
+  const listAt = (wanted: Partial<WorkFilters>) => {
+    if (!base) return workListPath(workspace, wanted);
+    const query = workQuery(wanted);
+    return `${base}${query ? `?${query}` : ""}`;
+  };
+  const to = (change: Partial<WorkFilters>) => listAt({ ...filters, ...change });
   const milestoneTitle = choices.milestones?.find((m) => m.number === filters.milestone)?.title ?? (filters.milestone ? `#${filters.milestone}` : null);
+  const projectName = choices.projects?.find((p) => p.slug === filters.project)?.name ?? (filters.project || null);
   const count = filterCount(filters);
-  const clear = workListPath(workspace, { state: filters.state });
+  const clear = listAt({ state: filters.state });
   const assigneeLabel = filters.assignee === "@me" || filters.assignee === choices.me ? "You" : filters.assignee;
   return (
     <>
@@ -335,6 +362,27 @@ export function WorkFiltersBar({ workspace, filters, choices }: { workspace: str
             label: <span className="truncate">{milestone.title}</span>,
           }))}
         />
+        {choices.projects !== undefined && (
+          <FilterMenu
+            label="Project"
+            active={projectName ?? undefined}
+            clearTo={filters.project ? to({ project: "" }) : undefined}
+            searchPlaceholder="Filter projects"
+            emptyText={choices.projects ? "No project matches." : "Projects could not be loaded just now."}
+            options={(choices.projects ?? []).map((project) => ({
+              key: project.slug,
+              to: to({ project: project.slug }),
+              keywords: `${project.name} ${project.slug}`,
+              selected: project.slug === filters.project,
+              label: (
+                <>
+                  <ProjectMark project={project} size={16} className="rounded text-[0.625rem]" />
+                  <span className="truncate">{project.name}</span>
+                </>
+              ),
+            }))}
+          />
+        )}
         {(choices.people || choices.me) && (
           <FilterMenu
             label="Assignee"
@@ -449,6 +497,27 @@ export function WorkFiltersBar({ workspace, filters, choices }: { workspace: str
             })),
           ]}
         />
+        {choices.projects !== undefined && (
+          <SheetChoices
+            title="Project"
+            failed={choices.projects == null}
+            onPick={() => setOpen(false)}
+            choices={[
+              { key: "any", label: "Any project", to: to({ project: "" }), on: !filters.project },
+              ...(choices.projects ?? []).map((project) => ({
+                key: project.slug,
+                label: (
+                  <span className="inline-flex items-center gap-2">
+                    <ProjectMark project={project} size={18} />
+                    {project.name}
+                  </span>
+                ),
+                to: to({ project: project.slug }),
+                on: project.slug === filters.project,
+              })),
+            ]}
+          />
+        )}
         {(choices.people || choices.me) && (
           <SheetChoices
             title="Assignee"

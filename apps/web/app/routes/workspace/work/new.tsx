@@ -18,6 +18,7 @@ import { assertSameOrigin, requireUser, roleIn } from "../../../lib/session.serv
 import { canItem } from "../../../lib/work-access";
 import { isFailed, part } from "../../../lib/partial";
 import { itemNumberOf, itemPath } from "../../../lib/work-items";
+import { sidebarProjects } from "../../../lib/projects";
 import { workspaceProjects } from "../../../lib/workspace-projects.server";
 import { addresses } from "../../../lib/addresses.server";
 import { DEFERRED_FILE_FIELD, DEFERRED_REF_FIELD, deferredRefs, resolveDeferred } from "../../../lib/attachments";
@@ -52,7 +53,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const triage = canItem(user, workspace, ref, "triage");
   // The form is what this page is about; what fills its choices is a part
   // each, which says so in its own place when its service fails.
-  const [labels, milestones, projects, connections, parent] = await Promise.all([
+  const [labels, milestones, projects, connections, parent, workProjects] = await Promise.all([
     part(work.listLabels(workspace, user), "Labels"),
     triage ? part(work.listMilestones(workspace, user, "open"), "Milestones") : null,
     // Where it may land: the workspace's repositories, for a member.
@@ -66,7 +67,11 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
           .then((found) => (found.ok ? found.value.item.title : null))
           .catch(() => null)
       : null,
+    // The live projects it can be filed in, for whoever may triage it.
+    triage ? part(work.listProjects(workspace, user), "Projects") : null,
   ]);
+  // Filed from a project (`?project=work-overhaul`, its New work item): the field starts with it.
+  const project = (query.get("project") ?? "").trim().toLowerCase();
   const sources = connections?.ok ? [...new Set(connections.value.filter((c) => c.kind === "tracker" || c.provider === "sentry").map((c) => c.provider))] : [];
   return {
     workspace,
@@ -74,6 +79,8 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     parent: parentNumber ? { number: parentNumber, title: parent } : null,
     labels: isFailed(labels) ? labels : labels.ok ? labels.value : [],
     milestones: isFailed(milestones) ? milestones : milestones?.ok ? milestones.value : [],
+    projects: isFailed(workProjects) ? workProjects : workProjects?.ok ? sidebarProjects(workProjects.value, 200) : [],
+    project,
     repos:
       projects == null
         ? []
@@ -116,6 +123,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     labels: [...form.getAll("label").map(String), ...String(form.get("labels") ?? "").split(",")].map((label) => label.trim()).filter(Boolean),
     milestone: Number(form.get("milestone")) || undefined,
     parent: parent ?? undefined,
+    project: String(form.get("project") ?? "").trim() || undefined,
   });
   if (!result.ok) return { error: result.error.message };
   await attachHeld(user, result.value, form);
@@ -280,6 +288,20 @@ export default function NewWorkItem({ loaderData, actionData }: Route.ComponentP
             <Input name="parent" defaultValue={loaderData.parent ? `#${loaderData.parent.number}` : ""} placeholder="#212" autoComplete="off" />
           </span>
         </Field>
+        {loaderData.canTriage && isFailed(loaderData.projects) && (
+          <Field label="Project">
+            <Unavailable what="Projects" compact />
+          </Field>
+        )}
+        {loaderData.canTriage && !isFailed(loaderData.projects) && loaderData.projects.length > 0 && (
+          <Field label="Project" hint="The body of work it belongs to. With no targets ticked, it lands where the project's work lands.">
+            <SelectField
+              name="project"
+              defaultValue={loaderData.projects.some((project) => project.slug === loaderData.project) ? loaderData.project : ""}
+              options={[{ value: "", label: "None" }, ...loaderData.projects.map((project) => ({ value: project.slug, label: project.name }))]}
+            />
+          </Field>
+        )}
         {loaderData.canTriage && isFailed(loaderData.milestones) && (
           <Field label="Milestone">
             <Unavailable what="Milestones" compact />
