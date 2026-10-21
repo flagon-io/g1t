@@ -121,3 +121,21 @@ test("the waiting calls are listed by workspace or session, newest first, only t
   assert.deepEqual(ids(db.prepare(sql("WAITING_IN_SESSION")).all("acme", "ses_3", at(0), 100)), [], "another workspace's session is not listed");
   db.close();
 });
+
+test("pages following a running session claim its next read once, at most every two seconds", () => {
+  const db = database();
+  const second = (s) => `2026-10-21T12:00:${String(s).padStart(2, "0")}.000Z`;
+  db.prepare(
+    `INSERT INTO agent_runs (session_id, workspace, repo, item, connection_id, actor, provider_session_id, status, created_at, synced_at)
+     VALUES ('ses_1', 'acme', 'acme/web', 0, 'con_1', '{}', 'sesn_1', 'running', ?, ?)`,
+  ).run(second(0), second(0));
+  // At :03, read last at :00: claimed, so another page asking at the same moment is not.
+  const claim = (now, cutoff) => db.prepare(sql("CLAIM_READ")).get(second(now), "ses_1", second(cutoff));
+  assert.equal(claim(3, 1)?.session_id, "ses_1");
+  assert.equal(claim(3, 1), undefined, "read just now: the next page waits");
+  assert.equal(claim(4, 2), undefined, "a second after: still waits");
+  assert.equal(claim(5, 3)?.synced_at, second(5), "two seconds after: read again");
+  db.prepare("UPDATE agent_runs SET status = 'ended'").run();
+  assert.equal(claim(30, 28), undefined, "an ended session is not read");
+  db.close();
+});
