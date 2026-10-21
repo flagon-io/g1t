@@ -122,11 +122,34 @@ impl Edge {
             let url = format!("https://runner/gitedge/{repo_id}/{}{query}", git.endpoint);
             self.runner.fetch_request(Request::new_with_init(&url, &init)?).await
         };
-        match asked.await {
-            Ok(response) if response.status_code() == 200 => Some(response),
-            Ok(_) => None,
+        let response = match asked.await {
+            Ok(response) if response.status_code() == 200 => response,
+            Ok(_) => return None,
             Err(error) => {
                 worker::console_warn!("git edge for {repo_id} not asked: {error}");
+                return None;
+            }
+        };
+        // A fetch's answer is looked at before it is given: one that is
+        // empty or starts as no fetch's answer does goes to the store too.
+        if git.endpoint != "git-upload-pack" || body.is_some_and(lists_refs) {
+            return Some(response);
+        }
+        let length = response.headers().get("content-length").ok().flatten();
+        match sound(response).await {
+            Ok(Ok(response)) => Some(response),
+            Ok(Err(head)) => {
+                // What it sent, so the log says why (the edge's own log is not kept).
+                let shown: String = head.iter().take(160).map(|&byte| if byte.is_ascii_graphic() || byte == b' ' { byte as char } else { '.' }).collect();
+                worker::console_warn!(
+                    "git edge for {repo_id} answered a fetch with nothing it could use: {} bytes before it ended or went wrong (content-length {}): {shown}",
+                    head.len(),
+                    length.as_deref().unwrap_or("none")
+                );
+                None
+            }
+            Err(error) => {
+                worker::console_warn!("git edge for {repo_id} answer not read: {error}");
                 None
             }
         }
@@ -160,9 +183,84 @@ impl Edge {
     }
 }
 
+/// Whether an upload-pack request is protocol v2's `ls-refs`, whose answer
+/// may be a lone flush (a repository with no refs).
+fn lists_refs(body: &[u8]) -> bool {
+    body.windows(b"command=ls-refs".len()).any(|window| window == b"command=ls-refs")
+}
+
+/// Whether the start of a fetch's answer is one: its first pkt-line carries
+/// data (a section, `NAK`, an `ACK`, `shallow`), not an error, and is not a
+/// flush, a delimiter or the end of the response. `None` until enough of
+/// it has come to tell.
+pub(crate) fn starts_soundly(head: &[u8]) -> Option<bool> {
+    let length = usize::from_str_radix(std::str::from_utf8(head.get(..4)?).ok()?, 16).ok();
+    let Some(length) = length else { return Some(false) };
+    if length < 4 {
+        return Some(false);
+    }
+    let payload = &head[4..head.len().min(length)];
+    if payload.len() < 4.min(length - 4) {
+        return None;
+    }
+    Some(!payload.starts_with(b"ERR "))
+}
+
+/// The edge's answer to a fetch, when it starts as one (`starts_soundly`):
+/// only its first bytes are read, and the rest streams on behind them.
+/// What was read of it, when it is empty or starts otherwise. An upload-pack
+/// that died after `git http-backend` had sent its headers leaves a 200
+/// with nothing in it, which git takes for `expected 'packfile'`; the
+/// store answers.
+async fn sound(mut response: Response) -> worker::Result<std::result::Result<Response, Vec<u8>>> {
+    let headers = response.headers().clone();
+    headers.delete("content-length")?;
+    let mut stream = response.stream()?;
+    let mut head = Vec::new();
+    loop {
+        match starts_soundly(&head) {
+            Some(true) => break,
+            Some(false) => return Ok(Err(head)),
+            None => match futures_util::StreamExt::next(&mut stream).await {
+                Some(chunk) => head.extend_from_slice(&chunk?),
+                // All of it has come: it is sound or not as it stands.
+                None => {
+                    return Ok(match starts_soundly(&head) {
+                        Some(true) => Ok(Response::from_bytes(head)?.with_headers(headers)),
+                        _ => Err(head),
+                    });
+                }
+            },
+        }
+    }
+    let rest = futures_util::StreamExt::chain(futures_util::stream::once(async move { Ok::<Vec<u8>, worker::Error>(head) }), stream);
+    Ok(Ok(Response::from_stream(rest)?.with_headers(headers)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_fetchs_answer_starts_with_data() {
+        // A section, an acknowledgment, NAK, a shallow line: sound.
+        assert_eq!(starts_soundly(b"000dpackfile\n0027\x02Enumerating"), Some(true));
+        assert_eq!(starts_soundly(b"0011shallow-info\n"), Some(true));
+        assert_eq!(starts_soundly(b"0008NAK\n"), Some(true));
+        assert_eq!(starts_soundly(b"0014acknowledgments\n"), Some(true));
+        // Nothing, the end of the response, a flush, an error: not.
+        assert_eq!(starts_soundly(b"0002"), Some(false));
+        assert_eq!(starts_soundly(b"0000"), Some(false));
+        assert_eq!(starts_soundly(b"0001"), Some(false));
+        assert_eq!(starts_soundly(b"0021ERR upload-pack: not our ref\n"), Some(false));
+        assert_eq!(starts_soundly(b"zzzzpackfile"), Some(false));
+        // Too little yet to tell.
+        assert_eq!(starts_soundly(b""), None);
+        assert_eq!(starts_soundly(b"000d"), None);
+        assert_eq!(starts_soundly(b"000dpa"), None);
+        assert!(lists_refs(b"0014command=ls-refs\n0000"));
+        assert!(!lists_refs(b"0011command=fetch\n0000"));
+    }
 
     fn git(endpoint: &'static str, service: GitService) -> GitRequest {
         GitRequest {
