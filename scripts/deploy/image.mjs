@@ -334,15 +334,20 @@ export async function buildRunnerImage(unit, { ref, base, binaryDir, onLine }) {
 /**
  * Writes the config a runner deploy uses: its wrangler.jsonc with every
  * container's image set to `ref`, beside it so its relative paths hold.
- * Returns the file's name (pass it as --config). Remove it after.
+ * An urgent deploy (`urgent`) also gives busy containers no grace: every
+ * sandbox and edge is replaced now, and a job in the middle is stopped (it
+ * can be run again). For a fix that cannot wait for running jobs, such as
+ * an incident; any other deploy lets them finish. Returns the file's name
+ * (pass it as --config). Remove it after.
  */
-export function writeDeployConfig(unit, ref, root = ROOT) {
+export function writeDeployConfig(unit, ref, root = ROOT, { urgent = false } = {}) {
   const config = parseJsonc(readFileSync(join(root, unit.path, "wrangler.jsonc"), "utf8"));
   delete config.$schema;
   for (const container of config.containers ?? []) {
     container.image = ref;
     delete container.image_build_context;
     delete container.image_vars;
+    if (urgent) container.rollout_active_grace_period = 0;
   }
   const file = join(root, unit.path, DEPLOY_CONFIG);
   mkdirSync(dirname(file), { recursive: true });

@@ -53,6 +53,14 @@ on:
         description: "Plan only: deploy nothing"
         type: boolean
         default: false
+      # For an incident: the runner is deployed whether or not it changed,
+      # and its sandboxes and git edges are replaced now, not after the jobs
+      # on them finish (up to 2 hours). Jobs mid-run are stopped; run them
+      # again. Any other deploy lets them finish.
+      urgent:
+        description: "Replace the runner's sandboxes now, stopping running jobs (incidents)"
+        type: boolean
+        default: false
 
 # Its token only reads: deploying uses CLOUDFLARE_API_TOKEN, and g1t
 # records the deployments itself.
@@ -135,8 +143,10 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           UNITS: ${{ inputs.units }}
           ALL: ${{ inputs.all }}
+          URGENT: ${{ inputs.urgent }}
         run: |
           args=()
+          if [ "$URGENT" = "true" ]; then UNITS="${UNITS:+$UNITS,}runner"; fi
           if [ -n "$UNITS" ]; then args+=(--only "$UNITS" --force); fi
           if [ "$ALL" = "true" ]; then args+=(--all); fi
           node scripts/deploy.mjs plan "${args[@]}" --github-output
@@ -389,9 +399,11 @@ jobs:
           # are not drafted as incidents. Optional: without it, nothing is sent.
           STATUS_DEPLOY_TOKEN: ${{ secrets.STATUS_DEPLOY_TOKEN }}
           PREBUILT: ${{ matrix.prebuilt }}
+          URGENT: ${{ inputs.urgent }}
         run: |
           args=(--only "${{ matrix.units }}" --force --no-migrations --concurrency 4)
           if [ "$PREBUILT" = "true" ]; then args+=(--prebuilt); fi
+          if [ "$URGENT" = "true" ]; then args+=(--urgent); fi
           node scripts/deploy.mjs deploy "${args[@]}"
       - name: The disk after the runner's image
         if: ${{ always() && matrix.image }}

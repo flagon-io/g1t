@@ -276,6 +276,28 @@ test("the runner's deploy config names its image by reference, beside its wrangl
   assert.ok(!existsSync(join(ROOT, runner.path, DEPLOY_CONFIG)));
 });
 
+test("an urgent deploy gives busy containers no grace; any other keeps the wrangler.jsonc's", () => {
+  const runner = unit("runner");
+  const ref = "registry.cloudflare.com/acct/g1t-runner:0123456789abcdef";
+  const graces = (options) => {
+    writeDeployConfig(runner, ref, ROOT, options);
+    try {
+      return JSON.parse(readFileSync(join(ROOT, runner.path, DEPLOY_CONFIG), "utf8")).containers.map((c) => c.rollout_active_grace_period);
+    } finally {
+      removeDeployConfig(runner);
+    }
+  };
+  const normal = graces({});
+  assert.ok(
+    normal.some((grace) => grace > 0),
+    "the runner's containers let busy ones finish",
+  );
+  assert.deepEqual(
+    graces({ urgent: true }),
+    normal.map(() => 0),
+  );
+});
+
 test("the registry is asked for an image's manifest, without Docker", async () => {
   const asked = [];
   const fetchImpl = async (url, init) => {
@@ -1128,6 +1150,8 @@ test("sandboxes roll over at once when their image or container settings changed
   assert.equal(containersRollout(unit, { image: false, files: ["services/runner/src/egress.ts"] }), "none");
   assert.equal(containersRollout(unit, { image: false, files: ["services/runnerx/wrangler.jsonc"] }), "none");
   assert.equal(containersRollout(unit, { image: false, files: [] }, { rebuildImage: true }), "immediate");
+  // An urgent deploy rolls over even when nothing they run changed.
+  assert.equal(containersRollout(unit, { image: false, files: [] }, { urgent: true }), "immediate");
 });
 
 test("the deploy tool itself parses: a test that never imports it would not notice", () => {
