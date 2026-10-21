@@ -19,6 +19,9 @@ import { useRevalidator } from "react-router";
 
 import type { AgentSessionFollowed } from "@g1t/contracts";
 
+import { hostedState } from "./session-card";
+import { APPROVAL_ANSWERED_EVENT } from "./session-approvals";
+
 /** How often a page in view asks while the session runs. */
 export const FOLLOW_POLL_MS = 2500;
 
@@ -28,9 +31,12 @@ const CARD_POLL_MS = 10_000;
 /**
  * Where a hosted session g1t's card links to stands now (chat's
  * `g1t_session` card: kind `session`, its id in `ref`, its repository in
- * the Repository field): `Working` or `Done`, asked on the same follow
- * route as its page, every `CARD_POLL_MS` while it runs and the tab is in
- * view. Null for any other card, or until it is known.
+ * the Repository field): `Working`, `Waiting on you` while a call of it
+ * waits for an approval the viewer may answer, or `Done` (`hostedState`),
+ * asked on the same follow route as its page (with `waiting=1`), every
+ * `CARD_POLL_MS` while it runs and the tab is in view, and at once when a
+ * call is answered anywhere (`APPROVAL_ANSWERED_EVENT`). Null for any
+ * other card, or until it is known.
  */
 export function useHostedSessionState(slug: string, card: { kind: string; ref?: string | null; fields?: { label: string; value: string }[] }): string | null {
   const id = card.kind === "session" && /^ses_[0-9a-z]+$/.test(card.ref ?? "") ? card.ref! : null;
@@ -39,29 +45,48 @@ export function useHostedSessionState(slug: string, card: { kind: string; ref?: 
   useEffect(() => {
     if (!id || !repo) return;
     let stopped = false;
+    let busy = false;
+    // Asked again while an ask was on its way: its answer may be from before.
+    let again = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const ask = async () => {
+    const ask = async (): Promise<void> => {
       if (stopped) return;
+      if (busy) {
+        again = true;
+        return;
+      }
+      if (timer) clearTimeout(timer);
       if (document.visibilityState === "visible") {
+        busy = true;
         try {
-          const response = await fetch(`/${slug}/-/chat/sessions/${encodeURIComponent(id)}/follow?repo=${encodeURIComponent(repo)}`, {
+          const response = await fetch(`/${slug}/-/chat/sessions/${encodeURIComponent(id)}/follow?repo=${encodeURIComponent(repo)}&waiting=1`, {
             headers: { accept: "application/json" },
           });
           if (response.ok) {
             const followed = (await response.json()) as AgentSessionFollowed;
-            setState(followed.running ? "Working" : "Done");
+            setState(hostedState(followed));
             if (!followed.running) stopped = true;
           }
         } catch {
           // Asked again next time.
+        } finally {
+          busy = false;
         }
+      }
+      if (again) {
+        again = false;
+        return ask();
       }
       if (!stopped) timer = setTimeout(() => void ask(), CARD_POLL_MS);
     };
+    // A call answered here or anywhere else (Needs attention, its page): asked again now.
+    const answered = () => void ask();
+    window.addEventListener(APPROVAL_ANSWERED_EVENT, answered);
     void ask();
     return () => {
       stopped = true;
       if (timer) clearTimeout(timer);
+      window.removeEventListener(APPROVAL_ANSWERED_EVENT, answered);
     };
   }, [slug, id, repo]);
   return state;

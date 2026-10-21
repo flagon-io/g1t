@@ -8,7 +8,20 @@
  */
 
 /** The states an agent session's card shows. */
-export const SESSION_STATES = ["Queued", "Working", "Waiting on helpers", "Needs approval", "Done", "Stopped", "Failed"] as const;
+export const SESSION_STATES = ["Queued", "Working", "Waiting on you", "Waiting on helpers", "Needs approval", "Done", "Stopped", "Failed"] as const;
+
+/** g1t's card for a hosted session when a call of it waits for an approval the viewer may answer. */
+export const WAITING_ON_YOU = "Waiting on you";
+
+/**
+ * What g1t's card for a hosted session says, from the follow route's
+ * answer: Done once it ended, Waiting on you while a call of it waits for
+ * the viewer's approval, else Working.
+ */
+export function hostedState(followed: { running: boolean; waiting?: boolean }): "Working" | "Waiting on you" | "Done" {
+  if (!followed.running) return "Done";
+  return followed.waiting ? WAITING_ON_YOU : "Working";
+}
 
 export type SessionState = (typeof SESSION_STATES)[number];
 
@@ -18,6 +31,7 @@ export type SessionChip = { tone: "neutral" | "accent" | "info" | "warn" | "succ
 const CHIPS: Record<string, SessionChip> = {
   queued: { tone: "neutral", live: false },
   working: { tone: "accent", live: false },
+  "waiting on you": { tone: "warn", live: false },
   "waiting on helpers": { tone: "info", live: false },
   "needs approval": { tone: "warn", live: false },
   done: { tone: "success", live: false },

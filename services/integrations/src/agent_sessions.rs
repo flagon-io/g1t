@@ -962,6 +962,8 @@ const END_WAITING: &str = "UPDATE agent_approvals SET status = 'ended', answered
 const CLAIM_READ: &str = "UPDATE agent_runs SET synced_at = ?1 WHERE session_id = ?2 AND status = 'running' AND synced_at <= ?3 RETURNING *";
 /// One call.
 const APPROVAL: &str = "SELECT * FROM agent_approvals WHERE session_id = ?1 AND tool_use_id = ?2";
+/// Whether one of a session's calls still waits, asked after ?2.
+const ANY_WAITING: &str = "SELECT 1 AS waiting FROM agent_approvals WHERE session_id = ?1 AND status = 'waiting' AND asked_at > ?2 LIMIT 1";
 /// A workspace's calls still waiting and asked after ?2, newest first.
 const WAITING_IN_WORKSPACE: &str = "SELECT * FROM agent_approvals
   WHERE workspace = ?1 AND status = 'waiting' AND asked_at > ?2 ORDER BY asked_at DESC LIMIT ?3";
@@ -1788,12 +1790,40 @@ impl Integrations {
             .first::<RunRow>(None)
             .await?;
         // Read a moment ago, by this page or another: as it stands.
-        let Some(claimed) = claimed else { return Ok(Outcome::Ok(followed(&run))) };
-        self.sync_run(claimed).await?;
-        Ok(Outcome::Ok(match self.run_row(&run.session_id).await? {
-            Some(now_is) => followed(&now_is),
+        let mut out = match claimed {
             None => followed(&run),
-        }))
+            Some(claimed) => {
+                self.sync_run(claimed).await?;
+                match self.run_row(&run.session_id).await? {
+                    Some(now_is) => followed(&now_is),
+                    None => followed(&run),
+                }
+            }
+        };
+        if a.waiting && out.running
+            && let Some(viewer) = a.viewer.as_ref()
+        {
+            out.waiting = self.waits_on(viewer, &run).await?;
+        }
+        Ok(Outcome::Ok(out))
+    }
+
+    /// Whether a call of the run waits, in time, for an approval `viewer`
+    /// may answer. One look along the calls' primary key; who may answer is
+    /// asked only when one waits, and costs nothing more for whoever
+    /// started it.
+    async fn waits_on(&self, viewer: &User, run: &RunRow) -> Result<bool> {
+        let since = rfc3339(now_ms().saturating_sub(APPROVAL_WAIT_MS));
+        let one = self
+            .db
+            .prepare(ANY_WAITING)
+            .bind(&[run.session_id.as_str().into(), since.as_str().into()])?
+            .first::<Value>(None)
+            .await?;
+        if one.is_none() {
+            return Ok(false);
+        }
+        self.may_answer_run(viewer, run).await
     }
 
     /// `agent_session_link`: the session on the Claude Console, for
@@ -2157,7 +2187,7 @@ pub fn finished(events: &[Value], spoke_before: bool) -> bool {
 /// What a page following a run is told: whether it goes, and how far it was read.
 fn followed(run: &RunRow) -> AgentSessionFollowed {
     let running = run.status == "running";
-    AgentSessionFollowed { running, mark: follow_mark(running, run.last_event_id.as_deref()) }
+    AgentSessionFollowed { running, mark: follow_mark(running, run.last_event_id.as_deref()), waiting: false }
 }
 
 /// How far a run was read, as a page compares it: changes with each new event read, and when it ends.

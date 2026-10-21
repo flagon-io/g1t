@@ -5,7 +5,8 @@
  * the viewer may answer (whoever started the session, and the workspace's
  * members with write access to its repository), as the integrations
  * service decides. Read when the sidebar is drawn and when the window
- * comes back into view, as /inbox.json is.
+ * comes back into view, as /inbox.json is. With `?session=ses_…`, that
+ * session's only: g1t's card for it in Chat, once it says one waits.
  */
 import type { AgentApproval } from "@g1t/contracts";
 
@@ -18,14 +19,15 @@ export type ApprovalsData = {
   approvals: AgentApproval[] | null;
 };
 
-export async function loader({ params, context }: Route.LoaderArgs) {
+export async function loader({ params, context, request }: Route.LoaderArgs) {
   // Never kept: a call is answered or declined within minutes.
   const headers = { "cache-control": "private, no-store" };
   const viewer = getViewer(context);
   if (!viewer) return Response.json(null, { status: 401, headers });
   const workspace = params.owner.toLowerCase();
   if (!roleIn(viewer, workspace)) return Response.json({ approvals: [] } satisfies ApprovalsData, { headers });
-  const listed = await agentSessions.approvals(viewer, workspace).catch(() => null);
+  const session = new URL(request.url).searchParams.get("session")?.trim() || undefined;
+  const listed = await agentSessions.approvals(viewer, workspace, session).catch(() => null);
   const data: ApprovalsData = { approvals: listed?.ok ? listed.value : null };
   return Response.json(data, { headers });
 }

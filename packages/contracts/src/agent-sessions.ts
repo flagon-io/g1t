@@ -87,6 +87,12 @@ export type AgentSessionFollowed = {
   running: boolean;
   /** How far it was read: changes whenever anything new was read, or it ended. */
   mark: string;
+  /**
+   * Asked with `waiting` (g1t's card for it in Chat): whether a call of it
+   * waits, in time, for an approval the viewer may answer. False otherwise,
+   * and once it ended.
+   */
+  waiting: boolean;
 };
 
 /** Where a call that waited for approval stands. */
@@ -128,9 +134,10 @@ export interface AgentSessionsApi {
   /**
    * For a page following a running session: reads it from Anthropic when
    * nobody did in the last `FOLLOW_EVERY_MS`, and says whether it goes and
-   * how far it was read.
+   * how far it was read; with `waiting`, also whether a call of it waits on
+   * the viewer's approval.
    */
-  follow(repo: RepoPath, id: string, viewer: Viewer): Promise<Result<AgentSessionFollowed>>;
+  follow(repo: RepoPath, id: string, viewer: Viewer, waiting?: boolean): Promise<Result<AgentSessionFollowed>>;
   /** Where it opens on the Claude Console. Only whoever started it is told. */
   link(actor: User, repo: RepoPath, id: string): Promise<Result<string>>;
   /** Interrupts it and ends its record. Only whoever started it. */
@@ -180,7 +187,7 @@ export function agentSessionsClient(service: ServiceBinding): AgentSessionsApi {
         handoff: input.handoff ?? null,
       }),
     sync: (repo, id, viewer) => call("sync_agent_session", { repo, id, viewer }),
-    follow: (repo, id, viewer) => call("follow_agent_session", { repo, id, viewer }),
+    follow: (repo, id, viewer, waiting = false) => call("follow_agent_session", { repo, id, viewer, waiting }),
     link: (actor, repo, id) => call("agent_session_link", { actor, repo, id }),
     stop: (actor, repo, id) => call("stop_agent_session", { actor, repo, id }),
     approvals: (viewer, workspace, session) => call("agent_session_approvals", { viewer, workspace, session: session ?? null }),
