@@ -279,14 +279,16 @@ impl Report {
 }
 
 impl Answer {
-    /// The refs the answer says moved: none when its unpack failed, and
-    /// `None` when it says nothing either way (a fatal error, or no
-    /// report), which leaves it to the store's refs.
-    pub(crate) fn moved_refs(&self) -> Option<&[String]> {
+    /// Whether a push records `git_ref` from this answer: not when the
+    /// report refused it (`ng`), nor any ref when its unpack failed. A ref
+    /// the report does not mention, or an answer that says nothing either
+    /// way (a fatal error, no report), is left to the store's refs, which
+    /// record_push checks (pushed.rs `pushed_to`, lib.rs `publish_deleted`):
+    /// a report cut short never hides a ref that moved.
+    pub(crate) fn records(&self, git_ref: &str) -> bool {
         match self {
-            Answer::Report(report) if report.unpack_failed => Some(&[]),
-            Answer::Report(report) => Some(&report.moved),
-            Answer::Fatal(_) | Answer::Unread => None,
+            Answer::Report(report) => !report.unpack_failed && !report.refused.iter().any(|refused| refused == git_ref),
+            Answer::Fatal(_) | Answer::Unread => true,
         }
     }
 }

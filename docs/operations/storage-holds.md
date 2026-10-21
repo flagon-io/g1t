@@ -116,8 +116,9 @@ over 200 MB passed over) from the store: the pack it sends for every ref,
 plus what each pull request's working copy holds beyond it, beside
 `stored_bytes`. It reads only. Above zero, g1t counts less than the store
 holds: pushes made with a credential straight to the store (sandboxes'
-`git_access`), ended pushes that landed, and g1t's own refs (a pull
-request's test merge, `refs/pull/N/merge`) are not counted. Below zero,
+`git_access`), ended pushes that landed, g1t's own refs (a pull
+request's test merge, `refs/pull/N/merge`), and a pull request's head
+copied in from someone's fork are not counted. Below zero,
 g1t counted objects that a later push made unreachable (a force push), or
 packs that sent objects the store already had: g1t asks for whole packs.
 Before #307, g1t also counted writes the store refused (a merge or update

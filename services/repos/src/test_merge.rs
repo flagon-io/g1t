@@ -354,10 +354,15 @@ impl<S: GitStore> Repos<S> {
         let head = a.head.clone();
 
         // The head, kept in the repository, its objects brought from the fork.
-        // Not reserved or counted here: they are the pull request's working
-        // copy's, counted to this repository (its root, registry.rs
-        // `add_stored_bytes`) when they were pushed there, so counting the
-        // copy too would count them twice.
+        // Not reserved or counted here. They come from the pull request's
+        // source (contracts `Pull::source_id`): its working copy, whose
+        // pushes were counted to this repository (its root, registry.rs
+        // `add_stored_bytes`) when they were made, so counting the copy too
+        // would count them twice; or a branch of someone's own fork
+        // (`head_repo`, `fork_of` NULL), whose pushes were counted to that
+        // fork, not to this repository. Either way this repository's owner
+        // did not push them, so they are not billed here; Drift counts the
+        // fork's as the store holding more than g1t counts.
         let held_head = find(&refs, &head_ref);
         if held_head.as_deref() != Some(head.as_str()) {
             let write = git.access(Scope::Write).await?;

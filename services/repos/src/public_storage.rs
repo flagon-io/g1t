@@ -900,12 +900,9 @@ mod tests {
 
     #[test]
     fn a_push_the_store_answered_with_a_fatal_error_stays_ended_for_staff() {
-        let fatal = [crate::git_http::pkt_line(b"fatal: the remote end hung up unexpectedly
-"), b"0000".to_vec()].concat();
-        let after_progress = [crate::git_http::pkt_line(b"Receiving objects: 40%
-"), fatal.clone()].concat();
-        let err = [crate::git_http::pkt_line(b"ERR pack exceeds the store's limit
-"), b"0000".to_vec()].concat();
+        let fatal = [crate::git_http::pkt_line(b"\x03fatal: the remote end hung up unexpectedly\n"), b"0000".to_vec()].concat();
+        let after_progress = [crate::git_http::pkt_line(b"\x02Receiving objects: 40%\n"), fatal.clone()].concat();
+        let err = [crate::git_http::pkt_line(b"ERR pack exceeds the store's limit\n"), b"0000".to_vec()].concat();
         for answer in [&fatal, &after_progress, &err] {
             let read = crate::land::read_answer(answer);
             assert!(matches!(read, Answer::Fatal(_)), "{read:?}");
@@ -913,8 +910,8 @@ mod tests {
             // answered so is (Unclear).
             assert_eq!(push_settlement(200, false, Some(&read)), Settlement::End);
             assert_eq!(settled(answer, "refs/heads/main"), Settlement::End);
-            // Nothing is announced from it: record_push checks the store.
-            assert_eq!(read.moved_refs(), None);
+            // Every ref is left to record_push, which checks the store.
+            assert!(read.records("refs/heads/main"));
         }
         let outcome = push_outcome(200, Some(&crate::land::read_answer(&fatal)));
         assert_eq!(outcome, "The store answered the push with 200 and a fatal error: fatal: the remote end hung up unexpectedly");
@@ -943,10 +940,10 @@ mod tests {
             let read = crate::land::read_answer(answer);
             let verdict = crate::land::verdict(answer, "refs/heads/main", true);
             let Answer::Report(report) = &read else { panic!("{read:?}") };
-            // The ref a write of one ref is counted for is the one a push
-            // records, and a push refused whole is a refusal of that ref.
-            let recorded = read.moved_refs().unwrap().iter().any(|moved| moved == "refs/heads/main");
-            assert_eq!(verdict == Verdict::Moved, recorded, "{report:?}");
+            // A write of one ref is counted when the report says it moved,
+            // and a ref refused there is one a push does not record.
+            assert_eq!(verdict == Verdict::Moved, report.moved("refs/heads/main"), "{report:?}");
+            assert_eq!(matches!(verdict, Verdict::Refused(_)), !read.records("refs/heads/main"), "{report:?}");
             if refused_whole(report) {
                 assert!(matches!(verdict, Verdict::Refused(_)), "{report:?}");
             }
@@ -956,30 +953,39 @@ mod tests {
         assert_eq!(v2.moved, ["refs/heads/main"]);
         assert!(v2.refused.is_empty());
         // One parser: neither reads the lines itself.
-        let code = include_str!("public_storage.rs").split("#[cfg(test)]
-mod tests").next().unwrap_or_default();
+        let code = include_str!("public_storage.rs").split("#[cfg(test)]\nmod tests").next().unwrap_or_default();
         assert!(!code.contains("starts_with(\"ok \")") && !code.contains("starts_with(\"ng \")"));
     }
 
     #[test]
-    fn a_push_records_only_the_refs_its_report_says_moved() {
-        let moved = |answer: Vec<u8>| crate::land::read_answer(&answer).moved_refs().map(<[String]>::to_vec);
-        let main = || vec!["refs/heads/main".to_owned()];
-        // Every ref refused, or the unpack failed: none.
-        assert_eq!(moved(report(&["unpack ok", "ng refs/heads/main non-fast-forward", "ng refs/tags/v1 already exists"])), Some(vec![]));
-        assert_eq!(moved(report(&["unpack error: invalid pack", "ok refs/heads/main"])), Some(vec![]));
-        // One moved beside one refused (a hidden ref): that one.
-        assert_eq!(moved(banded(&["unpack ok", "ok refs/heads/main", "ng refs/pull/1/head deny updating a hidden ref"])), Some(main()));
-        assert_eq!(moved(report(&["unpack ok", "ok refs/heads/main", "option refname refs/heads/main"])), Some(main()));
-        // No report: left to the store's refs.
-        assert_eq!(moved(Vec::new()), None);
+    fn a_push_records_every_ref_but_those_its_report_refused() {
+        let (main, tag, pull) = ("refs/heads/main", "refs/tags/v1", "refs/pull/1/head");
+        let recorded = |answer: Vec<u8>| {
+            let read = crate::land::read_answer(&answer);
+            [main, tag, pull].into_iter().filter(|git_ref| read.records(git_ref)).collect::<Vec<_>>()
+        };
+        // Every ref refused, a tag among them: none.
+        assert!(recorded(report(&["unpack ok", "ng refs/heads/main non-fast-forward", "ng refs/tags/v1 already exists", "ng refs/pull/1/head x"])).is_empty());
+        // The unpack failed: none, whatever the refs say.
+        assert!(recorded(report(&["unpack error: invalid pack", "ok refs/heads/main"])).is_empty());
+        // One moved beside one refused (a hidden ref): all but the refused.
+        assert_eq!(recorded(banded(&["unpack ok", "ok refs/heads/main", "ng refs/pull/1/head deny updating a hidden ref"])), [main, tag]);
+        assert_eq!(recorded(report(&["unpack ok", "ok refs/heads/main", "option refname refs/heads/main", "ng refs/tags/v1 already exists"])), [main, pull]);
+        // A report that mentions only some refs, or none (just `unpack ok`,
+        // or cut short): the rest are left to record_push's store checks.
+        assert_eq!(recorded(report(&["unpack ok", "ok refs/heads/main"])), [main, tag, pull]);
+        assert_eq!(recorded(report(&["unpack ok"])), [main, tag, pull]);
+        assert_eq!(recorded(banded(&["unpack ok", "ng refs/tags/v1 already exists"])), [main, pull]);
+        // No report, or a fatal error: left to the store too.
+        assert_eq!(recorded(Vec::new()), [main, tag, pull]);
+        assert_eq!(recorded([crate::git_http::pkt_line(b"\x03fatal: hung up\n"), b"0000".to_vec()].concat()), [main, tag, pull]);
         // The push path filters what it records by it, pushed and deleted.
         let answer = body_of(include_str!("lib.rs"), "answer_git");
-        let filtered = answer.find("reply.as_ref().and_then(land::Answer::moved_refs)").expect("filtered by the report");
+        let filtered = answer.find("if let Some(reply) = &reply {").expect("filtered by the report");
         let done = answer.find("after.push = Some(PushDone {").expect("recorded");
         assert!(filtered < done);
-        assert!(answer.contains("pushed.retain(|pushed| moved.contains(&pushed.git_ref));"));
-        assert!(answer.contains("deleted.retain(|(git_ref, _)| moved.contains(git_ref));"));
+        assert!(answer.contains("pushed.retain(|pushed| reply.records(&pushed.git_ref));"));
+        assert!(answer.contains("deleted.retain(|(git_ref, _)| reply.records(git_ref));"));
         assert!(!answer[done..].contains("forwarded.pushed") && !answer[done..].contains("forwarded.deleted"));
     }
 

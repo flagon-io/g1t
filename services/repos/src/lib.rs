@@ -2454,7 +2454,7 @@ impl<S: GitStore> Repos<S> {
             None
         };
         // The store's answer, read once: its reservation settles by it, and
-        // only the refs it says moved are recorded.
+        // the refs it refused are not recorded.
         let reply = answered.as_ref().map(|(_, report)| land::read_answer(report));
         if let Some(reserved) = &public_reserved {
             match public_storage::push_settlement(status, forwarded.rate_limited, reply.as_ref()) {
@@ -2530,15 +2530,15 @@ impl<S: GitStore> Repos<S> {
             }
         }
         after.ended(status, None);
-        // Only what the report says moved is recorded: a ref the store
-        // refused starts no event, webhook, workflow or rule, and a push
-        // refused whole records nothing. An answer that says neither (a
-        // fatal error, no report) leaves each ref to record_push, which
-        // checks where it is in the store.
+        // A ref the report refused is not recorded: it starts no event,
+        // webhook, workflow or rule, and a push whose unpack failed records
+        // nothing. A ref the report does not mention, or an answer that
+        // says neither (a fatal error, no report), is left to record_push,
+        // which checks where it is in the store.
         let (mut pushed, mut deleted) = (forwarded.pushed, forwarded.deleted);
-        if let Some(moved) = reply.as_ref().and_then(land::Answer::moved_refs) {
-            pushed.retain(|pushed| moved.contains(&pushed.git_ref));
-            deleted.retain(|(git_ref, _)| moved.contains(git_ref));
+        if let Some(reply) = &reply {
+            pushed.retain(|pushed| reply.records(&pushed.git_ref));
+            deleted.retain(|(git_ref, _)| reply.records(git_ref));
         }
         // A reserved push is counted by its reservation, settled above.
         let pack_bytes = if public_reserved.is_some() { 0 } else { forwarded.pack_bytes };
