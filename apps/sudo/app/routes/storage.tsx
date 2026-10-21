@@ -6,10 +6,22 @@ import type { StorageDrift, StorageHold, StorageHoldInspection, StorageHoldRepo,
 import type { Route } from "./+types/storage";
 import { Badge, Button, EmptyState, Field, Input, Notice, PageHeader, Section, Stat, Textarea, When } from "~/components/ui";
 import { text } from "~/lib/forms";
-import { reposAdmin } from "~/lib/services.server";
+import { admin, reposAdmin } from "~/lib/services.server";
 import { settle } from "~/lib/settle";
 import { requireStaff } from "~/lib/staff";
-import { MAX_REASON, formatAge, formatBytes, holdKey, kindLabel, operationLabel, parseHoldKey, parseRelease, parseSample } from "~/lib/storage-holds";
+import {
+  MAX_REASON,
+  formatAge,
+  formatBytes,
+  holdKey,
+  kindLabel,
+  operationLabel,
+  parseHoldKey,
+  parseRelease,
+  parseSample,
+  releaseHold,
+  releasedNotice,
+} from "~/lib/storage-holds";
 
 export const meta: Route.MetaFunction = () => [{ title: "Storage holds · sudo" }, { name: "robots", content: "noindex, nofollow" }];
 
@@ -22,7 +34,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     settle(reposAdmin.recoveries(50)),
     picked ? settle(reposAdmin.inspect(picked.kind, picked.id)) : Promise.resolve(null),
   ]);
-  const done = url.searchParams.get("done");
+  const released = releasedNotice(url.searchParams);
   return {
     holds: holds.ok ? holds.value : null,
     recoveries: recoveries.ok ? recoveries.value : [],
@@ -30,7 +42,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     picked: picked ? holdKey(picked.kind, picked.id) : null,
     inspection: inspection && inspection.ok && inspection.value.ok ? inspection.value.value : null,
     inspectionError: !inspection ? null : !inspection.ok ? inspection.error : !inspection.value.ok ? inspection.value.error.message : null,
-    done: done === "released" ? `Released ${url.searchParams.get("what") ?? "the hold"}. The audit row is under Released.` : null,
+    done: released?.done ?? null,
+    auditMissed: released?.auditMissed ?? null,
   };
 }
 
@@ -39,7 +52,9 @@ type ActionData = { error?: string; key?: string; drift?: StorageDrift };
 /**
  * Releasing a hold, and measuring drift. The repos service inspects the
  * hold again and refuses unless it is provably abandoned; the release and
- * its audit row are one batch there.
+ * its `storage_recoveries` row are one batch there. Only then is it
+ * recorded in sudo's audit log (billing); if that write fails the release
+ * still stands, and the page says the audit log missed it.
  */
 export async function action({ request, context }: Route.ActionArgs) {
   const staff = requireStaff(context);
@@ -50,11 +65,12 @@ export async function action({ request, context }: Route.ActionArgs) {
       const parsed = parseRelease(key, text(form, "reason"));
       if (!parsed.ok) return data<ActionData>({ error: parsed.error, key }, { status: 422 });
       const { kind, id, reason } = parsed.value;
-      const result = await settle(reposAdmin.release(kind, id, staff.email, reason));
-      if (!result.ok) return data<ActionData>({ error: `The repos service did not answer: ${result.error}`, key }, { status: 502 });
-      if (!result.value.ok) return data<ActionData>({ error: result.value.error.message, key }, { status: 422 });
-      const what = `${kindLabel(kind).toLowerCase()} ${result.value.value.bytes ? `of ${formatBytes(result.value.value.bytes)} ` : ""}on ${id}`;
-      throw redirect(`/storage?done=released&what=${encodeURIComponent(what)}`);
+      const result = await releaseHold({ release: reposAdmin.release, log: admin.log }, { kind, id, reason }, staff.email);
+      if (!result.ok) return data<ActionData>({ error: result.error, key }, { status: result.status });
+      const what = `${kindLabel(kind).toLowerCase()} ${result.recovery.bytes ? `of ${formatBytes(result.recovery.bytes)} ` : ""}on ${id}`;
+      const params = new URLSearchParams({ done: "released", what });
+      if (!result.audited) params.set("unaudited", result.recovery.id);
+      throw redirect(`/storage?${params}`);
     }
     case "drift": {
       const result = await settle(reposAdmin.drift({ sample: parseSample(text(form, "sample")) }));
@@ -66,7 +82,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 }
 
 export default function Storage({ loaderData, actionData }: Route.ComponentProps) {
-  const { holds, recoveries, error, picked, inspection, inspectionError, done } = loaderData;
+  const { holds, recoveries, error, picked, inspection, inspectionError, done, auditMissed } = loaderData;
   const list = holds?.holds ?? [];
   const held = list.reduce((sum, hold) => sum + hold.bytes, 0);
   const abandoned = list.filter((hold) => hold.abandoned);
@@ -79,6 +95,7 @@ export default function Storage({ loaderData, actionData }: Route.ComponentProps
       />
       <div className="mt-6 space-y-3">
         {done && <Notice tone="ok">{done}</Notice>}
+        {auditMissed && <Notice tone="warn">{auditMissed}</Notice>}
         {error && <Notice tone="error">The repos service did not answer: {error}</Notice>}
         {actionData?.error && !actionData.key && <Notice tone="error">{actionData.error}</Notice>}
       </div>

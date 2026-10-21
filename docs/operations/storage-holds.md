@@ -41,7 +41,11 @@ same batch that releases.
    ref.
 3. **Release it**, with a reason that says what you saw ("ended with a 500;
    main is not at the commit it asked for"). The reason and the inspection
-   are kept in the audit row, listed under **Released**.
+   are kept in the audit row, listed under **Released**. The release is
+   also in sudo's audit log (**Storage hold released**, under the
+   repository's workspace, or `storage` if its row is gone), naming the
+   row. If billing does not record that line, the page says so: the release
+   still stands, so do not release it again; its row is under **Released**.
 4. **If it is not provably abandoned yet**, the page says when it will be.
    Wait: a write that may still be sending is never released by hand. A
    workspace that needs room sooner can delete what it does not need.

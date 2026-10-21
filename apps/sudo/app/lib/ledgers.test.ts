@@ -62,6 +62,9 @@ test("account ids link to their pages; anything else does not", () => {
   // Old shared invite links were filed under `ws_invites`: a reserved name, never a workspace.
   assert.equal(accountPath("ws_invites"), "/invites");
   assert.equal(accountName("ws_invites"), "Shared invite links");
+  // A storage hold on a repository that is gone names no workspace.
+  assert.equal(accountPath("storage"), "/storage");
+  assert.equal(accountName("storage"), "Storage holds");
   assert.equal(accountPath("acme"), null);
   assert.equal(accountPath("ws_-bad"), null);
   assert.equal(accountPath(""), null);

@@ -15,9 +15,9 @@
 //! Every change names who made it and is kept in `admin_actions`.
 
 use g1t_contracts::billing::{
-    AccountDetail, AccountKind, AccountSummary, AdminAccountArgs, AdminAccountsArgs, AdminAction, AdminAttachArgs,
-    AdminCreateEnterpriseArgs, AdminSetAllowancesArgs, AdminSetTermsArgs, Allowances, BillingAccount, LedgerEntry, Terms,
-    TermsKind, WorkspaceFigures,
+    ADMIN_LOG_ACCOUNTS, AccountDetail, AccountKind, AccountSummary, AdminAccountArgs, AdminAccountsArgs, AdminAction,
+    AdminAttachArgs, AdminCreateEnterpriseArgs, AdminLogArgs, AdminSetAllowancesArgs, AdminSetTermsArgs, Allowances,
+    BillingAccount, LedgerEntry, Terms, TermsKind, WorkspaceFigures,
 };
 use g1t_contracts::time::rfc3339;
 use g1t_contracts::{FailureCode, Outcome, new_id};
@@ -122,6 +122,21 @@ struct ActionRow {
 /// `ws_<slug>`: a workspace's own account.
 pub(crate) fn own_account(workspace: &str) -> String {
     format!("ws_{}", workspace.to_lowercase())
+}
+
+/// Where `admin_log` files a change: the workspace's own account, or one of
+/// [`ADMIN_LOG_ACCOUNTS`] when it names no workspace. Anything else is
+/// refused, so a caller can never write into an enterprise's or billing's
+/// own history.
+pub(crate) fn admin_log_account(a: &AdminLogArgs) -> std::result::Result<String, String> {
+    match a.account.as_deref().map(str::trim) {
+        Some(account) if ADMIN_LOG_ACCOUNTS.contains(&account) => Ok(account.to_owned()),
+        Some(account) => Err(format!("admin_log does not file changes under {account:?}")),
+        None => match a.workspace.trim() {
+            "" => Err("admin_log needs a workspace or an account".to_owned()),
+            workspace => Ok(own_account(workspace)),
+        },
+    }
 }
 
 fn kind_text(kind: TermsKind) -> &'static str {
@@ -767,6 +782,36 @@ mod tests {
 
     fn terms(kind: TermsKind, discount: u32) -> Terms {
         Terms { kind, discount_percent: discount, ..Terms::standard() }
+    }
+
+    fn log(body: serde_json::Value) -> std::result::Result<String, String> {
+        admin_log_account(&serde_json::from_value::<AdminLogArgs>(body).unwrap())
+    }
+
+    #[test]
+    fn a_staff_change_from_another_service_is_filed_under_its_workspace() {
+        // As identity sends its restores and purges: no `account`.
+        let identity = serde_json::json!({ "workspace": "Acme", "action": "workspace_restored", "detail": "d", "by": "a@g1t.sh" });
+        assert_eq!(log(identity).as_deref(), Ok("ws_acme"));
+        // As sudo sends a storage hold's release, with the account null.
+        let sudo = serde_json::json!({ "workspace": "acme", "account": null, "action": "storage_released", "detail": "d", "by": "a@g1t.sh" });
+        assert_eq!(log(sudo).as_deref(), Ok("ws_acme"));
+    }
+
+    #[test]
+    fn a_change_that_names_no_workspace_goes_only_under_an_account_kept_for_it() {
+        let gone = serde_json::json!({ "account": "storage", "action": "storage_released", "detail": "d", "by": "a@g1t.sh" });
+        assert_eq!(log(gone).as_deref(), Ok("storage"));
+        // An account wins over a workspace.
+        let both = serde_json::json!({ "workspace": "acme", "account": "storage", "action": "a", "detail": "d", "by": "b" });
+        assert_eq!(log(both).as_deref(), Ok("storage"));
+        // Never an enterprise's, billing's own or Stripe's history, and never `ws_`.
+        for account in ["ent_1", "costs", "stripe", "ws_acme", ""] {
+            let body = serde_json::json!({ "workspace": "acme", "account": account, "action": "a", "detail": "d", "by": "b" });
+            assert!(log(body).is_err(), "{account}");
+        }
+        let neither = serde_json::json!({ "workspace": "  ", "action": "a", "detail": "d", "by": "b" });
+        assert!(log(neither).is_err());
     }
 
     #[test]

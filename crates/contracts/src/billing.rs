@@ -2822,15 +2822,28 @@ pub struct ConfirmSubscriptionArgs {
 
 /// `admin_log`: a staff change another service made to a workspace, kept
 /// in sudo's audit log with billing's own (`admin_audit`). For identity's
-/// restores and purges of deleted workspaces. Returns `bool`.
+/// restores and purges of deleted workspaces, and sudo's releases of the
+/// repos service's storage holds. Staff only. Returns `bool`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AdminLogArgs {
+    /// The workspace it was made to, filed under its own account.
+    #[serde(default)]
     pub workspace: String,
+    /// Instead of a workspace, for a change no workspace can be named for:
+    /// one of the accounts in [`ADMIN_LOG_ACCOUNTS`], as billing files its
+    /// own platform changes under `costs`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account: Option<String>,
     pub action: String,
     pub detail: String,
     /// The staff member's email.
     pub by: String,
 }
+
+/// The accounts other than a workspace's that `admin_log` files a change
+/// under: `storage`, for a storage hold released on a repository whose row
+/// is gone, so no workspace can be named.
+pub const ADMIN_LOG_ACCOUNTS: &[&str] = &["storage"];
 
 /// `close_workspace`: settles a workspace that is about to be deleted.
 /// Owners only. Refused while it has an invoice that failed, while it

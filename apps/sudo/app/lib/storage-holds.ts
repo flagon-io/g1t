@@ -4,9 +4,10 @@
  * storage_holds.rs decides what is provably abandoned; this only says it).
  * No Workers imports, so it can be tested under Node.
  */
-import type { StorageHoldKind } from "@g1t/contracts";
+import type { AdminLogEntry, BillingAdminApi, ReposAdminApi, StorageHoldKind, StorageRecovery } from "@g1t/contracts";
 
 import type { Parsed } from "./forms.ts";
+import { settle } from "./settle.ts";
 
 export const HOLD_KINDS: StorageHoldKind[] = ["reservation", "unledgered", "copy_lock"];
 
@@ -100,4 +101,83 @@ export function parseRelease(key: string, why: string): Parsed<{ kind: StorageHo
 export function parseSample(raw: string): number {
   const value = Number.parseInt(raw, 10);
   return Number.isFinite(value) ? Math.min(20, Math.max(1, value)) : 5;
+}
+
+/** The audit log's kind of change for a release (ledgers.ts `AUDIT_ACTIONS`). */
+export const RELEASE_ACTION = "storage_released";
+
+/**
+ * A release's line in sudo's audit log (billing's `admin_log`): filed under
+ * the charged repository's workspace, or under `storage` when its row is
+ * gone and no workspace can be named. It names the hold, the repository,
+ * the one written when that is another (a fork, or a copy lock's
+ * destination, which may be in another workspace), the reason and the
+ * repos service's `storage_recoveries` row, which keeps the inspection as
+ * evidence.
+ */
+export function releaseAuditEntry(hold: { kind: StorageHoldKind; id: string }, recovery: StorageRecovery): AdminLogEntry {
+  const path = recovery.evidence?.hold.repo.path ?? null;
+  const workspace = path?.split("/")[0] ?? "";
+  const named = (id: string, at: string | null) => (at ? `${at} (${id})` : `repository ${id} (gone)`);
+  const repo = named(recovery.repoId, path);
+  const targetId = recovery.evidence?.hold.target?.id ?? recovery.targetId;
+  const written = targetId && targetId !== recovery.repoId ? ` → ${named(targetId, recovery.evidence?.hold.target?.path ?? null)}` : "";
+  const bytes = hold.kind === "copy_lock" ? "" : `, ${formatBytes(recovery.bytes)}`;
+  const detail = `${kindLabel(hold.kind)} ${hold.id} on ${repo}${written}${bytes}: ${recovery.reason} · storage_recoveries ${recovery.id}`;
+  return workspace ? { workspace, action: RELEASE_ACTION, detail } : { account: "storage", action: RELEASE_ACTION, detail };
+}
+
+/** How a release went: refused or unanswered (nothing released), or released, with or without its audit line. */
+export type ReleaseOutcome =
+  | { ok: false; status: 422 | 502; error: string }
+  | { ok: true; recovery: StorageRecovery; audited: true }
+  | { ok: true; recovery: StorageRecovery; audited: false; auditError: string };
+
+/**
+ * Releases a hold, then records it in sudo's audit log. The repos service
+ * releases it and writes its `storage_recoveries` row in one batch; the
+ * audit line is written only after that succeeded. A failed audit write
+ * never turns a release into a failure, since the hold is already gone: it
+ * is reported (`audited: false`) and logged, naming the recovery row.
+ */
+export async function releaseHold(
+  calls: { release: ReposAdminApi["release"]; log: BillingAdminApi["log"] },
+  hold: { kind: StorageHoldKind; id: string; reason: string },
+  staff: string,
+  report: (message: string) => void = console.error,
+): Promise<ReleaseOutcome> {
+  const released = await settle(calls.release(hold.kind, hold.id, staff, hold.reason));
+  // Unanswered, it may still have been released, and then its audit line is
+  // missing: Released below says which, before anyone tries again.
+  if (!released.ok) {
+    return {
+      ok: false,
+      status: 502,
+      error: `The repos service did not answer: ${released.error}. It may have released the hold anyway: look for it under Released before trying again, and if it is there, it is not in the audit log.`,
+    };
+  }
+  if (!released.value.ok) return { ok: false, status: 422, error: released.value.error.message };
+  const recovery = released.value.value;
+  const logged = await settle(calls.log(releaseAuditEntry(hold, recovery), staff));
+  if (logged.ok && logged.value === true) return { ok: true, recovery, audited: true };
+  const auditError = logged.ok ? "billing did not confirm it" : logged.error;
+  report(`storage hold ${holdKey(hold.kind, hold.id)} released by ${staff} (storage_recoveries ${recovery.id}) but not in the audit log: ${auditError}`);
+  return { ok: true, recovery, audited: false, auditError };
+}
+
+/**
+ * What the page says after a release, from the link the release redirects
+ * to: `done=released&what=…`, and `unaudited=<recovery id>` when the audit
+ * log missed it.
+ */
+export function releasedNotice(params: URLSearchParams): { done: string; auditMissed: string | null } | null {
+  if (params.get("done") !== "released") return null;
+  const done = `Released ${params.get("what") ?? "the hold"}. It is in the audit log, and its row, with the inspection, is under Released.`;
+  const recovery = params.get("unaudited");
+  if (recovery == null) return { done, auditMissed: null };
+  const row = /^[A-Za-z0-9_-]{1,80}$/.test(recovery) ? ` (storage_recoveries ${recovery})` : "";
+  return {
+    done: `Released ${params.get("what") ?? "the hold"}.`,
+    auditMissed: `The release is done, but billing did not record it in the audit log, so it is not listed there. Its row${row}, with who, why and the inspection, is under Released below, and sudo's logs have the error. Do not release it again: it is gone.`,
+  };
 }
