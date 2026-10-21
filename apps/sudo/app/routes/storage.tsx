@@ -86,8 +86,26 @@ export default function Storage({ loaderData, actionData }: Route.ComponentProps
         <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Stat label="Holds" value={list.length + holds.more} hint={holds.more ? `${holds.more} not listed` : undefined} />
           <Stat label="Capacity held" value={formatBytes(held)} />
-          <Stat label="Provably abandoned" value={abandoned.length} tone={abandoned.length ? "warn" : undefined} hint={formatBytes(abandoned.reduce((sum, hold) => sum + hold.bytes, 0))} />
-          <Stat label="Copy locks" value={locks} tone={locks ? "warn" : undefined} hint={holds.ledgerSince ? <>Ledger since <When at={holds.ledgerSince} /></> : "No ledger yet"} />
+          <Stat
+            label="Provably abandoned"
+            value={abandoned.length}
+            tone={abandoned.length ? "warn" : undefined}
+            hint={formatBytes(abandoned.reduce((sum, hold) => sum + hold.bytes, 0))}
+          />
+          <Stat
+            label="Copy locks"
+            value={locks}
+            tone={locks ? "warn" : undefined}
+            hint={
+              holds.ledgerSince ? (
+                <>
+                  Ledger since <When at={holds.ledgerSince} />
+                </>
+              ) : (
+                "No ledger yet"
+              )
+            }
+          />
         </div>
       )}
       {picked && (
@@ -223,7 +241,13 @@ function Inspection({
               <input type="hidden" name="intent" value="release" />
               <input type="hidden" name="hold" value={picked} />
               <Field label="Why release it" hint="Kept in the audit row with this inspection. Releasing never changes what the workspace is billed.">
-                <Textarea name="reason" rows={2} required maxLength={MAX_REASON} placeholder="e.g. The push ended with a 500; the refs it asked for are not in the store." />
+                <Textarea
+                  name="reason"
+                  rows={2}
+                  required
+                  maxLength={MAX_REASON}
+                  placeholder="e.g. The push ended with a 500; the refs it asked for are not in the store."
+                />
               </Field>
               <div className="flex justify-end">
                 <Button type="submit" variant="danger">
@@ -269,9 +293,7 @@ function Upstream({ state }: { state: UpstreamState }) {
         </div>
         <div>
           <dt className="text-faint">Reserved · in the ledger</dt>
-          <dd className="tabular">
-            {state.reservedBytes == null ? "—" : `${formatBytes(state.reservedBytes)} · ${formatBytes(state.ledgerBytes ?? 0)}`}
-          </dd>
+          <dd className="tabular">{state.reservedBytes == null ? "—" : `${formatBytes(state.reservedBytes)} · ${formatBytes(state.ledgerBytes ?? 0)}`}</dd>
         </div>
       </dl>
       {state.asked.length > 0 && (

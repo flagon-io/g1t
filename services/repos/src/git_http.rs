@@ -1252,6 +1252,17 @@ async fn push(
         let (reason, messages) = size_refusal(&violation);
         return Ok(Push::Declined(declined(&head, &reason, &messages)?, reason));
     }
+    // Read so slowly that its storage reservation's lease has passed: the
+    // store is not asked at all (public_storage.rs).
+    if let Some(deadline) = limits.deadline_ms
+        && g1t_kit::now_ms() > deadline
+    {
+        if !ended {
+            drain(&mut stream).await?;
+        }
+        let (reason, messages) = size_refusal(&SizeViolation::Overdue { minutes: crate::public_storage::LEASE_MS / 60_000 });
+        return Ok(Push::Declined(declined(&head, &reason, &messages)?, reason));
+    }
     let mut pushed = pushed_branches(&head);
     // The whole push is at hand only when it ended within what is read.
     if ended {

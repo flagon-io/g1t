@@ -304,9 +304,7 @@ test("code running before the migration keeps working against the new schema", (
   ).run("public", 100, 60);
   assert.ok(reserve(db, "public", 10));
   db.prepare("UPDATE repos SET storage_reserved_bytes = MAX(0, storage_reserved_bytes - ?2) WHERE id = ?1").run("public", 10);
-  const lock = db.prepare(
-    "INSERT INTO storage_copy_locks (repo_id, destination_id, created_at) VALUES (?1, ?2, ?3) ON CONFLICT DO NOTHING RETURNING repo_id",
-  );
+  const lock = db.prepare("INSERT INTO storage_copy_locks (repo_id, destination_id, created_at) VALUES (?1, ?2, ?3) ON CONFLICT DO NOTHING RETURNING repo_id");
   assert.ok(lock.get("public", "fork", "2026-10-21T00:00:00Z"));
   db.prepare("DELETE FROM storage_copy_locks WHERE repo_id = ?1 AND destination_id = ?2").run("public", "fork");
   assert.deepEqual(sums(db, "public"), { stored: 60, reserved: 0, ledger: 0 });
