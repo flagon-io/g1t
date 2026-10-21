@@ -86,7 +86,7 @@ test("the telemetry questions filter on the script and on failures", () => {
   const questions = telemetryQuestions({ script: "g1t-runner", from: 1, to: 2, samples: 5 });
   assert.deepEqual(
     questions.map((q) => q.key),
-    ["failed_invocations", "exceptions", "error_logs", "samples"],
+    ["failed_invocations", "exceptions", "error_logs", "no_capacity", "samples"],
   );
   const failed = questions[0].body;
   assert.equal(failed.view, "calculations");
@@ -99,8 +99,22 @@ test("the telemetry questions filter on the script and on failures", () => {
     failed.parameters.groupBys.map((g) => g.value),
     [KEYS.entrypoint, KEYS.eventType, KEYS.outcome],
   );
-  assert.equal(questions[3].body.view, "events");
-  assert.equal(questions[3].body.limit, 5);
+  const refused = questions[3].body.parameters;
+  assert.deepEqual(refused.filters[1], { key: KEYS.error, operation: "includes", type: "string", value: "no container instance" });
+  assert.deepEqual(
+    refused.calculations.map((c) => [c.operator, c.alias]),
+    [
+      ["count", "events"],
+      ["uniq", "sandboxes"],
+    ],
+  );
+  assert.equal(refused.calculations[1].key, KEYS.object);
+  assert.deepEqual(
+    refused.groupBys.map((g) => g.value),
+    [KEYS.entrypoint],
+  );
+  assert.equal(questions[4].body.view, "events");
+  assert.equal(questions[4].body.limit, 5);
   const other = telemetryQuestions({ script: "g1t-runner", from: 1, to: 2, samples: 5, serviceKey: "$metadata.service" });
   assert.equal(other[1].body.parameters.filters[0].key, "$metadata.service");
 });
@@ -145,6 +159,30 @@ test("a calculations answer becomes rows with counts, largest first", () => {
   ]);
   assert.throws(() => parseCalculations({ success: false, errors: [{ message: "Unauthorized" }] }), /Unauthorized/);
   assert.throws(() => parseCalculations({ success: true, result: {} }), /no calculations/);
+});
+
+test("a further calculation's value joins each row under its alias", () => {
+  const sandbox = [{ key: KEYS.entrypoint, value: "Sandbox4Core" }];
+  const edge = [{ key: KEYS.entrypoint, value: "GitEdge" }];
+  const body = {
+    success: true,
+    result: {
+      calculations: [
+        {
+          alias: "events",
+          aggregates: [
+            { groups: edge, value: 85 },
+            { groups: sandbox, value: 962 },
+          ],
+        },
+        { alias: "sandboxes", aggregates: [{ groups: sandbox, value: 52 }] },
+      ],
+    },
+  };
+  assert.deepEqual(parseCalculations(body), [
+    { [KEYS.entrypoint]: "Sandbox4Core", count: 962, sandboxes: 52 },
+    { [KEYS.entrypoint]: "GitEdge", count: 85, sandboxes: 0 },
+  ]);
 });
 
 test("an events answer becomes plain records, the object id cut short", () => {

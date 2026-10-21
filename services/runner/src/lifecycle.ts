@@ -93,6 +93,20 @@ export function noMachine(error: unknown): boolean {
   return /no container instance/i.test(describeError(error));
 }
 
+/**
+ * How often a start asks Cloudflare for a container. The containers
+ * library asks every 300 ms; every ask Cloudflare refuses (`noMachine`)
+ * is logged at error level from the object's alarm, so one sandbox in a
+ * burst of starts logged 30 to 85 refusals before it got a container
+ * (2026-10-21, #293). Asked once a second, a refused start logs about a
+ * third as many, and a start that is given one is no slower: the library
+ * waits between asks only when an ask failed.
+ */
+export const START_POLL_MS = 1000;
+
+/** A sandbox's start asks for this long, as the library's does (8 s); then the job waits for a machine. */
+export const START_WAIT = { waitInterval: START_POLL_MS, retries: 8 } as const;
+
 /** An error as one line, for a log: its message, or what was thrown. */
 export function describeError(error: unknown): string {
   if (error instanceof Error) return error.message || error.name;

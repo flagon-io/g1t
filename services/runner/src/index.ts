@@ -1,4 +1,4 @@
-import { Container, type StopParams } from "@cloudflare/containers";
+import { Container, type StopParams, type WaitOptions } from "@cloudflare/containers";
 import { WorkerEntrypoint } from "cloudflare:workers";
 
 import {
@@ -36,7 +36,19 @@ import { BUMP_MINUTES, BUMP_TOKEN_TTL_SECONDS, bumpEnv, bumpProblem, bumpSandbox
 import { BACKUP_MINUTES, backupEnv, backupPace, backupSandboxName } from "./backup";
 import { holdCredentials, revokeCredentials, runCredential } from "./credentials";
 import { cancelTask, enqueueTask, handedOverStep, selfHostedRoute, taskEnv, taskRepo } from "./self-hosted";
-import { answered, capReached, describeError, noMachine, type Owed, recordOwed, stoppedShort, tellStopped, withinTimeCap } from "./lifecycle";
+import {
+  answered,
+  capReached,
+  describeError,
+  noMachine,
+  type Owed,
+  recordOwed,
+  START_POLL_MS,
+  START_WAIT,
+  stoppedShort,
+  tellStopped,
+  withinTimeCap,
+} from "./lifecycle";
 import {
   ABUSE_EXIT_CODE,
   ABUSE_HOST,
@@ -426,7 +438,9 @@ export class AttemptSandbox extends Container<RunnerEnv> {
       const intercepted = brokering || this.env.EGRESS?.trim().toLowerCase() !== "off";
       const trust = intercepted ? EGRESS_ENV : {};
       const watch: Record<string, string> = this.env.ABUSE_WATCH === "off" ? { G1T_ABUSE: "off" } : {};
-      await this.start({ envVars: { ...vars, ...harness, ...trust, ...watch }, enableInternet: true });
+      // No port of its own: `start` checks the library's default when
+      // `portToCheck` is left out, as it does with no wait options at all.
+      await this.start({ envVars: { ...vars, ...harness, ...trust, ...watch }, enableInternet: true }, START_WAIT as WaitOptions);
       // A backup has no guardrails, but still a time cap.
       const cap = guard?.minutes ?? (run.kind === "backup" ? BACKUP_MINUTES : null);
       if (cap) {
@@ -920,7 +934,7 @@ export class GitEdge extends Container<RunnerEnv> {
       try {
         await this.startAndWaitForPorts({
           ports: GIT_EDGE_PORT,
-          cancellationOptions: { instanceGetTimeoutMS: 60_000, portReadyTimeoutMS: 60_000 },
+          cancellationOptions: { instanceGetTimeoutMS: 60_000, portReadyTimeoutMS: 60_000, waitInterval: START_POLL_MS },
         });
       } catch (error) {
         this.restUntil = Date.now() + START_REST_MS;

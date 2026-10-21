@@ -169,6 +169,7 @@ export const KEYS = {
   error: "$metadata.error",
   message: "$metadata.message",
   level: "$metadata.level",
+  object: "$workers.durableObjectId",
 };
 
 /** Which key names the Worker: tried in order, the next when one finds nothing. */
@@ -228,6 +229,24 @@ export function telemetryQuestions({ script, from, to, samples, serviceKey = SER
       },
     },
     {
+      // A sandbox Cloudflare has no container for is refused at every ask
+      // of its start, dozens of times before it gets one (#293): how many
+      // sandboxes waited says more than how many refusals were logged.
+      key: "no_capacity",
+      label: "Starts refused for want of a container, by class: refusals, and the sandboxes refused",
+      body: {
+        ...base,
+        queryId: "g1t-runner-no-capacity",
+        view: "calculations",
+        parameters: {
+          datasets: ["cloudflare-workers"],
+          filters: [service, filter(KEYS.error, "includes", "no container instance")],
+          calculations: [...count, { operator: "uniq", key: KEYS.object, keyType: "string", alias: "sandboxes" }],
+          groupBys: group(KEYS.entrypoint),
+        },
+      },
+    },
+    {
       key: "samples",
       label: "Recent failed invocations",
       body: {
@@ -243,18 +262,29 @@ export function telemetryQuestions({ script, from, to, samples, serviceKey = SER
 
 /**
  * A telemetry calculations answer as rows: each group's key values and its
- * count, largest first. Throws with Cloudflare's message when it failed.
+ * count, largest first, with any further calculation's value under its
+ * alias. Throws with Cloudflare's message when it failed.
  */
 export function parseCalculations(body) {
   if (body?.success === false || body?.errors?.length) throw new Error(messagesOf(body));
-  const calculation = body?.result?.calculations?.[0];
+  const [calculation, ...more] = body?.result?.calculations ?? [];
   if (!calculation) throw new Error("no calculations in the answer");
-  const rows = (calculation.aggregates ?? []).map((aggregate) => {
+  const groupsOf = (aggregate) => {
     const row = {};
     for (const group of aggregate.groups ?? []) row[group.key] = group.value == null || group.value === "" ? "(none)" : String(group.value);
-    row.count = Number(aggregate.value ?? aggregate.count ?? 0);
     return row;
-  });
+  };
+  const valueOf = (aggregate) => Number(aggregate.value ?? aggregate.count ?? 0);
+  const aggregates = calculation.aggregates ?? [];
+  const rows = aggregates.map((aggregate) => ({ ...groupsOf(aggregate), count: valueOf(aggregate) }));
+  const keys = aggregates.map((aggregate) => JSON.stringify(groupsOf(aggregate)));
+  for (const other of more) {
+    if (!other.alias) continue;
+    const values = new Map((other.aggregates ?? []).map((aggregate) => [JSON.stringify(groupsOf(aggregate)), valueOf(aggregate)]));
+    rows.forEach((row, at) => {
+      row[other.alias] = values.get(keys[at]) ?? 0;
+    });
+  }
   return rows.sort((a, b) => b.count - a.count);
 }
 
