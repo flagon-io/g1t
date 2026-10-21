@@ -35,6 +35,52 @@ enum Source {
     GitHub { owner: String, repo: String, path: String, git_ref: String },
 }
 
+/// Where g1t says an action is, or why it would not say.
+type Found = Result<Value, (bool, String)>;
+
+/// An archive being downloaded ahead: where to, and how that went. The
+/// sender is dropped unsent when there is no archive to download.
+type Archive = (PathBuf, std::sync::mpsc::Receiver<Result<u64, String>>);
+
+/// One of the job's actions, asked of g1t on a thread of its own while
+/// the actions before it are fetched (`prepare_actions`), with its archive
+/// downloaded there too when g1t keeps one: so a job's actions take about
+/// as long as the slowest of them, not all of them in turn (about 1.6 s
+/// each on 2026-10-21, flagon-io#266).
+struct Prefetch {
+    found: std::sync::mpsc::Receiver<Found>,
+    archive: Archive,
+}
+
+impl Prefetch {
+    /// Starts asking g1t for `owner/repo@git_ref` with `api`, downloading
+    /// its archive to a file in `temp` when g1t keeps one.
+    fn start(api: super::report::Api, temp: &Path, owner: &str, repo: &str, git_ref: &str) -> Prefetch {
+        let (found_tx, found) = std::sync::mpsc::channel();
+        let (archive_tx, archive_rx) = std::sync::mpsc::channel();
+        let path = temp.join(format!("action{}.tar.gz", super::rand_id()));
+        let (repository, git_ref, to) = (format!("{owner}/{repo}"), git_ref.to_owned(), path.clone());
+        std::thread::spawn(move || {
+            let answer = api.action(&repository, &git_ref);
+            let archived = answer.as_ref().ok().filter(|found| found["source"] != "g1t" && found["archive"] == true);
+            let sha = archived.and_then(|found| found["sha"].as_str()).filter(|sha| is_sha(sha)).map(str::to_owned);
+            let _ = found_tx.send(answer);
+            if let Some(sha) = sha {
+                let _ = archive_tx.send(api.action_archive(&repository, &sha, &to));
+            }
+        });
+        Prefetch { found, archive: (path, archive_rx) }
+    }
+
+    /// Waits for an archive nothing used, and deletes it.
+    fn discard(archive: Option<Archive>) {
+        if let Some((path, done)) = archive {
+            let _ = done.recv();
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
 fn safe(part: &str) -> bool {
     !part.is_empty() && part.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/')) && !part.contains("..")
 }
@@ -108,15 +154,27 @@ impl Job {
     /// the step, saying why, rather than fetching something else by its
     /// name.
     fn fetch_remote_action(&mut self, owner: &str, repo: &str, git_ref: &str) -> Option<PathBuf> {
+        self.fetch_remote_action_from(owner, repo, git_ref, None)
+    }
+
+    /// [`Self::fetch_remote_action`], with what `prefetched` has asked and
+    /// downloaded already when there is one.
+    fn fetch_remote_action_from(&mut self, owner: &str, repo: &str, git_ref: &str, prefetched: Option<Prefetch>) -> Option<PathBuf> {
         let on_g1t = super::paths::under_home(ACTIONS_DIR).join("_g1t").join(owner).join(repo).join(git_ref);
         let on_github = super::paths::under_home(ACTIONS_DIR).join(owner).join(repo).join(git_ref);
+        let (asked_ahead, mut archive) = match prefetched {
+            Some(Prefetch { found, archive }) => (Some(found), Some(archive)),
+            None => (None, None),
+        };
         for dir in [&on_g1t, &on_github] {
             if dir.join(".g1t-fetched").exists() {
+                Prefetch::discard(archive);
                 return Some(dir.clone());
             }
         }
         if !(safe(owner) && safe(repo) && safe(git_ref)) {
             self.log.line(&format!("##[error]`{owner}/{repo}@{git_ref}` is not a name g1t can fetch."));
+            Prefetch::discard(archive);
             return None;
         }
         // The first job to use an action at a commit waits while g1t
@@ -127,10 +185,14 @@ impl Job {
         let asked = (repository.clone(), git_ref.to_owned());
         let found = self.log.waiting(
             WAITING_EVERY,
-            move |api| api.action(&asked.0, &asked.1),
+            move |api| match asked_ahead {
+                // A thread that ended without an answer: ask again.
+                Some(found) => found.recv().unwrap_or_else(|_| api.action(&asked.0, &asked.1)),
+                None => api.action(&asked.0, &asked.1),
+            },
             |seconds| format!("Waiting for g1t to fetch '{repository}@{git_ref}' ({seconds}s)"),
         );
-        match found {
+        let dir = match found {
             Ok(found) if found["source"] == "g1t" => self.fetch_g1t_action(&on_g1t, owner, repo, git_ref, &found),
             Ok(found) => {
                 if let Some(note) = found["note"].as_str() {
@@ -139,7 +201,7 @@ impl Job {
                 let sha = found["sha"].as_str().filter(|sha| is_sha(sha)).map(str::to_owned);
                 if let Some(sha) = &sha
                     && found["archive"] == true
-                    && let Some(dir) = self.fetch_archived_action(owner, repo, git_ref, sha)
+                    && let Some(dir) = self.fetch_archived_action(owner, repo, git_ref, sha, archive.take())
                 {
                     return Some(dir);
                 }
@@ -153,7 +215,9 @@ impl Job {
                 self.log.line(&format!("##[warning]g1t could not say where {owner}/{repo} is ({why}); fetching it from GitHub."));
                 self.fetch_action(owner, repo, git_ref, None)
             }
-        }
+        };
+        Prefetch::discard(archive);
+        dir
     }
 
     /// Fetches an action from a repository on g1t, at its ref, with the
@@ -190,14 +254,23 @@ impl Job {
     /// Downloads a GitHub action's archive that g1t keeps, at the commit
     /// g1t resolved its ref to. None when it could not, and the job fetches
     /// it from GitHub instead.
-    fn fetch_archived_action(&mut self, owner: &str, repo: &str, git_ref: &str, sha: &str) -> Option<PathBuf> {
+    /// `ahead` is where a [`Prefetch`] is downloading it, and how that
+    /// went: used when it did, and downloaded here otherwise.
+    fn fetch_archived_action(&mut self, owner: &str, repo: &str, git_ref: &str, sha: &str, ahead: Option<Archive>) -> Option<PathBuf> {
         let dir = super::paths::under_home(ACTIONS_DIR).join(owner).join(repo).join(git_ref);
         self.log.line(&format!("Download action repository '{owner}/{repo}@{git_ref}' (SHA:{sha}) from g1t"));
-        let archive = self.temp.join(format!("action{}.tar.gz", super::rand_id()));
+        let (archive, done) = match ahead {
+            Some((path, done)) => (path, Some(done)),
+            None => (self.temp.join(format!("action{}.tar.gz", super::rand_id())), None),
+        };
         let asked = (format!("{owner}/{repo}"), sha.to_owned(), archive.clone());
         let downloaded = self.log.waiting(
             WAITING_EVERY,
-            move |api| api.action_archive(&asked.0, &asked.1, &asked.2),
+            move |api| match done.map(|done| done.recv()) {
+                Some(Ok(downloaded)) => downloaded,
+                // Not downloaded ahead, or its thread ended: download it now.
+                _ => api.action_archive(&asked.0, &asked.1, &asked.2),
+            },
             |seconds| format!("Downloading '{owner}/{repo}@{git_ref}' from g1t ({seconds}s)"),
         );
         let unpacked = match downloaded {
@@ -280,9 +353,17 @@ impl Job {
         }
         self.log.line("Prepare all required actions");
         self.log.line("Getting action download info");
+        // Every action is asked for, and its archive downloaded, at once;
+        // the log still tells them one after another, in order.
+        let mut ahead: Vec<Option<Prefetch>> = wanted
+            .iter()
+            .map(|(owner, repo, git_ref)| {
+                (safe(owner) && safe(repo) && safe(git_ref)).then(|| Prefetch::start(self.log.api.clone(), &self.temp, owner, repo, git_ref))
+            })
+            .collect();
         let mut ready = true;
-        for (owner, repo, git_ref) in &wanted {
-            if self.fetch_remote_action(owner, repo, git_ref).is_none() {
+        for (index, (owner, repo, git_ref)) in wanted.iter().enumerate() {
+            if self.fetch_remote_action_from(owner, repo, git_ref, ahead[index].take()).is_none() {
                 ready = false;
             }
         }
@@ -796,6 +877,60 @@ mod tests {
         assert_eq!(found("docker://alpine:3"), None);
         assert_eq!(found("actions/setup-node"), None);
         assert_eq!(found("setup-node@v4"), None);
+    }
+
+    #[test]
+    fn a_jobs_actions_are_asked_for_and_downloaded_at_once() {
+        use std::io::{Read, Write};
+        // g1t, answering each request after 400 ms: where the action is,
+        // then its archive.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                std::thread::spawn(move || {
+                    let mut request = Vec::new();
+                    let mut buf = [0u8; 4096];
+                    while let Ok(n) = stream.read(&mut buf) {
+                        request.extend_from_slice(&buf[..n]);
+                        let text = String::from_utf8_lossy(&request);
+                        if let Some((head, body)) = text.split_once("\r\n\r\n") {
+                            let length = head
+                                .lines()
+                                .find_map(|line| line.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap_or(0)))
+                                .unwrap_or(0);
+                            if body.len() >= length || n == 0 {
+                                break;
+                            }
+                        }
+                    }
+                    std::thread::sleep(Duration::from_millis(400));
+                    let text = String::from_utf8_lossy(&request);
+                    let body = if text.starts_with("POST /actions/jobs/job_1/archive") {
+                        "archive bytes".to_owned()
+                    } else {
+                        json!({ "source": "github", "archive": true, "sha": "a".repeat(40) }).to_string()
+                    };
+                    let _ = write!(stream, "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len());
+                });
+            }
+        });
+        let api = super::super::report::Api { base, job: "job_1".into(), token: "t".into() };
+        let temp = std::env::temp_dir().join(format!("g1t-prefetch-{}", super::super::rand_id()));
+        std::fs::create_dir_all(&temp).unwrap();
+        let started = std::time::Instant::now();
+        let ahead: Vec<Prefetch> = ["checkout", "cache", "setup-node"].iter().map(|repo| Prefetch::start(api.clone(), &temp, "actions", repo, "v4")).collect();
+        for prefetch in ahead {
+            let found = prefetch.found.recv().unwrap().unwrap();
+            assert_eq!(found["source"], "github");
+            let (path, done) = prefetch.archive;
+            assert_eq!(done.recv().unwrap(), Ok(13));
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), "archive bytes");
+        }
+        // Three actions one after another would take 2.4 s.
+        assert!(started.elapsed() < Duration::from_millis(1600), "took {:?}", started.elapsed());
+        let _ = std::fs::remove_dir_all(&temp);
     }
 
     #[test]

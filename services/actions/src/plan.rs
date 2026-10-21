@@ -1628,6 +1628,9 @@ impl Actions {
                 .await?
                 .map_or(0, |count| count.n)
         };
+        // Claimed one at a time, each seeing the room the ones before it
+        // took; then started together.
+        let mut claimed_jobs = Vec::new();
         for job in queued {
             if held.contains(&job.id) {
                 continue;
@@ -1705,26 +1708,30 @@ impl Actions {
             let trusted = run.as_ref().is_some_and(|run| run.trusted != 0);
             // Only a trusted run's jobs get secrets, brokered ones included.
             let brokered = trusted && self.may_broker(&job.repo_id, &job.namespace).await?;
-            let started: Outcome<Value> = g1t_kit::call(
-                &self.runner,
-                "start_actions_job",
-                &StartJobArgs {
-                    job: job.id.clone(),
-                    token,
-                    repo,
-                    timeout_minutes: job.timeout_minutes,
-                    instance,
-                    brokered,
-                },
-            )
-            .await
-            .unwrap_or_else(|error| fail(FailureCode::Conflict, format!("The runner could not be reached: {error}")));
+            let args = StartJobArgs {
+                job: job.id.clone(),
+                token,
+                repo,
+                timeout_minutes: job.timeout_minutes,
+                instance,
+                brokered,
+            };
+            claimed_jobs.push((job, at, run, args));
+        }
+        // The jobs claimed start together: a sandbox takes 2 to 3 s to
+        // start, so one after another the sixth job of a run waited about
+        // 15 s for the five before it (flagon-io#266).
+        let starts = claimed_jobs.iter().map(|(_, _, _, args)| async move {
+            g1t_kit::call::<_, Outcome<Value>>(&self.runner, "start_actions_job", args)
+                .await
+                .unwrap_or_else(|error| fail(FailureCode::Conflict, format!("The runner could not be reached: {error}")))
+        });
+        let started = futures_util::future::join_all(starts).await;
+        for ((job, at, run, _), started) in claimed_jobs.into_iter().zip(started) {
             if let Outcome::Fail(refused) = started {
                 // No machine free (every sandbox of its class taken, or a
                 // rollout replacing them): back in the queue, tried again at
                 // the next sweep, until it has waited WAIT_FOR_MACHINE_MS.
-                // The sandboxes after it would find none either, so this
-                // sweep starts no more.
                 if refused.code == FailureCode::Unavailable {
                     let since = job.waiting_since.clone().unwrap_or_else(|| at.clone());
                     if crate::waited_for_a_machine(Some(&since), now_ms()) {
@@ -1742,7 +1749,7 @@ impl Actions {
                         .run()
                         .await?;
                     worker::console_warn!("actions: job {} waits for a machine: {}", job.id, refused.message);
-                    break;
+                    continue;
                 }
                 // Billing would not pay for a scheduled run's job: the
                 // schedule waits rather than making runs only to refuse them.
