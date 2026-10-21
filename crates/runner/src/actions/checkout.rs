@@ -338,7 +338,9 @@ impl Job {
         if relative.is_absolute() || relative.components().any(|c| matches!(c, std::path::Component::ParentDir | std::path::Component::Prefix(_))) {
             return None;
         }
-        Some(self.workspace.join(relative))
+        // Without `.` parts: `create_dir_all("work/.")` fails on Linux when
+        // `work` is not there yet.
+        Some(relative.components().filter(|c| !matches!(c, std::path::Component::CurDir)).fold(self.workspace.clone(), |path, part| path.join(part)))
     }
 
     /// Runs git with `config` given as `-c` settings, which are never
