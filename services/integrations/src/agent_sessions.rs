@@ -1190,6 +1190,7 @@ impl Integrations {
                 labels: Vec::new(),
                 milestone: None,
                 parent: None,
+                project: None,
             },
         )
         .await

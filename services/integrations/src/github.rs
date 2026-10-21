@@ -822,6 +822,7 @@ impl GithubApp {
                     labels: labels_of(issue),
                     milestone: None,
                     parent: None,
+                    project: None,
                 },
             )
             .await?;

@@ -44,6 +44,7 @@ pub(crate) fn unless_archived(repo: Outcome<Repo>) -> Outcome<Repo> {
 /// Its work items stay, their links keeping the path it had.
 pub(crate) const PURGED: &[&str] = &[
     crate::items::sql::REPO_PURGED,
+    crate::items::PROJECTS_REPO_PURGED,
     "DELETE FROM session_entries WHERE pull_id IN (SELECT id FROM pulls WHERE repo_id = ?1)",
     "DELETE FROM session_entries WHERE session_id IN (SELECT id FROM sessions WHERE repo_id = ?1)",
     "DELETE FROM sessions WHERE repo_id = ?1",

@@ -204,6 +204,11 @@ fn sample(op: Op, example: &Value) -> Value {
         Op::ListMilestones => through::<Vec<work::Milestone>>(op, sent),
         Op::CreateMilestone | Op::UpdateMilestone => through::<work::Milestone>(op, sent),
         Op::GetMilestone => through::<work::MilestoneDetail>(op, sent),
+        Op::ListWorkProjects => through::<Vec<work::WorkProject>>(op, sent),
+        Op::CreateWorkProject | Op::UpdateWorkProject | Op::ArchiveWorkProject => through::<work::WorkProject>(op, sent),
+        Op::GetWorkProject => through::<work::WorkProjectDetail>(op, sent),
+        Op::AddWorkProjectMember | Op::RemoveWorkProjectMember => through::<Vec<work::ProjectMember>>(op, sent),
+        Op::AddWorkProjectRepo | Op::RemoveWorkProjectRepo => through::<Vec<work::ProjectRepo>>(op, sent),
         Op::GetPullRequest => through::<work::PullDetail>(op, sent),
         Op::MarkPullRequestReady
         | Op::ClosePullRequest

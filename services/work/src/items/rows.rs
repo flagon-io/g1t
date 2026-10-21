@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::rows::{milestone_ref, requester, user};
 
 /// A work item's columns, with what it is read with: its counts, agent,
-/// milestone's title, blockers by number, parent by number, how many of
+/// milestone's title, project (projects.rs), blockers by number, parent by number, how many of
 /// its sub-items are closed of how many, and links.
 pub(crate) const ITEM_COLUMNS: &str = "work_items.*,
   (SELECT count(*) FROM pulls WHERE pulls.item_id = work_items.id) AS pull_count,
@@ -22,6 +22,8 @@ pub(crate) const ITEM_COLUMNS: &str = "work_items.*,
    WHERE comments.item_id = work_items.id AND comments.kind = 'comment') AS comment_count,
   (SELECT title FROM milestones
    WHERE milestones.workspace = work_items.workspace AND milestones.number = work_items.milestone) AS milestone_title,
+  (SELECT json_object('id', pj.id, 'slug', pj.slug, 'name', pj.name, 'color', pj.color, 'icon', pj.icon)
+   FROM projects pj WHERE pj.id = work_items.project_id) AS project_json,
   (SELECT json_group_array(number) FROM
      (SELECT b.number AS number FROM json_each(work_items.blocked_by) j JOIN work_items b ON b.id = j.value
       WHERE b.number IS NOT NULL ORDER BY j.key)) AS blocked_numbers,
@@ -63,6 +65,9 @@ pub(crate) struct ItemRow {
     pub milestone: Option<u32>,
     #[serde(default)]
     pub milestone_title: Option<String>,
+    /// JSON [`ProjectRef`] of the project it is in.
+    #[serde(default)]
+    pub project_json: Option<String>,
     #[serde(default)]
     pub pull_count: u32,
     #[serde(default)]
@@ -299,6 +304,7 @@ impl ItemRow {
                 sub_item_progress: (self.sub_total > 0).then_some(SubItemProgress { done: self.sub_done, total: self.sub_total }),
                 agent: self.agent,
                 milestone: milestone_ref(self.milestone, self.milestone_title),
+                project: self.project_json.as_deref().and_then(|json| serde_json::from_str(json).ok()),
                 repos,
                 horizon: self.horizon.unwrap_or_default(),
                 appetite: self.appetite,

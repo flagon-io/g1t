@@ -110,6 +110,8 @@ pub enum Command {
     Session(SessionCommand),
     /// Work items: list, view, new, edit, link, close; claims, hand-offs, dependencies, events.
     Work(WorkArgs),
+    /// Projects: homes for bodies of work in Work, with a brief, a lead, people and repositories.
+    Project(ProjectArgs),
     /// Why a file or line is as it is: its commit, pull request, work item, decisions and sessions.
     Why(WhyArgs),
     /// Upload images, such as a screenshot, to show in a work item, a pull request or a comment; prints their Markdown.
@@ -1420,6 +1422,9 @@ pub struct WorkListArgs {
     /// Only the sub-items of the work item of this number.
     #[arg(short, long)]
     pub parent: Option<u64>,
+    /// Only work items in the project of this slug.
+    #[arg(long, value_name = "SLUG")]
+    pub project: Option<String>,
     #[arg(short = 'L', long, default_value_t = 20)]
     pub limit: usize,
 }
@@ -1534,6 +1539,9 @@ pub struct WorkNewArgs {
     /// File it as a sub-item of the work item of this number.
     #[arg(short, long)]
     pub parent: Option<u64>,
+    /// File it in the project of this slug. Without --target, the project's default targets are linked.
+    #[arg(long, value_name = "SLUG")]
+    pub project: Option<String>,
     /// Open the new work item page in the browser instead.
     #[arg(short, long)]
     pub web: bool,
@@ -1627,6 +1635,12 @@ pub struct WorkEditArgs {
     /// Take it out of its parent.
     #[arg(long, conflicts_with = "parent")]
     pub remove_parent: bool,
+    /// Put it in the project of this slug.
+    #[arg(long, value_name = "SLUG")]
+    pub project: Option<String>,
+    /// Take it out of its project.
+    #[arg(long, conflicts_with = "project")]
+    pub remove_project: bool,
 }
 
 /// `g1t work check` and `g1t pr check`.
@@ -1785,6 +1799,168 @@ pub fn parse_ttl(text: &str) -> Result<u64, String> {
         return Err("a claim lasts from 1 minute to 4 hours".to_owned());
     }
     Ok(minutes)
+}
+
+// --- project ----------------------------------------------------------
+
+#[derive(Debug, Args)]
+pub struct ProjectArgs {
+    /// The workspace, by its slug; the current repository's when left out.
+    #[arg(long, global = true, value_name = "SLUG", env = "G1T_WORKSPACE")]
+    pub workspace: Option<String>,
+    #[command(subcommand)]
+    pub command: ProjectCommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ProjectCommand {
+    /// List the workspace's projects: live ones first, then done and dropped.
+    List(ProjectListArgs),
+    /// Show a project: its brief, lead, dates and health, people, repositories, and its open work items with where each stands.
+    View(ProjectViewArgs),
+    /// Create a project; you lead it unless --lead says who does.
+    #[command(after_help = "\nThe slug is made from the name unless --slug gives one. File work items into it with
+g1t work new --project SLUG, or move one in with g1t work edit N --project SLUG.
+Examples:
+  g1t project create --name \"Work overhaul\" --summary \"Plan, track and ship\" --target-on 2026-12-12
+  g1t project create --name \"Mobile 2.0\" --state shaping --brief-file pitch.md")]
+    Create(ProjectCreateArgs),
+    /// Change a project: its name, brief, lead, state, dates or health; add or remove people and repositories.
+    #[command(after_help = "\nAn empty --lead, --start-on or --target-on clears it; --health none and --appetite none clear those.
+Examples:
+  g1t project edit work-overhaul --health at-risk
+  g1t project edit work-overhaul --add-member ana --add-repo flagon-io/g1t
+  g1t project edit work-overhaul --state done --archive")]
+    Edit(ProjectEditArgs),
+}
+
+/// Where a project is in its life.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum ProjectState {
+    Shaping,
+    Active,
+    Paused,
+    Done,
+    Dropped,
+}
+
+impl ProjectState {
+    pub fn name(self) -> &'static str {
+        match self {
+            ProjectState::Shaping => "shaping",
+            ProjectState::Active => "active",
+            ProjectState::Paused => "paused",
+            ProjectState::Done => "done",
+            ProjectState::Dropped => "dropped",
+        }
+    }
+}
+
+#[derive(Debug, Args)]
+pub struct ProjectListArgs {
+    /// Only projects in this state.
+    #[arg(short, long, value_enum)]
+    pub state: Option<ProjectState>,
+    /// The archived projects instead.
+    #[arg(long)]
+    pub archived: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct ProjectViewArgs {
+    /// The project's slug.
+    pub slug: String,
+    /// Open it in the browser.
+    #[arg(short, long)]
+    pub web: bool,
+}
+
+/// What `g1t project create` and `g1t project edit` both set.
+#[derive(Debug, Args)]
+pub struct ProjectFields {
+    /// What it is for, in a line.
+    #[arg(long)]
+    pub summary: Option<String>,
+    /// The brief, in Markdown: the problem, the appetite, the solution, what is out.
+    #[arg(long, conflicts_with = "brief_file")]
+    pub brief: Option<String>,
+    /// Read the brief from a file, or - for stdin.
+    #[arg(long, value_name = "FILE")]
+    pub brief_file: Option<String>,
+    /// What agents are told for every work item in it, in Markdown.
+    #[arg(long)]
+    pub instructions: Option<String>,
+    /// Its lead, by username (@me for you).
+    #[arg(long, value_name = "LOGIN")]
+    pub lead: Option<String>,
+    #[arg(short, long, value_enum)]
+    pub state: Option<ProjectState>,
+    /// How much the work is worth: S, M, L, or none.
+    #[arg(long, value_name = "S|M|L|none")]
+    pub appetite: Option<String>,
+    /// When it starts, YYYY-MM-DD.
+    #[arg(long, value_name = "DATE")]
+    pub start_on: Option<String>,
+    /// When it should be done, YYYY-MM-DD.
+    #[arg(long, value_name = "DATE")]
+    pub target_on: Option<String>,
+    /// How it is going: on-track, at-risk, off-track, or none.
+    #[arg(long, value_name = "HEALTH")]
+    pub health: Option<String>,
+    /// An emoji for it.
+    #[arg(long)]
+    pub icon: Option<String>,
+    /// Its color: six hex digits.
+    #[arg(long)]
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct ProjectCreateArgs {
+    #[arg(short, long)]
+    pub name: Option<String>,
+    /// Its slug, unique in the workspace; made from the name when left out.
+    #[arg(long)]
+    pub slug: Option<String>,
+    #[command(flatten)]
+    pub fields: ProjectFields,
+    /// Someone to add to it; repeat for more (@me for you).
+    #[arg(long, value_name = "LOGIN")]
+    pub add_member: Vec<String>,
+    /// A repository its work lands in, OWNER/NAME, linked to new work items in it; repeat for more.
+    #[arg(long, value_name = "OWNER/NAME")]
+    pub add_repo: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct ProjectEditArgs {
+    /// The project's slug.
+    pub slug: String,
+    #[arg(short, long)]
+    pub name: Option<String>,
+    /// A new slug for it.
+    #[arg(long, value_name = "SLUG")]
+    pub new_slug: Option<String>,
+    #[command(flatten)]
+    pub fields: ProjectFields,
+    /// Someone to add to it; repeat for more (@me for you).
+    #[arg(long, value_name = "LOGIN")]
+    pub add_member: Vec<String>,
+    /// Someone to take out of it; repeat for more.
+    #[arg(long, value_name = "LOGIN")]
+    pub remove_member: Vec<String>,
+    /// A repository its work lands in, OWNER/NAME, linked to new work items in it; repeat for more.
+    #[arg(long, value_name = "OWNER/NAME")]
+    pub add_repo: Vec<String>,
+    /// A repository to take off it; repeat for more.
+    #[arg(long, value_name = "OWNER/NAME")]
+    pub remove_repo: Vec<String>,
+    /// Archive it: out of lists, and no new work items.
+    #[arg(long, conflicts_with = "unarchive")]
+    pub archive: bool,
+    /// Bring it back from the archive.
+    #[arg(long)]
+    pub unarchive: bool,
 }
 
 // --- attach -----------------------------------------------------------

@@ -794,6 +794,7 @@ impl Integrations {
                 labels: vec![label, provider.name().to_owned()],
                 milestone: None,
                 parent: None,
+                project: None,
             },
         )
         .await?;
@@ -956,6 +957,7 @@ impl Integrations {
                 labels: vec![item.provider.name().to_owned()],
                 milestone: None,
                 parent: None,
+                project: None,
             },
         )
         .await?;

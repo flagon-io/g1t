@@ -106,10 +106,30 @@ impl Work {
         };
         let origin_ref = origin.as_ref().map(RepoRef::from);
         let may = |capability| access::can_item(Some(&a.actor), &workspace, origin_ref, capability);
-        // Where it should land: repositories of the workspace the actor can see.
+        // The project it is filed in, as putting it there afterwards would.
+        let project = match a.project.as_deref().map(str::trim).filter(|key| !key.is_empty()) {
+            Some(key) => {
+                if !may(Capability::Triage) {
+                    return Ok(Outcome::fail(FailureCode::Forbidden, access::needs_on_item(Capability::Triage, &workspace)));
+                }
+                check!(self.project_ref(&workspace, key).await?)
+            }
+            None => None,
+        };
+        // Where it should land: repositories of the workspace the actor can
+        // see; without any given, its project's default targets they can.
+        let defaulted = a.targets.is_empty() && project.is_some();
+        let asked = match &project {
+            Some(project) if defaulted => self.default_targets(&project.id).await?,
+            _ => a.targets.clone(),
+        };
         let mut targets: Vec<Repo> = Vec::new();
-        for path in &a.targets {
-            let repo = check!(self.repo(path, &actor).await?);
+        for path in &asked {
+            let repo = match self.repo(path, &actor).await? {
+                Outcome::Ok(repo) => repo,
+                Outcome::Fail(_) if defaulted => continue,
+                Outcome::Fail(failure) => return Ok(Outcome::Fail(failure)),
+            };
             if !repo.namespace.eq_ignore_ascii_case(&workspace) {
                 return Ok(Outcome::fail(FailureCode::Invalid, format!("{} is not a repository of {workspace}.", path_of(&repo))));
             }
@@ -143,8 +163,8 @@ impl Work {
             .prepare(
                 "INSERT INTO work_items
                    (id, workspace, number, title, body, labels, author_id, author_name, requested_by_id,
-                    requested_by_name, created_at, updated_at, milestone, parent_id)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    requested_by_name, created_at, updated_at, milestone, parent_id, project_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&[
                 id.as_str().into(),
@@ -161,6 +181,7 @@ impl Work {
                 timestamp.as_str().into(),
                 optional_number(milestone.as_ref().map(|milestone| milestone.number)),
                 optional(&parent_id),
+                optional(&project.as_ref().map(|project| project.id.clone())),
             ])?];
         let links = origin.iter().map(|repo| (repo, LinkRole::Origin)).chain(targets.iter().map(|repo| (repo, LinkRole::Target)));
         for (repo, role) in links {
@@ -235,6 +256,9 @@ impl Work {
         // nothing else changes.
         if let Some(number) = a.milestone {
             check!(self.set_milestone(&a.actor, &super::labels::Labeled::Item(held.clone()), number).await?);
+        }
+        if let Some(project) = &a.project {
+            check!(self.set_project(&a.actor, &held, project).await?);
         }
         if let Some(labels) = &a.labels {
             check!(self.relabel(&a.actor, &super::labels::Labeled::Item(held.clone()), labels).await?);

@@ -16,6 +16,7 @@ use g1t_contracts::account_deletion::{GHOST_ID, GHOST_USERNAME};
 pub(crate) fn statements() -> Vec<String> {
     // Its work items (items/sql.rs).
     let mut sql = crate::items::sql::user_deleted();
+    sql.extend(crate::items::projects_user_deleted());
     for table in ["pulls", "comments", "plans", "agent_messages", "commit_comments"] {
         sql.push(format!(
             "UPDATE {table} SET author_id = '{GHOST_ID}', author_name = '{GHOST_USERNAME}' WHERE author_id = ?1"

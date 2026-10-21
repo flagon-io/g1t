@@ -2648,6 +2648,16 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "get_milestone" => reply(&work.get_milestone(args(body)?).await?),
         "save_milestone" => reply(&work.save_milestone(args(body)?).await?),
         "delete_milestone" => reply(&work.delete_milestone(args(body)?).await?),
+        // Projects: homes for bodies of work (items/projects.rs).
+        "list_projects" => reply(&work.list_projects(args(body)?).await?),
+        "get_project" => reply(&work.get_project(args(body)?).await?),
+        "create_project" => reply(&work.create_project(args(body)?).await?),
+        "update_project" => reply(&work.update_project(args(body)?).await?),
+        "archive_project" => reply(&work.archive_project(args(body)?).await?),
+        "add_project_member" => reply(&work.add_project_member(args(body)?).await?),
+        "remove_project_member" => reply(&work.remove_project_member(args(body)?).await?),
+        "add_project_repo" => reply(&work.add_project_repo(args(body)?).await?),
+        "remove_project_repo" => reply(&work.remove_project_repo(args(body)?).await?),
         "counts" => reply(&work.counts(args(body)?).await?),
         "add_comment" => reply(&work.add_comment(args(body)?).await?),
         "upload_attachment" => reply(&work.upload_attachment(&env, args(body)?).await?),
@@ -2796,9 +2806,9 @@ async fn scheduled(_event: ScheduledEvent, env: Env, _ctx: ScheduleContext) {
 async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()> {
     let work = service(&env)?;
     for message in batch.messages()? {
-        // A workspace renamed: its runs, work items, labels, milestones and
-        // numbers move to the slug it has now.
-        let renamed = [runs::RENAMED, guardrails::RENAMED, rulesets::RENAMED, items::RENAMED, attachments::RENAMED].concat();
+        // A workspace renamed: its runs, work items, labels, milestones,
+        // projects and numbers move to the slug it has now.
+        let renamed = [runs::RENAMED, guardrails::RENAMED, rulesets::RENAMED, items::RENAMED, items::PROJECTS_RENAMED, attachments::RENAMED].concat();
         if g1t_kit::rename::on_event(&env, &env.d1("DB")?, message.body(), &renamed).await? {
             message.ack();
             continue;
@@ -2817,7 +2827,7 @@ async fn queue(batch: MessageBatch<Event>, env: Env, _ctx: Context) -> Result<()
         {
             attachments::purge_workspace(&env, &work.db, slug).await?;
         }
-        let deleted = [guardrails::DELETED, items::DELETED, attachments::DELETED].concat();
+        let deleted = [guardrails::DELETED, items::DELETED, items::PROJECTS_DELETED, attachments::DELETED].concat();
         if g1t_kit::deleted::on_event(&env.d1("DB")?, message.body(), &deleted).await? {
             message.ack();
             continue;

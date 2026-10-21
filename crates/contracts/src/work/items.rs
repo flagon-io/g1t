@@ -164,6 +164,9 @@ pub struct WorkItem {
     /// The workspace milestone it is in, if any.
     #[serde(default)]
     pub milestone: Option<MilestoneRef>,
+    /// The project it is in, if any.
+    #[serde(default)]
+    pub project: Option<super::ProjectRef>,
     /// The repositories it is linked to: its origin first, then targets,
     /// then those it touched.
     #[serde(default)]
@@ -287,6 +290,10 @@ pub struct OpenWorkItemArgs {
     /// sub-item of. Publishes `work_item.sub_items_changed` on it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<u32>,
+    /// The project to file it in, by slug or id. Needs the Triage role.
+    /// Without `targets`, the project's default targets are linked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
 }
 
 /// `list_work_items`, newest first, at most 100 (`before` pages on): a
@@ -317,6 +324,9 @@ pub struct ListWorkItemsArgs {
     /// Only the sub-items of the work item of this number.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<u32>,
+    /// Only those in the project of this slug or id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
     /// Only those closed at or after this time (RFC 3339), the most
     /// recently closed first instead of the newest.
     #[serde(default)]
@@ -374,6 +384,10 @@ pub struct UpdateWorkItemArgs {
     /// out of its parent. As `set_work_item_parent`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<u32>,
+    /// The project to put it in, by slug or id; an empty string takes it
+    /// out of its project. Needs the Triage role.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
 }
 
 /// `close_work_item` and `reopen_work_item`. Each returns
