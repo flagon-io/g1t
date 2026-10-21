@@ -875,7 +875,33 @@ impl ApprovalRow {
     }
 }
 
-const APPROVAL_COLUMNS: &str = "session_id, tool_use_id, repo, item, started_by, started_by_name, tool, summary, status, answered_by, asked_at";
+// The statements on `agent_approvals`, as constants so conformance/agent-approvals.test.mjs
+// runs them on SQLite against the migrations. Times are g1t's RFC 3339 (fixed width), so
+// they compare as text.
+
+/// Keeps a call seen waiting, once: reading its event again changes nothing.
+const KEEP_WAITING: &str = "INSERT OR IGNORE INTO agent_approvals
+  (session_id, tool_use_id, workspace, repo, item, started_by, started_by_name, tool, summary, asked_at)
+  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)";
+/// Takes a session's calls asked at or before ?3 from waiting, as declined for want of an answer.
+const TAKE_UNANSWERED: &str = "UPDATE agent_approvals SET status = 'expired', answered_at = ?1
+  WHERE session_id = ?2 AND status = 'waiting' AND asked_at <= ?3 RETURNING *";
+/// Takes one call from waiting with an answer (?1 `allowed` or `denied`), if it was asked after ?6.
+const TAKE_ANSWER: &str = "UPDATE agent_approvals SET status = ?1, answered_by = ?2, answered_at = ?3
+  WHERE session_id = ?4 AND tool_use_id = ?5 AND status = 'waiting' AND asked_at > ?6 RETURNING *";
+/// Puts back a call whose answer did not reach the session, so it waits again.
+const UNTAKE_ANSWER: &str = "UPDATE agent_approvals SET status = 'waiting', answered_by = NULL, answered_at = NULL
+  WHERE session_id = ?1 AND tool_use_id = ?2 AND status IN ('allowed', 'denied')";
+/// A session ended: what still waits has nobody left to answer it.
+const END_WAITING: &str = "UPDATE agent_approvals SET status = 'ended', answered_at = ?1 WHERE session_id = ?2 AND status = 'waiting'";
+/// One call.
+const APPROVAL: &str = "SELECT * FROM agent_approvals WHERE session_id = ?1 AND tool_use_id = ?2";
+/// A workspace's calls still waiting and asked after ?2, newest first.
+const WAITING_IN_WORKSPACE: &str = "SELECT * FROM agent_approvals
+  WHERE workspace = ?1 AND status = 'waiting' AND asked_at > ?2 ORDER BY asked_at DESC LIMIT ?3";
+/// One session's calls still waiting and asked after ?3, newest first.
+const WAITING_IN_SESSION: &str = "SELECT * FROM agent_approvals
+  WHERE workspace = ?1 AND session_id = ?2 AND status = 'waiting' AND asked_at > ?3 ORDER BY asked_at DESC LIMIT ?4";
 
 fn host_of(url: &str) -> Option<String> {
     let rest = url.split("://").nth(1)?;
@@ -1618,7 +1644,7 @@ impl Integrations {
         self.end_run_session(run, &run.session_id, reason, run.result.clone()).await?;
         // A call still waiting has nobody left to answer it.
         self.db
-            .prepare("UPDATE agent_approvals SET status = 'ended', answered_at = ? WHERE session_id = ? AND status = 'waiting'")
+            .prepare(END_WAITING)
             .bind(&[rfc3339(now_ms()).into(), run.session_id.as_str().into()])?
             .run()
             .await?;
@@ -1697,11 +1723,7 @@ impl Integrations {
     async fn keep_waiting(&self, run: &RunRow, tool_use_id: &str, tool: &str, summary: &str) -> Result<()> {
         let actor = run.actor();
         self.db
-            .prepare(
-                "INSERT OR IGNORE INTO agent_approvals
-                   (session_id, tool_use_id, workspace, repo, item, started_by, started_by_name, tool, summary, asked_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            )
+            .prepare(KEEP_WAITING)
             .bind(&[
                 run.session_id.as_str().into(),
                 tool_use_id.into(),
@@ -1728,10 +1750,7 @@ impl Integrations {
         let cutoff = rfc3339(now.saturating_sub(APPROVAL_WAIT_MS));
         let due = self
             .db
-            .prepare(format!(
-                "UPDATE agent_approvals SET status = 'expired', answered_at = ?
-                 WHERE session_id = ? AND status = 'waiting' AND asked_at <= ? RETURNING {APPROVAL_COLUMNS}"
-            ))
+            .prepare(TAKE_UNANSWERED)
             .bind(&[rfc3339(now).into(), run.session_id.as_str().into(), cutoff.as_str().into()])?
             .all()
             .await?
@@ -1782,6 +1801,10 @@ impl Integrations {
             return Ok(missing());
         }
         if !self.may_answer_run(actor, &run).await? {
+            // Only the workspace's members see its sessions: anyone else is told there is none.
+            if !actor.is_member(&run.workspace) {
+                return Ok(missing());
+            }
             return Ok(Outcome::fail(
                 FailureCode::Forbidden,
                 "Only whoever started this session, or a workspace member with write access to the repository, can answer it.",
@@ -1804,18 +1827,9 @@ impl Integrations {
         let rows = match a.session.as_deref().map(str::trim) {
             Some(session) => self
                 .db
-                .prepare(format!(
-                    "SELECT {APPROVAL_COLUMNS} FROM agent_approvals
-                     WHERE workspace = ? AND session_id = ? AND status = 'waiting' AND asked_at > ? ORDER BY asked_at DESC LIMIT ?"
-                ))
+                .prepare(WAITING_IN_SESSION)
                 .bind(&[workspace.as_str().into(), session.into(), since.as_str().into(), MAX_APPROVALS.into()])?,
-            None => self
-                .db
-                .prepare(format!(
-                    "SELECT {APPROVAL_COLUMNS} FROM agent_approvals
-                     WHERE workspace = ? AND status = 'waiting' AND asked_at > ? ORDER BY asked_at DESC LIMIT ?"
-                ))
-                .bind(&[workspace.as_str().into(), since.as_str().into(), MAX_APPROVALS.into()])?,
+            None => self.db.prepare(WAITING_IN_WORKSPACE).bind(&[workspace.as_str().into(), since.as_str().into(), MAX_APPROVALS.into()])?,
         }
         .all()
         .await?
@@ -1853,7 +1867,7 @@ impl Integrations {
         let tool_use_id = a.tool_use_id.trim();
         let read = || async {
             self.db
-                .prepare(format!("SELECT {APPROVAL_COLUMNS} FROM agent_approvals WHERE session_id = ? AND tool_use_id = ?"))
+                .prepare(APPROVAL)
                 .bind(&[run.session_id.as_str().into(), tool_use_id.into()])?
                 .first::<ApprovalRow>(None)
                 .await
@@ -1874,10 +1888,7 @@ impl Integrations {
         let cutoff = rfc3339(now.saturating_sub(APPROVAL_WAIT_MS));
         let taken = self
             .db
-            .prepare(format!(
-                "UPDATE agent_approvals SET status = ?, answered_by = ?, answered_at = ?
-                 WHERE session_id = ? AND tool_use_id = ? AND status = 'waiting' AND asked_at > ? RETURNING {APPROVAL_COLUMNS}"
-            ))
+            .prepare(TAKE_ANSWER)
             .bind(&[
                 status.as_str().into(),
                 a.actor.username.as_str().into(),
@@ -1903,7 +1914,7 @@ impl Integrations {
         if let Err(problem) = self.call_anthropic(&key, Method::Post, &format!("/v1/sessions/{}/events", run.provider_session_id), Some(event)).await? {
             // Not sent: it waits again, for another try or the timeout.
             self.db
-                .prepare("UPDATE agent_approvals SET status = 'waiting', answered_by = NULL, answered_at = NULL WHERE session_id = ? AND tool_use_id = ?")
+                .prepare(UNTAKE_ANSWER)
                 .bind(&[run.session_id.as_str().into(), tool_use_id.into()])?
                 .run()
                 .await?;
