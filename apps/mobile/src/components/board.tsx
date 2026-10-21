@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Pressable, RefreshControl, SectionList, StyleSheet, View } from "react-native";
 
 import { Empty, ErrorView, Loading, SectionHeader, Text } from "@/components/ui";
-import { Chip, ItemIcon, RepoChips } from "@/components/work";
+import { Chip, ItemIcon, RepoChips, SubItemMeta } from "@/components/work";
 import { type Card, STAGES, type Stage, stageName } from "@/lib/board";
 import { harnessName } from "@/lib/sessions";
 import { ago } from "@/lib/time";
@@ -93,6 +93,7 @@ function BoardCard({ card }: { card: Card<ApiWorkItem> }) {
           <Text size="small" tone="muted">
             #{item.number} · {ago(item.closed_at ?? item.updated_at)}
           </Text>
+          <SubItemMeta item={item} />
           <RepoChips repos={item.repos} workspace={item.workspace} />
         </View>
       </View>

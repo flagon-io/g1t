@@ -73,6 +73,9 @@ pub struct Query {
     pub kind: Option<ItemKind>,
     pub state: Option<ItemState>,
     pub visibility: Option<Visibility>,
+    /// `parent:212` or `parent:#212`: the sub-items of that work item of
+    /// their workspace.
+    pub parent: Option<u32>,
     /// `type:code` and the like.
     pub type_hint: Option<SearchType>,
     /// What the query asked that could not be done, said plainly.
@@ -154,7 +157,7 @@ impl Query {
         let known = matches!(
             key,
             "repo" | "org" | "workspace" | "owner" | "user" | "language" | "lang" | "path" | "is" | "state" | "author"
-                | "label" | "type" | "in"
+                | "label" | "type" | "in" | "parent"
         );
         if !known {
             return false;
@@ -183,9 +186,21 @@ impl Query {
             // `in:title` and the like narrow nothing here: every field is searched.
             "in" => {}
             "is" | "state" => self.is(&lower, &value, negated),
+            "parent" => self.parent(&value, negated),
             _ => unreachable!(),
         }
         true
+    }
+
+    fn parent(&mut self, value: &str, negated: bool) {
+        if negated {
+            self.notes.push(format!("-parent:{value} cannot be left out, so it was ignored."));
+            return;
+        }
+        match value.trim_start_matches('#').parse::<u32>() {
+            Ok(number) if number > 0 => self.parent = Some(number),
+            _ => self.notes.push(format!("parent:{value} should be written parent:212, a work item's number.")),
+        }
     }
 
     fn is(&mut self, lower: &str, value: &str, negated: bool) {
@@ -241,12 +256,13 @@ impl Query {
             && self.kind.is_none()
             && self.state.is_none()
             && self.visibility.is_none()
+            && self.parent.is_none()
     }
 
     /// The tab a query is about when none is named: `type:` if given, then
-    /// pull requests for `is:pr`, work items for `is:item` or anything only
-    /// work items and pull requests have, code for `path:`, else
-    /// repositories.
+    /// pull requests for `is:pr`, work items for `is:item`, `parent:` or
+    /// anything only work items and pull requests have, code for `path:`,
+    /// else repositories.
     pub fn default_type(&self) -> SearchType {
         if let Some(kind) = self.type_hint {
             return kind;
@@ -255,6 +271,9 @@ impl Query {
             Some(ItemKind::Pull) => return SearchType::Pulls,
             Some(ItemKind::Item) => return SearchType::Items,
             None => {}
+        }
+        if self.parent.is_some() {
+            return SearchType::Items;
         }
         if !self.paths.is_empty() {
             return SearchType::Code;
@@ -267,9 +286,9 @@ impl Query {
 
     /// Whether the query can have results of `kind`: qualifiers only one
     /// kind has rule the others out (`path:` is only code, `label:` only
-    /// work items and pull requests).
+    /// work items and pull requests, `parent:` only work items).
     pub fn applies_to(&self, kind: SearchType) -> bool {
-        let item_only = self.state.is_some() || !self.authors.is_empty() || !self.labels.is_empty();
+        let item_only = self.state.is_some() || !self.authors.is_empty() || !self.labels.is_empty() || self.parent.is_some();
         let repo_scoped = !self.repos.is_empty() || !self.owners.is_empty() || self.visibility.is_some();
         match kind {
             SearchType::Repositories => self.paths.is_empty() && self.kind.is_none() && !item_only,
@@ -278,7 +297,9 @@ impl Query {
                 self.paths.is_empty() && self.languages.is_empty() && self.kind != Some(ItemKind::Pull)
                     && !matches!(self.state, Some(ItemState::Merged | ItemState::Draft))
             }
-            SearchType::Pulls => self.paths.is_empty() && self.languages.is_empty() && self.kind != Some(ItemKind::Item),
+            SearchType::Pulls => {
+                self.paths.is_empty() && self.languages.is_empty() && self.kind != Some(ItemKind::Item) && self.parent.is_none()
+            }
             SearchType::People => {
                 self.paths.is_empty() && self.languages.is_empty() && self.kind.is_none() && !item_only && !repo_scoped
             }
@@ -358,6 +379,9 @@ impl Query {
         qualifier("path", &self.paths);
         qualifier("author", &self.authors);
         qualifier("label", &self.labels);
+        if let Some(parent) = self.parent {
+            out.push(format!("parent:{parent}"));
+        }
         match self.kind {
             Some(ItemKind::Item) => out.push("is:item".into()),
             Some(ItemKind::Pull) if !matches!(self.state, Some(ItemState::Merged | ItemState::Draft)) => out.push("is:pr".into()),
@@ -481,6 +505,21 @@ mod tests {
     }
 
     #[test]
+    fn parent_is_a_work_items_number() {
+        assert_eq!(Query::parse("parent:212").parent, Some(212));
+        assert_eq!(Query::parse("crash parent:#212").parent, Some(212));
+        assert_eq!(Query::parse("PARENT:\"#7\"").parent, Some(7));
+        assert!(!Query::parse("parent:212").is_empty());
+        assert_eq!(Query::parse("crash parent:#212 is:open").display(), "crash parent:212 is:open");
+        // Anything else is said, and narrows nothing.
+        for text in ["parent:abc", "parent:0", "parent:#", "-parent:212"] {
+            let query = Query::parse(text);
+            assert_eq!(query.parent, None, "{text}");
+            assert_eq!(query.notes.len(), 1, "{text}");
+        }
+    }
+
+    #[test]
     fn the_tab_follows_the_qualifiers() {
         assert_eq!(Query::parse("router").default_type(), SearchType::Repositories);
         assert_eq!(Query::parse("router path:src").default_type(), SearchType::Code);
@@ -490,6 +529,7 @@ mod tests {
         assert_eq!(Query::parse("crash type:items").default_type(), SearchType::Items);
         assert_eq!(Query::parse("crash label:bug").default_type(), SearchType::Items);
         assert_eq!(Query::parse("crash type:code").default_type(), SearchType::Code);
+        assert_eq!(Query::parse("parent:212").default_type(), SearchType::Items);
     }
 
     #[test]
@@ -506,6 +546,12 @@ mod tests {
         let scoped = Query::parse("x repo:a/b");
         assert!(!scoped.applies_to(SearchType::People));
         assert!(Query::parse("ana").applies_to(SearchType::People));
+        // Only work items have a parent.
+        let sub_items = Query::parse("parent:212");
+        assert!(sub_items.applies_to(SearchType::Items));
+        for kind in [SearchType::Pulls, SearchType::Repositories, SearchType::Code, SearchType::People] {
+            assert!(!sub_items.applies_to(kind), "{kind:?}");
+        }
     }
 
     #[test]

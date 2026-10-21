@@ -876,8 +876,8 @@ function PanelPart({ title, action, children }: { title: ReactNode; action?: Rea
 
 /**
  * The Work panel of a work item's sidebar: who has claimed it, the sessions on
- * it, what it waits on and what waits on it, and for those who may, the
- * blockers to change.
+ * it, what it waits on, what it is a sub-item of and what waits on it, and
+ * for those who may, the blockers and the parent to change.
  */
 export function ItemWorkPanel({
   work,
@@ -886,6 +886,7 @@ export function ItemWorkPanel({
   now,
   canEdit,
   error,
+  parentError,
   sessions: all,
   start,
 }: {
@@ -897,6 +898,8 @@ export function ItemWorkPanel({
   now: number;
   canEdit: boolean;
   error?: string | null;
+  /** Why changing what it is a sub-item of was refused. */
+  parentError?: string | null;
   /** The sessions tied to it with their subagents, when they could be read; else its own sessions. */
   sessions?: WorkSession[] | null;
   /** Starting a session on it, for those who may. */
@@ -977,6 +980,21 @@ export function ItemWorkPanel({
           {error && <p className="mt-2 text-xs text-danger">{error}</p>}
         </PanelPart>
 
+        {(work.parent || work.item.parent != null || canEdit) && (
+          <PanelPart title="Sub-item of" action={canEdit ? <ParentEditor current={work.item.parent ?? null} /> : undefined}>
+            {work.parent ? (
+              <ul>
+                <DependencyLine workspace={work.item.workspace} number={work.parent.number} title={work.parent.title} state={work.parent.state} />
+              </ul>
+            ) : (
+              <p className="text-xs text-faint">
+                {work.item.parent != null ? `#${work.item.parent}, which you cannot see.` : "Nothing. It stands on its own."}
+              </p>
+            )}
+            {parentError && <p className="mt-2 text-xs text-danger">{parentError}</p>}
+          </PanelPart>
+        )}
+
         {work.blocks.length > 0 && (
           <PanelPart title="Blocks">
             <ul className="space-y-2">
@@ -988,6 +1006,31 @@ export function ItemWorkPanel({
         )}
       </section>
     </Card>
+  );
+}
+
+/** Changing the work item a work item is a sub-item of, by number; empty takes it out. */
+function ParentEditor({ current }: { current: number | null }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="xs">
+          <Pencil size={12} />
+          Edit
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end">
+        <Form method="post" className="space-y-2.5">
+          <input type="hidden" name="action" value="parent" />
+          <Label htmlFor="parent">Sub-item of</Label>
+          <Input id="parent" name="parent" defaultValue={current ? `#${current}` : ""} placeholder="#212" autoComplete="off" />
+          <p className="text-xs text-muted">The work item of this workspace it is part of. Leave it empty for none.</p>
+          <SubmitButton size="sm" match={{ action: "parent" }} pending="Saving…">
+            Save
+          </SubmitButton>
+        </Form>
+      </PopoverContent>
+    </Popover>
   );
 }
 

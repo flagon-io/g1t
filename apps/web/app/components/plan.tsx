@@ -5,7 +5,7 @@ import { Link } from "react-router";
 import { type Appetite, type Hill, type Horizon, type Progress as Standing, type WorkItem, appetiteLetter, hillLabel, horizonLabel } from "@g1t/contracts";
 
 import { HarnessMark, StateDot } from "./sessions";
-import { RepoChips } from "./work-items";
+import { ParentMark, RepoChips, SubItemsMark } from "./work-items";
 import { Avatar } from "./ui/avatar";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -249,6 +249,8 @@ export type RowDrag = {
  * and title, its repositories, what it waits on, who is on it, its
  * appetite, and its menu. In Now, also how it stands (`progress`): its
  * hill, whether it has gone quiet, and where it stands under its title.
+ * A parent shows how far along its sub-items are, and a sub-item its
+ * parent; grouped under its parent, a sub-item is indented (`depth`).
  */
 export function PlanRow({
   item,
@@ -259,6 +261,7 @@ export function PlanRow({
   drag,
   menu,
   progress,
+  depth = 0,
 }: {
   item: WorkItem;
   rank: number | null;
@@ -269,8 +272,12 @@ export function PlanRow({
   drag?: RowDrag;
   menu?: ReactNode;
   progress?: Standing;
+  /** How deep it sits under a parent shown above it, when the plan groups sub-items. */
+  depth?: number;
 }) {
   const quiet = progress?.quiet ?? false;
+  const family = item.parent != null || item.subItemProgress != null;
+  const indent = Math.min(depth, 3) * 1.25;
   return (
     <li
       draggable={drag?.draggable || undefined}
@@ -295,7 +302,8 @@ export function PlanRow({
         )}
         {rank ?? ""}
       </span>
-      <div className="min-w-0">
+      <div className="relative min-w-0" style={indent > 0 ? { paddingLeft: `${indent}rem` } : undefined}>
+        {indent > 0 && <CornerDownRight size={12} aria-hidden className="absolute top-1 text-faint" style={{ left: `${indent - 1}rem` }} />}
         {/* One line on a computer; two on a phone, where the title has less room. */}
         <Link
           to={itemPath(workspace, item.number)}
@@ -311,7 +319,7 @@ export function PlanRow({
           {item.title}
         </Link>
         {progress && <StandingText standing={progress} className="mt-0.5 line-clamp-2" />}
-        {(progress || item.repos.length > 0 || waiting.length > 0 || quiet || (on && (on.people.length > 0 || on.sessions.length > 0))) && (
+        {(progress || family || item.repos.length > 0 || waiting.length > 0 || quiet || (on && (on.people.length > 0 || on.sessions.length > 0))) && (
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-faint">
             {/* On a phone the hill goes under the title, in words, where there is room for it. */}
             {progress && (
@@ -319,6 +327,9 @@ export function PlanRow({
                 <HillMark hill={progress.hill} label />
               </span>
             )}
+            {/* Grouped under its parent, the parent is the row above it. */}
+            {depth === 0 && <ParentMark parent={item.parent} workspace={workspace} />}
+            <SubItemsMark progress={item.subItemProgress} />
             <RepoChips repos={item.repos} workspace={workspace} max={1} />
             {progress && <QuietBadge progress={progress} />}
             {waiting.length > 0 && (

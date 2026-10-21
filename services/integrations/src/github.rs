@@ -821,6 +821,7 @@ impl GithubApp {
                     body,
                     labels: labels_of(issue),
                     milestone: None,
+                    parent: None,
                 },
             )
             .await?;
@@ -843,6 +844,9 @@ impl GithubApp {
                         },
                         repo: None,
                         commit: None,
+                        // Closed on GitHub: its sub-items stay as they are.
+                        sub_items: Some(g1t_contracts::work::OpenSubItems::Leave),
+                        move_to: None,
                     },
                 )
                 .await?;

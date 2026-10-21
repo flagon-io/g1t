@@ -4,11 +4,11 @@
  * computer and as a sheet that rises from the bottom on a phone. Where
  * Work's pages are, and the filters, are worked out in lib/work-items.ts.
  */
-import { Check, GitPullRequest, MessageSquare, Milestone as MilestoneIcon, SlidersHorizontal, X } from "lucide-react";
+import { ArrowUp, Check, GitPullRequest, MessageSquare, Milestone as MilestoneIcon, SlidersHorizontal, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Link } from "react-router";
 
-import { type ItemRepo, type Label, type LinkRole, type Milestone, type WorkItem, appetiteLetter } from "@g1t/contracts";
+import { type ItemRepo, type Label, type LinkRole, type Milestone, type SubItemProgress, type WorkItem, appetiteLetter } from "@g1t/contracts";
 
 import { FilterMenu, LabelChip, Swatch } from "./labels";
 import { BottomSheet } from "./mobile";
@@ -31,6 +31,8 @@ import {
   itemPath,
   repoChips,
   shortPath,
+  subItemsDone,
+  subItemsShare,
   workListPath,
 } from "../lib/work-items";
 
@@ -81,6 +83,56 @@ export function RepoChips({ repos, workspace, max = 2, className }: { repos: Ite
         </Hint>
       )}
     </span>
+  );
+}
+
+/**
+ * How far along a parent's sub-items are, compactly: a small bar and
+ * "3/7", in the merged color once all are done. Nothing for an item with
+ * no sub-items.
+ */
+export function SubItemsMark({ progress, className }: { progress: SubItemProgress | null | undefined; className?: string }) {
+  if (!progress || progress.total === 0) return null;
+  const finished = progress.done >= progress.total;
+  const words = `Sub-items: ${subItemsDone(progress)}`;
+  return (
+    <Hint label={words}>
+      <span className={cn("inline-flex shrink-0 items-center gap-1 text-[0.6875rem] tabular-nums", finished ? "text-merged" : "text-muted", className)}>
+        <span aria-hidden className="inline-block h-1 w-6 overflow-hidden rounded-full bg-line">
+          <span className={cn("block h-full rounded-full", finished ? "bg-merged" : "bg-accent")} style={{ width: `${subItemsShare(progress)}%` }} />
+        </span>
+        <span aria-hidden>
+          {progress.done}/{progress.total}
+        </span>
+        <span className="sr-only">{words}</span>
+      </span>
+    </Hint>
+  );
+}
+
+/**
+ * The parent of a sub-item, compactly: "↑ #212", linking to it unless it
+ * sits inside a link already (`link={false}`, as a Work list row does).
+ */
+export function ParentMark({ parent, workspace, link = true }: { parent: number | null | undefined; workspace: string; link?: boolean }) {
+  if (parent == null) return null;
+  const mark = (
+    <>
+      <ArrowUp size={11} className="shrink-0" aria-hidden />#{parent}
+      <span className="sr-only"> is its parent</span>
+    </>
+  );
+  const className = "inline-flex shrink-0 items-center gap-0.5 text-[0.6875rem] tabular-nums text-muted";
+  return (
+    <Hint label={`Sub-item of #${parent}`}>
+      {link ? (
+        <Link to={itemPath(workspace, parent)} prefetch="intent" className={cn(className, "hover:text-accent")}>
+          {mark}
+        </Link>
+      ) : (
+        <span className={className}>{mark}</span>
+      )}
+    </Hint>
   );
 }
 
@@ -137,6 +189,8 @@ export function WorkItemRow({ item, colors }: { item: WorkItem; colors: LabelCol
             <span className="hidden whitespace-nowrap sm:inline">
               {item.state === "closed" ? "closed" : "opened"} by {item.author.username}
             </span>
+            <ParentMark parent={item.parent} workspace={item.workspace} link={false} />
+            <SubItemsMark progress={item.subItemProgress} />
             <RepoChips repos={item.repos} workspace={item.workspace} />
             {item.milestone && (
               <span className="inline-flex min-w-0 items-center gap-1">
@@ -297,6 +351,7 @@ export function WorkFiltersBar({ workspace, filters, choices }: { workspace: str
             }))}
           />
         )}
+        {filters.parent && <ParentFilterChip parent={filters.parent} clearTo={to({ parent: null })} />}
         {filtered(filters) && (
           <Link to={clear} className="text-xs text-muted hover:text-fg">
             Clear filters
@@ -311,6 +366,7 @@ export function WorkFiltersBar({ workspace, filters, choices }: { workspace: str
           {count > 0 && <span className="rounded-full bg-accent px-1.5 text-[0.6875rem] leading-4.5 font-bold text-bg tabular-nums">{count}</span>}
         </Button>
         {filters.horizon && <Badge tone="accent">{HORIZON_LABELS[filters.horizon]}</Badge>}
+        {filters.parent && <ParentFilterChip parent={filters.parent} clearTo={to({ parent: null })} />}
         {filters.repo && (
           <span className="min-w-0 truncate font-mono text-xs text-muted">
             {shortPath(filters.repo, workspace)}
@@ -410,6 +466,22 @@ export function WorkFiltersBar({ workspace, filters, choices }: { workspace: str
         )}
       </BottomSheet>
     </>
+  );
+}
+
+/** The list filtered to one item's sub-items (`parent:212`), which has no menu: said as a chip, with a cross to clear it. */
+function ParentFilterChip({ parent, clearTo }: { parent: number; clearTo: string }) {
+  return (
+    <span className="inline-flex h-8 items-center gap-1 rounded-md border border-accent/40 bg-accent/5 pr-1 pl-2.5 text-sm max-sm:h-10">
+      Sub-items of #{parent}
+      <Link
+        to={clearTo}
+        aria-label={`Show more than the sub-items of #${parent}`}
+        className="inline-flex size-6 items-center justify-center rounded text-muted hover:text-fg"
+      >
+        <X size={13} />
+      </Link>
+    </span>
   );
 }
 

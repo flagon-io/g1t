@@ -15,6 +15,7 @@ import {
   daysSince,
   duplicateComment,
   dropPosition,
+  groupSubItems,
   hillStep,
   listRedirect,
   menuHorizons,
@@ -26,6 +27,8 @@ import {
   onItems,
   parseBudget,
   planInput,
+  planOptions,
+  planOptionsPath,
   planPath,
   progressOf,
   quietLine,
@@ -106,6 +109,8 @@ test("an old link to the list with filters goes to All items with the same query
   assert.equal(at("q=is%3Aclosed+label%3Abug"), "/acme/-/work/all?q=is%3Aclosed+label%3Abug");
   assert.equal(at("assignee=ana"), "/acme/-/work/all?assignee=ana");
   assert.equal(at("milestone=3&_routes=x"), "/acme/-/work/all?milestone=3");
+  assert.equal(at("group=1&all=1"), null);
+  assert.equal(at("parent=212"), "/acme/-/work/all?parent=212");
 });
 
 test("Now's cap says how full it is and warns only past it", () => {
@@ -293,4 +298,35 @@ test("accepting a suggestion moves it where it says, at the bottom, with its app
   assert.equal(canAccept({ horizon: "now" }, true), true);
   assert.equal(canAccept({ horizon: "next" }, false), true);
   assert.equal(duplicateComment(12), "Duplicate of #12");
+});
+
+test("the Plan keeps its options in its address", () => {
+  assert.deepEqual(planOptions(new URLSearchParams("")), { all: false, group: false });
+  assert.deepEqual(planOptions(new URLSearchParams("all=1&group=1")), { all: true, group: true });
+  assert.equal(planOptionsPath("acme", { all: false, group: false }, { group: true }), "/acme/-/work?group=1");
+  assert.equal(planOptionsPath("acme", { all: true, group: true }, { all: false }), "/acme/-/work?group=1");
+  assert.equal(planOptionsPath("acme", { all: true, group: true }, { group: false }), "/acme/-/work?all=1");
+});
+
+test("grouped, a sub-item sits under its parent when both are in the horizon, and the rest stay in order", () => {
+  const rows = (items: WorkItem[]) => groupSubItems(items).map((row) => [row.item.number, row.depth, row.index]);
+  // #3 is under #1, #4 under #3; #5's parent is not in this horizon, so it stays where it is.
+  const items = [item(1), item(2), item(3, { parent: 1 }), item(4, { parent: 3 }), item(5, { parent: 99 })];
+  assert.deepEqual(rows(items), [
+    [1, 0, 0],
+    [3, 1, 2],
+    [4, 2, 3],
+    [2, 0, 1],
+    [5, 0, 4],
+  ]);
+  // A sub-item ranked above its parent still goes under it.
+  assert.deepEqual(rows([item(7, { parent: 8 }), item(8)]), [
+    [8, 0, 1],
+    [7, 1, 0],
+  ]);
+  // A loop starts from its first item rather than being lost.
+  assert.deepEqual(rows([item(1, { parent: 2 }), item(2, { parent: 1 })]), [
+    [1, 0, 0],
+    [2, 1, 1],
+  ]);
 });

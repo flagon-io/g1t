@@ -2,26 +2,47 @@ import * as Clipboard from "expo-clipboard";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";
 import * as WebBrowser from "expo-web-browser";
-import { CircleCheck, CircleDot, CircleX, Copy, ExternalLink, FolderGit2, Link2, Plus, Search, Unlink } from "lucide-react-native";
+import {
+  CircleCheck,
+  CircleDot,
+  CircleX,
+  Copy,
+  CornerDownRight,
+  CornerLeftUp,
+  ExternalLink,
+  FolderGit2,
+  Link2,
+  ListPlus,
+  ListTree,
+  Plus,
+  Search,
+  SquarePen,
+  Unlink,
+} from "lucide-react-native";
 import { useState } from "react";
-import { Alert, KeyboardAvoidingView, RefreshControl, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from "react-native";
+import { Alert, KeyboardAvoidingView, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from "react-native";
 
-import { Sheet, SheetAction } from "@/components/chat/sheet";
+import { PromptSheet, Sheet, SheetAction } from "@/components/chat/sheet";
 import { Body, Checks, PullIcon, Timeline } from "@/components/code";
 import { Badge, Button, ErrorView, Loading, Row, Screen, SectionHeader, Text } from "@/components/ui";
-import { Chip, CommentBar, ItemIcon, repoName, roleLabel, stateLabel } from "@/components/work";
+import { Chip, CommentBar, ItemIcon, ProgressBar, repoName, roleLabel, stateLabel } from "@/components/work";
+import { ApiError } from "@/lib/client";
 import { useRepos } from "@/lib/code";
 import { siteUrl } from "@/lib/server";
 import { useSignedIn } from "@/lib/session";
+import { type SubItemChoice, openSubItems, openSubItemsLabel, parseNumber, progressLabel, progressOf } from "@/lib/sub-items";
 import { ago } from "@/lib/time";
-import { type ApiItemRepo, type ApiWorkPull, type ApiWorkRepo, useItemActions, useWorkContext, useWorkItem } from "@/lib/work";
+import { type ApiItemRepo, type ApiWorkPull, type ApiWorkRepo, type CloseReason, useItemActions, useWorkContext, useWorkItem } from "@/lib/work";
 import { radius, space, useColors } from "@/theme";
 
 /**
- * A work item: what it asks for, the repositories it is linked to (where
- * it came from, where it is meant to land, and what has landed where),
- * each one's pull requests for it, and its conversation. The bar at the
- * foot comments, and its ⋯ closes, reopens and links a repository.
+ * A work item: what it asks for, the work item it is a sub-item of, its
+ * own sub-items and how far along they are, the repositories it is linked
+ * to (where it came from, where it is meant to land, and what has landed
+ * where), each one's pull requests for it, and its conversation. The bar
+ * at the foot comments, and its ⋯ closes, reopens, links a repository and
+ * adds a sub-item. Closing it with open sub-items asks what to do with
+ * them: leave them open, close them too, or move them to another item.
  */
 export default function WorkItem() {
   const params = useLocalSearchParams<{ number: string; workspace?: string }>();
@@ -36,6 +57,10 @@ export default function WorkItem() {
   const [more, setMore] = useState(false);
   const [linking, setLinking] = useState(false);
   const [picked, setPicked] = useState<ApiItemRepo | null>(null);
+  // Closing with open sub-items: the reason, and g1t's word on them when it refused.
+  const [closing, setClosing] = useState<{ reason: CloseReason; message?: string } | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [prompt, setPrompt] = useState<{ kind: "move"; reason: CloseReason } | { kind: "parent" } | { kind: "sub_item" } | null>(null);
 
   const title = <Stack.Screen options={{ title: `#${number}` }} />;
   if (detail.isPending || detail.error) {
@@ -48,6 +73,10 @@ export default function WorkItem() {
   }
 
   const { item, comments } = detail.data;
+  const parent = detail.data.parent ?? context.data?.parent ?? (item.parent ? { number: item.parent, title: "", state: "open" as const } : null);
+  const subItems = detail.data.sub_items ?? context.data?.sub_items ?? [];
+  const progress = item.sub_item_progress ?? progressOf(subItems);
+  const stillOpen = openSubItems(subItems);
   const by = item.author.display_username ?? item.author.username;
   const refs = { workspace };
   const sitePath = `/${workspace}/-/work/${number}`;
@@ -58,9 +87,37 @@ export default function WorkItem() {
   const suggested = (context.data?.suggested_targets ?? []).filter((one) => !linked.has(one.path.toLowerCase()));
 
   const failed = (what: string) => (error: unknown) => Alert.alert(what, error instanceof Error ? error.message : "Something went wrong.");
-  const close = (reason: "completed" | "not_planned") => {
+  const close = (reason: CloseReason, subItemsTo?: SubItemChoice, moveTo?: number) => {
     setMore(false);
-    actions.close.mutate(reason, { onError: failed("Could not close it") });
+    // Open sub-items are never closed silently: say what becomes of them first.
+    if (!subItemsTo && stillOpen.length) return setClosing({ reason });
+    actions.close.mutate(
+      { reason, sub_items: subItemsTo, move_to: moveTo },
+      {
+        onError: (error) =>
+          // g1t knows of open sub-items this screen has not read yet: its first sentence names them.
+          error instanceof ApiError && error.status === 409 && !subItemsTo
+            ? setClosing({ reason, message: error.message.split(/(?<=\.)\s/)[0] })
+            : failed("Could not close it")(error),
+      },
+    );
+  };
+  const choose = (choice: SubItemChoice) => {
+    if (!closing) return;
+    setClosing(null);
+    if (choice === "move") setPrompt({ kind: "move", reason: closing.reason });
+    else close(closing.reason, choice);
+  };
+  const openItem = (other: number) => router.push({ pathname: "/work/[number]", params: { number: String(other), workspace } });
+  const answer = (value: string) => {
+    const asked = prompt;
+    const other = parseNumber(value);
+    if (!asked) return;
+    if (other === null) return Alert.alert("Not a work item number", "Type its number, such as 212.");
+    setPrompt(null);
+    if (asked.kind === "move") close(asked.reason, "move", other);
+    else if (asked.kind === "parent") actions.setParent.mutate(other, { onError: failed("Could not make it a sub-item") });
+    else actions.addSubItem.mutate(other, { onError: failed("Could not add the sub-item") });
   };
   const reopen = () => {
     setMore(false);
@@ -93,6 +150,23 @@ export default function WorkItem() {
           }
         >
           <View style={{ gap: space.sm }}>
+            {parent ? (
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel={`Sub-item of #${parent.number} ${parent.title}`}
+                onPress={() => openItem(parent.number)}
+                style={({ pressed }) => [styles.parent, { opacity: pressed ? 0.6 : 1 }]}
+              >
+                <CornerLeftUp size={14} color={colors.muted} />
+                <Text size="small" tone="muted" numberOfLines={1} style={{ flexShrink: 1 }}>
+                  Sub-item of{" "}
+                  <Text size="small" style={{ color: colors.accent, fontWeight: "600" }}>
+                    #{parent.number}
+                    {parent.title ? ` ${parent.title}` : ""}
+                  </Text>
+                </Text>
+              </Pressable>
+            ) : null}
             <Text size="heading" selectable>
               {item.title}
             </Text>
@@ -119,6 +193,29 @@ export default function WorkItem() {
           </View>
 
           <Body text={item.body} refs={refs} />
+
+          {subItems.length ? (
+            <View style={{ marginHorizontal: -space.lg }}>
+              <SectionHeader title={progress ? `Sub-items · ${progressLabel(progress)}` : "Sub-items"} />
+              {progress ? (
+                <View style={{ paddingHorizontal: space.lg, paddingBottom: space.sm }}>
+                  <ProgressBar progress={progress} />
+                </View>
+              ) : null}
+              {subItems.map((sub) => (
+                <Row
+                  key={sub.number}
+                  leading={<ItemIcon item={{ state: sub.state, reason: null }} size={18} />}
+                  title={sub.title}
+                  subtitle={`#${sub.number} · ${sub.state === "open" ? "Open" : "Closed"}`}
+                  onPress={() => openItem(sub.number)}
+                />
+              ))}
+              <View style={{ paddingHorizontal: space.lg, paddingTop: space.md }}>
+                <Button title="Add a sub-item" variant="secondary" icon={ListPlus} onPress={() => setAdding(true)} />
+              </View>
+            </View>
+          ) : null}
 
           <View style={{ marginHorizontal: -space.lg }}>
             <SectionHeader title="Repositories" />
@@ -218,6 +315,33 @@ export default function WorkItem() {
           }}
         />
         <SheetAction
+          icon={ListPlus}
+          label="Add a sub-item"
+          onPress={() => {
+            setMore(false);
+            setAdding(true);
+          }}
+        />
+        {parent ? (
+          <SheetAction
+            icon={Unlink}
+            label={`Take it out of #${parent.number}`}
+            onPress={() => {
+              setMore(false);
+              actions.setParent.mutate(null, { onError: failed("Could not take it out") });
+            }}
+          />
+        ) : (
+          <SheetAction
+            icon={ListTree}
+            label="Make it a sub-item of…"
+            onPress={() => {
+              setMore(false);
+              setPrompt({ kind: "parent" });
+            }}
+          />
+        )}
+        <SheetAction
           icon={Copy}
           label="Copy link"
           onPress={() => {
@@ -263,6 +387,57 @@ export default function WorkItem() {
           </>
         ) : null}
       </Sheet>
+
+      <Sheet visible={closing !== null} onClose={() => setClosing(null)}>
+        <View style={{ paddingHorizontal: space.lg, gap: space.xs }}>
+          <Text size="heading">Close #{number}</Text>
+          <Text size="small" tone="muted">
+            {closing?.message ?? openSubItemsLabel(number, stillOpen)} What happens to them?
+          </Text>
+        </View>
+        <SheetAction icon={CircleDot} label="Leave them open" onPress={() => choose("leave")} />
+        <SheetAction icon={CircleCheck} label="Close them too" onPress={() => choose("close")} />
+        <SheetAction icon={CornerDownRight} label="Move them to another work item" onPress={() => choose("move")} />
+      </Sheet>
+
+      <Sheet visible={adding} onClose={() => setAdding(false)}>
+        <Text size="heading" style={{ paddingHorizontal: space.lg }}>
+          Add a sub-item
+        </Text>
+        <SheetAction
+          icon={SquarePen}
+          label="New work item"
+          onPress={() => {
+            setAdding(false);
+            router.push({ pathname: "/work/new", params: { workspace, parent: String(number) } });
+          }}
+        />
+        <SheetAction
+          icon={ListTree}
+          label="One that exists, by number"
+          onPress={() => {
+            setAdding(false);
+            setPrompt({ kind: "sub_item" });
+          }}
+        />
+      </Sheet>
+
+      <PromptSheet
+        visible={prompt !== null}
+        title={prompt?.kind === "move" ? "Move them to" : prompt?.kind === "parent" ? "Make it a sub-item of" : "Add a sub-item"}
+        label={
+          prompt?.kind === "move"
+            ? `The open sub-items become sub-items of this work item, and #${number} closes.`
+            : prompt?.kind === "parent"
+              ? "The work item it is part of, by number."
+              : `The work item to put under #${number}, by number.`
+        }
+        placeholder="212"
+        numeric
+        confirm={prompt?.kind === "move" ? "Move and close" : prompt?.kind === "parent" ? "Make it a sub-item" : "Add"}
+        onCancel={() => setPrompt(null)}
+        onDone={answer}
+      />
 
       <LinkSheet visible={linking} linked={linked} onClose={() => setLinking(false)} onPick={link} />
     </Screen>
@@ -324,5 +499,6 @@ function LinkSheet({ visible, linked, onClose, onPick }: { visible: boolean; lin
 const styles = StyleSheet.create({
   content: { padding: space.lg, gap: space.lg, paddingBottom: space.xl },
   wrap: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 },
+  parent: { flexDirection: "row", alignItems: "center", gap: 4 },
   search: { flexDirection: "row", alignItems: "center", gap: space.sm, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: space.md },
 });

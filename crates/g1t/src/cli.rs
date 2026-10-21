@@ -1259,9 +1259,18 @@ Examples:
     New(WorkNewArgs),
     /// Comment on a work item.
     Comment(WorkCommentArgs),
-    /// Change a work item's title, body, labels, assignees or milestone.
+    /// Change a work item's title, body, labels, assignees, milestone or parent.
+    #[command(after_help = "\nWith --parent, it becomes a sub-item of that work item; --remove-parent takes it out.
+Examples:
+  g1t work edit 228 --parent 212
+  g1t work edit 228 --remove-parent")]
     Edit(WorkEditArgs),
     /// Close a work item.
+    #[command(after_help = "\nA work item with open sub-items never closes them silently: say what to do with them with
+--sub-items (leave them open, close them too, or move them to --move-to). Asked when not given.
+Examples:
+  g1t work close 212 --sub-items leave
+  g1t work close 212 --sub-items move --move-to 219")]
     Close(WorkCloseArgs),
     /// Reopen a work item.
     Reopen(ReopenArgs),
@@ -1392,6 +1401,9 @@ pub struct WorkListArgs {
     /// Only open work items on this horizon of the plan, in the plan's order.
     #[arg(short = 'H', long, value_enum)]
     pub horizon: Option<Horizon>,
+    /// Only the sub-items of the work item of this number.
+    #[arg(short, long)]
+    pub parent: Option<u64>,
     #[arg(short = 'L', long, default_value_t = 20)]
     pub limit: usize,
 }
@@ -1503,6 +1515,9 @@ pub struct WorkNewArgs {
     /// A workspace milestone's number.
     #[arg(short, long)]
     pub milestone: Option<u64>,
+    /// File it as a sub-item of the work item of this number.
+    #[arg(short, long)]
+    pub parent: Option<u64>,
     /// Open the new work item page in the browser instead.
     #[arg(short, long)]
     pub web: bool,
@@ -1540,6 +1555,33 @@ pub struct WorkCloseArgs {
     /// nothing else is left to land.
     #[arg(long)]
     pub commit: Option<String>,
+    /// What to do with its sub-items that are still open.
+    #[arg(long, value_enum)]
+    pub sub_items: Option<OpenSubItems>,
+    /// With --sub-items move: the number of the work item they become sub-items of.
+    #[arg(long, value_name = "NUMBER")]
+    pub move_to: Option<u64>,
+}
+
+/// What closing a work item does with its open sub-items.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum OpenSubItems {
+    /// They stay open, still its sub-items.
+    Leave,
+    /// They close too, and so do theirs.
+    Close,
+    /// They move to the work item --move-to names.
+    Move,
+}
+
+impl OpenSubItems {
+    pub fn name(self) -> &'static str {
+        match self {
+            OpenSubItems::Leave => "leave",
+            OpenSubItems::Close => "close",
+            OpenSubItems::Move => "move",
+        }
+    }
 }
 
 #[derive(Debug, Args)]
@@ -1563,6 +1605,12 @@ pub struct WorkEditArgs {
     /// Take it out of its milestone.
     #[arg(long, conflicts_with = "milestone")]
     pub remove_milestone: bool,
+    /// Make it a sub-item of the work item of this number.
+    #[arg(short, long)]
+    pub parent: Option<u64>,
+    /// Take it out of its parent.
+    #[arg(long, conflicts_with = "parent")]
+    pub remove_parent: bool,
 }
 
 #[derive(Debug, Args)]

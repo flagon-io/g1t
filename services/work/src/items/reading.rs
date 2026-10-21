@@ -19,7 +19,8 @@ use crate::{LIST_PAGE, Work, optional, optional_number, state_name};
 /// role on), at most `?10`. With `?11`, only those closed since then, the
 /// most recently closed first; with `?12`, only those numbered below it.
 /// With `?13`, only open ones on that horizon of the plan, in the plan's
-/// order (plan.rs).
+/// order (plan.rs). With `?14`, only the sub-items of the work item of that
+/// number.
 const LIST_SQL: &str = "SELECT {ITEM_COLUMNS} FROM work_items
      WHERE workspace = ?1 AND (?2 IS NULL OR state = ?2)
        AND (?3 IS NULL OR EXISTS (SELECT 1 FROM json_each(work_items.labels) WHERE json_each.value = ?3))
@@ -33,6 +34,7 @@ const LIST_SQL: &str = "SELECT {ITEM_COLUMNS} FROM work_items
        AND (?11 IS NULL OR closed_at >= ?11)
        AND (?12 IS NULL OR number < ?12)
        AND (?13 IS NULL OR (state = 'open' AND COALESCE(horizon, 'triage') = ?13))
+       AND (?14 IS NULL OR parent_id = (SELECT p.id FROM work_items p WHERE p.workspace = ?1 AND p.number = ?14))
      ORDER BY CASE WHEN ?11 IS NULL THEN NULL ELSE closed_at END DESC,
        CASE WHEN ?13 IS NULL THEN NULL ELSE urgent END DESC,
        CASE WHEN ?13 IS NULL THEN NULL ELSE rank IS NULL END,
@@ -229,6 +231,7 @@ impl Work {
                 optional(&a.closed_since.map(|at| at.trim().to_owned()).filter(|at| !at.is_empty())),
                 optional_number(if a.horizon.is_some() { None } else { a.before }),
                 a.horizon.map_or(JsValue::NULL, |horizon| horizon.as_str().into()),
+                optional_number(a.parent),
             ])?;
         let rows = self.timing.db(1, query.all()).await?.results::<ItemRow>()?;
         Ok(Outcome::Ok(
@@ -266,7 +269,8 @@ impl Work {
                 comment.body = redact_paths(&comment.body, &hidden);
             }
         }
-        Ok(Outcome::Ok(WorkItemDetail { item: held.shown(a.viewer.as_ref()), pulls, comments, reactions }))
+        let (parent, sub_items) = self.parent_and_sub_items(&held, a.viewer.as_ref()).await?;
+        Ok(Outcome::Ok(WorkItemDetail { item: held.shown(a.viewer.as_ref()), pulls, comments, reactions, parent, sub_items }))
     }
 
     /// The paths (`owner/name`) of the repositories of `held`'s workspace,
@@ -352,8 +356,20 @@ mod tests {
 
     /// The numbers `list_work_items` reads for acme as a member, in its order.
     fn listed(db: &Connection, state: Option<&str>, limit: u32, closed_since: Option<&str>, before: Option<u32>) -> Vec<u32> {
+        listed_under(db, state, limit, closed_since, before, None)
+    }
+
+    /// As [`listed`], only the sub-items of `parent` when given.
+    fn listed_under(
+        db: &Connection,
+        state: Option<&str>,
+        limit: u32,
+        closed_since: Option<&str>,
+        before: Option<u32>,
+        parent: Option<u32>,
+    ) -> Vec<u32> {
         let sql = LIST_SQL.replace("{ITEM_COLUMNS}", ITEM_COLUMNS);
-        let values: [&dyn ToSql; 13] = [&"acme", &state, &None::<String>, &None::<u32>, &None::<String>, &None::<String>, &None::<String>, &1, &"[]", &limit, &closed_since, &before, &None::<String>];
+        let values: [&dyn ToSql; 14] = [&"acme", &state, &None::<String>, &None::<u32>, &None::<String>, &None::<String>, &None::<String>, &1, &"[]", &limit, &closed_since, &before, &None::<String>, &parent];
         let mut statement = db.prepare(&sql).unwrap();
         let numbers = statement.query_map(&values[..], |row| row.get::<_, u32>("number")).unwrap();
         numbers.map(Result::unwrap).collect()
@@ -369,6 +385,17 @@ mod tests {
         assert_eq!(listed(&db, None, 2, None, Some(2)), [1]);
         // Closed since a time: the most recently closed first, older ones left out.
         assert_eq!(listed(&db, Some("closed"), 100, Some("2026-10-04T00:00:00Z"), None), [3, 5]);
+    }
+
+    #[test]
+    fn parent_lists_only_its_sub_items() {
+        let db = acme();
+        db.execute_batch("UPDATE work_items SET parent_id = 'wki_1' WHERE number IN (2, 4); UPDATE work_items SET parent_id = 'wki_2' WHERE number = 5;")
+            .unwrap();
+        assert_eq!(listed_under(&db, None, 100, None, None, Some(1)), [4, 2]);
+        assert_eq!(listed_under(&db, Some("open"), 100, None, None, Some(1)), [2]);
+        // Not their sub-items' sub-items, and none for one that has none.
+        assert_eq!(listed_under(&db, None, 100, None, None, Some(3)), Vec::<u32>::new());
     }
 
     /// Whether each of work item 2's links says its repository is deleted, by path.

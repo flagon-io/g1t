@@ -150,6 +150,13 @@ pub struct WorkItem {
     /// before this one is worked on.
     #[serde(default)]
     pub blocked_by: Vec<u32>,
+    /// The number of the work item of the workspace it is a sub-item of,
+    /// if any.
+    #[serde(default)]
+    pub parent: Option<u32>,
+    /// With sub-items: how many of them are closed, of how many.
+    #[serde(default)]
+    pub sub_item_progress: Option<super::SubItemProgress>,
     /// The agent working on it now: the one behind its newest pull request
     /// that is still in progress in a fork, such as `g1t`.
     #[serde(default)]
@@ -230,6 +237,7 @@ pub fn sort_repos(repos: &mut [ItemRepo]) {
 
 /// A work item and everything on it.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkItemDetail {
     pub item: WorkItem,
     /// Every pull request made for it, in any repository, oldest first.
@@ -238,6 +246,12 @@ pub struct WorkItemDetail {
     /// How people (and g1t) reacted to its description.
     #[serde(default)]
     pub reactions: Vec<ReactionGroup>,
+    /// The work item it is a sub-item of, when the viewer may see it.
+    #[serde(default)]
+    pub parent: Option<super::ItemBrief>,
+    /// Its sub-items the viewer may see, by number.
+    #[serde(default)]
+    pub sub_items: Vec<super::ItemBrief>,
 }
 
 // --- Arguments --------------------------------------------------------------
@@ -269,6 +283,10 @@ pub struct OpenWorkItemArgs {
     /// Triage role.
     #[serde(default)]
     pub milestone: Option<u32>,
+    /// The number of the work item of the workspace to file it as a
+    /// sub-item of. Publishes `work_item.sub_items_changed` on it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<u32>,
 }
 
 /// `list_work_items`, newest first, at most 100 (`before` pages on): a
@@ -296,6 +314,9 @@ pub struct ListWorkItemsArgs {
     /// Only those assigned to this username.
     #[serde(default)]
     pub assignee: Option<String>,
+    /// Only the sub-items of the work item of this number.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<u32>,
     /// Only those closed at or after this time (RFC 3339), the most
     /// recently closed first instead of the newest.
     #[serde(default)]
@@ -349,6 +370,10 @@ pub struct UpdateWorkItemArgs {
     /// is the item itself, or would make a cycle.
     #[serde(default)]
     pub blocked_by: Option<Vec<u32>>,
+    /// The number of the work item to make it a sub-item of; 0 takes it
+    /// out of its parent. As `set_work_item_parent`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<u32>,
 }
 
 /// `close_work_item` and `reopen_work_item`. Each returns
@@ -379,6 +404,13 @@ pub struct CloseWorkItemArgs {
     pub repo: Option<RepoPath>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commit: Option<String>,
+    /// What to do with its sub-items that are still open. Closing one
+    /// that has some is refused without it; a commit landing leaves them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sub_items: Option<super::OpenSubItems>,
+    /// With `sub_items` `move`: the number of the work item they move to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub move_to: Option<u32>,
 }
 
 /// `link_work_item`: links a repository to a work item as a target (or as

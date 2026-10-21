@@ -6,6 +6,9 @@ import type { ApiComment, ApiPull, ApiUser, CheckStatus } from "./code";
 import type { RefContext, RefTarget } from "./links";
 import { useSignedIn } from "./session";
 import { type ApiSessionDetail, type ApiWorkspaceSessions, ENTRY_PAGE, type SessionsFilter, isLive, sessionsQuery } from "./sessions";
+import { type ApiItemBrief, type SubItemChoice, type SubItemProgress, closeBody } from "./sub-items";
+
+export type { ApiItemBrief, SubItemChoice, SubItemProgress } from "./sub-items";
 
 /**
  * Work, through the REST API (docs.g1t.sh/reference/api/work-items/): a
@@ -47,6 +50,20 @@ export type ApiWorkItem = {
   comment_count: number;
   pull_count: number;
   repos: ApiItemRepo[];
+  /** The number of the work item it is a sub-item of, in the same workspace. */
+  parent?: number | null;
+  /** With sub-items: how many of them are closed, of how many. */
+  sub_item_progress?: SubItemProgress | null;
+};
+
+/** `GET …/work/{number}`: the item, its conversation, its parent and its sub-items. */
+export type ApiWorkItemDetail = {
+  item: ApiWorkItem;
+  comments: ApiComment[];
+  /** The work item it is a sub-item of, when you may see it. */
+  parent?: ApiItemBrief | null;
+  /** Its sub-items you may see. */
+  sub_items?: ApiItemBrief[];
 };
 
 /** A pull request for a work item, in the repository it is in. */
@@ -69,6 +86,8 @@ export type ApiWorkContext = {
   repos: ApiWorkRepo[];
   missing: string[];
   suggested_targets: ApiSuggestedTarget[];
+  parent?: ApiItemBrief | null;
+  sub_items?: ApiItemBrief[];
 };
 
 export type ApiLabel = { name: string; color: string; description: string };
@@ -130,7 +149,7 @@ export function useWorkItem(workspace: string, number: number) {
   const { client } = useSignedIn();
   return useQuery({
     queryKey: ["work", "item", workspace.toLowerCase(), number],
-    queryFn: () => client.api<{ item: ApiWorkItem; comments: ApiComment[] }>(itemPath(workspace, number)),
+    queryFn: () => client.api<ApiWorkItemDetail>(itemPath(workspace, number)),
   });
 }
 
@@ -164,21 +183,36 @@ export function useMilestones(workspace: string | undefined) {
   });
 }
 
-/** Everything that changes an item: comment, close, reopen, link and unlink a repository. */
+/**
+ * Closing an item. With open sub-items it says what to do with them
+ * (`sub_items`, and `move_to` to move them); without, g1t refuses (409).
+ */
+export type CloseInput = { reason: CloseReason; sub_items?: SubItemChoice; move_to?: number };
+
+/**
+ * Everything that changes an item: comment, close, reopen, link and
+ * unlink a repository, set or clear its parent, add a sub-item.
+ */
 export function useItemActions(workspace: string, number: number) {
   const { client } = useSignedIn();
   const queries = useQueryClient();
   const path = itemPath(workspace, number);
+  const key = workspace.toLowerCase();
+  // A parent shows its sub-items' progress, so a change here can show on other items too.
   const refresh = () =>
     Promise.all([
-      queries.invalidateQueries({ queryKey: ["work", "item", workspace.toLowerCase(), number] }),
-      queries.invalidateQueries({ queryKey: ["work", "context", workspace.toLowerCase(), number] }),
-      queries.invalidateQueries({ queryKey: ["work", "items", workspace.toLowerCase()] }),
+      queries.invalidateQueries({ queryKey: ["work", "item", key] }),
+      queries.invalidateQueries({ queryKey: ["work", "context", key] }),
+      queries.invalidateQueries({ queryKey: ["work", "items", key] }),
+      queries.invalidateQueries({ queryKey: ["work", "board", key] }),
     ]);
   const post = <T>(suffix: string, body: unknown, method = "POST") => client.api<T>(`${path}${suffix}`, { method, body: JSON.stringify(body) });
   return {
     comment: useMutation({ mutationFn: (body: string) => post<ApiComment>("/comments", { body }), onSuccess: refresh }),
-    close: useMutation({ mutationFn: (reason: CloseReason) => post<ApiWorkItem>("/close", { reason }), onSuccess: refresh }),
+    close: useMutation({
+      mutationFn: ({ reason, sub_items, move_to }: CloseInput) => post<ApiWorkItem>("/close", closeBody(reason, sub_items, move_to)),
+      onSuccess: refresh,
+    }),
     reopen: useMutation({ mutationFn: () => post<ApiWorkItem>("/reopen", {}), onSuccess: refresh }),
     link: useMutation({
       mutationFn: ({ repo, role = "target" }: { repo: string; role?: LinkRole }) => post<ApiWorkItem>("/links", { repo, role }),
@@ -188,6 +222,9 @@ export function useItemActions(workspace: string, number: number) {
       mutationFn: (repo: string) => client.api<ApiWorkItem>(`${path}/links?repo=${encodeURIComponent(repo)}`, { method: "DELETE" }),
       onSuccess: refresh,
     }),
+    /** Makes it a sub-item of another work item, or (null) takes it out of its parent. */
+    setParent: useMutation({ mutationFn: (parent: number | null) => post<ApiWorkItem>("/parent", { parent }, "PUT"), onSuccess: refresh }),
+    addSubItem: useMutation({ mutationFn: (subItem: number) => post<ApiWorkItem>("/sub_items", { sub_item: subItem }), onSuccess: refresh }),
   };
 }
 
@@ -199,6 +236,8 @@ export type NewWorkItem = {
   targets: string[];
   /** The repository it is filed from, `owner/name`, when started from one. */
   repo?: string;
+  /** The work item to file it as a sub-item of, by number. */
+  parent?: number;
 };
 
 export function useOpenWorkItem(workspace: string) {
@@ -206,7 +245,12 @@ export function useOpenWorkItem(workspace: string) {
   const queries = useQueryClient();
   return useMutation({
     mutationFn: (input: NewWorkItem) => client.api<ApiWorkItem>(workPath(workspace), { method: "POST", body: JSON.stringify(input) }),
-    onSuccess: () => queries.invalidateQueries({ queryKey: ["work", "items", workspace.toLowerCase()] }),
+    onSuccess: (_, input) =>
+      Promise.all([
+        queries.invalidateQueries({ queryKey: ["work", "items", workspace.toLowerCase()] }),
+        input.parent ? queries.invalidateQueries({ queryKey: ["work", "item", workspace.toLowerCase(), input.parent] }) : null,
+        input.parent ? queries.invalidateQueries({ queryKey: ["work", "context", workspace.toLowerCase(), input.parent] }) : null,
+      ]),
   });
 }
 

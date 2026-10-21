@@ -248,6 +248,23 @@ pub struct WorkItemEvent {
     /// On `work_item.planned`: whether it is urgent.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub urgent: Option<bool>,
+    /// On `work_item.parent_changed`: the number of the work item it is a
+    /// sub-item of now, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent: Option<u32>,
+    /// On `work_item.parent_changed`: the one it was a sub-item of, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_parent: Option<u32>,
+    /// On `work_item.sub_items_changed`: the sub-item that changed, by
+    /// number, and how: `added`, `removed`, `closed` or `reopened`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sub_item: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub change: Option<&'static str>,
+    /// On `work_item.sub_items_changed`: how far along its sub-items are
+    /// now.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub progress: Option<crate::work::SubItemProgress>,
 }
 
 /// `work.migrated`: a page of where repositories' issues went when they

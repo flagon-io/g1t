@@ -187,7 +187,10 @@ fn sample(op: Op, example: &Value) -> Value {
         | Op::ReopenWorkItem
         | Op::PlanWorkItem
         | Op::LinkWorkItem
-        | Op::UnlinkWorkItem => through::<work::WorkItem>(op, sent),
+        | Op::UnlinkWorkItem
+        | Op::SetWorkItemParent
+        | Op::AddWorkItemSubItem
+        | Op::RemoveWorkItemSubItem => through::<work::WorkItem>(op, sent),
         Op::GetPlan | Op::ConfigurePlan => through::<work::Plan>(op, sent),
         Op::NextWorkItem => through::<Option<work::WorkItem>>(op, sent),
         Op::GetWorkItem => through::<work::WorkItemDetail>(op, sent),

@@ -4,9 +4,11 @@ import { test } from "node:test";
 import type { ItemRepo } from "@g1t/contracts";
 
 import {
+  closeSubItemsOf,
   filterCount,
   emptyListTitle,
   filtered,
+  itemNumberOf,
   listPage,
   movedWorkPath,
   newItemPath,
@@ -17,6 +19,8 @@ import {
   sessionPath,
   sessionsPath,
   shortPath,
+  subItemsDone,
+  subItemsShare,
   workFilters,
   workListPath,
   workQuery,
@@ -25,7 +29,7 @@ import {
 const query = (text: string) => new URLSearchParams(text);
 
 test("the Work list's filters come from its address", () => {
-  assert.deepEqual(workFilters(query("")), { state: "open", horizon: null, label: "", milestone: null, assignee: "", repo: "", role: null });
+  assert.deepEqual(workFilters(query("")), { state: "open", horizon: null, label: "", milestone: null, assignee: "", repo: "", role: null, parent: null });
   assert.deepEqual(workFilters(query("state=closed&label=Bug&milestone=3&assignee=ana&repo=web&role=target")), {
     state: "closed",
     horizon: null,
@@ -34,6 +38,7 @@ test("the Work list's filters come from its address", () => {
     assignee: "ana",
     repo: "web",
     role: "target",
+    parent: null,
   });
   // The same written as a query, which wins over the plain parameters.
   assert.deepEqual(workFilters(query("label=docs&q=is:closed label:bug repo:acme/api role:origin assignee:@bo")), {
@@ -44,6 +49,7 @@ test("the Work list's filters come from its address", () => {
     assignee: "bo",
     repo: "acme/api",
     role: "origin",
+    parent: null,
   });
   // A role says how a repository is linked: without one it is dropped, and an unknown one is none.
   assert.equal(workFilters(query("role=target")).role, null);
@@ -110,6 +116,46 @@ test("how many filters are on, for the phone's Filters button", () => {
   assert.equal(filtered(workFilters(query("milestone=1"))), true);
 });
 
+test("the list filters to one item's sub-items, written as parent:N or parent:#N", () => {
+  assert.equal(workFilters(query("parent=212")).parent, 212);
+  assert.equal(workFilters(query("q=parent:212")).parent, 212);
+  assert.equal(workFilters(query("q=is:closed parent:#212")).parent, 212);
+  // The query wins, and what is not a number is no filter.
+  assert.equal(workFilters(query("parent=5&q=parent:#7")).parent, 7);
+  assert.equal(workFilters(query("q=parent:abc")).parent, null);
+  assert.equal(workFilters(query("parent=0")).parent, null);
+  const subs = workFilters(query("q=parent:#212"));
+  assert.equal(workQuery(subs), "parent=212");
+  assert.equal(workListPath("acme", subs, { parent: null }), "/acme/-/work/all");
+  assert.equal(filterCount(subs), 1);
+  assert.equal(filtered(subs), true);
+  assert.equal(emptyListTitle(subs, null), "No open sub-items of #212");
+  assert.equal(emptyListTitle(workFilters(query("parent=212&label=bug")), null), "No open work items match these filters");
+});
+
+test("a work item's number as a person types it", () => {
+  assert.equal(itemNumberOf("#212"), 212);
+  assert.equal(itemNumberOf(" 212 "), 212);
+  assert.equal(itemNumberOf(""), null);
+  assert.equal(itemNumberOf(undefined), null);
+  assert.equal(itemNumberOf("#"), null);
+  assert.equal(itemNumberOf("12a"), undefined);
+  assert.equal(itemNumberOf("0"), undefined);
+});
+
+test("a parent's progress, and what closing it does with its open sub-items", () => {
+  assert.equal(subItemsDone({ done: 3, total: 7 }), "3 of 7 done");
+  assert.equal(subItemsShare({ done: 3, total: 7 }), 43);
+  assert.equal(subItemsShare({ done: 0, total: 0 }), 0);
+  const form = (fields: Record<string, string>) => new URLSearchParams(fields);
+  assert.equal(closeSubItemsOf(form({})), null);
+  assert.deepEqual(closeSubItemsOf(form({ sub_items: "leave" })), { subItems: "leave" });
+  assert.deepEqual(closeSubItemsOf(form({ sub_items: "close", move_to: "9" })), { subItems: "close" });
+  assert.deepEqual(closeSubItemsOf(form({ sub_items: "move", move_to: "#212" })), { subItems: "move", moveTo: 212 });
+  assert.equal(typeof closeSubItemsOf(form({ sub_items: "move", move_to: "" })), "string");
+  assert.equal(closeSubItemsOf(form({ sub_items: "drop" })), null);
+});
+
 test("a repository's Work tab, and a new work item filed from it", () => {
   assert.equal(repoWorkPath("acme", "web"), "/acme/-/work/all?repo=web");
   assert.equal(sessionsPath("Acme"), "/acme/-/work/sessions");
@@ -117,6 +163,8 @@ test("a repository's Work tab, and a new work item filed from it", () => {
   assert.equal(sessionPath("Acme", "ses_1"), "/acme/-/work/sessions/ses_1");
   assert.equal(newItemPath("Acme"), "/acme/-/work/new");
   assert.equal(newItemPath("acme", "web"), "/acme/-/work/new?repo=web");
+  assert.equal(newItemPath("acme", "web", 212), "/acme/-/work/new?repo=web&parent=212");
+  assert.equal(newItemPath("acme", null, 212), "/acme/-/work/new?parent=212");
   assert.deepEqual(repoFilter("acme", "web"), { namespace: "acme", name: "web" });
   assert.deepEqual(repoFilter("acme", "Beta/api"), { namespace: "beta", name: "api" });
   assert.equal(repoFilter("acme", "a/b/c"), null);

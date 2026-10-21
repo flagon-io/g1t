@@ -64,6 +64,10 @@ impl Work {
         if let Err(error) = resolved.await {
             worker::console_error!("#{number} resolved, but its dependents were not told: {error}");
         }
+        // Its parent hears that one of its sub-items closed.
+        if closed {
+            items::sub_item_resolved(self, held, actor, true).await;
+        }
     }
 
     /// The work items of `workspace` that `numbers` names and `viewer` may

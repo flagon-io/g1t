@@ -10,7 +10,8 @@ use serde::{Deserialize, Serialize};
 use crate::rows::{milestone_ref, requester, user};
 
 /// A work item's columns, with what it is read with: its counts, agent,
-/// milestone's title, blockers by number and links.
+/// milestone's title, blockers by number, parent by number, how many of
+/// its sub-items are closed of how many, and links.
 pub(crate) const ITEM_COLUMNS: &str = "work_items.*,
   (SELECT count(*) FROM pulls WHERE pulls.item_id = work_items.id) AS pull_count,
   (SELECT agent FROM pulls
@@ -24,6 +25,9 @@ pub(crate) const ITEM_COLUMNS: &str = "work_items.*,
   (SELECT json_group_array(number) FROM
      (SELECT b.number AS number FROM json_each(work_items.blocked_by) j JOIN work_items b ON b.id = j.value
       WHERE b.number IS NOT NULL ORDER BY j.key)) AS blocked_numbers,
+  (SELECT p.number FROM work_items p WHERE p.id = work_items.parent_id) AS parent_number,
+  (SELECT count(*) FROM work_items s WHERE s.parent_id = work_items.id) AS sub_total,
+  (SELECT count(*) FROM work_items s WHERE s.parent_id = work_items.id AND s.state = 'closed') AS sub_done,
   (SELECT json_group_array(json_object('repo_id', l.repo_id, 'path', COALESCE(rw.path, l.path, ''), 'role', l.role,
       'legacy_number', l.legacy_number, 'landed', l.landed_at IS NOT NULL, 'workspace', rw.workspace,
       'private', rw.private, 'deleted', rw.deleted_at IS NOT NULL))
@@ -68,6 +72,14 @@ pub(crate) struct ItemRow {
     /// JSON array of the numbers of the work items it is blocked by.
     #[serde(default)]
     pub blocked_numbers: Option<String>,
+    /// The number of the work item it is a sub-item of.
+    #[serde(default)]
+    pub parent_number: Option<u32>,
+    #[serde(default)]
+    pub sub_total: u32,
+    /// Of its sub-items, those closed.
+    #[serde(default)]
+    pub sub_done: u32,
     /// JSON array of [`LinkRow`].
     #[serde(default)]
     pub links: Option<String>,
@@ -283,6 +295,8 @@ impl ItemRow {
                 comment_count: self.comment_count,
                 assignees: serde_json::from_str(&self.assignees).unwrap_or_default(),
                 blocked_by: self.blocked_numbers.as_deref().and_then(|json| serde_json::from_str(json).ok()).unwrap_or_default(),
+                parent: self.parent_number,
+                sub_item_progress: (self.sub_total > 0).then_some(SubItemProgress { done: self.sub_done, total: self.sub_total }),
                 agent: self.agent,
                 milestone: milestone_ref(self.milestone, self.milestone_title),
                 repos,

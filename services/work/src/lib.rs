@@ -2626,6 +2626,7 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "next_work_item" => reply(&work.next_work_item(args(body)?).await?),
         "configure_plan" => reply(&work.configure_plan(args(body)?).await?),
         "close_work_item" => reply(&work.close_work_item(args(body)?).await?),
+        "set_work_item_parent" => reply(&work.set_work_item_parent(args(body)?).await?),
         "reopen_work_item" => reply(&work.reopen_work_item(args(body)?).await?),
         "link_work_item" => reply(&work.link_work_item(args(body)?).await?),
         "unlink_work_item" => reply(&work.unlink_work_item(args(body)?).await?),

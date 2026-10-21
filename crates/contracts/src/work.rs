@@ -31,6 +31,9 @@ pub use items::*;
 mod plan;
 pub use plan::*;
 
+mod sub_items;
+pub use sub_items::*;
+
 mod workspace_sessions;
 pub use workspace_sessions::*;
 

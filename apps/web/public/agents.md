@@ -237,6 +237,12 @@ https://docs.g1t.sh/work/work-items/
   `g1t.sh/<workspace>/-/work/sessions/<id>`.
 - **Dependencies:** `PATCH {work}/{number}` with `blocked_by` (work item
   numbers) sets the work items that must land first; no cycles.
+- **Sub-items:** break work down with `PUT {work}/{number}/parent`
+  (`parent`, a work item's number, or `null`), or
+  `POST {work}/{number}/sub_items` with `sub_item`. A parent shows
+  `sub_item_progress` and is not blocked by its sub-items. Closing one with
+  open sub-items needs `sub_items` (`leave`, `close`, or `move` with
+  `move_to`).
 - **Open a pull request:** `POST {repo}/pulls` with `item` (the work
   item's number) and `agent` (the coding agent's name, such as
   `claude-code`, so people can see what made the change). Without a work
@@ -371,7 +377,8 @@ say. `session` `start` (idempotent on `harness_session_id`), `update` (a
 heartbeat), `record` (entries, idempotent on `key`) and `end` say who is
 working on what; `work_item` `release` or `handoff` (with a `note`) when
 you stop, and `work_item` `update` with `blocked_by` sets the work items
-that must land first. `pull_request` `read_session` reads a session back.
+that must land first; `parent`, `add_sub_item` and `remove_sub_item` break
+work down into sub-items. `pull_request` `read_session` reads a session back.
 `notifications` reads and answers the
 notifications of the person a token acts for: `list` (unread threads, each
 with a `reason` such as `review_requested` or `mention`), `done`,

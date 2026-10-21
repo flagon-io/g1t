@@ -71,11 +71,12 @@ Put qualifiers anywhere in the query. Most can be left out with a leading
 | `is:public`, `is:private`          | Results from public or private repositories                                                                              | Repositories, code, work items, pull requests |
 | `author:ana`                       | Opened by someone. What g1t opened is `author:g1t`, and shows who it was for                                             | Work items, pull requests                     |
 | `label:bug`                        | With a label. Quote a label with spaces: `label:"good first issue"`                                                      | Work items, pull requests                     |
+| `parent:212` or `parent:#212`      | The sub-items of work item #212 of their workspace                                                                       | Work items                                    |
 | `type:code`                        | Which tab to open: `repositories`, `code`, `items`, `pulls` or `people`                                                  | All                                           |
 
 Without a tab or `type:`, the qualifiers choose one: `path:` opens Code,
-`is:pr` opens Pull requests, `is:open`, `author:` or `label:` open Work items,
-and anything else opens Repositories. A qualifier that only one kind of
+`is:pr` opens Pull requests, `is:open`, `author:`, `label:` or `parent:` open
+Work items, and anything else opens Repositories. A qualifier that only one kind of
 result has rules the others out: a query with `path:` finds no people.
 
 Some examples:
@@ -84,6 +85,7 @@ Some examples:
 fetchEvents language:typescript path:app/
 "rate limit" org:acme is:item is:open
 crash author:ana -label:wontfix
+parent:#212 is:open
 router repo:acme/web repo:acme/api
 ```
 

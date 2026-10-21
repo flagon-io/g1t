@@ -9,6 +9,7 @@ import { Chip } from "@/components/work";
 import { useWorkspaceRepos } from "@/lib/code";
 import { originOf } from "@/lib/new-item";
 import { useSignedIn } from "@/lib/session";
+import { parseNumber } from "@/lib/sub-items";
 import { useLabels, useOpenWorkItem } from "@/lib/work";
 import { radius, space, useColors } from "@/theme";
 
@@ -17,15 +18,17 @@ import { radius, space, useColors } from "@/theme";
  * repositories where it is meant to land (none is fine: it can be linked
  * later): its own workspace's, whichever the app is in. Opened from a
  * repository (`repo`), that repository is its origin, and a target to
- * start with.
+ * start with. Opened from a work item (`parent`), it is filed as one of
+ * its sub-items.
  * Made for the on-screen keyboard: the title's return goes on to the
  * description, and Create stays in the header above the keyboard.
  */
 export default function NewWorkItem() {
-  const params = useLocalSearchParams<{ workspace?: string; repo?: string }>();
+  const params = useLocalSearchParams<{ workspace?: string; repo?: string; parent?: string }>();
   const { workspace: current } = useSignedIn();
   const workspace = params.workspace ?? current?.slug ?? "";
   const origin = originOf(workspace, params.repo) ?? undefined;
+  const parent = params.parent ? (parseNumber(params.parent) ?? undefined) : undefined;
   const colors = useColors();
   const headerHeight = useHeaderHeight();
   const [title, setTitle] = useState("");
@@ -43,7 +46,7 @@ export default function NewWorkItem() {
   const create = () => {
     if (!ready) return;
     open.mutate(
-      { title: title.trim(), body: body.trim(), labels, targets, ...(origin ? { repo: origin } : {}) },
+      { title: title.trim(), body: body.trim(), labels, targets, ...(origin ? { repo: origin } : {}), ...(parent ? { parent } : {}) },
       { onSuccess: (item) => router.replace({ pathname: "/work/[number]", params: { number: String(item.number), workspace: item.workspace } }) },
     );
   };
@@ -65,10 +68,12 @@ export default function NewWorkItem() {
           {origin ? (
             <Text size="small" tone="muted">
               Filed from {origin}
+              {parent ? ` · Sub-item of #${parent}` : ""}
             </Text>
           ) : (
             <Text size="small" tone="muted">
               In {workspace}
+              {parent ? ` · Sub-item of #${parent}` : ""}
             </Text>
           )}
           <TextInput

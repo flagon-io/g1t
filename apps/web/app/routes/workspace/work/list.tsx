@@ -68,6 +68,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
       assignee: assignee || undefined,
       repo: repo ?? undefined,
       role: filters.role ?? undefined,
+      parent: filters.parent ?? undefined,
     }),
     part(work.listLabels(workspace, viewer), "Labels"),
     part(work.listMilestones(workspace, viewer, "open"), "Milestones"),

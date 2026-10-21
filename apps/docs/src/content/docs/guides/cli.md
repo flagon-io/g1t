@@ -569,6 +569,22 @@ These change the work item's `blocked_by` through `update_work_item`. A
 work item waits only on work items of its workspace, never on itself, and
 g1t refuses a cycle.
 
+### Sub-items
+
+```sh
+g1t work new --title "Clone cache" --parent 212    # file it under #212
+g1t work edit 228 --parent 212                      # make #228 a sub-item of #212
+g1t work edit 228 --remove-parent
+g1t work list --parent 212                          # #212's sub-items
+g1t work close 212 --sub-items move --move-to 219   # close #212, its open sub-items go to #219
+```
+
+`g1t work view` says what a work item is a sub-item of and lists its
+sub-items with how many are done; `g1t work list` shows `3/7` after a
+parent's title and `↑ #212` after a sub-item's. Closing a work item that
+has open sub-items asks what to do with them at a terminal; elsewhere say
+`--sub-items leave`, `close` or `move`. See [sub-items](/work/sub-items/).
+
 ### Following events
 
 `g1t work events` prints the repository's recent events, oldest first.
