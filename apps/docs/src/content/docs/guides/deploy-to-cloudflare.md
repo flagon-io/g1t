@@ -172,13 +172,17 @@ hand (**Actions → Deploy → Run workflow**) with `units`, `all` and
 | ----------------------- | ---------------------------------------------------- |
 | `check`                 | `manifest --check` and `npm run test:deploy`         |
 | `plan`                  | The plan, shown in the run's summary                 |
+| `build`                 | Every stage's Rust Workers and sites, all at once    |
 | `migrate`               | Pending migrations; skipped when there are none      |
-| `core`, `edge`, `front` | Each stage's units, one job per build group          |
+| `core`, `edge`, `front` | Each stage's units, deployed from what `build` made  |
 | `smoke`                 | Loads the landing page, sign-in, sign-up and pricing |
 
 Deploys run one at a time; a second push waits. Rust units build on
 `g1t-4core` machines, at most four to a job, with Cargo's target and
-sccache kept in the Actions cache.
+sccache kept in the Actions cache. The build jobs start as soon as the
+plan is known and keep what they built as artifacts; each stage's jobs
+unpack theirs and deploy it with `deploy --prebuilt`, which builds
+nothing, so a stage waits only for the uploads of the one before.
 
 The deploy jobs use `environment: production`, so only they can read the
 Cloudflare token. Jobs on g1t's machines reach Cloudflare's API and

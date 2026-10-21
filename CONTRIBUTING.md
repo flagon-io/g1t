@@ -199,6 +199,12 @@ another tag's entries; a key is written once; and a repository holds
   builds in `cargo-zigbuild` (`BUILDER` in `scripts/cli-release.mjs`), and
   its cache is keyed by that digest (`zigbuild` from `ci-cache.mjs keys`)
   rather than by this machine's `rustc`.
+- **A replaced entry goes within the hour.** Each new lockfile saves a new
+  entry of every kind; the Cache tidy workflow (`.g1t/workflows/cache-tidy.yml`,
+  `ci-cache.mjs tidy`) deletes, hourly, the entries a newer one of the same
+  key less its last part has replaced, once nothing has used them for an
+  hour. Before it, two or three generations of every build filled the
+  10 GiB, and the quota took Deploy's entries first.
 
 | Entry                      | Key                                                                                     | Saved by                                      | Restored by                 |
 | -------------------------- | --------------------------------------------------------------------------------------- | --------------------------------------------- | --------------------------- |

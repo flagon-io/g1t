@@ -358,6 +358,21 @@ export function waves(units, isNew) {
   return out;
 }
 
+/**
+ * What a unit's build leaves for Wrangler to deploy (repository-relative
+ * paths), or none when Wrangler bundles it itself. A Rust Worker's is
+ * worker-build's `build/`; a React Router site's, Vite's `build/` and the
+ * Cloudflare plugin's `.wrangler/deploy/config.json`, which points Wrangler
+ * at the built Worker's config; an Astro site's, `dist/`. CI builds these
+ * before any stage deploys, and the stages deploy them (`deploy --prebuilt`).
+ */
+export function buildOutputs(unit) {
+  if (unit.kind === "rust-worker") return [`${unit.path}/build`];
+  if (unit.kind === "react-router") return [`${unit.path}/build`, `${unit.path}/.wrangler/deploy`];
+  if (unit.kind === "astro") return [`${unit.path}/dist`];
+  return [];
+}
+
 /** The most Rust workers one CI job builds; more are split across jobs. */
 export const RUST_PER_JOB = 4;
 
@@ -381,7 +396,12 @@ export function buildGroups(units, images = []) {
     add(images.includes(unit.id) ? `${unit.id}-image` : unit.kind === "ts-worker" ? "ts" : unit.id, unit.id);
   }
   // `image`: the job builds a Containers image (Docker, on a larger machine).
-  return [...groups].map(([group, ids]) => ({ group, units: ids.join(","), rust: group.startsWith("rust"), image: group.endsWith("-image") }));
+  // `prebuilt`: its units are built before any stage deploys (buildOutputs).
+  return [...groups].map(([group, ids]) => {
+    const image = group.endsWith("-image");
+    const prebuilt = !image && ids.every((id) => buildOutputs(units.find((u) => u.id === id)).length > 0);
+    return { group, units: ids.join(","), rust: group.startsWith("rust"), image, prebuilt };
+  });
 }
 
 /**
