@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   isRouteErrorResponse,
   Link,
@@ -26,9 +26,6 @@ import { SiteFooter } from "./components/footer";
 import { PublicHeader } from "./components/public-header";
 import { SpikeBanner } from "./components/spike-banner";
 import { PolicyNotice } from "./components/policy-notice";
-import { identify } from "./lib/analytics.client";
-import { visitorAsksFirst } from "./lib/analytics-consent";
-import { AnalyticsConsent } from "./components/analytics-consent";
 import { readCookie } from "./lib/mission";
 import { WORKSPACE_COOKIE, workspaceFor } from "./lib/workspace-choice";
 import { PageMain } from "./components/landmark";
@@ -149,8 +146,6 @@ export async function loader({ context, params, request }: Route.LoaderArgs) {
     // What they hear when chat moves (components/notifications/sounds.tsx).
     sounds,
     addresses: addresses(),
-    // Visitors from where the law asks first are asked before analytics runs.
-    analyticsConsent: visitorAsksFirst(request),
   };
 }
 
@@ -453,7 +448,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {/* The stylesheet before everything React Router preloads, so a slow
             connection paints sooner. */}
         <link rel="stylesheet" href={appCss} precedence="default" />
-        {root?.analyticsConsent && <meta name="g1t-analytics" content="consent" />}
         <Meta />
         <Links nonce={nonce} />
       </head>
@@ -506,7 +500,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
         )}
         {/* Inside the desktop app: its settings dialog, and the runner's menu under the title bar's dot. */}
         <DesktopApp />
-        <AnalyticsConsent />
         <ScrollRestoration nonce={nonce} />
         <Scripts nonce={nonce} />
       </body>
@@ -516,17 +509,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   const root = useRouteLoaderData<typeof loader>("root");
-  const userId = root?.user?.id ?? null;
   const agentDefault = root?.agentDefault ?? DEFAULT_AGENT;
   useEffect(() => {
     rememberAgentDefault(agentDefault);
   }, [agentDefault]);
-  // Tell analytics who is signed in, once per change; signing out forgets them.
-  const lastUserId = useRef<string | null>(null);
-  useEffect(() => {
-    identify(userId, lastUserId.current);
-    lastUserId.current = userId;
-  }, [userId]);
   // A navigation that never arrives is loaded as a whole page (lib/stuck.ts).
   useStuckNavigationRescue();
   return <Outlet />;

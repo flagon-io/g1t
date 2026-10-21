@@ -28,7 +28,7 @@ Automatic cleanup covers:
 
 The automatic path does **not** discover every occurrence of a person's information inside free text, git commits, collaborative document state/history, attachments, AI output or another user's notifications. Review these explicitly. Replacing a username with `ghost` is not proof of anonymisation. Use a scoped, reviewed data correction/removal for content that must be erased, covering current content, revision/Yjs state, exported blobs, FTS, vectors and caches. For git history, assess authorship, legal basis and downstream clones before a coordinated history rewrite. Record any permitted retention and explain it to the requester.
 
-Review copies held by Cloudflare logging/storage, HeyCatch, analytics, Google Workspace mail, Expo and any workspace-configured AI/integration providers as applicable. Removing a push token prevents future deliveries; it does not recall messages already delivered. Contact recipients where required, obtain deletion confirmations or document their bounded retention/exception, and record reference IDs rather than sensitive response bodies. No provider request is sent automatically by this code.
+Review copies held by Cloudflare logging/storage, Google Workspace mail, Expo and any workspace-configured AI/integration providers as applicable. Removing a push token prevents future deliveries; it does not recall messages already delivered. Contact recipients where required, obtain deletion confirmations or document their bounded retention/exception, and record reference IDs rather than sensitive response bodies. No provider request is sent automatically by this code.
 
 ## Backups, restores and closure
 

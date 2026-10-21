@@ -7,10 +7,10 @@
  * - No other site may put g1t's pages in a frame.
  * - A page runs only the scripts the site served it: its own files, and the
  *   inline scripts React and React Router write, each carrying the page's
- *   nonce, plus Turnstile and HeyCatch's analytics script. Styles may
- *   be inline (highlighting and layout set them); images may come from any
- *   HTTPS address (pictures in a README); requests may go to any HTTPS
- *   address (the status page's summary, analytics events).
+ *   nonce, plus Turnstile. Styles may be inline (highlighting and layout
+ *   set them); images may come from any HTTPS address (pictures in a
+ *   README); requests may go to any HTTPS address (the status page's
+ *   summary).
  */
 
 /** A fresh nonce for one page: 128 random bits, base64. */
@@ -28,9 +28,8 @@ export function pagePolicy(nonce: string, usercontent?: string): string {
   const files = usercontent && /^http:/.test(usercontent) ? ` ${new URL(usercontent).origin}` : "";
   return [
     "default-src 'self'",
-    // HeyCatch's helper for product analytics (lib/analytics.client.ts), and
     // Cloudflare Turnstile on sign-up when it is on (lib/turnstile.ts).
-    `script-src 'self' 'nonce-${nonce}' https://in.heycatch.ai https://challenges.cloudflare.com`,
+    `script-src 'self' 'nonce-${nonce}' https://challenges.cloudflare.com`,
     "style-src 'self' 'unsafe-inline'",
     `img-src 'self' https: data: blob:${files}`,
     `media-src 'self' https:${files}`,
