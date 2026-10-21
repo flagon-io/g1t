@@ -15929,5 +15929,43 @@
       }
     ],
     "notes": "Those on the work item itself, and those on each of its pull requests, in any repository."
+  },
+  "check_work_item_task": {
+    "request": {
+      "task": 3,
+      "checked": true,
+      "expected": "Document the new flag"
+    },
+    "response": {
+      "task": {
+        "number": 3,
+        "line": 5,
+        "text": "Document the new flag",
+        "checked": true
+      },
+      "changed": true,
+      "body": "Ship the new clone flag.\n\n- [x] Add --filter to clone\n  - [x] Tests for blob:none\n- [x] Document the new flag\n- [ ] Announce it",
+      "done": 3,
+      "total": 4
+    },
+    "notes": "With text instead of task (\"announce\"), the box whose text says it. Ticking a box someone ticked already answers changed false and leaves the body as it is."
+  },
+  "check_pull_request_task": {
+    "request": {
+      "text": "migration",
+      "checked": false
+    },
+    "response": {
+      "task": {
+        "number": 1,
+        "line": 3,
+        "text": "Run the migration against a copy of production",
+        "checked": false
+      },
+      "changed": true,
+      "body": "Moves sessions into their own table.\n\n- [ ] Run the migration against a copy of production\n- [x] Update the API reference",
+      "done": 1,
+      "total": 2
+    }
   }
 }

@@ -2,7 +2,7 @@ import { AlertTriangle, Check, Copy, Info, Lightbulb, Link2, MessageSquareWarnin
 import type { Root } from "hast";
 import type { Components } from "react-markdown";
 import { type ReactNode, createContext, isValidElement, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router";
+import { Link, useFetcher } from "react-router";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
@@ -10,7 +10,9 @@ import remarkGfm from "remark-gfm";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { WeightedLru } from "../lib/content-cache";
-import { type AlertKind, G1T_MENTION_HREF, type MarkdownRepo, rehypeAlerts, rehypeReferences } from "../lib/markdown-plugins";
+import { type Task, taskList } from "@g1t/contracts/tasks";
+
+import { type AlertKind, G1T_MENTION_HREF, type MarkdownRepo, rehypeAlerts, rehypeReferences, rehypeTaskLines } from "../lib/markdown-plugins";
 import { markdownTree, markdownWeight, renderMarkdownTree } from "../lib/markdown-tree";
 import { imageSource } from "../lib/usercontent";
 import { UserCard } from "./user-card";
@@ -59,7 +61,7 @@ function treeOf(source: string, repo: MarkdownRepo | undefined, workspace: strin
   if (kept) return kept.tree;
   const tree = markdownTree(source, {
     remarkPlugins: [remarkGfm],
-    rehypePlugins: [rehypeRaw, [rehypeSanitize, SCHEMA], rehypeAlerts, [rehypeReferences, { repo, workspace }]],
+    rehypePlugins: [rehypeRaw, [rehypeSanitize, SCHEMA], rehypeAlerts, [rehypeReferences, { repo, workspace }], rehypeTaskLines],
   });
   trees.set(key, { tree, weight: markdownWeight(source) });
   return tree;
@@ -178,6 +180,7 @@ export function Markdown({
   workspace,
   base,
   rawBase,
+  checkable = false,
 }: {
   source: string;
   /** The repository the text belongs to, for its references. */
@@ -192,6 +195,12 @@ export function Markdown({
    * path starting with `/` is from the repository's root.
    */
   rawBase?: string;
+  /**
+   * Whether the viewer may tick the boxes of its task lists: a click posts
+   * `check-task` to the page's action, with the box's number (`task`), its
+   * text as shown (`expected`) and `checked`, 1 or empty.
+   */
+  checkable?: boolean;
 }) {
   // The same text renders to the same elements with the same components, so
   // a page that revalidates (a live refresh) leaves the text as it is
@@ -202,16 +211,77 @@ export function Markdown({
   const tree = useMemo(() => treeOf(source, repo, workspace), [source, repo?.namespace, repo?.name, workspace]);
   const rendered = useMemo(() => renderMarkdownTree(tree, COMPONENTS), [tree]);
   const bases = useMemo(() => ({ base, rawBase }), [base, rawBase]);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const boxes = useMemo(() => (checkable ? { tasks: taskList(source), report: setRefusal } : null), [checkable, source]);
   return (
     <MarkdownBases.Provider value={bases}>
-      {/* A long word or address breaks rather than widening the page. */}
-      <div className="prose wrap-break-word">{rendered}</div>
+      <TaskBoxes.Provider value={boxes}>
+        {/* A long word or address breaks rather than widening the page. */}
+        <div className="prose wrap-break-word">{rendered}</div>
+        {boxes && refusal && (
+          <p role="alert" className="mt-3 text-xs text-danger">
+            {refusal}
+          </p>
+        )}
+      </TaskBoxes.Provider>
     </MarkdownBases.Provider>
   );
 }
 
 /** Where a document's relative links (`base`) and pictures (`rawBase`) point. */
 const MarkdownBases = createContext<{ base?: string; rawBase?: string }>({});
+
+/**
+ * The boxes of the text's task lists the viewer may tick, and where a
+ * refusal is said; null when they only show.
+ */
+const TaskBoxes = createContext<{ tasks: Task[]; report: (message: string | null) => void } | null>(null);
+
+/**
+ * A task list's box. One the viewer may tick is found by its list item's
+ * line among the boxes the work service counts, posted at once, and shown
+ * changed before the page has it; a refusal puts it back and says why
+ * under the text. Each box posts on its own, so ticking several quickly
+ * sends each.
+ */
+function TaskBox({ checked, line }: { checked: boolean; line?: number }) {
+  const boxes = useContext(TaskBoxes);
+  const task = boxes && line ? boxes.tasks.find((one) => one.line === line) : undefined;
+  if (!boxes || !task) {
+    return (
+      <Checkbox
+        checked={checked}
+        disabled
+        aria-label={checked ? "Done" : "Not done"}
+        className="mr-1.5 inline-flex translate-y-0.5 disabled:cursor-default disabled:opacity-100"
+      />
+    );
+  }
+  return <CheckableBox checked={checked} task={task} report={boxes.report} />;
+}
+
+function CheckableBox({ checked, task, report }: { checked: boolean; task: Task; report: (message: string | null) => void }) {
+  const fetcher = useFetcher<{ error?: string | null } | null>();
+  const refused = fetcher.state === "idle" ? fetcher.data?.error : null;
+  useEffect(() => {
+    if (refused) report(refused);
+  }, [refused, report]);
+  const pending = fetcher.formData;
+  return (
+    <Checkbox
+      checked={pending ? pending.get("checked") === "1" : checked}
+      aria-label={task.text}
+      className="mr-1.5 inline-flex translate-y-0.5 cursor-pointer"
+      onCheckedChange={(value) => {
+        report(null);
+        fetcher.submit(
+          { action: "check-task", task: String(task.number), expected: task.text, checked: value === true ? "1" : "" },
+          { method: "post", preventScrollReset: true },
+        );
+      }}
+    />
+  );
+}
 
 /** A link: a reference or mention within the site, an anchor, an address elsewhere, or a file beside the document. */
 function MarkdownLink({ href = "", children, node }: { href?: string; children?: ReactNode; node?: { properties?: unknown } }) {
@@ -296,16 +366,11 @@ const COMPONENTS: Components = {
       <table className="max-sm:[&_td]:min-w-32 max-sm:[&_th]:whitespace-nowrap">{children}</table>
     </div>
   ),
-  input({ type, checked, disabled }) {
-    // Task list boxes: shown, not editable.
-    return type === "checkbox" ? (
-      <Checkbox
-        checked={checked === true}
-        disabled={disabled !== false}
-        aria-label={checked ? "Done" : "Not done"}
-        className="mr-1.5 inline-flex translate-y-0.5 disabled:cursor-default disabled:opacity-100"
-      />
-    ) : null;
+  input({ type, checked, node }) {
+    // Task list boxes: ticked where the page lets the viewer (TaskBox). A
+    // box written as HTML has no line, and only shows.
+    const line = (node?.properties as { dataTaskLine?: number } | undefined)?.dataTaskLine;
+    return type === "checkbox" ? <TaskBox checked={checked === true} line={line} /> : null;
   },
   img: MarkdownImage,
 };

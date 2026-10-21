@@ -451,6 +451,31 @@ g1t pr comment [OPTIONS] [NUMBER]
 
 Calls [`add_comment`](/reference/api/pull-requests/add-comment/), [`upload_attachment`](/reference/api/work-items/upload-attachment/).
 
+### g1t pr check
+
+Tick a box of a pull request's task list, or untick it with --uncheck.
+
+```text
+g1t pr check [OPTIONS] <NUMBER> <BOX>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<NUMBER>` | The work item's or pull request's number. |
+| `<BOX>` | The box: its place in the task list, from 1, or words of its text. |
+| `--text` | Read BOX as words of its text even when it is a number. |
+| `--uncheck` | Untick the box instead. |
+
+```text
+The box is its place in the description's task list, counting every `- [ ]` and `- [x]` from 1, or
+words of its text. Not to be confused with `g1t pr checks`, which shows its workflow checks.
+Examples:
+  g1t pr check 253 1
+  g1t pr check 253 "migration" --uncheck
+```
+
+Calls [`check_pull_request_task`](/reference/api/pull-requests/check-pull-request-task/).
+
 ### g1t pr close
 
 Close a pull request without merging it.
@@ -1226,6 +1251,33 @@ Examples:
 ```
 
 Calls [`update_work_item`](/reference/api/work-items/update-work-item/), [`get_work_item`](/reference/api/work-items/get-work-item/).
+
+### g1t work check
+
+Tick a box of a work item's task list, or untick it with --uncheck.
+
+```text
+g1t work check [OPTIONS] <NUMBER> <BOX>
+```
+
+| Argument or flag | |
+| --- | --- |
+| `<NUMBER>` | The work item's or pull request's number. |
+| `<BOX>` | The box: its place in the task list, from 1, or words of its text. |
+| `--text` | Read BOX as words of its text even when it is a number. |
+| `--uncheck` | Untick the box instead. |
+
+```text
+The box is its place in the body's task list, counting every `- [ ]` and `- [x]` from 1 (nested ones
+too, in the order they are written), or words of its text. Only that box changes, so a box someone
+else ticks at the same time is kept.
+Examples:
+  g1t work check 195 2
+  g1t work check 195 "update the docs"
+  g1t work check 195 2 --uncheck
+```
+
+Calls [`check_work_item_task`](/reference/api/work-items/check-work-item-task/).
 
 ### g1t work close
 

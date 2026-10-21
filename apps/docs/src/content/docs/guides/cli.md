@@ -246,6 +246,7 @@ g1t work new --title "Greeting should name the caller" --body "Take a name from 
 g1t work new --title "Rename the flag" --target acme/api --target acme/docs
 g1t work comment 12 -b "Fixed in #14."
 g1t work edit 12 --add-label p1 --add-assignee @me
+g1t work check 12 2                    # tick the second box of its task list
 g1t work link 12 --role target -R acme/api
 g1t work unlink 12 -R acme/api
 g1t work close 12 --reason not_planned
@@ -260,7 +261,11 @@ linked to that repository, and names the repository `g1t work link` and
 `g1t work new` makes the current repository the new work item's origin,
 and `--target` names each repository it should land in.
 `g1t work view` shows the work item with its whole work context (see
-[Claims and context](#claims-and-context)). `@me` is you. At a terminal,
+[Claims and context](#claims-and-context)); `--json body` gives its
+description alone, for `g1t work edit --body-file`. `g1t work check` and
+`g1t pr check` tick a box of a description's [task list](/work/task-lists/),
+by its number or by words of its text, and `--uncheck` unticks it; only
+that box changes, so a box someone else ticks meanwhile is kept. `@me` is you. At a terminal,
 `g1t work new` without `--title` asks for one and opens your editor for
 the body.
 

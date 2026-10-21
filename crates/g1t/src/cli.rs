@@ -389,6 +389,13 @@ pub enum PrCommand {
     Ready(PrReadyArgs),
     /// Comment on a pull request.
     Comment(CommentArgs),
+    /// Tick a box of a pull request's task list, or untick it with --uncheck.
+    #[command(after_help = "\nThe box is its place in the description's task list, counting every `- [ ]` and `- [x]` from 1, or
+words of its text. Not to be confused with `g1t pr checks`, which shows its workflow checks.
+Examples:
+  g1t pr check 253 1
+  g1t pr check 253 \"migration\" --uncheck")]
+    Check(TaskCheckArgs),
     /// Close a pull request without merging it.
     Close(PrSelect),
     /// Reopen a closed pull request.
@@ -1265,6 +1272,15 @@ Examples:
   g1t work edit 228 --parent 212
   g1t work edit 228 --remove-parent")]
     Edit(WorkEditArgs),
+    /// Tick a box of a work item's task list, or untick it with --uncheck.
+    #[command(after_help = "\nThe box is its place in the body's task list, counting every `- [ ]` and `- [x]` from 1 (nested ones
+too, in the order they are written), or words of its text. Only that box changes, so a box someone
+else ticks at the same time is kept.
+Examples:
+  g1t work check 195 2
+  g1t work check 195 \"update the docs\"
+  g1t work check 195 2 --uncheck")]
+    Check(TaskCheckArgs),
     /// Close a work item.
     #[command(after_help = "\nA work item with open sub-items never closes them silently: say what to do with them with
 --sub-items (leave them open, close them too, or move them to --move-to). Asked when not given.
@@ -1611,6 +1627,22 @@ pub struct WorkEditArgs {
     /// Take it out of its parent.
     #[arg(long, conflicts_with = "parent")]
     pub remove_parent: bool,
+}
+
+/// `g1t work check` and `g1t pr check`.
+#[derive(Debug, Args)]
+pub struct TaskCheckArgs {
+    /// The work item's or pull request's number.
+    pub number: u64,
+    /// The box: its place in the task list, from 1, or words of its text.
+    #[arg(value_name = "BOX")]
+    pub task: String,
+    /// Read BOX as words of its text even when it is a number.
+    #[arg(long)]
+    pub text: bool,
+    /// Untick the box instead.
+    #[arg(long)]
+    pub uncheck: bool,
 }
 
 #[derive(Debug, Args)]

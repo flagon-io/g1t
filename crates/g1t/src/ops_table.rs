@@ -3413,6 +3413,25 @@ pub static OPERATIONS: &[Operation] = &[
         ],
     },
     Operation {
+        id: "check_pull_request_task",
+        method: "PATCH",
+        path: "/repos/{owner}/{name}/pulls/{number}/tasks",
+        tag: "Pull requests",
+        summary: "Tick a box of a pull request's task list",
+        scope: Some("pull_requests:write"),
+        params: &[
+            Param { name: "owner", location: In::Path, kind: "string", required: true, values: &[] },
+            Param { name: "name", location: In::Path, kind: "string", required: true, values: &[] },
+            Param { name: "number", location: In::Path, kind: "integer", required: true, values: &[] },
+        ],
+        body: &[
+            Field { name: "checked", kind: "boolean", required: false, values: &[] },
+            Field { name: "expected", kind: "string", required: false, values: &[] },
+            Field { name: "task", kind: "integer", required: false, values: &[] },
+            Field { name: "text", kind: "string", required: false, values: &[] },
+        ],
+    },
+    Operation {
         id: "close_pull_request",
         method: "POST",
         path: "/repos/{owner}/{name}/pulls/{number}/close",
@@ -6910,6 +6929,25 @@ pub static OPERATIONS: &[Operation] = &[
         body: &[
             Field { name: "repo", kind: "string", required: false, values: &[] },
             Field { name: "sub_item", kind: "integer", required: true, values: &[] },
+        ],
+    },
+    Operation {
+        id: "check_work_item_task",
+        method: "PATCH",
+        path: "/workspaces/{workspace}/work/{number}/tasks",
+        tag: "Work items",
+        summary: "Tick a box of a work item's task list",
+        scope: Some("work:write"),
+        params: &[
+            Param { name: "workspace", location: In::Path, kind: "string", required: true, values: &[] },
+            Param { name: "number", location: In::Path, kind: "integer", required: true, values: &[] },
+        ],
+        body: &[
+            Field { name: "checked", kind: "boolean", required: false, values: &[] },
+            Field { name: "expected", kind: "string", required: false, values: &[] },
+            Field { name: "repo", kind: "string", required: false, values: &[] },
+            Field { name: "task", kind: "integer", required: false, values: &[] },
+            Field { name: "text", kind: "string", required: false, values: &[] },
         ],
     },
     Operation {

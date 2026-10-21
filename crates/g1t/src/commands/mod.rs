@@ -133,6 +133,45 @@ pub fn done(ctx: &Ctx, value: &serde_json::Value, said: &str, url: &str) -> Resu
     Ok(())
 }
 
+/// `call` with the box `g1t work check` or `g1t pr check` names: a number
+/// is its place (unless --text), anything else words of its text.
+pub fn task_check<'a>(call: crate::client::Call<'a>, args: &crate::cli::TaskCheckArgs) -> crate::client::Call<'a> {
+    let task = args.task.trim();
+    let call = match task.parse::<u64>() {
+        Ok(number) if !args.text => call.field("task", number),
+        _ => call.field("text", task),
+    };
+    call.field("checked", !args.uncheck)
+}
+
+/// What ticking a box says: which box, and how many are done.
+pub fn task_checked(ctx: &Ctx, checked: &serde_json::Value, of: &str, url: &str) -> Result<()> {
+    if ctx.out.structured() {
+        return ctx.out.emit(checked);
+    }
+    let task = &checked["task"];
+    let ticked = task["checked"].as_bool() == Some(true);
+    let what = format!(
+        "box {} of {of}: {}",
+        task["number"].as_u64().unwrap_or_default(),
+        task["text"].as_str().unwrap_or_default()
+    );
+    let said = match (checked["changed"].as_bool() == Some(true), ticked) {
+        (true, true) => format!("Ticked {what}"),
+        (true, false) => format!("Unticked {what}"),
+        (false, true) => format!("Already ticked: {what}"),
+        (false, false) => format!("Already unticked: {what}"),
+    };
+    eprintln!(
+        "{} {said} ({} of {} done)",
+        ctx.out.green("✓"),
+        checked["done"].as_u64().unwrap_or_default(),
+        checked["total"].as_u64().unwrap_or_default()
+    );
+    println!("{url}");
+    Ok(())
+}
+
 /// Names from a list of strings, or of objects with a username or a name.
 pub fn names(list: &serde_json::Value) -> Vec<String> {
     list.as_array()

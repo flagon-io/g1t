@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use crate::cli::{
     CloseReason, ItemState, OpenSubItems, ReopenArgs, WorkArgs, WorkBlockArgs, WorkClaimArgs, WorkCloseArgs, WorkCommand,
     WorkCommentArgs, WorkDispatchArgs, WorkEditArgs, WorkEventsArgs, WorkHandoffArgs, WorkLinkArgs, WorkListArgs,
-    WorkNewArgs, WorkNextArgs, WorkNumber, WorkPlanArgs, WorkReleaseArgs, WorkViewArgs,
+    TaskCheckArgs, WorkNewArgs, WorkNextArgs, WorkNumber, WorkPlanArgs, WorkReleaseArgs, WorkViewArgs,
 };
 use crate::client::{Call, Client};
 use crate::context::Ctx;
@@ -37,6 +37,7 @@ pub fn run(ctx: &Ctx, args: WorkArgs) -> Result<()> {
         WorkCommand::New(args) => new(ctx, workspace, args),
         WorkCommand::Comment(args) => comment(ctx, workspace, args),
         WorkCommand::Edit(args) => edit(ctx, workspace, args),
+        WorkCommand::Check(args) => check(ctx, workspace, args),
         WorkCommand::Close(args) => close(ctx, workspace, args),
         WorkCommand::Reopen(args) => reopen(ctx, workspace, args),
         WorkCommand::Link(args) => link(ctx, workspace, args),
@@ -250,6 +251,9 @@ fn view(ctx: &Ctx, workspace: Option<&str>, args: WorkViewArgs) -> Result<()> {
         work["comments"] = detail.get("comments").cloned().unwrap_or(json!([]));
     }
     work["url"] = Value::String(place.url(args.number));
+    // Its body at the top, as `pr view` has it: `--json body` to change it
+    // with `g1t work edit --body-file`.
+    work["body"] = work["item"].get("body").cloned().unwrap_or(Value::Null);
     if ctx.out.structured() {
         return ctx.out.emit(&work);
     }
@@ -434,6 +438,15 @@ fn reopen(ctx: &Ctx, workspace: Option<&str>, args: ReopenArgs) -> Result<()> {
     }
     let opened = place.op("reopen_work_item").arg("number", args.number).send()?;
     super::done(ctx, &opened, &format!("Reopened {}", place.name(args.number)), &place.url(args.number))
+}
+
+/// Ticks a box of its body's task list, on the server, so a box someone
+/// else ticks at the same time is kept.
+fn check(ctx: &Ctx, workspace: Option<&str>, args: TaskCheckArgs) -> Result<()> {
+    let place = place(ctx, workspace)?;
+    let call = place.op("check_work_item_task").arg("number", args.number);
+    let checked = super::task_check(call, &args).send()?;
+    super::task_checked(ctx, &checked, &place.name(args.number), &place.url(args.number))
 }
 
 fn edit(ctx: &Ctx, workspace: Option<&str>, args: WorkEditArgs) -> Result<()> {

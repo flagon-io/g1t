@@ -5,6 +5,7 @@ import type { User, Viewer } from "./identity";
 import type { PullBranchUpdate, RepoPath, UpdateMethod } from "./repos";
 import type { MergeMethod } from "./rules";
 import type { Result } from "./result";
+import type { CheckedTask, TaskCheck } from "./tasks";
 import type { MergeRules, RulesApi } from "./rules";
 
 /**
@@ -1135,6 +1136,12 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
    * Its owner, or someone with the Triage role on it, may. Returns the sub-item.
    */
   setWorkItemParent(actor: User, workspace: string, number: number, parent: number | null, onlyFrom?: number): Promise<Result<WorkItem>>;
+  /**
+   * Ticks or unticks a box of its body's task list (tasks.ts), against the
+   * body as it is then, so another box ticked meanwhile is kept. Whoever
+   * may edit the body may.
+   */
+  checkWorkItemTask(actor: User, workspace: string, number: number, check: TaskCheck): Promise<Result<CheckedTask>>;
   reopenWorkItem(actor: User, workspace: string, number: number): Promise<Result<WorkItem>>;
   /** Links a repository of the workspace as a target (or as touched), or changes how it is linked. Needs Triage. */
   linkWorkItem(actor: User, workspace: string, number: number, repo: RepoPath, role?: LinkRole): Promise<Result<WorkItem>>;
@@ -1346,6 +1353,8 @@ export interface WorkApi extends RulesApi, ChecksApi, CoordinationApi {
   deleteCommitComment(actor: User, repo: RepoPath, id: string): Promise<Result<boolean>>;
   /** Marks a draft ready for review and sets its description. */
   readyPull(actor: User, repo: RepoPath, number: number, summary: string): Promise<Result<Pull>>;
+  /** Ticks or unticks a box of its description, as checkWorkItemTask does. Whoever opened it, or the Triage role, in any state. */
+  checkPullTask(actor: User, repo: RepoPath, number: number, check: TaskCheck): Promise<Result<CheckedTask>>;
   closePull(actor: User, repo: RepoPath, number: number): Promise<Result<Pull>>;
   /** Opens a closed pull request again, as the draft it was if it was closed as one. Never a merged one. */
   reopenPull(actor: User, repo: RepoPath, number: number): Promise<Result<Pull>>;

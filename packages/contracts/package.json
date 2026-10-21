@@ -22,7 +22,8 @@
     "./discovery": "./src/discovery.ts",
     "./telemetry": "./src/telemetry.ts",
     "./agent-setup": "./src/agent-setup.ts",
-    "./sso": "./src/sso.ts"
+    "./sso": "./src/sso.ts",
+    "./tasks": "./src/tasks.ts"
   },
   "scripts": {
     "test": "node --test src/*.test.ts",

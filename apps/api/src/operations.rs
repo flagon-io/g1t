@@ -185,6 +185,7 @@ pub enum Op {
     SetWorkItemParent,
     AddWorkItemSubItem,
     RemoveWorkItemSubItem,
+    CheckWorkItemTask,
     ResolveRef,
     ListLabels,
     CreateLabel,
@@ -223,6 +224,7 @@ pub enum Op {
     Why,
     MarkPullRequestReady,
     ConvertPullRequestToDraft,
+    CheckPullRequestTask,
     ClosePullRequest,
     ReopenPullRequest,
     GetPullRequestChanges,
@@ -458,6 +460,30 @@ fn item_ref(input: &Value, key: &str) -> Result<Option<u32>, String> {
         Some(number) => Ok(Some(number)),
         None => Err(format!("{key} is a work item's number, such as 12 or \"#12\".")),
     }
+}
+
+/// The box of a task list `input` names (`check_work_item_task`,
+/// `check_pull_request_task`): `task`, its number, or `text`, words of it;
+/// `checked`, true unless false; and `expected`, its text as read.
+fn task_check(input: &Value) -> Result<TaskCheck, String> {
+    let task = match &input["task"] {
+        Value::Null => None,
+        _ => match integer(input, "task") {
+            Some(task) if task > 0 => Some(task),
+            _ => return Err("task is the box's number, from 1.".to_owned()),
+        },
+    };
+    let text = optional_text(input, "text").filter(|text| !text.trim().is_empty());
+    if task.is_none() && text.is_none() {
+        return Err("Give task, the box's number (from 1), or text, words of it.".to_owned());
+    }
+    let checked = match &input["checked"] {
+        Value::Null => true,
+        Value::Bool(checked) => *checked,
+        Value::String(text) if text == "true" || text == "false" => text == "true",
+        _ => return Err("checked is true or false.".to_owned()),
+    };
+    Ok(TaskCheck { task, text, checked, expected: optional_text(input, "expected") })
 }
 
 /// What closing a work item can do with its open sub-items.
@@ -911,7 +937,7 @@ fn alert_id_schema() -> Value {
 }
 
 impl Op {
-    pub const ALL: [Op; 437] = [
+    pub const ALL: [Op; 439] = [
         Op::Whoami,
         Op::GetWorkspace,
         Op::CreateWorkspace,
@@ -979,6 +1005,7 @@ impl Op {
         Op::SetWorkItemParent,
         Op::AddWorkItemSubItem,
         Op::RemoveWorkItemSubItem,
+        Op::CheckWorkItemTask,
         Op::ResolveRef,
         Op::ListLabels,
         Op::CreateLabel,
@@ -1017,6 +1044,7 @@ impl Op {
         Op::Why,
         Op::MarkPullRequestReady,
         Op::ConvertPullRequestToDraft,
+        Op::CheckPullRequestTask,
         Op::ClosePullRequest,
         Op::ReopenPullRequest,
         Op::GetPullRequestChanges,
@@ -1425,6 +1453,7 @@ impl Op {
             Op::SetWorkItemParent => "set_work_item_parent",
             Op::AddWorkItemSubItem => "add_work_item_sub_item",
             Op::RemoveWorkItemSubItem => "remove_work_item_sub_item",
+            Op::CheckWorkItemTask => "check_work_item_task",
             Op::ResolveRef => "resolve_ref",
             Op::ListLabels => "list_labels",
             Op::CreateLabel => "create_label",
@@ -1465,6 +1494,7 @@ impl Op {
             Op::ClosePullRequest => "close_pull_request",
             Op::ReopenPullRequest => "reopen_pull_request",
             Op::ConvertPullRequestToDraft => "convert_pull_request_to_draft",
+            Op::CheckPullRequestTask => "check_pull_request_task",
             Op::GetPullRequestChanges => "get_pull_request_changes",
             Op::MergePullRequest => "merge_pull_request",
             Op::GetPullRequestMergeOptions => "get_pull_request_merge_options",
@@ -1802,6 +1832,9 @@ impl Op {
             Op::RemoveWorkItemSubItem => {
                 "Take work item sub_item out of work item number, so it has no parent. Refused with `422` when number is not its parent. Needs what changing sub_item needs: its author, the person g1t filed it for, or the Triage role. Returns the former sub-item. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
             }
+            Op::CheckWorkItemTask => {
+                "Tick or untick a box of a work item's task list: the `- [ ]` and `- [x]` items of its body, numbered from 1 in the order they are written (boxes in fenced code blocks are examples, not boxes). Name the box by task, its number, or by text, words of it: the box whose text is exactly that, ignoring case and spacing, else the one box whose text contains it; text more than one box has is refused with `422`, naming them. checked is true (the default) to tick it and false to untick it. Only that box changes, and it is changed in the body as it is at that moment, so a box someone else ticked meanwhile is kept. With task, give expected, the box's text as you read it: when a box was added or removed above it since, the one box with that text is ticked instead, and when none or several have it the call is refused with `409` rather than ticking the wrong box. A box already as asked is left as it is (changed false). Returns the box (number, line, text, checked), whether it changed, the body after, and how many boxes are done of the total. Whoever may edit the body may: its author, the person g1t filed it for, or anyone with the Triage role. A change is a work_item.updated event. The workspace is `workspace`, its slug; with only `repo`, the repository's workspace."
+            }
             Op::ResolveRef => {
                 "What `#number` names, read where it is written: in a repository (repo) or in a workspace alone (workspace). In a repository, it is the first of a pull request of that repository numbered so, a work item filed there whose old issue number it was, the work item of the workspace with that number, and a pull request of another of the workspace's repositories. In a workspace, the work item with that number, else its pull request. Answers `{ kind: work_item, workspace, number, item_id }`, `{ kind: pull, repo, number }`, or `{ kind: none }` when it names nothing you may see. This is how an old link to a repository's issue finds the work item it became."
             }
@@ -1912,6 +1945,9 @@ impl Op {
             Op::ClosePullRequest => "Close a pull request without merging it. Its author may close their own, and whoever asked g1t for one may close that one; anyone else needs the Triage role or higher.",
             Op::ReopenPullRequest => "Reopen a closed pull request. It comes back as the draft it was if it was closed as one, and ready for review otherwise; a merged pull request cannot be reopened, nor one whose branch was deleted. Its author may reopen their own, and whoever asked g1t for one may reopen that one; anyone else needs the Triage role or higher. Publishes pull.reopened with its head commit.",
             Op::ConvertPullRequestToDraft => "Turn a pull request that is ready for review back into a draft. A draft cannot be merged until it is marked ready again; it leaves the merge queue, and a merge waiting for it to catch up is called off. Its author may, and whoever asked g1t for it; anyone else needs the Triage role or higher. Publishes pull.converted_to_draft.",
+            Op::CheckPullRequestTask => {
+                "Tick or untick a box of a pull request's task list: the `- [ ]` and `- [x]` items of its description, numbered from 1 in the order they are written. It works as check_work_item_task does: task (the box's number) or text (words of it), checked (true by default), and expected (its text as you read it, so a box that moved is found or refused with `409`), changing only that box against the description as it is. Returns the box, whether it changed, the description after, and how many boxes are done of the total. Its author may, and whoever asked g1t for it; anyone else needs the Triage role or higher. A merged or closed pull request's boxes can still be ticked."
+            }
             Op::GetPullRequestChanges => {
                 "What a pull request changes: the files it touches and their line-by-line diff against the commit it started from. Use it to review a pull request or to compare several made for the same work item. A large one lists every file (up to 300; truncated says when there were more) but has the lines of only the first, about 20,000 lines read: the files after that come with omitted true and no lines or counts. Ask again with paths (up to 50 at a time) to have those files' lines."
             }
@@ -3034,6 +3070,18 @@ impl Op {
                 })),
                 &["number", "sub_item"],
             ),
+            Op::CheckWorkItemTask => object(item_numbered(json!({
+                    "task": { "type": "integer", "minimum": 1, "description": "The box's number, from 1, in the order the boxes are written." },
+                    "text": { "type": "string", "description": "Instead of task: words of the box's text. The box that says exactly this (ignoring case and spacing), else the one box whose text contains it." },
+                    "checked": { "type": "boolean", "description": "true (the default) ticks it; false unticks it." },
+                    "expected": { "type": "string", "description": "With task: the box's text as you read it. A box that moved is found by it, or the call is refused rather than ticking the wrong box." },
+                })), &["number"]),
+            Op::CheckPullRequestTask => object(numbered(json!({
+                    "task": { "type": "integer", "minimum": 1, "description": "The box's number, from 1, in the order the boxes are written." },
+                    "text": { "type": "string", "description": "Instead of task: words of the box's text. The box that says exactly this (ignoring case and spacing), else the one box whose text contains it." },
+                    "checked": { "type": "boolean", "description": "true (the default) ticks it; false unticks it." },
+                    "expected": { "type": "string", "description": "With task: the box's text as you read it. A box that moved is found by it, or the call is refused rather than ticking the wrong box." },
+                })), &["repo", "number"]),
             Op::ResolveRef => object(
                 json!({
                     "repo": { "type": "string", "description": "The repository the reference is written in, \"owner/name\"." },
@@ -4413,6 +4461,7 @@ impl Op {
                 | Op::SetWorkItemParent
                 | Op::AddWorkItemSubItem
                 | Op::RemoveWorkItemSubItem
+                | Op::CheckWorkItemTask
                 | Op::ListWorkItemLabels
                 | Op::AddWorkItemLabels
                 | Op::SetWorkItemLabels
@@ -5670,6 +5719,13 @@ impl Op {
                 };
                 pass(work, "set_work_item_parent", &args).await
             }
+            Op::CheckWorkItemTask => {
+                let check = match task_check(input) {
+                    Ok(check) => check,
+                    Err(message) => return failed(FailureCode::Invalid, &message),
+                };
+                pass(work, "check_work_item_task", &CheckWorkItemTaskArgs { actor: actor(), workspace: item_ws(), number, check }).await
+            }
             Op::ResolveRef => {
                 if given_repo().is_none() && workspace().is_empty() {
                     return failed(FailureCode::Invalid, "Give the repository the reference is written in, as owner/name, or the workspace.");
@@ -6043,6 +6099,13 @@ impl Op {
             Op::ClosePullRequest => pass(work, "close_pull", &pull_action()).await,
             Op::ReopenPullRequest => pass(work, "reopen_pull", &pull_action()).await,
             Op::ConvertPullRequestToDraft => pass(work, "convert_pull_to_draft", &pull_action()).await,
+            Op::CheckPullRequestTask => {
+                let check = match task_check(input) {
+                    Ok(check) => check,
+                    Err(message) => return failed(FailureCode::Invalid, &message),
+                };
+                pass(work, "check_pull_task", &CheckPullTaskArgs { actor: actor(), repo: repo.clone(), number, check }).await
+            }
             Op::React => {
                 let Some(content) = input["content"].as_str().and_then(ReactionContent::parse) else {
                     return failed(FailureCode::Invalid, "content must be one of +1, -1, laugh, hooray, confused, heart, rocket and eyes.");

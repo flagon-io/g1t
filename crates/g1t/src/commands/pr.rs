@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use crate::cli::{
     CommentArgs, PrCheckoutArgs, PrChecksArgs, PrCommand, PrCreateArgs, PrDiffArgs, PrListArgs,
-    PrMergeArgs, PrReadyArgs, PrReviewArgs, PrSelect, PrState, PrUpdateBranchArgs, PrViewArgs,
+    PrMergeArgs, PrReadyArgs, PrReviewArgs, PrSelect, PrState, PrUpdateBranchArgs, PrViewArgs, TaskCheckArgs,
 };
 use crate::client::Client;
 use crate::context::Ctx;
@@ -29,6 +29,7 @@ pub fn run(ctx: &Ctx, command: PrCommand) -> Result<()> {
         PrCommand::UpdateBranch(args) => update_branch(ctx, args),
         PrCommand::Ready(args) => ready(ctx, args),
         PrCommand::Comment(args) => comment(ctx, args),
+        PrCommand::Check(args) => check(ctx, args),
         PrCommand::Close(args) => close(ctx, args, true),
         PrCommand::Reopen(args) => close(ctx, args, false),
     }
@@ -1034,6 +1035,14 @@ fn comment(ctx: &Ctx, args: CommentArgs) -> Result<()> {
     let made = client.op("add_comment").repo(&repo).arg("number", n).field("body", body).send()?;
     let id = s(&made, "id").to_owned();
     super::done(ctx, &made, &format!("Commented on {repo}#{n}"), &format!("{url}#{id}"))
+}
+
+/// Ticks a box of its description's task list, as `g1t work check` does.
+fn check(ctx: &Ctx, args: TaskCheckArgs) -> Result<()> {
+    let (repo, client) = ctx.repo_client()?;
+    let call = client.op("check_pull_request_task").repo(&repo).arg("number", args.number);
+    let checked = super::task_check(call, &args).send()?;
+    super::task_checked(ctx, &checked, &format!("{repo}#{}", args.number), &pull_url(&client.host.site, &repo, args.number))
 }
 
 fn close(ctx: &Ctx, args: PrSelect, closing: bool) -> Result<()> {

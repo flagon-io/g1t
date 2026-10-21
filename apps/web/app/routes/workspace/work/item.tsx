@@ -40,6 +40,7 @@ import { subscriptionFromForm } from "../../../lib/inbox";
 import { Boundary, Unavailable } from "../../../components/boundary";
 import { notFound } from "../../../lib/not-found.server";
 import { openedBy } from "../../../lib/opened-by";
+import { taskCheckOf } from "../../../lib/task-check";
 import { agentSessions, identity, inbox, integrations, repos, work } from "../../../lib/services.server";
 import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../../lib/session.server";
 import { useRefreshWhile } from "../../../lib/refresh";
@@ -248,6 +249,11 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         content,
         remove: form.get("remove") === "1",
       });
+      return result.ok ? null : { error: result.error.message, action: intent };
+    }
+    // A box of its body's task list, ticked or not (components/markdown.tsx).
+    case "check-task": {
+      const result = await work.checkWorkItemTask(user, workspace, number, taskCheckOf(form));
       return result.ok ? null : { error: result.error.message, action: intent };
     }
     case "assign": {
@@ -707,7 +713,7 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
 
           {item.body ? (
             <div className={`${item.resolutions.length > 0 ? "mt-5" : "lg:mt-5"} rounded-xl border border-line bg-surface p-4 sm:p-5`}>
-              <Markdown source={item.body} workspace={workspace} />
+              <Markdown source={item.body} workspace={workspace} checkable={canManage} />
               <Reactions reactions={loaderData.reactions} viewer={viewer?.username ?? null} className="mt-4" />
             </div>
           ) : (
