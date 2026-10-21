@@ -57,7 +57,11 @@
     { "binding": "BILLING", "service": "g1t-billing" },
     // Rulesets: which hold for a push or another change to a branch or
     // tag, and where how they judged it is kept (src/rules.rs).
-    { "binding": "WORK", "service": "g1t-work" }
+    { "binding": "WORK", "service": "g1t-work" },
+    // The git edge (src/git_edge.rs): clones and fetches of the
+    // repositories GIT_EDGE names, answered by real git in the runner's
+    // GitEdge containers, with Artifacts as before whenever it cannot.
+    { "binding": "RUNNER", "service": "g1t-runner" }
   ],
   // A free workspace past this many git operations in a month is slowed
   // to this many an hour, never charged (src/git_ops.rs). It is billing's
@@ -113,7 +117,10 @@
     "LARGE_PUSHES": "unscanned",
     "FORK_RETENTION_DAYS": "1",
     "GITSTORE_NAMESPACES": "{\"GITSTORE\":\"g1t\"}",
-    "GITSTORE_NEW_REPOS": ""
+    "GITSTORE_NEW_REPOS": "",
+    // The repositories the git edge answers for (src/git_edge.rs): `off`,
+    // `*`, or owner/name entries separated by commas. g1t's own first.
+    "GIT_EDGE": "flagon-io/g1t"
   },
   // Every hour, deleted repositories whose 30 days to be restored have
   // passed are purged, their git data with them (src/lifecycle.rs), and

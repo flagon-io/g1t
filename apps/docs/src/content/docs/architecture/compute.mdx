@@ -95,6 +95,21 @@ which has Node, Python, Go, Rust, Java, .NET, Ruby and Docker, with the
 
 <Diagram name="sandboxes" />
 
+### The git edge
+
+`runner` has one more Container class, `GitEdge`, which is not a machine
+and no job can ask for it. Each repository being cloned gets one, named by
+its id, on `standard-2` (1 vCPU, 6 GiB memory, 12 GB disk): the same image,
+with the `g1t-runner` binary started as an HTTP server (`MODE=gitedge`)
+that keeps a mirror of the repository, fetched from Artifacts and repacked
+with real git, and answers clones and fetches from it. `repos` asks it
+only for a mirror at the repository's current refs version; while it is
+cold, behind or failing, `repos` answers from Artifacts as it would
+without it, and asks it to catch up. It only makes clones smaller and
+faster: pushes go to Artifacts, which stays the source of truth, and an
+edge left idle for half an hour stops, its mirror with it. Its requests
+go straight out, not through the outbound handler below.
+
 ### Egress
 
 A sandbox starts with no internet. Every HTTP and HTTPS request it makes

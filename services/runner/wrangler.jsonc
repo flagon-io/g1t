@@ -10,8 +10,9 @@
   // machine and g1t-2core, which is kept as a name of it so workflows that
   // ask for it keep working, and standard-4 (4 vCPU, 12 GiB, 20 GB) for
   // g1t-4core, which is also what ubuntu-latest gets in a public
-  // repository. At these max_instances, 60 sandboxes at once hold 180 vCPU,
-  // 600 GiB and 1,080 GB, well inside the account's limits for live
+  // repository. The git edge runs the same image on standard-2. At these
+  // max_instances, 60 sandboxes and 20 edges at once hold 200 vCPU,
+  // 720 GiB and 1,320 GB, well inside the account's limits for live
   // instances (1,500 vCPU, 6 TiB of memory, 30 TB of disk). crates/contracts
   // (INSTANCE_TYPES) and services/billing (keeper.rs) say the same sizes.
   // scripts/deploy.mjs deploys with each image set to the reference it
@@ -52,13 +53,30 @@
       "instance_type": "standard-4",
       "max_instances": 30,
       "rollout_active_grace_period": 7200
+    },
+    {
+      // The git edge (src/gitedge.ts): not a machine jobs can ask for, so
+      // it is in no machine catalogue. One per repository being cloned,
+      // the same image started as the edge's server (MODE=gitedge), on
+      // standard-2 (1 vCPU, 6 GiB, 12 GB) because repacking a mirror needs
+      // memory and CPU. max_instances bounds how many repositories have a
+      // live edge at once; a clone of any other repository is answered
+      // from Artifacts, as without the edge.
+      "class_name": "GitEdge",
+      "image": "./Dockerfile",
+      "instance_type": "standard-2",
+      "max_instances": 20,
+      // A clone under way when a deploy replaces its edge is given this
+      // long, in seconds, to finish; the next one finds the edge cold.
+      "rollout_active_grace_period": 300
     }
   ],
   "durable_objects": {
     "bindings": [
       { "name": "SANDBOX", "class_name": "AttemptSandbox" },
       { "name": "SANDBOX_2CORE", "class_name": "Sandbox2Core" },
-      { "name": "SANDBOX_4CORE", "class_name": "Sandbox4Core" }
+      { "name": "SANDBOX_4CORE", "class_name": "Sandbox4Core" },
+      { "name": "GIT_EDGE", "class_name": "GitEdge" }
     ]
   },
   "migrations": [
@@ -66,7 +84,9 @@
     { "tag": "v2", "new_sqlite_classes": ["Sandbox2Core", "Sandbox4Core"] },
     { "tag": "v3", "new_sqlite_classes": ["AgentComputer"] },
     // Workspace agents' computers are gone, and with them their objects.
-    { "tag": "v4", "deleted_classes": ["AgentComputer"] }
+    { "tag": "v4", "deleted_classes": ["AgentComputer"] },
+    // Each repository's git edge.
+    { "tag": "v5", "new_sqlite_classes": ["GitEdge"] }
   ],
   "services": [
     { "binding": "IDENTITY", "service": "g1t-identity" },
