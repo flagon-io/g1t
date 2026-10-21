@@ -278,7 +278,8 @@ pub(crate) fn starts_soundly(head: &[u8]) -> Option<bool> {
     if payload.len() < 4.min(length - 4) {
         return None;
     }
-    Some(!payload.starts_with(b"ERR "))
+    // With `sideband-all` every line is on a band: an error is on band 3.
+    Some(!payload.starts_with(b"ERR ") && !payload.starts_with(b"\x03"))
 }
 
 /// The edge's answer to a fetch, when it starts as one (`starts_soundly`):
@@ -328,6 +329,10 @@ mod tests {
         assert_eq!(starts_soundly(b"0000"), Some(false));
         assert_eq!(starts_soundly(b"0001"), Some(false));
         assert_eq!(starts_soundly(b"0021ERR upload-pack: not our ref\n"), Some(false));
+        // With sideband-all (#260): data on band 1 is sound, an error on band 3 is not.
+        assert_eq!(starts_soundly(b"000e\x01packfile\n0027\x02Enumerating"), Some(true));
+        assert_eq!(starts_soundly(b"0015\x01acknowledgments\n"), Some(true));
+        assert_eq!(starts_soundly(b"001e\x03upload-pack: not our ref\n"), Some(false));
         assert_eq!(starts_soundly(b"zzzzpackfile"), Some(false));
         // Too little yet to tell.
         assert_eq!(starts_soundly(b""), None);
