@@ -335,3 +335,17 @@ test("different workspaces share one bounded OSS pool and free overruns remain e
   );
   db.close();
 });
+
+test("a keyed admin_log line is written once however often it is sent", () => {
+  const db = database();
+  const once = db.prepare(constant("accounts", "ADMIN_LOG_ONCE"));
+  const send = (detail) => once.run("admk_srr_1", "ws_acme", "storage_released", detail, "staff@g1t.sh", at);
+  send("Reservation srv_1 on acme/site (rep_1), 320 MB: a test · storage_recoveries srr_1");
+  // Its answer was lost, so the repos service sends it again.
+  send("Reservation srv_1 on acme/site (rep_1), 320 MB: a test · storage_recoveries srr_1");
+  const rows = db.prepare("SELECT id, account, action, detail, by FROM admin_actions WHERE id = 'admk_srr_1'").all();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].account, "ws_acme");
+  assert.equal(rows[0].by, "staff@g1t.sh");
+  db.close();
+});

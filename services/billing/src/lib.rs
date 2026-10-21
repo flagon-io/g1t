@@ -1314,12 +1314,16 @@ async fn fetch(mut request: Request, env: Env, _ctx: Context) -> Result<Response
         "admin_invoices" => reply(&billing.admin_invoices(args(body)?).await?),
         "admin_audit" => reply(&billing.admin_audit(args(body)?).await?),
         // A staff change made in another service, for sudo's audit log:
-        // identity's restores and purges of deleted workspaces, and sudo's
-        // releases of the repos service's storage holds.
+        // identity's restores and purges of deleted workspaces, and the
+        // repos service's releases of storage holds, sent with a key so a
+        // retried one is written once.
         "admin_log" => {
             let a: AdminLogArgs = args(body)?;
             let account = accounts::admin_log_account(&a).map_err(worker::Error::RustError)?;
-            billing.audit(&account, &a.action, &a.detail, &a.by).await?;
+            match accounts::admin_log_id(&a).map_err(worker::Error::RustError)? {
+                Some(id) => billing.audit_once(&id, &account, &a.action, &a.detail, &a.by).await?,
+                None => billing.audit(&account, &a.action, &a.detail, &a.by).await?,
+            }
             reply(&true)
         }
         "note_pending" => reply(&billing.note_pending(args(body)?).await?),
