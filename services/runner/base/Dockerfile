@@ -4,9 +4,9 @@
 # itself. Checks, the merge queue, workflow jobs and g1t.page
 # builds all run in it: git, Node, Python, Go, Rust (with the formatter,
 # the linter, the wasm32 and musl targets, worker-build and sccache), Java
-# (Temurin 21), .NET (SDK 8), Ruby (3.3), the usual build tools, Docker
-# (Engine, Buildx, Compose), and the command-line tools GitHub's Ubuntu
-# runners have.
+# (Temurin 21), .NET (SDK 8), Ruby (3.3), the usual build tools, what
+# Tauri builds against on Linux, Docker (Engine, Buildx, Compose), and the
+# command-line tools GitHub's Ubuntu runners have.
 #
 # Built and pushed by `node scripts/deploy.mjs build-base` (by hand, or by
 # .g1t/workflows/runner-base.yml), which records what it pushed in
@@ -16,7 +16,8 @@
 #
 # Layers go from what changes least to what changes most: the system's
 # packages, Docker, then Go, then Rust, then Java, .NET and Ruby, then
-# the Rust build tools g1t's own jobs pin, then the command-line tools.
+# Tauri's system packages, then the Rust build tools g1t's own jobs pin,
+# then the command-line tools.
 #
 # Java and Ruby live in the runner's tool cache (RUNNER_TOOL_CACHE,
 # /home/runner/_tool), laid out as the setup actions look for them, so
@@ -191,6 +192,24 @@ RUN prefix="/home/runner/_tool/Ruby/${RUBY_VERSION}/x64" \
  && touch "$prefix.complete" \
  && chown -R node:node "/home/runner/_tool/Ruby"
 ENV PATH=${JAVA_HOME}/bin:/home/runner/_tool/Ruby/${RUBY_VERSION}/x64/bin:$PATH
+
+# What a Tauri app builds against on Linux: WebKitGTK 4.1, libxdo, the
+# app indicator and librsvg, the set scripts/apt-install.sh calls `tauri`
+# (its build-essential, curl, wget, file and libssl-dev are above), so
+# CI's desktop job and the desktop release's Linux build install nothing
+# (that step took a minute a run, from its apt cache, and up to 30 minutes
+# without one). Without Recommends, which are GStreamer, FFmpeg, video
+# drivers and fonts a build never loads: about 0.97 GB unpacked, against
+# 1.58 GB with them. scripts/deploy/deploy.test.mjs fails when this list
+# and the script's differ. Here, after the toolchains and before the Rust
+# build tools, since it changes about as rarely as they do.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update \
+ && apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-unsafe-io \
+      libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev \
+ && rm -rf /var/log/apt /var/log/dpkg.log /var/cache/debconf/*-old \
+ && pkg-config --modversion webkit2gtk-4.1
 
 # The Rust build tools g1t's own jobs use, so that no job compiles or
 # downloads them: the x86_64-unknown-linux-musl target the static runner

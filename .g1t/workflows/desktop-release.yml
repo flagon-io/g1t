@@ -79,13 +79,20 @@ jobs:
       - name: Cache keys
         id: keys
         run: node scripts/deploy/ci-cache.mjs keys
-      # apt's lists and downloads, as CI's desktop job saves them on main.
+      # g1t's runner image has Tauri's system packages; a machine without
+      # them installs them, from apt's lists and downloads as CI's desktop
+      # job saves them on main.
+      - name: Is what Tauri needs on Linux installed
+        id: tauri-apt
+        run: bash scripts/apt-install.sh tauri --check
       - name: Cache apt's downloads
+        if: ${{ steps.tauri-apt.outputs.installed != 'true' }}
         uses: actions/cache/restore@v4
         with:
           path: ~/.cache/apt/tauri
           key: apt-tauri-${{ runner.os }}-${{ hashFiles('scripts/apt-install.sh') }}
       - name: What Tauri needs on Linux
+        if: ${{ steps.tauri-apt.outputs.installed != 'true' }}
         run: bash scripts/apt-install.sh tauri
       # The app's release build. A tag's run restores only from its own tag
       # and from main, never from the last release's, so the Caches

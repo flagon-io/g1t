@@ -197,6 +197,25 @@ test("the base has the worker-build and sccache that the build scripts pin", () 
   assert.match(dockerfile, /rustup target add x86_64-unknown-linux-musl/);
 });
 
+test("the base has every package scripts/apt-install.sh installs for Tauri", () => {
+  // CI's desktop job skips the install when the image has the whole set,
+  // so a package added to the script and not to the base would be missing
+  // from every job on g1t's machines until the base is rebuilt.
+  const dockerfile = readFileSync(join(ROOT, "services/runner/base/Dockerfile"), "utf8");
+  const script = readFileSync(join(ROOT, "scripts/apt-install.sh"), "utf8");
+  const set = script
+    .match(/^\s*tauri\)\s*\r?\n\s*packages=\(([^)]*)\)/m)?.[1]
+    .trim()
+    .split(/\s+/);
+  assert.ok(set?.length, "scripts/apt-install.sh has a tauri set");
+  const installs = [...dockerfile.matchAll(/apt-get install([^&]*)/g)]
+    .map((m) => m[1].replace(/\\\r?\n/g, " "))
+    .join(" ")
+    .split(/\s+/);
+  const missing = set.filter((name) => !installs.includes(name));
+  assert.deepEqual(missing, [], "services/runner/base/Dockerfile lacks these of scripts/apt-install.sh's tauri set");
+});
+
 test("an image's hash ignores line endings, and its tags say what they are", () => {
   const files = { "a.txt": "one\r\ntwo\r\n", "b.txt": "x" };
   const lf = { "a.txt": "one\ntwo\n", "b.txt": "x" };

@@ -514,7 +514,11 @@ it in a `run` step instead (for example with `ruby-build`) or run the job
 in a `container:` with the Ruby you need, such as `ruby:3.4`.
 
 The headers that gems and .NET need to build native code (`libyaml`,
-`libffi`, `zlib`, OpenSSL, ICU) are installed too.
+`libffi`, `zlib`, OpenSSL, ICU) are installed too, and so is what a
+[Tauri](https://v2.tauri.app/start/prerequisites/#linux) app builds against
+on Linux (`libwebkit2gtk-4.1-dev`, `libxdo-dev`,
+`libayatana-appindicator3-dev`, `librsvg2-dev`), so a Tauri build needs no
+`apt-get install` step.
 
 ### Command-line tools
 

@@ -235,7 +235,7 @@ restored longest ago go. So:
 | worker-build and its tools | `worker-build-…`, `worker-build-tools-…`                                                | Deploy                                        | Deploy                      |
 | Compiled crates            | sccache's, one per crate                                                                | every Rust job                                | every Rust job              |
 | The desktop app's check    | `desktop-check-<os>-<rust>-<desktop deps>`                                              | CI desktop                                    | CI desktop on pull requests |
-| apt for Tauri              | `apt-tauri-<os>-<scripts/apt-install.sh>`                                               | CI desktop                                    | the desktop release         |
+| apt for Tauri              | `apt-tauri-<os>-<scripts/apt-install.sh>`, only where the image lacks Tauri's packages  | CI desktop                                    | the desktop release         |
 | The runner release         | `runner-release-<os>-<target>-<rust>-<deps>`, zig                                       | Caches (`runner`)                             | the runner release          |
 | The desktop release        | `desktop-release-linux-…`, `desktop-release-windows-…`, `xwin-…`, `apt-tauri-windows-…` | Caches (`desktop-linux`, `desktop-windows`)   | the desktop release         |
 | The CLI release            | `cli-release-<os>-<zigbuild>-<deps>` (`target/zig`, every platform)                     | Caches (`cli`), built whole                   | the CLI release             |

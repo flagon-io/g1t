@@ -5,6 +5,14 @@
 #
 #   bash scripts/apt-install.sh tauri            # Tauri's build on Linux
 #   bash scripts/apt-install.sh tauri-windows    # its Windows cross build
+#   bash scripts/apt-install.sh tauri --check    # installed=true|false, for if:
+#
+# When every package of the set is installed already, it installs nothing:
+# g1t's runner image has the `tauri` set (services/runner/base/Dockerfile),
+# so a job there skips this, while a self-hosted runner or an older image
+# installs as below. --check says which, in the step's output `installed`
+# (or on stdout outside a workflow), so a workflow can skip restoring the
+# apt cache too.
 #
 # apt's package lists and downloaded .debs are kept in ~/.cache/apt/<set>,
 # which the workflow restores and saves with actions/cache under
@@ -26,10 +34,29 @@ case "$set_name" in
     packages=(build-essential curl wget file libssl-dev libayatana-appindicator3-dev nsis clang lld llvm)
     ;;
   *)
-    echo "usage: bash scripts/apt-install.sh tauri|tauri-windows" >&2
+    echo "usage: bash scripts/apt-install.sh tauri|tauri-windows [--check]" >&2
     exit 2
     ;;
 esac
+
+# Every package of the set is installed (not just known to dpkg).
+installed() {
+  local status
+  status="$(dpkg-query -W -f='${db:Status-Status}\n' "${packages[@]}" 2>/dev/null)" || return 1
+  [ "$(grep -cx installed <<<"$status")" -eq "${#packages[@]}" ]
+}
+
+if [ "${2:-}" = "--check" ]; then
+  if installed; then answer=true; else answer=false; fi
+  echo "installed=$answer" >>"${GITHUB_OUTPUT:-/dev/stdout}"
+  echo "The $set_name packages are $([ "$answer" = true ] && echo "installed already" || echo "not all installed")."
+  exit 0
+fi
+
+if installed; then
+  echo "The ${#packages[@]} $set_name packages are installed already."
+  exit 0
+fi
 
 dir="$HOME/.cache/apt/$set_name"
 mkdir -p "$dir/archives/partial" "$dir/lists/partial"
