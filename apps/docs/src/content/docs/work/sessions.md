@@ -127,6 +127,12 @@ A session's page is `g1t.sh/<workspace>/-/chat/sessions/<id>` (its
 `ses_…` id), opened from Sessions or from anywhere the session is listed.
 It shows:
 
+- for a session g1t runs on the workspace's Anthropic account, while it
+  runs, and to whoever started it or a workspace member with write access
+  to its repository: a card at the top for each call waiting for approval,
+  with **Allow** and **Deny**, and **Send to this session** under its
+  answer, to message it. See
+  [answer a running session](/guides/sessions/#answer-a-running-session);
 - who ran it, in which harness and on which model, its state, when it
   started and how long it ran, when it was last heard from or why it
   ended, its repository, branch and head commit;

@@ -8,6 +8,7 @@ import type { Route } from "./+types/session";
 import { page } from "../../../../lib/meta";
 import { Actor, CoordinationFeed, EndSessionDialog, HarnessBadge, SessionStateBadge } from "../../../../components/coordination";
 import { Unavailable } from "../../../../components/boundary";
+import { ApprovalCard, SessionMessageBox } from "../../../../components/session-answer";
 import { SessionEntries, entryAnchor } from "../../../../components/session-entries";
 import { ActivityBars, AskedBubble, Deliverables, FileNames, Highlights, SessionAnswer, StatTile, WorkedFor } from "../../../../components/session-story";
 import { EmptyState, Input, SubmitButton, TimeAgo } from "../../../../components/ui";
@@ -43,7 +44,8 @@ import { activity, deliverables, filesTouched, highlights, sessionAnswer } from 
 import { sessionCost } from "../../../../lib/sessions";
 import { repoPages } from "../../../../lib/repo-live";
 import { agentSessions, work } from "../../../../lib/services.server";
-import { assertSameOrigin, getViewer, requireUser } from "../../../../lib/session.server";
+import { readAnswer, readMessage } from "../../../../lib/session-approvals";
+import { assertSameOrigin, getViewer, requireUser, roleIn } from "../../../../lib/session.server";
 import { useLive } from "../../../../lib/use-repo-live";
 import { sessionPath, sessionsPath } from "../../../../lib/work-items";
 
@@ -117,6 +119,18 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     .map((link): Thread => (link.kind === "pull" ? { repo: path, number: link.number } : { workspace, number: link.number }));
   const decided = await part(Promise.all(threads.map((thread) => work.listDecisions(thread, viewer))), "Decisions");
   const decisions = isFailed(decided) ? null : decided.flatMap((result) => (result.ok ? result.value : []));
+  // While a hosted session runs, the people who may answer it (whoever
+  // started it, and the workspace's members with write access) see the
+  // calls it waits on and a box to message it. The service lists only the
+  // calls the viewer may answer, and checks again on every answer.
+  const answering = top.harness === MANAGED && top.state !== "ended" && viewer != null;
+  const mayMessage = answering && (viewer.id === top.actor.id || (roleIn(viewer, workspace) != null && access.can.push));
+  const waiting = answering
+    ? await part(
+        agentSessions.approvals(viewer, workspace, top.id).then((listed) => (listed.ok ? listed.value : [])),
+        "Calls waiting for approval",
+      )
+    : [];
   return {
     ...found.value,
     decisions,
@@ -128,6 +142,9 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     // One its harness left behind is ended by hand: by whoever runs it, or anyone with write access.
     canEnd: mayEndSession(session, viewer?.id, access.can.push),
     consoleUrl,
+    // Null when they could not be read: the page says so where they would be.
+    approvals: isFailed(waiting) ? null : waiting,
+    canMessage: mayMessage,
   };
 }
 
@@ -153,7 +170,25 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     if (!titled) return { error: "The title could not be saved. Try again in a moment." };
     return titled.ok ? { titled: true } : { error: titled.error.message };
   }
-  if (form.get("action") !== "stop") return { error: "There is nothing to do here but stop, end or name the session." };
+  // Answering a hosted session goes to the top of its tree, which holds its
+  // calls and takes its messages; the integrations service checks who may
+  // and refuses an answer that came too late.
+  const top = (found.value.root ?? found.value.session).id;
+  if (form.get("action") === "answer") {
+    const read = readAnswer(form);
+    if ("error" in read) return { error: read.error };
+    const answered = await agentSessions.answer(user, path, top, read.toolUseId, read.answer, read.note).catch(() => null);
+    if (!answered) return { error: "The answer could not be sent. Try again in a moment." };
+    return answered.ok ? { answered: true } : { error: answered.error.message };
+  }
+  if (form.get("action") === "message") {
+    const read = readMessage(form);
+    if ("error" in read) return { error: read.error };
+    const sent = await agentSessions.message(user, path, top, read.text).catch(() => null);
+    if (!sent) return { error: "The message could not be sent. Try again in a moment." };
+    return sent.ok ? { sent: true } : { error: sent.error.message };
+  }
+  if (form.get("action") !== "stop") return { error: "There is nothing to do here but stop, end, name or answer the session." };
   const result = await agentSessions.stop(user, path, params.id).catch(() => null);
   if (!result) return { error: "The session could not be stopped. Try again in a moment." };
   return result.ok ? null : { error: result.error.message };
@@ -419,6 +454,8 @@ function SessionPage({ loaderData, actionData }: Route.ComponentProps) {
     limited,
     workspace,
     repo,
+    approvals,
+    canMessage,
   } = loaderData;
   const base = `/${repo}`;
   const [ending, setEnding] = useState(false);
@@ -596,6 +633,21 @@ function SessionPage({ loaderData, actionData }: Route.ComponentProps) {
         </Alert>
       )}
 
+      {/* What it waits on someone to allow or deny, first: it is stuck until then. */}
+      {approvals == null ? (
+        <div className="mt-6">
+          <Unavailable what="Calls waiting for approval" compact />
+        </div>
+      ) : (
+        approvals.length > 0 && (
+          <div className="mt-6 space-y-3">
+            {approvals.map((approval) => (
+              <ApprovalCard key={approval.toolUseId} approval={approval} now={now} />
+            ))}
+          </div>
+        )
+      )}
+
       {/* The story: what it was asked, how long it worked, and what it came to. */}
       <div className="mt-8 space-y-5">
         {prompt && !prompt.withheld && prompt.text.trim() && <AskedBubble text={prompt.text} repo={repoAt(base)} />}
@@ -611,6 +663,7 @@ function SessionPage({ loaderData, actionData }: Route.ComponentProps) {
           )
         )}
       </div>
+      {canMessage && <SessionMessageBox />}
 
       {!limited && (
         <div className="mt-8 grid gap-3 sm:grid-cols-3">
@@ -672,7 +725,8 @@ function SessionPage({ loaderData, actionData }: Route.ComponentProps) {
 
       {managed && live && (
         <Alert tone="info" className="mt-8">
-          It runs on the workspace's Anthropic account, with Claude Managed Agents. What it does shows here as it goes.
+          It runs on the workspace's Anthropic account, with Claude Managed Agents. What it does shows here as it goes, and a call it waits on someone to allow
+          shows at the top for whoever started it and the workspace's members with write access.
         </Alert>
       )}
 

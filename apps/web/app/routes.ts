@@ -199,6 +199,8 @@ export default [
       // Ahead of the channels, and `sessions` is no channel's name.
       route("-/chat/sessions", "routes/workspace/work/sessions/list.tsx"),
       route("-/chat/sessions/:id", "routes/workspace/work/sessions/session.tsx"),
+      // The hosted sessions' calls waiting on the viewer's approval, for Needs attention.
+      route("-/approvals.json", "routes/workspace/approvals-json.ts"),
       route("-/chat", "routes/workspace/chat/layout.tsx", [
         index("routes/workspace/chat/index.tsx"),
         route("browse", "routes/workspace/chat/browse.tsx"),

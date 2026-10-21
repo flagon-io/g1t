@@ -1,12 +1,15 @@
-import { ChevronsDown, ChevronsUp, CircleDot, GitPullRequest, PlayCircle, Rocket } from "lucide-react";
+import { ChevronsDown, ChevronsUp, CircleDot, GitPullRequest, PlayCircle, Rocket, ShieldAlert } from "lucide-react";
 import { type ReactNode, useEffect, useId, useMemo, useState } from "react";
 import { Link, useFetcher } from "react-router";
 
-import type { InboxItem } from "@g1t/contracts";
+import type { AgentApproval, InboxItem } from "@g1t/contracts";
 
 import type { InboxPanelData } from "../routes/inbox-json";
+import type { ApprovalsData } from "../routes/workspace/approvals-json";
 import { cn } from "../lib/cn";
 import { REASON_LABEL, needsAttention, whenShort } from "../lib/inbox";
+import { approvalWhat, attentionEntries, attentionKey, timeLeft, toolName } from "../lib/session-approvals";
+import { sessionPath } from "../lib/work-items";
 import { Button } from "./ui/button";
 import { Hint } from "./ui/hint";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -29,11 +32,16 @@ const SUBJECT_ICON: Record<NonNullable<InboxItem["subject"]>, ReactNode> = {
  * beside the sidebar: what it is, why you were told, and what to do now:
  * Review (open it), Snooze it to tomorrow, or Dismiss it (done). The list is
  * the inbox's Needs you (`/inbox.json?tab=needs`), read when the sidebar is
- * drawn and again when the window comes back into view. Nothing is drawn
- * while it is on its way, when it could not be read, or when nothing waits.
+ * drawn and again when the window comes back into view. Beside them, newest
+ * first with them, are the hosted sessions' calls waiting on your approval
+ * (`-/approvals.json`), whose card's Review opens the session, where they
+ * are allowed or denied. Nothing is drawn while it is on its way, when it
+ * could not be read, or when nothing waits.
  */
 export function NeedsAttention({ slug, className }: { slug: string; className?: string }) {
   const list = useFetcher<InboxPanelData>({ key: "needs-attention" });
+  // The hosted sessions' calls waiting on the viewer's answer, beside the notifications.
+  const waiting = useFetcher<ApprovalsData>({ key: "needs-attention-approvals" });
   const mark = useFetcher({ key: "needs-attention-mark" });
   const [more, setMore] = useState(false);
   // Dismissed or snoozed here: gone at once, before the inbox has said so.
@@ -43,7 +51,9 @@ export function NeedsAttention({ slug, className }: { slug: string; className?: 
 
   useEffect(() => {
     const read = () => {
-      if (document.visibilityState === "visible") list.load("/inbox.json?tab=needs&for=attention");
+      if (document.visibilityState !== "visible") return;
+      list.load("/inbox.json?tab=needs&for=attention");
+      waiting.load(`/${encodeURIComponent(slug)}/-/approvals.json`);
     };
     read();
     window.addEventListener("focus", read);
@@ -51,7 +61,10 @@ export function NeedsAttention({ slug, className }: { slug: string; className?: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
-  const items = useMemo(() => needsAttention(list.data?.items ?? [], slug, Date.now(), hidden), [list.data, slug, hidden]);
+  const items = useMemo(() => {
+    const now = Date.now();
+    return attentionEntries(needsAttention(list.data?.items ?? [], slug, now, hidden), waiting.data?.approvals ?? [], now);
+  }, [list.data, waiting.data, slug, hidden]);
   if (items.length === 0) return null;
   const shown = more ? items : items.slice(0, FIRST);
 
@@ -71,9 +84,13 @@ export function NeedsAttention({ slug, className }: { slug: string; className?: 
         <span className="rounded-full bg-danger/10 px-1.5 text-[0.6875rem] font-medium text-danger tabular-nums">{items.length}</span>
       </h2>
       <ul className="px-1 pb-1">
-        {shown.map((item) => (
-          <AttentionRow key={item.id} item={item} onSettle={(intent) => settle(item, intent)} />
-        ))}
+        {shown.map((entry) =>
+          entry.kind === "inbox" ? (
+            <AttentionRow key={attentionKey(entry)} item={entry.item} onSettle={(intent) => settle(entry.item, intent)} />
+          ) : (
+            <ApprovalRow key={attentionKey(entry)} approval={entry.approval} slug={slug} />
+          ),
+        )}
       </ul>
       {items.length > FIRST && (
         <button
@@ -87,6 +104,73 @@ export function NeedsAttention({ slug, className }: { slug: string; className?: 
         </button>
       )}
     </section>
+  );
+}
+
+/** A row's popover beside the sidebar: the same frame for a notification and a waiting call. */
+const CARD_CLASS = "w-88 rounded-2xl border-line bg-bg p-0 shadow-lg shadow-black/10";
+
+/** A hosted session's call that waits on the viewer: an amber dot and what it wants to do, opening its card. */
+function ApprovalRow({ approval, slug }: { approval: AgentApproval; slug: string }) {
+  const [open, setOpen] = useState(false);
+  const what = `Approve ${toolName(approval.tool)}: ${approvalWhat(approval)}`;
+  return (
+    <li>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger className="group flex h-8 w-full min-w-0 items-center gap-2.5 rounded-lg px-2 text-left text-[0.8125rem] text-fg-soft outline-none transition-colors hover:bg-sidebar-accent/60 hover:text-fg focus-visible:ring-2 focus-visible:ring-accent data-[state=open]:bg-sidebar-accent data-[state=open]:text-fg">
+          <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-warn" />
+          <span className="min-w-0 grow truncate">{what}</span>
+        </PopoverTrigger>
+        <PopoverContent
+          side="right"
+          align="start"
+          sideOffset={14}
+          className={CARD_CLASS}
+          aria-label={what}
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            (event.currentTarget as HTMLElement | null)?.focus();
+          }}
+        >
+          <ApprovalCard approval={approval} slug={slug} onClose={() => setOpen(false)} />
+        </PopoverContent>
+      </Popover>
+    </li>
+  );
+}
+
+/**
+ * A waiting call's card: what it wants to do, in which session and
+ * repository, how long it has left, and Review, which opens the session's
+ * page, where it is allowed or denied. It cannot be snoozed or dismissed:
+ * it goes once it is answered or g1t declines it.
+ */
+function ApprovalCard({ approval, slug, onClose }: { approval: AgentApproval; slug: string; onClose: () => void }) {
+  const now = Date.now();
+  const where = [approval.repo, approval.item != null ? `#${approval.item}` : null].filter(Boolean).join(" ");
+  return (
+    <div className="p-4">
+      <div className="flex items-start gap-2.5">
+        <span className="mt-0.5 flex shrink-0 text-warn">
+          <ShieldAlert size={16} />
+        </span>
+        <h3 className="min-w-0 grow text-[0.9375rem] leading-snug font-semibold text-fg">{toolName(approval.tool)} waits for your approval</h3>
+        <span aria-hidden="true" className="mt-1.5 size-2 shrink-0 rounded-full bg-warn" />
+      </div>
+      <p className="mt-2 pl-6.5 text-[0.8125rem] leading-relaxed text-muted">
+        <code className="block font-mono text-xs break-all text-fg-soft">{approvalWhat(approval)}</code>
+        <span className="mt-1 block text-faint">
+          {approval.startedBy}'s session{where && <> · {where}</>} · {whenShort(approval.askedAt, now)} · {timeLeft(approval.expiresAt, now)}
+        </span>
+      </p>
+      <div className="mt-4 flex items-center gap-2 pl-6.5">
+        <Button asChild size="sm" className="rounded-full px-4">
+          <Link to={sessionPath(slug, approval.sessionId)} onClick={onClose}>
+            Review
+          </Link>
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -105,7 +189,7 @@ function AttentionRow({ item, onSettle }: { item: InboxItem; onSettle: (intent: 
           side="right"
           align="start"
           sideOffset={14}
-          className="w-88 rounded-2xl border-line bg-bg p-0 shadow-lg shadow-black/10"
+          className={CARD_CLASS}
           aria-label={what}
           // The card takes focus itself, so no button is ringed before you choose; Tab reaches them.
           onOpenAutoFocus={(event) => {
