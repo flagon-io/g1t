@@ -579,7 +579,7 @@ function PlatformSection({ guard, unavailable, failed }: { guard: PlatformGuard 
       className="mt-6"
       id="platform"
       title="Platform pause"
-      description="What Cloudflare counted for all of g1t, read at a quarter past each hour: Workers, D1, Queues, Durable Objects, KV and Artifacts, each against an hourly threshold (PLATFORM_HOURLY_* in billing's wrangler.jsonc). A breach emails staff once per metric every 6 hours. Five times a threshold pauses what that metric feeds, of the levels AUTO_PAUSE names. Any level can be paused here by hand; every service sees a change within 30 seconds."
+      description="What Cloudflare counted for all of g1t, read at a quarter past each hour: Workers, D1, Queues, Durable Objects, KV, Artifacts and Containers, each against an hourly threshold (PLATFORM_HOURLY_* in billing's wrangler.jsonc). A breach emails staff once per metric every 6 hours. Five times a threshold pauses what that metric feeds, of the levels AUTO_PAUSE names. Any level can be paused here by hand; every service sees a change within 30 seconds."
     >
       {!guard ? (
         <Notice tone="warn">Billing did not answer for the platform pause: {unavailable}</Notice>

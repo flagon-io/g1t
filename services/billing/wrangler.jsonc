@@ -160,6 +160,10 @@
     "PLATFORM_HOURLY_KV_DELETES": "200000",
     "PLATFORM_HOURLY_KV_LISTS": "200000",
     "PLATFORM_HOURLY_ARTIFACTS_EVENTS": "1000000",
+    // Containers: 400 GiB-hours of memory is more than any runner class at
+    // its max_instances all hour; 180,000 CPU-seconds is 50 vCPU busy.
+    "PLATFORM_HOURLY_CONTAINER_MEMORY_GIB_HOURS": "400",
+    "PLATFORM_HOURLY_CONTAINER_CPU_SECONDS": "180000",
     // A spike: an hour over 10 times the last week's median hour, and at
     // least 10% of its threshold. Emailed, never paused by itself.
     "PLATFORM_SPIKE_FACTOR": "10",

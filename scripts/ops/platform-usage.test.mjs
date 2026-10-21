@@ -42,6 +42,11 @@ test("a query asks for the variant's sums and dimensions under one alias", () =>
   assert.match(query, /accounts\(filter: \{ accountTag: \$accountTag \}\)/);
   const artifacts = buildQuery("artifactsEventsAdaptiveGroups", variantOf("artifacts"));
   assert.match(artifacts, /\bcount\b/);
+  // Containers have no count: only sums, by application.
+  const containers = buildQuery("containersUsageAdaptiveGroups", variantOf("containers"));
+  assert.match(containers, /sum \{ allocatedMemory cpuTimeSec allocatedDisk txBytes \}/);
+  assert.match(containers, /dimensions \{ applicationId \}/);
+  assert.doesNotMatch(containers, /\bcount\b/);
   const minute = buildQuery("durableObjectsPeriodicGroups", variantOf("durable_objects_periodic", 2));
   assert.match(minute, /datetimeMinute_geq: \$start, datetimeMinute_leq: \$end/);
 });
@@ -82,6 +87,22 @@ test("groups are summed per name, named from the listing, sorted largest first, 
   );
   assert.throws(() => parseGroups({ errors: [{ message: "unknown field cpuTimeUs" }] }, variantOf("workers")), /cpuTimeUs/);
   assert.equal(snake("billableOperations"), "billable_operations");
+  const containers = parseGroups(
+    answer([
+      { sum: { allocatedMemory: 4e13, cpuTimeSec: 900, allocatedDisk: 1e13, txBytes: 5 }, dimensions: { applicationId: "a0329680" } },
+      { sum: { allocatedMemory: 2e12, cpuTimeSec: 30, allocatedDisk: 1e12, txBytes: 0 }, dimensions: { applicationId: "a038498b" } },
+    ]),
+    variantOf("containers"),
+    { a0329680: "g1t-runner-sandbox4core" },
+  );
+  assert.deepEqual(containers.metrics, ["allocated_memory", "cpu_time_sec", "allocated_disk", "tx_bytes"]);
+  assert.deepEqual(
+    containers.rows.map((row) => [row.name, row.cpu_time_sec]),
+    [
+      ["g1t-runner-sandbox4core", 900],
+      ["a038498b", 30],
+    ],
+  );
 });
 
 test("a dataset that errors or is missing is a note, and the others still report", () => {
@@ -197,4 +218,7 @@ test("the watcher queries are billing's, field for field, over the last full hou
   const d1 = watcherQuery(WATCHER_QUERIES.find((q) => q.key === "d1"));
   assert.match(d1, /rows: d1AnalyticsAdaptiveGroups\(limit: 10000, filter: \{ datetimeHour_geq: \$since, datetimeHour_lt: \$until \}\)/);
   assert.match(d1, /\$since: Time!/);
+  const containers = watcherQuery(WATCHER_QUERIES.find((q) => q.key === "containers"));
+  assert.match(containers, /rows: containersUsageAdaptiveGroups\(limit: 10000, filter: \{ datetime_geq: \$since, datetime_lt: \$until \}\)/);
+  assert.match(containers, /sum \{ allocatedMemory cpuTimeSec \}/);
 });

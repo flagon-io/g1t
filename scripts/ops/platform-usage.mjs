@@ -2,12 +2,13 @@
 // What is the platform using on Cloudflare? Asks Cloudflare's GraphQL
 // Analytics API, for the month so far (UTC, from the 1st) and the last 24
 // hours, how much each Worker, D1 database, queue, Durable Object namespace,
-// KV namespace and Artifacts namespace did, and prints the top of each with
-// totals. Workers Logs are added when the account's schema has a dataset for
-// them.
+// KV namespace, Artifacts namespace and container application did, and prints
+// the top of each with totals. Workers Logs are added when the account's
+// schema has a dataset for them.
 //
 // Read-only: one GraphQL query per dataset and window, all at once, and a few
-// REST listings to put names on database, queue and namespace ids. A dataset
+// REST listings to put names on database, queue, namespace and application
+// ids. A dataset
 // or field Cloudflare refuses is a note in the report, never the end of it.
 //
 //   CLOUDFLARE_API_TOKEN=<token with Account Analytics: Read> \
@@ -15,9 +16,10 @@
 //
 // --account (or CLOUDFLARE_ACCOUNT_ID) reads another account than g1t's.
 // --json prints one object with snake_case keys and every row, not just the top.
-// Names come from the D1, Queues, KV and Durable Objects listings when the
-// token may read them (D1: Read, Queues: Read, Workers KV Storage: Read,
-// Workers Scripts: Read); otherwise the ids are printed.
+// Names come from the D1, Queues, KV, Durable Objects and Containers listings
+// when the token may read them (D1: Read, Queues: Read, Workers KV Storage:
+// Read, Workers Scripts: Read, Containers: Read); otherwise the ids are
+// printed.
 //
 // It is also the check of billing's hourly watcher (services/billing/src/
 // platform.rs): it asks Cloudflare billing's own queries, field for field,
@@ -32,7 +34,8 @@ const API = "https://api.cloudflare.com/client/v4";
 const HELP = `node scripts/ops/platform-usage.mjs [--top N] [--json] [--account <id>]
 
 Cloudflare usage per Worker, D1 database, queue, Durable Object namespace,
-KV namespace and Artifacts namespace, month to date (UTC) and the last 24 hours.
+KV namespace, Artifacts namespace and container application, month to date
+(UTC) and the last 24 hours.
 
   --top N         rows shown per dataset in the tables (default 10)
   --json          one JSON object, snake_case keys, every row
@@ -68,6 +71,13 @@ export const WATCHER_QUERIES = [
   { key: "do_sql", dataset: "durableObjectsPeriodicGroups", select: "sum { rowsWritten }", dimensions: "namespaceId", hourFilter: "datetime" },
   { key: "kv", dataset: "kvOperationsAdaptiveGroups", select: "sum { requests }", dimensions: "namespaceId actionType", hourFilter: "datetime" },
   { key: "artifacts", dataset: "artifactsEventsAdaptiveGroups", select: "count", dimensions: "repositoryName", hourFilter: "datetime" },
+  {
+    key: "containers",
+    dataset: "containersUsageAdaptiveGroups",
+    select: "sum { allocatedMemory cpuTimeSec }",
+    dimensions: "applicationId",
+    hourFilter: "datetime",
+  },
 ];
 
 /** The last full hour (UTC) before `now`, as the watcher reads it. */
@@ -184,6 +194,17 @@ export const DATASETS = [
     label: "Artifacts events, by namespace and type",
     dataset: "artifactsEventsAdaptiveGroups",
     variants: [{ count: true, sum: ["durationMs"], dims: ["repositoryNamespace", "eventType"] }],
+  },
+  {
+    // Memory and disk are byte-seconds, CPU is seconds; the dataset has no count.
+    key: "containers",
+    label: "Containers, by application",
+    dataset: "containersUsageAdaptiveGroups",
+    names: "containers",
+    variants: [
+      { sum: ["allocatedMemory", "cpuTimeSec", "allocatedDisk", "txBytes"], dims: ["applicationId"] },
+      { sum: ["allocatedMemory", "cpuTimeSec"], dims: ["applicationId"] },
+    ],
   },
   {
     key: "workers_logs",
@@ -454,14 +475,15 @@ async function main() {
   const windowList = windows(now);
   const account = options.account;
   const base = `/accounts/${account}`;
-  const [fields, d1, queues, kv, durable] = await Promise.all([
+  const [fields, d1, queues, kv, durable, containers] = await Promise.all([
     schemaFields(auth, account),
     listing(auth, `${base}/d1/database`, "uuid", "name"),
     listing(auth, `${base}/queues`, "queue_id", "queue_name"),
     listing(auth, `${base}/storage/kv/namespaces`, "id", "title"),
     listing(auth, `${base}/workers/durable_objects/namespaces`, "id", "name"),
+    listing(auth, `${base}/containers/applications`, "id", "name"),
   ]);
-  const names = { d1, queues, kv, durable_objects: durable };
+  const names = { d1, queues, kv, durable_objects: durable, containers };
   const outcomes = {};
   const jobs = [];
   for (const window of windowList) {

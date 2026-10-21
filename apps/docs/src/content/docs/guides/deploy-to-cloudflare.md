@@ -538,13 +538,19 @@ Cloudflare has no hard spending cap. Besides each workspace's own
 
 - **The hourly watch.** At a quarter past each hour, billing reads the
   hour before from Cloudflare's GraphQL Analytics API: Workers requests
-  and CPU, D1 rows, Queue operations, Durable Objects, KV and Artifacts.
-  It needs `CLOUDFLARE_BILLING_TOKEN` (or `CLOUDFLARE_USAGE_TOKEN`) with
+  and CPU, D1 rows, Queue operations, Durable Objects, KV, Artifacts, and
+  Containers memory and CPU (the runner's sandboxes and git edges). It
+  needs `CLOUDFLARE_BILLING_TOKEN` (or `CLOUDFLARE_USAGE_TOKEN`) with
   Account Analytics Read. An hour over its threshold, or over ten times
   the week's median hour, is emailed to `COSTS_ALERT_EMAIL`.
 - **Thresholds** are the `PLATFORM_HOURLY_*` variables in
-  `services/billing/wrangler.jsonc`; `0` turns one off. A breach at five
-  times its threshold pauses the kinds of work in `AUTO_PAUSE`.
+  `services/billing/wrangler.jsonc`; `0` turns one off. Containers have
+  two: `PLATFORM_HOURLY_CONTAINER_MEMORY_GIB_HOURS` (memory allocated, in
+  GiB-hours, 400 by default) and `PLATFORM_HOURLY_CONTAINER_CPU_SECONDS`
+  (CPU used, 180,000 by default), each about $3.60 an hour at list price.
+  A breach at five times its threshold pauses the kinds of work it feeds
+  that `AUTO_PAUSE` names; a Containers breach feeds `compute`,
+  `schedules` and `git_edge`.
 - **The platform pause** stops a kind of work everywhere: `compute`
   (sandboxes), `schedules`, `indexing`, `renders` (social cards) or
   `git_edge`. Staff pause and resume in sudo, under **Costs & margin**.
