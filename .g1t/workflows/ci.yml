@@ -40,8 +40,11 @@ jobs:
   # of its own at the same time. Compiling the ~90 test binaries was most of
   # CI's time (4m18s of a 5m41s run on one 4-vCPU machine: sccache answers
   # the libraries, but a test binary is linked and never cached), and the
-  # suites then ran one after another. The parts are about even in Rust;
-  # repository_workflows.rs checks every workspace crate is in exactly one.
+  # suites then ran one after another. The slowest part sets CI's time, so
+  # the parts are split by each crate's measured compile and test time
+  # (scripts/deploy/ci-parts.mjs writes them; its test checks they are its
+  # split); repository_workflows.rs checks every workspace crate is in
+  # exactly one.
   # On a pull request a part tests only its crates the change reaches
   # (scripts/deploy/ci-affected.mjs), and a part it does not reach passes
   # without compiling; on main every part tests all of its crates.
@@ -55,11 +58,11 @@ jobs:
       matrix:
         include:
           - part: 1
-            crates: -p g1t-contracts -p g1t-billing -p g1t-packages -p g1t-events -p g1t-search -p g1t-rules -p g1t-blobstore -p g1t-sshd -p g1t-secrets
+            crates: -p g1t-work -p g1t-repos -p g1t-security -p g1t-scan -p g1t-rules -p g1t-blobstore
           - part: 2
-            crates: -p g1t-work -p g1t-api -p g1t-identity -p g1t-security -p g1t-scan -p g1t-webhooks
+            crates: -p g1t-contracts -p g1t-runner -p g1t-billing -p g1t-integrations -p g1t-events -p g1t-actions -p g1t-kit -p g1t-secrets
           - part: 3
-            crates: -p g1t-repos -p g1t-runner -p g1t -p g1t-actions-service -p g1t-integrations -p g1t-actions -p g1t-kit
+            crates: -p g1t-api -p g1t -p g1t-identity -p g1t-packages -p g1t-actions-service -p g1t-search -p g1t-webhooks -p g1t-sshd
     env:
       # Line tables, not full debug info: a panic still names its file and
       # line, and the test build is a fraction of the size to link, keep
