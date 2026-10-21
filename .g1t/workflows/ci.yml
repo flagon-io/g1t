@@ -3,7 +3,7 @@
 # pull request merges; people may still push to main directly, agents
 # may not. Deploy (deploy.yml) ships what lands on main.
 #
-#   rust        every crate's tests, natively
+#   rust        every crate's tests, natively, in three jobs at once
 #   typescript  type checks and tests of the apps and TS services, the
 #               deploy and ops scripts, and the deploy manifest
 #   build       the site, sudo and the docs build as they deploy
@@ -36,10 +36,27 @@ env:
   WRANGLER_SEND_METRICS: "false"
 
 jobs:
+  # The workspace's crates in three parts, each compiled and tested by a job
+  # of its own at the same time. Compiling the ~90 test binaries was most of
+  # CI's time (4m18s of a 5m41s run on one 4-vCPU machine: sccache answers
+  # the libraries, but a test binary is linked and never cached), and the
+  # suites then ran one after another. The parts are about even in Rust;
+  # repository_workflows.rs checks every workspace crate is in exactly one.
   rust:
-    name: Rust
+    name: Rust (${{ matrix.part }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      # Every part says what it found, not only the first to fail.
+      fail-fast: false
+      matrix:
+        include:
+          - part: 1
+            crates: -p g1t-contracts -p g1t-billing -p g1t-packages -p g1t-events -p g1t-search -p g1t-rules -p g1t-blobstore -p g1t-sshd -p g1t-secrets
+          - part: 2
+            crates: -p g1t-work -p g1t-api -p g1t-identity -p g1t-security -p g1t-scan -p g1t-webhooks
+          - part: 3
+            crates: -p g1t-repos -p g1t-runner -p g1t -p g1t-actions-service -p g1t-integrations -p g1t-actions -p g1t-kit
     env:
       # Line tables, not full debug info: a panic still names its file and
       # line, and the test build is a fraction of the size to link, keep
@@ -58,8 +75,9 @@ jobs:
         id: keys
         run: node scripts/deploy/ci-cache.mjs keys
       # Every crate the lockfile names, for every target (the fetch below):
-      # saved by this job alone, and only restored by Deploy and the
-      # releases, which each download part of it.
+      # saved by these jobs alone (each fetches all of it, and the first to
+      # finish keeps it), and only restored by Deploy and the releases,
+      # which each download part of it.
       - name: Cache crates
         uses: actions/cache@v4
         with:
@@ -70,10 +88,10 @@ jobs:
           restore-keys: cargo-crates-${{ runner.os }}-
       - name: Every crate the lockfile names
         run: cargo fetch --locked
-      # The compiled dependencies and workspace crates. Saved when the
-      # dependencies or the toolchain change; otherwise the last entry for
-      # this toolchain is a start, and only this build's files go into the
-      # new one (the prune step below).
+      # This part's compiled dependencies and crates, an entry for each part.
+      # Saved when the dependencies or the toolchain change; otherwise the
+      # part's last entry for this toolchain is a start, else any part's,
+      # and only this build's files go into the new one (the prune below).
       - name: Cache the test build
         id: test-build
         uses: actions/cache@v4
@@ -81,8 +99,10 @@ jobs:
           path: |
             target/debug
             !target/debug/incremental
-          key: cargo-test-${{ runner.os }}-${{ steps.keys.outputs.rust }}-${{ steps.keys.outputs.cargo }}
-          restore-keys: cargo-test-${{ runner.os }}-${{ steps.keys.outputs.rust }}-
+          key: cargo-test-${{ runner.os }}-${{ steps.keys.outputs.rust }}-${{ matrix.part }}-${{ steps.keys.outputs.cargo }}
+          restore-keys: |
+            cargo-test-${{ runner.os }}-${{ steps.keys.outputs.rust }}-${{ matrix.part }}-
+            cargo-test-${{ runner.os }}-${{ steps.keys.outputs.rust }}-
       # The workspace's library crates that Cargo compiles again come back
       # from the repository's Actions cache when their inputs did not change
       # (scripts/sccache.sh). Test harnesses and Workers' own crates are
@@ -90,12 +110,12 @@ jobs:
       - name: sccache
         run: bash scripts/sccache.sh install
       - name: Tests
-        run: cargo test --workspace --locked --quiet
+        run: cargo test ${{ matrix.crates }} --locked --quiet
       # A restored target keeps the old versions of whatever changed beside
       # the new ones; only what this build used goes into the new entry.
       - name: Only this build's files are saved
         if: ${{ steps.test-build.outputs.cache-hit != 'true' }}
-        run: node scripts/deploy/ci-cache.mjs prune target/debug -- test --workspace --locked --no-run
+        run: node scripts/deploy/ci-cache.mjs prune target/debug -- test ${{ matrix.crates }} --locked --no-run
       - name: sccache's hits and misses
         if: ${{ always() }}
         run: bash scripts/sccache.sh stats
