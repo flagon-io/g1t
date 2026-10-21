@@ -45,8 +45,16 @@ never charged for storage. Every workspace, including paid workspaces,
 has a **5 GB public repository storage cap**. Pushes, imports, forks and
 changes that would add public storage need room within that cap.
 Recently deleted repositories still count until permanently deleted.
-In-flight writes reserve capacity; an interrupted write may retain its
-reservation until it is reconciled.
+
+A write reserves room under the cap before it reaches storage, so writes
+at the same moment cannot overshoot it together, and gives back what it
+did not use as soon as it finishes. A push still sending after two hours
+is declined, and nothing of it is stored. A write that is interrupted
+keeps its reservation until g1t staff confirm it can no longer finish,
+from what the write itself recorded and never by its age alone. While it
+is held, a reservation counts against the 5 GB cap, but it is never
+charged: only what g1t measured as stored is. If public pushes are
+refused for room your repositories do not use, ask g1t support to look.
 
 Compute is not free. Workflows, the merge queue,
 deployments and semantic search need [the g1t plan](#the-g1t-plan), or a

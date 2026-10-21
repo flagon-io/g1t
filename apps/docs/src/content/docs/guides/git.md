@@ -362,6 +362,7 @@ what to do as `remote:` lines. Nothing in a declined push is stored.
 | A free workspace's repositories                      | 1 GB private and 5 GB public, together; none on the g1t plan | Pushes to the full kind are refused with the reason before any data is sent; see [usage and billing](/guides/usage-and-billing/).                           |
 | A push that push protection can scan before it lands | Most pushes; very large ones are scanned after they land     | A very large push goes through and is scanned after it lands; secrets found are open alerts. To have it checked first, push in parts, oldest commits first. |
 | A push                                               | 100 MB                                                       | Refused by the network with HTTP `413` before g1t sees it.                                                                                                  |
+| How long a push may take to send                     | 2 hours                                                      | The push is declined (`the push took too long`), and nothing of it is stored. Push again from a faster connection, or in parts.                             |
 
 To push a large history in parts:
 

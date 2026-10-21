@@ -102,6 +102,45 @@ A few details that keep pushes fast and correct:
   none of them, and one with more than 1,000 branches announces only the
   default branch.
 
+### Public storage reservations
+
+Every workspace's public repositories share a 5 GB cap, paid plans
+included, so a write takes room under it before it reaches the store:
+a push reserves its `Content-Length` (or the 100 MB a request may be),
+a merge, a commit from the site or a pull request update reserves its
+pack, and a fork reserves what its source holds. Each reservation is a
+row of `storage_reservations` in `g1t-repos`, and the sum admission adds
+up, `repos.storage_reserved_bytes`, moves with it in one batch
+(`services/repos/src/public_storage.rs`). A write that lands replaces its
+row with the bytes it measured; one refused before the store took it
+gives the row back.
+
+A write that stops without knowing whether the store kept it (the store
+answered with an error, or stopped answering) marks its row `ended`, with
+the refs it asked for. A row also carries a lease, two hours from when it
+was taken: a push still streaming at its lease is cut short, so the store
+refuses it whole, and a streamed copy's chunks are refused past it. A
+native fork locks its source while it takes the source's size
+(`storage_copy_locks`); the lock has the same lease.
+
+Rows and locks that outlive their write are for staff, in sudo's Storage
+holds page (`services/repos/src/storage_holds.rs`). A hold is released only
+when it is provably abandoned: its row is `ended`; or its lease passed 15
+minutes ago; or, for bytes reserved before the ledger began
+(`storage_ledger_epoch`, migration 0023) and locks without a lease, 24
+hours have passed since it began. Never by age alone. Releasing checks the
+same rules again in the batch that releases, writes a row of
+`storage_recoveries` with what the inspection found in the store, and
+never changes `stored_bytes`, which private storage is billed from. A
+write that settles after its hold was released still records the bytes it
+measured.
+
+The same page measures drift: for a sample of repositories, the pack the
+store sends for every ref (plus what each pull request's working copy
+holds beyond it) against `stored_bytes`. `stored_bytes` counts packs pushed
+through g1t, so it misses pushes made with a credential straight to the
+store, and counts objects a later push made unreachable.
+
 ### Timing
 
 Every git answer carries `Server-Timing`, with a step for each stage:
