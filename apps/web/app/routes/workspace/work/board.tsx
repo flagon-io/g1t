@@ -10,7 +10,7 @@ import { Avatar } from "../../../components/ui/avatar";
 import { Badge } from "../../../components/ui/badge";
 import { Card } from "../../../components/ui/card";
 import { Hint } from "../../../components/ui/hint";
-import { RepoChips } from "../../../components/work-items";
+import { ParentMark, RepoChips, SubItemsMark } from "../../../components/work-items";
 import { ItemIcon } from "../../../components/work-icons";
 import {
   type Board,
@@ -207,9 +207,11 @@ function ItemCard({ card, workspace }: { card: BoardCard; workspace: string }) {
             {item.title} <span className="font-normal text-faint">#{item.number}</span>
           </span>
         </Link>
-        {(item.repos.length > 0 || card.merged > 0 || marks) && (
+        {(item.repos.length > 0 || card.merged > 0 || marks || item.parent != null || item.subItemProgress) && (
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <PlanMarks item={item} />
+            <ParentMark parent={item.parent} workspace={workspace} />
+            <SubItemsMark progress={item.subItemProgress} />
             <RepoChips repos={item.repos} workspace={workspace} />
             {card.merged > 0 && (
               <Hint label={`${card.merged === 1 ? "A pull request" : `${card.merged} pull requests`} for it merged in the last ${DONE_DAYS} days`}>

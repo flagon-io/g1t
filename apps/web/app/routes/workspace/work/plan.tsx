@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronRight, Inbox, ListOrdered, Plus } from "lucide-react";
+import { Check, CheckCircle2, ChevronRight, Inbox, ListOrdered, ListTree, Plus } from "lucide-react";
 import { type DragEvent, useEffect, useMemo, useState } from "react";
 import { Link, redirect, useFetcher } from "react-router";
 
@@ -22,13 +22,15 @@ import {
   blockersToRead,
   capState,
   dropPosition,
+  groupSubItems,
   listRedirect,
   moreText,
   moveForm,
   moveFrom,
   onItems,
   planInput,
-  planPath,
+  planOptions,
+  planOptionsPath,
   progressOf,
   quietLine,
   setAsideLine,
@@ -56,7 +58,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
   // `-/work` with the list's filters is an old link to the list.
   const moved = listRedirect(workspace, query);
   if (moved) throw redirect(moved);
-  const all = query.get("all") === "1";
+  const { all, group } = planOptions(query);
   const member = roleIn(viewer, workspace) != null;
   // The plan is what the page is; who is on each item is a part each.
   const [plan, claims, live] = await Promise.all([
@@ -82,6 +84,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
     member,
     signedIn: viewer != null,
     all,
+    group,
     plan: shown,
     triageTotal: shown.triageTotal,
     on: onItems(rows, isFailed(claims) || !claims.ok ? [] : claims.value, sessions),
@@ -123,7 +126,8 @@ type Over = { lane: Lane; index: number };
  * or a phone moves them.
  */
 export default function PlanPage({ loaderData }: Route.ComponentProps) {
-  const { workspace, member, canPlan, canNow, on, all } = loaderData;
+  const { workspace, member, canPlan, canNow, on, all, group } = loaderData;
+  const options = { all, group };
   const fetcher = useFetcher<typeof action>();
   useWorkspaceLive({ workspace, member, match: workPages.list() });
   // Sessions go idle (after 15 minutes) with no event to say so: looked at again each minute.
@@ -169,7 +173,8 @@ export default function PlanPage({ loaderData }: Route.ComponentProps) {
     submit({ number: held.item.number, horizon: lane, ...position }, held.item);
   };
   const rowDrag = (lane: Lane, item: WorkItem, index: number): RowDrag | undefined => {
-    if (!canPlan) return undefined;
+    // Grouped, rows are not in the plan's order, so a drop could not say where it lands: the menu still moves them.
+    if (!canPlan || group) return undefined;
     const draggable = item.horizon !== "now" || canNow;
     return {
       draggable,
@@ -230,8 +235,11 @@ export default function PlanPage({ loaderData }: Route.ComponentProps) {
   const quiet = quietLine(loaderData.plan.progress.filter((one) => one.quiet).length);
   const letGo = setAsideLine(setAsideRecent);
   const nextMore = moreText(plan.next.length, plan.nextTotal);
-  const row = (lane: "now" | "next", item: WorkItem, index: number, rank: number) => (
+  // A horizon's rows, each sub-item under its parent when the plan groups them; each keeps its rank.
+  const rows = (items: WorkItem[]) => (group ? groupSubItems(items) : items.map((item, index) => ({ item, depth: 0, index })));
+  const row = (lane: "now" | "next", item: WorkItem, index: number, rank: number, depth = 0) => (
     <PlanRow
+      depth={depth}
       key={item.id}
       item={item}
       rank={rank}
@@ -257,12 +265,28 @@ export default function PlanPage({ loaderData }: Route.ComponentProps) {
             {!canPlan && loaderData.signedIn && " You can read the plan; placing work takes the Triage role."}
           </p>
         </div>
-        {loaderData.canOpen && (
-          <ButtonLink to={newItemPath(workspace)} className="max-sm:h-10">
-            <Plus size={15} />
-            New work item
-          </ButtonLink>
-        )}
+        <div className="flex items-center gap-2">
+          {/* Remembered in the address, as Show all is. */}
+          <Link
+            to={planOptionsPath(workspace, options, { group: !group })}
+            replace
+            preventScrollReset
+            aria-current={group ? "true" : undefined}
+            className={cn(
+              "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-sm transition-colors max-sm:h-10",
+              group ? "border-accent/50 bg-accent/10 text-fg" : "border-line text-muted hover:bg-surface hover:text-fg",
+            )}
+          >
+            {group ? <Check size={14} className="text-accent" /> : <ListTree size={14} />}
+            Group sub-items
+          </Link>
+          {loaderData.canOpen && (
+            <ButtonLink to={newItemPath(workspace)} className="max-sm:h-10">
+              <Plus size={15} />
+              New work item
+            </ButtonLink>
+          )}
+        </div>
       </div>
 
       {loaderData.unavailable.length > 0 && (
@@ -309,7 +333,7 @@ export default function PlanPage({ loaderData }: Route.ComponentProps) {
                 {canNow ? "Nothing in Now. Move what you're taking on from Next." : "Nothing in Now yet."}
               </p>
             ) : (
-              <ol className="px-2 pb-2">{plan.now.map((item, index) => row("now", item, index, index + 1))}</ol>
+              <ol className="px-2 pb-2">{rows(plan.now).map(({ item, index, depth }) => row("now", item, index, index + 1, depth))}</ol>
             )}
           </section>
           <section
@@ -321,7 +345,7 @@ export default function PlanPage({ loaderData }: Route.ComponentProps) {
               <h2 id="plan-next" className="text-sm font-semibold">
                 Next
               </h2>
-              <span className="text-xs text-faint">{canPlan && <span className="max-sm:hidden">drag to rank · </span>}the top is taken first</span>
+              <span className="text-xs text-faint">{canPlan && !group && <span className="max-sm:hidden">drag to rank · </span>}the top is taken first</span>
               <span className="ml-auto font-mono text-xs tabular-nums text-faint">{plan.nextTotal}</span>
             </header>
             {plan.next.length === 0 ? (
@@ -329,18 +353,24 @@ export default function PlanPage({ loaderData }: Route.ComponentProps) {
                 {canPlan ? "Nothing in Next. Place work here from Triage or Later, in the order it should be taken." : "Nothing in Next yet."}
               </p>
             ) : (
-              <ol className="px-2 pb-2">{plan.next.map((item, index) => row("next", item, index, plan.now.length + index + 1))}</ol>
+              <ol className="px-2 pb-2">{rows(plan.next).map(({ item, index, depth }) => row("next", item, index, plan.now.length + index + 1, depth))}</ol>
             )}
             {nextMore && !all && (
               <div className="px-4 pb-3">
-                <ButtonLink to={planPath(workspace, "all=1")} variant="outline" size="sm" className="w-full border-dashed" preventScrollReset>
+                <ButtonLink
+                  to={planOptionsPath(workspace, options, { all: true })}
+                  variant="outline"
+                  size="sm"
+                  className="w-full border-dashed"
+                  preventScrollReset
+                >
                   Show all {plan.nextTotal.toLocaleString("en-US")}
                 </ButtonLink>
               </div>
             )}
             {all && plan.nextTotal > 10 && (
               <div className="px-4 pb-3">
-                <ButtonLink to={planPath(workspace)} variant="ghost" size="sm" className="w-full" preventScrollReset>
+                <ButtonLink to={planOptionsPath(workspace, options, { all: false })} variant="ghost" size="sm" className="w-full" preventScrollReset>
                   Show the top 10
                 </ButtonLink>
               </div>
@@ -414,13 +444,14 @@ export default function PlanPage({ loaderData }: Route.ComponentProps) {
                 </p>
               ) : (
                 <ul className="px-2 pb-2">
-                  {plan.later.map((group) => (
+                  {plan.later.map((later) => (
                     <LaterGroup
-                      key={group.repo ?? ""}
-                      group={group}
+                      key={later.repo ?? ""}
+                      group={later}
                       workspace={workspace}
                       canPlan={canPlan}
                       canNow={canNow}
+                      grouped={group}
                       hidden={pending?.number ?? null}
                       onMove={submit}
                       onDrag={(item) => setDragging(item ? { item, from: "later" } : null)}
@@ -459,6 +490,7 @@ function LaterGroup({
   workspace,
   canPlan,
   canNow,
+  grouped,
   hidden,
   onMove,
   onDrag,
@@ -467,6 +499,8 @@ function LaterGroup({
   workspace: string;
   canPlan: boolean;
   canNow: boolean;
+  /** Each sub-item under its parent, when both are in this group. */
+  grouped: boolean;
   /** One being moved just now, left out until the plan says where it went. */
   hidden: number | null;
   onMove: (move: Move, item: WorkItem) => void;
@@ -502,10 +536,11 @@ function LaterGroup({
             <p className="px-3 py-2 text-xs text-faint">Nothing here now.</p>
           ) : (
             <ul className="pl-4">
-              {items.map((item) => (
+              {(grouped ? groupSubItems(items) : items.map((item) => ({ item, depth: 0 }))).map(({ item, depth }) => (
                 <PlanRow
                   key={item.id}
                   item={item}
+                  depth={depth}
                   rank={null}
                   workspace={workspace}
                   on={undefined}

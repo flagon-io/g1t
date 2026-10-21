@@ -31,6 +31,9 @@ ones you had.
   them if you like (see [assign g1t](/guides/sessions/#assign-g1t-or-ask-it-in-the-thread));
 - what it is **blocked by**: other work items that must land first (see
   [dependencies](/work/claims-and-dependencies/#dependencies));
+- a **parent** and **sub-items**: the work item it is part of, and the
+  work items it was broken down into, with how many of them are done (see
+  [sub-items](/work/sub-items/));
 - a **state**: open or closed. A closed work item records why:
   `completed` or `not_planned`. One closed by what landed records each
   **resolution**: the repository, and the pull request or commit that

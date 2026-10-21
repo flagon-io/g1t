@@ -147,6 +147,18 @@ someone has claimed, or that are assigned to someone else are skipped.
   [claim](/work/claims-and-dependencies/#claims) what it gives. See
   [working with agents](/work/agents/).
 
+## Sub-items in the plan
+
+Each [sub-item](/work/sub-items/) has its own place in the plan: moving
+one to another horizon leaves its parent where it is, and the other way
+round. Rows show `3/7` beside a parent and `↑ #212` beside a sub-item.
+
+Turn on **Group sub-items** to show each sub-item under its parent when
+both are on the same horizon; elsewhere it stays in its own place. The
+address keeps it (`?group=1`). Grouping only changes what you see, never
+the order: while it is on, rows can't be dragged, and the row menu still
+moves them.
+
 ## The plan and the Board
 
 The [Board](/work/board/) shows the work that is moving: what is in

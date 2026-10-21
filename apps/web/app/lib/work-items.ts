@@ -4,7 +4,7 @@
  * (lib/work-access.ts says who may do what to one). Pure, so it is tested
  * under Node.
  */
-import type { Horizon, ItemRepo, LinkRole } from "@g1t/contracts";
+import type { Horizon, ItemRepo, LinkRole, OpenSubItems, SubItemProgress } from "@g1t/contracts";
 
 import { tidyLabelName } from "./labels.ts";
 
@@ -76,9 +76,23 @@ export function sessionPath(workspace: string, id: string): string {
   return `${workPath(workspace, "sessions")}/${encodeURIComponent(id)}`;
 }
 
-/** A new work item, started from a repository (its origin) when `repo` is given. */
-export function newItemPath(workspace: string, repo?: string | null): string {
-  return `${workPath(workspace, "new")}${repo ? `?repo=${encodeURIComponent(repo)}` : ""}`;
+/** A new work item, started from a repository (its origin) when `repo` is given, and as a sub-item of `parent`. */
+export function newItemPath(workspace: string, repo?: string | null, parent?: number | null): string {
+  const query = new URLSearchParams();
+  if (repo) query.set("repo", repo);
+  if (parent) query.set("parent", String(parent));
+  const text = query.toString();
+  return `${workPath(workspace, "new")}${text ? `?${text}` : ""}`;
+}
+
+/**
+ * A work item's number as a person types it, `#212` or `212`: null for
+ * nothing typed, undefined for anything that is not a number.
+ */
+export function itemNumberOf(text: string | null | undefined): number | null | undefined {
+  const word = (text ?? "").trim().replace(/^#/, "");
+  if (!word) return null;
+  return /^\d+$/.test(word) && Number(word) > 0 ? Number(word) : undefined;
 }
 
 export const LINK_ROLES: readonly LinkRole[] = ["origin", "target", "touched"];
@@ -108,13 +122,15 @@ export type WorkFilters = {
   /** A repository of the workspace, by name (`web`) or path (`acme/web`). */
   repo: string;
   role: LinkRole | null;
+  /** Only the sub-items of the work item of this number. */
+  parent: number | null;
 };
 
 /**
  * The Work list's filters from its address: `?state=closed&label=bug&
- * milestone=3&assignee=ana&repo=web&role=target&horizon=now`, and the same
- * written in `q` (`is:closed label:bug repo:web role:target horizon:now`,
- * or `is:now` for a horizon), which wins. A horizon holds only open work
+ * milestone=3&assignee=ana&repo=web&role=target&horizon=now&parent=212`, and
+ * the same written in `q` (`is:closed label:bug repo:web role:target
+ * horizon:now parent:#212`, or `is:now` for a horizon), which wins. A horizon holds only open work
  * items, so with one the state is open.
  */
 export function workFilters(query: URLSearchParams): WorkFilters {
@@ -125,6 +141,7 @@ export function workFilters(query: URLSearchParams): WorkFilters {
   let assignee = query.get("assignee") ?? "";
   let repo = query.get("repo") ?? "";
   let role = roleOf(query.get("role"));
+  let parent = itemNumberOf(query.get("parent")) ?? null;
   for (const [, key, quoted, plain] of (query.get("q") ?? "").matchAll(/(\w+):(?:"([^"]*)"|(\S+))/g)) {
     const value = quoted ?? plain ?? "";
     if (key === "label") label = value;
@@ -135,6 +152,7 @@ export function workFilters(query: URLSearchParams): WorkFilters {
     else if (key === "assignee") assignee = value;
     else if (key === "repo") repo = value;
     else if (key === "role") role = roleOf(value);
+    else if (key === "parent") parent = itemNumberOf(value) ?? null;
   }
   return {
     state: horizon ? "open" : state,
@@ -145,6 +163,7 @@ export function workFilters(query: URLSearchParams): WorkFilters {
     repo: repo.trim(),
     // A role says how a repository is linked: without one it means nothing.
     role: repo.trim() ? role : null,
+    parent,
   };
 }
 
@@ -164,20 +183,22 @@ function horizonOf(value: string | null | undefined): Horizon | null {
  * there are none in this state.
  */
 export function emptyListTitle(filters: WorkFilters, repoName: string | null): string {
-  if (filters.horizon && !filters.repo && !filters.label && !filters.milestone && !filters.assignee) return `Nothing in ${HORIZON_LABELS[filters.horizon]}`;
-  if (repoName && !filters.horizon && !filters.label && !filters.milestone && !filters.assignee) return `No ${filters.state} work items linked to ${repoName}`;
+  const others = filters.label || filters.milestone || filters.assignee;
+  if (filters.horizon && !filters.repo && !others && !filters.parent) return `Nothing in ${HORIZON_LABELS[filters.horizon]}`;
+  if (repoName && !filters.horizon && !others && !filters.parent) return `No ${filters.state} work items linked to ${repoName}`;
+  if (filters.parent && !filters.horizon && !filters.repo && !others) return `No ${filters.state} sub-items of #${filters.parent}`;
   if (filtered(filters)) return `No ${filters.state} work items match these filters`;
   return filters.state === "open" ? "No open work items" : "No closed work items";
 }
 
 /** Whether any filter but the state is set. */
 export function filtered(filters: WorkFilters): boolean {
-  return Boolean(filters.horizon || filters.label || filters.milestone || filters.assignee || filters.repo);
+  return Boolean(filters.horizon || filters.label || filters.milestone || filters.assignee || filters.repo || filters.parent);
 }
 
 /** How many filters but the state are set: the phone's Filters button shows it. */
 export function filterCount(filters: WorkFilters): number {
-  return [filters.horizon, filters.label, filters.milestone, filters.assignee, filters.repo].filter(Boolean).length;
+  return [filters.horizon, filters.label, filters.milestone, filters.assignee, filters.repo, filters.parent].filter(Boolean).length;
 }
 
 /** The filters as an address's query, in a steady order, leaving out what is unset. */
@@ -190,6 +211,7 @@ export function workQuery(filters: Partial<WorkFilters>): string {
   if (filters.label) params.set("label", filters.label);
   if (filters.milestone) params.set("milestone", String(filters.milestone));
   if (filters.assignee) params.set("assignee", filters.assignee);
+  if (filters.parent) params.set("parent", String(filters.parent));
   return params.toString();
 }
 
@@ -271,4 +293,24 @@ export function repoChips(repos: ItemRepo[], max = 2): { shown: ItemRepo[]; more
 /** An item's origin repository, if it has one. */
 export function originOf(repos: ItemRepo[]): ItemRepo | null {
   return repos.find((repo) => repo.role === "origin") ?? null;
+}
+
+/** How far along a parent's sub-items are, in words: "3 of 7 done". */
+export function subItemsDone(progress: SubItemProgress): string {
+  return `${progress.done} of ${progress.total} done`;
+}
+
+/** How far along a parent's sub-items are, as a percentage for a bar. */
+export function subItemsShare(progress: SubItemProgress): number {
+  return progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
+}
+
+/** What closing a work item with open sub-items does with them, from its form: none chosen, or a choice and where to move them. */
+export function closeSubItemsOf(form: { get(name: string): unknown }): { subItems: OpenSubItems; moveTo?: number } | string | null {
+  const choice = String(form.get("sub_items") ?? "");
+  if (choice === "leave" || choice === "close") return { subItems: choice };
+  if (choice !== "move") return null;
+  const to = itemNumberOf(String(form.get("move_to") ?? ""));
+  if (!to) return "Say which work item to move them to, such as #212.";
+  return { subItems: "move", moveTo: to };
 }

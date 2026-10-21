@@ -44,7 +44,7 @@ export function setAsidePath(workspace: string): string {
  * `workFilters`, and the paging and sort it keeps): `-/work` with any of
  * them is an old link to the list, which is at `-/work/all` now.
  */
-export const LIST_PARAMS = ["q", "label", "milestone", "assignee", "state", "repo", "role", "author", "horizon", "before", "sort", "page"] as const;
+export const LIST_PARAMS = ["q", "label", "milestone", "assignee", "state", "repo", "role", "parent", "author", "horizon", "before", "sort", "page"] as const;
 
 /** Where `-/work` with this query leads instead of the Plan: the list with the same query, or null to show the Plan. */
 export function listRedirect(workspace: string, query: URLSearchParams): string | null {
@@ -407,4 +407,53 @@ export function canAccept(suggestion: Pick<PlanSuggestion, "horizon">, canNow: b
 /** The comment a work item closed as a duplicate gets. */
 export function duplicateComment(of: number): string {
   return `Duplicate of #${of}`;
+}
+
+/** The Plan's own options, as its address keeps them: every item of Next (`all=1`), and sub-items under their parent (`group=1`). */
+export type PlanOptions = { all: boolean; group: boolean };
+
+export function planOptions(query: URLSearchParams): PlanOptions {
+  return { all: query.get("all") === "1", group: query.get("group") === "1" };
+}
+
+/** The Plan with `change` made to its options. */
+export function planOptionsPath(workspace: string, options: PlanOptions, change: Partial<PlanOptions> = {}): string {
+  const next = { ...options, ...change };
+  const query = new URLSearchParams();
+  if (next.all) query.set("all", "1");
+  if (next.group) query.set("group", "1");
+  return planPath(workspace, query.toString());
+}
+
+/** A row of a horizon with its sub-items grouped: the item, how deep it sits under a parent, and where it stands in the horizon's own order. */
+export type GroupedRow<T> = { item: T; depth: number; index: number };
+
+/**
+ * A horizon's items with each sub-item under its parent, when its parent
+ * is in the same horizon; the rest stay where they are. Parents keep the
+ * horizon's order, and so do the sub-items under each. Grouping only
+ * draws them so: it moves nothing in the plan.
+ */
+export function groupSubItems<T extends Pick<WorkItem, "number" | "parent">>(items: readonly T[]): GroupedRow<T>[] {
+  const here = new Set(items.map((item) => item.number));
+  const under = new Map<number, number[]>();
+  const tops: number[] = [];
+  items.forEach((item, index) => {
+    const parent = item.parent;
+    if (parent != null && parent !== item.number && here.has(parent)) under.set(parent, [...(under.get(parent) ?? []), index]);
+    else tops.push(index);
+  });
+  const rows: GroupedRow<T>[] = [];
+  const seen = new Set<number>();
+  const visit = (index: number, depth: number) => {
+    if (seen.has(index)) return;
+    seen.add(index);
+    const item = items[index]!;
+    rows.push({ item, depth, index });
+    for (const child of under.get(item.number) ?? []) visit(child, depth + 1);
+  };
+  for (const index of tops) visit(index, 0);
+  // Parents in a loop, which the work service refuses but an old read could hold, start from the first of them.
+  items.forEach((_, index) => visit(index, 0));
+  return rows;
 }

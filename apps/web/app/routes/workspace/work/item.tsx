@@ -1,4 +1,4 @@
-import { Bot, Check, CircleDashed, ExternalLink, GitCommitHorizontal, GitMerge, Lightbulb, Plus, X } from "lucide-react";
+import { Bot, Check, CircleDashed, CornerLeftUp, ExternalLink, GitCommitHorizontal, GitMerge, Lightbulb, Plus, X } from "lucide-react";
 import { useState } from "react";
 import { Form, Link, data, redirect } from "react-router";
 
@@ -48,7 +48,20 @@ import { parseBlockedBy, pullHrefs, resolutionOf } from "../../../lib/coordinati
 import { planInput } from "../../../lib/plan";
 import { refPath } from "../../../lib/refs.server";
 import { itemAbilities } from "../../../lib/work-access";
-import { LINK_ROLES, ROLE_LABELS, itemPath, originOf, repoFilter, sessionPath, shortPath, workPath } from "../../../lib/work-items";
+import {
+  LINK_ROLES,
+  ROLE_LABELS,
+  closeSubItemsOf,
+  itemNumberOf,
+  itemPath,
+  newItemPath,
+  originOf,
+  repoFilter,
+  sessionPath,
+  shortPath,
+  workPath,
+} from "../../../lib/work-items";
+import { CloseButton, SubItemsSection } from "../../../components/sub-items";
 import { workspaceProjects } from "../../../lib/workspace-projects.server";
 import { workPages } from "../../../lib/repo-live";
 import { useWorkspaceLive } from "../../../lib/use-repo-live";
@@ -253,6 +266,24 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       const result = await work.updateWorkItem(user, workspace, number, { blocked_by: blockedBy });
       return result.ok ? null : { error: result.error.message, action: intent };
     }
+    // What it is a sub-item of, from the Work panel: empty takes it out.
+    case "parent": {
+      const parent = itemNumberOf(String(form.get("parent") ?? ""));
+      if (parent === undefined) return { error: "Give a work item number, such as #212, or leave it empty for none.", action: intent };
+      const result = await work.setWorkItemParent(user, workspace, number, parent);
+      return result.ok ? null : { error: result.error.message, action: intent };
+    }
+    // Its sub-items: one added by number, or taken out (only while this is still its parent).
+    case "add-sub-item":
+    case "remove-sub-item": {
+      const sub = itemNumberOf(String(form.get("sub_item") ?? ""));
+      if (!sub) return { error: "Give the work item's number, such as #230.", action: "sub-items" };
+      const result =
+        intent === "add-sub-item"
+          ? await work.setWorkItemParent(user, workspace, sub, number)
+          : await work.setWorkItemParent(user, workspace, sub, null, number);
+      return result.ok ? null : { error: result.error.message, action: "sub-items" };
+    }
     case "milestone": {
       const result = await work.updateWorkItem(user, workspace, number, { milestone: Number(form.get("milestone")) || 0 });
       return result.ok ? null : { error: result.error.message, action: intent };
@@ -291,8 +322,21 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     }
     case "close-completed":
     case "close-not-planned": {
-      const result = await work.closeWorkItem(user, workspace, number, intent === "close-not-planned" ? "not_planned" : "completed");
-      return result.ok ? null : { error: result.error.message };
+      // With open sub-items, what becomes of them, as the close dialog says (components/sub-items.tsx).
+      const subItems = closeSubItemsOf(form);
+      if (typeof subItems === "string") return { error: subItems, action: "close", reason: intent };
+      const result = await work.closeWorkItem(
+        user,
+        workspace,
+        number,
+        intent === "close-not-planned" ? "not_planned" : "completed",
+        undefined,
+        subItems ?? undefined,
+      );
+      if (result.ok) return null;
+      // Refused for open sub-items nobody said what to do with, or for that choice: the dialog says why, with the choices.
+      if (subItems || result.error.code === "conflict") return { error: result.error.message, action: "close", reason: intent };
+      return { error: result.error.message };
     }
   }
   throw data(null, { status: 400 });
@@ -574,7 +618,21 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
   const openable = item.repos.filter((repo) => repo.path && !repo.deleted);
   const workIn = missing[0] ?? item.repos.find((repo) => repo.role === "target")?.path ?? originOf(item.repos)?.path ?? null;
   const linkError = actionData && "action" in actionData && actionData.action === "link" ? actionData.error : null;
-  const sideError = actionData && "action" in actionData && ["blocked-by", "start-session", "react", "link", "open-pull"].includes(String(actionData.action));
+  const sideError =
+    actionData &&
+    "action" in actionData &&
+    ["blocked-by", "parent", "sub-items", "close", "start-session", "react", "link", "open-pull"].includes(String(actionData.action));
+  const errorFor = (action: string) => (actionData && "action" in actionData && actionData.action === action ? actionData.error : null);
+  // Closing refused for its open sub-items: the close dialog it came from says why, with the choices.
+  const closeError = (reason: "close-completed" | "close-not-planned") =>
+    actionData && "reason" in actionData && actionData.reason === reason ? actionData.error : null;
+  const subItems = loaderData.subItems ?? [];
+  const progress = item.subItemProgress ?? null;
+  const openSubItems = progress ? progress.total - progress.done : subItems.filter((sub) => sub.state === "open").length;
+  // A new sub-item is filed under it, from the repository it was filed from when that is the workspace's.
+  const filedFrom = originOf(item.repos);
+  const originName = filedFrom?.path && !filedFrom.deleted ? shortPath(filedFrom.path, workspace) : null;
+  const newSubItem = newItemPath(workspace, originName && !originName.includes("/") ? originName : null, item.number);
 
   return (
     // On a phone: the title, then the item, its repositories and the
@@ -583,6 +641,16 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
     <AttachImages to={viewer ? { workspace, number: item.number } : null}>
       <div className="grid gap-x-8 gap-y-5 lg:grid-cols-[1fr_19rem] lg:grid-rows-[auto_1fr] lg:gap-y-0">
         <header className="min-w-0 lg:col-start-1">
+          {loaderData.parent && (
+            <p className="mb-1.5 text-sm text-muted">
+              <Link to={itemPath(workspace, loaderData.parent.number)} prefetch="intent" className="inline-flex max-w-full items-center gap-1.5 hover:text-fg">
+                <CornerLeftUp size={14} className="shrink-0" />
+                <span className="truncate">
+                  Sub-item of <span className="font-medium text-fg-soft">#{loaderData.parent.number}</span> {loaderData.parent.title}
+                </span>
+              </Link>
+            </p>
+          )}
           <h1 className="text-xl font-semibold tracking-tight text-balance wrap-break-word sm:text-2xl">
             {item.title} <span className="font-normal text-faint">#{item.number}</span>
           </h1>
@@ -644,6 +712,17 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
             </div>
           ) : (
             (loaderData.reactions?.length ?? 0) > 0 && <Reactions reactions={loaderData.reactions} viewer={viewer?.username ?? null} className="mt-3 lg:mt-5" />
+          )}
+
+          {(subItems.length > 0 || (progress?.total ?? 0) > 0 || (canManage && open)) && (
+            <SubItemsSection
+              workspace={workspace}
+              subItems={subItems}
+              progress={progress}
+              canEdit={canManage}
+              newPath={newSubItem}
+              error={errorFor("sub-items")}
+            />
           )}
 
           <section aria-labelledby="repositories" className="mt-8">
@@ -760,24 +839,24 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
               <div id="comment">
                 <CommentForm author={viewer?.username ?? null} resetKey={comments.length} handles={loaderData.handles} />
               </div>
-              {canManage && (
-                <Form method="post" className="flex flex-wrap justify-end gap-2 max-sm:hidden">
-                  {open ? (
-                    <>
-                      <SubmitButton variant="outline" name="action" value="close-not-planned" pending="Closing…">
-                        Close as not planned
-                      </SubmitButton>
-                      <SubmitButton variant="outline" name="action" value="close-completed" pending="Closing…">
-                        Close work item
-                      </SubmitButton>
-                    </>
-                  ) : (
+              {canManage &&
+                (open ? (
+                  // With open sub-items, each asks first what becomes of them.
+                  <div className="flex flex-wrap justify-end gap-2 max-sm:hidden">
+                    <CloseButton reason="not_planned" openSubItems={openSubItems} error={closeError("close-not-planned")}>
+                      Close as not planned
+                    </CloseButton>
+                    <CloseButton reason="completed" openSubItems={openSubItems} error={closeError("close-completed")}>
+                      Close work item
+                    </CloseButton>
+                  </div>
+                ) : (
+                  <Form method="post" className="flex flex-wrap justify-end gap-2 max-sm:hidden">
                     <SubmitButton variant="outline" name="action" value="reopen" pending="Reopening…">
                       Reopen work item
                     </SubmitButton>
-                  )}
-                </Form>
-              )}
+                  </Form>
+                ))}
             </div>
           </div>
           <div className="mt-2">
@@ -793,19 +872,19 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
                   <LinkRepository workspace={workspace} repos={loaderData.repos} linked={item.repos.map((repo) => repo.path.toLowerCase())} error={null} wide />
                 </div>
               )}
-              {canManage && (
-                <Form method="post" className="min-w-0 grow *:h-11 *:w-full">
-                  {open ? (
-                    <SubmitButton variant="outline" name="action" value="close-completed" pending="Closing…">
-                      Close
-                    </SubmitButton>
-                  ) : (
+              {canManage &&
+                (open ? (
+                  // The refusal opens the dialog of the buttons above, which shows on a phone too.
+                  <CloseButton reason="completed" openSubItems={openSubItems} className="min-w-0 grow *:h-11 *:w-full">
+                    Close
+                  </CloseButton>
+                ) : (
+                  <Form method="post" className="min-w-0 grow *:h-11 *:w-full">
                     <SubmitButton variant="outline" name="action" value="reopen" pending="Reopening…">
                       Reopen
                     </SubmitButton>
-                  )}
-                </Form>
-              )}
+                  </Form>
+                ))}
             </div>
           )}
         </div>
@@ -835,7 +914,8 @@ export default function WorkItemPage({ loaderData, actionData }: Route.Component
                   base={sessionBase}
                   now={now}
                   canEdit={canManage}
-                  error={actionData && "action" in actionData && actionData.action === "blocked-by" ? actionData.error : null}
+                  error={errorFor("blocked-by")}
+                  parentError={errorFor("parent")}
                   sessions={sessionTrees}
                   start={
                     loaderData.agentSetup && open && workIn ? (

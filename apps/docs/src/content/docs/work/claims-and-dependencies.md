@@ -119,6 +119,10 @@ list changes, and when one of its blockers closes or has a pull request
 merged into the default branch. `remaining` lists the blockers still open;
 when it is empty, the work item is unblocked.
 
+[Sub-items](/work/sub-items/) are not dependencies. A parent is not
+blocked by its sub-items, and a sub-item is not blocked by its parent,
+unless someone says so with `blocked_by` as well.
+
 ## Overlaps
 
 Opening a pull request, and each push to it, works out which files it

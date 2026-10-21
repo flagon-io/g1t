@@ -17,7 +17,7 @@ import { integrations, repos, work } from "../../../lib/services.server";
 import { assertSameOrigin, requireUser, roleIn } from "../../../lib/session.server";
 import { canItem } from "../../../lib/work-access";
 import { isFailed, part } from "../../../lib/partial";
-import { itemPath } from "../../../lib/work-items";
+import { itemNumberOf, itemPath } from "../../../lib/work-items";
 import { workspaceProjects } from "../../../lib/workspace-projects.server";
 import { addresses } from "../../../lib/addresses.server";
 import { DEFERRED_FILE_FIELD, DEFERRED_REF_FIELD, deferredRefs, resolveDeferred } from "../../../lib/attachments";
@@ -38,7 +38,10 @@ function originOf(workspace: string, value: string | null): string | null {
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   const user = requireUser(context, request);
   const workspace = params.owner.toLowerCase();
-  const name = originOf(workspace, new URL(request.url).searchParams.get("repo"));
+  const query = new URL(request.url).searchParams;
+  const name = originOf(workspace, query.get("repo"));
+  // Filed as a sub-item (`?parent=212`, from the parent's Add sub-item): the field starts with it.
+  const parentNumber = itemNumberOf(query.get("parent")) ?? null;
   // Filed from a repository, it is that repository's (its origin): anyone
   // who may take part there may. Filed in the workspace alone, a member.
   const origin = name ? await repos.get({ namespace: workspace, name }, user) : null;
@@ -49,18 +52,26 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const triage = canItem(user, workspace, ref, "triage");
   // The form is what this page is about; what fills its choices is a part
   // each, which says so in its own place when its service fails.
-  const [labels, milestones, projects, connections] = await Promise.all([
+  const [labels, milestones, projects, connections, parent] = await Promise.all([
     part(work.listLabels(workspace, user), "Labels"),
     triage ? part(work.listMilestones(workspace, user, "open"), "Milestones") : null,
     // Where it may land: the workspace's repositories, for a member.
     member ? part(workspaceProjects(workspace, user), "Repositories") : null,
     // Only a hint at what can be imported: the page does without it.
     member ? integrations.list(workspace, user).catch(() => null) : null,
+    // Its title, to say what it is filed under: the number alone does without it.
+    parentNumber
+      ? work
+          .getWorkItem(workspace, parentNumber, user)
+          .then((found) => (found.ok ? found.value.item.title : null))
+          .catch(() => null)
+      : null,
   ]);
   const sources = connections?.ok ? [...new Set(connections.value.filter((c) => c.kind === "tracker" || c.provider === "sentry").map((c) => c.provider))] : [];
   return {
     workspace,
     origin: name,
+    parent: parentNumber ? { number: parentNumber, title: parent } : null,
     labels: isFailed(labels) ? labels : labels.ok ? labels.value : [],
     milestones: isFailed(milestones) ? milestones : milestones?.ok ? milestones.value : [],
     repos:
@@ -94,6 +105,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     if (!imported.ok) return { importError: imported.error.message };
     throw redirect(itemPath(imported.value.workspace, imported.value.number));
   }
+  const parent = itemNumberOf(String(form.get("parent") ?? ""));
+  if (parent === undefined) return { error: "Give the work item it is a sub-item of as a number, such as #212, or leave it empty." };
   const result = await work.openWorkItem(user, {
     workspace,
     repo: origin ? { namespace: workspace, name: origin } : undefined,
@@ -102,6 +115,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     body: String(form.get("body") ?? ""),
     labels: [...form.getAll("label").map(String), ...String(form.get("labels") ?? "").split(",")].map((label) => label.trim()).filter(Boolean),
     milestone: Number(form.get("milestone")) || undefined,
+    parent: parent ?? undefined,
   });
   if (!result.ok) return { error: result.error.message };
   await attachHeld(user, result.value, form);
@@ -254,6 +268,18 @@ export default function NewWorkItem({ loaderData, actionData }: Route.ComponentP
             </div>
           )}
         </fieldset>
+        <Field
+          label="Sub-item of"
+          hint={
+            loaderData.parent?.title
+              ? `Filed under #${loaderData.parent.number} ${loaderData.parent.title}, which shows how far along its sub-items are.`
+              : "The work item this is part of, if any. Leave it empty for none."
+          }
+        >
+          <span className="block max-w-40">
+            <Input name="parent" defaultValue={loaderData.parent ? `#${loaderData.parent.number}` : ""} placeholder="#212" autoComplete="off" />
+          </span>
+        </Field>
         {loaderData.canTriage && isFailed(loaderData.milestones) && (
           <Field label="Milestone">
             <Unavailable what="Milestones" compact />

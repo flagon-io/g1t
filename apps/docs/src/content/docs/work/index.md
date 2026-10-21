@@ -139,6 +139,8 @@ See [the phone app's Work](/guides/mobile/#work).
 - [Work items](/work/work-items/): what one has, filing one, its number,
   who sees it and its repositories.
 - [The Board](/work/board/): the stages a work item moves through.
+- [Sub-items](/work/sub-items/): breaking a work item down, and how far
+  along its sub-items are.
 - [Closing work items](/work/closing/): how merges and commits land work
   and close it.
 - [Labels](/work/labels/) and [milestones](/work/milestones/).

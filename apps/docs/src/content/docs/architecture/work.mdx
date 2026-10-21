@@ -84,13 +84,14 @@ Many agents and people can work on one repository at once. `work` keeps
 what lets them see each other, around the work item, which is the unit of
 work (`services/work/src/coordination/`):
 
-| Table                    | Holds                                                                                                                                                                                                                | Module            |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
-| `sessions`               | One run of someone's own harness (`claude_code`, `codex`, `cursor`, `copilot` or `other`), recorded in the repository it is checked out in and attached to a work item of its workspace, a pull request and a branch | `sessions.rs`     |
-| `session_entries`        | What a session recorded: prompts, reasoning, tool calls, notes, each with an idempotency `key`                                                                                                                       | `sessions.rs`     |
-| `claims`                 | An advisory, expiring "I'm working on #12"                                                                                                                                                                           | `claims.rs`       |
-| Work items' `blocked_by` | The work items that have to land first, refused if it would make a cycle                                                                                                                                             | `dependencies.rs` |
-| `overlap_pairs`          | Pairs of open pull requests changing the same files, announced once per pair                                                                                                                                         | `overlaps.rs`     |
+| Table                    | Holds                                                                                                                                                                                                                | Module               |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `sessions`               | One run of someone's own harness (`claude_code`, `codex`, `cursor`, `copilot` or `other`), recorded in the repository it is checked out in and attached to a work item of its workspace, a pull request and a branch | `sessions.rs`        |
+| `session_entries`        | What a session recorded: prompts, reasoning, tool calls, notes, each with an idempotency `key`                                                                                                                       | `sessions.rs`        |
+| `claims`                 | An advisory, expiring "I'm working on #12"                                                                                                                                                                           | `claims.rs`          |
+| Work items' `blocked_by` | The work items that have to land first, refused if it would make a cycle                                                                                                                                             | `dependencies.rs`    |
+| Work items' `parent_id`  | The work item it is a [sub-item](/work/sub-items/) of: one, in its workspace, never a cycle. Its parent is not blocked by it                                                                                         | `items/sub_items.rs` |
+| `overlap_pairs`          | Pairs of open pull requests changing the same files, announced once per pair                                                                                                                                         | `overlaps.rs`        |
 
 <Diagram name="coordination" />
 
@@ -114,7 +115,7 @@ the work item, its repositories with their roles, what landed where and
 which targets are still missing, suggested targets (each with why), its
 definition of done, the required checks, claims, sessions,
 pull requests with their checks, overlaps and place in the queue, what it
-is blocked by and blocks, its decision records, and its latest
+is blocked by and blocks, its parent and sub-items, its decision records, and its latest
 coordination events. A session's entries on a pull request are what
 **Blame** reads to show the agent's account of a line ([Sessions and
 why-blame](/guides/why-blame/)). [Claims and
