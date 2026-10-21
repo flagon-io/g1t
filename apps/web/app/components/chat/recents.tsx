@@ -1,7 +1,7 @@
 /**
- * Agent sessions in Recents, Chat's sidebar (components/chat/sidebar.tsx):
+ * Agent sessions in Sessions, at the bottom of Chat's sidebar (components/chat/sidebar.tsx):
  * reading the viewer's (`-/recents.json`) off the layout, the way the
- * sidebar reads itself, and drawing one as a row beside the direct
+ * sidebar reads itself, and drawing one as a row below the direct
  * messages: a status dot, its title, and what it runs in.
  */
 import { useCallback, useEffect, useRef } from "react";
