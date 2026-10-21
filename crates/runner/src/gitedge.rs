@@ -52,7 +52,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, RwLock, TryLockError};
 use std::time::Instant;
 
 use anyhow::{Context, Result, bail};
@@ -117,9 +117,13 @@ struct Edge {
     root: PathBuf,
     state: Mutex<State>,
     wake: Condvar,
-    /// Held while the mirror's files change or are read whole: a sync, a
-    /// snapshot being made, one being restored. Never two at once.
-    disk: Mutex<()>,
+    /// The mirror's files: read (shared) while a git request is answered or
+    /// a snapshot made from them, written (alone) while a sync or a restore
+    /// changes them. A sync's fetch and repack replace the packs an
+    /// upload-pack under way reads, which then answers nothing (git says
+    /// `expected 'packfile'`): so a sync waits for the answers under way,
+    /// and a git request that comes while one runs is behind.
+    disk: RwLock<()>,
 }
 
 impl Edge {
@@ -315,7 +319,7 @@ fn work(edge: Arc<Edge>) {
             }
         };
         crate::abuse::touch();
-        let disk = edge.disk.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let disk = edge.disk.write().unwrap_or_else(|poisoned| poisoned.into_inner());
         let started = Instant::now();
         let result = sync(&edge, &job, || edge.state().changing = true);
         drop(disk);
@@ -464,7 +468,7 @@ fn snapshot(edge: &Edge, request: Request) -> (u16, u64) {
     let name = format!("snapshot-{}.tar", SNAPSHOTS.fetch_add(1, Ordering::Relaxed));
     let file = edge.root.join(&name);
     let made = {
-        let _disk = edge.disk.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _disk = edge.disk.read().unwrap_or_else(|poisoned| poisoned.into_inner());
         let version = {
             let state = edge.state();
             if state.changing { None } else { state.version }
@@ -523,7 +527,7 @@ fn restore(edge: &Edge, mut request: Request) -> u16 {
         respond(request, Response::from_string("x-g1t-edge-version says the snapshot's version").with_status_code(400));
         return 400;
     };
-    let _disk = edge.disk.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _disk = edge.disk.write().unwrap_or_else(|poisoned| poisoned.into_inner());
     let mirror = edge.mirror();
     {
         let state = edge.state();
@@ -628,15 +632,22 @@ impl<R: Read> Read for Counted<R> {
 /// and the body's bytes.
 fn serve_git(edge: &Edge, request: Request, endpoint: &str, query: &str) -> (u16, u64) {
     crate::abuse::touch();
-    let expected = header(&request, VERSION_HEADER).and_then(|value| value.trim().parse::<u64>().ok());
-    let current = {
-        let state = edge.state();
-        if state.changing { None } else { state.version }
-    };
     let behind = |request: Request| {
         let behind = Header::from_bytes(EDGE_HEADER.as_bytes(), &b"behind"[..]).expect("a valid header");
         respond(request, Response::empty(409).with_header(behind));
         (409, 0)
+    };
+    // Held until the answer has gone, so no sync replaces the mirror's
+    // packs under it; while a sync holds the mirror, the request is behind.
+    let _disk = match edge.disk.try_read() {
+        Ok(guard) => guard,
+        Err(TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+        Err(TryLockError::WouldBlock) => return behind(request),
+    };
+    let expected = header(&request, VERSION_HEADER).and_then(|value| value.trim().parse::<u64>().ok());
+    let current = {
+        let state = edge.state();
+        if state.changing { None } else { state.version }
     };
     if expected.is_none() || expected != current {
         return behind(request);
@@ -876,7 +887,7 @@ pub fn main() -> i32 {
     };
     let listening = server.server_addr().to_ip().map_or_else(|| format!("port {port}"), |address| address.to_string());
     eprintln!("g1t-runner: gitedge: listening on {listening}, the mirror in {}", root.join(MIRROR).display());
-    let edge = Arc::new(Edge { root, state: Mutex::new(State::default()), wake: Condvar::new(), disk: Mutex::new(()) });
+    let edge = Arc::new(Edge { root, state: Mutex::new(State::default()), wake: Condvar::new(), disk: RwLock::new(()) });
     let worker = edge.clone();
     std::thread::spawn(move || work(worker));
     for request in server.incoming_requests() {
