@@ -446,7 +446,7 @@ function AddForm({ provider, slug, repos, error }: { provider: Provider; slug: s
     ),
   };
   return (
-    <Card asChild className="mt-4 scroll-mt-20 p-5">
+    <Card asChild className="mt-4 scroll-mt-[calc(var(--topbar-h)+1rem)] p-5">
       <section id="add">
         <div className="flex items-center gap-3">
           <ProviderMark provider={provider} />

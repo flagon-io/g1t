@@ -63,7 +63,7 @@ export function StatementView({ slug, statement, group }: { slug: string; statem
   const discountLabel = discountName(totals.discountPercent);
 
   return (
-    <section id="statement" className="mt-10 scroll-mt-20">
+    <section id="statement" className="mt-10 scroll-mt-[calc(var(--topbar-h)+1rem)]">
       <div className="flex flex-wrap items-center gap-3">
         <h3 className="grow text-sm font-medium text-muted">Statement</h3>
         <Select value={statement.month} onValueChange={(month) => go(month, group)}>

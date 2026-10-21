@@ -202,7 +202,7 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
           </Field>
         </section>
 
-        <section className="scroll-mt-20 space-y-4" id="kind">
+        <section className="scroll-mt-[calc(var(--topbar-h)+1rem)] space-y-4" id="kind">
           {/* Old links to #deploys land here too. */}
           <span id="deploys" />
           <h2 className="flex items-center gap-2 text-sm font-medium">
@@ -225,7 +225,7 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
           )}
         </section>
 
-        <section className="scroll-mt-20 space-y-4" id="links">
+        <section className="scroll-mt-[calc(var(--topbar-h)+1rem)] space-y-4" id="links">
           <h2 className="flex items-center gap-2 text-sm font-medium">
             <Link2 size={15} className="text-accent" />
             Links
@@ -260,7 +260,7 @@ export default function ProjectSettings({ loaderData, actionData, params }: Rout
       </Form>
 
       {/* Its own forms, sent as soon as an image is picked: outside the settings form. */}
-      <section className="mt-10 scroll-mt-20 space-y-4" id="production-image">
+      <section className="mt-10 scroll-mt-[calc(var(--topbar-h)+1rem)] space-y-4" id="production-image">
         <h2 className="flex items-center gap-2 text-sm font-medium">
           <ImageIcon size={15} className="text-accent" />
           Production image

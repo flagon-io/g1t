@@ -38,7 +38,7 @@ export default function GithubSettings({ loaderData, actionData }: Route.Compone
     return <p className="text-sm text-muted">Signing in with GitHub is not set up here.</p>;
   }
   return (
-    <section id="github" className="scroll-mt-20">
+    <section id="github" className="scroll-mt-[calc(var(--topbar-h)+1rem)]">
       {github.account ? (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md border border-line px-4 py-3">
           <GithubMark className="size-5 shrink-0" />

@@ -275,7 +275,7 @@ function AskSetting({
   const azure = connection?.provider === "azure_openai";
   const defaultModel = startingModel(connection, setup);
   return (
-    <Card asChild className="mb-8 scroll-mt-20 p-4">
+    <Card asChild className="mb-8 scroll-mt-[calc(var(--topbar-h)+1rem)] p-4">
       <section id="ask" aria-labelledby="ask-heading">
         <h2 id="ask-heading" className="text-sm font-medium">
           Ask g1t
@@ -424,7 +424,7 @@ function ProviderSettings({ connection, updated }: { connection: AiConnection; u
 
 function AddForm({ provider, slug, error }: { provider: AiProvider; slug: string; error: string | null }) {
   return (
-    <Card asChild className="mt-4 scroll-mt-20 p-5">
+    <Card asChild className="mt-4 scroll-mt-[calc(var(--topbar-h)+1rem)] p-5">
       <section id="add">
         <div className="flex items-center gap-3">
           <AiProviderMark provider={provider} />

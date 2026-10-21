@@ -110,8 +110,9 @@ export async function loader({ params, context }: Route.LoaderArgs) {
           .catch(() => null)
       : null;
   // The decisions kept on what it worked on, for its highlights: a part, so
-  // the page stands without them and says they could not be read.
-  const threads = (found.value.links ?? [])
+  // the page stands without them and says they could not be read. Someone
+  // outside the workspace sees no highlights, so they are not read for them.
+  const threads = (found.value.limited ? [] : (found.value.links ?? []))
     .slice(0, 6)
     .map((link): Thread => (link.kind === "pull" ? { repo: path, number: link.number } : { workspace, number: link.number }));
   const decided = await part(Promise.all(threads.map((thread) => work.listDecisions(thread, viewer))), "Decisions");
@@ -396,7 +397,12 @@ function Part({ title, aside, children }: { title: ReactNode; aside?: ReactNode;
  * touched; and the transcript, folded under "Worked for" once there is an
  * answer above it, open while it is still the whole story.
  */
-export default function WorkSessionPage({ loaderData, actionData }: Route.ComponentProps) {
+export default function WorkSessionPage(props: Route.ComponentProps) {
+  // Going from a session to its subagent or back keeps this route: a page of its own for each, so nothing carries over.
+  return <SessionPage key={props.loaderData.session.id} {...props} />;
+}
+
+function SessionPage({ loaderData, actionData }: Route.ComponentProps) {
   const {
     session,
     entries,
@@ -548,6 +554,8 @@ export default function WorkSessionPage({ loaderData, actionData }: Route.Compon
           · {live ? "last heard from" : "ended"} <TimeAgo at={session.endedAt ?? session.lastSeenAt} />
           {session.endReason && ` (${endReasonText(session.endReason)})`}
         </span>
+        {/* Outside the workspace there are no figures below: the cost stays here, as it always was. */}
+        {limited && cost && <span className="tabular-nums">· {cost}</span>}
         {session.branch && (
           <Link to={`${base}/tree/${session.branch}`} className="inline-flex items-center gap-1 font-mono text-xs hover:text-fg">
             <GitBranch size={12} />
@@ -591,7 +599,7 @@ export default function WorkSessionPage({ loaderData, actionData }: Route.Compon
       {/* The story: what it was asked, how long it worked, and what it came to. */}
       <div className="mt-8 space-y-5">
         {prompt && !prompt.withheld && prompt.text.trim() && <AskedBubble text={prompt.text} repo={repoAt(base)} />}
-        {isSubagent && session.prompt && !prompt && <AskedBubble text={session.prompt} repo={repoAt(base)} />}
+        {isSubagent && session.prompt && (!prompt || prompt.withheld) && <AskedBubble text={session.prompt} repo={repoAt(base)} />}
         <WorkedFor live={live} span={duration(session, now)} tools={tools} open={transcript} onToggle={() => setTranscript((open) => !open)} />
         {answer ? (
           <SessionAnswer text={answer} repo={repoAt(base)} />
@@ -707,20 +715,24 @@ export default function WorkSessionPage({ loaderData, actionData }: Route.Compon
       )}
 
       <section id="transcript" className="mt-12 scroll-mt-[calc(var(--topbar-h)+1rem)]">
-        <button
-          type="button"
-          onClick={() => setTranscript((open) => !open)}
-          aria-expanded={transcript}
-          className="flex w-full items-baseline justify-between gap-2 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        >
-          <h2 className="flex items-center gap-1.5 text-[0.9375rem] font-semibold text-fg">
-            <ChevronRight size={15} className={`text-faint transition-transform ${transcript ? "rotate-90" : ""}`} />
-            Transcript
+        {/* The heading holds the button, so it stays a heading to a screen reader. */}
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-[0.9375rem] font-semibold text-fg">
+            <button
+              type="button"
+              onClick={() => setTranscript((open) => !open)}
+              aria-expanded={transcript}
+              aria-controls="transcript-entries"
+              className="flex items-center gap-1.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              <ChevronRight size={15} className={`text-faint transition-transform ${transcript ? "rotate-90" : ""}`} />
+              Transcript
+            </button>
           </h2>
           {!limited && <span className="text-xs text-faint">{`${entries.length} entries, ${tools} tool calls`}</span>}
-        </button>
+        </div>
         {transcript && (
-          <div className="mt-4">
+          <div id="transcript-entries" className="mt-4">
             {limited ? (
               <EmptyState title="Shown to the workspace's members">
                 What a session records is the work of whoever runs it, as it happens. Members of {workspace} see it; anyone else sees that it runs, who runs it

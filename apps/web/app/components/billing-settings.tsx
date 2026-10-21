@@ -477,7 +477,7 @@ export function AddOns({ plan, security, error }: { plan: FeatureState | null; s
     control: null,
   });
   return (
-    <section id="add-ons" className="mb-6 scroll-mt-20 overflow-hidden rounded-xl border border-line bg-surface">
+    <section id="add-ons" className="mb-6 scroll-mt-[calc(var(--topbar-h)+1rem)] overflow-hidden rounded-xl border border-line bg-surface">
       <h2 className="px-5 pt-5 font-medium">Add-ons</h2>
       <ul className="mt-3 divide-y divide-line border-t border-line">
         {rows.map((row) => (

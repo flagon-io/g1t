@@ -43,7 +43,7 @@ export default function ApplicationSettings({ loaderData, actionData }: Route.Co
   const [params] = useSearchParams();
   const editing = actionData?.editing ?? params.get("edit");
   return (
-    <section id="applications" className="scroll-mt-20">
+    <section id="applications" className="scroll-mt-[calc(var(--topbar-h)+1rem)]">
       {applications.length === 0 ? (
         <p className="text-sm text-faint">None yet.</p>
       ) : (

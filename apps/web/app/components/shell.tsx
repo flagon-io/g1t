@@ -2398,7 +2398,8 @@ export function AppShell({
   // bell hold state of their own, so each is drawn in one place only: until
   // the page knows the window's width, both are drawn and CSS shows one.
   const barred = ws != null;
-  const here = (place: "appbar" | "bar") => wide == null || (place === "appbar") === wide;
+  // Without a workspace there is no app bar: the page's bar is their only place.
+  const here = (place: "appbar" | "bar") => (!barred ? place === "bar" : wide == null || (place === "appbar") === wide);
   const actions = (place: "appbar" | "bar") => (
     <>
       {!titleSearch && (

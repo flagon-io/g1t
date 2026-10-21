@@ -5,7 +5,7 @@
  * it delivered.
  */
 import { ChevronRight, GitCommitHorizontal } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { Link } from "react-router";
 
 import type { LinkVia, Pull, State } from "@g1t/contracts";
@@ -24,12 +24,25 @@ import { ItemIcon, PullIcon } from "./work-icons";
 
 /** What it was asked, as the person asked it: their words on the right, as a conversation has them. */
 export function AskedBubble({ text, repo }: { text: string; repo?: MarkdownRepo }) {
+  const [all, setAll] = useState(false);
+  // About six lines' worth: longer ones fold, with a way to read them whole.
+  const long = text.length > 480 || text.split("\n").length > 6;
   return (
     <div className="flex justify-end">
       <div className="max-w-[85%] rounded-2xl rounded-br-md bg-raised px-4 py-2.5 text-[0.9375rem] leading-relaxed text-fg">
-        <div className="line-clamp-6">
+        <div className={long && !all ? "line-clamp-6" : undefined}>
           <Markdown source={text} repo={repo} />
         </div>
+        {long && (
+          <button
+            type="button"
+            onClick={() => setAll((open) => !open)}
+            aria-expanded={all}
+            className="mt-1 rounded text-xs font-medium text-muted outline-none hover:text-fg focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            {all ? "Show less" : "Show all"}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -45,7 +58,7 @@ export function WorkedFor({ live, span, tools, open, onToggle }: { live: boolean
       type="button"
       onClick={onToggle}
       aria-expanded={open}
-      aria-controls="transcript"
+      aria-controls="transcript-entries"
       className="group inline-flex items-center gap-2 rounded-md py-1 pr-1.5 text-sm text-muted outline-none transition-colors hover:text-fg focus-visible:ring-2 focus-visible:ring-accent"
     >
       <span className={cn("flex text-fg", live && "animate-pulse motion-reduce:animate-none")}>

@@ -1,5 +1,5 @@
 import { ChevronsDown, ChevronsUp, CircleDot, GitPullRequest, PlayCircle, Rocket } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useId, useMemo, useState } from "react";
 import { Link, useFetcher } from "react-router";
 
 import type { InboxItem } from "@g1t/contracts";
@@ -38,10 +38,12 @@ export function NeedsAttention({ slug, className }: { slug: string; className?: 
   const [more, setMore] = useState(false);
   // Dismissed or snoozed here: gone at once, before the inbox has said so.
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
+  // Its own: the sidebar beside the page and the drawer each draw one.
+  const heading = useId();
 
   useEffect(() => {
     const read = () => {
-      if (document.visibilityState === "visible") list.load("/inbox.json?tab=needs");
+      if (document.visibilityState === "visible") list.load("/inbox.json?tab=needs&for=attention");
     };
     read();
     window.addEventListener("focus", read);
@@ -63,8 +65,8 @@ export function NeedsAttention({ slug, className }: { slug: string; className?: 
   };
 
   return (
-    <section aria-labelledby="needs-attention" className={cn("mx-2 overflow-hidden rounded-xl bg-bg shadow-xs ring-1 ring-sidebar-border", className)}>
-      <h2 id="needs-attention" className="flex items-center justify-between px-3 pt-2.5 pb-1 text-xs text-faint">
+    <section aria-labelledby={heading} className={cn("mx-2 overflow-hidden rounded-xl bg-bg shadow-xs ring-1 ring-sidebar-border", className)}>
+      <h2 id={heading} className="flex items-center justify-between px-3 pt-2.5 pb-1 text-xs text-faint">
         Needs attention
         <span className="rounded-full bg-danger/10 px-1.5 text-[0.6875rem] font-medium text-danger tabular-nums">{items.length}</span>
       </h2>

@@ -420,7 +420,7 @@ export function TreeView({
         {readme?.text != null && (
           // A README that fails to draw says so in its place; the files stay.
           <Boundary what="The README">
-            <Card asChild tone="plain" className="mt-6 scroll-mt-20 overflow-hidden">
+            <Card asChild tone="plain" className="mt-6 scroll-mt-[calc(var(--topbar-h)+1rem)] overflow-hidden">
               <section id="readme">
                 <h2 className="flex items-center gap-2 border-b border-line bg-surface px-4 py-2.5 text-sm font-medium">
                   <BookOpen size={15} className="text-faint" />

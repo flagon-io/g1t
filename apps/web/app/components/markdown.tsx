@@ -83,7 +83,7 @@ function Heading({ level, children }: { level: 1 | 2 | 3 | 4; children: ReactNod
   const id = slug(children);
   const Tag = `h${level}` as const;
   return (
-    <Tag id={id} className="group relative scroll-mt-20">
+    <Tag id={id} className="group relative scroll-mt-[calc(var(--topbar-h)+1rem)]">
       {children}
       {id && (
         <a

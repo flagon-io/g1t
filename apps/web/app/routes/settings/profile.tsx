@@ -54,7 +54,7 @@ export default function ProfileSettings({ loaderData, actionData }: Route.Compon
   const { user, profile } = loaderData;
   return (
     <div className="space-y-12">
-      <section id="picture" className="scroll-mt-20">
+      <section id="picture" className="scroll-mt-[calc(var(--topbar-h)+1rem)]">
         <h2 className="font-medium">Picture</h2>
         <div className="mt-4">
           <AvatarField

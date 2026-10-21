@@ -172,7 +172,6 @@ export function needsYou(items: InboxItem[], max: number): { items: InboxItem[];
   return { items: needs.slice(0, max), total: needs.length };
 }
 
-/** Whether an item is still unread. */
 /**
  * The sidebar's Needs attention (components/needs-attention.tsx): what is
  * waiting on the person in the workspace `slug`, newest first. Done items,
@@ -188,6 +187,7 @@ export function needsAttention(items: InboxItem[], slug: string, now: number, hi
     .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
 }
 
+/** Whether an item is still unread. */
 export function isUnread(item: Pick<InboxItem, "readAt">): boolean {
   return item.readAt == null;
 }

@@ -36,7 +36,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 export default function SshKeySettings({ loaderData, actionData }: Route.ComponentProps) {
   const { keys } = loaderData;
   return (
-    <section id="ssh-keys" className="scroll-mt-20">
+    <section id="ssh-keys" className="scroll-mt-[calc(var(--topbar-h)+1rem)]">
       <Card asChild tone="plain" radius="lg" className="mb-4 border-dashed p-3 text-xs text-muted">
         <p>
           Git over SSH is not on yet: it is waiting on inbound TCP on Cloudflare, which g1t has applied for. Keys you add now will work as soon as it is. Until

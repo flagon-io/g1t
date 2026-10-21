@@ -219,7 +219,7 @@ export default function RepoDeployments({ loaderData, actionData, params }: Rout
           )}
 
           {listFailed ? (
-            <section id="history" aria-labelledby="history-heading" className="mt-10 scroll-mt-20">
+            <section id="history" aria-labelledby="history-heading" className="mt-10 scroll-mt-[calc(var(--topbar-h)+1rem)]">
               <h2 id="history-heading" className="text-sm font-semibold">
                 History
               </h2>
@@ -434,7 +434,7 @@ function History({
   const total = list?.total_count ?? 0;
   const pageCount = list ? Math.max(1, Math.ceil(total / list.per_page)) : 1;
   return (
-    <section id="history" aria-labelledby="history-heading" className="mt-10 scroll-mt-20">
+    <section id="history" aria-labelledby="history-heading" className="mt-10 scroll-mt-[calc(var(--topbar-h)+1rem)]">
       <h2 id="history-heading" className="text-sm font-semibold">
         History
       </h2>

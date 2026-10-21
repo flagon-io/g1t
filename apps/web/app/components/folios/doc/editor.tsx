@@ -384,7 +384,7 @@ function LiveEditor({
             {renderSuggestion && <SuggestionRail editor={editor} suggestions={suggestions} render={renderSuggestion} hidden={showComments} />}
           </div>
           {showComments && (
-            <aside ref={comments} aria-label="Comments" className="scroll-mt-20 max-xl:border-t max-xl:border-line max-xl:pt-6">
+            <aside ref={comments} aria-label="Comments" className="scroll-mt-[calc(var(--topbar-h)+1rem)] max-xl:border-t max-xl:border-line max-xl:pt-6">
               <div className="xl:sticky xl:top-[calc(var(--topbar-h)+1.5rem)] xl:max-h-[calc(100dvh-var(--topbar-h)-2.5rem)] xl:overflow-y-auto xl:scrollbar-thin">
                 <ThreadsSidebar filter="all" sort="position" />
               </div>

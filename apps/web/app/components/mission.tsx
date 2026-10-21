@@ -43,7 +43,7 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <section id={id} className={cn("scroll-mt-20", className)}>
+    <section id={id} className={cn("scroll-mt-[calc(var(--topbar-h)+1rem)]", className)}>
       <div className="flex min-h-7 flex-wrap items-center gap-x-3 gap-y-2">
         <h2 className="flex items-center gap-2 text-sm font-semibold tracking-tight">
           {icon && <span className="text-faint">{icon}</span>}
