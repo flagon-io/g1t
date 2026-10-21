@@ -3,9 +3,10 @@
 # g1t-runner-base: everything a g1t sandbox has apart from the g1t runner
 # itself. Checks, the merge queue, workflow jobs and g1t.page
 # builds all run in it: git, Node, Python, Go, Rust (with the formatter,
-# the linter, and the wasm32 and musl targets), Java (Temurin 21), .NET
-# (SDK 8), Ruby (3.3), the usual build tools, Docker (Engine, Buildx,
-# Compose), and the command-line tools GitHub's Ubuntu runners have.
+# the linter, the wasm32 and musl targets, worker-build and sccache), Java
+# (Temurin 21), .NET (SDK 8), Ruby (3.3), the usual build tools, Docker
+# (Engine, Buildx, Compose), and the command-line tools GitHub's Ubuntu
+# runners have.
 #
 # Built and pushed by `node scripts/deploy.mjs build-base` (by hand, or by
 # .g1t/workflows/runner-base.yml), which records what it pushed in
@@ -15,7 +16,7 @@
 #
 # Layers go from what changes least to what changes most: the system's
 # packages, Docker, then Go, then Rust, then Java, .NET and Ruby, then
-# the command-line tools.
+# the Rust build tools g1t's own jobs pin, then the command-line tools.
 #
 # Java and Ruby live in the runner's tool cache (RUNNER_TOOL_CACHE,
 # /home/runner/_tool), laid out as the setup actions look for them, so
@@ -48,9 +49,9 @@ RUN printf '%s\n' \
 # BuildKit's cache, not the image (run `sudo apt-get update` before
 # installing more). dpkg skips its fsync after every file, which an image
 # build has no use for and which made this step several times slower.
-# musl-tools is musl-gcc, with which (and `rustup target add
-# x86_64-unknown-linux-musl`) the static g1t runner builds in a workflow
-# job (scripts/build-runner.mjs).
+# musl-tools is musl-gcc, with which (and Rust's x86_64-unknown-linux-musl
+# target, added below) the static g1t runner builds in a workflow job
+# (scripts/build-runner.mjs).
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get update \
@@ -190,6 +191,38 @@ RUN prefix="/home/runner/_tool/Ruby/${RUBY_VERSION}/x64" \
  && touch "$prefix.complete" \
  && chown -R node:node "/home/runner/_tool/Ruby"
 ENV PATH=${JAVA_HOME}/bin:/home/runner/_tool/Ruby/${RUBY_VERSION}/x64/bin:$PATH
+
+# The Rust build tools g1t's own jobs use, so that no job compiles or
+# downloads them: the x86_64-unknown-linux-musl target the static runner
+# builds for (scripts/build-runner.mjs), worker-build, which builds every
+# Rust Worker (scripts/build-rust-worker.mjs; `cargo install` took four
+# minutes a job), and sccache (scripts/sccache.sh). Each is the version
+# those scripts pin, sccache checked against the same sha256, and
+# scripts/deploy/deploy.test.mjs fails when they differ. worker-build
+# publishes no prebuilt binary, so Cargo builds it, and the sources it
+# downloaded are deleted in the same step. They come after Java, .NET and
+# Ruby, so a new version rebuilds only them and the command-line tools
+# below, never a toolchain, and each is its own layer, so bumping one
+# leaves the others as they were.
+USER node
+RUN rustup target add x86_64-unknown-linux-musl \
+ && rm -rf /home/node/.rustup/downloads /home/node/.rustup/tmp
+
+ARG WORKER_BUILD_VERSION=0.8.7
+RUN cargo install --locked --quiet "worker-build@${WORKER_BUILD_VERSION}" \
+ && rm -rf /home/node/.cargo/registry /home/node/.cargo/git \
+ && test "$(worker-build --version)" = "${WORKER_BUILD_VERSION}"
+
+ARG SCCACHE_VERSION=0.18.0
+ARG SCCACHE_SHA256=45f1447fbe231e3037bde351ef70677dd212216c8d62ae7ca409fecc4d6acc89
+RUN name="sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl" \
+ && curl -fsSLo /tmp/sccache.tgz "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/${name}.tar.gz" \
+ && echo "${SCCACHE_SHA256}  /tmp/sccache.tgz" | sha256sum -c - \
+ && tar -C /tmp -xzf /tmp/sccache.tgz \
+ && install -m 0755 "/tmp/${name}/sccache" /home/node/.cargo/bin/sccache \
+ && rm -rf /tmp/sccache.tgz "/tmp/${name}" \
+ && test "$(sccache --version | awk '{print $2}')" = "${SCCACHE_VERSION}"
+USER root
 
 # The everyday tools a workflow written for GitHub's Ubuntu runners
 # reaches for without installing them first: process and system tools
