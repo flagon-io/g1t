@@ -7,7 +7,7 @@ import type { Route as HomeRoute } from "../+types/home";
 import { HomePage, loader as homeLoader } from "../home";
 import { ChatUnavailable, NoChannels } from "../../../components/chat/empty";
 import { ChatSidebar } from "../../../components/chat/sidebar";
-import { NewMessageButton } from "../../../components/chat/actions";
+import { NewChatButton, useChatData } from "../../../components/chat/actions";
 import { isPhone } from "../../../lib/phone";
 import { channelPath } from "../../../lib/chat";
 import { LAST_CHAT_COOKIE, sidebarOrNull } from "../../../lib/chat.server";
@@ -55,6 +55,7 @@ export default function ChatIndex({ loaderData, params }: Route.ComponentProps) 
   const { navigate } = usePageNavigation();
   const { to, home } = loaderData;
   const slug = params.owner.toLowerCase();
+  const data = useChatData();
   // Told it was a phone, but wider: on to Home, or the conversation, after all.
   useEffect(() => {
     if (!home && window.matchMedia("(min-width: 768px)").matches) navigate(to ?? `/${slug}/-/home`, { replace: true });
@@ -67,9 +68,12 @@ export default function ChatIndex({ loaderData, params }: Route.ComponentProps) 
       {/* A phone: the list of conversations, full screen. */}
       <div className="h-[calc(100dvh-var(--topbar-h)-var(--tabbar-h))] md:hidden">
         <ChatSidebar slug={slug} heading={false} />
-        <div className="fixed right-4 bottom-[calc(var(--tabbar-h)+1rem)] z-30">
-          <NewMessageButton slug={slug} variant="fab" />
-        </div>
+        {/* New chat, as the sidebar's wide button on a computer: New on its g1t tab. Not for a guest. */}
+        {data?.role != null && (
+          <div className="fixed right-4 bottom-[calc(var(--tabbar-h)+1rem)] z-30">
+            <NewChatButton slug={slug} variant="fab" />
+          </div>
+        )}
       </div>
       <div className="max-md:hidden">{loaderData.unavailable ? <ChatUnavailable /> : to ? null : <NoChannels />}</div>
     </>

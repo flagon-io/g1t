@@ -777,7 +777,10 @@ avatar at the app bar's end: your status, your profile and settings,
 [appearance](#appearance), the documentation, support, status, the
 keyboard's shortcuts, and signing out. Press <kbd>Ctrl</kbd> <kbd>K</kbd>
 (<kbd>⌘</kbd> <kbd>K</kbd> on a Mac), or <kbd>?</kbd>, anywhere outside a
-text field to see the keyboard's shortcuts; <kbd>/</kbd> is search.
+text field to see the keyboard's shortcuts; <kbd>/</kbd> is search. In
+Chat, <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>O</kbd> (<kbd>⇧</kbd>
+<kbd>⌘</kbd> <kbd>O</kbd> on a Mac) starts a [new chat with
+g1t](/guides/chat/#start-a-conversation-with-g1t).
 
 ### Appearance
 

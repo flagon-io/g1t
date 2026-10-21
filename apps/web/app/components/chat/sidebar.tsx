@@ -7,7 +7,7 @@ import { Link, NavLink, useFetcher, useNavigate } from "react-router";
 import type { Channel, ChannelInvitation, ChatSidebarEntry, GuestChannel } from "@g1t/contracts";
 
 import { conversationCache } from "./conversation-cache";
-import { CreateChannelButton, NewMessageButton, useChatData, useChatSend, useChatSidebar } from "./actions";
+import { CreateChannelButton, NewChatButton, NewMessageButton, useChatData, useChatSend, useChatSidebar } from "./actions";
 import { DndMenu } from "./dnd-menu";
 import { RecentSessionRow, useRecentSessions } from "./recents";
 import { NeedsAttention } from "../needs-attention";
@@ -48,7 +48,8 @@ function Count({ entry }: { entry: ChatSidebarEntry | undefined }) {
 }
 
 /**
- * Chat mode's sidebar: what you pinned, the workspace's own channels (and a
+ * Chat mode's sidebar: New chat at the top (a new conversation with g1t;
+ * Direct messages' pencil messages people), what you pinned, the workspace's own channels (and a
  * way to browse the rest), its public channels, direct messages (people,
  * and g1t), then your agent sessions, the latest first. A conversation is
  * not a session: what g1t starts from one is linked there, and listed
@@ -96,6 +97,8 @@ export function ChatSidebar({ slug: home, heading = true }: { slug: string; head
   const shown = filterEntries(entries, filter, query, currentId);
   const { pinned, channels, publicChannels, dms } = sections(shown);
   const loading = !data && !sidebar;
+  // In the workspace, not a guest: on Chat's pages its layout says, elsewhere (its sessions) only members come.
+  const member = data ? data.role != null : !sidebar?.guest;
 
   // Folded sections, remembered per workspace on this device. A folded
   // section still shows what is unread and the conversation open now.
@@ -145,14 +148,13 @@ export function ChatSidebar({ slug: home, heading = true }: { slug: string; head
       {heading && (
         <div className="flex h-9 shrink-0 items-center justify-between pr-1 pl-3">
           <h2 className="text-[0.6875rem] font-medium tracking-wide text-faint uppercase">Chat</h2>
-          <div className="flex items-center gap-0.5">
-            <DndMenu />
-            <NewMessageButton slug={slug} />
-          </div>
+          <DndMenu />
         </div>
       )}
       {sidebar?.guest && sidebar.workspace && <GuestBanner workspace={sidebar.workspace} home={home} />}
       <div className="space-y-2.5 px-2.5 pt-3">
+        {/* New chat first, as claude.ai has it, with its shortcut. A phone's list has the round button instead; a guest neither. */}
+        {heading && member && <NewChatButton slug={slug} shortcut />}
         <div className="flex items-center gap-2">
           <label className="flex h-8 min-w-0 grow items-center gap-2 rounded-md bg-surface px-2.5 text-[0.8125rem] ring-1 ring-line transition-shadow focus-within:ring-accent-dim/70">
             <Search size={14} className="shrink-0 text-faint" />

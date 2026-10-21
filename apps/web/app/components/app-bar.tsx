@@ -17,7 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { type PinnableApp, appOf, barApps } from "../lib/apps";
 import { cn } from "../lib/cn";
-import { PALETTE_KEY, modKeyLabel, shortcutsKeyLabel } from "../lib/shortcut";
+import { PALETTE_KEY, modKeyLabel, newChatKeyLabel, shortcutsKeyLabel } from "../lib/shortcut";
 import { type ModeKey, homePagePath, modeHome, modeOf } from "../lib/workspace-nav";
 
 type Badge = { count: number; loud: boolean } | null;
@@ -139,12 +139,13 @@ export function WorkspaceSwitcher({
 }
 
 /** Keyboard shortcuts, as the account menu lists them. */
-function shortcuts(palette: string, keys: string, sidebar: string): [string, string][] {
+function shortcuts(palette: string, keys: string, sidebar: string, newChat: string): [string, string][] {
   return [
     [palette, "Search, jump anywhere, or run a command"],
     [keys, "Show these shortcuts (? does too)"],
     [sidebar, "Show or hide the sidebar"],
     ["Esc", "Close a menu, dialog or panel"],
+    [newChat, "A new chat with g1t, in Chat"],
     ["Enter", "Send a message in Chat"],
     ["Shift Enter", "A new line in a message"],
     ["@", "Mention a person or a team"],
@@ -170,7 +171,7 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
         </DialogHeader>
         <Card asChild tone="plain" radius="lg" divided>
           <dl>
-            {shortcuts(PALETTE_KEY, shortcutsKeyLabel(platform), sidebarKeyLabel(platform)).map(([key, what]) => (
+            {shortcuts(PALETTE_KEY, shortcutsKeyLabel(platform), sidebarKeyLabel(platform), newChatKeyLabel(platform)).map(([key, what]) => (
               <div key={key} className="flex items-center justify-between gap-4 px-3.5 py-2.5 text-sm">
                 <dt className="text-fg-soft">{what}</dt>
                 <dd>

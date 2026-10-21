@@ -7,6 +7,7 @@ import type { AskPage, ChannelVisibility, ChatSidebar, Result } from "@g1t/contr
 import { Avatar } from "../ui/avatar";
 import { Button } from "../ui/button";
 import { Hint } from "../ui/hint";
+import { Kbd } from "../ui/kbd";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { RadioGroup, RadioOption } from "../ui/radio-group";
 import { AgentComposer } from "./agent-composer";
@@ -14,6 +15,7 @@ import { channelName, shownHandle, shownName } from "../../lib/chat";
 import type { ChatLayoutData } from "../../routes/workspace/chat/layout";
 import { useLiveCounts } from "../../lib/notify-client";
 import { overlayEntries, unlisted } from "../../lib/notify-store";
+import { isNewChatKey, newChatKeyLabel } from "../../lib/shortcut";
 
 /** Chat mode's data, while a chat page is open; undefined elsewhere. */
 export function useChatData(): ChatLayoutData | undefined {
@@ -289,20 +291,34 @@ export function CreateChannelButton({ slug, variant = "icon" }: { slug: string; 
 type Pickable = { key: string; name: string; handle: string; display: string; avatar: string | null };
 
 /**
- * New: a new conversation with g1t (claude.ai's New chat), which can start agent work, or a message to one
- * person or a few. The sidebar's pencil, a phone's
- * round button and an empty Chat all open it; the top bar's Ask opens the
- * same over any page (components/ask-button.tsx).
+ * New chat, as claude.ai has it: New on its g1t tab, a new conversation
+ * with g1t that can start agent work. On a computer it is the wide button
+ * at the top of Chat's sidebar, and ⇧⌘O or Ctrl Shift O (`shortcut`, from
+ * anywhere in Chat, a text field too); on a phone, the round button above
+ * the tab bar (`fab`), which the list has in its place. Not for a guest:
+ * g1t works for the workspace's members.
  */
-export function NewMessageButton({ slug, variant = "icon", children }: { slug: string; variant?: "icon" | "button" | "fab"; children?: ReactNode }) {
+export function NewChatButton({ slug, variant = "wide", shortcut = false }: { slug: string; variant?: "wide" | "fab"; shortcut?: boolean }) {
   const [open, setOpen] = useState(false);
+  const [platform, setPlatform] = useState<string | null>(null);
+  useEffect(() => setPlatform(navigator.platform), []);
+  useEffect(() => {
+    if (!shortcut) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || !isNewChatKey(event)) return;
+      event.preventDefault();
+      setOpen(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [shortcut]);
   return (
     <>
       {variant === "fab" ? (
         // A phone's list: the round button above the tab bar.
         <Button
           type="button"
-          aria-label="New"
+          aria-label="New chat"
           onClick={() => setOpen(true)}
           variant="accent"
           size="icon"
@@ -310,9 +326,38 @@ export function NewMessageButton({ slug, variant = "icon", children }: { slug: s
         >
           <SquarePen size={22} />
         </Button>
-      ) : variant === "icon" ? (
-        <Hint label="New: a conversation with g1t, or a message to someone">
-          <Button type="button" aria-label="New" onClick={() => setOpen(true)} variant="ghost" size="icon-sm" className="text-faint">
+      ) : (
+        <Button
+          type="button"
+          onClick={() => setOpen(true)}
+          variant="soft"
+          aria-keyshortcuts={shortcut ? "Control+Shift+O Meta+Shift+O" : undefined}
+          className="h-9 w-full justify-start gap-2.5 rounded-lg px-2.5 text-[0.8125rem]"
+        >
+          <span aria-hidden="true" className="flex size-5 items-center justify-center rounded-md bg-accent text-bg">
+            <Plus size={14} strokeWidth={2.5} />
+          </span>
+          <span className="grow text-left">New chat</span>
+          {shortcut && platform !== null && <Kbd className="font-sans text-[0.6875rem] text-faint pointer-coarse:hidden">{newChatKeyLabel(platform)}</Kbd>}
+        </Button>
+      )}
+      <NewChatDialog slug={slug} open={open} onOpenChange={setOpen} />
+    </>
+  );
+}
+
+/**
+ * New, for a message to one person or a few: opens New on Message people,
+ * whose g1t tab is a tab away. Direct messages' pencil and an empty Chat
+ * have it; a new conversation with g1t is New chat's (`NewChatButton`).
+ */
+export function NewMessageButton({ slug, variant = "icon", children }: { slug: string; variant?: "icon" | "button"; children?: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      {variant === "icon" ? (
+        <Hint label="Message people">
+          <Button type="button" aria-label="Message people" onClick={() => setOpen(true)} variant="ghost" size="icon-sm" className="text-faint">
             <SquarePen size={15} />
           </Button>
         </Hint>
@@ -322,7 +367,7 @@ export function NewMessageButton({ slug, variant = "icon", children }: { slug: s
           {children ?? "New message"}
         </Button>
       )}
-      <NewChatDialog slug={slug} open={open} onOpenChange={setOpen} />
+      <NewChatDialog slug={slug} open={open} onOpenChange={setOpen} start="people" />
     </>
   );
 }
@@ -331,6 +376,7 @@ export function NewMessageButton({ slug, variant = "icon", children }: { slug: s
  * New's dialog, wherever it is opened. `page` is where it was opened from
  * (the top bar's Ask, over any page): the agent starts on that page's
  * repository and work item, and g1t is told the page. `text` starts in the box.
+ * `start` is the tab it opens on: g1t, unless it was opened to message people.
  */
 export function NewChatDialog({
   slug,
@@ -338,17 +384,19 @@ export function NewChatDialog({
   onOpenChange,
   page,
   text,
+  start = "agent",
 }: {
   slug: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   page?: AskPage | null;
   text?: string;
+  start?: "agent" | "people";
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl gap-0 p-0 max-sm:pb-[env(safe-area-inset-bottom)]" showClose={false}>
-        {open && <NewDialog slug={slug} page={page} text={text} onDone={() => onOpenChange(false)} />}
+        {open && <NewDialog slug={slug} page={page} text={text} start={start} onDone={() => onOpenChange(false)} />}
       </DialogContent>
     </Dialog>
   );
@@ -359,8 +407,8 @@ export function NewChatDialog({
  * is a new conversation with g1t, which with a repository starts agent
  * work there (components/chat/agent-composer.tsx).
  */
-function NewDialog({ slug, page, text, onDone }: { slug: string; page?: AskPage | null; text?: string; onDone: () => void }) {
-  const [mode, setMode] = useState<"agent" | "people">("agent");
+function NewDialog({ slug, page, text, start, onDone }: { slug: string; page?: AskPage | null; text?: string; start: "agent" | "people"; onDone: () => void }) {
+  const [mode, setMode] = useState<"agent" | "people">(start);
   const tab = (key: "agent" | "people", label: string) => (
     <button
       type="button"

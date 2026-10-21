@@ -212,15 +212,22 @@ Both are yours alone; nobody else's sidebar changes.
 
 ## The sidebar
 
-Chat's sidebar lists, from the top:
+At the top of Chat's sidebar, a workspace's members have **New chat**: it
+opens **New** on **g1t**, to [start a conversation with
+g1t](#start-a-conversation-with-g1t), as claude.ai's New chat does.
+**Ctrl+Shift+O** (**⇧⌘O** on a Mac) does the same from anywhere in Chat,
+even while you type. On a phone, the round button above the tab bar is
+New chat. A guest has neither.
 
-| Section             | What's in it                                                                                                                                                                                                                           |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Pinned**          | Conversations you pinned (hover over one and choose the pin, or right-click it). Only when you have some.                                                                                                                              |
-| **Channels**        | The workspace's own channels you're in, workspace and private, by name, then **Browse channels** with how many more you could join. **+** creates one.                                                                                 |
-| **Public channels** | The [public channels](#public-channels) you're in, by name, kept apart because anyone on g1t can be in them. Only when you're in some.                                                                                                 |
-| **Direct messages** | [g1t](#talk-with-g1t) first, then your conversations with people, the latest first. The pencil opens **New**: a [conversation with g1t](#start-a-conversation-with-g1t) or a message to people. Empty, it says **Message a teammate.** |
-| **Sessions**        | Your recent [agent sessions](#sessions), the latest activity first, then **All sessions**.                                                                                                                                             |
+Under it, the sidebar lists, from the top:
+
+| Section             | What's in it                                                                                                                                                                                               |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Pinned**          | Conversations you pinned (hover over one and choose the pin, or right-click it). Only when you have some.                                                                                                  |
+| **Channels**        | The workspace's own channels you're in, workspace and private, by name, then **Browse channels** with how many more you could join. **+** creates one.                                                     |
+| **Public channels** | The [public channels](#public-channels) you're in, by name, kept apart because anyone on g1t can be in them. Only when you're in some.                                                                     |
+| **Direct messages** | [g1t](#talk-with-g1t) first, then your conversations with people, the latest first. The pencil opens **New** on **Message people**, to message one person or a few. Empty, it says **Message a teammate.** |
+| **Sessions**        | Your recent [agent sessions](#sessions), the latest activity first, then **All sessions**.                                                                                                                 |
 
 Above them, a workspace's members also see **Needs attention**: what waits
 on you, such as reviews asked of you, and calls of g1t's sessions waiting for your
@@ -299,9 +306,10 @@ setting it up and what it knows.
 
 ### Start a conversation with g1t
 
-**New** (the pencil in the sidebar, the round button on a phone, or **Ask**
-in the top bar over any page) opens on **g1t**: a box to write in, as on
-claude.ai, with a repository picker under it.
+**New chat** (at the top of the sidebar, **Ctrl+Shift+O** in Chat, the
+round button on a phone, or **Ask** in the top bar over any page) opens
+**New** on **g1t**: a box to write in, as on claude.ai, with a repository
+picker under it.
 
 - With **No repository**, sending starts a new conversation in your
   direct message with g1t and asks it what you wrote. Asked from a page,
@@ -310,17 +318,25 @@ claude.ai, with a repository picker under it.
   [hosted session](/guides/sessions/#start-a-session-on-your-anthropic-account)
   on the workspace's own Anthropic key, optionally on an open work item
   (implement, plan or review it). The new conversation shows what you asked
-  and g1t's card for the session, with whether it is **Working** or
-  **Done**; the card opens the session's page, where it streams and you
-  steer, stop or follow it up. The session is listed under
-  [Sessions](#sessions) too.
+  and g1t's card for the session, which follows it as it goes; the card
+  opens the session's page, where it streams and you steer, stop or follow
+  it up. The session is listed under [Sessions](#sessions) too.
+
+g1t's card for a session says where it stands:
+
+| State              | Means                                                                                                                                                                                                                                                       |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Working**        | It runs. The card pulses in lavender.                                                                                                                                                                                                                       |
+| **Waiting on you** | A call of it waits for an approval you may give. The card turns amber and shows the call, how long it has left, **Allow** and **Deny**, answered there as from [Needs attention](#the-sidebar), and **Review**, which opens the call on the session's page. |
+| **Done**           | It ended.                                                                                                                                                                                                                                                   |
 
 The picker starts on **No repository**, or on the repository you last
 started work in. The page's repository and the one the workspace's
 sessions ran in most are listed first. Without an Anthropic connection, the
 box says so, with a link for owners to connect one. **Enter** sends;
 **Shift+Enter** starts a new line. **Message people**, beside **g1t**,
-starts a [direct message](#direct-messages) instead.
+starts a [direct message](#direct-messages) instead; Direct messages'
+pencil opens New there.
 
 ## Threads
 
