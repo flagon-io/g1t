@@ -203,6 +203,8 @@ export default [
       route("-/approvals.json", "routes/workspace/approvals-json.ts"),
       // Allowing or denying one of them from its Needs attention card, on any page.
       route("-/approvals", "routes/workspace/approvals.ts"),
+      // The viewer's recent agent sessions with their status, for Recents in Chat's sidebar.
+      route("-/recents.json", "routes/workspace/recents-json.ts"),
       route("-/chat", "routes/workspace/chat/layout.tsx", [
         index("routes/workspace/chat/index.tsx"),
         route("browse", "routes/workspace/chat/browse.tsx"),

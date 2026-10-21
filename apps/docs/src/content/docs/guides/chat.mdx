@@ -214,12 +214,17 @@ Both are yours alone; nobody else's sidebar changes.
 
 Chat's sidebar lists, from the top:
 
-| Section             | What's in it                                                                                                                                           |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Pinned**          | Conversations you pinned (hover over one and choose the pin, or right-click it). Only when you have some.                                              |
-| **Channels**        | The workspace's own channels you're in, workspace and private, by name, then **Browse channels** with how many more you could join. **+** creates one. |
-| **Public channels** | The [public channels](#public-channels) you're in, by name, kept apart because anyone on g1t can be in them. Only when you're in some.                 |
-| **Direct messages** | [g1t](#talk-with-g1t) first, then your direct messages, the latest first. The pencil starts a new message. Empty, it says **Message a teammate.**      |
+| Section             | What's in it                                                                                                                                                                                            |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Pinned**          | Conversations you pinned (hover over one and choose the pin, or right-click it). Only when you have some.                                                                                               |
+| **Channels**        | The workspace's own channels you're in, workspace and private, by name, then **Browse channels** with how many more you could join. **+** creates one.                                                  |
+| **Public channels** | The [public channels](#public-channels) you're in, by name, kept apart because anyone on g1t can be in them. Only when you're in some.                                                                  |
+| **Recents**         | [g1t](#talk-with-g1t) first, then your direct messages and your [agent sessions](#recents) together, the latest activity first. The pencil starts a new message. Empty, it says **Message a teammate.** |
+
+Above them, a workspace's members also see **Needs attention** (what waits
+on you: reviews asked of you, and calls of g1t's sessions waiting for your
+approval, which you can [allow or deny there](/guides/sessions/#answer-a-running-session))
+and **Sessions**, every agent session in the workspace.
 
 Unread conversations are in bold with a count; mentions of you are counted
 in lavender. **All**, **Unread** and **Mentions** filter every section, and
@@ -228,6 +233,32 @@ in lavender. **All**, **Unread** and **Mentions** filter every section, and
 Choose a section's name to fold it. A folded section still shows what's
 unread and the conversation you have open, and it stays folded on that
 device until you open it again.
+
+### Recents
+
+**Recents** lists the people you talk to and your agents side by side:
+your direct messages and your recent agent sessions in one list, the latest
+activity first. Your sessions are the ones you started, the ones on work
+items assigned to you, and any that wait on your answer. Each session shows
+what it runs in (Claude Code, Codex, a session g1t started), its title, and
+a dot for where it stands:
+
+| Dot            | Means                                                                                                    |
+| -------------- | -------------------------------------------------------------------------------------------------------- |
+| Green, pulsing | **Working**: it was heard from in the last 15 minutes.                                                   |
+| Amber          | **Waiting on you**: a call of it waits for your approval. It shows in bold, like an unread conversation. |
+| Grey           | **Idle**: not heard from for 15 minutes. It may still come back.                                         |
+| Grey ring      | **Ended**.                                                                                               |
+
+Choose a session to open its page. Recents keeps to the latest 10;
+**Show all** lists every direct message and recent session, and
+**Sessions** above has every session in the workspace. A conversation with
+something unread, a session waiting on you and whatever you have open stay
+in the list either way. **Unread** shows the sessions waiting on you
+beside your unread conversations, and **Jump to channel or person** finds a
+session by its title too. Statuses move when the window comes back into
+view and when g1t tells you of something, such as a call that starts
+waiting.
 
 ## Direct messages
 
@@ -241,7 +272,7 @@ who to message.
 
 ## Talk with g1t
 
-**g1t** is at the top of your direct messages, with its mark for a face.
+**g1t** is at the top of **Recents**, with its mark for a face.
 Write to it like anyone else and it answers, with your workspace's own AI
 provider and the model an owner chose: see [Ask g1t](/guides/ask/) for
 setting it up and what it knows.

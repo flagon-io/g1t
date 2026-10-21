@@ -1,5 +1,5 @@
 import { useSidebarLocation } from "../../lib/use-sidebar-location";
-import { ArrowLeft, BellOff, Check, ChevronDown, Compass, Globe, Hash, Lock, Pin, PinOff, Radio, Search, X } from "lucide-react";
+import { ArrowLeft, BellOff, Check, ChevronDown, ChevronsDown, ChevronsUp, Compass, Globe, Hash, Lock, Pin, PinOff, Radio, Search, X } from "lucide-react";
 import { ContextMenu } from "radix-ui";
 import { type ReactNode, useEffect, useState } from "react";
 import { Link, NavLink, useFetcher, useNavigate } from "react-router";
@@ -9,6 +9,7 @@ import type { Channel, ChannelInvitation, ChatSidebarEntry, GuestChannel } from 
 import { conversationCache } from "./conversation-cache";
 import { CreateChannelButton, NewMessageButton, useChatData, useChatSend, useChatSidebar } from "./actions";
 import { DndMenu } from "./dnd-menu";
+import { RecentSessionRow, useRecentSessions } from "./recents";
 import { NeedsAttention } from "../needs-attention";
 import { MemberAvatar } from "./marks";
 import { PersonStatusEmoji } from "../presence";
@@ -20,7 +21,8 @@ import { Skeleton } from "../ui/skeleton";
 import { type ChatFilter, agentsOnlyDm, channelPath, filterEntries, g1tEntry, sections } from "../../lib/chat";
 import { feedConnected } from "../../lib/notify-client";
 import { FALLBACK_REFRESH_MS } from "../../lib/notify-store";
-import { sessionsPath } from "../../lib/work-items";
+import { RECENTS_SHOWN, type RecentRow, filterSessions, recentRows, shortRecents } from "../../lib/recents";
+import { sessionPath, sessionsPath } from "../../lib/work-items";
 import { setMutedConversations } from "../../lib/sound-events";
 
 /** How often the sidebar asks again while the tab is shown and the feed socket is down. */
@@ -47,8 +49,8 @@ function Count({ entry }: { entry: ChatSidebarEntry | undefined }) {
 
 /**
  * Chat mode's sidebar: what you pinned, the workspace's own channels (and a
- * way to browse the rest), its public channels, then direct messages, the
- * latest first. Sections fold, and
+ * way to browse the rest), its public channels, then Recents: direct
+ * messages and your agent sessions together, the latest first. Sections fold, and
  * stay folded on this device. All, Unread and Mentions filter every section. It refreshes
  * itself while the tab is shown, so unread counts move without a reload.
  */
@@ -124,6 +126,23 @@ export function ChatSidebar({ slug: home, heading = true }: { slug: string; head
   const conversation = (entry: ChatSidebarEntry) => (
     <ConversationRow key={entry.channel.id} entry={entry} slug={slug} pathname={pathname} onPin={() => void togglePin(entry)} />
   );
+
+  // Recents: direct messages and the viewer's agent sessions, newest activity first.
+  const sessions = useRecentSessions(slug, sidebar != null && !sidebar.guest);
+  const [allRecents, setAllRecents] = useState(false);
+  useEffect(() => setAllRecents(false), [slug]);
+  const recentList = recentRows(dms, filterSessions(sessions ?? [], filter, query), g1tEntry);
+  const keepRecent = (row: RecentRow) =>
+    row.kind === "dm" ? keepShown(row.entry) : row.session.status === "waiting" || pathname === sessionPath(slug, row.session.id);
+  // Filtering or searching shows every match; otherwise the list is short until Show all.
+  const recent = allRecents || filter !== "all" || query ? { shown: recentList, more: 0 } : shortRecents(recentList, RECENTS_SHOWN, keepRecent);
+  const recentKeep = recentList.filter(keepRecent);
+  const recentRow = (row: RecentRow) =>
+    row.kind === "dm" ? (
+      conversation(row.entry)
+    ) : (
+      <RecentSessionRow key={row.session.id} session={row.session} slug={slug} pathname={pathname} rowClass={ROW} />
+    );
 
   return (
     // The colour behind it, for the dots cut out of people's avatars.
@@ -254,16 +273,16 @@ export function ChatSidebar({ slug: home, heading = true }: { slug: string; head
                   ))}
               </Section>
             )}
-            {/* A guest has no direct messages here: those are for the workspace's members. */}
+            {/*
+              Recents: the people you talk to and your agent sessions in one list, newest
+              activity first, in place of Direct messages. Short (RECENTS_SHOWN), with
+              what is unread, waiting on you or open always in view; Show all lists every
+              one here, and Sessions above has the rest. A guest has neither here: those
+              are for the workspace's members. Its id is Direct messages' own, so a fold
+              made there is kept.
+            */}
             {!sidebar.guest && (
-              <Section
-                id="people"
-                title="Direct messages"
-                folded={folded}
-                onFold={fold}
-                action={<NewMessageButton slug={slug} />}
-                keep={dms.filter(keepShown).map(conversation)}
-              >
+              <Section id="people" title="Recents" folded={folded} onFold={fold} action={<NewMessageButton slug={slug} />} keep={recentKeep.map(recentRow)}>
                 {/* @g1t, before the first word to it: its direct message opens on first use. */}
                 {filter === "all" && !query && !entries.some(g1tEntry) && (
                   <ExtraRow
@@ -273,11 +292,25 @@ export function ChatSidebar({ slug: home, heading = true }: { slug: string; head
                     g1t
                   </ExtraRow>
                 )}
-                {dms.map(conversation)}
-                {dms.length === 0 && filter === "all" && !query && <Empty>Message a teammate.</Empty>}
+                {recent.shown.map(recentRow)}
+                {(recent.more > 0 || allRecents) && recentList.length > RECENTS_SHOWN && (
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => setAllRecents((open) => !open)}
+                      aria-expanded={allRecents}
+                      className={`${ROW} w-full text-left text-faint hover:bg-sidebar-accent/60 hover:text-muted`}
+                    >
+                      <span className="flex w-4.5 shrink-0 justify-center">{allRecents ? <ChevronsUp size={14} /> : <ChevronsDown size={14} />}</span>
+                      <span className="min-w-0 grow truncate">{allRecents ? "Show fewer" : "Show all"}</span>
+                      {!allRecents && <span className="shrink-0 text-xs tabular-nums">{recent.more}</span>}
+                    </button>
+                  </li>
+                )}
+                {recentList.length === 0 && filter === "all" && !query && <Empty>Message a teammate.</Empty>}
               </Section>
             )}
-            {shown.length === 0 && (filter !== "all" || query) && (
+            {shown.length === 0 && recentList.length === 0 && (filter !== "all" || query) && (
               <p className="px-2 py-2 text-xs text-faint">{query ? "Nothing matches." : filter === "unread" ? "You're all caught up." : "No mentions."}</p>
             )}
           </>
