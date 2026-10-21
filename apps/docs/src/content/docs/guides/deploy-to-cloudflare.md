@@ -139,9 +139,48 @@ node scripts/deploy.mjs image                   # make the runner's image in the
 **Only what changed deploys.** Each deploy records its commit on the
 Worker's version (`wrangler deploy --message "g1t-deploy <sha> ..." --tag
 g1t-<sha>`). `plan` reads the live version of each Worker, diffs from its
-commit to `HEAD`, and deploys the units the change touches. A change only
-to a crate's tests deploys nothing. A version deployed any other way has
-no commit, so the unit is deployed again.
+commit to `HEAD`, and deploys the units the change touches. A version
+deployed any other way has no commit, so the unit is deployed again.
+
+The diff starts at what each Worker runs, not at the push before. A run
+that was cancelled (a newer push replaces one still waiting its turn),
+or a stage that failed, changed nothing in production, so its units
+still name the older commit and the next plan deploys what they missed.
+Whatever the plan cannot be sure of deploys:
+
+- a Worker whose live version it cannot read, or that names no commit;
+- a live commit missing from the checkout's history;
+- a manifest it cannot read at the live commit.
+
+A unit deploys when a change since its live commit touches:
+
+| What changed                                                                                          | Deploys                                            |
+| ----------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Its folder, its `wrangler.jsonc` included                                                             | The unit                                           |
+| A workspace crate or npm package it is built from (`cargo metadata`, `package.json`), or its `inputs` | The unit                                           |
+| `Cargo.lock` or `package-lock.json`                                                                   | Only units whose dependencies include what changed |
+| `Cargo.toml`, `rust-toolchain.toml`, `.cargo/config.toml`, `scripts/build-rust-worker.mjs`            | Rust Workers (and the runner's image)              |
+| Root `package.json`; `tsconfig.base.json` (npm-built units)                                           | The units of those kinds                           |
+| Its own entry in `deploy/stack.jsonc`                                                                 | The unit (another unit's entry, or a comment: no)  |
+| `scripts/deploy.mjs`, `scripts/deploy/*` (below), `.g1t/workflows/deploy.yml`                         | Every unit                                         |
+| `scripts/deploy/web-assets.mjs`; `scripts/deploy/image.mjs`, `registry.mjs`                           | `web`; the runner                                  |
+
+Nothing else deploys anything: a crate's `tests/`, `benches/` and
+`examples/`, Rust modules compiled only under `#[cfg(test)]`, `*.test.ts`
+and `*.spec.ts` files, the docs outside `apps/docs`, other workflows
+(`ci.yml`), and the deploy tool's planning and CI files
+(`plan.mjs`, `lockfiles.mjs`, `report.mjs`, `status-window.mjs`,
+`ci-affected.mjs`, `ci-cache.mjs`, and its tests). A new file in
+`scripts/deploy/` counts for every unit until it is listed as one of
+those (`TOOL_NOT_INPUTS` in `scripts/deploy/stack.mjs`). `plan` prints,
+for each unit, the first changed file that reached it.
+
+Migrations are not diffed: `plan` asks each database which of its
+migration files it has applied, and the `migrate` job runs whenever one
+has not been, whatever changed. The runner's image is named by a hash of
+what it is built from, so it is made only when no image of that name is
+in the registry ([The runner's images](#the-runners-images)). To deploy
+everything anyway, run the workflow by hand with `all`, or name `units`.
 
 With `CLOUDFLARE_API_TOKEN` (in CI) or `CLOUDFLARE_DEPLOY_TOKEN` (on your
 machine) and `CLOUDFLARE_ACCOUNT_ID`, `plan` reads Cloudflare's API itself
@@ -318,10 +357,10 @@ previous commit. Once it has deployed, the rooms are its own: fix forward.
 `services/runner` runs every sandbox (checks, the merge queue,
 workflow jobs and deploy builds) from one Containers image in two parts:
 
-| Image      | Built from                                                                                     | Rebuilt                                                                            |
-| ---------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| The base   | `services/runner/base/Dockerfile`: Debian, Node, Python, Docker, Go, Rust, Java, .NET and Ruby | When its folder changes, weekly by `runner-base.yml`, or by hand with `build-base` |
-| The runner | `services/runner/Dockerfile`: the base plus the `g1t-runner` binary                            | When the binary or the base changes                                                |
+| Image      | Built from                                                                                     | Rebuilt                                                                                                                                                                                                               |
+| ---------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The base   | `services/runner/base/Dockerfile`: Debian, Node, Python, Docker, Go, Rust, Java, .NET and Ruby | When its folder changes, weekly by `runner-base.yml`, or by hand with `build-base`                                                                                                                                    |
+| The runner | `services/runner/Dockerfile`: the base plus the `g1t-runner` binary                            | When the binary's crates, their `Cargo.lock` entries, the Rust toolchain files, `scripts/build-runner.mjs`, `scripts/deploy/registry.mjs` or the base change; not for the runner Worker's own TypeScript or its tests |
 
 `services/runner/base.json` records the base that was pushed;
 `npm run test:deploy` fails while it and the base's folder disagree. The

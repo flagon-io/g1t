@@ -142,15 +142,64 @@ function closure(graph, start) {
   return [...seen];
 }
 
+/** Rust's toolchain and Cargo's settings, should the repository pin them. */
+export const RUST_TOOLCHAIN = ["rust-toolchain.toml", "rust-toolchain", ".cargo/config.toml", ".cargo/config"];
+
+/**
+ * What every unit is built and deployed with: the manifest (which counts
+ * for a unit only when its own entry changed, see plan.mjs) and the
+ * workflow that builds and deploys it. The deploy tool's own files are
+ * counted by `toolInput`.
+ */
+export const DEPLOY_INPUTS = [STACK_FILE, ".g1t/workflows/deploy.yml", "scripts/deploy.mjs"];
+
+/**
+ * Files of the deploy tool (scripts/deploy/) that decide which units
+ * deploy, or serve CI, the status page or the Deployments page, but never
+ * change what a unit is built into or how it is deployed. Every other file
+ * there, a new one included, counts for every unit, unless TOOL_FOR names
+ * the units it counts for.
+ */
+export const TOOL_NOT_INPUTS = [
+  "scripts/deploy/plan.mjs",
+  "scripts/deploy/lockfiles.mjs",
+  "scripts/deploy/report.mjs",
+  "scripts/deploy/status-window.mjs",
+  "scripts/deploy/ci-affected.mjs",
+  "scripts/deploy/ci-cache.mjs",
+];
+
+/** Files of the deploy tool only some units are built or deployed with. */
+export const TOOL_FOR = {
+  // Makes the runner's image and the config it is deployed with.
+  "scripts/deploy/image.mjs": (unit) => Boolean(unit.image),
+  "scripts/deploy/registry.mjs": (unit) => Boolean(unit.image),
+  // Archives and checks the site's assets as it deploys (deploy.mjs's ship).
+  "scripts/deploy/web-assets.mjs": (unit) => unit.id === "web",
+};
+
+/** Whether `file`, a file of the deploy tool, is something `unit` is built or deployed with. */
+export function toolInput(unit, file) {
+  if (!file.startsWith("scripts/deploy/") || TOOL_NOT_INPUTS.includes(file) || /\.test\.m?js$/.test(file)) return false;
+  return TOOL_FOR[file] ? TOOL_FOR[file](unit) : true;
+}
+
 /** Files at the root every unit of a kind is built with. */
 export function globalInputs(kind) {
-  const inputs = ["package.json"];
-  if (kind === "rust-worker") inputs.push("Cargo.toml", "Cargo.lock", "scripts/build-rust-worker.mjs");
+  const inputs = ["package.json", ...DEPLOY_INPUTS];
+  if (kind === "rust-worker") inputs.push("Cargo.toml", "Cargo.lock", "scripts/build-rust-worker.mjs", ...RUST_TOOLCHAIN);
   // A Rust worker's JavaScript is a small shim worker-build bundles itself,
   // so the npm lockfile only changes what npm-built units ship.
   else inputs.push("package-lock.json", "tsconfig.base.json");
   return inputs;
 }
+
+/**
+ * A JavaScript or TypeScript test (`x.test.ts`, `x.spec.tsx`): run by
+ * `node --test` or Vitest, never imported by what a Worker or site
+ * bundles, and left out of each package's tsconfig.
+ */
+export const isScriptTest = (file) => /\.(test|spec)\.[cm]?[jt]sx?$/.test(file);
 
 /**
  * Adds to each unit what it is built from:
@@ -187,13 +236,22 @@ export function resolveStack(stack, { cargo, npm }) {
       unit.image = {
         ...unit.image,
         dirs: crates.map((c) => cargo.get(c).dir).sort(),
-        files: [unit.image.dockerfile, ...(lock ? [lock] : []), "Cargo.toml", "Cargo.lock", "scripts/build-runner.mjs"],
+        // registry.mjs makes the image: the base's layers and one with the binary.
+        files: [
+          unit.image.dockerfile,
+          ...(lock ? [lock] : []),
+          "Cargo.toml",
+          "Cargo.lock",
+          ...RUST_TOOLCHAIN,
+          "scripts/build-runner.mjs",
+          "scripts/deploy/registry.mjs",
+        ],
         baseDirs: unit.image.base ? [unit.image.base.context] : [],
       };
       for (const dir of unit.image.dirs) if (dir !== unit.path) unit.dependsOn.push(dir);
       unit.dependsOn = [...new Set(unit.dependsOn)].sort();
       unit.crateDirs = [...new Set([...unit.crateDirs, ...unit.image.dirs])].sort();
-      unit.inputs = [...new Set([...unit.inputs, "Cargo.toml", "Cargo.lock", "scripts/build-runner.mjs"])].sort();
+      unit.inputs = [...new Set([...unit.inputs, "Cargo.toml", "Cargo.lock", ...RUST_TOOLCHAIN, "scripts/build-runner.mjs"])].sort();
     }
   }
   return stack;
@@ -288,10 +346,11 @@ export function testOnlySource(file, crateDirs, { read, list = () => [] }, depth
 /**
  * Why a set of changed files (repository-relative, `/`-separated) touches
  * a unit: the first file that does, and through what. Null if none does.
- * Its crates' tests, benches and examples do not.
+ * Its crates' tests, benches and examples do not, nor JavaScript and
+ * TypeScript tests.
  */
 export function touches(unit, files) {
-  files = files.filter((file) => !inCrateTests(file, unit.crateDirs));
+  files = files.filter((file) => !inCrateTests(file, unit.crateDirs) && !isScriptTest(file));
   for (const file of files) {
     if (under(file, unit.path)) return { file, via: "its own folder" };
   }
@@ -299,6 +358,7 @@ export function touches(unit, files) {
     const dir = unit.dependsOn.find((d) => under(file, d));
     if (dir) return { file, via: dir };
     if (unit.inputs.includes(file)) return { file, via: file };
+    if (toolInput(unit, file)) return { file, via: "the deploy tool" };
   }
   return null;
 }
@@ -306,7 +366,10 @@ export function touches(unit, files) {
 /** Whether changed files touch a unit's Containers image. */
 export function touchesImage(unit, files) {
   if (!unit.image) return false;
-  return files.some((file) => unit.image.files.includes(file) || (unit.image.dirs.some((dir) => under(file, dir)) && !inCrateTests(file, unit.image.dirs)));
+  return files.some(
+    (file) =>
+      unit.image.files.includes(file) || (unit.image.dirs.some((dir) => under(file, dir)) && !inCrateTests(file, unit.image.dirs) && !isScriptTest(file)),
+  );
 }
 
 /** Whether changed files touch the folder a unit's base image is built from. */
