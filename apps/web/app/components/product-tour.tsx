@@ -65,7 +65,7 @@ import {
   SendHorizontal,
   Settings,
   ShieldCheck,
-  Shapes,
+  LibraryBig,
   Sparkles,
   SquarePen,
   User,
@@ -298,12 +298,12 @@ function Message({ who, time, children, enter }: { who: string; time: string; ch
 
 /** The app bar's tabs, in the app's order (lib/apps.ts BAR_APPS), with their icons (components/apps.tsx). */
 const APP_TABS: { key: string; icon: ReactNode; label: string; target?: CursorTarget; scenes?: Scene[]; badge?: number }[] = [
-  { key: "home", icon: <House size={14} />, label: "Home", scenes: ["home"] },
-  { key: "work", icon: <ListTodo size={14} />, label: "Work" },
+  // Chat first, and lit on Home too: the app opens on Chat, and Chat on Home.
   // Unread in #support, none of it a mention: the quiet count, as the app gives it.
-  { key: "chat", icon: <MessagesSquare size={14} />, label: "Chat", target: "tab-chat", scenes: ["chat"], badge: 3 },
+  { key: "chat", icon: <MessagesSquare size={14} />, label: "Chat", target: "tab-chat", scenes: ["home", "chat"], badge: 3 },
+  { key: "work", icon: <ListTodo size={14} />, label: "Work" },
   { key: "code", icon: <Code2 size={14} />, label: "Code", target: "tab-code", scenes: ["code", "session"] },
-  { key: "artifacts", icon: <Shapes size={14} />, label: "Library" },
+  { key: "artifacts", icon: <LibraryBig size={14} />, label: "Library" },
   { key: "routines", icon: <Repeat size={14} />, label: "Routines" },
 ];
 

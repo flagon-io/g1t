@@ -261,7 +261,7 @@ export function channelName(typed: string): string {
 }
 
 /** Paths under `-/chat/` that are pages, not channels: never a channel's name. */
-export const RESERVED_CHANNEL_NAMES = ["dm", "browse", "live", "api", "new"] as const;
+export const RESERVED_CHANNEL_NAMES = ["dm", "browse", "live", "api", "new", "sessions"] as const;
 
 /** A principal as a form field carries it: `user:<username>`. */
 export function principalField(kind: Principal["kind"], key: string): string {

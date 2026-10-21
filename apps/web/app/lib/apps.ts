@@ -54,13 +54,14 @@ export const BUILTINS: BuiltinInfo[] = [
 ];
 
 /**
- * The app bar's tabs, in order (components/app-bar.tsx): Home, Work with
- * its sessions, Chat, Code for a member with Code access, Artifacts and
+ * The app bar's tabs, in order (components/app-bar.tsx): Chat first, which
+ * opens on Home (where you're needed, what happened) and holds the
+ * sessions, then Work, Code for a member with Code access, the Library and
  * Routines. Pinned apps, the Apps launcher and Explore (g1t beyond your
  * workspaces) follow them as icons; People and Workspace are in the
  * workspace's menu.
  */
-export const BAR_APPS = ["home", "work", "chat", "code", "artifacts", "routines"] as const satisfies readonly BuiltinApp[];
+export const BAR_APPS = ["chat", "work", "code", "artifacts", "routines"] as const satisfies readonly BuiltinApp[];
 
 export type BarApp = (typeof BAR_APPS)[number];
 

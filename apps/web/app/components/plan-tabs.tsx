@@ -11,13 +11,12 @@ export const WORK_TABS = [
   { path: "triage", label: "Triage", about: "New work items nobody has placed yet" },
   { path: "all", label: "All items", about: "Every work item, with filters" },
   { path: "milestones", label: "Milestones", about: "Goals with a due date" },
-  { path: "sessions", label: "Sessions", about: "What is cooking across the workspace" },
 ] as const;
 
 /**
  * Which of Work's tabs `pathname` is (its path under `-/work`, "" for the
- * Plan), or null for Work's other pages: one item, one milestone, one
- * session, a new item, labels.
+ * Plan), or null for Work's other pages: one item, one milestone, a new
+ * item, labels. Sessions are Chat's.
  */
 export function workTab(pathname: string, workspace: string): string | null {
   const base = workPath(workspace);

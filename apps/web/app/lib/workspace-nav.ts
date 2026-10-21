@@ -311,7 +311,7 @@ export function modeOf(pathname: string, slug: string | null): ModeKey {
 export function modeHome(mode: ModeKey, slug: string): string {
   switch (mode) {
     case "home":
-      return homePagePath(slug);
+      return `/${slug}/-/home`;
     case "work":
       return `/${slug}/-/work`;
     case "notifications":
@@ -442,9 +442,13 @@ export function shellMode(pathname: string, viewer: Viewer): ModeKey {
   return browsingOf(pathname, viewer) ? "browse" : modeOf(pathname, viewer.slug);
 }
 
-/** A workspace's front page: Home. */
+/**
+ * A workspace's front page: Chat, which opens on Home on a computer
+ * (routes/workspace/chat/index.tsx). A phone's Home tab is Home's own
+ * page (`modeHome("home")`).
+ */
 export function homePagePath(slug: string): string {
-  return `/${slug}/-/home`;
+  return `/${slug}/-/chat`;
 }
 
 /**
