@@ -1,25 +1,5 @@
 import { useSidebarLocation } from "../../lib/use-sidebar-location";
-import {
-  ArrowLeft,
-  BellOff,
-  Bot,
-  Check,
-  ChevronDown,
-  CircleUserRound,
-  Compass,
-  Cpu,
-  Globe,
-  Hash,
-  History,
-  Lock,
-  Pin,
-  PinOff,
-  Radio,
-  ScrollText,
-  Search,
-  Sparkles,
-  X,
-} from "lucide-react";
+import { ArrowLeft, BellOff, Check, ChevronDown, Compass, Globe, Hash, Lock, Pin, PinOff, Radio, Search, X } from "lucide-react";
 import { ContextMenu } from "radix-ui";
 import { type ReactNode, useEffect, useState } from "react";
 import { Link, NavLink, useFetcher, useNavigate } from "react-router";
@@ -72,7 +52,7 @@ function Count({ entry }: { entry: ChatSidebarEntry | undefined }) {
  * stay folded on this device. All, Unread and Mentions filter every section. It refreshes
  * itself while the tab is shown, so unread counts move without a reload.
  */
-export function ChatSidebar({ slug: home, heading = true, username }: { slug: string; heading?: boolean; username?: string }) {
+export function ChatSidebar({ slug: home, heading = true }: { slug: string; heading?: boolean }) {
   const data = useChatData();
   // The workspace whose chat is open: another one's, for a guest there.
   const slug = data?.slug ?? home;
@@ -216,9 +196,10 @@ export function ChatSidebar({ slug: home, heading = true, username }: { slug: st
             {!sidebar.guest && (
               <>
                 <NeedsAttention slug={slug} className="mx-0 mb-3" />
-                <Section id="sessions" title="Sessions" folded={folded} onFold={fold}>
-                  <SessionRows slug={slug} me={data?.me.username ?? username ?? ""} />
-                </Section>
+                {/* One way in: the sessions page has the views and filters (live, yours, each kind). */}
+                <ul className="mb-3 space-y-px">
+                  <SessionsRow slug={slug} pathname={pathname} />
+                </ul>
               </>
             )}
             {/* Open to anyone on g1t, apart from the workspace's own, and first: only when there are some, or for a guest, to find them. */}
@@ -396,46 +377,23 @@ function ExtraRow({ to, icon, count, countLabel, children }: { to: string; icon:
   );
 }
 
-/**
- * Sessions' views, which were Work's: what is going now, every session,
- * your own, and each kind. They differ by their query alone, so each is
- * lit only on its own (lib/work-items.ts `sessionsPath`).
- */
-const SESSION_VIEWS: { label: string; icon: ReactNode; filters: Record<string, string> }[] = [
-  { label: "Live now", icon: <Radio size={15} />, filters: {} },
-  { label: "Every session", icon: <History size={15} />, filters: { state: "recent" } },
-  { label: "Yours", icon: <CircleUserRound size={15} />, filters: { person: "" } },
-  { label: "People's harnesses", icon: <Bot size={15} />, filters: { kind: "harness" } },
-  { label: "Started on g1t", icon: <Sparkles size={15} />, filters: { kind: "hosted" } },
-  { label: "g1t's agent", icon: <Cpu size={15} />, filters: { kind: "agent" } },
-  { label: "Recorded on pull requests", icon: <ScrollText size={15} />, filters: { kind: "recorded" } },
-];
-
-function SessionRows({ slug, me }: { slug: string; me: string }) {
-  const { pathname, search } = useSidebarLocation();
-  const list = sessionsPath(slug);
-  const query = new URLSearchParams(search);
+/** Sessions: every agent session in the workspace, lit on any of its pages; its views and filters are on the page. */
+function SessionsRow({ slug, pathname }: { slug: string; pathname: string }) {
+  const to = sessionsPath(slug);
+  const current = pathname === to || pathname.startsWith(`${to}/`);
   return (
-    <>
-      {SESSION_VIEWS.map((view) => {
-        // "Yours" is the signed-in person's.
-        const filters = "person" in view.filters ? { person: me } : view.filters;
-        const current =
-          pathname === list && [...query.keys()].every((key) => key in filters) && Object.entries(filters).every(([key, value]) => query.get(key) === value);
-        return (
-          <li key={view.label}>
-            <Link
-              to={sessionsPath(slug, filters)}
-              aria-current={current ? "page" : undefined}
-              className={`${ROW} ${current ? "bg-sidebar-accent text-fg" : "text-muted hover:bg-sidebar-accent/60 hover:text-fg"}`}
-            >
-              <span className="flex w-4.5 shrink-0 justify-center text-faint">{view.icon}</span>
-              <span className="min-w-0 grow truncate">{view.label}</span>
-            </Link>
-          </li>
-        );
-      })}
-    </>
+    <li>
+      <Link
+        to={to}
+        aria-current={current ? "page" : undefined}
+        className={`${ROW} ${current ? "bg-sidebar-accent text-fg" : "text-muted hover:bg-sidebar-accent/60 hover:text-fg"}`}
+      >
+        <span className="flex w-4.5 shrink-0 justify-center text-faint">
+          <Radio size={15} />
+        </span>
+        <span className="min-w-0 grow truncate">Sessions</span>
+      </Link>
+    </li>
   );
 }
 

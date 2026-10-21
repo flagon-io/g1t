@@ -5,7 +5,7 @@
  * menus on a computer and a sheet on a phone. What each says is worked
  * out in lib/sessions.ts.
  */
-import { Bot, ChevronRight, Cpu, GitBranch, ScrollText, SlidersHorizontal, Terminal, X } from "lucide-react";
+import { Bot, ChevronRight, CircleUserRound, Cpu, GitBranch, ScrollText, SlidersHorizontal, Terminal, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Link } from "react-router";
 import { siClaude, siCursor, siGithubcopilot } from "simple-icons";
@@ -326,6 +326,21 @@ export function SessionsFiltersBar({
     </Link>
   ) : null;
   const everyone = me ? [me, ...people.filter((name) => name !== me)] : people;
+  // Your own sessions, one press away: the cut people want most, which was a sidebar link of its own.
+  const mine = me != null && filters.person === me;
+  const yours = me ? (
+    <Link
+      to={to({ person: mine ? null : me })}
+      aria-pressed={mine}
+      className={cn(
+        "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-sm transition-colors max-sm:h-10",
+        mine ? "border-accent/50 bg-accent/10 font-medium text-fg" : "border-line text-muted hover:border-line-strong hover:text-fg",
+      )}
+    >
+      <CircleUserRound size={14} />
+      Yours
+    </Link>
+  ) : null;
   const menus: { title: string; active: string | null; any: string; field: keyof SessionsFilters; options: { key: string; label: ReactNode }[] }[] = [
     {
       title: "Repository",
@@ -359,6 +374,7 @@ export function SessionsFiltersBar({
   return (
     <>
       <div className="hidden flex-wrap items-center gap-2 sm:flex">
+        {yours}
         {onItem}
         {menus.map((menu) => (
           <FilterMenu
@@ -389,6 +405,7 @@ export function SessionsFiltersBar({
           Filters
           {count > 0 && <span className="rounded-full bg-accent px-1.5 text-[0.6875rem] leading-4.5 font-bold text-bg tabular-nums">{count}</span>}
         </Button>
+        {yours}
         {onItem}
         {filters.repo && <span className="min-w-0 truncate font-mono text-xs text-muted">{filters.repo}</span>}
       </div>
