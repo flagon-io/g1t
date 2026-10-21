@@ -99,9 +99,9 @@ behind. The same reads, at more length, are on the
 ## Ask from Home
 
 The box at the top of Home asks g1t anything about your work. Type a question and
-press **Enter** (**Shift+Enter** starts a new line): the top bar's
-[Ask](/guides/ask/) panel opens and sends it, and the answer streams in
-there. Under the box are questions to start with:
+press **Enter** (**Shift+Enter** starts a new line): it is asked in your
+direct message with g1t ([Ask](/guides/ask/)), which opens in Chat, and the
+answer streams in there. Under the box are questions to start with:
 
 | Starter                                          | What it does                                                                                                                                                                                         |
 | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -112,11 +112,11 @@ there. Under the box are questions to start with:
 
 Everything you ask from Home goes to your
 [direct message with @g1t](/guides/ask/#one-conversation-in-ask-and-in-chat),
-as a question asked in Ask does, so you can carry on from it in Ask or in
-Chat. It answers with your workspace's own AI provider, so an owner has to
-[set Ask up](/guides/ask/#set-it-up) first. Until then, or while g1t is
-still answering an earlier question, the panel opens with your question
-in its box rather than sending it, so nothing you typed is lost.
+as a question asked in Ask does, and opens it in Chat, where the answer
+streams. It answers with your workspace's own AI provider, so an owner has to
+[set Ask up](/guides/ask/#set-it-up) first; until then g1t replies with where
+to set it up. If the question can't be sent, Chat's New opens with it
+in its box, so nothing you typed is lost.
 
 ## Your move
 
@@ -241,8 +241,8 @@ AI provider:
    sound (see
    [One conversation, in Ask and in Chat](/guides/ask/#one-conversation-in-ask-and-in-chat)).
 3. When it is finished:
-   - **Ask a follow-up** opens the top bar's Ask on the same
-     conversation, so you can ask about anything in the summary.
+   - **Ask a follow-up** opens the same
+     conversation in Chat, so you can ask about anything in the summary.
    - **Summarize again** writes a new one.
    - **In your direct message with g1t** opens the conversation in Chat,
      where the summary is kept.

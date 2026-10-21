@@ -214,13 +214,13 @@ Both are yours alone; nobody else's sidebar changes.
 
 Chat's sidebar lists, from the top:
 
-| Section             | What's in it                                                                                                                                                |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Pinned**          | Conversations you pinned (hover over one and choose the pin, or right-click it). Only when you have some.                                                   |
-| **Channels**        | The workspace's own channels you're in, workspace and private, by name, then **Browse channels** with how many more you could join. **+** creates one.      |
-| **Public channels** | The [public channels](#public-channels) you're in, by name, kept apart because anyone on g1t can be in them. Only when you're in some.                      |
-| **Direct messages** | [g1t](#talk-with-g1t) first, then your conversations with people, the latest first. The pencil starts a new message. Empty, it says **Message a teammate.** |
-| **Sessions**        | Your recent [agent sessions](#sessions), the latest activity first, then **All sessions**.                                                                  |
+| Section             | What's in it                                                                                                                                                                                                                           |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Pinned**          | Conversations you pinned (hover over one and choose the pin, or right-click it). Only when you have some.                                                                                                                              |
+| **Channels**        | The workspace's own channels you're in, workspace and private, by name, then **Browse channels** with how many more you could join. **+** creates one.                                                                                 |
+| **Public channels** | The [public channels](#public-channels) you're in, by name, kept apart because anyone on g1t can be in them. Only when you're in some.                                                                                                 |
+| **Direct messages** | [g1t](#talk-with-g1t) first, then your conversations with people, the latest first. The pencil opens **New**: a [conversation with g1t](#start-a-conversation-with-g1t) or a message to people. Empty, it says **Message a teammate.** |
+| **Sessions**        | Your recent [agent sessions](#sessions), the latest activity first, then **All sessions**.                                                                                                                                             |
 
 Above them, a workspace's members also see **Needs attention**: what waits
 on you, such as reviews asked of you, and calls of g1t's sessions waiting for your
@@ -263,7 +263,7 @@ waiting.
 ## Direct messages
 
 A direct message is a private conversation between you and up to eight
-other members. Start one with **New message** in Chat's sidebar and pick
+other members. Start one with **New → Message people** in Chat's sidebar and pick
 who to message.
 
 - The same group of members always gets the same conversation, whatever
@@ -278,8 +278,7 @@ provider and the model an owner chose: see [Ask g1t](/guides/ask/) for
 setting it up and what it knows.
 
 - It is the same conversation as **Ask** in the top bar: a question asked
-  there is posted here with the page it was asked from, and the answer
-  shows in both places as it is written.
+  there is posted here with the page it was asked from, and opens here.
 - The answer streams in as g1t writes it. **Stop answering**, over the box
   you write in, ends it; what came stays. Writing again while it answers
   does the same, and g1t answers your newest words.
@@ -297,6 +296,31 @@ setting it up and what it knows.
   You can delete g1t's messages in it, as well as your own.
 - It notifies you of an answer the way any direct message does, once the
   answer is done.
+
+### Start a conversation with g1t
+
+**New** (the pencil in the sidebar, the round button on a phone, or **Ask**
+in the top bar over any page) opens on **g1t**: a box to write in, as on
+claude.ai, with a repository picker under it.
+
+- With **No repository**, sending starts a new conversation in your
+  direct message with g1t and asks it what you wrote. Asked from a page,
+  g1t is told the page.
+- With a repository, g1t starts agent work there: a
+  [hosted session](/guides/sessions/#start-a-session-on-your-anthropic-account)
+  on the workspace's own Anthropic key, optionally on an open work item
+  (implement, plan or review it). The new conversation shows what you asked
+  and g1t's card for the session, with whether it is **Working** or
+  **Done**; the card opens the session's page, where it streams and you
+  steer, stop or follow it up. The session is listed under
+  [Sessions](#sessions) too.
+
+The picker starts on **No repository**, or on the repository you last
+started work in. The page's repository and the one the workspace's
+sessions ran in most are listed first. Without an Anthropic connection, the
+box says so, with a link for owners to connect one. **Enter** sends;
+**Shift+Enter** starts a new line. **Message people**, beside **g1t**,
+starts a [direct message](#direct-messages) instead.
 
 ## Threads
 
@@ -602,8 +626,8 @@ itself: nothing is downloaded. What plays when:
 The rules behind them:
 
 - Nothing sounds for the conversation you are looking at in a window that
-  is in front: what is on screen is silent. That includes g1t's answer in
-  the Ask panel or on Home's summary.
+  is in front: what is on screen is silent. That includes g1t's answer
+  on Home's summary.
 - Nothing sounds for your own messages, in a conversation you
   [muted](#star-and-mute), or while Do not disturb is on.
 - At most one sound every 1.5 seconds: a burst of messages is one sound,

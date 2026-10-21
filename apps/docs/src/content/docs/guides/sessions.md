@@ -261,7 +261,12 @@ so the link opens there.
 The session is recorded as harness `claude_managed_agents`: its messages,
 the tools it called and with what (never what they returned), the skills
 it read, what it touched, and each thread as a subagent with its task and
-report. g1t follows it every minute, and at once while its page is open.
+report. g1t follows it every minute, and while a member of the workspace
+has its page open and in view, every few seconds: the page asks
+`-/chat/sessions/{id}/follow`, and what the session did shows without a
+reload. However many people have it open, Anthropic is read at most once
+every two seconds for it, on the workspace's own key; a tab out of view
+asks nothing.
 When it finishes, its session ends with its last message as its result.
 Whoever started it can stop it from its page, and open it on the Claude
 Console from there (**Open in Claude Console**); nobody else is given that
@@ -313,13 +318,41 @@ acting for one: a session never approves its own calls.
   the session ended, after the 10 minutes, or after someone else answered
   ("ada allowed it already"). Each answer is noted in the transcript with
   who gave it.
-- **Send to this session**, under its answer on the page, sends it a
-  message as its next instruction; Enter sends, Shift+Enter starts a new
-  line (up to 4,000 characters). It shows in the transcript as a prompt
-  when g1t next reads the session, with a note saying who sent it.
+- **Steer it from the box at the bottom.** For whoever may answer it, a
+  running session's page reads as a chat: what was sent to it on the right
+  (the first message shows what was asked, with g1t's setup folded under
+  **What g1t added**), what it wrote as text, its tool calls in quiet runs
+  between, the calls waiting for approval, and **Working…** while it goes.
+  The box pinned at the bottom sends it a message as its next instruction;
+  Enter sends, Shift+Enter starts a new line (up to 4,000 characters). It
+  shows as a prompt when g1t next reads the session, with a note saying
+  who sent it.
+- **Stop**, beside Send, interrupts it and ends its record. Only whoever
+  started it sees it.
 
 What a subagent waits on is answered the same way, on the page of the
 session that started it: the provider routes the answer to the subagent.
+
+### Follow up a session that ended
+
+Once a hosted session has ended, its page reads as its answer again, with
+its highlights and deliverables, and the same people get a box at the
+bottom to follow it up. Sending starts a new session that carries on from
+it, and opens its page: the new one is told which session it continues,
+its branch (to carry on there), its pull requests and the end of its
+report, and works on the same work item, if it had one. An ended session
+is never resumed in place: g1t revokes its token and archives its vault
+when it finishes, so the session that carries on gets credentials of its
+own.
+
+### Start one from Chat
+
+[Chat's New](/guides/chat/#start-a-conversation-with-g1t), with a
+repository chosen, starts a hosted session on what you wrote (it works
+in the repository on that, tied to no
+work item, and none is opened for it), or on a work item you pick. The new
+conversation with g1t shows what you asked and g1t's card for the session,
+which links to its page.
 
 ## Assign g1t, or ask it in the thread
 
