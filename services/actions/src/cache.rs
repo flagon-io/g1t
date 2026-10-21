@@ -19,8 +19,12 @@
 //!   what it did not finish (`release_cache`), and the next job to save
 //!   the key takes it over (`RESERVE`).
 //! - An entry is at most `CACHE_MAX_ENTRY_BYTES`. A repository's entries
-//!   hold at most `CACHE_REPO_QUOTA_BYTES` together: saving past it evicts
-//!   the entries restored longest ago.
+//!   hold at most its quota together, by its workspace's plan
+//!   (`CACHE_REPO_QUOTA_FREE_BYTES`, `CACHE_REPO_QUOTA_PAID_BYTES`): saving
+//!   past it evicts the entries restored longest ago. When billing does not
+//!   answer, the quota is the Free one and the save still goes ahead; a
+//!   workspace that leaves the plan is taken down to the Free quota by its
+//!   next save.
 //! - An entry not restored for `CACHE_UNUSED_DAYS`, or saved more than
 //!   `CACHE_MAX_AGE_DAYS` ago, is deleted by the hourly sweep, which also
 //!   writes down what each workspace holds, its artifacts included (they
@@ -40,7 +44,7 @@ use g1t_contracts::FailureCode;
 use g1t_contracts::Outcome;
 use g1t_contracts::access::Capability;
 use g1t_contracts::actions::{
-    CACHE_MAX_AGE_DAYS, CACHE_MAX_ENTRY_BYTES, CACHE_MICROS_PER_GB_MONTH, CACHE_REPO_QUOTA_BYTES, CACHE_UNUSED_DAYS,
+    CACHE_MAX_AGE_DAYS, CACHE_MAX_ENTRY_BYTES, CACHE_MICROS_PER_GB_MONTH, CACHE_REPO_QUOTA_FREE_BYTES, CACHE_UNUSED_DAYS,
     CacheAbortArgs, CacheCommitArgs, CacheCommitted, CacheEntry, CacheHit, CacheList, CacheLookupArgs, CacheReservation,
     CacheReserveArgs, CacheUploadArgs, CacheUsage, CacheUsageArgs, CachesArgs, DeleteCachesArgs,
 };
@@ -182,6 +186,13 @@ pub(crate) fn to_evict(entries: &[(String, u64)], keep: &str, quota: u64) -> Vec
 /// `quota`: what `to_evict` would take something from.
 pub(crate) fn over_quota(total: u64, quota: u64) -> bool {
     total > quota
+}
+
+/// A repository's quota from what billing says of its workspace's plan:
+/// the Free quota when billing does not answer, so a save never waits on
+/// or fails for billing.
+pub(crate) fn quota_for(has_plan: Option<bool>) -> u64 {
+    g1t_contracts::actions::cache_repo_quota(has_plan.unwrap_or(false))
 }
 
 /// A month's GB-months from the bytes held each day so far: each day's
@@ -523,7 +534,13 @@ impl Actions {
             Some(total) => total.results::<Total>()?.into_iter().next().and_then(|t| t.bytes).unwrap_or(0.0),
             None => 0.0,
         };
-        if !over_quota(total as u64, CACHE_REPO_QUOTA_BYTES) {
+        // Within the Free quota no plan's quota is passed, so billing is
+        // asked only past it.
+        if !over_quota(total as u64, CACHE_REPO_QUOTA_FREE_BYTES) {
+            return Ok(Outcome::Ok(CacheCommitted { evicted: Vec::new() }));
+        }
+        let quota = quota_for(self.has_plan(&job.namespace).await);
+        if !over_quota(total as u64, quota) {
             return Ok(Outcome::Ok(CacheCommitted { evicted: Vec::new() }));
         }
         #[derive(Deserialize)]
@@ -540,7 +557,7 @@ impl Actions {
             .await?
             .results::<Held>()?;
         let sizes: Vec<(String, u64)> = held.iter().map(|h| (h.id.clone(), h.size as u64)).collect();
-        let evict = to_evict(&sizes, &a.id, CACHE_REPO_QUOTA_BYTES);
+        let evict = to_evict(&sizes, &a.id, quota);
         self.delete_entries(&evict).await?;
         let evicted = evict.iter().filter_map(|id| held.iter().find(|h| &h.id == id)).map(|entry| entry.object.clone()).collect();
         Ok(Outcome::Ok(CacheCommitted { evicted }))
@@ -644,14 +661,16 @@ impl Actions {
             bytes: Option<f64>,
             n: f64,
         }
-        let held = self
-            .db
-            .prepare("SELECT SUM(size) AS bytes, COUNT(*) AS n FROM cache_entries WHERE repo_id = ? AND status = 'ready'")
-            .bind(&[repo.id.as_str().into()])?
-            .first::<Held>(None)
-            .await?;
-        let (bytes, count) = held.map_or((0, 0), |h| (h.bytes.unwrap_or(0.0) as u64, h.n as u64));
-        Ok(Outcome::Ok(CacheUsage { active_caches_size_in_bytes: bytes, active_caches_count: count, quota_bytes: CACHE_REPO_QUOTA_BYTES }))
+        let held = async {
+            self.db
+                .prepare("SELECT SUM(size) AS bytes, COUNT(*) AS n FROM cache_entries WHERE repo_id = ? AND status = 'ready'")
+                .bind(&[repo.id.as_str().into()])?
+                .first::<Held>(None)
+                .await
+        };
+        let (held, plan) = futures_util::future::join(held, self.has_plan(&a.repo.namespace)).await;
+        let (bytes, count) = held?.map_or((0, 0), |h| (h.bytes.unwrap_or(0.0) as u64, h.n as u64));
+        Ok(Outcome::Ok(CacheUsage { active_caches_size_in_bytes: bytes, active_caches_count: count, quota_bytes: quota_for(plan) }))
     }
 
     /// `delete_caches`: the entries go from restores at once, and their
@@ -858,6 +877,35 @@ mod tests {
             assert!(to_evict(&held, "a", quota).is_empty());
         }
         assert!(over_quota(11, 10));
+    }
+
+    #[test]
+    fn the_quota_is_the_workspace_s_plan_s() {
+        const GIB: u64 = 1024 * 1024 * 1024;
+        assert_eq!(quota_for(Some(false)), 10 * GIB);
+        assert_eq!(quota_for(Some(true)), 100 * GIB);
+        // Billing not answering never fails a save: it gets the Free quota.
+        assert_eq!(quota_for(None), 10 * GIB);
+        // Within the Free quota, no plan evicts anything: billing need not
+        // be asked.
+        assert!(!over_quota(10 * GIB, quota_for(Some(false))));
+        assert!(!over_quota(50 * GIB, quota_for(Some(true))));
+    }
+
+    #[test]
+    fn a_workspace_that_leaves_the_plan_is_taken_down_to_the_free_quota() {
+        const GIB: u64 = 1024 * 1024 * 1024;
+        // Ninety 1 GiB entries, kept on the plan; then a save without it.
+        let held: Vec<(String, u64)> = (0..90).map(|n| (format!("e{n}"), GIB)).collect();
+        let total = held.iter().map(|(_, size)| size).sum();
+        assert!(!over_quota(total, quota_for(Some(true))));
+        assert!(over_quota(total, quota_for(Some(false))));
+        let evict = to_evict(&held, "e0", quota_for(Some(false)));
+        assert_eq!(evict.len(), 80);
+        // The ones restored longest ago go; the one just saved stays.
+        assert_eq!(evict.first().map(String::as_str), Some("e89"));
+        assert!(!evict.contains(&"e0".to_owned()));
+        assert_eq!(total - evict.len() as u64 * GIB, 10 * GIB);
     }
 
     #[test]

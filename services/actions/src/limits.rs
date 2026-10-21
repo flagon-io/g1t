@@ -146,7 +146,7 @@ impl crate::Actions {
     /// Whether a workspace has the plan, as billing says, kept in the
     /// isolate for a few minutes so a build's burst of uploads asks once.
     /// None when billing does not answer.
-    async fn has_plan(&self, workspace: &str) -> Option<bool> {
+    pub(crate) async fn has_plan(&self, workspace: &str) -> Option<bool> {
         let now = g1t_kit::now_ms();
         let workspace = workspace.to_lowercase();
         if let Some(plan) = kept_plan(&workspace, now) {
