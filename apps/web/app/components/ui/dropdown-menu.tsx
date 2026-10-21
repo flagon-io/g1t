@@ -6,7 +6,11 @@ import { cn } from "../../lib/cn";
 
 // shadcn/ui's dropdown menu, styled with g1t's tokens.
 
-export const DropdownMenu = Primitive.Root;
+// Not modal: a modal menu locks the page's scroll, which hides its scrollbar, widens the page
+// and moves the menu's own anchor (the app bar's + and account menus) while it is open.
+export function DropdownMenu({ modal = false, ...props }: ComponentProps<typeof Primitive.Root>) {
+  return <Primitive.Root modal={modal} {...props} />;
+}
 export const DropdownMenuTrigger = Primitive.Trigger;
 export const DropdownMenuGroup = Primitive.Group;
 
