@@ -168,9 +168,13 @@ minutes ago; or, for bytes reserved before the ledger began
 hours have passed since it began. Never by age alone. Releasing checks the
 same rules again in the batch that releases, writes a row of
 `storage_recoveries` with what the inspection found in the store, and
-never changes `stored_bytes`, which private storage is billed from. A
-write that settles after its hold was released still records the bytes it
-measured.
+never changes `stored_bytes`, which private storage is billed from. The
+same batch keeps the release's line for sudo's audit log
+(`storage_recovery_audits`, migration 0024), which the repos service sends
+to billing's `admin_log` right after and every hour until billing confirms
+it, keyed by the recovery's id, so the line is written exactly once even
+when an answer is lost. A write that settles after its hold was released
+still records the bytes it measured.
 
 The same page measures drift: for a sample of repositories, the pack the
 store sends for every ref (plus what each pull request's working copy

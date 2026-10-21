@@ -133,8 +133,8 @@ export const AUDIT_ACTIONS: Record<string, string> = {
   // From identity: shared invite links staff made or revoked, filed under `ws_invites`.
   shared_invite_created: "Shared invite link made",
   shared_invite_revoked: "Shared invite link revoked",
-  // From the Storage holds page: a reservation or copy lock released in the repos service, filed under
-  // the repository's workspace (or `storage`); the detail names its storage_recoveries row.
+  // From the Storage holds page: a reservation or copy lock released in the repos service, which writes
+  // the line, filed under the repository's workspace (or `storage`); the detail names its storage_recoveries row.
   storage_released: "Storage hold released",
   // From the status page (apps/status), merged in by the Audit log page.
   incident_declared: "Incident declared",

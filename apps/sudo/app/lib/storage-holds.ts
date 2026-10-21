@@ -107,13 +107,16 @@ export function parseSample(raw: string): number {
 export const RELEASE_ACTION = "storage_released";
 
 /**
- * A release's line in sudo's audit log (billing's `admin_log`): filed under
- * the charged repository's workspace, or under `storage` when its row is
- * gone and no workspace can be named. It names the hold, the repository,
- * the one written when that is another (a fork, or a copy lock's
- * destination, which may be in another workspace), the reason and the
- * repos service's `storage_recoveries` row, which keeps the inspection as
- * evidence.
+ * A release's line in sudo's audit log (billing's `admin_log`), as the repos
+ * service writes it (storage_holds.rs `audit_line`): filed under the
+ * charged repository's workspace, or under `storage` when its row is gone
+ * and no workspace can be named. It names the hold, the repository, the one
+ * written when that is another (a fork, or a copy lock's destination, which
+ * may be in another workspace), the reason and the repos service's
+ * `storage_recoveries` row, which keeps the inspection as evidence. Keyed by
+ * that row, so billing writes it once whoever sends it. sudo sends it only
+ * when the repos service answers without an `audit` (one from before it
+ * wrote the line itself).
  */
 export function releaseAuditEntry(hold: { kind: StorageHoldKind; id: string }, recovery: StorageRecovery): AdminLogEntry {
   const path = recovery.evidence?.hold.repo.path ?? null;
@@ -124,21 +127,29 @@ export function releaseAuditEntry(hold: { kind: StorageHoldKind; id: string }, r
   const written = targetId && targetId !== recovery.repoId ? ` → ${named(targetId, recovery.evidence?.hold.target?.path ?? null)}` : "";
   const bytes = hold.kind === "copy_lock" ? "" : `, ${formatBytes(recovery.bytes)}`;
   const detail = `${kindLabel(hold.kind)} ${hold.id} on ${repo}${written}${bytes}: ${recovery.reason} · storage_recoveries ${recovery.id}`;
-  return workspace ? { workspace, action: RELEASE_ACTION, detail } : { account: "storage", action: RELEASE_ACTION, detail };
+  return workspace ? { workspace, action: RELEASE_ACTION, detail, key: recovery.id } : { account: "storage", action: RELEASE_ACTION, detail, key: recovery.id };
 }
 
-/** How a release went: refused or unanswered (nothing released), or released, with or without its audit line. */
+/**
+ * How a release went: refused or unanswered (nothing released, as far as
+ * sudo knows), or released with its audit line `written`, `queued` (the
+ * repos service keeps it and sends it until billing confirms it) or
+ * `missed` (only when sudo had to write it itself and billing did not
+ * confirm it).
+ */
 export type ReleaseOutcome =
   | { ok: false; status: 422 | 502; error: string }
-  | { ok: true; recovery: StorageRecovery; audited: true }
-  | { ok: true; recovery: StorageRecovery; audited: false; auditError: string };
+  | { ok: true; recovery: StorageRecovery; audit: "written" | "queued" }
+  | { ok: true; recovery: StorageRecovery; audit: "missed"; auditError: string };
 
 /**
- * Releases a hold, then records it in sudo's audit log. The repos service
- * releases it and writes its `storage_recoveries` row in one batch; the
- * audit line is written only after that succeeded. A failed audit write
- * never turns a release into a failure, since the hold is already gone: it
- * is reported (`audited: false`) and logged, naming the recovery row.
+ * Releases a hold. The repos service releases it, writes its
+ * `storage_recoveries` row and keeps its line for sudo's audit log in one
+ * batch, then sends the line to billing keyed by the row, and again every
+ * hour until billing confirms it: a lost answer, or sudo stopping, can
+ * neither lose the line nor write it twice. sudo writes nothing itself,
+ * unless the repos service answered without an `audit` (one from before it
+ * wrote the line, for the length of a deploy), and then keyed the same way.
  */
 export async function releaseHold(
   calls: { release: ReposAdminApi["release"]; log: BillingAdminApi["log"] },
@@ -147,38 +158,61 @@ export async function releaseHold(
   report: (message: string) => void = console.error,
 ): Promise<ReleaseOutcome> {
   const released = await settle(calls.release(hold.kind, hold.id, staff, hold.reason));
-  // Unanswered, it may still have been released, and then its audit line is
-  // missing: Released below says which, before anyone tries again.
+  // Unanswered, it may still have been released: Released below says
+  // which, before anyone tries again, and its line comes with it.
   if (!released.ok) {
     return {
       ok: false,
       status: 502,
-      error: `The repos service did not answer: ${released.error}. It may have released the hold anyway: look for it under Released before trying again, and if it is there, it is not in the audit log.`,
+      error: `The repos service did not answer: ${released.error}. It may have released the hold anyway: look for it under Released before trying again. If it is there, it is released, and the repos service writes its line in the audit log.`,
     };
   }
   if (!released.value.ok) return { ok: false, status: 422, error: released.value.error.message };
   const recovery = released.value.value;
+  if (recovery.audit) return { ok: true, recovery, audit: recovery.audit.sentAt ? "written" : "queued" };
   const logged = await settle(calls.log(releaseAuditEntry(hold, recovery), staff));
-  if (logged.ok && logged.value === true) return { ok: true, recovery, audited: true };
+  if (logged.ok && logged.value === true) return { ok: true, recovery, audit: "written" };
   const auditError = logged.ok ? "billing did not confirm it" : logged.error;
   report(`storage hold ${holdKey(hold.kind, hold.id)} released by ${staff} (storage_recoveries ${recovery.id}) but not in the audit log: ${auditError}`);
-  return { ok: true, recovery, audited: false, auditError };
+  return { ok: true, recovery, audit: "missed", auditError };
+}
+
+/** A recovery row's id as a link carries it, or null if it is not one. */
+function recoveryId(raw: string | null): string | null {
+  return raw != null && /^[A-Za-z0-9_-]{1,80}$/.test(raw) ? raw : null;
 }
 
 /**
  * What the page says after a release, from the link the release redirects
- * to: `done=released&what=…`, and `unaudited=<recovery id>` when the audit
- * log missed it.
+ * to: `done=released&what=…`, with `queued=<recovery id>` while billing has
+ * not confirmed its audit line, or `unaudited=<recovery id>` when sudo had
+ * to write it and billing did not confirm it.
  */
-export function releasedNotice(params: URLSearchParams): { done: string; auditMissed: string | null } | null {
+export function releasedNotice(params: URLSearchParams): { done: string; audit: { tone: "info" | "warn"; text: string } | null } | null {
   if (params.get("done") !== "released") return null;
-  const done = `Released ${params.get("what") ?? "the hold"}. It is in the audit log, and its row, with the inspection, is under Released.`;
-  const recovery = params.get("unaudited");
-  if (recovery == null) return { done, auditMissed: null };
-  const row = /^[A-Za-z0-9_-]{1,80}$/.test(recovery) ? ` (storage_recoveries ${recovery})` : "";
+  const what = params.get("what") ?? "the hold";
+  const queued = params.get("queued");
+  const missed = params.get("unaudited");
+  if (queued == null && missed == null) {
+    return { done: `Released ${what}. It is in the audit log, and its row, with the inspection, is under Released.`, audit: null };
+  }
+  const id = recoveryId(queued ?? missed);
+  const row = id ? ` (storage_recoveries ${id})` : "";
+  if (queued != null) {
+    return {
+      done: `Released ${what}.`,
+      audit: {
+        tone: "info",
+        text: `Billing has not confirmed its line in the audit log yet. The repos service keeps the line with the release${row} and sends it again every hour until billing confirms it, and it is written there once. Released below says while it waits. Do not release it again: it is gone.`,
+      },
+    };
+  }
   return {
-    done: `Released ${params.get("what") ?? "the hold"}.`,
-    auditMissed: `The release is done, but billing did not record it in the audit log, so it is not listed there. Its row${row}, with who, why and the inspection, is under Released below, and sudo's logs have the error. Do not release it again: it is gone.`,
+    done: `Released ${what}.`,
+    audit: {
+      tone: "warn",
+      text: `The release is done, but billing did not record it in the audit log, so it is not listed there. Its row${row}, with who, why and the inspection, is under Released below, and sudo's logs have the error. Do not release it again: it is gone.`,
+    },
   };
 }
 
@@ -251,4 +285,12 @@ export function blockedSummary(blocked: BlockedSource[]): string | null {
         : `${one ? "its copy" : "their copies"} into a fork ${one ? "is" : "are"} taking longer than a copy ordinarily does`;
   const after = stalled > 0 ? " A copy that did not finish cleanly keeps its lock until it is released here, once it is provably abandoned." : "";
   return `${them} no writes: ${how}.${after}`;
+}
+
+/** Where a released hold's audit line stands, for the Released list: null once it is written, or when sudo wrote it. */
+export function auditState(recovery: StorageRecovery): string | null {
+  const audit = recovery.audit;
+  if (!audit || audit.sentAt) return null;
+  const tries = audit.attempts === 1 ? "1 try" : `${audit.attempts} tries`;
+  return `Not in the audit log yet (${tries}${audit.error ? `: ${audit.error}` : ""}): the repos service sends it again every hour.`;
 }

@@ -648,7 +648,12 @@ export type StorageRecovery = {
   staff: string;
   reason: string;
   releasedAt: string;
+  /** Its line in sudo's audit log, written by the repos service from its outbox; null for a release from before it did, whose line sudo wrote. */
+  audit: StorageRecoveryAudit | null;
 };
+
+/** Where a release's audit line stands: written once billing confirmed it (`sentAt`), and until then tried again every hour. */
+export type StorageRecoveryAudit = { sentAt: string | null; attempts: number; error: string | null };
 
 /** One repository measured in the git store against what g1t counts. */
 export type RepoDrift = {

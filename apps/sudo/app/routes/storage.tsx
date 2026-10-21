@@ -12,6 +12,7 @@ import { requireStaff } from "~/lib/staff";
 import {
   MAX_REASON,
   type BlockedSource,
+  auditState,
   blockedSources,
   blockedSummary,
   formatAge,
@@ -46,7 +47,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     inspection: inspection && inspection.ok && inspection.value.ok ? inspection.value.value : null,
     inspectionError: !inspection ? null : !inspection.ok ? inspection.error : !inspection.value.ok ? inspection.value.error.message : null,
     done: released?.done ?? null,
-    auditMissed: released?.auditMissed ?? null,
+    auditNotice: released?.audit ?? null,
   };
 }
 
@@ -54,10 +55,10 @@ type ActionData = { error?: string; key?: string; drift?: StorageDrift };
 
 /**
  * Releasing a hold, and measuring drift. The repos service inspects the
- * hold again and refuses unless it is provably abandoned; the release and
- * its `storage_recoveries` row are one batch there. Only then is it
- * recorded in sudo's audit log (billing); if that write fails the release
- * still stands, and the page says the audit log missed it.
+ * hold again and refuses unless it is provably abandoned; the release, its
+ * `storage_recoveries` row and its line for sudo's audit log are one batch
+ * there, and the repos service sends the line to billing until billing
+ * confirms it. The page says when it is not confirmed yet.
  */
 export async function action({ request, context }: Route.ActionArgs) {
   const staff = requireStaff(context);
@@ -72,7 +73,8 @@ export async function action({ request, context }: Route.ActionArgs) {
       if (!result.ok) return data<ActionData>({ error: result.error, key }, { status: result.status });
       const what = `${kindLabel(kind).toLowerCase()} ${result.recovery.bytes ? `of ${formatBytes(result.recovery.bytes)} ` : ""}on ${id}`;
       const params = new URLSearchParams({ done: "released", what });
-      if (!result.audited) params.set("unaudited", result.recovery.id);
+      if (result.audit === "queued") params.set("queued", result.recovery.id);
+      if (result.audit === "missed") params.set("unaudited", result.recovery.id);
       throw redirect(`/storage?${params}`);
     }
     case "drift": {
@@ -85,7 +87,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 }
 
 export default function Storage({ loaderData, actionData }: Route.ComponentProps) {
-  const { holds, recoveries, error, picked, inspection, inspectionError, done, auditMissed } = loaderData;
+  const { holds, recoveries, error, picked, inspection, inspectionError, done, auditNotice } = loaderData;
   const list = holds?.holds ?? [];
   const held = list.reduce((sum, hold) => sum + hold.bytes, 0);
   const abandoned = list.filter((hold) => hold.abandoned);
@@ -103,7 +105,7 @@ export default function Storage({ loaderData, actionData }: Route.ComponentProps
       />
       <div className="mt-6 space-y-3">
         {done && <Notice tone="ok">{done}</Notice>}
-        {auditMissed && <Notice tone="warn">{auditMissed}</Notice>}
+        {auditNotice && <Notice tone={auditNotice.tone}>{auditNotice.text}</Notice>}
         {error && <Notice tone="error">The repos service did not answer: {error}</Notice>}
         {actionData?.error && !actionData.key && <Notice tone="error">{actionData.error}</Notice>}
         {summary && <Notice tone={stalled ? "error" : "warn"}>{summary}</Notice>}
@@ -414,6 +416,7 @@ function Recoveries({ recoveries }: { recoveries: StorageRecovery[] }) {
             {operationLabel(recovery.operation, recovery.kind)} · released by {recovery.staff}: {recovery.reason}
           </p>
           {recovery.evidence?.hold.why && <p className="text-xs text-faint">{recovery.evidence.hold.why}</p>}
+          {auditState(recovery) && <p className="text-xs text-muted">{auditState(recovery)}</p>}
         </li>
       ))}
     </ul>
