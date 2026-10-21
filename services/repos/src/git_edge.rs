@@ -135,10 +135,17 @@ impl Edge {
         if git.endpoint != "git-upload-pack" || body.is_some_and(lists_refs) {
             return Some(response);
         }
+        let length = response.headers().get("content-length").ok().flatten();
         match sound(response).await {
-            Ok(Some(response)) => Some(response),
-            Ok(None) => {
-                worker::console_warn!("git edge for {repo_id} answered a fetch with nothing it could use");
+            Ok(Ok(response)) => Some(response),
+            Ok(Err(head)) => {
+                // What it sent, so the log says why (the edge's own log is not kept).
+                let shown: String = head.iter().take(160).map(|&byte| if byte.is_ascii_graphic() || byte == b' ' { byte as char } else { '.' }).collect();
+                worker::console_warn!(
+                    "git edge for {repo_id} answered a fetch with nothing it could use: {} bytes before it ended or went wrong (content-length {}): {shown}",
+                    head.len(),
+                    length.as_deref().unwrap_or("none")
+                );
                 None
             }
             Err(error) => {
@@ -201,10 +208,11 @@ pub(crate) fn starts_soundly(head: &[u8]) -> Option<bool> {
 
 /// The edge's answer to a fetch, when it starts as one (`starts_soundly`):
 /// only its first bytes are read, and the rest streams on behind them.
-/// `None` when it is empty or starts otherwise. An upload-pack that died
-/// after `git http-backend` had sent its headers leaves a 200 with nothing
-/// in it, which git takes for `expected 'packfile'`; the store answers.
-async fn sound(mut response: Response) -> worker::Result<Option<Response>> {
+/// What was read of it, when it is empty or starts otherwise. An upload-pack
+/// that died after `git http-backend` had sent its headers leaves a 200
+/// with nothing in it, which git takes for `expected 'packfile'`; the
+/// store answers.
+async fn sound(mut response: Response) -> worker::Result<std::result::Result<Response, Vec<u8>>> {
     let headers = response.headers().clone();
     headers.delete("content-length")?;
     let mut stream = response.stream()?;
@@ -212,21 +220,21 @@ async fn sound(mut response: Response) -> worker::Result<Option<Response>> {
     loop {
         match starts_soundly(&head) {
             Some(true) => break,
-            Some(false) => return Ok(None),
+            Some(false) => return Ok(Err(head)),
             None => match futures_util::StreamExt::next(&mut stream).await {
                 Some(chunk) => head.extend_from_slice(&chunk?),
                 // All of it has come: it is sound or not as it stands.
                 None => {
                     return Ok(match starts_soundly(&head) {
-                        Some(true) => Some(Response::from_bytes(head)?.with_headers(headers)),
-                        _ => None,
+                        Some(true) => Ok(Response::from_bytes(head)?.with_headers(headers)),
+                        _ => Err(head),
                     });
                 }
             },
         }
     }
     let rest = futures_util::StreamExt::chain(futures_util::stream::once(async move { Ok::<Vec<u8>, worker::Error>(head) }), stream);
-    Ok(Some(Response::from_stream(rest)?.with_headers(headers)))
+    Ok(Ok(Response::from_stream(rest)?.with_headers(headers)))
 }
 
 #[cfg(test)]
