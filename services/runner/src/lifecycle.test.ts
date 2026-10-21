@@ -10,6 +10,8 @@ import {
   OWED_MAX_DELAY_SECONDS,
   owedDelaySeconds,
   recordOwed,
+  START_POLL_MS,
+  START_WAIT,
   stoppedShort,
   tellStopped,
   withinTimeCap,
@@ -176,4 +178,10 @@ test("a sandbox Cloudflare has no container for waits for a machine; any other f
   assert.equal(noMachine("Error: There is no Container instance available at this time"), true);
   assert.equal(noMachine(new Error("the container exited with code 1")), false);
   assert.equal(noMachine(undefined), false);
+});
+
+test("a start asks for a container once a second, for the library's 8 seconds", () => {
+  assert.equal(START_POLL_MS, 1000);
+  assert.equal(START_WAIT.waitInterval, START_POLL_MS);
+  assert.equal(START_WAIT.waitInterval * START_WAIT.retries, 8000);
 });

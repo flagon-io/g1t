@@ -399,6 +399,16 @@ sandboxes' errors over the last 7 days into expected ones (a deploy
 resetting them, no free capacity, a container that stopped) and ones to
 read.
 
+A start can be refused ("no container instance") well below
+`max_instances`. Cloudflare keeps only a few instances of each class ready,
+so when many jobs start at once, as they do after a push to a busy
+repository, the ones past those wait a minute or so while it places more.
+Such a job goes back in the queue and is tried again within seconds; it
+does not fail. A refused sandbox asks again once a second for 8 seconds,
+and every refusal is logged, so `runner-errors.mjs` reports how many
+sandboxes were refused beside how many refusals there were: the second
+number is many times the first.
+
 ## Docker deployments
 
 Container apps ([Docker deployments](/guides/deployments/#docker-deployments))
