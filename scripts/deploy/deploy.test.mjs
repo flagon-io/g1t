@@ -45,6 +45,8 @@ import { changedNames, parseCargoLock, parseNpmLock, reaches } from "./lockfiles
 import { decide, git, planJson, pool } from "./plan.mjs";
 import {
   ROOT,
+  STACK_FILE,
+  TOOL_NOT_INPUTS,
   buildGroups,
   buildOutputs,
   cargoWorkspace,
@@ -488,7 +490,7 @@ test("decide: a change only to tests deploys nothing", () => {
 test("own folders, declared inputs and root files", () => {
   assert.deepEqual(ids(stack.units, ["services/pages/src/index.ts"]), ["pages"]);
   assert.deepEqual(ids(stack.units, ["apps/web/app/lib/roadmap.ts"]), ["og", "web"]);
-  assert.deepEqual(ids(stack.units, ["LICENSE", "README.md", "deploy/stack.jsonc"]), []);
+  assert.deepEqual(ids(stack.units, ["LICENSE", "README.md", "docs/architecture/x.md", ".g1t/workflows/ci.yml"]), []);
   assert.deepEqual(
     ids(stack.units, ["scripts/build-rust-worker.mjs"]),
     stack.units.filter((u) => u.kind === "rust-worker").map((u) => u.id),
@@ -626,6 +628,116 @@ test("decide: the runner's image rebuilds only when what it is built from change
   assert.deepEqual([code[0].deploy, code[0].image], [true, false]);
   const image = decide([unit("runner")], { live, head: HEAD, gitApi: fakeGit(["crates/runner/src/main.rs"]) });
   assert.deepEqual([image[0].deploy, image[0].image], [true, true]);
+});
+
+test("JavaScript and TypeScript tests deploy nothing", () => {
+  // Deploy #483 sent the runner for services/runner/src/gitedge.test.ts.
+  assert.deepEqual(ids(stack.units, ["services/runner/src/gitedge.test.ts", "packages/contracts/src/tasks.test.ts", "apps/web/app/lib/x.spec.tsx"]), []);
+  assert.deepEqual(ids(stack.units, ["services/runner/src/gitedge.ts"]), ["runner"]);
+  // Fixtures may be read by what ships: they still count.
+  assert.ok(ids(stack.units, ["packages/contracts/src/tasks.fixtures.json"]).includes("og"));
+});
+
+test("the deploy tool and the workflow reach every unit; its planning and CI files none", () => {
+  const all = stack.units.map((u) => u.id);
+  for (const file of [
+    "scripts/deploy.mjs",
+    "scripts/deploy/stack.mjs",
+    "scripts/deploy/cloudflare.mjs",
+    "scripts/deploy/npm-ci.mjs",
+    // A file the tool gains counts until it is said not to.
+    "scripts/deploy/new-step.mjs",
+    ".g1t/workflows/deploy.yml",
+    "deploy/stack.jsonc",
+  ]) {
+    assert.deepEqual(ids(stack.units, [file]), all, file);
+  }
+  for (const file of [...TOOL_NOT_INPUTS, "scripts/deploy/deploy.test.mjs", "scripts/deploy.sh", "scripts/ops/smoke.mjs", ".g1t/workflows/ci.yml"]) {
+    assert.deepEqual(ids(stack.units, [file]), [], file);
+  }
+  assert.deepEqual(ids(stack.units, ["scripts/deploy/web-assets.mjs"]), ["web"]);
+  assert.deepEqual(ids(stack.units, ["scripts/deploy/image.mjs"]), ["runner"]);
+  // Toolchain files reach what Cargo builds.
+  assert.deepEqual(
+    ids(stack.units, ["rust-toolchain.toml"]),
+    stack.units.filter((u) => u.kind === "rust-worker" || u.image).map((u) => u.id),
+  );
+});
+
+test("the runner's image: its builder and toolchain rebuild it; its Worker's code and tests do not", () => {
+  const runner = unit("runner");
+  for (const file of [
+    "scripts/deploy/registry.mjs",
+    "scripts/build-runner.mjs",
+    "rust-toolchain.toml",
+    "services/runner/Dockerfile",
+    "crates/runner/src/main.rs",
+  ]) {
+    assert.ok(touchesImage(runner, [file]), file);
+  }
+  for (const file of ["services/runner/src/index.ts", "scripts/deploy/image.mjs", "scripts/deploy.mjs", "crates/runner/tests/gitedge.rs", "docs/x.md"]) {
+    assert.ok(!touchesImage(runner, [file]), file);
+  }
+});
+
+test("decide: the manifest counts only for the units whose entry changed", () => {
+  const text = readFileSync(join(ROOT, STACK_FILE), "utf8");
+  const changed = text.replace('"worker": "g1t-events",', '"worker": "g1t-events", "secrets_note": "x",');
+  assert.notEqual(changed, text);
+  const show = (files) => (sha, path) => files[`${sha}:${path}`] ?? "";
+  const live = { events: { sha: OLD }, repos: { sha: OLD } };
+  const units = [unit("events"), unit("repos")];
+  const run = (before, after) =>
+    decide(units, {
+      live,
+      head: HEAD,
+      gitApi: { ...fakeGit([STACK_FILE]), show: show({ [`${OLD}:${STACK_FILE}`]: before, [`${HEAD}:${STACK_FILE}`]: after }) },
+    }).map((d) => [d.unit.id, d.deploy]);
+  assert.deepEqual(run(text, changed), [
+    ["events", true],
+    ["repos", false],
+  ]);
+  // A comment, or another unit's entry, changes nothing here.
+  assert.deepEqual(run(text, `// a note\n${text}`), [
+    ["events", false],
+    ["repos", false],
+  ]);
+  // Unreadable at the live commit (or missing then): it deploys.
+  assert.deepEqual(run("{ not json", text), [
+    ["events", true],
+    ["repos", true],
+  ]);
+});
+
+test("decide: what a cancelled or failed deploy left behind is still deployed", () => {
+  // Each unit is diffed from the commit its live version names, not from
+  // the push before: a run cancelled while it waited, or a stage that
+  // failed, deployed nothing, so those units still run the older commit
+  // and the next plan carries the changes they missed.
+  const PREVIOUS = "c".repeat(40);
+  const seen = [];
+  const gitApi = {
+    has: () => true,
+    isAncestor: () => false,
+    show: () => "",
+    changed: (from) => {
+      seen.push(from);
+      return from === OLD ? ["services/events/src/lib.rs", "docs/x.md"] : ["docs/x.md"];
+    },
+  };
+  // events still runs OLD (its deploy was cancelled); repos ran PREVIOUS.
+  const decisions = decide([unit("events"), unit("repos")], { live: { events: { sha: OLD }, repos: { sha: PREVIOUS } }, head: HEAD, gitApi });
+  assert.deepEqual(
+    decisions.map((d) => [d.unit.id, d.deploy, d.since]),
+    [
+      ["events", true, OLD],
+      ["repos", false, PREVIOUS],
+    ],
+  );
+  assert.deepEqual(seen.sort(), [OLD, PREVIOUS].sort());
+  // A Worker whose commit could not be read deploys, as one with none.
+  const unread = decide([unit("events")], { live: { events: { sha: null, error: "timed out" } }, head: HEAD, gitApi });
+  assert.deepEqual([unread[0].deploy, unread[0].reason], [true, "could not read what it runs: timed out"]);
 });
 
 test("the plan as data: migrations, and each stage's units in jobs that share a build", () => {

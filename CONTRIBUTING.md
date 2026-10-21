@@ -113,8 +113,12 @@ should match.
 ## Deploying
 
 Pushes to `main` deploy themselves: `.g1t/workflows/deploy.yml` runs
-`scripts/deploy.mjs`, which deploys only the parts that changed, migrations
-first. Every deployable part is listed in `deploy/stack.jsonc`; a new service
+`scripts/deploy.mjs`, which deploys only the parts that changed since the
+commit each one runs, migrations first: a change to docs, tests or another
+workflow deploys nothing, and one to the deploy tool or `deploy.yml`
+deploys everything
+([what each part deploys for](https://docs.g1t.sh/guides/deploy-to-cloudflare/#the-tool)).
+Every deployable part is listed in `deploy/stack.jsonc`; a new service
 or app goes there, in the table on
 [How a self-hosted g1t runs](https://docs.g1t.sh/guides/self-hosting-architecture/#each-part),
 and in the one on [Services and contracts](https://docs.g1t.sh/architecture/services/#every-unit)

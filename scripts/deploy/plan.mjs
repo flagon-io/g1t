@@ -5,7 +5,7 @@
 import { execFileSync } from "node:child_process";
 
 import { changedNames, lockRoots, parseCargoLock, parseNpmLock, reaches } from "./lockfiles.mjs";
-import { ROOT, byStage, buildGroups, codeStages, testOnlySource, touches, touchesImage } from "./stack.mjs";
+import { ROOT, STACK_FILE, byStage, buildGroups, codeStages, parseJsonc, testOnlySource, touches, touchesImage } from "./stack.mjs";
 
 /** Git, read-only. */
 export const git = {
@@ -112,9 +112,29 @@ export function decide(units, { live, head, force = false, rollback = false, git
     if (!testOnly.has(file)) testOnly.set(file, testOnlySource(file, unit.crateDirs, atHead));
     return testOnly.get(file);
   };
+  // The manifest counts for a unit only if its own entry changed. One that
+  // cannot be read at either commit counts.
+  const manifests = new Map();
+  const entries = (sha) => {
+    if (!manifests.has(sha)) {
+      try {
+        manifests.set(sha, parseJsonc(gitApi.show(sha, STACK_FILE)).units ?? null);
+      } catch {
+        manifests.set(sha, null);
+      }
+    }
+    return manifests.get(sha);
+  };
+  const entryChanged = (unit, sha) => {
+    const before = entries(sha);
+    const after = entries(head);
+    if (!before || !after || !before[unit.id] || !after[unit.id]) return true;
+    return JSON.stringify(before[unit.id]) !== JSON.stringify(after[unit.id]);
+  };
   const relevant = (unit, sha, files) =>
     files.filter((file) => {
       if (onlyForTests(unit, file)) return false;
+      if (file === STACK_FILE) return entryChanged(unit, sha);
       if (file !== "Cargo.lock" && file !== "package-lock.json") return true;
       const { after, names } = lockChange(sha, file);
       const roots = lockRoots(unit)[file === "Cargo.lock" ? "cargo" : "npm"];

@@ -59,7 +59,11 @@ on:
 permissions:
   contents: read
 
-# One deploy at a time, and never one cut off halfway: the next waits.
+# One deploy at a time, and never one cut off halfway: the next waits. A
+# run still waiting is cancelled when a newer push queues behind it; it
+# deployed nothing, and the plan diffs from the commit each Worker runs
+# (not from the push before), so the newer run carries its changes. What
+# triggers each unit: the guide's "Only what changed deploys".
 concurrency:
   group: deploy-production
   cancel-in-progress: false
