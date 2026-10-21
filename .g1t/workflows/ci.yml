@@ -197,7 +197,7 @@ jobs:
       - name: Type checks
         run: npm run typecheck
       - name: Save the type checks
-        if: ${{ github.event_name == 'push' }}
+        if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
         uses: actions/cache/save@v4
         with:
           path: |
