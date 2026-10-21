@@ -1,14 +1,15 @@
 /**
  * Answering a hosted session while it runs, on its page
  * (routes/workspace/work/sessions/session.tsx): a card for each call that
- * waits for someone to allow or deny it, and a box to send it a message.
+ * waits for someone to allow or deny it, and the box at the bottom to steer,
+ * stop or follow it up.
  * Each is a fetcher form posting the page's own action, so what is pending
  * and what went wrong show in place, and the page reads the session again
  * once it is answered. What a call does (`ApprovalWhat`) and its Allow and
  * Deny (`AnswerButtons`) are the same on Needs attention's card
  * (components/needs-attention.tsx).
  */
-import { SendHorizontal, ShieldAlert } from "lucide-react";
+import { RotateCcw, SendHorizontal, ShieldAlert } from "lucide-react";
 import { useEffect, useId, useRef } from "react";
 import { useFetcher } from "react-router";
 
@@ -20,7 +21,7 @@ import { APPROVAL_ANSWERED_EVENT, approvalWhat, timeLeft, toolName } from "../li
 import { Input, SubmitButton, TimeAgo } from "./ui";
 import { Badge } from "./ui/badge";
 import { Card } from "./ui/card";
-import { Textarea } from "./ui/textarea";
+import { PromptBox, PromptBoxInput, PromptBoxSend, PromptBoxStop, PromptBoxToolbar } from "./chat/prompt-box";
 
 /** What the page's action answers a fetcher with. */
 type Answered = { error?: string; answered?: boolean; sent?: boolean } | null | undefined;
@@ -110,48 +111,64 @@ export function ApprovalCard({ approval, now }: { approval: AgentApproval; now: 
 }
 
 /**
- * Sends the session a message, as its next instruction: Enter sends,
- * Shift+Enter starts a new line. Cleared once it is sent.
+ * The box at the bottom of a hosted session's page, as a chat's composer
+ * (components/chat/prompt-box.tsx). While it runs, what is written goes to
+ * it as its next instruction (`message`), and Stop beside it interrupts it
+ * (`stop`, for whoever started it). Once it has ended (`continue`), what is
+ * written starts a new session that carries on from it, with its branch,
+ * pull requests and report, and opens that one: an ended session cannot be
+ * resumed, since its credentials went when it finished. Enter sends,
+ * Shift+Enter starts a new line; cleared once sent.
  */
-export function SessionMessageBox() {
+export function SessionMessageBox({ mode = "message", canStop = false }: { mode?: "message" | "continue"; canStop?: boolean }) {
   const fetcher = useFetcher<Answered>();
+  const stopper = useFetcher<Answered>();
   const form = useRef<HTMLFormElement>(null);
-  const label = useId();
-  const error = fetcher.state === "idle" ? fetcher.data?.error : undefined;
+  const stopId = useId();
+  const error = fetcher.state === "idle" ? fetcher.data?.error : stopper.state === "idle" ? stopper.data?.error : undefined;
+  const busy = fetcher.state !== "idle";
   useEffect(() => {
     if (fetcher.state === "idle" && fetcher.data?.sent) form.current?.reset();
   }, [fetcher.state, fetcher.data]);
+  const continuing = mode === "continue";
   return (
-    <fetcher.Form ref={form} method="post" className="mt-5" aria-labelledby={label}>
-      <input type="hidden" name="action" value="message" />
-      <label id={label} htmlFor={`${label}-text`} className="text-xs font-medium text-muted">
-        Send to this session
-      </label>
-      <div className="mt-1.5 flex items-end gap-2">
-        <Textarea
-          id={`${label}-text`}
-          name="text"
-          rows={2}
-          maxLength={4000}
-          required
-          placeholder="Tell it what to do next. Enter sends, Shift+Enter starts a new line."
-          className="min-h-12"
-          onKeyDown={(event) => {
-            if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
-            event.preventDefault();
-            if (fetcher.state === "idle") event.currentTarget.form?.requestSubmit();
-          }}
-        />
-        <SubmitButton size="sm" fetcher={fetcher} match={{ action: "message" }} pending="Sending…" aria-label="Send">
-          <SendHorizontal size={14} />
-          Send
-        </SubmitButton>
-      </div>
+    <div className="sticky bottom-(--tabbar-h) z-10 -mx-4 mt-8 bg-linear-to-t from-bg via-bg/95 to-bg/0 px-4 pt-6 pb-4 in-data-[keyboard=open]:bottom-0 sm:mx-0 sm:px-0">
+      {canStop && !continuing && (
+        <stopper.Form method="post" id={stopId} className="hidden">
+          <input type="hidden" name="action" value="stop" />
+        </stopper.Form>
+      )}
+      <fetcher.Form ref={form} method="post" aria-label={continuing ? "Continue in a new session" : "Send to this session"}>
+        <input type="hidden" name="action" value={continuing ? "continue" : "message"} />
+        <PromptBox>
+          <PromptBoxInput
+            name="text"
+            required
+            maxLength={continuing ? 8000 : 4000}
+            busy={busy}
+            aria-label={continuing ? "What to do next, in a new session" : "Message to the session"}
+            placeholder={continuing ? "Follow up: a new session carries on from this one" : "Steer it: tell it what to do next"}
+          />
+          <PromptBoxToolbar
+            end={
+              <>
+                {canStop && !continuing && <PromptBoxStop form={stopId} busy={stopper.state !== "idle"} label="Stop the session" />}
+                <PromptBoxSend label={continuing ? "Continue in a new session" : "Send"} busy={busy} />
+              </>
+            }
+          >
+            <span className="flex items-center gap-1.5 px-2 text-xs text-faint">
+              {continuing ? <RotateCcw size={12} /> : <SendHorizontal size={12} />}
+              {continuing ? "It has finished. Sending starts a new session that carries on from it." : "Goes to it as its next instruction."}
+            </span>
+          </PromptBoxToolbar>
+        </PromptBox>
+      </fetcher.Form>
       {error && (
         <p role="alert" className="mt-2 text-sm text-danger">
           {error}
         </p>
       )}
-    </fetcher.Form>
+    </div>
   );
 }

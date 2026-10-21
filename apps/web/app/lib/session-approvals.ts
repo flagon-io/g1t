@@ -29,11 +29,14 @@ export function readAnswer(form: FormData): AnswerForm {
   return answer === "deny" && note ? { toolUseId, answer, note: note.slice(0, 1000) } : { toolUseId, answer };
 }
 
-/** Reads a message for a running session, or what is wrong with it. */
-export function readMessage(form: FormData): { text: string } | { error: string } {
+/**
+ * Reads a message for a running session, or what is wrong with it; with
+ * `max`, a longer limit: a follow-up that starts a new session (`MAX_PROMPT_CHARS`).
+ */
+export function readMessage(form: FormData, max = MAX_SESSION_MESSAGE_CHARS): { text: string } | { error: string } {
   const text = String(form.get("text") ?? "").trim();
   if (!text) return { error: "Write a message to send." };
-  if ([...text].length > MAX_SESSION_MESSAGE_CHARS) return { error: `A message is at most ${MAX_SESSION_MESSAGE_CHARS} characters.` };
+  if ([...text].length > max) return { error: `A message is at most ${max} characters.` };
   return { text };
 }
 
