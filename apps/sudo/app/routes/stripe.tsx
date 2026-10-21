@@ -47,7 +47,7 @@ export default function Stripe({ loaderData, actionData }: Route.ComponentProps)
   const ready = status.mode !== "off" && status.secretSet && webhook != null && !needsFix;
 
   return (
-    <main id="top" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-8 sm:py-10">
+    <main id="top" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-8 sm:py-10">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Stripe</h1>

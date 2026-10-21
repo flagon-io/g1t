@@ -33,7 +33,7 @@ export async function loader({ params, context, request }: Route.LoaderArgs) {
 /** What a workspace will have across its projects. */
 export default function WorkspaceSoon({ loaderData, params }: Route.ComponentProps) {
   return (
-    <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
+    <div className="mx-auto max-w-7xl px-4 py-10 sm:px-8">
       <SoonView item={loaderData.item} base={`/${params.owner}/-`} inProjects={loaderData.inProjects} newProject={`/new?workspace=${params.owner}`} />
     </div>
   );

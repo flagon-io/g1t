@@ -240,7 +240,7 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
     <>
       <div data-page-head className="border-b border-line">
         {/* The project's pages close the header for a visitor, and on a phone; a member's sidebar lists them from 768px. */}
-        <div className={`mx-auto max-w-6xl px-4 pt-4 sm:px-5 ${signedIn ? "pb-4 max-md:pb-0" : ""}`}>
+        <div className={`mx-auto max-w-7xl px-4 pt-4 sm:px-5 ${signedIn ? "pb-4 max-md:pb-0" : ""}`}>
           <Header
             project={project}
             isPrivate={repo.isPrivate}
@@ -278,7 +278,7 @@ export default function ProjectLayout({ loaderData }: Route.ComponentProps) {
           </div>
         </div>
       </div>
-      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-5">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-5">
         {tabs && <PageTabs base={base} tabs={tabs} />}
         {welcome && (
           <div className="mb-6">

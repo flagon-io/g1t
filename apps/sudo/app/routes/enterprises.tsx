@@ -36,7 +36,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 export default function Enterprises({ loaderData }: Route.ComponentProps) {
   const { enterprises, totals } = loaderData;
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Enterprises</h1>

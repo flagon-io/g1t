@@ -126,7 +126,7 @@ export default function ExplorePage({ loaderData }: Route.ComponentProps) {
   const current = { sort, language, topic };
   const filtered = language || topic;
   return (
-    <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+    <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
       <h1 className="text-2xl font-semibold tracking-tight">Explore</h1>
       <p className="mt-1 text-muted">
         Public projects on g1t{language ? ` in ${language}` : ""}

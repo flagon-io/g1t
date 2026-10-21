@@ -94,7 +94,7 @@ export default function Workspaces({ loaderData }: Route.ComponentProps) {
   const filtered = q !== "" || show.length > 0;
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Workspaces</h1>

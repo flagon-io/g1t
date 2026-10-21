@@ -85,7 +85,7 @@ export default function Logs({ loaderData, params }: Route.ComponentProps) {
   };
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-7xl">
       <ObservabilityHeader title="Logs" about="Every line the project's software wrote, newest first. Search words, a level, or any attribute; follow it live.">
         {!cursor && (
           <div className="flex items-center gap-3">

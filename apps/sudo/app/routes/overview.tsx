@@ -75,7 +75,7 @@ export default function Overview({ loaderData }: Route.ComponentProps) {
   const growth = previous ? change(previous.chargedMicros + (previous.plansMicros ?? 0), money.revenueMicros) : null;
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
       <PageHeader
         title="Overview"
         description={

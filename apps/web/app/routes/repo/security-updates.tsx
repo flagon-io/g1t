@@ -43,7 +43,7 @@ export default function SecurityDependencyUpdates({ loaderData, params }: Route.
   const { updates, can } = loaderData;
   const base = `/${params.owner}/${params.repo}`;
   return (
-    <div className="max-w-5xl space-y-6">
+    <div className="max-w-7xl space-y-6">
       <SectionHeader
         title="Dependency updates"
         about={

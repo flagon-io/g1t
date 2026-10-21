@@ -45,7 +45,7 @@ export default function Requests({ loaderData, params }: Route.ComponentProps) {
   const max = Math.max(1, ...(list?.items.map((r) => r.duration_us / 1000) ?? []));
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-7xl">
       <ObservabilityHeader
         title="Requests"
         about="Each request the project's software answered, newest first, with what it wrote under it. Search the address or the error."

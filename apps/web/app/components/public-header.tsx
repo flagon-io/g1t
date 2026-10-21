@@ -57,7 +57,7 @@ export function PublicHeader({ user }: { user: User | null | undefined }) {
   const repo = params.owner && params.repo ? `${params.owner}/${params.repo}` : null;
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur">
-      <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4">
+      <div className="mx-auto flex h-14 max-w-7xl items-center gap-2 px-4">
         <Link to="/" aria-label="g1t home" className="mr-2 flex">
           <Logo />
         </Link>

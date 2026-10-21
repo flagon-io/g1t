@@ -88,7 +88,7 @@ export default function SecurityAdvisories({ loaderData, params }: Route.Compone
   const state: AdvisoryState | null = insider ? parseAdvisoryState(search.get("state")) : null;
   const shown = state ? list.filter((advisory) => advisory.state === state) : list;
   return (
-    <div className="max-w-5xl space-y-6">
+    <div className="max-w-7xl space-y-6">
       <SectionHeader
         title="Security advisories"
         about={

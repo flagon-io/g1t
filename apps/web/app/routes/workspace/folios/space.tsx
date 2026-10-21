@@ -52,7 +52,7 @@ export default function SpacePage({ loaderData, params }: Route.ComponentProps) 
         ? `The ${space.team} team, and members added to it`
         : "Only its members";
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-7xl">
       <div className="flex flex-wrap items-start gap-4">
         <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-raised text-2xl">
           <SpaceIcon space={space} size={22} />

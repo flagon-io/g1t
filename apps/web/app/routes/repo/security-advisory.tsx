@@ -61,7 +61,7 @@ export default function SecurityAdvisory({ loaderData, params }: Route.Component
   const standing = advisoryStanding(advisory);
   const working = fetcher.state !== "idle";
   return (
-    <div className="max-w-5xl space-y-6">
+    <div className="max-w-7xl space-y-6">
       <SectionHeader
         title={advisory.title}
         about={

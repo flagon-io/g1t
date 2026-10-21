@@ -61,7 +61,7 @@ export default function FolioTemplates({ loaderData, params }: Route.ComponentPr
       <span className="text-xs text-faint">Coming soon</span>
     );
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-7xl">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Templates</h1>

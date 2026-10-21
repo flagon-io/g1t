@@ -91,7 +91,7 @@ export default function Overages({ loaderData, actionData }: Route.ComponentProp
     { overage: 0, margin: 0, absorbed: 0 },
   );
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
       <PageHeader
         title="Overages"
         description={

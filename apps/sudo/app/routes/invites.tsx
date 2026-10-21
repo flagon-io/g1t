@@ -188,7 +188,7 @@ const TABS: { value: InvitesTab; label: string }[] = [
 export default function Invites({ loaderData, actionData }: Route.ComponentProps) {
   const { query, tab, invites, error, done, granted } = loaderData;
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
       <PageHeader
         title="Invites"
         description="Every invite, newest first: invitations into a workspace or onto a repository, and invites to g1t that people send their friends with Invite a friend. Anyone may register; an invite is never needed. Find one here to revoke it, for instance one sent to an address that did not ask for it."

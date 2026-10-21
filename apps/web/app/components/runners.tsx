@@ -494,7 +494,7 @@ export function RunnersPanel({
 }) {
   const online = data.runners.filter((runner) => runner.status !== "offline").length;
   return (
-    <div className="max-w-5xl space-y-8">
+    <div className="max-w-7xl space-y-8">
       <div className="min-h-6">
         {action?.notice && <p className="text-sm text-success">{action.notice}</p>}
         <ErrorText>{action?.error ?? data.error ?? null}</ErrorText>

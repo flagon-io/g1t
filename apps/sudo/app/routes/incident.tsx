@@ -304,7 +304,7 @@ export default function Incident({ loaderData, actionData }: Route.ComponentProp
   const errorFor = (intent: string) => (failed?.intent === intent ? failed.error : null);
   if (!incident) {
     return (
-      <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
         <BackLink to="/incidents">Incidents</BackLink>
         <div className="mt-4">
           <Notice tone="warn">The status worker did not answer: {error}</Notice>
@@ -319,7 +319,7 @@ export default function Incident({ loaderData, actionData }: Route.ComponentProp
   const timeline = [...incident.timeline].reverse();
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:py-10">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:py-10">
       <BackLink to={incident.visibility === "draft" ? "/incidents?tab=drafts" : open ? "/incidents" : "/incidents?tab=resolved"}>Incidents</BackLink>
       <Header incident={incident} now={now} />
 

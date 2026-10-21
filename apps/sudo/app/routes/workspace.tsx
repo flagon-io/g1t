@@ -212,7 +212,7 @@ export default function Workspace({ loaderData, actionData }: Route.ComponentPro
   const owners = person?.members.filter((member) => member.role === "owner") ?? [];
 
   return (
-    <main id="top" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-8 sm:py-10">
+    <main id="top" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-8 sm:py-10">
       <Link to="/workspaces" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
         <ArrowLeft size={14} />
         Workspaces

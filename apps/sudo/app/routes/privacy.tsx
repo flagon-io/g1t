@@ -36,7 +36,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 export default function Privacy({ loaderData, actionData }: Route.ComponentProps) {
   return (
-    <main className="mx-auto max-w-5xl space-y-6 px-4 py-8">
+    <main className="mx-auto max-w-7xl space-y-6 px-4 py-8">
       <PageHeader
         title="Privacy requests"
         description="Respond without undue delay, by the recorded deadline. Automatic cleanup is only part of fulfilling an erasure request."

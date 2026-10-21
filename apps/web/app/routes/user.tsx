@@ -147,7 +147,7 @@ export async function loader({ params, request, context }: Route.LoaderArgs) {
 export default function UserProfile({ loaderData }: Route.ComponentProps) {
   const { profile, tab, activity, workspaces, isSelf } = loaderData;
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 sm:px-8 md:py-10">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-8 md:py-10">
       <div className="grid gap-8 md:grid-cols-[minmax(0,240px)_minmax(0,1fr)] lg:grid-cols-[minmax(0,280px)_minmax(0,1fr)] lg:gap-12">
         <PersonColumn profile={profile} workspaces={workspaces} isSelf={isSelf} />
         <section className="min-w-0">

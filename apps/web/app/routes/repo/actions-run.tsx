@@ -1323,7 +1323,7 @@ export default function ActionsRun({ loaderData, actionData, params }: Route.Com
   const anyFailed = jobs.some((job) => job.conclusion === "failure" || job.conclusion === "cancelled");
 
   return (
-    <div className="max-w-6xl space-y-6">
+    <div className="max-w-7xl space-y-6">
       <header className="space-y-3">
         <Link to={`${base}/actions?workflow=${run.workflowId}`} className="text-sm text-muted hover:text-fg">
           {run.name}

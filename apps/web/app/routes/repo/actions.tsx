@@ -416,7 +416,7 @@ export default function Actions({ loaderData, actionData, params }: Route.Compon
   useLiveWhile(runs.some((run) => run.status !== "completed"));
   const started = actionData && "started" in actionData ? actionData.started : null;
   return (
-    <div className="max-w-6xl">
+    <div className="max-w-7xl">
       <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">

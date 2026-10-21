@@ -23,7 +23,7 @@ export default function SettingsLayout() {
   const page = accountSettingsPage(pathname);
   const about = page ? ACCOUNT_SETTINGS[page] : null;
   return (
-    <main className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
+    <main className="mx-auto max-w-7xl px-4 py-10 sm:px-8">
       {about && (
         <header className="mb-8 border-b border-line pb-5">
           <h1 className="text-lg font-semibold tracking-tight">{about.heading ?? about.title}</h1>

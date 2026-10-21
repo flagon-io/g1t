@@ -74,7 +74,7 @@ export default function Errors({ loaderData, actionData, params }: Route.Compone
   const failedOn = actionData && "fingerprint" in actionData ? actionData.fingerprint : null;
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-7xl">
       <ObservabilityHeader
         title="Errors"
         about="Exceptions, grouped: the same error thrown a thousand times is one row. Each can become a work item, carrying the stack and the request it came from."

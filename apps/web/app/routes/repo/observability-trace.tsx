@@ -44,7 +44,7 @@ export default function Trace({ loaderData, params }: Route.ComponentProps) {
   const errors = spans.filter((s) => s.status === "error").length;
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-7xl">
       <Link to={`${base}/observability/traces`} className="inline-flex items-center gap-1 text-sm text-muted hover:text-fg">
         <ChevronLeft size={14} />
         Traces
