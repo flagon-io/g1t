@@ -2318,7 +2318,7 @@ export function AppShell({
       case "work":
         return <WorkSidebar slug={ws.slug} username={user.username} />;
       case "chat":
-        return <ChatSidebar slug={ws.slug} username={user.username} />;
+        return <ChatSidebar slug={ws.slug} />;
       case "artifacts":
         return <FoliosSidebar slug={ws.slug} />;
       case "notifications":
