@@ -101,7 +101,7 @@ impl Default for Config {
             oss_repo_micros: 4_000_000,
             trial_workspace_micros: 5_000_000,
             trial_monthly_pool_micros: 100_000_000,
-            min_charge_micros: 5_000_000,
+            min_charge_micros: 1_000_000,
             free_storage_bytes: 1_000_000_000,
             public_package_free_bytes: 10_000_000_000,
             private_package_free_bytes: 500_000_000,
@@ -754,7 +754,7 @@ mod tests {
         assert_eq!(c.oss_repo_micros, 4_000_000);
         assert_eq!(c.trial_workspace_micros, 5_000_000);
         assert_eq!(c.trial_monthly_pool_micros, 100_000_000);
-        assert_eq!(c.min_charge_micros, 5_000_000);
+        assert_eq!(c.min_charge_micros, 1_000_000);
         assert_eq!(c.free_storage_bytes, 1_000_000_000);
         assert_eq!(c.free_audit_days, 7);
         assert_eq!(c.audit_days, 90);

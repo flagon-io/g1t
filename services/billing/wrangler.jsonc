@@ -109,10 +109,9 @@
     // slowed, and a free workspace is slowed down by the repos service
     // (its GIT_OPERATIONS_FREE_CAP, the same number), never charged.
     "GIT_OPERATIONS_INCLUDED": "50000",
-    // A month's close charges no less than $5, so a payment's fee is never
-    // most of it: smaller amounts carry over. Charges at a limit always go
-    // through.
-    "MIN_CHARGE_MICROS": "5000000",
+    // A month's close charges no less than $1: smaller amounts carry over.
+    // Charges at a limit always go through.
+    "MIN_CHARGE_MICROS": "1000000",
     // Where the keeper reads what g1t pays (src/keeper.rs). Its token,
     // CLOUDFLARE_USAGE_TOKEN, is a secret: Billing and Account
     // Analytics, read only. The daily cost reconciliation

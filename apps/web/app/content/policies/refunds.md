@@ -26,7 +26,7 @@ The credit appears on your statement with the day it happened, such as _Credit f
 ## When we refund to your card
 
 - **Charged in error.** If we charged you twice, charged the wrong amount, or charged for something that didn't run because of a fault on our side, we refund it to the card it was paid with.
-- **Unused prepaid balance**, when you close the workspace: write to us **before you delete it**, and we'll refund what's left to the card or account it came from.
+- **Unused prepaid balance**, when you close the workspace. A workspace can't be deleted while it holds prepaid balance, so write to us first and we'll refund what's left to the card or account it came from. If a workspace was deleted with balance still on it, write to us within the 30 days it can be restored and we'll refund that too. A workspace restored after such a refund comes back with no prepaid balance.
 - **Anything else** is up to us, case by case. Write to [support@g1t.sh](mailto:support@g1t.sh) and we'll be fair about it.
 
 Refunds appear on the statement under **Refunds** and take as long as your bank takes to show them, usually 5 to 10 business days. Tax paid on a refunded amount is refunded in proportion.
@@ -44,7 +44,7 @@ We don't refund for part of a month on the plan, or for usage that ran as asked.
 
 ## Closing a workspace or account
 
-An owner deletes a workspace from its **Settings → General**. What it owes is charged at once, and its plan ends at once, without a refund for the rest of the period. If it has prepaid balance left, write to [support@g1t.sh](mailto:support@g1t.sh) first (see above). A deleted workspace can be restored for 30 days, then it is purged. You delete your own account from your account settings. See [cancelling](/policies/terms#cancelling-and-taking-your-data-with-you) in the terms.
+An owner deletes a workspace from its **Settings → General**. What it owes is charged at once, and its plan ends at once, without a refund for the rest of the period. While it has prepaid balance left it can't be deleted: spend it, or write to [support@g1t.sh](mailto:support@g1t.sh) for a refund (see above). A deleted workspace can be restored for 30 days, then it is purged. You delete your own account from your account settings. See [cancelling](/policies/terms#cancelling-and-taking-your-data-with-you) in the terms.
 
 ## Disputes
 
