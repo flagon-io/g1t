@@ -59,6 +59,9 @@ plus what each pull request's working copy holds beyond it, beside
 holds: pushes made with a credential straight to the store (sandboxes'
 `git_access`), and ended pushes that landed, are not counted. Below zero,
 g1t counted objects that a later push made unreachable (a force push), or
-packs that sent objects the store already had: g1t asks for whole packs. Large or growing
+packs that sent objects the store already had: g1t asks for whole packs.
+Before #307, g1t also counted writes the store refused (a merge or update
+whose branch had moved, an `ng`, a failed unpack); since, a refused write
+gives its reservation back and counts nothing. Large or growing
 drift is for the owner of billing to decide on; nothing corrects it
 automatically.
